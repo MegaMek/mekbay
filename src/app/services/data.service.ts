@@ -39,6 +39,7 @@ import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import type { ForceNameWords } from '../models/force-name-words.model';
 import { getForcePacks } from '../models/forcepacks.model';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
+import type { ParsedASSpecials } from '../utils/as-special-filter.util';
 import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
 import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catalog.service';
@@ -47,7 +48,7 @@ import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SarnaPageTitlesCatalogService } from './catalogs/sarna-page-titles-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
-import { UnitSearchIndexService } from './unit-search-index.service';
+import { UnitSearchIndexService, type UnitSearchDropdownOption } from './unit-search-index.service';
 import { UnitRuntimeService } from './unit-runtime.service';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { UnitsFluffCatalogService } from './catalogs/units-fluff-catalog.service';
@@ -431,6 +432,10 @@ export class DataService {
         return this.unitSearchIndexService.getIndexedFilterValues(filterKey);
     }
 
+    public getIndexedASSpecials(unitName: string): ParsedASSpecials | undefined {
+        return this.unitSearchIndexService.getIndexedASSpecials(unitName);
+    }
+
     public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
         return this.unitSearchIndexService.getSearchWorkerIndexSnapshot();
     }
@@ -439,7 +444,7 @@ export class DataService {
         return this.unitSearchIndexService.getSearchWorkerFactionEraSnapshot();
     }
 
-    public getDropdownOptionUniverse(filterKey: string): Array<{ name: string; img?: string }> {
+    public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {
         return this.unitSearchIndexService.getDropdownOptionUniverse(filterKey);
     }
 

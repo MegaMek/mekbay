@@ -14,6 +14,7 @@ import type { UnitSearchViewMode } from '../models/options.model';
 import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA, type BvNormalizationSettings, type PvNormalizationSettings, type UnitSearchBudgetMode } from '../models/unit-search-result.model';
 import { isValidBvNormalizationSettings } from './bv-normalization.util';
 import { isValidPvNormalizationSettings } from './pv-normalization.util';
+import { getASSpecialToken } from './as-special-filter.util';
 
 export interface ParsedUnitSearchScalarUrlState {
     searchText: string | null;
@@ -95,6 +96,47 @@ function serializeCompactFilterValue(value: string): string {
 
 function splitCompactFilterValues(valueStr: string): string[] {
     return parseValues(valueStr).filter(value => value.trim() !== '');
+}
+
+function serializeASSpecialMinimumSuffix(values: readonly (number | null)[] | undefined): string {
+    if (!values?.some(value => value !== null && value !== undefined)) {
+        return '';
+    }
+
+    let lastValueIndex = values.length - 1;
+    while (lastValueIndex >= 0 && (values[lastValueIndex] === null || values[lastValueIndex] === undefined)) {
+        lastValueIndex--;
+    }
+
+    return '^' + values.slice(0, lastValueIndex + 1)
+        .map(value => value === null || value === undefined ? '' : String(value))
+        .join('/');
+}
+
+function parseASSpecialMinimumSuffix(value: string): { name: string; minimumValues?: (number | null)[] } {
+    const markerIndex = value.lastIndexOf('^');
+    if (markerIndex === -1) {
+        return { name: value };
+    }
+
+    const parts = value.slice(markerIndex + 1).split('/');
+    const minimumValues: (number | null)[] = [];
+    for (const part of parts) {
+        if (part === '') {
+            minimumValues.push(null);
+            continue;
+        }
+
+        const parsed = Number(part);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+            return { name: value };
+        }
+        minimumValues.push(parsed);
+    }
+
+    return minimumValues.some(entry => entry !== null)
+        ? { name: value.slice(0, markerIndex), minimumValues }
+        : { name: value.slice(0, markerIndex) };
 }
 
 function parseBoundedInteger(value: string | null | undefined, min: number, max: number): number | null {
@@ -243,6 +285,9 @@ function generateCompactFiltersParam(state: FilterState): string | null {
                         if (selectionValue.state === 'and') part += '.';
                         else if (selectionValue.state === 'not') part += '!';
                         if (selectionValue.count > 1) part += `~${selectionValue.count}`;
+                        if (key === 'as.specials') {
+                            part += serializeASSpecialMinimumSuffix(selectionValue.minimumValues);
+                        }
                         subParts.push(part);
                     }
                 }
@@ -358,7 +403,10 @@ function parseCompactFiltersFromUrl(
             const availableValuesMap = dropdownValuesDependencies
                 ? getAvailableDropdownValuesMap(conf, dropdownValuesDependencies)
                 : null;
-            const exactValueMatch = availableValuesMap?.get(valueStr.toLowerCase());
+            const legacyCompositeSpecial = key === 'as.specials' && /^TUR\s*\(.*\)$/i.test(valueStr)
+                ? valueStr
+                : undefined;
+            const exactValueMatch = availableValuesMap?.get(valueStr.toLowerCase()) ?? legacyCompositeSpecial;
 
             if (conf.multistate) {
                 if (exactValueMatch) {
@@ -378,6 +426,13 @@ function parseCompactFiltersFromUrl(
                     let name = item;
                     let state: MultiState = 'or';
                     let count = 1;
+                    let minimumValues: (number | null)[] | undefined;
+
+                    if (key === 'as.specials') {
+                        const parsedMinimum = parseASSpecialMinimumSuffix(name);
+                        name = parsedMinimum.name;
+                        minimumValues = parsedMinimum.minimumValues;
+                    }
 
                     const starIndex = name.indexOf('~');
                     if (starIndex !== -1) {
@@ -395,7 +450,12 @@ function parseCompactFiltersFromUrl(
 
                     name = conf.valueNormalizer?.(name) ?? name;
 
-                    selection[name] = { name, state, count };
+                    selection[name] = {
+                        name,
+                        state,
+                        count,
+                        ...(minimumValues ? { minimumValues } : {}),
+                    };
                 }
 
                 if (Object.keys(selection).length > 0) {
@@ -448,6 +508,16 @@ function validateParsedFiltersFromUrl(
                     const properCase = availableValuesMap.get(normalizedName.toLowerCase());
                     if (properCase) {
                         validSelection[properCase] = { ...selectionValue, name: properCase };
+                        continue;
+                    }
+
+                    // Preserve old shared URLs that selected one concrete TUR
+                    // string before the specials index switched to tokens.
+                    if (key === 'as.specials') {
+                        const token = getASSpecialToken(normalizedName);
+                        if (token && availableValuesMap.has(token.toLowerCase())) {
+                            validSelection[normalizedName] = { ...selectionValue, name: normalizedName };
+                        }
                     }
                 }
                 if (Object.keys(validSelection).length > 0) {

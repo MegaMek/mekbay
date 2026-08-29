@@ -253,4 +253,71 @@ describe('unit-search worker', () => {
         expect(getEntries('rulesRefs=Shrap01')).toEqual([{ unitName: 'Unit B' }]);
         expect(getEntries('rulesRefs=AAA')).toEqual([]);
     });
+
+    it('uses the canonical token and pre-parsed value indexes for numeric minima', () => {
+        const lowAC = createUnit('Low AC');
+        lowAC.as.specials = ['AC2/2/2'];
+        const nestedHighAC = createUnit('Nested High AC');
+        nestedHighAC.as.specials = ['TUR(3/3/3,AC1/1/4)'];
+        const noAC = createUnit('No AC');
+        noAC.as.specials = ['TAG'];
+
+        const runtime = __test__.hydrateCorpus({
+            corpusVersion: '1:0',
+            units: [lowAC, nestedHighAC, noAC],
+            indexes: {
+                'as.specials': {
+                    AC: ['Low AC', 'Nested High AC'],
+                    TAG: ['No AC'],
+                    TUR: ['Nested High AC'],
+                },
+            },
+            factionEraIndex: {},
+        });
+        // Prove execution reads the hydrated tuple index rather than reparsing
+        // the mutable raw unit payload on every query.
+        nestedHighAC.as.specials = ['TAG'];
+        const query = 'specials="AC*/*/>=3"';
+
+        expect(__test__.buildResultMessage(runtime, {
+            ...createRequest(),
+            executionQuery: query,
+            telemetryQuery: query,
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        }).entries).toEqual([{ unitName: 'Nested High AC' }]);
+    });
+
+    it('keeps repeated specials constraints and implicit values identical in worker execution', () => {
+        const mediumOnly = createUnit('Medium Only');
+        mediumOnly.as.specials = ['AC1/5/1'];
+        const longOnly = createUnit('Long Only');
+        longOnly.as.specials = ['AC1/1/4'];
+        const both = createUnit('Both Ranges');
+        both.as.specials = ['AC1/5/4'];
+        const implicitSnarc = createUnit('Implicit SNARC');
+        implicitSnarc.as.specials = ['SNARC'];
+
+        const runtime = __test__.hydrateCorpus({
+            corpusVersion: '1:0',
+            units: [mediumOnly, longOnly, both, implicitSnarc],
+            indexes: {
+                'as.specials': {
+                    AC: ['Medium Only', 'Long Only', 'Both Ranges'],
+                    SNARC: ['Implicit SNARC'],
+                },
+            },
+            factionEraIndex: {},
+        });
+        const execute = (executionQuery: string) => __test__.buildResultMessage(runtime, {
+            ...createRequest(),
+            executionQuery,
+            telemetryQuery: executionQuery,
+            gameSystem: GameSystem.ALPHA_STRIKE,
+        }).entries;
+
+        expect(execute('specials&="AC*/>=4/*" specials&="AC*/*/>=3"'))
+            .toEqual([{ unitName: 'Both Ranges' }]);
+        expect(execute('specials="SNARC>=1"'))
+            .toEqual([{ unitName: 'Implicit SNARC' }]);
+    });
 });

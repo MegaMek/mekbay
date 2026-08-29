@@ -22,6 +22,7 @@ import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './un
 import type { AvailabilityFilterScope } from '../services/unit-search-filters.model';
 import { findBvNormalizationMatch } from './bv-normalization.util';
 import { findPvNormalizationMatch } from './pv-normalization.util';
+import type { ParsedASSpecials } from './as-special-filter.util';
 
 export interface UnitSearchExecutionRequest {
     units: UnitSummary[];
@@ -51,6 +52,7 @@ export interface UnitSearchExecutionRequest {
     getDisplayName?: (filterKey: string, value: string) => string | undefined;
     getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<string> | undefined;
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
+    getIndexedASSpecials?: (unitId: string) => ParsedASSpecials | undefined;
     availabilitySortScope?: AvailabilityFilterScope;
     getMegaMekRaritySortScore?: (unit: UnitSummary, scope?: AvailabilityFilterScope) => number;
 }
@@ -202,6 +204,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         getDisplayName: request.getDisplayName,
         getIndexedUnitIds: request.getIndexedUnitIds,
         getIndexedFilterValues: request.getIndexedFilterValues,
+        getIndexedASSpecials: request.getIndexedASSpecials,
     };
 
     let candidateUnits = allUnits;

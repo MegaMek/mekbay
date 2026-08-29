@@ -4804,6 +4804,114 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(sourceB).toEqual(jasmine.objectContaining({ name: 'SRC-B', available: false }));
     });
 
+    it('applies Alpha Strike special minima when calculating self-filter drilldowns', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].as.specials = ['AC1/3/1', 'AFC'];
+        bundle.units.units[1].as.specials = ['AC1/4/1', 'TAG'];
+        bundle.units.units.push(createTestUnit({
+            id: 3,
+            name: 'Nested AC',
+            as: {
+                ...createTestUnit({}).as,
+                specials: ['TUR(2/2/2,AC1/5/1)', 'TSM'],
+            },
+        }));
+
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        service.setFilter('as.specials', {
+            AC: {
+                name: 'AC',
+                state: 'and',
+                count: 1,
+                minimumValues: [null, 4, null],
+            },
+        });
+
+        expect(service.filteredUnits().map(unit => unit.name).sort()).toEqual(['Nested AC', 'Test Tank']);
+
+        const options = (service.advOptions()['as.specials']?.options ?? [])
+            .filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+        expect(options.find(option => option.name === 'AC')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(options.find(option => option.name === 'TAG')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(options.find(option => option.name === 'TSM')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(options.find(option => option.name === 'AFC')).toEqual(jasmine.objectContaining({ available: false }));
+
+        service.setFilter('as.specials', {
+            AC: {
+                name: 'AC',
+                state: 'and',
+                count: 1,
+                minimumValues: [null, 4, null],
+            },
+            TAG: {
+                name: 'TAG',
+                state: 'and',
+                count: 1,
+            },
+        });
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
+    });
+
+    it('preserves repeated specials clauses when building the equivalent worker query', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].as.specials = ['AC1/5/1'];
+        bundle.units.units[1].as.specials = ['AC1/1/4'];
+        bundle.units.units.push(createTestUnit({
+            id: 3,
+            name: 'Both AC Ranges',
+            as: {
+                ...createTestUnit({}).as,
+                specials: ['AC1/5/4'],
+            },
+        }));
+
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        service.searchText.set('specials&="AC*/>=4/*" specials&="AC*/*/>=3"');
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Both AC Ranges']);
+
+        const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
+        expect(request.executionQuery).toBe('specials&="AC*/>=4/*" specials&="AC*/*/>=3"');
+    });
+
+    it('calculates specials drilldowns against NOT-only selections', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].as.specials = ['ECM', 'TAG'];
+        bundle.units.units[1].as.specials = ['AC2/2/2'];
+
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        service.setFilter('as.specials', {
+            ECM: {
+                name: 'ECM',
+                state: 'not',
+                count: 1,
+            },
+        });
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
+        const options = (service.advOptions()['as.specials']?.options ?? [])
+            .filter((option): option is { name: string; available?: boolean } => typeof option !== 'number');
+        expect(options.find(option => option.name === 'AC')).toEqual(jasmine.objectContaining({ available: true }));
+        expect(options.find(option => option.name === 'TAG')).toEqual(jasmine.objectContaining({ available: false }));
+
+        service.setFilter('as.specials', {
+            ECM: {
+                name: 'ECM',
+                state: 'not',
+                count: 1,
+            },
+            TAG: {
+                name: 'TAG',
+                state: 'or',
+                count: 1,
+            },
+        });
+        expect(service.filteredUnits()).toEqual([]);
+    });
+
     it('does not throw when stale multistate era state is present', () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the era state regression test.');
@@ -4963,6 +5071,32 @@ describe('UnitSearchFiltersService search telemetry', () => {
         });
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
         expect(service.queryParameters()['filters']).toBe(`as.specials:"${special}"`);
+    });
+
+    it('filters canonical Alpha Strike specials by populated minimum damage bands', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units[0].as.specials = ['AC2/2/2'];
+        bundle.units.units[1].as.specials = ['TUR(3/3/3,AC1/1/4)'];
+
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+
+        const acOption = (service.advOptions()['as.specials']?.options ?? [])
+            .filter(option => typeof option !== 'number')
+            .find(option => option.name === 'AC');
+        expect(acOption?.minimumFieldLabels).toEqual(['S', 'M', 'L']);
+
+        service.setFilter('as.specials', {
+            AC: {
+                name: 'AC',
+                state: 'or',
+                count: 1,
+                minimumValues: [null, null, 3],
+            },
+        });
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Tank']);
+        expect(service.queryParameters()['filters']).toBe('as.specials:AC^//3');
     });
 
     it('matches units when the selected rulebooks cover a complete bucket', () => {

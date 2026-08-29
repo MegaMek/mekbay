@@ -174,9 +174,14 @@
     text-overflow: ellipsis;
 }
 
+.option-item.has-minimum-fields .option-label {
+    flex-grow: 0;
+}
+
 .options-viewport .custom-checkbox,
 .options-viewport .option-img,
-.options-viewport .quantity-input {
+.options-viewport .quantity-input,
+.options-viewport .minimum-inputs {
     align-self: center;
 }
 
@@ -338,6 +343,34 @@
     outline: none;
     color: var(--text-color);
     text-align: center;
+}
+
+.minimum-inputs {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 3px;
+}
+
+.minimum-field {
+    width: 34px;
+    min-width: 0;
+    border: 1px solid #777;
+    padding: 2px 1px;
+    box-sizing: border-box;
+    background-color: transparent;
+    outline: none;
+    color: var(--text-color);
+    text-align: center;
+    font-size: 0.78rem;
+}
+
+.minimum-field:focus {
+    border-color: var(--bt-yellow);
+}
+
+.minimum-field::placeholder {
+    color: var(--text-color-secondary);
+    opacity: 0.8;
 }
 
 /* Semantic-only mode */

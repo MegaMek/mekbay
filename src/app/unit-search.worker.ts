@@ -29,6 +29,7 @@ import type {
     UnitSearchWorkerResultMessage,
 } from './utils/unit-search-worker-protocol.util';
 import { getUnitVariantGroupKey } from './utils/unit-variant.util';
+import { buildASSpecialsByUnitIndex, type ParsedASSpecials } from './utils/as-special-filter.util';
 
 interface WorkerCorpusRuntime {
     corpusVersion: string;
@@ -36,6 +37,7 @@ interface WorkerCorpusRuntime {
     allUnitNames: ReadonlySet<string>;
     indexedUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
     indexedFilterValues: Map<string, string[]>;
+    indexedASSpecials: Map<string, ParsedASSpecials>;
     factionEraUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
     forcePackToLookupKey: Map<string, Set<string>>;
 }
@@ -131,6 +133,11 @@ function hydrateCorpus(snapshot: UnitSearchWorkerCorpusSnapshot): WorkerCorpusRu
         allUnitNames: new Set(snapshot.units.map((unit) => unit.name)),
         indexedUnitIds: buildIndexedUnitIds(snapshot.indexes),
         indexedFilterValues: buildIndexedFilterValues(snapshot.indexes),
+        indexedASSpecials: buildASSpecialsByUnitIndex(
+            snapshot.units,
+            unit => unit.name,
+            unit => unit.as?.specials,
+        ),
         factionEraUnitIds: buildFactionEraUnitIds(snapshot.factionEraIndex),
         forcePackToLookupKey: buildForcePackIndex(snapshot.units),
     };
@@ -279,6 +286,7 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         getDisplayName: (filterKey: string, value: string) => workerDisplayNameFns.get(filterKey)?.(value),
         getIndexedUnitIds,
         getIndexedFilterValues,
+        getIndexedASSpecials: unitId => runtime.indexedASSpecials.get(unitId),
     });
 
     const parseStage: SearchTelemetryStage = {

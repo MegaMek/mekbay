@@ -65,6 +65,9 @@
                             'pill-not': option.state === 'not'
                           }">
                         {{ getDisplayName(option.name) }}{{ (option.count > 1) ? ' (' + option.count + ')' : '' }}
+                        @if (formatMinimumSummary(option.minimumValues); as minimumSummary) {
+                            @if (minimumSummary) { ({{ minimumSummary }}) }
+                        }
                         <button type="button" class="remove-pill" (click)="removeOption(option.name, $event)">&#10005;</button>
                     </span>
                 }
@@ -157,6 +160,7 @@
                     [class.option-section-start]="optionSectionBreakIndexes().has(optionIndex)"
                     [class.unavailable]="option.available === false"
                     [class.selected-single]="!multiselect() && isSelected(option.name)"
+                    [class.has-minimum-fields]="!!option.minimumFieldLabels?.length && (getState(option.name) === 'and' || getState(option.name) === 'or')"
                     (pointerenter)="onOptionPointerHover(option.name)"
                     (pointermove)="onOptionPointerHover(option.name)"
                     (pointerleave)="onOptionPointerLeave(option.name)"
@@ -196,6 +200,25 @@
                         class="option-label"
                         [style.fontSize.px]="getVirtualOptionLabelFontSize(option)"
                         [innerHTML]="highlight(option.displayName ?? option.name)"></span>
+                    @if (option.minimumFieldLabels; as fieldLabels) {
+                        @if (getState(option.name) === 'and' || getState(option.name) === 'or') {
+                            <div class="minimum-inputs">
+                                @for (fieldLabel of fieldLabels; let fieldIndex = $index; track fieldIndex) {
+                                    <input type="number"
+                                        min="0"
+                                        step="any"
+                                        class="minimum-field"
+                                        [value]="getMinimumValue(option.name, fieldIndex)"
+                                        [placeholder]="fieldLabel"
+                                        [attr.aria-label]="option.name + ' ' + fieldLabel + ' minimum'"
+                                        [title]="option.name + ' ' + fieldLabel + ' minimum (at least)'"
+                                        (input)="onMinimumInput(option.name, fieldIndex, fieldLabels.length, $event)"
+                                        (click)="$event.stopPropagation()"
+                                        (wheel)="onMinimumWheel($event)" />
+                                }
+                            </div>
+                        }
+                    }
                     @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
                         <div class="quantity-input">
                             <input type="number"
@@ -228,6 +251,7 @@
                             [class.option-section-start]="optionSectionBreakIndexes().has(i)"
                             [class.unavailable]="option.available === false"
                             [class.selected-single]="!multiselect() && isSelected(option.name)"
+                            [class.has-minimum-fields]="!!option.minimumFieldLabels?.length && (getState(option.name) === 'and' || getState(option.name) === 'or')"
                             (pointerenter)="onOptionPointerHover(option.name)"
                             (pointermove)="onOptionPointerHover(option.name)"
                             (pointerleave)="onOptionPointerLeave(option.name)"
@@ -265,9 +289,28 @@
                                 <img [src]="option.img" class="option-img" alt="">
                             }
                             <span class="option-label" [innerHTML]="highlight(option.displayName ?? option.name)"></span>
+                            @if (option.minimumFieldLabels; as fieldLabels) {
+                                @if (getState(option.name) === 'and' || getState(option.name) === 'or') {
+                                    <div class="minimum-inputs">
+                                        @for (fieldLabel of fieldLabels; let fieldIndex = $index; track fieldIndex) {
+                                            <input type="number"
+                                                min="0"
+                                                step="any"
+                                                class="minimum-field"
+                                                [value]="getMinimumValue(option.name, fieldIndex)"
+                                                [placeholder]="fieldLabel"
+                                                [attr.aria-label]="option.name + ' ' + fieldLabel + ' minimum'"
+                                                [title]="option.name + ' ' + fieldLabel + ' minimum (at least)'"
+                                                (input)="onMinimumInput(option.name, fieldIndex, fieldLabels.length, $event)"
+                                                (click)="$event.stopPropagation()"
+                                                (wheel)="onMinimumWheel($event)" />
+                                        }
+                                    </div>
+                                }
+                            }
                             @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
                                 <div class="quantity-input">
-                                <input type="number" 
+                                    <input type="number"
                                         [value]="getCount(option.name)"
                                         min="1"
                                         class="quantity-field"

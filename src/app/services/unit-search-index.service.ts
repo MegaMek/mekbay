@@ -17,6 +17,17 @@ import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot 
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { WeaponEquipment } from '../models/equipment.model';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
+import {
+    buildASSpecialsByUnitIndex,
+    getASSpecialMinimumFieldLabels,
+    type ParsedASSpecials,
+} from '../utils/as-special-filter.util';
+
+export interface UnitSearchDropdownOption {
+    name: string;
+    img?: string;
+    minimumFieldLabels?: readonly string[];
+}
 
 interface ASUnitTypeMaxStats {
     [asUnitType: string]: MinMaxStatsRange;
@@ -107,7 +118,9 @@ export class UnitSearchIndexService {
     private searchFilterIndex = new Map<string, Map<string, Set<string>>>();
     private componentCountIndex = new Map<string, Map<string, number>>();
     private searchFilterValues = new Map<string, string[]>();
-    private dropdownOptionUniverse = new Map<string, Array<{ name: string; img?: string }>>();
+    private dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
+    private asSpecialFieldCounts = new Map<string, number>();
+    private asSpecialsByUnit = new Map<string, ParsedASSpecials>();
     private factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot = {};
 
     public prepareUnits(units: UnitSummary[]): void {
@@ -282,6 +295,12 @@ export class UnitSearchIndexService {
         this.searchFilterIndex = new Map<string, Map<string, Set<string>>>();
         this.componentCountIndex = new Map<string, Map<string, number>>();
         this.searchFilterValues = new Map<string, string[]>();
+        this.asSpecialFieldCounts = new Map<string, number>();
+        this.asSpecialsByUnit = buildASSpecialsByUnitIndex(
+            units,
+            unit => unit.name,
+            unit => unit.as?.specials,
+        );
 
         const unitNamesByMulId = this.createUnitNamesByMulId(units);
 
@@ -295,7 +314,7 @@ export class UnitSearchIndexService {
             this.addSearchIndexValue('c3', unit.c3, unit.name);
             this.addSearchIndexValue('moveType', unit.moveType, unit.name);
             this.addSearchIndexValue('as.TP', unit.as?.TP, unit.name);
-            this.addSearchIndexValues('as.specials', unit.as?.specials ?? [], unit.name);
+            this.addASSpecialIndexValues(this.asSpecialsByUnit.get(unit.name), unit.name);
             this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unit.name);
             this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unit.name);
             this.addSearchIndexValues('rulesRefs', unit.rulesRefs?.flat() ?? [], unit.name);
@@ -380,6 +399,10 @@ export class UnitSearchIndexService {
         return this.searchFilterValues.get(filterKey) ?? [];
     }
 
+    public getIndexedASSpecials(unitName: string): ParsedASSpecials | undefined {
+        return this.asSpecialsByUnit.get(unitName);
+    }
+
     public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
         const snapshot: UnitSearchWorkerIndexSnapshot = {};
 
@@ -399,7 +422,7 @@ export class UnitSearchIndexService {
         );
     }
 
-    public getDropdownOptionUniverse(filterKey: string): Array<{ name: string; img?: string }> {
+    public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {
         return this.dropdownOptionUniverse.get(filterKey)?.map(option => ({ ...option })) ?? [];
     }
 
@@ -416,7 +439,7 @@ export class UnitSearchIndexService {
     }
 
     private rebuildDropdownOptionUniverse(eras: Era[], factions: Faction[]): void {
-        this.dropdownOptionUniverse = new Map<string, Array<{ name: string; img?: string }>>();
+        this.dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
         for (const filterKey of [
             'type',
             'subtype',
@@ -437,11 +460,35 @@ export class UnitSearchIndexService {
             'quirks',
             '_tags',
         ]) {
-            this.dropdownOptionUniverse.set(filterKey, this.getIndexedFilterValues(filterKey).map(name => ({ name })));
+            this.dropdownOptionUniverse.set(filterKey, this.getIndexedFilterValues(filterKey).map(name => ({
+                name,
+                ...(filterKey === 'as.specials' && (this.asSpecialFieldCounts.get(name) ?? 0) > 0
+                    ? {
+                        minimumFieldLabels: getASSpecialMinimumFieldLabels(
+                            name,
+                            this.asSpecialFieldCounts.get(name) ?? 0,
+                        ),
+                    }
+                    : {}),
+            })));
         }
 
         this.dropdownOptionUniverse.set('era', eras.map(era => ({ name: era.name, img: era.img })));
         this.dropdownOptionUniverse.set('faction', factions.map(faction => ({ name: faction.name, img: faction.img })));
+    }
+
+    private addASSpecialIndexValues(parsedSpecials: ParsedASSpecials | undefined, unitName: string): void {
+        for (const occurrence of parsedSpecials?.occurrences ?? []) {
+            if (!occurrence.token) {
+                continue;
+            }
+
+            this.addSearchIndexValue('as.specials', occurrence.token, unitName);
+            const currentFieldCount = this.asSpecialFieldCounts.get(occurrence.token) ?? 0;
+            if (occurrence.values.length > currentFieldCount) {
+                this.asSpecialFieldCounts.set(occurrence.token, occurrence.values.length);
+            }
+        }
     }
 
     private createFactionEraSnapshot(unitNamesByMulId: Map<number, string[]>, eras: Era[], factions: Faction[]): UnitSearchWorkerFactionEraSnapshot {

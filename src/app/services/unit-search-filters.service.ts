@@ -44,7 +44,12 @@ import { getSnapshotForcePackNames, type AdvOptionsContextSnapshot } from '../ut
 import { buildUnitSearchAdvOptions } from '../utils/unit-search-adv-options-builder.util';
 import type { UnitSearchDropdownValuesDependencies } from '../utils/unit-search-dropdown-values.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from '../utils/unit-filter-kernel.util';
-import { getAdvancedFilterConfigByKey, isFilterAvailableForAvailabilitySource, normalizeUnitSearchPropertyKey } from '../utils/unit-search-filter-config.util';
+import {
+    getAdvancedFilterConfigByKey,
+    getAdvancedFilterConfigBySemanticField,
+    isFilterAvailableForAvailabilitySource,
+    normalizeUnitSearchPropertyKey,
+} from '../utils/unit-search-filter-config.util';
 import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState, resolveInitialUnitSearchViewMode } from '../utils/unit-search-url-filters.util';
 import type { UnitSearchViewMode } from '../models/options.model';
 import { generatePublicTagsParam, mergePublicTagReferences, parsePublicTagsParam } from '../utils/unit-search-public-tags-url.util';
@@ -94,6 +99,7 @@ import {
 } from '../utils/filter-name-resolution.util';
 import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from '../utils/unit-search-dropdown-sort.util';
 import { compareUnitsByName } from '../utils/sort.util';
+import { unitMatchesASSpecialSelections } from '../utils/as-special-filter.util';
 import type { UnitSearchWorkerCorpusSnapshot, UnitSearchWorkerQueryRequest, UnitSearchWorkerResultMessage } from '../utils/unit-search-worker-protocol.util';
 import {
     ADVANCED_FILTERS,
@@ -180,7 +186,7 @@ export class UnitSearchFiltersService {
         contextUnits: UnitSummary[],
         displayNameFn?: (value: string) => string | undefined,
         contextUnitIds?: ReadonlySet<string>,
-    ): { name: string; img?: string; displayName?: string; available?: boolean }[] {
+    ): DropdownOption[] {
         const universe = this.dataService.getDropdownOptionUniverse(conf.key);
         if (universe.length === 0) {
             return [];
@@ -194,6 +200,7 @@ export class UnitSearchFiltersService {
             return {
                 name: option.name,
                 ...(option.img ? { img: option.img } : {}),
+                ...(option.minimumFieldLabels ? { minimumFieldLabels: option.minimumFieldLabels } : {}),
                 ...(displayNameFn ? { displayName: displayNameFn(option.name) } : {}),
                 available,
             };
@@ -1978,11 +1985,19 @@ export class UnitSearchFiltersService {
     private buildWorkerSearchRequest(corpusVersion: string): UnitSearchWorkerQueryRequest {
         const gameSystem = this.gameService.currentGameSystem();
         const workerFilterState = this.getWorkerFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
+        const workerUiOnlyFilterState = this.getUiOnlyFilterState(workerFilterState, this.semanticFilterKeys());
+        const workerSemanticTokenTexts = getCommittedSemanticTokens(this.semanticParsedAST().tokens)
+            .filter(token => {
+                const conf = getAdvancedFilterConfigBySemanticField(token.field);
+                return !conf || !this.shouldStripFilterFromWorker(conf.key);
+            })
+            .map(token => token.rawText);
         const executionQuery = this.isComplexQuery()
             ? this.searchText().trim()
             : buildWorkerExecutionQuery({
-                effectiveFilterState: workerFilterState,
+                effectiveFilterState: workerUiOnlyFilterState,
                 effectiveTextSearch: this.effectiveTextSearch(),
+                semanticTokenTexts: workerSemanticTokenTexts,
                 gameSystem,
                 totalRangesCache: this.totalRangesCache,
             });
@@ -2751,7 +2766,8 @@ export class UnitSearchFiltersService {
         isCountableFilter: boolean,
     ): Set<string> | null {
         const andEntries = Object.entries(selection).filter(([, sel]) => sel.state === 'and');
-        if (andEntries.length === 0) {
+        const notEntries = Object.entries(selection).filter(([, sel]) => sel.state === 'not');
+        if (andEntries.length === 0 && notEntries.length === 0) {
             return null;
         }
 
@@ -2760,9 +2776,7 @@ export class UnitSearchFiltersService {
             sel.count,
         ]));
         const notSet = new Set(
-            Object.entries(selection)
-                .filter(([, sel]) => sel.state === 'not')
-                .map(([name]) => name.toLowerCase()),
+            notEntries.map(([name]) => name.toLowerCase()),
         );
         const availableNames = new Set<string>();
 
@@ -2770,7 +2784,9 @@ export class UnitSearchFiltersService {
             const universeNames = this.getIndexedUniverseNames(filterKey);
             if (universeNames.length > 0) {
                 const contextUnitIds = new Set(units.map(unit => unit.name));
-                let constrainedUnitIds: Set<string> | null = null;
+                let constrainedUnitIds: Set<string> | null = andEntries.length === 0
+                    ? new Set(contextUnitIds)
+                    : null;
 
                 for (const [selectedName] of andEntries) {
                     const indexedIds = this.dataService.getIndexedUnitIds(filterKey, selectedName);
@@ -2799,18 +2815,36 @@ export class UnitSearchFiltersService {
                     return availableNames;
                 }
 
-                for (const excludedName of notSet) {
-                    const universeMatch = universeNames.find(name => name.toLowerCase() === excludedName);
-                    if (!universeMatch) {
-                        continue;
-                    }
-                    const excludedIds = this.dataService.getIndexedUnitIds(filterKey, universeMatch);
-                    if (!excludedIds) {
-                        continue;
-                    }
+                if (filterKey === 'as.specials') {
+                    const constrainedSelections = Object.values(selection).filter(selected => (
+                        selected.state === 'and' || selected.state === 'not'
+                    ));
+                    const unitsByName = new Map(units.map(unit => [unit.name, unit]));
+
                     for (const unitId of Array.from(constrainedUnitIds)) {
-                        if (excludedIds.has(unitId)) {
+                        const unit = unitsByName.get(unitId);
+                        if (!unit || !unitMatchesASSpecialSelections(
+                            getProperty(unit, filterKey),
+                            constrainedSelections,
+                            this.dataService.getIndexedASSpecials(unitId),
+                        )) {
                             constrainedUnitIds.delete(unitId);
+                        }
+                    }
+                } else {
+                    for (const excludedName of notSet) {
+                        const universeMatch = universeNames.find(name => name.toLowerCase() === excludedName);
+                        if (!universeMatch) {
+                            continue;
+                        }
+                        const excludedIds = this.dataService.getIndexedUnitIds(filterKey, universeMatch);
+                        if (!excludedIds) {
+                            continue;
+                        }
+                        for (const unitId of Array.from(constrainedUnitIds)) {
+                            if (excludedIds.has(unitId)) {
+                                constrainedUnitIds.delete(unitId);
+                            }
                         }
                     }
                 }
@@ -3425,6 +3459,8 @@ export class UnitSearchFiltersService {
                 return getPositiveDropdownNamesFromFilter(selectedFactionEntries, allFactionNames, wildcardPatterns);
             },
             getAvailabilityLookupKey: unit => this.unitAvailabilitySource.getUnitAvailabilityKey(unit),
+            getIndexedUnitIds: (filterKey, value) => this.dataService.getIndexedUnitIds(filterKey, value),
+            getIndexedASSpecials: unitName => this.dataService.getIndexedASSpecials(unitName),
             unitMatchesAvailabilityFrom: (unit, availabilityFromName, scope) =>
                 this.unitMatchesAvailabilityFrom(unit, availabilityFromName, scope),
             unitMatchesAvailabilityRarity: (unit, rarityName, scope) =>
@@ -3497,6 +3533,7 @@ export class UnitSearchFiltersService {
             },
             getIndexedUnitIds: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => this.getSemanticIndexedUnitIds(filterKey, value, scope),
             getIndexedFilterValues: (filterKey: string) => this.getSemanticIndexedFilterValues(filterKey),
+            getIndexedASSpecials: (unitId: string) => this.dataService.getIndexedASSpecials(unitId),
             availabilitySortScope: megaMekRaritySortScope,
             getMegaMekRaritySortScore: megaMekRaritySortScoreResolver
                 ? (unit: UnitSummary) => megaMekRaritySortScoreResolver(unit)

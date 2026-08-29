@@ -22,6 +22,8 @@ interface UnitSearchWorkerCorpusCache {
 interface BuildWorkerExecutionQueryArgs {
     effectiveFilterState: FilterState;
     effectiveTextSearch: string;
+    /** Original committed clauses; preserving these avoids flattening repeated constraints. */
+    semanticTokenTexts?: readonly string[];
     gameSystem: GameSystem;
     totalRangesCache: Record<string, [number, number]>;
 }
@@ -81,15 +83,21 @@ export function getWorkerCorpusSnapshot(
 export function buildWorkerExecutionQuery({
     effectiveFilterState,
     effectiveTextSearch,
+    semanticTokenTexts = [],
     gameSystem,
     totalRangesCache,
 }: BuildWorkerExecutionQueryArgs): string {
-    return filterStateToSemanticText(
+    const uiFilterText = filterStateToSemanticText(
         effectiveFilterState,
         escapePlainTextForWorkerExecutionQuery(effectiveTextSearch),
         gameSystem,
         totalRangesCache,
     ).trim();
+
+    return [uiFilterText, ...semanticTokenTexts]
+        .map(part => part.trim())
+        .filter(Boolean)
+        .join(' ');
 }
 
 export function buildWorkerSearchRequest(args: BuildWorkerSearchRequestArgs): UnitSearchWorkerQueryRequest {

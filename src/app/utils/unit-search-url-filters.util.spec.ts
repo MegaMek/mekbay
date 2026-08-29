@@ -14,7 +14,7 @@ function createDropdownDependencies(): UnitSearchDropdownValuesDependencies {
     return {
         getDropdownOptionUniverse: (filterKey: string) => {
             if (filterKey === 'as.specials') {
-                return [SPECIAL, 'TAG'];
+                return [SPECIAL, 'AC', 'TAG'];
             }
 
             if (filterKey === 'era') {
@@ -526,6 +526,41 @@ describe('unit search URL filters', () => {
             },
             interactedWith: true,
         });
+    });
+
+    it('round-trips contextual Alpha Strike special minima in compact filters', () => {
+        const filterState: FilterState = {
+            'as.specials': {
+                value: {
+                    AC: {
+                        name: 'AC',
+                        state: 'and',
+                        count: 1,
+                        minimumValues: [null, null, 3],
+                    },
+                },
+                interactedWith: true,
+            },
+        };
+
+        const queryParameters = buildUnitSearchQueryParameters({
+            searchText: '',
+            filterState,
+            semanticKeys: new Set<string>(),
+            selectedSort: '',
+            selectedSortDirection: 'asc',
+            expanded: false,
+            gunnery: DEFAULT_GUNNERY_SKILL,
+            piloting: DEFAULT_PILOTING_SKILL,
+            bvLimit: 0,
+            publicTagsParam: null,
+        });
+
+        expect(queryParameters.filters).toBe('as.specials:AC.^//3');
+        expect(parseAndValidateCompactFiltersFromUrl(
+            queryParameters.filters!,
+            createDropdownDependencies(),
+        )).toEqual(filterState);
     });
 
     it('round-trips multistate era dropdown values in compact filters', () => {

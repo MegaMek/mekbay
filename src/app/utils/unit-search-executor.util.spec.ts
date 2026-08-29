@@ -7,6 +7,8 @@ import type { UnitSummary } from '../models/unit-summary.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { parseSemanticQueryAST } from './semantic-filter-ast.util';
 import { executeUnitSearch } from './unit-search-executor.util';
+import { parseASSpecials } from './as-special-filter.util';
+import { applyFilterStateToUnits } from './unit-filter-kernel.util';
 
 function createUnit(overrides: Pick<UnitSummary, 'name' | 'chassis' | 'model' | 'tons'>): UnitSummary {
     return createEmptyUnit(overrides);
@@ -191,6 +193,89 @@ describe('unit-search-executor', () => {
             .toEqual(['Two AI']);
         expect(executeQuery([oneAI, twoAI, noAI], 'WEAPONTYPE=AP').map(unit => unit.name))
             .toEqual(['One AI', 'Two AI']);
+    });
+
+    it('uses the sync pre-parsed specials index for numeric minima', () => {
+        const unit = createEmptyUnit({
+            name: 'Indexed AC',
+            as: { ...createEmptyUnit().as, specials: ['AC1/1/1'] },
+        });
+        const indexedSpecials = parseASSpecials(['TUR(3/3/3,AC1/4/1)']);
+        const execution = executeUnitSearch({
+            units: [unit],
+            parsedQuery: parseSemanticQueryAST('specials="AC*/>=4/*"', GameSystem.ALPHA_STRIKE),
+            searchTokens: [],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            sortKey: 'name',
+            sortDirection: 'asc',
+            bvPvLimit: 0,
+            forceTotalBvPv: 0,
+            getAdjustedBV: value => value.bv,
+            getAdjustedPV: value => value.as.PV,
+            unitBelongsToEra: () => false,
+            unitBelongsToFaction: () => false,
+            unitBelongsToForcePack: () => false,
+            getAllEraNames: () => [],
+            getAllFactionNames: () => [],
+            getIndexedASSpecials: unitId => unitId === unit.name ? indexedSpecials : undefined,
+        });
+
+        expect(execution.results.map(result => result.name)).toEqual(['Indexed AC']);
+    });
+
+    it('uses specials token postings before sync UI tuple evaluation', () => {
+        const matching = createEmptyUnit({
+            name: 'Matching AC',
+            as: { ...createEmptyUnit().as, specials: ['AC1/4/1'] },
+        });
+        const unrelated = createEmptyUnit({
+            name: 'Unrelated TAG',
+            as: { ...createEmptyUnit().as, specials: ['TAG'] },
+        });
+        const parsedByUnit = new Map([
+            [matching.name, parseASSpecials(matching.as.specials)],
+            [unrelated.name, parseASSpecials(unrelated.as.specials)],
+        ]);
+        const getIndexedUnitIds = jasmine.createSpy('getIndexedUnitIds')
+            .and.callFake((_filterKey: string, token: string) => (
+                token === 'AC' ? new Set([matching.name]) : undefined
+            ));
+        const getIndexedASSpecials = jasmine.createSpy('getIndexedASSpecials')
+            .and.callFake((unitName: string) => parsedByUnit.get(unitName));
+
+        const results = applyFilterStateToUnits({
+            units: [matching, unrelated],
+            state: {
+                'as.specials': {
+                    interactedWith: true,
+                    value: {
+                        AC: {
+                            name: 'AC',
+                            state: 'or',
+                            count: 1,
+                            minimumValues: [null, 4, null],
+                        },
+                    },
+                },
+            },
+            dependencies: {
+                getProperty: (unit, key) => key === 'as.specials' ? unit.as.specials : undefined,
+                getAdjustedBV: unit => unit.bv,
+                getAdjustedPV: unit => unit.as.PV,
+                getUnitIdsForExternalFilters: () => null,
+                getPositiveFactionNames: () => [],
+                unitMatchesAvailabilityFrom: () => false,
+                unitMatchesAvailabilityRarity: () => false,
+                getForcePackLookupSet: () => undefined,
+                getAvailabilityLookupKey: unit => unit.name,
+                getIndexedUnitIds,
+                getIndexedASSpecials,
+            },
+        });
+
+        expect(results).toEqual([matching]);
+        expect(getIndexedUnitIds).toHaveBeenCalledOnceWith('as.specials', 'AC');
+        expect(getIndexedASSpecials).toHaveBeenCalledOnceWith(matching.name);
     });
 
     it('evaluates selected weapon types independently for OR and AND queries', () => {

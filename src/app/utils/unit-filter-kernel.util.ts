@@ -25,6 +25,11 @@ import {
 } from './unit-search-shared.util';
 import { getUnitVariantGroupKey } from './unit-variant.util';
 import { isCountableBackedDropdown } from './unit-search-filter-config.util';
+import {
+    buildIndexedASSpecialSelectionCandidates,
+    unitMatchesASSpecialSelections,
+    type ParsedASSpecials,
+} from './as-special-filter.util';
 
 export interface UnitFilterKernelDependencies {
     getProperty: (unit: UnitSummary, key?: string) => unknown;
@@ -42,6 +47,8 @@ export interface UnitFilterKernelDependencies {
     unitMatchesAvailabilityRarity: (unit: UnitSummary, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
     getForcePackLookupSet: (packName: string) => ReadonlySet<string> | undefined;
     getAvailabilityLookupKey: (unit: UnitSummary) => string;
+    getIndexedUnitIds?: (filterKey: string, value: string) => ReadonlySet<string> | undefined;
+    getIndexedASSpecials?: (unitName: string) => ParsedASSpecials | undefined;
 }
 
 interface ApplyUnitFilterStateRequest {
@@ -299,10 +306,36 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
         }
 
         if (conf.type === AdvFilterType.DROPDOWN && conf.multistate) {
+            const selection = normalizeMultiStateSelection(val);
+            if (conf.key === 'as.specials') {
+                const specialSelections = [
+                    ...Object.values(selection),
+                    ...(wildcardPatterns ?? []).map(pattern => ({
+                        name: pattern.pattern,
+                        state: pattern.state,
+                    })),
+                ];
+                const indexedCandidates = dependencies.getIndexedUnitIds
+                    ? buildIndexedASSpecialSelectionCandidates(
+                        specialSelections,
+                        token => dependencies.getIndexedUnitIds?.('as.specials', token),
+                    )
+                    : null;
+                if (indexedCandidates) {
+                    results = results.filter(unit => indexedCandidates.has(unit.name));
+                }
+                results = results.filter(unit => unitMatchesASSpecialSelections(
+                    dependencies.getProperty(unit, conf.key),
+                    specialSelections,
+                    dependencies.getIndexedASSpecials?.(unit.name),
+                ));
+                continue;
+            }
+
             results = filterUnitsByMultiState(
                 results,
                 conf.key,
-                normalizeMultiStateSelection(val),
+                selection,
                 dependencies.getProperty,
                 wildcardPatterns,
             );
