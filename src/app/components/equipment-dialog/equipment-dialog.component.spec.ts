@@ -58,6 +58,7 @@ function createUnit(id: string, entries: MountedEquipment[] = []): CBTForceUnit 
         dirty: () => false,
         autoFall: () => false,
         PSRRollsCount: () => 0,
+        getTotalTargetModifierAsDefender: () => ({ modifier: 0 }),
     });
     spyOn(harness.unit, 'setHeat').and.callThrough();
     spyOn(harness.unit, 'setInventoryEntry').and.callThrough();
@@ -150,10 +151,13 @@ describe('EquipmentDialogComponent', () => {
         expect(registration.handle(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true }))).toBeFalse();
     });
 
-    it('shows M until movement is selected, then shows its letter and color', () => {
+    it('shows M until movement is selected, then shows its letter, defender modifier, and color', () => {
         const unit = createUnit('unit-a');
         const moveMode = signal<'walk' | null>(null);
-        Object.assign(unit.turnState(), { moveMode });
+        Object.assign(unit.turnState(), {
+            moveMode,
+            getTotalTargetModifierAsDefender: () => ({ modifier: 4 }),
+        });
         const { fixture } = createDialog({ unit, context: createContext() });
         const movementSvg = fixture.nativeElement.querySelector('.turn-tracker-title-button svg') as SVGElement;
 
@@ -163,7 +167,7 @@ describe('EquipmentDialogComponent', () => {
         moveMode.set('walk');
         fixture.detectChanges();
 
-        expect(movementSvg.querySelector('text')?.textContent?.trim()).toBe('W');
+        expect(movementSvg.querySelector('text')?.textContent?.trim()).toBe('W4');
         expect(movementSvg.classList.contains('walk')).toBeTrue();
     });
 

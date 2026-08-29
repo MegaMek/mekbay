@@ -59,9 +59,13 @@ export class EquipmentDialogComponent {
     readonly unitIndex = signal(this.initialUnitIndex());
     readonly unitList = computed(() => this.resolveUnitList());
     readonly unit = computed(() => this.unitList()[this.unitIndex()] ?? this.requiredUnit());
-    readonly turnSummaryMovement = computed(() =>
-        getTurnMovementIndicator(this.unit().turnState().moveMode())
-    );
+    readonly turnSummaryMovement = computed(() => {
+        const turnState = this.unit().turnState();
+        return getTurnMovementIndicator(
+            turnState.moveMode(),
+            turnState.getTotalTargetModifierAsDefender().modifier,
+        );
+    });
     readonly targets = computed(() => {
         this.unit().getInventoryControlTargetsMap();
         return this.unit().getInventoryControlTargets();
