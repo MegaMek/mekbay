@@ -5385,13 +5385,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
     });
 
     it('preserves semantic-only chassis filters in worker execution queries', () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
-            pending('Real unit data could not be loaded for the worker semantic filter test.');
-            return;
-        }
-
         const worker = new FakeSearchWorker();
-        const bundle = buildSmallBundle(benchmarkBundle);
+        const bundle = createStandaloneBundle();
         bundle.units.units[0].name = 'Longbow Prime';
         bundle.units.units[0].chassis = 'Longbow';
         bundle.units.units[1].name = 'Catapult Prime';
