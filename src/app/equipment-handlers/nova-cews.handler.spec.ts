@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { PickerChoice } from '../components/picker/picker.interface';
-import { MiscEquipment } from '../models/equipment.model';
+import { ArmorEquipment, MiscEquipment } from '../models/equipment.model';
 import { EMPTY_EQUIPMENT_REGISTRY } from '../models/equipment-lookup';
 import { MountedEquipment } from '../models/mounted-equipment.model';
 import type { TurnState } from '../models/turn-state.model';
@@ -23,10 +23,16 @@ import {
     NOVA_CEWS_TURNING_OFF_STATE,
     NOVA_CEWS_TURNING_ON_STATE,
 } from '../utils/ecm-state.util';
+import {
+    isC3DisruptingStealthActive,
+    STEALTH_ENABLED_STATE,
+    STEALTH_STATE_KEY,
+} from '../models/stealth-equipment.model';
 import { BAPHandler } from './bap.handler';
 import { C3Handler } from './c3.handler';
 import { ECMHandler } from './ecm.handler';
 import { NOVA_CEWS_HANDLER_ID, NovaCewsHandler } from './nova-cews.handler';
+import { StealthHandler } from './stealth.handler';
 
 function fixture() {
     const test = createTestEquipmentOwner({
@@ -107,6 +113,59 @@ describe('NovaCewsHandler', () => {
             value: 2,
             group: 'Equipment',
         }]);
+    });
+
+    it('keeps Nova heat while active Stealth Armor suppresses its electronic effects', () => {
+        const test = fixture();
+        const nova = test.add();
+        const stealthEquipment = new ArmorEquipment({
+            id: 'StealthArmor',
+            name: 'Stealth Armor',
+            type: 'armor',
+            flags: ['F_STEALTH'],
+            modes: ['Off', 'On'],
+            armor: { type: 'STEALTH' },
+        });
+        const stealth = new MountedEquipment({
+            owner: test.owner,
+            id: 'stealth',
+            name: stealthEquipment.name,
+            equipment: stealthEquipment,
+            states: new Map([[STEALTH_STATE_KEY, STEALTH_ENABLED_STATE]]),
+        });
+        test.owner.setInventoryEntry(stealth);
+        expect(isC3DisruptingStealthActive(stealth)).toBeTrue();
+
+        const canPerformEquipmentAction = test.owner.canPerformEquipmentAction.bind(test.owner);
+        spyOn(test.owner, 'canPerformEquipmentAction').and.callFake((equipment, action) => (
+            action === 'provide-passive-effect' && equipment === nova
+                ? false
+                : canPerformEquipmentAction(equipment, action)
+        ));
+        expect(queryContext.canProvidePassiveEffect(nova)).toBeFalse();
+
+        const registry = new EquipmentInteractionRegistry();
+        registry.register(handler);
+        registry.register(new StealthHandler());
+
+        expect(registry.getInventoryHeatSources(
+            [nova, stealth],
+            {} as TurnState,
+            queryContext,
+        )).toEqual([
+            {
+                id: 'nova-cews:nova',
+                label: 'Nova CEWS',
+                value: 2,
+                group: 'Equipment',
+            },
+            {
+                id: 'stealth:stealth',
+                label: 'Stealth',
+                value: 10,
+                group: 'Equipment',
+            },
+        ]);
     });
 
     it('keeps its effects and heat through a pending End-Phase shutdown', () => {

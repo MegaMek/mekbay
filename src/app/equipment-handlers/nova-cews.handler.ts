@@ -69,7 +69,13 @@ export class NovaCewsHandler extends ToggleHandler {
         _turnState: TurnState,
         context: HandlerQueryContext,
     ): UnitHeatSource[] {
-        if (!this.isActive(equipment) || !context.canProvidePassiveEffect(equipment)) return [];
+        // Stealth Armor suppresses Nova's ECM/probe/C3 effects without powering
+        // the suite down. Heat therefore follows power and operability, not the
+        // permission to expose a passive electronic effect.
+        if (!this.isActive(equipment)
+            || context.getStatus(equipment) !== 'available'
+            || equipment.owner.destroyed
+            || equipment.owner.getCondition('shutdown')) return [];
 
         return [{
             id: `nova-cews:${equipment.id}`,
