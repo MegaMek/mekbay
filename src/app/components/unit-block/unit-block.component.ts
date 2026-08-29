@@ -13,7 +13,6 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
-import { ECMMode } from '../../models/common.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { C3Capabilities, C3Network, c3NetworkTypeName, type C3Component, type C3NetworkType } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
@@ -22,16 +21,12 @@ import { getUnitConditionDefinition, unitConditionSortIndex } from '../../models
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 import { UnitNotificationBadgesComponent } from '../unit-notification-badges/unit-notification-badges.component';
 import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
+import { getEcmDisplay, getTagDisplay } from '../../utils/force-viewer-electronics-display.util';
 
 interface UnitConditionDisplay {
     key: string;
     label: string;
     color: string;
-}
-
-interface ECMDisplay {
-    mode: ECMMode | string;
-    unavailable: boolean;
 }
 
 export interface UnitBlockPilotEditEvent {
@@ -169,51 +164,9 @@ export class UnitBlockComponent {
         return [...unitConditions, ...crewConditions, ...locationConditions];
     });
 
-    tagDisplay = computed<{ label: 'TAG' | 'LTAG'; unavailable: boolean } | undefined>(() => {
-        const forceUnit = this.forceUnit();
-        if (!forceUnit) return undefined;
-        if (forceUnit instanceof ASForceUnit) {
-            const specials = forceUnit.getUnit().as.specials;
-            if (specials.includes('TAG')) {
-                return { label: 'TAG', unavailable: false };
-            }
-            if (specials.includes('LTAG')) {
-                return { label: 'LTAG', unavailable: false };
-            }
-            return undefined;
-        } else
-        if (forceUnit instanceof CBTForceUnit) {
-            const tagMounts = forceUnit.getMountedEquipmentByFlag('F_TAG');
-            if (tagMounts.length === 0) return undefined;
-            const tag = tagMounts.find(mount => mount.owner.canPerformEquipmentAction(mount, 'activate')) ?? tagMounts[0];
-            const names = [tag.name, tag.equipment?.name, tag.equipment?.shortName, tag.equipment?.sortingName]
-                .filter((name): name is string => !!name);
-            return {
-                label: names.some(name => /\blight\b/i.test(name)) ? 'LTAG' : 'TAG',
-                unavailable: tagMounts.every(mount => !mount.owner.canPerformEquipmentAction(mount, 'activate')),
-            };
-        }
-        return undefined;
-    });
+    tagDisplay = computed(() => getTagDisplay(this.forceUnit()));
 
-    ecmDisplay = computed<ECMDisplay | null>(() => {
-        const forceUnit = this.forceUnit();
-        if (!forceUnit) return null;
-        if (forceUnit instanceof ASForceUnit) {
-            const mode = forceUnit.getUnit().as.specials.find(spec => spec === 'ECM' || spec === 'AECM' || spec === 'LECM');
-            return mode ? { mode, unavailable: false } : null;
-        }
-        if (forceUnit instanceof CBTForceUnit) {
-            const ecms = forceUnit.getMountedEquipmentByFlag('F_ECM');
-            if (ecms.length === 0) return null;
-            const mount = ecms.find(candidate => candidate.owner.canPerformEquipmentAction(candidate, 'activate')) ?? ecms[0];
-            return {
-                mode: mount.states.get('ecm_mode') as ECMMode || ECMMode.ECM,
-                unavailable: ecms.every(candidate => !candidate.owner.canPerformEquipmentAction(candidate, 'activate')),
-            };
-        }
-        return null;
-    });
+    ecmDisplay = computed(() => getEcmDisplay(this.forceUnit()));
 
     /** Get individual C3 network items for display */
     c3NetworkItems = computed<{ label: string; networkType: C3NetworkType; enabled: boolean; unavailable: boolean; color?: string }[]>(() => {

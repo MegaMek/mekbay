@@ -23,4 +23,19 @@ describe('buildHeatSummaryRows', () => {
             { id: 'heat-sink', label: 'Sink (28)', value: -22, kind: 'sink' },
         ]);
     });
+
+    it('groups marked sources only for compact summaries', () => {
+        const sources = [
+            { id: 'nova', label: 'Nova CEWS', value: 2, group: 'Equipment' },
+            { id: 'damaged-engine', label: 'Damaged Engine', value: 5 },
+            { id: 'stealth', label: 'Stealth', value: 10, group: 'Equipment' },
+        ];
+
+        expect(buildHeatSummaryRows(sources, 0, 0, 17).map(row => row.label))
+            .toEqual(['Nova CEWS', 'Engine', 'Stealth']);
+        expect(buildHeatSummaryRows(sources, 0, 0, 17, { groupSources: true })).toEqual([
+            { id: 'equipment', label: 'Equipment', value: 12, kind: 'source' },
+            { id: 'damaged-engine', label: 'Engine', value: 5, kind: 'source' },
+        ]);
+    });
 });

@@ -9,13 +9,19 @@ import { ECMMode } from '../models/common.model';
 import { EquipmentFlag } from '../models/equipment-flags.type';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { unitHasActiveC3DisruptingStealth } from '../models/stealth-equipment.model';
+import { ECM_MODE_STATE_KEY, isEcmModeActive } from '../utils/ecm-state.util';
 
-export const ECM_MODE_STATE_KEY = 'ecm_mode';
+export { ECM_MODE_STATE_KEY } from '../utils/ecm-state.util';
 
 export class ECMHandler extends EquipmentInteractionHandler {
     readonly id = 'ecm-handler';
     override readonly flags: EquipmentFlag[] = ['F_ECM'];
     override readonly priority = 10;
+
+    override applicableTo(equipment: MountedEquipment): boolean {
+        // Nova CEWS has one shared ECM/Active Probe/C3 power state.
+        return equipment.equipment?.flags.has('F_NOVA') !== true;
+    }
 
     private getDefaultMode(): string {
         return ECMMode.ECM;
@@ -75,7 +81,6 @@ export class ECMHandler extends EquipmentInteractionHandler {
 
     isActive(equipment: MountedEquipment): boolean {
         if (unitHasActiveC3DisruptingStealth(equipment.owner as CBTForceUnit)) return false;
-        const ecmMode = equipment.states?.get(ECM_MODE_STATE_KEY);
-        return (ecmMode || ECMMode.ECM) !== ECMMode.OFF;
+        return isEcmModeActive(equipment);
     }
 }

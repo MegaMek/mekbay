@@ -39,6 +39,8 @@ import { UACFiringModeHandler } from '../../equipment-handlers/uac-firing-mode.h
 import { EquipmentFlag } from '../../models/equipment-flags.type';
 import { EquipmentRegistry } from '../../models/equipment-lookup';
 import { AmmoMunitionFlag } from '../../models/ammo-munition-flags.type';
+import { NovaCewsHandler } from '../../equipment-handlers/nova-cews.handler';
+import { NOVA_CEWS_OFF_STATE, NOVA_CEWS_STATE_KEY } from '../../utils/ecm-state.util';
 
 function weapon(id: string, ammoType: Extract<AmmoType, 'NA' | 'AC' | 'ATM' | 'MML' | 'MRM' | 'AC_ULTRA' | 'NARC'> = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4], toHitModifier = 0, heat = 0): WeaponEquipment {
     const flags: EquipmentFlag[] = ammoType === 'MRM'
@@ -453,6 +455,37 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(row?.entry).toBe(stealth);
         expect(row?.display.location).toBe('*');
+    });
+
+    it('shows active Nova CEWS heat in the Equipment row', () => {
+        const nova = entry({
+            id: 'nova',
+            equipment: misc('Nova CEWS', ['F_NOVA']),
+            locations: new Set(['CT']),
+            el: svgEntry(`
+                <g>
+                    <g class="name"><text>Nova CEWS</text></g>
+                    <text class="heat">—</text>
+                </g>
+            `),
+        });
+        const { component, fixture } = createComponent([nova], {}, [], new Map(), {
+            handlers: [new NovaCewsHandler()],
+        });
+
+        const row = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        expect(row.firingHeat).toBe(2);
+        expect(row.display.heat).toBe('2');
+        expect((fixture.nativeElement.querySelector('.heat-cell') as HTMLElement).textContent?.trim()).toBe('2');
+
+        nova.setState(NOVA_CEWS_STATE_KEY, NOVA_CEWS_OFF_STATE);
+        nova.owner.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        const offRow = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        expect(offRow.firingHeat).toBeNull();
+        expect(offRow.display.heat).toBe('—');
+        expect((fixture.nativeElement.querySelector('.heat-cell') as HTMLElement).textContent?.trim()).toBe('—');
     });
 
     it('excludes ammo in functionally destroyed locations from weapon ammo summaries', () => {

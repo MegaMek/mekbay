@@ -131,6 +131,8 @@ export interface UnitHeatSource {
     id: string;
     label: string;
     value: number;
+    /** Optional label used to combine sources in compact heat summaries. */
+    group?: string;
     /** Source is transient firing heat derived from selected inventory weapons. */
     inventorySelection?: boolean;
     /** Source state that must reactivate heat even when its aggregate value is unchanged. */
@@ -143,6 +145,8 @@ export interface UnitHeatSource {
      */
     replacedByFiringEntryId?: string;
 }
+
+export const EQUIPMENT_HEAT_SOURCE_GROUP = 'Equipment';
 
 export interface ChargeDamage {
     damage: number | null;

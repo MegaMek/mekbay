@@ -100,17 +100,18 @@ describe('composeTurnSummaryHeatRows', () => {
         ]);
     });
 
-    it('combines passive equipment heat into one Equipment row', () => {
+    it('keeps compactly grouped equipment sources separate in the detailed turn summary', () => {
         expect(composeTurnSummaryHeatRows(
             [
-                { id: 'equipment:null-signature', label: 'Equipment', value: 10 },
+                { id: 'stealth:null-signature', label: 'Stealth', value: 10, group: 'Equipment' },
                 { id: 'engine', label: 'Engine', value: 5 },
-                { id: 'equipment:chameleon-lps', label: 'Equipment', value: 6 },
+                { id: 'nova-cews', label: 'Nova CEWS', value: 2, group: 'Equipment' },
             ],
             { hasSelection: false, value: 0, entryIds: new Set() }
         )).toEqual([
-            { id: 'equipment', label: 'Equipment', value: 16 },
+            { id: 'stealth:null-signature', label: 'Stealth', value: 10 },
             { id: 'engine', label: 'Engine', value: 5 },
+            { id: 'nova-cews', label: 'Nova CEWS', value: 2 },
         ]);
     });
 

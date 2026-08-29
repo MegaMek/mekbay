@@ -218,28 +218,30 @@
         </div>
     </section>
 
-    @if (tracksHeat()) {
-        <section class="summary-section">
-            <h2 class="section-title">Heat</h2>
-            <div class="modifier-list">
-                @for (row of heatRows(); track row.id) {
-                    <div class="summary-row">
-                        <span [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
-                            {{ row.label }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> (Selected)</span>}:
-                        </span>
-                        <span class="modifier heat" [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
-                            {{ (row.value > 0 ? '+' : '') + row.value }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> ({{ (row.selectedValue > 0 ? '+' : '') + row.selectedValue }})</span>}
-                        </span>
-                    </div>
-                }
-            </div>
-        </section>
+    @if (tracksHeat() && heatRows(); as heatRows) {
+        @if (heatRows.length > 0) {
+            <section class="summary-section">
+                <h2 class="section-title">Heat</h2>
+                <div class="modifier-list">
+                    @for (row of heatRows; track row.id) {
+                        <div class="summary-row">
+                            <span [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
+                                {{ row.label }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> (Selected)</span>}:
+                            </span>
+                            <span class="modifier heat" [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
+                                {{ (row.value > 0 ? '+' : '') + row.value }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> ({{ (row.selectedValue > 0 ? '+' : '') + row.selectedValue }})</span>}
+                            </span>
+                        </div>
+                    }
+                </div>
+            </section>
+        }
     }
 
     <section class="summary-section">
         <h2 class="section-title">Other</h2>
         <div class="summary-row">
-            <span>Damage received:</span>
+            <span>Damage received this phase:</span>
             <span class="modifier warning important">{{ damageReceived() }}</span>
         </div>
     </section>

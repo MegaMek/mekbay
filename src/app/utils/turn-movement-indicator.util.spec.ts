@@ -20,7 +20,7 @@ describe('getTurnMovementIndicator', () => {
             ['walk', 'walk', 'W'],
             ['run', 'run', 'R'],
             ['jump', 'jump', 'J'],
-            ['sprint', 'sprint', 'T'],
+            ['sprint', 'sprint', 'Sp'],
         ];
 
         for (const [mode, color, letter] of cases) {

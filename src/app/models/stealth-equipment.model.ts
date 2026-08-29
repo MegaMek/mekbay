@@ -14,7 +14,7 @@ import {
     type TnRangeModifiers,
     type TnStealthModifiers,
 } from './target-number-calculator.model';
-import { ECM_MODE_STATE_KEY } from '../equipment-handlers/ecm.handler';
+import { getEffectiveEcmMode } from '../utils/ecm-state.util';
 
 export const STEALTH_STATE_KEY = 'state';
 export const STEALTH_ENABLED_STATE = 'enabled';
@@ -113,7 +113,7 @@ export function isStealthSystemActive(equipment: MountedEquipment): boolean {
 
 /** Only ECM-bearing modes power Stealth Armor; ECCM and plain Ghost do not. */
 export function ecmModeSupportsStealth(equipment: MountedEquipment): boolean {
-    const mode = equipment.states.get(ECM_MODE_STATE_KEY) ?? ECMMode.ECM;
+    const mode = getEffectiveEcmMode(equipment);
     return mode === ECMMode.ECM
         || mode === ECMMode.ECM_ECCM
         || mode === ECMMode.ECM_GHOST;

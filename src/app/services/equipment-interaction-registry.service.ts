@@ -567,11 +567,19 @@ export class EquipmentInteractionRegistry {
     }
 
     getInventoryControlHeatEffect(equipment: MountedEquipment, context: HandlerQueryContext): InventoryControlHeatEffect | null {
-        for (const handler of this.getHandlers(equipment)) {
+        const handlers = this.getHandlers(equipment);
+        for (const handler of handlers) {
             const effect = handler.getInventoryControlHeatEffect?.(equipment, context);
             if (effect) return effect;
         }
-        return null;
+        const passiveHeat = handlers
+            .flatMap(handler => handler.getInventoryHeatSources?.(
+                equipment,
+                equipment.owner.turnState(),
+                context,
+            ) ?? [])
+            .reduce((total, source) => total + (Number.isFinite(source.value) ? Math.max(0, source.value) : 0), 0);
+        return passiveHeat > 0 ? { value: passiveHeat, weakened: false } : null;
     }
 
     matchesInventoryAmmo(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, context: HandlerQueryContext): boolean | null {

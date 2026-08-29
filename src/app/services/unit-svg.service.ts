@@ -1802,6 +1802,7 @@ export class UnitSvgService {
             dissipationBalance,
             consumedDissipation,
             projectedHeat,
+            { groupSources: true },
         ).map(row => ({
             text: `${row.label}: ${this.formatSignedModifier(row.value)}`,
             fill: row.inventorySelection

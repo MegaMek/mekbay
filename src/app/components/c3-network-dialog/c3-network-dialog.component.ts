@@ -941,9 +941,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         return [...componentIndexes].every(index => {
             const component = runtime.capability(node.unit.id)?.component(index);
             if (!component) return false;
-            return component.mount
-                ? !component.mount.owner.canPerformEquipmentAction(component.mount, 'configure-network')
-                : !node.unit.isC3EndpointOperational(index, component);
+            return !node.unit.isC3EndpointOperational(index, component);
         });
     }
 

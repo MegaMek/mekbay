@@ -240,6 +240,7 @@ describe('PpcCapacitorHandler', () => {
             id: 'ppc-capacitor:ppc',
             label: 'PPC Capacitor',
             value: 5,
+            group: 'Equipment',
             replacedByFiringEntryId: 'ppc'
         }]);
     });

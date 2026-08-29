@@ -13,13 +13,13 @@ export class C3Handler extends EquipmentInteractionHandler {
     override readonly flags: EquipmentFlag[] = ['ANY_C3'];
     override readonly priority = 10;
 
-    getChoices(equipment: MountedEquipment, _context: HandlerQueryContext): HandlerChoice[] {
+    getChoices(_equipment: MountedEquipment, _context: HandlerQueryContext): HandlerChoice[] {
         return [
             {
                 label: 'Configure',
                 value: 'c3-network-configuration',
                 action: 'configure-network',
-                readOnlySafe: _context.isReadOnly(equipment),
+                readOnlySafe: true,
                 displayType: 'button'
             }
         ];

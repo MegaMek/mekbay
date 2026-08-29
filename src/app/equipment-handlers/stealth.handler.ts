@@ -5,7 +5,7 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
-import type { UnitHeatSource } from '../models/rules/unit-type-rules';
+import { EQUIPMENT_HEAT_SOURCE_GROUP, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import {
     hasFunctionalEcmForStealth,
     isChameleonShieldActive,
@@ -83,9 +83,10 @@ export class StealthHandler extends ToggleHandler {
                 ? (isNullSignatureActive(equipment) ? 10 : 0)
                 : (isStealthEquipmentFunctioning(equipment) ? 10 : 0);
         return heat > 0 ? [{
-            id: `equipment:${equipment.id}`,
-            label: 'Equipment',
+            id: `stealth:${equipment.id}`,
+            label: 'Stealth',
             value: heat,
+            group: EQUIPMENT_HEAT_SOURCE_GROUP,
         }] : [];
     }
 

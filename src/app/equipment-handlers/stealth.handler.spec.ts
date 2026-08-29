@@ -160,7 +160,7 @@ describe('StealthHandler', () => {
         }
     });
 
-    it('switches stealth at end turn and contributes 10 Equipment heat only while effective', () => {
+    it('switches stealth at end turn and contributes 10 grouped heat only while effective', () => {
         const test = fixture();
         const stealth = test.add('stealth', stealthArmor());
         const ecm = test.add('ecm', misc('ECM', 'F_ECM'));
@@ -172,9 +172,10 @@ describe('StealthHandler', () => {
         handler.onEndTurn(stealth);
         expect(stealth.states.get(STEALTH_STATE_KEY)).toBe(STEALTH_ENABLED_STATE);
         expect(handler.getInventoryHeatSources(stealth, {} as TurnState, queryContext)).toEqual([{
-            id: 'equipment:stealth',
-            label: 'Equipment',
+            id: 'stealth:stealth',
+            label: 'Stealth',
             value: 10,
+            group: 'Equipment',
         }]);
         expect(isC3DisruptingStealthActive(stealth)).toBeTrue();
         expect(new ECMHandler().isActive(ecm)).toBeFalse();
@@ -229,9 +230,10 @@ describe('StealthHandler', () => {
         handler.onEndTurn(chameleon);
 
         expect(handler.getInventoryHeatSources(chameleon, {} as TurnState, queryContext)).toEqual([{
-            id: 'equipment:chameleon',
-            label: 'Equipment',
+            id: 'stealth:chameleon',
+            label: 'Stealth',
             value: 6,
+            group: 'Equipment',
         }]);
         expect(isC3DisruptingStealthActive(chameleon)).toBeFalse();
     });
@@ -244,9 +246,10 @@ describe('StealthHandler', () => {
         handler.onEndTurn(nullSignature);
 
         expect(handler.getInventoryHeatSources(nullSignature, {} as TurnState, queryContext)).toEqual([{
-            id: 'equipment:null-signature',
-            label: 'Equipment',
+            id: 'stealth:null-signature',
+            label: 'Stealth',
             value: 10,
+            group: 'Equipment',
         }]);
         expect(isC3DisruptingStealthActive(nullSignature)).toBeFalse();
     });

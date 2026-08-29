@@ -49,6 +49,8 @@ import {
 } from '../equipment-handlers/bombast-laser.handler';
 import { applyMekCriticalRoll } from '../utils/mek-critical-hit.util';
 import type { AutomationMode, CBTAutomationKey } from './options.model';
+import { NovaCewsHandler } from '../equipment-handlers/nova-cews.handler';
+import { NOVA_CEWS_OFF_STATE, NOVA_CEWS_STATE_KEY } from '../utils/ecm-state.util';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -5487,6 +5489,64 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(damageText.classList.contains('damaged')).toBeFalse();
         expect(entry.el!.classList.contains('damagedInventory')).toBeFalse();
         expect(damageText.getAttribute('data-mekbay-physical-base-damage-text')).toBe('10');
+    });
+
+    it('renders Nova CEWS row heat while grouping its record-sheet summary as Equipment', () => {
+        const nova = new MiscEquipment({
+            id: 'NovaCEWS',
+            name: 'Nova CEWS',
+            type: 'misc',
+            flags: ['F_NOVA', 'F_ECM', 'F_BAP'],
+        });
+        equipment[nova.internalName] = nova;
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new NovaCewsHandler());
+        const unit = createEmptyUnit({
+            ...createMekUnit(),
+            heat: 20,
+            comp: [{
+                id: nova.internalName, q: 1, q2: 0, n: nova.name, t: 'E', p: 1,
+                l: 'CT', c: '2', os: 0, eq: nova,
+            }],
+        });
+        const svg = new DOMParser().parseFromString(`
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <g class="unitLocation armor" loc="CT"></g>
+                <g class="unitLocation structure" loc="CT"></g>
+                <g class="inventoryEntry" id="${nova.internalName}@CT#0">
+                    <g class="name"><text>Nova CEWS</text></g>
+                    <text class="heat">—</text>
+                    <text class="location">CT</text>
+                </g>
+                <text id="damagedEngineHeatText" x="10" y="100"></text>
+            </svg>
+        `, 'image/svg+xml').documentElement as unknown as SVGSVGElement;
+        const forceUnit = createForceUnit(unit);
+        initialize(forceUnit, svg);
+        const entry = forceUnit.getInventory().find(candidate => candidate.equipment === nova)!;
+        const svgService = TestBed.runInInjectionContext(() => new ExposedUnitSvgService(forceUnit, unitInitializer));
+
+        svgService.refreshInventory();
+        svgService.refreshTurnState();
+
+        expect(entry.el!.querySelector(':scope > .heat')?.textContent).toBe('2');
+        expect(forceUnit.turnState().heatSources()).toContain(jasmine.objectContaining({
+            id: `nova-cews:${entry.id}`,
+            label: 'Nova CEWS',
+            value: 2,
+            group: 'Equipment',
+        }));
+        expect(Array.from(svg.querySelectorAll<SVGTSpanElement>('#damagedEngineHeatText > tspan'))
+            .map(line => line.textContent)).toContain('Equipment: +2');
+
+        entry.setState(NOVA_CEWS_STATE_KEY, NOVA_CEWS_OFF_STATE);
+        forceUnit.setInventoryEntry(entry);
+        const offEntry = forceUnit.getInventory().find(candidate => candidate.id === entry.id)!;
+        svgService.refreshInventory();
+        svgService.refreshTurnState();
+
+        expect(offEntry.el!.querySelector(':scope > .heat')?.textContent).toBe('—');
+        expect(forceUnit.turnState().heatSources().some(source => source.id === `nova-cews:${offEntry.id}`)).toBeFalse();
+        expect(svg.querySelector('#damagedEngineHeatText > tspan')).toBeNull();
     });
 
     it('renders effective weapon types on selected-range SVG damage', () => {

@@ -123,8 +123,8 @@ describe('additional escalating-failure equipment handlers', () => {
 
         entry.commitPendingDestroyed();
         expect(handler.getInventoryHeatSources(entry, turnState, queryContext)).toEqual([
-            { id: 'radical-heat-sink:F_RADICAL_HEATSINK:movement', label: 'Radical Heat Sink leak', value: 1 },
-            { id: 'radical-heat-sink:F_RADICAL_HEATSINK:weapons', label: 'Radical Heat Sink leak', value: 1 },
+            { id: 'radical-heat-sink:F_RADICAL_HEATSINK:movement', label: 'Radical Heat Sink leak', value: 1, group: 'Equipment' },
+            { id: 'radical-heat-sink:F_RADICAL_HEATSINK:weapons', label: 'Radical Heat Sink leak', value: 1, group: 'Equipment' },
         ]);
     });
 
@@ -196,6 +196,7 @@ describe('additional escalating-failure equipment handlers', () => {
             id: 'risc-viral-jammer:F_VIRAL_JAMMER_DECOY',
             label: 'RISC Viral Jammer',
             value: 12,
+            group: 'Equipment',
         }]);
 
         handler.onEndTurn(decoy, notifications());

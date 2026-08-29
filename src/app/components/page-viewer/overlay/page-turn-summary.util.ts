@@ -43,6 +43,7 @@ export function composeTurnSummaryHeatRows(
 ): TurnSummaryHeatRow[] {
     const rows: TurnSummaryHeatRow[] = [];
     for (const source of sources) {
+        if (source.value === 0) continue; //We skip entries with 0 heat
         const rowIndex = rows.findIndex(row => row.label === source.label);
         if (rowIndex >= 0) {
             const row = rows[rowIndex];

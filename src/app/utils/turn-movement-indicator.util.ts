@@ -16,7 +16,7 @@ const TURN_MOVEMENT_INDICATORS: Readonly<Record<MotiveModes, TurnMovementIndicat
     walk: { color: 'walk', letter: 'W' },
     run: { color: 'run', letter: 'R' },
     jump: { color: 'jump', letter: 'J' },
-    sprint: { color: 'sprint', letter: 'Sr' },
+    sprint: { color: 'sprint', letter: 'Sp' },
     // These special modes use the jump movement category in the turn-state UI.
     UMU: { color: 'jump', letter: 'U' },
     VTOL: { color: 'jump', letter: 'V' },

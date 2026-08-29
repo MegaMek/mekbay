@@ -5,7 +5,7 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import { MountedWeapon, type MountedEquipment } from '../models/mounted-equipment.model';
 import type { TurnState } from '../models/turn-state.model';
-import type { UnitHeatSource } from '../models/rules/unit-type-rules';
+import { EQUIPMENT_HEAT_SOURCE_GROUP, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import {
     EquipmentInteractionHandler,
     setEffectiveWeaponType,
@@ -202,6 +202,7 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
             id: `ppc-capacitor:${equipment.id}`,
             label: 'PPC Capacitor',
             value: PPC_CAPACITOR_HEAT_BONUS,
+            group: EQUIPMENT_HEAT_SOURCE_GROUP,
             replacedByFiringEntryId: ppcCapacitorState(capacitor) === PPC_CAPACITOR_CHARGED_STATE
                 ? equipment.id
                 : undefined

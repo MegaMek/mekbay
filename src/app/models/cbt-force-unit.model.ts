@@ -76,6 +76,7 @@ import {
     isConsciousnessRecoveryCheck,
     isConsciousnessSequenceCheck,
 } from '../utils/unit-check.util';
+import { isEcmModeActive } from '../utils/ecm-state.util';
 
 export type EquipmentStatusSource = MountedEquipment | CriticalSlot;
 export type EquipmentAction =
@@ -782,7 +783,9 @@ export class CBTForceUnit extends ForceUnit {
     isC3ComponentOperational(componentIndex: number, component?: C3Component): boolean {
         if (this.destroyed || this.getCondition('shutdown') || this.hasActiveC3DisruptingStealth()) return false;
         const mount = component?.mount ?? new C3Capabilities(this).component(componentIndex)?.mount;
-        return !!mount && this.isEquipmentOperational(mount);
+        return !!mount
+            && this.isEquipmentOperational(mount)
+            && (mount.equipment?.flags.has('F_NOVA') !== true || isEcmModeActive(mount));
     }
 
     private hasActiveC3DisruptingStealth(): boolean {
@@ -1494,15 +1497,16 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {
+        if (action === 'configure-network') {
+            // Topology remains editable even when this endpoint cannot currently participate.
+            return new C3Capabilities(this).components.some(component => component.mount === entry);
+        }
         if (this.hasActiveC3DisruptingStealth()
             && (entry.equipment?.flags.has('F_BAP') || entry.equipment?.flags.has('F_BLOODHOUND'))
             && (action === 'activate' || action === 'change-mode' || action === 'provide-passive-effect')) {
             return false;
         }
-        if (action === 'configure-network') {
-            const component = new C3Capabilities(this).components.find(candidate => candidate.mount === entry);
-            if (!component || !this.isC3ComponentOperational(component.index, component)) return false;
-        } else if (!this.isEquipmentOperational(entry) || this.destroyed || this.getCondition('shutdown')) {
+        if (!this.isEquipmentOperational(entry) || this.destroyed || this.getCondition('shutdown')) {
             return false;
         }
         if (action !== 'provide-passive-effect' && !this.canTakeActiveActions()) return false;
