@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, WeaponEquipment } from '../models/equipment.model';
 import type { WeaponType } from '../models/weapon-types.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { CBTForceUnit, EquipmentAction } from '../models/cbt-force-unit.model';
@@ -820,9 +820,10 @@ function readTypedEquipmentDisplayData(
         ? STANDARD_AEROSPACE_RANGE_LIMITS
         : weapon?.ranges;
     const locations = Array.from(entry.locations ?? []);
+    const wildcardLocation = equipment instanceof ArmorEquipment || locations.length > 3;
     return {
         name: displayName,
-        location: locations.length > 3 ? '*' : normalizeCell(locations.join('/')),
+        location: wildcardLocation ? '*' : normalizeCell(locations.join('/')),
         heat: weapon ? formatInventoryControlHeat(weapon.heat) : '—',
         damage: weapon ? '—' : physicalDamage,
         hit,
