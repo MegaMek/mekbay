@@ -5405,7 +5405,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         const request = (service as any).buildWorkerSearchRequest((service as any).getWorkerCorpusVersion());
 
-        expect(request.executionQuery).toContain('chassis=Longbow');
+        expect(request.executionQuery).toContain('chassis="Longbow"');
     });
 
     it('serializes multistate era selections into worker execution queries', () => {
