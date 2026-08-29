@@ -457,6 +457,21 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(row?.display.location).toBe('*');
     });
 
+    it('shows a wildcard location for equipment spanning more than three locations', () => {
+        const nullSignature = entry({
+            id: 'null-signature',
+            equipment: misc('Null Signature System', ['F_NULL_SIG']),
+            locations: new Set(['CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL']),
+        });
+        const { component, fixture } = createComponent([nullSignature]);
+
+        const row = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        const locationCell = fixture.nativeElement.querySelector('.location-cell') as HTMLElement;
+
+        expect(row.display.location).toBe('*');
+        expect(locationCell.textContent?.trim()).toBe('*');
+    });
+
     it('shows active Nova CEWS heat in the Equipment row', () => {
         const nova = entry({
             id: 'nova',
