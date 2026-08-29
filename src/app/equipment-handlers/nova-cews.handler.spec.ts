@@ -260,6 +260,25 @@ describe('NovaCewsHandler', () => {
         expect(isNovaCewsEffectivelyActive(second)).toBeTrue();
     });
 
+    it('keeps the selected Nova active when an inventory write rebuilds mount objects', () => {
+        const test = fixture();
+        test.add('nova-1');
+        const second = test.add('nova-2');
+        (test.owner.setInventoryEntry as jasmine.Spy).and.callFake((entry: MountedEquipment) => {
+            const next = test.inventory.map(candidate => candidate.id === entry.id ? entry : candidate);
+            test.inventory.splice(0, test.inventory.length, ...MountedEquipment.fromAll(next));
+        });
+
+        handler.handleSelection(second, handler.getChoices(second, queryContext)[0], commandContext);
+        const pending = test.owner.getInventory().find(entry => entry.id === second.id)!;
+        handler.onEndTurn(pending);
+
+        const currentFirst = test.owner.getInventory().find(entry => entry.id === 'nova-1')!;
+        const currentSecond = test.owner.getInventory().find(entry => entry.id === 'nova-2')!;
+        expect(isNovaCewsEffectivelyActive(currentFirst)).toBeFalse();
+        expect(isNovaCewsEffectivelyActive(currentSecond)).toBeTrue();
+    });
+
     it('leaves the current mount active when a pending handoff is cancelled', () => {
         const test = fixture();
         const first = test.add('nova-1');

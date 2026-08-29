@@ -51,6 +51,7 @@ import { applyMekCriticalRoll } from '../utils/mek-critical-hit.util';
 import type { AutomationMode, CBTAutomationKey } from './options.model';
 import { NovaCewsHandler } from '../equipment-handlers/nova-cews.handler';
 import { NOVA_CEWS_OFF_STATE, NOVA_CEWS_STATE_KEY } from '../utils/ecm-state.util';
+import { HPG_CHARGING_STATE, HPG_STATE_KEY, HPG_TRANSMITTING_STATE } from '../utils/hpg-state.util';
 
 function createEquipment(): EquipmentMap {
     const ultraAc20 = new WeaponEquipment({
@@ -5004,6 +5005,50 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         expect(forceUnit.canPerformEquipmentAction(intrinsicPunch, 'physical-attack')).toBeTrue();
         expect(forceUnit.canPerformEquipmentAction(hatchet, 'physical-attack')).toBeTrue();
+    });
+
+    it('enforces Ground-Mobile HPG weapon and movement restrictions at unit level', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            ...createMekUnit(),
+            engine: 'Fusion',
+            walk: 5,
+            run: 8,
+            run2: 8,
+        }));
+        forceUnit.isLoaded.set(true);
+        const hpgEquipment = new MiscEquipment({
+            id: 'ISGroundMobileHPG',
+            name: 'Ground-Mobile HPG',
+            type: 'misc',
+            flags: ['F_MOBILE_HPG', 'F_MEK_EQUIPMENT'],
+        });
+        const hpg = new MountedEquipment({
+            owner: forceUnit,
+            id: 'ISGroundMobileHPG@CT#0',
+            name: hpgEquipment.name,
+            equipment: hpgEquipment,
+        });
+        const weapon = new MountedEquipment({
+            owner: forceUnit,
+            id: 'VariableDamageLaser@RA#0',
+            name: 'Variable Damage Laser',
+            equipment: equipment['VariableDamageLaser'],
+        });
+        forceUnit.setInventory([hpg, weapon], true);
+
+        const currentHpg = forceUnit.getInventory().find(entry => entry.id === hpg.id)!;
+        currentHpg.setState(HPG_STATE_KEY, HPG_CHARGING_STATE);
+        forceUnit.setInventoryEntry(currentHpg);
+
+        expect(forceUnit.canPerformEquipmentAction(weapon, 'fire')).toBeFalse();
+        expect(forceUnit.getAvailableMotiveModes(false).some(option => option.mode === 'walk')).toBeTrue();
+
+        const transmittingHpg = forceUnit.getInventory().find(entry => entry.id === hpg.id)!;
+        transmittingHpg.setState(HPG_STATE_KEY, HPG_TRANSMITTING_STATE);
+        forceUnit.setInventoryEntry(transmittingHpg);
+
+        expect(forceUnit.canPerformEquipmentAction(weapon, 'fire')).toBeFalse();
+        expect(forceUnit.getAvailableMotiveModes(false).map(option => option.mode)).toEqual(['stationary']);
     });
 
     it('prevents an unconscious crew from receiving movement or attack selections', () => {

@@ -957,6 +957,13 @@ export function isTorpedoAmmo(ammo: AmmoEquipment | null | undefined): boolean {
         && (NATIVE_TORPEDO_AMMO_TYPES.has(ammo.ammoType) || ammo.hasMunitionType('M_TORPEDO'));
 }
 
+/** Coolant Pods are encoded as ammo by MegaMek, but are operated directly as equipment. */
+export function isCoolantPodEquipment(
+    equipment: Equipment | null | undefined,
+): equipment is AmmoEquipment {
+    return equipment instanceof AmmoEquipment && equipment.ammoType === 'COOLANT_POD';
+}
+
 // ============================================================================
 // Misc Equipment Class
 // ============================================================================

@@ -41,6 +41,14 @@ import { STANDARD_AEROSPACE_RANGE_LIMITS, aerospaceRangeCaptions } from '../../u
 import { calculateHeatProjection } from '../../models/turn-state.model';
 import { resolveSelectedWeaponFiringHeatSources, SELECTED_WEAPONS_HEAT_SOURCE_ID } from '../../utils/inventory-control-heat.util';
 import type { UnitModifierBreakdownEntry } from '../../models/rules/unit-type-rules';
+import {
+    isMachineGunArray,
+    isMachineGunArrayEffectivelyActive,
+    isMachineGunArrayMember,
+    machineGunArrayController,
+    machineGunArrayMembers,
+    operationalMachineGunArrayMembers,
+} from '../../utils/mga-state.util';
 
 interface RangeColumn {
     key: InventoryRangeDisplayKey;
@@ -183,7 +191,9 @@ export class WeaponsEquipmentPanelComponent {
             this.unit(),
             this.context().queryContext.equipmentCatalog,
             this.unit().getInventoryControlRules()
-        );
+        ).map(group => group.id === 'ranged'
+            ? { ...group, rows: this.groupMachineGunArrayRows(group.rows) }
+            : group);
     });
 
     sectionSkill(group: InventoryControlGroup): SectionSkillDisplay | null {
@@ -359,7 +369,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     groupTracksAmmo(group: InventoryControlGroup): boolean {
-        return group.rows.some(row => row.tracksAmmo);
+        return group.rows.some(row => this.showAmmoControls(row));
     }
 
     groupHasControls(group: InventoryControlGroup): boolean {
@@ -384,7 +394,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     rowHasActions(row: InventoryControlRow): boolean {
-        return row.tracksAmmo || this.rowHasControls(row);
+        return this.showAmmoControls(row) || this.rowHasControls(row);
     }
 
     readOnly(): boolean {
@@ -392,7 +402,68 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     isSelectable(row: InventoryControlRow): boolean {
-        return isInventoryControlSelectableEntry(row.entry);
+        if (!isInventoryControlSelectableEntry(row.entry)) return false;
+        if (!isMachineGunArray(row.entry) && !isMachineGunArrayMember(row.entry)) return true;
+        return this.unit().getInventoryControlRules().isSelectable?.(row.entry) !== false;
+    }
+
+    isMachineGunArrayRow(row: InventoryControlRow): boolean {
+        return isMachineGunArray(row.entry);
+    }
+
+    isMachineGunArrayMemberRow(row: InventoryControlRow): boolean {
+        return isMachineGunArrayMember(row.entry);
+    }
+
+    isMachineGunArrayMemberControlled(row: InventoryControlRow): boolean {
+        const array = machineGunArrayController(row.entry);
+        return !!array
+            && this.context().queryContext.getStatus(array) === 'available'
+            && isMachineGunArrayEffectivelyActive(array);
+    }
+
+    machineGunArraySummary(row: InventoryControlRow): string | null {
+        if (!isMachineGunArray(row.entry)) return null;
+        const members = machineGunArrayMembers(row.entry);
+        const working = operationalMachineGunArrayMembers(
+            row.entry,
+            member => this.context().queryContext.getStatus(member) === 'available',
+        ).length;
+        const gunText = working === members.length
+            ? `${working} gun${working === 1 ? '' : 's'}`
+            : `${working}/${members.length} guns`;
+        const available = this.context().queryContext.getStatus(row.entry) === 'available';
+        if (!available || !isMachineGunArrayEffectivelyActive(row.entry)) {
+            return `${gunText} · Individual fire`;
+        }
+        if (working === 0) return 'No working guns';
+        const clusterModifier = this.unit().gameRules.machineGunArrayClusterModifier;
+        const clusterText = clusterModifier === 0
+            ? 'Cluster roll'
+            : `Cluster ${clusterModifier > 0 ? '+' : ''}${clusterModifier}`;
+        return `${gunText} · ${working} ammo/attack · ${clusterText}`;
+    }
+
+    machineGunArrayMemberSummary(row: InventoryControlRow): string | null {
+        if (!isMachineGunArrayMember(row.entry)) return null;
+        if (this.context().queryContext.getStatus(row.entry) !== 'available') return 'Excluded from array';
+        return this.isMachineGunArrayMemberControlled(row) ? 'Linked' : 'Unlinked';
+    }
+
+    showAmmoControls(row: InventoryControlRow): boolean {
+        if (!row.tracksAmmo) return false;
+        if (isMachineGunArrayMember(row.entry)) return !this.isMachineGunArrayMemberControlled(row);
+        if (!isMachineGunArray(row.entry)) return true;
+        return this.context().queryContext.getStatus(row.entry) === 'available'
+            && isMachineGunArrayEffectivelyActive(row.entry)
+            && operationalMachineGunArrayMembers(
+                row.entry,
+                member => this.context().queryContext.getStatus(member) === 'available',
+            ).length > 0;
+    }
+
+    isRowSortable(group: InventoryControlGroup, row: InventoryControlRow): boolean {
+        return group.sortable && !isMachineGunArrayMember(row.entry);
     }
 
     isSelected(row: InventoryControlRow): boolean {
@@ -953,6 +1024,28 @@ export class WeaponsEquipmentPanelComponent {
         return this.groupSelectableRows(group).filter(row => !row.destroyed && !row.disabled);
     }
 
+    private groupMachineGunArrayRows(rows: InventoryControlRow[]): InventoryControlRow[] {
+        const rowsByEntry = new Map(rows.map(row => [row.entry, row]));
+        const nestedMembers = new Set(rows
+            .filter(row => {
+                const array = machineGunArrayController(row.entry);
+                return !!array && rowsByEntry.has(array);
+            })
+            .map(row => row.entry));
+        const groupedRows: InventoryControlRow[] = [];
+
+        for (const row of rows) {
+            if (nestedMembers.has(row.entry)) continue;
+            groupedRows.push(row);
+            if (!isMachineGunArray(row.entry)) continue;
+            for (const member of machineGunArrayMembers(row.entry)) {
+                const memberRow = rowsByEntry.get(member);
+                if (memberRow) groupedRows.push(memberRow);
+            }
+        }
+        return groupedRows;
+    }
+
     cacheDragPreviewCellWidths(event: PointerEvent): void {
         const sourceRow = event.currentTarget;
         if (!(sourceRow instanceof HTMLElement)) return;
@@ -1112,7 +1205,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     async handleChoice(row: InventoryControlRow, choice: HandlerChoice): Promise<void> {
-        if (this.readOnly() || choice.disabled) return;
+        if (this.handlerChoiceDisabled(choice)) return;
         await this.context().registry.handleSelection(row.entry, choice, this.context().commandContext);
         this.inventoryControl().markInventoryViewChanged();
         const updatedRow = this.groups().flatMap(group => group.rows).find(candidate => candidate.id === row.id);
@@ -1121,9 +1214,16 @@ export class WeaponsEquipmentPanelComponent {
         }
     }
 
+    handlerChoiceDisabled(choice: HandlerChoice): boolean {
+        return !!choice.disabled
+            || (this.readOnly() && choice.action !== 'configure-network');
+    }
+
     private getHandlerChoices(row: InventoryControlRow): HandlerChoice[] {
-        if (this.rowEffectivelyDestroyed(row)) return [];
-        return this.context().registry.getChoices(row.entry, this.context().queryContext);
+        const choices = this.context().registry.getChoices(row.entry, this.context().queryContext);
+        return this.rowEffectivelyDestroyed(row)
+            ? choices.filter(choice => choice.action === 'configure-network')
+            : choices;
     }
 
     private isModeChoice(choice: HandlerChoice): boolean {

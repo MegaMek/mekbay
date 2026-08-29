@@ -305,6 +305,11 @@ describe('game rules', () => {
         expect(TW_GAME_RULES.aggregatedEndPhaseConsciousRolls).toBeFalse();
     });
 
+    it('defines the ruleset-specific Machine Gun Array cluster modifier', () => {
+        expect(CORE_2026_GAME_RULES.machineGunArrayClusterModifier).toBe(2);
+        expect(TW_GAME_RULES.machineGunArrayClusterModifier).toBe(0);
+    });
+
     it('owns the ruleset-specific hull-breach result and label', () => {
         expect(CORE_2026_GAME_RULES.getHullBreachCheckRangeLabel()).toBe('2–4');
         expect(CORE_2026_GAME_RULES.hullBreachCheckSucceeds(2)).toBeTrue();

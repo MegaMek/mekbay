@@ -15,9 +15,10 @@ import { LayoutService } from '../../services/layout.service';
 import { OptionsService } from '../../services/options.service';
 import { PickerFactoryService } from '../../services/picker-factory.service';
 import { ToastService } from '../../services/toast.service';
-import { MiscEquipment, WeaponEquipment, type Equipment } from '../../models/equipment.model';
+import { AmmoEquipment, MiscEquipment, WeaponEquipment, type Equipment } from '../../models/equipment.model';
 import { EquipmentDialogComponent } from '../equipment-dialog/equipment-dialog.component';
-import { MountedEquipment } from '../../models/mounted-equipment.model';
+import { MountedAmmo, MountedEquipment } from '../../models/mounted-equipment.model';
+import { COOLANT_POD_ACTIVE_STATE_KEY } from '../../equipment-handlers/coolant-pod.handler';
 import { InventoryControlRuntimeState, type InventoryControlRuntimeRangeKey } from '../../models/inventory-control-runtime-state.model';
 import { INVENTORY_CONTROL_MODE_STATE } from '../../utils/inventory-control.util';
 import { RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE } from '../../equipment-handlers/risc-laser-pulse-module.handler';
@@ -1194,6 +1195,81 @@ describe('SvgInteractionService', () => {
         await pickerConfig.onPick(handlerChoice);
 
         expect(registryHandleSelection).toHaveBeenCalledWith(entry, handlerChoice, jasmine.any(Object));
+    });
+
+    it('keeps Coolant Pod ammo corrections beside its direct use action', async () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g class="critSlot ammoSlot" loc="LA" slot="9" uid="Coolant Pod@LA#9" totalAmmo="1" hittable="1"><text>Ammo (Coolant Pod) 1</text></g>';
+        const equipment = new AmmoEquipment({
+            id: 'Coolant Pod',
+            name: 'Coolant Pod',
+            type: 'ammo',
+            ammo: { type: 'COOLANT_POD', shots: 1 },
+        });
+        const critSlot = {
+            id: 'Coolant Pod@LA#9',
+            name: 'Coolant Pod',
+            loc: 'LA',
+            slot: 9,
+            totalAmmo: 1,
+            consumed: 0,
+            eq: equipment,
+        };
+        let entry!: MountedAmmo;
+        const setInventoryEntry = jasmine.createSpy('setInventoryEntry');
+        const unit = createSvgInteractionUnit({
+            id: 'unit-coolant-pod',
+            getUnit: () => ({ type: 'Mek' }),
+            getInventory: () => [entry],
+            getCritSlots: () => [critSlot],
+            getCritSlot: (loc: string, slot: number) => loc === 'LA' && slot === 9 ? critSlot : null,
+            setCritSlot: jasmine.createSpy('setCritSlot'),
+            setInventoryEntry,
+            isInternalLocPhysicallyDestroyed: () => false,
+            getEquipmentStatus: () => 'available' as const,
+            isEquipmentOperational: () => true,
+            applyHitToCritSlot: jasmine.createSpy('applyHitToCritSlot'),
+        });
+        entry = new MountedAmmo({
+            owner: unit as any,
+            id: critSlot.id,
+            name: equipment.name,
+            equipment,
+            locations: new Set(['LA']),
+            critSlots: [critSlot],
+            totalAmmo: 1,
+            originalTotalAmmo: 1,
+            consumed: 0,
+        });
+        const useChoice = {
+            label: 'Use Coolant Pod',
+            value: 'use',
+            displayType: 'toggle' as const,
+            _handler: {} as any,
+        };
+        registryGetChoices.and.returnValue([useChoice]);
+        service.updateUnit(unit);
+        service.setupInteractions(svg);
+
+        tap(svg.querySelector('.critSlot') as SVGElement, 33);
+
+        const pickerConfig = pickerFactory.createChoicePicker.calls.mostRecent().args[0];
+        expect(pickerConfig.values.map((choice: { label: string }) => choice.label)).toEqual(jasmine.arrayContaining([
+            '-1', '+1', 'Use Coolant Pod', 'Set Ammo',
+        ]));
+
+        const decrement = pickerConfig.values.find((choice: { value: unknown }) => choice.value === '-1');
+        await pickerConfig.onPick({ ...decrement, keepOpen: false });
+        expect(critSlot.consumed).toBe(1);
+        expect(entry.consumed).toBe(1);
+
+        entry.setState(COOLANT_POD_ACTIVE_STATE_KEY, 'true');
+        const increment = pickerConfig.values.find((choice: { value: unknown }) => choice.value === '+1');
+        await pickerConfig.onPick({ ...increment, keepOpen: false });
+        expect(critSlot.consumed).toBe(0);
+        expect(entry.consumed).toBe(0);
+        expect(entry.states.has(COOLANT_POD_ACTIVE_STATE_KEY)).toBeFalse();
+        expect(setInventoryEntry).toHaveBeenCalled();
     });
 
     it('offers the second critical hit for a damaged one-slot Core AC/2', async () => {

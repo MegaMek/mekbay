@@ -183,6 +183,8 @@ export function separateHeatFireModifier(resolution: ToHitResolution): ToHitHeat
 
 export abstract class CBTGameRules {
     abstract readonly id: 'core2026' | 'tw';
+    /** Modifier applied to Machine Gun Array rolls on the Cluster Hits Table. */
+    abstract readonly machineGunArrayClusterModifier: number;
     abstract readonly aggregatedEndPhaseConsciousRolls: boolean;
     abstract readonly c3DegradationLabel: C3DegradationLabel;
     abstract readonly escalatingFailureTargets: readonly number[];
@@ -476,6 +478,7 @@ export abstract class CBTGameRules {
 
 export class GameRules extends CBTGameRules {
     readonly id = 'core2026' as const;
+    readonly machineGunArrayClusterModifier = 2;
     readonly aggregatedEndPhaseConsciousRolls = true;
     readonly c3DegradationLabel = 'DEGRADED' as const;
     readonly physicalBaseHitModifiers = {
@@ -613,6 +616,7 @@ export class GameRules extends CBTGameRules {
 
 export class TWGameRules extends CBTGameRules {
     readonly id = 'tw' as const;
+    readonly machineGunArrayClusterModifier = 0;
     readonly aggregatedEndPhaseConsciousRolls = false;
     readonly c3DegradationLabel = 'JAMMED' as const;
     readonly physicalBaseHitModifiers = {

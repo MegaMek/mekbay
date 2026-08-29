@@ -1228,6 +1228,13 @@ export class TurnState {
         this.weaponsHeat.update((value)=> { return value + amount });
     }
 
+    /** Moves heat already recorded by the firing workflow to an itemized non-weapon source. */
+    removeFiredHeat(amount: number) {
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        this.invalidateHeatSource('weapons');
+        this.weaponsHeat.update(value => Math.max(0, value - amount));
+    }
+
     acknowledgeHeatSources(consumedDissipation = 0): void {
         const acknowledged = { ...this.acknowledgedHeatSources() };
         this.unresolvedHeatSources().forEach(source => acknowledged[source.id] = this.heatSourceSignature(source));

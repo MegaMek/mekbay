@@ -97,6 +97,7 @@ export type HandlerNotifications = Pick<HandlerToastService, 'showToast'>;
 
 export interface HandlerDialogsService {
     createDialog: DialogsService['createDialog'];
+    requestConfirmation: DialogsService['requestConfirmation'];
     showError: DialogsService['showError'];
     showNoticeHtml: DialogsService['showNoticeHtml'];
 }
@@ -179,6 +180,9 @@ export abstract class EquipmentInteractionHandler {
      * Hook called immediately before pending equipment and critical-slot damage is committed.
      */
     beforeEquipmentStateCommit?(equipment: MountedEquipment): void;
+
+    /** Hook called when the owning unit ends a phase. */
+    onEndPhase?(equipment: MountedEquipment): void;
 
     /** Declares a rules/state-specific Mek explosion that this handler owns through phase end. */
     getCriticalDelayedExplosion?(
@@ -441,6 +445,12 @@ export class EquipmentInteractionRegistry {
     beforeEquipmentStateCommit(equipment: MountedEquipment): void {
         for (const handler of this.getHandlers(equipment)) {
             handler.beforeEquipmentStateCommit?.(equipment);
+        }
+    }
+
+    onEndPhase(equipment: MountedEquipment): void {
+        for (const handler of this.getHandlers(equipment)) {
+            handler.onEndPhase?.(equipment);
         }
     }
 

@@ -28,6 +28,16 @@ import { PPC_CAPACITOR_CHARGED_STATE, PPC_CAPACITOR_CHARGING_STATE, PPC_CAPACITO
 import { EquipmentFlag } from '../equipment-flags.type';
 import { isInventoryControlSelectableEntry, syncSvgMode } from '../../utils/inventory-control.util';
 import { MEK_LOCATIONS, MEK_QUAD_LOCATIONS, MEK_TRIPOD_LOCATIONS } from '../entity/types';
+import { ECMMode } from '../common.model';
+import { STEALTH_ENABLED_STATE, STEALTH_STATE_KEY } from '../stealth-equipment.model';
+import {
+    selectedShieldMode,
+    setShieldMode,
+    SHIELD_INACTIVE_MODE,
+    SHIELD_PASSIVE_MODE,
+    SHIELD_RAISED_MODE,
+} from '../../utils/shield-mode.util';
+import { ShieldModeHandler } from '../../equipment-handlers/shield-mode.handler';
 
 class TestCBTForce extends CBTForce {
     override emitChanged(): void {
@@ -61,7 +71,7 @@ function createRulesHarness(options: {
     jump?: number;
     umu?: number;
     tons?: number;
-    engine?: string;
+    engine?: UnitSummary['engine'];
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
     forcedWithdrawal?: boolean;
@@ -136,7 +146,7 @@ function createForceUnitHarness(options: {
     jump?: number;
     umu?: number;
     tons?: number;
-    engine?: string;
+    engine?: UnitSummary['engine'];
     subtype?: UnitSubtype;
     rulesId?: 'core2026' | 'tw';
     forcedWithdrawal?: boolean;
@@ -578,6 +588,113 @@ describe('MekRules', () => {
             expect(forceUnit.rules.heatSources(turnState).find(source => source.id === 'movement')?.value)
                 .withContext(scenario.label)
                 .toBe(scenario.expectedHeat);
+        }
+    });
+
+    it('adds one UMU heat, doubled by XXL engines', () => {
+        const scenarios = [
+            { engine: 'Fusion', expected: 1 },
+            { engine: 'XXL (IS)', expected: 2 },
+            { engine: 'XXL (Clan)', expected: 2 },
+        ] as const;
+        for (const scenario of scenarios) {
+            const forceUnit = createForceUnitHarness({ engine: scenario.engine });
+            forceUnit.turnState().moveMode.set('UMU');
+
+            expect(forceUnit.rules.heatSources(forceUnit.turnState())
+                .find(source => source.id === 'movement')?.value)
+                .withContext(scenario.engine)
+                .toBe(scenario.expected);
+        }
+    });
+
+    it('generates no jump heat when a working mechanical jump booster is used', () => {
+        const forceUnit = createForceUnitHarness();
+        const booster = miscEquipment('MechanicalJumpBooster', 'Mechanical Jump Booster', ['F_JUMP_BOOSTER']);
+        forceUnit.setInventory([miscEntry(forceUnit, booster)]);
+        forceUnit.turnState().moveMode.set('jump');
+        forceUnit.turnState().moveDistance.set(5);
+
+        expect(forceUnit.rules.heatSources(forceUnit.turnState())
+            .find(source => source.id === 'movement')?.value).toBe(0);
+    });
+
+    it('defaults dual jump systems to jump-jet heat like MegaMek', () => {
+        const forceUnit = createForceUnitHarness();
+        const booster = miscEquipment('MechanicalJumpBooster', 'Mechanical Jump Booster', ['F_JUMP_BOOSTER']);
+        const jumpJet = miscEquipment('JumpJet', 'Jump Jet', ['F_JUMP_JET']);
+        forceUnit.setInventory([
+            miscEntry(forceUnit, booster),
+            miscEntry(forceUnit, jumpJet),
+        ]);
+        forceUnit.turnState().moveMode.set('jump');
+        forceUnit.turnState().moveDistance.set(5);
+
+        expect(forceUnit.rules.heatSources(forceUnit.turnState())
+            .find(source => source.id === 'movement')?.value).toBe(5);
+    });
+
+    it('uses AirMek movement heat while an LAM is airborne', () => {
+        const forceUnit = createForceUnitHarness({ subtype: 'Land-Air BattleMek' });
+        forceUnit.turnState().airborne.set(true);
+        forceUnit.turnState().moveMode.set('run');
+
+        for (const [distance, expectedHeat] of [[1, 1], [4, 1], [5, 2]] as const) {
+            forceUnit.turnState().moveDistance.set(distance);
+            expect(forceUnit.rules.heatSources(forceUnit.turnState())
+                .find(source => source.id === 'movement')?.value)
+                .withContext(`${distance} AirMek MP`)
+                .toBe(expectedHeat);
+        }
+    });
+
+    it('only exempts ICE and Fuel Cell Industrial Meks from ground-movement heat', () => {
+        const scenarios = [
+            { engine: 'ICE', expected: [0, 0, 0] },
+            { engine: 'Fuel Cell', expected: [0, 0, 0] },
+            { engine: 'Fusion', expected: [1, 2, 3] },
+            { engine: 'XXL (IS)', expected: [4, 6, 9] },
+        ] as const;
+        const modes = ['walk', 'run', 'sprint'] as const;
+        for (const { engine, expected } of scenarios) {
+            const forceUnit = createForceUnitHarness({ subtype: 'Industrial Mek', engine });
+            for (const [index, mode] of modes.entries()) {
+                forceUnit.turnState().moveMode.set(mode);
+                expect(forceUnit.rules.heatSources(forceUnit.turnState())
+                    .find(source => source.id === 'movement')?.value)
+                    .withContext(`${engine} ${mode}`)
+                    .toBe(expected[index]);
+            }
+        }
+    });
+
+    it('generates damaged-engine heat only for fusion-family engines', () => {
+        for (const engine of [
+            'ICE', 'Fuel Cell', 'Fission', 'None', 'MagLev', 'Steam', 'Battery', 'Solar', 'External',
+        ] as const) {
+            const forceUnit = createForceUnitHarness({
+                engine,
+                critSlots: [{ ...crit('Engine'), loc: 'CT', slot: 0 }],
+            });
+
+            expect(forceUnit.rules.heatSources(forceUnit.turnState())
+                .find(source => source.id === 'damaged-engine'))
+                .withContext(engine)
+                .toBeUndefined();
+        }
+
+        for (const engine of [
+            'Fusion', 'XL (IS)', 'XL (Clan)', 'XXL (IS)', 'XXL (Clan)', 'Light', 'Compact',
+        ] as const) {
+            const forceUnit = createForceUnitHarness({
+                engine,
+                critSlots: [{ ...crit('Engine'), loc: 'CT', slot: 0 }],
+            });
+
+            expect(forceUnit.rules.heatSources(forceUnit.turnState())
+                .find(source => source.id === 'damaged-engine')?.value)
+                .withContext(engine)
+                .toBe(5);
         }
     });
 
@@ -1241,6 +1358,58 @@ describe('MekRules', () => {
         expect(isInventoryControlSelectableEntry(shield)).toBeFalse();
     });
 
+    it('blocks a Core punch while its shield is raised without removing the lowered punch bonus', () => {
+        const { forceUnit, shield } = createShieldHarness('core2026');
+        const rules = forceUnit.rules as MekRules;
+        const punch = punchEntry(forceUnit, 'LA');
+
+        expect(setShieldMode(shield, SHIELD_INACTIVE_MODE)).toBeTrue();
+        expect(rules.canPerformEquipmentAction(punch, 'physical-attack')).toBeTrue();
+        expect(rules.computeMeleeDamage(7, 'punch', 'LA')).toEqual({ damage: 9, maxDamage: 18 });
+
+        expect(setShieldMode(shield, SHIELD_RAISED_MODE)).toBeTrue();
+        expect(rules.canPerformEquipmentAction(punch, 'physical-attack')).toBeFalse();
+        expect(rules.computeMeleeDamage(7, 'punch', 'LA')).toEqual({ damage: 9, maxDamage: 18 });
+    });
+
+    it('lowers a raised Core shield at phase end but keeps TW shield modes persistent', () => {
+        TestBed.inject(EquipmentInteractionRegistryService).getRegistry().register(new ShieldModeHandler());
+        const core = createShieldHarness('core2026');
+        const tw = createShieldHarness('tw');
+
+        expect(setShieldMode(core.shield, SHIELD_RAISED_MODE)).toBeTrue();
+        expect(setShieldMode(tw.shield, SHIELD_PASSIVE_MODE)).toBeTrue();
+
+        core.forceUnit.endPhase();
+        tw.forceUnit.endPhase();
+
+        expect(selectedShieldMode(core.forceUnit.getInventory()[0])).toBe(SHIELD_INACTIVE_MODE);
+        expect(selectedShieldMode(tw.forceUnit.getInventory()[0])).toBe(SHIELD_PASSIVE_MODE);
+    });
+
+    it('allows Core AMS fire through a raised shield while continuing to block other weapons', () => {
+        const { forceUnit, shield } = createShieldHarness('core2026');
+        const rules = forceUnit.rules as MekRules;
+        const mountedWeapon = (id: string, flags: EquipmentFlag[] = []) => new MountedWeapon({
+            owner: forceUnit,
+            id,
+            name: id,
+            equipment: new WeaponEquipment({
+                id,
+                name: id,
+                type: 'weapon',
+                flags,
+                weapon: { damage: 2, heat: 1, ranges: [1, 2, 3, 4], ammoType: 'NA' },
+            }),
+            locations: new Set(['LA']),
+        });
+
+        expect(setShieldMode(shield, SHIELD_RAISED_MODE)).toBeTrue();
+        expect(rules.canPerformEquipmentAction(mountedWeapon('Arm Laser'), 'fire')).toBeFalse();
+        expect(rules.canPerformEquipmentAction(mountedWeapon('AMS', ['F_AMS']), 'fire')).toBeTrue();
+        expect(rules.canPerformEquipmentAction(mountedWeapon('AMS Bay', ['F_AMS_BAY']), 'fire')).toBeTrue();
+    });
+
     it('shows the Core shield bash modifier for every shield size', () => {
         for (const [sizeFlag, bashBonus] of [
             ['S_SHIELD_SMALL', 1],
@@ -1313,6 +1482,39 @@ describe('MekRules', () => {
         expect(rules.canPerformEquipmentAction(shield, 'physical-attack')).toBeTrue();
         expect(rules.hasIndependentInventoryControlAction(shield)).toBeTrue();
         expect(isInventoryControlSelectableEntry(shield)).toBeTrue();
+    });
+
+    it('applies TW shield mode firing penalties and blocks attacks from raised protection', () => {
+        const { forceUnit, shield } = createShieldHarness('tw');
+        const rules = forceUnit.rules as MekRules;
+        const equipment = new WeaponEquipment({
+            id: 'ArmLaser',
+            name: 'Arm Laser',
+            type: 'weapon',
+            weapon: { damage: 5, heat: 3, ranges: [3, 6, 9, 12], ammoType: 'NA' },
+        });
+        const armLaser = new MountedWeapon({
+            owner: forceUnit,
+            id: equipment.id,
+            name: equipment.name,
+            equipment,
+            locations: new Set(['LA']),
+        });
+
+        expect(rules.getEquipmentToHitModifiers(armLaser)).toContain(jasmine.objectContaining({
+            label: 'Shield (LA)',
+            modifier: 1,
+        }));
+
+        expect(setShieldMode(shield, SHIELD_PASSIVE_MODE)).toBeTrue();
+        expect(rules.getEquipmentToHitModifiers(armLaser)).toContain(jasmine.objectContaining({
+            label: 'Passive Shield (LA)',
+            modifier: 2,
+        }));
+
+        expect(setShieldMode(shield, SHIELD_RAISED_MODE)).toBeTrue();
+        expect(rules.canPerformEquipmentAction(armLaser, 'fire')).toBeFalse();
+        expect(rules.canPerformEquipmentAction(shield, 'physical-attack')).toBeFalse();
     });
 
     it('does not render either passive Core or active TW shields as disabled inventory', () => {
@@ -2224,6 +2426,29 @@ describe('MekRules', () => {
                 { label: scenario.label, modifier: scenario.modifier, weakened: true },
             ]);
         }
+    });
+
+    it('applies the active Void Signature penalty only to weapon attacks', () => {
+        const forceUnit = createForceUnitHarness();
+        const voidSignature = miscEntry(forceUnit,
+            miscEquipment('ISVoidSignatureSystem', 'Void Signature System', ['F_VOID_SIG']));
+        voidSignature.states.set(STEALTH_STATE_KEY, STEALTH_ENABLED_STATE);
+        const ecm = miscEntry(forceUnit, miscEquipment('ISECM', 'ECM Suite', ['F_ECM']));
+        ecm.states.set('ecm_mode', ECMMode.ECM);
+        forceUnit.setInventory([voidSignature, ecm]);
+
+        expect(forceUnit.rules.getEquipmentToHitModifiers(directFireWeaponEntry(forceUnit))).toContain({
+            label: 'Void Signature',
+            modifier: 1,
+        });
+        expect(forceUnit.rules.getEquipmentToHitModifiers(punchEntry(forceUnit)))
+            .not.toContain(jasmine.objectContaining({ label: 'Void Signature' }));
+
+        const liveEcm = forceUnit.getInventory().find(entry => entry.id === ecm.id)!;
+        liveEcm.setState('ecm_mode', ECMMode.OFF);
+        forceUnit.setInventoryEntry(liveEcm);
+        expect(forceUnit.rules.getEquipmentToHitModifiers(directFireWeaponEntry(forceUnit)))
+            .not.toContain(jasmine.objectContaining({ label: 'Void Signature' }));
     });
 
     it('uses the best available alternate pilot with a modifier when the Tripod dedicated pilot is disabled', () => {

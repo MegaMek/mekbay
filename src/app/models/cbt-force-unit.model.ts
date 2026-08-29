@@ -53,6 +53,7 @@ import type { C3DegradationSource, C3TargetingResolution, CBTGameRules, MekExplo
 import { OptionsService } from '../services/options.service';
 import type { AutomationMode, CBTAutomationKey } from './options.model';
 import { resolveSelectedInventoryWeaponHeat } from '../utils/inventory-control-heat.util';
+import { unitHasBusyHpg, unitHasTransmittingGroundMobileHpg } from '../utils/hpg-state.util';
 import { parseInventoryComponentReference } from './inventory-component-reference.model';
 import type { InventoryControlPhysicalDamageEffect } from '../utils/inventory-control-physical-damage.util';
 import { uuidv7 } from '../utils/uuid.util';
@@ -1509,6 +1510,7 @@ export class CBTForceUnit extends ForceUnit {
         if (!this.isEquipmentOperational(entry) || this.destroyed || this.getCondition('shutdown')) {
             return false;
         }
+        if (action === 'fire' && unitHasBusyHpg(this)) return false;
         if (action !== 'provide-passive-effect' && !this.canTakeActiveActions()) return false;
         if (action === 'physical-attack' && this.isPhysicalActionUnavailable(entry)) return false;
         if (action === 'fire' && !this.isInventoryWeaponUsableInWater(entry, this.getInventoryControlSelectedAmmo(entry))) return false;
@@ -2028,6 +2030,7 @@ export class CBTForceUnit extends ForceUnit {
         const cannotMove = this.getCondition('immobile') || !this.canTakeActiveActions();
         return options
             .filter(option => option.mode === 'stationary' || !cannotMove)
+            .filter(option => option.mode === 'stationary' || !unitHasTransmittingGroundMobileHpg(this))
             .filter(option => this._rules.isMotiveModeAvailable(option.mode))
             .map(option => ({
                 ...option,
@@ -2045,6 +2048,7 @@ export class CBTForceUnit extends ForceUnit {
     PSRTargetRoll = computed(() => this._rules.PSRTargetRoll());
 
     endPhase() {
+        this.dispatchEndPhaseEquipmentLifecycle();
         this.dispatchBeforeEquipmentStateCommit();
         this.resolvePendingCrewDeaths();
         this.state.endPhase();
@@ -2052,6 +2056,12 @@ export class CBTForceUnit extends ForceUnit {
         this.psrDiceSelections.set({});
         this.inventoryControl.markAmmoSourcesChanged();
         this.phaseTrigger.update(v => v + 1); // Trigger change detection
+    }
+
+    private dispatchEndPhaseEquipmentLifecycle(): void {
+        const equipmentRegistry = this.injector.get(EquipmentInteractionRegistryService).getRegistry();
+        this.forEachCurrentInventoryEntry(entry =>
+            equipmentRegistry.onEndPhase(entry));
     }
 
     private dispatchBeforeEquipmentStateCommit(): void {
@@ -2452,6 +2462,9 @@ export class CBTForceUnit extends ForceUnit {
     }
 
     public endTurn(automationDecisions: CBTEndTurnAutomationDecisions = {}) {
+        if (automationDecisions.phaseAlreadyEnded !== true) {
+            this.dispatchEndPhaseEquipmentLifecycle();
+        }
         const endsForceTurn = !this.force.units().some(unit => unit !== this && unit.turnState().dirty());
         const heatAutomationMode = this.automationMode('heatAndDissipationResolution');
         const resolveHeat = heatAutomationMode === 'yes'

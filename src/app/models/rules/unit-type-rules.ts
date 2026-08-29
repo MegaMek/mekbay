@@ -18,7 +18,7 @@ import {
     TN_SKIDDING_ATTACKER,
     TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
-import { getActiveStealthTnModifiers } from '../stealth-equipment.model';
+import { getActiveStealthTnModifiers, unitHasActiveVoidSignature } from '../stealth-equipment.model';
 import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
 import type { HeatDissipationState, HeatScaleEntry } from './heat-management';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
@@ -677,7 +677,10 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
             : entry.equipment instanceof WeaponEquipment
                 ? this.rangedHitModifiers()
                 : [];
-        return unitModifiers;
+        if (!(entry.equipment instanceof WeaponEquipment) || !unitHasActiveVoidSignature(this.unit)) {
+            return unitModifiers;
+        }
+        return [...unitModifiers, { label: 'Void Signature', modifier: 1 }];
     }
 
     protected getMountedTargetingComputerModifiers(entry: MountedEquipment): ToHitModifierBreakdownEntry[] {

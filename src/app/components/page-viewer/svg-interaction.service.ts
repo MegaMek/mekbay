@@ -19,7 +19,7 @@ import { type ChoicePickerInstance, isChoicePickerInstance, type NumericPickerIn
 import { ToastService } from '../../services/toast.service';
 import { LayoutService } from '../../services/layout.service';
 import { DataService } from '../../services/data.service';
-import { AmmoEquipment } from '../../models/equipment.model';
+import { AmmoEquipment, isCoolantPodEquipment } from '../../models/equipment.model';
 import { createHandlerCommandContext, createHandlerQueryContext, EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -43,6 +43,7 @@ import { ClusterTableDialogComponent } from '../cluster-table-dialog/cluster-tab
 import { hasUnitDefaultReferenceTables } from '../../utils/reference-table-definition';
 import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
 import { isCenterPanelTarget, isPointInCenterPanel, resolveCenterPanelCursorElements } from '../../utils/record-sheet-center-panel.util';
+import { COOLANT_POD_ACTIVE_STATE_KEY } from '../../equipment-handlers/coolant-pod.handler';
 import { canApplyMekCriticalHitToSlot } from '../../utils/mek-critical-hit.util';
 import { uidTranslations } from '../../models/common.model';
 import type { MekRules } from '../../models/rules/mek-rules';
@@ -1191,6 +1192,7 @@ export class SvgInteractionService {
                             if (critSlot.consumed <= 0) return;
                             critSlot.consumed--;
                             unit.setCritSlot(critSlot);
+                            this.syncInventoryAmmoStateForCritSlot(unit, critSlot);
                             showAmmoToast(critSlot, 1);
                         } else if (choice.value == '-1') {
                             if (!unit.isEquipmentOperational(critSlot)) return;
@@ -1200,10 +1202,12 @@ export class SvgInteractionService {
                             if (critSlot.consumed >= totalAmmo) return;
                             critSlot.consumed++;
                             unit.setCritSlot(critSlot);
+                            this.syncInventoryAmmoStateForCritSlot(unit, critSlot);
                             showAmmoToast(critSlot, -1);
                         } else if (choice.value == 'Empty') {
                             critSlot.consumed = totalAmmo;
                             unit.setCritSlot(critSlot);
+                            this.syncInventoryAmmoStateForCritSlot(unit, critSlot);
                             this.toastService.showToast(`Emptied ${labelText}`, 'info');
                         } else if (choice.value == 'Set Ammo') {
                             if (!unit.isEquipmentOperational(critSlot)) return;
@@ -1257,6 +1261,24 @@ export class SvgInteractionService {
 
     private inventoryEntryForCritSlot(unit: CBTForceUnit, critSlot: CriticalSlot): MountedEquipment | null {
         return unit.getInventory().find(entry => entry.critSlots?.some(entryCritSlot => this.sameCritSlot(entryCritSlot, critSlot))) ?? null;
+    }
+
+    private syncInventoryAmmoStateForCritSlot(unit: CBTForceUnit, critSlot: CriticalSlot): void {
+        const entry = this.inventoryEntryForCritSlot(unit, critSlot);
+        if (!entry?.critSlots) return;
+        const currentSlots = entry.critSlots.map(slot =>
+            slot.loc !== undefined && slot.slot !== undefined
+                ? unit.getCritSlot(slot.loc, slot.slot) ?? slot
+                : slot);
+        entry.critSlots = currentSlots;
+        entry.setAmmoState({
+            consumed: currentSlots.reduce((total, slot) => total + (slot.consumed ?? 0), 0),
+        });
+        if (isCoolantPodEquipment(entry.equipment)
+            && (entry.consumed ?? 0) < (entry.originalTotalAmmo ?? entry.totalAmmo ?? 1)) {
+            entry.deleteState(COOLANT_POD_ACTIVE_STATE_KEY);
+        }
+        unit.setInventoryEntry(entry);
     }
 
     private sameCritSlot(left: CriticalSlot, right: CriticalSlot): boolean {

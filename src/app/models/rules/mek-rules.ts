@@ -25,13 +25,22 @@ import {
     type MekConfig,
 } from '../entity/types';
 import { resolveShieldProfile, type ShieldProfile } from '../entity/utils/physical-weapon';
-import type { Equipment } from '../equipment.model';
+import { WeaponEquipment, type Equipment } from '../equipment.model';
 import type { EquipmentFlag } from '../equipment-flags.type';
+import { isFusionUnitEngine } from '../unit-summary.model';
 
 export { LEG_LOCATIONS } from '../entity/types';
 import type { InventoryControlDisplayData } from '../../utils/inventory-control.util';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
 import { uuidv7 } from '../../utils/uuid.util';
+import {
+    isShieldRaised,
+    selectedShieldMode,
+    shieldMountingArm,
+    shieldProtectsLocation,
+    SHIELD_INACTIVE_MODE,
+    SHIELD_PASSIVE_MODE,
+} from '../../utils/shield-mode.util';
 
 type ArmLocation = 'LA' | 'RA';
 
@@ -1020,21 +1029,41 @@ export class MekRules extends UnitTypeRulesBase {
         const moveMode = turnState.effectiveMoveMode();
         const hasXXLEngine = this.hasXXLEngine();
         const superCooledMyomerActive = this.hasActiveSuperCooledMyomer();
+        const heatlessIndustrialEngine = this.hasHeatlessIndustrialEngine();
         if (moveMode === 'stationary') {
             if (superCooledMyomerActive) return 0;
             return hasXXLEngine ? 2 : 0;
         } else if (moveMode === 'walk') {
             if (superCooledMyomerActive) return 0;
+            if (heatlessIndustrialEngine) return 0;
+            if (this.isUsingAirMekMovement(turnState)) return this.computeAirMekHeat(turnState, hasXXLEngine);
             return hasXXLEngine ? 4 : 1;
         } else if (moveMode === 'run' || moveMode === 'sprint') {
             if (superCooledMyomerActive) return 0;
+            if (heatlessIndustrialEngine) return 0;
+            if (this.isUsingAirMekMovement(turnState)) return this.computeAirMekHeat(turnState, hasXXLEngine);
             const runningHeat = hasXXLEngine ? 6 : 2;
             return moveMode === 'sprint' ? Math.floor(runningHeat * 1.5) : runningHeat;
         } else if (moveMode === 'jump') {
+            // MegaMek defaults a dual-system Mek to its jump jets; merely
+            // carrying a booster must not erase their movement heat. Booster-
+            // only Meks still generate no heat when they jump.
+            if (this.hasWorkingMechanicalJumpBooster() && !this.hasWorkingJumpJets()) return 0;
             const distance = turnState.moveDistance() || 0;
             return this.computeJumpHeat(distance, hasXXLEngine);
+        } else if (moveMode === 'UMU') {
+            return hasXXLEngine ? 2 : 1;
         }
         return 0;
+    }
+
+    private isUsingAirMekMovement(turnState: TurnState): boolean {
+        return this.unit.getUnit().subtype === 'Land-Air BattleMek' && turnState.airborne() === true;
+    }
+
+    private computeAirMekHeat(turnState: TurnState, hasXXLEngine: boolean): number {
+        const distance = turnState.moveDistance() || 0;
+        return Math.round(this.computeJumpHeat(distance, hasXXLEngine) / 3);
     }
 
     private computeJumpHeat(distance: number, hasXXLEngine: boolean): number {
@@ -1075,6 +1104,33 @@ export class MekRules extends UnitTypeRulesBase {
         return this.unit.getUnit().engine?.startsWith('XXL ') ?? false;
     }
 
+    private isIndustrialMek(): boolean {
+        return this.unit.getUnit().subtype?.endsWith('Industrial Mek') === true;
+    }
+
+    private hasHeatlessIndustrialEngine(): boolean {
+        const engine = this.unit.getUnit().engine;
+        return this.isIndustrialMek() && (engine === 'ICE' || engine === 'Fuel Cell');
+    }
+
+    private hasWorkingMechanicalJumpBooster(): boolean {
+        return this.unit.getInventory().some(entry =>
+            entry.equipment?.hasFlag('F_JUMP_BOOSTER') === true
+            && this.unit.isEquipmentOperational(entry))
+            || this.unit.getCritSlots().some(slot =>
+                slot.eq?.hasFlag('F_JUMP_BOOSTER') === true
+                && this.unit.isEquipmentOperational(slot));
+    }
+
+    private hasWorkingJumpJets(): boolean {
+        return this.unit.getInventory().some(entry =>
+            entry.equipment?.hasFlag('F_JUMP_JET') === true
+            && this.unit.isEquipmentOperational(entry))
+            || this.unit.getCritSlots().some(slot =>
+                slot.eq?.hasFlag('F_JUMP_JET') === true
+                && this.unit.isEquipmentOperational(slot));
+    }
+
     private hasActiveSuperCooledMyomer(): boolean {
         const superCooledMyomerSlots = this.unit.getCritSlots().filter(slot => this.isSuperCooledMyomerSlot(slot));
         return superCooledMyomerSlots.length > 0
@@ -1087,8 +1143,10 @@ export class MekRules extends UnitTypeRulesBase {
 
     private computeDamagedEngineHeat(): number {
         if (this.unit.destroyed || this.unit.shutdown) return 0;
+        if (!isFusionUnitEngine(this.unit.getUnit().engine)) return 0;
         const critSlots = this.unit.getCritSlots();
-        const engineHits = critSlots.filter(slot => this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot)).length;
+        const engineHits = critSlots.filter(slot =>
+            this.isNamedCrit(slot, 'Engine') && this.isDestroyedOrDestroyingCrit(slot)).length;
         return Math.min(10, engineHits * 5);
     }
 
@@ -2531,6 +2589,9 @@ export class MekRules extends UnitTypeRulesBase {
     override canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {
         if ((action === 'fire' || action === 'physical-attack')
             && this.unit.turnState().effectiveMoveMode() === 'sprint') return false;
+        if ((action === 'fire' || action === 'physical-attack')
+            && !this.isCoreShieldAmsExempt(entry, action)
+            && this.hasRaisedShieldProtectingEntry(entry)) return false;
         if (action === 'fire') return this.fireControl()?.canFire ?? true;
         if (action !== 'physical-attack') return true;
         if (entry.equipment?.hasFlag('F_SHIELD') && !this.standaloneShieldDamageEnabled) return false;
@@ -2595,7 +2656,11 @@ export class MekRules extends UnitTypeRulesBase {
         const fire = this.fireControl();
         const systemsStatus = this.systemsStatus();
         if (!physical || !fire) {
-            return [...hitModifierBreakdown, ...this.getUnitEquipmentToHitModifiers(entry)];
+            return [
+                ...hitModifierBreakdown,
+                ...this.getShieldAttackToHitModifiers(entry),
+                ...this.getUnitEquipmentToHitModifiers(entry),
+            ];
         }
 
         if (entry.isIntrinsicPhysicalAttack()) {
@@ -2670,7 +2735,69 @@ export class MekRules extends UnitTypeRulesBase {
             const tarcompWeapon = entry.parent ?? entry;
             hitModifierBreakdown.push(...this.getMountedTargetingComputerModifiers(tarcompWeapon));
         }
-        return [...hitModifierBreakdown, ...this.getUnitEquipmentToHitModifiers(entry)];
+        return [
+            ...hitModifierBreakdown,
+            ...this.getShieldAttackToHitModifiers(entry),
+            ...this.getUnitEquipmentToHitModifiers(entry),
+        ];
+    }
+
+    private hasRaisedShieldProtectingEntry(entry: MountedEquipment): boolean {
+        const locations = this.equipmentLocations(entry);
+        if (locations.length === 0) return false;
+        const rearMounted = this.isRearMounted(entry);
+        return this.operationalShields().some(shield =>
+            isShieldRaised(shield)
+            && locations.some(location => shieldProtectsLocation(shield, location, rearMounted)));
+    }
+
+    private isCoreShieldAmsExempt(entry: MountedEquipment, action: EquipmentAction): boolean {
+        return this.unit.gameRules.id === 'core2026'
+            && action === 'fire'
+            && entry.equipment?.hasAnyFlag(['F_AMS', 'F_AMS_BAY']) === true;
+    }
+
+    private getShieldAttackToHitModifiers(entry: MountedEquipment): ToHitModifierBreakdownEntry[] {
+        if (this.unit.gameRules.id !== 'tw'
+            || entry.isIntrinsicPhysicalAttack()
+            || (!(entry.equipment instanceof WeaponEquipment) && !entry.isPhysicalWeapon())) return [];
+
+        const locations = this.equipmentLocations(entry);
+        if (locations.length === 0) return [];
+        const rearMounted = this.isRearMounted(entry);
+        let inactiveShieldArm: 'LA' | 'RA' | null = null;
+        for (const shield of this.operationalShields()) {
+            const mode = selectedShieldMode(shield);
+            const arm = shieldMountingArm(shield);
+            if (!arm || !locations.some(location => shieldProtectsLocation(shield, location, rearMounted))) continue;
+            if (mode === SHIELD_PASSIVE_MODE) {
+                return [{ label: `Passive Shield (${arm})`, modifier: 2 }];
+            }
+            if (mode === SHIELD_INACTIVE_MODE) inactiveShieldArm ??= arm;
+        }
+        return inactiveShieldArm
+            ? [{ label: `Shield (${inactiveShieldArm})`, modifier: 1 }]
+            : [];
+    }
+
+    private operationalShields(): MountedEquipment[] {
+        return this.unit.getMountedEquipmentByFlag('F_SHIELD').filter(shield => {
+            if (!this.unit.isEquipmentOperational(shield)) return false;
+            const damage = this.getShieldDamageState(shield);
+            return damage !== null && damage.absorption > 0 && damage.capacity > 0;
+        });
+    }
+
+    private equipmentLocations(entry: MountedEquipment): string[] {
+        return Array.from(new Set([
+            ...Array.from(entry.locations ?? []),
+            ...this.entryCriticalSlots(entry).flatMap(slot => slot.loc ?? []),
+        ]));
+    }
+
+    private isRearMounted(entry: MountedEquipment): boolean {
+        const value = entry.el?.getAttribute('rearMounted')?.toLowerCase();
+        return value === '1' || value === 'true';
     }
 
     private getKickToHitModifierBreakdown(destroyedLegActuatorsCount: number): ToHitModifierBreakdownEntry[] {

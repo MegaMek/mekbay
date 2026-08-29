@@ -3,17 +3,22 @@
 // Author: Drake
 
 import type { EquipmentFlag } from '../models/equipment-flags.type';
+import type { PickerChoice } from '../components/picker/picker.interface';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
 import { EQUIPMENT_HEAT_SOURCE_GROUP, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { TurnState } from '../models/turn-state.model';
 import type { HandlerQueryContext } from '../services/equipment-interaction-registry.service';
+import type { HandlerCommandContext } from '../services/equipment-interaction-registry.service';
 import {
+    cancelConflictingElectronicSuiteActivations,
+    deactivateConflictingElectronicSuites,
     isNovaCewsEffectivelyActive,
     NOVA_CEWS_OFF_STATE,
     NOVA_CEWS_ON_STATE,
     NOVA_CEWS_STATE_KEY,
     NOVA_CEWS_TURNING_OFF_STATE,
     NOVA_CEWS_TURNING_ON_STATE,
+    nextEffectiveNovaCewsState,
     novaCewsState,
 } from '../utils/ecm-state.util';
 import { ToggleHandler } from './base/toggle.handler';
@@ -42,11 +47,27 @@ export class NovaCewsHandler extends ToggleHandler {
     protected override readonly disablingToastVerb = 'turning off';
 
     protected override getToggleState(equipment: MountedEquipment): string {
-        return novaCewsState(equipment);
+        return nextEffectiveNovaCewsState(equipment);
     }
 
     isActive(equipment: MountedEquipment): boolean {
         return isNovaCewsEffectivelyActive(equipment);
+    }
+
+    override handleSelection(
+        equipment: MountedEquipment,
+        choice: PickerChoice,
+        context: HandlerCommandContext,
+    ): boolean {
+        const handled = super.handleSelection(equipment, choice, context);
+        const selectedState = String(choice.value);
+        const activated = (selectedState === NOVA_CEWS_TURNING_ON_STATE
+            || selectedState === NOVA_CEWS_ON_STATE)
+            && novaCewsState(equipment) === selectedState;
+        if (activated && cancelConflictingElectronicSuiteActivations(equipment)) {
+            equipment.owner.turnState().markEquipmentStateChanged();
+        }
+        return handled;
     }
 
     override onEndTurn(equipment: MountedEquipment): void {
@@ -54,14 +75,9 @@ export class NovaCewsHandler extends ToggleHandler {
         super.onEndTurn(equipment);
         if (!activating || novaCewsState(equipment) !== NOVA_CEWS_ON_STATE) return;
 
-        // A unit may operate only one Nova CEWS. Commit the selected mount's
-        // handoff after outgoing-turn effects and heat have already resolved.
-        for (const other of equipment.owner.getInventory()) {
-            if (other === equipment || other.equipment?.flags.has('F_NOVA') !== true) continue;
-            if (other.setState(NOVA_CEWS_STATE_KEY, NOVA_CEWS_OFF_STATE)) {
-                other.owner.setInventoryEntry(other);
-            }
-        }
+        // Commit the selected suite's ECM/probe handoff after outgoing-turn
+        // effects and heat have already resolved.
+        deactivateConflictingElectronicSuites(equipment);
     }
 
     override getInventoryHeatSources(

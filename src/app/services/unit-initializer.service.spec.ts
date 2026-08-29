@@ -8,7 +8,7 @@ import { CBTForce } from '../models/cbt-force.model';
 import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment, type EquipmentMap } from '../models/equipment.model';
 import { EquipmentRegistry } from '../models/equipment-lookup';
-import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
+import { MountedAmmo, MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { isIntrinsicOneShotAmmoMount } from '../utils/ammo-interaction.util';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { DataService } from './data.service';
@@ -36,7 +36,10 @@ function createEquipment(): EquipmentMap {
     const doubleHeatSink = new MiscEquipment({ id: 'ISDoubleHeatSink', name: 'Double Heat Sink', type: 'misc', flags: ['F_DOUBLE_HEAT_SINK'] });
     const improvedJumpJet = new MiscEquipment({ id: 'ISImprovedJumpJet', name: 'Improved Jump Jet', type: 'misc', flags: ['F_JUMP_JET'] });
     const mediumLaser = new WeaponEquipment({ id: 'CLMediumLaser', name: 'Medium Laser', type: 'weapon', weapon: { ammoType: 'NA' } });
+    const machineGun = new WeaponEquipment({ id: 'ISMachineGun', name: 'Machine Gun', type: 'weapon', flags: ['F_MG'], weapon: { ammoType: 'MG', rackSize: 2 } });
+    const machineGunArray = new WeaponEquipment({ id: 'ISMGA', name: 'Machine Gun Array', type: 'weapon', flags: ['F_MGA'], weapon: { ammoType: 'MG', rackSize: 2 } });
     const ultraAc20Ammo = new AmmoEquipment({ id: 'CLUltraAC20Ammo', name: 'Ultra AC/20 Ammo', type: 'ammo', ammo: { type: 'AC_ULTRA', rackSize: 20, shots: 5 } });
+    const coolantPod = new AmmoEquipment({ id: 'Coolant Pod', name: 'Coolant Pod', type: 'ammo', ammo: { type: 'COOLANT_POD', shots: 1 } });
     return {
         [masc.internalName]: masc,
         [supercharger.internalName]: supercharger,
@@ -48,7 +51,10 @@ function createEquipment(): EquipmentMap {
         [doubleHeatSink.internalName]: doubleHeatSink,
         [improvedJumpJet.internalName]: improvedJumpJet,
         [mediumLaser.internalName]: mediumLaser,
+        [machineGun.internalName]: machineGun,
+        [machineGunArray.internalName]: machineGunArray,
         [ultraAc20Ammo.internalName]: ultraAc20Ammo,
+        [coolantPod.internalName]: coolantPod,
     };
 }
 
@@ -180,6 +186,30 @@ describe('UnitInitializerService', () => {
         expect(forceUnit.getInventory().filter(entry => entry.id === 'CLMASC@LT#7').length).toBe(1);
     });
 
+    it('reconstructs a flat record-sheet MGA as a controller with same-location member guns', () => {
+        const forceUnit = createForceUnit();
+        const svg = createSvg(`
+            <g class="inventoryEntry" id="ISMachineGun@LT#0"><text class="location">LT</text></g>
+            <g class="inventoryEntry" id="ISMachineGun@LT#1"><text class="location">LT</text></g>
+            <g class="inventoryEntry" id="ISMachineGun@LT#2"><text class="location">LT</text></g>
+            <g class="inventoryEntry" id="ISMGA@LT#3"><text class="location">LT</text></g>
+            <g class="inventoryEntry" id="ISMachineGun@RT#4"><text class="location">RT</text></g>
+        `);
+
+        service.initializeUnitIfNeeded(forceUnit, svg);
+
+        const inventory = forceUnit.getInventory();
+        const array = inventory.find(entry => entry.id === 'ISMGA@LT#3')!;
+        const linkedIds = array.linkedWith?.map(entry => entry.id);
+        expect(linkedIds).toEqual([
+            'ISMachineGun@LT#0',
+            'ISMachineGun@LT#1',
+            'ISMachineGun@LT#2',
+        ]);
+        expect(array.linkedWith?.every(entry => entry.parent === array)).toBeTrue();
+        expect(inventory.find(entry => entry.id === 'ISMachineGun@RT#4')?.parent).toBeFalsy();
+    });
+
     it('does not mirror Mek ammo critical slots into inventory entries', () => {
         const forceUnit = createForceUnit();
         const svg = createSvg(`
@@ -190,6 +220,28 @@ describe('UnitInitializerService', () => {
         service.initializeUnitIfNeeded(forceUnit, svg);
 
         expect(forceUnit.getCritSlots().filter(entry => entry.id === 'CLUltraAC20Ammo@LT#7').length).toBe(1);
+        expect(forceUnit.getInventory().some(entry => entry.id === 'CLUltraAC20Ammo@LT#7')).toBeFalse();
+    });
+
+    it('materializes a critical-slot Coolant Pod as directly operated equipment', () => {
+        const forceUnit = createForceUnit();
+        const svg = createSvg(`
+            <g class="critSlot ammoSlot" loc="LA" uid="Coolant Pod@LA#9" slot="9" name="Coolant Pod" totalAmmo="1"></g>
+            <g class="critSlot ammoSlot" loc="LT" uid="CLUltraAC20Ammo@LT#7" slot="7" name="CLUltraAC20Ammo" totalAmmo="5"></g>
+        `);
+
+        service.initializeUnitIfNeeded(forceUnit, svg);
+
+        const coolantPod = forceUnit.getInventory().find(entry => entry.id === 'Coolant Pod@LA#9');
+        expect(coolantPod instanceof MountedAmmo).toBeTrue();
+        expect(coolantPod).toEqual(jasmine.objectContaining({
+            name: 'Coolant Pod',
+            totalAmmo: 1,
+            originalTotalAmmo: 1,
+            consumed: 0,
+        }));
+        expect(coolantPod?.critSlots?.length).toBe(1);
+        expect(Array.from(coolantPod?.locations ?? [])).toEqual(['LA']);
         expect(forceUnit.getInventory().some(entry => entry.id === 'CLUltraAC20Ammo@LT#7')).toBeFalse();
     });
 

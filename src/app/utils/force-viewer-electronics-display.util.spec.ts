@@ -37,9 +37,14 @@ function cbtUnit(
     let mounts: MountedEquipment[] = [];
     const unit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
     Object.defineProperties(unit, {
+        destroyed: { value: false },
         getInventory: { value: () => mounts },
         getMountedEquipmentByFlag: {
             value: (flag: EquipmentFlag) => mounts.filter(mount => mount.equipment?.flags.has(flag)),
+        },
+        getCondition: { value: () => false },
+        isEquipmentOperational: {
+            value: (mount: MountedEquipment) => !unavailable.has(mount.id),
         },
         canPerformEquipmentAction: {
             value: (mount: MountedEquipment) => !unavailable.has(mount.id),

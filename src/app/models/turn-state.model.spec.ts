@@ -2411,7 +2411,10 @@ describe('TurnState', () => {
         it('reactivates only when changed criticals alter passive heat sources', () => {
             const engineCrit = createCritSlot('Engine', 'CT');
             const unrelatedCrit = createCritSlot('Sensors', 'HD');
-            const { turnState, critSlots } = createTurnStateHarness({ critSlots: [engineCrit, unrelatedCrit] });
+            const { turnState, critSlots } = createTurnStateHarness({
+                critSlots: [engineCrit, unrelatedCrit],
+                unit: { engine: 'Fusion' },
+            });
             turnState.acknowledgeHeatSources();
 
             unrelatedCrit.destroying = 1;
@@ -2445,7 +2448,10 @@ describe('TurnState', () => {
                 createCritSlot('Engine', 'CT', { id: 'engine@CT#1', destroying: 2 }),
                 createCritSlot('Engine', 'CT', { id: 'engine@CT#2' }),
             ];
-            const { turnState, critSlots } = createTurnStateHarness({ critSlots: engineCrits });
+            const { turnState, critSlots } = createTurnStateHarness({
+                critSlots: engineCrits,
+                unit: { engine: 'Fusion' },
+            });
             turnState.acknowledgeHeatSources();
             expect(turnState.heatProjectionVisible()).toBeFalse();
 
@@ -2462,9 +2468,17 @@ describe('TurnState', () => {
                 createCritSlot('Engine', 'CT', { id: 'engine@CT#0', destroyed: 1 }),
                 createCritSlot('Engine', 'CT', { id: 'engine@CT#1', destroyed: 1 }),
             ];
-            const operational = createTurnStateHarness({ critSlots: engineCrits });
-            const destroyed = createTurnStateHarness({ critSlots: engineCrits, destroyed: true });
-            const shutdown = createTurnStateHarness({ critSlots: engineCrits, shutdown: true });
+            const operational = createTurnStateHarness({ critSlots: engineCrits, unit: { engine: 'Fusion' } });
+            const destroyed = createTurnStateHarness({
+                critSlots: engineCrits,
+                destroyed: true,
+                unit: { engine: 'Fusion' },
+            });
+            const shutdown = createTurnStateHarness({
+                critSlots: engineCrits,
+                shutdown: true,
+                unit: { engine: 'Fusion' },
+            });
 
             expect(getDamagedEngineHeat(operational.turnState)).toBe(10);
             expect(operational.turnState.hasPendingHeatResolution()).toBeTrue();
@@ -2477,7 +2491,10 @@ describe('TurnState', () => {
 
         it('keeps acknowledged engine heat suppressed when movement changes', () => {
             const engineCrit = createCritSlot('Engine', 'CT', { destroying: 1 });
-            const { turnState } = createTurnStateHarness({ critSlots: [engineCrit] });
+            const { turnState } = createTurnStateHarness({
+                critSlots: [engineCrit],
+                unit: { engine: 'Fusion' },
+            });
             turnState.moveMode.set('run');
             turnState.acknowledgeHeatSources();
 
