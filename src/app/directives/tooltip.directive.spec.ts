@@ -10,6 +10,8 @@ import { TooltipDirective } from './tooltip.directive';
 @Component({
     standalone: true,
     imports: [TooltipDirective],
+    // Keep a real mouse pointer in the Karma page from affecting synthetic pointer tests.
+    host: { style: 'pointer-events: none' },
     template: `
         <div class="parent" [tooltip]="'Parent tooltip'" [tooltipDelay]="0">
             <span class="parent-label">Parent</span>
