@@ -610,23 +610,31 @@ describe('DataService', () => {
         await service.initialize();
         await service.whenUnitCatalogSettled();
 
-        expect(noneFaction.eras[introEra.id]).toEqual(new Set<number>([noFactionUnit.id]));
-        expect(noneFaction.eras[openEra.id]).toEqual(new Set<number>([noFactionUnit.id, futureNoFactionUnit.id]));
-        expect(noneFaction.eras[earlyEra.id]).toBeUndefined();
-        expect((earlyEra.units as Set<number>).has(noFactionUnit.id)).toBeFalse();
-        expect((earlyEra.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
-        expect((introEra.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
-        expect((introEra.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
-        expect((openEra.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
-        expect((openEra.units as Set<number>).has(futureNoFactionUnit.id)).toBeTrue();
-        expect((introEra.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
-        expect((openEra.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
-        expect((earlyEra.factions as Set<number>).has(MULFACTION_NONE)).toBeFalse();
-        expect(noneFaction.eras[introEra.id].has(houseUnit.id)).toBeFalse();
+        const activeEras = service.getEras();
+        const activeFactions = service.getFactions();
+        const activeEarly = activeEras.find(era => era.id === earlyEra.id)!;
+        const activeIntro = activeEras.find(era => era.id === introEra.id)!;
+        const activeOpen = activeEras.find(era => era.id === openEra.id)!;
+        const activeNone = activeFactions.find(faction => faction.id === MULFACTION_NONE)!;
+        expect(activeNone.eras[introEra.id]).toEqual(new Set<number>([noFactionUnit.id]));
+        expect(activeNone.eras[openEra.id]).toEqual(new Set<number>([noFactionUnit.id, futureNoFactionUnit.id]));
+        expect(activeNone.eras[earlyEra.id]).toBeUndefined();
+        expect((activeEarly.units as Set<number>).has(noFactionUnit.id)).toBeFalse();
+        expect((activeEarly.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
+        expect((activeIntro.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
+        expect((activeIntro.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
+        expect((activeOpen.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
+        expect((activeOpen.units as Set<number>).has(futureNoFactionUnit.id)).toBeTrue();
+        expect((activeIntro.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
+        expect((activeOpen.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
+        expect((activeEarly.factions as Set<number>).has(MULFACTION_NONE)).toBeFalse();
+        expect(activeNone.eras[introEra.id].has(houseUnit.id)).toBeFalse();
+        expect(noneFaction.eras).toEqual({});
+        expect(introEra.units).toEqual(new Set<number>());
         expect(unitSearchIndexServiceMock.prepareCatalogIndexes).toHaveBeenCalledWith(
             [noFactionUnit, futureNoFactionUnit, houseUnit],
-            [earlyEra, introEra, openEra],
-            [noneFaction, houseFaction],
+            activeEras,
+            activeFactions,
             undefined,
             equipmentCatalogMock.getEquipmentRegistry(),
         );
