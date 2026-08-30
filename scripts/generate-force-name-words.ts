@@ -21,11 +21,11 @@ import { parseCsvRows } from './lib/csv';
 const {
     loadOptionalEnvFile,
     resolveMmDataRoot,
-} = require('./lib/script-paths') as typeof import('./lib/script-paths');
+} = require('./lib/script-paths');
 
 const {
     writeDeterministicFile,
-} = require('./lib/deterministic-output') as typeof import('./lib/deterministic-output');
+} = require('./lib/deterministic-output');
 
 interface WordListSource {
     key: string;
@@ -41,10 +41,11 @@ const RANDOM_COMPANY_NAME_GENERATOR_PATH = path.join(
     'backgrounds',
     'randomCompanyNameGenerator'
 );
-const OUTPUT_PATH = path.join(APP_ROOT, 'public', 'online-assets', 'generated', 'force-name-words.json');
-const PILOT_NAMES_OUTPUT_PATH = path.join(APP_ROOT, 'public', 'online-assets', 'generated', 'pilot-names.json');
+const OUTPUT_PATH = path.join(APP_ROOT, 'public', 'assets', 'force-name-words.json');
+const PILOT_NAMES_OUTPUT_PATH = path.join(APP_ROOT, 'public', 'assets', 'pilot-names.json');
 const NAMES_PATH = path.join('data', 'names');
-const BLOODNAMES_PATH = path.join(NAMES_PATH, 'bloodnames');
+const BLOODNAME_CLANS_PATH = path.join(NAMES_PATH, 'bloodnames', 'clans.xml');
+const BLOODNAMES_PATH = path.join('data', 'universe', 'bloodnames');
 const BLOODNAME_PHENOTYPES: Record<SourceBloodnamePhenotype, BloodnamePhenotype> = {
     GENERAL: '*',
     MEKWARRIOR: 'Mek',
@@ -67,8 +68,7 @@ const bloodnameXmlParser = new XMLParser({
     parseTagValue: false,
     parseAttributeValue: false,
     isArray: (name, jpath) => jpath === 'clans.clan'
-        || jpath === 'bloodnames.bloodname'
-        || ['rivals', 'postReaving', 'acquired', 'shared'].includes(name),
+        || name === 'rivals',
 });
 
 function asArray<T>(value: T | T[] | undefined): T[] {
@@ -90,10 +90,59 @@ function xmlYear(value: unknown, fallback = 0): number {
     return year;
 }
 
-function requiredXmlYear(value: unknown, context: string): number {
-    const text = xmlText(value);
+function yamlText(value: unknown): string {
+    return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+}
+
+function yamlYear(value: unknown, fallback = 0): number {
+    const text = yamlText(value);
+    if (!text) return fallback;
+    if (!/^\d+$/.test(text)) throw new Error(`Invalid Bloodname year: ${text}.`);
+    const year = Number(text);
+    if (!Number.isSafeInteger(year)) throw new Error(`Invalid Bloodname year: ${text}.`);
+    return year;
+}
+
+function requiredYamlYear(value: unknown, context: string): number {
+    const text = yamlText(value);
     if (!text) throw new Error(`${context} is missing its date.`);
-    return xmlYear(value);
+    return yamlYear(value);
+}
+
+function yamlRecord(value: unknown, context: string): Record<string, unknown> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error(`${context} must be a mapping.`);
+    }
+    return value as Record<string, unknown>;
+}
+
+function yamlBoolean(value: unknown, context: string): boolean {
+    if (value == null) return false;
+    if (typeof value !== 'boolean') throw new Error(`${context} must be true or false.`);
+    return value;
+}
+
+function yamlTransfer(value: unknown, context: string, yearOffset = 0): { clan: string; year: number } {
+    const raw = yamlRecord(value, context);
+    const clan = yamlText(raw['clan']);
+    if (!clan) throw new Error(`${context} is missing its Clan.`);
+    return { clan, year: requiredYamlYear(raw['date'], context) + yearOffset };
+}
+
+function yamlTransfers(value: unknown, context: string, yearOffset = 0): { clan: string; year: number }[] {
+    return asArray(value).map((entry, index) => yamlTransfer(entry, `${context} ${index + 1}`, yearOffset));
+}
+
+function listBloodnameYamlFiles(directory: string): string[] {
+    const files: string[] = [];
+    const entries = fs.readdirSync(directory, { withFileTypes: true })
+        .sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+    for (const entry of entries) {
+        const entryPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) files.push(...listBloodnameYamlFiles(entryPath));
+        else if (entry.isFile() && entry.name.endsWith('.yml')) files.push(entryPath);
+    }
+    return files;
 }
 
 // MUL umbrella factions can contain MegaMek factions with different generators.
@@ -312,8 +361,8 @@ export function readMulFactionNameGenerators(
     })) as Record<number, string>;
 }
 
-export function readBloodnameData(directory: string): { clans: Record<string, BloodnameClan>; bloodnames: BloodnameRecord[] } {
-    const clanDocument = bloodnameXmlParser.parse(fs.readFileSync(path.join(directory, 'clans.xml'), 'utf8')) as { clans?: { clan?: Record<string, unknown>[] } };
+export function readBloodnameData(mmDataRoot: string): { clans: Record<string, BloodnameClan>; bloodnames: BloodnameRecord[] } {
+    const clanDocument = bloodnameXmlParser.parse(fs.readFileSync(path.join(mmDataRoot, BLOODNAME_CLANS_PATH), 'utf8')) as { clans?: { clan?: Record<string, unknown>[] } };
     const clanEntries = asArray(clanDocument.clans?.clan).map((raw) => {
         const code = xmlText(raw['code']);
         if (!code) throw new Error('Bloodname Clan is missing its code.');
@@ -350,43 +399,51 @@ export function readBloodnameData(directory: string): { clans: Record<string, Bl
         }
     }
 
-    const document = bloodnameXmlParser.parse(fs.readFileSync(path.join(directory, 'bloodnames.xml'), 'utf8')) as { bloodnames?: { bloodname?: Record<string, unknown>[] } };
-    const bloodnames = asArray(document.bloodnames?.bloodname).map((raw): BloodnameRecord => {
-        const name = xmlText(raw['name']);
-        const clan = xmlText(raw['clan']);
+    const bloodnames = listBloodnameYamlFiles(path.join(mmDataRoot, BLOODNAMES_PATH)).flatMap((filePath) => {
+        const document = yamlRecord(yaml.load(fs.readFileSync(filePath, 'utf8')), `Bloodname file ${filePath}`);
+        const name = yamlText(document['name']);
+        const clan = yamlText(document['clan']);
         if (!name || !clans[clan]) throw new Error(`Bloodname ${name || '<unnamed>'} references unknown Clan ${clan || '<empty>'}.`);
-        const sourcePhenotype = (xmlText(raw['phenotype']) || 'GENERAL') as SourceBloodnamePhenotype;
-        const phenotype = BLOODNAME_PHENOTYPES[sourcePhenotype];
-        if (!phenotype) throw new Error(`Bloodname ${name} has unsupported phenotype ${sourcePhenotype}.`);
-        const acquisitions = [
-            ...asArray(raw['acquired'] as Record<string, unknown>[]).flatMap((entry) => xmlText(entry).split(',').map((code) => ({ clan: code.trim(), year: requiredXmlYear(entry['date'], `Bloodname ${name} acquisition`) + 10 }))),
-            ...asArray(raw['shared'] as Record<string, unknown>[]).flatMap((entry) => xmlText(entry).split(',').map((code) => ({ clan: code.trim(), year: requiredXmlYear(entry['date'], `Bloodname ${name} sharing`) }))),
-        ].filter((entry) => entry.clan);
-        const absorbedRaw = raw['absorbed'] as Record<string, unknown> | undefined;
-        const record: BloodnameRecord = {
-            name,
-            clan,
-            phenotype,
-            exclusive: Object.hasOwn(raw, 'exclusive'),
-            limited: Object.hasOwn(raw, 'limited'),
-            start: raw['created'] == null ? 2807 : xmlYear(raw['created']) + 20,
-            inactive: raw['dormant'] != null ? xmlYear(raw['dormant']) + 10 : xmlYear(raw['reaved']),
-            abjured: xmlYear(raw['abjured']),
-            reactivated: raw['reactivated'] == null ? 0 : xmlYear(raw['reactivated']) + 20,
-            postReaving: asArray(raw['postReaving']).flatMap((entry) => xmlText(entry).split(',').map((code) => code.trim()).filter(Boolean)),
-            acquired: acquisitions,
-            absorbed: absorbedRaw ? { clan: xmlText(absorbedRaw), year: requiredXmlYear(absorbedRaw['date'], `Bloodname ${name} absorption`) } : undefined,
-        };
-        for (const relationship of [
-            ...record.postReaving.map((code) => ({ code, kind: 'post-Reaving' })),
-            ...record.acquired.map((entry) => ({ code: entry.clan, kind: 'acquired/shared' })),
-            ...(record.absorbed ? [{ code: record.absorbed.clan, kind: 'absorbing' }] : []),
-        ]) {
-            if (!clans[relationship.code]) throw new Error(`Bloodname ${name} references unknown ${relationship.kind} Clan ${relationship.code}.`);
-        }
-        if (record.reactivated > 0 && record.inactive === 0) throw new Error(`Bloodname ${name} reactivates without becoming inactive.`);
-        if (record.reactivated > 0 && record.reactivated <= record.inactive) throw new Error(`Bloodname ${name} reactivates before its inactive period.`);
-        return record;
+        const houses = document['houses'];
+        if (!Array.isArray(houses) || houses.length === 0) throw new Error(`Bloodname ${name} must contain at least one House.`);
+
+        return houses.map((house, index): BloodnameRecord => {
+            const context = `Bloodname ${name} House ${index + 1}`;
+            const raw = yamlRecord(house, context);
+            const sourcePhenotype = (yamlText(raw['phenotype']) || 'GENERAL') as SourceBloodnamePhenotype;
+            const phenotype = BLOODNAME_PHENOTYPES[sourcePhenotype];
+            if (!phenotype) throw new Error(`Bloodname ${name} has unsupported phenotype ${sourcePhenotype}.`);
+            const record: BloodnameRecord = {
+                name,
+                clan,
+                phenotype,
+                exclusive: yamlBoolean(raw['exclusive'], `${context} exclusive`),
+                limited: yamlBoolean(raw['limited'], `${context} limited`),
+                start: raw['created'] == null ? 2807 : yamlYear(raw['created']) + 20,
+                inactive: raw['dormant'] != null ? yamlYear(raw['dormant']) + 10 : yamlYear(raw['reaved']),
+                abjured: yamlYear(raw['abjured']),
+                reactivated: raw['reactivated'] == null ? 0 : yamlYear(raw['reactivated']) + 20,
+                postReaving: asArray(raw['postReaving']).flatMap((entry) =>
+                    yamlText(entry).split(',').map((code) => code.trim()).filter(Boolean)),
+                acquired: [
+                    ...yamlTransfers(raw['acquired'], `Bloodname ${name} acquisition`, 10),
+                    ...yamlTransfers(raw['shared'], `Bloodname ${name} sharing`),
+                ],
+                absorbed: raw['absorbed'] == null
+                    ? undefined
+                    : yamlTransfer(raw['absorbed'], `Bloodname ${name} absorption`),
+            };
+            for (const relationship of [
+                ...record.postReaving.map((code) => ({ code, kind: 'post-Reaving' })),
+                ...record.acquired.map((entry) => ({ code: entry.clan, kind: 'acquired/shared' })),
+                ...(record.absorbed ? [{ code: record.absorbed.clan, kind: 'absorbing' }] : []),
+            ]) {
+                if (!clans[relationship.code]) throw new Error(`Bloodname ${name} references unknown ${relationship.kind} Clan ${relationship.code}.`);
+            }
+            if (record.reactivated > 0 && record.inactive === 0) throw new Error(`Bloodname ${name} reactivates without becoming inactive.`);
+            if (record.reactivated > 0 && record.reactivated <= record.inactive) throw new Error(`Bloodname ${name} reactivates before its inactive period.`);
+            return record;
+        });
     });
     return { clans, bloodnames };
 }
@@ -543,7 +600,7 @@ function main(): void {
         surnames: readWeightedNames(path.join(namesRoot, 'surnames.csv')),
     };
     const nameGenerators = readMulFactionNameGenerators(mmDataRoot);
-    const bloodnameData = readBloodnameData(path.join(mmDataRoot, BLOODNAMES_PATH));
+    const bloodnameData = readBloodnameData(mmDataRoot);
     const pilotNames = {
         ...nameGroups,
         factions: readFactionMatrices(path.join(namesRoot, 'factions'), ethnicityCount, nameGroups),
@@ -572,3 +629,4 @@ if (require.main === module) {
         process.exit(1);
     }
 }
+
