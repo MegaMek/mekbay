@@ -2880,13 +2880,14 @@ describe('MekRules', () => {
         }
     });
 
-    it('uses restored equipment movement as the Core pre-damage immobility baseline', () => {
+    it('applies the Core leg-damage floor after destroyed modular armor restores Walking MP', () => {
         const modularArmor = miscEquipment(
             'ISModularArmor',
             'Modular Armor',
             ['F_MODULAR_ARMOR'],
         );
-        const createUnit = (consumed: number) => createForceUnitHarness({
+        // PXH-99-style profile: stored Walk 0 already includes the active armor's penalty.
+        const forceUnit = createForceUnitHarness({
             rulesId: 'core2026',
             walk: 0,
             run: 0,
@@ -2899,24 +2900,27 @@ describe('MekRules', () => {
                     id: 'modular-armor',
                     loc: 'LT',
                     slot: 0,
-                    consumed,
                     eq: modularArmor,
                 },
-                { ...crit('Hip'), id: 'left-hip', loc: 'LL', slot: 0 },
+                { ...crit('Upper Leg Actuator'), id: 'upper-leg', loc: 'LL', slot: 0 },
+                { ...crit('Lower Leg Actuator'), id: 'lower-leg', loc: 'LL', slot: 1 },
+                { ...crit('Foot Actuator'), id: 'foot', loc: 'LL', slot: 2 },
             ],
         });
-        const activeArmor = createUnit(9);
-        const destroyedArmor = createUnit(10);
 
-        expect((activeArmor.rules as MekRules).movementState())
-            .toEqual(jasmine.objectContaining({ walk: 0, run: 0 }));
-        expect(activeArmor.rules.hasComputedCondition('immobile')).toBeFalse();
-        expect((destroyedArmor.rules as MekRules).movementState())
+        expect((forceUnit.rules as MekRules).movementState())
             .toEqual(jasmine.objectContaining({ walk: 0, run: 0, moveImpaired: true }));
-        expect(destroyedArmor.rules.hasComputedCondition('immobile')).toBeTrue();
+        expect(forceUnit.rules.hasComputedCondition('immobile')).toBeFalse();
+
+        const armorSlot = forceUnit.getCritLoc('modular-armor')!;
+        forceUnit.setCritLoc({ ...armorSlot, destroyed: 1 });
+
+        expect((forceUnit.rules as MekRules).movementState())
+            .toEqual(jasmine.objectContaining({ walk: 1, run: 2, moveImpaired: true }));
+        expect(forceUnit.rules.hasComputedCondition('immobile')).toBeFalse();
     });
 
-    it('marks movement impaired when damage consumes Walk MP restored from destroyed equipment', () => {
+    it('distinguishes the Walking MP floor from an actual equipment-restored movement loss', () => {
         const modularArmor = miscEquipment(
             'ISModularArmor',
             'Modular Armor',
@@ -2941,9 +2945,9 @@ describe('MekRules', () => {
         });
 
         expect((forceUnit.rules as MekRules).movementState()).toEqual(jasmine.objectContaining({
-            walk: 0,
-            run: 0,
-            moveImpaired: true,
+            walk: 1,
+            run: 2,
+            moveImpaired: false,
         }));
 
         const shieldUnit = createShieldHarness('core2026', 4).forceUnit;
@@ -3540,6 +3544,31 @@ describe('MekRules', () => {
         });
 
         expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0, maxRun: 0 }));
+    });
+
+    it('floors Core Walking MP lost to leg actuator damage at 1 for Meks with surviving legs', () => {
+        const scenarios = [
+            { context: 'biped', internalLocations: ['LL', 'RL'], damagedLeg: 'LL' },
+            { context: 'tripod', internalLocations: ['LL', 'CL', 'RL'], damagedLeg: 'LL' },
+            { context: 'quad', internalLocations: ['RLL', 'FLL', 'RRL', 'FRL'], damagedLeg: 'RLL' },
+        ];
+
+        for (const scenario of scenarios) {
+            const rules = createRulesHarness({
+                internalLocations: scenario.internalLocations,
+                critSlots: [
+                    { ...crit('Upper Leg Actuator'), id: 'upper-leg', loc: scenario.damagedLeg },
+                    { ...crit('Lower Leg Actuator'), id: 'lower-leg', loc: scenario.damagedLeg },
+                    { ...crit('Foot Actuator'), id: 'foot', loc: scenario.damagedLeg },
+                ],
+                walk: 3,
+                run: 5,
+            });
+
+            expect(rules.movementState())
+                .withContext(scenario.context)
+                .toEqual(jasmine.objectContaining({ walk: 1, run: 2 }));
+        }
     });
 
     it('applies cumulative core2026 quadruped leg movement without forced checks for the first leg', () => {
