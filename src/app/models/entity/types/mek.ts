@@ -191,7 +191,10 @@ export function inferMekConfigFromLocations(locations: Iterable<string>): 'Biped
   let hasCenterLeg = false;
   for (const location of locations) {
     if (QUAD_LEG_LOCATION_SET.has(location)) return 'Quad';
-    if (location === 'CL') hasCenterLeg = true;
+    if (location === 'CL') {
+      hasCenterLeg = true;
+      break;
+    }
   }
   return hasCenterLeg ? 'Tripod' : 'Biped';
 }
