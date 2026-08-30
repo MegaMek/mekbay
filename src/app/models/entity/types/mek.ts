@@ -187,6 +187,7 @@ export function getMekLimbLocations(config: MekConfig): readonly MekLocation[] {
   return isQuadMekConfig(config) ? legs : [...legs, ...ARM_LOCATIONS];
 }
 
+// TODO: This should be dropped and we should use the entity, once we have it
 export function inferMekConfigFromLocations(locations: Iterable<string>): 'Biped' | 'Quad' | 'Tripod' {
   let hasCenterLeg = false;
   for (const location of locations) {
