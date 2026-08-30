@@ -461,6 +461,10 @@ export class TWMekRules extends MekRules {
         return destroyedLegsCount > 0;
     }
 
+    protected override legDamageMinimumWalk(): number {
+        return 0;
+    }
+
     protected override runningWithDestroyedLegRequiresCheck(): boolean {
         return false;
     }

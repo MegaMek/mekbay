@@ -20,7 +20,20 @@ type SliderThumb = 'min' | 'max' | 'single';
 })
 export class RangeSliderComponent {
     private readonly DEBOUNCE_TIME_MS = 150;
+    private readonly DOUBLE_CLICK_TIME_MS = 500;
+    private readonly DOUBLE_CLICK_TOLERANCE_PX = 6;
     private debounceTimer: any;
+    private lastThumbPointerDown: {
+        which: SliderThumb;
+        timeStamp: number;
+        clientX: number;
+        clientY: number;
+    } | null = null;
+    private activePointerStart: {
+        pointerId: number;
+        clientX: number;
+        clientY: number;
+    } | null = null;
     // Softening offset for log scale to avoid huge jumps near the low end.
     // Effectively starts the log curve as if the scale began ~-LOG_OFFSET.
     private readonly LOG_OFFSET = 20;
@@ -430,15 +443,51 @@ export class RangeSliderComponent {
         this.emitCurrentValue();
     }
 
+    private isThumbDoubleClick(which: SliderThumb, event: PointerEvent): boolean {
+        if (event.pointerType !== 'mouse' || event.button !== 0) {
+            this.lastThumbPointerDown = null;
+            return false;
+        }
+
+        const previous = this.lastThumbPointerDown;
+        const elapsed = previous ? event.timeStamp - previous.timeStamp : Infinity;
+        const distanceX = previous ? event.clientX - previous.clientX : Infinity;
+        const distanceY = previous ? event.clientY - previous.clientY : Infinity;
+        const toleranceSquared = this.DOUBLE_CLICK_TOLERANCE_PX ** 2;
+        const isDoubleClick = previous?.which === which
+            && elapsed >= 0
+            && elapsed <= this.DOUBLE_CLICK_TIME_MS
+            && distanceX ** 2 + distanceY ** 2 <= toleranceSquared;
+
+        this.lastThumbPointerDown = isDoubleClick
+            ? null
+            : {
+                which,
+                timeStamp: event.timeStamp,
+                clientX: event.clientX,
+                clientY: event.clientY,
+            };
+        return isDoubleClick;
+    }
+
     startDrag(which: SliderThumb, event: PointerEvent) {
         if (this.disabled()) return;
-        event.preventDefault();
         event.stopPropagation();
+        if (this.isThumbDoubleClick(which, event)) {
+            this.resetThumb(which, event);
+            return;
+        }
+
+        this.activePointerStart = {
+            pointerId: event.pointerId,
+            clientX: event.clientX,
+            clientY: event.clientY,
+        };
         this.dragging.set(which);
         this.focusedThumb.set(which);
         const thumbRef = which === 'min' ? this.leftThumbRef() : this.rightThumbRef();
         const thumbEl = thumbRef?.nativeElement;
-        try { thumbEl?.classList.add('dragging'); thumbEl?.focus(); } catch (e) { /* ignore */ }
+        try { thumbEl?.focus(); } catch (e) { /* ignore */ }
         const container = this.containerRef().nativeElement as HTMLElement;
         try { container.classList.add('dragging'); } catch (e) { /* ignore */ }
 
@@ -446,7 +495,7 @@ export class RangeSliderComponent {
         container.addEventListener('pointerup', this.onDragEnd);
         container.addEventListener('pointercancel', this.onDragEnd);
         try {
-            container.setPointerCapture(event.pointerId);
+            thumbEl?.setPointerCapture(event.pointerId);
         } catch (e) { /* ignore */ }
     }
 
@@ -454,6 +503,15 @@ export class RangeSliderComponent {
         if (!this.dragging()) return;
         event.preventDefault();
         clearTimeout(this.debounceTimer);
+
+        const pointerStart = this.activePointerStart;
+        if (pointerStart?.pointerId === event.pointerId) {
+            const distanceX = event.clientX - pointerStart.clientX;
+            const distanceY = event.clientY - pointerStart.clientY;
+            if (distanceX ** 2 + distanceY ** 2 > this.DOUBLE_CLICK_TOLERANCE_PX ** 2) {
+                this.lastThumbPointerDown = null;
+            }
+        }
 
         const rect = this.containerRef().nativeElement.getBoundingClientRect();
         let percent = (event.clientX - rect.left) / rect.width;
@@ -495,18 +553,24 @@ export class RangeSliderComponent {
 
     onDragEnd = (event: PointerEvent) => {
         clearTimeout(this.debounceTimer);
-        if (this.dragging()) {
+        const draggedThumb = this.dragging();
+        if (draggedThumb) {
             this.emitCurrentValue();
         }
         try { (this.containerRef().nativeElement as HTMLElement).classList.remove('dragging'); } catch (e) { /* ignore */ }
         this.dragging.set(null);
+        this.activePointerStart = null;
+        if (event.type === 'pointercancel') {
+            this.lastThumbPointerDown = null;
+        }
         const container = this.containerRef().nativeElement as HTMLElement;
         container.removeEventListener('pointermove', this.onDrag);
         container.removeEventListener('pointerup', this.onDragEnd);
         container.removeEventListener('pointercancel', this.onDragEnd);
 
         try {
-            container.releasePointerCapture(event.pointerId);
+            const thumbRef = draggedThumb === 'min' ? this.leftThumbRef() : this.rightThumbRef();
+            thumbRef?.nativeElement.releasePointerCapture(event.pointerId);
         } catch (e) { /* ignore */ }
     };
 }

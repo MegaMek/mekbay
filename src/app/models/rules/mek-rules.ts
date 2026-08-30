@@ -1985,13 +1985,15 @@ export class MekRules extends UnitTypeRulesBase {
         let moveImpaired = false;
 
         const internalLocations = systemsStatus.internalLocations;
+        const isBiped = internalLocations.has('LL') && internalLocations.has('RL');
+        const isQuadruped = internalLocations.has('RLL') && internalLocations.has('FLL')
+            && internalLocations.has('RRL') && internalLocations.has('FRL');
         const legMovement = this.applyLegDamageToMovement(
             walkValue,
             restoredRun,
             systemsStatus,
-            internalLocations.has('LL') && internalLocations.has('RL'),
-            internalLocations.has('RLL') && internalLocations.has('FLL')
-                && internalLocations.has('RRL') && internalLocations.has('FRL')
+            isBiped,
+            isQuadruped,
         );
         walkValue = legMovement.walk;
         moveImpaired = legMovement.moveImpaired;
@@ -1999,7 +2001,10 @@ export class MekRules extends UnitTypeRulesBase {
         if (legMovement.applyActuatorDamage) {
             walkValue -= actuatorMovementReduction;
         }
-        walkValue = Math.max(0, Math.min(restoredWalk, walkValue));
+        walkValue = Math.max(
+            this.legDamageMinimumWalk(restoredWalk, systemsStatus.destroyedLegsCount, isBiped, isQuadruped),
+            Math.min(restoredWalk, walkValue),
+        );
         if (actuatorMovementReduction !== 0) {
             moveImpaired = true;
         }
@@ -2041,6 +2046,19 @@ export class MekRules extends UnitTypeRulesBase {
     protected legActuatorMovementReduction(): number {
         const systemsStatus = this.systemsStatus();
         return systemsStatus.destroyedLegActuatorsCount + systemsStatus.destroyedFeetCount;
+    }
+
+    protected legDamageMinimumWalk(
+        preDamageWalk: number,
+        destroyedLegsCount: number,
+        isBiped: boolean,
+        isQuadruped: boolean,
+    ): number {
+        if (preDamageWalk < 1 || (!isBiped && !isQuadruped)) return 0;
+        const allLegsDestroyed = isQuadruped
+            ? destroyedLegsCount >= 4
+            : destroyedLegsCount >= 2;
+        return allLegsDestroyed ? 0 : 1;
     }
 
     private restoredEquipmentWalkMP(equipment: MekMobilityEquipmentState): number {
