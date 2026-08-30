@@ -85,7 +85,7 @@ describe('unit-search-executor', () => {
         });
 
         expect(execution.results).toEqual([unit]);
-        expect(execution.normalizationMatchesByUnitName.size).toBe(0);
+        expect(execution.normalizationMatchesByUnitUuid.size).toBe(0);
     });
 
     it('normalizes Alpha Strike results and excludes units outside the target PV range', () => {
@@ -121,7 +121,7 @@ describe('unit-search-executor', () => {
         });
 
         expect(execution.results.map(unit => unit.name)).toEqual(['Matching']);
-        expect(execution.normalizationMatchesByUnitName.get('Matching')).toEqual({
+        expect(execution.normalizationMatchesByUnitUuid.get(matching.uuid)).toEqual({
             kind: 'pv',
             adjustedValue: 18,
             skill: 5,
@@ -217,7 +217,7 @@ describe('unit-search-executor', () => {
             unitBelongsToForcePack: () => false,
             getAllEraNames: () => [],
             getAllFactionNames: () => [],
-            getIndexedASSpecials: unitId => unitId === unit.name ? indexedSpecials : undefined,
+            getIndexedASSpecials: unitUuid => unitUuid === unit.uuid ? indexedSpecials : undefined,
         });
 
         expect(execution.results.map(result => result.name)).toEqual(['Indexed AC']);
@@ -233,15 +233,15 @@ describe('unit-search-executor', () => {
             as: { ...createEmptyUnit().as, specials: ['TAG'] },
         });
         const parsedByUnit = new Map([
-            [matching.name, parseASSpecials(matching.as.specials)],
-            [unrelated.name, parseASSpecials(unrelated.as.specials)],
+            [matching.uuid, parseASSpecials(matching.as.specials)],
+            [unrelated.uuid, parseASSpecials(unrelated.as.specials)],
         ]);
         const getIndexedUnitIds = jasmine.createSpy('getIndexedUnitIds')
             .and.callFake((_filterKey: string, token: string) => (
-                token === 'AC' ? new Set([matching.name]) : undefined
+                token === 'AC' ? new Set([matching.uuid]) : undefined
             ));
         const getIndexedASSpecials = jasmine.createSpy('getIndexedASSpecials')
-            .and.callFake((unitName: string) => parsedByUnit.get(unitName));
+            .and.callFake((unitUuid: string) => parsedByUnit.get(unitUuid));
 
         const results = applyFilterStateToUnits({
             units: [matching, unrelated],
@@ -275,7 +275,7 @@ describe('unit-search-executor', () => {
 
         expect(results).toEqual([matching]);
         expect(getIndexedUnitIds).toHaveBeenCalledOnceWith('as.specials', 'AC');
-        expect(getIndexedASSpecials).toHaveBeenCalledOnceWith(matching.name);
+        expect(getIndexedASSpecials).toHaveBeenCalledOnceWith(matching.uuid);
     });
 
     it('evaluates selected weapon types independently for OR and AND queries', () => {

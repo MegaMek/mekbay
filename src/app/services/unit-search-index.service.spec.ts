@@ -11,6 +11,7 @@ function createUnit(overrides: TestUnitOverrides): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
+        uuid: unitOverrides.uuid ?? unitOverrides.name ?? 'Unit',
         id: 1,
         name: 'Unit',
         chassis: 'Unit',
@@ -35,6 +36,35 @@ function createUnit(overrides: TestUnitOverrides): UnitSummary {
 }
 
 describe('UnitSearchIndexService', () => {
+    it('uses UUID postings while expanding duplicate MUL ids for era and faction membership', () => {
+        const service = new UnitSearchIndexService();
+        const first = createUnit({ id: 42, uuid: 'uuid-a', name: 'Duplicate Name' });
+        const second = createUnit({ id: 42, uuid: 'uuid-b', name: 'Duplicate Name' });
+        const era = {
+            id: 1,
+            name: 'Test Era',
+            img: '',
+            years: { from: 3000, to: 3100 },
+            units: new Set([42]),
+            factions: new Set<number>(),
+        };
+        const faction = {
+            id: 1,
+            name: 'Test Faction',
+            group: 'Other' as const,
+            img: '',
+            eras: { 1: new Set([42]) },
+        };
+
+        service.rebuildIndexes([first, second], [era], [faction]);
+
+        const expectedUuids = new Set([first.uuid, second.uuid]);
+        expect(service.getIndexedUnitIds('type', 'Mek')).toEqual(expectedUuids);
+        expect(service.getIndexedUnitIds('era', era.name)).toEqual(expectedUuids);
+        expect(service.getIndexedUnitIds('faction', faction.name)).toEqual(expectedUuids);
+        expect(service.getFactionEraUnitUuids([era.name], [faction.name])).toEqual(expectedUuids);
+    });
+
     it('indexes canonical Alpha Strike special tokens, nested turret abilities, and observed parameter shapes', () => {
         const service = new UnitSearchIndexService();
         service.rebuildIndexes([

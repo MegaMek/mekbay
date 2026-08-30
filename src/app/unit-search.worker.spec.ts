@@ -62,26 +62,27 @@ function createUnit(name: string): UnitSummary {
 
 function createSnapshot(): UnitSearchWorkerCorpusSnapshot {
     const unitName = 'Masakari Prime';
+    const unit = createUnit(unitName);
 
     return {
         corpusVersion: '1:0',
-        units: [createUnit(unitName)],
+        units: [unit],
         indexes: {
             era: {
-                'Clan Invasion': [unitName],
-                ilClan: [unitName],
+                'Clan Invasion': [unit.uuid],
+                ilClan: [unit.uuid],
             },
             faction: {
-                'Clan Jade Falcon': [unitName],
-                'Clan Wolf': [unitName],
+                'Clan Jade Falcon': [unit.uuid],
+                'Clan Wolf': [unit.uuid],
             },
         },
         factionEraIndex: {
             'Clan Invasion': {
-                'Clan Jade Falcon': [unitName],
+                'Clan Jade Falcon': [unit.uuid],
             },
             ilClan: {
-                'Clan Wolf': [unitName],
+                'Clan Wolf': [unit.uuid],
             },
         },
     };
@@ -116,8 +117,8 @@ describe('unit-search worker', () => {
             units: [mixedClan, nonmixedClan],
             indexes: {
                 _techBaseDisplay: {
-                    'Mixed (Clan)': ['Mixed Clan Unit'],
-                    Clan: ['Clan Unit'],
+                    'Mixed (Clan)': [mixedClan.uuid],
+                    Clan: [nonmixedClan.uuid],
                 },
             },
             factionEraIndex: {},
@@ -128,12 +129,12 @@ describe('unit-search worker', () => {
             ...baseRequest,
             executionQuery: 'tech="Mixed (Clan)"',
             telemetryQuery: 'tech="Mixed (Clan)"',
-        }).entries).toEqual([{ unitName: 'Mixed Clan Unit' }]);
+        }).entries).toEqual([{ unitUuid: mixedClan.uuid }]);
         expect(__test__.buildResultMessage(runtime, {
             ...baseRequest,
             executionQuery: 'tech=Clan',
             telemetryQuery: 'tech=Clan',
-        }).entries).toEqual([{ unitName: 'Clan Unit' }]);
+        }).entries).toEqual([{ unitUuid: nonmixedClan.uuid }]);
     });
 
     it('requires faction membership in every selected multistate era', () => {
@@ -141,6 +142,49 @@ describe('unit-search worker', () => {
         const result = __test__.buildResultMessage(runtime, createRequest());
 
         expect(result.entries).toEqual([]);
+    });
+
+    it('evaluates exclusive faction membership only within the queried era', () => {
+        const exclusiveUnit = createUnit('Exclusive Unit');
+        const sharedInLaterEra = createUnit('Shared In Later Era');
+        const runtime = __test__.hydrateCorpus({
+            corpusVersion: '1:0',
+            units: [exclusiveUnit, sharedInLaterEra],
+            indexes: {
+                era: {
+                    'Clan Invasion': [exclusiveUnit.uuid, sharedInLaterEra.uuid],
+                    Jihad: [sharedInLaterEra.uuid],
+                },
+                faction: {
+                    'Clan Coyote': [exclusiveUnit.uuid, sharedInLaterEra.uuid],
+                    'Federated Suns': [sharedInLaterEra.uuid],
+                },
+            },
+            factionEraIndex: {
+                'Clan Invasion': {
+                    'Clan Coyote': [exclusiveUnit.uuid, sharedInLaterEra.uuid],
+                },
+                Jihad: {
+                    'Federated Suns': [sharedInLaterEra.uuid],
+                },
+            },
+        });
+        const request = {
+            ...createRequest(),
+            executionQuery: 'era="Clan Invasion" faction=="Clan Coyote"',
+            telemetryQuery: 'era="Clan Invasion" faction=="Clan Coyote"',
+        };
+
+        expect(__test__.buildResultMessage(runtime, request).entries).toEqual([
+            { unitUuid: exclusiveUnit.uuid },
+            { unitUuid: sharedInLaterEra.uuid },
+        ]);
+
+        expect(__test__.buildResultMessage(runtime, {
+            ...request,
+            executionQuery: 'faction=="Clan Coyote"',
+            telemetryQuery: 'faction=="Clan Coyote"',
+        }).entries).toEqual([{ unitUuid: exclusiveUnit.uuid }]);
     });
 
     it('emits normalization metadata only in canonical result entries', () => {
@@ -167,7 +211,7 @@ describe('unit-search worker', () => {
         });
 
         expect(result.entries).toEqual([{
-            unitName: 'Normalized Unit',
+            unitUuid: unit.uuid,
             match: { kind: 'bv', adjustedValue: 1000, gunnery: 4, piloting: 5 },
         }]);
     });
@@ -186,12 +230,12 @@ describe('unit-search worker', () => {
             units: [publishedCanon, unpublishedNonCanon],
             indexes: {
                 canon: {
-                    yes: ['Published Canon'],
-                    no: ['Unpublished Non-Canon'],
+                    yes: [publishedCanon.uuid],
+                    no: [unpublishedNonCanon.uuid],
                 },
                 published: {
-                    yes: ['Published Canon'],
-                    no: ['Unpublished Non-Canon'],
+                    yes: [publishedCanon.uuid],
+                    no: [unpublishedNonCanon.uuid],
                 },
             },
             factionEraIndex: {},
@@ -202,17 +246,17 @@ describe('unit-search worker', () => {
             ...baseRequest,
             executionQuery: 'published:yes',
             telemetryQuery: 'published:yes',
-        }).entries).toEqual([{ unitName: 'Published Canon' }]);
+        }).entries).toEqual([{ unitUuid: publishedCanon.uuid }]);
         expect(__test__.buildResultMessage(runtime, {
             ...baseRequest,
             executionQuery: 'published:no',
             telemetryQuery: 'published:no',
-        }).entries).toEqual([{ unitName: 'Unpublished Non-Canon' }]);
+        }).entries).toEqual([{ unitUuid: unpublishedNonCanon.uuid }]);
         expect(__test__.buildResultMessage(runtime, {
             ...baseRequest,
             executionQuery: 'canon:no',
             telemetryQuery: 'canon:no',
-        }).entries).toEqual([{ unitName: 'Unpublished Non-Canon' }]);
+        }).entries).toEqual([{ unitUuid: unpublishedNonCanon.uuid }]);
     });
 
     it('matches a complete rulebook bucket in the worker', () => {
@@ -226,12 +270,12 @@ describe('unit-search worker', () => {
             units: [unitA, unitB],
             indexes: {
                 rulesRefs: {
-                    Core: ['Unit A'],
-                    TW: ['Unit A', 'Unit B'],
-                    TM: ['Unit B'],
-                    'IO:AE': ['Unit A'],
-                    Shrap01: ['Unit B'],
-                    AAA: ['Unit B'],
+                    Core: [unitA.uuid],
+                    TW: [unitA.uuid, unitB.uuid],
+                    TM: [unitB.uuid],
+                    'IO:AE': [unitA.uuid],
+                    Shrap01: [unitB.uuid],
+                    AAA: [unitB.uuid],
                 },
             },
             factionEraIndex: {},
@@ -244,13 +288,13 @@ describe('unit-search worker', () => {
             telemetryQuery: executionQuery,
         }).entries;
 
-        expect(getEntries('rulesRefs=Core')).toEqual([{ unitName: 'Unit A' }]);
+        expect(getEntries('rulesRefs=Core')).toEqual([{ unitUuid: unitA.uuid }]);
         expect(getEntries('rulesRefs=TW')).toEqual([]);
-        expect(getEntries('rulesRefs=TW,IO:AE')).toEqual([{ unitName: 'Unit A' }]);
+        expect(getEntries('rulesRefs=TW,IO:AE')).toEqual([{ unitUuid: unitA.uuid }]);
         expect(getEntries('rulesRefs=TW,Shrap01')).toEqual([]);
-        expect(getEntries('rulesRefs=TW,Shrap01,AAA')).toEqual([{ unitName: 'Unit B' }]);
-        expect(getEntries('rulesRefs=IO:AE')).toEqual([{ unitName: 'Unit A' }]);
-        expect(getEntries('rulesRefs=Shrap01')).toEqual([{ unitName: 'Unit B' }]);
+        expect(getEntries('rulesRefs=TW,Shrap01,AAA')).toEqual([{ unitUuid: unitB.uuid }]);
+        expect(getEntries('rulesRefs=IO:AE')).toEqual([{ unitUuid: unitA.uuid }]);
+        expect(getEntries('rulesRefs=Shrap01')).toEqual([{ unitUuid: unitB.uuid }]);
         expect(getEntries('rulesRefs=AAA')).toEqual([]);
     });
 
@@ -267,9 +311,9 @@ describe('unit-search worker', () => {
             units: [lowAC, nestedHighAC, noAC],
             indexes: {
                 'as.specials': {
-                    AC: ['Low AC', 'Nested High AC'],
-                    TAG: ['No AC'],
-                    TUR: ['Nested High AC'],
+                    AC: [lowAC.uuid, nestedHighAC.uuid],
+                    TAG: [noAC.uuid],
+                    TUR: [nestedHighAC.uuid],
                 },
             },
             factionEraIndex: {},
@@ -284,7 +328,7 @@ describe('unit-search worker', () => {
             executionQuery: query,
             telemetryQuery: query,
             gameSystem: GameSystem.ALPHA_STRIKE,
-        }).entries).toEqual([{ unitName: 'Nested High AC' }]);
+        }).entries).toEqual([{ unitUuid: nestedHighAC.uuid }]);
     });
 
     it('keeps repeated specials constraints and implicit values identical in worker execution', () => {
@@ -302,8 +346,8 @@ describe('unit-search worker', () => {
             units: [mediumOnly, longOnly, both, implicitSnarc],
             indexes: {
                 'as.specials': {
-                    AC: ['Medium Only', 'Long Only', 'Both Ranges'],
-                    SNARC: ['Implicit SNARC'],
+                    AC: [mediumOnly.uuid, longOnly.uuid, both.uuid],
+                    SNARC: [implicitSnarc.uuid],
                 },
             },
             factionEraIndex: {},
@@ -316,8 +360,8 @@ describe('unit-search worker', () => {
         }).entries;
 
         expect(execute('specials&="AC*/>=4/*" specials&="AC*/*/>=3"'))
-            .toEqual([{ unitName: 'Both Ranges' }]);
+            .toEqual([{ unitUuid: both.uuid }]);
         expect(execute('specials="SNARC>=1"'))
-            .toEqual([{ unitName: 'Implicit SNARC' }]);
+            .toEqual([{ unitUuid: implicitSnarc.uuid }]);
     });
 });

@@ -48,7 +48,7 @@ export interface UnitFilterKernelDependencies {
     getForcePackLookupSet: (packName: string) => ReadonlySet<string> | undefined;
     getAvailabilityLookupKey: (unit: UnitSummary) => string;
     getIndexedUnitIds?: (filterKey: string, value: string) => ReadonlySet<string> | undefined;
-    getIndexedASSpecials?: (unitName: string) => ParsedASSpecials | undefined;
+    getIndexedASSpecials?: (unitUuid: string) => ParsedASSpecials | undefined;
 }
 
 interface ApplyUnitFilterStateRequest {
@@ -322,12 +322,12 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                     )
                     : null;
                 if (indexedCandidates) {
-                    results = results.filter(unit => indexedCandidates.has(unit.name));
+                    results = results.filter(unit => indexedCandidates.has(unit.uuid));
                 }
                 results = results.filter(unit => unitMatchesASSpecialSelections(
                     dependencies.getProperty(unit, conf.key),
                     specialSelections,
-                    dependencies.getIndexedASSpecials?.(unit.name),
+                    dependencies.getIndexedASSpecials?.(unit.uuid),
                 ));
                 continue;
             }

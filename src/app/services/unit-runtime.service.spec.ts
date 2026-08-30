@@ -64,6 +64,18 @@ describe('UnitRuntimeService', () => {
         expect(service.getUnitByName('MAD CAT PRIME')).toBe(unit);
     });
 
+    it('retrieves distinct units by UUID even when names collide', () => {
+        const first = createEmptyUnit({ uuid: 'uuid-a', name: 'Duplicate Name' });
+        const second = createEmptyUnit({ uuid: 'uuid-b', name: 'Duplicate Name' });
+
+        service.preprocessUnits([first, second]);
+
+        expect(service.getUnitsByName('duplicate name')).toEqual([first, second]);
+        expect(service.getUnitByName('Duplicate Name')).toBe(second);
+        expect(service.getUnitByUuid(first.uuid)).toBe(first);
+        expect(service.getUnitByUuid(second.uuid)).toBe(second);
+    });
+
     it('precomputes mixed-aware tech-base display values before indexing', () => {
         const units = [
             createEmptyUnit({ name: 'Inner Sphere', techBase: 'Inner Sphere', mixed: false }),

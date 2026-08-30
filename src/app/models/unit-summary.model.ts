@@ -158,9 +158,9 @@ export interface UnitFluffCatalog {
 }
 
 export interface UnitSummary {
-    uuid: string; // Unique identifier of the unit
-    name: string; // Internal unique name
-    id: number; // MUL id
+    uuid: string; // Stable, unique internal unit identity
+    name: string; // Catalog/URL name; not guaranteed unique
+    id: number; // External MUL id; not guaranteed unique
     chassis: string;
     model: string;
     year: number;

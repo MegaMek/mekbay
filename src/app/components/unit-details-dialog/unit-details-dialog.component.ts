@@ -43,6 +43,7 @@ export interface UnitDetailsDialogData {
     unitIndex: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
+    /** Search normalization context keyed by unit UUID. */
     searchResultContexts?: ReadonlyMap<string, UnitSearchNormalizationMatch>;
     hideAddButton?: boolean;
     /** When true, ADD only emits the unit without adding to force */
@@ -137,8 +138,8 @@ export class UnitDetailsDialogComponent {
     });
     readonly searchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const currentUnit = this.unitList()[this.unitIndex()];
-        const unitName = currentUnit instanceof ForceUnit ? currentUnit.getUnit().name : currentUnit?.name;
-        return unitName ? this.data.searchResultContexts?.get(unitName) ?? null : null;
+        const unitUuid = currentUnit instanceof ForceUnit ? currentUnit.getUnit().uuid : currentUnit?.uuid;
+        return unitUuid ? this.data.searchResultContexts?.get(unitUuid) ?? null : null;
     });
     gunnerySkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
@@ -167,8 +168,8 @@ export class UnitDetailsDialogComponent {
     isSwipeAnimating = signal(false);
     incomingUnit = signal<UnitSummary | null>(null);
     readonly incomingSearchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
-        const unitName = this.incomingUnit()?.name;
-        return unitName ? this.data.searchResultContexts?.get(unitName) ?? null : null;
+        const unitUuid = this.incomingUnit()?.uuid;
+        return unitUuid ? this.data.searchResultContexts?.get(unitUuid) ?? null : null;
     });
     readonly incomingGunnerySkill = computed<number | undefined>(() => {
         const context = this.incomingSearchResultContext();

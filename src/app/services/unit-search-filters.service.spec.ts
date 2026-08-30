@@ -86,6 +86,7 @@ function cloneUnit<T>(value: T): T {
 
 function prepareUnitForSearch(unit: UnitSummary, index: number): UnitSummary {
     const clone = cloneUnit(unit);
+    clone.uuid = `${unit.uuid}__${index}`;
     clone.id = index + 1;
     clone.name = `${unit.name}__${index}`;
     clone._nameTags = clone._nameTags ?? [];
@@ -356,6 +357,16 @@ function createStandaloneBundle(): BenchmarkBundle {
             }],
         },
     };
+}
+
+function createWorkerEntries(bundle: BenchmarkBundle, unitNames: readonly string[]) {
+    return unitNames.map((unitName) => {
+        const unit = bundle.units.units.find(candidate => candidate.name === unitName);
+        if (!unit) {
+            throw new Error(`Missing test unit: ${unitName}`);
+        }
+        return { unitUuid: unit.uuid };
+    });
 }
 
 const FREE_WORLDS_LEAGUE_FACTION = 'Free Worlds League';
@@ -1455,7 +1466,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: bundle.units.units.map((unit) => ({ unitName: unit.name })),
+            entries: bundle.units.units.map((unit) => ({ unitUuid: unit.uuid })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -1483,6 +1494,10 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(request.executionQuery).toBe('pv>0 or pv<0');
         expect(request.telemetryQuery).toBe('pv>0 or pv<0');
+
+        service.setFilter('type', ['Mek']);
+        const filteredRequest = (service as any).buildWorkerSearchRequest(corpusVersion);
+        expect(filteredRequest.executionQuery).toBe('(pv>0 or pv<0) type=Mek');
     });
 
     it('distinguishes force packs by subtype when chassis and type match', () => {
@@ -3040,7 +3055,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Very Common Crab', 'Unknown Crab'].map(unitName => ({ unitName })),
+            entries: createWorkerEntries(bundle, ['Very Common Crab', 'Unknown Crab']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3105,7 +3120,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Known Crab', 'Unknown Crab'].map(unitName => ({ unitName })),
+            entries: createWorkerEntries(bundle, ['Known Crab', 'Unknown Crab']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3438,13 +3453,13 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(Array.from((service as any).getSemanticIndexedUnitIds('era', 'Age of War', {
             factionNames: ['Draconis Combine'],
-        }) ?? [])).toEqual(['Combine Scout']);
+        }) ?? [])).toEqual([bundle.units.units[0].uuid]);
         expect(Array.from((service as any).getSemanticIndexedUnitIds('era', 'Age of War', {
             factionNames: ['Federated Suns'],
-        }) ?? [])).toEqual(['Suns Raider']);
+        }) ?? [])).toEqual([bundle.units.units[1].uuid]);
         expect(Array.from((service as any).getSemanticIndexedUnitIds('faction', 'Draconis Combine', {
             eraNames: ['Age of War'],
-        }) ?? [])).toEqual(['Combine Scout']);
+        }) ?? [])).toEqual([bundle.units.units[0].uuid]);
         expect(Array.from((service as any).getSemanticIndexedUnitIds('faction', 'Federated Suns', {
             eraNames: ['Succession Wars'],
         }) ?? [])).toEqual([]);
@@ -3714,7 +3729,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: bundle.units.units.map((unit) => ({ unitName: unit.name })),
+            entries: bundle.units.units.map((unit) => ({ unitUuid: unit.uuid })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3869,7 +3884,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: firstExecuteMessage.request.revision,
             corpusVersion: firstExecuteMessage.request.corpusVersion,
             telemetryQuery: firstExecuteMessage.request.telemetryQuery,
-            entries: ['BattleMaster C3', 'Common Dominion Mek'].map(unitName => ({ unitName })),
+            entries: createWorkerEntries(bundle, ['BattleMaster C3', 'Common Dominion Mek']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -3980,7 +3995,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: firstExecuteMessage.request.revision,
             corpusVersion: firstExecuteMessage.request.corpusVersion,
             telemetryQuery: firstExecuteMessage.request.telemetryQuery,
-            entries: [{ unitName: 'BattleMaster C3' }],
+            entries: createWorkerEntries(bundle, ['BattleMaster C3']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4067,7 +4082,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Rare Salvage Crab', 'Common Requisition Crab'].map(unitName => ({ unitName })),
+            entries: createWorkerEntries(bundle, ['Rare Salvage Crab', 'Common Requisition Crab']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4191,7 +4206,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['BattleMaster C3', 'Common Dominion Mek'].map(unitName => ({ unitName })),
+            entries: createWorkerEntries(bundle, ['BattleMaster C3', 'Common Dominion Mek']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4300,7 +4315,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: [{ unitName: 'BattleMaster C3' }],
+            entries: createWorkerEntries(bundle, ['BattleMaster C3']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4367,7 +4382,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Very Common Crab', 'Unknown Crab'].map(unitName => ({ unitName })),
+            entries: createWorkerEntries(bundle, ['Very Common Crab', 'Unknown Crab']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4496,7 +4511,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Known Unit', 'Unknown Unit'].map(unitName => ({ unitName })),
+            entries: createWorkerEntries(bundle, ['Known Unit', 'Unknown Unit']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -4636,7 +4651,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: ['Low Unit', 'Unknown Unit', 'High Unit'].map(unitName => ({ unitName })),
+            entries: createWorkerEntries(bundle, ['Low Unit', 'Unknown Unit', 'High Unit']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -5671,8 +5686,61 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
 
         const workerSnapshot = (service as any).getWorkerCorpusSnapshot((service as any).getWorkerCorpusVersion());
-        expect(workerSnapshot.factionEraIndex['Clan Invasion']?.['Clan Coyote']).toEqual(['Test Mek']);
-        expect(workerSnapshot.factionEraIndex['Jihad']?.['Clan Coyote']).toEqual(['Test Tank']);
+        expect(workerSnapshot.factionEraIndex['Clan Invasion']?.['Clan Coyote']).toEqual([bundle.units.units[0].uuid]);
+        expect(workerSnapshot.factionEraIndex['Jihad']?.['Clan Coyote']).toEqual([bundle.units.units[1].uuid]);
+    });
+
+    it('evaluates exclusive semantic faction filters within a UI-selected era', async () => {
+        const bundle = createStandaloneBundle();
+        bundle.eras.eras = [
+            {
+                id: 1,
+                name: 'Clan Invasion',
+                img: '',
+                years: { from: 3049, to: 3061 },
+                units: [1, 2],
+                factions: [],
+            },
+            {
+                id: 2,
+                name: 'Jihad',
+                img: '',
+                years: { from: 3067, to: 3081 },
+                units: [2],
+                factions: [],
+            },
+        ];
+        bundle.factions.factions = [
+            {
+                id: 1,
+                name: 'Clan Coyote',
+                group: 'IS Clan',
+                img: '',
+                eras: {
+                    1: new Set([1, 2]),
+                },
+            },
+            {
+                id: 2,
+                name: 'Federated Suns',
+                group: 'Inner Sphere',
+                img: '',
+                eras: {
+                    2: new Set([2]),
+                },
+            },
+        ];
+
+        const { service } = createService(bundle);
+        service.setSearchText('faction=="Clan Coyote"');
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
+
+        service.setFilter('era', ['Clan Invasion']);
+        await flushAsyncWork();
+
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
     });
 
     it('requires faction membership in every selected multistate era', async () => {
@@ -5999,10 +6067,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
             return;
         }
 
-        const { dataService, service } = createService(buildSmallBundle(benchmarkBundle));
+        const bundle = buildSmallBundle(benchmarkBundle);
+        const { dataService, service } = createService(bundle);
         const initialTagIds = dataService.getIndexedUnitIds('_tags', 'tag-a');
 
-        expect(initialTagIds?.has('Test Mek')).toBeTrue();
+        expect(initialTagIds?.has(bundle.units.units[0].uuid)).toBeTrue();
 
         (dataService as any).applyTagDataToUnits({
             tags: {
@@ -6028,8 +6097,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const namedTagOptions = tagOptions.filter(option => typeof option !== 'number');
 
         expect(dataService.getIndexedUnitIds('_tags', 'tag-a')).toBeUndefined();
-        expect(indexedAlphaIds?.has('Test Mek')).toBeTrue();
-        expect(indexedBetaIds?.has('Test Tank')).toBeTrue();
+        expect(indexedAlphaIds?.has(bundle.units.units[0].uuid)).toBeTrue();
+        expect(indexedBetaIds?.has(bundle.units.units[1].uuid)).toBeTrue();
         expect(dropdownUniverse).toEqual(['alpha-tag', 'beta-tag']);
         expect(namedTagOptions.map(option => option.name)).toEqual(['alpha-tag', 'beta-tag']);
     });
@@ -6431,7 +6500,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: executeMessage.request.revision,
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
-            entries: [{ unitName: bundle.units.units[0].name }],
+            entries: [{ unitUuid: bundle.units.units[0].uuid }],
             stages: [],
             totalMs: 1,
             unitCount: 2,
@@ -6465,7 +6534,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             corpusVersion: executeMessage.request.corpusVersion,
             telemetryQuery: executeMessage.request.telemetryQuery,
             entries: [{
-                unitName: unit.name,
+                unitUuid: unit.uuid,
                 match: { kind: 'pv', adjustedValue: unit.as.PV, skill: 8 },
             }],
             stages: [],
@@ -6517,7 +6586,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: firstExecute.request.revision,
             corpusVersion: firstExecute.request.corpusVersion,
             telemetryQuery: firstExecute.request.telemetryQuery,
-            entries: [{ unitName: bundle.units.units[0].name }],
+            entries: [{ unitUuid: bundle.units.units[0].uuid }],
             stages: [],
             totalMs: 1,
             unitCount: 2,
@@ -6532,7 +6601,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: secondExecute.request.revision,
             corpusVersion: secondExecute.request.corpusVersion,
             telemetryQuery: secondExecute.request.telemetryQuery,
-            entries: [{ unitName: bundle.units.units[1].name }],
+            entries: [{ unitUuid: bundle.units.units[1].uuid }],
             stages: [],
             totalMs: 1,
             unitCount: 2,
@@ -6580,7 +6649,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: initialExecute.request.revision,
             corpusVersion: initialExecute.request.corpusVersion,
             telemetryQuery: initialExecute.request.telemetryQuery,
-            entries: bundle.units.units.map((unit) => ({ unitName: unit.name })),
+            entries: bundle.units.units.map((unit) => ({ unitUuid: unit.uuid })),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,
@@ -6603,7 +6672,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             revision: updatedExecute.request.revision,
             corpusVersion: updatedExecute.request.corpusVersion,
             telemetryQuery: updatedExecute.request.telemetryQuery,
-            entries: [{ unitName: 'BattleMaster C3' }],
+            entries: createWorkerEntries(bundle, ['BattleMaster C3']),
             stages: [],
             totalMs: 1,
             unitCount: bundle.units.units.length,

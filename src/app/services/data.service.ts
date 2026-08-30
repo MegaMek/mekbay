@@ -307,6 +307,14 @@ export class DataService {
         return this.unitRuntimeService.getUnitByName(name);
     }
 
+    public getUnitsByName(name: string): readonly UnitSummary[] {
+        return this.unitRuntimeService.getUnitsByName(name);
+    }
+
+    public getUnitByUuid(uuid: string): UnitSummary | undefined {
+        return this.unitRuntimeService.getUnitByUuid(uuid);
+    }
+
     public getUnitFluff(unit: Pick<UnitSummary, 'name' | 'fluff' | 'serverHost'>): Promise<UnitFluffCatalogEntry | undefined> {
         return this.unitsFluffCatalog.getUnitFluff(unit);
     }
@@ -432,8 +440,8 @@ export class DataService {
         return this.unitSearchIndexService.getIndexedFilterValues(filterKey);
     }
 
-    public getIndexedASSpecials(unitName: string): ParsedASSpecials | undefined {
-        return this.unitSearchIndexService.getIndexedASSpecials(unitName);
+    public getIndexedASSpecials(unitUuid: string): ParsedASSpecials | undefined {
+        return this.unitSearchIndexService.getIndexedASSpecials(unitUuid);
     }
 
     public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
@@ -442,6 +450,10 @@ export class DataService {
 
     public getSearchWorkerFactionEraSnapshot(): UnitSearchWorkerFactionEraSnapshot {
         return this.unitSearchIndexService.getSearchWorkerFactionEraSnapshot();
+    }
+
+    public getFactionEraUnitUuids(eraNames: readonly string[], factionNames: readonly string[]): ReadonlySet<string> {
+        return this.unitSearchIndexService.getFactionEraUnitUuids(eraNames, factionNames);
     }
 
     public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {

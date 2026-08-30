@@ -31,7 +31,7 @@ export function getAdvOptionsContextSnapshot(
 
 export function getSnapshotUnitIds(snapshot: AdvOptionsContextSnapshot, units: UnitSummary[]): Set<string> {
     if (!snapshot.unitIds) {
-        snapshot.unitIds = new Set(units.map(unit => unit.name));
+        snapshot.unitIds = new Set(units.map(unit => unit.uuid));
     }
     return snapshot.unitIds;
 }

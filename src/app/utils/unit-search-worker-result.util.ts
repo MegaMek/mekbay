@@ -20,41 +20,41 @@ interface WorkerResultTelemetryContext {
 
 export interface HydratedWorkerSearchResult {
     units: UnitSummary[];
-    normalizationMatchesByUnitName: ReadonlyMap<string, UnitSearchNormalizationMatch>;
+    normalizationMatchesByUnitUuid: ReadonlyMap<string, UnitSearchNormalizationMatch>;
 }
 
 export function hydrateWorkerSearchResult(
     result: UnitSearchWorkerResultMessage,
-    getUnitByName: (unitName: string) => UnitSummary | undefined,
+    getUnitByUuid: (unitUuid: string) => UnitSummary | undefined,
 ): HydratedWorkerSearchResult {
     const units: UnitSummary[] = [];
-    const normalizationMatchesByUnitName = new Map<string, UnitSearchNormalizationMatch>();
-    const seenUnitNames = new Set<string>();
+    const normalizationMatchesByUnitUuid = new Map<string, UnitSearchNormalizationMatch>();
+    const seenUnitUuids = new Set<string>();
 
     for (const entry of result.entries) {
-        if (seenUnitNames.has(entry.unitName)) {
+        if (seenUnitUuids.has(entry.unitUuid)) {
             continue;
         }
-        const unit = getUnitByName(entry.unitName);
+        const unit = getUnitByUuid(entry.unitUuid);
         if (!unit) {
             continue;
         }
 
-        seenUnitNames.add(entry.unitName);
+        seenUnitUuids.add(entry.unitUuid);
         units.push(unit);
         if (entry.match) {
-            normalizationMatchesByUnitName.set(entry.unitName, entry.match);
+            normalizationMatchesByUnitUuid.set(entry.unitUuid, entry.match);
         }
     }
 
-    return { units, normalizationMatchesByUnitName };
+    return { units, normalizationMatchesByUnitUuid };
 }
 
 export function hydrateWorkerResultUnits(
     result: UnitSearchWorkerResultMessage,
-    getUnitByName: (unitName: string) => UnitSummary | undefined,
+    getUnitByUuid: (unitUuid: string) => UnitSummary | undefined,
 ): UnitSummary[] {
-    return hydrateWorkerSearchResult(result, getUnitByName).units;
+    return hydrateWorkerSearchResult(result, getUnitByUuid).units;
 }
 
 export function buildWorkerSearchTelemetrySnapshot(

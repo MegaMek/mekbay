@@ -20,17 +20,26 @@ export class UnitRuntimeService {
     private readonly publicTagsService = inject(PublicTagsService);
     private readonly unitSearchIndexService = inject(UnitSearchIndexService);
 
-    private unitNameMap = new Map<string, UnitSummary>();
+    private unitsByNameMap = new Map<string, UnitSummary[]>();
+    private unitUuidMap = new Map<string, UnitSummary>();
 
     private static getUnitNameKey(name: string): string {
         return name.toLowerCase();
     }
 
     public preprocessUnits(units: UnitSummary[]): void {
-        this.unitNameMap.clear();
+        this.unitsByNameMap.clear();
+        this.unitUuidMap.clear();
         for (const unit of units) {
             unit._techBaseDisplay = getUnitTechBaseDisplay(unit);
-            this.unitNameMap.set(UnitRuntimeService.getUnitNameKey(unit.name), unit);
+            const nameKey = UnitRuntimeService.getUnitNameKey(unit.name);
+            const matchingUnits = this.unitsByNameMap.get(nameKey);
+            if (matchingUnits) {
+                matchingUnits.push(unit);
+            } else {
+                this.unitsByNameMap.set(nameKey, [unit]);
+            }
+            this.unitUuidMap.set(unit.uuid, unit);
         }
         this.unitSearchIndexService.prepareUnits(units);
     }
@@ -105,7 +114,15 @@ export class UnitRuntimeService {
     }
 
     public getUnitByName(name: string): UnitSummary | undefined {
-        return this.unitNameMap.get(UnitRuntimeService.getUnitNameKey(name));
+        return this.getUnitsByName(name).at(-1);
+    }
+
+    public getUnitsByName(name: string): readonly UnitSummary[] {
+        return this.unitsByNameMap.get(UnitRuntimeService.getUnitNameKey(name)) ?? [];
+    }
+
+    public getUnitByUuid(uuid: string): UnitSummary | undefined {
+        return this.unitUuidMap.get(uuid);
     }
 
     private findEraForYear(year: number, eras: Era[]): Era | undefined {

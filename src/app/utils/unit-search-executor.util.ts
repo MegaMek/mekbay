@@ -30,6 +30,7 @@ export interface UnitSearchExecutionRequest {
     searchTokens: SearchTokensGroup[];
     uiOnlyFilterState?: FilterState;
     uiOnlyFilterDependencies?: UnitFilterKernelDependencies;
+    initialAvailabilityScope?: AvailabilityFilterScope;
     gameSystem: GameSystem;
     sortKey: string;
     sortDirection: 'asc' | 'desc';
@@ -52,14 +53,14 @@ export interface UnitSearchExecutionRequest {
     getDisplayName?: (filterKey: string, value: string) => string | undefined;
     getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<string> | undefined;
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
-    getIndexedASSpecials?: (unitId: string) => ParsedASSpecials | undefined;
+    getIndexedASSpecials?: (unitUuid: string) => ParsedASSpecials | undefined;
     availabilitySortScope?: AvailabilityFilterScope;
     getMegaMekRaritySortScore?: (unit: UnitSummary, scope?: AvailabilityFilterScope) => number;
 }
 
 export interface UnitSearchExecutionResult {
     results: UnitSummary[];
-    normalizationMatchesByUnitName: ReadonlyMap<string, UnitSearchNormalizationMatch>;
+    normalizationMatchesByUnitUuid: ReadonlyMap<string, UnitSearchNormalizationMatch>;
     telemetryStages: SearchTelemetryStage[];
     totalMs: number;
     unitCount: number;
@@ -138,14 +139,14 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         if (!normalizationEnabled) {
             return null;
         }
-        if (!normalizationMatchCache.has(unit.name)) {
-            normalizationMatchCache.set(unit.name, normalization?.kind === 'bv'
+        if (!normalizationMatchCache.has(unit.uuid)) {
+            normalizationMatchCache.set(unit.uuid, normalization?.kind === 'bv'
                 ? findBvNormalizationMatch(unit, normalization.settings)
                 : normalization?.kind === 'pv'
                     ? findPvNormalizationMatch(unit, normalization.settings)
                     : null);
         }
-        return normalizationMatchCache.get(unit.name) ?? null;
+        return normalizationMatchCache.get(unit.uuid) ?? null;
     };
     const getContextualAdjustedBV = (unit: UnitSummary): number => {
         return resolveNormalizationMatch(unit)?.adjustedValue ?? request.getAdjustedBV(unit);
@@ -156,7 +157,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
 
     const context: EvaluatorContext = {
         getProperty,
-        getUnitId: (unit: UnitSummary) => unit.name,
+        getUnitId: (unit: UnitSummary) => unit.uuid,
         getAdjustedBV: getContextualAdjustedBV,
         getAdjustedPV: getContextualAdjustedPV,
         gameSystem: request.gameSystem,
@@ -222,7 +223,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         telemetryStages,
         'ast-filter',
         candidateUnits.length,
-        () => filterUnitsWithAST(candidateUnits, parsedQuery.ast, context),
+        () => filterUnitsWithAST(candidateUnits, parsedQuery.ast, context, request.initialAvailabilityScope),
         value => value.length,
     );
 
@@ -277,7 +278,12 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                     const model = (unit.model ?? '').toLowerCase();
 
                     if (isComplex) {
-                        const matchingTexts = getMatchingTextForUnit(parsedQuery.ast, unit, context);
+                        const matchingTexts = getMatchingTextForUnit(
+                            parsedQuery.ast,
+                            unit,
+                            context,
+                            request.initialAvailabilityScope,
+                        );
                         if (matchingTexts.length > 0) {
                             let bestScore = 0;
                             for (const text of matchingTexts) {
@@ -361,19 +367,19 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         value => value.length,
     );
 
-    const normalizationMatchesByUnitName = new Map<string, UnitSearchNormalizationMatch>();
+    const normalizationMatchesByUnitUuid = new Map<string, UnitSearchNormalizationMatch>();
     if (normalizationEnabled) {
         for (const unit of sorted) {
             const match = resolveNormalizationMatch(unit);
             if (match) {
-                normalizationMatchesByUnitName.set(unit.name, match);
+                normalizationMatchesByUnitUuid.set(unit.uuid, match);
             }
         }
     }
 
     return {
         results: sorted,
-        normalizationMatchesByUnitName,
+        normalizationMatchesByUnitUuid,
         telemetryStages,
         totalMs: getNowMs() - searchStartedAt,
         unitCount,

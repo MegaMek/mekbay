@@ -203,6 +203,23 @@ describe('buildWorkerExecutionQuery', () => {
             }),
         ]);
     });
+
+    it('groups a preserved complex query before applying UI filters', () => {
+        const executionQuery = buildWorkerExecutionQuery({
+            effectiveFilterState: {
+                era: { value: ['Clan Invasion'], interactedWith: true },
+            },
+            effectiveTextSearch: 'Atlas',
+            preservedQuery: 'faction=="Clan Coyote" Atlas OR faction="Federated Suns"',
+            gameSystem: GameSystem.CLASSIC,
+            totalRangesCache: {},
+        });
+
+        expect(executionQuery).toBe(
+            '(faction=="Clan Coyote" Atlas OR faction="Federated Suns") era="Clan Invasion"',
+        );
+        expect(parseSemanticQueryAST(executionQuery, GameSystem.CLASSIC).errors).toEqual([]);
+    });
 });
 
 describe('getWorkerCorpusSnapshot', () => {
