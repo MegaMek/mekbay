@@ -7,10 +7,16 @@ import { type BipedArmorValues, BipedPaperdollUtil } from '../biped-paperdoll.ut
 import { createBattleTechLogo, createCatalystGameLabsLogo } from '../record-sheet-brand';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { buildNonMekRuntimeIndex } from '../../../models/runtime/non-mek-runtime-index';
-import type { EquipmentFlag } from '../../../models/equipment-flags.type';
 import type { Equipment } from '../../../models/equipment.model';
 import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import { isJumpJetEquipment, isUmuEquipment } from '../../../models/jump-equipment.model';
+import { isCaseEquipment } from '../../../models/case-equipment.model';
+import { isBapEquipment } from '../../../models/bap-equipment.model';
+import { isAngelEcmEquipment, isEcmEquipment, isSingleHexEcmEquipment } from '../../../models/ecm-mode.model';
+import { isEquipmentForPlatform } from '../../../models/equipment-platform.model';
+import { isNovaC3Equipment } from '../../../models/c3-network.model';
+import { sensorEquipmentKind } from '../../../models/sensor-equipment.model';
+import { isRecordSheetInventorySupport } from '../record-sheet-inventory-equipment';
 import {
     type Box,
     addDiagramHeading,
@@ -193,8 +199,7 @@ function appendCompactVehicleInventory(
     const ammo = recordSheetAmmoProfile(entity);
     const quirks = orderedVehicleQuirkNames(entity).join(', ');
     const features = compactVehicleFeatureText(entity);
-    const caseProtected = entity.equipment().some(mount =>
-        mount.equipment?.hasAnyFlag(['F_CASE', 'F_CASE_II']) === true);
+    const caseProtected = entity.equipment().some(mount => isCaseEquipment(mount.equipment));
     const detailRows = [
         ...(ammo.length > 0 ? [{
             text: `Ammo${caseProtected ? ' (CASE)' : ''}: ${ammo.join(', ')}`,
@@ -379,15 +384,6 @@ function compactVehicleFeatureText(entity: BaseEntity): string {
     return [...new Set(features)].join(', ');
 }
 
-const NON_PRINTABLE_VEHICLE_INVENTORY_FLAGS: readonly EquipmentFlag[] = [
-    'F_CASE', 'F_CASE_II',
-    'F_ARTEMIS', 'F_ARTEMIS_PROTO', 'F_ARTEMIS_V', 'F_APOLLO',
-    'F_PPC_CAPACITOR', 'F_HARJEL', 'F_HARJEL_II', 'F_HARJEL_III',
-    'F_MASS', 'F_CHASSIS_MODIFICATION', 'F_SPONSON_TURRET',
-    'F_EXTERNAL_STORES_HARDPOINT', 'F_BASIC_FIRE_CONTROL', 'F_ADVANCED_FIRE_CONTROL',
-    'F_RISC_LASER_PULSE_MODULE', 'F_LASER_INSULATOR', 'F_TALON',
-];
-
 /** MML prints usable misc equipment in the same interactive inventory as weapons. */
 function compactVehicleInventoryRows(entity: BaseEntity) {
     const weaponRows = recordSheetInventoryWeapons(entity).map(row => Object.freeze({
@@ -402,7 +398,7 @@ function compactVehicleInventoryRows(entity: BaseEntity) {
                 || equipment === undefined
                 || equipment.type !== 'misc'
                 || ['Engine', 'None', 'Unallocated'].includes(mount.location)
-                || equipment.hasAnyFlag(NON_PRINTABLE_VEHICLE_INVENTORY_FLAGS)
+                || isRecordSheetInventorySupport(equipment)
                 || isHeatSinkEquipment(equipment)
                 || isJumpJetEquipment(equipment)
                 || isUmuEquipment(equipment)) return [];
@@ -411,7 +407,7 @@ function compactVehicleInventoryRows(entity: BaseEntity) {
                 name: compactVehicleWeaponName(mount.displayName()),
                 location: compactVehicleLocation(mount.getOccupiedLocations().join('/')),
                 heat: '—',
-                damage: equipment.hasFlag('F_AP_POD') ? '[PB,OS,AI]' : '[E]',
+                damage: equipment.hasWeaponTrait('anti-personnel-pod') ? '[PB,OS,AI]' : '[E]',
                 minimumRange: '—',
                 ranges: Object.freeze(['—', '—', range === undefined ? '—' : String(range)]),
                 componentIds: Object.freeze([mount.mountId]),
@@ -423,14 +419,15 @@ function compactVehicleInventoryRows(entity: BaseEntity) {
 }
 
 function compactElectronicWarfareRange(equipment: Equipment): number | undefined {
-    if (!equipment.hasFlag('F_ECM') && !equipment.hasFlag('F_BAP')) return undefined;
-    if (equipment.hasFlag('F_ANGEL_ECM') && equipment.hasFlag('F_BA_EQUIPMENT')) return 2;
-    if (equipment.hasFlag('F_EW_EQUIPMENT')
-        || equipment.hasFlag('F_WATCHDOG')
-        || equipment.hasFlag('F_NOVA')) return 3;
-    if (equipment.hasFlag('F_SINGLE_HEX_ECM')) return 0;
-    if (equipment.hasFlag('F_ECM')) return 6;
-    if (equipment.hasFlag('F_BLOODHOUND')) return 8;
+    const sensorKind = sensorEquipmentKind(equipment);
+    if (!isEcmEquipment(equipment) && !isBapEquipment(equipment)) return undefined;
+    if (isAngelEcmEquipment(equipment) && isEquipmentForPlatform(equipment, 'battle-armor')) return 2;
+    if (sensorKind === 'electronic-warfare'
+        || sensorKind === 'watchdog'
+        || isNovaC3Equipment(equipment)) return 3;
+    if (isSingleHexEcmEquipment(equipment)) return 0;
+    if (isEcmEquipment(equipment)) return 6;
+    if (sensorKind === 'bloodhound') return 8;
     if (/light active probe/iu.test(equipment.id)) return 3;
     if (/improved active probe/iu.test(equipment.id)) return 2;
     return equipment.techBase === 'Clan' ? 5 : 4;

@@ -21,6 +21,11 @@ import type { UnitSubtype } from '../../types';
 import type { TechRatingSource } from '../../types';
 import { getJumpshipConstructionTech } from '../../components';
 import { capitalCraftArmorPointsPerTon } from '../../utils/large-craft-armor';
+import { MiscEquipment } from '../../../equipment.model';
+import {
+  isPrintableLargeCraftMisc,
+  largeCraftMiscFeatureName,
+} from '../../utils/large-craft-features';
 
 // ============================================================================
 // JumpShip equipment location tags
@@ -85,6 +90,17 @@ export class JumpShipEntity extends LargeAeroEntity {
     const features = [...super.computeAeroFeatures()];
     if (this.lithiumFusion()) features.push('LF Battery');
     return features;
+  }
+
+  protected override computeEntityFeatures(): readonly EntityFeature[] {
+    const features = new Set<EntityFeature>(this.computeAeroFeatures());
+    for (const mount of this.equipment()) {
+      const equipment = mount.equipment;
+      if (!(equipment instanceof MiscEquipment) || !isPrintableLargeCraftMisc(equipment)) continue;
+      features.add(largeCraftMiscFeatureName(equipment, mount.size ?? 1));
+    }
+    for (const feature of this.computeTransportFeatures()) features.add(feature);
+    return [...features];
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {

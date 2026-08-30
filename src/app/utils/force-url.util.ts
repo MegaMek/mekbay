@@ -62,6 +62,7 @@ export function buildMultiForceQueryParams(slots: readonly ForceSlot[]): ForceQu
     const ids: string[] = [];
     let unsaved: Force | null = null;
     for (const slot of slots) {
+        if (slot.persistInUrl === false) continue;
         const id = slot.force.instanceId();
         if (id) ids.push(slot.alignment === 'enemy' ? `enemy:${id}` : id);
         else if (!unsaved) unsaved = slot.force;

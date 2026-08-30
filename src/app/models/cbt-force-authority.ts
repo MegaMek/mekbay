@@ -554,6 +554,7 @@ export class CBTForceAuthority {
                 ...fence.expectedBinding,
                 envelope,
                 units,
+                scenario: scenarioRulesFromPersistence(envelope.scenarioRules.values),
             }),
         });
     }
@@ -1016,6 +1017,7 @@ export class CBTForceAuthority {
                             runtime.query(),
                             { kind: 'component', componentId: interaction.actionComponentId },
                             action ?? 'change-mode',
+                            runtime.ruleset(),
                         );
                     return Object.freeze({
                         token,
@@ -1275,6 +1277,7 @@ export class CBTForceAuthority {
                 runtime.query(),
                 { kind: 'component', componentId: interaction.actionComponentId },
                 action ?? 'change-mode',
+                runtime.ruleset(),
             )) return rejectedEquipmentChoice('CHOICE_UNAVAILABLE');
 
         const before = runtime.revision();

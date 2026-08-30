@@ -281,11 +281,12 @@
     justify-content: space-between;
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 4;
     align-items: center;
     padding: 6px 12px;
     background-color: var(--background-color-menu);
     cursor: grab;
+    flex-wrap: wrap;
 }
 
 .group-name-area {
@@ -294,8 +295,6 @@
     justify-content: flex-start;
     flex-wrap: wrap;
     gap: 0px 4px;
-    flex: 1;
-    min-width: 0;
 }
 
 .group-name {
@@ -367,12 +366,17 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    justify-content: end;
+    margin-left: auto;
 }
 
 .group-bv {
     font-size: 0.85rem;
-    font-weight: bold;
     color: var(--text-color);
+
+    .value {
+        font-weight: bold;
+    }
 }
 
 .group-units {
@@ -490,12 +494,32 @@
 .dialog-footer {
     display: flex;
     flex: 0 0 auto;
-    justify-content: flex-start;
+    justify-content: center;
     align-items: center;
     padding: 8px;
     gap: 4px;
     background-color: var(--background-color-menu);
     border-top: 2px solid var(--border-color);
+}
+
+.selection-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+}
+
+.selected-count {
+    color: var(--bt-yellow);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    margin-left: 4px;
+}
+
+.selection-controls .bt-button {
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .spanner {
@@ -566,8 +590,8 @@
     color: var(--bt-yellow);
 }
 
-// AS Table Mode - controlled by isTableMode() computed signal
-.units-list.as-table-mode {
+// Unit table mode - available for both rulesets
+.units-list.table-mode {
     gap: 0;
     min-height: 0;
     height: 100%;
@@ -581,7 +605,7 @@
     }
 }
 
-.force-as-table {
+.force-unit-table {
     flex: 1;
     min-height: 0;
 }
@@ -659,11 +683,20 @@
 
 .table-group-bv {
     font-size: 0.85rem;
-    font-weight: bold;
     color: var(--text-color);
+
+    .value {
+        font-weight: bold;
+    }
 }
 
 /* Table cell content styles */
+.as-td {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .as-td-icon {
     display: flex;
     align-items: center;
@@ -731,8 +764,13 @@
     text-align: center;
 }
 
-.as-td-pv {
+.as-td-pv,
+.table-value-cell {
     text-align: right;
+}
+
+.cbt-td-mv {
+    white-space: nowrap;
 }
 
 .as-td-skill {
@@ -784,6 +822,33 @@
     .summary-tab-preview {
         flex: 1 1 auto;
         overflow: hidden;
+    }
+
+    .dialog-footer {
+        flex-wrap: wrap;
+    }
+
+    .selection-controls {
+        order: -1;
+        flex: 1 0 100%;
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .selection-controls .selected-count {
+        margin-right: auto;
+        order: -1;
+    }
+
+    .sort-controls {
+        flex: 1 1 120px;
+        min-width: 0;
+    }
+
+    .sort-select {
+        flex: 1 1 auto;
+        width: 100%;
+        min-width: 0;
     }
 }
 

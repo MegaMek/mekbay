@@ -20,7 +20,7 @@ export interface TooltipLine {
 
 export type TooltipType = 'info' | 'success' | 'error';
 
-export type TooltipContent = string | TooltipLine[];
+export type TooltipContent = string | readonly TooltipLine[];
 
 @Component({
     selector: 'tooltip',
@@ -62,7 +62,7 @@ export type TooltipContent = string | TooltipLine[];
             position: relative;
             pointer-events: auto;
             background-color: var(--background-color-menu);
-            max-width: min(400px, calc(100vw - 24px));
+            max-width: min(500px, calc(100vw - 24px));
             max-height: calc(100dvh - 24px);
         }
         .tooltip-content {
@@ -168,7 +168,7 @@ export class TooltipComponent {
         return typeof this.content === 'string';
     }
     
-    get lines(): TooltipLine[] {
+    get lines(): readonly TooltipLine[] {
         return Array.isArray(this.content) ? this.content : [];
     }
 }

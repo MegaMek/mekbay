@@ -42,7 +42,11 @@ import {
     MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
     UNIT_STATE_INITIALIZER_REVISION,
 } from './unit-state-initializer';
-import { asStateRevision, asUnitInstanceId } from './runtime-state';
+import {
+    asStateRevision,
+    asUnitInstanceId,
+    type EscalatingFailureSequence,
+} from './runtime-state';
 import type { SerializedMekMovementPsrStateV2 } from './mek-movement-psr-v2';
 import type { SerializedMekTurnStateV2 } from './mek-turn-state-v2';
 import {
@@ -346,6 +350,8 @@ function packNonMekUnit(unit: SerializedNonMekUnit, ruleset: CBTRuleset): unknow
             s: row.status,
             m: row.mode,
             j: row.jammed ? 1 : undefined,
+            e: row.escalatingFailure
+                && [row.escalatingFailure.sequence, row.escalatingFailure.active ? 1 : 0],
         })]),
         q: packRows(unit.damageTrackState, row => [row.damageTrackId, row.hits, row.hitTimestamps]),
         a: packRows(unit.ammoState, row => tuple(row.componentId, row.shotsSpent, row.munitionOverride)),
@@ -396,12 +402,27 @@ function unpackNonMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, p
         ...(value['c'] === undefined ? {} : {
             componentState: unpackRows(value['c'], `${path}.c`, (row, rowPath) => {
                 const state = record(row[1], `${rowPath}[1]`);
-                exactKeys(state, ['s', 'm', 'j'], `${rowPath}[1]`);
+                exactKeys(state, ['s', 'm', 'j', 'e'], `${rowPath}[1]`);
+                const escalating = state['e'] === undefined
+                    ? undefined
+                    : array(state['e'], `${rowPath}[1].e`);
                 return {
                     componentId: rowText(row, 0, rowPath) as any,
                     ...(state['s'] === undefined ? {} : { status: text(state['s'], `${rowPath}[1].s`) as any }),
                     ...(state['m'] === undefined ? {} : { mode: text(state['m'], `${rowPath}[1].m`) }),
                     ...(state['j'] === undefined ? {} : { jammed: truthyOne(state['j'], `${rowPath}[1].j`) }),
+                    ...(escalating === undefined ? {} : {
+                        escalatingFailure: {
+                            sequence: rowInteger(
+                                escalating,
+                                0,
+                                `${rowPath}[1].e`,
+                            ) as EscalatingFailureSequence,
+                            ...(rowBit(escalating, 1, `${rowPath}[1].e`)
+                                ? { active: true as const }
+                                : {}),
+                        },
+                    }),
                 };
             }),
         }),
@@ -473,13 +494,15 @@ function packNonMekTurn(value: SerializedNonMekUnit['turn']): unknown {
         value.turnCounter ?? 0,
         movement === undefined && airborne === 0 ? undefined : airborne,
         movement,
-        value.weaponsHeat,
+        value.weaponsHeat ?? (value.cover !== undefined || value.spotting ? 0 : undefined),
+        value.cover,
+        value.spotting ? 1 : undefined,
     );
 }
 
 function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedNonMekUnit['turn']> {
     const turn = array(value, path);
-    if (turn.length < 1 || turn.length > 4) throw new Error(`${path} is not a compact non-Mek turn`);
+    if (turn.length < 1 || turn.length > 6) throw new Error(`${path} is not a compact non-Mek turn`);
     const turnCounter = rowInteger(turn, 0, path);
     const airborneCode = turn[1] === undefined ? 0 : rowInteger(turn, 1, path);
     if (airborneCode !== -1 && airborneCode !== 0 && airborneCode !== 1) {
@@ -488,11 +511,18 @@ function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedN
     const movement = turn[2] === undefined
         ? undefined
         : unpackNonMekMovement(turn[2], `${path}[2]`);
+    const weaponsHeat = turn[3] === undefined ? 0 : rowInteger(turn, 3, path);
     return {
         ...(turnCounter === 0 ? {} : { turnCounter }),
         ...(airborneCode === 0 ? {} : { airborne: airborneCode === 1 }),
         ...(movement === undefined ? {} : { movement }),
-        ...(turn[3] === undefined ? {} : { weaponsHeat: rowInteger(turn, 3, path) }),
+        ...(weaponsHeat === 0 ? {} : { weaponsHeat }),
+        ...(turn[4] === undefined ? {} : {
+            cover: rowInteger(turn, 4, path) as NonNullable<SerializedNonMekUnit['turn']>['cover'],
+        }),
+        ...(turn[5] === undefined ? {} : {
+            spotting: truthyOne(turn[5], `${path}[5]`),
+        }),
     };
 }
 

@@ -9,7 +9,7 @@ import type { CriticalSlotId, LocationId } from '../../models/entity/entity-iden
 import { CBTForceMember, type CBTMekForceMember } from '../../models/force-member.model';
 import type { MekCriticalRollPlanV2, MekCriticalRollProfileV2 } from '../../models/runtime/mek-critical-hit-v2';
 import type { UnitInstanceId } from '../../models/runtime/runtime-state';
-import type { UnitSummary } from '../../models/unit-summary.model';
+import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
 import { ToastService } from '../../services/toast.service';
 import { MekCriticalRollDialogComponent } from './mek-critical-roll-dialog.component';
 
@@ -63,7 +63,7 @@ describe('MekCriticalRollDialogComponent', () => {
         const member = new CBTForceMember(
             UNIT_ID,
             force,
-            {} as UnitSummary,
+            new TestBipedMekEntity(),
         ) as CBTMekForceMember;
         dialogRef = { close: jasmine.createSpy('close') };
 

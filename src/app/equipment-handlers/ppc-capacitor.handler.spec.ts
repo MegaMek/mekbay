@@ -193,6 +193,7 @@ function canFire(setup: DirectPpcSetup): boolean {
         setup.runtime.query(),
         { kind: 'component', componentId: setup.weapon.id },
         'fire',
+        setup.fixture.instance.ruleset(),
     );
 }
 

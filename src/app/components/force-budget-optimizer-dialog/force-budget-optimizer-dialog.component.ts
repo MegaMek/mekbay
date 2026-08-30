@@ -9,14 +9,16 @@ import { ASForceUnit } from '../../models/as-force-unit.model';
 import { GameSystem } from '../../models/common.model';
 import type { Force } from '../../models/force.model';
 import {
-    forceMemberSummary,
     isCBTForceMember,
     type CBTForceMember,
     type ForceMember,
 } from '../../models/force-member.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
-import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
-import { getEffectivePilotingSkill } from '../../utils/cbt-common.util';
+import type { BaseEntity } from '../../models/entity/base-entity';
+import {
+    adjustEntityBattleValueForSkills,
+    effectiveEntityPilotingSkill,
+} from '../../models/entity/utils/battle-value/skill-facts';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { OptionsService } from '../../services/options.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
@@ -276,9 +278,9 @@ export class ForceBudgetOptimizerDialogComponent {
     }
 
     private createCBTOptions(member: CBTForceMember): OptimizationChoice[] {
-        const unit = member.summary;
-        const preSkillBv = member.currentBaseBattleValue() ?? unit.bv;
-        const priorities = this.getCBTSkillPriorities(unit);
+        const entity = member.entity;
+        const preSkillBv = member.currentBaseBattleValue() ?? entity.battleValue();
+        const priorities = this.getCBTSkillPriorities(entity);
         const optionsByCost = new Map<number, OptimizationChoice>();
         const [minGunnery, maxGunnery] = this.gunnerySkillRange();
         const [minPiloting, maxPiloting] = this.pilotingSkillRange();
@@ -286,11 +288,16 @@ export class ForceBudgetOptimizerDialogComponent {
 
         for (let gunnery = minGunnery; gunnery <= maxGunnery; gunnery += 1) {
             for (let requestedPiloting = minPiloting; requestedPiloting <= maxPiloting; requestedPiloting += 1) {
-                const piloting = getEffectivePilotingSkill(unit, requestedPiloting);
+                const piloting = effectiveEntityPilotingSkill(entity, requestedPiloting);
                 if (Math.abs(gunnery - piloting) > maxDelta) {
                     continue;
                 }
-                const cost = Math.max(0, BVCalculatorUtil.calculateAdjustedBV(unit, preSkillBv, gunnery, piloting));
+                const cost = Math.max(0, adjustEntityBattleValueForSkills(
+                    entity,
+                    preSkillBv,
+                    gunnery,
+                    piloting,
+                ));
                 const option: OptimizationChoice = {
                     member,
                     cost,
@@ -327,7 +334,7 @@ export class ForceBudgetOptimizerDialogComponent {
             const position = member.force.getUnitCrewProfile(member.id)?.positions[0];
             const gunnery = position?.gunnery ?? 4;
             const piloting = position?.piloting ?? 5;
-            const priorities = this.getCBTSkillPriorities(member.summary);
+            const priorities = this.getCBTSkillPriorities(member.entity);
             return {
                 member,
                 cost: this.memberCost(member),
@@ -372,7 +379,7 @@ export class ForceBudgetOptimizerDialogComponent {
             });
             if (!applied?.accepted) return null;
             return {
-                detail: `${choice.member.summary.name} (${currentGunnery}/${currentPiloting}→${choice.gunnery}/${choice.piloting})`,
+                detail: `${choice.member.entity.displayName()} (${currentGunnery}/${currentPiloting}→${choice.gunnery}/${choice.piloting})`,
             };
         }
 
@@ -381,13 +388,26 @@ export class ForceBudgetOptimizerDialogComponent {
 
     private memberCost(member: ForceMember): number {
         if (member instanceof ASForceUnit) return member.getBv();
-        if (isCBTForceMember(member)) return member.adjustedBattleValue() ?? member.summary.bv;
-        return forceMemberSummary(member).bv;
+        return member.adjustedBattleValue() ?? member.entity.battleValue();
     }
 
-    private getCBTSkillPriorities(unit: UnitSummary): CBTSkillPriorities {
-        const rangedDamage = Math.max(0, unit.dpt || 0);
-        const physicalDamage = this.getPhysicalDamagePerTurn(unit);
+    private getCBTSkillPriorities(entity: BaseEntity): CBTSkillPriorities {
+        const rangedDamage = entity.rangedWeapons().reduce((total, mount) =>
+            total + entity.resolveMountedWeaponDamage(mount).maximum, 0);
+        const physicalDamage = entity.equipment().reduce((total, mount) =>
+            total + (mount.getPhysicalWeaponDamage()?.value ?? 0), 0)
+            + (entity.unitType() === 'Mek' ? entity.tonnage() / 5 : 0);
+        return this.skillPriorities(rangedDamage, physicalDamage);
+    }
+
+    private getSummarySkillPriorities(unit: UnitSummary): CBTSkillPriorities {
+        return this.skillPriorities(
+            Math.max(0, unit.dpt || 0),
+            this.getPhysicalDamagePerTurn(unit),
+        );
+    }
+
+    private skillPriorities(rangedDamage: number, physicalDamage: number): CBTSkillPriorities {
         const strongerDamage = Math.max(rangedDamage, physicalDamage);
         const weakerDamage = Math.min(rangedDamage, physicalDamage);
         const balance = strongerDamage > 0 && weakerDamage / strongerDamage >= BALANCED_DAMAGE_RATIO
@@ -402,7 +422,7 @@ export class ForceBudgetOptimizerDialogComponent {
     }
 
     private getAlphaStrikeSkillPriority(unit: UnitSummary): number {
-        const priorities = this.getCBTSkillPriorities(unit);
+        const priorities = this.getSummarySkillPriorities(unit);
         return priorities.gunnery + priorities.piloting;
     }
 

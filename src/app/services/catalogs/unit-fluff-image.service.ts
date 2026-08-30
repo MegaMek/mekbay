@@ -4,6 +4,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import type { EntityType } from '../../models/entity/types';
+import type { BaseEntity } from '../../models/entity/base-entity';
 import type { FluffImageAssetRef } from '../../models/presentation-catalog.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import {
@@ -36,6 +37,25 @@ export class UnitFluffImageService {
     if (!unit) return null;
 
     return this.resolveCatalogUrl(unit);
+  }
+
+  resolveEntityUrl(entity: BaseEntity, design?: DesignIdentity): string | null {
+    let identity: DesignIdentity;
+    try {
+      identity = design ?? {
+        provider: MM_DATA_UNIT_PROVIDER_ID,
+        uuid: asUnitUuid(entity.uuid()),
+      };
+    } catch {
+      return null;
+    }
+    const resolution = this.catalog.resolveUnitImage(identity, {
+      entityType: entity.entityType,
+      baseChassis: entity.chassis(),
+      model: entity.model(),
+      ...(entity.clanName() ? { clanName: entity.clanName() } : {}),
+    });
+    return resolution.status === 'matched' ? fluffImageAssetUrl(resolution.asset) : null;
   }
 
   private resolveCatalogUrl(unit: PresentationUnit): string | null {

@@ -41,8 +41,12 @@ import {
     isMekTurnPanelDirtyPhase,
     mekTurnPanelPhase,
 } from '../../../models/runtime/mek-turn-panel';
-import { actionableMekPilotChecks } from './page-turn-summary.util';
 import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
+import { getTurnMovementIndicator } from '../../../utils/turn-movement-indicator.util';
+import {
+    UnitNotificationBadgesComponent,
+    type UnitNotificationActivation,
+} from '../../unit-notification-badges/unit-notification-badges.component';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 const PAGE_RUNTIME_HISTORY_OVERLAY_PREFIX = 'page-viewer-runtime-history';
@@ -57,7 +61,7 @@ const PAGE_RUNTIME_HISTORY_OVERLAY_PREFIX = 'page-viewer-runtime-history';
 @Component({
     selector: 'page-interaction-overlay',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [CommonModule, UnitNotificationBadgesComponent],
     templateUrl: './page-interaction-overlay.component.html',
     host: {
         '[class.fixed-mode]': 'mode() === "fixed"'
@@ -102,12 +106,14 @@ export class PageInteractionOverlayComponent {
         return this.force()?.getRuntimeUndoState().canRedo === true
             && this.force()?.readOnly() !== true;
     }
-    private readonly turn = computed(() => {
+    readonly turn = computed(() => {
         this.runtimeVersion();
         const member = this.member();
         return isCBTMekForceMember(member) ? member.force.getMekTurnPanelSnapshot(
             member.id,
-            this.optionsService.options().cbtAutomations ? 'automatic' : 'manual',
+            this.optionsService.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
+                ? 'automatic'
+                : 'manual',
         ) : null;
     });
     private readonly entityTurn = computed(() => {
@@ -153,28 +159,25 @@ export class PageInteractionOverlayComponent {
         return entity !== null && entity !== undefined && hasPendingNonMekChanges(entity.state);
     });
 
-    falling = computed(() => (this.turn()?.movementState.automaticFalls.length ?? 0) > 0);
-
-    actionablePSRCount = computed<number>(() => {
-        const turn = this.turn();
-        if (!turn) return 0;
-        return actionableMekPilotChecks(
-            turn.movementState.checks,
-            turn.movementState.automaticFalls.length > 0,
-        ).filter(check => check.status === 'pending').length;
-    });
-
-    hasActionablePSRChecks = computed(() => this.actionablePSRCount() > 0);
-
     currentPhase = computed(() => {
         const turn = this.turn();
         return turn ? mekTurnPanelPhase(turn) : this.entityTurn() ? 'T' : '';
     });
 
+    readonly movementIndicator = computed(() => {
+        const turn = this.turn();
+        return getTurnMovementIndicator(
+            turn?.movementState.movement?.mode,
+            turn?.defenseModifierTotal?.modifier ?? 0,
+        );
+    });
+
     endTurnButtonVisible(): boolean {
         const force = this.force();
         if (!force) return false;
-        const policy = this.optionsService.options().cbtAutomations ? 'automatic' : 'manual';
+        const policy = this.optionsService.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
+            ? 'automatic'
+            : 'manual';
         return force.members().some(member => {
             if (isCBTMekForceMember(member)) {
                 const snapshot = force.getMekTurnPanelSnapshot(member.id, policy);
@@ -253,7 +256,7 @@ export class PageInteractionOverlayComponent {
         }
     }
 
-    openPsrWarning(event: MouseEvent): void {
+    openPsrWarning(event: Event): void {
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
         const member = this.member();
@@ -264,6 +267,10 @@ export class PageInteractionOverlayComponent {
             this.overlay,
             () => this.closeAllOverlays(),
         );
+    }
+
+    openNotification({ event }: UnitNotificationActivation): void {
+        this.openPsrWarning(event);
     }
 
     openTargets(event: MouseEvent): void {
@@ -413,7 +420,9 @@ export class PageInteractionOverlayComponent {
                 ? await member.force.dispatchMekUnitCommand(member.id, type === 'end-turn'
                     ? {
                         type,
-                        policy: this.optionsService.options().cbtAutomations ? 'automatic' : 'manual',
+                        policy: this.optionsService.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
+                            ? 'automatic'
+                            : 'manual',
                         commandId: createCommandId(),
                         expectedRevision: snapshot.stateRevision,
                     }

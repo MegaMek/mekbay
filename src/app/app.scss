@@ -153,6 +153,32 @@
     cursor: pointer;
 }
 
+.lobby-footer-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.lobby-footer-link {
+    appearance: none;
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--text-color-secondary);
+    font: inherit;
+    font-size: 0.8em;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+    transition: color 0.2s;
+
+    &:hover,
+    &:focus-visible {
+        color: var(--text-color);
+    }
+}
+
 .footer-legal-links {
     display: flex;
     flex-wrap: wrap;
@@ -315,6 +341,7 @@ svg-viewer {
         line-height: 1;
         display: flex;
         align-items: center;
+        text-decoration: none;
     }
 
     .home-action-button svg {
@@ -446,6 +473,11 @@ svg-viewer {
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+.home-actions-divider {
+    margin-top: 8px;
+    margin-bottom: 8px;
 }
 
 .home-panel-action {

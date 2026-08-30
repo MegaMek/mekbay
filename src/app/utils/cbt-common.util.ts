@@ -2,29 +2,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { DEFAULT_PILOTING_SKILL } from "../models/crew.model";
 import type { UnitSummary } from "../models/unit-summary.model";
-
-const NO_ANTIMEK_SKILL = 8;
+import {
+    effectiveClassicPilotingSkill,
+    fixedClassicPilotingSkill,
+    type ClassicSkillUnitFacts,
+} from '../models/entity/utils/battle-value/rules';
 
 /**
  * Returns the fixed Piloting value for units whose Piloting cannot be changed.
  * Returns `null` when the unit uses the requested Piloting value.
  */
 export function getFixedPilotingSkill(unit: UnitSummary): number | null {
-    if (unit.type === 'ProtoMek') {
-        return DEFAULT_PILOTING_SKILL;
-    }
-    if (unit.type !== 'Infantry' || unit.canAntiMech) {
-        return null;
-    }
-    if (unit.subtype.includes('Mechanized')) {
-        return DEFAULT_PILOTING_SKILL;
-    }
-    if (unit.subtype.includes('Conventional Infantry')) {
-        return NO_ANTIMEK_SKILL;
-    }
-    return DEFAULT_PILOTING_SKILL;
+    return fixedClassicPilotingSkill(summarySkillFacts(unit));
 }
 
 /**
@@ -42,5 +32,13 @@ export function getFixedPilotingSkill(unit: UnitSummary): number | null {
  * @returns The effective piloting skill after applying CBT rules
  */
 export function getEffectivePilotingSkill(unit: UnitSummary, pilotingSkill: number): number {
-    return getFixedPilotingSkill(unit) ?? pilotingSkill;
+    return effectiveClassicPilotingSkill(summarySkillFacts(unit), pilotingSkill);
+}
+
+function summarySkillFacts(unit: UnitSummary): ClassicSkillUnitFacts {
+    return Object.freeze({
+        unitType: unit.type,
+        unitSubtype: unit.subtype,
+        canAntiMech: unit.canAntiMech === true,
+    });
 }

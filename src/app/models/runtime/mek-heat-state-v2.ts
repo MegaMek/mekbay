@@ -25,6 +25,7 @@ import {
 export const MAX_MEK_HEAT_VALUE_V2 = 1_000_000;
 export const MAX_MEK_HEATSINKS_OFF_V2 = 1_000;
 export const MAX_MEK_HEAT_CONTEXT_BLOCKERS_V2 = 64;
+export const EQUIPMENT_HEAT_SOURCE_GROUP = 'Equipment';
 
 export type MekHeatAutomationPolicyV2 = 'automatic' | 'manual';
 
@@ -40,6 +41,8 @@ export interface MekHeatSourceV2 {
     readonly id: string;
     readonly label: string;
     readonly value: number;
+    /** Optional label used to combine sources only in compact presentations. */
+    readonly group?: string;
     readonly replacedByFiringEntryId?: ComponentId;
     readonly signature?: string;
 }
@@ -114,6 +117,12 @@ export interface MekHeatKernelInputV2 {
     readonly activeVibrobladeComponents: ReadonlySet<ComponentId>;
     /** Signature systems currently effective, including pending deactivation. */
     readonly activeStealthComponents: ReadonlySet<ComponentId>;
+    /** The one effective Nova CEWS mount; pending shutdown remains active this turn. */
+    readonly activeElectronicComponents: ReadonlySet<ComponentId>;
+    /** Mobile HPG mounts currently charging or transmitting. */
+    readonly activeMobileHpgComponents: ReadonlySet<ComponentId>;
+    /** A consumed Coolant Pod doubles the current ordinary sink bank for this turn. */
+    readonly activeCoolantPodComponents: ReadonlySet<ComponentId>;
     /** A selected-but-not-yet-fired weapon still triggers a failed coolant leak. */
     readonly hasSelectedWeapon: boolean;
     readonly ppcCapacitors: readonly {
@@ -121,6 +130,15 @@ export interface MekHeatKernelInputV2 {
         readonly weaponId: ComponentId;
         readonly chargeState: 'charging' | 'charged' | null;
     }[];
+}
+
+/** Minimal detached facts needed by the movement-heat rules kernel. */
+export interface MekMovementHeatFactsV2 {
+    readonly movement: MekMovementHeatInputV2 | null;
+    readonly standAttempts: number;
+    readonly airborne: boolean;
+    readonly committedUnavailableCriticalSlots: ReadonlySet<CriticalSlotId>;
+    readonly committedUnavailableComponents: ReadonlySet<ComponentId>;
 }
 
 export interface MekHeatApplicationV2 {
@@ -546,6 +564,9 @@ export function buildMekHeatKernelInputV2(input: MekHeatKernelInputV2): MekHeatK
         activeEscalatingFailureComponents: new ImmutableSet(input.activeEscalatingFailureComponents),
         activeVibrobladeComponents: new ImmutableSet(input.activeVibrobladeComponents),
         activeStealthComponents: new ImmutableSet(input.activeStealthComponents),
+        activeElectronicComponents: new ImmutableSet(input.activeElectronicComponents),
+        activeMobileHpgComponents: new ImmutableSet(input.activeMobileHpgComponents),
+        activeCoolantPodComponents: new ImmutableSet(input.activeCoolantPodComponents),
         hasSelectedWeapon: input.hasSelectedWeapon === true,
         ppcCapacitors: Object.freeze(input.ppcCapacitors.map(entry => Object.freeze({ ...entry }))),
     });
@@ -558,7 +579,7 @@ function canonicalizeHeatMovement(
     if (value === undefined || value === null || typeof value !== 'object'
         || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype
         || Object.keys(value).some(key => key !== 'mode' && key !== 'distance')
-        || !['stationary', 'walk', 'run', 'jump', 'UMU', 'VTOL'].includes(value.mode)
+        || !['stationary', 'walk', 'run', 'sprint', 'jump', 'UMU', 'VTOL'].includes(value.mode)
         || !Number.isSafeInteger(value.distance)
         || value.distance < 0
         || value.distance > MAX_MEK_MOVEMENT_MP_V2
@@ -572,7 +593,13 @@ function buildCommittedHeatSources(
     profile: MekHeatProfile,
     input: MekHeatKernelInputV2,
 ): MekHeatSourceV2[] {
-    const movement = movementHeat(profile, input);
+    const movement = projectMekMovementHeatV2(profile, {
+        movement: input.movement,
+        standAttempts: input.standAttempts,
+        airborne: input.turn.airborne === true,
+        committedUnavailableCriticalSlots: input.committedUnavailableCriticalSlots,
+        committedUnavailableComponents: input.committedUnavailableComponents,
+    });
     const sources: MekHeatSourceV2[] = [Object.freeze({
         id: 'movement',
         label: 'Movement',
@@ -583,7 +610,8 @@ function buildCommittedHeatSources(
     })];
     const damagedEngineSlots = profile.engine.criticalSlotIds
         .filter(slotId => input.previewUnavailableCriticalSlots.has(slotId));
-    if (!input.destroyed && !input.shutdown && damagedEngineSlots.length > 0) {
+    if (profile.engine.fusion
+        && !input.destroyed && !input.shutdown && damagedEngineSlots.length > 0) {
         sources.push(Object.freeze({
             id: 'damaged-engine',
             label: 'Damaged Engine',
@@ -611,6 +639,7 @@ function buildCommittedHeatSources(
                 id: `ppc-capacitor:${provider.weaponId}`,
                 label: 'PPC Capacitor',
                 value: provider.heatWhileChargingOrCharged,
+                group: EQUIPMENT_HEAT_SOURCE_GROUP,
                 ...(lifecycle.chargeState === 'charged'
                     ? { replacedByFiringEntryId: provider.weaponId }
                     : {}),
@@ -623,6 +652,7 @@ function buildCommittedHeatSources(
                 id: `risc-viral-jammer:${provider.componentId}`,
                 label: 'RISC Viral Jammer',
                 value: provider.heat,
+                group: EQUIPMENT_HEAT_SOURCE_GROUP,
             }));
         } else if (provider.kind === 'vibroblade') {
             if (input.destroyed || input.shutdown
@@ -637,8 +667,29 @@ function buildCommittedHeatSources(
                 || !input.activeStealthComponents.has(provider.componentId)) continue;
             sources.push(Object.freeze({
                 id: `equipment:${provider.componentId}`,
-                label: 'Equipment',
+                label: provider.label,
                 value: provider.heat,
+                group: EQUIPMENT_HEAT_SOURCE_GROUP,
+            }));
+        } else if (provider.kind === 'nova-cews') {
+            if (input.destroyed || input.shutdown
+                || input.committedUnavailableComponents.has(provider.componentId)
+                || !input.activeElectronicComponents.has(provider.componentId)) continue;
+            sources.push(Object.freeze({
+                id: `nova-cews:${provider.componentId}`,
+                label: 'Nova CEWS',
+                value: provider.heat,
+                group: EQUIPMENT_HEAT_SOURCE_GROUP,
+            }));
+        } else if (provider.kind === 'mobile-hpg') {
+            if (input.destroyed || input.shutdown
+                || input.committedUnavailableComponents.has(provider.componentId)
+                || !input.activeMobileHpgComponents.has(provider.componentId)) continue;
+            sources.push(Object.freeze({
+                id: `mobile-hpg:${provider.componentId}`,
+                label: 'Mobile HPG',
+                value: provider.heat,
+                group: EQUIPMENT_HEAT_SOURCE_GROUP,
             }));
         } else if (provider.kind === 'coolant-system'
             && input.committedUnavailableComponents.has(provider.componentId)) {
@@ -646,11 +697,13 @@ function buildCommittedHeatSources(
                 id: `${provider.sourceId}:${provider.componentId}:movement`,
                 label: provider.label,
                 value: 1,
+                group: EQUIPMENT_HEAT_SOURCE_GROUP,
             }));
             if (input.turn.weaponsHeat > 0 || input.hasSelectedWeapon) sources.push(Object.freeze({
                 id: `${provider.sourceId}:${provider.componentId}:weapons`,
                 label: provider.label,
                 value: 1,
+                group: EQUIPMENT_HEAT_SOURCE_GROUP,
             }));
         }
     }
@@ -660,6 +713,8 @@ function buildCommittedHeatSources(
 function movementSignature(profile: MekHeatProfile, input: MekHeatKernelInputV2): string {
     const unavailableJump = profile.jump.componentIds
         .filter(componentId => input.committedUnavailableComponents.has(componentId));
+    const unavailableJumpBoosters = profile.jump.boosterComponentIds
+        .filter(componentId => input.committedUnavailableComponents.has(componentId));
     const unavailableScm = profile.superCooledMyomer.componentIds
         .filter(componentId => input.committedUnavailableComponents.has(componentId));
     const unavailableWingSlots = profile.partialWing?.criticalSlotIds
@@ -668,23 +723,48 @@ function movementSignature(profile: MekHeatProfile, input: MekHeatKernelInputV2)
         input.movement?.mode ?? null,
         input.movement?.distance ?? null,
         input.standAttempts,
+        input.turn.airborne,
         unavailableJump,
+        unavailableJumpBoosters,
         unavailableScm,
         unavailableWingSlots,
     ]);
 }
 
-function movementHeat(profile: MekHeatProfile, input: MekHeatKernelInputV2): number {
+export function projectMekMovementHeatV2(
+    profile: MekHeatProfile,
+    input: MekMovementHeatFactsV2,
+): number {
     const moveMode = input.movement?.mode;
     const standHeat = profile.heatPerStandAttempt * input.standAttempts;
     const scmActive = profile.superCooledMyomer.componentIds.length > 0
         && profile.superCooledMyomer.componentIds.some(
             componentId => !input.committedUnavailableComponents.has(componentId),
         );
-    if (moveMode === 'stationary' || moveMode === 'walk' || moveMode === 'run') {
+    if (moveMode === 'stationary' || moveMode === 'walk' || moveMode === 'run' || moveMode === 'sprint') {
+        if (profile.engine.heatlessIndustrialGroundMovement && moveMode !== 'stationary') {
+            return standHeat;
+        }
+        if (profile.landAirMek && input.airborne && moveMode !== 'stationary') {
+            return Math.round(jumpMovementHeat(profile, input) / 3) + standHeat;
+        }
         return (scmActive ? 0 : profile.engine.movementHeatByMode[moveMode]) + standHeat;
     }
+    if (moveMode === 'UMU') return profile.engine.movementHeatByMode.UMU + standHeat;
     if (moveMode !== 'jump') return standHeat;
+    return jumpMovementHeat(profile, input) + standHeat;
+}
+
+function jumpMovementHeat(profile: MekHeatProfile, input: MekMovementHeatFactsV2): number {
+    const workingJumpJets = profile.jump.componentIds.some(
+        componentId => !input.committedUnavailableComponents.has(componentId),
+    );
+    const workingJumpBooster = profile.jump.boosterComponentIds.some(
+        componentId => !input.committedUnavailableComponents.has(componentId),
+    );
+    // MegaMek chooses conventional jets on dual-system Meks; a booster-only
+    // jump is the one heatless path.
+    if (workingJumpBooster && !workingJumpJets) return 0;
     const destroyedWingCriticals = profile.partialWing?.criticalSlotIds
         .filter(slotId => input.committedUnavailableCriticalSlots.has(slotId)).length ?? 0;
     const wingReduction = profile.partialWing === undefined
@@ -692,15 +772,13 @@ function movementHeat(profile: MekHeatProfile, input: MekHeatKernelInputV2): num
         : Math.max(0, profile.partialWing.jumpHeatDistanceReduction - destroyedWingCriticals);
     const heatDistance = Math.max(0, (input.movement?.distance ?? 0) - wingReduction);
     const engineMultiplier = profile.engine.xxl ? 2 : 1;
-    const workingJumpKind = profile.jump.componentIds.some(
-        componentId => !input.committedUnavailableComponents.has(componentId),
-    ) ? profile.jump.kind : 'standard';
+    const workingJumpKind = workingJumpJets ? profile.jump.kind : 'standard';
     if (workingJumpKind === 'improved') {
-        return Math.max(3, Math.ceil((heatDistance * engineMultiplier) / 2)) + standHeat;
+        return Math.max(3, Math.ceil((heatDistance * engineMultiplier) / 2));
     }
     const prototypeMultiplier = workingJumpKind === 'prototype-improved' ? 2 : 1;
     const multiplier = engineMultiplier * prototypeMultiplier;
-    return Math.max(3 * multiplier, heatDistance * multiplier) + standHeat;
+    return Math.max(3 * multiplier, heatDistance * multiplier);
 }
 
 function committedCoolingCapacity(
@@ -750,6 +828,13 @@ function committedCoolingCapacity(
             0,
             profile.declaredHeatSinkUnits - damagedHeatSinkCount - heatsinksOff,
         );
+    }
+    if (!input.destroyed && !input.shutdown
+        && input.activeCoolantPodComponents.size > 0
+        && radicalHeatSinkCount === 0
+        && [...input.activeCoolantPodComponents].some(componentId =>
+            !input.committedUnavailableComponents.has(componentId))) {
+        capacity += baseCapacity;
     }
     if (profile.partialWing) {
         const destroyedWingCriticals = profile.partialWing.criticalSlotIds

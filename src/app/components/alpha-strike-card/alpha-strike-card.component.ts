@@ -14,7 +14,7 @@ import { InputDialogComponent, type InputDialogData } from '../input-dialog/inpu
 import { PilotAbilityInfoDialogComponent, type PilotAbilityInfoDialogData } from '../pilot-ability-info-dialog/pilot-ability-info-dialog.component';
 import { type CardConfig, type CardLayoutDesign, type CriticalHitsVariant, getLayoutForUnitType } from './card-layout.config';
 import type { SpecialAbilityState } from '../../models/as-special-ability-state.model';
-import type { SpecialAbilityClickEvent } from './layouts/layout-base.component';
+import type { CardAbility, SpecialAbilityClickEvent } from './layouts/layout-base.component';
 import { CriticalHitRollDialogComponent, type CriticalHitRollDialogData } from './critical-hit-roll-dialog/critical-hit-roll-dialog.component';
 import { MotiveDamageRollDialogComponent, type MotiveDamageRollDialogData } from './motive-damage-roll-dialog/motive-damage-roll-dialog.component';
 import { AsLayoutStandardComponent, AsLayoutLargeVessel1Component, AsLayoutLargeVessel2Component } from './layouts';
@@ -318,6 +318,22 @@ export class AlphaStrikeCardComponent {
         if (fu) {
             this.editPilot.emit(fu);
         }
+    }
+
+    onAbilityClick(selection: CardAbility): void {
+        if (selection.kind === 'formation-wide') {
+            this.dialogs.createDialog<void>(PilotAbilityInfoDialogComponent, {
+                data: {
+                    gameSystem: GameSystem.ALPHA_STRIKE,
+                    ability: selection.descriptor.ability,
+                    isCustom: false,
+                    isFormationWide: true,
+                } as PilotAbilityInfoDialogData,
+            });
+            return;
+        }
+
+        this.onPilotAbilityClick(selection.selection);
     }
 
     onPilotAbilityClick(selection: AbilitySelection): void {

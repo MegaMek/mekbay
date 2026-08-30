@@ -332,7 +332,10 @@ function addCargoSpecial(
   showDoors: boolean,
   specials: AlphaStrikeSpecialAbilityCollector,
 ): void {
-  specials.add(`${ability}${capacity}${showDoors && doors > 0 ? `-D${doors}` : ''}`);
+  const serializedCapacity = Number.isInteger(capacity)
+    ? String(capacity)
+    : String(Number(capacity.toFixed(6)));
+  specials.add(`${ability}${serializedCapacity}${showDoors && doors > 0 ? `-D${doors}` : ''}`);
 }
 
 const MOBILE_FIELD_BASE_BAY_TYPES = new Set([

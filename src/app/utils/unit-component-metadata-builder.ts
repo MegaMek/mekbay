@@ -19,12 +19,14 @@ import { MekEntity, MekWithArmsEntity } from '../models/entity/entities/mek/mek-
 import { VehicleEntity } from '../models/entity/entities/vehicle/vehicle-entity';
 import { EntityMountedEquipment, EntityMountedWeapon } from '../models/entity/types/equipment';
 import { weaponBayEquipmentId } from '../models/entity/utils/implicit-equipment';
-import { isShieldEquipment } from '../models/entity/utils/physical-weapon';
+import {
+  isProtoMekMeleeEquipment,
+  isShieldEquipment,
+} from '../models/entity/utils/physical-weapon';
 import { UnitComponent } from '../models/unit-summary.model';
 import { formatWeaponDamage } from './weapon-damage.util';
 import { isApolloEquipment } from '../models/apollo-mode.model';
 import { isSingleHexEcmEquipment } from '../models/ecm-mode.model';
-import { isSupportVehicleBarArmor } from '../models/construction-equipment.model';
 import {
   isBackhoeEquipment,
   isTalonEquipment,
@@ -95,7 +97,7 @@ function addOrdinaryEquipment(components: Map<string, ExportComponent>, entity: 
       continue;
     } else if (equipment instanceof AmmoEquipment) {
       addAmmo(components, entity, mount, equipment);
-    } else if (mount.isPhysicalWeapon()) {
+    } else if (mount.isPhysicalWeapon() && !isProtoMekMeleeEquipment(equipment)) {
       if (equipment instanceof WeaponEquipment && skipWeapon(entity, mount, equipment)) continue;
       if (equipment instanceof MiscEquipment && skipMisc(entity, mount, equipment)) continue;
       addPhysicalEquipment(components, entity, mount, equipment);
@@ -163,12 +165,7 @@ function addSyntheticStructure(components: Map<string, ExportComponent>, entity:
   if (structures.size === 0) return;
 
   const mounted = entity.uniformStructureMaterial();
-  if (!mounted) {
-    components.set('Standard__structure', {
-      id: 'Standard', q: 1, q2: 0, n: 'Standard Structure', t: 'S', p: -1, c: '0', os: 0,
-    });
-    return;
-  }
+  if (!mounted) return;
 
   const structure = mounted.structure;
   const id = entity.techBase() === 'Clan'
@@ -182,27 +179,29 @@ function addSyntheticStructure(components: Map<string, ExportComponent>, entity:
   });
 }
 
-/** Exports each effective armor material that MegaMek's name lookup can resolve. */
+/** Exports uniform armor once, retaining Patchwork as a configuration marker. */
 function addSyntheticArmor(components: Map<string, ExportComponent>, entity: BaseEntity): void {
   const armorByLocation = entity.armorByLocation();
   if (armorByLocation.size === 0) return;
 
-  const materials = new Map<string, ArmorEquipment>();
-  for (const mountedArmor of armorByLocation.values()) {
-    if (!isExportableArmor(
-      mountedArmor.armor,
-      mountedArmor.techBase,
-      mountedArmor.technology.scope,
-    )) continue;
-    const key = `${mountedArmor.armor.id}:${mountedArmor.techBase}`;
-    materials.set(key, mountedArmor.armor);
-  }
-  for (const [key, armor] of materials) {
-    components.set(`${armor.id}__armor_${key}`, {
-      ...baseComponent(armor, 1, -1, undefined, 'S', criticals(armor, entity)),
-      n: withMaterialSuffix(armor.shortName, 'Armor'),
+  if (entity.hasPatchworkArmor()) {
+    const patchwork = new ArmorEquipment({
+      id: 'Patchwork', name: 'Patchwork', shortName: 'Patchwork', type: 'armor',
+      armor: { type: 'PATCHWORK' },
     });
+    components.set(`${patchwork.id}__patchwork`, {
+      ...baseComponent(patchwork, 1, -1, undefined, 'S', criticals(patchwork, entity)),
+      n: withMaterialSuffix(patchwork.shortName, 'Armor'),
+    });
+    return;
   }
+
+  const armor = entity.uniformArmor()?.armor;
+  if (!armor) return;
+  components.set(`${armor.id}__armor`, {
+    ...baseComponent(armor, 1, -1, undefined, 'S', criticals(armor, entity)),
+    n: withMaterialSuffix(armor.shortName, 'Armor'),
+  });
 }
 
 function addMekSystems(components: Map<string, ExportComponent>, entity: BaseEntity): void {
@@ -276,18 +275,6 @@ function addImplicitSmallCraftEcm(
     equipment instanceof MiscEquipment && isSingleHexEcmEquipment(equipment));
   if (!(ecm instanceof MiscEquipment)) return;
   components.set(`${ecm.id}_NOS_C`, baseComponent(ecm, 1, 0, 'NOS', 'C', criticals(ecm, entity)));
-}
-
-function isExportableArmor(
-  armor: ArmorEquipment,
-  mountedTechBase: string,
-  technologyScope: string,
-): boolean {
-  if (isSupportVehicleBarArmor(armor)) return false;
-  if (armor.techBase === 'All') return true;
-  const clanLookup = technologyScope === 'Clan'
-    || (technologyScope === 'Unknown' && mountedTechBase === 'Clan');
-  return armor.techBase === (clanLookup ? 'Clan' : 'IS');
 }
 
 function withMaterialSuffix(name: string, suffix: 'Armor' | 'Structure'): string {
@@ -601,6 +588,11 @@ function criticals(
   if (entity.entityType === 'ProtoMek') return String(protoMekRequiresSlot(equipment) ? 1 : 0);
   if (entity instanceof MekEntity) return String(equipment.critSlots);
   if (entity.isSupportVehicle()) {
+    if (equipment instanceof ArmorEquipment && equipment.armorType === 'SV_BAR_10') {
+      const armorTechRating = entity.uniformArmor()?.techRating;
+      if (armorTechRating === 'E') return '2';
+      if (armorTechRating === 'F') return '1';
+    }
     return String(equipment.svSlots >= 0 ? equipment.svSlots : equipment.critSlots);
   }
   if (entity instanceof VehicleEntity) {

@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { ArmorEquipment } from '../../../equipment.model';
+import type { UnitSubtype, UnitType } from '../../types';
 
 /** Default Total Warfare target movement modifier (advanced movement option off). */
 export function targetMovementModifier(mp: number, jumped = false, airborne = false): number {
@@ -68,9 +69,49 @@ const MEK_SKILL_MULTIPLIERS = Object.freeze([
   Object.freeze([1.10, 0.99, 0.95, 0.90, 0.83, 0.75, 0.71, 0.68, 0.64]),
 ] as const);
 
+/** Minimal canonical facts needed by the Classic crew-skill BV rule. */
+export interface ClassicSkillUnitFacts {
+  readonly unitType: UnitType;
+  readonly unitSubtype: UnitSubtype;
+  readonly canAntiMech: boolean;
+}
+
+const DEFAULT_PILOTING_SKILL = 5;
+const NO_ANTIMEK_SKILL = 8;
+
+/** Fixed piloting column for unit families that do not use the requested value. */
+export function fixedClassicPilotingSkill(facts: ClassicSkillUnitFacts): number | null {
+  if (facts.unitType === 'ProtoMek') return DEFAULT_PILOTING_SKILL;
+  if (facts.unitType !== 'Infantry' || facts.canAntiMech) return null;
+  if (facts.unitSubtype === 'Conventional Infantry'
+    || facts.unitSubtype === 'Motorized Conventional Infantry') return NO_ANTIMEK_SKILL;
+  return DEFAULT_PILOTING_SKILL;
+}
+
+export function effectiveClassicPilotingSkill(
+  facts: ClassicSkillUnitFacts,
+  requested: number,
+): number {
+  return fixedClassicPilotingSkill(facts) ?? requested;
+}
+
 /** Total Warfare/Core crew-skill adjustment over a current or pristine Mek BV. */
 export function adjustMekBattleValueForSkills(base: number, gunnery: number, piloting: number): number {
   const row = MEK_SKILL_MULTIPLIERS[Math.max(0, Math.min(8, Math.trunc(gunnery)))]!;
   const multiplier = row[Math.max(0, Math.min(8, Math.trunc(piloting)))] ?? 1;
   return multiplier === 1 ? base : Math.round(base * multiplier);
+}
+
+/** Entity/search adapters share this rule without making UnitSummary an authority. */
+export function adjustClassicBattleValueForSkills(
+  base: number,
+  gunnery: number,
+  piloting: number,
+  facts: ClassicSkillUnitFacts,
+): number {
+  return adjustMekBattleValueForSkills(
+    base,
+    gunnery,
+    effectiveClassicPilotingSkill(facts, piloting),
+  );
 }

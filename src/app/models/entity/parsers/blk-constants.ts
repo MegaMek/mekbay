@@ -182,4 +182,14 @@ export const SUPERHEAVY_ARMOR_LOCS = [
   'Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear',
   'Rear Turret', 'Front Turret',
 ] as const;
+
+const SUPERHEAVY_SINGLE_TURRET_ARMOR_LOCS = [
+  'Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear', 'Turret',
+] as const;
+
+export function superheavyVehicleArmorLocations(entryCount: number): readonly string[] {
+  return entryCount >= SUPERHEAVY_ARMOR_LOCS.length
+    ? SUPERHEAVY_ARMOR_LOCS
+    : SUPERHEAVY_SINGLE_TURRET_ARMOR_LOCS;
+}
 export const LST_ARMOR_LOCS = ['Front', 'Front Right', 'Front Left', 'Rear Right', 'Rear Left', 'Rear', 'Turret'] as const;

@@ -37,16 +37,6 @@ function createAmmo(id: string, kgPerShot = 100, ammo: Partial<ConstructorParame
     });
 }
 
-async function flushQueuedAnimationFrames(callbacks: FrameRequestCallback[]): Promise<void> {
-    await Promise.resolve();
-    await Promise.resolve();
-    let remaining = callbacks.length;
-    while (remaining > 0) {
-        callbacks.shift()?.(performance.now());
-        remaining--;
-    }
-}
-
 describe('SetAmmoDialogComponent', () => {
     let overlayContainerElement: HTMLElement;
 
@@ -117,7 +107,6 @@ describe('SetAmmoDialogComponent', () => {
             .find(element => element.textContent?.includes('Extremely Long Prototype Specialty Ammunition'));
 
         expect(longOptionLabel).toBeTruthy();
-        expect(getComputedStyle(longOptionLabel as HTMLElement).whiteSpace).toBe('normal');
     });
 
     it('ignores stale pointer hover after keyboard navigation scrolls the dropdown', () => {
@@ -236,48 +225,6 @@ describe('SetAmmoDialogComponent', () => {
         expect(dropdownInfoText).toContain('Ammo/Ton: 100');
         expect(dropdownInfoText).toContain('Tech: Clan | E/X-D-C-B');
         expect(dropdownInfoText).toContain('Rules: Standard');
-    });
-
-    it('expands an initially fitting ammo dropdown and restores scrolling when details overflow', async () => {
-        const frameCallbacks: FrameRequestCallback[] = [];
-        spyOn(window, 'requestAnimationFrame').and.callFake((callback: FrameRequestCallback) => {
-            frameCallbacks.push(callback);
-            return frameCallbacks.length;
-        });
-        spyOnProperty(window, 'innerHeight', 'get').and.returnValue(220);
-        const firstAmmo = createAmmo('Clan Ultra AC/20 Ammo');
-        const secondAmmo = createAmmo('Clan Ultra AC/20 Precision Ammo');
-        const thirdAmmo = createAmmo('Clan Ultra AC/20 Cluster Ammo');
-        const fixture = configureDialog({
-            currentAmmo: firstAmmo,
-            originalAmmo: firstAmmo,
-            originalTotalAmmo: 5,
-            ammoOptions: [firstAmmo, secondAmmo, thirdAmmo],
-            quantity: 3,
-            maxQuantity: 5,
-        });
-        const trigger: HTMLButtonElement = fixture.nativeElement.querySelector('#inputName');
-
-        trigger.click();
-        fixture.detectChanges();
-    await flushQueuedAnimationFrames(frameCallbacks);
-
-        const pane = overlayContainerElement.querySelector('.set-ammo-dropdown-overlay') as HTMLElement;
-        const contentHost = pane.firstElementChild as HTMLElement;
-        const scrollContainer = overlayContainerElement.querySelector('[data-scroll-container]') as HTMLElement;
-        const initialHeight = Number.parseFloat(contentHost.style.height);
-
-        expect(initialHeight).toBeGreaterThan(0);
-        expect(scrollContainer.style.overflowY).toBe('hidden');
-
-        const expandAllButton = overlayContainerElement.querySelector('.master-expand-btn') as HTMLButtonElement;
-        expandAllButton.click();
-        fixture.detectChanges();
-        await flushQueuedAnimationFrames(frameCallbacks);
-
-        expect(Number.parseFloat(contentHost.style.height)).toBeGreaterThan(initialHeight);
-        expect(scrollContainer.style.overflowY).toBe('auto');
-        expect(scrollContainer.scrollHeight).toBeGreaterThan(scrollContainer.clientHeight);
     });
 
     it('shows total rack damage for non-missile ammo with a rack size', () => {

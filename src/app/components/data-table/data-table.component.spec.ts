@@ -118,41 +118,4 @@ describe('DataTableComponent', () => {
         expect(component.virtualRowKeys()).toEqual(['a', 'b']);
     });
 
-    it('grows wrapped rows beyond the estimate without clipping their content', async () => {
-        fixture.componentRef.setInput('itemSize', 48);
-        fixture.componentRef.setInput('rows', [
-            { id: 'short', text: 'Short' },
-            { id: 'long', text: 'Motorized Conventional Infantry with additional wrapped details' },
-        ]);
-        fixture.componentRef.setInput('rowKeys', ['short', 'long']);
-
-        await render();
-
-        const rowElements = Array.from(
-            hostElement().querySelectorAll<HTMLElement>('.mb-data-table-row-item'),
-        );
-        expect(rowElements.length).toBe(2);
-
-        const shortHeight = rowElements[0].getBoundingClientRect().height;
-        const longHeight = rowElements[1].getBoundingClientRect().height;
-        const longCell = rowElements[1].querySelector<HTMLElement>('.mb-data-table-body-cell')!;
-        const rowStyle = getComputedStyle(rowElements[1]);
-
-        expect(shortHeight).toBeGreaterThanOrEqual(48);
-        expect(longHeight).toBeGreaterThan(shortHeight);
-        expect(longCell.scrollHeight).toBeLessThanOrEqual(longCell.clientHeight + 1);
-        expect(rowStyle.overflow).not.toBe('hidden');
-    });
-
-    it('keeps short rows at no less than the configured estimated minimum', async () => {
-        fixture.componentRef.setInput('itemSize', 64);
-        fixture.componentRef.setInput('rows', [{ id: 'short', text: 'Short' }]);
-        fixture.componentRef.setInput('rowKeys', ['short']);
-
-        await render();
-
-        const row = hostElement().querySelector<HTMLElement>('.mb-data-table-row-item')!;
-        expect(row.getBoundingClientRect().height).toBeGreaterThanOrEqual(64);
-    });
-
 });

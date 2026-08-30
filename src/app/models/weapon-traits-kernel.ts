@@ -16,6 +16,7 @@ export type EquipmentFlagsSource = ReadonlySet<string> | EquipmentFlagsView | Eq
 
 export type WeaponTrait =
   | 'anti-missile'
+  | 'anti-missile-bay'
   | 'anti-personnel-pod'
   | 'artillery'
   | 'atm'
@@ -64,6 +65,7 @@ export type WeaponTrait =
 
 const WEAPON_TRAIT_FLAGS: Readonly<Record<WeaponTrait, EquipmentFlag>> = Object.freeze({
   'anti-missile': 'F_AMS',
+  'anti-missile-bay': 'F_AMS_BAY',
   'anti-personnel-pod': 'F_AP_POD',
   artillery: 'F_ARTILLERY',
   atm: 'F_ATM',

@@ -13,6 +13,7 @@ import {
     STEALTH_ENABLING_MODE,
     stealthStateForMode,
     unitHasActiveC3DisruptingStealth,
+    unitHasActiveVoidSignature,
     type StealthEquipmentFacts,
 } from './stealth-equipment.model';
 import {
@@ -81,6 +82,46 @@ describe('stealth equipment state policy', () => {
 
         expect(getActiveStealthTnModifiers(entries)).toEqual(TN_CHAMELEON_MODIFIERS);
         expect(unitHasActiveC3DisruptingStealth(entries)).toBeFalse();
+    });
+
+    it('requires ECM for Void Signature and replaces other stealth with movement protection', () => {
+        const voidSignature = misc('Void Signature', ['F_VOID_SIG'], ['Off', 'On']);
+        const stealth = misc('Stealth', ['F_STEALTH'], ['Off', 'On']);
+        const ecm = misc('ECM', ['F_ECM']);
+        const active = [
+            facts(voidSignature, 'On'),
+            facts(stealth, 'On'),
+            facts(ecm, 'ecm'),
+        ];
+
+        expect(unitHasActiveVoidSignature(active)).toBeTrue();
+        expect(unitHasActiveC3DisruptingStealth(active)).toBeTrue();
+        expect([...activeStealthHeatComponents(active)]).toEqual([
+            asComponentId('Void Signature'),
+            asComponentId('Stealth'),
+        ]);
+        expect(getActiveStealthTnModifiers(active, 0)).toEqual({
+            short: 3, medium: 3, long: 3,
+            conventionalInfantry: { short: 2, medium: 2, long: 2 },
+        });
+        expect(getActiveStealthTnModifiers(active, 2)).toEqual({
+            short: 2, medium: 2, long: 2,
+            conventionalInfantry: { short: 1, medium: 1, long: 1 },
+        });
+        expect(getActiveStealthTnModifiers(active, 5)).toEqual({
+            short: 1, medium: 1, long: 1,
+            conventionalInfantry: { short: 0, medium: 0, long: 0 },
+        });
+        expect(getActiveStealthTnModifiers(active, 6)).toEqual({
+            short: 0, medium: 0, long: 0,
+            conventionalInfantry: { short: 0, medium: 0, long: 0 },
+        });
+
+        const unsupported = [facts(voidSignature, 'On')];
+        expect(unitHasActiveVoidSignature(unsupported)).toBeFalse();
+        expect(unitHasActiveC3DisruptingStealth(unsupported)).toBeFalse();
+        expect(activeStealthHeatComponents(unsupported).size).toBe(0);
+        expect(getActiveStealthTnModifiers(unsupported)).toBeUndefined();
     });
 
     it('derives BA profiles and movement-dependent mimetic camouflage', () => {

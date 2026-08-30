@@ -4,7 +4,8 @@
 
 import { Injector, signal } from '@angular/core';
 import type { CBTForce } from '../../models/cbt-force.model';
-import type { CBTMekForceMember } from '../../models/force-member.model';
+import { CBTForceMember, type CBTMekForceMember } from '../../models/force-member.model';
+import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
 import {
     asEncounterTargetId,
     type EncounterTarget,
@@ -69,15 +70,11 @@ function createHarness(readOnly = false) {
         getUnitSnapshot: () => ({ ruleset: 'total-warfare' }),
         getMekTurnPanelSnapshot: () => ({ movementState: { movement: null } }),
         getC3State: () => 'none',
+        getRosterGroupId: () => 'group:test',
     } as unknown as CBTForce;
-    const member = {
-        kind: 'cbt',
-        id: instanceId,
-        force,
-        summary: { name: 'Attacker', entityType: 'Mek' },
-        rosterGroupId: 'group:test',
-        getSummary: () => ({ name: 'Attacker' }),
-    } as CBTMekForceMember;
+    const entity = new TestBipedMekEntity();
+    entity.chassis.set('Attacker');
+    const member = new CBTForceMember(instanceId, force, entity) as CBTMekForceMember;
     const opforService = jasmine.createSpyObj<InventoryControlOpforService>(
         'InventoryControlOpforService',
         ['setEnabled', 'isAvailable'],
@@ -384,7 +381,11 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
             }),
             getC3State: () => 'none',
         } as unknown as CBTForce;
-        const member = { id: instanceId, force, summary: { entityType: 'Mek' } } as CBTMekForceMember;
+        const member = new CBTForceMember(
+            instanceId,
+            force,
+            new TestBipedMekEntity(),
+        ) as CBTMekForceMember;
         const options: WeaponTargetsOverlayOpenOptions = {
             overlayKey: 'targets:retained',
             target: document.createElement('button'),

@@ -33,6 +33,7 @@ describe('selectedWeaponHeat', () => {
                 row('destroyed', 7, true, 'destroyed'),
                 row('powered-down', 11, true, 'available', false),
             ],
+            physicalAttacks: [],
         } as unknown as EquipmentPanelSnapshot;
 
         expect(selectedWeaponHeat(snapshot)).toEqual({ hasSelection: true, value: 3 });

@@ -7,7 +7,7 @@ import { CBTForceMember } from '../models/force-member.model';
 import { asArmorFaceId, asComponentId, asCrewPositionId, asCriticalSlotId, asLocationId } from '../models/entity/entity-identifiers';
 import { asStateRevision, asUnitInstanceId } from '../models/runtime/runtime-state';
 import type { MekRecordSheetSnapshot } from '../models/runtime/mek-record-sheet';
-import { createEmptyUnit } from '../testing/unit-test-helpers';
+import { createTestMekEntity, createTestTankEntity } from '../testing/unit-test-helpers';
 import { sanitizeMulFilename, serializeForceToMul } from './mul-file.util';
 
 describe('MUL file utilities', () => {
@@ -65,11 +65,10 @@ describe('MUL file utilities', () => {
                 },
             } : null,
         } as unknown as CBTForce;
-        member = new CBTForceMember(instanceId, force, createEmptyUnit({
+        member = new CBTForceMember(instanceId, force, createTestMekEntity({
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
-            entityType: 'Mek',
         }));
 
         const xml = await serializeForceToMul(force);
@@ -148,11 +147,10 @@ describe('MUL file utilities', () => {
                 }],
             }),
         } as unknown as CBTForce;
-        member = new CBTForceMember(instanceId, force, createEmptyUnit({
+        member = new CBTForceMember(instanceId, force, createTestTankEntity({
             name: 'Vedette Medium Tank',
             chassis: 'Vedette',
             model: 'Medium Tank',
-            entityType: 'Tank',
         }));
 
         const xml = await serializeForceToMul(force);

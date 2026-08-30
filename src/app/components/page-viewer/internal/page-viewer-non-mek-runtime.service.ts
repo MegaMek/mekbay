@@ -36,8 +36,6 @@ import { OptionsService } from '../../../services/options.service';
 import { PickerFactoryService } from '../../../services/picker-factory.service';
 import { ToastService } from '../../../services/toast.service';
 import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
-import { UnitFluffImageService } from '../../../services/catalogs/unit-fluff-image.service';
-import { RsPolyfillUtil } from '../../../utils/rs-polyfill.util';
 import type { PickerInstance } from '../../picker/picker.interface';
 import {
     bindNonMekRecordSheet,
@@ -75,7 +73,6 @@ interface OpenEntityPicker {
 @Injectable()
 export class PageViewerNonMekRuntimeService {
     private readonly logger = inject(LoggerService);
-    private readonly fluffImages = inject(UnitFluffImageService);
     private readonly dialogs = inject(DialogsService);
     private readonly injector = inject(Injector);
     private readonly overlayManager = inject(OverlayManagerService);
@@ -102,22 +99,6 @@ export class PageViewerNonMekRuntimeService {
 
         const snapshot = this.snapshot(member);
         if (!snapshot) return false;
-        if (svg.dataset['mekbayRecordSheetPrepared'] !== '1') {
-            RsPolyfillUtil.prepareRecordSheet({
-                unit: {
-                    type: snapshot.unitType,
-                    subtype: snapshot.subtype,
-                    armorType: snapshot.armorType,
-                    structureType: snapshot.structureType,
-                    crewSize: snapshot.crewSize,
-                },
-                conditionControls: unitConditionControls(snapshot.conditionControlKeys),
-                addCrewStateControls: snapshot.crewStateControlKeys.length > 0 && snapshot.crew.length > 0,
-                fluffImageUrl: this.fluffImages.resolveUrl(member.summary),
-            }, svg);
-            svg.dataset['mekbayRecordSheetPrepared'] = '1';
-        }
-
         svg.classList.toggle('read-only', member.force.readOnly());
         const binding = bindNonMekRecordSheet(
             svg,
@@ -153,16 +134,11 @@ export class PageViewerNonMekRuntimeService {
 
     private render(member: CBTForceMember): void {
         const current = this.bound.get(member.id);
-        const startedAt = performance.now();
         const snapshot = this.snapshot(member);
-        const projectedAt = performance.now();
         if (!current || current.member !== member || !snapshot) return;
         const issues = current.binding.render(
             snapshot,
             member.force.getEquipmentPanelSnapshot(member.id),
-        );
-        console.info(
-            `[record-sheet-perf] ${member.summary.name} projection=${(projectedAt - startedAt).toFixed(1)}ms binding=${(performance.now() - projectedAt).toFixed(1)}ms`,
         );
         if (issues.length > 0) {
             this.logger.warn(`Record-sheet layout omissions for ${snapshot.displayName}: ${issues.join('; ')}`);

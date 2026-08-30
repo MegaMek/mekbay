@@ -4,12 +4,14 @@
 import {
     criticalRollDiceCount,
     projectMekBlowOffV2,
+    projectMekCriticalChanceV2,
     projectMekCriticalRollProfileV2,
     projectMekCriticalRollV2,
     resolveMekCriticalChance,
 } from './mek-critical-hit-v2';
 import {
     createDirectBombastRuntimeFixture,
+    createDirectEngineHeatRuntimeFixture,
     createDirectEscalatingFailureRuntimeFixture,
     createDirectExplosionRuntimeFixture,
     createDirectMekRuntimeFixture,
@@ -28,9 +30,31 @@ describe('direct Mek critical-hit rules', () => {
         expect(resolveMekCriticalChance(10, true)).toEqual({ kind: 'critical-hits', count: 2 });
         expect(resolveMekCriticalChance(12, true)).toEqual({ kind: 'blown-off' });
         expect(resolveMekCriticalChance(12, false)).toEqual({ kind: 'critical-hits', count: 3 });
+        expect(resolveMekCriticalChance(13, false, true)).toEqual({ kind: 'critical-hits', count: 3 });
+        expect(resolveMekCriticalChance(14, false, true)).toEqual({ kind: 'critical-hits', count: 4 });
         expect(criticalRollDiceCount('HD')).toBe(1);
         expect(criticalRollDiceCount('LL')).toBe(1);
         expect(criticalRollDiceCount('LA')).toBe(2);
+    });
+
+    it('selects the Total Warfare IndustrialMech table from entity facts', () => {
+        const fixture = createDirectEngineHeatRuntimeFixture('Fusion', true, 'total-warfare');
+        const torso = [...fixture.index.locations.values()].find(location => location.code === 'CT')!;
+        const profile = projectMekCriticalChanceV2(
+            fixture.entity,
+            fixture.index,
+            fixture.instance.ruleset(),
+            fixture.instance.query(),
+            torso.id,
+            'committed',
+        );
+
+        expect(profile.industrialMek).toBeTrue();
+        expect(profile.modifiers).toContain(jasmine.objectContaining({
+            label: 'IndustrialMech', value: 2,
+        }));
+        expect(resolveMekCriticalChance(14, profile.canBlowOff, profile.industrialMek))
+            .toEqual({ kind: 'critical-hits', count: 4 });
     });
 
     it('publishes only rolls that currently select a valid entity slot', () => {
@@ -129,6 +153,39 @@ describe('direct Mek critical-hit rules', () => {
         expect(fixture.instance.query().criticalHits(slot.id)).toBe(1);
         expect(fixture.instance.query().remainingAmmo(ammo.id)).toBe(20);
         expect(fixture.instance.query().crewState(pilot.id).wounds).toBe(1);
+    });
+
+    it('can retain an ammunition critical while independently skipping explosion and pilot-hit effects', () => {
+        const skipExplosion = createDirectMekRuntimeFixture();
+        const ammo = skipExplosion.equipmentComponent('Test Ammo');
+        const slot = [...skipExplosion.index.slots.values()].find(candidate =>
+            candidate.componentIds.includes(ammo.id))!;
+        const location = skipExplosion.index.locations.get(slot.locationId)!;
+        const dice = criticalDice(slot.slotIndex);
+        const beforeInternal = skipExplosion.instance.query().remainingInternal(location.id);
+        expect(skipExplosion.instance.dispatch({
+            type: 'apply-mek-critical-roll', commandId: asCommandId('critical:skip-explosion'),
+            expectedRevision: skipExplosion.instance.query().stateRevision,
+            locationId: location.id, results: dice, target: 'committed', applyExplosion: false,
+        }).accepted).toBeTrue();
+        expect(skipExplosion.instance.query().criticalHits(slot.id)).toBe(1);
+        expect(skipExplosion.instance.query().remainingInternal(location.id)).toBe(beforeInternal);
+
+        const skipPilot = createDirectMekRuntimeFixture();
+        const secondAmmo = skipPilot.equipmentComponent('Test Ammo');
+        const secondSlot = [...skipPilot.index.slots.values()].find(candidate =>
+            candidate.componentIds.includes(secondAmmo.id))!;
+        const secondLocation = skipPilot.index.locations.get(secondSlot.locationId)!;
+        const pilot = [...skipPilot.index.crewPositions.values()].find(position => position.occurrence === 0)!;
+        expect(skipPilot.instance.dispatch({
+            type: 'apply-mek-critical-roll', commandId: asCommandId('critical:skip-pilot'),
+            expectedRevision: skipPilot.instance.query().stateRevision,
+            locationId: secondLocation.id, results: criticalDice(secondSlot.slotIndex),
+            target: 'committed', applyPilotHits: false,
+        }).accepted).toBeTrue();
+        expect(skipPilot.instance.query().remainingInternal(secondLocation.id))
+            .toBeLessThan(secondLocation.internalPoints);
+        expect(skipPilot.instance.query().crewState(pilot.id).wounds).toBe(0);
     });
 
     it('suppresses a Gauss explosion only while the weapon is effectively powered down', () => {

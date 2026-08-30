@@ -61,8 +61,9 @@ export class ForceSlotLifecycleService {
         force: Force,
         alignment: ForceAlignment,
         activate: boolean = true,
+        persistInUrl: boolean = true,
     ): ForceSlot {
-        const slot: ForceSlot = { force, alignment, changeSub: null };
+        const slot: ForceSlot = { force, alignment, changeSub: null, persistInUrl };
         const instanceId = force.instanceId();
         this.logger.info(`ForceSlotLifecycleService: setting up "${force.displayName()}"${instanceId ? ` (${instanceId})` : ''}`);
         const activation: ForceSlotActivationPlan = {
@@ -334,7 +335,7 @@ export class ForceSlotLifecycleService {
         let newSlot: ForceSlot | null = null;
         let published = false;
         try {
-            newSlot = this.setupForceSlot(cloned, slot.alignment, false);
+            newSlot = this.setupForceSlot(cloned, slot.alignment, false, slot.persistInUrl);
             const publishedSlots = expectedSlots.map(candidate => candidate === slot ? newSlot! : candidate);
             const clonedUnits = cloned.members();
             const selectedAfter = selectedIndex >= 0

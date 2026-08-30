@@ -11,9 +11,10 @@ import {
 import {
     Directive,
     ElementRef,
+    effect,
     forwardRef,
     inject,
-    Input,
+    input,
     NgZone,
     OnDestroy,
 } from '@angular/core';
@@ -284,35 +285,23 @@ export class VariableSizeVirtualScrollDirective implements OnDestroy {
     private readonly mutationObserver = new MutationObserver(records => this.onRowsMutated(records));
     private readonly observedRows = new Set<HTMLElement>();
     private measurementFrame: number | null = null;
-    private estimatedItemSizeValue = DEFAULT_ESTIMATED_ITEM_SIZE;
-    private minBufferPxValue = DEFAULT_MIN_BUFFER_PX;
-    private maxBufferPxValue = DEFAULT_MAX_BUFFER_PX;
     private viewportWidth = 0;
     private destroyed = false;
 
-    @Input({ required: true })
-    set mbVariableSizeVirtualScroll(keys: readonly unknown[]) {
-        this.scrollStrategy.setDataKeys(keys ?? []);
+    readonly mbVariableSizeVirtualScroll = input.required<readonly unknown[]>();
+    readonly estimatedItemSize = input(DEFAULT_ESTIMATED_ITEM_SIZE);
+    readonly minBufferPx = input(DEFAULT_MIN_BUFFER_PX);
+    readonly maxBufferPx = input(DEFAULT_MAX_BUFFER_PX);
+
+    private readonly synchronizeInputs = effect(() => {
+        this.scrollStrategy.setDataKeys(this.mbVariableSizeVirtualScroll());
+        this.scrollStrategy.updateConfig(
+            this.estimatedItemSize(),
+            this.minBufferPx(),
+            this.maxBufferPx(),
+        );
         this.scheduleMeasurement();
-    }
-
-    @Input()
-    set estimatedItemSize(value: number) {
-        this.estimatedItemSizeValue = value;
-        this.updateConfig();
-    }
-
-    @Input()
-    set minBufferPx(value: number) {
-        this.minBufferPxValue = value;
-        this.updateConfig();
-    }
-
-    @Input()
-    set maxBufferPx(value: number) {
-        this.maxBufferPxValue = value;
-        this.updateConfig();
-    }
+    });
 
     constructor() {
         this.zone.runOutsideAngular(() => {
@@ -330,15 +319,6 @@ export class VariableSizeVirtualScrollDirective implements OnDestroy {
         this.observedRows.clear();
         this.viewportResizeObserver.disconnect();
         this.mutationObserver.disconnect();
-    }
-
-    private updateConfig(): void {
-        this.scrollStrategy.updateConfig(
-            this.estimatedItemSizeValue,
-            this.minBufferPxValue,
-            this.maxBufferPxValue,
-        );
-        this.scheduleMeasurement();
     }
 
     private onViewportResize(entries: ResizeObserverEntry[]): void {

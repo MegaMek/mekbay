@@ -28,7 +28,7 @@ import { CBTForceMember } from '../models/force-member.model';
 import type { SerializedForce } from '../models/force-serialization';
 import { asUnitInstanceId } from '../models/runtime/runtime-state';
 import { C3NetworkEditor } from '../models/c3-network-editor';
-import { createEmptyCBTForceForTest } from '../testing/unit-test-helpers';
+import { createEmptyCBTForceForTest, createTestMekEntity } from '../testing/unit-test-helpers';
 
 function createFaction(id: number, name: string): Faction {
     return {
@@ -1412,7 +1412,11 @@ describe('ForceBuilderService production V2 unit selection', () => {
         const instanceId = asUnitInstanceId('unit:production-v2');
         const force = new CBTForce('Force', {} as never, {} as never);
         const admit = spyOn(force, 'admitRetainedUnit').and.resolveTo({ kind: 'admitted', instanceId });
-        const member = new CBTForceMember(instanceId, force, unit);
+        const member = new CBTForceMember(instanceId, force, createTestMekEntity({
+            uuid: unit.uuid,
+            chassis: unit.chassis,
+            model: unit.model,
+        }));
         spyOn(force, 'getClassicMember').and.returnValue(member);
         spyOn(force, 'getRosterGroupId').and.callFake(() => force.groups()[0]?.id ?? null);
         spyOn(force, 'queryCanonicalRoster').and.returnValue({
@@ -1434,7 +1438,13 @@ describe('ForceBuilderService production V2 unit selection', () => {
         service.injector = { get: () => ({ requestClosePanels }) };
         service.logger = jasmine.createSpyObj('LoggerService', ['info', 'error']);
         service.toastService = jasmine.createSpyObj('ToastService', ['showToast']);
-        service.unitAdmission = new ForceUnitAdmissionService();
+        const unitAdmission = Object.create(ForceUnitAdmissionService.prototype) as any;
+        unitAdmission.options = {
+            options: () => ({
+                CBTOptionalRules: { forcedWithdrawal: false, sprinting: false },
+            }),
+        };
+        service.unitAdmission = unitAdmission;
         service.formations = {
             generateFactionAndForceNameIfNeeded: jasmine.createSpy('generateFactionAndForceNameIfNeeded'),
             applyFormationFilterToGroup: jasmine.createSpy('applyFormationFilterToGroup'),
@@ -1444,12 +1454,16 @@ describe('ForceBuilderService production V2 unit selection', () => {
         const result = await service.addUnit(unit, 3, 4, undefined, GameSystem.CLASSIC);
 
         expect(result).toEqual(jasmine.objectContaining({
-            kind: 'cbt', id: instanceId, force, summary: unit,
+            kind: 'cbt', id: instanceId, force, entity: member.entity,
         }));
         expect(admit).toHaveBeenCalledOnceWith(jasmine.objectContaining({
             identity: { provider: unit.provider, uuid: unit.uuid },
             deployment: { id: 'force-builder-default' },
-            scenario: { id: 'megamek', ruleset: 'core-2026' },
+            scenario: jasmine.objectContaining({
+                id: 'megamek',
+                ruleset: 'core-2026',
+                options: { forcedWithdrawal: false, sprinting: false },
+            }),
             crewSkills: { gunnery: 3, piloting: 4 },
         }));
         expect(selectedUnit()).toBe(result);

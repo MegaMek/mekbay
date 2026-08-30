@@ -168,6 +168,7 @@ export class ReadyMekUnit implements ReadyClassicUnit {
                 accepted: true,
                 idempotent: result.idempotent,
                 currentRevision: result.state.stateRevision,
+                prototypeHeat: result.prototypeHeat ?? Object.freeze([]),
             })
             : Object.freeze({
                 accepted: false,

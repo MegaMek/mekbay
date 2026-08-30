@@ -1,12 +1,9 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 
-import {
-    RecordSheetSourceService,
-    type RecordSheetSourceMode,
-} from '../../../services/record-sheet-source.service';
+import { RecordSheetSourceService } from '../../../services/record-sheet-source.service';
 import type { PageViewerMember } from './types';
 
 interface RetainedSheet {
@@ -16,28 +13,23 @@ interface RetainedSheet {
 /** Loads pristine sheet artwork. Runtime state is bound separately and never read from the SVG. */
 @Injectable()
 export class PageViewerSheetSourceService {
+    private readonly source = inject(RecordSheetSourceService);
+
     private readonly retained = new Map<string, RetainedSheet>();
     private readonly pending = new Map<string, Promise<void>>();
 
-    constructor(private readonly source: RecordSheetSourceService) { }
-
-    mode(): RecordSheetSourceMode {
-        return this.source.mode();
-    }
-
     async load(member: PageViewerMember): Promise<void> {
-        const mode = this.mode();
-        const key = this.key(member, mode);
+        const key = this.key(member);
         if (this.retained.has(key)) return;
         const existing = this.pending.get(key);
         if (existing) return existing;
-        const pending = this.loadRetained(member, key, mode).finally(() => this.pending.delete(key));
+        const pending = this.loadRetained(member, key).finally(() => this.pending.delete(key));
         this.pending.set(key, pending);
         return pending;
     }
 
     svg(member: PageViewerMember): SVGSVGElement | null {
-        return this.retained.get(this.key(member, this.mode()))?.svg ?? null;
+        return this.retained.get(this.key(member))?.svg ?? null;
     }
 
     clear(): void {
@@ -48,20 +40,23 @@ export class PageViewerSheetSourceService {
     private async loadRetained(
         member: PageViewerMember,
         key: string,
-        mode: RecordSheetSourceMode,
     ): Promise<void> {
         const unit = member.force.getUnitSnapshot(member.id);
         if (!unit) throw new Error('The selected Classic unit is no longer admitted');
-        const result = await this.source.load(member.summary, unit.entity, {}, mode);
+        const identity = member.force.getUnitSourceIdentity(member.id);
+        const result = await this.source.load(unit.entity, {}, {
+            ...(identity ? { design: identity } : {}),
+        });
         const svg = result.svgs[0];
-        if (!svg) throw new Error(`No record-sheet artwork is available for ${member.summary.name}`);
+        if (!svg) throw new Error(`No record-sheet artwork is available for ${member.entity.displayName()}`);
         if (document.fonts?.ready) await document.fonts.ready.catch(() => undefined);
         svg.removeAttribute('id');
-        svg.setAttribute('aria-label', `${member.summary.name} record sheet`);
+        svg.setAttribute('aria-label', `${member.entity.displayName()} record sheet`);
         this.retained.set(key, Object.freeze({ svg }));
     }
 
-    private key(member: PageViewerMember, mode: RecordSheetSourceMode): string {
-        return `${mode}\u0000${member.force.instanceId() ?? 'unsaved'}\u0000${member.id}\u0000${member.summary.hash}`;
+    private key(member: PageViewerMember): string {
+        const identity = member.force.getUnitSourceIdentity(member.id);
+        return `${member.force.instanceId() ?? 'unsaved'}\u0000${member.id}\u0000${identity?.sourceHashAtSave ?? member.entity.uuid()}`;
     }
 }

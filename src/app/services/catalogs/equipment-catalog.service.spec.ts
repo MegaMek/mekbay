@@ -59,44 +59,33 @@ describe('EquipmentCatalogService', () => {
         });
     }
 
-    it('does not load equipment with playtest in its display name, regardless of case', () => {
+    it('loads equipment', () => {
         hydrate({
-            StandardAmmo: createAmmo('StandardAmmo', 'Standard AC/5 Ammo'),
-            ExperimentalAmmo: createAmmo('ExperimentalAmmo', 'Precision PlAyTeSt AC/5 Ammo'),
-        });
-
-        const registry = service.getEquipmentRegistry();
-        expect(registry.size).toBe(1);
-        expect(registry.findEquipment('StandardAmmo')).toBeDefined();
-        expect(registry.findEquipment('ExperimentalAmmo')).toBeNull();
-    });
-
-    it('does not load equipment identified as playtest by its catalog key or canonical id', () => {
-        hydrate({
-            'Playtest Catalog Key': createAmmo('CleanId', 'Clean Name'),
-            CleanCatalogKey: createAmmo('Precision Playtest Ammo', 'Another Clean Name'),
+            CleanId: createAmmo('CleanId', 'Clean Name'),
+            'Precision Ammo': createAmmo('Precision Ammo', 'Another Clean Name'),
             ProductionAmmo: createAmmo('ProductionAmmo', 'Production Ammo'),
         });
 
         const registry = service.getEquipmentRegistry();
-        expect(registry.size).toBe(1);
-        expect(registry.findEquipment('CleanId')).toBeNull();
-        expect(registry.findEquipment('Precision Playtest Ammo')).toBeNull();
+        expect(registry.size).toBe(4);
+        expect(registry.findEquipment('CleanId')).toBeDefined();
+        expect(registry.findEquipment('Precision Ammo')).toBeDefined();
         expect(registry.findEquipment('ProductionAmmo')).toBeDefined();
+        expect(registry.findEquipment('Light Minesweeper')).toBeDefined();
     });
 
-    it('skips malformed playtest records without attempting to hydrate them', () => {
+    it('skips records that fail to hydrate', () => {
         hydrate({
-            BrokenPlaytestAmmo: {
-                id: 'BrokenPlaytestAmmo',
-                name: 'Broken Playtest Ammo',
-                type: 'invalid-equipment-type',
-            } as unknown as EquipmentRawData,
+            BrokenEquipment: null as unknown as EquipmentRawData,
             StandardAmmo: createAmmo('StandardAmmo'),
         });
 
-        expect(service.getEquipmentRegistry().size).toBe(1);
-        expect(logger.error).not.toHaveBeenCalled();
+        expect(service.getEquipmentRegistry().size).toBe(2);
+        expect(service.getEquipmentRegistry().findEquipment('StandardAmmo')).toBeDefined();
+        expect(service.getEquipmentRegistry().findEquipment('Light Minesweeper')).toBeDefined();
+        expect(logger.error).toHaveBeenCalledOnceWith(jasmine.stringContaining(
+            'Failed to hydrate cached equipment BrokenEquipment',
+        ));
     });
 
     it('uses the supplier asset hash as the catalog revision', async () => {

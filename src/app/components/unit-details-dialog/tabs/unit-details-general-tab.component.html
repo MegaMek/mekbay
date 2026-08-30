@@ -60,7 +60,7 @@ unit().moveType }}</strong></div>
 <div class="quirks">
     <div class="muted">Quirks: </div>
     @for (quirk of unit().quirks; let i = $index; track i) {
-        <div class="quirk" [ngClass]="getQuirkClass(quirk)" [tooltip]="getQuirkDesc(quirk)">{{ quirk }}</div>
+        <div class="quirk" [class]="getQuirkClass(quirk)" [tooltip]="getQuirkDesc(quirk)">{{ quirk }}</div>
     }
 </div>
 </div>
@@ -246,6 +246,29 @@ unit().moveType }}</strong></div>
 @for (pack of forcePacks(); let i = $index; track i) {
     <span>{{ pack }}</span>
 }
+}
+@if (rulesRefBadgeGroups().length > 0) {
+<span class="label muted">Rulebooks:</span>
+<div class="rules-ref-badges">
+@for (badgeGroup of visibleRulesRefBadgeGroups(); let groupIndex = $index; track groupIndex) {
+    @if (groupIndex > 0) {
+        <span class="rules-ref-operator">||</span>
+    }
+    <span class="rules-ref-bucket">
+    @for (badge of badgeGroup; let badgeIndex = $index; track badge.label) {
+        @if (badgeIndex > 0) {
+            <span class="rules-ref-operator">+</span>
+        }
+        <span class="rules-ref-badge" [class.base-rules-ref]="badge.isBase">{{ badge.label }}</span>
+    }
+    </span>
+}
+@if (hasHiddenRulesRefBadgeGroups()) {
+    <span class="rules-ref-operator">||</span>
+    <button type="button" class="rules-ref-more" (click)="showAllRulesRefBadgeGroups()"
+        aria-label="Show all rulebook alternatives">(more...)</button>
+}
+</div>
 }
 </div>
 <div class="bottom-right">

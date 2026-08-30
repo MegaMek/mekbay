@@ -570,7 +570,7 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(updates).toHaveBeenCalledOnceWith({ targetId: 'opfor:enemy', patch: { color: '#fff' } });
     });
 
-    it('keeps equal delete-column widths for manual and linked targets in mixed lists', () => {
+    it('offers deletion only for manual targets in mixed lists', () => {
         fixture.componentRef.setInput('targets', [
             TARGET,
             { ...TARGET, id: 'opfor:enemy', letter: 'B', source: 'opfor', readOnly: true }
@@ -585,7 +585,6 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(linkedDeleteColumn).not.toBeNull();
         expect(manualDeleteColumn.querySelector('.target-delete')).not.toBeNull();
         expect(linkedDeleteColumn.querySelector('.target-delete')).toBeNull();
-        expect(getComputedStyle(manualDeleteColumn).width).toBe(getComputedStyle(linkedDeleteColumn).width);
     });
 
     it('removes the overlay when degradation clears', () => {

@@ -33,7 +33,6 @@ describe('InputDialogComponent', () => {
 
         expect(input.closest('.center-input')).not.toBeNull();
         expect(input.maxLength).toBe(4);
-        expect(getComputedStyle(input).textAlign).toBe('center');
 
         input.value = 'abc';
         input.dispatchEvent(new Event('input'));

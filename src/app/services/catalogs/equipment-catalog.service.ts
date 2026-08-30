@@ -9,6 +9,7 @@ import {
     EquipmentRegistry,
 } from '../../models/equipment-lookup';
 import { type EquipmentMap, type RawEquipmentData, createEquipment } from '../../models/equipment.model';
+import { equipmentCatalogEntriesIncludingSupplements } from '../../models/equipment-catalog-supplements';
 import { LoggerService } from '../logger.service';
 import {
     CatalogBaseService,
@@ -126,7 +127,7 @@ function buildEquipmentRegistry(
     onInvalidEntry?: (internalName: string, error: unknown) => void,
 ): EquipmentRegistry {
     const equipment: EquipmentMap = {};
-    for (const [internalName, raw] of Object.entries(data.equipment ?? {})) {
+    for (const [internalName, raw] of equipmentCatalogEntriesIncludingSupplements(data.equipment)) {
         if (isPlaytestEquipment(internalName, raw)) continue;
         try {
             equipment[internalName] = createEquipment(raw);

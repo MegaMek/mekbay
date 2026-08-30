@@ -13,6 +13,7 @@ import {
 import { SvgFrameUtil } from '../svg-frame.util';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
+import { isElectronicInterfaceEquipment } from '../../../models/battle-armor-equipment.model';
 import { clusterTableForEntity } from '../../record-sheet-reference-table';
 import {
     type Box,
@@ -226,7 +227,7 @@ function drawCompactProtoMekInventory(
             || equipment.type === 'armor'
             || equipment.hasFlag('INTERNAL_REPRESENTATION')) return;
         const location = compactLocationLabel(mount.getOccupiedLocations().join('/') || mount.location || '—');
-        const damage = equipment.hasFlag('F_EI_INTERFACE') ? '[E]' : '—';
+        const damage = isElectronicInterfaceEquipment(equipment) ? '[E]' : '—';
         const key = `${mount.displayName()}\u0000${location}\u0000${damage}`;
         const existing = miscRows.get(key);
         if (existing) {

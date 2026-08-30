@@ -20,6 +20,7 @@ const INFANTRY_MOVEMENT_MINIMUMS: Readonly<Record<MotiveModes, number>> = Object
     stationary: 0,
     walk: 0,
     run: 0,
+    sprint: 0,
     jump: 1,
     UMU: 0,
     VTOL: 0,

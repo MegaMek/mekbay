@@ -37,12 +37,14 @@ import { KeyboardShortcutService } from '../../services/keyboard-shortcut.servic
 import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ToastService } from '../../services/toast.service';
+import { DialogsService } from '../../services/dialogs.service';
 import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary-panel.component';
 import { AmmoLoadoutPanelComponent } from './ammo-loadout-panel.component';
 import type { EquipmentDialogData, EquipmentDialogTab } from './equipment-dialog.model';
 import { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
 import { WeaponTargetsOverlayController } from './weapon-targets-overlay.controller';
 import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
+import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
 
 const WEAPON_TARGETS_OVERLAY_KEY = 'weapon-equipment-targets';
 const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
@@ -66,6 +68,7 @@ export class EquipmentDialogComponent {
     private readonly destroyRef = inject(DestroyRef);
     private readonly options = inject(OptionsService);
     private readonly toast = inject(ToastService);
+    private readonly dialogs = inject(DialogsService);
     private readonly targetsOverlay = new WeaponTargetsOverlayController({
         overlay: this.overlay,
         overlayManager: this.overlayManager,
@@ -117,11 +120,11 @@ export class EquipmentDialogComponent {
     }
 
     unitModel(unit: CBTForceMember | null): string {
-        return unit?.summary.model ?? '';
+        return unit?.entity.model() ?? '';
     }
 
     unitChassis(unit: CBTForceMember | null): string {
-        return unit?.summary.chassis ?? '';
+        return unit?.entity.chassis() ?? '';
     }
 
     readOnly(unit: CBTForceMember = this.unit()): boolean {
@@ -153,6 +156,14 @@ export class EquipmentDialogComponent {
     turnSummaryPhase(): string {
         const snapshot = this.turnSnapshot();
         return snapshot === null ? '' : mekTurnPanelPhase(snapshot);
+    }
+
+    turnSummaryMovement() {
+        const snapshot = this.turnSnapshot();
+        return getTurnMovementIndicator(
+            snapshot?.movementState.movement?.mode,
+            snapshot?.defenseModifierTotal?.modifier ?? 0,
+        );
     }
 
     openTurnSummary(event: MouseEvent): void {
@@ -380,12 +391,12 @@ export class EquipmentDialogComponent {
     }
 
     private createRuntime(member: CBTForceMember): EquipmentDialogRuntimeController {
-        return new EquipmentDialogRuntimeController(member, this.options, this.toast);
+        return new EquipmentDialogRuntimeController(member, this.options, this.toast, this.dialogs);
     }
 
     private formatUnitLabel(unit: CBTForceMember | null): string {
         if (!unit) return '';
-        return [unit.summary.chassis, unit.summary.model].filter(Boolean).join(' ') || unit.summary.name;
+        return unit.entity.displayName();
     }
 
     private closeUnitOverlays(unitId: string): void {
@@ -409,7 +420,9 @@ export class EquipmentDialogComponent {
         if (!isCBTMekForceMember(member)) return null;
         return member.force.getMekTurnPanelSnapshot(
             member.id,
-            this.options.options().cbtAutomations ? 'automatic' : 'manual',
+            this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
+                ? 'automatic'
+                : 'manual',
         );
     }
 }

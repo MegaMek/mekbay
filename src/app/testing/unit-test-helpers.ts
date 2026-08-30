@@ -13,6 +13,11 @@ import {
 import { asStateRevision } from '../models/runtime/runtime-state';
 import { getUnitTechBaseDisplay } from '../models/tech.model';
 import { uuidv4 } from '../utils/uuid.util';
+import {
+    TestBipedMekEntity,
+    TestTankEntity,
+} from '../models/entity/testing/test-entities';
+import type { BaseEntity } from '../models/entity/base-entity';
 
 type TestAlphaStrikeOverrides = Partial<Omit<UnitSummary['as'], 'dmg'>> & {
     dmg?: Partial<UnitSummary['as']['dmg']>;
@@ -182,4 +187,35 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): UnitSummary 
     unit._chassisTags = unitOverrides._chassisTags ? [...unitOverrides._chassisTags] : [];
 
     return unit;
+}
+
+function applyTestEntityIdentity(entity: BaseEntity, unit: UnitSummary): void {
+    entity.uuid.set(unit.uuid);
+    entity.chassis.set(unit.chassis);
+    entity.model.set(unit.model);
+    entity.year.set(unit.year);
+    entity.role.set(unit.role);
+    entity.omni.set(unit.omni === 1);
+    entity.techBase.set(unit.techBase === 'Clan' ? 'Clan' : 'IS');
+}
+
+/** Canonical Entity fixture for tests that exercise loaded Classic behavior. */
+export function createTestMekEntity(overrides: TestUnitOverrides = {}): TestBipedMekEntity {
+    const unit = createEmptyUnit({ entityType: 'Mek', type: 'Mek', ...overrides });
+    const entity = new TestBipedMekEntity();
+    applyTestEntityIdentity(entity, unit);
+    return entity;
+}
+
+/** Canonical Entity fixture for tests that exercise loaded Classic vehicles. */
+export function createTestTankEntity(overrides: TestUnitOverrides = {}): TestTankEntity {
+    const unit = createEmptyUnit({
+        entityType: 'Tank',
+        type: 'Tank',
+        subtype: 'Combat Vehicle',
+        ...overrides,
+    });
+    const entity = new TestTankEntity();
+    applyTestEntityIdentity(entity, unit);
+    return entity;
 }

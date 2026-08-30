@@ -1,4 +1,5 @@
 @let unitDisplayName = optionsService.options().unitDisplayName;
+@let movement = movementIndicator();
 @if (compactMode()) {
 <div class="unit-square compact-mode" [class.destroyed]="destroyed()" [class.missing]="!unit()">
     @if (dirty()) {
@@ -10,6 +11,15 @@
         [class.heat]="phase === 'H'"
         [class.pending-effects]="hasPendingEffects()"
         ></div>
+    }
+    @if (movement) {
+        <div class="move-badge"
+            [class.stationary]="movement.color === 'stationary'"
+            [class.walk]="movement.color === 'walk'"
+            [class.run]="movement.color === 'run'"
+            [class.jump]="movement.color === 'jump'"
+            [class.sprint]="movement.color === 'sprint'"
+            aria-hidden="true">{{ movement.letter }}</div>
     }
     @if (isCommander()) {
         <div class="group-commander-indicator" aria-hidden="true">
@@ -24,7 +34,7 @@
         </div>
     }
     <div class="unit-content">
-        <unit-icon [unit]="unit()" [size]="24"></unit-icon>
+        <unit-icon [unit]="unitIconSource()" [size]="24"></unit-icon>
         @if (unitDisplayName === 'chassisModel'
         || unitDisplayName === 'both'
         || !alias()) {
@@ -34,6 +44,9 @@
         @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
         <div class="unit-alias">{{ alias() }}</div>
         }
+        <unit-notification-badges
+            class="compact-notification-row"
+            [snapshot]="notificationSnapshot()" />
         <div class="pilot-info-list">
             @if (isAlphaStrike()) {
             <button type="button" class="pilot-info info-slot numeric slim interactive">
@@ -59,6 +72,15 @@
         [class.pending-effects]="hasPendingEffects()"
         ></div>
     }
+    @if (movement) {
+        <div class="move-badge"
+            [class.stationary]="movement.color === 'stationary'"
+            [class.walk]="movement.color === 'walk'"
+            [class.run]="movement.color === 'run'"
+            [class.jump]="movement.color === 'jump'"
+            [class.sprint]="movement.color === 'sprint'"
+            aria-hidden="true">{{ movement.letter }}</div>
+    }
     @if (isCommander()) {
         <div class="group-commander-indicator" aria-hidden="true">
             <svg class="group-commander-icon" width="42.08" height="51.88" viewBox="0 0 21.04 25.94" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" focusable="false">
@@ -75,7 +97,7 @@
     <div class="unit-content">
         @let role = unit()?.role;
         <div class="unit-role" [class.tight]="(role?.length || 0) > 12">{{ role && role !== 'None' ? role : '' }}</div>
-        <unit-icon [unit]="unit()" [size]="48"></unit-icon>
+        <unit-icon [unit]="unitIconSource()" [size]="48"></unit-icon>
         <div class="unit-data-container">
             <div class="unit-actions">
                 @if (ctrlHeld() && !readOnly()) {
@@ -155,6 +177,7 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                 <div class="spanner"></div>
             </div>
             <div class="primary-info">
+                <div class="unit-name-line">
                 @if (unitDisplayName === 'chassisModel'
                 || unitDisplayName === 'both'
                 || !unitAlias) {
@@ -166,6 +189,8 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                 @if (unitDisplayName === 'alias') {
                 <div class="unit-alias">{{ unitAlias }}</div>
                 }
+                <unit-notification-badges [snapshot]="notificationSnapshot()" />
+                </div>
             </div>
             <div class="third-info">
                 <div class="info-area">

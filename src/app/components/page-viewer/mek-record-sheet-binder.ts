@@ -24,7 +24,10 @@ import {
     resolveCenterPanelCursorElements,
 } from '../../utils/record-sheet-center-panel.util';
 import { MEK_CREW_STATE_DISPLAYS } from '../../models/mek-record-sheet-controls';
-import { UNIT_CONDITION_DEFINITIONS } from '../../models/unit-status-presentation';
+import {
+    formatPilotingDisplay,
+    UNIT_CONDITION_DEFINITIONS,
+} from '../../models/unit-status-presentation';
 import {
     projectWeaponTargetPresentation,
     equipmentPanelRuntimeTarget,
@@ -32,8 +35,14 @@ import {
 } from '../../models/runtime/equipment-panel';
 import { formatPhysicalHitModifier } from '../../utils/inventory-target-number.util';
 import { getSvgTextLines, measureSvgTextCanvas, writeSvgTextLines } from '../../utils/svg-text.util';
+import { buildHeatSummaryRows } from '../../utils/heat-summary.util';
 import type { AttackerActionTarget } from '../../models/runtime/attacker-targeting-state';
+import type { MekHeatProjectionV2 } from '../../models/runtime/mek-heat-state-v2';
 import { WeaponEquipment } from '../../models/equipment.model';
+import { isHeatSinkEquipment } from '../../models/heat-equipment.model';
+import { isJumpJetEquipment } from '../../models/jump-equipment.model';
+import { isTargetingComputerEquipment } from '../../models/entity/utils/targeting-computer';
+import { isMekRecordSheetInventorySupport } from '../../utils/sheets/record-sheet-inventory-equipment';
 import { formatRecordSheetWeaponDamageText } from '../../utils/record-sheet-weapon-info.util';
 import {
     renderRecordSheetConditions,
@@ -194,6 +203,7 @@ const LOCATION_OUTPUT_CLASSES = [
     'locationDestroyed',
 ] as const;
 const EQUIPMENT_HOVER_SECONDARY_CLASS = 'equipment-hover-secondary';
+const COMPONENT_IDS_ATTRIBUTE = 'data-mekbay-component-ids';
 const HEAT_PROJECTION_ORIGINAL_STROKE = 'data-mekbay-original-projection-stroke';
 
 /**
@@ -390,10 +400,7 @@ export function bindMekRecordSheet(
             element.removeAttribute('uid');
             element.removeAttribute('totalAmmo');
             element.setAttribute('data-mekbay-slot-id', slot.slotId);
-            element.setAttribute(
-                'data-mekbay-component-ids',
-                slot.components.map(component => component.componentId).join(' '),
-            );
+            writeComponentIds(element, slot.components.map(component => component.componentId));
             const armoredHitCapacity = slot.armored ? 1 : 0;
             const extraHit = slot.hitCapacity - armoredHitCapacity > 1;
             const pipHitCapacity = armoredHitCapacity + (extraHit ? 1 : 0);
@@ -992,7 +999,7 @@ function renderInventory(
         const element = layoutRows[index];
         if (!element) return;
         element.style.display = '';
-        element.setAttribute('data-mekbay-component-ids', row.componentIds.join(' '));
+        writeComponentIds(element, row.componentIds);
         element.classList.add('interactive');
         element.classList.toggle('damaged', row.status !== 'available');
         element.classList.toggle('disabled', row.status === 'destroyed' || row.status === 'missing');
@@ -1092,19 +1099,17 @@ function bindEquipmentHover(svg: SVGSVGElement, signal: AbortSignal): void {
     const source = (target: EventTarget | null): SVGElement | null => {
         if (!(target instanceof Element)) return null;
         const element = target.closest<SVGElement>('.inventoryEntry, .critSlot');
-        return element?.hasAttribute('data-mekbay-component-ids') && svg.contains(element) ? element : null;
+        return element?.hasAttribute(COMPONENT_IDS_ATTRIBUTE) && svg.contains(element) ? element : null;
     };
-    const componentIds = (element: SVGElement): ReadonlySet<string> =>
-        new Set((element.getAttribute('data-mekbay-component-ids') ?? '').split(/\s+/).filter(Boolean));
     const update = (element: SVGElement | null): void => {
         clear();
         if (!element) return;
-        const ids = componentIds(element);
+        const ids = readComponentIds(element);
         if (ids.size === 0) return;
         highlighted = [...svg.querySelectorAll<SVGElement>(
-            '.inventoryEntry[data-mekbay-component-ids], .critSlot[data-mekbay-component-ids]',
+            `.inventoryEntry[${COMPONENT_IDS_ATTRIBUTE}], .critSlot[${COMPONENT_IDS_ATTRIBUTE}]`,
         )].filter(candidate => candidate !== element
-            && [...componentIds(candidate)].some(componentId => ids.has(componentId)));
+            && [...readComponentIds(candidate)].some(componentId => ids.has(componentId)));
         highlighted.forEach(candidate => candidate.classList.add(EQUIPMENT_HOVER_SECONDARY_CLASS));
     };
 
@@ -1116,8 +1121,24 @@ function bindEquipmentHover(svg: SVGSVGElement, signal: AbortSignal): void {
     }, { once: true });
 }
 
+function writeComponentIds(element: SVGElement, componentIds: readonly ComponentId[]): void {
+    element.setAttribute(COMPONENT_IDS_ATTRIBUTE, JSON.stringify(componentIds));
+}
+
+function readComponentIds(element: SVGElement): ReadonlySet<string> {
+    const value = element.getAttribute(COMPONENT_IDS_ATTRIBUTE);
+    if (value === null) return new Set();
+    try {
+        const componentIds: unknown = JSON.parse(value);
+        if (!Array.isArray(componentIds)) return new Set();
+        return new Set(componentIds.filter((componentId): componentId is string => typeof componentId === 'string'));
+    } catch {
+        return new Set();
+    }
+}
+
 interface RecordSheetEquipmentRow {
-    readonly kind: 'weapon' | 'physical';
+    readonly kind: 'weapon' | 'equipment' | 'physical';
     readonly componentIds: readonly ComponentId[];
     readonly baseLabel: string;
     readonly label: string;
@@ -1128,7 +1149,7 @@ interface RecordSheetEquipmentRow {
     readonly heat: string | number;
     readonly damage: string;
     readonly minimumRange: string | number;
-    readonly ranges: readonly number[];
+    readonly ranges: readonly (number | string)[];
     readonly modes: readonly string[];
     readonly defaultMode?: string;
     readonly mode?: string;
@@ -1148,10 +1169,6 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
         ?? snapshot.crew[0]?.gunnery
         ?? 4;
     for (const component of snapshot.equipment) {
-        // MegaMekLab's authored inventory table is a weapons/physical-attacks
-        // layout. Ammo bins, heat sinks, systems, and other installed equipment
-        // remain authoritative Entity/runtime facts, but they are rendered by
-        // their own controls and must never consume a weapon-table row.
         if (component.weapon === undefined) continue;
         const weapon = component.weapon;
         const label = component.label;
@@ -1210,6 +1227,27 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
         componentIds: Object.freeze([componentId]),
         ...row,
     }));
+    const equipment = snapshot.equipment
+        .filter(component => component.weapon === undefined && isPrintableMekInventoryComponent(component))
+        .map(component => Object.freeze({
+            kind: 'equipment' as const,
+            componentIds: Object.freeze([component.componentId]),
+            baseLabel: component.label,
+            label: component.label,
+            location: component.locations.map(location => location.code).join('/'),
+            status: component.status,
+            selected: false,
+            ammo: false,
+            heat: '—',
+            damage: miscInventoryDamage(component.equipment),
+            minimumRange: '—',
+            ranges: Object.freeze(['—', '—', '—']),
+            modes: Object.freeze([]),
+        }))
+        .sort((left, right) => {
+            const name = left.label.localeCompare(right.label);
+            return name !== 0 ? name : left.location.localeCompare(right.location);
+        });
     const physical = snapshot.physicalAttacks?.kind !== 'supported'
         ? []
         : snapshot.physicalAttacks.attacks.map(attack => {
@@ -1250,7 +1288,28 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
                 ...(selectedTarget === undefined ? {} : { targetColor: selectedTarget.color }),
             });
         });
-    return Object.freeze([...weapons, ...physical]);
+    return Object.freeze([...weapons, ...equipment, ...physical]);
+}
+
+function isPrintableMekInventoryComponent(
+    component: MekRecordSheetSnapshot['equipment'][number],
+): boolean {
+    const equipment = component.equipment;
+    if (!equipment || equipment.type !== 'misc' || !equipment.hittable) return false;
+    if (component.locations.length === 0
+        || component.locations.some(location => location.code === 'Engine' || location.code === 'Unallocated')) {
+        return false;
+    }
+    if (isHeatSinkEquipment(equipment) || isJumpJetEquipment(equipment)) return false;
+    return !isMekRecordSheetInventorySupport(equipment);
+}
+
+function miscInventoryDamage(
+    equipment: MekRecordSheetSnapshot['equipment'][number]['equipment'],
+): string {
+    if (!equipment) return '—';
+    if (equipment.hasWeaponTrait('anti-personnel-pod')) return '[PB,OS,AI]';
+    return isTargetingComputerEquipment(equipment) ? '[E]' : '—';
 }
 
 function compareRecordSheetWeaponRows(
@@ -1259,7 +1318,7 @@ function compareRecordSheetWeaponRows(
 ): number {
     const rangeCount = Math.max(left.ranges.length, right.ranges.length);
     for (let index = 0; index < rangeCount; index++) {
-        const delta = (right.ranges[index] ?? 0) - (left.ranges[index] ?? 0);
+        const delta = Number(right.ranges[index] ?? 0) - Number(left.ranges[index] ?? 0);
         if (delta !== 0) return delta;
     }
     return Number(right.heat) - Number(left.heat);
@@ -1458,6 +1517,9 @@ function renderCrew(
     revision: () => StateRevision,
     interactive: boolean,
 ): void {
+    const permanentPsrModifier = snapshot.movement.projection.kind === 'supported'
+        ? snapshot.movement.projection.permanentPsrModifier
+        : 0;
     const allCrewDefault = snapshot.crew.every(position =>
         position.name.length === 0 && position.gunnery === 4 && position.piloting === 5);
     svg.querySelectorAll<SVGElement>('.skillValue')
@@ -1476,7 +1538,11 @@ function renderCrew(
             write(svg, `#crewName${occurrence}`, position.name);
         }
         write(svg, `#gunnerySkill${occurrence}`, position.gunnery);
-        write(svg, `#pilotingSkill${occurrence}`, position.piloting);
+        renderPilotingSkillDisplay(
+            svg.querySelector<SVGElement>(`#pilotingSkill${occurrence}`),
+            position.piloting,
+            permanentPsrModifier,
+        );
         for (let wounds = 1; wounds <= 6; wounds++) {
             const marker = svg.querySelector<SVGElement>(`.crewHit[crewId="${occurrence}"][hit="${wounds}"]`);
             if (!marker) continue;
@@ -1518,6 +1584,36 @@ function renderCrew(
     if (snapshot.crew.length > 0 && !svg.querySelector('.crewHit, [id^="crewName"]')) {
         issues.push('Missing crew layout');
     }
+}
+
+function renderPilotingSkillDisplay(
+    element: SVGElement | null,
+    pilotingSkill: number,
+    controlRollModifier: number,
+): void {
+    if (!element) return;
+    const controlRollLabel = 'PSR';
+    const displayText = formatPilotingDisplay(pilotingSkill, controlRollModifier, controlRollLabel);
+    element.textContent = displayText;
+    if (!controlRollModifier) return;
+
+    const suffixStart = String(pilotingSkill).length;
+    const labelStart = displayText.lastIndexOf(controlRollLabel);
+    element.textContent = displayText.slice(0, suffixStart);
+    const suffix = element.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+    suffix.setAttribute('class', 'controlRollModifier');
+    suffix.setAttribute('font-size', '0.72em');
+    suffix.setAttribute('dominant-baseline', 'central');
+    suffix.setAttribute('dy', '-0.15em');
+    suffix.textContent = displayText.slice(suffixStart, labelStart);
+    const label = element.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+    label.setAttribute('class', 'controlRollLabel');
+    label.setAttribute('font-size', '0.5em');
+    label.setAttribute('font-family', 'Roboto Condensed');
+    label.setAttribute('dy', '-0.3em');
+    label.textContent = controlRollLabel;
+    suffix.appendChild(label);
+    element.appendChild(suffix);
 }
 
 function renderCrewName(svg: SVGSVGElement, occurrence: number, name: string): boolean {
@@ -1694,12 +1790,44 @@ function renderHeat(
     renderHeatArrows(svg, snapshot, highestHeat, showProjection);
     renderHeatProjectionGraphics(svg, snapshot, highestHeat, showProjection);
 
-    const sources = svg.getElementById('damagedEngineHeatText');
-    if (sources) {
-        const rows = projection?.sources.filter(source => source.value !== 0) ?? [];
-        sources.textContent = rows.map(source => `${source.label}: ${source.value >= 0 ? '+' : ''}${source.value}`).join(' · ');
-        sources.setAttribute('display', rows.length > 0 ? '' : 'none');
+    renderHeatSourcesSummary(svg, projection);
+}
+
+function renderHeatSourcesSummary(
+    svg: SVGSVGElement,
+    projection: MekHeatProjectionV2 | null,
+): void {
+    const target = svg.getElementById('damagedEngineHeatText') as SVGTextElement | null;
+    if (!target) return;
+    const rows = projection === null ? [] : buildHeatSummaryRows(
+        projection.sources,
+        projection.remainingDissipation,
+        projection.dissipated,
+        projection.projected,
+        { groupSources: true },
+    );
+    if (rows.length === 0) {
+        target.textContent = '';
+        target.setAttribute('display', 'none');
+        target.style.display = 'none';
+        return;
     }
+
+    const x = target.getAttribute('x') ?? '0';
+    const y = Number(target.getAttribute('y') ?? '0');
+    const lineHeight = 8;
+    target.textContent = '';
+    target.removeAttribute('display');
+    target.style.display = 'block';
+    rows.forEach((row, index) => {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+        line.setAttribute('x', x);
+        line.setAttribute('y', String(y - ((rows.length - 1 - index) * lineHeight)));
+        if (row.inventorySelection) line.setAttribute('fill', 'orange');
+        else if (row.kind === 'sink') line.setAttribute('fill', row.value < 0 ? '#2070d1' : '#f00');
+        line.textContent = `${row.label}: ${row.value >= 0 ? '+' : ''}${row.value}`;
+        target.appendChild(line);
+    });
 }
 
 function renderSurpassedHeatEffects(svg: SVGSVGElement): void {
@@ -2253,7 +2381,11 @@ function resetCrewText(svg: SVGSVGElement): void {
     });
     svg.querySelectorAll<SVGElement>(
         '[id^="pilotName"], [id^="gunnerySkill"], [id^="pilotingSkill"]',
-    ).forEach(element => { element.textContent = ''; });
+    ).forEach(element => {
+        if (/^(?:pilotName|gunnerySkill|pilotingSkill)\d+$/u.test(element.id)) {
+            element.textContent = '';
+        }
+    });
 }
 
 function write(svg: SVGSVGElement, selector: string, value: string | number): void {

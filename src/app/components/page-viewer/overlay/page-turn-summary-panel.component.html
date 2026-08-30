@@ -31,7 +31,7 @@
         }
 
         @if (canSwitchAirborneMode() === false || airborne() !== null) {
-            <div class="summary-row">
+            <div class="summary-row move-mode-row" [class.crowded]="moveModes().length > 4">
                 @for (moveMode of moveModes(); track moveMode.mode) {
                     @let mode = moveMode.mode;
                     <button
@@ -122,7 +122,7 @@
                                 [style.--picker-choice-disabled-text-color]="choice.colors?.disabledText"
                                 [disabled]="choice.disabled && !choice.active"
                                 [attr.aria-pressed]="choice.active"
-                                (click)="handleEquipmentTrackChoice(choice)"
+                                (click)="handleEquipmentTrackChoice(trackRow, choice)"
                             >{{ choice.shortLabel || choice.label }}</button>
                         }
                     </span>
@@ -144,7 +144,7 @@
                                 [style.--picker-choice-disabled-text-color]="choice.colors?.disabledText"
                                 [disabled]="choice.disabled && !choice.active"
                                 [attr.aria-pressed]="choice.active"
-                                (click)="handleEquipmentTrackChoice(choice)"
+                                (click)="handleEquipmentTrackChoice(trackRow, choice)"
                             >{{ choice.shortLabel || choice.label }}</button>
                         </span>
                     }
@@ -153,22 +153,21 @@
         }
         }
 
-        @if (entitySnapshot() === null) {
-            <div class="button-row">
-                <button
-                    type="button"
-                    class="bt-button spotting-button"
-                    [class.selected]="spotting()"
-                    [attr.aria-pressed]="spotting()"
-                    (click)="toggleSpotting()"
-                >
-                    <span>Spotting</span>
-                    @if (spottingModifierLabel(); as modifierLabel) {
-                        <span class="modifier-badge">{{ modifierLabel }}</span>
-                    }
-                </button>
-            </div>
-        }
+        <div class="button-row">
+            <button
+                type="button"
+                class="bt-button spotting-button"
+                [class.selected]="spotting()"
+                [attr.aria-pressed]="spotting()"
+                [disabled]="!canSpot()"
+                (click)="toggleSpotting()"
+            >
+                <span>Spotting</span>
+                @if (spottingModifierLabel(); as modifierLabel) {
+                    <span class="modifier-badge">{{ modifierLabel }}</span>
+                }
+            </button>
+        </div>
     </section>
 
     <section class="summary-section" aria-label="Defense">
@@ -177,7 +176,6 @@
             <span class="modifier important defense">{{ getTotalTargetModifierAsDefender() }}</span>
         </div>
 
-        @if (entitySnapshot() === null) {
         <div class="cover-control">
             <span class="cover-label">
                 <span>Cover</span>
@@ -218,52 +216,32 @@
                 />
             </div>
         </div>
-        }
     </section>
 
-    @if (tracksHeat()) {
-        <section class="summary-section">
-            <h2 class="section-title">Heat</h2>
-            <div class="modifier-list">
-                @if (entityHeatSummary(); as heat) {
-                    <div class="summary-row">
-                        <span>Current:</span>
-                        <span class="modifier heat">{{ heat.current }}</span>
-                    </div>
-                    @if (heat.pending !== null) {
+    @if (tracksHeat() && heatRows(); as heatRows) {
+        @if (heatRows.length > 0) {
+            <section class="summary-section">
+                <h2 class="section-title">Heat</h2>
+                <div class="modifier-list">
+                    @for (row of heatRows; track row.id) {
                         <div class="summary-row">
-                            <span>Target:</span>
-                            <span class="modifier heat">{{ heat.pending }}</span>
+                            <span [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
+                                {{ row.label }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> (Selected)</span>}:
+                            </span>
+                            <span class="modifier heat" [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
+                                {{ (row.value > 0 ? '+' : '') + row.value }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> ({{ (row.selectedValue > 0 ? '+' : '') + row.selectedValue }})</span>}
+                            </span>
                         </div>
                     }
-                    <div class="summary-row">
-                        <span>Heat sinks off:</span>
-                        <span class="modifier heat">{{ heat.heatsinksOff }}</span>
-                    </div>
-                    <div class="summary-row">
-                        <span>Dissipation:</span>
-                        <span class="modifier heat">{{ heat.dissipation }}</span>
-                    </div>
-                } @else {
-                @for (row of heatRows(); track row.id) {
-                    <div class="summary-row">
-                        <span [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
-                            {{ row.label }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> (Selected)</span>}:
-                        </span>
-                        <span class="modifier heat" [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
-                            {{ (row.value > 0 ? '+' : '') + row.value }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> ({{ (row.selectedValue > 0 ? '+' : '') + row.selectedValue }})</span>}
-                        </span>
-                    </div>
-                }
-                }
-            </div>
-        </section>
+                </div>
+            </section>
+        }
     }
 
     <section class="summary-section">
         <h2 class="section-title">Other</h2>
         <div class="summary-row">
-            <span>Damage received:</span>
+            <span>Damage received this phase:</span>
             <span class="modifier warning important">{{ damageReceived() }}</span>
         </div>
     </section>

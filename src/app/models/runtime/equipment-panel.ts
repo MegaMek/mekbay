@@ -11,6 +11,7 @@ import {
     Equipment,
     WeaponEquipment,
     type AmmoType,
+    type WeaponDamage,
 } from '../equipment.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type {
@@ -64,6 +65,7 @@ import {
     mekRiscLaserPulseLink,
 } from './component-risc-laser-pulse';
 import { RISC_LASER_PULSE_HEAT_BONUS } from '../risc-laser-mode.model';
+import { prototypeLaserMaximumExtraHeat } from '../prototype-laser-heat.model';
 import { rapidFireAutocannonShotCount } from './component-rapid-fire-autocannon';
 import {
     mekLaserInsulatorAdjustedHeat,
@@ -134,6 +136,11 @@ import {
     isWeaponEnhancementEquipment,
 } from '../entity/utils/equipment-link-rules';
 import { isTargetingComputerEquipment } from '../entity/utils/targeting-computer';
+import {
+    resolveComponentBayRuntime,
+    type ComponentBayRuntimeFacts,
+} from './component-bay-runtime';
+import { shieldWeaponToHitAdjustment } from './component-shield-mode';
 
 export interface EquipmentPanelLocation {
     readonly locationId: LocationId;
@@ -165,6 +172,8 @@ export interface EquipmentPanelWeapon {
     readonly heat: number;
     /** Total heat applied when this mode fires. */
     readonly firingHeat: number;
+    /** Variable ground heat is resolved from die evidence when fired. */
+    readonly heatSuffix?: '*';
     readonly selectable: boolean;
     readonly damage: WeaponEquipment['damage'];
     readonly damageText: string;
@@ -223,6 +232,8 @@ export interface EquipmentPanelComponent {
     readonly defaultMode?: string;
     readonly mode?: string;
     readonly jammed: boolean;
+    /** One resolved Entity-authored bay relationship; never reconstructed by the panel. */
+    readonly bay?: ComponentBayRuntimeFacts;
     readonly heatWeakened?: boolean;
     readonly modifiers?: readonly EquipmentPanelModifier[];
     readonly weapon?: EquipmentPanelWeapon;
@@ -452,6 +463,7 @@ export function projectEquipmentPanelWeaponDamage(
     selectedAmmo: AmmoEquipment | null,
     damageOverride: WeaponEquipment['damage'],
     effectiveWeaponTypes: readonly WeaponType[],
+    maximumMultiplier = 1,
 ): EquipmentPanelWeaponDamage {
     const ammoProfile = resolveAmmoWeaponProfile(selectedAmmo);
     const component = Object.freeze({ componentId, physical: false, weapon });
@@ -463,6 +475,13 @@ export function projectEquipmentPanelWeaponDamage(
     } as const;
     const rules = {
         applyWeaponTypes: () => new Set(effectiveWeaponTypes),
+        ...(maximumMultiplier <= 1 ? {} : {
+            applyDamageEffects: (_componentId: ComponentId, damage: WeaponDamage) => ({
+                ...damage,
+                maximum: damage.maximum * maximumMultiplier,
+                unit: 'shot' as const,
+            }),
+        }),
     } as const;
     const damageAt = (range: InventoryControlRuntimeRangeKey | null): string =>
         resolveInventoryControlDamageText(component, {
@@ -781,6 +800,7 @@ export interface MekPhysicalAttackRow {
     readonly available: boolean;
     readonly selectable: boolean;
     readonly effect: MekPhysicalAttackEffectV2;
+    readonly firingHeat: number;
     readonly selection?: AttackerSelection;
 }
 
@@ -832,6 +852,7 @@ export function projectMekPhysicalAttackPresentation(
                         query,
                         attack.target,
                         'physical-attack',
+                        ruleset,
                     )
                     : attack.target.kind === 'component'
                         && query.componentStatus(attack.target.componentId) === 'available',
@@ -943,15 +964,21 @@ export interface EquipmentPanelSnapshot {
 }
 
 export function selectedWeaponHeat(
-    snapshot: Pick<EquipmentPanelSnapshot, 'components'>,
+    snapshot: Pick<EquipmentPanelSnapshot, 'components' | 'physicalAttacks'>,
 ): Readonly<{ hasSelection: boolean; value: number }> {
     const selected = snapshot.components.filter(row =>
         row.status === 'available'
         && row.weapon?.selectable === true
         && row.weapon.selection !== undefined);
+    const selectedPhysical = snapshot.physicalAttacks.filter(row =>
+        row.available
+        && row.selectable
+        && row.selection !== undefined
+        && row.firingHeat > 0);
     return Object.freeze({
-        hasSelection: selected.length > 0,
-        value: selected.reduce((total, row) => total + (row.weapon?.firingHeat ?? 0), 0),
+        hasSelection: selected.length > 0 || selectedPhysical.length > 0,
+        value: selected.reduce((total, row) => total + (row.weapon?.firingHeat ?? 0), 0)
+            + selectedPhysical.reduce((total, row) => total + row.firingHeat, 0),
     });
 }
 
@@ -986,6 +1013,7 @@ export function projectMekEquipmentPanel(
     const rangedModifiers = combineAttackModifiers(
         combatModifiers.kind === 'supported' ? combatModifiers.ranged : [],
         turnModifiers,
+        voidSignatureWeaponModifiers(query),
     );
     const physicalModifiers = combineAttackModifiers(
         combatModifiers.kind === 'supported' ? combatModifiers.physical : [],
@@ -1071,6 +1099,7 @@ export function projectMekEquipmentComponents(
     stateModifiers: readonly ToHitModifierBreakdownEntry[] = combineAttackModifiers(
         combatModifiers.kind === 'supported' ? combatModifiers.ranged : [],
         mekTurnAttackModifiers(entity, index, ruleset, query),
+        voidSignatureWeaponModifiers(query),
     ),
 ): readonly EquipmentPanelComponent[] {
     const attackerSubmerged = mekUnitWaterState(entity, query).submerged;
@@ -1098,6 +1127,12 @@ export function projectMekEquipmentComponents(
             const status = query.componentStatus(componentId);
             const previewStatus = query.componentStatus(componentId, 'preview');
             const mode = query.componentMode(componentId);
+            const bayResolution = resolveComponentBayRuntime(index, query, componentId);
+            const machineGunArrayMemberCount = bayResolution.kind === 'resolved'
+                && bayResolution.facts.role === 'controller'
+                && bayResolution.facts.relation.kind === 'machine-gun-array'
+                ? bayResolution.facts.operationalMemberIds.length
+                : 1;
             const modeDefinition = mekComponentModes(entity, index, componentId, ruleset);
             const baseLabel = component.kind === 'equipment'
                 ? component.mount.displayName()
@@ -1168,6 +1203,12 @@ export function projectMekEquipmentComponents(
             const ppcCapacitorCharged = equipment instanceof WeaponEquipment
                 && ppcCapacitorChargedForWeapon(entity, index, query, componentId);
             const ppcCapacitorHeat = ppcCapacitorCharged ? PPC_CAPACITOR_HEAT_BONUS : 0;
+            const shieldToHit = equipment instanceof WeaponEquipment
+                ? shieldWeaponToHitAdjustment(entity, index, ruleset, query, componentId)
+                : null;
+            const prototypeMaximumHeat = equipment instanceof WeaponEquipment
+                ? prototypeLaserMaximumExtraHeat(equipment.internalName)
+                : 0;
             const toHitAdjustments = [
                 ...(bombastToHit === undefined ? [] : [{
                     kind: 'replace-base' as const,
@@ -1185,6 +1226,7 @@ export function projectMekEquipmentComponents(
                     modifier: riscLaserPulseActive ? -2 : 0,
                     weakened: !riscLaserPulseActive,
                 }]),
+                ...(shieldToHit === null ? [] : [shieldToHit]),
             ];
             const toHitSubject = equipment instanceof WeaponEquipment
                 ? installedWeaponToHitSubject(
@@ -1235,6 +1277,7 @@ export function projectMekEquipmentComponents(
                     selectedAmmo,
                     effectiveDamage,
                     effectiveWeaponTypes,
+                    machineGunArrayMemberCount,
                 )
                 : null;
             const linkedEnhancementId = index.relationships.linkedSourceByTarget.get(componentId);
@@ -1261,13 +1304,15 @@ export function projectMekEquipmentComponents(
                 : Object.freeze({
                     heat: operatingWeaponHeat + riscLaserPulseHeat + ppcCapacitorHeat,
                     firingHeat: (operatingWeaponHeat + riscLaserPulseHeat + ppcCapacitorHeat)
-                        * rapidFireShotCount,
+                        * rapidFireShotCount * machineGunArrayMemberCount,
+                    ...(prototypeMaximumHeat === 0 ? {} : { heatSuffix: '*' as const }),
                     selectable: canPerformMekAction(
                         entity,
                         index,
                         query,
                         { kind: 'component', componentId },
                         'fire',
+                        ruleset,
                     ),
                     damage: effectiveDamage,
                     damageText: damage!.default,
@@ -1313,6 +1358,7 @@ export function projectMekEquipmentComponents(
                     : { defaultMode: modeDefinition.defaultMode }),
                 ...(mode === undefined ? {} : { mode }),
                 jammed: query.componentJammed(componentId),
+                ...(bayResolution.kind === 'resolved' ? { bay: bayResolution.facts } : {}),
                 ...(laserInsulatorWeakened === null
                     ? {}
                     : { heatWeakened: laserInsulatorWeakened }),
@@ -1570,6 +1616,14 @@ function combineAttackModifiers(
     ...groups: readonly (readonly ToHitModifierBreakdownEntry[])[]
 ): readonly ToHitModifierBreakdownEntry[] {
     return Object.freeze(groups.flatMap(group => group));
+}
+
+function voidSignatureWeaponModifiers(
+    query: MekUnitQueryPort,
+): readonly ToHitModifierBreakdownEntry[] {
+    return query.voidSignatureActive('preview')
+        ? Object.freeze([{ label: 'Void Signature', modifier: 1 }])
+        : Object.freeze([]);
 }
 
 function compareText(left: string, right: string): number {

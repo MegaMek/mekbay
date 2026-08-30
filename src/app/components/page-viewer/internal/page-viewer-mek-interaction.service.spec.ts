@@ -4,7 +4,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Subject, of } from 'rxjs';
 
-import type { CBTMekForceMember } from '../../../models/force-member.model';
+import { CBTForceMember, type CBTMekForceMember } from '../../../models/force-member.model';
+import { TestBipedMekEntity } from '../../../models/entity/testing/test-entities';
 import type { EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
 import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
 import { DialogsService } from '../../../services/dialogs.service';
@@ -64,26 +65,24 @@ describe('PageViewerMekInteractionService', () => {
             dispatchAttackerTargeting: jasmine.createSpy().and.resolveTo({
                 accepted: true, idempotent: false, currentRevision: 2,
             }),
+            getRosterGroupId: () => 'group-1',
             getUnitSnapshot: jasmine.createSpy().and.returnValue({
                 entity: { entityType: 'Mek', mountedCockpit: () => ({ canEject: true }) },
                 index: { locations: new Map([['loc-ct', { code: 'CT' }]]) },
                 query: {
                     stateRevision: 1,
                     mekCriticalChance: () => ({
-                        locationId: 'loc-ct', locationCode: 'CT', canBlowOff: false, modifiers: [],
+                        locationId: 'loc-ct', locationCode: 'CT', canBlowOff: false,
+                        industrialMek: false, modifiers: [],
                     }),
                     mekBlowOff: () => ({ kind: 'blown-off', locationId: 'loc-ct' }),
                 },
             }),
         };
-        member = {
-            kind: 'cbt',
-            id: 'unit-1',
-            force,
-            summary: { name: 'Atlas AS7-D' },
-            rosterGroupId: 'group-1',
-            getSummary: () => ({ name: 'Atlas AS7-D' }),
-        } as CBTMekForceMember;
+        const entity = new TestBipedMekEntity();
+        entity.chassis.set('Atlas');
+        entity.model.set('AS7-D');
+        member = new CBTForceMember('unit-1' as never, force, entity) as CBTMekForceMember;
         dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog', 'prompt']);
         overlayManager = overlayManagerStub();
         TestBed.configureTestingModule({
@@ -140,7 +139,10 @@ describe('PageViewerMekInteractionService', () => {
         }));
         expect(commands[1]).toEqual(jasmine.objectContaining({
             type: 'damage-internal', locationId: 'loc-ct', amount: 2, expectedRevision: 2, target: 'pending',
+            hardenedArmorApplies: false,
+            armorDamagedBySameHit: true,
         }));
+        expect(commands[1].hitArc).toBeUndefined();
     });
 
     it('uses the original critical choice picker and dispatches opaque equipment-handler choices', async () => {
@@ -471,14 +473,17 @@ describe('PageViewerMekInteractionService', () => {
         }));
     });
 
-    it('opens the original reference-table dialog from projected publication facts', () => {
+    it('opens the reference-table dialog with the unit and active ruleset', () => {
         dialogs.createDialog.and.returnValue({ closed: { subscribe: () => undefined } } as any);
         service.handle(member, {
             kind: 'reference-table', expectedRevision: 1,
         } as MekRecordSheetInteraction, anchoredMouseEvent());
 
         expect(dialogs.createDialog).toHaveBeenCalledWith(jasmine.any(Function), jasmine.objectContaining({
-            data: { table: jasmine.objectContaining({ hitLocationTable: 'biped' }) },
+            data: jasmine.objectContaining({
+                unit: member.entity,
+                gameRules: jasmine.objectContaining({ id: 'core-2026' }),
+            }),
         }));
     });
 });

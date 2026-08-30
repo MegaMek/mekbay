@@ -204,6 +204,8 @@ describe('Classic V1 force converter', () => {
             airborne: true,
             movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
             weaponsHeat: 0,
+            cover: null,
+            spotting: false,
         });
         expect(restored.getInstance().remainingArmor(location.armorFaceIds[0])).toBe(3);
 

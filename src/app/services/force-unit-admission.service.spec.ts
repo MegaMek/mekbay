@@ -13,6 +13,7 @@ import type { UnitInstanceId } from '../models/runtime/runtime-state';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { MM_DATA_UNIT_PROVIDER_ID } from './unit-catalog/unit-catalog.types';
 import { ForceUnitAdmissionService } from './force-unit-admission.service';
+import { createTestMekEntity, createTestTankEntity } from '../testing/unit-test-helpers';
 
 describe('ForceUnitAdmissionService', () => {
     it('creates and targets the first roster group for a retained CBT Mek', async () => {
@@ -27,14 +28,22 @@ describe('ForceUnitAdmissionService', () => {
             type: 'Mek',
             subtype: '',
         } as unknown as UnitSummary;
-        const ownedMember = new CBTForceMember('instance-1' as UnitInstanceId, force, summary);
+        const ownedMember = new CBTForceMember(
+            'instance-1' as UnitInstanceId,
+            force,
+            createTestMekEntity({
+                uuid: summary.uuid,
+                chassis: 'Crab',
+                model: 'CRB-20',
+            }),
+        );
         const admit = spyOn(force, 'admitRetainedUnit').and.resolveTo({
             kind: 'admitted',
             instanceId: 'instance-1' as UnitInstanceId,
         });
         spyOn(force, 'getClassicMember').and.returnValue(ownedMember);
 
-        const member = await new ForceUnitAdmissionService().admit({
+        const member = await createAdmissionService().admit({
             force,
             summary,
             rosterMemberIndex: 0,
@@ -61,14 +70,22 @@ describe('ForceUnitAdmissionService', () => {
             type: 'Combat Vehicle',
             subtype: 'Tracked',
         } as unknown as UnitSummary;
-        const ownedMember = new CBTForceMember('instance-vehicle' as UnitInstanceId, force, summary);
+        const ownedMember = new CBTForceMember(
+            'instance-vehicle' as UnitInstanceId,
+            force,
+            createTestTankEntity({
+                uuid: summary.uuid,
+                chassis: 'Vedette',
+                model: 'Medium Tank',
+            }),
+        );
         const admit = spyOn(force, 'admitRetainedUnit').and.resolveTo({
             kind: 'admitted',
             instanceId: 'instance-vehicle' as UnitInstanceId,
         });
         spyOn(force, 'getClassicMember').and.returnValue(ownedMember);
 
-        const member = await new ForceUnitAdmissionService().admit({ force, summary });
+        const member = await createAdmissionService().admit({ force, summary });
 
         expect(admit).toHaveBeenCalled();
         expect(isCBTForceMember(member)).toBeTrue();
@@ -76,3 +93,13 @@ describe('ForceUnitAdmissionService', () => {
         expect(member).toBe(ownedMember);
     });
 });
+
+function createAdmissionService(): ForceUnitAdmissionService {
+    const service = Object.create(ForceUnitAdmissionService.prototype) as any;
+    service.options = {
+        options: () => ({
+            CBTOptionalRules: { forcedWithdrawal: false, sprinting: false },
+        }),
+    };
+    return service as ForceUnitAdmissionService;
+}

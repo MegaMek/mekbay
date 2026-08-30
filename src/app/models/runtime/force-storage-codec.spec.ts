@@ -21,6 +21,8 @@ import {
     createDirectModularArmorRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 import { TestAeroSpaceFighterEntity, TestTankEntity } from '../entity/testing/test-entities';
+import { addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
+import { componentIdForMount } from './non-mek-runtime-index';
 import {
     MM_DATA_UNIT_PROVIDER_ID,
     asUnitUuid,
@@ -284,6 +286,11 @@ describe('compact force storage codec', () => {
         entity.setTonnage(20);
         entity.originalWalkMP.set(8);
         entity.setArmorValue(entity.locationOrder[0], 'front', 5);
+        const boosterId = componentIdForMount(addTestEquipmentWithFlags(
+            entity,
+            ['F_MASC', 'S_SUPERCHARGER'],
+            { location: entity.locationOrder[0] },
+        ));
         const identity = Object.freeze({
             origin: 'megamek' as const,
             provider: MM_DATA_UNIT_PROVIDER_ID,
@@ -302,6 +309,10 @@ describe('compact force storage codec', () => {
         const damageTrackId = [...ready.getIndex().damageTracks.keys()][0]!;
         const crewPositionId = [...ready.getIndex().crewPositions.keys()][0]!;
         expect(runtime.dispatch({
+            kind: 'edit-escalating-failure', expectedRevision: runtime.revision(),
+            componentId: boosterId, edit: { kind: 'select-sequence', index: 0 },
+        }).accepted).toBeTrue();
+        expect(runtime.dispatch({
             kind: 'damage-armor', expectedRevision: runtime.revision(), faceId,
             amount: 2, target: 'committed',
         }).accepted).toBeTrue();
@@ -312,6 +323,12 @@ describe('compact force storage codec', () => {
         expect(runtime.dispatch({
             kind: 'set-movement', expectedRevision: runtime.revision(),
             movement: { mode: 'run', distance: 5, boosterComponentIds: [] },
+        }).accepted).toBeTrue();
+        expect(runtime.dispatch({
+            kind: 'set-cover', expectedRevision: runtime.revision(), cover: 'heavy',
+        }).accepted).toBeTrue();
+        expect(runtime.dispatch({
+            kind: 'set-spotting', expectedRevision: runtime.revision(), spotting: true,
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
             kind: 'set-crew-state', expectedRevision: runtime.revision(), positionId: crewPositionId,
@@ -331,6 +348,12 @@ describe('compact force storage codec', () => {
         }
         expect(entry.unit.family.kind).toBe('non-mek');
         expect(entry.unit).toEqual(unit);
+        expect(entry.unit.componentState).toEqual(jasmine.arrayContaining([
+            jasmine.objectContaining({
+                componentId: boosterId,
+                escalatingFailure: { sequence: 1, active: true },
+            }),
+        ]));
         expect(ReadyNonMekUnit.restore(entry.unit, entity, identity).serialize()).toEqual(unit);
         expect(entry.unit.pendingCombat?.damageTrackHits?.[0]?.hitTimestamps).toEqual([17]);
 
@@ -341,8 +364,9 @@ describe('compact force storage codec', () => {
         expect(compactUnit['q']).toBeUndefined();
         expect(compactUnit['p']).toBeDefined();
         expect(compactUnit['w']).toEqual([[crewPositionId, 0, 4]]);
-        expect(compactUnit['v']).toEqual([0, 0, ['run', 5]]);
+        expect(compactUnit['v']).toEqual([0, 0, ['run', 5], 0, 2, 1]);
         expect(compactUnit['y']).toEqual({ p: [1, 0] });
+        expect(compactUnit['c']).toEqual([[boosterId, { e: [1, 1] }]]);
     });
 
     it('omits pristine non-Mek heat and stores only changed aerospace heat fields', () => {

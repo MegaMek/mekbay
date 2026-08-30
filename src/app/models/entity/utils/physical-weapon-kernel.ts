@@ -263,12 +263,6 @@ export function isSpotWelderFlags(flags: ReadonlySet<string>): boolean {
   return physicalEquipmentKindFromFlags(flags) === 'spot-welder';
 }
 
-export function unsupportedPhysicalHeatFlag(
-  flags: ReadonlySet<string>,
-): 'S_SPOT_WELDER' | undefined {
-  return isSpotWelderFlags(flags) ? 'S_SPOT_WELDER' : undefined;
-}
-
 export function isProtoMekMeleeFlags(flags: ReadonlySet<string>): boolean {
   return physicalEquipmentKindFromFlags(flags) === 'protomek-melee';
 }

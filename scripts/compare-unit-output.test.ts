@@ -4,6 +4,7 @@ import {
   formatBoundedDiagnosticValue,
   unorderedStructuralEqual,
 } from './lib/unordered-value-comparison';
+import { nativeUnitSourceDeclaresUuid } from './lib/native-unit-source-identity';
 
 assert.equal(isCalculableLoadoutTons(12.5), true);
 assert.equal(isCalculableLoadoutTons(0.001), true);
@@ -25,5 +26,9 @@ assert.equal(unorderedStructuralEqual(
 assert.equal(unorderedStructuralEqual(['TM', 'TM'], ['TM']), false, 'array duplicates should count');
 assert.equal(unorderedStructuralEqual(['TM', 'TW'], ['TM', 'TM']), false, 'array multiplicity should match');
 assert.match(formatBoundedDiagnosticValue({ large: 'abcdefghij' }, 8), /chars omitted/u);
+assert.equal(nativeUnitSourceDeclaresUuid('uuid:019f583e-d705-7a89-aa1a-b1554faebbd2\n', 'unit.mtf'), true);
+assert.equal(nativeUnitSourceDeclaresUuid('UUID:   \n', 'unit.mtf'), false);
+assert.equal(nativeUnitSourceDeclaresUuid('<UUID>\n019f583e-e2c6-7b99-a188-ba0759db128e\n</UUID>', 'unit.blk'), true);
+assert.equal(nativeUnitSourceDeclaresUuid('<UUID> </UUID>', 'unit.blk'), false);
 
 console.log('compare-unit-output tests passed');

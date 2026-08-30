@@ -15,7 +15,14 @@ import { vibrobladeComponentModes } from '../vibroblade-mode.model';
 import { componentApolloModes } from './component-apollo';
 import { inventoryEquipmentModes } from './component-inventory-mode';
 import { hagEquipmentModes } from './component-hag-mode';
-import { ecmEquipmentModes } from '../ecm-mode.model';
+import { machineGunArrayComponentModes } from './component-machine-gun-array';
+import { shieldComponentModes } from './component-shield-mode';
+import { coolantPodComponentModes } from './component-coolant-pod';
+import {
+    electronicComponentModes,
+} from './component-electronic-suite';
+import { mobileHpgComponentModes } from './component-mobile-hpg';
+import { boobyTrapComponentModes } from './component-booby-trap';
 
 export interface MekComponentModes {
     readonly modes: readonly string[];
@@ -37,6 +44,10 @@ export function mekComponentModes(
 
     const apolloModes = componentApolloModes(index, componentId, ruleset);
     if (apolloModes !== null) return apolloModes;
+    const hpgModes = mobileHpgComponentModes(equipment);
+    if (hpgModes !== null) return hpgModes;
+    const boobyTrapModes = boobyTrapComponentModes(equipment);
+    if (boobyTrapModes !== null) return boobyTrapModes;
     const inventoryModes = inventoryEquipmentModes(equipment);
     if (inventoryModes !== null) return inventoryModes;
     const bombastModes = bombastLaserEquipmentModes(equipment, ruleset);
@@ -47,8 +58,14 @@ export function mekComponentModes(
     if (hagModes !== null) return hagModes;
     const vibrobladeModes = vibrobladeComponentModes(equipment);
     if (vibrobladeModes !== null) return vibrobladeModes;
-    const ecmModes = ecmEquipmentModes(equipment);
-    if (ecmModes !== null) return ecmModes;
+    const electronicModes = electronicComponentModes(equipment);
+    if (electronicModes !== null) return electronicModes;
+    const machineGunArrayModes = machineGunArrayComponentModes(equipment);
+    if (machineGunArrayModes !== null) return machineGunArrayModes;
+    const shieldModes = shieldComponentModes(equipment, ruleset);
+    if (shieldModes !== null) return shieldModes;
+    const coolantPodModes = coolantPodComponentModes(equipment);
+    if (coolantPodModes !== null) return coolantPodModes;
     const modes = Object.freeze([...equipment.modes]);
     return fixedModes(modes, defaultMode(modes));
 }

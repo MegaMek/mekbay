@@ -214,6 +214,27 @@ export abstract class ForceUnit {
         return this.unit;
     }
 
+    /** Unloaded Alpha Strike/formation adapter; Classic members supply Entity instead. */
+    getFormationSummary(): UnitSummary {
+        return this.unit;
+    }
+
+    /** Alpha Strike adapter for the summary-free shared C3 rules surface. */
+    getC3Specials(): readonly string[] {
+        return this.unit.as.specials ?? [];
+    }
+
+    /** Alpha Strike adapter for the shared C3 editor's display-only fields. */
+    getC3Presentation() {
+        return Object.freeze({
+            chassis: this.unit.chassis,
+            model: this.unit.model,
+            icon: this.unit.icon,
+            tons: this.unit.tons,
+            walk: this.unit.walk,
+        });
+    }
+
     /** Immutable capability projection; concrete authority stays behind this query. */
     abstract getTagEcmCapabilitySummary(): UnitTagEcmCapabilitySummary;
 

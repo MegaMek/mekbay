@@ -469,7 +469,7 @@
 
 .animated-line {
     stroke-dasharray: 6, 4;
-    animation: dash-animation 0.3s linear infinite;
+    animation: dash-animation 0.25s linear infinite;
 
     &.broken-link {
         animation: none;
@@ -477,7 +477,7 @@
     }
 
     &.degraded-link:not(.broken-link) {
-        stroke-dasharray: 12, 4;
+        stroke-dasharray: 12, 8;
         animation: slow-dash-animation 2s linear infinite;
     }
 }
@@ -492,8 +492,8 @@
     }
 
     &.degraded-link:not(.broken-link) {
-        stroke-dasharray: 40, 8;
-        animation: slow-dash-animation-big 2s linear infinite;
+        stroke-dasharray: 40, 20;
+        animation: slow-dash-animation-big 3s linear infinite;
     }
 }
 
@@ -511,13 +511,13 @@
 
 @keyframes slow-dash-animation {
     to {
-    stroke-dashoffset: -16;
+    stroke-dashoffset: -20;
     }
 }
 
 @keyframes slow-dash-animation-big {
     to {
-    stroke-dashoffset: -48;
+    stroke-dashoffset: -60;
     }
 }
 // ==================== Sidebar ====================

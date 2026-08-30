@@ -5,34 +5,34 @@ import {
     TestQuadMekEntity,
     TestTankEntity,
 } from '../../../models/entity/testing/test-entities';
-import type {
-    RecordSheetSourceMode,
-    RecordSheetSourceService,
-} from '../../../services/record-sheet-source.service';
+import { TestBed } from '@angular/core/testing';
+import { RecordSheetSourceService } from '../../../services/record-sheet-source.service';
 import { RecordSheetSvgGenerator } from '../../../utils/sheets/record-sheet-svg-generator';
 import type { PageViewerMember } from './types';
 import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 
 describe('PageViewerSheetSourceService', () => {
-    let mode: RecordSheetSourceMode;
-    let source: jasmine.SpyObj<Pick<RecordSheetSourceService, 'mode' | 'load'>>;
+    let source: jasmine.SpyObj<Pick<RecordSheetSourceService, 'load'>>;
+    let service: PageViewerSheetSourceService;
 
     beforeEach(() => {
-        mode = 'generated';
-        source = jasmine.createSpyObj('RecordSheetSourceService', ['mode', 'load']);
-        source.mode.and.callFake(() => mode);
-        source.load.and.callFake(async (_summary, entity, options, requestedMode) => ({
-            source: requestedMode ?? mode,
+        source = jasmine.createSpyObj('RecordSheetSourceService', ['load']);
+        source.load.and.callFake(async (entity, options) => ({
             svgs: [await RecordSheetSvgGenerator.generate(entity, options)],
         }));
+        TestBed.configureTestingModule({
+            providers: [
+                PageViewerSheetSourceService,
+                { provide: RecordSheetSourceService, useValue: source },
+            ],
+        });
+        service = TestBed.inject(PageViewerSheetSourceService);
     });
 
     it('generates and retains a Mek sheet from the admitted Entity snapshot', async () => {
         const entity = new TestQuadMekEntity();
         entity.chassis.set('Scorpion');
         const member = createMember('Mek', entity);
-        const service = new PageViewerSheetSourceService(source as unknown as RecordSheetSourceService);
-
         await service.load(member);
 
         expect(service.svg(member)?.dataset['mekbayGenerated']).toBe('1');
@@ -44,31 +44,27 @@ describe('PageViewerSheetSourceService', () => {
         const entity = new TestTankEntity();
         entity.chassis.set('Vedette');
         const member = createMember('Tank', entity);
-        const service = new PageViewerSheetSourceService(source as unknown as RecordSheetSourceService);
-
         await service.load(member);
 
         expect(service.svg(member)?.dataset['mekbaySheetKind']).toBe('tank-letter');
         expect(member.force.getUnitSnapshot).toHaveBeenCalledOnceWith(member.id);
     });
 
-    it('keeps generated and pre-generated retained artwork in separate cache entries', async () => {
+    it('retains one generated sheet until the cache is explicitly cleared', async () => {
         const entity = new TestTankEntity();
         const member = createMember('Tank', entity);
-        const service = new PageViewerSheetSourceService(source as unknown as RecordSheetSourceService);
-
         await service.load(member);
-        const generated = service.svg(member);
+        const first = service.svg(member);
+        await service.load(member);
 
-        mode = 'pre-generated';
+        expect(service.svg(member)).toBe(first);
+        expect(source.load).toHaveBeenCalledTimes(1);
+
+        service.clear();
         expect(service.svg(member)).toBeNull();
-        const legacy = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        legacy.dataset['mekbaySheetSource'] = 'pre-generated';
-        source.load.and.resolveTo({ source: 'pre-generated', svgs: [legacy] });
         await service.load(member);
 
-        expect(service.svg(member)).toBe(legacy);
-        expect(service.svg(member)).not.toBe(generated);
+        expect(service.svg(member)).not.toBe(first);
         expect(source.load).toHaveBeenCalledTimes(2);
     });
 });
@@ -77,14 +73,15 @@ function createMember(entityType: 'Mek' | 'Tank', entity: TestQuadMekEntity | Te
     const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({ entity });
     return {
         id: `unit-${entityType}`,
-        summary: {
-            name: entity.displayName(),
-            entityType,
-            hash: `hash-${entityType}`,
-        },
+        entity,
         force: {
             instanceId: () => 'force-1',
             getUnitSnapshot,
+            getUnitSourceIdentity: () => ({
+                provider: 'mm-data',
+                uuid: entity.uuid(),
+                sourceHashAtSave: `hash-${entityType}`,
+            }),
         },
     } as unknown as PageViewerMember;
 }

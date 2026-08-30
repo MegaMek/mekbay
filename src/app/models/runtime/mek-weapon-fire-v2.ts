@@ -53,6 +53,13 @@ import {
     mekRiscLaserPulseActive,
 } from './component-risc-laser-pulse';
 import { RISC_LASER_PULSE_HEAT_BONUS } from '../risc-laser-mode.model';
+import {
+    prototypeLaserHeatForRoll,
+    prototypeLaserHeatRollMap,
+    prototypeLaserMaximumExtraHeat,
+    type PrototypeLaserHeatResult,
+    type PrototypeLaserHeatRoll,
+} from '../prototype-laser-heat.model';
 
 export const MAX_MEK_WEAPON_FIRE_SELECTIONS = 256;
 
@@ -91,6 +98,7 @@ export type MekWeaponFirePlanRejectionCode =
     | 'MUNITION_CHANGED'
     | 'INCOMPATIBLE_AMMO'
     | 'INSUFFICIENT_AMMO'
+    | 'INVALID_HEAT_ROLL'
     | 'HEAT_LIMIT_EXCEEDED';
 
 export interface MekWeaponFireAmmoSpendV2 {
@@ -114,6 +122,7 @@ export interface MekWeaponFirePlanV2 {
     readonly ammoSpends: readonly MekWeaponFireAmmoSpendV2[];
     readonly ppcTransitions: readonly MekWeaponFirePpcTransitionV2[];
     readonly bombastTransitions: readonly MekWeaponFireBombastTransitionV2[];
+    readonly prototypeHeat: readonly PrototypeLaserHeatResult[];
 }
 
 interface EffectiveMekWeaponFireSelectionV2 {
@@ -140,9 +149,12 @@ export function planMekWeaponFireV2(
     ruleset: CBTRuleset,
     runtime: MekWeaponFireRuntimeViewV2,
     selections: readonly MekWeaponFireSelectionV2[],
+    prototypeHeatRolls: readonly PrototypeLaserHeatRoll[] = [],
 ): MekWeaponFirePlanResultV2 {
     if (!Array.isArray(selections) || selections.length === 0) return rejected('EMPTY_SELECTION');
     if (selections.length > MAX_MEK_WEAPON_FIRE_SELECTIONS) return rejected('TOO_MANY_SELECTIONS');
+    const heatRollEvidence = prototypeLaserHeatRollMap(prototypeHeatRolls);
+    if (!heatRollEvidence.accepted) return rejected('INVALID_HEAT_ROLL');
 
     const seenActions = new Set<ComponentId>();
     const effectiveSelections: EffectiveMekWeaponFireSelectionV2[] = [];
@@ -164,6 +176,7 @@ export function planMekWeaponFireV2(
     const ammoSpends = new Map<ComponentId, MekWeaponFireAmmoSpendV2>();
     const ppcTransitions: MekWeaponFirePpcTransitionV2[] = [];
     const bombastTransitions: MekWeaponFireBombastTransitionV2[] = [];
+    const prototypeHeat: PrototypeLaserHeatResult[] = [];
     let heat = 0;
 
     for (const effective of effectiveSelections) {
@@ -185,6 +198,7 @@ export function planMekWeaponFireV2(
             runtime,
             { kind: 'component', componentId: effective.actionComponentId },
             'fire',
+            ruleset,
         ) || runtime.componentStatus(weaponId, 'committed') !== 'available'
             || runtime.componentJammed(weaponId)) {
             return rejected('UNAVAILABLE_WEAPON');
@@ -224,6 +238,23 @@ export function planMekWeaponFireV2(
             : 0;
         heat += ((bombast === null ? weapon.heat : bombast.heat) + riscLaserPulseHeat)
             * shotCount;
+        if (prototypeLaserMaximumExtraHeat(weapon.internalName) > 0) {
+            const rolled = prototypeLaserHeatForRoll(
+                weapon.internalName,
+                weaponId,
+                heatRollEvidence.rolls.get(weaponId) ?? 0,
+            );
+            if (rolled === null) return rejected('INVALID_HEAT_ROLL');
+            const result = shotCount === 1
+                ? rolled
+                : Object.freeze({
+                    ...rolled,
+                    additionalHeat: rolled.additionalHeat * shotCount,
+                    detail: `${rolled.detail} × ${shotCount}`,
+                });
+            prototypeHeat.push(result);
+            heat += result.additionalHeat;
+        }
         if (!Number.isFinite(heat) || heat < 0 || heat > MAX_MEK_TURN_NUMBER) {
             return rejected('HEAT_LIMIT_EXCEEDED');
         }
@@ -259,6 +290,8 @@ export function planMekWeaponFireV2(
             ppcTransitions: Object.freeze(ppcTransitions.sort((left, right) =>
                 left.capacitorId.localeCompare(right.capacitorId))),
             bombastTransitions: Object.freeze(bombastTransitions.sort((left, right) =>
+                left.weaponId.localeCompare(right.weaponId))),
+            prototypeHeat: Object.freeze(prototypeHeat.sort((left, right) =>
                 left.weaponId.localeCompare(right.weaponId))),
         }),
     });

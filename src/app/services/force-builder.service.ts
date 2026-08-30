@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, Injector, inject } from '@angular/core';
+import { effect, Injectable, Injector, inject } from '@angular/core';
 import {
     Force,
 } from '../models/force.model';
@@ -25,6 +25,7 @@ import { ForceDialogsService } from './force-dialogs.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { ForceUnitLoadingService } from './force-unit-loading.service';
 import { ForceSlotLifecycleService } from './force-slot-lifecycle.service';
+import { OptionsService } from './options.service';
 
 @Injectable({
     providedIn: 'root'
@@ -40,6 +41,7 @@ export class ForceBuilderService {
     private readonly workspace = inject(ForceWorkspaceStateService);
     private readonly unitLoading = inject(ForceUnitLoadingService);
     private readonly slotLifecycle = inject(ForceSlotLifecycleService);
+    private readonly options = inject(OptionsService);
 
     /** Emits whenever a force is successfully loaded via loadForceEntry. */
     public readonly forceLoaded$ = new Subject<void>();
@@ -74,6 +76,17 @@ export class ForceBuilderService {
             loadAllUnits: forces => this.unitLoading.load(forces),
         });
         this.opforTargets.connect(this.workspace.loadedForces);
+        effect(() => {
+            if (!this.options.initialized()) return;
+            const { forcedWithdrawal, sprinting } = this.options.options().CBTOptionalRules;
+            for (const slot of this.workspace.loadedForces()) {
+                if (!(slot.force instanceof CBTForce)) continue;
+                void slot.force.synchronizeOptionalRules({ forcedWithdrawal, sprinting })
+                    .catch(error => this.logger.error(
+                        `ForceBuilderService: Optional-rule synchronization failed: ${String(error)}`,
+                    ));
+            }
+        });
     }
 
 
@@ -83,7 +96,11 @@ export class ForceBuilderService {
      * the alignment filter if necessary so the new force is visible.
      * Pass `activate: false` to just add the slot without switching selection/filter.
      */
-    addLoadedForce(force: Force, alignment: ForceAlignment = 'friendly', { activate = true }: { activate?: boolean } = {}): boolean {
+    addLoadedForce(
+        force: Force,
+        alignment: ForceAlignment = 'friendly',
+        { activate = true, persistInUrl = true }: { activate?: boolean; persistInUrl?: boolean } = {},
+    ): boolean {
         if (!force.isWholeOwnerActive()) {
             this.logger.warn(`ForceBuilderService: Refusing to load inactive owner "${force.displayName()}".`);
             return false;
@@ -94,7 +111,7 @@ export class ForceBuilderService {
             this.logger.warn(`ForceBuilderService: Skipping duplicate force "${force.displayName()}" (instance: ${instanceId})`);
             return false;
         }
-        const slot = this.slotLifecycle.setupForceSlot(force, alignment);
+        const slot = this.slotLifecycle.setupForceSlot(force, alignment, true, persistInUrl);
         this.workspace.loadedForces.update(slots => [...slots, slot]);
 
         if (activate) {

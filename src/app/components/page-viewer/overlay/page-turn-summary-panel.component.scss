@@ -121,6 +121,16 @@
     }
 }
 
+.move-mode-row.crowded {
+    flex-wrap: wrap;
+    align-items: stretch;
+
+    .move-button {
+        flex: 1 0 calc(33.333% - 3px);
+        max-width: none;
+    }
+}
+
 .immobile-status {
     min-height: 40px;
     justify-content: center;
@@ -281,6 +291,10 @@
     border: 1px solid var(--border-color);
     font-variant-numeric: tabular-nums;
     line-height: 1;
+}
+
+.bt-button[disabled] .modifier-badge {
+    opacity: 0.4;
 }
 
 .modifier {

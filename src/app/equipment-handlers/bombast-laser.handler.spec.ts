@@ -205,6 +205,7 @@ function canFire(setup: DirectBombastSetup): boolean {
         setup.runtime.query(),
         { kind: 'component', componentId: setup.component.id },
         'fire',
+        setup.fixture.instance.ruleset(),
     );
 }
 

@@ -22,4 +22,6 @@ export interface ForceSlot {
     alignment: ForceAlignment;
     /** Per-slot subscription to force.changed for auto-save. Null if not yet subscribed. */
     changeSub: Subscription | null;
+    /** Whether this force should be represented in the shareable URL. */
+    persistInUrl?: boolean;
 }

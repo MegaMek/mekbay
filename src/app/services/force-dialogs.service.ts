@@ -24,7 +24,10 @@ import type { Force, UnitGroup } from '../models/force.model';
 import type { ForceSlot } from '../models/force-slot.model';
 import type { PrintAllOptions } from '../models/print-options.model';
 import { ASPrintUtil } from '../utils/asprint.util';
+import { ASSummaryPrintUtil } from '../utils/as-summary-print.util';
 import { CBTPrintUtil } from '../utils/cbtprint.util';
+import { CBTSummaryPrintUtil } from '../utils/cbt-summary-print.util';
+import { AsAbilityLookupService } from './as-ability-lookup.service';
 import { DataService } from './data.service';
 import { DialogsService, type DialogRef } from './dialogs.service';
 import { ForceFormationService } from './force-formation.service';
@@ -101,7 +104,21 @@ export class ForceDialogsService {
         const { PrintOptionsDialogComponent } = await import('../components/print-options-dialog/print-options-dialog.component');
         const ref = this.dialogs.createDialog<PrintAllOptions | null>(PrintOptionsDialogComponent, {
             disableClose: false,
-            data: { gameSystem: force instanceof CBTForce ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE },
+            data: {
+                gameSystem: force instanceof CBTForce ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE,
+                printSummary: async (printOptions: PrintAllOptions) => {
+                    if (force instanceof CBTForce) {
+                        await CBTSummaryPrintUtil.print(force, printOptions);
+                    } else if (force instanceof ASForce) {
+                        await ASSummaryPrintUtil.print(
+                            force,
+                            this.injector.get(AsAbilityLookupService),
+                            this.options.options().ASUseHex,
+                            printOptions,
+                        );
+                    }
+                },
+            },
         });
         const printOptions = await firstValueFrom(ref.closed);
         if (!printOptions) return;
@@ -116,7 +133,6 @@ export class ForceDialogsService {
                 force.groups(),
                 printOptions,
                 true,
-                force,
             );
         }
     }

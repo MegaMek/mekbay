@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
@@ -25,7 +24,6 @@ export interface ConfirmDialogData<T = any> {
     selector: 'confirm-dialog',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
@@ -43,7 +41,7 @@ export interface ConfirmDialogData<T = any> {
             @for (btn of data.buttons; track btn.label) {
                 <button
                     (click)="close(btn.value)"
-                    class="bt-button" [ngClass]="btn.class"
+                    class="bt-button" [class]="btn.class"
                     >{{ btn.label }}</button>
             }
         </div>

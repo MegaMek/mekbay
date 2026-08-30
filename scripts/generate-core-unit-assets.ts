@@ -14,6 +14,7 @@ import {
     type EquipmentMap,
     type RawEquipmentData,
 } from '../src/app/models/equipment.model';
+import { equipmentCatalogEntriesIncludingSupplements } from '../src/app/models/equipment-catalog-supplements';
 import type { Quirks } from '../src/app/models/quirks.model';
 import type { Eras } from '../src/app/models/eras.model';
 import type { RawMULFactions } from '../src/app/models/mulfactions.model';
@@ -279,7 +280,7 @@ async function createProductionSummaryGenerationContext(
     writeDeterministicFile(path.join(assetsRoot, 'factions.json'), factionsText);
 
     const equipment: EquipmentMap = {};
-    for (const [internalName, raw] of Object.entries(equipmentRaw.equipment)) {
+    for (const [internalName, raw] of equipmentCatalogEntriesIncludingSupplements(equipmentRaw.equipment)) {
         if (!isPlaytestEquipment(internalName, raw)) equipment[internalName] = createEquipment(raw);
     }
     const equipmentRegistry = new EquipmentRegistry(equipment);

@@ -12,7 +12,7 @@ import {
     type ForceMember,
 } from '../models/force-member.model';
 import type { CrewProfilePosition } from '../models/runtime/crew-profile';
-import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
+import { effectiveEntityPilotingSkill } from '../models/entity/utils/battle-value/skill-facts';
 
 /** Copies crew facts between the only two live force-member owners. */
 @Injectable({ providedIn: 'root' })
@@ -31,7 +31,7 @@ export class ForceCrewTransferService {
                 ...position,
                 name: details.name,
                 gunnery: details.gunnery,
-                piloting: getEffectivePilotingSkill(created.summary, details.piloting),
+                piloting: effectiveEntityPilotingSkill(this.entity(created), details.piloting),
             };
             return index === 0 && !input.crew?.length && input.alias
                 ? { ...position, name: input.alias }
@@ -92,7 +92,7 @@ export class ForceCrewTransferService {
                 ...position,
                 ...(value.name ? { name: value.name } : {}),
                 gunnery: value.gunnery,
-                piloting: getEffectivePilotingSkill(target.summary, value.piloting),
+                piloting: effectiveEntityPilotingSkill(this.entity(target), value.piloting),
             } : position;
         });
     }
@@ -108,5 +108,11 @@ export class ForceCrewTransferService {
             positions: before.positions.map(update),
         });
         if (!result?.accepted) throw new Error(`Could not update crew profile for ${target.id}`);
+    }
+
+    private entity(member: CBTForceMember) {
+        const entity = member.force.getUnitSnapshot(member.id)?.entity;
+        if (!entity) throw new Error(`Missing Entity for ${member.id}`);
+        return entity;
     }
 }

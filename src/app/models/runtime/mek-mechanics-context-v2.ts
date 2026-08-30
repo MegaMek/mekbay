@@ -314,6 +314,7 @@ export type MekRuleCheckContextResolutionV2 =
  */
 export interface MekMovementRuntimeContextInputV2 {
     readonly currentHeat: number;
+    readonly airborne: boolean;
     readonly crewAssignment: CrewAssignment;
     crewState(positionId: CrewPositionId): CrewRuntimeState;
     readonly conditions: ReadonlySet<'shutdown' | 'prone' | 'disconnected'>;
@@ -707,7 +708,9 @@ function movementRuntimeFacts(
         profile: binding.profile,
         facts: Object.freeze({
             rulesFlavor: binding.profile.rulesFlavor,
+            sprintingAllowed: binding.rules.sprinting,
             currentHeat: input.currentHeat,
+            airborne: input.airborne,
             pilotingSkill,
             functionalCrew: selected !== undefined,
             dedicatedPilotFunctional: occurrenceZero !== undefined

@@ -93,7 +93,7 @@ describe('PagePsrWarningPanelComponent', () => {
             imports: [PagePsrWarningPanelComponent],
             providers: [
                 { provide: PAGE_TURN_MEMBER, useValue: member },
-                { provide: OptionsService, useValue: { options: () => ({ cbtAutomations: false }) } },
+                { provide: OptionsService, useValue: { cbtAutomationMode: () => 'no' } },
                 { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
                 {
                     provide: OverlayManagerService,
@@ -144,7 +144,7 @@ describe('PagePsrWarningPanelComponent', () => {
             imports: [PagePsrWarningPanelComponent],
             providers: [
                 { provide: PAGE_TURN_MEMBER, useValue: member },
-                { provide: OptionsService, useValue: { options: () => ({ cbtAutomations: false }) } },
+                { provide: OptionsService, useValue: { cbtAutomationMode: () => 'no' } },
                 { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
                 { provide: OverlayManagerService, useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') } },
             ],

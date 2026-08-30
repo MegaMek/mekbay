@@ -21,6 +21,7 @@ import { TaggingService } from '../../services/tagging.service';
 import { TagsService } from '../../services/tags.service';
 import { ToastService } from '../../services/toast.service';
 import { UserStateService } from '../../services/userState.service';
+import { DisplayNameService } from '../../services/display-name.service';
 import { OptionsDialogComponent } from './options-dialog.component';
 
 describe('OptionsDialogComponent', () => {
@@ -30,9 +31,10 @@ describe('OptionsDialogComponent', () => {
                 { provide: AccountAuthService, useValue: { authInFlight: signal(false) } },
                 { provide: AppUpdateService, useValue: {} },
                 { provide: DataService, useValue: { getUnits: () => [], getEquipmentRegistry: () => new EquipmentRegistry({}) } },
-                { provide: DbService, useValue: { getSheetsStoreSize: () => Promise.resolve({ memorySize: 0, count: 0 }), getCanvasStoreSize: () => Promise.resolve(0) } },
+                { provide: DbService, useValue: { getCanvasStoreSize: () => Promise.resolve(0) } },
                 { provide: DialogRef, useValue: { close: () => undefined } },
                 { provide: DialogsService, useValue: {} },
+                { provide: DisplayNameService, useValue: { save: jasmine.createSpy('save'), generate: jasmine.createSpy('generate') } },
                 { provide: GameService, useValue: {} },
                 { provide: LoggerService, useValue: {} },
                 { provide: OptionsService, useValue: optionsService },
@@ -46,6 +48,7 @@ describe('OptionsDialogComponent', () => {
                     useValue: {
                         uuid: signal(''),
                         publicId: signal(''),
+                        displayName: signal(''),
                         availableAuthProviders: signal([]),
                         oauthProviders: signal([]),
                         hasOAuth: signal(false),
@@ -58,7 +61,7 @@ describe('OptionsDialogComponent', () => {
 
     it('persists the selected force viewer BV/PV display mode', () => {
         const setOption = jasmine.createSpy('setOption');
-        const component = configureComponent({ options: () => ({ unitServers: [] }), setOption });
+        const component = configureComponent({ options: () => ({}), setOption });
         const select = document.createElement('select');
         select.innerHTML = '<option value="both">Both</option>';
         select.value = 'both';
@@ -67,36 +70,25 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplay', 'both');
     });
 
-    it('persists the CBT automations selection as a boolean', () => {
-        const setOption = jasmine.createSpy('setOption');
-        const component = configureComponent({ options: () => ({ unitServers: [] }), setOption });
-        const select = document.createElement('select');
-        select.innerHTML = '<option value="true">Enabled</option><option value="false">Disabled</option>';
-        select.value = 'false';
+    it('persists each CBT automation mode independently', () => {
+        const setCbtAutomationMode = jasmine.createSpy('setCbtAutomationMode');
+        const component = configureComponent({ options: () => ({}), setCbtAutomationMode });
 
-        component.onCbtAutomationsChange({ target: select } as unknown as Event);
+        component.onCbtAutomationModeChange('criticalHitChanceCheck', 'ask');
 
-        expect(setOption).toHaveBeenCalledOnceWith('cbtAutomations', false);
-    });
-
-    it('persists the pre-generated record-sheet compatibility selection as a boolean', () => {
-        const setOption = jasmine.createSpy('setOption');
-        const component = configureComponent({ options: () => ({ unitServers: [] }), setOption });
-        const select = document.createElement('select');
-        select.innerHTML = '<option value="true">Pre-generated</option><option value="false">Generated</option>';
-        select.value = 'true';
-
-        component.onUsePreGeneratedRecordSheetsChange({ target: select } as unknown as Event);
-
-        expect(setOption).toHaveBeenCalledOnceWith('usePreGeneratedRecordSheets', true);
+        expect(setCbtAutomationMode).toHaveBeenCalledOnceWith('criticalHitChanceCheck', 'ask');
     });
 
     it('updates one CBT optional rule without changing the other', () => {
         const setOption = jasmine.createSpy('setOption');
         const component = configureComponent({
             options: () => ({
-                unitServers: [],
-                CBTOptionalRules: { forcedWithdrawal: true, extremeRange: false },
+                CBTOptionalRules: {
+                    floatingCriticals: false,
+                    forcedWithdrawal: true,
+                    extremeRange: false,
+                    sprinting: false,
+                },
             }),
             setOption,
         });
@@ -107,8 +99,10 @@ describe('OptionsDialogComponent', () => {
         component.onCBTOptionalRuleChange('forcedWithdrawal', { target: select } as unknown as Event);
 
         expect(setOption).toHaveBeenCalledOnceWith('CBTOptionalRules', {
+            floatingCriticals: false,
             forcedWithdrawal: false,
             extremeRange: false,
+            sprinting: false,
         });
     });
 
@@ -133,12 +127,13 @@ describe('OptionsDialogComponent', () => {
                 { provide: AccountAuthService, useValue: { authInFlight: signal(false) } },
                 { provide: AppUpdateService, useValue: {} },
                 { provide: DataService, useValue: { getUnits: () => [], getEquipmentRegistry } },
-                { provide: DbService, useValue: { getSheetsStoreSize: () => Promise.resolve({ memorySize: 0, count: 0 }), getCanvasStoreSize: () => Promise.resolve(0) } },
+                { provide: DbService, useValue: { getCanvasStoreSize: () => Promise.resolve(0) } },
                 { provide: DialogRef, useValue: { close: () => undefined } },
                 { provide: DialogsService, useValue: {} },
+                { provide: DisplayNameService, useValue: { save: jasmine.createSpy('save'), generate: jasmine.createSpy('generate') } },
                 { provide: GameService, useValue: {} },
                 { provide: LoggerService, useValue: {} },
-                { provide: OptionsService, useValue: { options: () => ({ unitServers: [] }) } },
+                { provide: OptionsService, useValue: { options: () => ({}) } },
                 { provide: PublicTagsService, useValue: { version: signal(0), getOwnTagSubscriberCounts: () => Promise.resolve({}) } },
                 { provide: SpriteStorageService, useValue: { getIconCount: () => Promise.resolve(0) } },
                 { provide: TaggingService, useValue: {} },
@@ -149,6 +144,7 @@ describe('OptionsDialogComponent', () => {
                     useValue: {
                         uuid: signal(''),
                         publicId: signal(''),
+                        displayName: signal(''),
                         availableAuthProviders: signal([]),
                         oauthProviders: signal([]),
                         hasOAuth: signal(false),

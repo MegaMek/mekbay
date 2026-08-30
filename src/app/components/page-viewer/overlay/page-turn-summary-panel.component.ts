@@ -6,7 +6,14 @@ import { afterNextRender, ChangeDetectionStrategy, Component, computed, DestroyR
 import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 
-import { canChangeAirborneGround, getMotiveModeLabel, type MotiveModeOption, type MotiveModes } from '../../../models/motiveModes.model';
+import {
+    canChangeAirborneGround,
+    getMotiveModeLabel,
+    getMotiveModesOptionsByUnit,
+    motiveModeFactsForEntity,
+    type MotiveModeOption,
+    type MotiveModes,
+} from '../../../models/motiveModes.model';
 import {
     calculateModifierTotal,
     type UnitModifierBreakdownEntry,
@@ -20,6 +27,8 @@ import type { MekEquipmentChoice } from '../../../models/cbt-force.model';
 import {
     isUnitBuildingLevel,
     isUnitWaterDepth,
+    resolveUnitBuildingCoverState,
+    resolveUnitWaterState,
     type UnitCover,
 } from '../../../models/unit-cover.model';
 import { OptionsService } from '../../../services/options.service';
@@ -32,27 +41,56 @@ import { CoverLevelPickerComponent } from '../../cover-level-picker/cover-level-
 import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.util';
 import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
 import { toggleStandingUpOverlay } from './page-standing-up-panel.component';
-import { MekTurnSummaryRuntimeController } from './mek-turn-summary-runtime.controller';
+import {
+    MekTurnSummaryRuntimeController,
+    visibleEscalatingFailureSteps,
+    type MekEscalatingFailureControlRow,
+} from './mek-turn-summary-runtime.controller';
 import { isMekTurnPanelDirty } from '../../../models/runtime/mek-turn-panel';
 import type { MekMovementModeV2 } from '../../../models/runtime/mek-movement-psr-v2';
 import {
     hasPendingNonMekChanges,
+    nonMekAttackMovementModifier,
+    projectNonMekControlRoll,
+    projectNonMekDefenseModifierBreakdown,
+    projectNonMekEndTurnHeat,
+    projectNonMekEscalatingFailureInteractions,
     projectNonMekMovementCapabilities,
     supportsNonMekAirborneSelection,
     type NonMekMovementDeclaration,
+    type NonMekUnitCommand,
 } from '../../../models/runtime/non-mek-unit-instance';
 import {
-    getDefaultAttackerMovementModifier,
-    getTargetMovementDistanceModifier,
-    getTargetUnitTypeModifier,
-} from '../../../models/target-number-calculator.model';
-import {
     composeMekPsrDisplayModifiers,
-    composeMekTurnSummaryHeatRows,
+    composeTurnSummaryHeatRows,
 } from './page-turn-summary.util';
-import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
-import { projectAeroRuntimeRules } from '../../../models/rules/aero-runtime-rules';
 import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
+import { selectedWeaponHeat } from '../../../models/runtime/equipment-panel';
+import type { EquipmentInteractionChoice } from '../../../models/runtime/equipment-interaction';
+import { ESCALATING_FAILURE_DISABLED_CHOICE_VALUE } from '../../../models/runtime/component-escalating-failure';
+import type { ComponentId } from '../../../models/entity/entity-identifiers';
+
+interface NonMekEquipmentTrackChoice extends Omit<EquipmentInteractionChoice, 'active' | 'disabled'> {
+    readonly token: string;
+    readonly active: boolean;
+    readonly disabled: boolean;
+}
+
+interface NonMekEquipmentTrackControlRow {
+    readonly componentId: ComponentId;
+    readonly label: string;
+    readonly damaged: boolean;
+    readonly active: boolean;
+    readonly sequenceChoices: readonly NonMekEquipmentTrackChoice[];
+    readonly statusChoice?: NonMekEquipmentTrackChoice;
+}
+
+type EquipmentTrackControlRow = MekEscalatingFailureControlRow | NonMekEquipmentTrackControlRow;
+type EquipmentTrackChoice = MekEquipmentChoice | NonMekEquipmentTrackChoice;
+type NonMekEscalatingFailureEdit = Extract<
+    NonMekUnitCommand,
+    { readonly kind: 'edit-escalating-failure' }
+>['edit'];
 
 /** Original turn-tracker presentation backed only by the canonical Mek runtime. */
 @Component({
@@ -138,6 +176,8 @@ export class PageTurnSummaryPanelComponent {
             hasPendingNonMekChanges(state)
             || state.turn.airborne !== null
             || state.turn.movement !== null
+            || state.turn.cover !== null
+            || state.turn.spotting
             || member?.force.hasRuntimeHistoryForUnitTurn(
                 member.id,
                 state.turn.turnCounter + 1,
@@ -158,12 +198,27 @@ export class PageTurnSummaryPanelComponent {
     readonly falling = computed(() =>
         (this.runtime()?.snapshot().movementState.automaticFalls.length ?? 0) > 0);
     readonly PSRChecksCount = computed(() => this.runtime()?.pendingChecks().length ?? 0);
-    readonly controlRollShortLabel = computed(() => 'PSR');
-    readonly controlRollFullLabel = computed(() => 'Piloting Skill Rolls');
+    private readonly entityControlRoll = computed(() => {
+        const snapshot = this.entitySnapshot();
+        return snapshot
+            ? projectNonMekControlRoll(
+                snapshot.entity,
+                snapshot.index,
+                snapshot.state,
+                snapshot.ruleset,
+            )
+            : null;
+    });
+    readonly controlRollShortLabel = computed(() =>
+        this.entityControlRoll()?.shortLabel ?? 'PSR');
+    readonly controlRollFullLabel = computed(() =>
+        this.entityControlRoll()?.fullLabel ?? 'Piloting Skill Rolls');
     readonly currentMoveMode = computed(() => this.runtime()?.currentMovement()?.mode
         ?? this.entitySnapshot()?.state.turn.movement?.mode
         ?? null);
-    readonly prone = computed(() => this.runtime()?.snapshot().conditions.includes('prone') ?? false);
+    readonly prone = computed(() => this.runtime()?.snapshot().conditions.includes('prone')
+        ?? this.entitySnapshot()?.state.conditions.has('prone')
+        ?? false);
     readonly immobile = computed(() => {
         const movement = this.runtime()?.snapshot().movement;
         if (movement?.kind === 'supported') return movement.immobile;
@@ -192,22 +247,14 @@ export class PageTurnSummaryPanelComponent {
 
     private readonly entityDefenseModifierBreakdown = computed<readonly UnitModifierBreakdownEntry[]>(() => {
         const snapshot = this.entitySnapshot();
-        if (!snapshot) return [];
-        const entries: UnitModifierBreakdownEntry[] = [];
-        const movement = snapshot.state.turn.movement;
-        if (movement && movement.mode !== 'stationary') {
-            entries.push({
-                label: `Moved ${movement.distance} hexes`,
-                modifier: getTargetMovementDistanceModifier(movement.distance),
-            });
-        }
-        if (snapshot.entity.entityType === 'BattleArmor') {
-            entries.push({
-                label: 'Battle Armor',
-                modifier: getTargetUnitTypeModifier('battle-armor'),
-            });
-        }
-        return Object.freeze(entries);
+        return snapshot
+            ? projectNonMekDefenseModifierBreakdown(
+                snapshot.entity,
+                snapshot.index,
+                snapshot.state,
+                snapshot.ruleset,
+            )
+            : [];
     });
 
     readonly getTotalTargetModifierAsDefender = computed(() => {
@@ -234,8 +281,12 @@ export class PageTurnSummaryPanelComponent {
             : null;
     });
 
-    readonly spotting = computed(() => this.runtime()?.snapshot().turn.spotting ?? false);
-    readonly cover = computed(() => this.runtime()?.snapshot().turn.cover ?? null);
+    readonly spotting = computed(() => this.runtime()?.snapshot().turn.spotting
+        ?? this.entitySnapshot()?.state.turn.spotting
+        ?? false);
+    readonly cover = computed(() => this.runtime()?.snapshot().turn.cover
+        ?? this.entitySnapshot()?.state.turn.cover
+        ?? null);
     readonly waterDepth = computed(() => {
         const cover = this.cover();
         return isUnitWaterDepth(cover) ? cover : '';
@@ -247,45 +298,65 @@ export class PageTurnSummaryPanelComponent {
     readonly coverModifierLabel = computed(() => {
         const runtime = this.runtime();
         const cover = this.cover();
-        if (!runtime) return null;
-        if (cover === 'light' || runtime.snapshot().cover.partiallyUnderwater) return '+1';
+        const partiallyUnderwater = runtime?.snapshot().cover.partiallyUnderwater
+            ?? resolveUnitWaterState(
+                isUnitWaterDepth(cover) ? cover : undefined,
+                1,
+            ).partiallyUnderwater;
+        if (cover === 'light' || partiallyUnderwater) return '+1';
         if (cover === 'heavy') return '+2';
-        const modifier = runtime.snapshot().cover.building.modifier;
+        const modifier = runtime?.snapshot().cover.building.modifier
+            ?? resolveUnitBuildingCoverState(
+                isUnitBuildingLevel(cover) ? cover : undefined,
+                1,
+            ).modifier;
         return modifier === 0 ? null : `+${modifier}`;
     });
     readonly spottingModifierLabel = computed(() => {
-        const modifier = this.runtime()?.snapshot().spottingModifier ?? 0;
+        const modifier = this.runtime()?.snapshot().spottingModifier
+            ?? (this.entitySnapshot() ? 1 : 0);
         return modifier === 0 ? null : this.formatModifier(modifier);
     });
 
-    readonly entityHeatSummary = computed(() => {
+    private readonly entityHeatProjection = computed(() => {
         const snapshot = this.entitySnapshot();
-        if (!snapshot || !isAeroEntity(snapshot.entity) || !snapshot.entity.tracksHeat()) return null;
-        const heat = projectAeroRuntimeRules(
-            snapshot.entity,
-            snapshot.index,
-            snapshot.state,
-            snapshot.ruleset,
-        ).heat;
-        return heat.tracked ? heat : null;
+        return snapshot
+            ? projectNonMekEndTurnHeat(
+                snapshot.entity,
+                snapshot.index,
+                snapshot.state,
+                snapshot.ruleset,
+            )
+            : null;
     });
     readonly tracksHeat = computed(() =>
         this.runtime()?.snapshot().heatProjection.kind === 'supported'
-        || this.entityHeatSummary() !== null);
+        || this.entityHeatProjection() !== null);
     readonly heatRows = computed(() => {
         const runtime = this.runtime();
         const projection = runtime?.snapshot().heatProjection;
-        return projection?.kind === 'supported'
-            ? composeMekTurnSummaryHeatRows(
+        if (projection?.kind === 'supported') {
+            return composeTurnSummaryHeatRows(
                 projection.projection.sources,
                 runtime?.selectedWeaponsHeat() ?? null,
                 projection.projection.underwaterBonus,
-            )
-            : [];
+            );
+        }
+        const entityProjection = this.entityHeatProjection();
+        if (!entityProjection) return [];
+        const member = this.member();
+        const panel = member?.force.getEquipmentPanelSnapshot(member.id) ?? null;
+        const selected = panel ? selectedWeaponHeat(panel) : null;
+        return composeTurnSummaryHeatRows(
+            entityProjection.sources.filter(source => source.id !== 'dissipation'),
+            selected?.hasSelection ? selected.value : null,
+            0,
+        );
     });
 
     readonly psrModifiers = computed(() => {
         const snapshot = this.runtime()?.snapshot();
+        if (!snapshot) return this.entityControlRoll()?.modifiers ?? [];
         const permanent = snapshot?.movement.kind === 'supported'
             ? snapshot.movement.permanentPsrModifiers
             : [];
@@ -299,8 +370,9 @@ export class PageTurnSummaryPanelComponent {
         const entity = this.entitySnapshot()?.entity;
         if (entity) return supportsNonMekAirborneSelection(entity);
         const member = this.member();
-        return this.runtime() !== null && member !== null
-            ? canChangeAirborneGround(member.summary)
+        const mekEntity = member?.force.getUnitSnapshot?.(member.id)?.entity;
+        return this.runtime() !== null && mekEntity !== undefined
+            ? canChangeAirborneGround(motiveModeFactsForEntity(mekEntity))
             : false;
     });
 
@@ -314,16 +386,29 @@ export class PageTurnSummaryPanelComponent {
             psr: action.requiresPilotCheck === true,
         }));
         const snapshot = this.entitySnapshot();
-        const member = this.member();
-        if (!snapshot || !member) return [];
-        const modes: MotiveModes[] = ['stationary', 'walk', 'run', 'jump', 'UMU'];
-        return modes.flatMap(mode => mode === 'stationary'
-            || this.entityMovementMaximum(mode) > 0
-            ? [{
-                mode,
-                label: getMotiveModeLabel(mode, member.summary, snapshot.state.turn.airborne === true),
-            }]
-            : []);
+        if (!snapshot) return [];
+        const facts = motiveModeFactsForEntity(snapshot.entity);
+        const airborne = snapshot.state.turn.airborne === true;
+        const supported = getMotiveModesOptionsByUnit(facts, airborne);
+        for (const mode of ['jump', 'UMU'] satisfies MotiveModes[]) {
+            if ((mode !== 'jump' || !airborne)
+                && !supported.some(option => option.mode === mode)
+                && this.entityMovementMaximum(mode) > 0) {
+                supported.push({ mode, label: getMotiveModeLabel(mode, facts, airborne) });
+            }
+        }
+        const available = supported.filter(option => option.mode === 'stationary'
+            || this.entityMovementMaximum(option.mode) > 0);
+        const current = snapshot.state.turn.movement?.mode;
+        if (!current || available.some(option => option.mode === current)) return available;
+        const currentOption = supported.find(option => option.mode === current);
+        if (!currentOption) return available;
+        const visible = new Map(available.map(option => [option.mode, option]));
+        visible.set(current, currentOption);
+        return supported.flatMap(option => {
+            const candidate = visible.get(option.mode);
+            return candidate ? [candidate] : [];
+        });
     });
 
     readonly overDistance = computed(() => {
@@ -380,14 +465,55 @@ export class PageTurnSummaryPanelComponent {
         const modes = this.moveModes();
         return modes.length === 1 && modes[0]?.mode === 'stationary';
     });
-    readonly equipmentTrackControlRows = computed(() =>
-        this.runtime()?.equipmentTrackControlRows() ?? []);
+    readonly canSpot = computed(() => {
+        const runtime = this.runtime();
+        if (runtime) {
+            return runtime.snapshot().canTakeActiveActions
+                && runtime.currentMovement()?.mode !== 'sprint';
+        }
+        return this.entityMovementCapabilities()?.canTakeActiveActions === true
+            && this.entitySnapshot()?.state.turn.movement?.mode !== 'sprint';
+    });
+    readonly equipmentTrackControlRows = computed<readonly EquipmentTrackControlRow[]>(() => {
+        const runtime = this.runtime();
+        if (runtime) return runtime.equipmentTrackControlRows();
+        const snapshot = this.entitySnapshot();
+        if (!snapshot) return Object.freeze([]);
+        return Object.freeze(projectNonMekEscalatingFailureInteractions(
+            snapshot.entity,
+            snapshot.index,
+            snapshot.state,
+            snapshot.ruleset,
+            'turn-summary',
+        ).map(interaction => {
+            const choices = interaction.choices.map((choice, choiceIndex) => Object.freeze({
+                ...choice,
+                token: `${interaction.componentId}\u0000${choiceIndex}`,
+                active: choice.active ?? false,
+                disabled: choice.disabled ?? false,
+            } satisfies NonMekEquipmentTrackChoice));
+            const sequenceChoices = choices.filter(choice => choice.failureTarget !== undefined);
+            const statusChoice = choices.find(choice => choice.failureTarget === undefined);
+            const active = sequenceChoices.some(choice =>
+                choice.active && choice.selectionTone !== 'muted');
+            return Object.freeze({
+                componentId: interaction.componentId,
+                label: interaction.componentLabel,
+                damaged: interaction.status === 'destroyed',
+                active,
+                sequenceChoices: Object.freeze(visibleEscalatingFailureSteps(sequenceChoices)),
+                ...(statusChoice === undefined ? {} : { statusChoice }),
+            } satisfies NonMekEquipmentTrackControlRow);
+        }).filter(row => (!row.damaged || row.active) && row.sequenceChoices.length > 0));
+    });
 
     moveModeModifierLabel(mode: MotiveModes): string | null {
         const runtime = this.runtime();
         const modifier = runtime
             ? runtime.snapshot().attackMovementModifiers[mode as MekMovementModeV2] ?? 0
-            : getDefaultAttackerMovementModifier(mode);
+            : this.entitySnapshot()?.entity
+                ? nonMekAttackMovementModifier(this.entitySnapshot()!.entity, mode)
+                : 0;
         return modifier === 0 ? null : this.formatModifier(modifier);
     }
 
@@ -405,6 +531,7 @@ export class PageTurnSummaryPanelComponent {
     }
 
     selectMove(mode: MotiveModes): void {
+        if (this.isMoveModeDisabled(mode)) return;
         const runtime = this.runtime();
         const action = runtime?.movementActions().find(candidate => candidate.kind === mode);
         if (runtime && action) {
@@ -428,6 +555,7 @@ export class PageTurnSummaryPanelComponent {
 
     isMoveModeDisabled(mode: MotiveModes): boolean {
         if (mode === 'VTOL') return true;
+        if (this.prone() && (mode === 'jump' || mode === 'sprint')) return true;
         if (this.currentMoveMode() === mode) return false;
         const runtime = this.runtime();
         return runtime
@@ -463,12 +591,29 @@ export class PageTurnSummaryPanelComponent {
 
     toggleSpotting(): void {
         const runtime = this.runtime();
-        if (runtime) void runtime.toggleSpotting();
+        if (!this.canSpot()) return;
+        if (runtime) {
+            void runtime.toggleSpotting();
+            return;
+        }
+        const snapshot = this.entitySnapshot();
+        if (snapshot) void this.dispatchEntity({
+            kind: 'set-spotting',
+            spotting: !snapshot.state.turn.spotting,
+        });
     }
 
     selectCover(cover: UnitCover): void {
         const runtime = this.runtime();
-        if (runtime) void runtime.selectCover(cover);
+        if (runtime) {
+            void runtime.selectCover(cover);
+            return;
+        }
+        const snapshot = this.entitySnapshot();
+        if (snapshot) void this.dispatchEntity({
+            kind: 'set-cover',
+            cover: snapshot.state.turn.cover === cover ? null : cover,
+        });
     }
 
     selectWaterDepth(value: string): void {
@@ -479,9 +624,31 @@ export class PageTurnSummaryPanelComponent {
         if (isUnitBuildingLevel(value)) this.selectCover(value);
     }
 
-    handleEquipmentTrackChoice(choice: MekEquipmentChoice): void {
+    handleEquipmentTrackChoice(
+        row: EquipmentTrackControlRow,
+        choice: EquipmentTrackChoice,
+    ): void {
         const runtime = this.runtime();
-        if (runtime) void runtime.selectEquipmentTrackChoice(choice);
+        if (runtime) {
+            if (!('value' in choice)) void runtime.selectEquipmentTrackChoice(choice);
+            return;
+        }
+        if (choice.disabled || !('value' in choice)) return;
+        const edit: NonMekEscalatingFailureEdit = choice.value
+            === ESCALATING_FAILURE_DISABLED_CHOICE_VALUE
+            ? Object.freeze({
+                kind: 'set-status',
+                status: choice.active ? 'available' : 'disabled',
+            })
+            : Object.freeze({
+                kind: 'select-sequence',
+                index: Number(choice.value),
+            });
+        void this.dispatchEntity({
+            kind: 'edit-escalating-failure',
+            componentId: row.componentId as ComponentId,
+            edit,
+        });
     }
 
     setMoveDistance(value: number, _markModified = true): void {
@@ -572,7 +739,17 @@ export class PageTurnSummaryPanelComponent {
             readonly kind: 'set-movement';
             readonly movement: NonMekMovementDeclaration | null;
         }> | Readonly<{
+            readonly kind: 'set-cover';
+            readonly cover: UnitCover | null;
+        }> | Readonly<{
+            readonly kind: 'set-spotting';
+            readonly spotting: boolean;
+        }> | Readonly<{
             readonly kind: 'end-turn';
+        }> | Readonly<{
+            readonly kind: 'edit-escalating-failure';
+            readonly componentId: ComponentId;
+            readonly edit: NonMekEscalatingFailureEdit;
         }>,
     ): Promise<void> {
         const member = this.member();

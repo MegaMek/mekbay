@@ -59,6 +59,7 @@ function createForceUnit(unit: UnitSummary, gameSystem = GameSystem.ALPHA_STRIKE
     return {
         force,
         getSummary: () => unit,
+        getFormationSummary: () => unit,
         getBv: () => 0,
         pilotSkill: () => 4,
         gunnerySkill: () => 4,
@@ -101,6 +102,7 @@ function createTestGroup(
     const forceUnits = units.map((unit) => ({
         force,
         getSummary: () => unit,
+        getFormationSummary: () => unit,
         getBv: () => 0,
         pilotSkill: () => 4,
         gunnerySkill: () => 4,

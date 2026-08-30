@@ -238,11 +238,11 @@ export class C3NetworkEditor {
         const root = status.network ? model.rootOf(status.network.id)
             : status.parent ? model.rootOf(status.parent.id)
                 : masterRoots.size === 1 ? model.network([...masterRoots][0]) : undefined;
-        const endpoints = new Set(root ? model.treeEndpointKeys(root.id) : []);
-        endpoints.add(C3Network.masterEndpointKey(masterId, master.compIndex));
-        endpoints.add(`slave:${slaveId}`);
-        return endpoints.size > C3_MAX_NETWORK_TOTAL
-            ? this.invalid(`Would exceed ${C3_MAX_NETWORK_TOTAL}-member C3 limit`) : { valid: true };
+        const unitIds = new Set(root ? model.treeUnitIds(root.id) : []);
+        unitIds.add(masterId);
+        unitIds.add(slaveId);
+        return unitIds.size > C3_MAX_NETWORK_TOTAL
+            ? this.invalid(`Would exceed ${C3_MAX_NETWORK_TOTAL}-unit C3 limit`) : { valid: true };
     }
 
     private static canConnectMasters(parent: Endpoint, child: Endpoint, model: C3Network): Validation {
@@ -300,14 +300,14 @@ export class C3NetworkEditor {
         if (parentDepth + 1 + autoLinkDepth + childDepth > C3_MAX_NETWORK_DEPTH) return this.invalid(`Would exceed depth ${C3_MAX_NETWORK_DEPTH}`);
         const parentRoot = parentStatus.network ? model.rootOf(parentStatus.network.id)
             : parentRoots.size === 1 ? model.network([...parentRoots][0]) : undefined;
-        const combinedEndpoints = new Set(parentRoot ? model.treeEndpointKeys(parentRoot.id) : []);
-        combinedEndpoints.add(C3Network.masterEndpointKey(parentId, parent.compIndex));
+        const combinedUnitIds = new Set(parentRoot ? model.treeUnitIds(parentRoot.id) : []);
+        combinedUnitIds.add(parentId);
         if (childStatus.network) {
-            for (const endpoint of model.treeEndpointKeys(childStatus.network.id)) combinedEndpoints.add(endpoint);
+            for (const unitId of model.treeUnitIds(childStatus.network.id)) combinedUnitIds.add(unitId);
         }
-        combinedEndpoints.add(C3Network.masterEndpointKey(childId, child.compIndex));
-        return combinedEndpoints.size > C3_MAX_NETWORK_TOTAL
-            ? this.invalid(`Would exceed ${C3_MAX_NETWORK_TOTAL}-member C3 limit`) : { valid: true };
+        combinedUnitIds.add(childId);
+        return combinedUnitIds.size > C3_MAX_NETWORK_TOTAL
+            ? this.invalid(`Would exceed ${C3_MAX_NETWORK_TOTAL}-unit C3 limit`) : { valid: true };
     }
 
     private static resolveMasterConnection(
@@ -531,7 +531,7 @@ export class C3NetworkEditor {
         while (true) {
             const model = new C3Network(result);
             const oversized = model.topLevelNetworks.find(network => !network.peerIds
-                && model.treeEndpointKeys(network.id).size > C3_MAX_NETWORK_TOTAL);
+                && model.treeUnitIds(network.id).size > C3_MAX_NETWORK_TOTAL);
             if (!oversized) return result;
             const removal = this.lastMasterMember(oversized, model);
             if (!removal) return result;

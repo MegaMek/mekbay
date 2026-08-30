@@ -61,6 +61,22 @@ describe('CBT game rules', () => {
         });
     });
 
+    describe('hull breach checks', () => {
+        it('uses the Core low-roll range', () => {
+            expect(CORE_2026_GAME_RULES.getHullBreachCheckRangeLabel()).toBe('2–4');
+            expect([2, 3, 4].every(total => CORE_2026_GAME_RULES.hullBreachCheckSucceeds(total))).toBeTrue();
+            expect(CORE_2026_GAME_RULES.hullBreachCheckSucceeds(5)).toBeFalse();
+            expect(CORE_2026_GAME_RULES.hullBreachCheckSucceeds(12)).toBeFalse();
+        });
+
+        it('uses the Total Warfare high-roll range', () => {
+            expect(TW_GAME_RULES.getHullBreachCheckRangeLabel()).toBe('10+');
+            expect(TW_GAME_RULES.hullBreachCheckSucceeds(9)).toBeFalse();
+            expect(TW_GAME_RULES.hullBreachCheckSucceeds(10)).toBeTrue();
+            expect(TW_GAME_RULES.hullBreachCheckSucceeds(12)).toBeTrue();
+        });
+    });
+
     describe('C3 degradation', () => {
         const target = {
             id: 'A', letter: 'A', name: 'Target', color: '#000',

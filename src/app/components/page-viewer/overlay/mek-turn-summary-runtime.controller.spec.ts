@@ -23,6 +23,7 @@ function snapshot(revision: number): MekTurnPanelSnapshot {
         heat: createPristineMekHeatStateV2(),
         heatProjection: { kind: 'unsupported', blockers: ['fixture'] },
         turn: createPristineMekTurnStateV2(),
+        canTakeActiveActions: true,
         conditions: [],
     } as unknown as MekTurnPanelSnapshot;
 }
@@ -41,7 +42,7 @@ describe('MekTurnSummaryRuntimeController', () => {
             },
         } as unknown as DestroyRef;
         const options = {
-            options: () => ({ cbtAutomations: false }),
+            cbtAutomationMode: () => 'no',
         } as unknown as OptionsService;
 
         const controller = new MekTurnSummaryRuntimeController(
@@ -100,7 +101,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
         const controller = new MekTurnSummaryRuntimeController(
             member,
-            { options: () => ({ cbtAutomations: false }) } as unknown as OptionsService,
+            { cbtAutomationMode: () => 'no' } as unknown as OptionsService,
             { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
             { onDestroy: () => () => undefined } as unknown as DestroyRef,
         );
@@ -155,7 +156,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         };
         const controller = new MekTurnSummaryRuntimeController(
             { id: 'mek-1', force } as unknown as CBTMekForceMember,
-            { options: () => ({ cbtAutomations: false }) } as unknown as OptionsService,
+            { cbtAutomationMode: () => 'no' } as unknown as OptionsService,
             { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
             { onDestroy: () => () => undefined } as unknown as DestroyRef,
         );
@@ -188,7 +189,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         };
         const controller = new MekTurnSummaryRuntimeController(
             { id: 'mek-1', force } as unknown as CBTMekForceMember,
-            { options: () => ({ cbtAutomations: false }) } as unknown as OptionsService,
+            { cbtAutomationMode: () => 'no' } as unknown as OptionsService,
             { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
             { onDestroy: () => () => undefined } as unknown as DestroyRef,
         );
@@ -242,7 +243,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         };
         const controller = new MekTurnSummaryRuntimeController(
             { id: 'mek-1', force } as unknown as CBTMekForceMember,
-            { options: () => ({ cbtAutomations: false }) } as unknown as OptionsService,
+            { cbtAutomationMode: () => 'no' } as unknown as OptionsService,
             { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
             { onDestroy: () => () => undefined } as unknown as DestroyRef,
         );
@@ -311,7 +312,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
         const controller = new MekTurnSummaryRuntimeController(
             member,
-            { options: () => ({ cbtAutomations: false }) } as unknown as OptionsService,
+            { cbtAutomationMode: () => 'no' } as unknown as OptionsService,
             { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
             { onDestroy: () => () => undefined } as unknown as DestroyRef,
         );
@@ -330,5 +331,37 @@ describe('MekTurnSummaryRuntimeController', () => {
         current = { ...current, stateRevision: 8 } as MekTurnPanelSnapshot;
         await controller.selectEquipmentTrackChoice(rows[0]!.sequenceChoices[0]!);
         expect(dispatchEquipment).toHaveBeenCalledOnceWith(sequenceToken);
+    });
+
+    it('does not dispatch spotting when the Entity runtime has no active controller', async () => {
+        const changed = new Subject<void>();
+        let current = { ...snapshot(3), canTakeActiveActions: false } as MekTurnPanelSnapshot;
+        const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
+            accepted: true,
+            changed: true,
+            revision: 4,
+        });
+        const force = {
+            changed,
+            getMekTurnPanelSnapshot: () => current,
+            dispatchMekUnitCommand: dispatch,
+        };
+        const controller = new MekTurnSummaryRuntimeController(
+            { id: 'mek-1', force } as unknown as CBTMekForceMember,
+            { cbtAutomationMode: () => 'no' } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+            { onDestroy: () => () => undefined } as unknown as DestroyRef,
+        );
+
+        await controller.toggleSpotting();
+        expect(dispatch).not.toHaveBeenCalled();
+
+        current = { ...current, canTakeActiveActions: true };
+        changed.next();
+        await controller.toggleSpotting();
+        expect(dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
+            type: 'replace-turn-state',
+            turn: jasmine.objectContaining({ spotting: true }),
+        }));
     });
 });

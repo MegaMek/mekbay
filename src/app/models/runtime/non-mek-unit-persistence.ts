@@ -20,11 +20,21 @@ import {
     type LocationId,
 } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
+import {
+    deserializeUnitCover,
+    serializeUnitCover,
+    type SerializedUnitCover,
+} from '../unit-cover.model';
 import type { CrewAssignment } from './crew-assignment';
 import { assertCanonicalCrewAssignment } from './crew-assignment';
 import type { BaseEntity } from '../entity/base-entity';
 import { isCBTRuleset } from '../cbt-ruleset.model';
-import type { InstanceBaselineRef, StateRevision, UnitInstanceId } from './runtime-state';
+import type {
+    ComponentRuntimeState,
+    InstanceBaselineRef,
+    StateRevision,
+    UnitInstanceId,
+} from './runtime-state';
 import { asStateRevision, asUnitInstanceId } from './runtime-state';
 import {
     NON_MEK_UNIT_RUNTIME_SCHEMA_VERSION,
@@ -86,6 +96,7 @@ export interface SerializedNonMekUnit {
         readonly status?: Exclude<EquipmentStatus, 'available'>;
         readonly mode?: string;
         readonly jammed?: true;
+        readonly escalatingFailure?: ComponentRuntimeState['escalatingFailure'];
     }>[];
     readonly damageTrackState?: readonly Readonly<{
         readonly damageTrackId: SystemDamageTrackId;
@@ -116,6 +127,8 @@ export interface SerializedNonMekUnit {
         readonly airborne?: boolean;
         readonly movement?: NonMekMovementDeclaration;
         readonly weaponsHeat?: number;
+        readonly cover?: SerializedUnitCover;
+        readonly spotting?: true;
     }>;
     readonly attackerTargeting: SerializedAttackerTargetingState;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
@@ -212,12 +225,16 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
         .sort(([left], [right]) => compareText(left, right))
         .flatMap(([componentId, component]) => {
             const status = component.statusOverride;
-            if (status === undefined && component.mode === undefined && component.jammed !== true) return [];
+            if (status === undefined && component.mode === undefined && component.jammed !== true
+                && component.escalatingFailure === undefined) return [];
             return [Object.freeze({
                 componentId,
                 ...(status === undefined ? {} : { status }),
                 ...(component.mode === undefined ? {} : { mode: component.mode }),
                 ...(component.jammed === true ? { jammed: true as const } : {}),
+                ...(component.escalatingFailure === undefined
+                    ? {}
+                    : { escalatingFailure: Object.freeze({ ...component.escalatingFailure }) }),
             })];
         });
     const ammoState = [...state.ammo]
@@ -303,6 +320,9 @@ export function restoreNonMekUnit(
             ...(entry.status === undefined ? {} : { statusOverride: entry.status }),
             ...(entry.mode === undefined ? {} : { mode: entry.mode }),
             ...(entry.jammed === true ? { jammed: true } : {}),
+            ...(entry.escalatingFailure === undefined
+                ? {}
+                : { escalatingFailure: Object.freeze({ ...entry.escalatingFailure }) }),
         }));
     }
     const damageTracks = new Map<SystemDamageTrackId, NonMekUnitRuntimeState['damageTracks'] extends ReadonlyMap<SystemDamageTrackId, infer T> ? T : never>();
@@ -373,11 +393,13 @@ export function restoreNonMekUnit(
 function serializeNonMekTurn(state: NonMekUnitRuntimeState): SerializedNonMekUnit['turn'] {
     const turn = state.turn;
     if (turn.turnCounter === 0 && turn.airborne === null && turn.movement === null
-        && turn.weaponsHeat === 0) return undefined;
+        && turn.weaponsHeat === 0 && turn.cover === null && !turn.spotting) return undefined;
     return Object.freeze({
         ...(turn.turnCounter === 0 ? {} : { turnCounter: turn.turnCounter }),
         ...(turn.airborne === null ? {} : { airborne: turn.airborne }),
         ...(turn.weaponsHeat === 0 ? {} : { weaponsHeat: turn.weaponsHeat }),
+        ...(turn.cover === null ? {} : { cover: serializeUnitCover(turn.cover) }),
+        ...(turn.spotting ? { spotting: true as const } : {}),
         ...(turn.movement === null
             ? {}
             : {
@@ -402,6 +424,10 @@ function restoreNonMekTurn(saved: SerializedNonMekUnit): NonMekUnitRuntimeState[
         turnCounter: saved.turn?.turnCounter ?? 0,
         airborne: saved.turn?.airborne ?? null,
         weaponsHeat: saved.turn?.weaponsHeat ?? 0,
+        cover: saved.turn?.cover === undefined
+            ? null
+            : deserializeUnitCover(saved.turn.cover) ?? null,
+        spotting: saved.turn?.spotting === true,
         movement: saved.turn?.movement === undefined
             ? null
             : Object.freeze({
@@ -416,13 +442,20 @@ function validateSerializedNonMekTurn(value: unknown): void {
     const turn = requireRecord(value, 'entity turn');
     const keys = Object.keys(turn);
     if (keys.some(key => key !== 'turnCounter' && key !== 'airborne'
-        && key !== 'movement' && key !== 'weaponsHeat')) {
+        && key !== 'movement' && key !== 'weaponsHeat'
+        && key !== 'cover' && key !== 'spotting')) {
         throw new Error('Non-Mek turn contains unknown fields');
     }
     if (turn['turnCounter'] !== undefined) requireInteger(turn['turnCounter'], 'entity turn counter');
     if (turn['weaponsHeat'] !== undefined) requireInteger(turn['weaponsHeat'], 'entity weapon heat');
     if (turn['airborne'] !== undefined && typeof turn['airborne'] !== 'boolean') {
         throw new Error('Non-Mek airborne state must be boolean');
+    }
+    if (turn['cover'] !== undefined && deserializeUnitCover(turn['cover']) === undefined) {
+        throw new Error('Non-Mek cover state is invalid');
+    }
+    if (turn['spotting'] !== undefined && turn['spotting'] !== true) {
+        throw new Error('Non-Mek spotting state must be true when present');
     }
     if (turn['movement'] === undefined) return;
     const movement = requireRecord(turn['movement'], 'entity movement');

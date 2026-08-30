@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, inject, type Input } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { ToastService } from '../../services/toast.service';
 
 
@@ -11,11 +10,10 @@ import { ToastService } from '../../services/toast.service';
     selector: 'app-toasts',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
     template: `
     <div class="toast-container">
-        @for (toast of toastService.toasts(); let i = $index; track i) {
-            <div class="toast" [ngClass]="toast.type" (click)="toastService.dismiss(toast.id)">
+        @for (toast of toastService.visibleToasts(); track toast.id) {
+            <div class="toast" [class]="toast.type" (click)="toastService.dismiss(toast.id)">
                 {{ toast.message }}
             </div>
         }
@@ -24,6 +22,5 @@ import { ToastService } from '../../services/toast.service';
     styleUrls: ['./toasts.component.css']
 })
 export class ToastsComponent {
-    public toastService = inject(ToastService);
-    constructor() {}
+    protected readonly toastService = inject(ToastService);
 }

@@ -25,6 +25,8 @@ import {
 } from './equipment-interaction';
 import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
+import { effectiveEcmMode, isNovaCewsFlags } from './component-electronic-suite';
+import { electronicFacts } from './component-equipment-power';
 
 export interface ComponentEcmModeDefinition {
     readonly componentId: ComponentId;
@@ -99,9 +101,9 @@ export class ECMHandler extends EquipmentInteractionHandler {
 
     override choices(input: EquipmentInteractionInput): readonly EquipmentInteractionChoice[] {
         const definition = componentEcmModeDefinition(input.index, input.componentId);
-        return this.applicableToComponentEcmMode(definition)
-            ? this.getComponentEcmModeChoices(input.runtime, definition, input.context)
-            : [];
+        if (!this.applicableToComponentEcmMode(definition)) return [];
+        const mode = effectiveEcmMode(electronicFacts(input), input.componentId, true);
+        return this.choicesForMode(definition, mode);
     }
 
     override select(
@@ -115,7 +117,8 @@ export class ECMHandler extends EquipmentInteractionHandler {
     }
 
     applicableToComponentEcmMode(definition: ComponentEcmModeDefinition): boolean {
-        return definition.flags.has(ECM_FLAG);
+        return definition.flags.has(ECM_FLAG)
+            && !isNovaCewsFlags(definition.flags);
     }
 
     getComponentEcmModeChoices(
@@ -125,6 +128,13 @@ export class ECMHandler extends EquipmentInteractionHandler {
     ): EquipmentInteractionChoice[] {
         const mode = runtime.query().componentMode(definition.componentId);
         if (!isECMMode(mode) || !definition.modes.includes(mode)) return [];
+        return this.choicesForMode(definition, mode);
+    }
+
+    private choicesForMode(
+        definition: ComponentEcmModeDefinition,
+        mode: ECMMode,
+    ): EquipmentInteractionChoice[] {
         return [{
             label: 'ECM Mode',
             value: mode,

@@ -148,6 +148,39 @@ const forceBv = source(join(app, 'models', 'cbt-force-battle-value.ts'));
 assert.match(operationalC3, /export function projectOperationalC3Networks/u);
 assert.match(forceBv, /projectOperationalC3Networks\(/u);
 assert.match(cbtC3, /projectOperationalC3Networks\(/u);
+assert.match(forceBv, /adjustEntityBattleValueForSkills\(/u);
+assert.doesNotMatch(
+    forceBv,
+    /BVCalculatorUtil|calculateAdjustedBV\(\s*row\.summary/u,
+    'admitted-unit BV skill rules must use the loaded Entity, never UnitSummary',
+);
+
+const motiveModes = source(join(app, 'models', 'motiveModes.model.ts'));
+const equipmentRuntimeController = source(join(
+    app,
+    'components',
+    'equipment-dialog',
+    'equipment-dialog-runtime.controller.ts',
+));
+const turnSummary = source(join(
+    app,
+    'components',
+    'page-viewer',
+    'overlay',
+    'page-turn-summary-panel.component.ts',
+));
+const crewTransfer = source(join(app, 'services', 'force-crew-transfer.service.ts'));
+assert.doesNotMatch(motiveModes, /unit-summary\.model|\bUnitSummary\b/u);
+assert.doesNotMatch(
+    [equipmentRuntimeController, turnSummary].join('\n'),
+    /(?:canChangeAirborneGround|getMotiveModeLabel|getMotiveModesByUnit)\([^\n]*\.summary/u,
+    'admitted-unit movement choices and labels must use loaded Entity facts',
+);
+assert.doesNotMatch(
+    crewTransfer,
+    /getEffectivePilotingSkill|\.summary/u,
+    'Classic crew transfer must derive fixed skill rules from the loaded Entity',
+);
 
 const commandSession = source(join(app, 'models', 'runtime', 'runtime-command-session.ts'));
 assert.match(commandSession, /interface RuntimeCommandCheckpoint\s*\{\s*readonly units:/u);
@@ -161,10 +194,40 @@ assert.match(
 );
 
 const forceMember = source(join(app, 'models', 'force-member.model.ts'));
+const cbtMemberClass = forceMember.slice(
+    forceMember.indexOf('export class CBTForceMember'),
+    forceMember.indexOf('/** A real family narrowing'),
+);
 assert.match(forceMember, /export class CBTForceMember/u);
 assert.match(forceMember, /readonly kind: 'cbt'/u);
+assert.match(forceMember, /readonly entity: BaseEntity/u);
 assert.match(forceMember, /export type ForceMember = ASForceUnit \| CBTForceMember;/u);
 assert.doesNotMatch(forceMember, /readonly kind: 'cbt-mek'/u);
+assert.doesNotMatch(
+    cbtMemberClass,
+    /\b(?:readonly summary|getSummary\(\))/u,
+    'loaded Classic members must retain Entity, never UnitSummary',
+);
+assert.doesNotMatch(
+    memberRegistry,
+    /unit-summary\.model|\bUnitSummary\b|getSummary\(/u,
+    'the Classic member registry must build members only from admitted runtime Entity owners',
+);
+
+const orgFacts = source(join(app, 'utils', 'org', 'org-facts.util.ts'));
+const orgSolver = source(join(app, 'utils', 'org', 'org-solver.util.ts'));
+const orgNamer = source(join(app, 'utils', 'org', 'org-namer.util.ts'));
+const orgUnit = source(join(app, 'utils', 'org', 'org-unit.util.ts'));
+assert.doesNotMatch(
+    [orgFacts, orgSolver].join('\n'),
+    /\bUnitSummary\b/u,
+    'organization rules must consume neutral structural facts, not catalog rows',
+);
+assert.match(orgNamer, /formationUnits\(\)\.map\(orgUnitFromFormationUnit\)/u);
+assert.doesNotMatch(orgNamer, /formationUnits\(\)[\s\S]{0,100}getSummary\(/u);
+assert.match(orgUnit, /const entity = unit\.getFormationEntity\?\.\(\);[\s\S]{0,80}if \(entity\) return orgUnitFromEntity\(entity\);/u);
+assert.match(orgUnit, /convertEntityToAlphaStrike\(entity\)/u);
+assert.doesNotMatch(orgUnit, /as UnitSummary|satisfies UnitSummary/u);
 
 const forcePreview = source(join(app, 'models', 'force-preview.model.ts'));
 assert.match(forcePreview, /Force preview requires normalized current persistence/u);

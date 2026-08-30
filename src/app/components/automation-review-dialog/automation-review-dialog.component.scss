@@ -1,0 +1,14 @@
+:host { display: block; max-width: min(760px, 94vw); }
+.panel { max-height: 90vh; overflow: auto; }
+.automation-review-body { display: grid; gap: 0.75rem; }
+.automation-event-list { display: grid; gap: 0.6rem; }
+.automation-event { display: grid; gap: 0.6rem; padding: 0.75rem; border: 1px solid var(--border-color, #777); border-radius: 4px; }
+.automation-event.accepted { border-color: var(--success-color, #3a6); }
+.automation-event.rejected { opacity: 0.75; }
+.automation-event-info h3 { margin: 0; }
+.automation-event-effects { display: grid; margin-top: 0.4rem; }
+.automation-event-breakdown { display: grid; gap: 0.2rem; }
+.automation-event-breakdown > div { display: flex; justify-content: space-between; gap: 1rem; }
+.automation-event-actions, .automation-review-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+.cooling { color: #4da3ff; }
+.heating { color: #ff5a5a; }

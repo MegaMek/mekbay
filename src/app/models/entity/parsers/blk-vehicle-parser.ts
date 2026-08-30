@@ -23,7 +23,7 @@ import {
   LST_EXTRA_EQUIP_TAGS,
   LST_ARMOR_LOCS,
   ordinaryVehicleArmorLocations,
-  SUPERHEAVY_ARMOR_LOCS,
+  superheavyVehicleArmorLocations,
   VEHICLE_EQUIP_TAGS,
   VTOL_ARMOR_LOCS,
 } from './blk-constants';
@@ -170,9 +170,10 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
       }
     } else if (entity.isSuperHeavy() && !(entity instanceof VtolEntity)) {
       // Superheavy Tank: Front, Front Right, Front Left, Rear Right, Rear Left,
-      // Rear[, Rear Turret[, Front Turret]] (MegaMek's rear-then-front order).
-      for (let i = 0; i < SUPERHEAVY_ARMOR_LOCS.length && i < ints.length; i++) {
-        armorMap.set(SUPERHEAVY_ARMOR_LOCS[i], locationArmor(ints[i]));
+      // Rear[, Turret] or Rear[, Rear Turret, Front Turret].
+      const locations = superheavyVehicleArmorLocations(ints.length);
+      for (let i = 0; i < locations.length && i < ints.length; i++) {
+        armorMap.set(locations[i], locationArmor(ints[i]));
       }
       if (ints.length >= 7 && !entity.hasTurret()) {
         entity.hasTurret.set(true);

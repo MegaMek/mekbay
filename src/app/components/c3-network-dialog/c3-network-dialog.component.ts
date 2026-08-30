@@ -42,6 +42,7 @@ import { LayoutService } from '../../services/layout.service';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { hasNonMekRuntime, hasMekRuntime } from '../../models/cbt-unit-snapshot';
+import type { UnitSummary } from '../../models/unit-summary.model';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
@@ -68,6 +69,8 @@ export type C3NetworkDialogResult = C3NetworkDialogResultBase & (
 
 interface C3DialogUnit extends C3UnitView {
     readonly member?: CBTForceMember;
+    /** Alpha Strike-only adapter; Classic dialog rows are Entity-native. */
+    getSummary?(): UnitSummary;
     alias(): string;
     c3Position(): Readonly<{ x: number; y: number }> | null;
     getBaseBv(): number;
@@ -312,14 +315,21 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     id: String(member.id),
                     member,
                     c3Components: Object.freeze(c3Components),
-                    getSummary: () => member.summary,
+                    getC3Specials: () => Object.freeze([]),
+                    getC3Presentation: () => Object.freeze({
+                        chassis: member.entity.chassis(),
+                        model: member.entity.model(),
+                        icon: '',
+                        tons: member.entity.tonnage(),
+                        walk: member.entity.walkMP(),
+                    }),
                     alias: () => '',
                     c3Position: () => null,
                     isC3Jammed: () => member.force.getUnitConditions(member.id)?.includes('jammed') === true,
                     isC3EndpointOperational: (_index: number, endpoint: C3Component) => endpoint.componentId !== undefined
                         && endpoint.emergencyFried !== true
                         && member.force.isC3EndpointOperational(member.id, endpoint.componentId),
-                    getBaseBv: () => member.currentBaseBattleValue() ?? member.summary.bv,
+                    getBaseBv: () => member.currentBaseBattleValue() ?? member.entity.battleValue(),
                     tagBV: () => member.tagBattleValue() ?? 0,
                     externalStoresBv: () => 0,
                     gunnerySkill: () => crew?.gunnery ?? 4,
@@ -602,7 +612,8 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 adjustedBv: projected.adjusted,
             };
         }
-        const summary = unit.getSummary();
+        const summary = unit.getSummary?.();
+        if (!summary) throw new Error('Alpha Strike C3 row has no catalog presentation');
         const baseBv = unit.getBaseBv();
         const tagBv = unit.tagBV();
         const c3Bv = this.c3Tax(unit);
@@ -779,7 +790,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 for (const id of network.peerIds) {
                     const node = nodesById.get(id) ?? null;
                     members.push({
-                        id, name: node?.unit.getSummary().chassis || 'Unknown',
+                        id, name: node?.unit.getC3Presentation().chassis || 'Unknown',
                         role: 'peer', canRemove: !this.data.readOnly, node,
                         brokenLink: runtimeGraph.hasOnlyBrokenIncidentLinks(network.id, id),
                         ...getUnitBvData(node)
@@ -789,7 +800,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const masterNode = nodesById.get(network.masterId) ?? null;
                 members.push({
                     id: network.masterId,
-                    name: masterNode?.unit.getSummary().chassis || 'Unknown',
+                    name: masterNode?.unit.getC3Presentation().chassis || 'Unknown',
                     role: 'master', canRemove: false, node: masterNode, network,
                     brokenLink: runtimeGraph.hasOnlyBrokenIncidentLinks(network.id, network.masterId),
                     ...getUnitBvData(masterNode)
@@ -808,13 +819,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                             const childVm = buildNetworkVm(childNet, false);
                             members.push({
                                 id: parsed.unitId,
-                                name: node?.unit.getSummary().chassis || 'Unknown',
+                                name: node?.unit.getC3Presentation().chassis || 'Unknown',
                                 role: 'sub-master', canRemove: !this.data.readOnly, isSelfConnection,
                                 memberStr, node, network: childNet, networkVm: childVm ?? undefined,
-                                brokenLink: runtimeGraph.childLinkBroken(network.id, {
-                                    unitId: parsed.unitId,
-                                    compIndex: parsed.compIndex,
-                                }),
+                                brokenLink: !runtimeGraph.stateForNetwork(parsed.unitId, childNet.id).linked,
                                 ...getUnitBvData(node)
                             });
                             if (childVm) subNetworks.push(childVm);
@@ -824,7 +832,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
                     members.push({
                         id: parsed.unitId,
-                        name: node?.unit.getSummary().chassis || 'Unknown',
+                        name: node?.unit.getC3Presentation().chassis || 'Unknown',
                         role: 'slave', canRemove: !this.data.readOnly, isSelfConnection, memberStr, node,
                         brokenLink: runtimeGraph.childLinkBroken(network.id, {
                             unitId: parsed.unitId,
@@ -839,7 +847,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             if (network.peerIds) {
                 displayName = `${c3NetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
             } else if (network.masterId) {
-                const memberCount = topology.treeEndpointKeys(network.id).size;
+                const memberCount = topology.treeUnitIds(network.id).size;
                 displayName = `${c3NetworkTypeName(network.type as C3NetworkType)} (${memberCount} ${memberCount > 1 ? 'members' : 'member'})`;
             }
 
@@ -888,7 +896,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const node = nodesById.get(id) ?? null;
                 return {
                     id,
-                    name: node?.unit.getSummary().chassis || 'Unknown',
+                    name: node?.unit.getC3Presentation().chassis || 'Unknown',
                     role: index === 0 ? 'master' : 'slave',
                     canRemove: false,
                     brokenLink: false,
@@ -1228,7 +1236,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
         // Extract all icons in parallel
         await Promise.all(units.map(async (unit) => {
-            const iconPath = unit.getSummary().icon;
+            const iconPath = unit.getC3Presentation().icon;
             if (!iconPath) return;
 
             const url = await this.spriteService.getExtractedIconUrl(iconPath);
@@ -1979,13 +1987,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 if (a.pinCount !== b.pinCount) return a.pinCount - b.pinCount;
                 
                 // Prefer heavier units as masters (higher tonnage = lower sort value)
-                const aTonnage = a.node.unit.getSummary().tons ?? 0;
-                const bTonnage = b.node.unit.getSummary().tons ?? 0;
+                const aTonnage = a.node.unit.getC3Presentation().tons;
+                const bTonnage = b.node.unit.getC3Presentation().tons;
                 if (aTonnage !== bTonnage) return bTonnage - aTonnage;
                 
                 // Prefer slower units as masters (lower movement = lower sort value)
-                const aMove = a.node.unit.getSummary().walk ?? 99;
-                const bMove = b.node.unit.getSummary().walk ?? 99;
+                const aMove = a.node.unit.getC3Presentation().walk;
+                const bMove = b.node.unit.getC3Presentation().walk;
                 return aMove - bMove;
             });
             
@@ -2062,13 +2070,13 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     if (aHasNet !== bHasNet) return aHasNet - bHasNet;
                     
                     // Prefer heavier units as GMs (higher tonnage = lower sort value)
-                    const aTonnage = a.node.unit.getSummary().tons ?? 0;
-                    const bTonnage = b.node.unit.getSummary().tons ?? 0;
+                    const aTonnage = a.node.unit.getC3Presentation().tons;
+                    const bTonnage = b.node.unit.getC3Presentation().tons;
                     if (aTonnage !== bTonnage) return bTonnage - aTonnage;
                     
                     // Prefer slower units as GMs (lower movement = lower sort value)
-                    const aMove = a.node.unit.getSummary().walk ?? 99;
-                    const bMove = b.node.unit.getSummary().walk ?? 99;
+                    const aMove = a.node.unit.getC3Presentation().walk;
+                    const bMove = b.node.unit.getC3Presentation().walk;
                     return aMove - bMove;
                 });
                 
@@ -2158,11 +2166,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const candidates = allMasterPins
                     .filter(p => pinHasNetwork(p, networks) && getAvailableSlaveSlots(p, networks) > 0)
                     .sort((a, b) => {
-                        const aTonnage = a.node.unit.getSummary().tons ?? 0;
-                        const bTonnage = b.node.unit.getSummary().tons ?? 0;
+                        const aTonnage = a.node.unit.getC3Presentation().tons;
+                        const bTonnage = b.node.unit.getC3Presentation().tons;
                         if (aTonnage !== bTonnage) return bTonnage - aTonnage;
-                        const aMove = a.node.unit.getSummary().walk ?? 99;
-                        const bMove = b.node.unit.getSummary().walk ?? 99;
+                        const aMove = a.node.unit.getC3Presentation().walk;
+                        const bMove = b.node.unit.getC3Presentation().walk;
                         return aMove - bMove;
                     });
 
@@ -2202,11 +2210,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                                 const bHasNet = pinHasNetwork(b, networks) ? 0 : 1;
                                 if (aHasNet !== bHasNet) return aHasNet - bHasNet;
 
-                                const aTonnage = a.node.unit.getSummary().tons ?? 0;
-                                const bTonnage = b.node.unit.getSummary().tons ?? 0;
+                                const aTonnage = a.node.unit.getC3Presentation().tons;
+                                const bTonnage = b.node.unit.getC3Presentation().tons;
                                 if (aTonnage !== bTonnage) return bTonnage - aTonnage;
-                                const aMove = a.node.unit.getSummary().walk ?? 99;
-                                const bMove = b.node.unit.getSummary().walk ?? 99;
+                                const aMove = a.node.unit.getC3Presentation().walk;
+                                const bMove = b.node.unit.getC3Presentation().walk;
                                 return aMove - bMove;
                             });
 
@@ -2240,11 +2248,11 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const candidates = allMasterPins
                     .filter(p => getAvailableSlaveSlots(p, networks) > 0)
                     .sort((a, b) => {
-                        const aTonnage = a.node.unit.getSummary().tons ?? 0;
-                        const bTonnage = b.node.unit.getSummary().tons ?? 0;
+                        const aTonnage = a.node.unit.getC3Presentation().tons;
+                        const bTonnage = b.node.unit.getC3Presentation().tons;
                         if (aTonnage !== bTonnage) return bTonnage - aTonnage;
-                        const aMove = a.node.unit.getSummary().walk ?? 99;
-                        const bMove = b.node.unit.getSummary().walk ?? 99;
+                        const aMove = a.node.unit.getC3Presentation().walk;
+                        const bMove = b.node.unit.getC3Presentation().walk;
                         return aMove - bMove;
                     });
 

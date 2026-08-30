@@ -40,6 +40,17 @@ describe('svg text utilities', () => {
         expect(getSvgTextLines(root.getElementById('name')).map(line => line.textContent)).toEqual(['Alpha', '']);
     });
 
+    it('removes stale generated text-length constraints before replacing a label', () => {
+        const root = svg('<text id="name" textLength="70.4" lengthAdjust="spacingAndGlyphs">Long System Name</text>');
+
+        writeSvgTextLines(root.getElementById('name'), 'Kick');
+
+        const line = root.getElementById('name')!;
+        expect(line.textContent).toBe('Kick');
+        expect(line.hasAttribute('textLength')).toBeFalse();
+        expect(line.hasAttribute('lengthAdjust')).toBeFalse();
+    });
+
     it('uses an ellipsis when the final row cannot fit the remaining text', () => {
         const root = svg('<g id="name"><text>Old</text></g>');
         const measure = (_line: SVGTextContentElement, text: string) => text.length;

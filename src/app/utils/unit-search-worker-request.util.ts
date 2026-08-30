@@ -27,6 +27,8 @@ interface UnitSearchWorkerCorpusCache {
 interface BuildWorkerExecutionQueryArgs {
     effectiveFilterState: FilterState;
     effectiveTextSearch: string;
+    /** Original committed clauses, preserved so repeated constraints are not flattened. */
+    semanticTokenTexts?: readonly string[];
     gameSystem: GameSystem;
     totalRangesCache: Record<string, [number, number]>;
 }
@@ -60,7 +62,6 @@ export interface UnitSearchWorkerTransientFacts {
     readonly tags: readonly string[];
     readonly weaponTypes: readonly string[];
     readonly weaponTypeCounts: Readonly<Record<string, number>>;
-    readonly serverHost?: string;
 }
 
 /**
@@ -139,7 +140,6 @@ export function projectUnitSearchWorkerUnit(
         dpt: summary.dpt,
         quirks: [...summary.quirks],
         features: [...summary.features],
-        ...(transient.serverHost ? { serverHost: transient.serverHost } : {}),
         _searchKey: `${removeAccents(summary.chassis.toLowerCase())} ${removeAccents(summary.model.toLowerCase())}`,
         _techBaseDisplay: getUnitTechBaseDisplay(summary),
         _maxRange: getMaxRangeFromComponents(summary.comp as UnitSummaryComponent[]),
@@ -203,15 +203,21 @@ export function getWorkerCorpusSnapshot(
 export function buildWorkerExecutionQuery({
     effectiveFilterState,
     effectiveTextSearch,
+    semanticTokenTexts = [],
     gameSystem,
     totalRangesCache,
 }: BuildWorkerExecutionQueryArgs): string {
-    return filterStateToSemanticText(
+    const uiFilterText = filterStateToSemanticText(
         effectiveFilterState,
         escapePlainTextForWorkerExecutionQuery(effectiveTextSearch),
         gameSystem,
         totalRangesCache,
     ).trim();
+
+    return [uiFilterText, ...semanticTokenTexts]
+        .map(part => part.trim())
+        .filter(Boolean)
+        .join(' ');
 }
 
 export function buildWorkerSearchRequest(args: BuildWorkerSearchRequestArgs): UnitSearchWorkerQueryRequest {

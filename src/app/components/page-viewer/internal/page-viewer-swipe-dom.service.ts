@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 
 import type { PageViewerSwipeSlotExtensionPlan } from './page-viewer-swipe-slot.service';
 import type { PageViewerMember, PageViewerOverlayMode } from './types';
@@ -11,7 +11,8 @@ import { PageViewerWrapperLayoutService } from './page-viewer-wrapper-layout.ser
 
 @Injectable()
 export class PageViewerSwipeDomService {
-    constructor(private readonly pageViewerWrapperLayout: PageViewerWrapperLayoutService) {}
+    private readonly pageViewerWrapperLayout = inject(PageViewerWrapperLayoutService);
+
 
     setupSlots(options: {
         content: HTMLDivElement;

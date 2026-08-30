@@ -38,6 +38,8 @@ export interface EquipmentInteractionDialogsService {
     createDialog: DialogsService['createDialog'];
     showError: DialogsService['showError'];
     showNoticeHtml: DialogsService['showNoticeHtml'];
+    /** Optional on lightweight surfaces; confirmation-required actions fail closed without it. */
+    requestConfirmation?: DialogsService['requestConfirmation'];
 }
 
 export interface EquipmentInteractionChoice extends PickerChoice {

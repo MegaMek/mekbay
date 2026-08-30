@@ -87,7 +87,7 @@ describe('C3Capabilities', () => {
     it('derives Alpha Strike endpoints only when no explicit endpoint projection exists', () => {
         const asUnit = {
             id: 'as',
-            getSummary: () => ({ as: { specials: ['C3M2', 'NOVA'] } }),
+            getC3Specials: () => ['C3M2', 'NOVA'],
             alias: () => undefined, c3Position: () => null, isC3Jammed: () => false,
             isC3EndpointOperational: () => true,
         } as unknown as C3UnitView;

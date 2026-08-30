@@ -161,7 +161,7 @@
             </div>
             }
 
-            @if (formationEffectCards().length > 0) {
+            @if (formationEffectCards().length > 0 || formationWideAbilities().length > 0 || formationSharedPoolPreviews().length > 0) {
             @for (card of formationEffectCards(); track card.key) {
             <div class="formation-effect-card framed-borders"
                 [class.ineligible]="isFormationEffectCardIneligible(card.effects)">
@@ -202,8 +202,7 @@
                             <div class="selected-ability-info corner-borders formation-selected-ability-info">
                                 <div class="ability-detail-header">
                                     <div class="group">
-                                        <span class="ability-detail-name">{{ abilityInfo?.name || slotAbilityId
-                                            }}</span>
+                                        <span class="ability-detail-name">{{ abilityInfo?.name || slotAbilityId }}</span>
                                     </div>
 
                                     @if (!isFormationEffectAutoAssigned(effect)) {
@@ -252,16 +251,94 @@
                 }
             </div>
             }
-            } @else {
-            <div class="ability-limits-info disabled-message">
-                No unit-assigned formation abilities are available for this unit.
+
+            @for (formationWide of formationWideAbilities(); track formationWide.key) {
+            <div class="formation-effect-card framed-borders formation-wide-effect-card">
+                <div class="formation-effect-header">
+                    <div class="group">
+                        <span class="formation-effect-title">{{ formationWide.sourceFormationName }}</span>
+                    </div>
+                    <span class="formation-effect-count">Formation-wide</span>
+                </div>
+
+                <div class="selected-ability-info corner-borders formation-selected-ability-info">
+                    <div class="ability-detail-header">
+                        <div class="group">
+                            <span class="ability-detail-name">{{ formationWide.ability.name }}</span>
+                            <span class="ability-detail-cost">Formation-wide Ability</span>
+                        </div>
+                    </div>
+                    @for (summary of getFormationWideAbilitySummary(formationWide); track summary) {
+                    <div class="ability-detail-summary" [innerHTML]="summary"></div>
+                    }
+                    @if (formationWide.ability.rulesRef; as abilityRules) {
+                    @if (abilityRules.length > 0) {
+                    <div class="ability-detail-rules">
+                        @for (rule of abilityRules; let abilityRuleLast = $last; track $index) {
+                        {{ formatRuleReference(rule) }}
+                        @if (!abilityRuleLast) {
+                        <span class="separator"> · </span>
+                        }
+                        }
+                    </div>
+                    }
+                    }
+                </div>
             </div>
             }
 
-            @if (unsupportedFormationEffects().length > 0) {
+            @for (pool of formationSharedPoolPreviews(); track pool.descriptor.key) {
+            <div class="formation-effect-card framed-borders formation-shared-pool-effect-card">
+                <div class="formation-effect-header">
+                    <div class="group">
+                        <span class="formation-effect-title">{{ pool.descriptor.sourceFormationName }}</span>
+                    </div>
+                    <span class="formation-effect-count">Shared pool</span>
+                </div>
+
+                @for (abilityId of pool.descriptor.abilityIds; track abilityId) {
+                @let abilityInfo = getFormationAbilityDisplayInfo(abilityId);
+                <div class="selected-ability-info corner-borders formation-selected-ability-info">
+                    <div class="ability-detail-header">
+                        <div class="group">
+                            <span class="ability-detail-name">{{ abilityInfo?.name || abilityId }}</span>
+                            <span class="ability-detail-cost">
+                                Shared pool
+                                @if (pool.resolvedLevel !== null) {
+                                · Level {{ pool.resolvedLevel }}
+                                }
+                            </span>
+                        </div>
+                    </div>
+                    @if (abilityInfo?.summary; as abilitySummary) {
+                    <div class="ability-detail-summary" [innerHTML]="abilitySummary"></div>
+                    }
+                    @if (abilityInfo?.rulesRef; as abilityRules) {
+                    @if (abilityRules.length > 0) {
+                    <div class="ability-detail-rules">
+                        @for (rule of abilityRules; let abilityRuleLast = $last; track $index) {
+                        {{ formatRuleReference(rule) }}
+                        @if (!abilityRuleLast) {
+                        <span class="separator"> · </span>
+                        }
+                        }
+                    </div>
+                    }
+                    }
+                </div>
+                }
+            </div>
+            }
+            } @else {
+            <div class="ability-limits-info disabled-message">
+                No formation abilities are available for this unit.
+            </div>
+            }
+
+            @if (formationSharedPoolPreviews().length > 0) {
             <div class="formation-notes">
-                @for (effect of unsupportedFormationEffects(); track effect.key) {
-                <div class="unit-type-warning">{{ getUnsupportedFormationEffectNotice(effect) }}</div>
+                @for (pool of formationSharedPoolPreviews(); track pool.descriptor.key) {
+                <div class="unit-type-warning">{{ getFormationSharedPoolNotice(pool) }}</div>
                 }
             </div>
             }

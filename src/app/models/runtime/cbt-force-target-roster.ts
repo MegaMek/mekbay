@@ -33,7 +33,10 @@ export function mekTargetRosterRow(
     const cover = turn.cover;
     const targetMovementDistance = movement?.distance ?? null;
     const largeTarget = entity.tonnage() > 100;
-    const stealth = query.stealthTnModifiers(targetMovementDistance ?? 0, 'preview');
+    const stealth = query.stealthTnModifiers(effectiveStealthMoveDistance(
+        targetMovementDistance,
+        movement?.mode,
+    ), 'preview');
     const waterState = resolveTnTargetWaterState({
         unitType,
         ...(isUnitWaterDepth(cover) ? { waterDepth: cover } : {}),
@@ -102,11 +105,12 @@ export function entityTargetRosterRow(
     const unavailable = runtime.destroyed() || runtime.hasCondition('shutdown');
     const stealth = getActiveStealthTnModifiers(
         stealthEquipment,
-        targetMovementDistance ?? 0,
+        effectiveStealthMoveDistance(targetMovementDistance, turn.movement?.mode),
         unavailable,
     );
     const largeTarget = canTnTargetTypeBeLarge(unitType)
         && (entity.weightClass() === 'Super Heavy' || entity.weightClass() === 'Large Support');
+    const cover = turn.cover;
     return Object.freeze({
         instanceId: unit.instanceId,
         targetId: asEncounterTargetId(getForceOpforInventoryTargetId(forceInstanceId, unit.instanceId)),
@@ -123,7 +127,9 @@ export function entityTargetRosterRow(
             immobile: runtime.hasCondition('immobile')
                 || runtime.hasCondition('immobilized')
                 || entity.motiveType() === 'None',
-            targetHexCover: 'none',
+            targetHexCover: cover === 'light' || cover === 'heavy' ? cover : 'none',
+            ...(isUnitWaterDepth(cover) ? { waterDepth: cover } : {}),
+            ...(isUnitBuildingLevel(cover) ? { buildingCover: cover } : {}),
             targetHeight: 1,
             largeTarget,
             narcAboveWater: false,
@@ -134,6 +140,15 @@ export function entityTargetRosterRow(
         }),
         projection: 'v2',
     });
+}
+
+function effectiveStealthMoveDistance(
+    distance: number | null,
+    mode: string | null | undefined,
+): number {
+    return distance === 0 && mode !== null && mode !== undefined && mode !== 'stationary'
+        ? 1
+        : distance ?? 0;
 }
 
 function nonMekTargetUnitType(entity: ReturnType<ReadyNonMekUnit['getUnit']>): TnTargetUnitType {

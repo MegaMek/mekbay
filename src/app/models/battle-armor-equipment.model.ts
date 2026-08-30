@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { Equipment } from './equipment.model';
+import type { EquipmentFlag } from './equipment-flags.type';
 import { isSneakCamoArmorKit } from './infantry-equipment.model';
+
+export function battleArmorMinesweeperToolFlags(): readonly EquipmentFlag[] {
+  return Object.freeze(['F_TOOLS', 'S_MINESWEEPER']);
+}
 
 export function isAntiPersonnelMountEquipment(equipment: Equipment | null | undefined): boolean {
   return equipment?.hasFlag('F_AP_MOUNT') === true;
@@ -37,7 +42,7 @@ export function isMagnetClawEquipment(equipment: Equipment | null | undefined): 
 export function isBattleArmorMinesweeperTools(
   equipment: Equipment | null | undefined,
 ): boolean {
-  return equipment?.hasFlag('F_TOOLS') === true && equipment.hasFlag('S_MINESWEEPER');
+  return battleArmorMinesweeperToolFlags().every(flag => equipment?.hasFlag(flag) === true);
 }
 
 export function isParafoilEquipment(equipment: Equipment | null | undefined): boolean {

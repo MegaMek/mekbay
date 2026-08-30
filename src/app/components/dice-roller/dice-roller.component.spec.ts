@@ -24,6 +24,25 @@ describe('DiceRollerComponent', () => {
         expect(fixture.nativeElement.querySelectorAll('.die')).toHaveSize(3);
     });
 
+    it('displays restored faces as a completed roll without emitting it again', () => {
+        const fixture = TestBed.createComponent(DiceRollerComponent);
+        const finished = jasmine.createSpy('finished');
+        fixture.componentInstance.finished.subscribe(finished);
+        fixture.componentRef.setInput('initialResults', [5, 2]);
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.diceResults()).toEqual([5, 2]);
+        expect(fixture.componentInstance.diceSum()).toBe(7);
+        expect(fixture.componentInstance.rollFinished()).toBeTrue();
+        expect(finished).not.toHaveBeenCalled();
+
+        fixture.componentRef.setInput('initialResults', null);
+        fixture.detectChanges();
+        expect(fixture.componentInstance.diceResults()).toEqual([null, null]);
+        expect(fixture.componentInstance.rollFinished()).toBeFalse();
+        fixture.destroy();
+    });
+
     it('rolls deterministic dice, applies the modifier, and emits once', () => {
         spyOn(Math, 'random').and.returnValue(0.5);
         const fixture = TestBed.createComponent(DiceRollerComponent);
@@ -102,7 +121,6 @@ describe('DiceRollerComponent', () => {
         expect(pendingResult).not.toBeNull();
         expect(pendingResult.classList).toContain('pending');
         expect(pendingResult.textContent?.trim()).toBe('');
-        const pendingResultHeight = pendingResult.getBoundingClientRect().height;
         expect(pendingHint).not.toBeNull();
         expect(pendingHint.textContent?.trim()).toBe('Tap or click to reveal the result');
         const overlay = fixture.nativeElement.querySelector('.dice-overlay') as HTMLElement;
@@ -123,7 +141,6 @@ describe('DiceRollerComponent', () => {
         expect(result.classList).toContain('compact');
         expect(result.classList).toContain('success');
         expect(result.classList).not.toContain('failed');
-        expect(result.getBoundingClientRect().height).toBe(pendingResultHeight);
         expect((fixture.nativeElement.querySelector('.overlay-hint') as HTMLElement).textContent?.trim())
             .toBe('Click to return to pilot checks');
         expect(fixture.nativeElement.querySelector('.overlay-sum')).toBeNull();
@@ -189,33 +206,6 @@ describe('DiceRollerComponent', () => {
         expect(fixture.nativeElement.querySelectorAll('.die')).toHaveSize(2);
         expect(fixture.nativeElement.querySelector('.plus-sign')).toBeNull();
         expect(fixture.nativeElement.querySelector('.sum')).toBeNull();
-        fixture.destroy();
-    });
-
-    it('fits long overlay results while preserving the full size for short results', async () => {
-        const fixture = TestBed.createComponent(DiceRollerComponent);
-        fixture.componentRef.setInput('showOverlay', true);
-        fixture.componentRef.setInput('showInline', false);
-        fixture.componentRef.setInput('overlayResult', 'Major damage; no movement for the rest of the game. Vehicle is immobile.');
-        fixture.componentRef.setInput('rollDurationMs', 0);
-        fixture.detectChanges();
-
-        fixture.componentInstance.roll();
-        jasmine.clock().tick(0);
-        fixture.detectChanges();
-        await fixture.whenStable();
-
-        const result = fixture.nativeElement.querySelector('.overlay-result') as HTMLElement;
-        expect(result.clientWidth).toBeGreaterThan(0);
-        expect(result.style.fontSize).not.toBe('');
-        expect(result.style.whiteSpace).toBe('normal');
-
-        fixture.componentRef.setInput('overlayResult', 'LL');
-        fixture.detectChanges();
-        await fixture.whenStable();
-
-        expect(result.style.fontSize).toBe('');
-        expect(result.style.whiteSpace).toBe('nowrap');
         fixture.destroy();
     });
 

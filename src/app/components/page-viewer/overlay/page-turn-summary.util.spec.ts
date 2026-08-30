@@ -4,7 +4,7 @@
 import {
     actionableMekPilotChecks,
     composeMekPsrDisplayModifiers,
-    composeMekTurnSummaryHeatRows,
+    composeTurnSummaryHeatRows,
 } from './page-turn-summary.util';
 import { asLocationId } from '../../../models/entity/entity-identifiers';
 import type { MekPilotCheckV2 } from '../../../models/runtime/mek-movement-psr-v2';
@@ -33,9 +33,9 @@ describe('actionableMekPilotChecks', () => {
     });
 });
 
-describe('composeMekTurnSummaryHeatRows', () => {
+describe('composeTurnSummaryHeatRows', () => {
     it('shows selected weapon heat beside committed weapon heat and water cooling', () => {
-        expect(composeMekTurnSummaryHeatRows([
+        expect(composeTurnSummaryHeatRows([
             { id: 'movement', label: 'Movement', value: 2 },
             { id: 'weapons', label: 'Weapons', value: 5 },
         ], 8, 3)).toEqual([
@@ -51,7 +51,7 @@ describe('composeMekTurnSummaryHeatRows', () => {
     });
 
     it('adds a selected-only row when no committed weapon heat exists', () => {
-        expect(composeMekTurnSummaryHeatRows([
+        expect(composeTurnSummaryHeatRows([
             { id: 'movement', label: 'Movement', value: 1 },
         ], 4, 0)).toEqual([
             {
@@ -61,6 +61,28 @@ describe('composeMekTurnSummaryHeatRows', () => {
                 selectedOnly: true,
             },
             { id: 'movement', label: 'Movement', value: 1 },
+        ]);
+    });
+
+    it('omits zero heat and keeps compact equipment groups detailed', () => {
+        expect(composeTurnSummaryHeatRows([
+            { id: 'movement', label: 'Movement', value: 0 },
+            { id: 'stealth:null-signature', label: 'Stealth', value: 10, group: 'Equipment' },
+            { id: 'engine', label: 'Engine', value: 5 },
+            { id: 'nova-cews', label: 'Nova CEWS', value: 2, group: 'Equipment' },
+        ], null, 0)).toEqual([
+            { id: 'stealth:null-signature', label: 'Stealth', value: 10 },
+            { id: 'engine', label: 'Engine', value: 5 },
+            { id: 'nova-cews', label: 'Nova CEWS', value: 2 },
+        ]);
+    });
+
+    it('combines repeated detailed labels without applying their compact group', () => {
+        expect(composeTurnSummaryHeatRows([
+            { id: 'nova-a', label: 'Nova CEWS', value: 2, group: 'Equipment' },
+            { id: 'nova-b', label: 'Nova CEWS', value: 2, group: 'Equipment' },
+        ], null, 0)).toEqual([
+            { id: 'nova cews', label: 'Nova CEWS', value: 4 },
         ]);
     });
 });

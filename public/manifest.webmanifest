@@ -1,8 +1,8 @@
 {
   "lang": "en-US",
-  "name": "MekBay",
+  "name": "MekBay: BattleTech Force Builder",
   "short_name": "MekBay",
-  "description": "A web-based application for managing forces and viewing record sheets.",
+  "description": "Build and manage BattleTech forces for Classic and Alpha Strike with interactive or printable record sheets.",
   "theme_color": "#292929",
   "background_color": "#292929",
   "display": "standalone",

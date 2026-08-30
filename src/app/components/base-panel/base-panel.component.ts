@@ -16,7 +16,6 @@ import {
     signal,
     viewChild
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
@@ -30,11 +29,10 @@ const OVERFLOW_OVERLAY_KEY = 'panel-tab-overflow-menu';
  */
 @Component({
     selector: 'base-panel',
-    imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     styleUrl: './base-panel.component.scss',
     template: `
-        <div class="panel" [class]="panelClass()" [ngClass]="panelClassFromTab()">
+        <div class="panel" [class]="panelClasses()">
             <div class="panel-header" [class.tabbed]="isTabbed()">
                 <ng-content select="[panel-header]"></ng-content>
                 @if (isTabbed()) {
@@ -99,6 +97,11 @@ export class BasePanelComponent implements AfterViewInit {
     activeTabChange = output<string>();
 
     isTabbed = computed(() => this.tabs().length > 0);
+    panelClasses = computed(() => {
+        const tab = this.activeTab();
+        const activeTabClass = tab ? `activetab-${tab.toLowerCase()}` : '';
+        return [this.panelClass(), activeTabClass].filter(Boolean).join(' ');
+    });
 
     tabHeader = viewChild<ElementRef<HTMLDivElement>>('tabHeader');
     tabButtonsContainer = viewChild<ElementRef<HTMLDivElement>>('tabButtonsContainer');
@@ -255,9 +258,4 @@ export class BasePanelComponent implements AfterViewInit {
         });
     }
 
-    panelClassFromTab(): string {
-        const tab = this.activeTab();
-        if (!tab) return '';
-        return `activetab-${tab.toLowerCase()}`;
-    }
 }

@@ -40,7 +40,10 @@ import {
     type SerializedCBTForceV2,
     type SerializedForceEncounterEntryV2,
 } from './runtime/persistence-v2';
-import type { FormationUnitLike } from '../utils/formation-unit-facts.util';
+import {
+    formationUnitTechBaseFacts,
+    type FormationUnitLike,
+} from '../utils/formation-unit-facts.util';
 import type { ForceMember } from './force-member.model';
 
 
@@ -1632,7 +1635,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
     techBase = computed((): TechBase => {
         return getUnitsAverageTechBase(this.groups()
-            .flatMap(group => group.formationUnits().map(unit => unit.getSummary())));
+            .flatMap(group => group.formationUnits().map(formationUnitTechBaseFacts)));
     });
 
     public getFormationUnitsForGroup(group: UnitGroup): readonly FormationUnitLike[] {

@@ -4,7 +4,7 @@
 
 import { CdkMenuModule } from '@angular/cdk/menu';
 import type { ConnectedPosition } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, Output, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, input, output } from '@angular/core';
 
 export interface CompactFilterMenuOption {
     id: number;
@@ -19,16 +19,16 @@ export interface CompactFilterMenuOption {
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CdkMenuModule],
     host: {
-        '[class.small]': 'size === "small"',
+        '[class.small]': 'size() === "small"',
     },
     template: `
         <button
             type="button"
             class="compact-filter-trigger"
             [class.open]="menuOpen()"
-            [class.active]="selectedId !== null"
-            [title]="activeOption?.name || allLabel"
-            [attr.aria-label]="ariaLabel"
+            [class.active]="selectedId() !== null"
+            [title]="activeOption?.name || allLabel()"
+            [attr.aria-label]="ariaLabel()"
             [cdkMenuTriggerFor]="filterMenu"
             [cdkMenuPosition]="menuPositions"
             (cdkMenuOpened)="menuOpen.set(true)"
@@ -37,7 +37,7 @@ export interface CompactFilterMenuOption {
                 @if (option.img) {
                 <img [src]="option.img" class="compact-filter-icon" alt="" />
                 } @else {
-                <span class="compact-filter-fallback">{{ fallbackLabel }}</span>
+                <span class="compact-filter-fallback">{{ fallbackLabel() }}</span>
                 }
             } @else {
                 <span class="compact-filter-empty">-</span>
@@ -46,15 +46,15 @@ export interface CompactFilterMenuOption {
         <ng-template #filterMenu>
             <div
                 class="compact-filter-menu glass framed-borders"
-                [class.small]="size === 'small'"
-                [class.align-left]="panelAlign === 'left'"
+                [class.small]="size() === 'small'"
+                [class.align-left]="panelAlign() === 'left'"
                 [style.max-height.px]="menuMaxHeight"
                 cdkMenu>
-                <button type="button" class="compact-filter-option" [class.active]="selectedId === null" cdkMenuItem (cdkMenuItemTriggered)="select(null)">
-                    <span class="compact-filter-option-label">{{ allLabel }}</span>
+                <button type="button" class="compact-filter-option" [class.active]="selectedId() === null" cdkMenuItem (cdkMenuItemTriggered)="select(null)">
+                    <span class="compact-filter-option-label">{{ allLabel() }}</span>
                 </button>
-                @for (option of options; track option.id) {
-                <button type="button" class="compact-filter-option" [class.active]="selectedId === option.id" cdkMenuItem (cdkMenuItemTriggered)="select(option.id)">
+                @for (option of options(); track option.id) {
+                <button type="button" class="compact-filter-option" [class.active]="selectedId() === option.id" cdkMenuItem (cdkMenuItemTriggered)="select(option.id)">
                     @if (option.img) {
                     <img [src]="option.img" class="compact-filter-option-icon" alt="" />
                     }
@@ -271,22 +271,22 @@ export class CompactFilterMenuComponent {
 
     readonly menuOpen = signal(false);
 
-    @Input() options: readonly CompactFilterMenuOption[] = [];
-    @Input() selectedId: number | null = null;
-    @Input() allLabel = 'All';
-    @Input() ariaLabel = 'Filter';
-    @Input() fallbackLabel = '?';
-    @Input() size: 'default' | 'small' = 'default';
-    @Input() panelAlign: 'left' | 'right' = 'right';
+    readonly options = input<readonly CompactFilterMenuOption[]>([]);
+    readonly selectedId = input<number | null>(null);
+    readonly allLabel = input('All');
+    readonly ariaLabel = input('Filter');
+    readonly fallbackLabel = input('?');
+    readonly size = input<'default' | 'small'>('default');
+    readonly panelAlign = input<'left' | 'right'>('right');
 
-    @Output() selectedIdChange = new EventEmitter<number | null>();
+    readonly selectedIdChange = output<number | null>();
 
     get menuPositions(): ConnectedPosition[] {
         const above = this.availableSpaceAboveTrigger();
         const below = this.availableSpaceBelowTrigger();
         const preferAbove = above >= below;
 
-        if (this.panelAlign === 'left') {
+        if (this.panelAlign() === 'left') {
             return preferAbove ? this.leftAboveMenuPositions : this.leftBelowMenuPositions;
         }
 
@@ -299,9 +299,9 @@ export class CompactFilterMenuComponent {
     }
 
     get activeOption(): CompactFilterMenuOption | null {
-        return this.selectedId == null
+        return this.selectedId() == null
             ? null
-            : this.options.find(option => option.id === this.selectedId) ?? null;
+            : this.options().find(option => option.id === this.selectedId()) ?? null;
     }
 
     select(id: number | null): void {

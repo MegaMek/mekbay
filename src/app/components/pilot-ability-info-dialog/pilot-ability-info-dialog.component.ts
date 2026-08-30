@@ -9,15 +9,18 @@ import { type PilotAbility, type ASCustomPilotAbility, formatSummaryMovement, ge
 import { formatRulesReference, type GameSystem, type RulesReference } from '../../models/common.model';
 import type { GameService } from '../../services/game.service';
 import { OptionsService } from '../../services/options.service';
+import type { FormationWideAbility } from '../../utils/formation-type.model';
 
 export interface PilotAbilityInfoDialogData {
     gameSystem: GameSystem;
     /** The pilot ability (either standard or custom) */
-    ability: PilotAbility | ASCustomPilotAbility | CommandAbility;
+    ability: PilotAbility | ASCustomPilotAbility | CommandAbility | FormationWideAbility;
     /** Whether this is a custom ability */
     isCustom: boolean;
     /** Whether this is a formation-granted command ability */
     isCommand?: boolean;
+    /** Whether this is a formation-wide ability that is not assigned to a unit. */
+    isFormationWide?: boolean;
 }
 
 /**
@@ -38,10 +41,11 @@ export class PilotAbilityInfoDialogComponent {
     readonly ability = computed(() => this.data.ability);
     readonly isCustom = computed(() => this.data.isCustom);
     readonly isCommand = computed(() => this.data.isCommand ?? false);
+    readonly isFormationWide = computed(() => this.data.isFormationWide ?? false);
     readonly summaryIsHtml = computed(() => !this.isCustom());
     readonly abilityName = computed(() => this.ability().name);
     readonly abilityCost = computed<number | null>(() => {
-        if (this.isCommand()) {
+        if (this.isCommand() || this.isFormationWide()) {
             return null;
         }
         return (this.ability() as PilotAbility | ASCustomPilotAbility).cost;
@@ -57,6 +61,12 @@ export class PilotAbilityInfoDialogComponent {
         if (this.isCommand()) {
             return [...(ability as CommandAbility).summary];
         }
+        if (this.isFormationWide()) {
+            return formatSummaryMovement(
+                (ability as FormationWideAbility).summary,
+                this.optionsService.options().ASUseHex,
+            );
+        }
         return formatSummaryMovement(
             getAbilityDetails(ability as PilotAbility, this.data.gameSystem).summary,
             this.optionsService.options().ASUseHex,
@@ -67,6 +77,10 @@ export class PilotAbilityInfoDialogComponent {
         if (this.isCustom()) return null;
         if (this.isCommand()) {
             const ability = this.ability() as CommandAbility;
+            return ability.rulesRef?.length ? ability.rulesRef : null;
+        }
+        if (this.isFormationWide()) {
+            const ability = this.ability() as FormationWideAbility;
             return ability.rulesRef?.length ? ability.rulesRef : null;
         }
         const ability = this.ability() as PilotAbility;

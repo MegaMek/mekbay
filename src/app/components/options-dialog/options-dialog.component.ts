@@ -15,8 +15,14 @@ import { isIOS } from '../../utils/platform.util';
 import { LoggerService } from '../../services/logger.service';
 import { GameService } from '../../services/game.service';
 import type { GameSystem } from '../../models/common.model';
-import { normalizeUnitServerUrl } from '../../models/common.model';
-import type { AvailabilitySource, ForceViewerBVPVDisplay, RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
+import type {
+    AutomationMode,
+    AvailabilitySource,
+    CBTAutomationKey,
+    CBTOptionalRules,
+    ForceViewerBVPVDisplay,
+    RecordSheetDoubleTapZoomResetMode,
+} from '../../models/options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
 import { PublicTagsService } from '../../services/public-tags.service';
@@ -31,6 +37,7 @@ import { naturalCompare } from '../../utils/sort.util';
 import { AppUpdateService } from '../../services/app-update.service';
 import { CatalogStorage } from '../../services/catalogs/catalog-storage.service';
 import { deleteUnitCatalogDatabase } from '../../services/unit-catalog/unit-catalog-database';
+import { DisplayNameService } from '../../services/display-name.service';
 
 type OptionsSectionId = 'General' | 'Search' | 'Account' | 'Tags' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
 
@@ -39,6 +46,12 @@ interface OptionsViewDefinition {
     title: string;
     description?: string;
     parentId?: OptionsSectionId;
+}
+
+interface CBTAutomationOptionDefinition {
+    readonly key: CBTAutomationKey;
+    readonly label: string;
+    readonly description: string;
 }
 
 const WIDE_LAYOUT_QUERY = '(min-width: 760px) and (min-height: 560px)';
@@ -94,6 +107,53 @@ const TOP_LEVEL_OPTIONS_VIEWS = OPTIONS_VIEW_DEFINITIONS.filter(view => !view.pa
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS = 300;
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS = 10_000;
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS = 100;
+const CBT_AUTOMATION_MODES: ReadonlyArray<{ readonly value: AutomationMode; readonly label: string }> = [
+    { value: 'yes', label: 'Yes' },
+    { value: 'ask', label: 'Ask' },
+    { value: 'no', label: 'No' },
+];
+const CBT_AUTOMATION_OPTIONS: readonly CBTAutomationOptionDefinition[] = [
+    {
+        key: 'pilotSkillCheck',
+        label: 'Piloting skill checks',
+        description: 'Resolve end-of-phase Piloting Skill Rolls. "No" keeps warnings available but skips resolution when the phase closes.',
+    },
+    {
+        key: 'heatAndDissipationResolution',
+        label: 'Heat and dissipation',
+        description: 'Calculate and apply heat and cooling at end of turn.',
+    },
+    {
+        key: 'heatEffectsCheck',
+        label: 'Heat effects',
+        description: 'Resolve shutdown, ammunition explosion, life support, and aerospace heat checks after end-turn heat is applied.',
+    },
+    {
+        key: 'pilotHitsAndConsciousnessCheck',
+        label: 'Pilot hits and consciousness',
+        description: 'Apply pilot injuries, then resolve consciousness and recovery rolls.',
+    },
+    {
+        key: 'internalExplosionsCheck',
+        label: 'Internal explosions',
+        description: 'Resolve effects caused by explosive equipment and ammunition.',
+    },
+    {
+        key: 'criticalHitChanceCheck',
+        label: 'Critical hit chance',
+        description: 'Resolve checks that can cause critical hits.',
+    },
+    {
+        key: 'breachAndFloodCheck',
+        label: 'Breach and flood',
+        description: 'Resolve armor breaches and flooding effects.',
+    },
+    {
+        key: 'fallingCheck',
+        label: 'Falling',
+        description: 'Resolve fall orientation, hit locations, and damage before the seatbelt check.',
+    },
+];
 
 
 @Component({
@@ -121,6 +181,7 @@ export class OptionsDialogComponent {
     toastService = inject(ToastService);
     accountAuthService = inject(AccountAuthService);
     appUpdateService = inject(AppUpdateService);
+    displayNameService = inject(DisplayNameService);
     destroyRef = inject(DestroyRef);
     isIOS = isIOS();
     modalClass = 'wide options-dialog-modal';
@@ -137,13 +198,20 @@ export class OptionsDialogComponent {
     forceGenFailureSearchWindowMinMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS;
     forceGenFailureSearchWindowMaxMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS;
     forceGenFailureSearchWindowStepMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS;
+    cbtAutomationModes = CBT_AUTOMATION_MODES;
+    cbtAutomationOptions = CBT_AUTOMATION_OPTIONS;
     forceGenFailureSearchWindowMs = computed(() => this.normalizeForceGenFailureSearchWindowMs(this.optionsService.options().forceGenerator.failureSearchWindowMs));
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
     subscriptionInput = viewChild<ElementRef<HTMLInputElement>>('subscriptionInput');
     userUuid = computed(() => this.userStateService.uuid() || '');
     userPublicId = computed(() => this.userStateService.publicId() || 'Not registered');
+    userDisplayName = computed(() => this.userStateService.displayName() || '');
     showUserUuid = signal(false);
+    displayNameError = signal('');
+    displayNameSaving = signal(false);
+    displayNameGenerating = signal(false);
+    private displayNameSaveVersion = 0;
     subscribedTags = computed(() => {
         this.publicTagsService.version(); // depend on version for reactivity
         return this.publicTagsService.getSubscribedTags();
@@ -158,19 +226,8 @@ export class OptionsDialogComponent {
     showSubscriptionInput = signal(false);
     subscriptionError = signal('');
     userUuidError = '';
-    sheetCacheSize = signal(0);
-    sheetCacheCount = signal(0);
     canvasMemorySize = signal(0);
     unitIconsCount = signal(0);
-    unitServersDraft = signal<string[]>([...(this.optionsService.options().unitServers ?? [])]);
-    newUnitServerUrl = signal('');
-    unitServerError = signal('');
-    unitServersDirty = computed(() => {
-        const saved = this.optionsService.options().unitServers ?? [];
-        const draft = this.unitServersDraft();
-        if (saved.length !== draft.length) return true;
-        return draft.some((url, i) => url !== saved[i]);
-    });
     unitsCount = computed(() => this.dataService.getUnits().length);
     equipmentCount = computed(() => this.dataService.getEquipmentRegistry().size);
 
@@ -200,7 +257,6 @@ export class OptionsDialogComponent {
 
     constructor() {
         this.setupLayoutModeTracking();
-        this.updateSheetCacheSize();
         this.updateCanvasMemorySize();
         this.updateUnitIconsCount();
         this.loadTagSubscriberCounts();
@@ -314,13 +370,6 @@ export class OptionsDialogComponent {
         return this.tagSubscriberCounts()[tagName.toLowerCase()] || 0;
     }
 
-    updateSheetCacheSize() {
-        this.dbService.getSheetsStoreSize().then(({ memorySize, count }) => {
-            this.sheetCacheSize.set(memorySize);
-            this.sheetCacheCount.set(count);
-        });
-    }
-
     updateCanvasMemorySize() {
         this.dbService.getCanvasStoreSize().then(size => {
             this.canvasMemorySize.set(size);
@@ -397,12 +446,10 @@ export class OptionsDialogComponent {
 
     onRecordSheetCenterPanelContentChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'fluffImage' | 'clusterTable';
-        this.optionsService.setOption('recordSheetCenterPanelContent', value);
-    }
-
-    onUsePreGeneratedRecordSheetsChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('usePreGeneratedRecordSheets', value);
+        this.optionsService.setOption('printAllOptions', {
+            ...this.optionsService.options().printAllOptions,
+            recordSheetCenterPanelContent: value,
+        });
     }
 
     onRecordSheetDoubleTapZoomResetChange(event: Event) {
@@ -460,46 +507,6 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('enableForceSyncConflictDialog', value);
     }
 
-    onNewUnitServerUrlInput(event: Event) {
-        this.newUnitServerUrl.set((event.target as HTMLInputElement).value);
-        if (this.unitServerError()) {
-            this.unitServerError.set('');
-        }
-    }
-
-    addUnitServer() {
-        const normalized = normalizeUnitServerUrl(this.newUnitServerUrl());
-        if (!normalized) {
-            this.unitServerError.set('Enter a valid http(s) server URL, e.g. https://db.example.com');
-            return;
-        }
-        const current = this.unitServersDraft();
-        if (current.includes(normalized)) {
-            this.unitServerError.set('That server is already in the list.');
-            return;
-        }
-        this.unitServersDraft.set([...current, normalized]);
-        this.newUnitServerUrl.set('');
-        this.unitServerError.set('');
-    }
-
-    removeUnitServer(index: number) {
-        const current = this.unitServersDraft();
-        this.unitServersDraft.set(current.filter((_, i) => i !== index));
-    }
-
-    async applyUnitServers() {
-        // Fold any pending text in the add field into the list before saving.
-        if (this.newUnitServerUrl().trim()) {
-            this.addUnitServer();
-            if (this.unitServerError()) {
-                return;
-            }
-        }
-        await this.optionsService.setOption('unitServers', [...this.unitServersDraft()]);
-        window.location.reload();
-    }
-
     onSwipeToNextSheetChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'vertical' | 'horizontal' | 'disabled';
         this.optionsService.setOption('swipeToNextSheet', value);
@@ -510,12 +517,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('trackPhaseAndTurn', value);
     }
 
-    onCbtAutomationsChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('cbtAutomations', value);
+    onCbtAutomationModeChange(key: CBTAutomationKey, value: AutomationMode) {
+        this.optionsService.setCbtAutomationMode(key, value);
     }
 
-    onCBTOptionalRuleChange(key: 'forcedWithdrawal' | 'extremeRange', event: Event) {
+    onCBTOptionalRuleChange(key: keyof CBTOptionalRules, event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('CBTOptionalRules', {
             ...this.optionsService.options().CBTOptionalRules,
@@ -526,16 +532,6 @@ export class OptionsDialogComponent {
     onASUseHexChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('ASUseHex', value);
-    }
-
-    onASPrintPageBreakOnGroupsChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('ASPrintPageBreakOnGroups', value);
-    }
-
-    onprintRosterSummaryChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
-        this.optionsService.setOption('printRosterSummary', value);
     }
 
     onASUnifiedDamagePickerChange(event: Event) {
@@ -576,25 +572,6 @@ export class OptionsDialogComponent {
 
     toggleUserUuidVisibility() {
         this.showUserUuid.update(value => !value);
-    }
-
-    async onPurgeCache() {
-        const confirmed = await this.dialogsService.requestConfirmation(
-            'Are you sure you want to delete all cached record sheets? They will be redownloaded as needed.',
-            'Confirm Purge Cache',
-            'info'
-        );
-        if (confirmed) {
-            await this.dbService.clearSheetsStore();
-            this.updateSheetCacheSize();
-
-            if ('caches' in window) {
-                const keys = await window.caches.keys();
-                await Promise.all(keys.map(key => window.caches.delete(key)));
-            }
-
-            window.location.reload();
-        }
     }
 
     async onPurgeCanvas() {
@@ -656,6 +633,49 @@ export class OptionsDialogComponent {
         const el = uuidInput.nativeElement;
         el.value = this.userUuid();
         el.blur();
+    }
+
+    async queueDisplayNameSave(input: HTMLInputElement): Promise<void> {
+        const version = ++this.displayNameSaveVersion;
+        this.displayNameSaving.set(true);
+        this.displayNameError.set('');
+        try {
+            const savedName = await this.displayNameService.save(input.value);
+            if (version === this.displayNameSaveVersion) input.value = savedName;
+        } catch (error) {
+            if (version === this.displayNameSaveVersion) {
+                this.displayNameError.set(error instanceof Error
+                    ? error.message
+                    : 'Could not save the display name.');
+            }
+        } finally {
+            if (version === this.displayNameSaveVersion) this.displayNameSaving.set(false);
+        }
+    }
+
+    onDisplayNameKeydown(event: KeyboardEvent, input: HTMLInputElement): void {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            input.value = this.userDisplayName();
+            this.displayNameError.set('');
+            void this.queueDisplayNameSave(input);
+        } else if (event.key === 'Enter') {
+            event.preventDefault();
+            input.blur();
+            void this.queueDisplayNameSave(input);
+        }
+    }
+
+    async fillRandomDisplayName(input: HTMLInputElement): Promise<void> {
+        if (this.displayNameGenerating()) return;
+        this.displayNameGenerating.set(true);
+        try {
+            input.value = await this.displayNameService.generate();
+            this.displayNameError.set('');
+            await this.queueDisplayNameSave(input);
+        } finally {
+            this.displayNameGenerating.set(false);
+        }
     }
 
     async onSetUuid(value: string) {

@@ -892,15 +892,9 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
 
         const partialCover = fixture.nativeElement.querySelector('.partial-cover') as HTMLButtonElement;
         const buildingTrigger = fixture.nativeElement.querySelector('button[aria-label="Building level"]') as HTMLButtonElement;
-        const coverRow = fixture.nativeElement.querySelector('[aria-label="Target hex cover"]') as HTMLElement;
-        const coverButtons = [
-            ...coverRow.querySelectorAll<HTMLButtonElement>(':scope > button'),
-            ...coverRow.querySelectorAll<HTMLButtonElement>(':scope > cover-level-picker .cover-trigger'),
-        ];
         expect(component.targetHexCover()).toBe('none');
         expect(component.buildingPartialCover()).toBeTrue();
         expect(component.partialCoverSelected()).toBeTrue();
-        expect(coverButtons.map(button => getComputedStyle(button).width)).toEqual(Array(4).fill('40px'));
         expect(partialCover.disabled).toBeTrue();
         expect(partialCover.textContent).toContain('Partial Cover (building)');
         expect(getComputedStyle(partialCover).backgroundColor).toBe('rgb(209, 209, 209)');

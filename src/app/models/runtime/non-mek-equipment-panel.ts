@@ -16,7 +16,10 @@ import { isWeaponEnhancementEquipment } from '../entity/utils/equipment-link-rul
 import { isTargetingComputerEquipment } from '../entity/utils/targeting-computer';
 import type { CrewAssignment } from './crew-assignment';
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
-import type { NonMekUnitRuntimeState } from './non-mek-unit-instance';
+import {
+    nonMekComponentModes,
+    type NonMekUnitRuntimeState,
+} from './non-mek-unit-instance';
 import {
     entityAmmoLoadout,
     entityAmmoLoadouts,
@@ -73,6 +76,9 @@ import {
 } from '../../utils/aerospace-range.util';
 import { bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import { isLaserInsulatorEquipment } from '../laser-insulator.model';
+import { prototypeLaserMaximumExtraHeat } from '../prototype-laser-heat.model';
+import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
+import { mobileHpgBlocksWeaponAttacks } from './component-mobile-hpg';
 
 /**
  * Equipment-dialog projection for non-Mek entities. The entity supplies the
@@ -102,6 +108,26 @@ export function projectNonMekEquipmentPanel(
         : null;
     const entityStatuses = projectNonMekComponentStatuses(index, state);
     const targetingComputer = installedTargetingComputer(index, vehicleRules, entityStatuses);
+    const hpgBlocksWeaponFire = mobileHpgBlocksWeaponAttacks(
+        [...index.components.values()].flatMap(component => {
+            const equipment = component.mount.equipment;
+            if (!equipment || !isMobileHpgEquipment(equipment)) return [];
+            return [Object.freeze({
+                componentId: component.id,
+                equipment,
+                mode: state.components.get(component.id)?.mode,
+                operational: !(vehicleRules?.destroyed
+                    ?? protoMekRules?.destroyed
+                    ?? infantryRules?.destroyed
+                    ?? aeroRules?.destroyed
+                    ?? state.explicitlyDestroyed)
+                    && !state.conditions.has('shutdown')
+                    && (vehicleRules?.componentStatuses.get(component.id)
+                        ?? entityStatuses.committed.get(component.id)
+                        ?? 'available') === 'available',
+            })];
+        }),
+    );
     const components = Object.freeze([...index.components.values()]
         .map(component => projectComponent(
             entity,
@@ -116,6 +142,7 @@ export function projectNonMekEquipmentPanel(
             aeroRules,
             entityStatuses,
             targetingComputer,
+            hpgBlocksWeaponFire,
         )));
     const firstCrew = crew.positions[0];
     return Object.freeze({
@@ -162,6 +189,7 @@ function projectComponent(
     aeroRules: AeroRuntimeRulesProjection | null,
     entityStatuses: NonMekComponentStatuses,
     targetingComputer: ComponentToHitTargetingComputerFacts | null,
+    hpgBlocksWeaponFire: boolean,
 ): EquipmentPanelComponent {
     const component = index.components.get(componentId);
     if (!component) throw new Error(`Unknown non-Mek component ${componentId}`);
@@ -174,7 +202,8 @@ function projectComponent(
     const previewStatus = vehicleRules?.previewComponentStatuses.get(componentId)
         ?? entityStatuses.preview.get(componentId)
         ?? status;
-    const mode = componentState?.mode ?? equipment?.modes[0];
+    const modeDefinition = nonMekComponentModes(entity, equipment);
+    const mode = componentState?.mode ?? modeDefinition.defaultMode;
     const locations = mount.getOccupiedLocations().map(code => {
         const location = [...index.locations.values()].find(candidate => candidate.code === code);
         return Object.freeze({
@@ -277,10 +306,19 @@ function projectComponent(
                 : { status: linkedEnhancementStatus as 'destroyed' | 'disabled' }),
         })])
         : Object.freeze([]);
+    const prototypeMaximumHeat = equipment instanceof WeaponEquipment
+        ? prototypeLaserMaximumExtraHeat(equipment.internalName)
+        : 0;
+    const displayedHeat = equipment instanceof WeaponEquipment
+        ? equipment.heat + (entity.unitType() === 'Aero' ? prototypeMaximumHeat : 0)
+        : 0;
     const weapon = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
         ? Object.freeze({
-            heat: equipment.heat,
-            firingHeat: equipment.heat,
+            heat: displayedHeat,
+            firingHeat: displayedHeat,
+            ...(prototypeMaximumHeat > 0 && entity.unitType() !== 'Aero'
+                ? { heatSuffix: '*' as const }
+                : {}),
             selectable: !(vehicleRules?.destroyed
                 ?? protoMekRules?.destroyed
                 ?? infantryRules?.destroyed
@@ -289,7 +327,8 @@ function projectComponent(
                 && status === 'available'
                 && componentState?.jammed !== true
                 && vehicleRules?.fireBlockedComponentIds.has(componentId) !== true
-                && infantryRules?.fireBlockedComponentIds.has(componentId) !== true,
+                && infantryRules?.fireBlockedComponentIds.has(componentId) !== true
+                && !hpgBlocksWeaponFire,
             damage: effectiveDamage,
             damageText: damage!.default,
             damageTextByRange: damage!.byRange,
@@ -326,8 +365,8 @@ function projectComponent(
         locations: Object.freeze(locations),
         status,
         previewStatus,
-        modes: Object.freeze([...(equipment?.modes ?? [])]),
-        ...(equipment?.modes[0] === undefined ? {} : { defaultMode: equipment.modes[0] }),
+        modes: modeDefinition.modes,
+        ...(modeDefinition.defaultMode === undefined ? {} : { defaultMode: modeDefinition.defaultMode }),
         ...(mode === undefined ? {} : { mode }),
         jammed: componentState?.jammed === true,
         ...(isLaserInsulatorEquipment(linkedEnhancement?.equipment)
@@ -398,6 +437,7 @@ function projectProtoMekFrenzy(
         hitModifierBreakdown: Object.freeze([...resolution.modifierBreakdown]),
         available,
         selectable: available,
+        firingHeat: 0,
         effect: Object.freeze({
             kind: 'damage' as const,
             damage: action.damage.value,
@@ -452,6 +492,7 @@ function projectVehicleCharge(
         hitModifierBreakdown: Object.freeze([...resolution.modifierBreakdown]),
         available,
         selectable: available,
+        firingHeat: 0,
         effect: Object.freeze({
             kind: 'damage' as const,
             ...rules.chargeDamage,

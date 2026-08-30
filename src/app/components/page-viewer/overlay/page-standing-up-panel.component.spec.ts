@@ -108,7 +108,7 @@ function createComponent(member: CBTMekForceMember, reviewOnly: boolean) {
         providers: [
             { provide: PAGE_TURN_MEMBER, useValue: member },
             { provide: STANDING_UP_REVIEW_ONLY, useValue: reviewOnly },
-            { provide: OptionsService, useValue: { options: () => ({ cbtAutomations: false }) } },
+            { provide: OptionsService, useValue: { cbtAutomationMode: () => 'no' } },
             { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
             {
                 provide: OverlayManagerService,
@@ -189,7 +189,7 @@ function standingSnapshot(
         },
         movementState,
         activeBoosterComponentIds: [],
-        attackMovementModifiers: { stationary: 0, walk: 1, run: 2, jump: 3, UMU: 3 },
+        attackMovementModifiers: { stationary: 0, walk: 1, run: 2, sprint: 0, jump: 3, UMU: 3 },
         defenseModifierBreakdown: [],
         defenseModifierTotal: { modifier: 0 },
         spottingModifier: 1,

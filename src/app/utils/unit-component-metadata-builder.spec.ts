@@ -9,6 +9,8 @@ import {
   TestBattleArmorEntity as BattleArmorEntity,
   TestBipedMekEntity as BipedMekEntity,
   TestInfantryEntity as InfantryEntity,
+  TestProtoMekEntity as ProtoMekEntity,
+  TestSupportTankEntity as SupportTankEntity,
   TestTankEntity as TankEntity,
 } from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
@@ -44,7 +46,7 @@ describe('buildUnitComponentMetadata', () => {
     }));
   });
 
-  it('uses the chassis tech base for a uniform structure and Standard for a hybrid', () => {
+  it('uses the chassis tech base for a uniform structure and omits hybrid materials', () => {
     const endo = new StructureEquipment({
       id: 'Clan Endo Steel', name: 'Endo Steel', type: 'structure',
       stats: { criticalSlots: 'variable' }, tech: { base: 'Clan' }, structure: { typeId: 1 },
@@ -60,8 +62,56 @@ describe('buildUnitComponentMetadata', () => {
       id: 'Standard', name: 'Standard', type: 'structure', structure: { typeId: 0 },
     });
     entity.setStructureAt('LA', new MountedStructure({ tonnage: 50, structure: standard }));
-    expect(buildUnitComponentMetadata(entity)!.find(component => component.t === 'S' && component.p === -1))
-      .toEqual(jasmine.objectContaining({ id: 'Standard', n: 'Standard Structure', c: '0' }));
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === standard.id))
+      .toBeUndefined();
+  });
+
+  it('exports uniform armor and uses a single marker for patchwork armor', () => {
+    const standard = new ArmorEquipment({
+      id: 'Standard Armor', name: 'Standard', type: 'armor', armor: { type: 'STANDARD' },
+    });
+    const reactive = new ArmorEquipment({
+      id: 'IS Reactive', name: 'Reactive', type: 'armor', armor: { type: 'REACTIVE' },
+    });
+    const entity = new BipedMekEntity();
+    entity.setUniformArmor(new MountedArmor({ armor: standard, techBase: 'IS' }));
+
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === standard.id))
+      .toEqual(jasmine.objectContaining({ id: 'Standard Armor', n: 'Standard Armor', c: '0' }));
+
+    entity.setArmorEquipmentAt('LA', reactive);
+    const components = buildUnitComponentMetadata(entity)!;
+    expect(components.filter(component => component.id === 'Patchwork')).toEqual([
+      jasmine.objectContaining({ id: 'Patchwork', n: 'Patchwork Armor', p: -1, c: '0' }),
+    ] as never);
+    expect(components.some(component => component.id === standard.id)).toBeFalse();
+    expect(components.some(component => component.id === reactive.id)).toBeFalse();
+  });
+
+  it('uses support-vehicle BAR 10 slots from the armor tech rating', () => {
+    const bar10 = new ArmorEquipment({
+      id: 'BAR 10 Armor', name: 'BAR 10 Armor', shortName: 'BAR 10', type: 'armor',
+      flags: ['F_SUPPORT_TANK_EQUIPMENT', 'F_SUPPORT_VEE_BAR_ARMOR'],
+      stats: { svSlots: 0 }, armor: { type: 'SV_BAR_10' },
+    });
+    const entity = new SupportTankEntity();
+    entity.setUniformArmor(new MountedArmor({ armor: bar10, techRating: 'E' }));
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === bar10.id)?.c).toBe('2');
+
+    entity.setUniformArmor(new MountedArmor({ armor: bar10, techRating: 'F' }));
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === bar10.id)?.c).toBe('1');
+  });
+
+  it('exports ProtoMek melee systems as equipment rather than physical attacks', () => {
+    const qms = new MiscEquipment({
+      id: 'ProtoQuadMeleeSystem', name: 'Quad Melee System', type: 'misc',
+      flags: ['F_PROTOMEK_MELEE', 'S_PROTO_QMS'],
+    });
+    const entity = new ProtoMekEntity();
+    entity.setEquipment([mount(qms, 'Torso')]);
+
+    expect(buildUnitComponentMetadata(entity)!.find(component => component.id === qms.id))
+      .toEqual(jasmine.objectContaining({ t: 'C', c: '1' }));
   });
 
   it('exports raw fixed criticals for a superheavy Mek', () => {

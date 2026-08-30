@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { DestroyRef, Directive, ElementRef, HostBinding, Input, inject } from '@angular/core';
+import { DestroyRef, Directive, ElementRef, inject, input } from '@angular/core';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { TooltipComponent, type TooltipContent, type TooltipType } from '../components/tooltip/tooltip.component';
@@ -16,16 +16,14 @@ const MOUSE_LOCK_DELAY = 2000;
 @Directive({
     selector: '[tooltip]',
     standalone: true,
+    host: {
+        '[attr.data-tooltip-host]': 'tooltipContent() ? "" : null',
+    },
 })
 export class TooltipDirective {
-    @Input('tooltip') tooltipContent: TooltipContent | null = null;
-    @Input() tooltipType: TooltipType = 'info';
-    @Input() tooltipDelay = 400; // ms
-
-    @HostBinding(`attr.${TOOLTIP_HOST_ATTRIBUTE}`)
-    get tooltipHostAttribute(): string | null {
-        return this.hasTooltipContent() ? '' : null;
-    }
+    readonly tooltipContent = input<TooltipContent | null>(null, { alias: 'tooltip' });
+    readonly tooltipType = input<TooltipType>('info');
+    readonly tooltipDelay = input(400); // ms
 
     private overlay = inject(Overlay);
     private host = inject(ElementRef<HTMLElement>);
@@ -65,7 +63,7 @@ export class TooltipDirective {
         const related = ev.relatedTarget as Node | null;
         // if coming from inside the host, ignore (it's an internal transition)
         if (related && this.host.nativeElement.contains(related)) return;
-        this.queueShow(this.tooltipDelay, ev.pointerType === 'mouse');
+        this.queueShow(this.tooltipDelay(), ev.pointerType === 'mouse');
     };
 
     private onPointerDown = (ev: PointerEvent) => {
@@ -119,10 +117,6 @@ export class TooltipDirective {
         }
     }
 
-    private hasTooltipContent(): boolean {
-        return !!this.tooltipContent;
-    }
-
     private isNestedTooltipTarget(target: EventTarget | null): boolean {
         const targetElement = this.getTargetElement(target);
         if (!targetElement) return false;
@@ -139,7 +133,7 @@ export class TooltipDirective {
     }
 
     private show(lockOnHover: boolean) {
-        const tooltipContent = this.tooltipContent;
+        const tooltipContent = this.tooltipContent();
         if (!tooltipContent) return;
         if (this.isVisible) return;
 
@@ -206,7 +200,7 @@ export class TooltipDirective {
         const portal = new ComponentPortal(TooltipComponent);
         const compRef = overlayRef.attach(portal);
         compRef.instance.content = tooltipContent;
-        compRef.instance.type = this.tooltipType;
+        compRef.instance.type = this.tooltipType();
         compRef.instance.lockProgressDuration = lockOnHover ? MOUSE_LOCK_DELAY : 0;
         // ensure OnPush component renders immediately
         compRef.changeDetectorRef.detectChanges();

@@ -112,6 +112,28 @@
                             </div>
                             <span>Options</span>
                         </button>
+                        <hr class="divider home-actions-divider" />
+                        @if (lobbyService.hasLobby()) {
+                        <button type="button" class="home-panel-action" (click)="closeHomeActionsPanel(); manageLobby()">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M1.5 6.5C1.5 3.462 3.962 1 7 1s5.5 2.462 5.5 5.5S10.038 12 7 12 1.5 9.538 1.5 6.5Zm13 0c0 1.5-.441 2.898-1.2 4.07A5.5 5.5 0 1 0 13.3 2.43a7.466 7.466 0 0 1 1.2 4.07ZM0 18a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v4a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1v-4Zm16 0v5h7a1 1 0 0 0 1-1v-4a4 4 0 0 0-4-4h-5.528A5.98 5.98 0 0 1 16 18Z" />
+                            </svg>
+                            <span>Manage Lobby</span>
+                        </button>
+                        <button type="button" class="home-panel-action" (click)="closeHomeActionsPanel(); leaveLobby()">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M5 2h9v2H5v16h9v2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm12.6 5.6L22 12l-4.4 4.4-1.4-1.4 2-2H9v-2h9.2l-2-2 1.4-1.4Z" />
+                            </svg>
+                            <span>Leave Lobby</span>
+                        </button>
+                        } @else {
+                        <button type="button" class="home-panel-action" (click)="closeHomeActionsPanel(); joinLobby()">
+                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M13 5 20 12l-7 7-1.4-1.4 4.6-4.6H4v-2h12.2l-4.6-4.6L13 5Z" />
+                            </svg>
+                            <span>Join Lobby</span>
+                        </button>
+                        }
                     </div>
                 </aside>
                 }
@@ -181,6 +203,14 @@
                     </button>
                 </div>
                 }
+                <div class="lobby-footer-actions screen-only">
+                    @if (lobbyService.hasLobby()) {
+                    <button type="button" class="lobby-footer-link" (click)="manageLobby()">Manage Lobby</button>
+                    <button type="button" class="lobby-footer-link" (click)="leaveLobby()">Leave Lobby</button>
+                    } @else {
+                    <button type="button" class="lobby-footer-link" (click)="joinLobby()">Join Lobby</button>
+                    }
+                </div>
                 <div class="build-info screen-only" (click)="showBetaDialog();">{{ buildInfo }}</div>
                 <div class="footer-legal-links">
                     <a class="footer-link" href="/privacy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>

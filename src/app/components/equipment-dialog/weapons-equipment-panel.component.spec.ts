@@ -86,6 +86,7 @@ function createRuntime() {
         hitModifierBreakdown: [],
         available: true,
         selectable: true,
+        firingHeat: 0,
         effect: {
             kind: 'damage', damage: 5, maximumDamage: 5, baseDamage: 5,
             weakened: false, boosted: false,
@@ -178,6 +179,89 @@ function createRuntime() {
     };
 }
 
+function createMachineGunArrayRuntime(
+    mode: 'Linked' | 'Off' = 'Linked',
+    ruleset: 'core-2026' | 'total-warfare' = 'core-2026',
+    unavailableMember = -1,
+) {
+    const base = createRuntime();
+    const controllerId = asComponentId('component:mga');
+    const memberIds = [0, 1, 2].map(index => asComponentId(`component:mg-${index + 1}`));
+    const relation = Object.freeze({
+        kind: 'machine-gun-array' as const,
+        controllerId,
+        memberIds: Object.freeze(memberIds),
+    });
+    const members = Object.freeze(memberIds.map((componentId, index) => Object.freeze({
+        componentId,
+        status: index === unavailableMember ? 'destroyed' as const : 'available' as const,
+        operational: index !== unavailableMember,
+    })));
+    const operationalMemberIds = Object.freeze(members
+        .filter(member => member.operational)
+        .map(member => member.componentId));
+    const controllerFacts = Object.freeze({
+        relation,
+        role: 'controller' as const,
+        subjectId: controllerId,
+        controllerStatus: 'available' as const,
+        controllerMode: mode,
+        members,
+        operationalMemberIds,
+        canFire: mode === 'Linked' && operationalMemberIds.length > 0,
+    });
+    const controller = {
+        ...base.weaponRow,
+        componentId: controllerId,
+        label: 'Machine Gun Array',
+        modes: ['Linked', 'Off'],
+        defaultMode: 'Linked',
+        mode,
+        bay: controllerFacts,
+        weapon: { ...base.weaponRow.weapon!, selectable: controllerFacts.canFire },
+    } satisfies EquipmentPanelComponent;
+    const memberRows = memberIds.map((componentId, index) => {
+        const operational = index !== unavailableMember;
+        return {
+            ...base.weaponRow,
+            componentId,
+            label: `Machine Gun ${index + 1}`,
+            status: operational ? 'available' as const : 'destroyed' as const,
+            previewStatus: operational ? 'available' as const : 'destroyed' as const,
+            modes: [],
+            defaultMode: undefined,
+            mode: undefined,
+            bay: Object.freeze({
+                relation,
+                role: 'member' as const,
+                subjectId: componentId,
+                controllerStatus: 'available' as const,
+                controllerMode: mode,
+                members,
+                operationalMemberIds,
+                canFire: operational && mode === 'Off',
+            }),
+            weapon: { ...base.weaponRow.weapon!, selectable: operational && mode === 'Off' },
+        } satisfies EquipmentPanelComponent;
+    });
+    const rows = [memberRows[1]!, controller, memberRows[0]!, memberRows[2]!];
+    const snapshot = Object.freeze({
+        ...base.runtime.snapshot(),
+        ruleset,
+        components: rows,
+    });
+    const runtime = {
+        ...base.runtime,
+        snapshot: () => snapshot,
+        weapons: () => rows,
+        equipment: () => [],
+        interactions: () => [],
+        interaction: () => undefined,
+        locations: () => 'LT',
+    } as unknown as EquipmentDialogRuntimeController;
+    return { runtime, controller, memberRows };
+}
+
 function createComponent(runtime: EquipmentDialogRuntimeController) {
     TestBed.configureTestingModule({ imports: [WeaponsEquipmentPanelComponent] });
     const fixture = TestBed.createComponent(WeaponsEquipmentPanelComponent);
@@ -187,6 +271,71 @@ function createComponent(runtime: EquipmentDialogRuntimeController) {
 }
 
 describe('WeaponsEquipmentPanelComponent', () => {
+    it('groups a linked MGA under its controller and exposes one logical fire/ammo control', () => {
+        const harness = createMachineGunArrayRuntime();
+        const { fixture, component } = createComponent(harness.runtime);
+        const ranged = component.groups()[0]!;
+        const rangedElement = fixture.nativeElement.querySelectorAll('.weapon-equipment-section')[0] as HTMLElement;
+        const rows = Array.from(
+            rangedElement.querySelectorAll('.weapon-equipment-row'),
+        ) as HTMLElement[];
+
+        expect(ranged.rows.map(row => row.id)).toEqual([
+            'component:mga',
+            'component:mg-1',
+            'component:mg-2',
+            'component:mg-3',
+        ]);
+        expect(rows[0]!.classList).toContain('mga-array-row');
+        expect(rows.slice(1).every(row => row.classList.contains('mga-member-controlled'))).toBeTrue();
+        expect(rows.slice(1).every(row => row.querySelector('.mga-branch') !== null)).toBeTrue();
+        expect(rows.flatMap(row => Array.from(row.querySelectorAll('.select-cell input, .select-cell button'))))
+            .toHaveSize(1);
+        expect(rangedElement.querySelectorAll('.ammo-cell')).toHaveSize(1);
+        expect(component.machineGunArraySummary(ranged.rows[0]!))
+            .toBe('3 guns · 3 ammo/attack · Cluster +2');
+        expect(ranged.rows.slice(1).map(row => component.machineGunArrayMemberSummary(row)))
+            .toEqual(['Linked', 'Linked', 'Linked']);
+    });
+
+    it('restores individual MGA members while unlinked and uses the TW cluster label', () => {
+        const unlinked = createMachineGunArrayRuntime('Off');
+        const unlinkedView = createComponent(unlinked.runtime);
+        const rows = unlinkedView.component.groups()[0]!.rows;
+        const rangedElement = unlinkedView.fixture.nativeElement
+            .querySelectorAll('.weapon-equipment-section')[0] as HTMLElement;
+
+        expect(unlinkedView.component.isSelectable(rows[0]!)).toBeFalse();
+        expect(rows.slice(1).every(row => unlinkedView.component.isSelectable(row))).toBeTrue();
+        expect(rangedElement.querySelectorAll('.select-cell input')).toHaveSize(3);
+        expect(rangedElement.querySelectorAll('.ammo-cell')).toHaveSize(3);
+        expect(unlinkedView.component.machineGunArraySummary(rows[0]!))
+            .toBe('3 guns · Individual fire');
+        expect(rows.slice(1).map(row => unlinkedView.component.machineGunArrayMemberSummary(row)))
+            .toEqual(['Unlinked', 'Unlinked', 'Unlinked']);
+
+    });
+
+    it('uses an unmodified cluster-roll label for a Total Warfare MGA', () => {
+        const tw = createMachineGunArrayRuntime('Linked', 'total-warfare');
+        const twView = createComponent(tw.runtime);
+
+        expect(twView.component.machineGunArraySummary(twView.component.groups()[0]!.rows[0]!))
+            .toBe('3 guns · 3 ammo/attack · Cluster roll');
+    });
+
+    it('excludes an unavailable MGA member from controller counts without restoring its fire control', () => {
+        const harness = createMachineGunArrayRuntime('Linked', 'core-2026', 1);
+        const { component } = createComponent(harness.runtime);
+        const rows = component.groups()[0]!.rows;
+
+        expect(component.machineGunArraySummary(rows[0]!))
+            .toBe('2/3 guns · 2 ammo/attack · Cluster +2');
+        expect(rows.slice(1).map(row => component.machineGunArrayMemberSummary(row)))
+            .toEqual(['Linked', 'Excluded from array', 'Linked']);
+        expect(rows.slice(1).every(row => !component.isSelectable(row))).toBeTrue();
+    });
+
     it('renders Entity/runtime rows through the original weapons panel', () => {
         const harness = createRuntime();
         const { fixture } = createComponent(harness.runtime);
@@ -214,6 +363,35 @@ describe('WeaponsEquipmentPanelComponent', () => {
             label: 'Laser Magazine (4/5)',
             trailingLabel: '(4/5)',
         }));
+    });
+
+    it('renders ordinary equipment without requiring a weapon hit resolution', () => {
+        const harness = createRuntime();
+        const equipment = {
+            ...harness.ammoRow,
+            componentId: asComponentId('component:ecm'),
+            label: 'Guardian ECM Suite',
+            ammo: undefined,
+            equipment: { toHitModifier: null },
+        } as unknown as EquipmentPanelComponent;
+        const runtime = {
+            ...harness.runtime,
+            equipment: () => [equipment],
+            locations: (row: EquipmentPanelComponent) => row === equipment ? 'LT' : 'RA',
+        } as unknown as EquipmentDialogRuntimeController;
+
+        const { fixture, component } = createComponent(runtime);
+        const equipmentGroup = component.groups().find(group => group.id === 'equipment')!;
+        const state = component.targetState(equipmentGroup.rows[0]!);
+
+        expect(state).toEqual(jasmine.objectContaining({
+            hitText: '',
+            damageText: '—',
+            hitModifierTooltip: null,
+            hitModifierWeakened: false,
+            targetNumberText: '',
+        }));
+        expect(fixture.nativeElement.querySelectorAll('.weapon-equipment-section')).toHaveSize(3);
     });
 
     it('dispatches selection, range, ammo and lifecycle controls to the typed runtime owner', () => {

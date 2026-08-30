@@ -2,14 +2,47 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { GameSystem } from "./common.model";
+import { GameSystem } from "./common.model";
 import type { CBTRuleset } from './cbt-ruleset.model';
+import type { PrintAllOptions } from './print-options.model';
+
+export const OPTION_VALUES = {
+    colorScheme: ['default', 'night'],
+    pickerStyle: ['default', 'radial', 'linear'],
+    canvasInput: ['all', 'touch', 'pen'],
+    swipeToNextSheet: ['vertical', 'horizontal', 'disabled'],
+    unitDisplayName: ['chassisModel', 'alias', 'both'],
+    gameSystem: [GameSystem.CLASSIC, GameSystem.ALPHA_STRIKE],
+    availabilitySource: ['mul', 'megamek'],
+    forceViewerBVPVDisplay: ['adjusted', 'base', 'both'],
+    recordSheetDoubleTapZoomReset: ['disabled', 'fit-to-screen', 'full-width', 'contextual'],
+    unitSearchExpandedViewLayout: ['panel-list-filters', 'filters-list-panel'],
+    unitSearchViewMode: ['list', 'card', 'chassis', 'table'],
+    forceOverviewViewMode: ['expanded', 'compact', 'table'],
+    ASVehiclesCriticalHitTable: ['default', 'scouringSands'],
+    automationMode: ['yes', 'ask', 'no'],
+} as const;
 
 
 export type AvailabilitySource = 'mul' | 'megamek';
 export type RecordSheetDoubleTapZoomResetMode = 'disabled' | 'fit-to-screen' | 'full-width' | 'contextual';
 export type ColorScheme = 'default' | 'night';
 export type UnitSearchViewMode = 'list' | 'card' | 'chassis' | 'table';
+export type AutomationMode = typeof OPTION_VALUES.automationMode[number];
+
+export const CBT_AUTOMATION_KEYS = [
+    'pilotSkillCheck',
+    'heatAndDissipationResolution',
+    'heatEffectsCheck',
+    'pilotHitsAndConsciousnessCheck',
+    'internalExplosionsCheck',
+    'criticalHitChanceCheck',
+    'breachAndFloodCheck',
+    'fallingCheck',
+] as const;
+
+export type CBTAutomationKey = typeof CBT_AUTOMATION_KEYS[number];
+export type CBTAutomationOptions = Record<CBTAutomationKey, AutomationMode>;
 
 export interface SkillRangeOption {
     min: number;
@@ -35,6 +68,7 @@ export interface ForceGeneratorOptions {
         maxDelta: number;
     };
     failureSearchWindowMs: number;
+    ignoreRarityWeight: boolean;
     preventDuplicateChassis: boolean;
     useTaggedQuantities: boolean;
     useUnitTagsAsChassisTags: boolean;
@@ -43,8 +77,10 @@ export interface ForceGeneratorOptions {
 export type ForceViewerBVPVDisplay = 'adjusted' | 'base' | 'both';
 
 export interface CBTOptionalRules {
+    floatingCriticals: boolean;
     forcedWithdrawal: boolean;
     extremeRange: boolean;
+    sprinting: boolean;
 }
 
 export interface Options {
@@ -58,8 +94,7 @@ export interface Options {
     availabilitySource: AvailabilitySource;
     megaMekAvailabilityFiltersUseAllScopedOptions: boolean;
     forceViewerBVPVDisplay: ForceViewerBVPVDisplay;
-    recordSheetCenterPanelContent: 'fluffImage' | 'clusterTable';
-    usePreGeneratedRecordSheets: boolean;
+    printAllOptions: PrintAllOptions;
     recordSheetDoubleTapZoomReset: RecordSheetDoubleTapZoomResetMode;
     lastCanvasState?: {
         brushSize: number;
@@ -67,11 +102,10 @@ export interface Options {
     },
     sidebarLipPosition?: string;
     trackPhaseAndTurn: boolean;
-    cbtAutomations: boolean;
+    cbtAutomationOptions: CBTAutomationOptions;
     CBTOptionalRules: CBTOptionalRules;
     CBTRules: CBTRuleset;
     ASUseHex: boolean;
-    ASPrintPageBreakOnGroups: boolean;
     c3NetworkConnectionsAboveNodes: boolean;
     automaticallyConvertFiltersToSemantic: boolean;
     allowMultipleActiveSheets: boolean;
@@ -82,16 +116,8 @@ export interface Options {
     ASUseAutomations: boolean;
     ASVehiclesCriticalHitTable: 'default' | 'scouringSands';
     ASUnifiedDamagePicker: boolean;
-    printRosterSummary: boolean;
-    printPaperSize: 'letter' | 'a4';
-    printMargin: 'none' | 'browserDefined';
     performanceMode: boolean;
     enableForceSyncConflictDialog: boolean;
-
-    // Additional user-supplied unit database servers (base URLs). db.mekbay.com is always
-    // the primary source; these servers may only contribute additional (new-named) units,
-    // their record-sheet SVGs, and their unit fluff art.
-    unitServers: string[];
 
     // Force Generator
     forceGenerator: ForceGeneratorOptions;

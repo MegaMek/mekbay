@@ -15,6 +15,7 @@ import { isApolloEquipment } from '../models/apollo-mode.model';
 import { artemisReferenceNoteFromFlags } from '../models/artemis-equipment.model';
 
 export type MekHitLocationTable = 'biped' | 'quad' | 'tripod';
+export type MekHitArc = 'front' | 'rear' | 'left' | 'right';
 
 export interface ClusterTableData {
     readonly hitLocationTable?: MekHitLocationTable;
@@ -31,6 +32,21 @@ export interface HitLocationRow {
     readonly leftSide: string;
     readonly frontRear: string;
     readonly rightSide: string;
+}
+
+export interface HitLocationCellDefinition {
+    readonly tableText: string;
+    readonly tableLabel: string;
+    readonly location: string | null;
+    readonly critical: boolean;
+    readonly tripodLegModifier?: -1 | 0 | 1;
+}
+
+interface HitLocationDefinitionRow {
+    readonly roll: string;
+    readonly leftSide: HitLocationCellDefinition;
+    readonly frontRear: HitLocationCellDefinition;
+    readonly rightSide: HitLocationCellDefinition;
 }
 
 export type PhysicalLocationColumn =
@@ -50,52 +66,67 @@ export interface ReferenceTableNote {
 
 export type ReferenceTableNoteId = 'artemisIV' | 'artemisV' | 'artemisProto' | 'apollo' | 'hag';
 
-const BIPED_ROWS: readonly HitLocationRow[] = [
-    { roll: '2*', leftSide: 'LT(C)', frontRear: 'CT(C)', rightSide: 'RT(C)' },
-    { roll: '3', leftSide: 'LL', frontRear: 'RA', rightSide: 'RL' },
-    { roll: '4', leftSide: 'LA', frontRear: 'RA', rightSide: 'RA' },
-    { roll: '5', leftSide: 'LA', frontRear: 'RL', rightSide: 'RA' },
-    { roll: '6', leftSide: 'LL', frontRear: 'RT', rightSide: 'RL' },
-    { roll: '7', leftSide: 'LT', frontRear: 'CT', rightSide: 'RT' },
-    { roll: '8', leftSide: 'CT', frontRear: 'LT', rightSide: 'CT' },
-    { roll: '9', leftSide: 'RT', frontRear: 'LL', rightSide: 'LT' },
-    { roll: '10', leftSide: 'RA', frontRear: 'LA', rightSide: 'LA' },
-    { roll: '11', leftSide: 'RL', frontRear: 'LA', rightSide: 'LL' },
-    { roll: '12', leftSide: 'HD', frontRear: 'HD', rightSide: 'HD' },
+const HIT_LOCATION_CELLS = {
+    LA: locationCell('LA', 'LA'), RA: locationCell('RA', 'RA'),
+    LL: locationCell('LL', 'LL'), RL: locationCell('RL', 'RL'),
+    LT: locationCell('LT', 'LT'), CT: locationCell('CT', 'CT'),
+    RT: locationCell('RT', 'RT'), HD: locationCell('HD', 'HD'),
+    LEFT_TORSO_CRITICAL: locationCell('LT(C)', 'LT', 'LT', true),
+    CENTER_TORSO_CRITICAL: locationCell('CT(C)', 'CT', 'CT', true),
+    RIGHT_TORSO_CRITICAL: locationCell('RT(C)', 'RT', 'RT', true),
+    LEFT_FRONT_LEG: locationCell('LFL', 'FLL'),
+    RIGHT_FRONT_LEG: locationCell('RFL', 'FRL'),
+    LEFT_REAR_LEG: locationCell('LRL', 'RLL'),
+    RIGHT_REAR_LEG: locationCell('RRL', 'RRL'),
+    TRIPOD_LEFT_LEG: tripodLegCell('Leg (+1)†', 'Leg (+1)', 1),
+    TRIPOD_CENTER_LEG: tripodLegCell('Leg†', 'Leg', 0),
+    TRIPOD_RIGHT_LEG: tripodLegCell('Leg (-1)†', 'Leg (-1)', -1),
+} as const satisfies Readonly<Record<string, HitLocationCellDefinition>>;
+
+const BIPED_DEFINITION_ROWS: readonly HitLocationDefinitionRow[] = [
+    definitionRow('2*', 'LEFT_TORSO_CRITICAL', 'CENTER_TORSO_CRITICAL', 'RIGHT_TORSO_CRITICAL'),
+    definitionRow('3', 'LL', 'RA', 'RL'), definitionRow('4', 'LA', 'RA', 'RA'),
+    definitionRow('5', 'LA', 'RL', 'RA'), definitionRow('6', 'LL', 'RT', 'RL'),
+    definitionRow('7', 'LT', 'CT', 'RT'), definitionRow('8', 'CT', 'LT', 'CT'),
+    definitionRow('9', 'RT', 'LL', 'LT'), definitionRow('10', 'RA', 'LA', 'LA'),
+    definitionRow('11', 'RL', 'LA', 'LL'), definitionRow('12', 'HD', 'HD', 'HD'),
 ];
 
-const QUAD_ROWS: readonly HitLocationRow[] = [
-    { roll: '2*', leftSide: 'LT(C)', frontRear: 'CT(C)', rightSide: 'RT(C)' },
-    { roll: '3', leftSide: 'LRL', frontRear: 'RFL', rightSide: 'RRL' },
-    { roll: '4', leftSide: 'LFL', frontRear: 'RFL', rightSide: 'RFL' },
-    { roll: '5', leftSide: 'LFL', frontRear: 'RRL', rightSide: 'RFL' },
-    { roll: '6', leftSide: 'LRL', frontRear: 'RT', rightSide: 'RRL' },
-    { roll: '7', leftSide: 'LT', frontRear: 'CT', rightSide: 'RT' },
-    { roll: '8', leftSide: 'CT', frontRear: 'LT', rightSide: 'CT' },
-    { roll: '9', leftSide: 'RT', frontRear: 'LRL', rightSide: 'LT' },
-    { roll: '10', leftSide: 'RFL', frontRear: 'LFL', rightSide: 'LFL' },
-    { roll: '11', leftSide: 'RRL', frontRear: 'LFL', rightSide: 'LRL' },
-    { roll: '12', leftSide: 'HD', frontRear: 'HD', rightSide: 'HD' },
+const QUAD_DEFINITION_ROWS: readonly HitLocationDefinitionRow[] = [
+    definitionRow('2*', 'LEFT_TORSO_CRITICAL', 'CENTER_TORSO_CRITICAL', 'RIGHT_TORSO_CRITICAL'),
+    definitionRow('3', 'LEFT_REAR_LEG', 'RIGHT_FRONT_LEG', 'RIGHT_REAR_LEG'),
+    definitionRow('4', 'LEFT_FRONT_LEG', 'RIGHT_FRONT_LEG', 'RIGHT_FRONT_LEG'),
+    definitionRow('5', 'LEFT_FRONT_LEG', 'RIGHT_REAR_LEG', 'RIGHT_FRONT_LEG'),
+    definitionRow('6', 'LEFT_REAR_LEG', 'RT', 'RIGHT_REAR_LEG'),
+    definitionRow('7', 'LT', 'CT', 'RT'), definitionRow('8', 'CT', 'LT', 'CT'),
+    definitionRow('9', 'RT', 'LEFT_REAR_LEG', 'LT'),
+    definitionRow('10', 'RIGHT_FRONT_LEG', 'LEFT_FRONT_LEG', 'LEFT_FRONT_LEG'),
+    definitionRow('11', 'RIGHT_REAR_LEG', 'LEFT_FRONT_LEG', 'LEFT_REAR_LEG'),
+    definitionRow('12', 'HD', 'HD', 'HD'),
 ];
 
-const TRIPOD_ROWS: readonly HitLocationRow[] = [
-    { roll: '2*', leftSide: 'LT(C)', frontRear: 'CT(C)', rightSide: 'RT(C)' },
-    { roll: '3', leftSide: 'Leg (+1)†', frontRear: 'RA', rightSide: 'Leg (-1)†' },
-    { roll: '4', leftSide: 'LA', frontRear: 'RA', rightSide: 'RA' },
-    { roll: '5', leftSide: 'LA', frontRear: 'Leg†', rightSide: 'RA' },
-    { roll: '6', leftSide: 'Leg (+1)†', frontRear: 'RT', rightSide: 'Leg (-1)†' },
-    { roll: '7', leftSide: 'LT', frontRear: 'CT', rightSide: 'RT' },
-    { roll: '8', leftSide: 'CT', frontRear: 'LT', rightSide: 'CT' },
-    { roll: '9', leftSide: 'RT', frontRear: 'Leg†', rightSide: 'LT' },
-    { roll: '10', leftSide: 'RA', frontRear: 'LA', rightSide: 'LA' },
-    { roll: '11', leftSide: 'Leg (+1)†', frontRear: 'LA', rightSide: 'Leg (-1)†' },
-    { roll: '12', leftSide: 'HD', frontRear: 'HD', rightSide: 'HD' },
+const TRIPOD_DEFINITION_ROWS: readonly HitLocationDefinitionRow[] = [
+    definitionRow('2*', 'LEFT_TORSO_CRITICAL', 'CENTER_TORSO_CRITICAL', 'RIGHT_TORSO_CRITICAL'),
+    definitionRow('3', 'TRIPOD_LEFT_LEG', 'RA', 'TRIPOD_RIGHT_LEG'),
+    definitionRow('4', 'LA', 'RA', 'RA'), definitionRow('5', 'LA', 'TRIPOD_CENTER_LEG', 'RA'),
+    definitionRow('6', 'TRIPOD_LEFT_LEG', 'RT', 'TRIPOD_RIGHT_LEG'),
+    definitionRow('7', 'LT', 'CT', 'RT'), definitionRow('8', 'CT', 'LT', 'CT'),
+    definitionRow('9', 'RT', 'TRIPOD_CENTER_LEG', 'LT'),
+    definitionRow('10', 'RA', 'LA', 'LA'),
+    definitionRow('11', 'TRIPOD_LEFT_LEG', 'LA', 'TRIPOD_RIGHT_LEG'),
+    definitionRow('12', 'HD', 'HD', 'HD'),
 ];
+
+const LOCATION_DEFINITION_ROWS: Readonly<Record<MekHitLocationTable, readonly HitLocationDefinitionRow[]>> = {
+    biped: BIPED_DEFINITION_ROWS,
+    quad: QUAD_DEFINITION_ROWS,
+    tripod: TRIPOD_DEFINITION_ROWS,
+};
 
 const LOCATION_ROWS: Readonly<Record<MekHitLocationTable, readonly HitLocationRow[]>> = {
-    biped: BIPED_ROWS,
-    quad: QUAD_ROWS,
-    tripod: TRIPOD_ROWS,
+    biped: displayHitLocationRows(BIPED_DEFINITION_ROWS),
+    quad: displayHitLocationRows(QUAD_DEFINITION_ROWS),
+    tripod: displayHitLocationRows(TRIPOD_DEFINITION_ROWS),
 };
 
 const BIPED_RECORD_SHEET_PHYSICAL_ROWS: readonly PhysicalLocationRow[] = [
@@ -145,6 +176,59 @@ const NOTE_TEXT: Readonly<Record<string, string>> = {
 
 export function hitLocationRows(table: MekHitLocationTable): readonly HitLocationRow[] {
     return LOCATION_ROWS[table];
+}
+
+/** Exact hit-location fact used by floating criticals and falling damage. */
+export function hitLocationCellDefinition(
+    table: MekHitLocationTable,
+    roll: number,
+    arc: MekHitArc,
+): HitLocationCellDefinition {
+    const row = LOCATION_DEFINITION_ROWS[table][roll - 2];
+    if (!row) throw new RangeError('Hit-location roll must be an integer from 2 to 12.');
+    if (arc === 'left') return row.leftSide;
+    if (arc === 'right') return row.rightSide;
+    return row.frontRear;
+}
+
+function locationCell(
+    tableText: string,
+    location: string,
+    tableLabel = tableText,
+    critical = false,
+): HitLocationCellDefinition {
+    return Object.freeze({ tableText, tableLabel, location, critical });
+}
+
+function tripodLegCell(
+    tableText: string,
+    tableLabel: string,
+    tripodLegModifier: -1 | 0 | 1,
+): HitLocationCellDefinition {
+    return Object.freeze({ tableText, tableLabel, location: null, critical: false, tripodLegModifier });
+}
+
+function definitionRow(
+    roll: string,
+    left: keyof typeof HIT_LOCATION_CELLS,
+    front: keyof typeof HIT_LOCATION_CELLS,
+    right: keyof typeof HIT_LOCATION_CELLS,
+): HitLocationDefinitionRow {
+    return Object.freeze({
+        roll,
+        leftSide: HIT_LOCATION_CELLS[left],
+        frontRear: HIT_LOCATION_CELLS[front],
+        rightSide: HIT_LOCATION_CELLS[right],
+    });
+}
+
+function displayHitLocationRows(rows: readonly HitLocationDefinitionRow[]): readonly HitLocationRow[] {
+    return Object.freeze(rows.map(row => Object.freeze({
+        roll: row.roll,
+        leftSide: row.leftSide.tableText,
+        frontRear: row.frontRear.tableText,
+        rightSide: row.rightSide.tableText,
+    })));
 }
 
 /** MegaMekLab-compatible punch/kick rows for the printed record sheet. */

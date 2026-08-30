@@ -6,7 +6,13 @@ import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entit
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
 import type { EntityMountedEquipment, EntityMountedWeapon, EquipmentBay } from '../../../models/entity/types';
 import { AmmoEquipment, ammoMatchesWeapon } from '../../../models/equipment.model';
-import { PPC_CAPACITOR_DAMAGE_BONUS, PPC_CAPACITOR_HEAT_BONUS } from '../../../models/ppc-capacitor.model';
+import {
+    isPpcCapacitorEquipment,
+    PPC_CAPACITOR_DAMAGE_BONUS,
+    PPC_CAPACITOR_HEAT_BONUS,
+} from '../../../models/ppc-capacitor.model';
+import { artemisKind } from '../../../models/artemis-equipment.model';
+import { isApolloEquipment } from '../../../models/apollo-mode.model';
 import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import { aerospaceAttackValues } from '../../aerospace-range.util';
 import { formatRecordSheetWeaponDamageText } from '../../record-sheet-weapon-info.util';
@@ -38,6 +44,7 @@ import {
     transparentRect,
 } from '../record-sheet-svg-rendering';
 import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
+import { isMobileHpgEquipment } from '../../../models/aerospace-support-equipment.model';
 import {
     type AeroDataInventoryRow,
     drawAeroArtworkRegion,
@@ -341,9 +348,9 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         const orderedGroups = [...groups.values()].sort((left, right) =>
             right.equipment.shortName.localeCompare(left.equipment.shortName));
         const allEnhancements = weapons.map(mount => entity.getLinkingMount(mount)?.equipment);
-        const marker = allEnhancements.some(equipment => equipment?.hasFlag('F_ARTEMIS')) ? '*'
-            : allEnhancements.length > 0 && allEnhancements.every(equipment => equipment?.hasFlag('F_ARTEMIS_V')) ? '†'
-                : allEnhancements.length > 0 && allEnhancements.every(equipment => equipment?.hasFlag('F_APOLLO')) ? '‡'
+        const marker = allEnhancements.some(equipment => artemisKind(equipment) === 'iv') ? '*'
+            : allEnhancements.length > 0 && allEnhancements.every(equipment => artemisKind(equipment) === 'v') ? '†'
+                : allEnhancements.length > 0 && allEnhancements.every(isApolloEquipment) ? '‡'
                     : '';
         const nameLines = orderedGroups.map((group, index) => {
             const matchingAmmo = bay.ammo.filter(mount =>
@@ -363,7 +370,7 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
                 }
             }
             const capacitorCount = group.mounts.filter(mount =>
-                entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR')).length;
+                isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)).length;
             const capacitorText = capacitorCount === group.mounts.length && capacitorCount > 0
                 ? ' w/Capacitor'
                 : capacitorCount > 0
@@ -396,7 +403,7 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
                 let total = value * group.mounts.length;
                 if (group.equipment.ammoType === 'MML' && rangeIndex === 0) total *= 2;
                 const capacitorCount = group.mounts.filter(mount =>
-                    entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR')).length;
+                    isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)).length;
                 total += capacitorCount * PPC_CAPACITOR_DAMAGE_BONUS;
                 standardDamage[rangeIndex] += total;
                 bayDamage[rangeIndex] += Math.round(total / 10);
@@ -406,7 +413,7 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
             weapons[0].getOccupiedLocations()[0] ?? weapons[0].location,
         ).toUpperCase();
         const heat = weapons.reduce((total, mount) => total + mount.equipment.heat
-            + (entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR')
+            + (isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)
                 ? PPC_CAPACITOR_HEAT_BONUS : 0), 0);
         return {
             id: '',
@@ -683,9 +690,9 @@ function capitalAeroInventoryRows(entity: AeroEntity): readonly CapitalAeroInven
             else groups.set(mount.equipment.id, { equipment: mount.equipment, mounts: [mount] });
         });
         const enhancements = weapons.map(mount => entity.getLinkingMount(mount)?.equipment);
-        const marker = enhancements.some(equipment => equipment?.hasFlag('F_ARTEMIS')) ? '*'
-            : enhancements.length > 0 && enhancements.every(equipment => equipment?.hasFlag('F_ARTEMIS_V')) ? '†'
-                : enhancements.length > 0 && enhancements.every(equipment => equipment?.hasFlag('F_APOLLO')) ? '‡'
+        const marker = enhancements.some(equipment => artemisKind(equipment) === 'iv') ? '*'
+            : enhancements.length > 0 && enhancements.every(equipment => artemisKind(equipment) === 'v') ? '†'
+                : enhancements.length > 0 && enhancements.every(isApolloEquipment) ? '‡'
                     : '';
         const footnote = marker === '*' ? '* w/Artemis IV'
             : marker === '†' ? '† w/Artemis V (-1 to hit)'
@@ -709,7 +716,7 @@ function capitalAeroInventoryRows(entity: AeroEntity): readonly CapitalAeroInven
                 }
             }
             const capacitorCount = group.mounts.filter(mount =>
-                entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR')).length;
+                isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)).length;
             const capacitorText = capacitorCount === group.mounts.length && capacitorCount > 0
                 ? ' w/Capacitor'
                 : capacitorCount > 0
@@ -764,7 +771,7 @@ function capitalAeroInventoryRows(entity: AeroEntity): readonly CapitalAeroInven
             nameLines,
             location: location.label,
             heat: weapons.reduce((total, mount) => total + mount.equipment.heat
-                + (entity.getLinkingMount(mount)?.equipment?.hasFlag('F_PPC_CAPACITOR')
+                + (isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)
                     ? PPC_CAPACITOR_HEAT_BONUS : 0), 0),
             damageByRange: damage,
             componentIds: bay.mounts.map(mount => mount.mountId),
@@ -790,18 +797,19 @@ function capitalAeroEnhancementBonus(
     enhancement: EntityMountedEquipment['equipment'] | undefined,
 ): number {
     if (!enhancement) return 0;
-    if (enhancement.hasFlag('F_ARTEMIS') || enhancement.hasFlag('F_ARTEMIS_V')) {
+    const kind = artemisKind(enhancement);
+    if (kind === 'iv' || kind === 'v') {
         if (weapon.ammoType === 'MML') {
             if (weapon.rackSize >= 7) return 2;
-            if (weapon.rackSize >= 5 || enhancement.hasFlag('F_ARTEMIS_V')) return 1;
+            if (weapon.rackSize >= 5 || kind === 'v') return 1;
         } else if (weapon.hasWeaponTrait('lrm')) {
             return Math.floor(weapon.rackSize / 5);
         } else if (weapon.hasWeaponTrait('srm')) {
             return 2;
         }
-    } else if (enhancement.hasFlag('F_ARTEMIS_PROTO') && weapon.rackSize === 2) {
+    } else if (kind === 'prototype' && weapon.rackSize === 2) {
         return 2;
-    } else if (enhancement.hasFlag('F_PPC_CAPACITOR')) {
+    } else if (isPpcCapacitorEquipment(enhancement)) {
         return PPC_CAPACITOR_DAMAGE_BONUS;
     }
     return 0;
@@ -842,7 +850,7 @@ function capitalAeroFeatures(entity: AeroEntity): string {
     const features: string[] = [];
     if (readEntityBooleanSignal(entity, 'lithiumFusion')) features.push('LF Battery');
     if (readEntityBooleanSignal(entity, 'hpg')
-        || entity.equipment().some(mount => mount.equipment?.hasFlag('F_MOBILE_HPG'))) {
+        || entity.equipment().some(mount => isMobileHpgEquipment(mount.equipment))) {
         features.push('Mobile HPG');
     }
     return features.join(', ');

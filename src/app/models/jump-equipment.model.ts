@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { Equipment } from './equipment.model';
-import { hasAnyPrototypeVariant, hasEquipmentVariant } from './equipment-variant.model';
+import { hasEquipmentVariant } from './equipment-variant.model';
 
 export type JumpJetKind = 'standard' | 'improved' | 'prototype-improved';
 
@@ -23,9 +23,10 @@ export function jumpJetKind(equipment: Equipment | undefined): JumpJetKind | nul
     if (!equipment || !isJumpJetEquipment(equipment)) return null;
     const standard = equipment.hasFlag('S_STANDARD');
     const improved = hasEquipmentVariant(equipment, 'improved');
-    const prototype = hasAnyPrototypeVariant(equipment);
+    const prototype = hasEquipmentVariant(equipment, 'prototype-subtype');
     if (standard && (improved || prototype)) return null;
-    if (improved || prototype) return improved && !prototype ? 'improved' : 'prototype-improved';
+    if (improved) return prototype ? 'prototype-improved' : 'improved';
+    // Primitive prototype jump jets use the standard movement and heat rules.
     return 'standard';
 }
 

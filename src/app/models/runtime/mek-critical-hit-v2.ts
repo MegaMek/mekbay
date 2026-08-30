@@ -73,7 +73,7 @@ export interface MekCriticalRuntimeViewV2 {
 
 export type MekCriticalChanceResult =
     | Readonly<{ kind: 'none' }>
-    | Readonly<{ kind: 'critical-hits'; count: 1 | 2 | 3 }>
+    | Readonly<{ kind: 'critical-hits'; count: 1 | 2 | 3 | 4 }>
     | Readonly<{ kind: 'blown-off' }>;
 
 export interface MekCriticalChanceModifier {
@@ -87,6 +87,7 @@ export interface MekCriticalChanceProfileV2 {
     readonly locationId: LocationId;
     readonly locationCode: string;
     readonly canBlowOff: boolean;
+    readonly industrialMek: boolean;
     readonly modifiers: readonly MekCriticalChanceModifier[];
 }
 
@@ -192,13 +193,19 @@ interface DelayedExplosionCandidate {
 export function resolveMekCriticalChance(
     total: number,
     canBlowOff: boolean,
+    industrialMek = false,
 ): MekCriticalChanceResult {
     if (total <= 7) return Object.freeze({ kind: 'none' });
     if (total <= 9) return Object.freeze({ kind: 'critical-hits', count: 1 });
     if (total <= 11) return Object.freeze({ kind: 'critical-hits', count: 2 });
+    if (!industrialMek || total <= 13) {
+        return canBlowOff
+            ? Object.freeze({ kind: 'blown-off' })
+            : Object.freeze({ kind: 'critical-hits', count: 3 });
+    }
     return canBlowOff
         ? Object.freeze({ kind: 'blown-off' })
-        : Object.freeze({ kind: 'critical-hits', count: 3 });
+        : Object.freeze({ kind: 'critical-hits', count: 4 });
 }
 
 export function projectMekCriticalChanceV2(
@@ -213,6 +220,10 @@ export function projectMekCriticalChanceV2(
     const modifiers: MekCriticalChanceModifier[] = [];
     if (location.structure.structure.name.toLowerCase().includes('reinforced')) {
         modifiers.push(Object.freeze({ label: 'Reinforced structure', value: -1 }));
+    }
+    const industrialMek = ruleset === 'total-warfare' && entity.isIndustrial();
+    if (industrialMek) {
+        modifiers.push(Object.freeze({ label: 'IndustrialMech', value: 2 }));
     }
     if (ruleset === 'total-warfare' && entity.mountedCockpit().isPrimitive) {
         modifiers.push(Object.freeze({ label: 'Primitive Mek', value: 2 }));
@@ -231,6 +242,7 @@ export function projectMekCriticalChanceV2(
         locationId,
         locationCode: location.code,
         canBlowOff: location.code === 'HD' || !MEK_TORSO_LOCATIONS.has(location.code),
+        industrialMek,
         modifiers: Object.freeze(modifiers),
     });
 }
@@ -860,12 +872,12 @@ function explosionSource(equipment: string, rawDamage: number, pilotHits: number
     return Object.freeze({ equipment, rawDamage: Math.max(0, rawDamage), pilotHits });
 }
 
-function ammoRackSize(ammo: AmmoEquipment): number {
+export function ammoRackSize(ammo: AmmoEquipment): number {
     if (ammo.hasWeaponTrait('capital-missile') || ammo.ammoType === 'SCREEN_LAUNCHER') return 1;
     return Math.max(0, ammo.rackSize);
 }
 
-function ammoExplosionDamagePerShot(ammo: AmmoEquipment): number {
+export function ammoExplosionDamagePerShot(ammo: AmmoEquipment): number {
     if (ammo.ammoType === 'SCREEN_LAUNCHER') return 15;
     if (ammo.ammoType === 'TASER') return 6;
     if (ammo.ammoType === 'MEK_MORTAR') {

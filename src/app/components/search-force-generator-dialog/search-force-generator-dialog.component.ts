@@ -80,6 +80,7 @@ export interface SearchForceGeneratorDialogConfig {
     crossEraAvailabilityInMultiEraSelection: boolean;
     randomFaction: boolean;
     mergeSelectedFactionAvailability: boolean;
+    ignoreRarityWeight: boolean;
     preventDuplicateChassis: boolean;
     useTaggedQuantities: boolean;
     useUnitTagsAsChassisTags: boolean;
@@ -316,7 +317,7 @@ export class SearchForceGeneratorDialogComponent {
     readonly targetFormationSelection = signal<MultiStateSelection>({});
     readonly targetFormationStateCycle = ['or'] as const;
     readonly targetFormationOptions = computed<DropdownOption[]>(() => {
-        const definitions = getFormationDefinitions()
+        const definitions = getFormationDefinitions(this.gameSystem())
             .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
             .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.gameSystem()) !== null)
             .filter((definition) => this.isTargetFormationAvailableForSelectedFactions(definition));
@@ -357,6 +358,10 @@ export class SearchForceGeneratorDialogComponent {
         return null;
     });
     readonly targetFormationSummary = computed(() => this.formatTargetFormationSummary(this.targetFormations()));
+    readonly ignoreRarityWeight = signal(this.initialOptions.forceGenerator.ignoreRarityWeight);
+    readonly ignoreRarityWeightTooltip = computed(() => (
+        'Ignores requisition, salvage, and rarity weights so every eligible unit has the same base chance before other generator rules and constraints.'
+    ));
     readonly preventDuplicateChassis = signal(this.initialOptions.forceGenerator.preventDuplicateChassis);
     readonly useTaggedQuantities = signal(
         this.initialOptions.forceGenerator.useTaggedQuantities && !this.initialOptions.forceGenerator.preventDuplicateChassis,
@@ -696,6 +701,17 @@ export class SearchForceGeneratorDialogComponent {
         this.filtersService.setSearchText('');
     }
 
+    onIgnoreRarityWeightChange(event: Event): void {
+        const checked = (event.target as HTMLInputElement).checked;
+        if (this.ignoreRarityWeight() !== checked) {
+            this.ignoreRarityWeight.set(checked);
+            void this.optionsService.updateForceGeneratorOptions((options) => ({
+                ...options,
+                ignoreRarityWeight: checked,
+            }));
+        }
+    }
+
     onPreventDuplicateChassisChange(event: Event): void {
         const checked = (event.target as HTMLInputElement).checked;
         const disablesTaggedQuantities = checked && this.useTaggedQuantities();
@@ -927,7 +943,17 @@ export class SearchForceGeneratorDialogComponent {
         this.clearHoveredPreviewUnit();
         this.clearSelectedPreviewUnit();
 
-        const importedPreviewEntry = createForcePreviewEntryFromForce(currentForce, currentForce.members());
+        const importedPreviewEntry = createForcePreviewEntryFromForce(
+            currentForce,
+            currentForce.members(),
+            {},
+            member => {
+                const identity = member.force.getUnitSourceIdentity(member.id);
+                return identity
+                    ? this.dataService.getUnitByIdentity(identity.provider, identity.uuid)
+                    : undefined;
+            },
+        );
         const importedUnits = getForcePreviewUnitEntries(importedPreviewEntry)
             .map((unitEntry) => this.toLockedGeneratedUnit(unitEntry))
             .filter((unit): unit is GeneratedForceUnit => unit !== null);
@@ -1017,6 +1043,7 @@ export class SearchForceGeneratorDialogComponent {
                 crossEraAvailabilityInMultiEraSelection: this.crossEraAvailabilityInMultiEraSelection(),
                 randomFaction: this.randomFactionSelected(),
                 mergeSelectedFactionAvailability: this.mergeSelectedFactionAvailability(),
+                ignoreRarityWeight: this.ignoreRarityWeight(),
                 preventDuplicateChassis: this.preventDuplicateChassis(),
                 useTaggedQuantities: this.useTaggedQuantities(),
                 useUnitTagsAsChassisTags: this.useTaggedQuantities() && this.useUnitTagsAsChassisTags(),
@@ -1210,6 +1237,7 @@ export class SearchForceGeneratorDialogComponent {
             piloting: settings.piloting,
             skillRanges: settings.skillRanges,
             lockedUnits,
+            ignoreRarityWeight: this.ignoreRarityWeight(),
             preventDuplicateChassis: this.preventDuplicateChassis(),
             useTaggedQuantities: this.useTaggedQuantities(),
             useUnitTagsAsChassisTags: this.useTaggedQuantities() && this.useUnitTagsAsChassisTags(),

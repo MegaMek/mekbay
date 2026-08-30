@@ -3,8 +3,7 @@
 // Author: Drake
 
 import type { UnitSummary } from "../models/unit-summary.model";
-import { adjustMekBattleValueForSkills } from '../models/entity/utils/battle-value/rules';
-import { getEffectivePilotingSkill } from "./cbt-common.util";
+import { adjustClassicBattleValueForSkills } from '../models/entity/utils/battle-value/rules';
 
 
 export class BVCalculatorUtil {
@@ -16,7 +15,10 @@ export class BVCalculatorUtil {
      * @returns Adjusted Battle Value rounded to nearest integer
      */
     static calculateAdjustedBV(unit: UnitSummary, baseBv: number, gunnerySkill: number, pilotingSkill: number): number {
-        pilotingSkill = getEffectivePilotingSkill(unit, pilotingSkill);
-        return adjustMekBattleValueForSkills(baseBv, gunnerySkill, pilotingSkill);
+        return adjustClassicBattleValueForSkills(baseBv, gunnerySkill, pilotingSkill, {
+            unitType: unit.type,
+            unitSubtype: unit.subtype,
+            canAntiMech: unit.canAntiMech === true,
+        });
     }
 }

@@ -4,7 +4,7 @@
 
 import type { Era } from '../../models/eras.model';
 import type { Faction } from '../../models/factions.model';
-import type { ASUnitTypeCode, UnitSummary } from '../../models/unit-summary.model';
+import type { ASUnitTypeCode } from '../../models/unit-summary.model';
 import {
     compileGroupFacts,
     compileGroupFactsList,
@@ -45,6 +45,7 @@ import {
     type OrgRuleRegistry,
     type OrgTypeModifier,
     type OrgUnitBucketName,
+    type OrgUnit,
     type UnitClassKey,
     type UnitFactTag,
     type UnitFacts,
@@ -473,7 +474,7 @@ interface CIFragmentToken {
 }
 
 interface CISquadAllocation {
-    readonly unit: UnitSummary;
+    readonly unit: OrgUnit;
     readonly squads: number;
 }
 
@@ -792,7 +793,7 @@ function createLeafGroup(
     rule: OrgLeafCountRule | OrgLeafPatternRule,
     modifierStep: ModifierStep,
     units: readonly UnitFacts[],
-    formationMatchingIgnoredUnits: readonly UnitSummary[] = [],
+    formationMatchingIgnoredUnits: readonly OrgUnit[] = [],
 ): GroupSizeResult {
     return {
         name: makeGroupName(getRuleDisplayName(rule), modifierStep.modifierKey),
@@ -980,7 +981,7 @@ function createAbstractLeafGroupRecord(
     rule: OrgLeafCountRule | OrgLeafPatternRule,
     modifierStep: ModifierStep,
     units: readonly UnitFacts[],
-    formationMatchingIgnoredUnits: readonly UnitSummary[] = [],
+    formationMatchingIgnoredUnits: readonly OrgUnit[] = [],
 ): PlannedGroupRecord {
     const template = createAtomicGroupTemplate(
         rule.type,
@@ -1030,7 +1031,7 @@ function createAbstractCIParentRecord(
     rule: OrgCIFormationRule,
     modifierStep: ModifierStep,
     tokens: readonly CIFragmentToken[],
-    unitFactsByUnit: ReadonlyMap<UnitSummary, UnitFacts>,
+    unitFactsByUnit: ReadonlyMap<OrgUnit, UnitFacts>,
 ): PlannedGroupRecord {
     const allocations = aggregateTokenAllocations(tokens);
     const units = allocations
@@ -1058,7 +1059,7 @@ function createAbstractCIFragmentRecord(
     rule: OrgCIFormationRule,
     count: number,
     tokens: readonly CIFragmentToken[],
-    unitFactsByUnit: ReadonlyMap<UnitSummary, UnitFacts>,
+    unitFactsByUnit: ReadonlyMap<OrgUnit, UnitFacts>,
 ): PlannedGroupRecord {
     const allocations = aggregateTokenAllocations(tokens);
     const units = allocations
@@ -1204,7 +1205,7 @@ function makeFragmentGroupName(type: string, count: number): string {
     return makeCountedGroupName(type, count);
 }
 
-function getCISquadCount(unit: UnitSummary): number {
+function getCISquadCount(unit: OrgUnit): number {
     const squads = unit.squads ?? 1;
     return Number.isFinite(squads) ? Math.max(0, Math.floor(squads)) : 0;
 }
@@ -1219,7 +1220,7 @@ function createCISquadAllocation(facts: UnitFacts): CISquadAllocation {
 }
 
 function aggregateTokenAllocations(tokens: readonly CIFragmentToken[]): GroupUnitAllocation[] {
-    const squadsByUnit = new Map<UnitSummary, number>();
+    const squadsByUnit = new Map<OrgUnit, number>();
 
     for (const token of tokens) {
         for (const allocation of token.allocations) {
@@ -1233,7 +1234,7 @@ function aggregateTokenAllocations(tokens: readonly CIFragmentToken[]): GroupUni
     }));
 }
 
-function getUnitsFromAllocations(allocations: readonly GroupUnitAllocation[]): UnitSummary[] {
+function getUnitsFromAllocations(allocations: readonly GroupUnitAllocation[]): OrgUnit[] {
     return allocations.map((allocation) => allocation.unit);
 }
 
@@ -1416,7 +1417,7 @@ function materializeCIFormationTokenRecords(
     rule: OrgCIFormationRule,
     tokens: readonly CIFragmentToken[],
     entry: OrgCIFormationEntry,
-    unitFactsByUnit: ReadonlyMap<UnitSummary, UnitFacts>,
+    unitFactsByUnit: ReadonlyMap<OrgUnit, UnitFacts>,
 ): PlannedGroupRecord[] {
     const descriptor = getCIEntryDescriptor(rule, entry);
     const groups: PlannedGroupRecord[] = [];
@@ -1987,7 +1988,7 @@ function getLeafPatternFormationMatchingIgnoredUnits(
     pattern: OrgPatternSpec,
     units: readonly UnitFacts[],
     registry: OrgRuleRegistry,
-): UnitSummary[] {
+): OrgUnit[] {
     const ignoredPatternRefs = rule.formationMatching?.ignoredPatternRefs;
     if (!ignoredPatternRefs || ignoredPatternRefs.length === 0 || units.length === 0) {
         return [];
@@ -3621,7 +3622,7 @@ export function materializeComposedPatternRule(
 
 export function evaluateOrgDefinition(
     definition: OrgDefinition,
-    units: readonly UnitSummary[],
+    units: readonly OrgUnit[],
     groups: readonly GroupSizeResult[] = [],
 ): OrgDefinitionEvaluationResult {
     const unitFacts = compileUnitFactsList(units);
@@ -3658,7 +3659,7 @@ export function evaluateOrgDefinition(
 
 export function evaluateFactionOrgDefinition(
     faction: Faction,
-    units: readonly UnitSummary[],
+    units: readonly OrgUnit[],
     groups: readonly GroupSizeResult[] = [],
     era?: Era | null,
 ): OrgDefinitionEvaluationResult {
@@ -5243,8 +5244,8 @@ function normalizeTopLevelGroups(groups: readonly GroupSizeResult[]): GroupSizeR
     return [...groups].sort(compareGroupScore);
 }
 
-function collectAllGroupUnits(group: GroupSizeResult): UnitSummary[] {
-    const result: UnitSummary[] = [];
+function collectAllGroupUnits(group: GroupSizeResult): OrgUnit[] {
+    const result: OrgUnit[] = [];
 
     if (group.units) {
         result.push(...group.units);
@@ -5595,7 +5596,7 @@ function preprocessGroupsForDefinition(
 
 function resolveWithDefinition(
     definition: OrgDefinition,
-    units: readonly UnitSummary[],
+    units: readonly OrgUnit[],
     groups: readonly GroupSizeResult[],
 ): GroupSizeResult[] {
     activeOrgSolveMetrics = createMutableOrgSolveMetrics();
@@ -5708,7 +5709,7 @@ function resolveWithDefinition(
 }
 
 export function resolveFromUnits(
-    units: readonly UnitSummary[],
+    units: readonly OrgUnit[],
     faction: Faction,
     era: Era | null = null,
     _hierarchicalAggregation: boolean = false,

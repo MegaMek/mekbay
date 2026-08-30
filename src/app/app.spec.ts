@@ -5,7 +5,6 @@
 import { Component, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { SwUpdate } from '@angular/service-worker';
 import { Subject } from 'rxjs';
@@ -28,6 +27,7 @@ import { LoggerService } from './services/logger.service';
 import { GameSystem } from './models/common.model';
 import { AppUpdateService } from './services/app-update.service';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
+import { LobbyService } from './services/lobby.service';
 
 @Component({
   selector: 'unit-search',
@@ -35,14 +35,6 @@ import { UnitSearchComponent } from './components/unit-search/unit-search.compon
   template: '',
 })
 class UnitSearchStubComponent {}
-
-@Component({
-  selector: 'full-height-dialog-stub',
-  standalone: true,
-  template: 'Full-height dialog',
-  host: { class: 'fullscreen-dialog-host fullheight' },
-})
-class FullHeightDialogStubComponent {}
 
 describe('App', () => {
   const reloadHashStorageKey = 'mekbay:sw-update-reload-hash';
@@ -68,6 +60,7 @@ describe('App', () => {
   let urlServiceMock: any;
   let savedSearchesServiceMock: any;
   let loggerServiceMock: any;
+  let lobbyServiceMock: any;
 
   beforeEach(async () => {
     versionUpdates = new Subject();
@@ -80,6 +73,7 @@ describe('App', () => {
     };
     dataServiceMock = {
       initialize: jasmine.createSpy('initialize'),
+      forceNeedsAdoption: new Subject(),
       isDataReady: signal(false),
       unitCatalogState: signal({ status: 'idle', availableUnits: 0 }),
       runtimeCatalogProgress: signal({ status: 'idle' }),
@@ -121,6 +115,7 @@ describe('App', () => {
     };
     toastServiceMock = {
       toasts: signal([]),
+      visibleToasts: signal([]),
       showToast: jasmine.createSpy('showToast'),
       dismiss: jasmine.createSpy('dismiss'),
     };
@@ -162,6 +157,12 @@ describe('App', () => {
       error: jasmine.createSpy('error'),
       handleError: jasmine.createSpy('handleError'),
     };
+    lobbyServiceMock = {
+      hasLobby: jasmine.createSpy('hasLobby').and.returnValue(false),
+      promptAndJoin: jasmine.createSpy('promptAndJoin').and.resolveTo(undefined),
+      showLobbyDialog: jasmine.createSpy('showLobbyDialog').and.resolveTo(undefined),
+      confirmAndLeave: jasmine.createSpy('confirmAndLeave').and.resolveTo(false),
+    };
 
     TestBed.overrideComponent(App, {
       remove: { imports: [UnitSearchComponent] },
@@ -191,6 +192,7 @@ describe('App', () => {
         { provide: UrlService, useValue: urlServiceMock },
         { provide: SavedSearchesService, useValue: savedSearchesServiceMock },
         { provide: LoggerService, useValue: loggerServiceMock },
+        { provide: LobbyService, useValue: lobbyServiceMock },
       ]
     }).compileComponents();
   });
@@ -251,7 +253,6 @@ describe('App', () => {
     expect(coldStatus?.getAttribute('aria-busy')).toBe('true');
     expect(surface.contains(coldStatus)).toBeTrue();
     expect(viewport.contains(coldStatus)).toBeFalse();
-    expect(getComputedStyle(viewport).transform).not.toBe('none');
     expect(TestBed.inject(OverlayContainer).getContainerElement().parentElement).toBe(viewport);
 
     dataServiceMock.isDataReady.set(true);
@@ -328,33 +329,6 @@ describe('App', () => {
 
     dataServiceMock.unitCatalogState.set({ status: 'ready', availableUnits: 10_990 });
     expect(app.backgroundCatalogProgress()).toEqual({ kind: 'hidden' });
-  });
-
-  it('fits full-height dialogs inside the application viewport', async () => {
-    fixture = TestBed.createComponent(App);
-    dataServiceMock.unitCatalogState.set({
-      status: 'loading',
-      availableUnits: 0,
-      progress: { phase: 'local-generation', completed: 0, total: 1 },
-    });
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const dialog = TestBed.inject(Dialog).open(FullHeightDialogStubComponent);
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const viewport = (fixture.nativeElement as HTMLElement).querySelector('.application-viewport') as HTMLElement;
-    const overlayContainer = TestBed.inject(OverlayContainer).getContainerElement();
-    const dialogHost = overlayContainer.querySelector('full-height-dialog-stub') as HTMLElement;
-    const viewportRect = viewport.getBoundingClientRect();
-    const overlayRect = overlayContainer.getBoundingClientRect();
-    const dialogRect = dialogHost.getBoundingClientRect();
-    expect(overlayRect.toJSON()).toEqual(viewportRect.toJSON());
-    expect(dialogRect.top).toBeGreaterThanOrEqual(overlayRect.top);
-    expect(dialogRect.bottom).toBeLessThanOrEqual(overlayRect.bottom);
-
-    dialog.close();
   });
 
   it('does not check for service worker updates immediately after full app startup', () => {

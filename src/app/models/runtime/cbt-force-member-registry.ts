@@ -4,8 +4,6 @@
 import { signal } from '@angular/core';
 import type { CBTForce } from '../cbt-force.model';
 import { CBTForceMember } from '../force-member.model';
-import type { SavedEntityIdentity } from '../persisted-unit-state';
-import type { UnitSummary } from '../unit-summary.model';
 import type { EncounterNetwork } from './encounter-runtime';
 import type { ReadyClassicUnit } from './ready-classic-unit';
 import { asUnitInstanceId, type UnitInstanceId } from './runtime-state';
@@ -32,7 +30,6 @@ export class CBTForceMemberRegistry {
 
     public constructor(
         private readonly owner: CBTForce,
-        private readonly resolveSummary: (identity: SavedEntityIdentity) => UnitSummary | undefined,
         private readonly readyUnit: (instanceId: UnitInstanceId) => ReadyClassicUnit | null,
     ) {}
 
@@ -64,7 +61,7 @@ export class CBTForceMemberRegistry {
                 const instanceId = asUnitInstanceId(value);
                 const member = this.byId.get(instanceId);
                 const runtime = this.readyUnit(instanceId);
-                if (!member || !runtime) {
+                if (!member || !runtime || member.entity !== runtime.getUnit()) {
                     requiresMembershipSync = true;
                     break;
                 }
@@ -94,29 +91,20 @@ export class CBTForceMemberRegistry {
             return Object.freeze({ membershipChanged, runtimeChanged: false });
         }
 
-        const entries = new Map(envelope.units.map(entry => [entry.instanceId, entry] as const));
         const retained = new Set<UnitInstanceId>();
         let membershipChanged = false;
         let runtimeChanged = false;
         const members = envelope.roster.groups.flatMap(group => group.members.flatMap(rosterMember => {
-            const entry = entries.get(rosterMember.instanceId);
-            const identity = entry?.kind === 'ready'
-                ? entry.unit.entity
-                : entry?.kind === 'deferred' && entry.source.identity.kind === 'resolved'
-                    ? entry.source.identity.savedIdentity
-                    : undefined;
-            if (!identity) return [];
-            const summary = this.resolveSummary(identity);
-            if (!summary) return [];
+            const runtime = this.readyUnit(rosterMember.instanceId);
+            if (!runtime) return [];
             retained.add(rosterMember.instanceId);
             let member = this.byId.get(rosterMember.instanceId);
-            if (!member || member.summary !== summary) {
-                member = new CBTForceMember(rosterMember.instanceId, this.owner, summary);
+            if (!member || member.entity !== runtime.getUnit()) {
+                member = new CBTForceMember(rosterMember.instanceId, this.owner, runtime.getUnit());
                 this.byId.set(rosterMember.instanceId, member);
                 membershipChanged = true;
             }
-            const runtime = this.readyUnit(rosterMember.instanceId);
-            runtimeChanged = member.bindRuntime(runtime, runtime?.revision() ?? null) || runtimeChanged;
+            runtimeChanged = member.bindRuntime(runtime, runtime.revision()) || runtimeChanged;
             return [member];
         }));
         for (const instanceId of this.byId.keys()) {

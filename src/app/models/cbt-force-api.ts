@@ -179,7 +179,11 @@ export type EquipmentRowOrderCommandResult =
         readonly currentRevision: StateRevision | null;
     }>;
 
-export type SelectedWeaponFireCommandResult = AttackerTargetingCommandResult;
+export type SelectedWeaponFireCommandResult =
+    | (Extract<AttackerTargetingCommandResult, { readonly accepted: true }> & Readonly<{
+        readonly prototypeHeat: readonly import('./prototype-laser-heat.model').PrototypeLaserHeatResult[];
+    }>)
+    | Extract<AttackerTargetingCommandResult, { readonly accepted: false }>;
 
 export type RuntimeUndoCommandResult = Readonly<{
     readonly accepted: boolean;

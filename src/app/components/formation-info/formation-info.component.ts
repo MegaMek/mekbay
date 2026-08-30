@@ -3,12 +3,12 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { formationInheritsParentEffects, resolveFormationGameSystemText, type FormationTypeDefinition, type FormationEffectGroup } from '../../utils/formation-type.model';
+import { formationInheritsParentEffects, type FormationTypeDefinition, type FormationEffectGroup, type FormationWideAbility } from '../../utils/formation-type.model';
 import { getFormationDefinition } from '../../utils/formation-blueprints';
 import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails, formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { type CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
-import { getInheritedFormationEffectGroups } from '../../utils/formation-ability-assignment.util';
+import { getInheritedFormationEffectGroups, resolveFormationSharedPoolLevel } from '../../utils/formation-ability-assignment.util';
 import { OptionsService } from '../../services/options.service';
 
 /*
@@ -21,6 +21,7 @@ import { OptionsService } from '../../services/options.service';
 export interface ResolvedAbility {
     pilotAbility?: PilotAbility;
     commandAbility?: CommandAbility;
+    formationWideAbility?: FormationWideAbility;
     name: string;
     summary: string[];
     rulesRef: RulesReference[];
@@ -33,6 +34,7 @@ export interface ResolvedEffectGroup {
     abilities: ResolvedAbility[];
     selectionLabel: string;
     distributionLabel: string;
+    perTurn: boolean;
 }
 
 @Component({
@@ -116,10 +118,12 @@ export interface ResolvedEffectGroup {
                         @let groupIdx = $index;
                         <div class="effect-group">
                             <div class="effect-group-meta">
-                                <span class="meta-item selection">{{ eg.selectionLabel }}</span>
-                                <span class="meta-separator">·</span>
+                                @if (eg.selectionLabel) {
+                                    <span class="meta-item selection">{{ eg.selectionLabel }}</span>
+                                    <span class="meta-separator">·</span>
+                                }
                                 <span class="meta-item distribution">{{ eg.distributionLabel }}</span>
-                                @if (eg.group.perTurn) {
+                                @if (eg.perTurn) {
                                     <span class="meta-separator">·</span>
                                     <span class="meta-item per-turn">Per turn</span>
                                 }
@@ -413,7 +417,7 @@ export class FormationInfoComponent {
 
     /** Resolved formation bonus text for the current formation & game system. */
     effectDescriptionText = computed<string | null>(() => {
-        const effectDescription = resolveFormationGameSystemText(this.formation()?.effectDescription, this.gameSystem());
+        const effectDescription = this.formation()?.effectDescription;
         return effectDescription ? formatSummaryMovement(effectDescription, this.optionsService.options().ASUseHex) : null;
     });
 
@@ -421,7 +425,7 @@ export class FormationInfoComponent {
     requirementsText = computed<string | null>(() => {
         const def = this.formation();
         if (!def?.requirements) return null;
-        const requirements = def.requirements(this.gameSystem());
+        const requirements = def.requirements;
         return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     });
 
@@ -429,14 +433,14 @@ export class FormationInfoComponent {
     private parentFormation = computed<FormationTypeDefinition | null>(() => {
         const def = this.formation();
         if (!formationInheritsParentEffects(def) || !def?.parent) return null;
-        return getFormationDefinition(def.parent);
+        return getFormationDefinition(def.parent, this.gameSystem());
     });
 
     /** Resolved parent requirements text. */
     parentRequirementsText = computed<string | null>(() => {
         const parent = this.parentFormation();
         if (!parent?.requirements) return null;
-        const requirements = parent.requirements(this.gameSystem());
+        const requirements = parent.requirements;
         return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
     });
 
@@ -487,14 +491,14 @@ export class FormationInfoComponent {
 
     resolvedEffectGroups = computed<ResolvedEffectGroup[]>(() => {
         const def = this.formation();
-        const effectGroups = getInheritedFormationEffectGroups(def);
+        const effectGroups = getInheritedFormationEffectGroups(def, this.gameSystem());
         if (effectGroups.length === 0) return [];
 
         return effectGroups.map(group => {
             const abilities: ResolvedAbility[] = [];
 
             // Resolve pilot abilities
-            if (group.abilityIds) {
+            if (group.distribution !== 'formation-wide' && 'abilityIds' in group && group.abilityIds) {
                 for (const id of group.abilityIds) {
                     const pilot = PILOT_ABILITIES.find(a => a.id === id);
                     if (pilot) {
@@ -511,7 +515,7 @@ export class FormationInfoComponent {
             }
 
             // Resolve command abilities
-            if (group.commandAbilityIds) {
+            if (group.distribution !== 'formation-wide' && 'commandAbilityIds' in group && group.commandAbilityIds) {
                 for (const id of group.commandAbilityIds) {
                     const cmd = COMMAND_ABILITIES.find(a => a.id === id);
                     if (cmd) {
@@ -525,27 +529,50 @@ export class FormationInfoComponent {
                 }
             }
 
+            if (group.distribution === 'formation-wide') {
+                for (const formationWideAbility of group.formationWideAbilities) {
+                    abilities.push({
+                        formationWideAbility,
+                        name: formationWideAbility.name,
+                        summary: formatSummaryMovement(formationWideAbility.summary, this.optionsService.options().ASUseHex),
+                        rulesRef: formationWideAbility.rulesRef ?? [],
+                    });
+                }
+            }
+
             return {
                 group,
                 abilities,
-                selectionLabel: this.getSelectionLabel(group.selection),
+                selectionLabel: this.getSelectionLabel(group),
                 distributionLabel: this.getDistributionLabel(group),
+                perTurn: 'perTurn' in group && group.perTurn === true,
             };
         });
     });
 
-    private getSelectionLabel(selection: FormationEffectGroup['selection']): string {
-        switch (selection) {
+    private getSelectionLabel(group: FormationEffectGroup): string {
+        if (group.distribution === 'formation-wide') {
+            return '';
+        }
+
+        switch (group.selection) {
             case 'choose-one': return 'Choose one ability for all';
             case 'choose-each': return 'Each recipient chooses';
             case 'all': return 'All listed abilities';
-            default: return selection;
+            case 'copy': return 'Copy assigned SPAs from target';
+            default: return '';
         }
     }
 
     private getDistributionLabel(group: FormationEffectGroup): string {
         const n = this.unitCount();
         switch (group.distribution) {
+            case 'formation-wide': return 'Formation-wide';
+            case 'formation-target': {
+                return group.recipientLimit === 'half-self-round-down'
+                    ? (n != null ? `Half this formation (${Math.floor(n / 2)} units)` : 'Half this formation (round down)')
+                    : '1 unit per 2 target bonus recipients';
+            }
             case 'all': return 'All units';
             case 'half-round-down': {
                 const count = n != null ? Math.floor(n / 2) : undefined;
@@ -567,10 +594,25 @@ export class FormationInfoComponent {
             case 'fixed-pairs': return `${group.count ?? '?'} identical pairs`;
             case 'conditional': return group.condition ?? 'Conditional';
             case 'remainder': return 'Remaining units';
-            case 'shared-pool': return 'Shared pool';
+            case 'shared-pool': {
+                const details: string[] = [];
+                const resolvedLevel = this.unitCount() === undefined
+                    ? null
+                    : resolveFormationSharedPoolLevel(group, this.unitCount() ?? 0);
+                if (resolvedLevel !== null) {
+                    details.push(`level ${resolvedLevel}`);
+                }
+                if (group.sharedPool.totalUsesPerScenario !== undefined) {
+                    details.push(`${group.sharedPool.totalUsesPerScenario} uses/scenario`);
+                }
+                if (group.sharedPool.maxUsesPerUnitPerScenario !== undefined) {
+                    details.push(`up to ${group.sharedPool.maxUsesPerUnitPerScenario}/unit`);
+                }
+                return details.length > 0 ? `Shared pool (${details.join('; ')})` : 'Shared pool';
+            }
             case 'role-filtered': return `${group.roleFilter ?? 'Matching'} role units`;
             case 'commander': return 'Commander only';
-            default: return group.distribution;
+            default: return 'Unknown distribution';
         }
     }
 }

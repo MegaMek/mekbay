@@ -6,11 +6,11 @@ import { GameSystem } from '../models/common.model';
 import { type Faction } from '../models/factions.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { type FormationTypeDefinition, type FormationMatch, getFormationNameMatchStrings, NO_FORMATION, NO_FORMATION_ID } from './formation-type.model';
-import { getFormationDefinition, getFormationDefinitions } from './formation-blueprints';
+import { getFormationDefinition, getFormationDefinitionSource, getFormationDefinitions } from './formation-blueprints';
 import { FormationRequirementEngine } from './formation-requirement-engine.util';
 import { normalizeLooseText } from './string.util';
 import type { Era } from '../models/eras.model';
-import type { FormationUnitLike } from './formation-unit-facts.util';
+import { compileFormationUnitFacts, type FormationUnitLike } from './formation-unit-facts.util';
 import { collectGroupUnits, compileGroupFacts } from './org/org-facts.util';
 import { groupMatchesChildRole } from './org/org-role-match.util';
 import { isClan, resolveOrgDefinition } from './org/org-registry.util';
@@ -98,8 +98,10 @@ export class LanceTypeIdentifierUtil {
     private static collectIgnoredUnits(
         group: GroupSizeResult,
         formationMatching: OrgFormationMatchingSpec,
-    ): Set<UnitSummary> {
-        const ignoredUnits = new Set<UnitSummary>(group.formationMatchingIgnoredUnits ?? []);
+    ): Set<string> {
+        const ignoredUnits = new Set<string>(
+            (group.formationMatchingIgnoredUnits ?? []).map(unit => unit.uuid),
+        );
 
         if (!formationMatching.ignoredChildRoles || formationMatching.ignoredChildRoles.length === 0) {
             return ignoredUnits;
@@ -112,7 +114,7 @@ export class LanceTypeIdentifierUtil {
             }
 
             for (const unit of collectGroupUnits(child)) {
-                ignoredUnits.add(unit);
+                ignoredUnits.add(unit.uuid);
             }
         }
 
@@ -159,7 +161,8 @@ export class LanceTypeIdentifierUtil {
         }
 
         const units = this.groupUnits(group);
-        const filteredUnits = units.filter((unit) => !ignoredUnits.has(unit.getSummary()));
+        const filteredUnits = units.filter((unit) =>
+            !ignoredUnits.has(compileFormationUnitFacts(unit).uuid));
         if (filteredUnits.length === 0 || filteredUnits.length >= units.length) {
             return {};
         }
@@ -189,22 +192,22 @@ export class LanceTypeIdentifierUtil {
         return this.validateDefinition(definition, units, gameSystem);
     }
 
-    public static getDefinitionById(id: string, gameSystem?: GameSystem): FormationTypeDefinition | null {
+    public static getDefinitionById(id: string, gameSystem: GameSystem): FormationTypeDefinition | null {
         if (id === NO_FORMATION_ID) {
             return NO_FORMATION;
         }
 
-        const definition = getFormationDefinition(id);
+        const definition = getFormationDefinition(id, gameSystem);
         if (!definition) {
             return null;
         }
-        if (gameSystem !== undefined && !FormationRequirementEngine.hasBlueprint(definition.id)) {
+        if (!FormationRequirementEngine.hasBlueprint(definition.id)) {
             return null;
         }
         return definition;
     }
 
-    public static resolveDefinition(value: string, gameSystem?: GameSystem): FormationTypeDefinition | null {
+    public static resolveDefinition(value: string, gameSystem: GameSystem): FormationTypeDefinition | null {
         const normalizedValue = value.trim().toLowerCase();
         if (!normalizedValue) {
             return null;
@@ -214,9 +217,8 @@ export class LanceTypeIdentifierUtil {
             return NO_FORMATION;
         }
 
-        const definitions = getFormationDefinitions().filter((definition) => (
-            gameSystem === undefined || FormationRequirementEngine.hasBlueprint(definition.id)
-        ));
+        const definitions = getFormationDefinitions(gameSystem)
+            .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id));
 
         for (const definition of definitions) {
             if (definition.id.toLowerCase() === normalizedValue) {
@@ -248,7 +250,7 @@ export class LanceTypeIdentifierUtil {
         if (!formationId || formationId === NO_FORMATION_ID) {
             return null;
         }
-        return getFormationDefinition(formationId)?.name ?? null;
+        return getFormationDefinitionSource(formationId)?.name ?? null;
     }
 
     public static getFormationPriorityWeight(
@@ -310,7 +312,7 @@ export class LanceTypeIdentifierUtil {
         const matches: FormationTypeDefinition[] = [];
         const unitCount = units.length;
 
-        for (const definition of getFormationDefinitions()) {
+        for (const definition of getFormationDefinitions(gameSystem)) {
             try {
                 if (!FormationRequirementEngine.hasBlueprint(definition.id)) {
                     continue;

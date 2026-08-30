@@ -13,7 +13,6 @@ import type { Equipment } from '../equipment.model';
 import { ImmutableIndex } from '../entity/immutable-collections';
 import {
     asArmorFaceId,
-    asComponentId,
     asCrewPositionId,
     asCriticalSlotId,
     type ArmorFaceId,
@@ -25,7 +24,7 @@ import {
 import { componentIdForMount } from './non-mek-runtime-index';
 import {
     mekLocationId,
-    mekSystemComponentGroupKey,
+    mekSystemComponentId,
 } from '../entity/mek-entity-conventions';
 import type {
     ClassicRuntimeArmorFace,
@@ -176,7 +175,6 @@ export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
         components.set(id, Object.freeze({ kind: 'equipment', id, mount }));
     }
 
-    const systemIds = new Map<string, ComponentId>();
     const systemPlacements = new Map<ComponentId, {
         readonly systemType: MekSystemType;
         readonly placements: Array<Readonly<{
@@ -195,11 +193,8 @@ export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
             if (slot.type === 'equipment') {
                 componentIds = slot.mounts.map(componentIdForMount);
             } else {
-                const group = mekSystemComponentGroupKey(slot.systemType, locationId);
-                let componentId = systemIds.get(group);
-                if (componentId === undefined) {
-                    componentId = asComponentId(`system:${group.replace('\0', ':')}`);
-                    systemIds.set(group, componentId);
+                const componentId = mekSystemComponentId(slot.systemType, locationId);
+                if (!systemPlacements.has(componentId)) {
                     systemPlacements.set(componentId, {
                         systemType: slot.systemType,
                         placements: [],

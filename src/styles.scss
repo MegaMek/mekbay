@@ -51,6 +51,15 @@
     --undamaged-night-highlight-color: #300;
     --damaged-highlight-color: rgb(255, 105, 105);
 
+    --move-unassigned: #666;
+    --move-stationary: #005563;
+    --move-walk: #eee;
+    --move-run: #333;
+    --move-jump: #c00;
+    --move-sprint: #e6e600;
+    --move-on-dark: #fff;
+    --move-on-light: #111;
+
     --phase-move: #666;
     --phase-ranged: #9191ff;
     --phase-physical: #cfcc00;
@@ -332,21 +341,6 @@ hr {
     padding: 1px 4px;
     line-height: 1.2;
     cursor: pointer;
-}
-
-.custom-unit-badge {
-    display: inline-flex;
-    align-items: center;
-    flex: 0 0 auto;
-    background: var(--accent-color);
-    color: var(--background-color);
-    font-size: 0.5em;
-    font-weight: 800;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    padding: 0.125em 0.4em;
-    line-height: 1.35;
-    white-space: nowrap;
 }
 
 .framed-borders {
@@ -2104,7 +2098,7 @@ hr.divider {
         .pip.damaged.fresh {
             fill: var(--pip-fresh-damage-color) !important;
             stroke: var(--damage-color) !important;
-            stroke-width: 2.5px;
+            stroke-width: 1.5px;
             paint-order: fill stroke;
         }
 

@@ -9,7 +9,6 @@ import {
     DestroyRef,
     effect,
     type ElementRef,
-    HostListener,
     inject,
     signal,
     viewChild,
@@ -275,6 +274,7 @@ function createMissingForceEntry(instanceId: string): LoadForceEntry {
     imports: [FactionImgPipe, CompactFilterMenuComponent],
     host: {
         class: 'fullscreen-dialog-host fullheight tv-fade',
+        '(window:beforeunload)': 'onBeforeUnload($event)',
     },
     templateUrl: './force-org-dialog.component.html',
     styleUrls: ['./force-org-dialog.component.scss']
@@ -3132,7 +3132,6 @@ export class ForceOrgDialogComponent {
         }
     }
 
-    @HostListener('window:beforeunload', ['$event'])
     protected onBeforeUnload(event: BeforeUnloadEvent): string | void {
         if (!this.hasPendingUnsavedChanges()) return undefined;
 

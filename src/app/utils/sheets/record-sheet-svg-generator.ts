@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../../models/entity/base-entity';
+import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import {
     recordSheetPageProfile,
     type RecordSheetPageFormat,
@@ -15,12 +16,15 @@ import {
     type RecordSheetSvgFormat,
 } from './layouts/record-sheet-layout';
 import { optimizeGeneratedSvg } from './record-sheet-svg-rendering';
+import { renderGeneratedRecordSheetControls } from './generated-record-sheet-controls';
 
 export type { RecordSheetSvgFormat } from './layouts/record-sheet-layout';
 
 export interface RecordSheetSvgGeneratorOptions {
     readonly format?: RecordSheetSvgFormat;
     readonly pageFormat?: RecordSheetPageFormat;
+    readonly ruleset?: CBTRuleset;
+    readonly fluffImageUrl?: string | null;
 }
 
 /** Thin entry point: family layout classes own all sheet composition. */
@@ -37,6 +41,7 @@ export class RecordSheetSvgGenerator {
         const svg = await layout.generate(entity, { format, page, profile });
         svg.setAttribute('data-mekbay-layout', layout.id);
         svg.setAttribute('data-mekbay-page-format', page.format);
+        renderGeneratedRecordSheetControls(svg, entity, options);
         return optimizeGeneratedSvg(svg);
     }
 

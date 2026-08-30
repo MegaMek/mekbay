@@ -34,6 +34,7 @@ import { GameService } from './services/game.service';
 import { AccountAuthService } from './services/account-auth.service';
 import { AccountProtectionService } from './services/account-protection.service';
 import { AppUpdateService } from './services/app-update.service';
+import { LobbyService } from './services/lobby.service';
 import { LoadingSpinnerComponent } from './components/loading-spinner/loading-spinner.component';
 import { CatalogRefreshStatusComponent } from './components/catalog-refresh-status/catalog-refresh-status.component';
 import { projectBackgroundCatalogProgress } from './models/startup-progress.model';
@@ -81,6 +82,7 @@ export class App {
     private readonly forceImport = inject(ForceImportService);
     protected layoutService = inject(LayoutService);
     protected appUpdateService = inject(AppUpdateService);
+    protected lobbyService = inject(LobbyService);
     private wsService = inject(WsService);
     private dialogService = inject(DialogsService);
     private toastService = inject(ToastService);
@@ -649,6 +651,18 @@ export class App {
 
     showForceGeneratorDialog(): void {
         void this.forceImport.showSearchForceGeneratorDialog();
+    }
+
+    joinLobby(): void {
+        void this.lobbyService.promptAndJoin();
+    }
+
+    manageLobby(): void {
+        void this.lobbyService.showLobbyDialog();
+    }
+
+    leaveLobby(): void {
+        void this.lobbyService.confirmAndLeave();
     }
 
     openHomeActionsPanel(): void {

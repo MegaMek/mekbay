@@ -491,6 +491,7 @@ export function mekCommandHistory(
             );
         case 'configure-ammo-source':
         case 'spend-ammo':
+        case 'activate-coolant-pod':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.AMMO_CHANGED, instanceId);
         case 'set-heat':
         case 'set-pending-heat':
@@ -655,6 +656,7 @@ function movementModeHistoryCode(mode: MotiveModes | null): number {
         case 'jump': return 4;
         case 'UMU': return 5;
         case 'VTOL': return 6;
+        case 'sprint': return 7;
         default: return 0;
     }
 }

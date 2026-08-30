@@ -8,7 +8,11 @@ import {
     isCBTMekForceMember,
     type CBTForceMember,
 } from '../../models/force-member.model';
-import type { MekEquipmentInteraction } from '../../models/cbt-force.model';
+import type {
+    MekEquipmentChoice,
+    MekEquipmentChoiceToken,
+    MekEquipmentInteraction,
+} from '../../models/cbt-force.model';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
 import type {
     EquipmentPanelComponent,
@@ -19,13 +23,18 @@ import { selectedWeaponHeat } from '../../models/runtime/equipment-panel';
 import type { EncounterTargetId } from '../../models/runtime/encounter-runtime';
 import { createCommandId } from '../../models/runtime/runtime-state';
 import type { CBTUnitCommand } from '../../models/runtime/unit-instance';
-import type { NonMekUnitCommand } from '../../models/runtime/non-mek-unit-instance';
+import {
+    projectNonMekEscalatingFailureInteractions,
+    type NonMekUnitCommand,
+} from '../../models/runtime/non-mek-unit-instance';
 import type { OptionsService } from '../../services/options.service';
 import type { ToastService } from '../../services/toast.service';
+import type { DialogsService } from '../../services/dialogs.service';
 import {
     canChangeAirborneGround,
     getMotiveModeLabel,
     getMotiveModesByUnit,
+    motiveModeFactsForEntity,
     type MotiveModes,
 } from '../../models/motiveModes.model';
 import type { EquipmentRowOrderGroup } from '../../models/runtime/equipment-row-order';
@@ -37,6 +46,20 @@ import {
 import { getDefaultAttackerMovementModifier } from '../../models/target-number-calculator.model';
 import { hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
 import { isHeatSinkEquipment } from '../../models/heat-equipment.model';
+import {
+    prototypeLaserMaximumExtraHeat,
+    type PrototypeLaserHeatResult,
+    type PrototypeLaserHeatRoll,
+} from '../../models/prototype-laser-heat.model';
+import { isBoobyTrapEquipment } from '../../models/aerospace-support-equipment.model';
+import {
+    BOOBY_TRAP_DETONATED_MODE,
+    isBoobyTrapDetonated,
+} from '../../models/runtime/component-booby-trap';
+import {
+    ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
+    ESCALATING_FAILURE_HANDLER_ID,
+} from '../../models/runtime/component-escalating-failure';
 
 type MekEquipmentCommand = CBTUnitCommand extends infer Command
     ? Command extends CBTUnitCommand
@@ -49,6 +72,11 @@ type EntityEquipmentCommand = NonMekUnitCommand extends infer Command
         ? Omit<Command, 'expectedRevision'>
         : never
     : never;
+
+type EntityEscalatingFailureEdit = Extract<
+    NonMekUnitCommand,
+    { readonly kind: 'edit-escalating-failure' }
+>['edit'];
 
 /**
  * Runtime adapter for the established equipment-dialog panels. It owns no
@@ -66,7 +94,12 @@ export class EquipmentDialogRuntimeController {
 
     private readonly options: OptionsService;
     private readonly toast: ToastService;
+    private readonly dialogs?: Pick<DialogsService, 'requestConfirmation' | 'showNoticeHtml'>;
     private readonly forceChanges: Subscription;
+    private readonly entityInteractionBindings = new Map<MekEquipmentChoiceToken, Readonly<{
+        componentId: ComponentId;
+        edit: EntityEscalatingFailureEdit;
+    }>>();
 
     public hasSelections(): boolean {
         return this.weapons().some(row => row.weapon?.selection !== undefined)
@@ -92,7 +125,9 @@ export class EquipmentDialogRuntimeController {
         if (isCBTMekForceMember(this.member)) {
             const turn = this.member.force.getMekTurnPanelSnapshot(
                 this.member.id,
-                this.options.options().cbtAutomations ? 'automatic' : 'manual',
+                this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
+                    ? 'automatic'
+                    : 'manual',
             );
             if (!turn || turn.heatProjection.kind !== 'supported') return null;
             const projection = turn.heatProjection.projection;
@@ -126,10 +161,12 @@ export class EquipmentDialogRuntimeController {
         member: CBTForceMember,
         options: OptionsService,
         toast: ToastService,
+        dialogs?: Pick<DialogsService, 'requestConfirmation' | 'showNoticeHtml'>,
     ) {
         this.member = member;
         this.options = options;
         this.toast = toast;
+        this.dialogs = dialogs;
         this.snapshot = signal(this.requiredSnapshot());
         this.weapons = computed(() => this.snapshot().components.filter(row => row.weapon !== undefined));
         this.equipment = computed(() => this.snapshot().components.filter(
@@ -199,7 +236,20 @@ export class EquipmentDialogRuntimeController {
         interaction: MekEquipmentInteraction,
         token: MekEquipmentInteraction['choices'][number]['token'],
     ): Promise<void> {
-        if (this.busy() || !isCBTMekForceMember(this.member)) return;
+        if (this.busy()) return;
+        if (!isCBTMekForceMember(this.member)) {
+            const binding = this.entityInteractionBindings.get(token);
+            if (!binding || binding.componentId !== interaction.componentId) {
+                this.reject('CHOICE_UNAVAILABLE');
+                return;
+            }
+            await this.dispatchEntityUnit({
+                kind: 'edit-escalating-failure',
+                componentId: binding.componentId,
+                edit: binding.edit,
+            });
+            return;
+        }
         this.busy.set(true);
         try {
             const result = await this.member.force.dispatchMekEquipmentChoice(token);
@@ -304,6 +354,10 @@ export class EquipmentDialogRuntimeController {
 
     public async changeMode(row: EquipmentPanelComponent, mode: string): Promise<void> {
         if (!row.modes.includes(mode)) return;
+        if (isBoobyTrapEquipment(row.equipment) && mode === BOOBY_TRAP_DETONATED_MODE) {
+            await this.detonateBoobyTrap(row);
+            return;
+        }
         if (isCBTMekForceMember(this.member)) {
             await this.dispatchMekUnit({
                 type: 'set-component-mode',
@@ -319,23 +373,80 @@ export class EquipmentDialogRuntimeController {
         }
     }
 
+    private async detonateBoobyTrap(row: EquipmentPanelComponent): Promise<void> {
+        if (!this.dialogs
+            || !isBoobyTrapEquipment(row.equipment)
+            || isBoobyTrapDetonated(row.mode)
+            || row.status !== 'available') return;
+        const confirmed = await this.dialogs.requestConfirmation(
+            `Detonate ${this.snapshot().displayName}'s Booby Trap? `
+                + 'The unit will be completely destroyed. Ejection and blast damage must be resolved on the battlefield.',
+            'Detonate Booby Trap',
+            'danger',
+        );
+        if (!confirmed) return;
+        const accepted = isCBTMekForceMember(this.member)
+            ? await this.dispatchMekUnit({
+                type: 'detonate-booby-trap',
+                componentId: row.componentId,
+            })
+            : await this.dispatchEntityUnit({
+                kind: 'detonate-booby-trap',
+                componentId: row.componentId,
+            });
+        if (!accepted) return;
+        await this.dialogs.showNoticeHtml(
+            '<p>The unit has been destroyed.</p>'
+                + '<p>Resolve the Booby Trap blast, any +4 ejection modifier, and resulting fire manually on the battlefield.</p>',
+            'Booby Trap Detonated',
+        );
+    }
+
     public async fire(): Promise<void> {
         if (this.busy()) return;
         const current = this.snapshot();
         this.busy.set(true);
         try {
+            const prototypeHeatRolls = this.prototypeHeatRolls(current);
             const result = await this.member.force.fireSelectedWeapons(this.member.id, {
                 type: 'fire-selected-weapons',
                 commandId: createCommandId(),
                 expectedRevision: current.stateRevision,
                 expectedRegistryRevision: current.targetRegistryRevision,
-                heatPolicy: this.options.options().cbtAutomations ? 'automatic' : 'manual',
+                heatPolicy: this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
+                    ? 'automatic'
+                    : 'manual',
+                ...(prototypeHeatRolls.length === 0 ? {} : { prototypeHeatRolls }),
             });
             if (!result.accepted) this.reject(result.reason);
+            else this.reportPrototypeHeat(current, result.prototypeHeat ?? Object.freeze([]));
         } finally {
             this.busy.set(false);
             this.refresh();
         }
+    }
+
+    private prototypeHeatRolls(snapshot: EquipmentPanelSnapshot): readonly PrototypeLaserHeatRoll[] {
+        if (!snapshot.tracksHeat || snapshot.unitType === 'Aero') return Object.freeze([]);
+        return Object.freeze(snapshot.components
+            .filter(row => row.equipment !== undefined
+                && prototypeLaserMaximumExtraHeat(row.equipment.internalName) > 0)
+            .sort((left, right) => left.componentId.localeCompare(right.componentId))
+            .map(row => Object.freeze({
+                weaponId: row.componentId,
+                roll: Math.floor(Math.random() * 6) + 1,
+            })));
+    }
+
+    private reportPrototypeHeat(
+        snapshot: EquipmentPanelSnapshot,
+        results: readonly PrototypeLaserHeatResult[],
+    ): void {
+        if (results.length === 0) return;
+        const labels = new Map(snapshot.components.map(row => [row.componentId, row.label]));
+        this.toast.showToast(results.map(result =>
+            `${labels.get(result.weaponId) ?? result.weaponId}: +${result.additionalHeat} heat (${result.detail})`)
+            .join('; '), 'info');
     }
 
     public async resetSelections(): Promise<void> {
@@ -430,8 +541,10 @@ export class EquipmentDialogRuntimeController {
         const modifier = turn?.attackMovementModifiers[mode as keyof typeof turn.attackMovementModifiers]
             ?? getDefaultAttackerMovementModifier(mode);
         if (modifier === 0) return Object.freeze([]);
+        const entity = this.member.force.getUnitSnapshot(this.member.id)?.entity;
+        if (!entity) return Object.freeze([]);
         return Object.freeze([Object.freeze({
-            label: getMotiveModeLabel(mode, this.member.summary, airborne),
+            label: getMotiveModeLabel(mode, motiveModeFactsForEntity(entity), airborne),
             modifier,
             priority: ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY,
         })]);
@@ -444,10 +557,13 @@ export class EquipmentDialogRuntimeController {
             ? this.member.force.getMekTurnPanelSnapshot(this.member.id, 'manual')
             : null;
         const airborne = mekTurn?.turn.airborne === true || entityState?.turn.airborne === true;
-        const airborneStates = canChangeAirborneGround(this.member.summary)
+        const entity = this.member.force.getUnitSnapshot(this.member.id)?.entity;
+        if (!entity) return false;
+        const facts = motiveModeFactsForEntity(entity);
+        const airborneStates = canChangeAirborneGround(facts)
             ? [false, true]
             : [airborne];
-        return airborneStates.some(isAirborne => getMotiveModesByUnit(this.member.summary, isAirborne)
+        return airborneStates.some(isAirborne => getMotiveModesByUnit(facts, isAirborne)
             .some(mode => getDefaultAttackerMovementModifier(mode) !== 0));
     }
 
@@ -473,7 +589,7 @@ export class EquipmentDialogRuntimeController {
     }
 
     public canFireSelectedWeapons(): boolean {
-        return this.weapons().some(component => component.weapon?.selection !== undefined);
+        return selectedWeaponHeat(this.snapshot()).hasSelection;
     }
 
     public allowsExtremeRangeAttacks(): boolean {
@@ -500,8 +616,8 @@ export class EquipmentDialogRuntimeController {
         }
     }
 
-    private async dispatchMekUnit(command: MekEquipmentCommand): Promise<void> {
-        if (this.busy()) return;
+    private async dispatchMekUnit(command: MekEquipmentCommand): Promise<boolean> {
+        if (this.busy()) return false;
         this.busy.set(true);
         try {
             const result = await this.member.force.dispatchMekUnitCommand(this.member.id, {
@@ -510,14 +626,15 @@ export class EquipmentDialogRuntimeController {
                 expectedRevision: this.snapshot().stateRevision,
             } as CBTUnitCommand);
             if (!result.accepted) this.reject(result.reason);
+            return result.accepted;
         } finally {
             this.busy.set(false);
             this.refresh();
         }
     }
 
-    private async dispatchEntityUnit(command: EntityEquipmentCommand): Promise<void> {
-        if (this.busy()) return;
+    private async dispatchEntityUnit(command: EntityEquipmentCommand): Promise<boolean> {
+        if (this.busy()) return false;
         this.busy.set(true);
         try {
             const result = await this.member.force.dispatchNonMekUnitCommand(this.member.id, {
@@ -525,6 +642,7 @@ export class EquipmentDialogRuntimeController {
                 expectedRevision: this.snapshot().stateRevision,
             } as NonMekUnitCommand);
             if (!result.accepted) this.reject(result.reason);
+            return result.accepted;
         } finally {
             this.busy.set(false);
             this.refresh();
@@ -538,9 +656,64 @@ export class EquipmentDialogRuntimeController {
     }
 
     private interactionRows(): readonly MekEquipmentInteraction[] {
-        if (!isCBTMekForceMember(this.member)) return Object.freeze([]);
-        return this.member.force.getMekEquipmentInteractions()
-            .filter(row => row.instanceId === this.member.id);
+        this.entityInteractionBindings.clear();
+        if (isCBTMekForceMember(this.member)) {
+            return this.member.force.getMekEquipmentInteractions()
+                .filter(row => row.instanceId === this.member.id);
+        }
+        // A few lightweight presentation hosts deliberately omit the Entity;
+        // without it there is no direct-runtime interaction to project.
+        if (!this.member.entity) return Object.freeze([]);
+        const snapshot = this.entityRuntime();
+        if (!snapshot) return Object.freeze([]);
+        return Object.freeze(projectNonMekEscalatingFailureInteractions(
+            snapshot.entity,
+            snapshot.index,
+            snapshot.state,
+            snapshot.ruleset,
+            'inventory',
+        ).map(interaction => Object.freeze({
+            instanceId: snapshot.instanceId,
+            unitLabel: this.snapshot().displayName,
+            componentId: interaction.componentId,
+            componentLabel: interaction.componentLabel,
+            stateRevision: snapshot.state.stateRevision,
+            choices: Object.freeze(interaction.choices.map((choice, choiceIndex) => {
+                const token = JSON.stringify([
+                    'non-mek-escalating-failure',
+                    snapshot.instanceId,
+                    snapshot.state.stateRevision,
+                    interaction.componentId,
+                    choiceIndex,
+                ]) as MekEquipmentChoiceToken;
+                const edit: EntityEscalatingFailureEdit = choice.value
+                    === ESCALATING_FAILURE_DISABLED_CHOICE_VALUE
+                    ? Object.freeze({
+                        kind: 'set-status',
+                        status: interaction.status === 'disabled' ? 'available' : 'disabled',
+                    })
+                    : Object.freeze({ kind: 'select-sequence', index: Number(choice.value) });
+                this.entityInteractionBindings.set(token, Object.freeze({
+                    componentId: interaction.componentId,
+                    edit,
+                }));
+                return Object.freeze({
+                    token,
+                    handlerId: ESCALATING_FAILURE_HANDLER_ID,
+                    interactionKind: 'escalating-failure',
+                    label: choice.label,
+                    ...(choice.shortLabel === undefined ? {} : { shortLabel: choice.shortLabel }),
+                    active: choice.active ?? false,
+                    disabled: choice.disabled ?? false,
+                    ...(choice.selectionTone === undefined ? {} : { selectionTone: choice.selectionTone }),
+                    ...(choice.colors === undefined ? {} : { colors: choice.colors }),
+                    ...(choice.keepOpen === undefined ? {} : { keepOpen: choice.keepOpen }),
+                    ...(choice.displayType === undefined ? {} : { displayType: choice.displayType }),
+                    ...(choice.tooltipType === undefined ? {} : { tooltipType: choice.tooltipType }),
+                    ...(choice.failureTarget === undefined ? {} : { failureTarget: choice.failureTarget }),
+                } satisfies MekEquipmentChoice);
+            })),
+        })));
     }
 
     private reject(reason: string): void {

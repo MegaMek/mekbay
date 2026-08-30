@@ -1,0 +1,127 @@
+<div class="wide-dialog lobby-dialog">
+    <h2 class="wide-dialog-title">Operation Lobby</h2>
+    <div class="wide-dialog-body">
+        @if (lobbyService.state(); as lobby) {
+            <div class="lobby-controls">
+                <div class="lobby-code-control">
+                    <span class="lobby-code-label">Lobby Code</span>
+                    <button class="lobby-code-wrapper bt-button copy-button" type="button" title="Copy lobby code" aria-label="Copy lobby code" (click)="copyCode()">
+                        <code id="lobby-code" class="lobby-code">{{ lobby.code }}</code>
+                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M8 7V3h11a2 2 0 0 1 2 2v11h-4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3Zm2 0h5a2 2 0 0 1 2 2v5h2V5h-9v2Zm5 2H5v10h10V9Z" />
+                        </svg>
+                    </button>
+                </div>
+                <label class="lock-control" [class.read-only]="!lobby.isHost">
+                    <input type="checkbox" class="bt-checkbox" [checked]="lobby.locked" [disabled]="!lobby.isHost" (change)="onLockChange($event)" />
+                    <span>Locked</span>
+                </label>
+            </div>
+
+            <div class="op-sides lobby-sides" cdkDropListGroup>
+                <section class="op-side">
+                    <div class="op-side-label friendly-label">Friendly</div>
+                    <div class="op-force-list participant-list" cdkDropList [cdkDropListData]="friendlyParticipants()" (cdkDropListDropped)="onDrop($event, 'friendly')">
+                        @for (participant of friendlyParticipants(); track participant.publicId) {
+                            <article class="lobby-participant" cdkDrag [cdkDragData]="participant" [cdkDragDisabled]="participant.self" [class.self]="participant.self" [class.enemy]="participant.alignment === 'enemy'" [class.offline]="!participant.connected">
+                                <div class="participant-header">
+                                    <div class="participant-identity">
+                                        <span class="participant-name" [title]="participant.publicId">{{ participant.label }}</span>
+                                        @if (!participant.connected) { <span class="offline-badge">OFFLINE</span> }
+                                        @if (lobby.isHost && !participant.self) {
+                                            <button class="bt-button kick-button" type="button" title="Kick participant" (click)="kick(participant)">KICK</button>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="participant-forces">
+                                    @for (force of participant.forces; track force.instanceId) {
+                                        <div class="op-force" [class.missing]="!force.exists">
+                                            <div class="op-force-main">
+                                                @if (force.factionImgUrl || force.eraImgUrl) {
+                                                    <span class="op-force-icons">
+                                                        @if (force.factionImgUrl; as factionImgUrl) {
+                                                            <img [src]="factionImgUrl" class="op-faction-icon" alt="" />
+                                                        }
+                                                        @if (force.eraImgUrl; as eraImgUrl) {
+                                                            <img [src]="eraImgUrl" class="op-era-icon" [alt]="force.eraName || 'Era'" [title]="force.eraName || 'Era'" />
+                                                        }
+                                                    </span>
+                                                }
+                                                <span class="op-force-name" [title]="force.instanceId">{{ force.name }}</span>
+                                            </div>
+                                            @if (force.metric && force.points > 0) {
+                                                <span class="op-force-val">{{ force.metric }}: {{ force.points | number }}</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    </div>
+                    <div class="op-total">
+                        @if (friendlyTotals().bv > 0) { <span>BV: {{ friendlyTotals().bv | number }}</span> }
+                        @if (friendlyTotals().pv > 0) { <span>PV: {{ friendlyTotals().pv | number }}</span> }
+                    </div>
+                </section>
+
+                <div class="op-vs" aria-hidden="true">
+                    <svg fill="currentColor" viewBox="0 0 96 96" width="28" height="28">
+                        <path d="m72 32.2c-13.3 2.3-21-1.9-24.1-4.3-3 2.4-10.7 6.7-24 4.3-.1 3.1-.2 8.1-.2 8.4.2 16.4 7.4 30.4 19.5 38.9 1.4 1 3 2 4.6 2.7h.2c1.6-.7 3.2-1.7 4.7-2.7 12-8.5 19.4-22.5 19.4-38.8 0-.3 0-5.3-.1-8.5ZM6.59 9.55l8.71 9.95-6.41 6.2c-.1.2-.1.5 0 .7l1.21 1.1c.2.2.4.3.7.2l6.8-4 3.4 3.6.2-.2 1.2.2c4.5 1 8.3 1.3 11.4 1L23.3 18.1l3.8-6.8c.1-.3.1-.6-.1-.6l-1.1-1.15c-.1-.35-.5-.35-.7 0l-6.3 6.15-9.61-8.8c.7-1.4.26-3.4-1-4.8-1.7-1.68-4.6-1.68-6.4 0-1.776 1.7-1.776 4.8 0 6.5 1.2 1.28 3.1 1.5 4.7.95ZM9.09 80c-.7.5-1.3 1.5-1.7 2.2L.414 95.3 13.9 88.8c1-.3 1.7-.9 2.4-1.7l13.8-14c-2.1-2.4-3.9-5.4-5.4-8.4L9.09 80Zm80.11-70.4-8.7 9.9 6.4 6.2c.1.2.1.5 0 .7l-1.2 1.1c-.2.2-.4.3-.7.2l-6.8-4-3.4 3.6-.2-.2-1.2.2c-4.5 1-8.3 1.3-11.4 1l10.5-10.2-3.8-6.8c-.1-.3-.1-.6.1-.7l1.1-1.1c.1-.4.5-.4.7 0l6.3 6.1 9.6-8.8c-.7-1.4-.2-3.4 1-4.8 1.7-1.7 4.6-1.7 6.4 0 1.8 1.7 1.8 4.8 0 6.5-1.2 1.3-3.1 1.5-4.7 1ZM86.7 80c.7.5 1.3 1.5 1.7 2.2l7 13.6-13.5-7c-1-.3-1.7-.9-2.4-1.7l-13.8-14c2.1-2.4 3.9-5.4 5.4-8.4L86.7 80Z" />
+                    </svg>
+                </div>
+
+                <section class="op-side enemy">
+                    <div class="op-side-label enemy-label">Hostile</div>
+                    <div class="op-force-list participant-list" cdkDropList [cdkDropListData]="enemyParticipants()" (cdkDropListDropped)="onDrop($event, 'enemy')">
+                        @for (participant of enemyParticipants(); track participant.publicId) {
+                            <article class="lobby-participant" cdkDrag [cdkDragData]="participant" [cdkDragDisabled]="participant.self" [class.self]="participant.self" [class.enemy]="participant.alignment === 'enemy'" [class.offline]="!participant.connected">
+                                <div class="participant-header">
+                                    <div class="participant-identity">
+                                        <span class="participant-name" [title]="participant.publicId">{{ participant.label }}</span>
+                                        @if (!participant.connected) { <span class="offline-badge">OFFLINE</span> }
+                                        @if (lobby.isHost && !participant.self) {
+                                            <button class="bt-button kick-button" type="button" title="Kick participant" (click)="kick(participant)">KICK</button>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="participant-forces">
+                                    @for (force of participant.forces; track force.instanceId) {
+                                        <div class="op-force" [class.missing]="!force.exists">
+                                            <div class="op-force-main">
+                                                @if (force.factionImgUrl || force.eraImgUrl) {
+                                                    <span class="op-force-icons">
+                                                        @if (force.factionImgUrl; as factionImgUrl) {
+                                                            <img [src]="factionImgUrl" class="op-faction-icon" alt="" />
+                                                        }
+                                                        @if (force.eraImgUrl; as eraImgUrl) {
+                                                            <img [src]="eraImgUrl" class="op-era-icon" [alt]="force.eraName || 'Era'" [title]="force.eraName || 'Era'" />
+                                                        }
+                                                    </span>
+                                                }
+                                                <span class="op-force-name" [title]="force.instanceId">{{ force.name }}</span>
+                                            </div>
+                                            @if (force.metric && force.points > 0) {
+                                                <span class="op-force-val">{{ force.metric }}: {{ force.points | number }}</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    </div>
+                    <div class="op-total">
+                        @if (enemyTotals().bv > 0) { <span>BV: {{ enemyTotals().bv | number }}</span> }
+                        @if (enemyTotals().pv > 0) { <span>PV: {{ enemyTotals().pv | number }}</span> }
+                    </div>
+                </section>
+            </div>
+            <p class="drag-hint">Drag participants between sides to reassign alignment.</p>
+        }
+    </div>
+    <div class="wide-dialog-actions">
+        <button class="bt-button" type="button" (click)="leave()">LEAVE LOBBY</button>
+        <button class="bt-button" type="button" (click)="close()">CLOSE</button>
+    </div>
+</div>
+
+

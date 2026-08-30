@@ -4,15 +4,17 @@
 import { computed, signal } from '@angular/core';
 import type { CBTForce } from './cbt-force.model';
 import type { ASForceUnit } from './as-force-unit.model';
+import type { BaseEntity } from './entity/base-entity';
 import type { UnitInstanceId } from './runtime/runtime-state';
 import type { UnitSummary } from './unit-summary.model';
+import type { UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 /** A direct Classic member. Its force owns the entity, rules, and sparse runtime. */
 export class CBTForceMember {
     readonly kind: 'cbt';
     readonly id: UnitInstanceId;
     readonly force: CBTForce;
-    readonly summary: UnitSummary;
+    readonly entity: BaseEntity;
     readonly #runtime = signal<Readonly<{
         owner: object | null;
         revision: number | null;
@@ -43,12 +45,12 @@ export class CBTForceMember {
     public constructor(
         id: UnitInstanceId,
         force: CBTForce,
-        summary: UnitSummary,
+        entity: BaseEntity,
     ) {
         this.kind = 'cbt';
         this.id = id;
         this.force = force;
-        this.summary = summary;
+        this.entity = entity;
         Object.freeze(this);
     }
 
@@ -66,17 +68,19 @@ export class CBTForceMember {
         return groupId;
     }
 
-    public getSummary(): UnitSummary {
-        return this.summary;
+    public getFormationEntity(): BaseEntity {
+        return this.entity;
     }
+
 }
 
 /** A real family narrowing used only by Mek-specific rules and UI. */
 export type CBTMekForceMember = CBTForceMember & Readonly<{
-    summary: UnitSummary & Readonly<{ entityType: 'Mek' }>;
+    entity: BaseEntity & Readonly<{ entityType: 'Mek' }>;
 }>;
 
 export type ForceMember = ASForceUnit | CBTForceMember;
+export type ForceMemberPresentationUnit = UnitSummary | BaseEntity;
 
 export function isCBTForceMember(value: ForceMember | null | undefined): value is CBTForceMember {
     return value !== null
@@ -86,11 +90,41 @@ export function isCBTForceMember(value: ForceMember | null | undefined): value i
 }
 
 export function isCBTMekForceMember(value: ForceMember | null | undefined): value is CBTMekForceMember {
-    return isCBTForceMember(value) && value.summary.entityType === 'Mek';
+    return isCBTForceMember(value) && value.entity.entityType === 'Mek';
 }
 
-export function forceMemberSummary(value: ForceMember): UnitSummary {
-    return isCBTForceMember(value) ? value.summary : value.getSummary();
+export function alphaStrikeMemberSummary(value: ASForceUnit): UnitSummary {
+    return value.getSummary();
+}
+
+/** Entity for loaded Classic members; lightweight catalog projection for Alpha Strike. */
+export function forceMemberPresentationUnit(value: ForceMember): ForceMemberPresentationUnit {
+    return isCBTForceMember(value) ? value.entity : value.getSummary();
+}
+
+/**
+ * Explicit catalog boundary for search-derived metadata and cross-system admission.
+ * Classic members never retain the returned projection.
+ */
+export function resolveForceMemberCatalogSummary(
+    value: ForceMember,
+    resolve: (provider: UnitProviderId, uuid: UnitUuid) => UnitSummary | undefined,
+): UnitSummary | undefined {
+    if (!isCBTForceMember(value)) return value.getSummary();
+    const identity = value.force.getUnitSourceIdentity(value.id);
+    return identity ? resolve(identity.provider, identity.uuid) : undefined;
+}
+
+export function forceMemberDisplayName(value: ForceMember): string {
+    return isCBTForceMember(value) ? value.entity.displayName() : value.getDisplayName();
+}
+
+export function forceMemberChassis(value: ForceMember): string {
+    return isCBTForceMember(value) ? value.entity.chassis() : value.getSummary().chassis;
+}
+
+export function forceMemberModel(value: ForceMember): string {
+    return isCBTForceMember(value) ? value.entity.model() : value.getSummary().model;
 }
 
 export function forceMemberAlias(value: ForceMember): string | undefined {
@@ -111,13 +145,13 @@ export function forceMemberPilotStats(value: ForceMember): string {
 /** Current skill-adjusted BV/PV for one visible force member. */
 export function forceMemberAdjustedValue(value: ForceMember): number {
     if (!isCBTForceMember(value)) return value.getBv();
-    return value.adjustedBattleValue() ?? value.summary.bv;
+    return value.adjustedBattleValue() ?? value.entity.battleValue();
 }
 
 /** Pristine/base BV/PV for one visible force member. */
 export function forceMemberBaseValue(value: ForceMember): number {
     if (!isCBTForceMember(value)) return value.getPreSkillBv();
-    return value.pristineBattleValue() ?? value.summary.bv;
+    return value.pristineBattleValue() ?? value.entity.battleValue();
 }
 
 export function forceMemberCommander(value: ForceMember): boolean {

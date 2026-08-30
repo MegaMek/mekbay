@@ -594,6 +594,7 @@ function createFormationExistingForceUnit(
             gameSystem,
         },
         getSummary: () => unit,
+        getFormationSummary: () => unit,
         getBv: () => 0,
         pilotSkill: () => options.pilotSkill ?? 4,
         gunnerySkill: () => options.gunnerySkill ?? 4,

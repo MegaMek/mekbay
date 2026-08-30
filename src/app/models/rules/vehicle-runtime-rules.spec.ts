@@ -20,13 +20,33 @@ import {
     TOTAL_WARFARE_RULESET,
     type CBTRuleset,
 } from '../cbt-ruleset.model';
-import { componentIdForMount } from '../runtime/non-mek-runtime-index';
+import { buildNonMekRuntimeIndex, componentIdForMount } from '../runtime/non-mek-runtime-index';
 import { NonMekUnitInstance } from '../runtime/non-mek-unit-instance';
 import { asUnitInstanceId, type InstanceBaselineRef } from '../runtime/runtime-state';
 import { nonMekDamageTrackId } from './non-mek-damage-track-rules';
 import { projectVehicleRuntimeRules } from './vehicle-runtime-rules';
 
 describe('projectVehicleRuntimeRules', () => {
+    it('publishes only damage tracks supported by the Entity topology', () => {
+        const turretless = new TestTankEntity();
+        const turreted = new TestTankEntity();
+        turreted.hasTurret.set(true);
+        const vtol = new TestVtolEntity();
+        const naval = new TestSupportNavalEntity();
+        const sheetIds = (entity: TestTankEntity | TestVtolEntity | TestSupportNavalEntity) =>
+            [...buildNonMekRuntimeIndex(entity).damageTracks.values()].map(track => track.sheetId);
+
+        expect(sheetIds(turretless)).not.toContain('turret_locked');
+        expect(sheetIds(turretless)).not.toContain('stabilizer_hit_turret');
+        expect(sheetIds(turreted)).toContain('turret_locked');
+        expect(sheetIds(turreted)).toContain('stabilizer_hit_turret');
+        expect(sheetIds(vtol)).toContain('flight_stabilizer_hit');
+        expect(sheetIds(vtol)).not.toContain('turret_locked');
+        expect(sheetIds(naval)).toContain('turret_locked_f');
+        expect(sheetIds(naval)).toContain('turret_locked_r');
+        expect(sheetIds(naval)).not.toContain('turret_locked');
+    });
+
     it('uses the same direct vehicle rules owner for Tank, VTOL, and naval families', () => {
         const entities = [
             new TestTankEntity(),

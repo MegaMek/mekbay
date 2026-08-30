@@ -14,6 +14,7 @@ import type {
 } from '../../../models/cbt-force.model';
 import type { ComponentId, LocationId } from '../../../models/entity/entity-identifiers';
 import { getMekLocationLabel, MEK_TORSO_LOCATIONS } from '../../../models/entity/types';
+import { gameRulesFor } from '../../../models/rules/game-rules';
 import {
     MEK_CREW_STATE_CONTROLS,
     MEK_LOCATION_CONDITION_CONTROLS,
@@ -44,7 +45,6 @@ import { OverlayManagerService } from '../../../services/overlay-manager.service
 import { PickerFactoryService } from '../../../services/picker-factory.service';
 import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
 import { ToastService } from '../../../services/toast.service';
-import { clusterTableForMekRecordSheet } from '../../../utils/record-sheet-reference-table';
 import { ClusterTableDialogComponent } from '../../cluster-table-dialog/cluster-table-dialog.component';
 import { hasMekRuntime } from '../../../models/cbt-unit-snapshot';
 import { WeaponTargetChoiceMenuComponent } from '../../equipment-dialog/weapon-target-choice-menu.component';
@@ -307,6 +307,16 @@ export class PageViewerMekInteractionService {
                     ? location.modularArmor.previewRemaining
                     : location.modularArmor.committedRemaining
                 : 0);
+        const directSnapshot = member.force.getUnitSnapshot(member.id);
+        const criticalProfile = directSnapshot && hasMekRuntime(directSnapshot)
+            ? directSnapshot.query.mekCriticalChance(
+                interaction.locationId,
+                pending ? 'pending' : 'committed',
+            )
+            : undefined;
+        const hardenedArmorApplies = criticalProfile?.modifiers.some(modifier =>
+            modifier.label === 'Hardened armor in damaged facing') === true
+            && (pending ? face.previewRemaining : face.committedRemaining) > 0;
         const armorDamage = Math.min(delta, armorRemaining);
         if (armorDamage > 0) {
             const accepted = await this.dispatchDirect(
@@ -320,12 +330,16 @@ export class PageViewerMekInteractionService {
         if (internalDamage <= 0) return;
         const current = member.force.getMekRecordSheetSnapshot(member.id);
         if (!current) return;
-        await this.dispatchDirect(member, {
-            kind: 'internal',
-            locationId: interaction.locationId,
-            button: 'primary',
+        await this.dispatchCommand(member, {
+            type: 'damage-internal',
+            commandId: createCommandId(),
             expectedRevision: current.stateRevision,
-        }, internalDamage);
+            locationId: interaction.locationId,
+            amount: internalDamage,
+            target: pending ? 'pending' : 'committed',
+            hardenedArmorApplies,
+            armorDamagedBySameHit: armorDamage > 0,
+        });
     }
 
     private openCriticalPicker(
@@ -624,6 +638,7 @@ export class PageViewerMekInteractionService {
                 data: {
                     locationLabel: getMekLocationLabel(profile.locationCode) ?? profile.locationCode,
                     canBlowOff: profile.canBlowOff,
+                    industrialMek: profile.industrialMek,
                     modifiers: profile.modifiers,
                 } satisfies MekCriticalChanceDialogData,
             },
@@ -1148,7 +1163,10 @@ export class PageViewerMekInteractionService {
         const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
         if (!snapshot) return;
         this.dialogs.createDialog(ClusterTableDialogComponent, {
-            data: { table: clusterTableForMekRecordSheet(snapshot) },
+            data: {
+                unit: member.entity,
+                gameRules: gameRulesFor(snapshot.ruleset),
+            },
         });
     }
 

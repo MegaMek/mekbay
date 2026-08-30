@@ -29,6 +29,7 @@ import { getFactionImg } from '../../models/factions.model';
 import { GameSystem } from '../../models/common.model';
 import { AppUpdateService } from '../../services/app-update.service';
 import { ForceOperationService } from '../../services/force-operation.service';
+import { LobbyService } from '../../services/lobby.service';
 import { isCBTForceMember, isCBTMekForceMember } from '../../models/force-member.model';
 import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
 
@@ -59,6 +60,7 @@ export class SidebarFooterComponent {
     dialogsService = inject(DialogsService);
     dataService = inject(DataService);
     appUpdateService = inject(AppUpdateService);
+    lobbyService = inject(LobbyService);
     compactModeService = inject(CompactModeService);
     menuTriggers = viewChildren<CdkMenuTrigger>(CdkMenuTrigger);
 
@@ -362,6 +364,23 @@ export class SidebarFooterComponent {
 
     loadOperation(): void {
         void this.forceImportService.showLoadForceDialog({ initialTab: 'Operations' });
+    }
+
+    async createLobby(): Promise<void> {
+        try {
+            await this.lobbyService.createLobby();
+            await this.lobbyService.showLobbyDialog();
+        } catch (error) {
+            this.toastService.showToast(error instanceof Error ? error.message : 'Could not create the lobby.', 'error');
+        }
+    }
+
+    async joinLobby(): Promise<void> {
+        await this.lobbyService.promptAndJoin();
+    }
+
+    async showLobbyDialog(): Promise<void> {
+        await this.lobbyService.showLobbyDialog();
     }
 
     async requestRepairAll(): Promise<void> {

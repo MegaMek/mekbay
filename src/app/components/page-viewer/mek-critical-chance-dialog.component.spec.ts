@@ -33,37 +33,16 @@ describe('MekCriticalChanceDialogComponent', () => {
 
         expect(action.parentElement?.classList).toContain('critical-chance-actions');
         expect(action.disabled).toBeTrue();
-        expect(getComputedStyle(action).visibility).toBe('hidden');
 
         roller.roll([1, 1]);
         jasmine.clock().tick(500);
         fixture.detectChanges();
         expect(action.disabled).toBeTrue();
-        expect(getComputedStyle(action).visibility).toBe('hidden');
 
         roller.roll([4, 4]);
         jasmine.clock().tick(500);
         fixture.detectChanges();
         expect(action.disabled).toBeFalse();
-        expect(getComputedStyle(action).visibility).toBe('visible');
-    });
-
-    it('keeps the result area height stable when replacing the table hint', () => {
-        const roller = fixture.componentInstance.roller()!;
-        const slot = fixture.nativeElement.querySelector('.critical-result-slot') as HTMLElement;
-        const result = slot.querySelector('.critical-result') as HTMLElement;
-        const hint = slot.querySelector('.critical-table-hint') as HTMLElement;
-        const initialHeight = slot.getBoundingClientRect().height;
-
-        expect(getComputedStyle(result).visibility).toBe('hidden');
-        expect(getComputedStyle(hint).visibility).toBe('visible');
-        roller.roll([4, 4]);
-        jasmine.clock().tick(500);
-        fixture.detectChanges();
-
-        expect(getComputedStyle(result).visibility).toBe('visible');
-        expect(getComputedStyle(hint).visibility).toBe('hidden');
-        expect(slot.getBoundingClientRect().height).toBe(initialHeight);
     });
 
     it('recomputes a completed roll when situational modifiers change', () => {

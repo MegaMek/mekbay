@@ -7,9 +7,13 @@ import {
     isFlailFlags,
     isHandClawFlags,
     isTalonFlags,
+    physicalEquipmentOperatingHeatFromFlags,
     resolvePhysicalWeaponDamageFromFlags,
 } from '../entity/utils/physical-weapon-kernel';
-import { isShieldEquipment } from '../entity/utils/physical-weapon';
+import {
+    isShieldEquipment,
+    isSpotWelderEquipment,
+} from '../entity/utils/physical-weapon';
 import type { IntrinsicWeapon } from '../entity/types/weapon';
 import { getVibrobladeProfileFromFlags } from '../rules/vibroblade-rules';
 import { VIBROBLADE_ON_MODE } from '../vibroblade-mode.model';
@@ -71,6 +75,8 @@ export interface MekPhysicalAttackProjectionRowV2 {
     readonly locationIds: readonly LocationId[];
     readonly locationCodes: readonly string[];
     readonly effect: MekPhysicalAttackEffectV2;
+    /** Heat generated each time this physical equipment is used. */
+    readonly firingHeat: number;
     /** False for passive Core shield rows that are displayed but cannot attack independently. */
     readonly selectable: boolean;
     /** Sparse runtime targeting overlay; absent means not selected. */
@@ -169,6 +175,9 @@ export function projectMekPhysicalAttacksV2(
                 locationIds: Object.freeze([...group.locationIds]),
                 locationCodes: Object.freeze(locationCodes),
                 effect,
+                firingHeat: isSpotWelderEquipment(equipment)
+                    ? physicalEquipmentOperatingHeatFromFlags(equipment.flags)
+                    : 0,
                 selectable: !coreShield,
             }));
         }
@@ -191,6 +200,7 @@ export function projectMekPhysicalAttacksV2(
                 locationIds: Object.freeze(locationIds),
                 locationCodes: Object.freeze([...action.locations]),
                 effect,
+                firingHeat: 0,
                 selectable: true,
             }));
         }

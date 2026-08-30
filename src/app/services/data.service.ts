@@ -1022,18 +1022,10 @@ export class DataService {
         this.catalogActivationFinalizing = true;
         let summaryCommitted = false;
         try {
-            const eras = pending.kind === 'megamek'
-                ? pending.core.dependencies.eras.eras
-                : this.getEras();
-            const factions = pending.kind === 'megamek'
-                ? pending.core.dependencies.factions.factions
-                : this.getFactions();
-            const equipmentRegistry = pending.kind === 'megamek'
-                ? pending.core.dependencies.equipment.registry
-                : this.getEquipmentRegistry();
-            const membershipState = pending.kind === 'megamek'
-                ? { eras, factions }
-                : this.cloneEraFactionMembershipState(eras, factions);
+            const eras = pending.core.dependencies.eras.eras;
+            const factions = pending.core.dependencies.factions.factions;
+            const equipmentRegistry = pending.core.dependencies.equipment.registry;
+            const membershipState = { eras, factions };
 
             const runtimePreparationStartedAt = Date.now();
             const runtimeCandidate: PreparedUnitRuntimeCatalog =
@@ -1538,29 +1530,6 @@ export class DataService {
         return cloudTs > localTs;
     }
 
-    /** Detached synthetic membership projection for auxiliary Unit overlays. */
-    private cloneEraFactionMembershipState(
-        eras: readonly Era[],
-        factions: readonly Faction[],
-    ): { eras: Era[]; factions: Faction[] } {
-        return {
-            eras: eras.map(era => ({
-                ...era,
-                factions: new Set(era.factions),
-                units: new Set(era.units),
-            })),
-            factions: factions.map(faction => ({
-                ...faction,
-                eras: Object.fromEntries(
-                    Object.entries(faction.eras).map(([eraId, units]) => [
-                        eraId,
-                        new Set(units as Set<number>),
-                    ]),
-                ),
-            })),
-        };
-    }
-
     private async normalizePersistedForce(
         raw: SerializedForce,
         materializeUnits = true,
@@ -1669,7 +1638,7 @@ export class DataService {
             }
             // A detached candidate represents bytes already observed in cloud.
             // Bind that predecessor before its comparable persistent witness is
-            // captured so equal-time supported and quarantined CBT snapshots can
+            // captured so equal-time supported CBT snapshots can
             // be compared exactly against the live owner.
             force.markCloudCBTForceV2Saved(persistenceBytes);
         } catch (error) {
@@ -1985,7 +1954,11 @@ export class DataService {
             && !this.activeForceAuthority.has(instanceId);
     }
 
-    public async getForce(instanceId: string, ownedOnly: boolean = false): Promise<Force | null> {
+    public async getForce(
+        instanceId: string,
+        ownedOnly: boolean = false,
+        { skipLocal = false, showLoading = true }: { skipLocal?: boolean; showLoading?: boolean } = {},
+    ): Promise<Force | null> {
         // Storage reconciliation is detached work. It may have storage/cloud
         // side effects only while the ID remains continuously ownerless.
         const ownerlessLease = this.acquireOwnerlessForceOperation(instanceId);
@@ -1996,15 +1969,15 @@ export class DataService {
         if (!ownerlessLease) return null;
         await ownerlessLease.ready;
         if (!detachedAuthorityIsCurrent()) return null;
-        const localRaw = await this.dbService.getForce(instanceId);
+        const localRaw = skipLocal ? null : await this.dbService.getForce(instanceId);
         let cloudRaw: any | null = null;
         let triedCloud = false;
-        this.isCloudForceLoading.set(true);
+        if (showLoading) this.isCloudForceLoading.set(true);
         try {
             const ws = await this.canUseCloud();
             if (ws) {
                 try {
-                    cloudRaw = await this.getForceCloud(instanceId, ownedOnly);
+                    cloudRaw = await this.getForceCloud(instanceId, ownedOnly, !skipLocal);
                     triedCloud = true;
                 } catch {
                     cloudRaw = null;
@@ -2012,12 +1985,11 @@ export class DataService {
                 }
             }
         } finally {
-            this.isCloudForceLoading.set(false);
+            if (showLoading) this.isCloudForceLoading.set(false);
         }
         let local: Force | null = null;
         let cloud: Force | null = null;
         let result: Force | null = null;
-        let cloudWasQuarantined = false;
         let resultHasDurableLocalIdentity = false;
         if (localRaw) {
             try {
@@ -2034,36 +2006,16 @@ export class DataService {
             }
         }
 
-        // Durable IDs are transport authority (C3 endpoints, selection and
-        // retained sidecars all key by them). Never silently remint a duplicate
-        // or missing ID while opening persistence; quarantine that source.
-        if (local && hasInvalidDurableForceIds(local)) {
-            this.logger.error(`Local force ${instanceId} has invalid or duplicate durable group/unit IDs and was quarantined.`);
-            this.destroyDetachedForce(local);
-            local = null;
-        }
-        if (cloud && hasInvalidDurableForceIds(cloud)) {
-            this.logger.error(`Cloud force ${instanceId} has invalid or duplicate durable group/unit IDs and was quarantined.`);
-            this.destroyDetachedForce(cloud);
-            cloud = null;
-            cloudWasQuarantined = true;
-        }
-
         let cloudIsNewer = false;
         if (local && cloud) {
             const localTimestamp = this.getComparableTimestamp(localRaw?.timestamp);
             const cloudTimestamp = this.getComparableTimestamp(cloudRaw?.timestamp);
-            if (localTimestamp === cloudTimestamp
-                && local.getWholeOwnerPersistentAuthoritySnapshotJson()
-                    !== cloud.getWholeOwnerPersistentAuthoritySnapshotJson()) {
-                this.logger.error(
-                    `Force ${instanceId} has divergent local and cloud authority at the same timestamp; both copies were quarantined.`,
-                );
-                this.destroyDetachedForce(local);
-                this.destroyDetachedForce(cloud);
-                return null;
-            }
-            cloudIsNewer = this.isCloudNewer(localRaw, cloudRaw);
+            const sameTimestamp = localTimestamp === cloudTimestamp;
+            const localIsV1 = localRaw?.version === 1;
+            const cloudIsV2 = cloudRaw?.version === 2;
+            cloudIsNewer = sameTimestamp && localIsV1 && cloudIsV2
+                ? true
+                : this.isCloudNewer(localRaw, cloudRaw);
             result = cloudIsNewer ? cloud : local;
             resultHasDurableLocalIdentity = result === local;
         } else if (!triedCloud && local) {
@@ -2075,7 +2027,7 @@ export class DataService {
         }
 
         if (result?.gameSystem === GameSystem.CLASSIC) {
-            if (!triedCloud || cloudWasQuarantined) {
+            if (!triedCloud) {
                 result.setExpectedCloudCBTForceV2Revision(undefined);
             } else if (cloudRaw === null) {
                 result.setExpectedCloudCBTForceV2Revision(null);
@@ -2105,6 +2057,7 @@ export class DataService {
             && (cloudIsNewer || !local)
             && cloud
             && cloud.owned()
+            && !skipLocal
             && detachedAuthorityIsCurrent()) {
             if (!local) {
                 this.logger.info(`Force "${cloud.name}" exists in cloud but not locally: saving local copy.`);
@@ -3905,13 +3858,16 @@ export class DataService {
         }
     }
 
-    private async getForceCloud(instanceId: string, ownedOnly: boolean): Promise<any | null> {
+    private async getForceCloud(
+        instanceId: string,
+        ownedOnly: boolean,
+        includeOwnership: boolean = true,
+    ): Promise<any | null> {
         const ws = await this.canUseCloud();
         if (!ws) return null;
-        const uuid = this.userStateService.uuid();
         const payload = {
             action: 'getForce',
-            uuid,
+            ...(includeOwnership ? { uuid: this.userStateService.uuid() } : {}),
             instanceId,
             ownedOnly,
         };

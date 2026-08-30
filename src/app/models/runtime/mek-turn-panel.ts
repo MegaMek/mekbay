@@ -56,6 +56,7 @@ export interface MekTurnPanelSnapshot {
     readonly attackMovementModifiers: MekAttackMovementModifiers;
     readonly defenseModifierBreakdown: readonly UnitModifierBreakdownEntry[];
     readonly defenseModifierTotal: UnitModifierTotal;
+    readonly canTakeActiveActions: boolean;
     readonly spottingModifier: number;
     readonly turn: MekTurnStateV2;
     readonly cover: Readonly<{
@@ -107,6 +108,7 @@ export function projectMekTurnPanel(
         stationary: 0,
         walk: mekAttackMovementModifier(entity, 'walk', turn.airborne === true),
         run: mekAttackMovementModifier(entity, 'run', turn.airborne === true),
+        sprint: 0,
         jump: mekAttackMovementModifier(entity, 'jump', turn.airborne === true),
         UMU: mekAttackMovementModifier(entity, 'UMU', turn.airborne === true),
     });
@@ -116,6 +118,12 @@ export function projectMekTurnPanel(
         turn,
         conditions,
     );
+    const stationaryAction = movement.kind === 'supported'
+        ? movement.actions.find(action => action.kind === 'stationary')
+        : undefined;
+    const activeActionBlockers = new Set(['DESTROYED', 'SHUTDOWN', 'NO_FUNCTIONAL_CONTROL']);
+    const canTakeActiveActions = stationaryAction !== undefined
+        && !stationaryAction.reasons.some(reason => activeActionBlockers.has(reason.code));
     return Object.freeze({
         entityUuid: entity.uuid(),
         stateRevision: query.stateRevision,
@@ -127,6 +135,7 @@ export function projectMekTurnPanel(
         attackMovementModifiers,
         defenseModifierBreakdown,
         defenseModifierTotal: calculateModifierTotal(defenseModifierBreakdown),
+        canTakeActiveActions,
         spottingModifier: projectMekSpottingModifier(entity, index, query),
         turn,
         cover: Object.freeze({ ...water, building }),
@@ -200,6 +209,9 @@ function projectMekDefenseModifierBreakdown(
         entries.push({ label: 'Skidding', modifier: TN_SKIDDING_MODIFIER });
     }
     const movement = movementState.movement;
+    if (movement?.mode === 'sprint') {
+        entries.push({ label: 'Sprinting', modifier: -1 });
+    }
     if (movement?.mode === 'jump') {
         entries.push({ label: 'Jumped', modifier: TN_AIRBORNE_MOVE_TYPE_MODIFIER });
     } else if (turn.airborne === true) {

@@ -93,4 +93,36 @@ describe('UserStateService', () => {
 
         expect(service.accountProtectionPromptDismissed()).toBeTrue();
     });
+
+    it('stores a normalized display name in the local user record', async () => {
+        const service = TestBed.inject(UserStateService);
+        await service.whenReady();
+
+        await service.setDisplayName('  Specter  ');
+
+        expect(service.displayName()).toBe('Specter');
+        expect(dbService.saveUserData).toHaveBeenCalledWith(
+            jasmine.objectContaining({ displayName: 'Specter' }),
+        );
+    });
+
+    it('applies the remotely stored display name received at registration', async () => {
+        const service = TestBed.inject(UserStateService);
+        await service.whenReady();
+
+        await service.applyServerState({ displayName: 'Atlas' });
+
+        expect(service.displayName()).toBe('Atlas');
+        expect(dbService.saveUserData).toHaveBeenCalledWith(
+            jasmine.objectContaining({ displayName: 'Atlas' }),
+        );
+    });
+
+    it('rejects display names longer than 16 characters', async () => {
+        const service = TestBed.inject(UserStateService);
+        await service.whenReady();
+
+        await expectAsync(service.setDisplayName('12345678901234567'))
+            .toBeRejectedWithError('Display name must be 1 to 16 characters.');
+    });
 });

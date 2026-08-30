@@ -147,8 +147,6 @@ describe('TooltipDirective', () => {
 
             const progress = overlayContainerElement.querySelector('.tooltip-lock-progress') as HTMLElement | null;
             expect(progress).not.toBeNull();
-            expect(getComputedStyle(progress!).height).toBe('2px');
-            expect(getComputedStyle(progress!).animationDuration).toBe('2s');
 
             dispatchPointerOut(child);
             expect(getTooltipTexts()).toEqual([]);

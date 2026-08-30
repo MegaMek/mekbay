@@ -78,7 +78,6 @@ function workerUnit(unit: UnitSummary): UnitSearchWorkerUnit {
         ],
         weaponTypes: unit._weaponTypes ?? [],
         weaponTypeCounts: unit._weaponTypeCounts ?? {},
-        ...(unit.serverHost ? { serverHost: unit.serverHost } : {}),
     });
 }
 

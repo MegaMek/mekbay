@@ -16,9 +16,11 @@ import {
     forceMemberAlias,
     forceMemberBaseValue,
     forceMemberCommander,
+    forceMemberChassis,
     forceMemberDestroyed,
+    forceMemberModel,
     forceMemberPilotStats,
-    forceMemberSummary,
+    forceMemberPresentationUnit,
 } from '../../models/force-member.model';
 
 /*
@@ -63,7 +65,7 @@ import {
                 <div class="group-name">{{ group.groupDisplayName() }}</div>
                 <div class="units">
                     @for (fu of groupView.members; track fu.id) {
-                        @let summary = forceMemberSummary(fu);
+                        @let presentationUnit = forceMemberPresentationUnit(fu);
                         @let alias = forceMemberAlias(fu);
                         <div class="unit-square compact-mode" [class.destroyed]="forceMemberDestroyed(fu)">
                             @if (forceMemberCommander(fu)) {
@@ -79,12 +81,12 @@ import {
                                 </div>
                             }
                             <div class="unit-content">
-                                <unit-icon [unit]="summary" [size]="32"></unit-icon>
+                                <unit-icon [unit]="presentationUnit" [size]="32"></unit-icon>
                                 @if (unitDisplayName === 'chassisModel'
                                     || unitDisplayName === 'both'
                                     || !alias) {
-                                    <div class="unit-model">{{ summary.model | cleanModelString }}</div>
-                                    <div class="unit-chassis">{{ summary.chassis }}</div>
+                                    <div class="unit-model">{{ forceMemberModel(fu) | cleanModelString }}</div>
+                                    <div class="unit-chassis">{{ forceMemberChassis(fu) }}</div>
                                 }
                                 @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
                                     <div class="unit-alias"
@@ -334,9 +336,11 @@ export class ForcePreviewComponent {
     });
     protected readonly forceMemberAlias = forceMemberAlias;
     protected readonly forceMemberCommander = forceMemberCommander;
+    protected readonly forceMemberChassis = forceMemberChassis;
     protected readonly forceMemberDestroyed = forceMemberDestroyed;
+    protected readonly forceMemberModel = forceMemberModel;
     protected readonly forceMemberPilotStats = forceMemberPilotStats;
-    protected readonly forceMemberSummary = forceMemberSummary;
+    protected readonly forceMemberPresentationUnit = forceMemberPresentationUnit;
     readonly GameSystem = GameSystem;
 
     /** The force to display. */

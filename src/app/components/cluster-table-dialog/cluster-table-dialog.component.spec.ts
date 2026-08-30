@@ -9,7 +9,6 @@ import type { UnitSummary } from '../../models/unit-summary.model';
 import { CBTGameRules, CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 import { ClusterTableDialogComponent, shouldCombineReferenceTables } from './cluster-table-dialog.component';
-import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
 
 describe('shouldCombineReferenceTables', () => {
     it('combines only when the complete intrinsic table width fits', () => {
@@ -28,7 +27,7 @@ describe('ClusterTableDialogComponent', () => {
             imports: [ClusterTableDialogComponent],
             providers: [
                 { provide: DialogRef, useValue: { close } },
-                { provide: DIALOG_DATA, useValue: { table: clusterTableForUnit(unit), gameRules } },
+                { provide: DIALOG_DATA, useValue: { unit, gameRules } },
             ],
         });
         const fixture = TestBed.createComponent(ClusterTableDialogComponent);
@@ -36,293 +35,383 @@ describe('ClusterTableDialogComponent', () => {
         return fixture;
     }
 
-    function mekUnit(subtype = 'BattleMek'): UnitSummary {
-        return { type: 'Mek', subtype, comp: [] } as unknown as UnitSummary;
-    }
-
-    function clusterUnit(): UnitSummary {
-        const lrm = new WeaponEquipment({
-            id: 'lrm-5',
-            name: 'LRM 5',
-            type: 'weapon',
-            weapon: { ammoType: 'LRM', rackSize: 5 },
-        });
+    function unit(overrides: Partial<UnitSummary>): UnitSummary {
         return {
-            type: 'Tank',
-            subtype: 'Combat Vehicle',
-            comp: [{ id: 'lrm-5', q: 1, n: 'LRM 5', t: 'B', p: 0, l: 'TU', eq: lrm }],
+            type: 'Mek',
+            subtype: 'BattleMek',
+            weightClass: 'Medium',
+            tons: 50,
+            comp: [],
+            ...overrides,
         } as unknown as UnitSummary;
     }
 
-    it('rolls the selected location column from headers and cells', () => {
-        const fixture = createFixture(mekUnit());
-        const component = fixture.componentInstance;
-        const roller = fixture.debugElement.query(node => node.componentInstance instanceof DiceRollerComponent).componentInstance as DiceRollerComponent;
-        spyOn(roller, 'roll');
-
-        const leftCells = fixture.nativeElement.querySelectorAll('.hit-location-table tr > :nth-child(2)');
-        (leftCells[1] as HTMLTableCellElement).click();
-        component.onRollFinished({ results: [1, 1], sum: 2 });
-
-        expect(roller.roll).toHaveBeenCalledTimes(1);
-        expect(component.rolledResult()).toEqual({
-            roll: 2,
-            value: 'LT(C)',
-            column: { table: 'location', column: 'leftSide' },
-        });
-    });
-
-    it('looks up biped, quad, and tripod location boundaries', () => {
-        const cases = [
-            { subtype: 'BattleMek', column: 'frontRear' as const, roll: 7, value: 'CT' },
-            { subtype: 'QuadMek', column: 'rightSide' as const, roll: 3, value: 'RRL' },
-            { subtype: 'TripodMek', column: 'leftSide' as const, roll: 3, value: 'Leg (+1)†' },
-            { subtype: 'BattleMek', column: 'rightSide' as const, roll: 12, value: 'HD' },
-        ];
-
-        for (const testCase of cases) {
-            const fixture = createFixture(mekUnit(testCase.subtype));
-            const component = fixture.componentInstance;
-            component.rollLocationColumn(testCase.column);
-            component.onRollFinished({ results: [], sum: testCase.roll });
-            expect(component.rolledResult()?.value).withContext(testCase.subtype).toBe(testCase.value);
-            fixture.destroy();
-        }
-    });
-
-    it('places only the tripod leg note under hit locations', () => {
-        const fixture = createFixture(mekUnit('TripodMek'));
-        const component = fixture.componentInstance;
-
-        expect(component.hitLocationNotes.map(note => note.id)).toEqual(['tripodLeg']);
-        expect(component.clusterNotes.map(note => note.id)).not.toContain('tripodLeg');
-        expect(fixture.nativeElement.querySelector('.table-section .note:last-child')?.textContent)
-            .toContain('For a tripod');
-        expect(fixture.nativeElement.querySelector('.cluster-hit-table')?.parentElement?.parentElement?.textContent ?? '')
-            .not.toContain('For a tripod');
-    });
-
-    it('does not add a hit-location note for non-tripod units', () => {
-        const fixture = createFixture(mekUnit());
-
-        expect(fixture.componentInstance.hitLocationNotes).toEqual([]);
-        expect(fixture.nativeElement.querySelectorAll('.table-section .note')).toHaveSize(1);
-    });
-
-    it('keeps only a centered dismiss button in the footer', () => {
-        const fixture = createFixture(mekUnit());
-        const footer = fixture.nativeElement.querySelector('.dialog-buttons') as HTMLElement;
-
-        expect(footer.querySelectorAll('button')).toHaveSize(1);
-        expect(footer.textContent?.trim()).toBe('DISMISS');
-        expect(footer.querySelector('.notes')).toBeNull();
-    });
-
-    it('keeps only column headers in the table keyboard tab order', () => {
-        const fixture = createFixture(mekUnit());
-        const headerButtons = fixture.nativeElement.querySelectorAll('.hit-location-table thead .table-roll-button');
-        const cellButtons = fixture.nativeElement.querySelectorAll('.hit-location-table tbody .table-roll-button');
-
-        expect(headerButtons).toHaveSize(3);
-        expect([...headerButtons].every((button: Element) => !button.hasAttribute('tabindex'))).toBeTrue();
-        expect([...cellButtons].every((button: Element) => button.getAttribute('tabindex') === '-1')).toBeTrue();
-    });
-
-    it('looks up the cluster result in the selected rack-size column', () => {
-        const fixture = createFixture(clusterUnit());
-        const component = fixture.componentInstance;
-
-        component.rollClusterColumn(5);
-        component.onRollFinished({ results: [3, 4], sum: 7 });
-
-        expect(component.rolledResult()).toEqual({
-            roll: 7,
-            value: '3',
-            column: { table: 'cluster', rackSize: 5 },
-        });
-    });
-
-    it('renders locations before clusters in one table when enough width is available', () => {
+    function clusterWeaponUnit(overrides: Partial<UnitSummary> = {}): UnitSummary {
         const lrm = new WeaponEquipment({
             id: 'lrm-5',
             name: 'LRM 5',
             type: 'weapon',
             weapon: { ammoType: 'LRM', rackSize: 5 },
         });
-        const fixture = createFixture({
-            type: 'Mek',
-            subtype: 'BattleMek',
-            comp: [{ id: 'lrm-5', q: 1, n: 'LRM 5', t: 'B', p: 0, l: 'RA', eq: lrm }],
-        } as unknown as UnitSummary);
+        return unit({
+            comp: [{ id: 'lrm-5', q: 1, n: 'LRM 5', t: 'M', p: 0, l: 'RA', eq: lrm }],
+            ...overrides,
+        });
+    }
+
+    function selectTable(fixture: ReturnType<typeof createFixture>, groupId: string, optionId: string): void {
+        (fixture.nativeElement.querySelector(`[data-table-group="${groupId}"]`) as HTMLButtonElement).click();
+        fixture.detectChanges();
+        const option = fixture.nativeElement.querySelector(`[data-table-option="${optionId}"]`) as HTMLButtonElement | null;
+        option?.click();
+        fixture.detectChanges();
+    }
+
+    it('starts on the current unit table and renders one flat control per group', () => {
+        const fixture = createFixture(unit({ subtype: 'Tripod BattleMek' }));
+
+        expect(fixture.componentInstance.selectedOptionId()).toBe('mek-tripod');
+        expect(fixture.nativeElement.querySelectorAll('.table-group-button')).toHaveSize(4);
+        expect(fixture.nativeElement.querySelectorAll('.table-selector select')).toHaveSize(0);
+        expect(fixture.nativeElement.querySelector('[data-table-group="mek"]')?.textContent).toContain('Mek · Tripod');
+        expect(fixture.nativeElement.querySelector('[data-table-key="mek-tripod-locations"]')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('[data-table-key="mek-physical-locations"]')).not.toBeNull();
+    });
+
+    it('expands a multi-option group and selects its subtype', () => {
+        const fixture = createFixture(unit({}));
+
+        const vehicleButton = fixture.nativeElement.querySelector('[data-table-group="vehicle"]') as HTMLButtonElement;
+        expect(vehicleButton.textContent).toContain('Vehicle');
+        expect(vehicleButton.textContent).not.toContain('VTOL');
+
+        vehicleButton.click();
+        fixture.detectChanges();
+        const menu = fixture.nativeElement.querySelector('.table-subtype-menu') as HTMLElement;
+        expect(menu.querySelectorAll('.table-subtype-button')).toHaveSize(3);
+
+        (fixture.nativeElement.querySelector('[data-table-option="vehicle-vtol"]') as HTMLButtonElement).click();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.selectedOptionId()).toBe('vehicle-vtol');
+        expect(fixture.componentInstance.selectedGroupId()).toBe('vehicle');
+        expect(vehicleButton.textContent).toContain('Vehicle · VTOL');
+        expect(fixture.nativeElement.querySelector('.table-subtype-menu')).toBeNull();
+        expect(fixture.nativeElement.querySelector('[data-table-key="vehicle-vtol-locations"]')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('[data-table-key="vehicle-vtol-critical"]')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('[data-table-key="vehicle-motive-damage"]')).toBeNull();
+    });
+
+    it('selects a single-option group with one click', () => {
+        const fixture = createFixture(unit({}));
+
+        (fixture.nativeElement.querySelector('[data-table-group="cluster"]') as HTMLButtonElement).click();
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.selectedOptionId()).toBe('cluster-full');
+        expect(fixture.nativeElement.querySelector('.table-subtype-menu')).toBeNull();
+        expect(fixture.nativeElement.querySelector('[data-table-key="cluster-full"]')).not.toBeNull();
+    });
+
+    it('defaults vehicles and infantry to their own reference tables', () => {
+        const ground = createFixture(unit({ type: 'Tank', subtype: 'Combat Vehicle' }));
+        expect(ground.componentInstance.selectedOptionId()).toBe('vehicle-ground');
+        ground.destroy();
+
+        const superheavy = createFixture(unit({
+            type: 'Tank',
+            subtype: 'Support Vehicle',
+            weightClass: 'Large Support Vehicle',
+            tons: 180,
+        }));
+        expect(superheavy.componentInstance.selectedOptionId()).toBe('vehicle-ground-superheavy');
+        superheavy.destroy();
+
+        const infantry = createFixture(unit({ type: 'Infantry', subtype: 'Conventional Infantry' }));
+        expect(infantry.componentInstance.selectedOptionId()).toBe('infantry-conventional');
+        infantry.destroy();
+    });
+
+    it('rolls a generic table column and records its result', () => {
+        const fixture = createFixture(unit({}));
+        const component = fixture.componentInstance;
+        const roller = fixture.debugElement
+            .queryAll(node => node.componentInstance instanceof DiceRollerComponent)
+            .map(node => node.componentInstance as DiceRollerComponent)
+            .find(candidate => candidate.diceCount() === 2)!;
+        spyOn(roller, 'roll');
+
+        const leftHeader = fixture.nativeElement
+            .querySelector('[data-table-key="mek-biped-locations"] thead th:nth-child(2)') as HTMLTableCellElement;
+        leftHeader.click();
+        component.onRollFinished({ results: [1, 1], sum: 2 }, 2);
+        fixture.detectChanges();
+
+        expect(roller.roll).toHaveBeenCalledTimes(1);
+        expect(component.rolledResult()).toEqual({
+            tableKey: 'mek-biped-locations',
+            columnKey: 'leftSide',
+            rowKey: 'roll-2',
+            roll: 2,
+            value: 'LT(C)',
+        });
+        expect(component.rollCount()).toBe(1);
+        expect(component.rollHistory()[0]).toEqual(jasmine.objectContaining({
+            dice: '2d6',
+            faces: [1, 1],
+            table: 'Biped',
+            result: 'LT(C)',
+        }));
+        expect(fixture.nativeElement.querySelector('td.rolled-highlight')?.textContent.trim()).toBe('LT(C)');
+    });
+
+    it('rolls the configured one-die physical table and preserves grouped kick cells', () => {
+        const fixture = createFixture(unit({}), TW_GAME_RULES);
+        const component = fixture.componentInstance;
+        const table = component.displayedTables().find(candidate => candidate.key === 'mek-physical-locations')!;
+        const column = table.columns.find(candidate => candidate.key === 'kickFrontRear')!;
+        const roller = fixture.debugElement
+            .queryAll(node => node.componentInstance instanceof DiceRollerComponent)
+            .map(node => node.componentInstance as DiceRollerComponent)
+            .find(candidate => candidate.diceCount() === 1)!;
+        spyOn(roller, 'roll');
+
+        component.rollTableColumn(table, column);
+        component.onRollFinished({ results: [4], sum: 4 }, 1);
+        fixture.detectChanges();
+
+        expect(roller.roll).toHaveBeenCalledTimes(1);
+        expect(component.rolledResult()?.value).toBe('LL');
+        expect(fixture.nativeElement.querySelectorAll('[data-table-key="mek-physical-locations"] td[rowspan="3"]')).toHaveSize(6);
+        expect(fixture.nativeElement.querySelector('[data-table-key="mek-physical-locations"] td.rolled-highlight')?.textContent.trim()).toBe('LL');
+    });
+
+    it('keeps only rollable column headers in the keyboard tab order', () => {
+        const fixture = createFixture(unit({}));
+        const table = fixture.nativeElement.querySelector('[data-table-key="mek-biped-locations"]') as HTMLTableElement;
+        const headerButtons = table.querySelectorAll('thead .table-roll-button');
+        const cellButtons = table.querySelectorAll('tbody .table-roll-button');
+
+        expect(headerButtons).toHaveSize(3);
+        expect([...headerButtons].every(button => !button.hasAttribute('tabindex'))).toBeTrue();
+        expect([...headerButtons].every(button => button.classList.contains('bt-button'))).toBeTrue();
+        expect([...cellButtons].every(button => button.getAttribute('tabindex') === '-1')).toBeTrue();
+        expect([...cellButtons].every(button => !button.classList.contains('bt-button'))).toBeTrue();
+    });
+
+    it('does not make informational tables rollable', () => {
+        const fixture = createFixture(unit({ type: 'Infantry', subtype: 'Conventional Infantry' }));
+
+        expect(fixture.nativeElement.querySelectorAll('.reference-table .table-roll-button')).toHaveSize(0);
+        expect(fixture.componentInstance.hasRollableTable()).toBeFalse();
+        expect(fixture.nativeElement.querySelector('.roll-instructions')).toBeNull();
+
+    });
+
+    it('renders swarm modifiers with grouped attacking and friendly headers', () => {
+        const fixture = createFixture(unit({ type: 'Infantry', subtype: 'Battle Armor' }));
+        const table = fixture.nativeElement.querySelector(
+            '[data-table-key="battle-armor-swarm-modifiers"]',
+        ) as HTMLTableElement;
+        const headerRows = table.querySelectorAll('thead tr');
+
+        expect([...headerRows[0].querySelectorAll('th')].map(header => header.textContent?.trim()))
+            .toEqual(['ATTACKING BA', 'FRIENDLY']);
+        expect(headerRows[0].querySelectorAll('th')[1].getAttribute('colspan')).toBe('6');
+        expect([...headerRows[1].querySelectorAll('th')].map(header => header.textContent?.trim()))
+            .toEqual(['ACTIVE', '1', '2', '3', '4', '5', '6']);
+    });
+
+    it('marks compact and wide reference-table sections', () => {
+        const fixture = createFixture(unit({ type: 'Infantry', subtype: 'Battle Armor' }));
+        const legAttacks = fixture.nativeElement.querySelector(
+            '[data-table-section="battle-armor-leg-attacks"]',
+        ) as HTMLElement;
+        const swarmAttacks = fixture.nativeElement.querySelector(
+            '[data-table-section="battle-armor-swarm-attacks"]',
+        ) as HTMLElement;
+        const swarmModifiers = fixture.nativeElement.querySelector(
+            '[data-table-section="battle-armor-swarm-modifiers"]',
+        ) as HTMLElement;
+
+        expect(legAttacks.classList).toContain('compact-table-section');
+        expect(swarmAttacks.classList).toContain('compact-table-section');
+        expect(swarmModifiers.classList).not.toContain('compact-table-section');
+    });
+
+    it('renders both burst-fire titles as two deliberate lines', () => {
+        const fixture = createFixture(unit({ type: 'Infantry', subtype: 'Conventional Infantry' }));
+        const expectedTitles = new Map([
+            ['conventional-burst-fire-vehicles', "BURST-FIRE DAMAGE\n'MECHS, PROTOMECHS & VEHICLES"],
+            ['conventional-burst-fire-ba', 'BURST-FIRE DAMAGE\nBATTLE ARMOR'],
+        ]);
+
+        for (const [key, title] of expectedTitles) {
+            const heading = fixture.nativeElement.querySelector(
+                `[data-table-section="${key}"] > h3`,
+            ) as HTMLHeadingElement;
+            expect(heading.textContent).toBe(title);
+        }
+    });
+
+    it('merges unit cluster columns with a selected hit-location table when they fit', () => {
+        const fixture = createFixture(clusterWeaponUnit());
         fixture.componentInstance.useCombinedTable.set(true);
         fixture.detectChanges();
 
         const table = fixture.nativeElement.querySelector('.combined-table') as HTMLTableElement;
         const headers = [...table.querySelectorAll('thead th')].map(cell => cell.textContent?.trim());
         expect(headers).toEqual(['2d6 roll', 'LS', 'F/R', 'RS', '5']);
-        expect(fixture.nativeElement.querySelectorAll('.combined-table')).toHaveSize(1);
-        expect(fixture.nativeElement.querySelector('.hit-location-table')).toBeNull();
-        expect(fixture.nativeElement.querySelector('.cluster-hit-table')).toBeNull();
-        expect(table.querySelectorAll('tbody tr')).toHaveSize(11);
-        expect(fixture.nativeElement.querySelector('.physical-location-table')).not.toBeNull();
-        expect(fixture.nativeElement.querySelector('.combined-table .physical-location-table')).toBeNull();
+        expect(fixture.nativeElement.querySelector('[data-table-key="cluster-unit"]')).toBeNull();
+        expect(fixture.nativeElement.querySelector('[data-table-key="mek-physical-locations"]')).not.toBeNull();
     });
 
-    it('keeps dialog content hidden until the responsive layout is resolved', () => {
-        const fixture = createFixture(clusterUnit());
+    it('attributes rolls from a merged table to their source table', () => {
+        const fixture = createFixture(clusterWeaponUnit());
         const component = fixture.componentInstance;
-        component.useCombinedTable.set(true);
-        component.layoutResolved.set(false);
-        fixture.detectChanges();
-
-        const content = fixture.nativeElement.querySelector('.dialog-content') as HTMLElement;
-        expect(content.classList).toContain('layout-pending');
-        expect(fixture.nativeElement.querySelectorAll('.combined-table')).toHaveSize(1);
-
-        component.layoutResolved.set(true);
-        fixture.detectChanges();
-
-        expect(content.classList).not.toContain('layout-pending');
-    });
-
-    it('renders the grouped punch and kick table as a separate section after hit locations', () => {
-        const fixture = createFixture(mekUnit());
-        const sections = [...fixture.nativeElement.querySelectorAll('.table-section')] as HTMLElement[];
-        const physicalSection = sections.at(-1)!;
-        const table = physicalSection.querySelector('.physical-location-table') as HTMLTableElement;
-
-        expect(physicalSection.querySelector('h3')?.textContent).toBe('PUNCH & KICK LOCATION TABLE');
-        expect([...table.querySelectorAll('thead tr:first-child th')].map(cell => ({
-            text: cell.textContent?.replace(/\s+/g, ' ').trim(),
-            colspan: cell.getAttribute('colspan'),
-        }))).toEqual([
-            { text: '1d6 roll', colspan: null },
-            { text: 'PUNCH', colspan: '3' },
-            { text: 'KICK', colspan: '3' },
-        ]);
-        expect([...table.querySelectorAll('thead tr:nth-child(2) th')].map(cell => cell.textContent?.trim()))
-            .toEqual(['LS', 'F/R', 'RS', 'LS', 'F/R', 'RS']);
-        expect(table.querySelectorAll('tbody tr')).toHaveSize(6);
-        expect([...table.querySelectorAll('tbody tr:first-child td')].map(cell => cell.textContent?.trim()))
-            .toEqual(['1', 'LT', 'RA', 'RT', 'LL', 'RL', 'RL']);
-        const kickCells = [...table.querySelectorAll('tbody td[rowspan="3"]')];
-        expect(kickCells).toHaveSize(6);
-        expect(kickCells.map(cell => cell.textContent?.trim())).toEqual(['LL', 'RL', 'RL', 'LL', 'LL', 'RL']);
-        expect([...table.querySelectorAll('tbody tr:nth-child(2) td')].map(cell => cell.textContent?.trim()))
-            .toEqual(['2', 'LT', 'RT', 'RT']);
-    });
-
-    it('uses the Technical Warfare physical location table when its rules are active', () => {
-        const fixture = createFixture(mekUnit(), TW_GAME_RULES);
-        const firstRow = fixture.nativeElement.querySelector('.physical-location-table tbody tr:first-child') as HTMLTableRowElement;
-
-        expect([...firstRow.cells].map(cell => cell.textContent?.trim()))
-            .toEqual(['1', 'LT', 'LA', 'RT', 'LL', 'RL', 'RL']);
-    });
-
-    it('rolls one die and highlights the selected physical location', () => {
-        const fixture = createFixture(mekUnit());
-        const component = fixture.componentInstance;
-        const rollers = fixture.debugElement.queryAll(node => node.componentInstance instanceof DiceRollerComponent);
-        const physicalRoller = rollers
+        const table = component.displayedTables().find(candidate => candidate.key.includes('+'))!;
+        const roller = fixture.debugElement
+            .queryAll(node => node.componentInstance instanceof DiceRollerComponent)
             .map(node => node.componentInstance as DiceRollerComponent)
-            .find(roller => roller.diceCount() === 1)!;
-        spyOn(physicalRoller, 'roll');
+            .find(candidate => candidate.diceCount() === 2)!;
+        spyOn(roller, 'roll');
 
-        component.rollPhysicalColumn('kickFrontRear');
-        component.onRollFinished({ results: [4], sum: 4 });
+        component.rollTableColumn(table, table.columns.find(column => column.key === 'frontRear')!);
+        component.onRollFinished({ results: [3, 4], sum: 7 }, 2);
+        component.rollTableColumn(table, table.columns.find(column => column.key === 'rack-5')!);
+        component.onRollFinished({ results: [3, 4], sum: 7 }, 2);
         fixture.detectChanges();
 
-        expect(physicalRoller.roll).toHaveBeenCalledTimes(1);
-        expect(component.rolledResult()).toEqual({
-            roll: 4,
-            value: 'LL',
-            column: { table: 'physical', column: 'kickFrontRear' },
-        });
-        expect(fixture.nativeElement.querySelectorAll('.physical-location-table tr.rolled-row-highlight')).toHaveSize(1);
-        expect(fixture.nativeElement.querySelector('.physical-location-table td.rolled-highlight')?.textContent.trim()).toBe('LL');
-        expect(fixture.nativeElement.querySelectorAll('.physical-location-table td.rolled-row-highlight')).toHaveSize(3);
-
-        physicalRoller.isRolling.set(false);
-        component.rollPhysicalColumn('kickFrontRear');
-        component.onRollFinished({ results: [2], sum: 2 });
-        fixture.detectChanges();
-        expect(fixture.nativeElement.querySelector('.physical-location-table td.rolled-highlight')?.textContent.trim()).toBe('RL');
-        expect(fixture.nativeElement.querySelectorAll('.physical-location-table td.rolled-row-highlight')).toHaveSize(3);
-
-        physicalRoller.isRolling.set(false);
-        component.onRollFinished({ results: [5], sum: 5 });
-        fixture.detectChanges();
-        expect(fixture.nativeElement.querySelector('.physical-location-table td.rolled-highlight')?.textContent.trim()).toBe('LL');
-        expect(fixture.nativeElement.querySelectorAll('.physical-location-table td.rolled-row-highlight')).toHaveSize(3);
-
-        physicalRoller.isRolling.set(false);
-        component.rollPhysicalColumn('punchLeftSide');
-        component.onRollFinished({ results: [0], sum: 0 });
-        expect(component.rolledResult()).toBeNull();
-        component.onRollFinished({ results: [7], sum: 7 });
-        expect(component.rolledResult()).toBeNull();
+        expect(component.rollHistory().map(entry => entry.table)).toEqual(['Biped', 'Cluster']);
+        const headerLabels = [...fixture.nativeElement.querySelectorAll('.combined-table .roll-header-button')]
+            .map(button => button.getAttribute('aria-label'));
+        expect(headerLabels).toContain('Roll F/R on Biped');
+        expect(headerLabels).toContain('Roll 5 on Cluster');
     });
 
-    it('omits physical locations for units without a Mek hit-location table', () => {
-        const fixture = createFixture(clusterUnit());
+    it('shows separate hit-location and unit cluster tables when merging is disabled', () => {
+        const fixture = createFixture(clusterWeaponUnit());
+        fixture.componentInstance.useCombinedTable.set(false);
+        fixture.detectChanges();
 
-        expect(fixture.componentInstance.physicalRows).toEqual([]);
-        expect(fixture.nativeElement.querySelector('.physical-location-table')).toBeNull();
+        expect(fixture.nativeElement.querySelector('[data-table-key="mek-biped-locations"]')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('[data-table-key="cluster-unit"]')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.combined-table')).toBeNull();
     });
 
-    it('highlights only the resolved cell as soon as the roll finishes', () => {
-        const fixture = createFixture(mekUnit());
+    it('renders the full cluster table from the Cluster family', () => {
+        const fixture = createFixture(unit({}));
+        selectTable(fixture, 'cluster', 'cluster-full');
+
+        const table = fixture.nativeElement.querySelector('[data-table-key="cluster-full"]') as HTMLTableElement;
+        expect(table.querySelectorAll('thead th')).toHaveSize(22);
+        expect(table.querySelectorAll('tbody tr')).toHaveSize(11);
+        expect([...table.querySelectorAll('thead th')].at(-1)?.textContent?.trim()).toBe('40');
+    });
+
+    it('opens, displays, and resets roll history from the footer counter', () => {
+        const fixture = createFixture(unit({}));
         const component = fixture.componentInstance;
-
-        component.rollLocationColumn('frontRear');
-        component.onRollFinished({ results: [3, 4], sum: 7 });
+        const table = component.displayedTables().find(candidate => candidate.key === 'mek-biped-locations')!;
+        component.rollTableColumn(table, table.columns[1]);
+        component.onRollFinished({ results: [3, 4], sum: 7 }, 2);
         fixture.detectChanges();
 
-        expect(component.rolledResult()).toEqual({
-            roll: 7,
-            value: 'CT',
-            column: { table: 'location', column: 'frontRear' },
-        });
-        const highlightedRow = fixture.nativeElement.querySelector('.hit-location-table tr.rolled-row-highlight');
-        expect(highlightedRow).not.toBeNull();
-        expect(highlightedRow.querySelectorAll('td')).toHaveSize(4);
-        expect(highlightedRow.querySelector('td:first-child')?.textContent.trim()).toBe('7');
-        const highlightedCells = fixture.nativeElement.querySelectorAll('td.rolled-highlight');
-        expect(highlightedCells).toHaveSize(1);
-        expect(highlightedCells[0].textContent.trim()).toBe('CT');
+        const footer = fixture.nativeElement.querySelector('.dialog-buttons') as HTMLElement;
+        expect(footer.querySelectorAll('button')).toHaveSize(2);
+        expect(footer.querySelector('.history-button')?.textContent.trim()).toBe('#1');
 
-        const roller = fixture.debugElement.query(node => node.componentInstance instanceof DiceRollerComponent).componentInstance as DiceRollerComponent;
-        roller.isRolling.set(false);
-        component.rollLocationColumn('leftSide');
-        expect(component.rolledResult()).toBeNull();
+        (footer.querySelector('.history-button') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.history-entry strong')?.textContent).toContain('CT');
+
+        (fixture.nativeElement.querySelector('.reset-history-button') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        expect(component.rollCount()).toBe(0);
+        expect(fixture.nativeElement.querySelector('.empty-history')?.textContent).toContain('No rolls');
     });
 
-    it('highlights a whole column on mouse hover but ignores touch hover', () => {
-        const fixture = createFixture(mekUnit());
-        const component = fixture.componentInstance;
+    it('keeps roll history when the dialog is closed and reopened', () => {
+        const firstFixture = createFixture(unit({}));
+        const firstComponent = firstFixture.componentInstance;
+        firstComponent.resetHistory();
+        const table = firstComponent.displayedTables().find(candidate => candidate.key === 'mek-biped-locations')!;
+        const roller = firstFixture.debugElement
+            .queryAll(node => node.componentInstance instanceof DiceRollerComponent)
+            .map(node => node.componentInstance as DiceRollerComponent)
+            .find(candidate => candidate.diceCount() === 2)!;
+        spyOn(roller, 'roll');
 
-        component.setHoveredColumn(new PointerEvent('pointerenter', { pointerType: 'touch' }), component.locationColumnKey('leftSide'));
+        firstComponent.rollTableColumn(table, table.columns[1]);
+        firstComponent.onRollFinished({ results: [3, 4], sum: 7 }, 2);
+        firstComponent.close();
+        firstFixture.destroy();
+
+        const reopenedFixture = TestBed.createComponent(ClusterTableDialogComponent);
+        reopenedFixture.detectChanges();
+
+        expect(reopenedFixture.componentInstance.rollCount()).toBe(1);
+        expect(reopenedFixture.componentInstance.rollHistory()[0].result).toBe('CT');
+        reopenedFixture.componentInstance.resetHistory();
+    });
+
+    it('scrolls open history to the bottom when a new roll arrives', () => {
+        const fixture = createFixture(unit({}));
+        const component = fixture.componentInstance;
+        component.resetHistory();
+        component.historyOpen.set(true);
+        fixture.detectChanges();
+
+        const historyList = fixture.nativeElement.querySelector('.roll-history-list') as HTMLElement;
+        let scrollTop = 0;
+        Object.defineProperties(historyList, {
+            scrollHeight: { configurable: true, get: () => 720 },
+            scrollTop: {
+                configurable: true,
+                get: () => scrollTop,
+                set: (value: number) => scrollTop = value,
+            },
+        });
+        const table = component.displayedTables().find(candidate => candidate.key === 'mek-biped-locations')!;
+        const roller = fixture.debugElement
+            .queryAll(node => node.componentInstance instanceof DiceRollerComponent)
+            .map(node => node.componentInstance as DiceRollerComponent)
+            .find(candidate => candidate.diceCount() === 2)!;
+        spyOn(roller, 'roll');
+
+        component.rollTableColumn(table, table.columns[1]);
+        component.onRollFinished({ results: [3, 4], sum: 7 }, 2);
+        fixture.detectChanges();
+
+        expect(scrollTop).toBe(720);
+        component.resetHistory();
+    });
+
+    it('ignores invalid totals without adding a history entry', () => {
+        const fixture = createFixture(unit({}));
+        const component = fixture.componentInstance;
+        const table = component.displayedTables().find(candidate => candidate.key === 'mek-biped-locations')!;
+        component.rollTableColumn(table, table.columns[0]);
+
+        component.onRollFinished({ results: [], sum: 1 }, 2);
+        component.onRollFinished({ results: [], sum: 13 }, 2);
+
+        expect(component.rolledResult()).toBeNull();
+        expect(component.rollCount()).toBe(0);
+    });
+
+    it('highlights a rollable column for mouse hover but ignores touch hover', () => {
+        const fixture = createFixture(unit({}));
+        const component = fixture.componentInstance;
+        const table = component.displayedTables().find(candidate => candidate.key === 'mek-biped-locations')!;
+        const column = table.columns[0];
+
+        component.setHoveredColumn(new PointerEvent('pointerenter', { pointerType: 'touch' }), table, column);
         expect(component.hoveredColumnKey()).toBeNull();
 
-        component.setHoveredColumn(new PointerEvent('pointerenter', { pointerType: 'mouse' }), component.locationColumnKey('leftSide'));
+        component.setHoveredColumn(new PointerEvent('pointerenter', { pointerType: 'mouse' }), table, column);
         fixture.detectChanges();
-        expect(component.hoveredColumnKey()).toBe('location:leftSide');
-        expect(fixture.nativeElement.querySelectorAll('.hit-location-table td.column-hovered')).toHaveSize(11);
-        expect(fixture.nativeElement.querySelectorAll('.hit-location-table th.column-hovered')).toHaveSize(0);
-
-        component.clearHoveredColumn(component.locationColumnKey('leftSide'));
-        expect(component.hoveredColumnKey()).toBeNull();
-    });
-
-    it('ignores invalid roll totals safely', () => {
-        const fixture = createFixture(mekUnit());
-        const component = fixture.componentInstance;
-        component.rollLocationColumn('leftSide');
-
-        component.onRollFinished({ results: [], sum: 1 });
-        expect(component.rolledResult()).toBeNull();
-        component.onRollFinished({ results: [], sum: 13 });
-        expect(component.rolledResult()).toBeNull();
+        expect(component.hoveredColumnKey()).toBe('mek-biped-locations:leftSide');
+        expect(fixture.nativeElement.querySelectorAll('[data-table-key="mek-biped-locations"] td.column-hovered')).toHaveSize(11);
     });
 });

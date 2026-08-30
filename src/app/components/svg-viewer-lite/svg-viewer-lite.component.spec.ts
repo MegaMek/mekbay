@@ -45,10 +45,10 @@ const layouts = new WeakMap<HTMLElement, Partial<LayoutState>>();
 describe('SvgViewerLiteComponent', () => {
     let logger: jasmine.SpyObj<Pick<LoggerService, 'error'>>;
     let nativeEntities: jasmine.SpyObj<Pick<NativeEntityService, 'canLoad' | 'load'>>;
-    let recordSheets: jasmine.SpyObj<Pick<RecordSheetSourceService, 'mode' | 'load'>>;
+    let recordSheets: jasmine.SpyObj<Pick<RecordSheetSourceService, 'load'>>;
     let originalResizeObserver: typeof ResizeObserver | undefined;
     let triggerResize: (() => void) | null;
-    const options = signal({ recordSheetCenterPanelContent: 'clusterTable' });
+    const options = signal({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
 
     beforeEach(() => {
         logger = jasmine.createSpyObj<Pick<LoggerService, 'error'>>('LoggerService', ['error']);
@@ -57,17 +57,16 @@ describe('SvgViewerLiteComponent', () => {
         );
         nativeEntities.canLoad.and.returnValue(true);
         nativeEntities.load.and.resolveTo(loadedEntity(new TestTankEntity()));
-        recordSheets = jasmine.createSpyObj<Pick<RecordSheetSourceService, 'mode' | 'load'>>(
-            'RecordSheetSourceService', ['mode', 'load'],
+        recordSheets = jasmine.createSpyObj<Pick<RecordSheetSourceService, 'load'>>(
+            'RecordSheetSourceService', ['load'],
         );
-        recordSheets.mode.and.returnValue('generated');
         recordSheets.load.and.callFake(async () => {
             const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
             svg.dataset['mekbayGenerated'] = '1';
             svg.setAttribute('viewBox', '0 0 612 792');
-            return { source: 'generated', svgs: [svg] };
+            return { svgs: [svg] };
         });
-        options.set({ recordSheetCenterPanelContent: 'clusterTable' });
+        options.set({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
         triggerResize = null;
         originalResizeObserver = window.ResizeObserver;
         window.ResizeObserver = class implements ResizeObserver {

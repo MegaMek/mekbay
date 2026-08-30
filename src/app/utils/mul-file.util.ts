@@ -35,7 +35,7 @@ import type {
 } from '../models/runtime/non-mek-unit-instance';
 import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
 import type { CBTUnitCommand } from '../models/runtime/unit-instance';
-import { getEffectivePilotingSkill } from './cbt-common.util';
+import { effectiveEntityPilotingSkill } from '../models/entity/utils/battle-value/skill-facts';
 import { uuidv7 } from './uuid.util';
 
 const DEFAULT_ENTITY_ATTRIBUTES: Readonly<Record<string, string>> = Object.freeze({
@@ -267,14 +267,14 @@ function createEntityRuntimeElement(
 ): Element {
     if (snapshot.state.components.size > 0 || snapshot.state.ammo.size > 0) {
         throw new Error(
-            `MUL export cannot safely map component state for ${member.summary.name} without family slot rules`,
+            `MUL export cannot safely map component state for ${member.entity.displayName()} without family slot rules`,
         );
     }
     const quirks = snapshot.entity.quirks();
     const entity = doc.createElement('entity');
     setAttributes(entity, {
-        chassis: member.summary.chassis,
-        model: member.summary.model,
+        chassis: member.entity.fullChassis(),
+        model: member.entity.model(),
         type: snapshot.entity.motiveType(),
         commander,
         ...DEFAULT_ENTITY_ATTRIBUTES,
@@ -477,6 +477,8 @@ async function applyMulCrew(
 ): Promise<void> {
     const current = force.getUnitCrewProfile(member.id);
     if (!current) return;
+    const entity = force.getUnitSnapshot(member.id)?.entity;
+    if (!entity) throw new Error(`Missing Entity for ${member.id}`);
     const byOccurrence = new Map(imported.map(value => [value.id, value] as const));
     const positions = current.positions.map((position, index) => {
         const value = byOccurrence.get(index);
@@ -484,7 +486,7 @@ async function applyMulCrew(
             ...position,
             name: value.name,
             gunnery: value.gunnerySkill,
-            piloting: getEffectivePilotingSkill(member.summary, value.pilotingSkill),
+            piloting: effectiveEntityPilotingSkill(entity, value.pilotingSkill),
         } : position;
     });
     const replaced = await force.replaceUnitCrewProfile(member.id, {
@@ -594,7 +596,7 @@ async function applyMulEntityLocations(
         if (!location) {
             issues.push({
                 severity: 'warning',
-                message: `MUL location index ${imported.index} does not exist on ${member.summary.name}.`,
+                message: `MUL location index ${imported.index} does not exist on ${member.entity.displayName()}.`,
             });
             continue;
         }
@@ -633,7 +635,7 @@ async function applyMulEntityLocations(
         if (imported.slots.length > 0) {
             issues.push({
                 severity: 'warning',
-                message: `MUL critical slots for ${member.summary.name} ${location.code} require family slot rules and were not applied.`,
+                message: `MUL critical slots for ${member.entity.displayName()} ${location.code} require family slot rules and were not applied.`,
             });
         }
     }

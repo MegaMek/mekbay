@@ -7,10 +7,13 @@ import { Subject } from 'rxjs';
 import type { CBTForce } from '../../models/cbt-force.model';
 import { GameSystem } from '../../models/common.model';
 import { CBTForceMember } from '../../models/force-member.model';
+import {
+    TestBipedMekEntity,
+    TestTankEntity,
+} from '../../models/entity/testing/test-entities';
 import type { ForceUnit } from '../../models/force-unit.model';
 import { asUnitInstanceId } from '../../models/runtime/runtime-state';
 import { createUnitTagEcmCapabilitySummary } from '../../models/unit-capability-summary.model';
-import type { UnitSummary } from '../../models/unit-summary.model';
 import { OptionsService } from '../../services/options.service';
 import { UnitBlockComponent } from './unit-block.component';
 
@@ -20,7 +23,9 @@ describe('UnitBlockComponent capability badges', () => {
             imports: [UnitBlockComponent],
             providers: [
                 provideZonelessChangeDetection(),
-                { provide: OptionsService, useValue: { options: signal({}) } },
+                { provide: OptionsService, useValue: {
+                    options: signal({ trackPhaseAndTurn: true }),
+                } },
             ],
         }).compileComponents();
     });
@@ -70,7 +75,7 @@ describe('UnitBlockComponent capability badges', () => {
         const member = new CBTForceMember(
             asUnitInstanceId('unit:condition-card'),
             force,
-            { entityType: 'Mek' } as UnitSummary,
+            new TestBipedMekEntity(),
         );
         const fixture = TestBed.createComponent(UnitBlockComponent);
         fixture.componentRef.setInput('forceUnit', member);
@@ -83,6 +88,32 @@ describe('UnitBlockComponent capability badges', () => {
             'crew-unconscious',
             'location-narc',
         ]);
+        fixture.destroy();
+    });
+
+    it('projects the declared movement mode with the complete defender modifier', () => {
+        const changed = new Subject<void>();
+        const force = {
+            changed,
+            getMekTurnPanelSnapshot: () => ({
+                movementState: {
+                    movement: { mode: 'walk', distance: 1, boosterComponentIds: [] },
+                },
+                defenseModifierTotal: { modifier: 0 },
+            }),
+        } as unknown as CBTForce;
+        const member = new CBTForceMember(
+            asUnitInstanceId('unit:movement-card'),
+            force,
+            new TestBipedMekEntity(),
+        );
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', member);
+
+        expect(fixture.componentInstance.movementIndicator()).toEqual({
+            color: 'walk',
+            letter: 'W0',
+        });
         fixture.destroy();
     });
 
@@ -102,7 +133,7 @@ describe('UnitBlockComponent capability badges', () => {
         const member = new CBTForceMember(
             asUnitInstanceId('unit:vehicle-condition-card'),
             force,
-            { entityType: 'Tank' } as UnitSummary,
+            new TestTankEntity(),
         );
         const fixture = TestBed.createComponent(UnitBlockComponent);
         fixture.componentRef.setInput('forceUnit', member);
@@ -130,6 +161,7 @@ describe('UnitBlockComponent capability badges', () => {
             getUnitTagBattleValue: () => 0,
             getUnitC3BattleValue: () => 0,
             getC3State: () => 'none',
+            getUnitSnapshot: () => null,
             isUnitCommander: () => false,
             getUnitConditions: () => [],
             getNonMekRecordSheetSnapshot,
@@ -137,7 +169,7 @@ describe('UnitBlockComponent capability badges', () => {
         const member = new CBTForceMember(
             asUnitInstanceId('unit:scoped-card'),
             force,
-            { entityType: 'Tank' } as UnitSummary,
+            new TestTankEntity(),
         );
         const fixture = TestBed.createComponent(UnitBlockComponent);
         fixture.componentRef.setInput('forceUnit', member);

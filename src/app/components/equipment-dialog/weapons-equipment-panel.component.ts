@@ -46,6 +46,7 @@ import {
     type ToHitResolution,
 } from '../../models/rules/game-rules';
 import type { UnitModifierBreakdownEntry } from '../../models/combat-modifier';
+import { machineGunArrayClusterModifier } from '../../models/runtime/component-machine-gun-array';
 
 interface RangeColumn {
     key: InventoryRangeDisplayKey;
@@ -273,10 +274,10 @@ export class WeaponsEquipmentPanelComponent {
 
     private buildGroups(runtime: EquipmentDialogRuntimeController): EquipmentPanelGroup[] {
         const snapshot = runtime.snapshot();
-        const ranged = applyEquipmentRowOrder(
+        const ranged = this.groupMachineGunArrayRows(applyEquipmentRowOrder(
             runtime.weapons().map((row, index) => this.componentRow(row, 'ranged', index)),
             snapshot.equipmentRowOrder?.ranged,
-        );
+        ));
         const physical = applyEquipmentRowOrder(
             snapshot.physicalAttacks.map((row, index) => this.physicalRow(row, index)),
             snapshot.equipmentRowOrder?.physical,
@@ -318,7 +319,7 @@ export class WeaponsEquipmentPanelComponent {
             display: {
                 name: row.label,
                 location: this.runtime().locations(row),
-                heat: weapon?.heat.toString() ?? '',
+                heat: weapon === undefined ? '' : `${weapon.heat}${weapon.heatSuffix ?? ''}`,
                 damage: weapon?.damageText ?? '—',
                 hit,
                 min: aerospace ? '—' : weapon?.minimumRange.toString() ?? '—',
@@ -406,7 +407,7 @@ export class WeaponsEquipmentPanelComponent {
             display: {
                 name: row.label,
                 location: row.locationCodes.join(', ') || '—',
-                heat: '—',
+                heat: row.firingHeat > 0 ? String(row.firingHeat) : '—',
                 damage: this.runtime().physicalDamage(row),
                 hit: row.hitModifiers.map(formatPhysicalHitModifier).join('/'),
                 min: '—',
@@ -539,7 +540,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     groupTracksAmmo(group: EquipmentPanelGroup): boolean {
-        return group.rows.some(row => row.tracksAmmo);
+        return group.rows.some(row => this.showAmmoControls(row));
     }
 
     groupHasControls(group: EquipmentPanelGroup): boolean {
@@ -564,7 +565,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     rowHasActions(row: EquipmentPanelRow): boolean {
-        return row.tracksAmmo || this.rowHasControls(row);
+        return this.showAmmoControls(row) || this.rowHasControls(row);
     }
 
     readOnly(): boolean {
@@ -572,7 +573,66 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     isSelectable(row: EquipmentPanelRow): boolean {
+        if (this.isMachineGunArrayRow(row) || this.isMachineGunArrayMemberRow(row)) {
+            return row.component?.bay?.canFire === true;
+        }
         return row.component?.weapon !== undefined || row.physical !== undefined;
+    }
+
+    isMachineGunArrayRow(row: EquipmentPanelRow): boolean {
+        const bay = row.component?.bay;
+        return bay?.relation.kind === 'machine-gun-array' && bay.role === 'controller';
+    }
+
+    isMachineGunArrayMemberRow(row: EquipmentPanelRow): boolean {
+        const bay = row.component?.bay;
+        return bay?.relation.kind === 'machine-gun-array' && bay.role === 'member';
+    }
+
+    isMachineGunArrayMemberControlled(row: EquipmentPanelRow): boolean {
+        const bay = row.component?.bay;
+        return this.isMachineGunArrayMemberRow(row)
+            && bay?.controllerStatus === 'available'
+            && bay.controllerMode === 'Linked';
+    }
+
+    machineGunArraySummary(row: EquipmentPanelRow): string | null {
+        const bay = row.component?.bay;
+        if (!this.isMachineGunArrayRow(row) || !bay) return null;
+        const installed = bay.relation.memberIds.length;
+        const working = bay.operationalMemberIds.length;
+        const guns = working === installed
+            ? `${working} gun${working === 1 ? '' : 's'}`
+            : `${working}/${installed} guns`;
+        if (bay.controllerStatus !== 'available' || bay.controllerMode !== 'Linked') {
+            return `${guns} · Individual fire`;
+        }
+        if (working === 0) return 'No working guns';
+        const modifier = machineGunArrayClusterModifier(this.runtime().snapshot().ruleset);
+        const cluster = modifier === 0 ? 'Cluster roll' : `Cluster +${modifier}`;
+        return `${guns} · ${working} ammo/attack · ${cluster}`;
+    }
+
+    machineGunArrayMemberSummary(row: EquipmentPanelRow): string | null {
+        const bay = row.component?.bay;
+        if (!this.isMachineGunArrayMemberRow(row) || !bay) return null;
+        const member = bay.members.find(candidate => candidate.componentId === row.id);
+        if (member?.operational !== true) return 'Excluded from array';
+        return this.isMachineGunArrayMemberControlled(row) ? 'Linked' : 'Unlinked';
+    }
+
+    showAmmoControls(row: EquipmentPanelRow): boolean {
+        if (!row.tracksAmmo) return false;
+        if (this.isMachineGunArrayMemberRow(row)) return !this.isMachineGunArrayMemberControlled(row);
+        if (!this.isMachineGunArrayRow(row)) return true;
+        const bay = row.component?.bay;
+        return bay?.controllerStatus === 'available'
+            && bay.controllerMode === 'Linked'
+            && bay.operationalMemberIds.length > 0;
+    }
+
+    isRowSortable(group: EquipmentPanelGroup, row: EquipmentPanelRow): boolean {
+        return group.sortable && !this.isMachineGunArrayMemberRow(row);
     }
 
     isSelected(row: EquipmentPanelRow): boolean {
@@ -772,6 +832,20 @@ export class WeaponsEquipmentPanelComponent {
         target: InventoryControlRuntimeTarget | null,
     ): TargetRowState {
         if (row.physical) return this.createPhysicalTargetState(row, target);
+        if (!row.component?.weapon) {
+            return {
+                target: null,
+                invalidTarget: false,
+                rangeSelection: null,
+                hitText: row.display.hit,
+                hitModifierTooltip: null,
+                hitModifierWeakened: false,
+                damageText: row.display.damage,
+                targetNumberText: '',
+                targetNumberTooltip: null,
+                breakdown: null,
+            };
+        }
         const component = row.component!;
         const targetDisabledReason = target === null ? null : this.targetDisabledReason(row, target);
         const presentation = projectWeaponTargetPresentation(
@@ -790,7 +864,10 @@ export class WeaponsEquipmentPanelComponent {
             },
         );
         const attackModifierBreakdown = this.runtime().attackModifierBreakdown();
-        const hitResolution = presentation.hitResolution!;
+        const hitResolution = presentation.hitResolution;
+        if (hitResolution === null) {
+            throw new Error(`Weapon ${component.componentId} has no hit resolution`);
+        }
         const hitModifierTooltip = this.hitModifierTooltip(hitResolution, attackModifierBreakdown);
         const invalidTarget = targetDisabledReason !== null || presentation.outOfRange;
         const breakdown = presentation.targetNumberBreakdown === null
@@ -933,6 +1010,26 @@ export class WeaponsEquipmentPanelComponent {
 
     private groupActiveSelectableRows(group: EquipmentPanelGroup): EquipmentPanelRow[] {
         return this.groupSelectableRows(group).filter(row => !row.destroyed && !row.disabled);
+    }
+
+    private groupMachineGunArrayRows(rows: EquipmentPanelRow[]): EquipmentPanelRow[] {
+        const rowsById = new Map(rows.map(row => [row.id, row]));
+        const nestedMembers = new Set(rows
+            .filter(row => this.isMachineGunArrayMemberRow(row)
+                && row.component?.bay?.relation.controllerId !== undefined
+                && rowsById.has(row.component.bay.relation.controllerId))
+            .map(row => row.id));
+        const grouped: EquipmentPanelRow[] = [];
+        for (const row of rows) {
+            if (nestedMembers.has(row.id)) continue;
+            grouped.push(row);
+            if (!this.isMachineGunArrayRow(row)) continue;
+            for (const memberId of row.component!.bay!.relation.memberIds) {
+                const member = rowsById.get(memberId);
+                if (member) grouped.push(member);
+            }
+        }
+        return grouped;
     }
 
     cacheDragPreviewCellWidths(event: PointerEvent): void {

@@ -248,6 +248,8 @@ export abstract class CBTGameRules {
     abstract getExplosiveWeaponDamage(weapon: WeaponEquipment, mountedCriticalSlots: number): number;
     abstract resolveMekExplosionDamage(context: MekExplosionDamageContext): MekExplosionDamageResolution;
     abstract getMekExplosionProtectionNote(protection: MekExplosionProtection): string | null;
+    abstract hullBreachCheckSucceeds(total: number): boolean;
+    abstract getHullBreachCheckRangeLabel(): string;
     protected abstract canFireTorpedoesIndirectly(context: IndirectFireContext): boolean;
 
     get escalatingFailureLabels(): readonly string[] {
@@ -536,6 +538,14 @@ export class GameRules extends CBTGameRules {
         return null;
     }
 
+    override hullBreachCheckSucceeds(total: number): boolean {
+        return total >= 2 && total <= 4;
+    }
+
+    override getHullBreachCheckRangeLabel(): string {
+        return '2–4';
+    }
+
     protected override canFireTorpedoesIndirectly(_context: IndirectFireContext): boolean {
         return false;
     }
@@ -663,6 +673,14 @@ export class TWGameRules extends CBTGameRules {
             return 'Applies 1 internal damage and vents the remainder through rear armor, or up to half the original armor in a limb or head. Damage never transfers; each resulting critical hit is ignored on 8+.';
         }
         return null;
+    }
+
+    override hullBreachCheckSucceeds(total: number): boolean {
+        return total >= 10;
+    }
+
+    override getHullBreachCheckRangeLabel(): string {
+        return '10+';
     }
 
     override calculateTagBVCost(facts: TagBattleValueFacts): number {

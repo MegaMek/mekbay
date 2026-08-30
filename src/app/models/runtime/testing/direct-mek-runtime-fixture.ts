@@ -10,6 +10,7 @@ import { ParseContext } from '../../entity/parsers/parse-context';
 import type { MekEntity } from '../../entity/entities/mek/mek-entity';
 import type { GyroType } from '../../entity/components/gyro-data';
 import type { CockpitType } from '../../entity/types/cockpit';
+import type { EngineType } from '../../entity/types';
 import type { SavedEntityIdentity } from '../../persisted-unit-state';
 import {
     asSourceHash,
@@ -53,12 +54,48 @@ export function createDirectMekRuntimeFixture(
     return createFixture(ruleset, instanceId, { gyroType });
 }
 
+/** Parsed Mek with an exact engine/cockpit combination for movement and damage heat rules. */
+export function createDirectEngineHeatRuntimeFixture(
+    engineType: EngineType,
+    industrial = false,
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = `unit:direct-${engineType.toLowerCase().replaceAll(' ', '-')}-heat-fixture`,
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { engineType, industrial });
+}
+
 /** Parsed Mek whose scenario explicitly disables forced withdrawal. */
 export function createDirectNoForcedWithdrawalRuntimeFixture(
     ruleset: CBTRuleset = CORE_2026_RULESET,
     instanceId = 'unit:direct-no-forced-withdrawal-fixture',
 ): DirectMekRuntimeFixture {
     return createFixture(ruleset, instanceId, { forcedWithdrawal: false });
+}
+
+/** Parsed Mek whose force scenario enables the optional Sprint rules. */
+export function createDirectSprintingRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    includeSupercharger = false,
+    instanceId = 'unit:direct-sprinting-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { sprinting: true, includeSupercharger });
+}
+
+/** Parsed Quad used by Sprint eligibility checks after leg destruction. */
+export function createDirectSprintingQuadRuntimeFixture(
+    ruleset: CBTRuleset = 'total-warfare',
+    instanceId = 'unit:direct-sprinting-quad-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { sprinting: true, configuration: 'quad' });
+}
+
+/** Parsed Sprint-enabled Mek with an exact engine heat family. */
+export function createDirectSprintingEngineHeatRuntimeFixture(
+    engineType: EngineType,
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = `unit:direct-sprinting-${engineType.toLowerCase().replaceAll(' ', '-')}-fixture`,
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { sprinting: true, engineType });
 }
 
 /** Parsed 55-ton partial-wing Mek used by direct jump-heat rules. */
@@ -83,6 +120,38 @@ export function createDirectBapRuntimeFixture(
     instanceId = 'unit:direct-bap-fixture',
 ): DirectMekRuntimeFixture {
     return createFixture(ruleset, instanceId, { includeBap: true });
+}
+
+/** Parsed Mek with competing ECM, probe, and Nova CEWS suites. */
+export function createDirectElectronicSuiteRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = 'unit:direct-electronic-suite-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { includeElectronicSuite: true });
+}
+
+/** Parsed Ground-Mobile HPG Mek used by the direct five-turn lifecycle rules. */
+export function createDirectMobileHpgRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = 'unit:direct-mobile-hpg-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { includeMobileHpg: true });
+}
+
+/** Parsed Booby Trap Mek used by the direct one-shot destruction transaction. */
+export function createDirectBoobyTrapRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = 'unit:direct-booby-trap-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { includeBoobyTrap: true });
+}
+
+/** Parsed Void Signature Mek used by its ECM-backed End-Turn lifecycle rules. */
+export function createDirectVoidSignatureRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = 'unit:direct-void-signature-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { includeVoidSignature: true });
 }
 
 /** Parsed Bombast-equipped MekEntity plus a pristine sparse runtime. */
@@ -184,6 +253,15 @@ export function createDirectShieldRuntimeFixture(
     return createFixture(ruleset, instanceId, { shieldSize: size });
 }
 
+/** Parsed Mek with one shield in each arm, used by Core's single-raised-shield invariant. */
+export function createDirectDualShieldRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    size: 'small' | 'medium' | 'large' = 'medium',
+    instanceId = `unit:direct-dual-${size}-shield-fixture`,
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { shieldSize: size, dualShields: true });
+}
+
 /** Parsed leg-AES MekEntity plus a pristine sparse runtime. */
 export function createDirectLegAesRuntimeFixture(
     ruleset: CBTRuleset = CORE_2026_RULESET,
@@ -256,6 +334,17 @@ export function createDirectQuadRuntimeFixture(
     return createFixture(ruleset, instanceId, { configuration: 'quad' });
 }
 
+/** Parsed 3-Walk Mek used to exercise Core's surviving-leg movement floor. */
+export function createDirectLegDamageFloorRuntimeFixture(
+    configuration: 'biped' | 'tripod' | 'quad',
+    instanceId = `unit:direct-${configuration}-leg-floor-fixture`,
+): DirectMekRuntimeFixture {
+    return createFixture(CORE_2026_RULESET, instanceId, {
+        configuration,
+        baseWalkMp: 3,
+    });
+}
+
 /** Parsed superheavy MekEntity plus a pristine sparse runtime. */
 export function createDirectSuperheavyRuntimeFixture(
     ruleset: CBTRuleset = CORE_2026_RULESET,
@@ -310,8 +399,45 @@ export function createDirectVspRuntimeFixture(
     });
 }
 
+/** Parsed prototype Medium Pulse Laser Mek used by deterministic variable-heat rules. */
+export function createDirectPrototypeLaserRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = 'unit:direct-prototype-laser-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { includePrototypeLaser: true });
+}
+
+/** Parsed Entity bay with one MGA controller, three member guns, and shared ammunition. */
+export function createDirectMachineGunArrayRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = 'unit:direct-machine-gun-array-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { includeMachineGunArray: true });
+}
+
+/** Parsed Mek with two single-use Coolant Pods and an optional Radical Heat Sink. */
+export function createDirectCoolantPodRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    includeRadicalHeatSink = false,
+    instanceId = 'unit:direct-coolant-pod-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, {
+        includeCoolantPods: true,
+        includeCoolantRadicalHeatSink: includeRadicalHeatSink,
+    });
+}
+
+/** Parsed Mek with one physical Spot Welder used by direct attack-heat rules. */
+export function createDirectSpotWelderRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = 'unit:direct-spot-welder-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { includeSpotWelder: true });
+}
+
 interface DirectFixtureOptions {
     readonly forcedWithdrawal?: boolean;
+    readonly sprinting?: boolean;
     readonly includePartialWing?: boolean;
     readonly includeBombast?: boolean;
     readonly includeFlamer?: boolean;
@@ -334,13 +460,26 @@ interface DirectFixtureOptions {
     readonly explosionProtection?: 'case' | 'case-ii' | 'both';
     readonly includeC3Master?: boolean;
     readonly includeBap?: boolean;
+    readonly includeElectronicSuite?: boolean;
+    readonly includeMobileHpg?: boolean;
+    readonly includeBoobyTrap?: boolean;
+    readonly includeVoidSignature?: boolean;
     readonly includeDroneOperatingSystem?: boolean;
     readonly includeModularArmor?: boolean;
     readonly includeVspLaser?: boolean;
+    readonly includePrototypeLaser?: boolean;
+    readonly includeMachineGunArray?: boolean;
+    readonly includeCoolantPods?: boolean;
+    readonly includeCoolantRadicalHeatSink?: boolean;
+    readonly includeSpotWelder?: boolean;
     readonly gyroType?: GyroType;
     readonly cockpitType?: CockpitType;
     readonly configuration?: 'biped' | 'quad' | 'tripod' | 'superheavy';
     readonly shieldSize?: 'small' | 'medium' | 'large';
+    readonly dualShields?: boolean;
+    readonly baseWalkMp?: number;
+    readonly engineType?: EngineType;
+    readonly industrial?: boolean;
 }
 
 function createFixture(
@@ -366,26 +505,16 @@ function createFixture(
         initializerRevision: 1,
         profileId: 'pristine',
         deployment: { id: 'default' },
-        scenario: {
-            id: 'megamek',
-            ruleset,
-            ...(options.forcedWithdrawal === undefined
-                ? {}
-                : { options: { forcedWithdrawal: options.forcedWithdrawal } }),
-        },
+        scenario: { ...directFixtureScenario(options), ruleset },
     });
     const createInstance = (id: string): CBTUnitInstance => {
-        const heat = createMekHeatContextV2(entity, index, ruleset, { id: 'megamek' });
+        const scenario = directFixtureScenario(options);
+        const heat = createMekHeatContextV2(entity, index, ruleset, scenario);
         const mechanics = createMekMechanicsContextV2(
             entity,
             index,
             ruleset,
-            {
-                id: 'megamek',
-                ...(options.forcedWithdrawal === undefined
-                    ? {}
-                    : { options: { forcedWithdrawal: options.forcedWithdrawal } }),
-            },
+            scenario,
         );
         if (heat.kind !== 'supported' || mechanics.kind !== 'supported') {
             throw new Error(`Direct Mek fixture must support heat and mechanics: ${JSON.stringify({
@@ -425,15 +554,43 @@ function createFixture(
     });
 }
 
+function directFixtureScenario(options: DirectFixtureOptions): Readonly<{
+    id: string;
+    options?: Readonly<Record<string, boolean>>;
+}> {
+    if (options.forcedWithdrawal === undefined && options.sprinting === undefined) {
+        return Object.freeze({ id: 'megamek' });
+    }
+    return Object.freeze({
+        id: 'megamek',
+        options: Object.freeze({
+            ...(options.forcedWithdrawal === undefined
+                ? {}
+                : { forcedWithdrawal: options.forcedWithdrawal }),
+            ...(options.sprinting === undefined ? {} : { sprinting: options.sprinting }),
+        }),
+    });
+}
+
 function directMekEquipmentRegistry() {
     const compositeStructure = new StructureEquipment({
         id: 'IS Composite', name: 'Composite', type: 'structure',
         flags: ['F_COMPOSITE'], tech: { base: 'IS' }, structure: { typeId: 5 },
     });
+    const industrialStructure = new StructureEquipment({
+        id: 'Industrial', name: 'Industrial', type: 'structure',
+        flags: ['F_INDUSTRIAL_STRUCTURE'], tech: { base: 'All' }, structure: { typeId: 1 },
+    });
     const laser = new WeaponEquipment({
         id: 'ISMediumLaser', name: 'Medium Laser', type: 'weapon',
         flags: ['F_ENERGY', 'F_LASER', 'F_DIRECT_FIRE'], stats: { criticalSlots: 1, bv: 46 },
         weapon: { damage: 5, heat: 3, ranges: [3, 6, 9, 12] },
+    });
+    const prototypeLaser = new WeaponEquipment({
+        id: 'ISMediumPulseLaserPrototype', name: 'Prototype Medium Pulse Laser', type: 'weapon',
+        flags: ['F_ENERGY', 'F_LASER', 'F_PULSE', 'F_DIRECT_FIRE'],
+        stats: { criticalSlots: 1, bv: 48 },
+        weapon: { damage: 6, heat: 4, ranges: [2, 4, 6, 8] },
     });
     const riscLaserPulse = new MiscEquipment({
         id: 'Test RISC Laser Pulse Module', name: 'RISC Laser Pulse Module', type: 'misc',
@@ -459,6 +616,23 @@ function directMekEquipmentRegistry() {
         flags: ['F_AC', 'F_DIRECT_FIRE'], modes: ['Single', 'Rapid'],
         stats: { criticalSlots: 1, bv: 70 },
         weapon: { ammoType: 'AC_ULTRA', damage: 5, heat: 1, ranges: [6, 12, 18, 24] },
+    });
+    const machineGunArray = new WeaponEquipment({
+        id: 'Test MGA', name: 'Machine Gun Array', type: 'weapon',
+        flags: ['F_MGA', 'F_BALLISTIC'], modes: ['Linked', 'Off'],
+        stats: { criticalSlots: 1, bv: 4 },
+        weapon: { ammoType: 'MG', rackSize: 2, damage: 2, heat: 0, ranges: [1, 2, 3, 4] },
+    });
+    const machineGun = new WeaponEquipment({
+        id: 'Test Machine Gun', name: 'Machine Gun', type: 'weapon',
+        flags: ['F_MG', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+        stats: { criticalSlots: 1, bv: 5 },
+        weapon: { ammoType: 'MG', rackSize: 2, damage: 2, heat: 0, ranges: [1, 2, 3, 4] },
+    });
+    const machineGunAmmo = new AmmoEquipment({
+        id: 'Test MG Ammo', name: 'Machine Gun Ammo', type: 'ammo',
+        stats: { criticalSlots: 1, bv: 1 },
+        ammo: { type: 'MG', rackSize: 2, shots: 20, damagePerShot: 2 },
     });
     const flamer = new WeaponEquipment({
         id: 'Test Flamer', name: 'Test Flamer', type: 'weapon',
@@ -549,6 +723,24 @@ function directMekEquipmentRegistry() {
     const bap = new MiscEquipment({
         id: 'Test BAP', name: 'Test Active Probe', type: 'misc',
         flags: ['F_BAP'], modes: ['On', 'Off'], stats: { criticalSlots: 1, bv: 10 },
+    });
+    const novaCews = new MiscEquipment({
+        id: 'Test Nova CEWS', name: 'Test Nova CEWS', type: 'misc',
+        flags: ['F_NOVA', 'F_ECM', 'F_BAP', 'ANY_C3'],
+        stats: { criticalSlots: 1, bv: 68 },
+    });
+    const mobileHpg = new MiscEquipment({
+        id: 'Test Ground-Mobile HPG', name: 'Ground-Mobile HPG', type: 'misc',
+        flags: ['F_MOBILE_HPG', 'F_MEK_EQUIPMENT'], stats: { criticalSlots: 1, bv: 0 },
+    });
+    const boobyTrap = new MiscEquipment({
+        id: 'Test Booby Trap', name: 'Booby Trap', type: 'misc',
+        flags: ['F_BOOBY_TRAP'], stats: { criticalSlots: 1, bv: 0 },
+    });
+    const voidSignature = new MiscEquipment({
+        id: 'Test Void Signature', name: 'Void Signature System', type: 'misc',
+        flags: ['F_VOID_SIG'], modes: ['Off', 'On'],
+        stats: { criticalSlots: 1, bv: 0 },
     });
     const bombast = new WeaponEquipment({
         id: 'Test Bombast Laser', name: 'Test Bombast Laser', type: 'weapon',
@@ -642,6 +834,10 @@ function directMekEquipmentRegistry() {
         id: 'Test Small Vibroblade', name: 'Vibroblade (Small)', type: 'misc',
         flags: ['F_CLUB', 'S_VIBRO_SMALL'], stats: { criticalSlots: 1 },
     });
+    const spotWelder = new MiscEquipment({
+        id: 'Test Spot Welder', name: 'Spot Welder', type: 'misc',
+        flags: ['F_CLUB', 'S_SPOT_WELDER'], stats: { criticalSlots: 1 },
+    });
     const supercharger = new MiscEquipment({
         id: 'Test Supercharger', name: 'Supercharger', type: 'misc',
         flags: ['F_MASC', 'S_SUPERCHARGER'], stats: { criticalSlots: 1 },
@@ -697,12 +893,17 @@ function directMekEquipmentRegistry() {
     });
     return createTestEquipmentRegistry({
         [compositeStructure.id]: compositeStructure,
+        [industrialStructure.id]: industrialStructure,
         [laser.id]: laser,
+        [prototypeLaser.id]: prototypeLaser,
         [riscLaserPulse.id]: riscLaserPulse,
         [laserInsulator.id]: laserInsulator,
         [mrm.id]: mrm,
         [apollo.id]: apollo,
         [ac.id]: ac,
+        [machineGunArray.id]: machineGunArray,
+        [machineGun.id]: machineGun,
+        [machineGunAmmo.id]: machineGunAmmo,
         [flamer.id]: flamer,
         [ammo.id]: ammo,
         [mml.id]: mml,
@@ -721,6 +922,10 @@ function directMekEquipmentRegistry() {
         [c3EmergencyMaster.id]: c3EmergencyMaster,
         [c3Master.id]: c3Master,
         [bap.id]: bap,
+        [novaCews.id]: novaCews,
+        [mobileHpg.id]: mobileHpg,
+        [boobyTrap.id]: boobyTrap,
+        [voidSignature.id]: voidSignature,
         [bombast.id]: bombast,
         [heatSink.id]: heatSink,
         [targetingComputer.id]: targetingComputer,
@@ -743,6 +948,7 @@ function directMekEquipmentRegistry() {
         [spikes.id]: spikes,
         [claw.id]: claw,
         [vibroblade.id]: vibroblade,
+        [spotWelder.id]: spotWelder,
         [supercharger.id]: supercharger,
         [jetBooster.id]: jetBooster,
         [explosiveWeapon.id]: explosiveWeapon,
@@ -760,7 +966,8 @@ function directMekEquipmentRegistry() {
 
 function directMekMtf(options: DirectFixtureOptions): string {
     if (options.includePartialWing) return directPartialWingMekMtf();
-    if (options.shieldSize) return directShieldMekMtf(options.shieldSize);
+    if (options.shieldSize) return directShieldMekMtf(options.shieldSize, options.dualShields === true);
+    if (options.includeMachineGunArray) return directMachineGunArrayMtf();
     const includeBombast = options.includeBombast ?? false;
     const includeFlamer = options.includeFlamer ?? false;
     const includeRiscLaserPulse = options.includeRiscLaserPulse ?? false;
@@ -770,6 +977,10 @@ function directMekMtf(options: DirectFixtureOptions): string {
     const includeDroneOperatingSystem = options.includeDroneOperatingSystem ?? false;
     const includeModularArmor = options.includeModularArmor ?? false;
     const includeVspLaser = options.includeVspLaser ?? false;
+    const includePrototypeLaser = options.includePrototypeLaser ?? false;
+    const includeCoolantPods = options.includeCoolantPods ?? false;
+    const includeCoolantRadicalHeatSink = options.includeCoolantRadicalHeatSink ?? false;
+    const includeSpotWelder = options.includeSpotWelder ?? false;
     const includeAes = options.includeAes ?? false;
     const includePairedArmAes = options.includePairedArmAes ?? false;
     const includeLegAes = options.includeLegAes ?? false;
@@ -789,7 +1000,7 @@ function directMekMtf(options: DirectFixtureOptions): string {
         : includeClaw ? 55 : includeVibroblade ? 100 : 20;
     const engine = tripod ? 300 : superheavy ? 315 : includeChargeEquipment ? 225
         : includeClaw ? 275 : includeVibroblade ? 300 : 100;
-    const cockpit = tripod ? 'Tripod' : options.cockpitType;
+    const cockpit = tripod ? 'Tripod' : options.industrial ? 'Industrial' : options.cockpitType;
     const rightTorsoEquipment = [
         ...(includeBombast ? ['Test Bombast Laser'] : []),
         ...(includeFlamer ? ['Test Flamer'] : []),
@@ -797,6 +1008,13 @@ function directMekMtf(options: DirectFixtureOptions): string {
         ...(includeDroneOperatingSystem ? ['Test Drone Operating System'] : []),
         ...(includeModularArmor ? ['Test Modular Armor', 'Test Jump Jet'] : []),
         ...(includeVspLaser ? ['Test Medium VSP Laser'] : []),
+        ...(includePrototypeLaser ? ['ISMediumPulseLaserPrototype'] : []),
+        ...(includeCoolantPods ? ['Test Coolant Pod', 'Test Coolant Pod'] : []),
+        ...(includeCoolantRadicalHeatSink ? ['Test Radical Heat Sink'] : []),
+        ...(includeSpotWelder ? ['Test Spot Welder'] : []),
+        ...(options.includeMobileHpg ? ['Test Ground-Mobile HPG'] : []),
+        ...(options.includeBoobyTrap ? ['Test Booby Trap'] : []),
+        ...(options.includeVoidSignature ? ['Test Void Signature'] : []),
         ...(includeAes ? ['Heat Sink'] : []),
         ...(includeChargeEquipment ? ['Test Ram Plate'] : []),
         ...(includeClaw || includeVibroblade ? ['Test TSM'] : []),
@@ -847,6 +1065,7 @@ function directMekMtf(options: DirectFixtureOptions): string {
         'Test C3 Emergency Master',
         ...(options.includeC3Master ? ['Test C3 Master'] : []),
         ...(options.includeBap ? ['Test BAP'] : []),
+        ...(options.includeElectronicSuite ? ['Test BAP', 'Test BAP', 'Test Nova CEWS'] : []),
         ...(includeModularArmor ? ['Test Modular Armor', 'Test Jump Jet'] : []),
         ...(includeApollo ? ['Test MRM', 'Test Apollo'] : []),
     ];
@@ -883,11 +1102,11 @@ Config:${tripod ? 'Tripod' : 'Biped'}
 techbase:Inner Sphere
 era:3050
 mass:${mass}
-engine:${engine} Fusion Engine
+engine:${engine} ${options.engineType ?? 'Fusion'} Engine
 ${cockpit ? `cockpit:${cockpit}\n` : ''}gyro:${options.gyroType ?? 'Standard'}
-structure:${options.structure ?? 'Standard'}
+structure:${options.industrial ? 'Industrial' : options.structure ?? 'Standard'}
 heat sinks:10 Single
-walk mp:5
+walk mp:${options.baseWalkMp ?? 5}
 jump mp:${includeModularArmor ? 2 : 0}
 armor:Standard(Inner Sphere)
 LA armor:5
@@ -939,6 +1158,49 @@ ${rightLeg}
 `;
 }
 
+function directMachineGunArrayMtf(): string {
+    return `uuid:${UUID}
+chassis:Direct MGA Fixture
+model:DMGA-1
+Config:Biped
+techbase:Inner Sphere
+era:3050
+mass:20
+engine:100 Fusion Engine
+gyro:Standard
+structure:Standard
+heat sinks:10 Single
+walk mp:5
+jump mp:0
+armor:Standard(Inner Sphere)
+LA armor:5
+RA armor:5
+LT armor:5
+RT armor:5
+CT armor:5
+HD armor:3
+LL armor:5
+RL armor:5
+Left Arm:
+Shoulder
+Upper Arm Actuator
+Lower Arm Actuator
+Hand Actuator
+${Array(8).fill('Heat Sink').join('\n')}
+Left Torso:
+Heat Sink
+Heat Sink
+${Array(10).fill('-Empty-').join('\n')}
+Right Torso:
+Test MGA
+Test Machine Gun
+Test Machine Gun
+Test Machine Gun
+Test MG Ammo
+${Array(7).fill('-Empty-').join('\n')}
+`;
+}
+
 function directPartialWingMekMtf(): string {
     return `uuid:${UUID}
 chassis:Direct Partial Wing Fixture
@@ -974,7 +1236,7 @@ ${Array(5).fill('-Empty-').join('\n')}
 `;
 }
 
-function directShieldMekMtf(size: 'small' | 'medium' | 'large'): string {
+function directShieldMekMtf(size: 'small' | 'medium' | 'large', dualShields: boolean): string {
     const shieldName = `Test ${size[0]!.toUpperCase()}${size.slice(1)} Shield`;
     const shieldSlots = size === 'large' ? 7 : size === 'medium' ? 5 : 3;
     const leftArm = [
@@ -983,8 +1245,27 @@ function directShieldMekMtf(size: 'small' | 'medium' | 'large'): string {
         'Lower Arm Actuator',
         'Hand Actuator',
         ...Array(shieldSlots).fill(shieldName),
-        ...Array(8 - shieldSlots).fill('-Empty-'),
+        'ISMediumLaser',
+        ...Array(7 - shieldSlots).fill('-Empty-'),
     ];
+    const rightArm = dualShields
+        ? [
+            'Shoulder',
+            'Upper Arm Actuator',
+            'Lower Arm Actuator',
+            'Hand Actuator',
+            ...Array(shieldSlots).fill(shieldName),
+            'ISMediumLaser',
+            ...Array(7 - shieldSlots).fill('-Empty-'),
+        ]
+        : [
+            'Shoulder',
+            'Upper Arm Actuator',
+            'Lower Arm Actuator',
+            'Hand Actuator',
+            ...Array(6).fill('Heat Sink'),
+            ...Array(2).fill('-Empty-'),
+        ];
     return `uuid:${UUID}
 chassis:Direct Shield Fixture
 model:DS-${size[0]!.toUpperCase()}
@@ -1010,11 +1291,7 @@ RL armor:5
 Left Arm:
 ${leftArm.join('\n')}
 Right Arm:
-Shoulder
-Upper Arm Actuator
-Lower Arm Actuator
-Hand Actuator
-${[...Array(6).fill('Heat Sink'), ...Array(2).fill('-Empty-')].join('\n')}
+${rightArm.join('\n')}
 Left Torso:
 Test Jump Jet
 Test Jump Jet
@@ -1022,7 +1299,12 @@ Test Jump Jet
 Test UMU
 Test UMU
 Test TSM
-${Array(6).fill('-Empty-').join('\n')}
+ISMediumLaser
+(R) ISMediumLaser
+${Array(4).fill('-Empty-').join('\n')}
+Right Torso:
+ISMediumLaser
+${dualShields ? Array(6).fill('Heat Sink').join('\n') + '\n' : ''}${Array(dualShields ? 5 : 11).fill('-Empty-').join('\n')}
 `;
 }
 
@@ -1043,7 +1325,7 @@ engine:100 Fusion Engine
 gyro:${options.gyroType ?? 'Standard'}
 structure:Standard
 heat sinks:10 Single
-walk mp:5
+walk mp:${options.baseWalkMp ?? 5}
 jump mp:0
 armor:Standard(Inner Sphere)
 FLL armor:5

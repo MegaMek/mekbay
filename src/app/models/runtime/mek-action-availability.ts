@@ -14,6 +14,14 @@ import {
 } from './mek-runtime-index';
 import { isGaussPoweredDown } from './mek-gauss-power';
 import { ppcCapacitorChargingForWeapon } from './component-ppc-capacitor';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import {
+    shieldBlocksComponentAttack,
+    shieldBlocksIntrinsicAttack,
+} from './component-shield-mode';
+import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
+import { mobileHpgBlocksWeaponAttacks } from './component-mobile-hpg';
+import { hasAnyWeaponTrait } from '../weapon-traits-kernel';
 
 /** `configure-network` remains owned by the C3 encounter/runtime boundary. */
 export type MekAction =
@@ -40,6 +48,7 @@ export type MekActionRuntimePort = Pick<
     | 'locationCondition'
     | 'hasCondition'
     | 'mekMovementMode'
+    | 'mekShields'
 > & {
     mekDestruction(): MekActionDestructionCapability;
 };
@@ -51,6 +60,7 @@ export function canPerformMekAction(
     runtime: MekActionRuntimePort,
     target: AttackerActionTarget,
     action: MekAction,
+    ruleset: CBTRuleset,
 ): boolean {
     try {
         const resolved = resolveTarget(index, target);
@@ -59,6 +69,29 @@ export function canPerformMekAction(
         if (destruction.kind === 'unsupported'
             || destruction.destroyed
             || runtime.hasCondition('shutdown')) return false;
+
+        const movement = runtime.mekMovementMode();
+        if ((action === 'fire' || action === 'physical-attack')
+            && movement.kind === 'supported'
+            && movement.mode === 'sprint') return false;
+
+        if (action === 'fire' && mobileHpgBlocksWeaponAttacks(
+            [...index.components].flatMap(([componentId, component]) => {
+                const equipment = component.kind === 'equipment' ? component.mount.equipment : undefined;
+                return equipment && isMobileHpgEquipment(equipment)
+                    ? [Object.freeze({
+                        componentId,
+                        equipment,
+                        mode: runtime.componentMode(componentId),
+                        operational: runtime.componentStatus(componentId, 'committed') === 'available',
+                    })]
+                    : [];
+            }),
+        )) return false;
+
+        if ((action === 'fire' || action === 'physical-attack')
+            && !coreAmsExempt(resolved, action, ruleset)
+            && shieldBlocksTargetAttack(entity, index, ruleset, runtime, resolved)) return false;
 
         if (action === 'fire' && target.kind === 'component'
             && (runtime.componentJammed(target.componentId)
@@ -83,6 +116,32 @@ export function canPerformMekAction(
     } catch {
         return false;
     }
+}
+
+function shieldBlocksTargetAttack(
+    entity: MekEntity,
+    index: MekRuntimeIndex,
+    ruleset: CBTRuleset,
+    runtime: MekActionRuntimePort,
+    target: ResolvedTarget,
+): boolean {
+    return target.kind === 'component'
+        ? shieldBlocksComponentAttack(entity, index, ruleset, runtime, target.definition.id)
+        : shieldBlocksIntrinsicAttack(entity, index, ruleset, runtime, target.definition.locations);
+}
+
+function coreAmsExempt(
+    target: ResolvedTarget,
+    action: MekAction,
+    ruleset: CBTRuleset,
+): boolean {
+    return ruleset === 'core-2026'
+        && action === 'fire'
+        && target.kind === 'component'
+        && hasAnyWeaponTrait(
+            target.definition.mount.equipment,
+            ['anti-missile', 'anti-missile-bay'],
+        );
 }
 
 type ResolvedTarget =

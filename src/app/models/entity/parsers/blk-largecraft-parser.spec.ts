@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { ArmorEquipment } from '../../equipment.model';
-import { EquipmentRegistry } from '../../equipment-lookup';
+import { createTestEquipmentRegistry } from '../testing/test-equipment-registry';
 import { writeBlkLargeCraft } from '../writers/blk-largecraft-writer';
 import { BuildingBlock } from './building-block';
 import { parseBlkLargeCraft } from './blk-largecraft-parser';
@@ -14,7 +14,7 @@ describe('BLK large-craft parser', () => {
       id: 'Aerospace', name: 'Aerospace', type: 'armor',
       armor: { type: 'AEROSPACE' }, tech: { base: 'All' },
     });
-    const registry = new EquipmentRegistry({ [aerospaceArmor.id]: aerospaceArmor });
+    const registry = createTestEquipmentRegistry({ [aerospaceArmor.id]: aerospaceArmor });
     const entity = parseBlkLargeCraft(
       new BuildingBlock(largeCraftBlk()),
       new ParseContext('armor-order.blk', registry),

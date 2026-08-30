@@ -28,7 +28,7 @@ export const MAX_MEK_PILOT_CHECK_WITNESS_LENGTH_V2 = 16_384;
 export const MAX_MEK_MOVEMENT_MP_V2 = 1_000;
 export const MAX_MEK_PILOT_TARGET_V2 = 100;
 
-export type MekMovementModeV2 = 'stationary' | 'walk' | 'run' | 'jump' | 'UMU';
+export type MekMovementModeV2 = 'stationary' | 'walk' | 'run' | 'sprint' | 'jump' | 'UMU';
 /** Detached movement facts consumed by heat settlement, including retained VTOL recovery. */
 export interface MekMovementHeatInputV2 {
     readonly mode: MekMovementModeV2 | 'VTOL';
@@ -42,7 +42,7 @@ export interface MekMovementDeclarationV2 {
     readonly schemaVersion: typeof MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION;
     readonly mode: MekMovementModeV2;
     readonly distance: number;
-    /** Exact active MASC/supercharger components selected for this run. */
+    /** Exact active MASC/supercharger components selected for this Run or Sprint. */
     readonly boosterComponentIds: readonly ComponentId[];
 }
 
@@ -60,6 +60,7 @@ export type MekPilotCheckTriggerKindV2 =
     | 'move-damaged-gyro'
     | 'move-damaged-leg'
     | 'move-damaged-actuator'
+    | 'sprint-booster'
     | 'get-up'
     | 'shutdown';
 
@@ -109,7 +110,9 @@ export interface MekMovementPsrStateV2 {
 
 export interface MekMovementPsrRuntimeFactsV2 extends MekShieldRuntimeFactsV2 {
     readonly rulesFlavor: CBTRuleset;
+    readonly sprintingAllowed: boolean;
     readonly currentHeat: number;
+    readonly airborne: boolean;
     readonly pilotingSkill: number;
     readonly functionalCrew: boolean;
     /**
@@ -137,6 +140,10 @@ export type MekMovementBlockReasonCodeV2 =
     | 'NOT_PRONE'
     | 'IMMOBILE'
     | 'NO_MOVEMENT_POINTS'
+    | 'OPTION_DISABLED'
+    | 'AIRBORNE'
+    | 'INSUFFICIENT_HIPS'
+    | 'RUN_UNAVAILABLE'
     | 'CAREFUL_STAND'
     | 'ALREADY_SHUTDOWN'
     | 'NOT_SHUTDOWN';
@@ -198,6 +205,8 @@ export interface MekMovementPsrProjectionV2 {
     readonly potentialWalkMp: number;
     readonly runMp: number;
     readonly maximumRunMp: number;
+    readonly sprintMp: number;
+    readonly maximumSprintMp: number;
     readonly jumpMp: number;
     readonly umuMp: number;
     readonly movementImpaired: boolean;
@@ -407,6 +416,9 @@ interface MovementNumbersV2 {
     readonly maximumRunMp: number;
     readonly activeRunMp: number;
     readonly runningMinimumMp: number;
+    readonly sprintMp: number;
+    readonly maximumSprintMp: number;
+    readonly activeSprintMp: number;
     readonly jumpMp: number;
     readonly umuMp: number;
     readonly hardened: boolean;
@@ -435,7 +447,7 @@ interface CoreLegPilotCheckGroup {
 }
 
 const MOVEMENT_MODES = Object.freeze([
-    'stationary', 'walk', 'run', 'jump', 'UMU',
+    'stationary', 'walk', 'run', 'sprint', 'jump', 'UMU',
 ] as const satisfies readonly MekMovementModeV2[]);
 const ACTION_KINDS = Object.freeze([
     'shutdown', 'startup',
@@ -445,7 +457,8 @@ const CHECK_STATUSES = Object.freeze([
 ] as const satisfies readonly MekPilotCheckStatusV2[]);
 const TRIGGER_KINDS = Object.freeze([
     'damage-total-20', 'leg-actuator-hit', 'hip-hit', 'gyro-hit', 'leg-destroyed',
-    'move-damaged-gyro', 'move-damaged-leg', 'move-damaged-actuator', 'get-up', 'shutdown',
+    'move-damaged-gyro', 'move-damaged-leg', 'move-damaged-actuator', 'sprint-booster',
+    'get-up', 'shutdown',
 ] as const satisfies readonly MekPilotCheckTriggerKindV2[]);
 
 const PRISTINE_STATE = freezeState({
@@ -474,8 +487,8 @@ export function canonicalizeMekMovementDeclarationV2(
         throw new Error('Invalid Mek movement declaration');
     }
     const boosters = canonicalIds(value.boosterComponentIds, 'booster component');
-    if (value.mode !== 'run' && boosters.length > 0) {
-        throw new Error('Only running may declare MASC-family boosters');
+    if (value.mode !== 'run' && value.mode !== 'sprint' && boosters.length > 0) {
+        throw new Error('Only Run or Sprint may declare MASC-family boosters');
     }
     if (value.mode === 'stationary' && value.distance !== 0) {
         throw new Error('Movement mode and distance are inconsistent');
@@ -555,6 +568,8 @@ export function projectMekMovementPsrV2(
     }
     if (!canonicalNonnegativeNumber(facts.currentHeat, 1_000_000)
         || !canonicalNonnegativeInteger(facts.pilotingSkill, MAX_MEK_PILOT_TARGET_V2)
+        || typeof facts.sprintingAllowed !== 'boolean'
+        || typeof facts.airborne !== 'boolean'
         || typeof facts.functionalCrew !== 'boolean'
         || typeof facts.dedicatedPilotFunctional !== 'boolean') {
         return unsupported('Movement runtime heat or piloting skill is invalid');
@@ -578,8 +593,17 @@ export function projectMekMovementPsrV2(
     const immobile = destroyed || shutdown || disconnected || !controlled
         || (facts.rulesFlavor === 'total-warfare' ? numbers.allLimbsDestroyed : damageImmobile);
     const warnings = commonWarnings(numbers, facts);
-    const pilotingTargetNumber = facts.pilotingSkill + numbers.permanentPsrModifier;
-    const movementRequiresPilotCheck = (mode: 'run' | 'jump'): boolean => {
+    const sprintReasons = sprintBlockReasons(profile, facts, numbers);
+    const sprintSelected = canonicalState.movement?.mode === 'sprint' && sprintReasons.length === 0;
+    const permanentPsrModifiers = sprintSelected
+        ? Object.freeze([
+            ...numbers.permanentPsrModifiers,
+            psrModifier(2, 'Sprinting'),
+        ].sort(comparePsrModifiers))
+        : numbers.permanentPsrModifiers;
+    const permanentPsrModifier = numbers.permanentPsrModifier + (sprintSelected ? 2 : 0);
+    const pilotingTargetNumber = facts.pilotingSkill + permanentPsrModifier;
+    const movementRequiresPilotCheck = (mode: 'run' | 'sprint' | 'jump'): boolean => {
         const selected = canonicalState.movement?.mode === mode;
         const declaration = Object.freeze({
             schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
@@ -621,6 +645,17 @@ export function projectMekMovementPsrV2(
                     'Hardened armor reduces run MP by one',
                 )] : []),
             ], Math.max(numbers.runMp, numbers.runningMinimumMp), movementRequiresPilotCheck('run')),
+        movementAction('sprint', 0, sprintReasons.length === 0
+            ? Math.max(numbers.maximumSprintMp, numbers.activeSprintMp)
+            : 0,
+            destroyed, shutdown, controlled, immobile,
+            facts.conditions.has('prone'), canonicalState.carefulStand, [
+                ...warnings,
+                ...(numbers.maximumSprintMp > numbers.sprintMp ? [warning(
+                    'BOOSTER_FAILURE_CHECK',
+                    'Maximum Sprint MP uses MASC-family equipment and requires its own failure checks',
+                )] : []),
+            ], numbers.sprintMp, movementRequiresPilotCheck('sprint'), sprintReasons),
         movementAction('jump', 0, numbers.jumpMp, destroyed, shutdown, controlled, immobile,
             facts.conditions.has('prone'), canonicalState.carefulStand, warnings,
             numbers.jumpMp, movementRequiresPilotCheck('jump')),
@@ -642,11 +677,13 @@ export function projectMekMovementPsrV2(
         potentialWalkMp: numbers.potentialWalkMp,
         runMp: numbers.runMp,
         maximumRunMp: numbers.maximumRunMp,
+        sprintMp: numbers.sprintMp,
+        maximumSprintMp: numbers.maximumSprintMp,
         jumpMp: numbers.jumpMp,
         umuMp: numbers.umuMp,
         movementImpaired: numbers.movementImpaired,
-        permanentPsrModifier: numbers.permanentPsrModifier,
-        permanentPsrModifiers: numbers.permanentPsrModifiers,
+        permanentPsrModifier,
+        permanentPsrModifiers,
         pilotingTargetNumber,
         standing,
         actions: Object.freeze(actions),
@@ -668,6 +705,8 @@ export function projectMekBattleValueMovementV2(
     }
     if (!canonicalNonnegativeNumber(facts.currentHeat, 1_000_000)
         || !canonicalNonnegativeInteger(facts.pilotingSkill, MAX_MEK_PILOT_TARGET_V2)
+        || typeof facts.sprintingAllowed !== 'boolean'
+        || typeof facts.airborne !== 'boolean'
         || typeof facts.functionalCrew !== 'boolean'
         || typeof facts.dedicatedPilotFunctional !== 'boolean') {
         return unsupported('Movement runtime facts are invalid');
@@ -1085,6 +1124,36 @@ export function resolveMekPilotCheckV2(
     });
 }
 
+/** Explicit boundary policy for checks the player chose not to resolve. */
+export function dismissPendingMekPilotChecksV2(
+    state: MekMovementPsrStateV2,
+    checkIds?: readonly string[],
+): MekMovementPsrStateV2 {
+    const canonical = canonicalizeMekMovementPsrStateV2(state);
+    const selected = checkIds === undefined ? null : new Set(checkIds);
+    if (selected !== null && selected.size !== checkIds!.length) {
+        throw new Error('Pilot-check dismissal IDs must be unique');
+    }
+    const checks = canonical.checks.filter(check =>
+        check.status !== 'pending' || (selected !== null && !selected.has(check.checkId)));
+    if (selected !== null && checks.length + selected.size !== canonical.checks.length) {
+        throw new Error('Pilot-check dismissal contains an unknown or settled check');
+    }
+    return checks.length === canonical.checks.length
+        ? canonical
+        : freezeState({ ...canonical, checks });
+}
+
+/** Consumes automatic-fall notices after falling automation has handled or skipped them. */
+export function dismissMekAutomaticFallsV2(
+    state: MekMovementPsrStateV2,
+): MekMovementPsrStateV2 {
+    const canonical = canonicalizeMekMovementPsrStateV2(state);
+    return canonical.automaticFalls.length === 0
+        ? canonical
+        : freezeState({ ...canonical, automaticFalls: [] });
+}
+
 export function resetMekMovementPsrPhaseV2(state: MekMovementPsrStateV2): MekMovementPsrStateV2 {
     const canonical = canonicalizeMekMovementPsrStateV2(state);
     assertNoPendingPilotChecks(canonical, 'phase');
@@ -1303,6 +1372,7 @@ function movementNumbers(
             - activeLargeShields
             - (modularArmorActive ? 1 : 0),
     );
+    const preDamageWalk = walk;
     let runDisabled = false;
     let runCap: number | null = null;
     let applyActuatorDamage = true;
@@ -1375,7 +1445,12 @@ function movementNumbers(
     }
     if (applyActuatorDamage) walk -= destroyedLegActuators + destroyedFeet;
     impaired ||= destroyedLegActuators > 0 || destroyedFeet > 0 || destroyedLegs > 0;
-    walk = Math.max(0, Math.min(profile.movement.baseWalkMp, walk));
+    const legDamageMinimumWalk = facts.rulesFlavor === 'core-2026'
+        && preDamageWalk > 0
+        && destroyedLegs < (quadruped ? 4 : 2)
+        ? 1
+        : 0;
+    walk = Math.max(legDamageMinimumWalk, Math.min(profile.movement.baseWalkMp, walk));
     const damageWalk = walk;
 
     const heatModifier = mekHeatEffects(facts.currentHeat).moveModifier;
@@ -1393,13 +1468,11 @@ function movementNumbers(
         : Math.max(0, Math.round(walk * 1.5) - (hardened ? 1 : 0));
     const workingMasc = profile.masc.some(group => groupAvailable(group, facts));
     const workingSupercharger = profile.superchargers.some(group => groupAvailable(group, facts));
-    const coefficient = workingMasc && workingSupercharger ? 2.5
-        : workingMasc || workingSupercharger ? 2 : 1.5;
+    const coefficient = movementBoosterCoefficient(1.5, workingMasc, workingSupercharger);
     const activeMasc = profile.masc.some(group => boosterActive(facts, group.componentId));
     const activeSupercharger = profile.superchargers.some(group =>
         boosterActive(facts, group.componentId));
-    const activeCoefficient = activeMasc && activeSupercharger ? 2.5
-        : activeMasc || activeSupercharger ? 2 : 1.5;
+    const activeCoefficient = movementBoosterCoefficient(1.5, activeMasc, activeSupercharger);
     const maximumRunWalk = tsmPotential ? potentialWalk : walk;
     let maximumRun = maximumRunWalk <= 0 || runDisabled
         ? 0
@@ -1418,6 +1491,21 @@ function movementNumbers(
         && destroyedLegs === (quadruped ? 2 : 1)
         ? 1
         : 0;
+    const sprint = ordinaryRun <= 0 ? 0 : Math.max(0, Math.round(walk * 2));
+    const maximumSprint = sprint <= 0
+        ? 0
+        : Math.max(0, Math.round(walk * movementBoosterCoefficient(
+            2,
+            workingMasc,
+            workingSupercharger,
+        )));
+    const activeSprint = sprint <= 0
+        ? 0
+        : Math.max(0, Math.round(walk * movementBoosterCoefficient(
+            2,
+            activeMasc,
+            activeSupercharger,
+        )));
 
     const lostJets = profile.jumpJets.filter(group => !groupAvailable(group, facts)).length;
     const wingSlotLoss = profile.partialWings.reduce((sum, group) => sum
@@ -1451,6 +1539,9 @@ function movementNumbers(
         maximumRunMp: maximumRun,
         activeRunMp: activeRun,
         runningMinimumMp: runningMinimum,
+        sprintMp: sprint,
+        maximumSprintMp: maximumSprint,
+        activeSprintMp: activeSprint,
         jumpMp: jump,
         umuMp: umu,
         hardened,
@@ -1460,6 +1551,14 @@ function movementNumbers(
         permanentPsrModifier: psr.modifier,
         permanentPsrModifiers: psr.modifiers,
     });
+}
+
+function movementBoosterCoefficient(
+    base: number,
+    masc: boolean,
+    supercharger: boolean,
+): number {
+    return base + (masc ? 0.5 : 0) + (supercharger ? 0.5 : 0);
 }
 
 function permanentPsr(
@@ -1707,7 +1806,36 @@ function movementCapacityForDeclaration(
     if (declaration.mode === 'walk') return numbers.walkMp;
     if (declaration.mode === 'jump') return numbers.jumpMp;
     if (declaration.mode === 'UMU') return numbers.umuMp;
-    return selectedRunCapacity(profile, facts, numbers, declaration.boosterComponentIds);
+    return declaration.mode === 'sprint'
+        ? selectedSprintCapacity(profile, facts, numbers, declaration.boosterComponentIds)
+        : selectedRunCapacity(profile, facts, numbers, declaration.boosterComponentIds);
+}
+
+function sprintBlockReasons(
+    profile: MekMechanicsProfile,
+    facts: MekMovementPsrRuntimeFactsV2,
+    numbers: MovementNumbersV2,
+): readonly MekMovementMessageV2<MekMovementBlockReasonCodeV2>[] {
+    const reasons: MekMovementMessageV2<MekMovementBlockReasonCodeV2>[] = [];
+    if (!facts.sprintingAllowed) reasons.push(blocker(
+        'OPTION_DISABLED',
+        'Sprinting is disabled by the force scenario',
+    ));
+    if (facts.airborne) reasons.push(blocker('AIRBORNE', 'An airborne Mek cannot Sprint'));
+    if (facts.conditions.has('prone')) reasons.push(blocker('PRONE', 'A prone Mek cannot Sprint'));
+    if (numbers.runMp <= 0) reasons.push(blocker(
+        'RUN_UNAVAILABLE',
+        'Sprint requires ordinary Run movement',
+    ));
+    const workingHips = profile.limbs.filter(limb => limb.kind === 'leg'
+        && !facts.locationDestroyed(limb.locationId)
+        && limb.actuators.some(actuator => actuator.kind === 'hip'
+            && groupAvailable(actuator, facts))).length;
+    if (workingHips < 2) reasons.push(blocker(
+        'INSUFFICIENT_HIPS',
+        'Sprint requires at least two working hip actuators',
+    ));
+    return Object.freeze(reasons);
 }
 
 function movementAction(
@@ -1723,8 +1851,9 @@ function movementAction(
     warnings: readonly MekMovementMessageV2<MekMovementWarningCodeV2>[],
     ordinaryMaximumMp = maximumMp,
     requiresPilotCheck = false,
+    additionalReasons: readonly MekMovementMessageV2<MekMovementBlockReasonCodeV2>[] = [],
 ): MekLegalActionProjectionV2 {
-    const reasons: MekMovementMessageV2<MekMovementBlockReasonCodeV2>[] = [];
+    const reasons: MekMovementMessageV2<MekMovementBlockReasonCodeV2>[] = [...additionalReasons];
     if (destroyed) reasons.push(blocker('DESTROYED', 'Destroyed Meks cannot declare movement'));
     if (shutdown) reasons.push(blocker('SHUTDOWN', 'Shutdown Meks cannot declare movement'));
     if (!controlled) reasons.push(blocker('NO_FUNCTIONAL_CONTROL', 'No functional crew or drone operating system is available'));
@@ -1817,7 +1946,7 @@ function declarationLegality(
     const action = actions.find(entry => entry.kind === declaration.mode)!;
     const reasons = [...action.reasons];
     let maximumMp = Math.max(0, (action.maximumMp ?? 0) - movementPointsSpent);
-    if (declaration.mode === 'run') {
+    if (declaration.mode === 'run' || declaration.mode === 'sprint') {
         const activeBoosters = new Set<ComponentId>([
             ...profile.masc.filter(group => boosterActive(facts, group.componentId))
                 .map(group => group.componentId),
@@ -1828,14 +1957,22 @@ function declarationLegality(
             reasons.push(blocker('NO_MOVEMENT_POINTS', 'The declaration selects inactive or non-MASC boosters'));
             maximumMp = 0;
         } else {
-            maximumMp = Math.max(
-                0,
-                selectedRunCapacity(
+            const selectedCapacity = declaration.mode === 'sprint'
+                ? selectedSprintCapacity(
                     profile,
                     facts,
                     numbers,
                     declaration.boosterComponentIds,
-                ) - movementPointsSpent,
+                )
+                : selectedRunCapacity(
+                    profile,
+                    facts,
+                    numbers,
+                    declaration.boosterComponentIds,
+                );
+            maximumMp = Math.max(
+                0,
+                selectedCapacity - movementPointsSpent,
             );
         }
     }
@@ -1861,8 +1998,7 @@ function selectedRunCapacity(
         selected.has(group.componentId) && boosterActive(facts, group.componentId));
     const usesSupercharger = profile.superchargers.some(group =>
         selected.has(group.componentId) && boosterActive(facts, group.componentId));
-    const coefficient = usesMasc && usesSupercharger ? 2.5
-        : usesMasc || usesSupercharger ? 2 : 1.5;
+    const coefficient = movementBoosterCoefficient(1.5, usesMasc, usesSupercharger);
     const calculated = numbers.walkMp <= 0
         ? 0
         : Math.max(0, Math.round(numbers.walkMp * coefficient) - (numbers.hardened ? 1 : 0));
@@ -1870,6 +2006,23 @@ function selectedRunCapacity(
         numbers.runningMinimumMp,
         Math.min(calculated, Math.max(numbers.maximumRunMp, numbers.activeRunMp)),
     );
+}
+
+function selectedSprintCapacity(
+    profile: MekMechanicsProfile,
+    facts: MekMovementPsrRuntimeFactsV2,
+    numbers: MovementNumbersV2,
+    componentIds: readonly ComponentId[],
+): number {
+    if (sprintBlockReasons(profile, facts, numbers).length > 0) return 0;
+    const selected = new Set(componentIds);
+    const usesMasc = profile.masc.some(group =>
+        selected.has(group.componentId) && boosterActive(facts, group.componentId));
+    const usesSupercharger = profile.superchargers.some(group =>
+        selected.has(group.componentId) && boosterActive(facts, group.componentId));
+    const calculated = Math.max(0, Math.round(numbers.walkMp
+        * movementBoosterCoefficient(2, usesMasc, usesSupercharger)));
+    return Math.min(calculated, Math.max(numbers.maximumSprintMp, numbers.activeSprintMp));
 }
 
 function boosterActive(facts: MekMovementPsrRuntimeFactsV2, componentId: ComponentId): boolean {
@@ -1882,18 +2035,23 @@ function movementCheckSeeds(
     pilotingTargetNumber: number,
     declaration: MekMovementDeclarationV2,
 ): readonly MekPilotCheckSeedV2[] {
-    if (declaration.mode !== 'run' && declaration.mode !== 'jump') return Object.freeze([]);
-    if (declaration.mode === 'run'
+    if (declaration.mode !== 'run'
+        && declaration.mode !== 'sprint'
+        && declaration.mode !== 'jump') return Object.freeze([]);
+    const seeds = declaration.mode === 'sprint'
+        ? sprintBoosterCheckSeeds(profile, facts, pilotingTargetNumber, declaration)
+        : [];
+    if ((declaration.mode === 'run' || declaration.mode === 'sprint')
         && declaration.distance < 1
         && profile.rulesFlavor === 'core-2026') {
-        return Object.freeze([]);
+        return Object.freeze([...seeds]);
     }
     const damagedGyro = canonicalIds(profile.gyro.criticalSlotIds.filter(slotId =>
         facts.criticalSlotUnavailable(slotId)), 'damaged gyro critical slot') as CriticalSlotId[];
     const coreHeavyDuty = profile.rulesFlavor === 'core-2026' && profile.gyro.heavyDuty;
-    if (damagedGyro.length > 0 && !(coreHeavyDuty && declaration.mode === 'run')) {
+    if (damagedGyro.length > 0 && !(coreHeavyDuty && declaration.mode !== 'jump')) {
         const permanentGyroModifier = gyroPsrModifier(profile, damagedGyro.length);
-        return Object.freeze([seed({
+        return Object.freeze([...seeds, seed({
             sourceKind: 'movement',
             triggerKind: 'move-damaged-gyro',
             witness: canonicalWitness({ declaration, damagedGyro, heavyDuty: profile.gyro.heavyDuty }),
@@ -1905,7 +2063,7 @@ function movementCheckSeeds(
             triggerModifier: coreHeavyDuty ? 2 : 0,
         }, coreHeavyDuty
             ? 'Jumping with damaged HD gyro'
-            : `${declaration.mode === 'jump' ? 'Jumping' : 'Running'} with damaged gyro`)]);
+            : `${movementModeVerb(declaration.mode)} with damaged gyro`)]);
     }
     const legs = legDamage(profile, facts);
     const quadruped = profile.form === 'quad' || profile.form === 'quadvee';
@@ -1915,7 +2073,7 @@ function movementCheckSeeds(
         && quadruped
         && destroyed.length === 2;
     if (representativeDestroyedLeg && coreQuadHipEquivalent) {
-        return Object.freeze([seed({
+        return Object.freeze([...seeds, seed({
             sourceKind: 'movement',
             triggerKind: 'move-damaged-leg',
             witness: canonicalWitness({
@@ -1927,7 +2085,7 @@ function movementCheckSeeds(
             locationIds: [representativeDestroyedLeg.locationId],
             baseTarget: pilotingTargetNumber,
             triggerModifier: 0,
-        }, `${declaration.mode === 'jump' ? 'Jumping' : 'Running'} with damaged hip`)]);
+        }, `${movementModeVerb(declaration.mode)} with damaged hip`)]);
     }
     const destroyedLegRequiresCheck = declaration.mode === 'jump'
         ? profile.rulesFlavor === 'total-warfare'
@@ -1942,7 +2100,7 @@ function movementCheckSeeds(
             && destroyed.length === 1
             ? 5
             : 0;
-        return Object.freeze([seed({
+        return Object.freeze([...seeds, seed({
             sourceKind: 'movement',
             triggerKind: 'move-damaged-leg',
             witness: canonicalWitness({
@@ -1954,7 +2112,7 @@ function movementCheckSeeds(
             locationIds: [representativeDestroyedLeg.locationId],
             baseTarget: pilotingTargetNumber,
             triggerModifier,
-        }, `${declaration.mode === 'jump' ? 'Jumping' : 'Running'} with damaged leg`)]);
+        }, `${movementModeVerb(declaration.mode)} with damaged leg`)]);
     }
 
     const relevantKinds: readonly MekActuatorKind[] = declaration.mode === 'jump'
@@ -1969,7 +2127,7 @@ function movementCheckSeeds(
             'damaged actuator critical slot',
         ) as CriticalSlotId[];
         if (slots.length === 0) continue;
-        return Object.freeze([seed({
+        return Object.freeze([...seeds, seed({
             sourceKind: 'movement',
             triggerKind: 'move-damaged-actuator',
             witness: canonicalWitness({ declaration, locationId: leg.locationId, slotIds: slots }),
@@ -1979,9 +2137,49 @@ function movementCheckSeeds(
             triggerModifier: 0,
         }, declaration.mode === 'jump'
             ? 'Jumping with damaged leg actuator'
-            : 'Running with damaged hip')]);
+            : `${movementModeVerb(declaration.mode)} with damaged hip`)]);
     }
-    return Object.freeze([]);
+    return Object.freeze([...seeds]);
+}
+
+function sprintBoosterCheckSeeds(
+    profile: MekMechanicsProfile,
+    facts: MekMovementPsrRuntimeFactsV2,
+    pilotingTargetNumber: number,
+    declaration: MekMovementDeclarationV2,
+): readonly MekPilotCheckSeedV2[] {
+    const selected = new Set(declaration.boosterComponentIds);
+    const usesMasc = profile.masc.some(group => selected.has(group.componentId)
+        && boosterActive(facts, group.componentId));
+    const usesSupercharger = profile.superchargers.some(group => selected.has(group.componentId)
+        && boosterActive(facts, group.componentId));
+    const enhancers: readonly {
+        readonly boosterKind: 'MASC' | 'supercharger';
+        readonly label: string;
+    }[] = usesMasc && usesSupercharger
+        ? [
+            { boosterKind: 'MASC', label: 'MASC' },
+            { boosterKind: 'supercharger', label: 'supercharger' },
+        ]
+        : usesMasc
+            ? [{ boosterKind: 'MASC', label: 'MASC or supercharger' }]
+            : usesSupercharger
+                ? [{ boosterKind: 'supercharger', label: 'MASC or supercharger' }]
+                : [];
+    return Object.freeze(enhancers.map(enhancer => seed({
+        sourceKind: 'movement',
+        triggerKind: 'sprint-booster',
+        witness: canonicalWitness({ declaration, boosterKind: enhancer.boosterKind }),
+        criticalSlotIds: [],
+        locationIds: [],
+        baseTarget: pilotingTargetNumber,
+        triggerModifier: 0,
+    }, `Sprinting with ${enhancer.label}`)));
+}
+
+function movementModeVerb(mode: 'run' | 'sprint' | 'jump'): 'Running' | 'Sprinting' | 'Jumping' {
+    if (mode === 'jump') return 'Jumping';
+    return mode === 'sprint' ? 'Sprinting' : 'Running';
 }
 
 function actionCheckSeed(baseTarget: number, action: MekActionDeclarationV2): MekPilotCheckSeedV2 {
@@ -2252,7 +2450,7 @@ function coreLegPilotCheckCandidate(
 }
 
 function pilotCheckTriggerStillActive(
-    _profile: MekMechanicsProfile,
+    profile: MekMechanicsProfile,
     facts: MekMovementPsrRuntimeFactsV2,
     state: MekMovementPsrStateV2,
     check: MekPilotCheckV2,
@@ -2276,6 +2474,16 @@ function pilotCheckTriggerStillActive(
         case 'move-damaged-actuator':
             return movementWitnessMatchesDeclaration(source, state.movement)
                 && source.criticalSlotIds.every(slotId => facts.criticalSlotUnavailable(slotId));
+        case 'sprint-booster': {
+            if (!movementWitnessMatchesDeclaration(source, state.movement)) return false;
+            const witness = JSON.parse(source.witness) as Record<string, unknown>;
+            const groups = witness['boosterKind'] === 'MASC'
+                ? profile.masc
+                : profile.superchargers;
+            const selected = new Set(state.movement?.boosterComponentIds ?? []);
+            return groups.some(group => selected.has(group.componentId)
+                && boosterActive(facts, group.componentId));
+        }
         case 'get-up':
             return false;
         case 'shutdown':
@@ -2503,7 +2711,7 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
                     && source.triggerModifier === 2);
             if (typeof witness['heavyDuty'] !== 'boolean'
                 || !sameStrings(criticalSlotIds, source.criticalSlotIds)
-                || !['run', 'jump'].includes(declaration.mode)
+                || !['run', 'sprint', 'jump'].includes(declaration.mode)
                 || !validTriggerModifier) {
                 throw new Error('Damaged-gyro movement witness does not match its source');
             }
@@ -2519,7 +2727,7 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
                 'declaration', 'locationId', 'quadruped',
             ]);
             const declaration = exactWitnessMovementDeclaration(witness['declaration']);
-            if (!['run', 'jump'].includes(declaration.mode)
+            if (!['run', 'sprint', 'jump'].includes(declaration.mode)
                 || !boundedCanonicalText(witness['locationId'], 512)
                 || typeof witness['quadruped'] !== 'boolean'
                 || witness['locationId'] !== source.locationIds[0]
@@ -2544,13 +2752,24 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
             const criticalSlotIds = exactWitnessIds(
                 witness['slotIds'], 'damaged actuator critical slot',
             ) as CriticalSlotId[];
-            if (!['run', 'jump'].includes(declaration.mode)
+            if (!['run', 'sprint', 'jump'].includes(declaration.mode)
                 || !boundedCanonicalText(witness['locationId'], 512)
                 || witness['locationId'] !== source.locationIds[0]
                 || !sameStrings(criticalSlotIds, source.criticalSlotIds)) {
                 throw new Error('Damaged-actuator movement witness does not match its source');
             }
             requireSource('movement', 'one-or-more', 1, 0);
+            return;
+        }
+        case 'sprint-booster': {
+            requireSource('movement', 0, 0, 0);
+            const witness = exactWitnessRecord(decodedWitness, ['declaration', 'boosterKind']);
+            const declaration = exactWitnessMovementDeclaration(witness['declaration']);
+            if (declaration.mode !== 'sprint'
+                || (witness['boosterKind'] !== 'MASC'
+                    && witness['boosterKind'] !== 'supercharger')) {
+                throw new Error('Sprint-booster witness does not match its source');
+            }
             return;
         }
         case 'get-up': {
@@ -2885,6 +3104,13 @@ function collectPilotCheckWitnessReferences(
                 `${path}.slotIds[${index}]`,
             ));
             return;
+        case 'sprint-booster':
+            collectMovementDeclarationReferences(
+                witness['declaration'] as MekMovementDeclarationV2,
+                `${path}.declaration`,
+                references,
+            );
+            return;
         case 'get-up':
         case 'shutdown':
             return;
@@ -3131,6 +3357,14 @@ function remapPilotCheckWitness(
                 slotIds: (witness['slotIds'] as CriticalSlotId[])
                     .map(id => requiredRemappedId(ids.criticalSlots, id))
                     .sort(compareText),
+            });
+        case 'sprint-booster':
+            return canonicalWitness({
+                declaration: remapMovementDeclaration(
+                    witness['declaration'] as MekMovementDeclarationV2,
+                    ids,
+                ),
+                boosterKind: witness['boosterKind'],
             });
         case 'get-up':
         case 'shutdown':

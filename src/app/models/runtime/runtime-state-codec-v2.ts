@@ -98,6 +98,7 @@ import {
     type MekComponentModes,
 } from './mek-component-rules';
 import { rapidFireAutocannonSupportsJamming } from './component-rapid-fire-autocannon';
+import { ecmRuntimeModes } from './component-electronic-suite';
 import { STATE_RESTORATION_ALGORITHM_VERSION_V2 } from './unit-restoration-repair-v2';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { SavedEntityIdentity } from '../persisted-unit-state';
@@ -2607,6 +2608,11 @@ function buildCurrentTargetIndex(
         const ref = createSavedTargetRef(definition.kind === 'equipment' ? 'component' : 'system', componentId);
         const capacitorWeaponId = ppcCapacitorWeaponId(entity, index, componentId);
         const modes = mekComponentModes(entity, index, componentId, ruleset);
+        const persistedModes = equipment === undefined
+            ? modes.modes
+            : ecmRuntimeModes(equipment).length > 0
+                ? ecmRuntimeModes(equipment)
+                : modes.modes;
         const shieldProfile = equipment === undefined
             ? undefined
             : resolveShieldProfileFromFlags(equipment.flags);
@@ -2616,6 +2622,7 @@ function buildCurrentTargetIndex(
             componentId,
             stateCapabilities: Object.freeze({
                 ...modes,
+                modes: persistedModes,
                 supportsJamming: rapidFireAutocannonSupportsJamming(index, componentId, ruleset),
             }),
             escalatingFailureTargetCount: equipment === undefined

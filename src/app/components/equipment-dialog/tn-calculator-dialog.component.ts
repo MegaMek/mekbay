@@ -765,6 +765,10 @@ export interface TnCalculatorDialogResult {
             transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
         }
 
+        .bt-button[disabled] .modifier-badge {
+            opacity: 0.4;
+        }
+
         .bt-button.move-button {
             pointer-events: auto;
             cursor: pointer;
@@ -783,11 +787,6 @@ export interface TnCalculatorDialogResult {
 
         .bt-button.move-button.selected .modifier-badge {
             background-color: #000;
-        }
-
-        .bt-button.move-button:disabled {
-            cursor: not-allowed;
-            opacity: 0.7;
         }
 
         .derived-target-state .bt-button,

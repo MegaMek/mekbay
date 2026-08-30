@@ -23,6 +23,7 @@ export interface LinkedOAuthProvider {
 
 export interface UserStateSnapshot {
     publicId?: string | null;
+    displayName?: string | null;
     hasOAuth?: boolean;
     oauthProviderCount?: number;
     oauthProviders?: LinkedOAuthProvider[];

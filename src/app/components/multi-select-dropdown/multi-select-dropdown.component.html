@@ -37,7 +37,7 @@
             } @else if (compressedPills(); as compressed) {
                 @for (cp of compressed; track cp.state) {
                     <span class="pill"
-                          [ngClass]="{
+                          [class]="{
                             'pill-or': cp.state === 'or',
                             'pill-and': cp.state === 'and',
                             'pill-not': cp.state === 'not'
@@ -59,12 +59,15 @@
                 @for (option of selectedOptions(); track option.name) {
                     <span class="pill"
                           (click)="openAndScrollTo(option.name, $event)"
-                          [ngClass]="{
+                          [class]="{
                             'pill-or': option.state === 'or',
                             'pill-and': option.state === 'and',
                             'pill-not': option.state === 'not'
                           }">
                         {{ getDisplayName(option.name) }}{{ (option.count > 1) ? ' (' + option.count + ')' : '' }}
+                        @if (formatMinimumSummary(option.minimumValues); as minimumSummary) {
+                            @if (minimumSummary) { ({{ minimumSummary }}) }
+                        }
                         <button type="button" class="remove-pill" (click)="removeOption(option.name, $event)">&#10005;</button>
                     </span>
                 }
@@ -78,9 +81,8 @@
         }
     </div>
 
-    @if (isOpen()) {
-        <ng-template
-            cdkConnectedOverlay
+    <ng-template
+        cdkConnectedOverlay
         [cdkConnectedOverlayOrigin]="overlayOrigin"
         [cdkConnectedOverlayOpen]="isOpen()"
         [cdkConnectedOverlayPositions]="overlayPositions()"
@@ -155,8 +157,10 @@
                     [attr.data-option-name]="option.name"
                     [attr.aria-selected]="isSelected(option.name) ? 'true' : 'false'"
                     [class.keyboard-focused]="optionIndex === keyboardFocusedIndex()"
+                    [class.option-section-start]="optionSectionBreakIndexes().has(optionIndex)"
                     [class.unavailable]="option.available === false"
                     [class.selected-single]="!multiselect() && isSelected(option.name)"
+                    [class.has-minimum-fields]="!!option.minimumFieldLabels?.length && (getState(option.name) === 'and' || getState(option.name) === 'or')"
                     (pointerenter)="onOptionPointerHover(option.name)"
                     (pointermove)="onOptionPointerHover(option.name)"
                     (pointerleave)="onOptionPointerLeave(option.name)"
@@ -164,7 +168,7 @@
                     @if (multiselect()) {
                         <input type="checkbox" [checked]="isSelected(option.name)" (change)="onOptionToggle(option.name)" />
                         <span class="custom-checkbox"
-                            [ngClass]="{
+                            [class]="{
                                 'checkbox-or': multistate() && isSelected(option.name) === 'or',
                                 'checkbox-and': multistate() && isSelected(option.name) === 'and',
                                 'checkbox-not': multistate() && isSelected(option.name) === 'not',
@@ -196,6 +200,25 @@
                         class="option-label"
                         [style.fontSize.px]="getVirtualOptionLabelFontSize(option)"
                         [innerHTML]="highlight(option.displayName ?? option.name)"></span>
+                    @if (option.minimumFieldLabels; as fieldLabels) {
+                        @if (getState(option.name) === 'and' || getState(option.name) === 'or') {
+                            <div class="minimum-inputs">
+                                @for (fieldLabel of fieldLabels; let fieldIndex = $index; track fieldIndex) {
+                                    <input type="number"
+                                        min="0"
+                                        step="any"
+                                        class="minimum-field"
+                                        [value]="getMinimumValue(option.name, fieldIndex)"
+                                        [placeholder]="fieldLabel"
+                                        [attr.aria-label]="option.name + ' ' + fieldLabel + ' minimum'"
+                                        [title]="option.name + ' ' + fieldLabel + ' minimum (at least)'"
+                                        (input)="onMinimumInput(option.name, fieldIndex, fieldLabels.length, $event)"
+                                        (click)="$event.stopPropagation()"
+                                        (wheel)="onMinimumWheel($event)" />
+                                }
+                            </div>
+                        }
+                    }
                     @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
                         <div class="quantity-input">
                             <input type="number"
@@ -225,8 +248,10 @@
                             [attr.data-option-name]="option.name"
                             [attr.aria-selected]="isSelected(option.name) ? 'true' : 'false'"
                             [class.keyboard-focused]="i === keyboardFocusedIndex()"
+                            [class.option-section-start]="optionSectionBreakIndexes().has(i)"
                             [class.unavailable]="option.available === false"
                             [class.selected-single]="!multiselect() && isSelected(option.name)"
+                            [class.has-minimum-fields]="!!option.minimumFieldLabels?.length && (getState(option.name) === 'and' || getState(option.name) === 'or')"
                             (pointerenter)="onOptionPointerHover(option.name)"
                             (pointermove)="onOptionPointerHover(option.name)"
                             (pointerleave)="onOptionPointerLeave(option.name)"
@@ -235,7 +260,7 @@
                             @if (multiselect()) {
                                 <input type="checkbox" [checked]="isSelected(option.name)" (change)="onOptionToggle(option.name)" />
                                 <span class="custom-checkbox"
-                                    [ngClass]="{
+                                    [class]="{
                                         'checkbox-or': multistate() && isSelected(option.name) === 'or',
                                         'checkbox-and': multistate() && isSelected(option.name) === 'and',
                                         'checkbox-not': multistate() && isSelected(option.name) === 'not',
@@ -264,6 +289,25 @@
                                 <img [src]="option.img" class="option-img" alt="">
                             }
                             <span class="option-label" [innerHTML]="highlight(option.displayName ?? option.name)"></span>
+                            @if (option.minimumFieldLabels; as fieldLabels) {
+                                @if (getState(option.name) === 'and' || getState(option.name) === 'or') {
+                                    <div class="minimum-inputs">
+                                        @for (fieldLabel of fieldLabels; let fieldIndex = $index; track fieldIndex) {
+                                            <input type="number"
+                                                min="0"
+                                                step="any"
+                                                class="minimum-field"
+                                                [value]="getMinimumValue(option.name, fieldIndex)"
+                                                [placeholder]="fieldLabel"
+                                                [attr.aria-label]="option.name + ' ' + fieldLabel + ' minimum'"
+                                                [title]="option.name + ' ' + fieldLabel + ' minimum (at least)'"
+                                                (input)="onMinimumInput(option.name, fieldIndex, fieldLabels.length, $event)"
+                                                (click)="$event.stopPropagation()"
+                                                (wheel)="onMinimumWheel($event)" />
+                                        }
+                                    </div>
+                                }
+                            }
                             @if (countable() && (getState(option.name) === 'and' || getState(option.name) === 'or')) {
                                 <div class="quantity-input">
                                 <input type="number" 
@@ -290,6 +334,5 @@
             </div>
         }
         </div>
-        </ng-template>
-    }
+    </ng-template>
 </div>

@@ -33,7 +33,6 @@ interface PersistedForceEntryResolver extends ForceEntryResolver {
 const DB_NAME = 'mekbay';
 const DB_VERSION = 18;
 const DB_STORE = 'store';
-const CUSTOM_UNITS_KEY_PREFIX = 'units:server:';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
 const MEGAMEK_FACTIONS_KEY = 'megamekFactions';
@@ -41,7 +40,6 @@ const MEGAMEK_AVAILABILITY_KEY = 'megamekAvailability';
 const MEGAMEK_RULESETS_KEY = 'megamekRulesets';
 const ERAS_KEY = 'eras';
 const SOURCEBOOKS_KEY = 'sourcebooks';
-const SHEETS_STORE = 'sheetsStore';
 const CANVAS_STORE = 'canvasStore';
 const OPERATIONS_STORE = 'operationsStore';
 const FORCE_STORE = 'forceStore';
@@ -70,22 +68,12 @@ const CATALOG_GENERAL_STORE_KEYS = [
     PILOT_NAMES_KEY,
 ] as const;
 
-const MAX_SHEET_CACHE_COUNT = 5000; // Max number of sheets to cache
-
 class IndexedDbUpgradeBlockedError extends Error {
     constructor() {
         super('The local database upgrade is blocked by another MekBay tab. '
             + 'Close the other tab, then retry or reload this one.');
         this.name = 'IndexedDbUpgradeBlockedError';
     }
-}
-
-export interface StoredSheet {
-    key: string;
-    timestamp: number; // Timestamp of when the sheet was saved
-    etag: string; // ETag for the sheet content for cache validation
-    content: Blob; // The compressed XML content of the sheet
-    size: number; // Size of the blob in bytes
 }
 
 /** Tag data keyed by tag label -> unit names array. */
@@ -216,6 +204,7 @@ export interface SavedSearchSyncState {
 export interface UserData {
     uuid: string;
     publicId?: string;
+    displayName?: string;
     hasOAuth?: boolean;
     oauthProviderCount?: number;
     oauthProviders?: LinkedOAuthProvider[];
@@ -346,7 +335,6 @@ export class DbService {
                 const db = (event.target as IDBOpenDBRequest).result;
                 const transaction = (event.target as IDBOpenDBRequest).transaction;
                 this.createStoreIfMissing(db, transaction, DB_STORE);
-                this.createStoreIfMissing(db, transaction, SHEETS_STORE, 'timestamp');
                 this.createStoreIfMissing(db, transaction, FORCE_STORE, 'timestamp');
                 this.createStoreIfMissing(db, transaction, TAGS_STORE);
                 this.createStoreIfMissing(db, transaction, SAVED_SEARCHES_STORE);
@@ -380,18 +368,6 @@ export class DbService {
                             generalStore.delete(key);
                         }
                     }
-                    const legacyCursor = generalStore.openKeyCursor();
-                    legacyCursor.onsuccess = () => {
-                        const cursor = legacyCursor.result;
-                        if (!cursor) return;
-                        if (typeof cursor.key === 'string') {
-                            const isLegacyFluff = cursor.key.startsWith('units-fluff:server:');
-                            const isLegacyCatalog = event.oldVersion < 17
-                                && cursor.key.startsWith(CUSTOM_UNITS_KEY_PREFIX);
-                            if (isLegacyFluff || isLegacyCatalog) generalStore.delete(cursor.key);
-                        }
-                        cursor.continue();
-                    };
                 }
             };
 
@@ -1169,79 +1145,6 @@ export class DbService {
         }
     }
 
-    /**
-     * Get sheet metadata (timestamp, etag) without decompressing content.
-     */
-    public async getSheetMeta(key: string): Promise<{ timestamp: number; etag: string } | null> {
-        const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
-        if (!storedData) return null;
-        return {
-            timestamp: storedData.timestamp,
-            etag: storedData.etag,
-        };
-    }
-
-    /**
-     * Get the decompressed sheet content from cache.
-     */
-    public async getSheet(key: string): Promise<SVGSVGElement | null> {
-        const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
-        if (!storedData) return null;
-        try {
-            const decompressedStream = storedData.content.stream().pipeThrough(new DecompressionStream('gzip'));
-            const decompressedString = await new Response(decompressedStream).text();
-            const parser = new DOMParser();
-            const content = parser.parseFromString(decompressedString, 'image/svg+xml');
-            return content.documentElement as unknown as SVGSVGElement;
-        } catch (error) {
-            this.logger.error(`Error retrieving sheet ${key}: ${error}`);
-            return null;
-        }
-    }
-
-    /**
-     * Update the timestamp of a cached sheet (to mark it as recently validated).
-     */
-    public async touchSheet(key: string): Promise<void> {
-        const storedData = await this.getDataFromStore<StoredSheet>(key, SHEETS_STORE);
-        if (!storedData) return;
-        storedData.timestamp = Date.now();
-        try {
-            await this.saveDataToStore(storedData, key, SHEETS_STORE);
-        } catch {
-            // Silently ignore - not critical
-        }
-    }
-
-    public async saveSheet(
-        key: string,
-        sheet: SVGSVGElement,
-        etag: string,
-    ): Promise<void> {
-        // Skip saving if blob storage is unavailable
-        if (this.blobStorageUnavailable) return;
-        
-        const serializer = new XMLSerializer();
-        const contentString = serializer.serializeToString(sheet);
-        const compressedStream = new Blob([contentString]).stream().pipeThrough(new CompressionStream('gzip'));
-        const compressedBlob = await new Response(compressedStream).blob();
-        const data: StoredSheet = {
-            key: key,
-            timestamp: Date.now(),
-            etag: etag,
-            content: compressedBlob,
-            size: compressedBlob.size,
-        };
-        try {
-            await this.saveDataToStore(data, key, SHEETS_STORE);
-            if (!this.blobStorageUnavailable) {
-                this.cullOldSheets();
-            }
-        } catch {
-            // Silently ignore cache failures - sheets will be refetched as needed
-        }
-    }
-
     private async clearStore(storeName: string): Promise<void> {
         const db = await this.dbPromise;
         if (!db) return; // Degraded mode
@@ -1260,10 +1163,6 @@ export class DbService {
         });
     }
 
-    public async clearSheetsStore(): Promise<void> {
-        await this.clearStore(SHEETS_STORE);
-    }
-
     public async clearCanvasStore(): Promise<void> {
         await this.clearStore(CANVAS_STORE);
     }
@@ -1279,17 +1178,6 @@ export class DbService {
             for (const key of CATALOG_GENERAL_STORE_KEYS) {
                 store.delete(key);
             }
-
-            // Remove any cached additional-unit-server datasets (keys are dynamic per server URL).
-            const cursorRequest = store.openKeyCursor();
-            cursorRequest.onsuccess = () => {
-                const cursor = cursorRequest.result;
-                if (!cursor) return;
-                if (typeof cursor.key === 'string' && cursor.key.startsWith(CUSTOM_UNITS_KEY_PREFIX)) {
-                    store.delete(cursor.key);
-                }
-                cursor.continue();
-            };
 
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
@@ -1350,56 +1238,8 @@ export class DbService {
         });
     }
 
-    private async getStoreCount(storeName: string): Promise<number> {
-        const db = await this.dbPromise;
-        if (!db) return 0; // Degraded mode
-        return new Promise<number>((resolve, reject) => {
-            const transaction = db.transaction(storeName, 'readonly');
-            const store = transaction.objectStore(storeName);
-            const request = store.count();
-
-            request.onsuccess = () => {
-                resolve(request.result);
-            };
-
-            request.onerror = () => {
-                reject(request.error);
-            };
-        });
-    }
-
-    public async getSheetsStoreSize(): Promise<{memorySize: number, count: number}> {
-        const [memorySize, count] = await Promise.all([
-            this.getStoreSize(SHEETS_STORE),
-            this.getStoreCount(SHEETS_STORE)
-        ]);
-        return { memorySize, count };
-    }
-
     public async getCanvasStoreSize(): Promise<number> {
         return await this.getStoreSize(CANVAS_STORE);
-    }
-
-    private async cullOldSheets(): Promise<void> {
-        const db = await this.dbPromise;
-        if (!db) return; // Degraded mode
-        const transaction = db.transaction(SHEETS_STORE, 'readwrite');
-        const store = transaction.objectStore(SHEETS_STORE);
-        const countRequest = store.count();
-        countRequest.onsuccess = () => {
-            let itemsToDelete = countRequest.result - MAX_SHEET_CACHE_COUNT;
-            if (itemsToDelete <= 0) return;
-            const index = store.index('timestamp');
-            const cursorRequest = index.openCursor(); // Iterates from oldest to newest
-            cursorRequest.onsuccess = () => {
-                const cursor = cursorRequest.result;
-                if (cursor && itemsToDelete > 0) {
-                    cursor.delete(); // Deletes the current (oldest) item
-                    itemsToDelete--;
-                    cursor.continue(); // Move to the next item
-                }
-            };
-        };
     }
 
 }

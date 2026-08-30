@@ -6,6 +6,7 @@ import type { MultiStateOption, MultiStateSelection } from '../components/multi-
 import type { UnitSummary } from '../models/unit-summary.model';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, type SearchTelemetryStage } from '../services/unit-search-filters.model';
 import {
+    asUnitProviderId,
     MM_DATA_UNIT_PROVIDER_ID,
     type UnitProviderId,
 } from '../services/unit-catalog/unit-catalog.types';
@@ -26,6 +27,30 @@ type CompactSearchUnit = UnitSummary & {
 export function getUnitSearchIdentityKey(unit: SearchIdentityUnit): string {
     const provider = unit.provider ?? MM_DATA_UNIT_PROVIDER_ID;
     return `${provider.length}:${provider}${unit.uuid.length}:${unit.uuid}`;
+}
+
+/** Decodes the search identity without imposing the production UUIDv7 ingress contract. */
+export function decodeUnitSearchIdentityKey(key: string): Readonly<{ provider: UnitProviderId; uuid: string }> {
+    let cursor = 0;
+    const readPart = (): string => {
+        const separator = key.indexOf(':', cursor);
+        if (separator <= cursor) throw new Error('Invalid unit search identity key');
+        const lengthText = key.slice(cursor, separator);
+        if (!/^(?:0|[1-9][0-9]*)$/u.test(lengthText)) throw new Error('Invalid unit search identity length');
+        const length = Number(lengthText);
+        const start = separator + 1;
+        const end = start + length;
+        if (!Number.isSafeInteger(length) || end > key.length) throw new Error('Invalid unit search identity bounds');
+        cursor = end;
+        return key.slice(start, end);
+    };
+
+    const provider = asUnitProviderId(readPart());
+    const uuid = readPart();
+    if (cursor !== key.length || getUnitSearchIdentityKey({ provider, uuid: uuid as UnitSummary['uuid'] }) !== key) {
+        throw new Error('Non-canonical unit search identity key');
+    }
+    return { provider, uuid };
 }
 
 export interface UnitComponentData {
@@ -89,6 +114,55 @@ export function getUnitSourceFilterValues(unit: Pick<UnitSummary, 'source' | 'pu
     }
 
     return Array.from(merged.values());
+}
+
+function normalizeRulesRefBucket(values: unknown): string[] {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+
+    return Array.from(new Set(
+        values
+            .filter((value): value is string => typeof value === 'string')
+            .map(value => value.trim().toLowerCase())
+            .filter(value => value.length > 0),
+    ));
+}
+
+const BASE_RULE_BOOK_KEYS = new Set(['tw', 'tm', 'bmm', 'core']);
+
+function normalizeUnitRulesRefBuckets(values: unknown): string[][] {
+    if (!Array.isArray(values) || values.length === 0) {
+        return [];
+    }
+
+    // Accept the former flat representation while existing force/search state migrates.
+    if (values.every(value => typeof value === 'string')) {
+        const bucket = normalizeRulesRefBucket(values);
+        return bucket.length > 0 ? [bucket] : [];
+    }
+
+    return values
+        .map(normalizeRulesRefBucket)
+        .filter(bucket => bucket.length > 0);
+}
+
+/** Return whether one alternative unit rules-reference bucket is covered by the selection. */
+export function unitMatchesRulesRefsSelection(unitRulesRefs: unknown, selectedRulesRefs: readonly string[]): boolean {
+    const selectedRefs = new Set(normalizeRulesRefBucket(selectedRulesRefs));
+    if (selectedRefs.size === 0) {
+        return true;
+    }
+
+    const buckets = normalizeUnitRulesRefBuckets(unitRulesRefs);
+    if (Array.from(selectedRefs).some(rulesRef => BASE_RULE_BOOK_KEYS.has(rulesRef))) {
+        return buckets.some(bucket => bucket.every(rulesRef => selectedRefs.has(rulesRef)));
+    }
+
+    return buckets.some(bucket => {
+        const nonBaseBooks = bucket.filter(rulesRef => !BASE_RULE_BOOK_KEYS.has(rulesRef));
+        return nonBaseBooks.length > 0 && nonBaseBooks.every(rulesRef => selectedRefs.has(rulesRef));
+    });
 }
 
 export function getProperty(obj: any, key?: string) {
@@ -180,13 +254,22 @@ export function normalizeMultiStateSelection(value: unknown): MultiStateSelectio
             continue;
         }
 
+        const minimumValues = Array.isArray(option.minimumValues)
+            ? option.minimumValues.map(value => (
+                typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+            ))
+            : undefined;
+        const optionWithoutMinimumValues = { ...option };
+        delete optionWithoutMinimumValues.minimumValues;
+
         selection[name] = {
-            ...option,
+            ...optionWithoutMinimumValues,
             name,
             state: isMultiState(option.state) ? option.state : false,
             count: typeof option.count === 'number' && Number.isFinite(option.count) && option.count > 0
                 ? option.count
                 : 1,
+            ...(minimumValues?.some(value => value !== null) ? { minimumValues } : {}),
         };
     }
 

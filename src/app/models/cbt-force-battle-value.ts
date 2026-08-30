@@ -25,12 +25,10 @@ import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { scenarioRuleset } from './runtime/unit-state-initializer';
 import type { UnitInstanceId } from './runtime/runtime-state';
 import { projectOperationalC3Networks } from './runtime/c3-operational-network';
-import type { UnitSummary } from './unit-summary.model';
-import { BVCalculatorUtil } from '../utils/bv-calculator.util';
+import { adjustEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
 
 export interface CBTForceBattleValueUnit {
     readonly unit: ReadyClassicUnit;
-    readonly summary: UnitSummary;
     readonly currentBaseBattleValue: number | null;
 }
 
@@ -130,8 +128,8 @@ export function calculateCBTForceBattleValues(
         const primary = row.unit.getCrewAssignment().positions[0];
         const adjusted = primary === undefined
             ? preSkill
-            : BVCalculatorUtil.calculateAdjustedBV(
-                row.summary,
+            : adjustEntityBattleValueForSkills(
+                row.unit.getUnit(),
                 preSkill,
                 primary.gunnery,
                 primary.piloting,
@@ -190,7 +188,8 @@ function battleValueC3View(
     tag: number,
     isOperational: CBTForceBattleValueInput['isC3EndpointOperational'],
 ): BattleValueC3View {
-    const { unit, summary } = row;
+    const { unit } = row;
+    const entity = unit.getUnit();
     const structural = isReadyMekUnit(unit)
         ? mekC3Components(unit)
         : isReadyNonMekUnit(unit)
@@ -200,7 +199,14 @@ function battleValueC3View(
         id: String(unit.instanceId),
         instanceId: unit.instanceId,
         c3Components: structural,
-        getSummary: () => summary,
+        getC3Specials: () => Object.freeze([]),
+        getC3Presentation: () => Object.freeze({
+            chassis: entity.chassis(),
+            model: entity.model(),
+            icon: '',
+            tons: entity.tonnage(),
+            walk: entity.walkMP(),
+        }),
         alias: () => undefined,
         c3Position: () => null,
         isC3Jammed: () => false,

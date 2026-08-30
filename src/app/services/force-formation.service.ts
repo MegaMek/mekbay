@@ -9,7 +9,7 @@ import { GameSystem } from '../models/common.model';
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import type { Force, UnitGroup } from '../models/force.model';
-import { forceMemberSummary } from '../models/force-member.model';
+import { isCBTForceMember } from '../models/force-member.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { ForceNamerUtil } from '../utils/force-namer.util';
@@ -49,7 +49,14 @@ export class ForceFormationService {
         if (!faction) {
             const eras = this.dataService.getEras();
             const availabilitySummaries = [
-                ...force.members().map(forceMemberSummary),
+                ...force.members().flatMap(member => {
+                    if (!isCBTForceMember(member)) return [member.getSummary()];
+                    const identity = member.force.getUnitSourceIdentity(member.id);
+                    const summary = identity
+                        ? this.dataService.getUnitByIdentity(identity.provider, identity.uuid)
+                        : undefined;
+                    return summary ? [summary] : [];
+                }),
                 ...additionalSummaries,
             ];
             faction = ForceNamerUtil.pickBestFaction(

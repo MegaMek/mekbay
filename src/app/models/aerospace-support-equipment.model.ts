@@ -15,6 +15,7 @@ export type AerospaceSupportEquipmentKind =
   | 'vehicle-mine-dispenser';
 
 const MOBILE_HPG_FLAG = 'F_MOBILE_HPG' as const;
+export const BOOBY_TRAP_FLAG = 'F_BOOBY_TRAP' as const;
 const BOMB_AMMO_FLAGS: readonly EquipmentFlag[] = Object.freeze([
   'F_ALT_BOMB',
   'F_DIVE_BOMB',
@@ -28,12 +29,19 @@ export function aerospaceSupportEquipmentKind(
   equipment: Equipment | null | undefined,
 ): AerospaceSupportEquipmentKind | null {
   if (equipment?.hasFlag('F_BOMB_BAY') === true) return 'bomb-bay';
-  if (equipment?.hasFlag('F_BOOBY_TRAP') === true) return 'booby-trap';
+  if (equipment?.hasFlag(BOOBY_TRAP_FLAG) === true) return 'booby-trap';
   if (equipment?.hasFlag('F_EXTERNAL_STORES_HARDPOINT') === true) return 'external-stores-hardpoint';
-  if (equipment?.hasFlag(MOBILE_HPG_FLAG) === true) return 'mobile-hpg';
+  if (isMobileHpgEquipment(equipment)) return 'mobile-hpg';
   if (equipment?.hasFlag('F_SPACE_MINE_DISPENSER') === true) return 'space-mine-dispenser';
   if (equipment?.hasFlag('F_VEHICLE_MINE_DISPENSER') === true) return 'vehicle-mine-dispenser';
   return null;
+}
+
+/** Canonical owner for Mobile HPG identity across construction, sheets, and runtime. */
+export function isMobileHpgEquipment(
+  equipment: Equipment | null | undefined,
+): boolean {
+  return equipment?.hasFlag(MOBILE_HPG_FLAG) === true;
 }
 
 export function aerospaceSupportAlphaStrikeAbilities(
@@ -84,12 +92,6 @@ export function aerospaceSupportOperatingHeat(
   return aerospaceSupportEquipmentKind(equipment) === 'mobile-hpg'
     ? isEquipmentForPlatform(equipment, 'mek') ? 20 : 40
     : null;
-}
-
-export function unsupportedMekAerospaceHeatFlag(
-  equipment: Equipment | null | undefined,
-): EquipmentFlag | undefined {
-  return aerospaceSupportEquipmentKind(equipment) === 'mobile-hpg' ? MOBILE_HPG_FLAG : undefined;
 }
 
 export function boobyTrapVariableTonnage(

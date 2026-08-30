@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ElementRef, ViewChild, effect, input, output, signal } from '@angular/core';
+import { Component, ElementRef, effect, input, output, signal, viewChild } from '@angular/core';
 import { normalizeBoundedInteger } from '../../utils/bounded-integer-input.util';
 
 @Component({
@@ -51,7 +51,7 @@ export class ThousandsIntegerInputComponent {
     readonly valueChange = output<number>();
     readonly valueCommit = output<number>();
 
-    @ViewChild('inputElement') private inputElement?: ElementRef<HTMLInputElement>;
+    private readonly inputElement = viewChild<ElementRef<HTMLInputElement>>('inputElement');
 
     readonly displayValue = signal('');
     private readonly focused = signal(false);
@@ -69,7 +69,7 @@ export class ThousandsIntegerInputComponent {
     }
 
     onBlur(): void {
-        const input = this.inputElement?.nativeElement;
+        const input = this.inputElement()?.nativeElement;
         const value = this.clampValue(this.parseFormattedValue(input?.value ?? this.displayValue()));
         this.focused.set(false);
         this.valueCommit.emit(value);

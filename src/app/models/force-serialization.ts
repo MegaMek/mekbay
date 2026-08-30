@@ -601,7 +601,7 @@ export const HEAT_SCHEMA = Sanitizer.schema<HeatProfile>()
     .custom('heatsinksOff', sanitizeOptionalNonNegativeNumber)
     .build();
 
-const MOTIVE_MODE_VALUES: readonly MotiveModes[] = ['stationary', 'walk', 'run', 'jump', 'UMU', 'VTOL'];
+const MOTIVE_MODE_VALUES: readonly MotiveModes[] = ['stationary', 'walk', 'run', 'sprint', 'jump', 'UMU', 'VTOL'];
 
 export const PSR_CHECKS_SCHEMA = Sanitizer.schema<SerializedPSRChecks>()
     .custom('legActuators', sanitizeNumberRecord)

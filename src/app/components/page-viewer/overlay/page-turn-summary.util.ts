@@ -4,7 +4,6 @@
 import { InjectionToken } from '@angular/core';
 
 import type { CBTMekForceMember } from '../../../models/force-member.model';
-import type { MekHeatSourceV2 } from '../../../models/runtime/mek-heat-state-v2';
 import type {
     MekPilotCheckV2,
     MekPilotCheckSourceV2,
@@ -15,7 +14,14 @@ import type { ManagedOverlayRef, OverlayManagerService } from '../../../services
 /** The direct force member owned by a turn-summary child overlay. */
 export const PAGE_TURN_MEMBER = new InjectionToken<CBTMekForceMember>('Page turn member');
 
-export interface MekTurnSummaryHeatRow extends MekHeatSourceV2 {
+export interface TurnSummaryHeatSource {
+    readonly id: string;
+    readonly label: string;
+    readonly value: number;
+    readonly group?: string;
+}
+
+export interface TurnSummaryHeatRow extends TurnSummaryHeatSource {
     readonly selectedValue?: number;
     readonly selectedOnly?: boolean;
     readonly underwater?: boolean;
@@ -38,12 +44,26 @@ export function actionableMekPilotChecks(
         : checks;
 }
 
-export function composeMekTurnSummaryHeatRows(
-    sources: readonly MekHeatSourceV2[],
+export function composeTurnSummaryHeatRows(
+    sources: readonly TurnSummaryHeatSource[],
     selectedWeaponsHeat: number | null,
     underwaterBonus: number,
-): readonly MekTurnSummaryHeatRow[] {
-    let rows: MekTurnSummaryHeatRow[] = sources.map(source => ({ ...source }));
+): readonly TurnSummaryHeatRow[] {
+    let rows: TurnSummaryHeatRow[] = [];
+    for (const source of sources) {
+        if (source.value === 0) continue;
+        const existingIndex = rows.findIndex(row => row.label === source.label);
+        if (existingIndex >= 0) {
+            const existing = rows[existingIndex];
+            rows[existingIndex] = {
+                id: existing.label.toLowerCase(),
+                label: existing.label,
+                value: existing.value + source.value,
+            };
+        } else {
+            rows.push({ id: source.id, label: source.label, value: source.value });
+        }
+    }
     if (selectedWeaponsHeat !== null) {
         const weaponsIndex = rows.findIndex(row => row.id === 'weapons');
         if (weaponsIndex >= 0) {

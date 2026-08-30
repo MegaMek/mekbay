@@ -4,7 +4,6 @@
 
 import { Component, ChangeDetectionStrategy, computed, effect, input, output, inject, signal } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
-import type { UnitSummary } from '../../models/unit-summary.model';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CdkMenuModule } from '@angular/cdk/menu';
@@ -12,7 +11,7 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { ASForceUnit } from '../../models/as-force-unit.model';
-import { C3Capabilities, C3Network, C3NetworkType, c3NetworkTypeName, type C3Component } from '../../models/c3-network.model';
+import { C3Capabilities, C3Network, C3NetworkType, c3NetworkTypeName, type C3Component, projectNonMekC3Components } from '../../models/c3-network.model';
 import { GameSystem } from '../../models/common.model';
 import { formatMovement, formatMovementWithAlternate } from '../../utils/as-common.util';
 import {
@@ -38,11 +37,22 @@ import {
     isCBTMekForceMember,
     type ForceMember,
 } from '../../models/force-member.model';
+import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
+import { hasMekRuntime, hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
+import { UnitNotificationBadgesComponent } from '../unit-notification-badges/unit-notification-badges.component';
 
 interface UnitConditionDisplay {
     key: string;
     label: string;
     color: string;
+}
+
+interface UnitBlockPresentation {
+    readonly name: string;
+    readonly chassis: string;
+    readonly model: string;
+    readonly role: string;
+    readonly tons: number;
 }
 
 const VEHICLE_CREW_STATE_DISPLAYS = crewStateDefinitions(['killed', 'stunned']);
@@ -55,7 +65,14 @@ export interface UnitBlockPilotEditEvent {
 @Component({
     selector: 'unit-block',
     standalone: true,
-    imports: [CdkMenuModule, FormatTonsPipe, UnitIconComponent, TooltipDirective, UpperCasePipe],
+    imports: [
+        CdkMenuModule,
+        FormatTonsPipe,
+        UnitIconComponent,
+        UnitNotificationBadgesComponent,
+        TooltipDirective,
+        UpperCasePipe,
+    ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
     styleUrls: ['./unit-block.component.scss'],
@@ -74,10 +91,23 @@ export class UnitBlockComponent {
 
     private readonly runtimeRevision = signal(0);
 
-    unit = computed<UnitSummary | undefined>(() => {
+    unit = computed<UnitBlockPresentation | undefined>(() => {
         this.runtimeRevision();
         const member = this.forceUnit();
-        return member ? (isCBTForceMember(member) ? member.summary : member.getSummary()) : undefined;
+        if (!member) return undefined;
+        if (!isCBTForceMember(member)) return member.getSummary();
+        return Object.freeze({
+            name: member.entity.displayName(),
+            chassis: member.entity.chassis(),
+            model: member.entity.model(),
+            role: member.entity.role(),
+            tons: member.entity.tonnage(),
+        });
+    });
+
+    unitIconSource = computed(() => {
+        const member = this.forceUnit();
+        return member ? (isCBTForceMember(member) ? member.entity : member.getSummary()) : undefined;
     });
 
     destroyed = computed(() => {
@@ -118,17 +148,14 @@ export class UnitBlockComponent {
     });
 
     displayedBvPv = computed(() => {
-        const startedAt = performance.now();
         const unit = this.forceUnit();
         if (!unit) return '';
         if (isCBTForceMember(unit)) {
-            const result = formatBvPv(
+            return formatBvPv(
                 forceMemberAdjustedValue(unit),
                 forceMemberBaseValue(unit),
                 this.optionsService.options().forceViewerBVPVDisplay,
             );
-            console.info(`[unit-block-perf] bv ${unit.summary.name} ${(performance.now() - startedAt).toFixed(1)}ms`);
-            return result;
         }
         return formatBvPv(
             unit.getBv(),
@@ -153,50 +180,48 @@ export class UnitBlockComponent {
         return false;
     });
 
+    readonly mekTurnSnapshot = computed(() => {
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        return isCBTMekForceMember(member)
+            ? member.force.getMekTurnPanelSnapshot(member.id, 'manual')
+            : null;
+    });
+
+    readonly notificationSnapshot = computed(() =>
+        this.optionsService.options().trackPhaseAndTurn ? this.mekTurnSnapshot() : null);
+
     dirty = computed<boolean>(() => {
         if (!this.optionsService.options().trackPhaseAndTurn) {
             return false;
         }
-        const unit = this.forceUnit();
-        if (!unit) return false;
-        if (isCBTMekForceMember(unit)) {
-            this.runtimeRevision();
-            const snapshot = unit.force.getMekTurnPanelSnapshot(unit.id, 'manual');
-            return snapshot !== null && isMekTurnPanelDirty(snapshot);
-        }
-        return false;
+        const snapshot = this.mekTurnSnapshot();
+        return snapshot !== null && isMekTurnPanelDirty(snapshot);
     });
 
     unitPhase = computed<string>(() => {
-        const unit = this.forceUnit();
-        if (!unit) return '';
-        if (isCBTMekForceMember(unit)) {
-            this.runtimeRevision();
-            const snapshot = unit.force.getMekTurnPanelSnapshot(unit.id, 'manual');
-            return snapshot === null ? '' : mekTurnPanelPhase(snapshot);
-        }
-        if (unit instanceof ASForceUnit) {
-            return '';
-        }
-        return '';
+        const snapshot = this.mekTurnSnapshot();
+        return snapshot === null ? '' : mekTurnPanelPhase(snapshot);
+    });
+
+    movementIndicator = computed(() => {
+        if (!this.optionsService.options().trackPhaseAndTurn) return null;
+        const snapshot = this.mekTurnSnapshot();
+        return getTurnMovementIndicator(
+            snapshot?.movementState.movement?.mode,
+            snapshot?.defenseModifierTotal?.modifier ?? 0,
+        );
     });
 
     hasPendingEffects = computed<boolean>(() => {
         if (!this.optionsService.options().trackPhaseAndTurn) {
             return false;
         }
-        const unit = this.forceUnit();
-        if (!unit) return false;
-        if (isCBTMekForceMember(unit)) {
-            this.runtimeRevision();
-            const snapshot = unit.force.getMekTurnPanelSnapshot(unit.id, 'manual');
-            return snapshot !== null && isMekTurnPanelDirtyPhase(snapshot);
-        }
-        return false;
+        const snapshot = this.mekTurnSnapshot();
+        return snapshot !== null && isMekTurnPanelDirtyPhase(snapshot);
     });
 
     activeConditions = computed<UnitConditionDisplay[]>(() => {
-        const startedAt = performance.now();
         const forceUnit = this.forceUnit();
         if (!forceUnit) return [];
         this.runtimeRevision();
@@ -256,11 +281,7 @@ export class UnitBlockComponent {
                 };
             })
             .sort((left, right) => unitConditionSortIndex(left.key) - unitConditionSortIndex(right.key) || left.label.localeCompare(right.label));
-        const result = [...unitConditions, ...crewConditions, ...locationConditions];
-        if (isCBTForceMember(forceUnit)) {
-            console.info(`[unit-block-perf] conditions ${forceUnit.summary.name} ${(performance.now() - startedAt).toFixed(1)}ms`);
-        }
-        return result;
+        return [...unitConditions, ...crewConditions, ...locationConditions];
     });
 
     private readonly capabilitySummary = computed(() => {
@@ -279,19 +300,35 @@ export class UnitBlockComponent {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return [];
         if (isCBTForceMember(forceUnit)) {
-            const networkType = summaryC3NetworkType(forceUnit.summary.c3);
-            if (!networkType) return [];
+            const snapshot = forceUnit.force.getUnitSnapshot(forceUnit.id);
+            if (!snapshot) return [];
+            let components: readonly Readonly<{ networkType: C3NetworkType }>[] = [];
+            if (hasMekRuntime(snapshot)) {
+                const projection = snapshot.query.mekC3Endpoints();
+                if (projection.kind === 'supported') {
+                    components = projection.endpoints.map(endpoint => ({
+                        networkType: endpoint.family as C3NetworkType,
+                    }));
+                }
+            } else if (hasNonMekRuntime(snapshot)) {
+                components = projectNonMekC3Components(snapshot.index).map(component => ({
+                    networkType: component.networkType,
+                }));
+            }
+            const networkTypes = [...new Set(components.map(component => component.networkType))];
             const state = forceUnit.c3State();
-            const connected = forceUnit.force.c3EncounterNetworks().find(network =>
-                network.networkType === networkType
-                && network.endpoints.some(endpoint => endpoint.instanceId === forceUnit.id));
-            return [{
-                label: c3NetworkTypeName(networkType),
-                networkType,
-                enabled: state === 'operational',
-                unavailable: state === 'degraded',
-                ...(connected ? { color: connected.color } : {}),
-            }];
+            return networkTypes.map(networkType => {
+                const connected = forceUnit.force.c3EncounterNetworks().find(network =>
+                    network.networkType === networkType
+                    && network.endpoints.some(endpoint => endpoint.instanceId === forceUnit.id));
+                return {
+                    label: c3NetworkTypeName(networkType),
+                    networkType,
+                    enabled: connected !== undefined && state === 'operational',
+                    unavailable: connected !== undefined && state === 'degraded',
+                    ...(connected ? { color: connected.color } : {}),
+                };
+            });
         }
         const components = new C3Capabilities(forceUnit).components;
         if (components.length === 0) return [];
@@ -349,11 +386,11 @@ export class UnitBlockComponent {
     getEffectiveTmm = computed<string>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return '';
-        if (isCBTMekForceMember(forceUnit)) return forceUnit.summary.as?.TMM?.toString() ?? '';
+        if (isCBTForceMember(forceUnit)) return '';
         if (forceUnit instanceof ASForceUnit) {
             return this.formatTmm(forceUnit.effectiveTmm());
         }
-        return forceUnit.getSummary()?.as?.TMM?.toString() ?? '';
+        return '';
     });
 
     private formatTmm(tmm: { [mode: string]: number }): string {
@@ -368,7 +405,7 @@ export class UnitBlockComponent {
     getEffectiveMovement = computed<string>(() => {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return '';
-        if (isCBTMekForceMember(forceUnit)) return forceUnit.summary.as?.MV ?? '';
+        if (isCBTForceMember(forceUnit)) return '';
         if (forceUnit instanceof ASForceUnit) {
             const effectiveMv = forceUnit.effectiveMovement();
             const entries = this.getMovementEntries(effectiveMv);
@@ -377,7 +414,7 @@ export class UnitBlockComponent {
                 .map(([mode, inches]) => this.formatASMovementEntry(forceUnit, mode, inches))
                 .join('/');
         }
-        return forceUnit.getSummary()?.as?.MV ?? '';
+        return '';
     });
 
     private formatASMovementEntry(forceUnit: ASForceUnit, mode: string, inches: number): string {
@@ -459,12 +496,4 @@ export class UnitBlockComponent {
         event.stopPropagation();
         this.onEditPilot.emit({ event });
     }
-}
-
-function summaryC3NetworkType(value: string): C3NetworkType | null {
-    if (value === 'C3') return C3NetworkType.C3;
-    if (value === 'C3i') return C3NetworkType.C3I;
-    if (value === 'Naval C3') return C3NetworkType.NAVAL;
-    if (value === 'Nova CEWS') return C3NetworkType.NOVA;
-    return null;
 }

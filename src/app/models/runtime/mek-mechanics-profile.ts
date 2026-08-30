@@ -272,11 +272,15 @@ export type MekMechanicsProfileResult =
 
 export interface MekMechanicsScenarioInput {
     readonly id: string;
-    readonly options?: Readonly<{ readonly forcedWithdrawal?: boolean }>;
+    readonly options?: Readonly<{
+        readonly forcedWithdrawal?: boolean;
+        readonly sprinting?: boolean;
+    }>;
 }
 
 export interface MekMechanicsScenarioRules {
     readonly forcedWithdrawal: boolean;
+    readonly sprinting: boolean;
 }
 
 export type MekMechanicsScenarioBlockerCode =
@@ -531,7 +535,7 @@ export function compileMekMechanicsProfile(
     return Object.freeze({ kind: 'supported', profile });
 }
 
-/** Compile the only wave-one option; every unknown or malformed value fails closed. */
+/** Compile bounded scenario options; every unknown or malformed value fails closed. */
 export function evaluateMekMechanicsScenarioSupport(
     input: unknown,
 ): MekMechanicsScenarioSupportResult {
@@ -551,6 +555,7 @@ export function evaluateMekMechanicsScenarioSupport(
         ));
     }
     let forcedWithdrawal = true;
+    let sprinting = false;
     const options = input['options'];
     if (options !== undefined) {
         if (!isPlainRecord(options)) {
@@ -559,7 +564,9 @@ export function evaluateMekMechanicsScenarioSupport(
                 'Scenario mechanics options must be a plain record',
             ));
         } else {
-            for (const key of Object.keys(options).filter(key => key !== 'forcedWithdrawal').sort(compareText)) {
+            for (const key of Object.keys(options)
+                .filter(key => key !== 'forcedWithdrawal' && key !== 'sprinting')
+                .sort(compareText)) {
                 blockers.push(scenarioBlocker(
                     'SCENARIO_OPTIONS_UNSUPPORTED', key,
                     `Scenario option ${key} has no explicit bounded Mek mechanics semantics`,
@@ -572,12 +579,19 @@ export function evaluateMekMechanicsScenarioSupport(
                 ));
                 else forcedWithdrawal = options['forcedWithdrawal'];
             }
+            if (Object.prototype.hasOwnProperty.call(options, 'sprinting')) {
+                if (typeof options['sprinting'] !== 'boolean') blockers.push(scenarioBlocker(
+                    'SCENARIO_OPTIONS_UNSUPPORTED', 'sprinting',
+                    'Scenario option sprinting must be an exact boolean',
+                ));
+                else sprinting = options['sprinting'];
+            }
         }
     }
     if (blockers.length > 0) return unsupportedScenario(blockers);
     return Object.freeze({
         kind: 'supported',
-        rules: Object.freeze({ forcedWithdrawal }),
+        rules: Object.freeze({ forcedWithdrawal, sprinting }),
     });
 }
 

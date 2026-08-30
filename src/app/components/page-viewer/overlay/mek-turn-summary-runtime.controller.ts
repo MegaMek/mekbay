@@ -22,7 +22,7 @@ import type { OptionsService } from '../../../services/options.service';
 import type { ToastService } from '../../../services/toast.service';
 import { actionableMekPilotChecks } from './page-turn-summary.util';
 
-const MOVEMENT_MODES = new Set<MekMovementModeV2>(['stationary', 'walk', 'run', 'jump', 'UMU']);
+const MOVEMENT_MODES = new Set<MekMovementModeV2>(['stationary', 'walk', 'run', 'sprint', 'jump', 'UMU']);
 const MAX_VISIBLE_FAILURE_STEPS = 5;
 
 export interface MekEscalatingFailureControlRow {
@@ -119,7 +119,7 @@ export class MekTurnSummaryRuntimeController {
                         label: row.componentLabel,
                         damaged: statuses.get(row.componentId) === 'destroyed',
                         active,
-                        sequenceChoices: Object.freeze(visibleFailureSteps(allSequenceChoices)),
+                        sequenceChoices: Object.freeze(visibleEscalatingFailureSteps(allSequenceChoices)),
                         ...(statusChoice === undefined ? {} : { statusChoice }),
                     });
                     return result;
@@ -186,7 +186,9 @@ export class MekTurnSummaryRuntimeController {
                 schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode,
                 distance: action.minimumMp ?? 0,
-                boosterComponentIds: mode === 'run' ? this.snapshot().activeBoosterComponentIds : [],
+                boosterComponentIds: mode === 'run' || mode === 'sprint'
+                    ? this.snapshot().activeBoosterComponentIds
+                    : [],
             },
         });
     }
@@ -233,6 +235,8 @@ export class MekTurnSummaryRuntimeController {
     }
 
     public async toggleSpotting(): Promise<void> {
+        if (!this.snapshot().canTakeActiveActions
+            || this.currentMovement()?.mode === 'sprint') return;
         const turn = this.snapshot().turn;
         await this.dispatch({
             type: 'replace-turn-state',
@@ -387,7 +391,9 @@ export class MekTurnSummaryRuntimeController {
     }
 
     private heatPolicy(): 'automatic' | 'manual' {
-        return this.options.options().cbtAutomations ? 'automatic' : 'manual';
+        return this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
+            ? 'automatic'
+            : 'manual';
     }
 }
 
@@ -408,7 +414,12 @@ function randomD6(): number {
     return (values[0] % 6) + 1;
 }
 
-function visibleFailureSteps(choices: readonly MekEquipmentChoice[]): MekEquipmentChoice[] {
+/** Origin/next's five-step sliding window, shared by every runtime family. */
+export function visibleEscalatingFailureSteps<Choice extends Readonly<{
+    active: boolean;
+    disabled: boolean;
+    selectionTone?: 'selected' | 'muted';
+}>>(choices: readonly Choice[]): Choice[] {
     if (choices.length <= MAX_VISIBLE_FAILURE_STEPS) return [...choices];
     const selectedIndex = choices.findIndex(choice =>
         choice.active && choice.selectionTone !== 'muted');

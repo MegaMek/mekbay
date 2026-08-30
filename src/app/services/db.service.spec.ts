@@ -223,11 +223,6 @@ describe('DbService legacy catalog cleanup', () => {
         (forceCursorRequest as unknown as { result: IDBCursorWithValue | null }).result = null;
         forceCursorRequest.onsuccess?.call(forceCursorRequest, new Event('success'));
         (keyCursorRequest as unknown as { result: IDBCursor | null }).result = {
-            key: 'units:server:https://old.example',
-            continue: () => undefined,
-        } as unknown as IDBCursor;
-        keyCursorRequest.onsuccess?.call(keyCursorRequest, new Event('success'));
-        (keyCursorRequest as unknown as { result: IDBCursor | null }).result = {
             key: 'options',
             continue: () => undefined,
         } as unknown as IDBCursor;
@@ -236,7 +231,7 @@ describe('DbService legacy catalog cleanup', () => {
         for (const key of [
             'equipment', 'factions', 'megamekFactions', 'megamekAvailability',
             'megamekRulesets', 'eras', 'sourcebooks', 'quirks', 'sarnaPageTitles',
-            'forceNameWords', 'pilotNames', 'units:server:https://old.example',
+            'forceNameWords', 'pilotNames',
         ]) {
             expect(deletedKeys).toContain(key);
         }

@@ -11,7 +11,10 @@ import { bombastLaserModes, isBombastLaserEquipment } from '../bombast-laser-mod
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import { MiscEquipment, WeaponEquipment, type Equipment } from '../equipment.model';
-import { isPhysicalWeaponEquipment } from '../entity/utils/physical-weapon';
+import {
+    isPhysicalWeaponEquipment,
+    isSpotWelderEquipment,
+} from '../entity/utils/physical-weapon';
 import { STANDARD_MOVEMENT_CALCULATION } from '../entity/types';
 import type { ComponentId, CriticalSlotId } from '../entity/entity-identifiers';
 import { isPpcCapacitorEquipment, isPpcCapacitorPair } from './component-ppc-capacitor';
@@ -21,6 +24,7 @@ import {
     isNullSignatureEquipment,
     isStealthEquipment,
     isSwitchableStealthEquipment,
+    isVoidSignatureEquipment,
 } from '../stealth-equipment.model';
 import { mekComponentModes } from './mek-component-rules';
 import { isMekLaserInsulatorPair } from './component-laser-insulator';
@@ -32,6 +36,7 @@ import { escalatingFailureHeatProviders } from './component-escalating-failure';
 import {
     PARTIAL_WING_HEAT_DISSIPATION_BONUS,
     isJumpJetEquipment,
+    isJumpBoosterEquipment,
     isPartialWingEquipment,
     isSuperCooledMyomerEquipment,
     jumpJetKind,
@@ -42,8 +47,13 @@ import {
     type MekRuntimeIndex,
     type MekIndexedComponent,
 } from './mek-runtime-index';
+import { isNovaCewsEquipment } from './component-electronic-suite';
+import {
+    isGroundMobileHpgEquipment,
+} from './component-mobile-hpg';
+import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
 
-export const MEK_HEAT_PROFILE_SCHEMA_VERSION = 2 as const;
+export const MEK_HEAT_PROFILE_SCHEMA_VERSION = 3 as const;
 
 export interface MekHeatSinkGroup {
     /** One installed mount. Multi-slot sinks therefore lose cooling only once. */
@@ -64,15 +74,20 @@ export interface MekHeatSystemGroup {
 export interface MekEngineHeatProfile {
     readonly type: string;
     readonly xxl: boolean;
+    readonly fusion: boolean;
+    /** Industrial ICE/Fuel Cell Meks alone waive ordinary ground-movement heat. */
+    readonly heatlessIndustrialGroundMovement: boolean;
     readonly systems: readonly MekHeatSystemGroup[];
     readonly componentIds: readonly ComponentId[];
     readonly criticalSlotIds: readonly CriticalSlotId[];
     readonly heatPerCriticalHit: 5;
     readonly maximumCriticalHeat: 10;
     readonly movementHeatByMode: Readonly<{
-        readonly stationary: 0 | 2;
-        readonly walk: 1 | 4;
-        readonly run: 2 | 6;
+        readonly stationary: number;
+        readonly walk: number;
+        readonly run: number;
+        readonly sprint: number;
+        readonly UMU: 1 | 2;
     }>;
 }
 
@@ -85,7 +100,10 @@ export type MekJumpHeatKind =
 export interface MekJumpHeatProfile {
     readonly installedMp: number;
     readonly kind: MekJumpHeatKind;
+    /** Conventional jump jets only. */
     readonly componentIds: readonly ComponentId[];
+    /** Entity-authored alternate jump systems whose use generates no heat. */
+    readonly boosterComponentIds: readonly ComponentId[];
     readonly criticalSlotIds: readonly CriticalSlotId[];
 }
 
@@ -142,7 +160,18 @@ export type MekHeatProvider =
     | {
         readonly kind: 'stealth-system';
         readonly componentId: ComponentId;
+        readonly label: 'Stealth' | 'Void Signature';
         readonly heat: 6 | 10;
+    }
+    | {
+        readonly kind: 'nova-cews';
+        readonly componentId: ComponentId;
+        readonly heat: 2;
+    }
+    | {
+        readonly kind: 'mobile-hpg';
+        readonly componentId: ComponentId;
+        readonly heat: 20 | 40;
     };
 
 /**
@@ -153,6 +182,7 @@ export interface MekHeatProfile {
     readonly schemaVersion: typeof MEK_HEAT_PROFILE_SCHEMA_VERSION;
     /** Total Warfare adds one heat for every stand-up attempt; Core does not. */
     readonly heatPerStandAttempt: 0 | 1;
+    readonly landAirMek: boolean;
     readonly declaredHeatSinkUnits: number;
     readonly baseDissipation: number;
     /** V1 turns off anonymous sink pips at the engine sink rate. */
@@ -278,6 +308,7 @@ export function compileMekHeatProfile(
     const profile: MekHeatProfile = Object.freeze({
         schemaVersion: MEK_HEAT_PROFILE_SCHEMA_VERSION,
         heatPerStandAttempt: ruleset === 'total-warfare' ? 1 : 0,
+        landAirMek: entity.isLandAirMek(),
         declaredHeatSinkUnits,
         baseDissipation: heatSinks.reduce((total, group) => total + group.dissipation, 0),
         dissipationPerDisabledSink: disabledRate,
@@ -291,7 +322,7 @@ export function compileMekHeatProfile(
     return Object.freeze({ kind: 'supported', profile });
 }
 
-/** Every opaque option is rejected until it has an explicit heat-rule profile. */
+/** Mechanics-owned options are admitted only when their exact values are heat-inert. */
 export function evaluateMekHeatScenarioSupport(
     input: unknown,
 ): MekHeatScenarioSupportResult {
@@ -325,14 +356,28 @@ export function evaluateMekHeatScenarioSupport(
             blockers.push(scenarioBlocker(
                 'SCENARIO_OPTIONS_UNSUPPORTED',
                 '<invalid-options>',
-                'Scenario heat options must be absent or an empty plain record',
+                'Scenario heat options must be a plain record',
             ));
         } else {
-            for (const key of Object.keys(options).sort(compareText)) blockers.push(scenarioBlocker(
-                'SCENARIO_OPTIONS_UNSUPPORTED',
-                key,
-                `Scenario option ${key} has no explicit bounded heat semantics`,
-            ));
+            for (const key of Object.keys(options)
+                .filter(key => key !== 'forcedWithdrawal' && key !== 'sprinting')
+                .sort(compareText)) {
+                blockers.push(scenarioBlocker(
+                    'SCENARIO_OPTIONS_UNSUPPORTED',
+                    key,
+                    `Scenario option ${key} has no explicit bounded heat semantics`,
+                ));
+            }
+            for (const key of ['forcedWithdrawal', 'sprinting'] as const) {
+                if (Object.prototype.hasOwnProperty.call(options, key)
+                    && typeof options[key] !== 'boolean') {
+                    blockers.push(scenarioBlocker(
+                        'SCENARIO_OPTIONS_UNSUPPORTED',
+                        key,
+                        `Scenario option ${key} must be an exact boolean`,
+                    ));
+                }
+            }
         }
     }
     if (blockers.length === 0) return Object.freeze({ kind: 'supported' });
@@ -426,19 +471,28 @@ function compileEngine(
         'An installed Mek engine has no canonical Engine system component',
     ));
     const xxl = mountedEngine.type() === 'XXL';
+    const movementHeat = mountedEngine.movementHeat;
     const componentIds = Object.freeze(systems.map(system => system.componentId));
     const criticalSlotIds = freezeSortedUnique(systems.flatMap(system => system.criticalSlotIds));
     return Object.freeze({
         type: mountedEngine.type(),
         xxl,
+        fusion: mountedEngine.isFusion,
+        heatlessIndustrialGroundMovement: entity.isIndustrial()
+            && (mountedEngine.powerSource === 'combustion'
+                || mountedEngine.powerSource === 'fuel-cell'),
         systems: Object.freeze(systems),
         componentIds,
         criticalSlotIds,
         heatPerCriticalHit: 5,
         maximumCriticalHeat: 10,
-        movementHeatByMode: Object.freeze(xxl
-            ? { stationary: 2 as const, walk: 4 as const, run: 6 as const }
-            : { stationary: 0 as const, walk: 1 as const, run: 2 as const }),
+        movementHeatByMode: Object.freeze({
+            stationary: movementHeat.standing,
+            walk: movementHeat.walk,
+            run: movementHeat.run,
+            sprint: movementHeat.sprint,
+            UMU: xxl ? 2 as const : 1 as const,
+        }),
     });
 }
 
@@ -450,11 +504,25 @@ function compileJump(
 ): MekJumpHeatProfile {
     const kinds = new Set<Exclude<MekJumpHeatKind, 'none'>>();
     const componentIds: ComponentId[] = [];
+    const boosterComponentIds: ComponentId[] = [];
     const criticalSlotIds: CriticalSlotId[] = [];
     for (const [componentId, component] of sortedComponents(index)) {
         if (component.kind !== 'equipment') continue;
         const equipment = component.mount.equipment;
-        if (!equipment || !isJumpJetEquipment(equipment)) continue;
+        if (!equipment) continue;
+        if (isJumpBoosterEquipment(equipment)) {
+            boosterComponentIds.push(componentId);
+            const slots = slotsByComponent.get(componentId) ?? Object.freeze([]);
+            criticalSlotIds.push(...slots);
+            if (slots.length === 0) blockers.push(profileBlocker(
+                'JUMP_SYSTEM_WITHOUT_CRITICALS',
+                equipment.id,
+                [componentId],
+                `Jump booster ${equipment.id} has no immutable critical-slot topology`,
+            ));
+            continue;
+        }
+        if (!isJumpJetEquipment(equipment)) continue;
         const kind = jumpJetKind(equipment);
         if (kind === null) blockers.push(profileBlocker(
             'AMBIGUOUS_JUMP_SYSTEM_TYPE',
@@ -473,22 +541,42 @@ function compileJump(
             `Jump system ${equipment.id} has no immutable critical-slot topology`,
         ));
     }
-    const installedMp = entity.computeJumpMP({
+    const conventionalMp = entity.computeJumpMP({
         ...STANDARD_MOVEMENT_CALCULATION,
         ignoreModularArmor: true,
         ignoreShield: true,
     });
-    if (installedMp > 0 && componentIds.length === 0) blockers.push(profileBlocker(
+    const installedMp = entity.computeJumpMP({
+        ...STANDARD_MOVEMENT_CALCULATION,
+        ignoreModularArmor: true,
+        ignoreShield: true,
+        includeAlternateJumpSystems: true,
+    });
+    if (conventionalMp > 0 && componentIds.length === 0) blockers.push(profileBlocker(
         'JUMP_MP_WITHOUT_JUMP_SYSTEM',
-        String(installedMp),
+        String(conventionalMp),
         [],
-        `Base jump MP ${installedMp} has no supported jump-jet component`,
+        `Conventional jump MP ${conventionalMp} has no supported jump-jet component`,
     ));
-    if (installedMp === 0 && componentIds.length > 0) blockers.push(profileBlocker(
+    if (conventionalMp === 0 && componentIds.length > 0) blockers.push(profileBlocker(
         'JUMP_SYSTEM_WITHOUT_JUMP_MP',
         String(componentIds.length),
         componentIds,
         'Jump-jet components exist while installed jump MP is zero',
+    ));
+    if (installedMp > 0 && componentIds.length === 0 && boosterComponentIds.length === 0) {
+        blockers.push(profileBlocker(
+            'JUMP_MP_WITHOUT_JUMP_SYSTEM',
+            String(installedMp),
+            [],
+            `Installed jump MP ${installedMp} has no supported jump system`,
+        ));
+    }
+    if (installedMp === 0 && boosterComponentIds.length > 0) blockers.push(profileBlocker(
+        'JUMP_SYSTEM_WITHOUT_JUMP_MP',
+        String(boosterComponentIds.length),
+        boosterComponentIds,
+        'Jump-booster components exist while installed jump MP is zero',
     ));
     if (kinds.size > 1) blockers.push(profileBlocker(
         'MIXED_JUMP_SYSTEM_TYPES',
@@ -500,6 +588,7 @@ function compileJump(
         installedMp,
         kind: componentIds.length === 0 || kinds.size !== 1 ? 'none' : [...kinds][0]!,
         componentIds: Object.freeze(componentIds),
+        boosterComponentIds: Object.freeze(boosterComponentIds),
         criticalSlotIds: freezeSortedUnique(criticalSlotIds),
     });
 }
@@ -611,9 +700,20 @@ function compileHeatProviders(
             providers.push(Object.freeze({
                 kind: 'stealth-system',
                 componentId,
+                label: isVoidSignatureEquipment(equipment) ? 'Void Signature' : 'Stealth',
                 heat: stealthHeat,
             }));
         }
+        if (equipment && isNovaCewsEquipment(equipment)) providers.push(Object.freeze({
+            kind: 'nova-cews',
+            componentId,
+            heat: 2,
+        }));
+        if (equipment && isMobileHpgEquipment(equipment)) providers.push(Object.freeze({
+            kind: 'mobile-hpg',
+            componentId,
+            heat: isGroundMobileHpgEquipment(equipment) ? 20 : 40,
+        }));
         providers.push(...escalatingFailureHeatProviders(equipment, componentId));
         if (equipment && isPpcCapacitorEquipment(equipment)) {
             const targetId = index.relationships.linkedTargetBySource.get(componentId);
@@ -702,6 +802,9 @@ function classifyUnsupportedEquipmentHeat(
             && escalatingFailureHeatProviders(equipment, componentId).length === 0
             && !supportedRiscLaserPulse
             && stealthSystemHeat(equipment) === null
+            && !isNovaCewsEquipment(equipment)
+            && !isMobileHpgEquipment(equipment)
+            && !isSpotWelderEquipment(equipment)
             && getVibrobladeProfileFromFlags(equipment.flags) === null) blockers.push(profileBlocker(
             'UNSUPPORTED_HEAT_AFFECTING_FLAG',
             `operating-heat:${equipment.operatingHeat}`,
@@ -715,7 +818,8 @@ function stealthSystemHeat(equipment: Equipment): 6 | 10 | null {
     if (!isSwitchableStealthEquipment(equipment)
         || (!isStealthEquipment(equipment)
             && !isChameleonShieldEquipment(equipment)
-            && !isNullSignatureEquipment(equipment))) return null;
+            && !isNullSignatureEquipment(equipment)
+            && !isVoidSignatureEquipment(equipment))) return null;
     return isChameleonShieldEquipment(equipment) ? 6 : 10;
 }
 

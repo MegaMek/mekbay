@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { effect, inject, Injectable, signal } from '@angular/core';
+import { DestroyRef, effect, inject, Injectable, signal } from '@angular/core';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import type { SerializedForce } from '../models/force-serialization';
@@ -16,6 +16,11 @@ export const PROTOCOL_VERSION = 2;
 export type ConnectionStatusPhase = 'hidden' | 'offline' | 'online';
 export type ForceUpdateSource = 'live' | 'reconnect';
 
+interface WsRequestOptions {
+    timeout?: number;
+    suppressGlobalError?: boolean;
+}
+
 interface ForceSubscription {
     onRemoteUpdate: (data: SerializedForce, source: ForceUpdateSource) => void | Promise<void>;
     handler: ((event: MessageEvent) => void) | null;
@@ -28,6 +33,7 @@ interface ForceSubscription {
 })
 export class WsService {
     private logger = inject(LoggerService);
+    private readonly destroyRef = inject(DestroyRef);
     private ws: WebSocket | null = null;
     private readonly wsUrl = 'wss://mekbay.com/ws';
     private wsReady?: Promise<void>;
@@ -44,6 +50,7 @@ export class WsService {
     private readonly baseReconnectDelay = 1000;
     private readonly maxReconnectDelay = 15000;
     private readonly connectionTimeout = 3000;
+    private readonly resumeProbeTimeout = 2000;
     private readonly connectionStatusHideDelay = 3500;
     private connectionStatusHideTimeoutId: number | null = null;
     private connectionStatusHasFailed = false;
@@ -52,7 +59,18 @@ export class WsService {
     public wsConnected = signal<boolean>(false);
     private userStateService = inject(UserStateService);
     private globalErrorHandler: ((message: string) => void) | null = null;
+    private readonly locallyHandledErrorRequestIds = new Set<string>();
     private lastRegisteredUuid = '';
+    private resumeProbeInFlight = false;
+    private lastResumeProbeAt = 0;
+
+    private readonly onlineHandler = () => this.handleNetworkOnline();
+    private readonly offlineHandler = () => this.handleNetworkOffline();
+    private readonly focusHandler = () => this.handlePageResume();
+    private readonly pageShowHandler = () => this.handlePageResume();
+    private readonly visibilityHandler = () => {
+        if (document.visibilityState === 'visible') this.handlePageResume();
+    };
 
     private getCurrentUuid(): string {
         return this.userStateService.uuid().trim();
@@ -84,6 +102,7 @@ export class WsService {
         this.registerMessageHandler('userState', (msg) => {
             const snapshot = {
                 publicId: msg.publicId ?? null,
+                displayName: typeof msg.displayName === 'string' ? msg.displayName : null,
                 hasOAuth: msg.hasOAuth,
                 oauthProviderCount: msg.oauthProviderCount,
                 oauthProviders: Array.isArray(msg.oauthProviders) ? msg.oauthProviders : undefined,
@@ -108,12 +127,18 @@ export class WsService {
      * Setup network status monitoring
      */
     private setupNetworkMonitoring(): void {
-        window.addEventListener('online', () => {
-            this.handleNetworkOnline();
-        });
+        window.addEventListener('online', this.onlineHandler);
+        window.addEventListener('offline', this.offlineHandler);
+        window.addEventListener('focus', this.focusHandler);
+        window.addEventListener('pageshow', this.pageShowHandler);
+        document.addEventListener('visibilitychange', this.visibilityHandler);
 
-        window.addEventListener('offline', () => {
-            this.handleNetworkOffline();
+        this.destroyRef.onDestroy(() => {
+            window.removeEventListener('online', this.onlineHandler);
+            window.removeEventListener('offline', this.offlineHandler);
+            window.removeEventListener('focus', this.focusHandler);
+            window.removeEventListener('pageshow', this.pageShowHandler);
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
         });
     }
 
@@ -122,11 +147,7 @@ export class WsService {
      */
     private handleNetworkOnline(): void {
         this.shouldReconnect = true;
-        this.reconnectAttempt = 0; // Reset backoff when network returns
-        if (!this.wsConnected() && !this.isConnecting && this.getCurrentUuid()) {
-            this.clearReconnectTimer();
-            this.scheduleReconnect();
-        }
+        this.recoverConnection(true);
     }
 
     /**
@@ -136,6 +157,47 @@ export class WsService {
         this.wsConnected.set(false);
         this.clearReconnectTimer();
         this.showDisconnectedBadge();
+    }
+
+    private handlePageResume(): void {
+        if (document.visibilityState === 'hidden') return;
+        this.recoverConnection(true);
+    }
+
+    private recoverConnection(probeOpenSocket = false): void {
+        if (!this.shouldReconnect || !navigator.onLine || !this.getCurrentUuid()) return;
+
+        const socket = this.ws;
+        if (socket?.readyState === WebSocket.OPEN && this.wsConnected()) {
+            if (probeOpenSocket) void this.probeConnection(socket);
+            return;
+        }
+        if (this.isConnecting || socket?.readyState === WebSocket.CONNECTING) return;
+
+        this.reconnectAttempt = 0;
+        this.clearReconnectTimer();
+        this.connect();
+    }
+
+    private async probeConnection(socket: WebSocket): Promise<void> {
+        const now = Date.now();
+        if (this.resumeProbeInFlight || now - this.lastResumeProbeAt < 1000) return;
+
+        this.resumeProbeInFlight = true;
+        this.lastResumeProbeAt = now;
+        try {
+            const response = await this.sendAndWaitForResponse({ action: 'ping' }, this.resumeProbeTimeout);
+            if (this.ws !== socket || response?.action === 'pong') return;
+
+            this.logger.warn('WebSocket health check failed after page resume; reconnecting.');
+            this.wsConnected.set(false);
+            this.showDisconnectedBadge();
+            this.closeWebSocket(false);
+            this.reconnectAttempt = 0;
+            this.connect();
+        } finally {
+            this.resumeProbeInFlight = false;
+        }
     }
 
     /**
@@ -237,6 +299,9 @@ export class WsService {
         this.isConnecting = false;
         this.wsConnected.set(false);
         this.showDisconnectedBadge();
+        if (this.shouldReconnect && navigator.onLine && this.getCurrentUuid()) {
+            this.scheduleReconnect();
+        }
     }
 
     /**
@@ -250,8 +315,12 @@ export class WsService {
             return;
         }
 
-        if (msg?.action === 'error' && this.globalErrorHandler) {
-            this.globalErrorHandler(msg.message || 'Unknown error');
+        if (msg?.action === 'error') {
+            const locallyHandled = typeof msg.requestId === 'string'
+                && this.locallyHandledErrorRequestIds.delete(msg.requestId);
+            if (!locallyHandled && this.globalErrorHandler) {
+                this.globalErrorHandler(msg.message || 'Unknown error');
+            }
         }
 
         const action = msg?.action;
@@ -512,13 +581,23 @@ export class WsService {
     /**
      * Send a message and wait for response
      */
-    public async sendAndWaitForResponse(payload: object, timeout: number = 5000): Promise<any | null> {
+    public async sendAndWaitForResponse(
+        payload: object,
+        timeoutOrOptions: number | WsRequestOptions = 5000,
+    ): Promise<any | null> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             this.logger.warn('Cannot send: WebSocket not connected');
             return null;
         }
 
+        const options = typeof timeoutOrOptions === 'number'
+            ? { timeout: timeoutOrOptions }
+            : timeoutOrOptions;
+        const timeout = options.timeout ?? 5000;
         const requestId = uuidv7();
+        if (options.suppressGlobalError) {
+            this.locallyHandledErrorRequestIds.add(requestId);
+        }
         const message = {
             ...payload,
             sessionId: this.wsSessionId,
@@ -534,7 +613,11 @@ export class WsService {
                 try {
                     const msg = JSON.parse(event.data);
                     if (msg.requestId === requestId) {
-                        cleanup();
+                        const preserveErrorOwnership = options.suppressGlobalError && msg.action === 'error';
+                        cleanup(preserveErrorOwnership);
+                        if (preserveErrorOwnership) {
+                            queueMicrotask(() => this.locallyHandledErrorRequestIds.delete(requestId));
+                        }
                         resolve(msg);
                     }
                 } catch {
@@ -542,10 +625,13 @@ export class WsService {
                 }
             };
 
-            const cleanup = () => {
+            const cleanup = (preserveErrorOwnership = false) => {
                 ws.removeEventListener('message', handler);
                 if (timeoutId !== null) {
                     clearTimeout(timeoutId);
+                }
+                if (!preserveErrorOwnership) {
+                    this.locallyHandledErrorRequestIds.delete(requestId);
                 }
             };
 

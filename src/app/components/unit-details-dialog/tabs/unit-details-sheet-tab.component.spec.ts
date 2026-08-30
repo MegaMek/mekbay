@@ -17,7 +17,7 @@ import { UnitDetailsSheetTabComponent } from './unit-details-sheet-tab.component
 describe('UnitDetailsSheetTabComponent', () => {
     let logger: jasmine.SpyObj<Pick<LoggerService, 'error'>>;
     let nativeEntities: jasmine.SpyObj<Pick<NativeEntityService, 'canLoad' | 'load'>>;
-    const options = signal({ recordSheetCenterPanelContent: 'clusterTable' });
+    const options = signal({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
 
     beforeEach(() => {
         logger = jasmine.createSpyObj<Pick<LoggerService, 'error'>>('LoggerService', ['error']);
@@ -26,7 +26,7 @@ describe('UnitDetailsSheetTabComponent', () => {
         );
         nativeEntities.canLoad.and.returnValue(true);
         nativeEntities.load.and.resolveTo({ entity: new TestTankEntity(), source: {} } as never);
-        options.set({ recordSheetCenterPanelContent: 'clusterTable' });
+        options.set({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
 
         TestBed.configureTestingModule({
             imports: [UnitDetailsSheetTabComponent],

@@ -7,6 +7,7 @@ import {
     isInteractiveStealthFlags,
     stealthFlagsRequireEcm,
     stealthStateIsActive,
+    VOID_SIGNATURE_FLAG,
     type StealthState,
 } from '../stealth-equipment.model';
 import {
@@ -63,7 +64,12 @@ export class StealthHandler extends ComponentModeHandler {
         if (requiresEcm(definition)
             && choice.value === 'enabling'
             && !runtime.query().functionalEcmForStealth('preview')) {
-            context.toastService.showToast('Stealth armor requires a functional ECM suite', 'error');
+            context.toastService.showToast(
+                definition.flags.has(VOID_SIGNATURE_FLAG)
+                    ? 'Void Signature System requires a functional ECM suite'
+                    : 'Stealth armor requires a functional ECM suite',
+                'error',
+            );
             return true;
         }
         const result = runtime.dispatch({

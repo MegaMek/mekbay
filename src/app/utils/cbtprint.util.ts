@@ -4,29 +4,21 @@
 
 import { getFactionAffinity } from '../models/factions.model';
 import type { PrintAllOptions } from '../models/print-options.model';
-import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
+import type { BaseEntity } from '../models/entity/base-entity';
+import { AmmoEquipment } from '../models/equipment.model';
 import { isJumpJetEquipment } from '../models/jump-equipment.model';
 import { isHeatSinkEquipment } from '../models/heat-equipment.model';
-import { caseRecordSheetLabel, isCaseEquipment } from '../models/case-equipment.model';
-import type {
-    RecordSheetSourceMode,
-    RecordSheetSourceService,
-} from '../services/record-sheet-source.service';
+import { isCaseEquipment } from '../models/case-equipment.model';
+import type { RecordSheetSourceService } from '../services/record-sheet-source.service';
 import {
     isCBTMekForceMember,
     type CBTForceMember,
 } from '../models/force-member.model';
 import type { NonMekRecordSheetSnapshot } from '../models/runtime/non-mek-record-sheet';
 import type { MekRecordSheetSnapshot } from '../models/runtime/mek-record-sheet';
-import { RsPolyfillUtil } from './rs-polyfill.util';
-import {
-    MEK_CREW_STATE_CONTROLS,
-    MEK_UNIT_CONDITION_CONTROLS,
-} from '../models/mek-record-sheet-controls';
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../models/mek-sheet-binding';
 import { bindMekRecordSheet } from '../components/page-viewer/mek-record-sheet-binder';
 import { bindNonMekRecordSheet } from '../components/page-viewer/non-mek-record-sheet-binder';
-import { crewStateDefinitions, unitConditionControls } from '../models/unit-status-presentation';
 import { RecordSheetSvgGenerator } from './sheets/record-sheet-svg-generator';
 import {
     planRecordSheetPages,
@@ -58,14 +50,12 @@ export class CBTPrintUtil {
             return;
         }
         const prepared: PreparedPrintSheet[] = [];
-        const sourceMode = recordSheetSource.mode();
         for (const member of members) {
             const memberSheets = await this.createPrintSheets(
                 member,
                 printOptions.clean,
                 printOptions.paperSize,
                 recordSheetSource,
-                sourceMode,
             );
             for (const sheet of memberSheets) {
                 const { svg } = sheet;
@@ -79,7 +69,8 @@ export class CBTPrintUtil {
                 );
 
                 // Turn on/off fluff image
-                const injectedEl = svg.getElementById('fluff-image-fo') as HTMLElement | null;
+                const injectedEl = (svg.getElementById('fluff-image-fo')
+                    ?? svg.getElementById('fluff-image-injected')) as SVGElement | null;
                 if (injectedEl) {
                     const centerContent = printOptions.recordSheetCenterPanelContent;
                     const referenceTables = svg.querySelectorAll<SVGGraphicsElement>('.referenceTable');
@@ -113,7 +104,7 @@ export class CBTPrintUtil {
             await this.embedExternalImages(page);
             svgStrings.push(this.serializeSvg(page));
         }
-        await this.generateMultipagePrintContainer(svgStrings, members, printOptions, triggerPrint);
+        await this.generateMultipagePrintContainer(svgStrings, printOptions, triggerPrint);
     }
 
     private static async createPrintSheets(
@@ -121,7 +112,6 @@ export class CBTPrintUtil {
         clean: boolean,
         paperSize: PrintAllOptions['paperSize'],
         recordSheetSource: RecordSheetSourceService,
-        sourceMode: RecordSheetSourceMode,
     ): Promise<readonly PreparedPrintSheet[]> {
         const ready = member.force.getUnitSnapshot(member.id);
         if (!ready) throw new Error(`Classic unit ${member.id} is no longer admitted`);
@@ -131,25 +121,17 @@ export class CBTPrintUtil {
             format: profile.compact ? 'compact' : paperSize,
             pageFormat: paperSize,
         } as const;
-        const artwork = await recordSheetSource.load(member.summary, entity, generatorOptions, sourceMode);
-        const compact = artwork.source === 'generated' && profile.compact;
+        const identity = member.force.getUnitSourceIdentity(member.id);
+        const artwork = await recordSheetSource.load(entity, generatorOptions, {
+            ...(identity ? { design: identity } : {}),
+        });
+        const compact = profile.compact;
 
         if (isCBTMekForceMember(member)) {
             const current = member.force.getMekRecordSheetSnapshot(member.id);
             if (!current) throw new Error(`CBT Mek ${member.id} is no longer admitted`);
             const snapshot = clean ? this.pristinePrintSnapshot(current) : current;
             return artwork.svgs.map(svg => {
-                RsPolyfillUtil.prepareRecordSheet({
-                    unit: {
-                        type: 'Mek',
-                        subtype: snapshot.identity.form === 'lam' ? 'Land-Air BattleMek' : 'BattleMek',
-                        armorType: snapshot.construction.armor,
-                        structureType: snapshot.construction.structure,
-                        crewSize: snapshot.crew.length,
-                    },
-                    conditionControls: MEK_UNIT_CONDITION_CONTROLS,
-                    addCrewStateControls: MEK_CREW_STATE_CONTROLS.length > 0 && snapshot.crew.length > 0,
-                }, svg);
                 const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, snapshot);
                 binding.render(snapshot);
                 binding.destroy();
@@ -160,7 +142,9 @@ export class CBTPrintUtil {
                     kind: profile.kind,
                     height: profile.height,
                     pageContentY: profile.pageContentY,
-                    pristineBattleValue: snapshot.battleValue.pristine ?? snapshot.battleValue.current ?? member.summary.bv,
+                    pristineBattleValue: snapshot.battleValue.pristine
+                        ?? snapshot.battleValue.current
+                        ?? entity.battleValue(),
                 });
             });
         }
@@ -169,18 +153,6 @@ export class CBTPrintUtil {
         if (!current) throw new Error(`Classic Entity ${member.id} is no longer admitted`);
         const snapshot = clean ? this.pristineEntityPrintSnapshot(current) : current;
         return artwork.svgs.map(svg => {
-            RsPolyfillUtil.prepareRecordSheet({
-                unit: {
-                    type: snapshot.unitType,
-                    subtype: snapshot.subtype,
-                    armorType: snapshot.armorType,
-                    structureType: snapshot.structureType,
-                    crewSize: snapshot.crewSize,
-                },
-                conditionControls: unitConditionControls(snapshot.conditionControlKeys),
-                addCrewStateControls: crewStateDefinitions(snapshot.crewStateControlKeys).length > 0
-                    && snapshot.crew.length > 0,
-            }, svg);
             const binding = bindNonMekRecordSheet(svg, snapshot);
             binding.render(snapshot);
             binding.destroy();
@@ -398,13 +370,9 @@ export class CBTPrintUtil {
      * Generates a multipage print container and waits for images to load before printing.
      */
     private static async generateMultipagePrintContainer(svgStrings: string[],
-        members: readonly CBTForceMember[],
         printOptions: PrintAllOptions,
         triggerPrint: boolean = true): Promise<void> {
         const pages = svgStrings.map(svg => `<div class="svg-container">${svg}</div>`);
-        if (printOptions.printRosterSummary) {
-            pages.push(this.createRosterSummaryPage(members, printOptions.printPilotData));
-        }
         if (pages.length > 0) {
             pages[pages.length - 1] = pages[pages.length - 1].replace('svg-container', 'svg-container last-svg');
         }
@@ -566,8 +534,7 @@ export class CBTPrintUtil {
             const bodyRows: string[] = [];
 
             for (const member of groupMembers) {
-                const unit = member.summary;
-                const baseBv = unit.bv ?? 0;
+                const baseBv = member.pristineBattleValue() ?? member.entity.battleValue();
                 const finalBv = this.getPrintableBv(member, printPilotData);
 
                 totalBaseBv += baseBv;
@@ -629,16 +596,21 @@ export class CBTPrintUtil {
     }
 
     private static createRosterTableRow(member: CBTForceMember, printPilotData: boolean): string {
-        const unit = member.summary;
+        const unit = member.entity;
         const primaryCrew = member.force.getUnitCrewAssignment(member.id)?.positions[0];
         const alias = printPilotData ? primaryCrew?.name : undefined;
-        const model = unit.model || '';
-        const chassisLine = alias ? `${unit.chassis} (${alias})` : unit.chassis;
+        const model = unit.model();
+        const chassis = unit.fullChassis();
+        const chassisLine = alias ? `${chassis} (${alias})` : chassis;
 
-        const typeSubtype = [unit.type || '', unit.subtype && unit.subtype !== unit.type ? unit.subtype : '']
+        const unitType = unit.unitType();
+        const unitSubtype = unit.unitSubtype();
+        const typeSubtype = [unitType, unitSubtype !== unitType ? unitSubtype : '']
             .filter(Boolean)
             .join(' / ');
         const equipment = this.formatEquipmentSummary(unit);
+        const maximumDamage = unit.rangedWeapons().reduce((total, mount) =>
+            total + unit.resolveMountedWeaponDamage(mount).maximum, 0);
 
         return `
             <tr>
@@ -647,30 +619,23 @@ export class CBTPrintUtil {
                     <div class="cbt-roster-unit-chassis">${this.escapeHtml(chassisLine)}</div>
                 </td>
                 <td class="col-type">${this.escapeHtml(typeSubtype)}</td>
-                <td class="col-role">${this.escapeHtml(unit.role && unit.role !== 'None' ? unit.role : '')}</td>
-                <td class="col-base-bv is-numeric">${this.formatNumber(unit.bv)}</td>
+                <td class="col-role">${this.escapeHtml(unit.role() && unit.role() !== 'None' ? unit.role() : '')}</td>
+                <td class="col-base-bv is-numeric">${this.formatNumber(member.pristineBattleValue() ?? unit.battleValue())}</td>
                 <td class="col-gp is-numeric">${printPilotData && primaryCrew ? `${primaryCrew.gunnery}/${primaryCrew.piloting}` : ''}</td>
                 <td class="col-bv is-numeric is-bold">${this.formatNumber(this.getPrintableBv(member, printPilotData))}</td>
-                <td class="col-tons is-numeric">${this.formatNumber(unit.tons)}</td>
+                <td class="col-tons is-numeric">${this.formatNumber(unit.tonnage())}</td>
                 <td class="col-year">${this.createYearValue(unit)}</td>
-                <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase, unit.mixed))}<br/>${this.escapeHtml(unit.level)}</td>
+                <td class="col-rules">${this.escapeHtml(this.formatTechBase(unit.techBase(), unit.mixedTech()))}<br/>${this.escapeHtml(unit.staticTechLevel())}</td>
                 <td class="col-move">${this.escapeHtml(this.formatMovement(unit))}</td>
                 <td class="col-as is-numeric">${this.escapeHtml(this.formatArmorStructure(unit))}</td>
-                <td class="col-firepower is-numeric">${this.escapeHtml(this.formatNumber(unit._mdSumNoPhysical) || '—')}<br/>(${this.escapeHtml(this.formatNumber(unit.dpt) || '—')})</td>
+                <td class="col-firepower is-numeric">${this.escapeHtml(this.formatNumber(maximumDamage) || '—')}</td>
                 <td class="col-equipment">${equipment}</td>
             </tr>
         `;
     }
 
-    private static createYearValue(unit: UnitSummary): string {
-        const year = unit.year ? this.escapeHtml(String(unit.year)) : '—';
-        if (!unit._era?.img) {
-            return year;
-        }
-
-        const eraName = this.escapeHtml(unit._era.name || 'Era');
-        const eraSrc = this.escapeHtml(unit._era.img);
-        return `${year} <img src="${eraSrc}" class="cbt-roster-era-icon" alt="${eraName}" title="${eraName}" />`;
+    private static createYearValue(unit: BaseEntity): string {
+        return unit.year() ? this.escapeHtml(String(unit.year())) : '—';
     }
 
     private static formatNumber(value: number | undefined | null): string {
@@ -681,29 +646,26 @@ export class CBTPrintUtil {
     }
 
     private static getPrintableBv(member: CBTForceMember, printPilotData: boolean): number {
-        if (printPilotData) return member.adjustedBattleValue() ?? member.summary.bv;
-        return member.currentBaseBattleValue() ?? member.pristineBattleValue() ?? member.summary.bv;
+        if (printPilotData) return member.adjustedBattleValue() ?? member.entity.battleValue();
+        return member.currentBaseBattleValue() ?? member.pristineBattleValue() ?? member.entity.battleValue();
     }
 
-    private static formatMovement(unit: UnitSummary): string {
+    private static formatMovement(unit: BaseEntity): string {
         const parts: string[] = [];
-        if (unit.walk) {
-            let ground = `${unit.walk}/${unit.run}`;
-            if (unit.run2 && unit.run2 !== unit.run) {
-                ground += `[${unit.run2}]`;
-            }
-            parts.push(ground);
+        const walk = unit.walkMP();
+        if (walk) {
+            parts.push(`${walk}/${unit.runMP()}`);
         }
-        if (unit.jump) {
-            parts.push(String(unit.jump));
+        if (unit.jumpMP()) {
+            parts.push(String(unit.jumpMP()));
         }
-        if (unit.umu) {
-            parts.push(String(unit.umu));
+        if (unit.umuMP()) {
+            parts.push(String(unit.umuMP()));
         }
         return parts.join('/');
     }
 
-    private static formatTechBase(techBase: UnitSummary['techBase'], mixed: boolean): string {
+    private static formatTechBase(techBase: string, mixed: boolean): string {
         if (!techBase) return '';
         const tech = techBase === 'Inner Sphere' ? 'IS' : 'Clan';
         if (mixed) {
@@ -713,17 +675,40 @@ export class CBTPrintUtil {
         }
     }
 
-    private static formatArmorStructure(unit: UnitSummary): string {
-        return `${this.formatNumber(unit.armor) || '0'}/${this.formatNumber(unit.internal) || '0'}`;
+    private static formatArmorStructure(unit: BaseEntity): string {
+        return `${this.formatNumber(unit.totalArmorPoints()) || '0'}/${this.formatNumber(unit.totalInternalPoints()) || '0'}`;
     }
 
-    private static formatEquipmentSummary(unit: UnitSummary): string {
-        const equipment = this.getExpandedComponents(unit.comp).map(comp => this.formatComponentText(comp));
-        const ammo = this.getAmmoComponents(unit.comp).map(comp => {
-            const text = this.formatComponentText(comp);
-            const caseLabel = this.getCaseLabel(unit, comp.l);
-            return caseLabel ? `[${text}]` : text;
-        });
+    private static formatEquipmentSummary(unit: BaseEntity): string {
+        const equipmentCounts = new Map<string, number>();
+        const ammoCounts = new Map<string, Readonly<{ bins: number; shots: number; protected: boolean }>>();
+        for (const mount of unit.equipment()) {
+            const equipment = mount.equipment;
+            if (equipment instanceof AmmoEquipment) {
+                const name = equipment.shortName || equipment.name || mount.equipmentId;
+                const previous = ammoCounts.get(name) ?? { bins: 0, shots: 0, protected: false };
+                ammoCounts.set(name, {
+                    bins: previous.bins + 1,
+                    shots: previous.shots + (mount.shotsCount ?? equipment.shots),
+                    protected: previous.protected || unit.locationHasCaseProtection(mount.location),
+                });
+                continue;
+            }
+            if (isHeatSinkEquipment(equipment)
+                || isCaseEquipment(equipment)
+                || isJumpJetEquipment(equipment)) continue;
+            const name = mount.displayName();
+            equipmentCounts.set(name, (equipmentCounts.get(name) ?? 0) + 1);
+        }
+        const equipment = [...equipmentCounts]
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([name, quantity]) => `${quantity}×${name}`);
+        const ammo = [...ammoCounts]
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([name, entry]) => {
+                const text = `${entry.bins}×${name} (${entry.shots})`;
+                return entry.protected ? `[${text}]` : text;
+            });
 
         const equipmentMarkup = equipment.length > 0
             ? equipment
@@ -743,92 +728,6 @@ export class CBTPrintUtil {
             : '';
 
         return `${equipmentMarkup}${ammoMarkup}`;
-    }
-
-    private static getExpandedComponents(components: UnitComponent[]): UnitComponent[] {
-        if (!components?.length) {
-            return [];
-        }
-
-        const aggregated = new Map<string, UnitComponent>();
-        for (const comp of components) {
-            if (comp.t === 'HIDDEN' || comp.t === 'S' || comp.t === 'X') continue;
-            if (comp.t === 'C') {
-                if (isHeatSinkEquipment(comp.eq)) continue;
-                if (isCaseEquipment(comp.eq)) continue;
-                if (isJumpJetEquipment(comp.eq)) continue;
-            }
-
-            const key = comp.n || '';
-            if (!key) continue;
-
-            if (aggregated.has(key)) {
-                const existing = aggregated.get(key)!;
-                existing.q = (existing.q || 1) + (comp.q || 1);
-            } else {
-                aggregated.set(key, { ...comp });
-            }
-        }
-
-        return Array.from(aggregated.values()).sort((left, right) => (left.n ?? '').localeCompare(right.n ?? ''));
-    }
-
-    private static getAmmoComponents(components: UnitComponent[]): UnitComponent[] {
-        if (!components?.length) {
-            return [];
-        }
-
-        const aggregated = new Map<string, UnitComponent>();
-        for (const comp of components) {
-            if (comp.t !== 'X') continue;
-            const name = comp.n?.endsWith(' Ammo') ? comp.n.slice(0, -5).trimEnd() : comp.n;
-            const key = name || '';
-            if (!key) continue;
-
-            if (aggregated.has(key)) {
-                const existing = aggregated.get(key)!;
-                existing.q = (existing.q || 1) + (comp.q || 1);
-                existing.q2 = (existing.q2 || 0) + (comp.q2 || 0);
-            } else {
-                aggregated.set(key, { ...comp, n: name });
-            }
-        }
-
-        return Array.from(aggregated.values()).sort((left, right) => (left.n ?? '').localeCompare(right.n ?? ''));
-    }
-
-    private static formatComponentText(comp: UnitComponent): string {
-        const quantity = comp.q ?? 1;
-        const secondary = comp.q2 ? ` (${comp.q2})` : '';
-        return `${quantity}×${comp.n}${secondary}`;
-    }
-
-    private static getCaseLabel(unit: UnitSummary, loc: string): string {
-        return this.getCaseByLocation(unit).get(this.normalizeLoc(loc)) ?? '';
-    }
-
-    private static getCaseByLocation(unit: UnitSummary): Map<string, string> {
-        const result = new Map<string, string>();
-        for (const comp of unit.comp ?? []) {
-            if (!comp.eq || !comp.l) continue;
-
-            const label = caseRecordSheetLabel(comp.eq) ?? undefined;
-
-            if (label) {
-                result.set(this.normalizeLoc(comp.l), label);
-            }
-        }
-        return result;
-    }
-
-    private static normalizeLoc(loc: string): string {
-        if (!loc) return 'UNK';
-        let normalized = loc === '*' ? 'ALL' : loc.trim();
-        normalized = normalized.replace(/[^A-Za-z0-9_-]/g, '');
-        if (/^[0-9]/.test(normalized)) {
-            normalized = `L${normalized}`;
-        }
-        return normalized || 'UNK';
     }
 
     private static escapeHtml(value: string): string {

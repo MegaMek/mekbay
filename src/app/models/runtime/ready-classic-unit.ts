@@ -21,6 +21,7 @@ import type {
     CBTUnitSelectedWeaponFireCommand,
     CommandReduction,
 } from './unit-instance';
+import type { PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
 
 export interface ReadyTargetingReconciliation {
     readonly expectedRevision: StateRevision;
@@ -44,6 +45,7 @@ export type ReadySelectedWeaponFireResult =
         readonly accepted: true;
         readonly idempotent: boolean;
         readonly currentRevision: StateRevision;
+        readonly prototypeHeat: readonly PrototypeLaserHeatResult[];
     }>
     | Readonly<{
         readonly accepted: false;
@@ -51,7 +53,17 @@ export type ReadySelectedWeaponFireResult =
         readonly currentRevision: StateRevision;
     }>;
 
-export type ReadyAttackerTargetingResult = ReadySelectedWeaponFireResult;
+export type ReadyAttackerTargetingResult =
+    | Readonly<{
+        readonly accepted: true;
+        readonly idempotent: boolean;
+        readonly currentRevision: StateRevision;
+    }>
+    | Readonly<{
+        readonly accepted: false;
+        readonly reason: Extract<CommandReduction, { readonly accepted: false }>['reason'];
+        readonly currentRevision: StateRevision;
+    }>;
 
 export type ReadyEndTurnResult = Readonly<{
     readonly accepted: boolean;

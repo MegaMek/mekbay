@@ -13,7 +13,6 @@ import type {
 } from './force-serialization';
 import {
     forceMemberAdjustedValue,
-    forceMemberSummary,
     isCBTForceMember,
     type ForceMember,
 } from './force-member.model';
@@ -169,11 +168,12 @@ export function createForcePreviewUnitFromSerializedUnit(
 
 export function createForcePreviewUnitFromForceMember(
     member: ForceMember,
+    resolveClassicSummary?: (member: Extract<ForceMember, { readonly kind: 'cbt' }>) => UnitSummary | undefined,
 ): ForcePreviewUnit {
     if (isCBTForceMember(member)) {
         const crew = member.force.getUnitCrewAssignment(member.id)?.positions ?? [];
         const previewUnit: ForcePreviewUnit = {
-            unit: member.summary,
+            unit: resolveClassicSummary?.(member),
             destroyed: member.force.getUnitDestroyed(member.id) ?? false,
             lockKey: member.id,
         };
@@ -189,7 +189,7 @@ export function createForcePreviewUnitFromForceMember(
 
     const forceUnit = member;
     const previewUnit: ForcePreviewUnit = {
-        unit: forceMemberSummary(forceUnit),
+        unit: forceUnit.getSummary(),
         destroyed: forceUnit.destroyed,
         lockKey: resolveSerializedUnitId(forceUnit.id),
     };
@@ -302,6 +302,7 @@ export function createForcePreviewEntryFromForce(
     force: Force,
     members: readonly ForceMember[],
     options: { cloud?: boolean; local?: boolean } = {},
+    resolveClassicSummary?: (member: Extract<ForceMember, { readonly kind: 'cbt' }>) => UnitSummary | undefined,
 ): ForcePreviewEntry {
     const tags = force.tags ?? [];
     const groups = force.groups()
@@ -313,7 +314,8 @@ export function createForcePreviewEntryFromForce(
             return {
                 name: group.name() || undefined,
                 formationId: group.activeFormation()?.id,
-                units: groupMembers.map(member => createForcePreviewUnitFromForceMember(member)),
+                units: groupMembers.map(member =>
+                    createForcePreviewUnitFromForceMember(member, resolveClassicSummary)),
             };
         })
         .filter(group => group.units.length > 0);

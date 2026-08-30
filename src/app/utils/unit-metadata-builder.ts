@@ -3,11 +3,13 @@
 // Author: Drake
 
 import { BaseEntity } from '../models/entity/base-entity';
+import { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import { InfantryBaseEntity } from '../models/entity/entities/infantry/infantry-base-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
-import { UnitSummary } from '../models/unit-summary.model';
+import { type UnitMaterialLayout, UnitSummary } from '../models/unit-summary.model';
 import { EntityType, MoveType } from '../models/entity/types';
+import { encodeBlkArmorType } from '../models/entity/parsers/blk-codec';
 import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 import { convertEntityToAlphaStrike } from '../models/entity/utils/alpha-strike/alpha-strike-converter';
@@ -69,7 +71,9 @@ export class UnitMetadataBuilder {
       engineRating: this.exportsEngine(entity) ? me.rating : 0,
       armorType: this.buildArmorType(entity),
       structureType: entity.uniformStructureMaterial()?.structure.name
-        ?? (entity.structureByLocation().size > 0 ? 'Standard' : null),
+        ?? (entity.structureByLocation().size > 0 ? 'Hybrid' : null),
+      patchworkLayout: this.buildPatchworkLayout(entity),
+      hybridLayout: this.buildHybridLayout(entity),
       armor: entity.totalArmorPoints(),
       internal: entity.totalInternalPoints(),
       armorPer: entity.maximumArmorPoints() > 0
@@ -277,6 +281,41 @@ export class UnitMetadataBuilder {
     if (entity.hasPatchworkArmor()) return armorTypeDisplayName('PATCHWORK', 'Patchwork');
     const armorType = entity.uniformArmor()?.type ?? 'STANDARD';
     return armorTypeDisplayName(armorType, armorType);
+  }
+
+  private buildPatchworkLayout(entity: BaseEntity): UnitMaterialLayout | undefined {
+    if (!entity.hasPatchworkArmor()) return undefined;
+    const entries: [string, { type: number; clan: boolean }][] = [...entity.armorByLocation()].map(([
+      location,
+      armor,
+    ]) => [
+      entity.componentLocationLabel(location),
+      { type: encodeBlkArmorType(armor), clan: this.isClanMaterial(entity, armor.techBase) },
+    ]);
+    if (entity instanceof AeroEntity) {
+      // MegaMek exposes two fighter pseudo-locations in patchwork exports even
+      // though neither carries canonical location armor.
+      entries.push(
+        [entity.componentLocationLabel('Wings'), { type: 0, clan: false }],
+        [entity.componentLocationLabel('Fuselage'), { type: -1, clan: false }],
+      );
+    }
+    return Object.fromEntries(entries);
+  }
+
+  private buildHybridLayout(entity: BaseEntity): UnitMaterialLayout | undefined {
+    if (entity.uniformStructureMaterial() || entity.structureByLocation().size === 0) return undefined;
+    return Object.fromEntries([...entity.structureByLocation()].map(([location, structure]) => [
+      entity.componentLocationLabel(location),
+      {
+        type: structure.structure.structureTypeId,
+        clan: this.isClanMaterial(entity, structure.techBase),
+      },
+    ]));
+  }
+
+  private isClanMaterial(entity: BaseEntity, techBase: 'IS' | 'Clan' | 'All'): boolean {
+    return techBase === 'Clan' || (techBase === 'All' && entity.techBase() === 'Clan');
   }
 }
 

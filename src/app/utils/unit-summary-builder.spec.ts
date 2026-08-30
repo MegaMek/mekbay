@@ -5,6 +5,7 @@
 import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-emplacement-entity';
 import { TestBipedMekEntity as BipedMekEntity } from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
+import { ArmorEquipment } from '../models/equipment.model';
 import {
   MM_DATA_UNIT_PROVIDER_ID,
   asSourceHash,
@@ -46,6 +47,24 @@ describe('UnitSummaryBuilder', () => {
     });
     expect(summary.uuid).toBe(uuid);
     expect(summary.entityType).toBe('Mek');
+  });
+
+  it('persists optional per-location material layouts', () => {
+    const entity = mek();
+    entity.setArmorEquipmentAt('LA', new ArmorEquipment({
+      id: 'Impact-Resistant Armor',
+      name: 'Impact-Resistant',
+      type: 'armor',
+      armor: { type: 'IMPACT_RESISTANT' },
+    }), 'Clan');
+
+    const summary = new UnitSummaryBuilder().build(entity, {
+      entryKey,
+      format: 'mtf',
+    });
+
+    expect(summary.patchworkLayout?.['LA']).toEqual({ type: 25, clan: true });
+    expect(summary.hybridLayout).toBeUndefined();
   });
 
   it('keeps a native Mek runtime-ready while exposing its load errors', () => {

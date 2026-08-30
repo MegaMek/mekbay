@@ -6,6 +6,9 @@ import { Component, ChangeDetectionStrategy, inject, input, signal, effect, comp
 
 import { SpriteStorageService, type SpriteIconInfo } from '../../services/sprite-storage.service';
 import type { UnitSummary } from '../../models/unit-summary.model';
+import { BaseEntity } from '../../models/entity/base-entity';
+import { MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
+import { resolveUnitSpritePath } from '../../utils/unit-sprite-resolver';
 
 interface SpriteData {
   url: string;
@@ -65,7 +68,7 @@ export class UnitIconComponent {
   isLoading = this.spriteService.loading;
   
   // Inputs
-  unit = input<UnitSummary | undefined | null>(null);
+  unit = input<UnitSummary | BaseEntity | undefined | null>(null);
   alt = input<string | undefined>(undefined);
   styleClass = input<string>('');
   
@@ -82,7 +85,10 @@ export class UnitIconComponent {
 
   private unitLabel = computed(() => {
     const u = this.unit();
-    return u ? `${u.chassis || ''} ${u.model || ''}`.trim() : '';
+    if (!u) return '';
+    return u instanceof BaseEntity
+      ? u.displayName()
+      : `${u.chassis || ''} ${u.model || ''}`.trim();
   });
 
   displayAlt = computed(() => this.alt() || this.unitLabel());
@@ -119,29 +125,41 @@ export class UnitIconComponent {
     });
     
     effect(() => {
-      const path = this.unit()?.icon;
+      const unit = this.unit();
       const loading = this.isLoading();
 
-      if (!path || loading) {
+      if (!unit || loading) {
         this.spriteData.set(null);
         return;
       }
-
-      // Try synchronous cache first (hot path)
-      const cached = this.spriteService.getCachedSpriteInfo(path);
-      if (cached) {
-        this.spriteData.set(cached);
+      if (unit instanceof BaseEntity) {
+        this.spriteService.getVerifiedAssignmentContext(MM_DATA_UNIT_PROVIDER_ID)
+          .then(context => this.loadPath(
+            resolveUnitSpritePath(unit, context?.assignments),
+            unit,
+          ))
+          .catch(() => this.spriteData.set(null));
         return;
       }
+      this.loadPath(unit.icon, unit);
+    });
+  }
 
-      // Fallback to async load
-      this.spriteService.getSpriteInfo(path).then(info => {
-        // Guard against setting state on destroyed component
-        if (this.destroyed) return;
-        this.spriteData.set(info);
-      }).catch(() => {
-        this.spriteData.set(null);
-      });
+  private loadPath(path: string, expectedUnit: UnitSummary | BaseEntity): void {
+    if (!path || this.destroyed || this.unit() !== expectedUnit) {
+      this.spriteData.set(null);
+      return;
+    }
+    const cached = this.spriteService.getCachedSpriteInfo(path);
+    if (cached) {
+      this.spriteData.set(cached);
+      return;
+    }
+    this.spriteService.getSpriteInfo(path).then(info => {
+      if (this.destroyed || this.unit() !== expectedUnit) return;
+      this.spriteData.set(info);
+    }).catch(() => {
+      if (this.unit() === expectedUnit) this.spriteData.set(null);
     });
   }
 }

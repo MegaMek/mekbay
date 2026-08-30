@@ -7,6 +7,7 @@ import type { InventoryControlRuntimeRangeKey } from '../models/inventory-contro
 import type { AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 
 export type AerospaceRangeLimits = readonly [short: number, medium: number, long: number, extreme: number];
+export type AerospaceAttackValues = readonly [short: number, medium: number, long: number, extreme: number];
 
 export const AEROSPACE_RANGE_BRACKETS: readonly InventoryControlRuntimeRangeKey[] = [
     'short',
@@ -61,7 +62,7 @@ export function effectiveAerospaceMaximumBracket(
 export function aerospaceAttackValues(
     weapon: Pick<WeaponEquipment, 'weapon'>,
     ammoProfile: AmmoWeaponProfile | null
-): readonly [short: number, medium: number, long: number, extreme: number] {
+): AerospaceAttackValues {
     const base = [0, 1, 2, 3].map(index => Math.ceil(weapon.weapon.av[index] ?? 0)) as [number, number, number, number];
     switch (ammoProfile?.id) {
         case 'atm-extended-range': {

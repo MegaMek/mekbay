@@ -33,7 +33,7 @@ export {
     movementBoosterUsableWhile,
 } from '../escalating-equipment.model';
 import { isCBTRuleset, type CBTRuleset } from '../cbt-ruleset.model';
-import { ImmutableSet } from '../entity/immutable-collections';
+import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
 import {
@@ -49,6 +49,7 @@ import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index
 import {
     createCommandId,
     type CommandId,
+    type ComponentRuntimeState,
     type EscalatingFailureSequence,
 } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
@@ -316,6 +317,152 @@ const ESCALATING_FAILURE_FAILURE_CHOICE_COLORS = {
     mutedSelected: '#800',
 };
 
+/** Pure choice projection shared by Mek and non-Mek runtime adapters. */
+export function componentEscalatingFailureChoices(
+    definition: ComponentEscalatingFailureDefinition,
+    facts: ComponentEscalatingFailureFacts,
+    choiceSurface?: EquipmentInteractionQueryContext['choiceSurface'],
+): readonly EquipmentInteractionChoice[] {
+    if (!canUseEscalatingFailure(definition, facts.airborne)) return Object.freeze([]);
+    const usable = facts.status === 'available';
+    const sequenceChoices: EquipmentInteractionChoice[] = definition.labels.map((label, index) => Object.freeze({
+        label,
+        shortLabel: label,
+        value: index,
+        failureTarget: definition.targets[index],
+        displayType: 'toggle' as const,
+        disabled: !usable || index > facts.sequence,
+        active: index < facts.sequence,
+        selectionTone: index === facts.sequence - 1 && facts.active ? 'selected' as const : 'muted' as const,
+        colors: label === '!!'
+            ? ESCALATING_FAILURE_FAILURE_CHOICE_COLORS
+            : ESCALATING_FAILURE_CHOICE_COLORS,
+        keepOpen: true,
+    }));
+    const disabled = facts.status === 'disabled';
+    const toggleLabel = choiceSurface === 'turn-summary'
+        ? '✖'
+        : disabled ? 'Malfunctioning' : 'Operational';
+    return Object.freeze([...sequenceChoices, Object.freeze({
+        label: toggleLabel,
+        shortLabel: toggleLabel,
+        value: ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
+        displayType: 'toggle' as const,
+        stateEdit: disabled ? 'enable' as const : 'disable' as const,
+        active: disabled,
+        disabled: facts.status === 'destroyed',
+        colors: disabled ? ESCALATING_FAILURE_FAILURE_CHOICE_COLORS : undefined,
+        tooltipType: disabled ? 'error' as const : undefined,
+    })]);
+}
+
+/** Shared sparse-state transition for selecting/resetting one failure step. */
+export function selectEscalatingFailureComponentState(
+    currentComponents: ReadonlyMap<ComponentId, ComponentRuntimeState>,
+    componentId: ComponentId,
+    index: number,
+    sequenceLength: number,
+): ReadonlyMap<ComponentId, ComponentRuntimeState> | null {
+    const current = currentComponents.get(componentId) ?? {};
+    const lifecycle = current.escalatingFailure;
+    const sequence = lifecycle?.sequence ?? 0;
+    if (!Number.isSafeInteger(index) || index < 0 || index >= sequenceLength || index > sequence) {
+        return null;
+    }
+
+    let nextSequence: number;
+    let active: true | undefined;
+    if (index < sequence - 1) {
+        nextSequence = index + 1;
+    } else if (index === sequence - 1) {
+        if (!lifecycle?.active && sequence === sequenceLength) {
+            nextSequence = sequence;
+            active = true;
+        } else {
+            nextSequence = lifecycle?.active ? sequence : index;
+        }
+    } else {
+        nextSequence = index + 1;
+        active = true;
+    }
+    return setEscalatingFailureComponentState(
+        currentComponents,
+        componentId,
+        nextSequence,
+        active,
+    );
+}
+
+/** Shared sparse-state transition for the Operational/Malfunctioning toggle. */
+export function setEscalatingFailureComponentStatus(
+    currentComponents: ReadonlyMap<ComponentId, ComponentRuntimeState>,
+    componentId: ComponentId,
+    status: 'available' | 'disabled',
+): ReadonlyMap<ComponentId, ComponentRuntimeState> | null {
+    const current = currentComponents.get(componentId) ?? {};
+    const next: ComponentRuntimeState = status === 'disabled'
+        ? Object.freeze({
+            ...current,
+            statusOverride: 'disabled',
+            ...(current.escalatingFailure === undefined
+                ? {}
+                : { escalatingFailure: Object.freeze({ sequence: current.escalatingFailure.sequence }) }),
+        })
+        : Object.freeze((({ statusOverride: _removed, ...remaining }) => remaining)(current));
+    return replaceEscalatingFailureComponent(currentComponents, componentId, current, next);
+}
+
+/** Applies the origin/next End Turn sequence/active settlement to one component. */
+export function settleEscalatingFailureComponentState(
+    currentComponents: ReadonlyMap<ComponentId, ComponentRuntimeState>,
+    definition: ComponentEscalatingFailureDefinition,
+): ReadonlyMap<ComponentId, ComponentRuntimeState> | null {
+    const current = currentComponents.get(definition.componentId);
+    const lifecycle = current?.escalatingFailure;
+    if (!current || !lifecycle || current.statusOverride === 'disabled'
+        || (!lifecycle.active && !definition.recoversWhenUnused)) return null;
+    return setEscalatingFailureComponentState(
+        currentComponents,
+        definition.componentId,
+        lifecycle.active ? lifecycle.sequence : lifecycle.sequence - 1,
+    );
+}
+
+function setEscalatingFailureComponentState(
+    currentComponents: ReadonlyMap<ComponentId, ComponentRuntimeState>,
+    componentId: ComponentId,
+    sequence: number,
+    active?: true,
+): ReadonlyMap<ComponentId, ComponentRuntimeState> | null {
+    const current = currentComponents.get(componentId) ?? {};
+    const { escalatingFailure: _removed, ...remaining } = current;
+    const next: ComponentRuntimeState = Object.freeze({
+        ...remaining,
+        ...(sequence === 0 ? {} : {
+            escalatingFailure: Object.freeze({
+                sequence: sequence as EscalatingFailureSequence,
+                ...(active ? { active } : {}),
+            }),
+        }),
+    });
+    return replaceEscalatingFailureComponent(currentComponents, componentId, current, next);
+}
+
+function replaceEscalatingFailureComponent(
+    currentComponents: ReadonlyMap<ComponentId, ComponentRuntimeState>,
+    componentId: ComponentId,
+    current: ComponentRuntimeState,
+    next: ComponentRuntimeState,
+): ReadonlyMap<ComponentId, ComponentRuntimeState> | null {
+    if (current.statusOverride === next.statusOverride
+        && current.escalatingFailure?.sequence === next.escalatingFailure?.sequence
+        && current.escalatingFailure?.active === next.escalatingFailure?.active) return null;
+    const components = new Map(currentComponents);
+    if (Object.keys(next).length === 0) components.delete(componentId);
+    else components.set(componentId, next);
+    return new ImmutableIndex(components);
+}
+
 /** Shared lifecycle interaction; concrete equipment classes select one owned profile. */
 export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     readonly id: string = ESCALATING_FAILURE_HANDLER_ID;
@@ -358,37 +505,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
         context: EquipmentInteractionQueryContext,
     ): EquipmentInteractionChoice[] {
         const facts = componentEscalatingFailureFacts(runtime, definition);
-        if (!canUseEscalatingFailure(definition, facts.airborne)) return [];
-        const usable = facts.status === 'available';
-        const sequenceChoices: EquipmentInteractionChoice[] = definition.labels.map((label, index) => ({
-            label,
-            shortLabel: label,
-            value: index,
-            failureTarget: definition.targets[index],
-            displayType: 'toggle',
-            disabled: !usable || index > facts.sequence,
-            active: index < facts.sequence,
-            selectionTone: index === facts.sequence - 1 && facts.active ? 'selected' : 'muted',
-            colors: label === '!!'
-                ? ESCALATING_FAILURE_FAILURE_CHOICE_COLORS
-                : ESCALATING_FAILURE_CHOICE_COLORS,
-            keepOpen: true,
-        }));
-        const disabled = facts.status === 'disabled';
-        const toggleLabel = context.choiceSurface === 'turn-summary'
-            ? '✖'
-            : disabled ? 'Malfunctioning' : 'Operational';
-        return [...sequenceChoices, {
-            label: toggleLabel,
-            shortLabel: toggleLabel,
-            value: ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
-            displayType: 'toggle',
-            stateEdit: disabled ? 'enable' : 'disable',
-            active: disabled,
-            disabled: facts.status === 'destroyed',
-            colors: disabled ? ESCALATING_FAILURE_FAILURE_CHOICE_COLORS : undefined,
-            tooltipType: disabled ? 'error' : undefined,
-        }];
+        return [...componentEscalatingFailureChoices(definition, facts, context.choiceSurface)];
     }
 
     handleComponentEscalatingFailureSelection(

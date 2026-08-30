@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../entity/base-entity';
+import { isVehicleEntity } from '../entity/utils/entity-type-guards';
 import {
     asSystemDamageTrackId,
     type SystemDamageTrackId,
@@ -59,15 +60,10 @@ export const NON_MEK_DAMAGE_TRACK_SHEET_BASE_IDS = Object.freeze([
     'head_hit_',
 ] as const);
 
-const VEHICLE_BASE_IDS = new Set<string>([
-    'commander_hit', 'driver_hit', 'pilot_hit', 'copilot_hit',
+const VEHICLE_COMMON_BASE_IDS = Object.freeze([
     'fuel_tank_hit_', 'engine_hit_', 'sensor_hit_', 'motive_system_hit_',
-    'turret_locked', 'turret_locked_f', 'turret_locked_r',
-    'stabilizer_hit_front', 'stabilizer_hit_left', 'stabilizer_hit_right',
-    'stabilizer_hit_rear', 'stabilizer_hit_turret',
-    'stabilizer_hit_turret_f', 'stabilizer_hit_turret_r',
-    'flight_stabilizer_hit',
-]);
+    'stabilizer_hit_front', 'stabilizer_hit_left', 'stabilizer_hit_right', 'stabilizer_hit_rear',
+] as const);
 
 const AEROSPACE_BASE_IDS = new Set<string>([
     'pilot_hit', 'copilot_hit', 'avionics_hit_', 'fcs_hit_', 'cic_hit_',
@@ -92,7 +88,7 @@ export function nonMekDamageTrackDefinitions(entity: BaseEntity): readonly NonMe
     const bases = entity.entityType === 'ProtoMek'
         ? PROTOMEK_BASE_IDS
         : VEHICLE_ENTITY_TYPES.has(entity.entityType)
-            ? VEHICLE_BASE_IDS
+            ? vehicleDamageTrackBases(entity)
             : AEROSPACE_ENTITY_TYPES.has(entity.entityType)
                 ? AEROSPACE_BASE_IDS
                 : null;
@@ -112,6 +108,29 @@ export function nonMekDamageTrackDefinitions(entity: BaseEntity): readonly NonMe
         }));
     }
     return Object.freeze(definitions);
+}
+
+function vehicleDamageTrackBases(entity: BaseEntity): ReadonlySet<string> {
+    const bases = new Set<string>(VEHICLE_COMMON_BASE_IDS);
+    const airborne = entity.entityType === 'VTOL' || entity.entityType === 'SupportVTOL';
+    const naval = entity.entityType === 'Naval' || entity.entityType === 'SupportNaval';
+
+    bases.add(airborne ? 'pilot_hit' : 'driver_hit');
+    bases.add(airborne ? 'copilot_hit' : 'commander_hit');
+
+    if (airborne) {
+        bases.add('flight_stabilizer_hit');
+    } else if (naval) {
+        bases.add('turret_locked_f');
+        bases.add('turret_locked_r');
+        bases.add('stabilizer_hit_turret_f');
+        bases.add('stabilizer_hit_turret_r');
+    } else if (isVehicleEntity(entity) && (entity.hasTurret() || entity.hasDualTurret())) {
+        bases.add('turret_locked');
+        bases.add('stabilizer_hit_turret');
+    }
+
+    return bases;
 }
 
 export function nonMekDamageTrackId(sheetId: string): SystemDamageTrackId {

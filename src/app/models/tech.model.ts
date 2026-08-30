@@ -14,7 +14,9 @@ export function getUnitTechBaseDisplay(unit: Pick<UnitSummary, 'techBase' | 'mix
 }
 
 
-export function getUnitsAverageTechBase(units: UnitSummary[]): TechBase {
+export function getUnitsAverageTechBase(
+    units: readonly Pick<UnitSummary, 'techBase' | 'mixed'>[],
+): TechBase {
     const counts: Partial<Record<TechBase, number>> = {};
     for (const unit of units) {
         if (unit.mixed) {

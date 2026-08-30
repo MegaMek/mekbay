@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { heatLevels } from '../../models/common.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
 import type { EntityDamageLocation } from '../../models/entity/types';
 import {
@@ -50,14 +51,31 @@ export function createRoot(width: number, height: number, kind: string): SVGSVGE
     svg.setAttribute('viewBox', `0 0 ${formatNumber(width)} ${formatNumber(height)}`);
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     svg.setAttribute('role', 'img');
+    svg.setAttribute('class', 'mekbay-sheet');
     svg.setAttribute('data-mekbay-generated', '1');
     svg.setAttribute('data-mekbay-generator-version', '2');
     svg.setAttribute('data-mekbay-sheet-kind', kind);
+    const defs = svgElement('defs');
+    const nightFilter = svgElement('filter');
+    nightFilter.id = 'mekbay-night-image-invert';
+    nightFilter.setAttribute('color-interpolation-filters', 'sRGB');
+    const componentTransfer = svgElement('feComponentTransfer');
+    for (const channel of ['R', 'G', 'B'] as const) {
+        const fn = svgElement(`feFunc${channel}`);
+        fn.setAttribute('type', 'table');
+        fn.setAttribute('tableValues', '1 0');
+        componentTransfer.appendChild(fn);
+    }
+    nightFilter.appendChild(componentTransfer);
+    defs.appendChild(nightFilter);
+    svg.appendChild(defs);
+
     const background = svgElement('rect');
     setAttributes(background, { x: 0, y: 0, width, height, fill: 'none', class: 'record-sheet-background' });
     svg.appendChild(background);
     const style = svgElement('style');
-    style.textContent = RECORD_SHEET_STYLE;
+    style.id = 'mekbay-svg-style';
+    style.textContent = `svg:not(:root) { overflow: visible; }\n${RECORD_SHEET_STYLE}`;
     svg.appendChild(style);
     return svg;
 }
@@ -849,6 +867,14 @@ export function drawHeatScale(svg: SVGSVGElement, box: Box): void {
         fill: '#fff', stroke: '#000', 'stroke-width': 1.45 * fontScale,
         'stroke-linejoin': 'round', class: 'overflowFrame',
     });
+    const overflowButton = transparentRect(
+        x(-1.938),
+        y(22.5),
+        x(21.117),
+        y(20.317),
+        'overflowButton screen-only no-autocolor',
+    );
+    group.appendChild(overflowButton);
     group.appendChild(overflow);
     const overflowText = addText(group, 'Overflow', x(8.396), y(28.5), {
         size: font(4.7), anchor: 'middle', class: 'overflowText',
@@ -863,7 +889,10 @@ export function drawHeatScale(svg: SVGSVGElement, box: Box): void {
         const heat = 30 - index;
         const cellY = cellTop + index * cellHeight;
         const cell = svgElement('g');
-        cell.setAttribute('class', 'heat');
+        const heatLevel = heatLevels.find(level => heat >= level.min && heat <= level.max);
+        cell.setAttribute('class', ['heat', heatLevel?.class, heatLevel ? 'no-autocolor' : undefined]
+            .filter((value): value is string => value !== undefined)
+            .join(' '));
         cell.setAttribute('heat', String(heat));
         const rect = svgElement('rect');
         setAttributes(rect, {
@@ -1258,6 +1287,8 @@ export function addFrame(
         }
         : defaults;
     const frame = SvgFrameUtil.createSVGFrame(title, box.width, box.height, resolvedOptions);
+    frame.setAttribute('data-mekbay-frame-width', formatNumber(box.width));
+    frame.setAttribute('data-mekbay-frame-height', formatNumber(box.height));
     if (headerProfile) {
         const header = Array.from(frame.children)
             .find((child): child is SVGGElement => child.tagName.toLowerCase() === 'g');

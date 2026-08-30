@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import { PageViewerCanvasService } from './page-viewer-canvas.service';
 import { DialogsService } from '../../../services/dialogs.service';
-import { forceMemberSummary, isCBTForceMember } from '../../../models/force-member.model';
+import { isCBTForceMember } from '../../../models/force-member.model';
 import type { PageCanvasMember } from '../internal/types';
 
 /*
@@ -146,7 +146,7 @@ export class PageViewerCanvasControlsComponent {
         const currentForce = currentUnit.force;
         const choice = await this.dialogsService.choose<'unit' | 'force' | 'dismiss'>(
             'Clear Canvas',
-            `Delete the canvas for "${isCBTForceMember(currentUnit) ? forceMemberSummary(currentUnit).name : currentUnit.getDisplayName()}", or delete all canvases for "${currentForce.displayName()}"? This cannot be undone.`,
+            `Delete the canvas for "${isCBTForceMember(currentUnit) ? currentUnit.entity.displayName() : currentUnit.getDisplayName()}", or delete all canvases for "${currentForce.displayName()}"? This cannot be undone.`,
             [
                 { label: 'UNIT', value: 'unit', class: 'danger' },
                 { label: 'FORCE', value: 'force', class: 'danger' },

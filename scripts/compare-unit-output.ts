@@ -35,6 +35,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
+import { equipmentCatalogEntriesIncludingSupplements } from '../src/app/models/equipment-catalog-supplements';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { UnitMetadataBuilder } from '../src/app/utils/unit-metadata-builder';
 import type { SpriteManifest } from '../src/app/services/sprite-storage.service';
@@ -47,6 +48,7 @@ import {
   unorderedStructuralEqual,
 } from './lib/unordered-value-comparison';
 import { isKnownMegaMekCostBug } from './lib/known-megamek-cost-bugs';
+import { nativeUnitSourceDeclaresUuid } from './lib/native-unit-source-identity';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -117,6 +119,8 @@ const CHECKED_FIELDS: FieldCheck[] = [
   { field: 'engineRating',  compare: 'exact', parity: 'verified' },
   { field: 'armorType',     compare: 'exact', parity: 'verified' },
   { field: 'structureType', compare: 'exact', parity: 'verified' },
+  { field: 'patchworkLayout', compare: 'exact', parity: 'verified' },
+  { field: 'hybridLayout',  compare: 'exact', parity: 'verified' },
   { field: 'armor',         compare: 'exact', parity: 'verified' },
   { field: 'techBase',      compare: 'exact', parity: 'verified' },
   { field: 'mixed',      compare: 'exact', parity: 'verified' },
@@ -270,7 +274,7 @@ function loadEquipmentRegistry(): EquipmentRegistry {
   let loaded = 0;
   let failed = 0;
 
-  for (const [internalName, rawEquipment] of Object.entries(raw.equipment)) {
+  for (const [internalName, rawEquipment] of equipmentCatalogEntriesIncludingSupplements(raw.equipment)) {
     try {
       equipmentDb[internalName] = createEquipment(rawEquipment);
       loaded++;
@@ -316,7 +320,9 @@ interface OracleDocument {
 
 type PlainObject = Record<string, unknown>;
 
-const OPTIONAL_FIELDS = new Set(['capital', 'cargo', 'diss', 'fluff']);
+const OPTIONAL_FIELDS = new Set([
+  'capital', 'cargo', 'diss', 'fluff', 'hybridLayout', 'patchworkLayout',
+]);
 const BOOLEAN_FIELDS = new Set(['canAntiMech', 'canon', 'mixed']);
 const STRING_FIELDS = new Set([
   'uuid', 'armorType', 'c3', 'chassis', 'icon', 'level', 'model', 'moveType', 'name',
@@ -333,6 +339,7 @@ const COMPONENT_REQUIRED_FIELDS = new Set(['id', 'n', 'p', 'q', 't']);
 const COMPONENT_OPTIONAL_FIELDS = new Set([
   'bay', 'c', 'cw', 'd', 'l', 'm', 'md', 'os', 'q2', 'r', 'rear',
 ]);
+const MATERIAL_LAYOUT_ENTRY_FIELDS = new Set(['clan', 'type']);
 
 function isPlainObject(value: unknown): value is PlainObject {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -485,6 +492,24 @@ function validateFluff(value: unknown): string | null {
     : `img must be a string, received ${describeValue(value['img'])}`;
 }
 
+function validateMaterialLayout(value: unknown): string | null {
+  if (!isPlainObject(value)) return `expected an object, received ${describeValue(value)}`;
+  const locations = Object.entries(value);
+  if (locations.length === 0) return 'expected at least one location';
+
+  for (const [location, material] of locations) {
+    if (location.length === 0) return 'location names must be nonempty';
+    if (!isPlainObject(material)) {
+      return `${location} must be an object, received ${describeValue(material)}`;
+    }
+    const keysError = validateKnownKeys(material, MATERIAL_LAYOUT_ENTRY_FIELDS, new Set());
+    if (keysError) return `${location}: ${keysError}`;
+    if (!Number.isInteger(material['type'])) return `${location}.type must be an integer`;
+    if (typeof material['clan'] !== 'boolean') return `${location}.clan must be a boolean`;
+  }
+  return null;
+}
+
 function validateNonAsField(field: string, value: unknown): string | null {
   if (STRING_FIELDS.has(field)) {
     if (typeof value !== 'string') return `expected a string, received ${describeValue(value)}`;
@@ -510,6 +535,7 @@ function validateNonAsField(field: string, value: unknown): string | null {
   if (field === 'cargo') return validateCargo(value);
   if (field === 'capital') return validateCapital(value);
   if (field === 'fluff') return validateFluff(value);
+  if (field === 'patchworkLayout' || field === 'hybridLayout') return validateMaterialLayout(value);
   if (field === 'rulesRefs') return validateRulesRefs(value);
   return `no runtime schema is registered for ${field}`;
 }
@@ -744,9 +770,11 @@ function processUnit(
 
   // Parse entity
   let entity;
+  let sourceDeclaresUuid = false;
   try {
     const readStartedAt = profileNow();
     const content = fs.readFileSync(unitFilePath, 'utf-8');
+    sourceDeclaresUuid = nativeUnitSourceDeclaresUuid(content, unitFilePath);
     recordProfileStage('read', readStartedAt);
     const fileName = path.basename(unitFilePath);
     const parseStartedAt = profileNow();
@@ -784,6 +812,9 @@ function processUnit(
     const issues: FieldIssue[] = [];
     let knownMegaMekCostBug = false;
     for (const check of checks) {
+      // MegaMek generates a fresh UUID when the native source omits one. The
+      // oracle then contains generation-time noise that cannot be reproduced.
+      if (check.field === 'uuid' && !sourceDeclaresUuid) continue;
       if (check.field === 'loadoutTonnage') {
         const expected = oracle.loadoutTons;
         if (!isCalculableLoadoutTons(expected)) continue;

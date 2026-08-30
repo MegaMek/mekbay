@@ -15,9 +15,11 @@ import {
     type IntrinsicWeapon,
 } from '../../../models/entity/types';
 import { type MekEntity } from '../../../models/entity/entities/mek/mek-entity';
-import type { EquipmentFlag } from '../../../models/equipment-flags.type';
 import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
+import { isCaseIIEquipment, isStandardCaseEquipment } from '../../../models/case-equipment.model';
+import { isTargetingComputerEquipment } from '../../../models/entity/utils/targeting-computer';
+import { isMekRecordSheetInventorySupport } from '../record-sheet-inventory-equipment';
 import {
     fullRecordSheetLayoutProfile,
     type RecordSheetLayoutProfile,
@@ -59,6 +61,7 @@ import {
     transparentRect,
 } from '../record-sheet-svg-rendering';
 import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
+import { appendGeneratedMekCriticalHeadingControls } from '../generated-record-sheet-controls';
 /** Biped, tripod, quad, QuadVee, and LAM sheets share one composition. */
 export class MekRecordSheetLayout implements RecordSheetLayout {
     public readonly id = 'mek';
@@ -203,6 +206,47 @@ function drawMekCrewPanel(svg: SVGSVGElement, entity: MekEntity, box: Box): void
         cornerAngleDegrees: { topRight: 0, bottomLeft: 0, bottomRight: 45 },
     });
     drawMekCrewPanelContents(group, entity, box);
+    appendMekLifeSupportWarning(group, box.width);
+}
+
+function appendMekLifeSupportWarning(group: SVGGElement, panelWidth: number): void {
+    const warningWidth = 42;
+    const warningHeight = 15;
+    const warning = svgElement('g');
+    warning.id = 'lifeSupportPilotDamageWarning';
+    warning.setAttribute('class', 'screen-only no-autocolor');
+    warning.setAttribute('pointer-events', 'none');
+    warning.setAttribute('display', 'none');
+    warning.setAttribute('transform', `translate(${formatNumber(panelWidth - warningWidth - 6)} -2)`);
+    warning.setAttribute('data-width', String(warningWidth));
+    warning.setAttribute('data-height', String(warningHeight));
+
+    const defs = svgElement('defs');
+    const heat = svgElement('symbol');
+    heat.id = 'lifeSupportHeatDamageIcon';
+    heat.setAttribute('viewBox', '0 0 24 24');
+    const flame = svgElement('path');
+    flame.setAttribute('d', 'M13.6 2.1c.6 3.2-1.7 4.5-2.7 6.7-.8 1.8.3 3.2 1.8 3.2 2.2 0 3.5-2.4 2.7-5.1 3.2 2.2 5.1 5.2 4.6 8.3-.6 4-3.9 6.8-8 6.8s-7.5-2.9-8-7c-.5-3.6 1.6-7.1 5-9.1-.5 3.1.8 5.2 2.5 4.8 2.1-.5.5-4.1 2.1-8.6z');
+    flame.setAttribute('fill', '#f4511e');
+    flame.setAttribute('stroke', '#000');
+    flame.setAttribute('stroke-width', '1.8');
+    heat.appendChild(flame);
+
+    const oxygen = svgElement('symbol');
+    oxygen.id = 'lifeSupportOxygenDamageIcon';
+    oxygen.setAttribute('viewBox', '0 0 24 24');
+    const tank = svgElement('path');
+    tank.setAttribute('d', 'M6 4h7v2h1.5v2H14v13H5V8h1V6h0zM8 1h3v3H8z');
+    tank.setAttribute('fill', '#2196f3');
+    tank.setAttribute('stroke', '#000');
+    tank.setAttribute('stroke-width', '1.4');
+    const o2 = svgElement('path');
+    o2.setAttribute('d', 'M16 9c0-2 1.2-3 3-3s3 1 3 3v3c0 2-1.2 3-3 3s-3-1-3-3zm2 0v3c0 .7.3 1 1 1s1-.3 1-1V9c0-.7-.3-1-1-1s-1 .3-1 1zm-2 12v-1l3-2.4c.6-.5.8-.8.8-1.2 0-.5-.3-.7-.9-.7-.7 0-1.2.3-1.8.9l-1.1-1.1c.8-.9 1.7-1.4 3.1-1.4 1.7 0 2.8.9 2.8 2.2 0 1.1-.6 1.8-1.8 2.7l-1.5 1.1H22V21z');
+    o2.setAttribute('fill', '#2196f3');
+    oxygen.append(tank, o2);
+    defs.append(heat, oxygen);
+    warning.appendChild(defs);
+    group.appendChild(warning);
 }
 
 export async function drawMekDataPanel(
@@ -214,6 +258,7 @@ export async function drawMekDataPanel(
         bottomLeftNotchWidth: box.width * 0.48,
         cornerAngleDegrees: { topRight: 45, bottomLeft: 45 },
     });
+    group.id = 'unitDataPanel';
     const sx = box.width / 220.4;
     const sy = box.height / 301.5;
     const fontScale = Math.min(sx, sy);
@@ -668,15 +713,6 @@ interface MekInventoryMetrics {
     readonly quirkLines: readonly string[];
 }
 
-const NON_PRINTABLE_MEK_INVENTORY_FLAGS: readonly EquipmentFlag[] = [
-    'F_CASE', 'F_CASE_II',
-    'F_ARTEMIS', 'F_ARTEMIS_PROTO', 'F_ARTEMIS_V', 'F_APOLLO',
-    'F_PPC_CAPACITOR', 'F_MASC', 'F_HARJEL', 'F_HARJEL_II', 'F_HARJEL_III',
-    'F_MASS', 'F_CHASSIS_MODIFICATION', 'F_SPONSON_TURRET',
-    'F_EXTERNAL_STORES_HARDPOINT', 'F_BASIC_FIRE_CONTROL', 'F_ADVANCED_FIRE_CONTROL',
-    'F_RISC_LASER_PULSE_MODULE', 'F_LASER_INSULATOR', 'F_TALON',
-];
-
 function mekRecordSheetInventoryRows(entity: MekEntity): readonly MekRecordSheetInventoryRow[] {
     const mountsById = new Map(entity.equipment().map(mount => [String(mount.mountId), mount] as const));
     const weaponRows: MekRecordSheetInventoryRow[] = recordSheetInventoryWeapons(entity).map(row => {
@@ -713,7 +749,7 @@ function isPrintableMekInventoryMount(mount: EntityMountedEquipment): boolean {
     if (!equipment || equipment.type !== 'misc' || !equipment.hittable) return false;
     if (mount.location === 'Engine' || mount.location === 'Unallocated') return false;
     if (isHeatSinkEquipment(equipment) || isJumpJetEquipment(equipment)) return false;
-    return !equipment.hasAnyFlag(NON_PRINTABLE_MEK_INVENTORY_FLAGS);
+    return !isMekRecordSheetInventorySupport(equipment);
 }
 
 function mekInventoryMountName(entity: MekEntity, mount: EntityMountedEquipment): string {
@@ -740,8 +776,8 @@ function insertEquipmentTechSuffix(name: string, suffix: string): string {
 function mekMiscInventoryDamage(mount: EntityMountedEquipment): string {
     const equipment = mount.equipment;
     if (!equipment) return '—';
-    if (equipment.hasFlag('F_AP_POD')) return '[PB,OS,AI]';
-    if (equipment.hasFlag('F_TARGETING_COMPUTER')) return '[E]';
+    if (equipment.hasWeaponTrait('anti-personnel-pod')) return '[PB,OS,AI]';
+    if (isTargetingComputerEquipment(equipment)) return '[E]';
     const physicalDamage = mount.getPhysicalWeaponDamage();
     return physicalDamage === undefined ? '—' : String(physicalDamage.value);
 }
@@ -2326,7 +2362,7 @@ async function drawCanonicalMekCriticalContents(
         const criticalGroup = svgElement('g');
         criticalGroup.setAttribute('class', 'critGroup');
         criticalGroup.setAttribute('loc', location);
-        addText(
+        const heading = addText(
             criticalGroup,
             mekCriticalLocationHeading(entity, location),
             x(locationLayout.headingX),
@@ -2336,6 +2372,17 @@ async function drawCanonicalMekCriticalContents(
                 weight: 700,
                 class: 'critical-location-heading',
                 maxWidth: x(locationLayout.rightEdge - locationLayout.headingX - 4),
+            },
+        );
+        appendGeneratedMekCriticalHeadingControls(
+            criticalGroup,
+            heading,
+            location,
+            {
+                x: x(locationLayout.headingX - 2),
+                y: y(locationLayout.headingY - 11),
+                width: x(Math.max(30, locationLayout.rightEdge - locationLayout.headingX - 2)),
+                height: y(14),
             },
         );
         const caseLabel = mekCriticalCaseLabel(entity, location);
@@ -2693,11 +2740,11 @@ function mekCriticalLocationHeading(entity: MekEntity, location: string): string
 
 function mekCriticalCaseLabel(entity: MekEntity, location: string): 'CASE' | 'CASE II' | null {
     const mounts = entity.equipment().filter(mount => mount.getOccupiedLocations().includes(location));
-    if (mounts.some(mount => mount.equipment?.hasFlag('F_CASE_II'))) return 'CASE II';
+    if (mounts.some(mount => isCaseIIEquipment(mount.equipment))) return 'CASE II';
     if (entity.techBase() === 'Clan') {
         return mounts.some(mount => mount.getAmmoShots() !== undefined) ? 'CASE' : null;
     }
-    return mounts.some(mount => mount.equipment?.hasFlag('F_CASE')) ? 'CASE' : null;
+    return mounts.some(mount => isStandardCaseEquipment(mount.equipment)) ? 'CASE' : null;
 }
 
 function criticalSlotLabel(slot: CriticalSlotView | undefined, entity?: MekEntity): string {
@@ -2762,9 +2809,52 @@ function drawHeatPanel(svg: SVGSVGElement, entity: MekEntity, box: Box): void {
     });
     if (entity.chassisConfig === 'LAM') {
         drawLamHeatDataContents(group, entity, box);
-        return;
+    } else {
+        drawMekHeatDataContents(group, entity, box);
     }
-    drawMekHeatDataContents(group, entity, box);
+    appendMekHeatControls(group, box);
+}
+
+function appendMekHeatControls(group: SVGGElement, box: Box): void {
+    const header = Array.from(group.children)
+        .find((child): child is SVGGElement => child.tagName.toLowerCase() === 'g');
+    if (header) {
+        const apply = header.cloneNode(true) as SVGGElement;
+        apply.id = 'applyHeatButton';
+        apply.setAttribute('class', 'screen-only no-autocolor');
+        const label = apply.querySelector('text');
+        if (label) label.textContent = 'APPLY HEAT';
+        group.appendChild(apply);
+    }
+
+    const framePaths = Array.from(group.children)
+        .filter((child): child is SVGPathElement => child.tagName.toLowerCase() === 'path');
+    const frame = framePaths[1];
+    if (frame) frame.classList.add('applyHeatButtonFrame');
+    const damagedEngineHeat = addText(group, '', box.width - 6, box.height - 4, {
+        size: 8,
+        weight: 700,
+        fill: '#f00',
+        anchor: 'end',
+        class: 'damagedEngineHeatText',
+    });
+    damagedEngineHeat.id = 'damagedEngineHeatText';
+    damagedEngineHeat.setAttribute('display', 'none');
+    damagedEngineHeat.setAttribute('dominant-baseline', 'text-after-edge');
+
+    const heatSinks = group.querySelector<SVGGElement>('g.hsPips');
+    if (heatSinks) {
+        heatSinks.insertBefore(
+            transparentRect(
+                Math.max(0, box.width - 42),
+                35,
+                38,
+                Math.max(12, box.height - 42),
+                'changeActiveHeatsinksCountButton screen-only',
+            ),
+            heatSinks.firstChild,
+        );
+    }
 }
 
 interface MekHeatEffectRow {
@@ -2935,9 +3025,6 @@ function appendMekHeatSinkData(
         pips.appendChild(pip);
     }
     group.appendChild(pips);
-    // RsPolyfillUtil clones the frame header into #applyHeatButton, exactly as
-    // it does for downloaded sheets.  Supplying a placeholder here prevented
-    // that visible APPLY HEAT control from being created.
 }
 
 const MML_REFERENCE_NOTE_TEXT: Readonly<Record<string, string>> = {

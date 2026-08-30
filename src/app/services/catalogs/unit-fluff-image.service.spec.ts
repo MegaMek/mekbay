@@ -52,7 +52,6 @@ describe('UnitFluffImageService', () => {
       type: 'Mek',
       subtype: 'BattleMek',
       weightClass: 'Medium',
-      serverHost: 'https://units.example.test/',
       fluff: { img: 'Mek/Custom Unit.png' },
     } as unknown as UnitSummary;
 

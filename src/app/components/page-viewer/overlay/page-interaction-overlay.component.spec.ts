@@ -3,6 +3,7 @@
 
 import { CBTForce, type CBTForceEndTurnAllResult } from '../../../models/cbt-force.model';
 import type { CBTForceMember, CBTMekForceMember } from '../../../models/force-member.model';
+import { TestBipedMekEntity, TestTankEntity } from '../../../models/entity/testing/test-entities';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 
@@ -107,9 +108,10 @@ describe('PageInteractionOverlay turn boundaries', () => {
             changed: true,
             currentRevision: 13,
         });
+        const entity = new TestTankEntity();
         const force = {
             getUnitSnapshot: () => ({
-                entity: { entityType: 'Tank' },
+                entity,
                 state: { stateRevision: 12 },
             }),
             dispatchNonMekUnitCommand: dispatch,
@@ -118,7 +120,7 @@ describe('PageInteractionOverlay turn boundaries', () => {
             kind: 'cbt',
             id: 'tank-1',
             force,
-            summary: { entityType: 'Tank' },
+            entity,
         } as unknown as CBTForceMember;
         const component = Object.create(PageInteractionOverlayComponent.prototype) as PageInteractionOverlayComponent;
         Object.assign(component as unknown as Record<string, unknown>, {
@@ -204,16 +206,17 @@ function componentForMember(
 ): PageInteractionOverlayComponent {
     const component = Object.create(PageInteractionOverlayComponent.prototype) as PageInteractionOverlayComponent;
     const force = { dispatchMekUnitCommand: dispatch };
+    const entity = new TestBipedMekEntity();
     const member = {
         kind: 'cbt',
         id: 'mek-1',
         force,
-        summary: { entityType: 'Mek' },
+        entity,
     } as unknown as CBTMekForceMember;
     Object.assign(component as unknown as Record<string, unknown>, {
         member: () => member,
         turn: () => ({ stateRevision: revision } as MekTurnPanelSnapshot),
-        optionsService: { options: () => ({ cbtAutomations: automated }) },
+        optionsService: { cbtAutomationMode: () => automated ? 'yes' : 'no' },
         toastService: { showToast: jasmine.createSpy('showToast') },
     });
     return component;

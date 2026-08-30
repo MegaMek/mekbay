@@ -3,11 +3,7 @@
 
 import type { EquipmentFlag } from './equipment-flags.type';
 import type { Equipment } from './equipment.model';
-import { unsupportedStealthHeatFlag } from './stealth-equipment.model';
-import { unsupportedPhysicalHeatFlag } from './entity/utils/physical-weapon-kernel';
 import { weaponTraitFlag } from './weapon-traits-kernel';
-import { unsupportedMekAerospaceHeatFlag } from './aerospace-support-equipment.model';
-import { unsupportedMekC3HeatFlag } from './c3-network.model';
 
 const HEAT_SINK_FLAG = 'F_HEAT_SINK' as const;
 const DOUBLE_HEAT_SINK_FLAG = 'F_DOUBLE_HEAT_SINK' as const;
@@ -20,11 +16,7 @@ export const UNSUPPORTED_MEK_HEAT_FLAGS: readonly EquipmentFlag[] = Object.freez
 ]);
 
 export function unsupportedMekHeatFlag(equipment: Equipment): EquipmentFlag | undefined {
-    return unsupportedMekAerospaceHeatFlag(equipment)
-        ?? unsupportedMekC3HeatFlag(equipment)
-        ?? UNSUPPORTED_MEK_HEAT_FLAGS.find(flag => equipment.hasFlag(flag))
-        ?? unsupportedStealthHeatFlag(equipment)
-        ?? unsupportedPhysicalHeatFlag(equipment.flags);
+    return UNSUPPORTED_MEK_HEAT_FLAGS.find(flag => equipment.hasFlag(flag));
 }
 
 export function isHeatSinkEquipment(equipment: Equipment | null | undefined): boolean {

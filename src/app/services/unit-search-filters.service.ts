@@ -2101,7 +2101,6 @@ export class UnitSearchFiltersService {
                     tags: transient ? getMergedTags(transient) : [],
                     weaponTypes: transient?._weaponTypes ?? [],
                     weaponTypeCounts: transient?._weaponTypeCounts ?? {},
-                    ...(transient?.serverHost ? { serverHost: transient.serverHost } : {}),
                 };
             },
             this.dataService.getSearchWorkerIndexSnapshot(),
@@ -2352,7 +2351,7 @@ export class UnitSearchFiltersService {
 
         return this.createFormationSearchUnit({
             force: baseForce,
-            getSummary: () => unit,
+            getFormationSummary: () => unit,
         });
     }
 
@@ -2363,7 +2362,9 @@ export class UnitSearchFiltersService {
     private createFormationSearchUnit(unit: FormationUnitLike): FormationUnitLike {
         return {
             force: unit.force,
-            getSummary: () => unit.getSummary(),
+            ...(unit.getFormationEntity
+                ? { getFormationEntity: () => unit.getFormationEntity!() }
+                : { getFormationSummary: () => unit.getFormationSummary!() }),
             pilotSkill: () => UnitSearchFiltersService.FORMATION_SEARCH_ASSIGNED_SKILL,
             gunnerySkill: () => UnitSearchFiltersService.FORMATION_SEARCH_ASSIGNED_SKILL,
         };
@@ -2377,7 +2378,7 @@ export class UnitSearchFiltersService {
         const definitions: FormationTypeDefinition[] = [];
         const seen = new Set<string>();
 
-        for (const definition of getFormationDefinitions()) {
+        for (const definition of getFormationDefinitions(gameSystem)) {
             if (!FormationRequirementEngine.hasBlueprint(definition.id)) {
                 continue;
             }

@@ -74,7 +74,6 @@ export class SvgViewerLiteComponent {
                 }
             });
 
-            const sourceMode = this.recordSheets.mode();
             const u = this.unit();
             this.svgs.set([]);
             this.svgsAttached.set(false);
@@ -87,7 +86,9 @@ export class SvgViewerLiteComponent {
                 try {
                     const loaded = await this.nativeEntities.load({ provider: u.provider, uuid: u.uuid });
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;
-                    const artwork = await this.recordSheets.load(u, loaded.entity, {}, sourceMode);
+                    const artwork = await this.recordSheets.load(loaded.entity, {}, {
+                        design: { provider: u.provider, uuid: u.uuid },
+                    });
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;
 
                     const svgs = artwork.svgs.map((svg, index) => {
@@ -113,7 +114,7 @@ export class SvgViewerLiteComponent {
         });
         effect(() => {
             if (!this.svgsAttached()) return;
-            const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
+            const centerContent = this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
             const u = this.unit();
             const fluffImageUrl = this.fluffImages.resolveUrl(u);
             if (!fluffImageUrl) return;

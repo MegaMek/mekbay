@@ -16,12 +16,12 @@ import {
 import type { ForceUnit } from '../models/force-unit.model';
 import {
     forceMemberCommander,
-    forceMemberSummary,
     isCBTForceMember,
     isCBTMekForceMember,
     type CBTForceMember,
     type CBTMekForceMember,
     type ForceMember,
+    resolveForceMemberCatalogSummary,
 } from '../models/force-member.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import {
@@ -186,20 +186,20 @@ export class ForceWorkspaceCommandsService {
     async cloneUnit(sourceUnit: ForceMember): Promise<ForceMember | null> {
         const force = sourceUnit.force;
         if (!force || force.readOnly()) return null;
-        const unitData = isCBTForceMember(sourceUnit) ? sourceUnit.summary : sourceUnit.getSummary();
-        if (!unitData) return null;
 
         if (isCBTForceMember(sourceUnit)) {
             try {
                 if (!(force instanceof CBTForce)) throw new Error('Classic member has a non-Classic owner');
+                const identity = force.getUnitSourceIdentity(sourceUnit.id);
+                if (!identity) return null;
                 const group = force.groups().find(candidate => candidate.id === sourceUnit.rosterGroupId);
                 if (!group) return null;
                 const sourceIndex = force.membersInGroup(group)
                     .findIndex(member => member.id === sourceUnit.id);
                 if (sourceIndex < 0) return null;
-                const clone = await this.unitAdmission.admit({
+                const clone = await this.unitAdmission.admitClassicIdentity({
                     force,
-                    summary: unitData,
+                    identity,
                     rosterGroupId: sourceUnit.rosterGroupId,
                     rosterMemberIndex: sourceIndex + 1,
                 });
@@ -215,6 +215,7 @@ export class ForceWorkspaceCommandsService {
             }
         }
 
+        const unitData = sourceUnit.getSummary();
         const group = sourceUnit.getGroup();
         if (!group) return null;
 
@@ -562,9 +563,18 @@ export class ForceWorkspaceCommandsService {
                 }
 
                 for (const sourceUnit of force.membersInGroup(sourceGroup)) {
+                    const summary = resolveForceMemberCatalogSummary(
+                        sourceUnit,
+                        (provider, uuid) => this.dataService.getUnitByIdentity(provider, uuid),
+                    );
+                    if (!summary) {
+                        throw new Error(`Catalog conversion data is unavailable for ${isCBTForceMember(sourceUnit)
+                            ? sourceUnit.entity.displayName()
+                            : sourceUnit.getDisplayName()}`);
+                    }
                     const newForceUnit = await this.unitAdmission.admit({
                         force: newForce,
-                        summary: forceMemberSummary(sourceUnit),
+                        summary,
                         group: newGroup,
                         commander: forceMemberCommander(sourceUnit),
                     });
@@ -656,7 +666,7 @@ export class ForceWorkspaceCommandsService {
         const authority = force.captureWholeOwnerAuthorityFingerprint();
         if (!skipConfirmation) {
             const confirmed = await this.dialogsService.requestConfirmation(
-                `Removing will discard all runtime state and permanently remove "${member.summary.chassis} ${member.summary.model}" from the force.`,
+                `Removing will discard all runtime state and permanently remove "${member.entity.displayName()}" from the force.`,
                 'Delete Unit',
                 'danger',
             );
@@ -682,11 +692,12 @@ export class ForceWorkspaceCommandsService {
     }
 
     public async repairUnit(member: ForceMember): Promise<boolean> {
-        const summary = forceMemberSummary(member);
-        const label = `${summary.chassis} ${summary.model}`.trim();
+        const chassis = isCBTForceMember(member) ? member.entity.chassis() : member.getSummary().chassis;
+        const model = isCBTForceMember(member) ? member.entity.model() : member.getSummary().model;
+        const label = `${chassis} ${model}`.trim();
         const confirmed = await this.dialogsService.requestConfirmation(
             `Are you sure you want to repair the unit "${label}"? This will reset all damage and status effects.`,
-            `Repair ${summary.chassis}`,
+            `Repair ${chassis}`,
             'info',
         );
         if (!confirmed) return false;

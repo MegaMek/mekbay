@@ -4,6 +4,7 @@
 
 import { DestroyRef, Injectable, effect, inject } from '@angular/core';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
+import { LobbyService } from './lobby.service';
 import { LoggerService } from './logger.service';
 
 interface WakeLockSentinelLike {
@@ -25,6 +26,7 @@ interface WakeLockApiLike {
 @Injectable({ providedIn: 'root' })
 export class WakeLockService {
     private readonly forceWorkspace = inject(ForceWorkspaceStateService);
+    private readonly lobbyService = inject(LobbyService);
     private logger = inject(LoggerService);
     private destroyRef = inject(DestroyRef);
 
@@ -52,7 +54,7 @@ export class WakeLockService {
         }
 
         effect(() => {
-            this.scheduleSync(this.forceWorkspace.hasForces());
+            this.scheduleSync(this.forceWorkspace.hasForces() || this.lobbyService.hasLobby());
         });
     }
 

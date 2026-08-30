@@ -873,6 +873,23 @@ describe('Alpha Strike core specials', () => {
       .toEqual(['CT4', 'ENE', 'SRCH']);
   });
 
+  it('serializes summed fractional cargo without binary floating-point noise', () => {
+    const entity = new TankEntity();
+    entity.transporters.set([
+      {
+        id: 'cargo-bay', kind: 'bay', configuration: { type: 'cargo' }, capacity: 21.5,
+        doors: 1, bayNumber: 1, omni: false,
+      },
+      {
+        id: 'reefer-bay', kind: 'bay', configuration: { type: 'refrigerated-cargo' }, capacity: 10.44,
+        doors: 1, bayNumber: 2, omni: false,
+      },
+    ]);
+
+    expect(alphaStrikeCoreSpecials(entity, { type: 'CV', hasStandardDamage: true }))
+      .toContain('CT31.94');
+  });
+
   it('rounds large-aerospace cargo and converts high capacity to CK', () => {
     const largeCraft = new DropShipEntity();
     largeCraft.transporters.set([{

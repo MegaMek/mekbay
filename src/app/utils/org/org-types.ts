@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ASUnitTypeCode, UnitSummary } from '../../models/unit-summary.model';
+import type {
+    AlphaStrikeUnitStats,
+    ASUnitTypeCode,
+    UnitSummary,
+} from '../../models/unit-summary.model';
 
 /*
  *
@@ -98,6 +102,28 @@ export interface PointRange {
     max: number;
 }
 
+/**
+ * Minimal structural input accepted by the organization solver.
+ *
+ * A UnitSummary satisfies this interface for unloaded catalog/generator work.
+ * Loaded Classic members instead compile it directly from Entity, so runtime
+ * organization logic never depends on or synthesizes catalog projections.
+ */
+export interface OrgUnit {
+    readonly id: number;
+    readonly uuid: string;
+    readonly name: string;
+    readonly type: UnitSummary['type'];
+    readonly subtype: UnitSummary['subtype'];
+    readonly moveType: string;
+    readonly omni: number;
+    readonly tons: number;
+    readonly bv: number;
+    readonly internal: number;
+    readonly squads: number;
+    readonly as: Pick<AlphaStrikeUnitStats, 'TP' | 'PV' | 'MVm' | 'specials'>;
+}
+
 export interface GroupSizeResult {
     name: string;
     type: OrgType | null;
@@ -110,17 +136,17 @@ export interface GroupSizeResult {
     foreignDisplayName?: string;
     displayName?: string;
     children?: GroupSizeResult[];
-    units?: UnitSummary[];
+    units?: OrgUnit[];
     unitAllocations?: GroupUnitAllocation[];
-    formationMatchingIgnoredUnits?: UnitSummary[];
-    leftoverUnits?: UnitSummary[];
+    formationMatchingIgnoredUnits?: OrgUnit[];
+    leftoverUnits?: OrgUnit[];
     leftoverUnitAllocations?: GroupUnitAllocation[];
     tag?: OrgGroupTag;
     priority?: number;
 }
 
 export interface GroupUnitAllocation {
-    readonly unit: UnitSummary;
+    readonly unit: OrgUnit;
     readonly squads?: number;
 }
 
@@ -191,7 +217,7 @@ export type BuiltInUnitClassKey =
     | 'CV'
     | 'CV:omni'
     | 'PM';
-export type DerivedUnitClassKey = Lowercase<UnitSummary['type']>;
+export type DerivedUnitClassKey = Lowercase<OrgUnit['type']>;
 export type UnitClassKey = BuiltInUnitClassKey | DerivedUnitClassKey;
 export type CIMoveClass =
     | 'foot'
@@ -287,7 +313,7 @@ export interface UnitFactScalars {
  * Unit callbacks.
  */
 export interface UnitFacts {
-    readonly unit: UnitSummary;
+    readonly unit: OrgUnit;
     readonly factId: number;
     readonly classKey: UnitClassKey;
     readonly tags: ReadonlySet<UnitFactTag>;

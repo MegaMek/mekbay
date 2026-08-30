@@ -4,7 +4,7 @@
 import { bindMekRecordSheet, type MekRecordSheetInteraction } from './mek-record-sheet-binder';
 import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../models/mek-sheet-binding';
-import { WeaponEquipment } from '../../models/equipment.model';
+import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { asComponentId, asCriticalSlotId, asLocationId } from '../../models/entity/entity-identifiers';
 
 describe('Mek record-sheet binder', () => {
@@ -51,7 +51,7 @@ describe('Mek record-sheet binder', () => {
         expect(inventory[0].querySelector('.heat')?.textContent).toBe('7');
         expect(inventory[0].querySelector('.damage')?.textContent).toBe('20');
         expect(inventory[0].querySelector('.range_short')?.textContent).toBe('3');
-        expect(inventory[0].getAttribute('data-mekbay-component-ids')).toBe('weapon-component');
+        expect(inventory[0].getAttribute('data-mekbay-component-ids')).toBe('["weapon-component"]');
         expect(inventory[0].hasAttribute('id')).toBeFalse();
         expect([...inventory[0].classList].some(className => className.startsWith('eq-'))).toBeFalse();
         expect(inventory[1].style.display).toBe('none');
@@ -513,6 +513,52 @@ describe('Mek record-sheet binder', () => {
         expect(svg.querySelectorAll('.equipment-hover-secondary').length).toBe(0);
     });
 
+    it('cross-highlights exact system IDs without conflating location-scoped actuators', () => {
+        const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', `
+            <g class="critSlot" loc="LA" slot="0"><text></text></g>
+            <g class="critSlot" loc="RA" slot="0"><text></text></g>
+            <g class="critSlot" loc="RT" slot="0"><text></text></g>`);
+        const base = snapshot();
+        const systemSlot = (
+            locationCode: string,
+            componentId: string,
+            system: string,
+        ): MekRecordSheetSnapshot['criticalSlots'][number] => ({
+            ...base.criticalSlots[0],
+            slotId: asCriticalSlotId(`slot-${locationCode.toLowerCase()}-0`),
+            locationId: asLocationId(`location-${locationCode.toLowerCase()}`),
+            locationCode,
+            components: [{
+                componentId: asComponentId(componentId),
+                label: system,
+                system,
+                status: 'available',
+            }],
+        });
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, {
+            ...base,
+            criticalSlots: [
+                systemSlot('LA', 'system:upper-arm-actuator:mek:left-arm', 'Upper Arm Actuator'),
+                systemSlot('RA', 'system:upper-arm-actuator:mek:right-arm', 'Upper Arm Actuator'),
+                systemSlot('CT', 'system:engine', 'Engine'),
+                systemSlot('RT', 'system:engine', 'Engine'),
+            ],
+        });
+        const leftActuator = svg.querySelector<SVGElement>('.critSlot[loc="LA"]')!;
+        const rightActuator = svg.querySelector<SVGElement>('.critSlot[loc="RA"]')!;
+        const centerEngine = svg.querySelector<SVGElement>('.critSlot[loc="CT"]')!;
+        const rightEngine = svg.querySelector<SVGElement>('.critSlot[loc="RT"]')!;
+
+        leftActuator.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+        expect(rightActuator.classList).not.toContain('equipment-hover-secondary');
+
+        centerEngine.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+        expect(rightEngine.classList).toContain('equipment-hover-secondary');
+
+        binding.destroy();
+    });
+
     it('wraps long inventory names and preserves semantic damage text on the final row', () => {
         spyOn(CanvasRenderingContext2D.prototype, 'measureText').and.callFake(text => ({
             width: String(text).length,
@@ -823,6 +869,42 @@ describe('Mek record-sheet binder', () => {
         binding.destroy();
     });
 
+    it('groups equipment heat only in the compact SVG summary', () => {
+        const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', '<text id="damagedEngineHeatText" x="10" y="40"></text>');
+        const base = snapshot();
+        const grouped = {
+            ...base,
+            heatProjection: {
+                kind: 'supported',
+                projection: {
+                    current: 1,
+                    sources: [
+                        { id: 'nova', label: 'Nova CEWS', value: 2, group: 'Equipment' },
+                        { id: 'damaged-engine', label: 'Damaged Engine', value: 5 },
+                        { id: 'stealth', label: 'Stealth', value: 10, group: 'Equipment' },
+                    ],
+                    committedSources: [],
+                    capacity: 0,
+                    underwaterBonus: 0,
+                    previouslyConsumedDissipation: 0,
+                    remainingDissipation: 0,
+                    generated: 17,
+                    dissipated: 0,
+                    projected: 18,
+                    delta: 17,
+                    hasPendingResolution: true,
+                    hasPendingSettlement: true,
+                },
+            },
+        } as MekRecordSheetSnapshot;
+
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, grouped);
+        expect([...svg.querySelectorAll('#damagedEngineHeatText tspan')]
+            .map(line => line.textContent)).toEqual(['Equipment: +12', 'Engine: +5']);
+        binding.destroy();
+    });
+
     it('renders production Life Support pilot-damage icons from the runtime projection', () => {
         const svg = sheet();
         svg.insertAdjacentHTML('beforeend', `
@@ -1010,6 +1092,73 @@ describe('Mek record-sheet binder', () => {
         expect(label.textContent).toBe('Name:');
         expect((svg.querySelector('#pilotName0') as SVGElement).style.visibility).toBe('hidden');
         expect((svg.querySelector('#blankCrewName0') as SVGElement).style.visibility).toBe('visible');
+    });
+
+    it('preserves crew skill labels and renders the permanent PSR modifier', () => {
+        const svg = sheet();
+        svg.querySelector('#crewDamage0')!.insertAdjacentHTML('beforeend', `
+            <text id="gunnerySkillText0">Gunnery Skill:</text>
+            <text id="gunnerySkill0"></text>
+            <text id="pilotingSkillText0">Piloting Skill:</text>
+            <text id="pilotingSkill0"></text>`);
+        const base = snapshot();
+        if (base.movement.projection.kind !== 'supported') {
+            throw new Error('Movement fixture is unsupported');
+        }
+        const modified = {
+            ...base,
+            movement: {
+                ...base.movement,
+                projection: { ...base.movement.projection, permanentPsrModifier: 3 },
+            },
+        } as MekRecordSheetSnapshot;
+
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, modified);
+
+        expect(svg.querySelector('#gunnerySkillText0')?.textContent).toBe('Gunnery Skill:');
+        expect(svg.querySelector('#pilotingSkillText0')?.textContent).toBe('Piloting Skill:');
+        expect(svg.querySelector('#gunnerySkill0')?.textContent).toBe('3');
+        expect(svg.querySelector('#pilotingSkill0')?.childNodes[0]?.textContent).toBe('4');
+        expect(svg.querySelector('#pilotingSkill0 .controlRollModifier')?.textContent).toBe(' +3PSR');
+        expect(svg.querySelector('#pilotingSkill0 .controlRollLabel')?.textContent).toBe('PSR');
+
+        binding.render(base);
+        expect(svg.querySelector('#pilotingSkill0')?.textContent).toBe('4');
+        expect(svg.querySelector('#pilotingSkill0 .controlRollModifier')).toBeNull();
+        binding.destroy();
+    });
+
+    it('keeps printable misc equipment between ranged weapons and physical attacks', () => {
+        const svg = sheet();
+        const base = snapshot();
+        const equipment = new MiscEquipment({
+            id: 'null-signature-system',
+            name: 'Null Signature System',
+            type: 'misc',
+            stats: { hittable: true },
+        });
+        const withSystem = {
+            ...base,
+            equipment: [...base.equipment, {
+                componentId: 'signature-component',
+                label: 'Null Signature System',
+                equipment,
+                locations: [{ locationId: 'location-ct', code: 'CT' }],
+                status: 'available',
+                previewStatus: 'available',
+                modes: [],
+                jammed: false,
+            }],
+        } as unknown as MekRecordSheetSnapshot;
+
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, withSystem);
+        const inventory = [...svg.querySelectorAll<SVGElement>('.inventoryEntry')];
+
+        expect(inventory[0].querySelector('.name')?.textContent).toBe('AC/20');
+        expect(inventory[1].style.display).toBe('');
+        expect(inventory[1].querySelector('.name')?.textContent).toBe('Null Signature System');
+        expect(inventory[2].style.display).toBe('none');
+        binding.destroy();
     });
 
     it('binds the complete authored Mek interaction matrix to projected IDs', () => {

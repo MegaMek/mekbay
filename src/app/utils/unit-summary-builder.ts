@@ -8,6 +8,7 @@ import type { EntityType } from '../models/entity/types';
 import { UNIT_SUMMARY_VERSION } from '../models/unit-summary.model';
 import type {
   AlphaStrikeUnitStats,
+  UnitMaterialLayout,
   UnitSummary,
   UnitComponent,
   UnitSummaryComponent,
@@ -105,6 +106,12 @@ export class UnitSummaryBuilder {
       role: metadata.role,
       armorType: metadata.armorType,
       structureType: metadata.structureType,
+      ...(metadata.patchworkLayout !== undefined && {
+        patchworkLayout: cloneMaterialLayout(metadata.patchworkLayout),
+      }),
+      ...(metadata.hybridLayout !== undefined && {
+        hybridLayout: cloneMaterialLayout(metadata.hybridLayout),
+      }),
       armor: metadata.armor,
       armorPer: metadata.armorPer,
       internal: metadata.internal,
@@ -251,6 +258,13 @@ function cloneComponents(components: readonly UnitComponent[]): UnitSummaryCompo
       ...(bay !== undefined && { bay: cloneComponents(bay) }),
     };
   });
+}
+
+function cloneMaterialLayout(layout: UnitMaterialLayout): UnitMaterialLayout {
+  return Object.fromEntries(Object.entries(layout).map(([location, material]) => [
+    location,
+    { ...material },
+  ]));
 }
 
 function optionalClanName(entity: BaseEntity): { readonly clanName?: string } {

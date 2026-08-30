@@ -1205,6 +1205,69 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(noOp.changed).toBeFalse();
     });
 
+    it('atomically rebinds optional rules and clears a Sprint invalidated by disabling the option', async () => {
+        const { force } = await readyCloneForce();
+        const before = await force.serializeForPersistence();
+        const instanceId = before.cbt!.roster.groups[0].members[0].instanceId;
+        const beforeMovement = mekRuntimeSnapshot(force, instanceId).query.mekMovementPsr();
+        expect(beforeMovement.kind).toBe('supported');
+        if (beforeMovement.kind !== 'supported') return;
+        expect(beforeMovement.actions.find(action => action.kind === 'sprint')?.legal).toBeFalse();
+
+        expect(await force.synchronizeOptionalRules({
+            forcedWithdrawal: true,
+            sprinting: true,
+        })).toBeTrue();
+        const enabled = mekRuntimeSnapshot(force, instanceId);
+        const enabledMovement = enabled.query.mekMovementPsr();
+        expect(enabledMovement.kind).toBe('supported');
+        if (enabledMovement.kind !== 'supported') return;
+        expect(enabledMovement.actions.find(action => action.kind === 'sprint')).toEqual(
+            jasmine.objectContaining({ legal: true, ordinaryMaximumMp: 10 }),
+        );
+        expect(enabled.query.heatProjection('manual').kind).toBe('supported');
+        expect(JSON.stringify((await force.serializeForPersistence()).cbt!.scenarioRules.values)).toBe(JSON.stringify({
+            id: 'megamek',
+            ruleset: 'core-2026',
+            options: { forcedWithdrawal: true, sprinting: true },
+        }));
+        expect(await force.synchronizeOptionalRules({
+            forcedWithdrawal: true,
+            sprinting: true,
+        })).toBeFalse();
+
+        const declared = await force.dispatchMekUnitCommand(instanceId, {
+            type: 'declare-mek-movement',
+            commandId: asCommandId('optional-rules:sprint'),
+            expectedRevision: enabled.state.stateRevision,
+            declaration: {
+                schemaVersion: 1,
+                mode: 'sprint',
+                distance: 10,
+                boosterComponentIds: [],
+            },
+        });
+        expect(declared.accepted).toBeTrue();
+        const sprinting = mekRuntimeSnapshot(force, instanceId);
+        expect(sprinting.state.movementPsr.movement?.mode).toBe('sprint');
+        const sprintHeat = sprinting.query.heatProjection('manual');
+        expect(sprintHeat.kind).toBe('supported');
+        if (sprintHeat.kind === 'supported') {
+            expect(sprintHeat.projection.sources.find(source => source.id === 'movement')?.value).toBe(3);
+        }
+
+        expect(await force.synchronizeOptionalRules({
+            forcedWithdrawal: true,
+            sprinting: false,
+        })).toBeTrue();
+        expect(mekRuntimeSnapshot(force, instanceId).state.movementPsr.movement).toBeNull();
+        expect(JSON.stringify((await force.serializeForPersistence()).cbt!.scenarioRules.values)).toBe(JSON.stringify({
+            id: 'megamek',
+            ruleset: 'core-2026',
+            options: { forcedWithdrawal: true, sprinting: false },
+        }));
+    });
+
     it('transfers a ready Mek between V2 owners in one paired transaction', async () => {
         const { force: source, armorFaceId, createTargetForce } = await readyCloneForce();
         const target = await createTargetForce();
@@ -1241,7 +1304,7 @@ describe('CBTForce V2 encounter persistence', () => {
         const target = await createTargetForce();
 
         expect(source.getClassicMember(instanceId)).not.toBeNull();
-        expect(source.getClassicMember(instanceId)?.summary.entityType).not.toBe('Mek');
+        expect(source.getClassicMember(instanceId)?.entity.entityType).not.toBe('Mek');
 
         const transferred = await source.transferMemberTo(
             target,
@@ -1253,7 +1316,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(transferred).toEqual({ accepted: true, changed: true, instanceId });
         expect(source.getClassicMember(instanceId)).toBeNull();
         expect(target.getClassicMember(instanceId)).not.toBeNull();
-        expect(target.getClassicMember(instanceId)?.summary.entityType).not.toBe('Mek');
+        expect(target.getClassicMember(instanceId)?.entity.entityType).not.toBe('Mek');
         const crew = target.getUnitCrewProfile(instanceId)!;
         const crewChanged = await target.replaceUnitCrewProfile(instanceId, {
             expectedRevision: crew.revision,
@@ -1738,6 +1801,8 @@ describe('CBTForce V2 encounter persistence', () => {
             airborne: null,
             movement: null,
             weaponsHeat: 0,
+            cover: null,
+            spotting: false,
         });
         const saved = await force.serializeForPersistence();
         const entity = saved.cbt!.units.find(row => row.instanceId === instanceId)!;

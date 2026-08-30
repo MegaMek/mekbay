@@ -103,7 +103,7 @@ describe('createForcePreviewEntryFromForce', () => {
         expect(getForcePreviewUnitPilotStats(result.groups[0].units[0], result.type)).toBe('3');
     });
 
-    it('projects a retained CBT member through the original summary view', () => {
+    it('projects a retained CBT member through an explicit catalog resolver', () => {
         const resolvedUnit = { name: 'Crab CRB-20', type: 'Mek', bv: 1143 } as any;
         const force = {
             instanceId: () => 'force-v2',
@@ -139,7 +139,12 @@ describe('createForcePreviewEntryFromForce', () => {
             adjustedBattleValue: () => 1200,
         } as const;
 
-        const result = createForcePreviewEntryFromForce(force, [member as any]);
+        const result = createForcePreviewEntryFromForce(
+            force,
+            [member as any],
+            {},
+            () => resolvedUnit,
+        );
 
         expect(result.bv).toBe(1200);
         expect(result.groups).toEqual([jasmine.objectContaining({

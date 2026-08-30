@@ -210,20 +210,62 @@ export class CollectionDialogComponent {
         return Array.from(tags.values()).sort(naturalCompare);
     });
 
+    readonly organizationUntaggedRows = computed(() => {
+        this.tagsService.version();
+        this.dataService.tagsVersion();
+
+        if (!this.selectedOrganizationId()) {
+            return [];
+        }
+
+        const organizationUnitCounts = this.organizationUnitCounts();
+        const taggedRowKeys = new Set(this.allRows().map(row => row.key));
+        const rows = new Map<string, CollectionRow>();
+
+        for (const unit of this.dataService.getUnits()) {
+            const rowKey = this.getRowKey('name', unit);
+            const chassisRowKey = this.getRowKey('chassis', unit);
+            if ((organizationUnitCounts.get(rowKey) ?? 0) === 0
+                || taggedRowKeys.has(rowKey)
+                || taggedRowKeys.has(chassisRowKey)) {
+                continue;
+            }
+
+            rows.set(rowKey, {
+                key: rowKey,
+                rowType: 'name',
+                unit,
+                title: this.getUnitDisplayName(unit),
+                subtitle: unit.as.TP,
+                tags: []
+            });
+        }
+
+        return Array.from(rows.values())
+            .sort((left, right) => naturalCompare(left.title, right.title));
+    });
+
+    readonly filterableRows = computed(() => {
+        const organizationId = this.selectedOrganizationId();
+        if (!organizationId) {
+            return this.allRows();
+        }
+
+        const organizationUnitCounts = this.organizationUnitCounts();
+        const taggedRows = this.allRows()
+            .filter(row => (organizationUnitCounts.get(row.key) ?? 0) > 0);
+
+        return [...taggedRows, ...this.organizationUntaggedRows()];
+    });
+
     readonly filteredRows = computed(() => {
         const tagFilter = this.tagFilter().trim().toLowerCase();
         const unitTextFilter = this.unitTextFilter().trim();
-        const organizationId = this.selectedOrganizationId();
-        const organizationUnitCounts = this.organizationUnitCounts();
         const textTokens = parseSearchQuery(unitTextFilter);
 
-        let rows = this.allRows();
+        let rows = this.filterableRows();
         if (tagFilter) {
             rows = rows.filter(row => row.tags.some(tag => tag.lowerTag === tagFilter));
-        }
-
-        if (organizationId) {
-            rows = rows.filter(row => (organizationUnitCounts.get(row.key) ?? 0) > 0);
         }
 
         if (textTokens.length > 0) {
@@ -231,6 +273,27 @@ export class CollectionDialogComponent {
         }
 
         return rows;
+    });
+
+    readonly visibleUntaggedRows = computed(() => {
+        return this.filteredRows().filter(row => row.tags.length === 0);
+    });
+
+    readonly firstUntaggedRowKey = computed(() => this.visibleUntaggedRows()[0]?.key ?? '');
+
+    readonly showUntaggedSeparator = computed(() => {
+        const untaggedCount = this.visibleUntaggedRows().length;
+        return untaggedCount > 0 && untaggedCount < this.filteredRows().length;
+    });
+
+    readonly allVisibleUntaggedSelected = computed(() => {
+        const rows = this.visibleUntaggedRows();
+        if (rows.length === 0) {
+            return false;
+        }
+
+        const selected = this.selectedRows();
+        return rows.every(row => selected.has(row.key));
     });
 
     readonly selectedCount = computed(() => {
@@ -815,11 +878,19 @@ export class CollectionDialogComponent {
 
     toggleAllFiltered(event: Event): void {
         const checked = (event.target as HTMLInputElement).checked;
-        const rows = this.filteredRows();
+        this.setRowsSelected(this.filteredRows(), checked);
+    }
+
+    toggleAllVisibleUntagged(event: Event): void {
+        const checked = (event.target as HTMLInputElement).checked;
+        this.setRowsSelected(this.visibleUntaggedRows(), checked);
+    }
+
+    private setRowsSelected(rows: readonly CollectionRow[], selected: boolean): void {
         this.selectedRows.update(current => {
             const next = new Set(current);
             for (const row of rows) {
-                if (checked) {
+                if (selected) {
                     next.add(row.key);
                 } else {
                     next.delete(row.key);

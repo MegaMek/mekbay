@@ -21,7 +21,7 @@ import { EraDropdownPanelComponent, type EraDisplayInfo, type EraDropdownPointer
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 import { DropdownPointerActivationGuard, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
-import { forceMemberSummary } from '../../models/force-member.model';
+import { isCBTForceMember } from '../../models/force-member.model';
 
 
 
@@ -457,7 +457,7 @@ export class RenameForceDialogComponent implements OnDestroy {
     factionDropdownOpen = signal(false);
     activeEraId = signal<number | null>(this.data.force.era()?.id ?? null);
     activeFactionId = signal<FactionId | null>(this.data.force.faction()?.id ?? null);
-    unitSummaries = computed(() => this.data.force.members().map(forceMemberSummary));
+    unitSummaries = computed(() => this.forceSummaries());
     availabilityContext = computed(() => this.unitAvailabilitySource.createForceAvailabilityContextForUnits(
         this.unitSummaries(),
         this.dataService.getEras(),
@@ -699,7 +699,14 @@ export class RenameForceDialogComponent implements OnDestroy {
     }
 
     private forceSummaries(): UnitSummary[] {
-        return this.data.force.members().map(forceMemberSummary);
+        return this.data.force.members().flatMap(member => {
+            if (!isCBTForceMember(member)) return [member.getSummary()];
+            const identity = member.force.getUnitSourceIdentity(member.id);
+            const summary = identity
+                ? this.dataService.getUnitByIdentity(identity.provider, identity.uuid)
+                : undefined;
+            return summary ? [summary] : [];
+        });
     }
 
     toggleFactionDropdown(): void {

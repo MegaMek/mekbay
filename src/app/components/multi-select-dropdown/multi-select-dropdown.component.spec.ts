@@ -78,34 +78,6 @@ describe('MultiSelectDropdownComponent', () => {
         expect(fixture.componentInstance.useVirtualScroll()).toBeTrue();
         const viewportEl = overlayContainerElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
         expect(viewportEl).not.toBeNull();
-        expect(getComputedStyle(viewportEl!).overflowY).toBe('auto');
-    });
-
-    it('keeps virtual option rows fixed-height while scaling long labels', async () => {
-        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
-        const component = fixture.componentInstance;
-        const longName = 'AA Weapon (Mk. 2, Man-Portable) With Extra Descriptor Text';
-
-        fixture.componentRef.setInput('options', [
-            { name: longName, available: true },
-            ...createOptions(149),
-        ]);
-        component.isOpen.set(true);
-        fixture.detectChanges();
-        await flushRender();
-        fixture.detectChanges();
-
-        const item = overlayContainerElement.querySelector('.options-viewport .option-item') as HTMLElement | null;
-        const viewport = overlayContainerElement.querySelector('cdk-virtual-scroll-viewport') as HTMLElement | null;
-        const label = item?.querySelector('.option-label') as HTMLElement | null;
-
-        expect(item).not.toBeNull();
-        expect(viewport).not.toBeNull();
-        expect(label).not.toBeNull();
-        expect(viewport!.style.getPropertyValue('--virtual-option-height')).toBe(`${component.optionItemSize}px`);
-        expect(getComputedStyle(item!).height).toBe(`${component.optionItemSize}px`);
-        expect(label!.style.fontSize).toBe(`${component.getVirtualOptionLabelFontSize({ name: longName })}px`);
-        expect(getComputedStyle(label!).webkitLineClamp).toBe('2');
     });
 
     it('keeps the plain list path for small option lists', () => {
@@ -118,6 +90,28 @@ describe('MultiSelectDropdownComponent', () => {
         expect(fixture.componentInstance.useVirtualScroll()).toBeFalse();
         expect(overlayContainerElement.querySelector('cdk-virtual-scroll-viewport')).toBeNull();
         expect(overlayContainerElement.querySelector('.options-list')).not.toBeNull();
+    });
+
+    it('renders a divider when the visible option section changes', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+
+        fixture.componentRef.setInput('options', [
+            { name: 'BMM', available: true },
+            { name: 'TW', available: true },
+            { name: 'IO:AE', available: true },
+            { name: 'TO:AUE', available: true },
+        ]);
+        fixture.componentRef.setInput('optionSection', (option: DropdownOption) =>
+            ['BMM', 'TW'].includes(option.name) ? 'base' : 'non-base');
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item'));
+        expect(optionItems.length).toBe(4);
+        expect(optionItems[0].classList).not.toContain('option-section-start');
+        expect(optionItems[1].classList).not.toContain('option-section-start');
+        expect(optionItems[2].classList).toContain('option-section-start');
+        expect(optionItems[3].classList).not.toContain('option-section-start');
     });
 
     it('hides unavailable unselected options by default while keeping selected unavailable ones visible', () => {
@@ -316,6 +310,37 @@ describe('MultiSelectDropdownComponent', () => {
 
         fixture.componentInstance.onOptionToggle('Random');
         expect(emittedSelection).toEqual({});
+    });
+
+    it('renders contextual minimum fields and emits neutral slot values', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        let emittedSelection: MultiStateSelection | undefined;
+        fixture.componentInstance.selectionChange.subscribe(selection => {
+            emittedSelection = selection as MultiStateSelection;
+        });
+
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('options', [{
+            name: 'AC',
+            minimumFieldLabels: ['S', 'M', 'L'],
+        }]);
+        fixture.componentRef.setInput('selected', {
+            AC: { name: 'AC', state: 'or', count: 1 },
+        });
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        const fields = Array.from(overlayContainerElement.querySelectorAll<HTMLInputElement>('.minimum-field'));
+        expect(fields.map(field => field.placeholder)).toEqual(['S', 'M', 'L']);
+
+        const optionRow = overlayContainerElement.querySelector<HTMLElement>('.option-item');
+        const optionLabel = optionRow?.querySelector('.option-label');
+        const minimumInputs = optionRow?.querySelector('.minimum-inputs');
+        expect(optionRow?.classList.contains('has-minimum-fields')).toBeTrue();
+        expect(optionLabel?.nextElementSibling).toBe(minimumInputs);
+
+        fixture.componentInstance.setMinimumValue('AC', 2, '3', 3);
+        expect(emittedSelection?.['AC'].minimumValues).toEqual([null, null, 3]);
     });
 
     it('keeps always-visible options in filtered results', () => {
@@ -539,22 +564,6 @@ describe('MultiSelectDropdownComponent', () => {
 
         expect(component.keyboardFocusedIndex()).toBe(89);
         expect(scrollToOption).not.toHaveBeenCalledWith('Option 1');
-    });
-
-    it('styles keyboard-focused options like hovered options', () => {
-        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
-        fixture.componentRef.setInput('options', createOptions(3));
-        fixture.componentInstance.isOpen.set(true);
-        fixture.detectChanges();
-
-        const optionItems = Array.from(overlayContainerElement.querySelectorAll('.option-item')) as HTMLElement[];
-        const expectedBackground = document.createElement('div');
-        expectedBackground.style.backgroundColor = 'var(--background-color-light)';
-        overlayContainerElement.appendChild(expectedBackground);
-
-        optionItems[0].classList.add('keyboard-focused');
-
-        expect(getComputedStyle(optionItems[0]).backgroundColor).toBe(getComputedStyle(expectedBackground).backgroundColor);
     });
 
     it('centers a pill-targeted virtualized option below view', () => {

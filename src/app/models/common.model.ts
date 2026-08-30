@@ -4,24 +4,6 @@
 
 export const REMOTE_HOST = 'https://db.mekbay.com';
 
-/**
- * Normalizes a user-supplied unit server base URL: trims whitespace and removes any
- * trailing slashes. Returns an empty string when the input is not a valid http(s) URL.
- */
-export function normalizeUnitServerUrl(url: string): string {
-    const trimmed = (url ?? '').trim().replace(/\/+$/, '');
-    try {
-        const parsed = new URL(trimmed);
-        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return '';
-        }
-        // Preserve pathname (to allow hosting under a sub-path), but drop query/hash and trailing slashes.
-        return `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, '');
-    } catch {
-        return '';
-    }
-}
-
 export enum GameSystem {
     CLASSIC = 'cbt',
     ALPHA_STRIKE = 'as'

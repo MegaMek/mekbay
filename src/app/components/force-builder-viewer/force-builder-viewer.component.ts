@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, computed, Injector, type ElementRef, effect, inject, ChangeDetectionStrategy, viewChild, viewChildren, input, signal, afterNextRender, DestroyRef, HostListener } from '@angular/core';
+import { Component, computed, Injector, type ElementRef, effect, inject, ChangeDetectionStrategy, viewChild, viewChildren, input, signal, afterNextRender, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Subscription } from 'rxjs';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -29,10 +29,10 @@ import { getFormationDefinition } from '../../utils/formation-blueprints';
 import { formationInheritsParentEffects } from '../../utils/formation-type.model';
 import { DataService } from '../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
+import { LobbyService } from '../../services/lobby.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
 import {
-    forceMemberSummary,
     isCBTForceMember,
     isCBTMekForceMember,
     type CBTForceMember,
@@ -49,6 +49,11 @@ import { ForceMemberValueComponent } from './force-member-value.component';
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CommonModule, DragDropModule, UnitBlockComponent, TooltipDirective, ForceMemberValueComponent],
+    host: {
+        '(window:keydown)': 'onKeyDown($event)',
+        '(window:keyup)': 'onKeyUp($event)',
+        '(window:blur)': 'onWindowBlur()',
+    },
     templateUrl: './force-builder-viewer.component.html',
     styleUrls: ['./force-builder-viewer.component.scss']
 })
@@ -68,6 +73,7 @@ export class ForceBuilderViewerComponent {
     protected optionsService = inject(OptionsService);
     private injector = inject(Injector);
     private dataService = inject(DataService);
+    protected readonly lobbyService = inject(LobbyService);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
 
@@ -101,7 +107,14 @@ export class ForceBuilderViewerComponent {
 
     forceEraWarning(force: Force): string | null {
         const eras = this.dataService.getEras();
-        const summaries = force.members().map(forceMemberSummary);
+        const summaries = force.members().flatMap(member => {
+            if (!isCBTForceMember(member)) return [member.getSummary()];
+            const identity = member.force.getUnitSourceIdentity(member.id);
+            const summary = identity
+                ? this.dataService.getUnitByIdentity(identity.provider, identity.uuid)
+                : undefined;
+            return summary ? [summary] : [];
+        });
         const availabilityContext = this.unitAvailabilitySource.createForceAvailabilityContextForUnits(
             summaries,
             eras,
@@ -245,17 +258,14 @@ export class ForceBuilderViewerComponent {
         });
     }
 
-    @HostListener('window:keydown', ['$event'])
     onKeyDown(event: KeyboardEvent) {
         if (event.key === 'Control') this.ctrlHeld.set(true);
     }
 
-    @HostListener('window:keyup', ['$event'])
     onKeyUp(event: KeyboardEvent) {
         if (event.key === 'Control') this.ctrlHeld.set(false);
     }
 
-    @HostListener('window:blur')
     onWindowBlur() {
         this.ctrlHeld.set(false);
     }
@@ -317,9 +327,14 @@ export class ForceBuilderViewerComponent {
     showUnitInfo(event: MouseEvent, unit: ForceMember) {
         event.stopPropagation();
         if (isCBTForceMember(unit)) {
+            const identity = unit.force.getUnitSourceIdentity(unit.id);
+            const summary = identity
+                ? this.dataService.getUnitByIdentity(identity.provider, identity.uuid)
+                : undefined;
+            if (!summary) return;
             this.dialogsService.createDialog(UnitDetailsDialogComponent, {
                 data: <UnitDetailsDialogData>{
-                    unitList: [unit.summary],
+                    unitList: [summary],
                     unitIndex: 0,
                     hideAddButton: true,
                     gameSystem: unit.force.gameSystem,
@@ -975,15 +990,15 @@ export class ForceBuilderViewerComponent {
         const showParentRequirements = formationInheritsParentEffects(formation) && !!formation.parent;
 
         if (showParentRequirements) {
-            const parent = getFormationDefinition(formation.parent!);
+            const parent = getFormationDefinition(formation.parent!, group.force.gameSystem);
             if (parent?.requirements) {
-                const parentReq = parent.requirements(group.force.gameSystem);
+                const parentReq = parent.requirements;
                 if (parentReq) parts.push(this.buildFormationRequirementTooltipLine(parent.name, parentReq));
             }
         }
 
         if (formation.requirements) {
-            const req = formation.requirements(group.force.gameSystem);
+            const req = formation.requirements;
             if (req) parts.push(this.buildFormationRequirementTooltipLine(showParentRequirements ? formation.name : null, req));
         }
 

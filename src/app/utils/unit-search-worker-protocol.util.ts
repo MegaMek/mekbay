@@ -46,7 +46,6 @@ export interface UnitSearchWorkerUnit {
     readonly dpt: UnitSummary['dpt'];
     readonly quirks: string[];
     readonly features: string[];
-    readonly serverHost?: string;
     readonly _searchKey: string;
     readonly _techBaseDisplay: string;
     readonly _maxRange: number;

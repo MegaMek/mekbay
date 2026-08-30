@@ -42,6 +42,6 @@ function weapon(
         name: id,
         type: 'weapon',
         flags,
-        weapon: { ammoType, damage: 5 },
+        weapon: { ammoType, damage: ammoType === 'LRM' ? 'cluster' : 5 },
     });
 }

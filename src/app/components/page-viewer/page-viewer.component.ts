@@ -503,7 +503,7 @@ export class PageViewerComponent implements AfterViewInit {
         // Watch for fluff image visibility option changes
         this.fluffImageInjectEffectRef = effect(() => {
             // Track the option - when it changes, update visibility on all displayed SVGs
-            this.optionsService.options().recordSheetCenterPanelContent;
+            this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
             this.setFluffImageVisibility();
         });
 
@@ -537,21 +537,6 @@ export class PageViewerComponent implements AfterViewInit {
                 isSwiping: this.isSwiping
             })) {
                 untracked(() => {
-                    this.displayUnit();
-                });
-            }
-        });
-
-        // Replace the retained artwork immediately when the compatibility source changes.
-        effect(() => {
-            const source = this.pageViewerSheetSource.mode();
-            if (this.pageViewerOptionReaction.shouldRedisplayForSheetSourceChange({
-                source,
-                viewInitialized: this.viewInitialized(),
-                isSwiping: this.isSwiping,
-            })) {
-                untracked(() => {
-                    this.pageViewerSheetSource.clear();
                     this.displayUnit();
                 });
             }
@@ -1132,7 +1117,7 @@ export class PageViewerComponent implements AfterViewInit {
             this.renderer.appendChild(wrapper, placeholder);
         }
 
-        placeholder.textContent = unit.summary.name;
+        placeholder.textContent = unit.entity.displayName();
         this.renderer.addClass(wrapper, 'has-placeholder');
         this.renderer.removeClass(wrapper, 'has-svg');
         this.renderer.removeClass(wrapper, 'is-empty');
@@ -1479,7 +1464,7 @@ export class PageViewerComponent implements AfterViewInit {
             scale,
             visiblePages,
             readOnly: this.readOnly(),
-            showFluff: this.optionsService.options().recordSheetCenterPanelContent === 'fluffImage',
+            showFluff: this.optionsService.options().printAllOptions.recordSheetCenterPanelContent === 'fluffImage',
             performanceMode: this.performanceMode(),
             setPageWrapperContentState: (wrapper, hasSvg) => this.setPageWrapperContentState(wrapper, hasSvg),
             setSwipePlaceholderContent: (wrapper, unit) => this.setSwipePlaceholderContent(wrapper, unit),
@@ -1849,7 +1834,7 @@ export class PageViewerComponent implements AfterViewInit {
                 : ((displayedPositions[effectiveVisible - 1] ?? 0) * scale) + scaledPageStep;
 
             // Apply fluff visibility
-            const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
+            const centerContent = this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
             const showFluff = centerContent === 'fluffImage';
             const shadowKey = this.getShadowKey(targetIndex, direction);
 
@@ -2193,7 +2178,7 @@ export class PageViewerComponent implements AfterViewInit {
             return;
         }
         
-        const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
+        const centerContent = this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
         const showFluff = centerContent === 'fluffImage';
 
         this.pageViewerState.shadowPages.set(desiredShadows);
@@ -2255,7 +2240,7 @@ export class PageViewerComponent implements AfterViewInit {
         // Replace the cloned SVG with the real SVG in the shadow wrapper
         // This prevents the "black flash" when the shadow is cleared
         const realSvg = this.pageViewerSheetSource.svg(unit);
-        const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
+        const centerContent = this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
         const showFluff = centerContent === 'fluffImage';
         
         if (realSvg) {
@@ -2427,7 +2412,7 @@ export class PageViewerComponent implements AfterViewInit {
      * Controlled by the recordSheetCenterPanelContent option.
      */
     private setFluffImageVisibility(): void {
-        const centerContent = this.optionsService.options().recordSheetCenterPanelContent;
+        const centerContent = this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
         const showFluff = centerContent === 'fluffImage';
 
         this.pageViewerPresentation.setDisplayedFluffImageVisibility(this.displayedUnits(), showFluff);

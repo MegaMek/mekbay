@@ -45,6 +45,14 @@ export function writeSvgTextLines(
     const lines = getSvgTextLines(container);
     if (lines.length === 0) return;
 
+    // Generated sheet labels may have been compressed with textLength. Once a
+    // runtime value replaces that label, retaining the old constraint stretches
+    // short values (for example, writing "Kick" into a longer equipment row).
+    lines.forEach(line => {
+        line.removeAttribute('textLength');
+        line.removeAttribute('lengthAdjust');
+    });
+
     const normalizedText = text.trim();
     const maxWidth = Number.isFinite(options.maxWidth) ? options.maxWidth! : null;
     const ellipsis = options.ellipsis ?? '...';

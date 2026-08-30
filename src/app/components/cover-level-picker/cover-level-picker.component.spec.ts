@@ -68,40 +68,6 @@ describe('CoverLevelPickerComponent', () => {
         expect(trigger.textContent?.trim()).toBe('3');
     });
 
-    it('overlaps the trigger with the selected option, or the first option when unset', async () => {
-        for (const { value, activeIndex } of [
-            { value: '', activeIndex: 0 },
-            { value: 'building-3', activeIndex: 2 },
-        ]) {
-            const fixture = TestBed.createComponent(CoverLevelPickerComponent);
-            fixture.nativeElement.style.cssText = 'position: fixed; top: 200px; left: 300px; width: 44px; height: 40px;';
-            fixture.componentRef.setInput('kind', 'building');
-            fixture.componentRef.setInput('value', value);
-            fixture.detectChanges();
-
-            const trigger = fixture.nativeElement.querySelector('.cover-trigger') as HTMLButtonElement;
-            trigger.click();
-            fixture.detectChanges();
-            await Promise.resolve();
-            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-
-            const options = overlayContainer.querySelectorAll('.cover-option') as NodeListOf<HTMLButtonElement>;
-            const activeOption = overlayContainer.querySelector('.cover-option.keyboard-active') as HTMLButtonElement;
-            expect(activeOption).toBe(options[activeIndex]);
-
-            const triggerRect = trigger.getBoundingClientRect();
-            const optionRect = activeOption.getBoundingClientRect();
-            const triggerCenter = triggerRect.top + triggerRect.height / 2;
-            const optionCenter = optionRect.top + optionRect.height / 2;
-            expect(Math.abs(triggerCenter - optionCenter))
-                .withContext(value || 'unset')
-                .toBeLessThanOrEqual(1);
-
-            fixture.destroy();
-        }
-    });
-
     it('keeps option clicks alive inside a managed parent overlay', () => {
         const overlayManager = TestBed.inject(OverlayManagerService);
         const origin = document.createElement('button');

@@ -5,14 +5,8 @@ import { Injectable, inject } from '@angular/core';
 
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../../models/mek-sheet-binding';
 import type { CBTMekForceMember } from '../../../models/force-member.model';
-import {
-    MEK_CREW_STATE_CONTROLS,
-    MEK_UNIT_CONDITION_CONTROLS,
-} from '../../../models/mek-record-sheet-controls';
 import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
-import { UnitFluffImageService } from '../../../services/catalogs/unit-fluff-image.service';
 import { LoggerService } from '../../../services/logger.service';
-import { RsPolyfillUtil } from '../../../utils/rs-polyfill.util';
 import {
     bindMekRecordSheet,
     type MekRecordSheetBinding,
@@ -31,7 +25,6 @@ interface BoundMekSheet {
 @Injectable()
 export class PageViewerMekRuntimeService {
     private readonly interactions = inject(PageViewerMekInteractionService);
-    private readonly fluffImages = inject(UnitFluffImageService);
     private readonly logger = inject(LoggerService);
     private readonly sheetSource = inject(PageViewerSheetSourceService);
     private readonly bound = new Map<string, BoundMekSheet>();
@@ -45,22 +38,6 @@ export class PageViewerMekRuntimeService {
         this.destroyBinding(member.id);
 
         const snapshot = this.requiredSnapshot(member);
-        if (svg.dataset['mekbayRecordSheetPrepared'] !== '1') {
-            RsPolyfillUtil.prepareRecordSheet({
-                unit: {
-                    type: 'Mek',
-                    subtype: snapshot.identity.form === 'lam' ? 'Land-Air BattleMek' : 'BattleMek',
-                    armorType: snapshot.construction.armor,
-                    structureType: snapshot.construction.structure,
-                    crewSize: snapshot.crew.length,
-                },
-                conditionControls: MEK_UNIT_CONDITION_CONTROLS,
-                addCrewStateControls: MEK_CREW_STATE_CONTROLS.length > 0 && snapshot.crew.length > 0,
-                fluffImageUrl: this.fluffImages.resolveUrl(member.summary),
-            }, svg);
-            svg.dataset['mekbayRecordSheetPrepared'] = '1';
-        }
-
         svg.classList.toggle('read-only', member.force.readOnly());
         const binding = bindMekRecordSheet(
             svg,

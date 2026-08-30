@@ -18,6 +18,7 @@ import {
 import { GameSystem } from '../models/common.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
 import { hasNonMekRuntime } from '../models/cbt-unit-snapshot';
+import type { BaseEntity } from '../models/entity/base-entity';
 
 async function loadXlsx() {
     const { utils, writeFile } = await import('xlsx');
@@ -144,6 +145,86 @@ function unitsToCBTRows(units: UnitSummary[]): Record<string, unknown>[] {
     return units.map(unitToCBTRow);
 }
 
+/** Loaded Classic export facts come only from the admitted Entity. */
+function entityToCBTRow(unit: BaseEntity): Record<string, unknown> {
+    const engine = unit.mountedEngine();
+    const rangedWeapons = unit.rangedWeapons();
+    const firepower = rangedWeapons.reduce((total, mount) =>
+        total + unit.resolveMountedWeaponDamage(mount).maximum, 0);
+    const maxRange = rangedWeapons.reduce((maximum, mount) =>
+        Math.max(maximum, ...mount.equipment.ranges), 0);
+    return {
+        chassis: unit.fullChassis(),
+        model: unit.model(),
+        mul_id: unit.mulId() <= 0 ? '' : unit.mulId(),
+        year: unit.year(),
+        BV: unit.battleValue(),
+        cost: unit.cost(),
+        tonnage: unit.tonnage(),
+        weightClass: unit.weightClass(),
+        level: unit.staticTechLevel(),
+        techBase: unit.techBase(),
+        techRating: unit.techRating(),
+        type: unit.unitType(),
+        subtype: unit.unitSubtype(),
+        omni: unit.omni(),
+        engine: engine.type,
+        engineRating: engine.rating,
+        source: unit.source().map(source => source.abbrev).join(', '),
+        publishedRS: unit.published().map(source => source.abbrev).join(', '),
+        tags: '',
+        role: unit.role(),
+        armorType: unit.hasPatchworkArmor()
+            ? 'Patchwork'
+            : unit.uniformArmor()?.armor.name ?? '',
+        structureType: unit.uniformStructureMaterial()?.structure.name ?? '',
+        armor: unit.totalArmorPoints(),
+        armorPer: unit.maximumArmorPoints() > 0
+            ? unit.totalArmorPoints() / unit.maximumArmorPoints()
+            : 0,
+        structure: unit.totalInternalPoints(),
+        heat: unit.heatGeneration(),
+        dissipation: unit.heatDissipation(),
+        dissipationEfficiency: unit.heatGeneration() > 0
+            ? unit.heatDissipation() / unit.heatGeneration()
+            : '',
+        moveType: unit.motiveType(),
+        walk: unit.walkMP(),
+        maxWalk: unit.maxWalkMP(),
+        jump: unit.jumpMP(),
+        umu: unit.umuMP(),
+        c3: unit.c3System(),
+        dpt: firepower,
+        firepower,
+        'firepower (no oneshots)': firepower,
+        maxRange,
+        components: unit.equipment()
+            .map(mount => `${mount.displayName()}:${mount.location}`)
+            .join(', '),
+        quirks: unit.quirks()
+            .map(({ quirk, value }) => value ? `${quirk.name}=${value}` : quirk.name)
+            .join(', '),
+        cargo: unit.transporters()
+            .map(transporter => {
+                const capacity = transporter.kind === 'bay'
+                    ? transporter.capacity
+                    : transporter.kind === 'troop-space'
+                        ? transporter.totalSpace
+                        : transporter.kind === 'battle-armor-handles'
+                            ? transporter.troopers
+                            : 1;
+                return `${transporter.kind}(${capacity})`;
+            })
+            .join(', '),
+        dropshipCapacity: unit.dockingCollarCount(),
+        escapePods: '',
+        lifeBoats: '',
+        gravDecks: '',
+        sailIntegrity: '',
+        kfIntegrity: '',
+    };
+}
+
 /**
  * Converts units to AS (Alpha Strike) export format.
  */
@@ -215,8 +296,8 @@ function unitsToASRows(units: UnitSummary[]): Record<string, unknown>[] {
  * Converts one canonical Classic member to an export row from Entity + runtime.
  */
 function forceMemberToCBTRow(member: CBTForceMember, groupName: string): Record<string, unknown> {
-    const unit = member.summary;
-    const baseRow = unitToCBTRow(unit);
+    const unit = member.entity;
+    const baseRow = entityToCBTRow(unit);
     const { chassis, model, ...rest } = baseRow;
     if (!isCBTMekForceMember(member)) {
         const snapshot = member.force.getUnitSnapshot(member.id);
@@ -225,7 +306,7 @@ function forceMemberToCBTRow(member: CBTForceMember, groupName: string): Record<
         }
         const crew = member.force.getUnitCrewAssignment(member.id)?.positions[0];
         const crewState = crew ? snapshot.state.crew.get(crew.positionId) : undefined;
-        const pristineBv = member.pristineBattleValue() ?? unit.bv;
+        const pristineBv = member.pristineBattleValue() ?? unit.battleValue();
         const currentBv = member.adjustedBattleValue() ?? pristineBv;
         return {
             group: groupName,
@@ -254,7 +335,7 @@ function forceMemberToCBTRow(member: CBTForceMember, groupName: string): Record<
             + Math.max(0, face.maximum - face.committedRemaining), 0), 0);
     const totalInternalDamage = snapshot.locations.reduce((total, location) => total
         + Math.max(0, location.maximumInternal - location.committedRemainingInternal), 0);
-    const pristineBv = snapshot.battleValue.pristine ?? unit.bv;
+    const pristineBv = snapshot.battleValue.pristine ?? unit.battleValue();
     const currentBv = snapshot.battleValue.current ?? pristineBv;
     return {
         group: groupName,

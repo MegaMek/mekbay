@@ -27,9 +27,14 @@ import {
 import { asEncounterTargetId, type TargetRegistrySnapshot } from './encounter-runtime';
 import { asStateRevision, asUnitInstanceId, createCommandId, type InstanceBaselineRef } from './runtime-state';
 import {
+    canNonMekTakeActiveActions,
     createPristineNonMekUnitState,
     effectiveNonMekCrewState,
+    nonMekAttackMovementModifier,
     NonMekUnitInstance,
+    projectNonMekDefenseModifierBreakdown,
+    projectNonMekEndTurnHeat,
+    projectNonMekEscalatingFailureInteractions,
     projectNonMekMovementCapabilities,
 } from './non-mek-unit-instance';
 import { createDefaultCrewAssignment } from './crew-assignment';
@@ -42,6 +47,11 @@ import {
 import { serializeAttackerTargetingState } from './attacker-targeting-state';
 import { nonMekDamageTrackId } from '../rules/non-mek-damage-track-rules';
 import { componentIdForMount } from './non-mek-runtime-index';
+import { MountedEngine } from '../entity/components/engine';
+import {
+    BOOBY_TRAP_ARMED_MODE,
+    BOOBY_TRAP_DETONATED_MODE,
+} from './component-booby-trap';
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
@@ -68,6 +78,129 @@ describe('NonMekUnitInstance', () => {
             expect(runtime.snapshot().family.entityType).toBe(entity.entityType);
             expect(runtime.matchesEntity(entity)).toBeTrue();
         }
+    });
+
+    it('applies the shared delayed power lifecycle to non-Mek searchlights and minesweepers', () => {
+        const entity = new TestTankEntity();
+        entity.uuid.set(UUID);
+        const searchlight = addTestEquipmentWithFlags(entity, 'F_SEARCHLIGHT', {
+            location: entity.locationOrder[0],
+        });
+        const minesweeper = addTestEquipmentWithFlags(entity, 'F_MINESWEEPER', {
+            location: entity.locationOrder[0],
+        });
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:tank-delayed-power'),
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const searchlightId = componentIdForMount(searchlight);
+        const minesweeperId = componentIdForMount(minesweeper);
+
+        expect(runtime.componentMode(searchlightId)).toBe('enabled');
+        expect(runtime.componentMode(minesweeperId)).toBe('enabled');
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId: searchlightId,
+            mode: 'disabled',
+        }).accepted).toBeFalse();
+
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId: searchlightId,
+            mode: 'disabling',
+        }).accepted).toBeTrue();
+        expect(runtime.componentMode(searchlightId)).toBe('disabling');
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+        }).accepted).toBeTrue();
+        expect(runtime.componentMode(searchlightId)).toBe('disabled');
+
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId: searchlightId,
+            mode: 'enabling',
+        }).accepted).toBeTrue();
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+        }).accepted).toBeTrue();
+        expect(runtime.componentMode(searchlightId)).toBe('enabled');
+        expect(runtime.snapshot().components.has(searchlightId)).toBeFalse();
+    });
+
+    it('keeps ProtoMek EI fixed while allowing vehicle EI power switching', () => {
+        const protoMek = new TestProtoMekEntity();
+        protoMek.uuid.set(UUID);
+        const protoEi = addTestEquipmentWithFlags(protoMek, 'F_EI_INTERFACE', {
+            location: 'Torso',
+        });
+        const protoRuntime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:protomek-ei'),
+            baseline(),
+            protoMek,
+            CORE_2026_RULESET,
+        );
+        expect(protoRuntime.componentMode(componentIdForMount(protoEi))).toBeUndefined();
+        expect(protoRuntime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: protoRuntime.revision(),
+            componentId: componentIdForMount(protoEi),
+            mode: 'disabling',
+        }).accepted).toBeFalse();
+
+        const tank = new TestTankEntity();
+        tank.uuid.set(UUID);
+        const vehicleEi = addTestEquipmentWithFlags(tank, 'F_EI_INTERFACE', {
+            location: tank.locationOrder[0],
+        });
+        const tankRuntime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:tank-ei'),
+            baseline(),
+            tank,
+            CORE_2026_RULESET,
+        );
+        expect(tankRuntime.componentMode(componentIdForMount(vehicleEi))).toBe('enabled');
+    });
+
+    it('hands a non-Mek active probe to the last selected mount at End Turn', () => {
+        const entity = new TestTankEntity();
+        entity.uuid.set(UUID);
+        const first = addTestEquipmentWithFlags(entity, 'F_BAP', {
+            location: entity.locationOrder[0],
+        });
+        const second = addTestEquipmentWithFlags(entity, 'F_BAP', {
+            location: entity.locationOrder[0],
+        });
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:tank-probe-handoff'),
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const firstId = componentIdForMount(first);
+        const secondId = componentIdForMount(second);
+
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId: secondId,
+            mode: 'enabling',
+        }).accepted).toBeTrue();
+        expect(runtime.componentMode(firstId)).toBe('enabled');
+        expect(runtime.componentMode(secondId)).toBe('enabling');
+
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+        }).accepted).toBeTrue();
+        expect(runtime.componentMode(firstId)).toBe('disabled');
+        expect(runtime.componentMode(secondId)).toBe('enabled');
     });
 
     it('stores damage sparsely and resolves current values against the entity', () => {
@@ -290,6 +423,12 @@ describe('NonMekUnitInstance', () => {
             movement: { mode: 'run', distance: 16, boosterComponentIds: [] },
         }).accepted).toBeFalse();
         expect(runtime.dispatch({
+            kind: 'edit-escalating-failure',
+            expectedRevision: runtime.revision(),
+            componentId: boosterComponentId,
+            edit: { kind: 'select-sequence', index: 0 },
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(runtime.dispatch({
             kind: 'set-movement',
             expectedRevision: runtime.revision(),
             movement: { mode: 'run', distance: 16, boosterComponentIds: [boosterComponentId] },
@@ -329,15 +468,177 @@ describe('NonMekUnitInstance', () => {
             kind: 'end-turn',
             expectedRevision: restored.revision(),
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(restored.snapshot().components.get(boosterComponentId)?.escalatingFailure).toEqual({
+            sequence: 1,
+        });
         expect(restored.turnState()).toEqual({
             turnCounter: 1,
             airborne: null,
             movement: null,
             weaponsHeat: 0,
+            cover: null,
+            spotting: false,
         });
     });
 
-    it('activates ProtoMek myomer boosters only when the turn declaration selects them', () => {
+    it('owns origin/next cover, spotting, and defense summary state in the Entity runtime', () => {
+        const entity = new TestTankEntity();
+        entity.uuid.set(UUID);
+        entity.setTonnage(40);
+        entity.originalWalkMP.set(4);
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:tank-turn-summary'),
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+
+        expect(runtime.dispatch({
+            kind: 'set-cover',
+            expectedRevision: runtime.revision(),
+            cover: 'building-1',
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(runtime.dispatch({
+            kind: 'set-spotting',
+            expectedRevision: runtime.revision(),
+            spotting: true,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(runtime.dispatch({
+            kind: 'set-movement',
+            expectedRevision: runtime.revision(),
+            movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+
+        expect(runtime.turnState()).toEqual(jasmine.objectContaining({
+            cover: 'building-1',
+            spotting: true,
+            movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
+        }));
+        expect(projectNonMekDefenseModifierBreakdown(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+        )).toEqual([
+            { label: 'Moved 3-4 hexes', modifier: 1 },
+        ]);
+
+        const saved = serializeNonMekUnit({
+            instance: runtime,
+            sourceRef: baseline().entity,
+            deployment: {
+                schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
+                values: {
+                    id: 'deployment:tank-turn-summary',
+                    crewAssignment: createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+                },
+            },
+        });
+        expect(saved.turn).toEqual({
+            movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
+            cover: 6,
+            spotting: true,
+        });
+        expect(restoreNonMekUnit(saved, entity).turnState()).toEqual(runtime.turnState());
+
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+        }).accepted).toBeTrue();
+        expect(runtime.turnState()).toEqual(jasmine.objectContaining({
+            cover: null,
+            spotting: false,
+        }));
+    });
+
+    it('matches origin/next attacker movement badges by loaded Entity family', () => {
+        expect(nonMekAttackMovementModifier(new TestTankEntity(), 'run')).toBe(2);
+        expect(nonMekAttackMovementModifier(new TestProtoMekEntity(), 'jump')).toBe(3);
+        expect(nonMekAttackMovementModifier(new TestInfantryEntity(), 'walk')).toBe(0);
+        expect(nonMekAttackMovementModifier(new TestAeroSpaceFighterEntity(), 'run')).toBe(0);
+    });
+
+    it('denies active turn actions without a live controller and permits a drone controller', () => {
+        const entity = new TestTankEntity();
+        entity.uuid.set(UUID);
+        entity.originalWalkMP.set(4);
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:tank-no-controller'),
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
+
+        expect(runtime.dispatch({
+            kind: 'set-crew-state',
+            expectedRevision: runtime.revision(),
+            positionId,
+            wounds: 0,
+            unconscious: false,
+            ejected: false,
+            state: 'killed',
+        }).accepted).toBeTrue();
+        expect(canNonMekTakeActiveActions(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+        )).toBeFalse();
+        expect(projectNonMekMovementCapabilities(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+        )).toEqual(jasmine.objectContaining({
+            canTakeActiveActions: false,
+            maximum: jasmine.objectContaining({ walk: 0, run: 0, jump: 0 }),
+        }));
+        expect(runtime.dispatch({
+            kind: 'set-spotting',
+            expectedRevision: runtime.revision(),
+            spotting: true,
+        }).accepted).toBeFalse();
+        expect(runtime.dispatch({
+            kind: 'set-movement',
+            expectedRevision: runtime.revision(),
+            movement: { mode: 'walk', distance: 1, boosterComponentIds: [] },
+        }).accepted).toBeFalse();
+
+        const droneEntity = new TestTankEntity();
+        droneEntity.uuid.set(UUID);
+        droneEntity.originalWalkMP.set(4);
+        addTestEquipmentWithFlags(droneEntity, 'F_DRONE_OPERATING_SYSTEM');
+        const droneRuntime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:tank-drone-controller'),
+            baseline(),
+            droneEntity,
+            CORE_2026_RULESET,
+        );
+        const droneCrewPositionId = [...droneRuntime.getIndex().crewPositions.keys()][0]!;
+        expect(droneRuntime.dispatch({
+            kind: 'set-crew-state',
+            expectedRevision: droneRuntime.revision(),
+            positionId: droneCrewPositionId,
+            wounds: 0,
+            unconscious: false,
+            ejected: false,
+            state: 'killed',
+        }).accepted).toBeTrue();
+        expect(canNonMekTakeActiveActions(
+            droneEntity,
+            droneRuntime.getIndex(),
+            droneRuntime.snapshot(),
+            CORE_2026_RULESET,
+        )).toBeTrue();
+        expect(droneRuntime.dispatch({
+            kind: 'set-spotting',
+            expectedRevision: droneRuntime.revision(),
+            spotting: true,
+        }).accepted).toBeTrue();
+    });
+
+    it('owns ProtoMek myomer-booster risk, movement, failure, and recovery state', () => {
         const entity = new TestProtoMekEntity();
         entity.uuid.set(UUID);
         entity.setTonnage(6);
@@ -358,16 +659,69 @@ describe('NonMekUnitInstance', () => {
             CORE_2026_RULESET,
         );
         expect(capabilities.ordinaryRun).toBe(9);
-        expect(capabilities.maximum.run).toBe(12);
+        expect(capabilities.maximum.run).toBe(9);
+        expect(capabilities.boosterComponentIds).toEqual([]);
         expect(runtime.dispatch({
             kind: 'set-movement',
             expectedRevision: runtime.revision(),
             movement: { mode: 'run', distance: 12, boosterComponentIds: [] },
         }).accepted).toBeFalse();
+        const interaction = projectNonMekEscalatingFailureInteractions(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+            'turn-summary',
+        )[0]!;
+        expect(interaction.choices.map(choice => choice.shortLabel)).toEqual([
+            '3+', '5+', '7+', '10+', '11+', '✖',
+        ]);
+        expect(runtime.dispatch({
+            kind: 'edit-escalating-failure',
+            expectedRevision: runtime.revision(),
+            componentId: boosterId,
+            edit: { kind: 'select-sequence', index: 0 },
+        }).accepted).toBeTrue();
+        capabilities = projectNonMekMovementCapabilities(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+        );
+        expect(capabilities.maximum.run).toBe(12);
+        expect(capabilities.boosterComponentIds).toEqual([boosterId]);
         expect(runtime.dispatch({
             kind: 'set-movement',
             expectedRevision: runtime.revision(),
             movement: { mode: 'run', distance: 12, boosterComponentIds: [boosterId] },
+        }).accepted).toBeTrue();
+
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+        }).accepted).toBeTrue();
+        expect(runtime.snapshot().components.get(boosterId)?.escalatingFailure).toEqual({ sequence: 1 });
+        expect(projectNonMekMovementCapabilities(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+        ).maximum.run).toBe(9);
+        expect(runtime.dispatch({
+            kind: 'edit-escalating-failure',
+            expectedRevision: runtime.revision(),
+            componentId: boosterId,
+            edit: { kind: 'set-status', status: 'disabled' },
+        }).accepted).toBeTrue();
+        expect(runtime.snapshot().components.get(boosterId)).toEqual(jasmine.objectContaining({
+            statusOverride: 'disabled',
+            escalatingFailure: { sequence: 1 },
+        }));
+        expect(runtime.dispatch({
+            kind: 'edit-escalating-failure',
+            expectedRevision: runtime.revision(),
+            componentId: boosterId,
+            edit: { kind: 'set-status', status: 'available' },
         }).accepted).toBeTrue();
 
         const crewId = [...runtime.getIndex().crewPositions.keys()][0]!;
@@ -389,6 +743,7 @@ describe('NonMekUnitInstance', () => {
             stationary: 0,
             walk: 0,
             run: 0,
+            sprint: 0,
             jump: 0,
             UMU: 0,
             VTOL: 0,
@@ -585,6 +940,64 @@ describe('NonMekUnitInstance', () => {
         expect(result).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(fixture.runtime.ammoRemaining(fixture.ammoId)).toBe(9);
         expect(fixture.runtime.turnState().weaponsHeat).toBe(0);
+    });
+
+    it('uses maximum prototype-laser heat for aerospace fire without die evidence', () => {
+        const weapon = new WeaponEquipment({
+            id: 'ISMediumPulseLaserPrototype',
+            name: 'Prototype Medium Pulse Laser',
+            type: 'weapon',
+            weapon: { damage: 6, heat: 4, ranges: [2, 4, 6, 8], av: [6, 0, 0, 0] },
+        });
+        const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({
+            [weapon.id]: weapon,
+        }));
+        entity.uuid.set(UUID);
+        entity.heatSinkCount.set(10);
+        const mount = addTestEquipment(entity, weapon, { location: 'Nose' });
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:aero-prototype-fire'),
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const weaponId = componentIdForMount(mount);
+        const targetId = asEncounterTargetId('target:aero-prototype');
+        const registry: TargetRegistrySnapshot = Object.freeze({
+            revision: asStateRevision(0),
+            targets: Object.freeze([Object.freeze({
+                id: targetId,
+                letter: 'A',
+                name: 'Target A',
+                color: '#ff0000',
+                source: 'manual' as const,
+                readOnly: false,
+            })]),
+        });
+        expect(runtime.dispatchAttackerTargeting({
+            kind: 'edit-attacker-targeting',
+            expectedRevision: runtime.revision(),
+            expectedRegistryRevision: registry.revision,
+            edit: {
+                kind: 'set-component-selection',
+                componentId: weaponId,
+                selection: { kind: 'target', targetId },
+            },
+        }, registry, false).accepted).toBeTrue();
+
+        const result = runtime.dispatchSelectedWeaponFire({
+            type: 'fire-selected-weapons',
+            commandId: createCommandId(),
+            expectedRevision: runtime.revision(),
+            expectedRegistryRevision: registry.revision,
+            heatPolicy: 'automatic',
+        }, registry, false, false);
+
+        expect(result).toEqual(jasmine.objectContaining({
+            accepted: true,
+            prototypeHeat: [],
+        }));
+        expect(runtime.turnState().weaponsHeat).toBe(10);
     });
 
     it('keeps a pending-destroyed vehicle weapon actionable until phase commit', () => {
@@ -828,6 +1241,275 @@ describe('NonMekUnitInstance', () => {
             heatsinksOff: 2,
         });
         expect(restoreNonMekUnit(saved, fighter).snapshot().heat).toEqual(saved.heat!);
+    });
+
+    it('applies Nova CEWS heat to aerospace units using the committed power state', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(0);
+        const nova = addTestEquipmentWithFlags(
+            fighter,
+            ['F_NOVA', 'F_ECM', 'F_BAP'],
+            { location: 'Nose' },
+        );
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:fighter-nova-heat'),
+            baseline(),
+            fighter,
+            CORE_2026_RULESET,
+        );
+        const novaId = componentIdForMount(nova);
+
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+        }).accepted).toBeTrue();
+        expect(runtime.snapshot().heat.current).toBe(2);
+
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId: novaId,
+            mode: 'disabling',
+        }).accepted).toBeTrue();
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+        }).accepted).toBeTrue();
+        expect(runtime.snapshot().heat.current).toBe(4);
+        expect(runtime.componentMode(novaId)).toBe('disabled');
+
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+        }).accepted).toBeTrue();
+        expect(runtime.snapshot().heat.current).toBe(4);
+    });
+
+    it('projects named aerospace end-turn heat sources without mutating runtime state', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(5);
+        const nova = addTestEquipmentWithFlags(
+            fighter,
+            ['F_NOVA', 'F_ECM', 'F_BAP'],
+            { location: 'Nose' },
+        );
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:fighter-heat-projection'),
+            baseline(),
+            fighter,
+            CORE_2026_RULESET,
+        );
+        expect(runtime.dispatch({
+            kind: 'set-heat',
+            expectedRevision: runtime.revision(),
+            heat: 10,
+            target: 'committed',
+        }).accepted).toBeTrue();
+
+        const before = runtime.snapshot();
+        const projection = projectNonMekEndTurnHeat(
+            fighter,
+            runtime.getIndex(),
+            before,
+            CORE_2026_RULESET,
+        );
+
+        expect(projection).toEqual(jasmine.objectContaining({
+            current: 10,
+            generated: 2,
+            dissipated: 5,
+            projected: 7,
+        }));
+        expect(projection?.sources).toEqual([
+            { id: 'nova-cews', label: 'Nova CEWS', value: 2 },
+            { id: 'dissipation', label: 'Dissipation', value: -5 },
+        ]);
+        expect(runtime.snapshot()).toBe(before);
+        expect(componentIdForMount(nova)).toBeDefined();
+    });
+
+    it('leaves aerospace heat unchanged under manual end-turn settlement', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(10);
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:fighter-manual-heat'),
+            baseline(),
+            fighter,
+            CORE_2026_RULESET,
+        );
+        expect(runtime.dispatch({
+            kind: 'set-heat',
+            expectedRevision: runtime.revision(),
+            heat: 20,
+            target: 'committed',
+        }).accepted).toBeTrue();
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+            heatPolicy: 'manual',
+        }).accepted).toBeTrue();
+
+        expect(runtime.snapshot().heat.current).toBe(20);
+        expect(runtime.turnState()).toEqual({
+            turnCounter: 1,
+            airborne: null,
+            movement: null,
+            weaponsHeat: 0,
+            cover: null,
+            spotting: false,
+        });
+    });
+
+    it('runs the Ground-Mobile HPG charge, transmission, movement, and cooldown cycle', () => {
+        const tank = new TestTankEntity();
+        tank.uuid.set(UUID);
+        tank.originalWalkMP.set(4);
+        tank.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 100, techBase: 'IS' }));
+        const hpg = addTestEquipmentWithFlags(
+            tank,
+            ['F_MOBILE_HPG', 'F_MEK_EQUIPMENT'],
+            { location: tank.locationOrder[0] },
+        );
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:tank-ground-mobile-hpg'),
+            baseline(),
+            tank,
+            CORE_2026_RULESET,
+        );
+        const hpgId = componentIdForMount(hpg);
+
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId: hpgId,
+            mode: 'charging',
+        }).accepted).toBeTrue();
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+        }).accepted).toBeTrue();
+        expect(runtime.componentMode(hpgId)).toBe('charged');
+
+        expect(runtime.dispatch({
+            kind: 'set-movement',
+            expectedRevision: runtime.revision(),
+            movement: { mode: 'walk', distance: 1, boosterComponentIds: [] },
+        }).accepted).toBeTrue();
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId: hpgId,
+            mode: 'transmitting',
+        }).accepted).toBeFalse();
+        expect(runtime.dispatch({
+            kind: 'set-movement',
+            expectedRevision: runtime.revision(),
+            movement: null,
+        }).accepted).toBeTrue();
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId: hpgId,
+            mode: 'transmitting',
+        }).accepted).toBeTrue();
+        expect(projectNonMekMovementCapabilities(
+            tank,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+        ).maximum.walk).toBe(0);
+
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+        }).accepted).toBeTrue();
+        expect(runtime.componentMode(hpgId)).toBe('cooldown-3');
+        for (let turn = 0; turn < 3; turn += 1) {
+            expect(runtime.dispatch({
+                kind: 'end-turn',
+                expectedRevision: runtime.revision(),
+            }).accepted).toBeTrue();
+        }
+        expect(runtime.componentMode(hpgId)).toBe('idle');
+    });
+
+    it('toggles a non-ground Mobile HPG and applies forty aerospace heat', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(0);
+        fighter.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 100, techBase: 'IS' }));
+        const hpg = addTestEquipmentWithFlags(fighter, 'F_MOBILE_HPG', { location: 'Nose' });
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:fighter-mobile-hpg'),
+            baseline(),
+            fighter,
+            CORE_2026_RULESET,
+        );
+        const hpgId = componentIdForMount(hpg);
+
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId: hpgId,
+            mode: 'transmitting',
+        }).accepted).toBeTrue();
+        expect(runtime.dispatch({
+            kind: 'end-turn',
+            expectedRevision: runtime.revision(),
+        }).accepted).toBeTrue();
+        expect(runtime.snapshot().heat.current).toBe(40);
+        expect(runtime.componentMode(hpgId)).toBe('transmitting');
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId: hpgId,
+            mode: 'idle',
+        }).accepted).toBeTrue();
+    });
+
+    it('detonates a Booby Trap as one irreversible component-and-unit transaction', () => {
+        const tank = new TestTankEntity();
+        tank.uuid.set(UUID);
+        const trap = addTestEquipmentWithFlags(
+            tank,
+            'F_BOOBY_TRAP',
+            { location: tank.locationOrder[0] },
+        );
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:tank-booby-trap'),
+            baseline(),
+            tank,
+            CORE_2026_RULESET,
+        );
+        const trapId = componentIdForMount(trap);
+        const revision = runtime.revision();
+
+        expect(runtime.componentMode(trapId)).toBe(BOOBY_TRAP_ARMED_MODE);
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: revision,
+            componentId: trapId,
+            mode: BOOBY_TRAP_DETONATED_MODE,
+        }).accepted).toBeFalse();
+        expect(runtime.revision()).toBe(revision);
+
+        expect(runtime.dispatch({
+            kind: 'detonate-booby-trap',
+            expectedRevision: revision,
+            componentId: trapId,
+        }).accepted).toBeTrue();
+        expect(runtime.componentMode(trapId)).toBe(BOOBY_TRAP_DETONATED_MODE);
+        expect(runtime.snapshot().explicitlyDestroyed).toBeTrue();
+        expect(runtime.query().destroyed()).toBeTrue();
+        expect(runtime.dispatch({
+            kind: 'set-destroyed',
+            expectedRevision: runtime.revision(),
+            destroyed: false,
+        }).accepted).toBeFalse();
+        expect(runtime.query().destroyed()).toBeTrue();
     });
 
     it('recalculates fighter and Battle Armor BV from sparse structural damage', () => {

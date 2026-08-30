@@ -428,10 +428,10 @@ describe('Entity equipment panel projection', () => {
 
     it('projects real aerospace heat and its named ranged-fire modifier', () => {
         const weapon = new WeaponEquipment({
-            id: 'AeroHeatWeapon',
-            name: 'Aero Heat Weapon',
+            id: 'ISMediumPulseLaserPrototype',
+            name: 'Prototype Medium Pulse Laser',
             type: 'weapon',
-            weapon: { damage: 5, heat: 3, ranges: [6, 12, 18, 24], av: [5, 5, 0, 0] },
+            weapon: { damage: 6, heat: 4, ranges: [2, 4, 6, 8], av: [6, 0, 0, 0] },
         });
         const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({
             [weapon.id]: weapon,
@@ -464,6 +464,11 @@ describe('Entity equipment panel projection', () => {
 
         expect(snapshot.tracksHeat).toBeTrue();
         expect(snapshot.heat).toEqual({ current: 24, pending: null, sinksOff: 0 });
+        expect(row.weapon).toEqual(jasmine.objectContaining({
+            heat: 10,
+            firingHeat: 10,
+        }));
+        expect(row.weapon?.heatSuffix).toBeUndefined();
         expect(row.weapon?.hitModifierBreakdown).toContain({
             label: 'Heat - Fire Modifier',
             modifier: 4,

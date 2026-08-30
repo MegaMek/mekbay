@@ -238,7 +238,6 @@ describe('DataService', () => {
     const pendingUnitCatalogActivation = signal<any>(undefined);
     const unitsCatalogMock = {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
-        whenBackgroundCatalogSettled: jasmine.createSpy('whenBackgroundCatalogSettled').and.resolveTo(undefined),
         getUnits: jasmine.createSpy('getUnits').and.returnValue([]),
         coreState: signal({ status: 'idle', availableUnits: 0 } as const).asReadonly(),
         catalogRevision: unitCatalogRevision.asReadonly(),
@@ -324,10 +323,8 @@ describe('DataService', () => {
     const queueMockCatalogActivation = (units: UnitSummary[] = unitsCatalogMock.getUnits()): any => {
         const revision = nextMockCatalogRevision++;
         const pending = {
-            kind: 'megamek' as const,
             revision,
             coreRevision: revision,
-            customOverlayRevision: 0,
             snapshot: {
                 revision,
                 coreRevision: revision,
@@ -348,25 +345,6 @@ describe('DataService', () => {
         pendingUnitCatalogActivation.set(pending);
         return pending;
     };
-    const queueMockAuxiliaryActivation = (units: UnitSummary[]): any => {
-        const revision = nextMockCatalogRevision++;
-        const pending = {
-            kind: 'auxiliary' as const,
-            revision,
-            coreRevision: unitCatalogRevision(),
-            customOverlayRevision: revision,
-            snapshot: {
-                revision,
-                coreRevision: unitCatalogRevision(),
-                summaries: [],
-                units,
-                summariesByIdentity: new Map(),
-            },
-        };
-        pendingUnitCatalogActivation.set(pending);
-        return pending;
-    };
-
     beforeEach(() => {
         TestBed.resetTestingModule();
         dbServiceMock.getForce.calls.reset();
@@ -418,8 +396,6 @@ describe('DataService', () => {
         unitSearchIndexServiceMock.commitPreparedCatalogIndexes.calls.reset();
         unitsCatalogMock.initialize.calls.reset();
         unitsCatalogMock.initialize.and.callFake(async () => { queueMockCatalogActivation(); });
-        unitsCatalogMock.whenBackgroundCatalogSettled.calls.reset();
-        unitsCatalogMock.whenBackgroundCatalogSettled.and.resolveTo(undefined);
         unitsCatalogMock.getUnits.calls.reset();
         unitsCatalogMock.getUnits.and.returnValue([]);
         unitsCatalogMock.acknowledgeCatalogRevisionApplied.calls.reset();
@@ -845,7 +821,7 @@ describe('DataService', () => {
         expect((service as any).currentForceAuthorityGeneration(local.instanceId)).toBe(1);
     });
 
-    it('quarantines equal-time divergent local and cloud force authority', async () => {
+    it('keeps local authority when equal-time V2 copies diverge, matching the V1 loader', async () => {
         const local = createSerializedForceForTest({
             instanceId: 'force-equal-divergence',
             timestamp: '2026-04-05T00:00:00Z',
@@ -856,13 +832,119 @@ describe('DataService', () => {
             name: 'Cloud Branch',
         };
         dbServiceMock.getForce.and.resolveTo(local);
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: encodeForceForStorage(cloud) });
+        spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
+
+        expect((await service.getForce(local.instanceId, false))?.name).toBe('Local Branch');
+        expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
+    });
+
+    it('loads equal-time divergent V1 data through deterministic legacy migration', async () => {
+        const local: SerializedForce = {
+            version: 1,
+            instanceId: 'force-equal-v1-divergence',
+            timestamp: '2026-04-05T00:00:00Z',
+            type: GameSystem.CLASSIC,
+            name: 'Local Legacy Branch',
+            owned: true,
+            groups: [],
+        };
+        const cloud: SerializedForce = { ...local, name: 'Cloud Legacy Branch' };
+        dbServiceMock.getForce.and.resolveTo(local);
         wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: cloud });
         spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
 
-        expect(await service.getForce(local.instanceId, false)).toBeNull();
+        const force = await service.getForce(local.instanceId, false);
 
-        expect(loggerServiceMock.error).toHaveBeenCalledWith(jasmine.stringMatching(/divergent local and cloud authority/u));
+        expect(force?.name).toBe('Local Legacy Branch');
+    });
+
+    it('prefers V2 over V1 when local and cloud timestamps tie', async () => {
+        const timestamp = '2026-04-05T00:00:00Z';
+        const local: SerializedForce = {
+            version: 1,
+            instanceId: 'force-equal-mixed-version',
+            timestamp,
+            type: GameSystem.CLASSIC,
+            name: 'Legacy Local',
+            owned: true,
+            groups: [],
+        };
+        const cloud: SerializedForce = {
+            version: 2,
+            instanceId: local.instanceId,
+            timestamp,
+            type: GameSystem.CLASSIC,
+            name: 'Current Cloud',
+            owned: true,
+            cbt: createEmptyCBTForceForTest(local.instanceId),
+        };
+        dbServiceMock.getForce.and.resolveTo(local);
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: encodeForceForStorage(cloud) });
+        spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
+
+        const loaded = await service.getForce(local.instanceId, false);
+        expect(loaded?.name).toBe('Current Cloud');
+    });
+
+    it('keeps local V2 over cloud V1 when their timestamps tie', async () => {
+        const timestamp = '2026-04-05T00:00:00Z';
+        const local: SerializedForce = {
+            version: 2,
+            instanceId: 'force-equal-mixed-version-local-v2',
+            timestamp,
+            type: GameSystem.CLASSIC,
+            name: 'Current Local',
+            owned: true,
+            cbt: createEmptyCBTForceForTest('force-equal-mixed-version-local-v2'),
+        };
+        const cloud: SerializedForce = {
+            version: 1,
+            instanceId: local.instanceId,
+            timestamp,
+            type: GameSystem.CLASSIC,
+            name: 'Legacy Cloud',
+            owned: true,
+            groups: [],
+        };
+        dbServiceMock.getForce.and.resolveTo(local);
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: cloud });
+        spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
+
+        expect((await service.getForce(local.instanceId, false))?.name).toBe('Current Local');
+    });
+
+    it('loads a remote force without touching local storage when requested', async () => {
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({
+            data: {
+                version: 1,
+                instanceId: 'remote-force',
+                timestamp: '2026-04-05T00:00:00Z',
+                type: GameSystem.CLASSIC,
+                name: 'Remote Force',
+                owned: false,
+                groups: [],
+            },
+        });
+        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+
+        service.isCloudForceLoading.set(false);
+        const force = await service.getForce('remote-force', false, {
+            skipLocal: true,
+            showLoading: false,
+        });
+
+        expect(force?.name).toBe('Remote Force');
+        expect(force?.owned()).toBeFalse();
+        expect(dbServiceMock.getForce).not.toHaveBeenCalled();
         expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
+        expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
+            action: 'getForce',
+            instanceId: 'remote-force',
+            ownedOnly: false,
+        });
+        expect(JSON.stringify(wsServiceMock.sendAndWaitForResponse.calls.allArgs())).not.toContain('uuid');
+        expect(service.isCloudForceLoading()).toBeFalse();
     });
 
     it('flushes reconnect cloud saves immediately and waits for acknowledgement', async () => {
@@ -2312,7 +2394,6 @@ describe('DataService', () => {
 
         expect(service.isDataReady()).toBeTrue();
         expect(unitSearchIndexServiceMock.prepareCatalogIndexes).toHaveBeenCalledTimes(1);
-        expect(unitsCatalogMock.whenBackgroundCatalogSettled).not.toHaveBeenCalled();
         expect(loggerServiceMock.info).toHaveBeenCalledWith(
             jasmine.stringMatching(/^\[Startup\] Local data ready in \d+ ms\.$/u),
         );
@@ -2481,7 +2562,7 @@ describe('DataService', () => {
         expect(service.tagsVersion()).toBe(3);
     });
 
-    it('keeps auxiliary era/faction membership detached until the same atomic Unit swap', async () => {
+    it('keeps replacement era/faction membership detached until the same atomic Unit swap', async () => {
         const era: Era = {
             id: 1,
             name: 'Test era',
@@ -2513,7 +2594,7 @@ describe('DataService', () => {
         unitsCatalogMock.finalizePendingActivation.and.callFake((revision: number) => revision === 2
             ? new Promise<boolean>(resolve => { finishFinalize = resolve; })
             : Promise.resolve(true));
-        queueMockAuxiliaryActivation(unitsB);
+        queueMockCatalogActivation(unitsB);
         TestBed.tick();
         for (let index = 0;
             index < 12 && unitsCatalogMock.finalizePendingActivation.calls.count() < 2;

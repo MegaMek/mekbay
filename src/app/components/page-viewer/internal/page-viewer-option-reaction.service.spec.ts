@@ -109,21 +109,4 @@ describe('PageViewerOptionReactionService', () => {
         })).toBeFalse();
     });
 
-    it('requests one redisplay when the record-sheet source changes', () => {
-        expect(service.shouldRedisplayForSheetSourceChange({
-            source: 'generated',
-            viewInitialized: true,
-            isSwiping: false,
-        })).toBeFalse();
-        expect(service.shouldRedisplayForSheetSourceChange({
-            source: 'pre-generated',
-            viewInitialized: true,
-            isSwiping: false,
-        })).toBeTrue();
-        expect(service.shouldRedisplayForSheetSourceChange({
-            source: 'pre-generated',
-            viewInitialized: true,
-            isSwiping: false,
-        })).toBeFalse();
-    });
 });

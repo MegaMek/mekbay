@@ -5,7 +5,6 @@
 import { EquipmentFlag } from './equipment-flags.type';
 import type { ComponentId } from './entity/entity-identifiers';
 import type { NonMekRuntimeIndex } from './runtime/non-mek-runtime-index';
-import type { UnitSummary } from './unit-summary.model';
 import type { SerializedC3NetworkGroup } from './force-serialization';
 import { C3_EMERGENCY_MASTER_FLAG } from './c3-emergency-master.model';
 import type { Equipment } from './equipment.model';
@@ -300,7 +299,7 @@ export const C3_NETWORK_LIMITS: Record<C3NetworkType, number> = {
     [C3NetworkType.NOVA]: 3
 };
 
-/** Maximum participating endpoints in a hierarchical C3 network. */
+/** Maximum participating units in a hierarchical C3 network. */
 export const C3_MAX_NETWORK_TOTAL = 12;
 /** Maximum network depth (master -> sub-master -> slaves). */
 export const C3_MAX_NETWORK_DEPTH = 2;
@@ -332,11 +331,20 @@ export interface C3Component {
     index: number;
 }
 
+export interface C3UnitPresentation {
+    readonly chassis: string;
+    readonly model: string;
+    readonly icon: string;
+    readonly tons: number;
+    readonly walk: number;
+}
+
 /** Narrow presentation/query surface; no force-unit mechanics owner is required. */
 export interface C3UnitView {
     readonly id: string;
     readonly c3Components?: readonly C3Component[];
-    getSummary(): UnitSummary;
+    getC3Specials(): readonly string[];
+    getC3Presentation(): C3UnitPresentation;
     alias(): string | undefined;
     c3Position(): Readonly<{ x: number; y: number }> | null;
     isC3Jammed(): boolean;
@@ -439,7 +447,7 @@ const AS_C3_PATTERNS: { pattern: RegExp; flag: EquipmentFlag; networkType: C3Net
  * @param specials Array of special ability strings from unit.as.specials
  * @returns Array of C3 info objects
  */
-export function parseASC3Specials(specials: string[]): ASC3Info[] {
+export function parseASC3Specials(specials: readonly string[]): ASC3Info[] {
     const results: ASC3Info[] = [];
     
     for (const special of specials) {
@@ -517,7 +525,7 @@ export class C3Capabilities {
 
     private static fromAlphaStrike(unit: C3UnitView): C3Component[] {
         const components: C3Component[] = [];
-        for (const info of parseASC3Specials(unit.getSummary().as?.specials ?? [])) {
+        for (const info of parseASC3Specials(unit.getC3Specials())) {
             const count = info.role === C3Role.MASTER ? info.count : 1;
             for (let index = 0; index < count; index++) {
                 components.push({

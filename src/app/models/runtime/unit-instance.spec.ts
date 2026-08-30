@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { asCommandId, asStateRevision } from './runtime-state';
-import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
+import {
+    createDirectMekRuntimeFixture,
+    createDirectPrototypeLaserRuntimeFixture,
+} from './testing/direct-mek-runtime-fixture';
 import { asEncounterTargetId, type TargetRegistrySnapshot } from './encounter-runtime';
 
 describe('CBTUnitInstance with a direct MekEntity', () => {
@@ -273,8 +276,51 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
             commandId: asCommandId('fall:end-phase'),
             expectedRevision: instance.query().stateRevision,
         }).accepted).toBeTrue();
-        expect(instance.query().mekMovementPsrState().automaticFalls).toEqual([]);
+        expect(instance.query().mekMovementPsrState().automaticFalls.length).toBe(1);
         expect(instance.query().hasCondition('prone')).toBeTrue();
+        expect(instance.dispatch({
+            type: 'dismiss-mek-automatic-falls',
+            commandId: asCommandId('fall:handled'),
+            expectedRevision: instance.query().stateRevision,
+        }).accepted).toBeTrue();
+        if (instance.query().mekPilotChecks().some(check => check.status === 'pending')) {
+            expect(instance.dispatch({
+                type: 'dismiss-mek-pilot-checks',
+                commandId: asCommandId('fall:checks-handled'),
+                expectedRevision: instance.query().stateRevision,
+            }).accepted).toBeTrue();
+        }
+        const resolvedBoundary = instance.dispatch({
+            type: 'end-phase',
+            commandId: asCommandId('fall:resolved'),
+            expectedRevision: instance.query().stateRevision,
+        });
+        expect(resolvedBoundary.accepted).withContext(JSON.stringify(resolvedBoundary)).toBeTrue();
+        expect(instance.query().mekMovementPsrState().automaticFalls).toEqual([]);
+    });
+
+    it('explicitly dismisses pending pilot checks before a boundary', () => {
+        const { instance, index } = createDirectMekRuntimeFixture('total-warfare');
+        const slot = [...index.slots.values()].find(candidate =>
+            index.locations.get(candidate.locationId)?.code === 'LL'
+            && candidate.componentIds.some(componentId => {
+                const component = index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Foot Actuator';
+            }))!;
+        expect(instance.dispatch({
+            type: 'hit-critical', commandId: asCommandId('dismiss:hit'),
+            expectedRevision: instance.query().stateRevision,
+            slotId: slot.id, hits: 1, target: 'committed',
+        }).accepted).toBeTrue();
+        const check = instance.query().mekPilotChecks()[0]!;
+        expect(check.status).toBe('pending');
+
+        expect(instance.dispatch({
+            type: 'dismiss-mek-pilot-checks', commandId: asCommandId('dismiss:check'),
+            expectedRevision: instance.query().stateRevision,
+            checkIds: [check.checkId],
+        }).accepted).toBeTrue();
+        expect(instance.query().mekPilotChecks()).toEqual([]);
     });
 
     it('uses the selected rapid-fire mode for heat and ammunition', () => {
@@ -304,6 +350,43 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         expect(fixture.instance.query().turnState().weaponsHeat).toBe(2);
         expect(fixture.instance.query().remainingAmmo(ammo.id)).toBe(18);
+    });
+
+    it('adds deterministic prototype-laser heat and rejects missing die evidence', () => {
+        const fixture = createDirectPrototypeLaserRuntimeFixture();
+        const laser = fixture.equipmentComponent('ISMediumPulseLaserPrototype');
+        const fired = fixture.instance.dispatch({
+            type: 'fire-weapons',
+            commandId: asCommandId('prototype-laser:fire'),
+            expectedRevision: asStateRevision(0),
+            heatPolicy: 'manual',
+            selections: [{ weaponId: laser.id }],
+            prototypeHeatRolls: [{ weaponId: laser.id, roll: 6 }],
+        });
+
+        expect(fired.accepted).toBeTrue();
+        if (!fired.accepted) return;
+        expect(fired.prototypeHeat).toEqual([{
+            weaponId: laser.id,
+            roll: 6,
+            additionalHeat: 6,
+            detail: '1D6 roll: 6',
+        }]);
+        expect(fixture.instance.query().turnState().weaponsHeat).toBe(10);
+
+        const missing = createDirectPrototypeLaserRuntimeFixture(
+            'core-2026',
+            'unit:prototype-missing-evidence',
+        );
+        const missingLaser = missing.equipmentComponent('ISMediumPulseLaserPrototype');
+        expect(missing.instance.dispatch({
+            type: 'fire-weapons',
+            commandId: asCommandId('prototype-laser:missing'),
+            expectedRevision: asStateRevision(0),
+            heatPolicy: 'manual',
+            selections: [{ weaponId: missingLaser.id }],
+        })).toEqual(jasmine.objectContaining({ accepted: false, reason: 'INVALID_TARGET' }));
+        expect(missing.instance.query().turnState().weaponsHeat).toBe(0);
     });
 
     it('applies an explicit heat correction without consuming automatic turn heat', () => {

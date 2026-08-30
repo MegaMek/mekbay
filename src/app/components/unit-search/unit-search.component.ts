@@ -69,6 +69,7 @@ import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { SimpleSliderComponent } from '../simple-slider/simple-slider.component';
 import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
 import { LoadingSpinnerComponent } from '../loading-spinner/loading-spinner.component';
+import { decodeUnitSearchIdentityKey, getUnitSearchIdentityKey } from '../../utils/unit-search-shared.util';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -296,7 +297,6 @@ export class UnitSearchComponent {
     private readonly tableYearCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableYearCell');
     private readonly tableTypeCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableTypeCell');
     private readonly tableBvCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableBvCell');
-    private readonly tableTonsCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableTonsCell');
     private readonly tablePvCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tablePvCell');
     private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableMovementCell');
     private readonly tableClassicMovementCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableClassicMovementCell');
@@ -366,7 +366,7 @@ export class UnitSearchComponent {
 
         return units.filter(unit => unitMatchesVariantGroup(unit, variantGroupFilter));
     });
-    readonly displayedUnitKeys = computed(() => this.displayedUnits().map(unit => unit.name));
+    readonly displayedUnitKeys = computed(() => this.displayedUnits().map(getUnitSearchIdentityKey));
     readonly activeVariantGroupRepresentativeUnit = computed(() => {
         return this.displayedUnits()[0] ?? this.activeVariantGroupFilter()?.representativeUnit ?? null;
     });
@@ -493,7 +493,8 @@ export class UnitSearchComponent {
     private inlinePanelIndex = computed(() => {
         const unit = this.inlinePanelUnit();
         if (!unit) return -1;
-        return this.displayedUnits().findIndex(u => u.name === unit.name);
+        const identity = getUnitSearchIdentityKey(unit);
+        return this.displayedUnits().findIndex(candidate => getUnitSearchIdentityKey(candidate) === identity);
     });
 
     /** Whether there is a previous unit to navigate to in the inline panel */
@@ -585,7 +586,6 @@ export class UnitSearchComponent {
         const yearCell = this.tableYearCell();
         const typeCell = this.tableTypeCell();
         const bvCell = this.tableBvCell();
-        const tonsCell = this.tableTonsCell();
         const pvCell = this.tablePvCell();
         const movementCell = this.tableMovementCell();
         const classicMovementCell = this.tableClassicMovementCell();
@@ -597,7 +597,7 @@ export class UnitSearchComponent {
         }
 
         if (!this.gameService.isAlphaStrike()) {
-            if (!bvCell || !tonsCell || !classicMovementCell) {
+            if (!bvCell || !classicMovementCell) {
                 return [];
             }
 
@@ -672,7 +672,7 @@ export class UnitSearchComponent {
                     id: 'tons',
                     header: 'Tons',
                     track: 64,
-                    cellTemplate: tonsCell,
+                    value: unit => this.formatTons(unit.tons),
                     sortKey: 'tons',
                     sortActive: this.isSortActive('tons'),
                     cellClass: this.tableCellClass('cbt-td-tons', this.isSortActive('tons')),
@@ -1135,14 +1135,15 @@ export class UnitSearchComponent {
             });
         });
         effect(() => {
-            const displayedNames = new Set(this.displayedUnits().map(unit => unit.name));
+            const filteredIdentities = new Set(this.filtersService.filteredUnits().map(getUnitSearchIdentityKey));
+            const displayedIdentities = new Set(this.displayedUnits().map(getUnitSearchIdentityKey));
             untracked(() => {
                 const selected = this.selectedUnits();
-                if (![...selected].every(name => displayedNames.has(name))) {
-                    this.selectedUnits.set(new Set([...selected].filter(name => displayedNames.has(name))));
+                if (![...selected].every(identity => filteredIdentities.has(identity))) {
+                    this.selectedUnits.set(new Set([...selected].filter(identity => filteredIdentities.has(identity))));
                 }
                 const inlineUnit = this.inlinePanelUnit();
-                if (inlineUnit && !displayedNames.has(inlineUnit.name)) {
+                if (inlineUnit && !displayedIdentities.has(getUnitSearchIdentityKey(inlineUnit))) {
                     this.inlinePanelUnit.set(null);
                 }
             });
@@ -1934,7 +1935,8 @@ export class UnitSearchComponent {
 
     async showUnitDetails(unit: UnitSummary): Promise<void> {
         const filteredUnits = this.displayedUnits();
-        const filteredUnitIndex = filteredUnits.findIndex(u => u.name === unit.name);
+        const identity = getUnitSearchIdentityKey(unit);
+        const filteredUnitIndex = filteredUnits.findIndex(candidate => getUnitSearchIdentityKey(candidate) === identity);
         const searchResultContexts = new Map(
             filteredUnits.map(resultUnit => [resultUnit.name, this.getSearchResultContext(resultUnit)]),
         );
@@ -2300,14 +2302,14 @@ export class UnitSearchComponent {
         event.stopPropagation();
 
         // Determine which units to tag: selected units if any.
-        const selectedNames = this.selectedUnits();
+        const selectedIdentities = this.selectedUnits();
         const allUnits = this.displayedUnits();
         let unitsToTag: UnitSummary[];
-        if (selectedNames.size > 0) {
+        if (selectedIdentities.size > 0) {
             // Always include the clicked unit, even if not in the selection
-            const selectedSet = new Set(selectedNames);
-            selectedSet.add(unit.name);
-            unitsToTag = allUnits.filter(u => selectedSet.has(u.name));
+            const selectedSet = new Set(selectedIdentities);
+            selectedSet.add(getUnitSearchIdentityKey(unit));
+            unitsToTag = allUnits.filter(candidate => selectedSet.has(getUnitSearchIdentityKey(candidate)));
         } else {
             unitsToTag = [unit];
         }
@@ -2498,12 +2500,13 @@ export class UnitSearchComponent {
     multiSelectUnit(unit: UnitSummary, event?: Event) {
         event?.stopPropagation();
         const selected = new Set(this.selectedUnits());
-        if (selected.has(unit.name)) {
-            selected.delete(unit.name);
-            this.selectedUnitContexts.delete(unit.name);
+        const identity = getUnitSearchIdentityKey(unit);
+        if (selected.has(identity)) {
+            selected.delete(identity);
+            this.selectedUnitContexts.delete(identity);
         } else {
-            selected.add(unit.name);
-            this.selectedUnitContexts.set(unit.name, this.getSearchResultContext(unit));
+            selected.add(identity);
+            this.selectedUnitContexts.set(identity, this.getSearchResultContext(unit));
         }
         this.selectedUnits.set(selected);
     }
@@ -2521,7 +2524,8 @@ export class UnitSearchComponent {
         if (this.showInlinePanel()) {
             // Update activeIndex to match clicked unit
             const filteredUnits = this.displayedUnits();
-            const index = filteredUnits.findIndex(u => u.name === unit.name);
+            const identity = getUnitSearchIdentityKey(unit);
+            const index = filteredUnits.findIndex(candidate => getUnitSearchIdentityKey(candidate) === identity);
             if (index >= 0) {
                 this.activeIndex.set(index);
             }
@@ -2563,7 +2567,7 @@ export class UnitSearchComponent {
     }
 
     isUnitSelected(unit: UnitSummary): boolean {
-        return this.selectedUnits().has(unit.name);
+        return this.selectedUnits().has(getUnitSearchIdentityKey(unit));
     }
 
     clearSelection() {
@@ -2575,20 +2579,21 @@ export class UnitSearchComponent {
 
     selectAll() {
         const allUnits = this.displayedUnits();
-        const allNames = new Set(allUnits.map(u => u.name));
-        this.selectedUnits.set(allNames);
+        const allIdentities = new Set(allUnits.map(getUnitSearchIdentityKey));
+        this.selectedUnits.set(allIdentities);
         this.selectedUnitContexts.clear();
         for (const unit of allUnits) {
-            this.selectedUnitContexts.set(unit.name, this.getSearchResultContext(unit));
+            this.selectedUnitContexts.set(getUnitSearchIdentityKey(unit), this.getSearchResultContext(unit));
         }
     }
 
     async addSelectedUnits() {
         const selectedUnits = this.selectedUnits();
-        for (let selectedUnit of selectedUnits) {
-            const unit = this.dataService.getUnitByName(selectedUnit);
+        for (const selectedUnitIdentity of selectedUnits) {
+            const identity = decodeUnitSearchIdentityKey(selectedUnitIdentity);
+            const unit = this.dataService.getUnitByIdentity(identity.provider, identity.uuid);
             if (unit) {
-                const context = this.selectedUnitContexts.get(selectedUnit)
+                const context = this.selectedUnitContexts.get(selectedUnitIdentity)
                     ?? this.getSearchResultContext(unit);
                 if (!await this.forceCommands.addUnit(
                     unit,
@@ -2704,6 +2709,17 @@ export class UnitSearchComponent {
         this.setViewMode(viewMode);
         void this.optionsService.setOption('unitSearchViewMode', this.viewMode());
         this.closeViewModeMenu();
+    }
+
+    openExpandedSearch(event: MouseEvent): void {
+        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+            return;
+        }
+
+        event.preventDefault();
+        if (!this.expandedView()) {
+            this.toggleExpandedView();
+        }
     }
 
     toggleExpandedView() {

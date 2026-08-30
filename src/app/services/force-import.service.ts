@@ -16,7 +16,12 @@ import {
 } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import { LoadForceEntry } from '../models/load-force-entry.model';
-import { forceMemberCommander, forceMemberSummary, type ForceMember } from '../models/force-member.model';
+import {
+    forceMemberCommander,
+    isCBTForceMember,
+    resolveForceMemberCatalogSummary,
+    type ForceMember,
+} from '../models/force-member.model';
 import { LoadOperationEntry } from '../models/operation.model';
 import type { ForceAlignment } from '../models/force-slot.model';
 import { ForceLoadDialogComponent, type ForceLoadDialogResult } from '../components/force-load-dialog/force-load-dialog.component';
@@ -330,13 +335,33 @@ export class ForceImportService {
                 newGroup.formationHistory.add(sourceGroup.formation()!.id);
             }
             for (const sourceUnit of sourceForce.membersInGroup(sourceGroup)) {
-                const unitData = forceMemberSummary(sourceUnit);
-                const created = await this.admission.admit({
-                    force: targetForce,
-                    summary: unitData,
-                    group: newGroup,
-                    commander: forceMemberCommander(sourceUnit),
-                });
+                let created: ForceMember | null = null;
+                if (isCBTForceMember(sourceUnit)
+                    && targetForce instanceof CBTForce
+                    && !needsConversion) {
+                    const identity = sourceUnit.force.getUnitSourceIdentity(sourceUnit.id);
+                    if (identity) {
+                        created = await this.admission.admitClassicIdentity({
+                            force: targetForce,
+                            identity,
+                            group: newGroup,
+                            commander: forceMemberCommander(sourceUnit),
+                        });
+                    }
+                } else {
+                    const unitData = resolveForceMemberCatalogSummary(
+                        sourceUnit,
+                        (provider, uuid) => this.dataService.getUnitByIdentity(provider, uuid),
+                    );
+                    if (unitData) {
+                        created = await this.admission.admit({
+                            force: targetForce,
+                            summary: unitData,
+                            group: newGroup,
+                            commander: forceMemberCommander(sourceUnit),
+                        });
+                    }
+                }
                 if (!created) continue;
                 if (needsConversion) {
                     await this.crewTransfers.transferCrossSystem(

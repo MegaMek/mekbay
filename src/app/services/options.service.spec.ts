@@ -52,23 +52,94 @@ describe('OptionsService theme migration', () => {
         expect(service.options().enableForceSyncConflictDialog).toBeTrue();
     });
 
-    it('uses generated record sheets by default and restores compatibility mode', async () => {
+    it('uses complete print defaults', async () => {
         savedOptions = null;
-        let service = await createService();
-        expect(service.options().usePreGeneratedRecordSheets).toBeFalse();
 
-        TestBed.resetTestingModule();
-        savedOptions = { usePreGeneratedRecordSheets: true };
-        service = await createService();
-        expect(service.options().usePreGeneratedRecordSheets).toBeTrue();
+        const service = await createService();
+
+        expect(service.options().printAllOptions).toEqual({
+            clean: false,
+            printPilotData: true,
+            paperSize: 'letter',
+            recordSheetCenterPanelContent: 'clusterTable',
+            ASPrintPageBreakOnGroups: true,
+            ASPrintCardSize: 'standard',
+            printMargin: 'browserDefined',
+        });
     });
 
-    it('restores a disabled CBT automations preference', async () => {
+    it('restores nested print options and validates each field independently', async () => {
+        savedOptions = {
+            printAllOptions: {
+                clean: true,
+                printPilotData: false,
+                paperSize: 'a4',
+                recordSheetCenterPanelContent: 'invalid',
+                ASPrintPageBreakOnGroups: false,
+                ASPrintCardSize: 'enlarged',
+                printMargin: 'invalid',
+            },
+        };
+
+        const service = await createService();
+
+        expect(service.options().printAllOptions).toEqual({
+            clean: true,
+            printPilotData: false,
+            paperSize: 'a4',
+            recordSheetCenterPanelContent: 'clusterTable',
+            ASPrintPageBreakOnGroups: false,
+            ASPrintCardSize: 'enlarged',
+            printMargin: 'browserDefined',
+        });
+    });
+
+    it('migrates the former flat print preferences', async () => {
+        savedOptions = {
+            printPaperSize: 'a4',
+            recordSheetCenterPanelContent: 'fluffImage',
+            ASPrintPageBreakOnGroups: false,
+            ASPrintCardSize: 'enlarged',
+            printMargin: 'none',
+        };
+
+        const service = await createService();
+
+        expect(service.options().printAllOptions).toEqual(jasmine.objectContaining({
+            paperSize: 'a4',
+            recordSheetCenterPanelContent: 'fluffImage',
+            ASPrintPageBreakOnGroups: false,
+            ASPrintCardSize: 'enlarged',
+            printMargin: 'none',
+        }));
+    });
+
+    it('migrates the legacy heat automation preference without enabling unrelated automations', async () => {
         savedOptions = { cbtAutomations: false };
 
         const service = await createService();
 
-        expect(service.options().cbtAutomations).toBeFalse();
+        expect(service.cbtAutomationMode('heatAndDissipationResolution')).toBe('no');
+        expect(service.cbtAutomationMode('internalExplosionsCheck')).toBe('ask');
+    });
+
+    it('restores and updates independent CBT automation modes', async () => {
+        savedOptions = {
+            cbtAutomationOptions: {
+                heatAndDissipationResolution: 'yes',
+                pilotSkillCheck: 'ask',
+                criticalHitChanceCheck: 'invalid',
+            },
+        };
+        const service = await createService();
+
+        expect(service.cbtAutomationMode('heatAndDissipationResolution')).toBe('yes');
+        expect(service.cbtAutomationMode('pilotSkillCheck')).toBe('ask');
+        expect(service.cbtAutomationMode('criticalHitChanceCheck')).toBe('no');
+
+        await service.setCbtAutomationMode('fallingCheck', 'yes');
+        expect(service.cbtAutomationMode('fallingCheck')).toBe('yes');
+        expect(dbService.saveOptions).toHaveBeenCalled();
     });
 
     it('uses CBT optional-rule defaults', async () => {
@@ -77,8 +148,10 @@ describe('OptionsService theme migration', () => {
         const service = await createService();
 
         expect(service.options().CBTOptionalRules).toEqual({
+            floatingCriticals: false,
             forcedWithdrawal: true,
             extremeRange: false,
+            sprinting: false,
         });
     });
 
@@ -93,8 +166,10 @@ describe('OptionsService theme migration', () => {
         const service = await createService();
 
         expect(service.options().CBTOptionalRules).toEqual({
+            floatingCriticals: false,
             forcedWithdrawal: false,
             extremeRange: true,
+            sprinting: false,
         });
     });
 

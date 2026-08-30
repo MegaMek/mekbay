@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { GameSystem } from '../models/common.model';
+import { GameSystem, Rulebook } from '../models/common.model';
 import type { Faction } from '../models/factions.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
@@ -55,6 +55,7 @@ function createForceUnit(
     return {
         force,
         getSummary: () => unit,
+        getFormationSummary: () => unit,
         getBv: () => 0,
         pilotSkill: () => options.pilotSkill ?? 4,
         gunnerySkill: () => options.gunnerySkill ?? 4,
@@ -75,7 +76,8 @@ describe('FormationRequirementEngine', () => {
     });
 
     it('has a blueprint for every current formation definition', () => {
-        const missingBlueprintIds = getFormationDefinitions()
+        const missingBlueprintIds = [GameSystem.CLASSIC, GameSystem.ALPHA_STRIKE]
+            .flatMap(gameSystem => getFormationDefinitions(gameSystem))
             .filter((formationDefinition) => !FormationRequirementEngine.hasBlueprint(formationDefinition.id))
             .map((formationDefinition) => formationDefinition.id);
 
@@ -143,25 +145,151 @@ describe('FormationRequirementEngine', () => {
         expect(LanceTypeIdentifierUtil.isValid(definition('battle-lance'), lightBrawlers, GameSystem.ALPHA_STRIKE)).toBeTrue();
     });
 
-    it('enforces vehicle matched pairs for Battle Lance when idealRole does not short-circuit', () => {
+    it('enforces Battle Lance vehicle pairs only in Classic', () => {
         const validVehiclePairs = [
-            createForceUnit(createUnit(1, 'Vehicle-A', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Brawler', as: { TP: 'CV', SZ: 3 } })),
-            createForceUnit(createUnit(2, 'Vehicle-A', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Sniper', as: { TP: 'CV', SZ: 3 } })),
-            createForceUnit(createUnit(3, 'Vehicle-B', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Skirmisher', as: { TP: 'CV', SZ: 3 } })),
-            createForceUnit(createUnit(4, 'Vehicle-B', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Scout', as: { TP: 'CV', SZ: 3 } })),
+            createForceUnit(createUnit(1, 'Vehicle-A', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Brawler', as: { TP: 'CV', SZ: 3 } })),
+            createForceUnit(createUnit(2, 'Vehicle-A', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Sniper', as: { TP: 'CV', SZ: 3 } })),
+            createForceUnit(createUnit(3, 'Vehicle-B', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Skirmisher', as: { TP: 'CV', SZ: 3 } })),
+            createForceUnit(createUnit(4, 'Vehicle-B', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Scout', as: { TP: 'CV', SZ: 3 } })),
         ];
         const unmatchedVehicles = validVehiclePairs.map((forceUnit, index) => {
             const unit = forceUnit.getSummary();
             return createForceUnit(createUnit(index + 10, `${unit.name}-${index}`, {
                 type: 'Tank',
                 subtype: 'Combat Vehicle',
+                weightClass: 'Heavy',
                 role: unit.role,
                 as: { TP: 'CV', SZ: 3 },
             }));
         });
 
-        expect(LanceTypeIdentifierUtil.isValid(definition('battle-lance'), validVehiclePairs, GameSystem.ALPHA_STRIKE)).toBeTrue();
-        expect(LanceTypeIdentifierUtil.isValid(definition('battle-lance'), unmatchedVehicles, GameSystem.ALPHA_STRIKE)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(definition('battle-lance', GameSystem.CLASSIC), validVehiclePairs, GameSystem.CLASSIC)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(definition('battle-lance', GameSystem.CLASSIC), unmatchedVehicles, GameSystem.CLASSIC)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(definition('battle-lance'), unmatchedVehicles, GameSystem.ALPHA_STRIKE)).toBeTrue();
+    });
+
+    it('requires every non-Fire-Support fighter in a Fire Support Squadron to be a Dogfighter', () => {
+        const validUnits = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(index + 1, `Fighter-${index}`, {
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            role: index < 3 ? 'Fire Support' : 'Dogfighter',
+            as: { TP: 'AF' },
+        })));
+        const invalidUnits = [
+            ...validUnits.slice(0, 5),
+            createForceUnit(createUnit(10, 'Interceptor', {
+                type: 'Aero',
+                subtype: 'Aerospace Fighter',
+                role: 'Interceptor',
+                as: { TP: 'AF' },
+            })),
+        ];
+
+        expect(LanceTypeIdentifierUtil.isValid(definition('fire-support-squadron'), validUnits, GameSystem.ALPHA_STRIKE)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(definition('fire-support-squadron'), invalidUnits, GameSystem.ALPHA_STRIKE)).toBeFalse();
+    });
+
+    it('does not count the distinct Fast Dogfighter role toward a Strike Squadron majority', () => {
+        const units = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(index + 1, `Strike-${index}`, {
+            type: 'Aero',
+            subtype: 'Aerospace Fighter',
+            role: index < 4 ? 'Fast Dogfighter' : 'Interceptor',
+            as: { TP: 'AF' },
+        })));
+
+        expect(LanceTypeIdentifierUtil.isValid(definition('strike-squadron'), units, GameSystem.ALPHA_STRIKE)).toBeFalse();
+    });
+
+    it('limits standard aerospace squadrons to aerospace and conventional fighters', () => {
+        const alphaStrikeFighters = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(index + 1, `AS-Fighter-${index}`, {
+            type: 'Aero',
+            subtype: index === 5 ? 'Conventional Fighter' : 'Aerospace Fighter',
+            role: index < 4 ? 'Interceptor' : 'Fast Dogfighter',
+            as: { TP: index === 5 ? 'CF' : 'AF' },
+        })));
+        const alphaStrikeWithWarShip = [
+            ...alphaStrikeFighters.slice(0, 5),
+            createForceUnit(createUnit(10, 'WarShip', {
+                type: 'Aero',
+                subtype: 'WarShip',
+                role: 'Fast Dogfighter',
+                as: { TP: 'WS' },
+            })),
+        ];
+        const classicFighters = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(index + 20, `CBT-Fighter-${index}`, {
+            type: 'Aero',
+            subtype: index === 5 ? 'Conventional Fighter' : 'Aerospace Fighter',
+            role: index < 4 ? 'Interceptor' : 'Fast Dogfighter',
+            as: { TP: index === 5 ? 'CF' : 'AF' },
+        }), GameSystem.CLASSIC));
+        const classicWithDropShip = [
+            ...classicFighters.slice(0, 5),
+            createForceUnit(createUnit(30, 'DropShip', {
+                type: 'Aero',
+                subtype: 'Spheroid DropShip',
+                role: 'Fast Dogfighter',
+                as: { TP: 'DS' },
+            }), GameSystem.CLASSIC),
+        ];
+
+        expect(LanceTypeIdentifierUtil.isValid(definition('interceptor-squadron'), alphaStrikeFighters, GameSystem.ALPHA_STRIKE)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(definition('interceptor-squadron'), alphaStrikeWithWarShip, GameSystem.ALPHA_STRIKE)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(definition('interceptor-squadron', GameSystem.CLASSIC), classicFighters, GameSystem.CLASSIC)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(definition('interceptor-squadron', GameSystem.CLASSIC), classicWithDropShip, GameSystem.CLASSIC)).toBeFalse();
+    });
+
+    it('allows only the listed Transport Squadron craft and airborne support vehicles', () => {
+        const permittedTransportUnits: Array<{ name: string; overrides: TestUnitOverrides }> = [
+            { name: 'Aerospace Fighter', overrides: { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } } },
+            { name: 'Conventional Fighter', overrides: { type: 'Aero', subtype: 'Conventional Fighter', as: { TP: 'CF' } } },
+            { name: 'Small Craft', overrides: { type: 'Aero', subtype: 'Spheroid Small Craft', as: { TP: 'SC' } } },
+            { name: 'Spheroid DropShip', overrides: { type: 'Aero', subtype: 'Spheroid DropShip', as: { TP: 'DS' } } },
+            { name: 'Aerodyne DropShip', overrides: { type: 'Aero', subtype: 'Aerodyne DropShip', as: { TP: 'DA' } } },
+            { name: 'Fixed-Wing Support Vehicle', overrides: { type: 'Aero', subtype: 'Fixed Wing Support Vehicle', as: { TP: 'SV' } } },
+        ];
+        const alphaStrikeUnits = permittedTransportUnits.map(({ name, overrides }, index) => createForceUnit(createUnit(index + 40, name, {
+            ...overrides,
+            role: 'Transport',
+        })));
+        const classicUnits = permittedTransportUnits.map(({ name, overrides }, index) => createForceUnit(createUnit(index + 50, name, {
+            ...overrides,
+            role: 'Transport',
+        }), GameSystem.CLASSIC));
+        const alphaStrikeWithGroundSupportVehicle = [
+            ...alphaStrikeUnits.slice(0, 6),
+            createForceUnit(createUnit(60, 'Ground Support Vehicle', {
+                type: 'Tank',
+                subtype: 'Support Vehicle',
+                moveType: 'Wheeled',
+                role: 'Transport',
+                as: { TP: 'SV' },
+            })),
+        ];
+        const classicWithJumpShip = [
+            ...classicUnits.slice(0, 6),
+            createForceUnit(createUnit(61, 'JumpShip', {
+                type: 'Aero',
+                subtype: 'JumpShip',
+                role: 'Transport',
+                as: { TP: 'JS' },
+            }), GameSystem.CLASSIC),
+        ];
+
+        expect(LanceTypeIdentifierUtil.isValid(definition('transport-squadron'), alphaStrikeUnits, GameSystem.ALPHA_STRIKE)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(definition('transport-squadron'), alphaStrikeWithGroundSupportVehicle, GameSystem.ALPHA_STRIKE)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(definition('transport-squadron', GameSystem.CLASSIC), classicUnits, GameSystem.CLASSIC)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(definition('transport-squadron', GameSystem.CLASSIC), classicWithJumpShip, GameSystem.CLASSIC)).toBeFalse();
+    });
+
+    it('does not require a same-model pair in a Vehicle Command Lance', () => {
+        const units = [
+            createForceUnit(createUnit(1, 'Command Vehicle A', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Sniper', as: { TP: 'CV' } })),
+            createForceUnit(createUnit(2, 'Command Vehicle B', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Juggernaut', as: { TP: 'CV' } })),
+            createForceUnit(createUnit(3, 'Escort Vehicle', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Scout', as: { TP: 'CV' } })),
+        ];
+
+        expect(LanceTypeIdentifierUtil.isValid(definition('vehicle-command-lance'), units, GameSystem.ALPHA_STRIKE)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(definition('vehicle-command-lance', GameSystem.CLASSIC), units, GameSystem.CLASSIC)).toBeTrue();
     });
 
     it('validates Order Lance same tier and same chassis constraints', () => {
@@ -375,5 +503,47 @@ describe('FormationRequirementEngine', () => {
         expect(LanceTypeIdentifierUtil.isValid(definition('horde'), validUnits, GameSystem.ALPHA_STRIKE)).toBeTrue();
         expect(LanceTypeIdentifierUtil.isValid(definition('horde'), tooManyUnits, GameSystem.ALPHA_STRIKE)).toBeFalse();
         expect(LanceTypeIdentifierUtil.isValid(definition('horde'), highDamageUnits, GameSystem.ALPHA_STRIKE)).toBeFalse();
+    });
+
+    it('validates Swarm VTOL and size constraints and exposes Coordinated Fire', () => {
+        const validUnits = Array.from({ length: 4 }, (_, index) => createForceUnit(createUnit(index + 1, `Swarm-${index}`, {
+            type: 'VTOL',
+            subtype: 'Combat Vehicle',
+            weightClass: 'Medium',
+            as: { TP: 'CV', SZ: 2 },
+        })));
+        const tooFewUnits = validUnits.slice(0, 3);
+        const mixedUnitType = [
+            ...validUnits.slice(0, 3),
+            createForceUnit(createUnit(10, 'Ground Unit', { as: { TP: 'CV', SZ: 2 } })),
+        ];
+        const heavyVtol = [
+            ...validUnits.slice(0, 3),
+            createForceUnit(createUnit(11, 'Heavy VTOL', {
+                type: 'VTOL',
+                subtype: 'Combat Vehicle',
+                weightClass: 'Heavy',
+                as: { TP: 'CV', SZ: 3 },
+            })),
+        ];
+        const swarm = definition('swarm');
+
+        expect(LanceTypeIdentifierUtil.isValid(swarm, validUnits, GameSystem.ALPHA_STRIKE)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(swarm, validUnits, GameSystem.CLASSIC)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(swarm, tooFewUnits, GameSystem.ALPHA_STRIKE)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(swarm, tooFewUnits, GameSystem.CLASSIC)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(swarm, mixedUnitType, GameSystem.ALPHA_STRIKE)).toBeFalse();
+        expect(LanceTypeIdentifierUtil.isValid(swarm, heavyVtol, GameSystem.ALPHA_STRIKE)).toBeFalse();
+        expect(swarm.effectDescription).toContain('standard weapon attack');
+        const swarmEffectGroup = swarm.effectGroups?.[0];
+        expect(swarmEffectGroup?.distribution).toBe('formation-wide');
+        if (swarmEffectGroup?.distribution === 'formation-wide') {
+            expect(swarmEffectGroup.formationWideAbilities[0]).toEqual(jasmine.objectContaining({
+                id: 'coordinated_fire',
+                name: 'Coordinated Fire',
+                summary: jasmine.arrayContaining(['The formation may make a standard weapon attack against a target within Short Range and Line of Sight of all members as if it were a single Unit.']),
+                rulesRef: [{ book: Rulebook.FMMERC, page: 52 }],
+            }));
+        }
     });
 });

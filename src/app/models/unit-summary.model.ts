@@ -15,7 +15,7 @@ import type {
 } from '../services/unit-catalog/unit-catalog.types';
 
 /** Bump when generated UnitSummary fields or their meaning change. */
-export const UNIT_SUMMARY_VERSION = 8 as const;
+export const UNIT_SUMMARY_VERSION = 9 as const;
 
 export type { MoveType, UnitSubtype, UnitType } from './entity/types';
 
@@ -113,6 +113,14 @@ export type UnitSummaryComponent = Omit<UnitComponent, 'bay'> & {
   bay?: UnitSummaryComponent[];
 };
 
+/** Canonical MegaMek material code and technology base at one unit location. */
+export interface UnitMaterialLayoutEntry {
+  readonly type: number;
+  readonly clan: boolean;
+}
+
+export type UnitMaterialLayout = Readonly<Record<string, UnitMaterialLayoutEntry>>;
+
 /**
  * The complete lightweight, serializable projection used by catalog/search UI.
  * Runtime indexes, linked Equipment objects, and native-source prose/system
@@ -167,6 +175,8 @@ export interface UnitSummary {
   role: string;
   armorType: string;
   structureType: string | null;
+  patchworkLayout?: UnitMaterialLayout;
+  hybridLayout?: UnitMaterialLayout;
   armor: number;
   armorPer: number;
   internal: number;
@@ -209,7 +219,6 @@ export interface UnitSummary {
 
   /** Transient presentation/search overlay; never serialized in summary stores. */
   unitFile?: string;
-  serverHost?: string;
   _searchKey?: string;
   _searchKeyAlphanumeric?: string;
   _displayType?: string;
@@ -225,6 +234,15 @@ export interface UnitSummary {
   _nameTags?: UnitTagEntry[];
   _chassisTags?: UnitTagEntry[];
   _publicTags?: PublicTagInfo[];
+}
+
+export type UnitHeight = 1 | 2 | 3;
+
+export function getUnitHeight(unit: Pick<UnitSummary, 'type' | 'tons'>, prone = false): UnitHeight {
+  const standingHeight: UnitHeight = unit.type !== 'Mek' ? 1 : unit.tons > 100 ? 3 : 2;
+  return prone && standingHeight > 1
+    ? (standingHeight - 1) as UnitHeight
+    : standingHeight;
 }
 
 /** Untrusted additional-provider transport; converted to validated UnitSummary rows at ingress. */

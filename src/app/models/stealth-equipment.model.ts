@@ -6,7 +6,6 @@ import { ECMMode } from './common.model';
 import { isEcmEquipment } from './ecm-mode.model';
 import { isBattleArmorMyomerBoosterEquipment } from './escalating-equipment.model';
 import type { Equipment } from './equipment.model';
-import type { EquipmentFlag } from './equipment-flags.type';
 import type { ComponentId } from './entity/entity-identifiers';
 import {
     getVisualCamoTnModifiers,
@@ -100,18 +99,12 @@ export function isVoidSignatureEquipment(equipment: Equipment | null | undefined
     return equipment?.hasFlag(VOID_SIGNATURE_FLAG) === true;
 }
 
-/** Heat-profile blocker identity remains owned by the signature-system family. */
-export function unsupportedStealthHeatFlag(
-    equipment: Equipment | null | undefined,
-): EquipmentFlag | undefined {
-    return isVoidSignatureEquipment(equipment) ? VOID_SIGNATURE_FLAG : undefined;
-}
-
 export function isStealthSystemEquipment(equipment: Equipment): boolean {
     return isStealthEquipment(equipment)
         || isVisualCamoEquipment(equipment)
         || isChameleonShieldEquipment(equipment)
-        || isNullSignatureEquipment(equipment);
+        || isNullSignatureEquipment(equipment)
+        || isVoidSignatureEquipment(equipment);
 }
 
 export function isSignatureSystemEquipment(equipment: Equipment | null | undefined): boolean {
@@ -124,11 +117,13 @@ export function isInteractiveStealthFlags(flags: ReadonlySet<string>): boolean {
     return flags.has(STEALTH_FLAG)
         || flags.has(VISUAL_CAMO_FLAG)
         || flags.has(CHAMELEON_SHIELD_FLAG)
-        || flags.has(NULL_SIGNATURE_FLAG);
+        || flags.has(NULL_SIGNATURE_FLAG)
+        || flags.has(VOID_SIGNATURE_FLAG);
 }
 
 export function stealthFlagsRequireEcm(flags: ReadonlySet<string>): boolean {
-    return flags.has(STEALTH_FLAG) && !flags.has(VISUAL_CAMO_FLAG);
+    return flags.has(VOID_SIGNATURE_FLAG)
+        || flags.has(STEALTH_FLAG) && !flags.has(VISUAL_CAMO_FLAG);
 }
 
 export function signatureSystemOperatingHeat(equipment: Equipment | null | undefined): number {
@@ -230,7 +225,9 @@ function isFunctioning(
     facts: StealthEquipmentFacts,
     functionalEcm: boolean,
 ): boolean {
-    if (!isActive(facts) || !isStealthEquipment(facts.equipment)) return false;
+    if (!isActive(facts)) return false;
+    if (isVoidSignatureEquipment(facts.equipment)) return functionalEcm;
+    if (!isStealthEquipment(facts.equipment)) return false;
     return !isSwitchableStealthEquipment(facts.equipment) || functionalEcm;
 }
 
@@ -245,6 +242,17 @@ export function unitHasActiveC3DisruptingStealth(
         && isFunctioning(entry, functionalEcm));
 }
 
+/** Void Signature penalizes every weapon attack made by its carrying unit. */
+export function unitHasActiveVoidSignature(
+    equipment: readonly StealthEquipmentFacts[],
+    unitUnavailable = false,
+): boolean {
+    if (unitUnavailable) return false;
+    const functionalEcm = hasFunctionalEcmForStealth(equipment);
+    return equipment.some(entry => isVoidSignatureEquipment(entry.equipment)
+        && isFunctioning(entry, functionalEcm));
+}
+
 /** Active heat-producing signature-system component ids. */
 export function activeStealthHeatComponents(
     equipment: readonly StealthEquipmentFacts[],
@@ -254,7 +262,8 @@ export function activeStealthHeatComponents(
     const functionalEcm = hasFunctionalEcmForStealth(equipment);
     return new Set(equipment.flatMap(entry => {
         if (!isSwitchableStealthEquipment(entry.equipment) || !isActive(entry)) return [];
-        if (isStealthEquipment(entry.equipment) && !isFunctioning(entry, functionalEcm)) return [];
+        if ((isStealthEquipment(entry.equipment) || isVoidSignatureEquipment(entry.equipment))
+            && !isFunctioning(entry, functionalEcm)) return [];
         return isStealthSystemEquipment(entry.equipment) ? [entry.componentId] : [];
     }));
 }
@@ -270,6 +279,23 @@ function profileForEquipment(
 ): TnStealthModifiers | null {
     const equipment = facts.equipment;
     if (!isActive(facts)) return null;
+    if (isVoidSignatureEquipment(equipment)) {
+        if (!isFunctioning(facts, functionalEcm)) return null;
+        const modifier = targetMoveDistance > 5 ? 0
+            : targetMoveDistance > 2 ? 1
+                : targetMoveDistance > 0 ? 2 : 3;
+        const infantryModifier = Math.max(0, modifier - 1);
+        return {
+            short: modifier,
+            medium: modifier,
+            long: modifier,
+            conventionalInfantry: {
+                short: infantryModifier,
+                medium: infantryModifier,
+                long: infantryModifier,
+            },
+        };
+    }
     if (isChameleonShieldEquipment(equipment)) return TN_CHAMELEON_MODIFIERS;
     if (isNullSignatureEquipment(equipment)) return TN_NULL_SIGNATURE_MODIFIERS;
     if (isMimeticArmorEquipment(equipment)) {
@@ -359,6 +385,7 @@ export function getActiveStealthTnModifiers(
     const simpleCamo: TnStealthModifiers[] = [];
     const chameleon: TnStealthModifiers[] = [];
     const nullSignature: TnStealthModifiers[] = [];
+    const voidSignature: TnStealthModifiers[] = [];
 
     for (const entry of operational) {
         if (hasBattleArmorMyomerBooster
@@ -366,12 +393,17 @@ export function getActiveStealthTnModifiers(
                 || isMimeticArmorEquipment(entry.equipment))) continue;
         const profile = profileForEquipment(entry, targetMoveDistance, functionalEcm);
         if (!profile) continue;
-        if (isMimeticArmorEquipment(entry.equipment)) mimetic.push(profile);
+        if (isVoidSignatureEquipment(entry.equipment)) voidSignature.push(profile);
+        else if (isMimeticArmorEquipment(entry.equipment)) mimetic.push(profile);
         else if (isSimpleCamoEquipment(entry.equipment)) simpleCamo.push(profile);
         else if (isChameleonShieldEquipment(entry.equipment)) chameleon.push(profile);
         else if (isNullSignatureEquipment(entry.equipment)) nullSignature.push(profile);
         else electronicStealth.push(profile);
     }
+
+    // Void Signature replaces, rather than combines with, other signature protection.
+    const voidProfile = maxProfiles(voidSignature);
+    if (voidProfile) return voidProfile;
 
     const mimeticProfile = maxProfiles(mimetic);
     const armorProfile = mimeticProfile ?? addProfiles(

@@ -1,5 +1,5 @@
 .equipment-dialog {
-    max-width: 1000px;
+    max-width: 1100px;
     width: 100%;
     align-items: stretch;
     gap: 6px;
@@ -98,58 +98,59 @@
 }
 
 .turn-tracker-title-button {
-    color: #000;
-
-    svg {
-        color: #000;
-    }
+    --turn-movement-fill: var(--move-unassigned);
+    --turn-movement-foreground: var(--move-on-dark);
 
     svg .octagon {
-        stroke: #fff;
+        fill: var(--turn-movement-fill);
+        stroke: var(--turn-movement-foreground);
         stroke-width: 1;
+        stroke-linejoin: miter;
+        stroke-miterlimit: 10;
+        vector-effect: non-scaling-stroke;
+        transform: scale(1.08);
+        transform-box: fill-box;
+        transform-origin: center;
+    }
+
+    svg {
+        overflow: visible;
     }
 
     svg text {
         pointer-events: none;
         font-weight: bold;
-        fill: #fff;
+        fill: var(--turn-movement-foreground);
     }
 
-    svg.ranged .octagon {
-        fill: var(--phase-ranged);
+    svg.stationary {
+        --turn-movement-fill: var(--move-stationary);
+        --turn-movement-foreground: var(--move-on-dark);
     }
 
-    svg.physical .octagon {
-        fill: var(--phase-physical);
+    svg.walk {
+        --turn-movement-fill: var(--move-walk);
+        --turn-movement-foreground: var(--move-on-light);
     }
 
-    svg.heat .octagon {
-        fill: var(--phase-heat);
+    svg.run {
+        --turn-movement-fill: var(--move-run);
+        --turn-movement-foreground: var(--move-on-dark);
+    }
+
+    svg.jump {
+        --turn-movement-fill: var(--move-jump);
+        --turn-movement-foreground: var(--move-on-dark);
+    }
+
+    svg.sprint {
+        --turn-movement-fill: var(--move-sprint);
+        --turn-movement-foreground: var(--move-on-light);
     }
 
     svg.warning {
-        color: var(--damage-color);
-    }
-
-    svg.warning text {
-        fill: #fff;
-    }
-}
-
-:host-context(html.night-mode) .turn-tracker-title-button {
-    color: #fff;
-
-    svg {
-        color: #fff;
-    }
-
-    svg text {
-        fill: #000;
-    }
-
-    svg .octagon {
-        stroke-width: 0;
-        stroke: #000;
+        --turn-movement-fill: var(--damage-color);
+        --turn-movement-foreground: var(--move-on-dark);
     }
 }
 

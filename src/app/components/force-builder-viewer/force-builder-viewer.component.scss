@@ -187,7 +187,6 @@
 
 .force-total {
     font-size: 0.8em;
-    font-weight: bold;
     color: var(--text-color-secondary);
 }
 
@@ -222,7 +221,7 @@
     padding: 4px 2px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
 
     .force-view:not(.dragging) & {
         touch-action: pan-y !important;

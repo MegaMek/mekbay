@@ -12,6 +12,7 @@ import { getAggregatedTier, getDynamicTierForModifier } from './org-tier.util';
 import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
 import { type GroupSizeResult, type OrgDefinition, type OrgSizeResult } from './org-types';
 import { MULFACTION_MERCENARY } from '../../models/mulfactions.model';
+import { orgUnitFromFormationUnit } from './org-unit.util';
 
 /**
  * 
@@ -55,7 +56,7 @@ export function getOrgFromGroup(group: UnitGroup | ForcePreviewGroup, options: O
 		const force = group.force;
 		const resolvedFaction = force.faction() ?? DEFAULT_FACTION;
 		const resolvedEra = force.era();
-		const allUnits = group.formationUnits().map((unit) => unit.getSummary());
+		const allUnits = group.formationUnits().map(orgUnitFromFormationUnit);
 		const rawGroups = resolveFromUnits(allUnits, resolvedFaction, resolvedEra);
 		return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
 	}

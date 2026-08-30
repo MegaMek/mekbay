@@ -14,7 +14,7 @@ import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility } from '.
 import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
 import { formatMovement, formatMovementWithAlternate } from '../../../utils/as-common.util';
-import { FormationAbilityAssignmentUtil } from '../../../utils/formation-ability-assignment.util';
+import { FormationAbilityAssignmentUtil, type FormationWideAbilityDescriptor } from '../../../utils/formation-ability-assignment.util';
 import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
 import { DEFAULT_GUNNERY_SKILL } from '../../../models/crew.model';
 
@@ -47,6 +47,18 @@ export interface SpecialAbilityClickEvent {
     event: MouseEvent;
 }
 
+export interface PilotCardAbility {
+    readonly kind: 'pilot';
+    readonly selection: AbilitySelection;
+}
+
+export interface FormationWideCardAbility {
+    readonly kind: 'formation-wide';
+    readonly descriptor: FormationWideAbilityDescriptor;
+}
+
+export type CardAbility = PilotCardAbility | FormationWideCardAbility;
+
 @Directive()
 export abstract class AsLayoutBaseComponent {
     protected readonly dataService = inject(DataService);
@@ -71,7 +83,7 @@ export abstract class AsLayoutBaseComponent {
 
     // Common outputs
     specialClick = output<SpecialAbilityClickEvent>();
-    pilotAbilityClick = output<AbilitySelection>();
+    abilityClick = output<CardAbility>();
     editPilotClick = output<void>();
     rollCriticalClick = output<void>();
 
@@ -93,9 +105,12 @@ export abstract class AsLayoutBaseComponent {
     adjustedPV = computed<number>(() => {
         return adjustPointValueForSkill(this.asStats().PV, this.skill());
     });
-    pilotAbilities = computed<AbilitySelection[]>(() => {
+    abilities = computed<CardAbility[]>(() => {
         const forceUnit = this.forceUnit();
-        const abilities: AbilitySelection[] = [...(forceUnit?.pilotAbilities() ?? [])];
+        const abilities: CardAbility[] = (forceUnit?.pilotAbilities() ?? []).map((selection) => ({
+            kind: 'pilot' as const,
+            selection,
+        }));
         if (!forceUnit) {
             return abilities;
         }
@@ -111,17 +126,24 @@ export abstract class AsLayoutBaseComponent {
         }
 
         const seenAbilityIds = new Set(
-            abilities.filter((ability): ability is string => typeof ability === 'string')
+            abilities
+                .filter((ability): ability is PilotCardAbility => ability.kind === 'pilot')
+                .map(({ selection }) => selection)
+                .filter((selection): selection is string => typeof selection === 'string')
         );
 
         for (const abilityId of preview.assignmentsByUnitId.get(forceUnit.id) ?? []) {
             if (seenAbilityIds.has(abilityId)) {
                 continue;
             }
-            abilities.push(abilityId);
+            abilities.push({ kind: 'pilot', selection: abilityId });
             seenAbilityIds.add(abilityId);
         }
 
+        abilities.push(...preview.formationWideAbilities.map((descriptor) => ({
+            kind: 'formation-wide' as const,
+            descriptor,
+        })));
         return abilities;
     });
 
@@ -469,6 +491,14 @@ export abstract class AsLayoutBaseComponent {
         return formatted;
     }
 
+    formatAbility(ability: CardAbility): string {
+        if (ability.kind === 'formation-wide') {
+            return ability.descriptor.ability.name;
+        }
+
+        return this.formatPilotAbility(ability.selection);
+    }
+
     formatPilotAbility(selection: AbilitySelection): string {
         if (typeof selection === 'string') {
             const ability = this.PILOT_ABILITIES.find(a => a.id === selection);
@@ -482,8 +512,8 @@ export abstract class AsLayoutBaseComponent {
         return `${selection.name} (${selection.cost})`;
     }
 
-    onPilotAbilityClick(selection: AbilitySelection): void {
-        this.pilotAbilityClick.emit(selection);
+    onAbilityClick(ability: CardAbility): void {
+        this.abilityClick.emit(ability);
     }
 
     range(count: number): number[] {

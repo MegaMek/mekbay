@@ -16,7 +16,6 @@ import {
     signal,
     viewChild
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
@@ -27,12 +26,11 @@ const OVERFLOW_OVERLAY_KEY = 'tab-overflow-menu';
 
 @Component({
     selector: 'base-dialog',
-    imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     styleUrls: ['./base-dialog.component.scss'],
     template: `
     <div class="modal-flex-center">
-      <div class="modal tv-fade" [class.auto-height]="autoHeight()" [class]="modalClass()" [ngClass]="modalClassFromTab()">
+      <div class="modal tv-fade" [class.auto-height]="autoHeight()" [class]="modalClasses()">
         <div class="modal-header" [class.tabbed]="isTabbed()">
           <ng-content select="[dialog-header]"></ng-content>
           @if (isTabbed()) {
@@ -94,6 +92,11 @@ export class BaseDialogComponent implements AfterViewInit {
     autoHeight = input<boolean>(false);
     modalClass = input<string>('');
     isTabbed = computed(() => this.tabs().length > 0);
+    modalClasses = computed(() => {
+        const tab = this.activeTab();
+        const activeTabClass = tab ? `activetab-${tab.toLowerCase()}` : '';
+        return [this.modalClass(), activeTabClass].filter(Boolean).join(' ');
+    });
     activeTabChange = output<string>();
 
     tabHeader = viewChild<ElementRef<HTMLDivElement>>('tabHeader');
@@ -251,9 +254,4 @@ export class BaseDialogComponent implements AfterViewInit {
         });
     }
     
-    modalClassFromTab(): string {
-        const tab = this.activeTab();
-        if (!tab) return '';
-        return `activetab-${tab.toLowerCase()}`;
-    }
 }

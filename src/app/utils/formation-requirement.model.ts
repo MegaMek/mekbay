@@ -30,6 +30,7 @@ export type FormationPredicateId =
     | 'dogfighter-role'
     | 'ew-equipment'
     | 'fast-assault-move'
+    | 'fire-support-or-dogfighter-role'
     | 'fire-support-role'
     | 'fire-role'
     | 'fire-support-equipment'
@@ -78,6 +79,7 @@ export type FormationPredicateId =
     | 'sweep-move'
     | 'transport-role'
     | 'transport-squadron-unit'
+    | 'vtol-unit'
     | 'very-fast-move';
 
 export type FormationFactKey = 'asSize' | 'cbtWeightClass' | 'chassis';
@@ -94,6 +96,13 @@ export type FormationConstraint =
 export interface FormationRequirementBlueprint {
     readonly id: string;
     readonly constraints: readonly FormationConstraint[];
+}
+
+/** Authored requirement constraints, separated by game system. */
+export interface FormationRequirementBlueprintSource {
+    readonly id: string;
+    readonly classic: readonly FormationConstraint[];
+    readonly alphaStrike: readonly FormationConstraint[];
 }
 
 export interface FormationConstraintBase {
@@ -134,7 +143,7 @@ export interface FormationPercentConstraint extends FormationConstraintBase {
     readonly kind: 'percent-min';
     readonly predicate: FormationPredicateId;
     readonly ratio: number;
-    readonly rounding: 'ceil' | 'strict-majority';
+    readonly rounding: 'ceil' | 'normal' | 'strict-majority';
 }
 
 export interface FormationSameValueConstraint extends FormationConstraintBase {

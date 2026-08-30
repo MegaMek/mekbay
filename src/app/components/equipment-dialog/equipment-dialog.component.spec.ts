@@ -7,6 +7,7 @@ import { Subject } from 'rxjs';
 
 import type { CBTForceMember, CBTMekForceMember } from '../../models/force-member.model';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
+import { TestBipedMekEntity, TestTankEntity } from '../../models/entity/testing/test-entities';
 
 const ZERO_HIT = Object.freeze({
     profile: Object.freeze([0]), value: 0, changed: false, weakened: false,
@@ -40,6 +41,7 @@ function createTurnSnapshot(
             automaticFalls: [],
         },
         activeBoosterComponentIds: [],
+        defenseModifierTotal: { modifier: 0 },
         turn: {
             airborne: null,
             cover: null,
@@ -97,17 +99,17 @@ function createMembers(definitions: readonly MemberFixture[]): CBTMekForceMember
         getC3State: () => 'none',
         getMekRecordSheetSnapshot: () => ({ conditions: [] }),
     };
-    members = definitions.map(definition => ({
-        kind: 'cbt',
-        id: definition.id,
-        summary: {
-            name: `${definition.chassis} ${definition.model}`,
-            chassis: definition.chassis,
-            model: definition.model,
-            entityType: 'Mek',
-        },
-        force,
-    } as unknown as CBTMekForceMember));
+    members = definitions.map(definition => {
+        const entity = new TestBipedMekEntity();
+        entity.chassis.set(definition.chassis);
+        entity.model.set(definition.model);
+        return {
+            kind: 'cbt',
+            id: definition.id,
+            entity,
+            force,
+        } as unknown as CBTMekForceMember;
+    });
     return members;
 }
 
@@ -122,6 +124,9 @@ function createMember(turnSnapshot = createTurnSnapshot()): CBTMekForceMember {
 
 function createTankMember(): CBTForceMember {
     const changed = new Subject<void>();
+    const entity = new TestTankEntity();
+    entity.chassis.set('Vedette');
+    entity.model.set('Medium Tank');
     let member: CBTForceMember;
     const force = {
         changed,
@@ -174,12 +179,7 @@ function createTankMember(): CBTForceMember {
     member = {
         kind: 'cbt',
         id: 'unit:vedette',
-        summary: {
-            name: 'Vedette Medium Tank',
-            chassis: 'Vedette',
-            model: 'Medium Tank',
-            entityType: 'Tank',
-        },
+        entity,
         force,
     } as unknown as CBTForceMember;
     return member;
@@ -200,7 +200,10 @@ function createDialog(data: EquipmentDialogData) {
             { provide: DIALOG_DATA, useValue: data },
             { provide: DialogRef, useValue: dialogRef },
             { provide: OverlayManagerService, useValue: overlayManager },
-            { provide: OptionsService, useValue: { options: () => ({ cbtAutomations: true, trackPhaseAndTurn: true }) } },
+            { provide: OptionsService, useValue: {
+                options: () => ({ trackPhaseAndTurn: true }),
+                cbtAutomationMode: () => 'yes',
+            } },
             { provide: ToastService, useValue: toast },
             { provide: KeyboardShortcutService, useValue: keyboardShortcuts },
         ],
@@ -289,6 +292,7 @@ describe('EquipmentDialogComponent', () => {
 
     it('uses the shared direct-runtime phase and falling state for the title control', () => {
         const movementSelected = createTurnSnapshot({
+            defenseModifierTotal: { modifier: 1 },
             movementState: {
                 movement: {
                     schemaVersion: 1,
@@ -310,6 +314,7 @@ describe('EquipmentDialogComponent', () => {
         const { component } = createDialog({ member: createMember(movementSelected) });
 
         expect(component.turnSummaryPhase()).toBe('W');
+        expect(component.turnSummaryMovement()).toEqual({ color: 'walk', letter: 'W1' });
         expect(component.turnSummaryFalling()).toBeTrue();
         expect(component.turnSummaryDirty()).toBeTrue();
     });

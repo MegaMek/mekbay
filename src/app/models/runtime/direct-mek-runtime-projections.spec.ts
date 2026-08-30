@@ -38,10 +38,12 @@ import {
     createDirectJetBoosterRuntimeFixture,
     createDirectLaserInsulatorRuntimeFixture,
     createDirectLegAesRuntimeFixture,
+    createDirectLegDamageFloorRuntimeFixture,
     createDirectMekRuntimeFixture,
     createDirectModularArmorRuntimeFixture,
     createDirectPairedAesRuntimeFixture,
     createDirectPartialWingRuntimeFixture,
+    createDirectPrototypeLaserRuntimeFixture,
     createDirectQuadRuntimeFixture,
     createDirectShieldRuntimeFixture,
     createDirectSuperheavyRuntimeFixture,
@@ -243,7 +245,10 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.instance.ruleset(),
             query,
             'manual',
-        ).conditions).toContain('immobile');
+        )).toEqual(jasmine.objectContaining({
+            canTakeActiveActions: false,
+            conditions: jasmine.arrayContaining(['immobile']),
+        }));
 
         expect(fixture.instance.dispatch({
             type: 'set-crew-state',
@@ -267,6 +272,13 @@ describe('direct Mek entity/runtime projections', () => {
         expect(query.hasCondition('abandoned')).toBeTrue();
         expect(sheet.conditions).toContain('abandoned');
         expect(sheet.crew[0]?.effectiveState).toBe('ejected');
+        expect(projectMekTurnPanel(
+            fixture.entity,
+            fixture.index,
+            fixture.instance.ruleset(),
+            query,
+            'manual',
+        ).canTakeActiveActions).toBeFalse();
     });
 
     it('derives a dead crew display from committed cockpit destruction', () => {
@@ -896,7 +908,7 @@ describe('direct Mek entity/runtime projections', () => {
             'manual',
         );
         expect(panel.attackMovementModifiers).toEqual({
-            stationary: 0, walk: 1, run: 2, jump: 3, UMU: 3,
+            stationary: 0, walk: 1, run: 2, sprint: 0, jump: 3, UMU: 3,
         });
         expect(panel.defenseModifierBreakdown).toEqual([
             { label: 'Skidding', modifier: 2 },
@@ -1215,6 +1227,24 @@ describe('direct Mek entity/runtime projections', () => {
         expect(row.label).toBe('Test AC (Rapid)');
         expect(row.weapon?.heat).toBe(1);
         expect(row.weapon?.firingHeat).toBe(2);
+    });
+
+    it('marks ground prototype-laser heat as variable without pre-adding its die roll', () => {
+        const fixture = createDirectPrototypeLaserRuntimeFixture();
+        const laser = fixture.equipmentComponent('ISMediumPulseLaserPrototype');
+        const row = projectMekEquipmentPanel(
+            fixture.entity,
+            fixture.index,
+            fixture.instance.ruleset(),
+            fixture.instance.query(),
+            emptyCBTEncounterSnapshot(),
+        ).components.find(component => component.componentId === laser.id)!;
+
+        expect(row.weapon).toEqual(jasmine.objectContaining({
+            heat: 4,
+            firingHeat: 4,
+            heatSuffix: '*',
+        }));
     });
 
     it('applies targeting-computer status and HAG mode from entity plus sparse runtime state', () => {
@@ -1729,6 +1759,41 @@ describe('direct Mek entity/runtime projections', () => {
             legal: false,
             maximumMp: 0,
         }));
+    });
+
+    it('floors Core Walking MP lost to leg actuator damage at 1 while legs survive', () => {
+        const scenarios = [
+            { label: 'biped', fixture: createDirectLegDamageFloorRuntimeFixture('biped'), leg: 'LL' },
+            { label: 'tripod', fixture: createDirectLegDamageFloorRuntimeFixture('tripod'), leg: 'LL' },
+            { label: 'quad', fixture: createDirectLegDamageFloorRuntimeFixture('quad'), leg: 'RLL' },
+        ];
+
+        for (const scenario of scenarios) {
+            const slots = [...scenario.fixture.index.slots.values()].filter(slot =>
+                scenario.fixture.index.locations.get(slot.locationId)?.code === scenario.leg
+                && slot.componentIds.some(componentId => {
+                    const component = scenario.fixture.index.components.get(componentId);
+                    return component?.kind === 'system'
+                        && ['Upper Leg Actuator', 'Lower Leg Actuator', 'Foot Actuator']
+                            .includes(component.systemType);
+                }));
+            expect(slots.length).withContext(scenario.label).toBe(3);
+            for (const [index, slot] of slots.entries()) {
+                expect(scenario.fixture.instance.dispatch({
+                    type: 'hit-critical',
+                    commandId: asCommandId(`leg-floor:${scenario.label}:${index}`),
+                    expectedRevision: scenario.fixture.instance.query().stateRevision,
+                    slotId: slot.id,
+                    hits: 1,
+                    target: 'committed',
+                }).accepted).withContext(scenario.label).toBeTrue();
+            }
+            const movement = scenario.fixture.instance.query().mekMovementPsr();
+            expect(movement.kind).withContext(scenario.label).toBe('supported');
+            if (movement.kind !== 'supported') continue;
+            expect(movement.walkMp).withContext(scenario.label).toBe(1);
+            expect(movement.runMp).withContext(scenario.label).toBe(2);
+        }
     });
 
     it('ports Core and Total Warfare Quad leg-loss movement', () => {

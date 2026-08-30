@@ -278,6 +278,7 @@ function movementModeLabel(value: number): string | null {
         4: 'Jump',
         5: 'UMU',
         6: 'VTOL',
+        7: 'Sprint',
     } as const)[value as 1 | 2 | 3 | 4 | 5 | 6] ?? null;
 }
 

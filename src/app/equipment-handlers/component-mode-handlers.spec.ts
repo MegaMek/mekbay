@@ -31,44 +31,42 @@ import { StealthHandler } from '../models/runtime/component-stealth';
 import { BAPHandler } from '../models/runtime/component-bap';
 
 describe('direct V2 component-mode handlers', () => {
-    it('toggles an active probe through its Entity-defined binary modes', () => {
+    it('keeps an active probe effective until its End-Turn power transition settles', () => {
         const fixture = createDirectBapRuntimeFixture();
         const component = fixture.equipmentComponent('Test BAP');
         const setup = directModeSetup('Test BAP', fixture);
-        const definition = componentModeDefinition(
-            fixture.entity,
-            fixture.index,
-            component.id,
-            fixture.instance.ruleset(),
-        );
         const handler = new BAPHandler();
+        const input = interactionInput(setup);
 
-        expect(fixture.instance.query().componentMode(component.id)).toBe('Off');
-        expect(handler.getComponentModeChoices(
-            fixture.instance,
-            definition,
-            setup.queryContext,
-        )).toEqual([{
-            label: 'Active Probe is OFF',
-            value: 'enabled',
-            active: false,
+        expect(fixture.instance.query().componentMode(component.id)).toBe('enabled');
+        expect(handler.choices(input)).toEqual([{
+            label: 'Active Probe is ON',
+            value: 'disabling',
+            active: true,
             displayType: 'toggle',
         }]);
-        expect(handler.handleComponentModeSelection(
-            fixture.instance,
-            definition,
-            { label: 'Active Probe is OFF', value: 'enabled' },
+        expect(handler.select(
+            input,
+            { label: 'Active Probe is ON', value: 'disabling' },
             setup.commandContext,
         )).toBeTrue();
-        expect(fixture.instance.query().componentMode(component.id)).toBe('On');
-        expect(handler.getComponentModeChoices(
-            fixture.instance,
-            definition,
-            setup.queryContext,
-        )[0]).toEqual(jasmine.objectContaining({
-            label: 'Active Probe is ON',
-            value: 'disabled',
+        expect(fixture.instance.query().componentMode(component.id)).toBe('disabling');
+        expect(handler.choices(input)[0]).toEqual(jasmine.objectContaining({
+            label: 'Turning active probe off…',
+            value: 'enabled',
             active: true,
+        }));
+        expect(fixture.instance.dispatch({
+            type: 'end-turn',
+            commandId: createCommandId(),
+            expectedRevision: fixture.instance.revision(),
+            policy: 'automatic',
+        }).accepted).toBeTrue();
+        expect(fixture.instance.query().componentMode(component.id)).toBe('disabled');
+        expect(handler.choices(input)[0]).toEqual(jasmine.objectContaining({
+            label: 'Active Probe is OFF',
+            value: 'enabling',
+            active: false,
         }));
     });
 
@@ -108,8 +106,9 @@ describe('direct V2 component-mode handlers', () => {
         if (heat.kind === 'supported') {
             expect(heat.projection.committedSources).toContain(jasmine.objectContaining({
                 id: `equipment:${setup.component.id}`,
-                label: 'Equipment',
+                label: 'Stealth',
                 value: 10,
+                group: 'Equipment',
             }));
         }
         expect(handler.handleComponentModeSelection(
@@ -171,7 +170,7 @@ describe('direct V2 component-mode handlers', () => {
             setup.fixture.instance.ruleset(),
         );
         const handler = new StealthHandler();
-        const ecmIds = ['Test ECM', 'Test Angel ECM'].map(id => setup.fixture.equipmentComponent(id).id);
+        const ecmIds = ['Test Angel ECM', 'Test ECM'].map(id => setup.fixture.equipmentComponent(id).id);
         for (const componentId of ecmIds) {
             expect(setup.runtime.dispatch({
                 type: 'set-component-mode',
@@ -280,22 +279,38 @@ describe('direct V2 component-mode handlers', () => {
         }))).toBeFalse();
     });
 
-    it('uses ordinary ECM modes and persists the selected mode', () => {
+    it('uses ordinary ECM modes and settles the selected mode at End Turn', () => {
         const setup = directModeSetup('Test ECM');
         const definition = componentEcmModeDefinition(setup.fixture.index, setup.component.id);
         const handler = new ECMHandler();
+        const angelId = setup.fixture.equipmentComponent('Test Angel ECM').id;
 
         expect(definition.modes).toEqual([
             ECMMode.ECM, ECMMode.ECCM, ECMMode.GHOST, ECMMode.OFF,
         ]);
         expect(setup.runtime.query().componentMode(setup.component.id)).toBe(ECMMode.ECM);
         expect(componentEcmActive(ECMMode.ECM)).toBeTrue();
+        expect(setup.runtime.dispatch({
+            type: 'set-component-mode',
+            commandId: createCommandId(),
+            expectedRevision: setup.runtime.revision(),
+            componentId: angelId,
+            mode: ECMMode.OFF,
+        }).accepted).toBeTrue();
         expect(handler.handleComponentEcmModeSelection(
             setup.runtime,
             definition,
             { label: 'Off', value: ECMMode.OFF },
             setup.commandContext,
         )).toBeTrue();
+        expect(handler.choices(interactionInput(setup))[0].value).toBe(ECMMode.OFF);
+        expect(setup.runtime.query().componentMode(setup.component.id)).not.toBe(ECMMode.OFF);
+        expect(setup.runtime.dispatch({
+            type: 'end-turn',
+            commandId: createCommandId(),
+            expectedRevision: setup.runtime.revision(),
+            policy: 'automatic',
+        }).accepted).toBeTrue();
         expect(setup.runtime.query().componentMode(setup.component.id)).toBe(ECMMode.OFF);
         expect(componentEcmActive(ECMMode.OFF)).toBeFalse();
     });
@@ -340,5 +355,20 @@ function directModeSetup(
         runtime,
         queryContext: createHandlerQueryContext(fixture.equipment),
         commandContext: createHandlerCommandContext(fixture.equipment, toast, dialogs),
+    };
+}
+
+function interactionInput(setup: ReturnType<typeof directModeSetup>) {
+    return {
+        runtime: setup.runtime,
+        entity: setup.fixture.entity,
+        index: setup.fixture.index,
+        ruleset: setup.runtime.ruleset(),
+        owner: {
+            instanceId: setup.runtime.id,
+            encounter: () => ({}) as never,
+        },
+        componentId: setup.component.id,
+        context: setup.queryContext,
     };
 }

@@ -182,6 +182,72 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(entity).structureType).toBe('Standard');
   });
 
+  it('exports hybrid Mek structure distribution', () => {
+    const entity = new BipedMekEntity();
+    entity.setTonnage(60);
+    const endo = new StructureEquipment({
+      id: 'IS Endo Steel',
+      name: 'Endo Steel',
+      type: 'structure',
+      structure: { typeId: 2 },
+      tech: { base: 'IS' },
+    });
+    entity.setUniformStructure(new MountedStructure({
+      tonnage: 60,
+      structure: STANDARD_STRUCTURE_EQUIPMENT,
+    }));
+    entity.setStructureAt('LA', new MountedStructure({ tonnage: 60, structure: endo }));
+
+    const metadata = builder.build(entity);
+    expect(metadata.structureType).toBe('Hybrid');
+    expect(metadata.hybridLayout).toEqual({
+      HD: { type: 0, clan: false },
+      CT: { type: 0, clan: false },
+      RT: { type: 0, clan: false },
+      LT: { type: 0, clan: false },
+      RA: { type: 0, clan: false },
+      LA: { type: 2, clan: false },
+      RL: { type: 0, clan: false },
+      LL: { type: 0, clan: false },
+    });
+  });
+
+  it('exports patchwork armor material codes and technology bases', () => {
+    const entity = new BipedMekEntity();
+    const impactResistant = new ArmorEquipment({
+      id: 'Impact-Resistant Armor',
+      name: 'Impact-Resistant',
+      type: 'armor',
+      armor: { type: 'IMPACT_RESISTANT' },
+    });
+    entity.setArmorEquipmentAt('LA', impactResistant, 'Clan');
+
+    const metadata = builder.build(entity);
+    expect(metadata.armorType).toBe('Patchwork');
+    expect(metadata.patchworkLayout?.['LA']).toEqual({ type: 25, clan: true });
+    expect(metadata.patchworkLayout?.['CT']).toEqual({ type: 0, clan: false });
+  });
+
+  it('exports MegaMek patchwork sentinels for fighter pseudo-locations', () => {
+    const entity = new AeroSpaceFighterEntity();
+    const reflective = new ArmorEquipment({
+      id: 'Reflective Armor',
+      name: 'Reflective',
+      type: 'armor',
+      armor: { type: 'REFLECTIVE' },
+    });
+    entity.setArmorEquipmentAt('Left Wing', reflective, 'IS');
+
+    expect(builder.build(entity).patchworkLayout).toEqual({
+      NOS: { type: 0, clan: false },
+      LWG: { type: 3, clan: false },
+      RWG: { type: 0, clan: false },
+      AFT: { type: 0, clan: false },
+      WNG: { type: 0, clan: false },
+      FSLG: { type: -1, clan: false },
+    });
+  });
+
 
   it('exports Java weight class display names without changing canonical categories', () => {
     const conventionalFighter = new ConvFighterEntity();

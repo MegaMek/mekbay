@@ -10,6 +10,7 @@ export interface InventoryControlHeatEffect {
     readonly value: number;
     readonly weakened: boolean;
     readonly suffix?: '*';
+    readonly displayValue?: number;
 }
 
 /** Immutable component-local input for inventory firing-heat projection. */

@@ -14,6 +14,7 @@ import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 export interface MekCriticalChanceDialogData {
     readonly locationLabel: string;
     readonly canBlowOff: boolean;
+    readonly industrialMek?: boolean;
     readonly modifiers?: readonly MekCriticalChanceModifier[];
 }
 
@@ -126,7 +127,11 @@ export interface MekCriticalChanceDialogData {
                             }
                         </div>
                         <div class="critical-table-hint" [class.result-slot-hidden]="result()">
-                            2–7: No Critical | 8–9: 1 | 10–11: 2 | 12: {{ data.canBlowOff ? 'blow off' : '3' }}
+                            @if (data.industrialMek) {
+                                2–7: None | 8–9: 1 | 10–11: 2 | 12–13: {{ data.canBlowOff ? 'blow off' : '3' }} | 14: {{ data.canBlowOff ? 'blow off' : '4' }}
+                            } @else {
+                                2–7: No Critical | 8–9: 1 | 10–11: 2 | 12: {{ data.canBlowOff ? 'blow off' : '3' }}
+                            }
                         </div>
                     </div>
                 </div>
@@ -184,8 +189,12 @@ export class MekCriticalChanceDialogComponent {
     }
 
     private resolveRoll(raw: number): void {
-        const modified = Math.min(12, raw + this.modifierTotal());
-        this.result.set(resolveMekCriticalChance(modified, this.data.canBlowOff));
+        const modified = Math.min(this.data.industrialMek ? 14 : 12, raw + this.modifierTotal());
+        this.result.set(resolveMekCriticalChance(
+            modified,
+            this.data.canBlowOff,
+            this.data.industrialMek ?? false,
+        ));
     }
 
     optionalModifierEnabled(modifier: MekCriticalChanceModifier): boolean {

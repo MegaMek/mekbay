@@ -3,7 +3,9 @@
 
 import type { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
 import { ApolloHandler } from './component-apollo';
-import { BAPHandler } from './component-bap';
+import { EquipmentPowerHandler } from './component-equipment-power';
+import { MobileHpgHandler } from './component-mobile-hpg';
+import { BoobyTrapHandler } from './component-booby-trap';
 import { BombastLaserHandler, TwBombastLaserHandler } from './component-bombast-laser';
 import { C3Handler } from './component-c3-configuration';
 import { C3EmergencyMasterHandler } from './component-c3-emergency-master';
@@ -18,6 +20,9 @@ import {
 import { FlamerHandler } from './component-flamer';
 import { HagHandler } from './component-hag-mode';
 import { InventoryModeHandler } from './component-inventory-mode';
+import { MachineGunArrayHandler } from './component-machine-gun-array';
+import { ShieldModeHandler } from './component-shield-mode';
+import { CoolantPodHandler } from './component-coolant-pod';
 import { PpcCapacitorHandler } from './component-ppc-capacitor';
 import { UACFiringModeHandler, UACJammingHandler } from './component-rapid-fire-autocannon';
 import { RiscLaserPulseModuleHandler } from './component-risc-laser-pulse';
@@ -29,10 +34,15 @@ import type { EquipmentInteractionHandler } from './equipment-interaction';
 /** The only composition root. Feature behavior remains in each equipment-owned module. */
 export function createEquipmentInteractionHandlers(): readonly EquipmentInteractionHandler[] {
     return Object.freeze([
+        new BoobyTrapHandler(),
         new ECMHandler(),
-        new BAPHandler(),
+        new EquipmentPowerHandler(),
+        new MobileHpgHandler(),
         new GaussPowerHandler(),
         new StealthHandler(),
+        new MachineGunArrayHandler(),
+        new ShieldModeHandler(),
+        new CoolantPodHandler(),
         new InventoryModeHandler(),
         new ApolloHandler(),
         new VibrobladeHandler(),

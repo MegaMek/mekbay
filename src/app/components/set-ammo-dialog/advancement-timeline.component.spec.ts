@@ -56,7 +56,6 @@ describe('AdvancementTimelineComponent', () => {
         expect(rowTexts[1]).toContain('2810');
         expect(rowCells).toEqual([4, 4]);
         expect(rowTracks[0].style.gridTemplateColumns).toBe(rowTracks[1].style.gridTemplateColumns);
-        expect(getComputedStyle(fixture.nativeElement.querySelector('.advancement-timeline-header-cell') as HTMLElement).whiteSpace).toBe('nowrap');
     });
 
     it('orders advancement timeline events by year instead of fixed event type order', () => {

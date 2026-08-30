@@ -282,6 +282,13 @@
     align-self: flex-start;
     margin-bottom: 4px;
     gap: 12px;
+
+    .group {
+        display: flex;
+        flex-direction: row;
+        gap: 4px;
+        flex-wrap: wrap;
+    }
 }
 
 .ability-detail-name {

@@ -14,7 +14,7 @@ import type { ForceUnit } from '../models/force-unit.model';
 import { CBTForceMember, type ForceMember } from '../models/force-member.model';
 import type { AvailabilitySource } from '../models/options.model';
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
-import { createEmptyUnit } from '../testing/unit-test-helpers';
+import { createEmptyUnit, createTestMekEntity } from '../testing/unit-test-helpers';
 import { DataService } from './data.service';
 import { ForceWorkspaceCommandsService } from './force-workspace-commands.service';
 import { ForceFormationService } from './force-formation.service';
@@ -89,6 +89,7 @@ describe('ForceWorkspaceCommandsService first-unit work bounds', () => {
                 return forceUnit;
             },
             setName: jasmine.createSpy('setName'),
+            getUnitSourceIdentity: () => ({ provider: unit.provider, uuid: unit.uuid }),
             getRosterGroupId: () => 'group-1',
             queryCanonicalRoster: () => ({
                 kind: 'available',
@@ -122,9 +123,19 @@ describe('ForceWorkspaceCommandsService first-unit work bounds', () => {
             getEras: () => [era],
             getFactions: () => [faction],
             getForceNameWords: () => createEmptyForceNameWords(),
+            getUnitByIdentity: () => unit,
         };
         service.unitAvailabilitySource = TestBed.inject(UnitAvailabilitySourceService);
-        const admitted = new CBTForceMember('first-unit' as any, force as any, unit);
+        const admitted = new CBTForceMember(
+            'first-unit' as any,
+            force as any,
+            createTestMekEntity({
+                uuid: unit.uuid,
+                chassis: unit.chassis,
+                model: unit.model,
+                year: unit.year,
+            }),
+        );
         service.unitAdmission = {
             admit: jasmine.createSpy('admit').and.callFake(async () => {
                 forceUnits.push(admitted as unknown as ForceUnit);

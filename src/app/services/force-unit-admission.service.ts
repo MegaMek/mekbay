@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { ASForceUnit } from '../models/as-force-unit.model';
 import { ASForce } from '../models/as-force.model';
 import {
@@ -13,13 +13,18 @@ import type { Force, UnitGroup } from '../models/force.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { UnitInstanceId } from '../models/runtime/runtime-state';
 import { DEFAULT_FORCE_DEPLOYMENT_ID } from '../models/runtime/unit-state-initializer';
-import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
-import { MM_DATA_UNIT_PROVIDER_ID, asSourceHash } from './unit-catalog/unit-catalog.types';
+import {
+    MM_DATA_UNIT_PROVIDER_ID,
+    asSourceHash,
+    type UnitProviderId,
+    type UnitUuid,
+} from './unit-catalog/unit-catalog.types';
 import {
     type CBTForceMember,
     type ForceMember,
 } from '../models/force-member.model';
 import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
+import { OptionsService } from './options.service';
 
 export type ForceUnitAdmission = ForceMember;
 
@@ -35,12 +40,26 @@ export interface ForceUnitAdmissionRequest {
     readonly instanceId?: string | UnitInstanceId;
 }
 
+export interface ClassicUnitIdentityAdmissionRequest {
+    readonly force: CBTForce;
+    readonly identity: Readonly<{ readonly provider: UnitProviderId; readonly uuid: UnitUuid }>;
+    readonly group?: UnitGroup;
+    readonly rosterGroupId?: string;
+    readonly rosterMemberIndex?: number;
+    readonly gunnerySkill?: number;
+    readonly pilotingSkill?: number;
+    readonly commander?: boolean;
+    readonly instanceId?: string | UnitInstanceId;
+}
+
 /**
  * The single whole-unit admission selector. Classic always installs a native
  * Entity + Rules + sparse runtime; Alpha Strike owns its separate ForceUnit.
  */
 @Injectable({ providedIn: 'root' })
 export class ForceUnitAdmissionService {
+    private readonly options = inject(OptionsService);
+
     async admit(request: ForceUnitAdmissionRequest): Promise<ForceUnitAdmission> {
         if (request.force instanceof CBTForce) return this.admitClassicUnit(request);
         const unit = await this.createAlphaStrikeUnit(request);
@@ -55,6 +74,21 @@ export class ForceUnitAdmissionService {
             throw new Error(`CBT runtime is not available for "${request.summary.name}"`);
         }
 
+        return this.admitClassicIdentity({
+            ...request,
+            force: request.force,
+            identity: Object.freeze({
+                provider: request.summary.provider,
+                uuid: request.summary.uuid,
+            }),
+        });
+    }
+
+    /** Entity-native admission used when a loaded Classic member is cloned or transferred. */
+    async admitClassicIdentity(
+        request: ClassicUnitIdentityAdmissionRequest,
+    ): Promise<CBTForceMember> {
+
         let rosterGroupId = request.rosterGroupId ?? request.group?.id;
         if (rosterGroupId === undefined) {
             const targetGroup = request.force.groups()[0] ?? await request.force.addGroup();
@@ -64,18 +98,19 @@ export class ForceUnitAdmissionService {
         }
 
         const result: CBTDirectUnitAdmissionResult = await request.force.admitRetainedUnit({
-            identity: Object.freeze({
-                provider: request.summary.provider,
-                uuid: request.summary.uuid,
-            }),
+            identity: request.identity,
             deployment: Object.freeze({ id: DEFAULT_FORCE_DEPLOYMENT_ID }),
-            scenario: Object.freeze({ id: 'megamek', ruleset: CORE_2026_RULESET }),
+            scenario: Object.freeze({
+                id: 'megamek',
+                ruleset: CORE_2026_RULESET,
+                options: Object.freeze({
+                    forcedWithdrawal: this.options.options().CBTOptionalRules.forcedWithdrawal,
+                    sprinting: this.options.options().CBTOptionalRules.sprinting,
+                }),
+            }),
             crewSkills: Object.freeze({
                 gunnery: request.gunnerySkill ?? DEFAULT_GUNNERY_SKILL,
-                piloting: getEffectivePilotingSkill(
-                    request.summary,
-                    request.pilotingSkill ?? DEFAULT_PILOTING_SKILL,
-                ),
+                piloting: request.pilotingSkill ?? DEFAULT_PILOTING_SKILL,
             }),
             targetRosterGroupId: rosterGroupId,
             ...(request.rosterMemberIndex === undefined
