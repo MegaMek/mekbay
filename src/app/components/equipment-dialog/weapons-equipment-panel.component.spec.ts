@@ -47,6 +47,7 @@ import { SHIELD_INACTIVE_MODE, SHIELD_RAISED_MODE } from '../../utils/shield-mod
 import { C3Handler } from '../../equipment-handlers/c3.handler';
 import { MgaActivationHandler } from '../../equipment-handlers/mga-activation.handler';
 import { MGA_ACTIVATION_STATE_KEY, MGA_OFF_STATE } from '../../utils/mga-state.util';
+import { PrototypeLaserHandler } from '../../equipment-handlers/prototype-laser.handler';
 
 function weapon(id: string, ammoType: Extract<AmmoType, 'NA' | 'AC' | 'ATM' | 'MML' | 'MRM' | 'AC_ULTRA' | 'NARC'> = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4], toHitModifier = 0, heat = 0): WeaponEquipment {
     const flags: EquipmentFlag[] = ammoType === 'MRM'
@@ -3005,6 +3006,63 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(turnState.addFiredHeat).toHaveBeenCalledOnceWith(4);
         expect(turnState.heatSources()).toContain(jasmine.objectContaining({ id: 'weapons', value: 10 }));
+    });
+
+    it('commits and reports the exact random heat rolled by a prototype laser', async () => {
+        const prototype = entry({
+            id: 'prototype-medium-pulse-laser',
+            equipment: weapon('ISMediumPulseLaserPrototype', 'NA', 0, [1, 2, 3, 4], 0, 4),
+            el: svgEntry('<g><g class="name"><text>Prototype Medium Pulse Laser</text></g><text class="heat">4*</text></g>')
+        });
+        spyOn(Math, 'random').and.returnValue(5 / 6);
+        const { component, dialogsService, heat, turnState } = createComponent(
+            [prototype],
+            {},
+            [],
+            new Map(),
+            {
+                handlers: [new PrototypeLaserHandler()],
+                heatDissipation: 3,
+                heatNext: 10,
+            },
+        );
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect((turnState.addFiredHeat as jasmine.Spy).calls.allArgs()).toEqual([[4], [6]]);
+        expect(turnState.heatSources()).toContain(jasmine.objectContaining({ id: 'weapons', value: 10 }));
+        expect(heat.next).toBe(17);
+        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
+            jasmine.stringMatching(/Heat Projection: \+10[\s\S]*ISMediumPulseLaserPrototype: \+6 heat \(1D6 roll: 6\)/),
+            'Weapons Fired',
+        );
+    });
+
+    it('applies dissipation to random prototype-laser heat before updating a manual heat target', async () => {
+        const prototype = entry({
+            id: 'prototype-medium-pulse-laser',
+            equipment: weapon('ISMediumPulseLaserPrototype', 'NA', 0, [1, 2, 3, 4], 0, 4),
+        });
+        spyOn(Math, 'random').and.returnValue(5 / 6);
+        const { component, heat } = createComponent(
+            [prototype],
+            {},
+            [],
+            new Map(),
+            {
+                handlers: [new PrototypeLaserHandler()],
+                heatDissipation: 20,
+                heatNext: 0,
+            },
+        );
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(heat.next).toBe(0);
     });
 
     it('uses only the remaining dissipation after heat was applied this turn', () => {

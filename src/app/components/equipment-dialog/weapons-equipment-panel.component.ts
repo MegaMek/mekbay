@@ -8,7 +8,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
-import type { HandlerChoice } from '../../services/equipment-interaction-registry.service';
+import type { HandlerChoice, InventoryControlFireResult } from '../../services/equipment-interaction-registry.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { INVENTORY_MODE_CHOICE_LABEL, INVENTORY_MODE_HANDLER_ID } from '../../equipment-handlers/inventory-mode.handler';
 import { changeAmmoEntriesRemaining, getAmmoControlEntriesForWeapon, getAmmoEntryRemaining, setAmmoEntryValue } from '../../utils/ammo-interaction.util';
@@ -134,6 +134,10 @@ interface AmmoConsumptionRequest {
 interface AmmoConsumptionSummaryItem {
     label: string;
     count: number;
+}
+
+interface InventoryControlFireSummaryItem extends InventoryControlFireResult {
+    label: string;
 }
 
 interface DragPreviewCellSizing {
@@ -914,12 +918,25 @@ export class WeaponsEquipmentPanelComponent {
                 this.unit().setHeat(heatProjection.final);
             }
         }
-        await this.runSelectedFireHooks(selectedRows);
+        const fireSummary = await this.runSelectedFireHooks(selectedRows);
+        const additionalHeat = fireSummary.reduce(
+            (total, result) => total + this.normalizedAdditionalHeat(result),
+            0,
+        );
+        if (heatProjection && additionalHeat > 0) {
+            this.unit().turnState().addFiredHeat(additionalHeat);
+            if (hasManualHeatTarget) {
+                this.unit().setHeat(Math.max(
+                    0,
+                    heatProjection.pending + additionalHeat - heatProjection.dissipation,
+                ));
+            }
+        }
         this.inventoryControl().markInventoryViewChanged();
         const ammoSummary = Array.from(requests.values())
             .map(request => this.consumedAmmoSummaryItem(request));
         await this.context().commandContext.dialogsService.showNoticeHtml(
-            this.consumptionSummaryHtml(ammoSummary, heatProjection),
+            this.consumptionSummaryHtml(ammoSummary, heatProjection, fireSummary),
             'Weapons Fired'
         );
     }
@@ -962,10 +979,18 @@ export class WeaponsEquipmentPanelComponent {
         }
     }
 
-    private async runSelectedFireHooks(selectedRows: InventoryControlRow[]): Promise<void> {
+    private async runSelectedFireHooks(
+        selectedRows: InventoryControlRow[],
+    ): Promise<InventoryControlFireSummaryItem[]> {
+        const summary: InventoryControlFireSummaryItem[] = [];
         for (const row of selectedRows) {
-            await this.context().registry.afterInventoryControlFire(row.entry);
+            const results = await this.context().registry.afterInventoryControlFire(row.entry);
+            summary.push(...results.map(result => ({
+                ...result,
+                label: row.display.name,
+            })));
         }
+        return summary;
     }
 
     private consumedAmmoSummaryItem(request: AmmoConsumptionRequest): AmmoConsumptionSummaryItem {
@@ -979,12 +1004,34 @@ export class WeaponsEquipmentPanelComponent {
         };
     }
 
-    private consumptionSummaryHtml(ammoSummary: AmmoConsumptionSummaryItem[], heatProjection: SelectedHeatProjection | null): string {
+    private consumptionSummaryHtml(
+        ammoSummary: AmmoConsumptionSummaryItem[],
+        heatProjection: SelectedHeatProjection | null,
+        fireSummary: readonly InventoryControlFireSummaryItem[],
+    ): string {
         const ammoHtml = ammoSummary.length > 0
             ? `Ammo consumed:<ul>${ammoSummary.map(item => `<li>${item.count} ammo from ${this.escapeHtml(item.label)}</li>`).join('')}</ul>`
             : '<p>No ammo consumed.</p>';
         if (!heatProjection) return ammoHtml;
-        return `${ammoHtml}<p>Heat Projection: +${heatProjection.selection}<br></p>`;
+        const additionalHeat = fireSummary.reduce(
+            (total, result) => total + this.normalizedAdditionalHeat(result),
+            0,
+        );
+        const additionalHeatItems = fireSummary
+            .filter(result => this.normalizedAdditionalHeat(result) > 0)
+            .map(result => {
+                const detail = result.detail ? ` (${this.escapeHtml(result.detail)})` : '';
+                return `<li>${this.escapeHtml(result.label)}: +${this.normalizedAdditionalHeat(result)} heat${detail}</li>`;
+            });
+        const additionalHeatHtml = additionalHeatItems.length > 0
+            ? `Additional heat:<ul>${additionalHeatItems.join('')}</ul>`
+            : '';
+        return `${ammoHtml}<p>Heat Projection: +${heatProjection.selection + additionalHeat}<br></p>${additionalHeatHtml}`;
+    }
+
+    private normalizedAdditionalHeat(result: InventoryControlFireResult): number {
+        const value = result.additionalHeat ?? 0;
+        return Number.isFinite(value) ? Math.max(0, value) : 0;
     }
 
     private escapeHtml(value: string): string {

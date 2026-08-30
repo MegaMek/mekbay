@@ -9,6 +9,7 @@ import {
     EquipmentInteractionHandler,
     type HandlerCommandContext,
     type HandlerQueryContext,
+    type InventoryControlFireResult,
 } from '../services/equipment-interaction-registry.service';
 
 const PROTOTYPE_LASER_MAX_EXTRA_HEAT = new Map<string, 3 | 6>([
@@ -52,17 +53,18 @@ export class PrototypeLaserHandler extends EquipmentInteractionHandler {
         return { ...effect, suffix: '*' };
     }
 
-    override afterInventoryControlFire(equipment: MountedEquipment): void {
+    override afterInventoryControlFire(equipment: MountedEquipment): InventoryControlFireResult | void {
         if (equipment.owner.getUnit().type === 'Aero') return;
         const maximum = this.maximumExtraHeat(equipment);
         if (maximum === 0) return;
         const roll = Math.floor(Math.random() * 6) + 1;
         const extraHeat = maximum === 3 ? Math.ceil(roll / 2) : roll;
-        const manualHeatTarget = equipment.owner.getHeat().next;
-        equipment.owner.turnState().addFiredHeat(extraHeat);
-        if (manualHeatTarget !== undefined) {
-            equipment.owner.setHeat(manualHeatTarget + extraHeat);
-        }
+        return {
+            additionalHeat: extraHeat,
+            detail: maximum === 3
+                ? `1D3 (1D6 roll: ${roll})`
+                : `1D6 roll: ${roll}`,
+        };
     }
 
     private maximumExtraHeat(equipment: MountedEquipment): 0 | 3 | 6 {

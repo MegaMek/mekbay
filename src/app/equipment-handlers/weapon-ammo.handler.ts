@@ -57,7 +57,7 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
                         registry: {
                             getChoices: () => [],
                             handleSelection: () => false,
-                            afterInventoryControlFire: () => undefined,
+                            afterInventoryControlFire: async () => [],
                             inventoryControlRules: () => ({})
                         },
                         queryContext: createHandlerQueryContext(equipmentCatalog),

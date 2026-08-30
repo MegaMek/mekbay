@@ -53,6 +53,14 @@ export interface CriticalDelayedExplosionHandling {
     readonly explosion: CriticalDelayedExplosion | null;
 }
 
+/** Additional state produced by an inventory-control firing hook. */
+export interface InventoryControlFireResult {
+    /** Heat generated in addition to the firing heat already shown for the entry. */
+    readonly additionalHeat?: number;
+    /** Plain-text explanation shown alongside the additional heat. */
+    readonly detail?: string;
+}
+
 /** Returns the original set when no change is needed. */
 export function setEffectiveWeaponType(
     types: ReadonlySet<WeaponType>,
@@ -174,7 +182,9 @@ export abstract class EquipmentInteractionHandler {
     /**
      * Hook called after a mounted equipment entry is fired/consumed from the weapons panel.
      */
-    afterInventoryControlFire?(equipment: MountedEquipment): void | Promise<void>;
+    afterInventoryControlFire?(
+        equipment: MountedEquipment,
+    ): InventoryControlFireResult | void | Promise<InventoryControlFireResult | void>;
 
     /**
      * Hook called immediately before pending equipment and critical-slot damage is committed.
@@ -436,10 +446,13 @@ export class EquipmentInteractionRegistry {
             : equipment.owner.canPerformEquipmentAction(equipment, choice.action ?? 'change-mode');
     }
 
-    async afterInventoryControlFire(equipment: MountedEquipment): Promise<void> {
+    async afterInventoryControlFire(equipment: MountedEquipment): Promise<InventoryControlFireResult[]> {
+        const results: InventoryControlFireResult[] = [];
         for (const handler of this.getHandlers(equipment)) {
-            await handler.afterInventoryControlFire?.(equipment);
+            const result = await handler.afterInventoryControlFire?.(equipment);
+            if (result) results.push(result);
         }
+        return results;
     }
 
     beforeEquipmentStateCommit(equipment: MountedEquipment): void {

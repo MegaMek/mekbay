@@ -38,7 +38,7 @@ describe('PrototypeLaserHandler', () => {
     const handler = new PrototypeLaserHandler();
     const context = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
 
-    it('marks ground prototype heat as variable and rolls the extra heat after firing', () => {
+    it('marks ground prototype heat as variable and returns the rolled extra heat after firing', () => {
         const medium = fixture('ISMediumPulseLaserPrototype');
         spyOn(Math, 'random').and.returnValue(5 / 6);
 
@@ -49,29 +49,36 @@ describe('PrototypeLaserHandler', () => {
             context,
         )).toEqual({ value: 10, weakened: false, suffix: '*' });
 
-        handler.afterInventoryControlFire(medium.mounted);
-        expect(medium.addFiredHeat).toHaveBeenCalledOnceWith(6);
+        expect(handler.afterInventoryControlFire(medium.mounted)).toEqual({
+            additionalHeat: 6,
+            detail: '1D6 roll: 6',
+        });
+        expect(medium.addFiredHeat).not.toHaveBeenCalled();
         expect(medium.setHeat).not.toHaveBeenCalled();
     });
 
-    it('adds random ground prototype heat to an existing manual heat target', () => {
+    it('leaves committing a manual heat target to the firing workflow', () => {
         const medium = fixture('ISMediumPulseLaserPrototype');
         medium.mounted.owner.setHeat(14);
         medium.setHeat.calls.reset();
         spyOn(Math, 'random').and.returnValue(5 / 6);
 
-        handler.afterInventoryControlFire(medium.mounted);
+        const result = handler.afterInventoryControlFire(medium.mounted);
 
-        expect(medium.addFiredHeat).toHaveBeenCalledOnceWith(6);
-        expect(medium.setHeat).toHaveBeenCalledOnceWith(20);
+        expect(result?.additionalHeat).toBe(6);
+        expect(medium.addFiredHeat).not.toHaveBeenCalled();
+        expect(medium.setHeat).not.toHaveBeenCalled();
     });
 
     it('uses 1D3 extra heat for the small prototype pulse laser', () => {
         const small = fixture('ISSmallPulseLaserPrototype');
         spyOn(Math, 'random').and.returnValue(5 / 6);
 
-        handler.afterInventoryControlFire(small.mounted);
-        expect(small.addFiredHeat).toHaveBeenCalledOnceWith(3);
+        expect(handler.afterInventoryControlFire(small.mounted)).toEqual({
+            additionalHeat: 3,
+            detail: '1D3 (1D6 roll: 6)',
+        });
+        expect(small.addFiredHeat).not.toHaveBeenCalled();
     });
 
     it('uses maximum extra heat for aerospace firing without a random post-fire roll', () => {
@@ -82,7 +89,7 @@ describe('PrototypeLaserHandler', () => {
             { value: 12, weakened: false },
             context,
         )).toEqual({ value: 18, weakened: false });
-        handler.afterInventoryControlFire(aero.mounted);
+        expect(handler.afterInventoryControlFire(aero.mounted)).toBeUndefined();
         expect(aero.addFiredHeat).not.toHaveBeenCalled();
     });
 
