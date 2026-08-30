@@ -1025,7 +1025,7 @@ export class DataService {
             const eras = pending.core.dependencies.eras.eras;
             const factions = pending.core.dependencies.factions.factions;
             const equipmentRegistry = pending.core.dependencies.equipment.registry;
-            const membershipState = { eras, factions };
+            const membershipState = this.cloneEraFactionMembershipState(eras, factions);
 
             const runtimePreparationStartedAt = Date.now();
             const runtimeCandidate: PreparedUnitRuntimeCatalog =
@@ -1069,7 +1069,7 @@ export class DataService {
             if (revision < this.queuedUnitCatalogRevision) return;
             const summaryFilterPreparationStartedAt = Date.now();
             this.applyNoneFactionMemberships(units, membershipState.eras, membershipState.factions);
-            this.unitRuntimeService.postprocessUnits(units, eras, { loadTags: false });
+            this.unitRuntimeService.postprocessUnits(units, membershipState.eras, { loadTags: false });
             this.unitRuntimeService.applyPublicTagsToUnits(units, { rebuildTagSearchIndex: false });
             this.applyBufferedTagRefreshToUnits(units);
             const summaryFilterPreparationMs = Math.max(0, Date.now() - summaryFilterPreparationStartedAt);
@@ -1528,6 +1528,29 @@ export class DataService {
         const localTs = localRaw?.timestamp ? new Date(localRaw.timestamp).getTime() : 0;
         const cloudTs = cloudRaw?.timestamp ? new Date(cloudRaw.timestamp).getTime() : 0;
         return cloudTs > localTs;
+    }
+
+    /** Build derived memberships without mutating a prepared or already-live catalog bundle. */
+    private cloneEraFactionMembershipState(
+        eras: readonly Era[],
+        factions: readonly Faction[],
+    ): { eras: Era[]; factions: Faction[] } {
+        return {
+            eras: eras.map(era => ({
+                ...era,
+                factions: new Set(era.factions),
+                units: new Set(era.units),
+            })),
+            factions: factions.map(faction => ({
+                ...faction,
+                eras: Object.fromEntries(
+                    Object.entries(faction.eras).map(([eraId, units]) => [
+                        eraId,
+                        new Set(units),
+                    ]),
+                ),
+            })),
+        };
     }
 
     private async normalizePersistedForce(

@@ -16,7 +16,7 @@
                 [class.sort-active]="column.sortActive"
                 [class.align-center]="column.align === 'center'"
                 [class.align-right]="column.align === 'right'"
-                [ngClass]="column.headerClass"
+                [class]="column.headerClass"
                 (click)="onHeaderClick(column, $event)">{{ column.header }}</div>
             }
         </div>
@@ -33,7 +33,7 @@
         tabindex="0">
         <div class="mb-data-table-row-item variable-virtual-scroll-item"
             *cdkVirtualFor="let row of rows(); let i = index; trackBy: trackRow"
-            [ngClass]="resolveRowClass(row, i)"
+            [class]="resolveRowClass(row, i)"
             longPress
             (shortPress)="onRowClick(row, i, $event)"
             (longPress)="onRowLongPress(row, i, $event)"
@@ -55,7 +55,7 @@
                     [class.align-center]="column.align === 'center'"
                     [class.align-right]="column.align === 'right'"
                     [class.tone-focus]="column.cellTone === 'focus'"
-                    [ngClass]="resolveCellClass(column, row, i)">
+                    [class]="resolveCellClass(column, row, i)">
                     @if (column.cellTemplate; as cellTemplate) {
                     <ng-container [ngTemplateOutlet]="cellTemplate" [ngTemplateOutletContext]="cellContext(row, column, i)"></ng-container>
                     } @else {

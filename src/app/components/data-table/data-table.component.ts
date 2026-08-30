@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule, NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet } from '@angular/common';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { afterNextRender, Component, computed, DestroyRef, ElementRef, inject, input, output, signal, TemplateRef, viewChild } from '@angular/core';
 import { AutoFitTextDirective } from '../../directives/auto-fit-text.directive';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import { VariableSizeVirtualScrollDirective } from '../../directives/variable-size-virtual-scroll.directive';
 
-export type DataTableClassValue = string | string[] | Set<string> | Record<string, boolean> | null | undefined;
+export type DataTableClassValue = string | Record<string, boolean> | null | undefined;
 export type DataTableCellTone = 'focus';
 export type DataTableColumnTrack = number | {
     readonly minPx: number;
@@ -96,7 +96,7 @@ export interface DataTableRowPointerMoveEvent<T> {
 
 @Component({
     selector: 'mb-data-table',
-    imports: [AutoFitTextDirective, CommonModule, NgTemplateOutlet, ScrollingModule, LongPressDirective, VariableSizeVirtualScrollDirective],
+    imports: [AutoFitTextDirective, NgTemplateOutlet, ScrollingModule, LongPressDirective, VariableSizeVirtualScrollDirective],
     templateUrl: './data-table.component.html',
     styleUrl: './data-table.component.scss'
 })

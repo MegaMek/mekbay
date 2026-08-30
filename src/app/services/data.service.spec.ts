@@ -2583,8 +2583,14 @@ describe('DataService', () => {
         unitsCatalogMock.getUnits.and.returnValue(unitsA);
         await service.initialize();
         await service.whenUnitCatalogSettled();
-        expect(era.units).toEqual(new Set([101]));
-        expect(none.eras[1]).toEqual(new Set([101]));
+        const activeEra = service.getEras()[0]!;
+        const activeFaction = service.getFactions()[0]!;
+        expect(activeEra).not.toBe(era);
+        expect(activeFaction).not.toBe(none);
+        expect(activeEra.units).toEqual(new Set([101]));
+        expect(activeFaction.eras[1]).toEqual(new Set([101]));
+        expect(era.units).toEqual(new Set());
+        expect(none.eras[1]).toBeUndefined();
 
         const unitsB = [
             ...unitsA,
@@ -2605,10 +2611,10 @@ describe('DataService', () => {
 
         // A's exact object graph and index remain visible while the summary B
         // candidate waits at its durable pointer fence.
-        expect(service.getEras()[0]).toBe(era);
-        expect(service.getFactions()[0]).toBe(none);
-        expect(era.units).toEqual(new Set([101]));
-        expect(none.eras[1]).toEqual(new Set([101]));
+        expect(service.getEras()[0]).toBe(activeEra);
+        expect(service.getFactions()[0]).toBe(activeFaction);
+        expect(activeEra.units).toEqual(new Set([101]));
+        expect(activeFaction.eras[1]).toEqual(new Set([101]));
         const preparedArgs = unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args;
         expect(preparedArgs[1][0]).not.toBe(era);
         expect(preparedArgs[2][0]).not.toBe(none);
@@ -2616,12 +2622,12 @@ describe('DataService', () => {
 
         finishFinalize(true);
         await service.whenUnitCatalogSettled();
-        expect(service.getEras()[0]).not.toBe(era);
-        expect(service.getFactions()[0]).not.toBe(none);
+        expect(service.getEras()[0]).not.toBe(activeEra);
+        expect(service.getFactions()[0]).not.toBe(activeFaction);
         expect(service.getEras()[0].units).toEqual(new Set([101, 202]));
         expect(service.getFactionById(MULFACTION_NONE)?.eras[1]).toEqual(new Set([101, 202]));
-        expect(era.units).toEqual(new Set([101]));
-        expect(none.eras[1]).toEqual(new Set([101]));
+        expect(era.units).toEqual(new Set());
+        expect(none.eras[1]).toBeUndefined();
     });
 
     it('retains the previous coherent catalog when replacement index preparation fails', async () => {
