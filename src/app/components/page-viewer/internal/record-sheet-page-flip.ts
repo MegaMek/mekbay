@@ -1,13 +1,9 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { SvgFrameUtil } from '../../../utils/sheets/svg-frame.util';
-
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const CONTROL_CLASS = 'record-sheet-page-flip-control';
-const CONTROL_WIDTH = 68;
-const CONTROL_HEIGHT = 22;
-const PAGE_MARGIN = 3;
+const CONTROL_SIZE = 50;
 
 /** Adds one compact, accessible page switch to every page in a multi-page sheet. */
 export function addRecordSheetPageFlipControls(svgs: readonly SVGSVGElement[]): void {
@@ -34,35 +30,30 @@ function addRecordSheetPageFlipControl(
     group.setAttribute('tabindex', '0');
     group.setAttribute('focusable', 'true');
     group.setAttribute('aria-label', `Show record sheet page ${(pageIndex + 1) % pageCount + 1} of ${pageCount}`);
-    group.setAttribute('transform', `translate(${viewBox.x + viewBox.width - CONTROL_WIDTH - PAGE_MARGIN} ${viewBox.y + viewBox.height - CONTROL_HEIGHT - PAGE_MARGIN})`);
+    group.setAttribute('transform', `translate(${viewBox.x + viewBox.width - CONTROL_SIZE} ${viewBox.y + viewBox.height - CONTROL_SIZE})`);
     group.style.cursor = 'pointer';
 
-    group.appendChild(SvgFrameUtil.createSVGFrame('', CONTROL_WIDTH, CONTROL_HEIGHT, {
-        showHeader: false,
-        cornerAngleDegrees: {
-            topLeft: 45,
-            topRight: 0,
-            bottomRight: 0,
-            bottomLeft: 45,
-        },
-    }));
+    const corner = document.createElementNS(SVG_NS, 'polygon');
+    corner.setAttribute('points', `0,${CONTROL_SIZE} ${CONTROL_SIZE},0 ${CONTROL_SIZE},${CONTROL_SIZE}`);
+    corner.setAttribute('fill', '#fff');
+    corner.setAttribute('stroke', '#000');
+    corner.setAttribute('stroke-width', '1.932');
+    corner.setAttribute('stroke-linejoin', 'round');
+    group.appendChild(corner);
 
     const label = document.createElementNS(SVG_NS, 'text');
-    label.setAttribute('x', String(CONTROL_WIDTH / 2));
-    label.setAttribute('y', String(CONTROL_HEIGHT / 2 + 3));
+    label.setAttribute('x', String(CONTROL_SIZE * 5 / 7 - 1));
+    label.setAttribute('y', String(CONTROL_SIZE * 5 / 7 + 4));
     label.setAttribute('text-anchor', 'middle');
     label.setAttribute('font-family', 'Arial, sans-serif');
-    label.setAttribute('font-size', '8');
+    label.setAttribute('font-size', '12');
     label.setAttribute('font-weight', '700');
     label.setAttribute('pointer-events', 'none');
-    label.textContent = `PAGE ${pageIndex + 1} / ${pageCount}`;
+    label.textContent = `${pageIndex + 1}/${pageCount}`;
     group.appendChild(label);
 
-    const hitTarget = document.createElementNS(SVG_NS, 'rect');
-    hitTarget.setAttribute('x', '0');
-    hitTarget.setAttribute('y', '0');
-    hitTarget.setAttribute('width', String(CONTROL_WIDTH));
-    hitTarget.setAttribute('height', String(CONTROL_HEIGHT));
+    const hitTarget = document.createElementNS(SVG_NS, 'polygon');
+    hitTarget.setAttribute('points', `0,${CONTROL_SIZE} ${CONTROL_SIZE},0 ${CONTROL_SIZE},${CONTROL_SIZE}`);
     hitTarget.setAttribute('fill', 'transparent');
     hitTarget.setAttribute('pointer-events', 'all');
     group.appendChild(hitTarget);
