@@ -563,7 +563,7 @@ describe('C3TaxCalculator', () => {
         expect(new C3TaxCalculator(peerNetwork([alpha, bravo], C3NetworkType.C3I), units).core2026(alpha.unit)).toBe(110);
     });
 
-    it('preserves force-wide Nova tax and its upper boundary', () => {
+    it('preserves Nova-only force tax and its upper boundary', () => {
         const nova = Array.from({ length: 8 }, (_, index) => c3Unit(`nova-${index}`, C3_FLAGS.NOVA, 1000));
         const calculator = new C3TaxCalculator([], nova.map(({ unit }) => unit));
         expect(calculator.core2026(nova[0].unit)).toBe(350);
