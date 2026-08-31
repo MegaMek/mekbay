@@ -711,7 +711,11 @@ export function projectMekBattleValueMovementV2(
         || typeof facts.dedicatedPilotFunctional !== 'boolean') {
         return unsupported('Movement runtime facts are invalid');
     }
-    const numbers = movementNumbers(profile, Object.freeze({ ...facts, currentHeat: 0 }));
+    const numbers = movementNumbers(
+        profile,
+        Object.freeze({ ...facts, currentHeat: 0 }),
+        { battleValue: true },
+    );
     return Object.freeze({
         kind: 'supported',
         walkMp: numbers.potentialWalkMp,
@@ -1348,6 +1352,7 @@ function canonicalAutomaticFalls(
 function movementNumbers(
     profile: MekMechanicsProfile,
     facts: MekMovementPsrRuntimeFactsV2,
+    options: Readonly<{ battleValue?: boolean }> = {},
 ): MovementNumbersV2 {
     const legs = legDamage(profile, facts);
     const destroyedLegs = legs.filter(leg => leg.destroyed).length;
@@ -1359,11 +1364,13 @@ function movementNumbers(
         .reduce((sum, leg) => sum + leg.footHits, 0);
     const quadruped = profile.form === 'quad' || profile.form === 'quadvee';
     const shields = projectMekShieldsV2(profile, facts);
-    const activeMediumShields = shields.filter(shield =>
+    // BV uses the design's maximum movement profile. Shield stance and mounted
+    // Modular Armor are operational mobility choices, not structural damage.
+    const activeMediumShields = options.battleValue ? 0 : shields.filter(shield =>
         shield.size === 'medium' && shield.retainsMobilityPenalty).length;
-    const activeLargeShields = shields.filter(shield =>
+    const activeLargeShields = options.battleValue ? 0 : shields.filter(shield =>
         shield.size === 'large' && shield.retainsMobilityPenalty).length;
-    const modularArmorActive = profile.modularArmor.some(group =>
+    const modularArmorActive = !options.battleValue && profile.modularArmor.some(group =>
         groupAvailable(group, facts) && facts.modularArmorRemaining(group.componentId) > 0);
     let walk = Math.max(
         0,

@@ -244,7 +244,9 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
   }
 
   private locationHasStandardCase(location: string): boolean {
-    if (!this.state && this.entity.locationHasCaseProtection(location)) return true;
+    // Generated Clan CASE is structural and has no destroyable mount. Explicit
+    // CASE remains subject to the runtime status of its own equipment.
+    if (this.entity.implicitClanCaseLocations().has(location)) return true;
     return this.locationHasEquipment(location, isStandardCaseEquipment);
   }
 

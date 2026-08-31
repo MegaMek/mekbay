@@ -96,7 +96,7 @@ export abstract class CompactRecordSheetLayout implements RecordSheetLayout {
         _blocks: readonly SVGSVGElement[],
         entity?: BaseEntity,
     ): void {
-        drawPageChrome(page, this.pageTitle, profile, true, entity, {
+        drawPageChrome(page, this.pageTitle, profile, true, {
             titleLines: this.compactMastheadTitleLines(),
             drawIcon: (parent, box, svg) => this.drawCompactMastheadIcon(parent, box, svg),
         });
@@ -165,7 +165,7 @@ export function composeMixedCompactRecordSheetPage(
 ): SVGSVGElement {
     const page = createRoot(profile.width, profile.height, 'compact-page');
     page.setAttribute('data-mekbay-page-format', profile.format);
-    drawPageChrome(page, compactPageTitle(blocks), profile, true, undefined, {
+    drawPageChrome(page, compactPageTitle(blocks), profile, true, {
         titleLines: ['CLASSIC BATTLETECH', 'RECORD SHEET'],
     });
     const finalBottom = appendCompactBlocks(page, blocks, profile, profile.compactContentY, true);

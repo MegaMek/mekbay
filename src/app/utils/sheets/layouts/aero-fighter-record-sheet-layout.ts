@@ -78,7 +78,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
         const at = (box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }) =>
             scalePageBox(page, box);
 
-        drawPageChrome(svg, this.sheetTitle(entity), page, false, entity);
+        drawPageChrome(svg, this.sheetTitle(entity), page, false);
         const dataBox = at({ x: 18.966, y: 87.857, width: 222.4, height: 308.357 });
         const dataGroup = drawAeroDataPanel(
             svg,

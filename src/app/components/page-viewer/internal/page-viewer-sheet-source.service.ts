@@ -23,7 +23,6 @@ export class PageViewerSheetSourceService {
             if (!svg) throw new Error(`No record sheet is available for ${member.entity.displayName()}`);
             if (document.fonts?.ready) await document.fonts.ready.catch(() => undefined);
             svg.removeAttribute('id');
-            svg.setAttribute('aria-label', `${member.entity.displayName()} record sheet`);
             return svg;
         });
     }

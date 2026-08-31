@@ -89,14 +89,8 @@ export class SvgViewerLiteComponent {
                     });
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;
 
-                    const svgs = sheets.svgs.map((svg, index) => {
+                    const svgs = sheets.svgs.map(svg => {
                         svg.removeAttribute('id');
-                        svg.setAttribute(
-                            'aria-label',
-                            sheets.svgs.length === 1
-                                ? `${u.name} record sheet`
-                                : `${u.name} record sheet page ${index + 1}`,
-                        );
                         return svg;
                     });
                     this.svgs.set([...svgs]);

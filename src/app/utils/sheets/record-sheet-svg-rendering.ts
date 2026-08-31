@@ -85,13 +85,8 @@ export function drawPageChrome(
     title: string,
     page: RecordSheetPageProfile,
     compact: boolean,
-    entity?: BaseEntity,
     compactOptions?: CompactMastheadOptions,
 ): void {
-    const accessibleTitle = svgElement('title');
-    accessibleTitle.textContent = entity ? `${entity.displayName()} — ${title}` : title;
-    svg.insertBefore(accessibleTitle, svg.firstChild);
-
     const brand = svgElement('g');
     brand.setAttribute('class', 'record-sheet-masthead');
     const logoScale = 0.791 * page.horizontalScale;

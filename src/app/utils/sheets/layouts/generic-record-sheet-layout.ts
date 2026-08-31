@@ -45,7 +45,7 @@ export class GenericRecordSheetLayout implements RecordSheetLayout {
         const svg = createRoot(page.width, page.height, entity.entityType.toLowerCase());
         const at = (box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }) =>
             scalePageBox(page, box);
-        drawPageChrome(svg, `${entity.unitSubtype().toUpperCase()} RECORD SHEET`, page, false, entity);
+        drawPageChrome(svg, `${entity.unitSubtype().toUpperCase()} RECORD SHEET`, page, false);
         drawIdentityPanel(svg, entity, at({ x: 18, y: 62, width: 220, height: 160 }));
         drawInventoryPanel(svg, entity, at({ x: 18, y: 226, width: 220, height: 280 }), 29, false);
         drawGenericCrewPanel(svg, entity, at({ x: 242, y: 62, width: 150, height: 160 }));

@@ -103,7 +103,7 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         const smallCraft = entity.entityType === 'SmallCraft';
         const capital = isCapitalAeroVessel(entity);
 
-        drawPageChrome(svg, this.sheetTitle(entity), page, false, entity);
+        drawPageChrome(svg, this.sheetTitle(entity), page, false);
         const dataPanelHeight = smallCraft ? 310.143 : 420.257;
         const dataPanelBox = at({
             x: 18.966,

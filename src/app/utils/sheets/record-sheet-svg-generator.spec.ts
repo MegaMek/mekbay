@@ -53,6 +53,8 @@ describe('RecordSheetSvgGenerator', () => {
 
         expect(svg.dataset['mekbayGenerated']).toBe('1');
         expect(svg.dataset['mekbayCompact']).toBe('vehicle');
+        expect(svg.hasAttribute('aria-label')).toBeFalse();
+        expect(svg.querySelector(':scope > title')).toBeNull();
         expect(svg.querySelector('[data-mekbay-field="display-name"]')?.textContent)
             .toBe('Vedette Medium Tank');
         expect(svg.querySelector('.compact-vehicle-unit-chrome #btLogoColor')).not.toBeNull();

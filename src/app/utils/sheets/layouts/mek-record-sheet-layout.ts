@@ -87,7 +87,7 @@ export class MekRecordSheetLayout implements RecordSheetLayout {
         const svg = createRoot(page.width, page.height, 'mek');
         const at = (box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }) =>
             scalePageBox(page, box);
-        drawPageChrome(svg, mekRecordSheetTitle(entity), page, false, entity);
+        drawPageChrome(svg, mekRecordSheetTitle(entity), page, false);
 
         await drawMekDataPanel(svg, entity, at({ x: 18.966, y: 87.857, width: 220.4, height: 301.5 }));
         const crewCount = Math.max(1, entity.crewSlotCount());

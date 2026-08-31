@@ -251,10 +251,22 @@ describe('C3TaxCalculator', () => {
     it('charges eligible Nova CEWS units without an explicit network', () => {
         const alpha = unit('alpha', [component(C3NetworkType.NOVA, C3Role.PEER)], 1000);
         const bravo = unit('bravo', [component(C3NetworkType.NOVA, C3Role.PEER)], 500);
-        const tax = new C3TaxCalculator([], [alpha.unit, bravo.unit], operational);
+        const unrelated = unit('unrelated', [component(C3NetworkType.C3I, C3Role.PEER)], 100000);
+        const tax = new C3TaxCalculator([], [alpha.unit, bravo.unit, unrelated.unit], operational);
 
         expect(tax.core2026(alpha.unit)).toBe(75);
         expect(tax.core2026(bravo.unit)).toBe(75);
+        expect(tax.core2026(unrelated.unit)).toBe(0);
+        expect(tax.totalWar(alpha.unit)).toBe(75);
+    });
+
+    it('charges two 809-BV Nova CEWS units 5% of their Nova-only pool each', () => {
+        const alpha = unit('alpha', [component(C3NetworkType.NOVA, C3Role.PEER)], 809);
+        const bravo = unit('bravo', [component(C3NetworkType.NOVA, C3Role.PEER)], 809);
+        const tax = new C3TaxCalculator([], [alpha.unit, bravo.unit], operational);
+
+        expect(tax.core2026(alpha.unit)).toBe(81);
+        expect(tax.core2026(bravo.unit)).toBe(81);
     });
 
     it('uses its single eligibility gate for implicit Nova and configured C3 endpoints', () => {

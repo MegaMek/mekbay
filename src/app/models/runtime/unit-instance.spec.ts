@@ -4,7 +4,9 @@
 import { asCommandId, asStateRevision } from './runtime-state';
 import {
     createDirectMekRuntimeFixture,
+    createDirectModularArmorRuntimeFixture,
     createDirectPrototypeLaserRuntimeFixture,
+    createDirectShieldRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 import { asEncounterTargetId, type TargetRegistrySnapshot } from './encounter-runtime';
 
@@ -224,6 +226,27 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         expect(damagedBv.kind).toBe('complete');
         if (pristineBv.kind === 'complete' && damagedBv.kind === 'complete') {
             expect(damagedBv.battleValue).toBeLessThan(pristineBv.battleValue);
+        }
+    });
+
+    it('projects an untouched full-ammunition unit at its pristine entity BV', () => {
+        const { instance, entity } = createDirectMekRuntimeFixture();
+        const projected = instance.query().mekBattleValue();
+
+        expect(projected.kind).toBe('complete');
+        if (projected.kind === 'complete') {
+            expect(projected.battleValue).toBe(entity.battleValue());
+        }
+    });
+
+    it('keeps BV movement independent from intact shield and modular-armor mobility modes', () => {
+        for (const fixture of [
+            createDirectShieldRuntimeFixture(),
+            createDirectModularArmorRuntimeFixture(),
+        ]) {
+            expect(fixture.instance.query().currentBaseBattleValue())
+                .withContext(fixture.entity.displayName())
+                .toBe(fixture.entity.battleValue());
         }
     });
 

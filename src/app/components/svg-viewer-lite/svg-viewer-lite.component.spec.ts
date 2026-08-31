@@ -239,7 +239,7 @@ describe('SvgViewerLiteComponent', () => {
 
         const svgs = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<SVGSVGElement>('svg'));
         expect(svgs.length).toBe(1);
-        expect(svgs[0].getAttribute('aria-label')).toBe('Marauder record sheet');
+        expect(svgs[0].hasAttribute('aria-label')).toBeFalse();
     });
 
     it('does not consume wheel events when zoomable is false', async () => {

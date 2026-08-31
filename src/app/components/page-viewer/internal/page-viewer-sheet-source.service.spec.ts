@@ -39,7 +39,8 @@ describe('PageViewerSheetSourceService', () => {
         await service.load(member);
 
         expect(member.recordSheet()?.dataset['mekbayGenerated']).toBe('1');
-        expect(member.recordSheet()?.getAttribute('aria-label')).toBe('Scorpion record sheet');
+        expect(member.recordSheet()?.hasAttribute('aria-label')).toBeFalse();
+        expect(member.recordSheet()?.querySelector(':scope > title')).toBeNull();
         expect(member.force.getUnitSnapshot).toHaveBeenCalledOnceWith(member.id);
     });
 

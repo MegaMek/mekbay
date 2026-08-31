@@ -189,6 +189,19 @@ describe('battle value family dispatch', () => {
     expect(entity.battleValueFor({ ...state, destroyed: true })).toBe(0);
   });
 
+  it('retains structural Clan CASE protection in runtime BV projections', () => {
+    const ammo = new AmmoEquipment({
+      id: 'clan-runtime-ammo', name: 'Clan Runtime Ammo', type: 'ammo',
+      stats: { bv: 20, explosive: true }, ammo: { type: 'LRM', rackSize: 10, shots: 12 },
+    });
+    const entity = new TestBipedMekEntity(createTestEquipmentRegistry({ [ammo.id]: ammo }));
+    entity.techBase.set('Clan');
+    entity.setEquipment([mount(ammo, 'LT')]);
+
+    expect(entity.automaticClanCaseLocations().has('LT')).toBeTrue();
+    expect(entity.battleValueFor(entityState(entity))).toBe(entity.battleValue());
+  });
+
   it('counts F_SHIELD equipment defensively instead of offensively', () => {
     const entity = new TestBipedMekEntity();
     const shield = new MiscEquipment({

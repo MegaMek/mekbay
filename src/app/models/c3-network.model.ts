@@ -1080,7 +1080,7 @@ export class C3TaxCalculator {
     private readonly unitsById: ReadonlyMap<string, C3TaxUnit>;
     private readonly eligibleComponentIndexes: ReadonlyMap<string, ReadonlySet<number>>;
     private readonly novaUnits: readonly C3TaxUnit[];
-    private readonly forceBv: number;
+    private readonly novaBv: number;
 
     constructor(
         networks: readonly SerializedC3NetworkGroup[],
@@ -1103,7 +1103,8 @@ export class C3TaxCalculator {
         this.novaUnits = units.filter(unit =>
             this.hasEligibleComponent(unit.id, component =>
                 component.networkType === C3NetworkType.NOVA));
-        this.forceBv = units.reduce((sum, unit) => sum + unit.getBaseBv() + unit.tagBV(), 0);
+        this.novaBv = this.novaUnits.reduce((sum, unit) =>
+            sum + unit.getBaseBv() + unit.tagBV(), 0);
     }
 
     core2026(unit: C3TaxUnit): number {
@@ -1132,7 +1133,7 @@ export class C3TaxCalculator {
             component.networkType === C3NetworkType.NOVA)) return null;
         if (this.novaUnits.length < 2) return 0;
         const rate = Math.min(this.novaUnits.length * C3_TAX_RATE, NOVA_MAX_TAX_RATE);
-        return Math.round((this.forceBv * rate) / this.novaUnits.length);
+        return Math.round((this.novaBv * rate) / this.novaUnits.length);
     }
 
     private networkUnits(unitId: string): C3TaxUnit[] {
