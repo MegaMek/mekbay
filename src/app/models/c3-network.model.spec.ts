@@ -570,4 +570,15 @@ describe('C3TaxCalculator', () => {
         expect(calculator.totalWar(nova[0].unit)).toBe(350);
         expect(new C3TaxCalculator([], [nova[0].unit]).core2026(nova[0].unit)).toBe(0);
     });
+
+    it('taxes only Nova-equipped units regardless of unrelated force BV', () => {
+        const alpha = c3Unit('alpha', C3_FLAGS.NOVA, 809);
+        const bravo = c3Unit('bravo', C3_FLAGS.NOVA, 809);
+        const unrelated = c3Unit('unrelated', C3_FLAGS.C3I, 100000);
+        const calculator = new C3TaxCalculator([], [alpha.unit, bravo.unit, unrelated.unit]);
+
+        expect(calculator.core2026(alpha.unit)).toBe(81);
+        expect(calculator.totalWar(bravo.unit)).toBe(81);
+        expect(calculator.core2026(unrelated.unit)).toBe(0);
+    });
 });
