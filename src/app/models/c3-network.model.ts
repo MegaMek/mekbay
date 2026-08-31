@@ -939,13 +939,14 @@ export class C3TaxCalculator {
     private readonly model: C3Network;
     private readonly unitsById: ReadonlyMap<string, C3TaxUnit>;
     private readonly novaUnits: readonly C3TaxUnit[];
-    private readonly forceBv: number;
+    private readonly novaBv: number;
 
     constructor(networks: readonly SerializedC3NetworkGroup[], private readonly units: readonly C3TaxUnit[]) {
         this.model = new C3Network(networks, units as unknown as readonly ForceUnit[], false);
         this.unitsById = new Map(units.map(unit => [unit.id, unit]));
         this.novaUnits = units.filter(unit => this.model.capability(unit.id)?.has(C3NetworkType.NOVA));
-        this.forceBv = units.reduce((sum, unit) => sum + unit.getBaseBv() + unit.tagBV(), 0);
+        this.novaBv = this.novaUnits.reduce((sum, unit) =>
+            sum + unit.getBaseBv() + unit.tagBV(), 0);
     }
 
     core2026(unit: C3TaxUnit): number {
@@ -973,7 +974,7 @@ export class C3TaxCalculator {
         if (!this.model.capability(unit.id)?.has(C3NetworkType.NOVA)) return null;
         if (this.novaUnits.length < 2) return 0;
         const rate = Math.min(this.novaUnits.length * C3_TAX_RATE, NOVA_MAX_TAX_RATE);
-        return Math.round((this.forceBv * rate) / this.novaUnits.length);
+        return Math.round((this.novaBv * rate) / this.novaUnits.length);
     }
 
     private networkUnits(unitId: string): C3TaxUnit[] {
