@@ -852,7 +852,6 @@ function validateForceEnvelope(
     const units = requireArray(root['units'], '$.units');
     const instanceKinds = new Map<string, 'ready' | 'deferred'>();
     const unitTargets = new Map<string, ReadonlySet<string>>();
-    const unitComponents = new Map<string, ReadonlySet<string>>();
     units.forEach((entry, index) => {
         const result = validateUnitEntry(entry, index);
         if (instanceKinds.has(result.instanceId)) {
@@ -860,13 +859,10 @@ function validateForceEnvelope(
         }
         instanceKinds.set(result.instanceId, result.kind);
         if (result.targets) unitTargets.set(result.instanceId, result.targets);
-        if (result.components) unitComponents.set(result.instanceId, result.components);
     });
 
     validateRoster(root['roster'], instanceKinds);
-    const encounterFacts = validateEncounter(
-        root['encounter'], instanceKinds, unitTargets, unitComponents,
-    );
+    const encounterFacts = validateEncounter(root['encounter'], instanceKinds, unitTargets);
     validateRuntimeHistory(root['history']);
     validateForceRestoration(root['restoration'], encounterFacts);
 }
@@ -2443,14 +2439,11 @@ function validateEncounter(
     value: unknown,
     instances: ReadonlyMap<string, 'ready' | 'deferred'>,
     targets: ReadonlyMap<string, ReadonlySet<string>>,
-    components: ReadonlyMap<string, ReadonlySet<string>>,
 ): ReadonlySet<string> {
     const encounter = requireRecord(value, '$.encounter');
     exactKeys(encounter, ['encounterRevision', 'state', 'recovery'], '$.encounter');
     const outerRevision = validateRevision(encounter['encounterRevision'], '$.encounter.encounterRevision');
-    const state = validateEncounterState(
-        encounter['state'], '$.encounter.state', instances, targets, components,
-    );
+    const state = validateEncounterState(encounter['state'], '$.encounter.state', instances, targets);
     if (state.revision !== outerRevision) {
         fail('REVISION_MISMATCH', '$.encounter.state.encounterRevision', 'outer and encounter revisions differ');
     }
@@ -2477,7 +2470,6 @@ function validateEncounterState(
     path: string,
     instances: ReadonlyMap<string, 'ready' | 'deferred'>,
     targets: ReadonlyMap<string, ReadonlySet<string>>,
-    components: ReadonlyMap<string, ReadonlySet<string>>,
 ): { readonly revision: number; readonly factIds: Set<string>; readonly typedNetworkCount: number } {
     const state = requireRecord(value, path);
     exactKeys(state, ['schemaVersion', 'encounterRevision', 'facts'], path);
@@ -2511,7 +2503,7 @@ function validateEncounterState(
         } else if (fact['kind'] === 'network') {
             exactKeys(fact, ['kind', 'factId', 'network'], factPath);
             const networkId = validateEncounterNetworkFact(
-                fact['network'], `${factPath}.network`, instances, components, networkIds,
+                fact['network'], `${factPath}.network`, instances, networkIds,
             );
             if (factId !== encounterNetworkFactId(networkId)) {
                 fail('INVALID_SHAPE', `${factPath}.factId`, 'network fact ID must be derived from its stable network ID');
@@ -2693,7 +2685,6 @@ function validateEncounterNetworkFact(
     value: unknown,
     path: string,
     instances: ReadonlyMap<string, 'ready' | 'deferred'>,
-    components: ReadonlyMap<string, ReadonlySet<string>>,
     networkIds: Set<string>,
 ): string {
     const network = requireRecord(value, path);
@@ -2707,13 +2698,17 @@ function validateEncounterNetworkFact(
     }
     validateEncounterColor(network['color'], `${path}.color`);
     const endpoints = requireArray(network['endpoints'], `${path}.endpoints`);
-    const limit = networkType === 'c3' ? 12 : networkType === 'nova' ? 3 : 6;
-    if (endpoints.length < 2 || endpoints.length > limit) {
-        fail('ENCOUNTER_ENDPOINT_INVALID', `${path}.endpoints`, `network requires 2-${limit} endpoints`);
+    // Persistence owns only shape and resource bounds. C3 topology is validated
+    // once, after unit hydration, by C3NetworkEditor through the force boundary.
+    if (endpoints.length > MAX_SERIALIZED_ENCOUNTER_FACTS) {
+        fail(
+            'INVALID_SHAPE',
+            `${path}.endpoints`,
+            `cannot contain more than ${MAX_SERIALIZED_ENCOUNTER_FACTS} endpoints`,
+        );
     }
     const endpointKeys = new Set<string>();
     let previous: string | undefined;
-    let masterCount = 0;
     endpoints.forEach((raw, index) => {
         const endpointPath = `${path}.endpoints[${index}]`;
         const endpoint = requireRecord(raw, endpointPath);
@@ -2727,12 +2722,6 @@ function validateEncounterNetworkFact(
         if (role !== 'master' && role !== 'member' && role !== 'peer') {
             fail('ENCOUNTER_ENDPOINT_INVALID', `${endpointPath}.role`, 'unknown network endpoint role');
         }
-        if (networkType === 'c3') {
-            if (role === 'peer') fail('ENCOUNTER_ENDPOINT_INVALID', `${endpointPath}.role`, 'standard C3 cannot contain peer endpoints');
-            if (role === 'master') masterCount += 1;
-        } else if (role !== 'peer') {
-            fail('ENCOUNTER_ENDPOINT_INVALID', `${endpointPath}.role`, 'peer network endpoints must use the peer role');
-        }
         const key = `${instanceId}\0${componentId}`;
         if (endpointKeys.has(key)) fail('ENCOUNTER_ENDPOINT_INVALID', endpointPath, 'duplicate network endpoint');
         if (previous !== undefined && previous >= key) {
@@ -2741,9 +2730,6 @@ function validateEncounterNetworkFact(
         endpointKeys.add(key);
         previous = key;
     });
-    if (networkType === 'c3' && masterCount < 1) {
-        fail('ENCOUNTER_ENDPOINT_INVALID', `${path}.endpoints`, 'standard C3 needs at least one master endpoint');
-    }
     return networkId;
 }
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { afterNextRender, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, Injector, input, output, signal } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, Injector, input, signal } from '@angular/core';
 import { Overlay } from '@angular/cdk/overlay';
 
 import {
@@ -19,9 +19,11 @@ import {
     type UnitModifierTotal,
 } from '../../../models/combat-modifier';
 import {
+    isCBTForceMember,
     isCBTMekForceMember,
     type CBTForceMember,
 } from '../../../models/force-member.model';
+import type { CBTForceEndTurnAllResult } from '../../../models/cbt-force-api';
 import type { MekEquipmentChoice } from '../../../models/cbt-force.model';
 import {
     isUnitBuildingLevel,
@@ -31,6 +33,7 @@ import {
     type UnitCover,
 } from '../../../models/unit-cover.model';
 import { OptionsService } from '../../../services/options.service';
+import { DialogsService } from '../../../services/dialogs.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
@@ -45,7 +48,10 @@ import {
     visibleEscalatingFailureSteps,
     type MekEscalatingFailureControlRow,
 } from './mek-turn-summary-runtime.controller';
-import { isMekTurnPanelDirty } from '../../../models/runtime/mek-turn-panel';
+import {
+    isMekTurnPanelDirty,
+    isMekTurnPanelDirtyPhase,
+} from '../../../models/runtime/mek-turn-panel';
 import type { MekMovementModeV2 } from '../../../models/runtime/mek-movement-psr-v2';
 import {
     hasPendingNonMekChanges,
@@ -62,6 +68,7 @@ import {
 import {
     composeMekPsrDisplayModifiers,
     composeTurnSummaryHeatRows,
+    runWithTurnSummaryCloseBlocked,
 } from './page-turn-summary.util';
 import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
 import { selectedWeaponHeat } from '../../../models/runtime/equipment-panel';
@@ -105,16 +112,15 @@ export class PageTurnSummaryPanelComponent {
     private readonly overlay = inject(Overlay);
     private readonly toastService = inject(ToastService);
     private readonly options = inject(OptionsService);
+    private readonly dialogs = inject(DialogsService);
     private readonly destroyRef = inject(DestroyRef);
 
     readonly member = input<CBTForceMember | null>(null);
     readonly embedded = input(false);
-    readonly endTurnForAllButtonVisible = input(false);
-    readonly endTurnForAllClicked = output<void>();
     readonly renderReady = signal(false);
 
     private controller: MekTurnSummaryRuntimeController | null = null;
-    private readonly entityRuntimeVersion = signal(0);
+    private readonly forceRuntimeVersion = signal(0);
     private readonly entityMovementDistancePreview = signal<Readonly<{
         mode: MotiveModes;
         value: number;
@@ -124,10 +130,12 @@ export class PageTurnSummaryPanelComponent {
         afterNextRender(() => this.renderReady.set(true));
         effect(onCleanup => {
             const member = this.member();
-            if (!member || isCBTMekForceMember(member)) return;
+            if (!member) return;
             const subscription = member.force.changed.subscribe(() => {
-                this.entityMovementDistancePreview.set(null);
-                this.entityRuntimeVersion.update(value => value + 1);
+                if (!isCBTMekForceMember(member)) {
+                    this.entityMovementDistancePreview.set(null);
+                }
+                this.forceRuntimeVersion.update(value => value + 1);
             });
             onCleanup(() => subscription.unsubscribe());
         });
@@ -148,7 +156,7 @@ export class PageTurnSummaryPanelComponent {
     }
 
     readonly entitySnapshot = computed(() => {
-        this.entityRuntimeVersion();
+        this.forceRuntimeVersion();
         const member = this.member();
         if (!member || isCBTMekForceMember(member)) return null;
         const snapshot = member.force.getUnitSnapshot(member.id);
@@ -183,6 +191,58 @@ export class PageTurnSummaryPanelComponent {
                 state.turn.turnCounter + 1,
             ) === true
         );
+    });
+    readonly phaseDirty = computed(() => {
+        const runtime = this.runtime();
+        if (runtime) return isMekTurnPanelDirtyPhase(runtime.snapshot());
+        const state = this.entitySnapshot()?.state;
+        return state !== undefined && hasPendingNonMekChanges(state);
+    });
+    readonly endPhaseForAllButtonVisible = computed(() => {
+        this.forceRuntimeVersion();
+        const member = this.member();
+        if (!member) return false;
+        return member.force.members().some(candidate => {
+            if (isCBTMekForceMember(candidate)) {
+                const snapshot = candidate.force.getMekTurnPanelSnapshot(
+                    candidate.id,
+                    this.heatPolicy(),
+                );
+                return snapshot !== null && isMekTurnPanelDirtyPhase(snapshot);
+            }
+            if (!isCBTForceMember(candidate)) return false;
+            const snapshot = candidate.force.getUnitSnapshot(candidate.id);
+            return snapshot !== null
+                && hasNonMekRuntime(snapshot)
+                && hasPendingNonMekChanges(snapshot.state);
+        });
+    });
+    readonly endTurnForAllButtonVisible = computed(() => {
+        this.forceRuntimeVersion();
+        const member = this.member();
+        if (!member) return false;
+        return member.force.members().some(candidate => {
+            if (isCBTMekForceMember(candidate)) {
+                const snapshot = candidate.force.getMekTurnPanelSnapshot(
+                    candidate.id,
+                    this.heatPolicy(),
+                );
+                return snapshot !== null && isMekTurnPanelDirty(snapshot);
+            }
+            if (!isCBTForceMember(candidate)) return false;
+            const snapshot = candidate.force.getUnitSnapshot(candidate.id);
+            if (!snapshot || !hasNonMekRuntime(snapshot)) return false;
+            const state = snapshot.state;
+            return hasPendingNonMekChanges(state)
+                || state.turn.airborne !== null
+                || state.turn.movement !== null
+                || state.turn.cover !== null
+                || state.turn.spotting
+                || candidate.force.hasRuntimeHistoryForUnitTurn(
+                    candidate.id,
+                    state.turn.turnCounter + 1,
+                );
+        });
     });
 
     readonly damageReceived = computed(() => {
@@ -701,18 +761,55 @@ export class PageTurnSummaryPanelComponent {
         });
     }
 
-    endTurnForAll(event: MouseEvent): void {
+    async endPhase(event: MouseEvent): Promise<void> {
         event.stopPropagation();
-        this.endTurnForAllClicked.emit();
+        const runtime = this.runtime();
+        const accepted = runtime
+            ? await runtime.boundary('end-phase')
+            : this.entitySnapshot()
+                ? await this.dispatchEntity({ kind: 'end-phase' })
+                : false;
+        if (accepted && !this.embedded()) this.close();
     }
 
-    endTurn(): void {
+    async endPhaseForAll(event: MouseEvent): Promise<void> {
+        event.stopPropagation();
+        const member = this.member();
+        if (!member) return;
+        const confirmed = await this.confirmForceBoundary(
+            'Are you sure you want to end the phase for all units?',
+            'End Phase',
+        );
+        if (!confirmed) return;
+        if (!this.embedded()) this.close();
+        await this.runForceBoundary(
+            'end phase',
+            () => member.force.endPhaseForAllUnits(),
+        );
+    }
+
+    async endTurn(): Promise<void> {
         const runtime = this.runtime();
         if (runtime) {
-            void runtime.boundary('end-turn');
+            await runtime.boundary('end-turn');
             return;
         }
-        if (this.entitySnapshot()) void this.dispatchEntity({ kind: 'end-turn' });
+        if (this.entitySnapshot()) await this.dispatchEntity({ kind: 'end-turn' });
+    }
+
+    async endTurnForAll(event: MouseEvent): Promise<void> {
+        event.stopPropagation();
+        const member = this.member();
+        if (!member) return;
+        const confirmed = await this.confirmForceBoundary(
+            'Are you sure you want to end the turn for all units?',
+            'End Turn',
+        );
+        if (!confirmed) return;
+        await this.runForceBoundary(
+            'end turn',
+            () => member.force.endTurnForAllUnits(),
+        );
     }
 
     openPsrWarning(event: MouseEvent): void {
@@ -752,16 +849,18 @@ export class PageTurnSummaryPanelComponent {
             readonly kind: 'set-spotting';
             readonly spotting: boolean;
         }> | Readonly<{
+            readonly kind: 'end-phase';
+        }> | Readonly<{
             readonly kind: 'end-turn';
         }> | Readonly<{
             readonly kind: 'edit-escalating-failure';
             readonly componentId: ComponentId;
             readonly edit: NonMekEscalatingFailureEdit;
         }>,
-    ): Promise<void> {
+    ): Promise<boolean> {
         const member = this.member();
         const snapshot = this.entitySnapshot();
-        if (!member || !snapshot) return;
+        if (!member || !snapshot) return false;
         try {
             const result = await member.force.dispatchNonMekUnitCommand(member.id, {
                 ...command,
@@ -770,9 +869,57 @@ export class PageTurnSummaryPanelComponent {
             if (!result.accepted) {
                 this.toastService.showToast(`Turn action rejected: ${result.reason}`, 'error');
             }
+            return result.accepted;
         } catch (error) {
             this.toastService.showToast(
                 `Turn action failed: ${error instanceof Error ? error.message : 'unexpected error'}`,
+                'error',
+            );
+            return false;
+        }
+    }
+
+    private heatPolicy(): 'automatic' | 'manual' {
+        return this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
+            ? 'automatic'
+            : 'manual';
+    }
+
+    private confirmForceBoundary(message: string, title: string): Promise<boolean> {
+        const operation = () => this.dialogs.requestConfirmation(message, title, 'info');
+        const instanceId = this.member()?.id;
+        return this.embedded() || !instanceId
+            ? operation()
+            : runWithTurnSummaryCloseBlocked(this.overlayManager, instanceId, operation);
+    }
+
+    private async runForceBoundary(
+        action: 'end phase' | 'end turn',
+        operation: () => Promise<CBTForceEndTurnAllResult>,
+    ): Promise<void> {
+        const label = action[0]!.toUpperCase() + action.slice(1);
+        try {
+            const result = await operation();
+            if (result.accepted) return;
+            const failures = result.results
+                .filter(row => !row.accepted)
+                .map(row => `${row.instanceId}: ${(row.reason ?? 'command rejected')
+                    .replaceAll('_', ' ')
+                    .toLowerCase()}`);
+            const detail = failures.length > 0
+                ? failures.join('; ')
+                : 'the force owner rejected the command';
+            this.toastService.showToast(
+                result.changed
+                    ? `${label} completed only partially: ${detail}.`
+                    : `Could not ${action} for all units: ${detail}.`,
+                'error',
+            );
+        } catch (error) {
+            this.toastService.showToast(
+                `Could not ${action} for all units: ${error instanceof Error
+                    ? error.message
+                    : 'unexpected error'}.`,
                 'error',
             );
         }

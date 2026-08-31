@@ -6,6 +6,17 @@ import {
     isC3EmergencyMasterEquipment,
 } from './c3-emergency-master.model';
 import type { C3State } from './cbt-force-api';
+import {
+    C3NetworkType,
+    C3Role,
+    projectNonMekC3Components,
+    type C3Component,
+} from './c3-network.model';
+import {
+    projectEncounterC3Components,
+    validateEncounterNetworks,
+    type C3EncounterPresentationUnit,
+} from './c3-network-presentation';
 import type { ComponentId } from './entity/entity-identifiers';
 import type { ToastService } from '../services/toast.service';
 import {
@@ -24,6 +35,7 @@ import {
 } from './runtime/mek-c3-runtime';
 import { equipmentForComponent } from './runtime/mek-runtime-index';
 import {
+    isReadyNonMekUnit,
     isReadyMekUnit,
     type ReadyClassicUnit,
 } from './runtime/ready-classic-unit';
@@ -115,6 +127,11 @@ export class CBTForceC3 {
                 ? [Object.freeze({ instanceId, query: unit.getInstance().query() })]
                 : []),
         );
+    }
+
+    /** Canonical editor-rule validation over the currently owned ready units. */
+    public validateConfiguredNetworks(configured: readonly EncounterNetwork[]): boolean {
+        return validateCBTEncounterNetworks(configured, this.currentUnits() ?? new Map());
     }
 
     public state(
@@ -300,6 +317,41 @@ export class CBTForceC3 {
             eventsByUnit: freezeC3Events(eventsByUnit),
         });
     }
+}
+
+/**
+ * Load/save boundary adapter. It projects runtime capabilities, then delegates
+ * every topology decision to C3NetworkEditor through validateEncounterNetworks.
+ */
+export function validateCBTEncounterNetworks(
+    configured: readonly EncounterNetwork[],
+    units: ReadonlyMap<UnitInstanceId, ReadyClassicUnit>,
+): boolean {
+    const presentation = [...units].map(([instanceId, unit]): C3EncounterPresentationUnit => Object.freeze({
+        instanceId,
+        c3Components: projectEncounterC3Components(instanceId, projectReadyC3Components(unit), configured),
+    }));
+    return validateEncounterNetworks(configured, presentation);
+}
+
+function projectReadyC3Components(unit: ReadyClassicUnit): readonly C3Component[] {
+    if (!isReadyMekUnit(unit)) {
+        return isReadyNonMekUnit(unit)
+            ? projectNonMekC3Components(unit.getIndex())
+            : Object.freeze([]);
+    }
+    const projected = unit.getInstance().query().mekC3Endpoints();
+    if (projected.kind !== 'supported') return Object.freeze([]);
+    return Object.freeze(projected.endpoints.map((endpoint, index) => Object.freeze({
+        componentId: endpoint.componentId,
+        networkType: endpoint.family as C3NetworkType,
+        role: endpoint.role === 'master'
+            ? C3Role.MASTER
+            : endpoint.role === 'peer' ? C3Role.PEER : C3Role.SLAVE,
+        boosted: endpoint.boosted,
+        emergency: endpoint.emergency,
+        index,
+    })));
 }
 
 function appendC3Event(

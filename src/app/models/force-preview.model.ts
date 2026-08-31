@@ -150,9 +150,9 @@ export function createForcePreviewUnit(
 
 export function createForcePreviewUnitFromSerializedUnit(
     unit: ASSerializedUnit,
-    getUnitByName: (name: string) => UnitSummary | undefined,
+    getUnitByUuid: (uuid: string) => UnitSummary | undefined,
 ): ForcePreviewUnit {
-    const resolvedUnit = getUnitByName(unit.unit);
+    const resolvedUnit = getUnitByUuid(unit.uuid);
     const previewUnit: ForcePreviewUnit = {
         unit: resolvedUnit,
         destroyed: unit.state?.destroyed ?? false,
@@ -292,7 +292,7 @@ export function createForcePreviewEntryFromSerializedForce(
                 formationId: group.formationId,
                 units: group.units.map((unit) => createForcePreviewUnitFromSerializedUnit(
                     unit as ASSerializedUnit,
-                    (name) => resolver.getUnitByName(name),
+                    (uuid) => resolver.getUnitByUuid(uuid),
                 )),
             })),
     });

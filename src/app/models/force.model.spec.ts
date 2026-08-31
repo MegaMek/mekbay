@@ -15,7 +15,7 @@ import {
     getEraUnitValidationSummary,
     resolveSerializedFormation,
 } from './force.model';
-import type { ForceUnit } from './force-unit.model';
+import { applyForceUnitOwnerC3Position, type ForceUnit } from './force-unit.model';
 import type { SerializedForce, SerializedUnit } from './force-serialization';
 import type { UnitSummary } from './unit-summary.model';
 import type { DataService } from '../services/data.service';
@@ -105,7 +105,6 @@ function createStubDeserializedUnit(data: SerializedUnit): ForceUnit {
     return {
         id: data.id,
         force: null!,
-        destroy: () => undefined,
         update: () => undefined,
         commander: () => false,
         setFormationCommander: () => undefined,
@@ -113,8 +112,7 @@ function createStubDeserializedUnit(data: SerializedUnit): ForceUnit {
         getSummary: () => unit,
         getDisplayName: () => unit.name,
         c3Position: () => c3Position,
-        setC3Position: (position: { x: number; y: number } | null) => { c3Position = position; },
-        applyC3PositionFromOwnerTransaction: (position: { x: number; y: number } | null) => {
+        [applyForceUnitOwnerC3Position]: (position: { x: number; y: number } | null) => {
             c3Position = position;
         },
         serialize: () => data,
@@ -152,30 +150,16 @@ class TestForce extends Force<ForceUnit> {
         return [];
     }
 
-    protected override createForceUnit(unit: UnitSummary): ForceUnit {
-        const forceUnit = createStubDeserializedUnit(createSerializedUnit(`created:${unit.id}`));
-        forceUnit.force = this;
-        forceUnit.getSummary = () => unit;
-        return forceUnit;
-    }
-
     private deserializeTestUnit(data: SerializedUnit): ForceUnit {
         const forceUnit = createStubDeserializedUnit(data);
         forceUnit.force = this;
         return forceUnit;
     }
 
-    protected override transferPilotData(_fromUnit: ForceUnit, _toUnit: ForceUnit): void {
-    }
-
     protected override deserializeFrom(_serialized: SerializedForce): Force<ForceUnit> {
         const force = new TestForce(this.gameSystem);
         force.loadSerialized(structuredClone(_serialized));
         return force;
-    }
-
-    public override getDeferredUnitDescriptors(): readonly never[] {
-        return [];
     }
 
     loadSerialized(data: SerializedForce): void {
@@ -202,7 +186,10 @@ class TestForce extends Force<ForceUnit> {
                     this.gameSystem,
                 ));
                 group.formationTargetGroupId.set(serializedGroup.formationTargetGroupId ?? null);
-                group.units.set(serializedGroup.units.map(unit => this.deserializeTestUnit(unit)));
+                group.units.set(serializedGroup.units.map(unit => {
+                    if (!('unit' in unit)) throw new Error('TestForce expects a V1-style unit fixture');
+                    return this.deserializeTestUnit(unit);
+                }));
                 return group;
             });
             this.groups.set(groups);
@@ -614,30 +601,6 @@ describe('Force owner structure', () => {
         expect(force.c3Networks()[0].peerIds).toEqual(['first', 'second']);
     });
 
-    it('detaches a synchronous add from its caller-owned Unit DTO', () => {
-        const force = new TestForce();
-        force.gameSystem = GameSystem.ALPHA_STRIKE;
-        const unit = createUnit(7, 'Caller Owned', 3025);
-        const inserted = force.addUnit(unit);
-
-        unit.name = 'Mutated after admission';
-        unit.chassis = 'Mutated chassis';
-
-        expect(inserted.getSummary().name).toBe('Caller Owned');
-        expect(inserted.getSummary().chassis).not.toBe('Mutated chassis');
-    });
-
-    it('rejects an explicit stale target group instead of silently retargeting an add', async () => {
-        const force = new TestForce();
-        const ownedGroup = await force.addGroup();
-        const foreign = new TestForce();
-        const staleTarget = await foreign.addGroup();
-
-        expect(() => force.addUnit(createUnit(8, 'Rejected', 3025), staleTarget))
-            .toThrowError(/target group is not owned/);
-        expect(ownedGroup.units()).toEqual([]);
-    });
-
     it('does not remove a same-ID group substituted for the selected object', async () => {
         const force = new TestForce();
         const selected = await force.addGroup();
@@ -693,31 +656,37 @@ describe('Force owner structure', () => {
         expect(force.c3Networks().map(network => network.id)).toEqual(['network:guarded']);
     });
 
-    it('applies C3 positions and networks together only to the exact current owner', () => {
+    it('applies C3 positions and networks together only to the current owner revision', () => {
         const force = new TestForce();
         force.loadSerialized(createSerializedForce([{
             id: 'group:c3',
-            units: [createSerializedUnit('unit:a'), createSerializedUnit('unit:b')],
+            units: [
+                createSerializedUnit('unit:a'),
+                createSerializedUnit('unit:b'),
+                createSerializedUnit('unit:without-c3'),
+            ],
         }]));
-        const fingerprint = force.captureWholeOwnerAuthorityFingerprint();
+        const revisionFence = force.captureForceOwnerRevisionFence();
         let emissions = 0;
         const subscription = force.changed.subscribe(() => { emissions += 1; });
 
-        expect(force.setC3ConfigurationIfWholeOwnerAuthorityCurrent(
-            fingerprint,
+        expect(force.setC3ConfigurationIfOwnerRevisionCurrent(
+            revisionFence,
             [{ id: 'network:c3', type: C3NetworkType.C3I, color: '#abc', peerIds: ['unit:a', 'unit:b'] }],
             [
                 { unitId: 'unit:a', x: 10, y: 20 },
                 { unitId: 'unit:b', x: 30, y: 40 },
             ],
         )).toBeTrue();
-        expect(force.units().map(unit => unit.c3Position())).toEqual([{ x: 10, y: 20 }, { x: 30, y: 40 }]);
+        expect(force.units().map(unit => unit.c3Position())).toEqual([
+            { x: 10, y: 20 }, { x: 30, y: 40 }, null,
+        ]);
         expect(force.c3Networks().map(network => network.id)).toEqual(['network:c3']);
         expect(emissions).toBe(1);
 
-        const stale = force.captureWholeOwnerAuthorityFingerprint();
+        const stale = force.captureForceOwnerRevisionFence();
         force.setName('Newer owner');
-        expect(force.setC3ConfigurationIfWholeOwnerAuthorityCurrent(
+        expect(force.setC3ConfigurationIfOwnerRevisionCurrent(
             stale,
             [],
             [
@@ -725,7 +694,9 @@ describe('Force owner structure', () => {
                 { unitId: 'unit:b', x: 300, y: 400 },
             ],
         )).toBeFalse();
-        expect(force.units().map(unit => unit.c3Position())).toEqual([{ x: 10, y: 20 }, { x: 30, y: 40 }]);
+        expect(force.units().map(unit => unit.c3Position())).toEqual([
+            { x: 10, y: 20 }, { x: 30, y: 40 }, null,
+        ]);
         subscription.unsubscribe();
     });
 });
@@ -819,11 +790,13 @@ describe('Force CBT V2 persistence boundary', () => {
         const serialized = await force.serializeForPersistence();
         const comparableBefore = force.getWholeOwnerPersistentAuthoritySnapshotJson();
         const exactOwnerBefore = force.captureWholeOwnerAuthorityFingerprint();
+        const revisionBefore = force.captureForceOwnerRevisionFence();
 
         force.markCloudCBTForceV2Saved(serialized);
 
         expect(force.getWholeOwnerPersistentAuthoritySnapshotJson()).toBe(comparableBefore);
         expect(force.isWholeOwnerAuthorityFingerprintCurrent(exactOwnerBefore)).toBeFalse();
+        expect(force.isForceOwnerRevisionFenceCurrent(revisionBefore)).toBeTrue();
     });
 
     it('returns the exact post-normalization owner fence with a persistence snapshot', async () => {
@@ -1114,7 +1087,6 @@ describe('Force CBT V2 persistence boundary', () => {
         expect(second.cbt).toEqual(first.cbt);
 
         reloaded.setName('Changed Force');
-        reloaded.flushPendingChanges();
         const changed = await reloaded.serializeForPersistence();
         expect(Number(changed.cbt!.forceRevision)).toBe(0);
         expect(Number(changed.cbt!.encounter.encounterRevision)).toBe(0);
@@ -1141,7 +1113,6 @@ describe('Force CBT V2 persistence boundary', () => {
 
         const beforeChange = force.serializeForPersistence();
         force.setName('Second Snapshot');
-        force.flushPendingChanges();
         const afterChange = force.serializeForPersistence();
 
         const [first, second] = await Promise.all([beforeChange, afterChange]);

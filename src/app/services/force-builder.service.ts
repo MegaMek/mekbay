@@ -9,6 +9,7 @@ import {
 import {
     DataService,
 } from './data.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { Subject } from 'rxjs';
 import { LoggerService } from './logger.service';
 import { GameSystem } from '../models/common.model';
@@ -33,6 +34,7 @@ import { OptionsService } from './options.service';
 export class ForceBuilderService {
     logger = inject(LoggerService);
     dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private injector = inject(Injector);
     readonly operations = inject(ForceOperationService);
     private readonly opforTargets = inject(InventoryControlOpforService);
@@ -217,7 +219,7 @@ export class ForceBuilderService {
         const removed = await this.removeLoadedForce(force, { skipPrompt: true });
         if (!removed) return;
         if (forceInstanceId) {
-            await this.dataService.deleteForce(forceInstanceId);
+            await this.forcePersistence.deleteForce(forceInstanceId);
             this.logger.info(`ForceBuilderService: Force with instance ID ${forceInstanceId} deleted.`);
         }
         if (this.workspace.loadedForces().length === 0) {
@@ -286,7 +288,7 @@ export class ForceBuilderService {
             await this.deleteAndRemoveForce(matches[0].force);
             return this.workspace.getForceSlot(matches[0].force) === undefined;
         }
-        await this.dataService.deleteForce(instanceId);
+        await this.forcePersistence.deleteForce(instanceId);
         return true;
     }
 

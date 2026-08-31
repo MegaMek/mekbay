@@ -45,6 +45,8 @@ const deletedPaths = [
     'src/app/models/runtime/entity-unit-instance.ts',
     'src/app/models/runtime/ready-entity-unit.ts',
     'src/app/models/runtime/entity-runtime-index.ts',
+    'src/app/models/runtime/component-bap.ts',
+    'scripts/audit-v1-force-corpus.ts',
 ];
 for (const path of deletedPaths) {
     assert.equal(existsSync(join(root, path)), false, `${path} must stay deleted`);
@@ -85,17 +87,29 @@ assert.doesNotMatch(
     /deserializeForceUnit|sanitizeForceData|populateFromGroupedSerialized|public static deserialize/u,
     'the shared Force model must not expose deserialization dispatch or compatibility hooks',
 );
+assert.doesNotMatch(
+    force,
+    /createForceUnit|prepareCreatedForceUnit|createCompatibleUnit|transferPilotData|flushPendingChanges|cancelPendingChanges|getDeferredUnitDescriptors|public clone\(\)|public setUnits\(|public loadAll\(/u,
+    'Alpha Strike construction and obsolete lifecycle APIs must not leak into the shared Force model',
+);
 
 const forceUnit = source(join(app, 'models', 'force-unit.model.ts'));
 assert.doesNotMatch(
     forceUnit,
-    /static deserialize|must be implemented by subclass/u,
-    'the shared ForceUnit model must not expose a throwing static deserialization stub',
+    /static deserialize|must be implemented by subclass|\bdestroy\(|isComputedCondition|hasComputedCondition|phaseTrigger|\bsetC3Position\(|applyC3PositionFromOwnerTransaction/u,
+    'the shared ForceUnit model must not expose obsolete deserialization, lifecycle, computed-condition, or standalone C3 seams',
 );
+assert.match(forceUnit, /export const applyForceUnitOwnerC3Position = Symbol/u);
+assert.match(force, /setC3ConfigurationIfOwnerRevisionCurrent\([\s\S]*ForceOwnerRevisionFence/u);
+assert.doesNotMatch(force, /setC3ConfigurationIfWholeOwnerAuthorityCurrent/u);
 
 const asForce = source(join(app, 'models', 'as-force.model.ts'));
 assert.match(asForce, /private populateFromSerialized\(data: ASSerializedForce\): void/u);
-assert.doesNotMatch(asForce, /deserializeForceUnit|sanitizeForceData|populateFromGroupedSerialized/u);
+assert.doesNotMatch(
+    asForce,
+    /deserializeForceUnit|sanitizeForceData|populateFromGroupedSerialized|deferredUnitDescriptors|addDeferredUnitDescriptor|getDeferredUnitDescriptors/u,
+    'Alpha Strike must not retain a non-persisted deferred-unit sidecar',
+);
 
 const cbtForce = source(join(app, 'models', 'cbt-force.model.ts'));
 const cbtAuthority = source(join(app, 'models', 'cbt-force-authority.ts'));
@@ -109,12 +123,18 @@ assert.match(cbtForce, /private readonly runtimeJournal = new CBTForceRuntimeJou
 assert.match(cbtForce, /return this\.authority\.envelope\(\);/u);
 assert.doesNotMatch(cbtForce, /CBTForceUnitStore|memberProjection|runtimeCommands/u);
 assert.match(cbtForce, /export class CBTForce extends Force<never>/u);
-assert.match(cbtForce, /protected override createForceUnit\(unit: UnitSummary\): never/u);
 assert.doesNotMatch(
     cbtForce,
-    /deserializeForceUnit|sanitizeForceData|populateFromGroupedSerialized/u,
+    /createForceUnit|transferPilotData|removeEmptyGroups/u,
+    'Classic must not implement Alpha Strike-only operations with throwing or empty overrides',
+);
+assert.doesNotMatch(
+    cbtForce,
+    /deserializeForceUnit|sanitizeForceData|populateFromGroupedSerialized|getDeferredUnitDescriptors/u,
     'current Classic forces must not expose grouped-force deserialization hooks',
 );
+assert.match(cbtForce, /replaceC3EncounterNetworksIfOwnerRevisionCurrent\([\s\S]*ForceOwnerRevisionFence/u);
+assert.doesNotMatch(cbtForce, /public replaceC3EncounterNetworks\(/u);
 assert.match(cbtForce, /public getRuntimeInstanceIds\(\): readonly UnitInstanceId\[\]/u);
 assert.match(cbtForce, /public async admitRetainedUnit\(/u);
 assert.doesNotMatch(
@@ -137,6 +157,13 @@ assert.doesNotMatch(
     cbtForce,
     /groups:\s*_legacyGroups|c3Networks:\s*_legacyNetworks/u,
     'the current Classic writer must not strip V1 topology after serialization',
+);
+const cbtForceApi = source(join(app, 'models', 'cbt-force-api.ts'));
+const mekInteractionTokens = source(join(app, 'models', 'runtime', 'mek-interaction-command-token.ts'));
+assert.doesNotMatch(
+    [cbtForce, cbtAuthority, cbtForceApi, mekInteractionTokens].join('\n'),
+    /MekHeatCommand|MekHeatInteraction|HeatCommandToken|dispatchHeatCommand|heatInteractions/u,
+    'the disconnected heat-command facade and its token DTOs must not return',
 );
 
 const readyClassic = source(join(app, 'models', 'runtime', 'ready-classic-unit.ts'));
@@ -236,6 +263,7 @@ assert.doesNotMatch(
     /CBTSerialized|CBT_SERIALIZED|SerializedLegacyCriticalSlotV1|SerializedTurnState/u,
     'grouped Classic deserialization must stay out of the current force serialization model',
 );
+
 assert.doesNotMatch(
     forceSerialization,
     /ViewportTransform|conditionIsActive|conditionsHasActive|conditionsHasCommittedActive|committedConditionData/u,
@@ -291,7 +319,9 @@ assert.doesNotMatch(
 );
 
 const database = source(join(app, 'services', 'db.service.ts'));
-assert.match(database, /createLoadForceEntryFromPersistedForce/u);
+const forcePersistence = source(join(app, 'services', 'force-persistence.service.ts'));
+assert.doesNotMatch(database, /createLoadForceEntryFromPersistedForce/u);
+assert.doesNotMatch(forcePersistence, /createLoadForceEntryFromPersistedForce|deserializePersistedForce/u);
 assert.match(database, /deleteForce\(instanceId: string, unitIds: readonly string\[\] = \[\]\)/u);
 assert.doesNotMatch(
     database,
@@ -329,21 +359,18 @@ function importersOf(moduleName: string): string[] {
 
 assert.deepEqual(
     importersOf('legacy-force-v1-converter'),
-    ['src/app/services/data.service.ts'],
-    'the saved-force loader must be the only production caller of V1 conversion',
+    ['src/app/services/force-persistence.service.ts'],
+    'the force persistence boundary must be the only production caller of V1 conversion',
 );
 assert.deepEqual(
     importersOf('state-restorer'),
-    [
-        'src/app/models/runtime/legacy-force-v1-converter.ts',
-        'src/app/models/runtime/legacy-restoration-sidecar.ts',
-    ],
+    ['src/app/models/runtime/legacy-force-v1-converter.ts'],
     'legacy state restoration must stay behind the V1 converter',
 );
 assert.deepEqual(
     importersOf('legacy-restoration-sidecar'),
-    ['src/app/models/runtime/legacy-force-v1-converter.ts'],
-    'legacy diagnostics must stay behind the V1 converter',
+    [],
+    'legacy conversion diagnostics must not become durable V2 state',
 );
 assert.deepEqual(
     importersOf('mek-movement-psr-restoration-v1'),
@@ -365,27 +392,37 @@ assert.deepEqual(
     [
         'src/app/models/runtime/force-storage-codec.ts',
         'src/app/models/runtime/legacy-force-v1-converter.ts',
-        'src/app/services/data.service.ts',
+        'src/app/services/force-persistence.service.ts',
     ],
-    'V1 force handling must stay inside transparent storage ingress, the converter, and the DataService boundary',
+    'V1 force handling must stay inside storage ingress, conversion, and force persistence',
 );
 
 const storageCodec = source(join(app, 'models', 'runtime', 'force-storage-codec.ts'));
-assert.match(storageCodec, /force\.version === 1[\s\S]{0,100}return detached/u);
+assert.match(storageCodec, /force\.version === 1[\s\S]{0,100}return Object\.freeze/u);
 assert.doesNotMatch(storageCodec, /CBTSerialized|CBT_SERIALIZED|convertPersistedForceV1/u);
-
-const v1Converter = source(join(app, 'models', 'runtime', 'legacy-force-v1-converter.ts'));
-assert.match(v1Converter, /The only force V1 ingress/u);
-assert.match(v1Converter, /version: 2/u);
-assert.doesNotMatch(v1Converter, /movementPsrRecovery|movementHeatFallback/u);
-assert.match(v1Converter, /convertLegacyMovementHeatAcknowledgement/u);
-
-const dataService = source(join(app, 'services', 'data.service.ts'));
-assert.match(dataService, /raw\.version === 1\s*\? convertPersistedForceV1/u);
+const nonMekPersistence = source(join(app, 'models', 'runtime', 'non-mek-unit-persistence.ts'));
 assert.match(
-    dataService,
-    /createLoadForceEntryFromPersistedForce[\s\S]*normalizePersistedForce/u,
+    nonMekPersistence,
+    /isNonMekEntityType\(value: EntityType\): value is NonMekEntityType\s*\{\s*return value !== 'Mek';/u,
+    'the domain non-Mek guard must narrow EntityType; unknown validation belongs at ingress',
 );
+const dataService = source(join(app, 'services', 'data.service.ts'));
+assert.doesNotMatch(
+    dataService,
+    /narrow structural test doubles|destroyDetachedForce/u,
+    'production persistence must not contain test-double exemptions or fake detached-unit cleanup',
+);
+assert.doesNotMatch(
+    dataService,
+    /hasPendingCloudSaves|getUnitSummaryByIdentity|getMegaMekFactions\(|getMegaMekRulesets\(|getMegaMekAvailabilityRecords|refreshSearchCorpus|whenUnitCatalogSettled|getDeferredUnitDescriptors/u,
+    'DataService must not expose unused or test-only convenience facades',
+);
+assert.doesNotMatch(
+    dataService,
+    /createLoadForceEntryFromPersistedForce|normalizePersistedForce|convertPersistedForceV1/u,
+    'catalog data must not own force persistence or migration',
+);
+assert.match(forcePersistence, /normalizePersistedForce[\s\S]*convertPersistedForceV1/u);
 assert.match(database, /if \(force\.version !== 2\)[\s\S]*Only V2 force records may be saved/u);
 
 console.log('Convergence architecture guard passed: Entity + rules + sparse runtime is the only live Classic authority.');

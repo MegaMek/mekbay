@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { MountedEngine } from '../entity/components';
-import type { MekSystemType } from '../entity/types';
+import type { MekLocation, MekSystemType } from '../entity/types';
 import {
     TestBipedMekEntity as BipedMekEntity,
     TestQuadVeeEntity as QuadVeeEntity,
@@ -23,10 +23,10 @@ function systemComponents(index: MekRuntimeIndex, systemType: MekSystemType): Me
     ).sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function systemLocationCodes(index: MekRuntimeIndex, component: MekIndexedSystem): string[] {
+function systemLocationCodes(index: MekRuntimeIndex, component: MekIndexedSystem): MekLocation[] {
     return [...new Set(component.placements.map(placement =>
         index.locations.get(placement.locationId)?.code,
-    ).filter((code): code is string => code !== undefined))].sort();
+    ).filter((code): code is MekLocation => code !== undefined))].sort();
 }
 
 describe('MekRuntimeIndex', () => {

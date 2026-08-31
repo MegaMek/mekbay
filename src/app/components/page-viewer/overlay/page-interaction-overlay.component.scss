@@ -111,6 +111,11 @@
         font-weight: bold;
         transition: background-color 0.2s;
         font-size: 0.9em;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
 
         &.end-phase-button {
             background-color: #a00;
@@ -121,6 +126,12 @@
             background-color: #f00;
         }
     }
+}
+
+.end-phase-icon {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
 }
 
 .turn-tracker-button {

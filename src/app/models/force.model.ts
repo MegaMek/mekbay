@@ -5,9 +5,9 @@
 import { signal, computed, type Signal, type WritableSignal, type Injector } from '@angular/core';
 import { Subject } from 'rxjs';
 import type { DataService } from '../services/data.service';
-import type { UnitSummary, UnitComponent } from "./unit-summary.model";
+import type { UnitSummary } from "./unit-summary.model";
 import { type SerializedClassicForce, type SerializedForce, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA, C3_POSITION_SCHEMA, FORCE_NOTE_MAX_LENGTH, sanitizeForceTags } from './force-serialization';
-import type { ForceUnit } from './force-unit.model';
+import { applyForceUnitOwnerC3Position, type ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { C3NetworkEditor } from './c3-network-editor';
 import { Sanitizer } from '../utils/sanitizer.util';
@@ -24,10 +24,7 @@ import { MULFACTION_EXTINCT } from './mulfactions.model';
 import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from '../utils/force-availability.util';
 import { uuidv7 } from '../utils/uuid.util';
 import { jsonValuesEqual } from '../utils/json-value.util';
-import { C3Network, C3TaxCalculator, type C3TaxUnit, type C3UnitView } from './c3-network.model';
-import {
-    type DeferredUnitDescriptor,
-} from './persisted-unit-state';
+import { C3Network } from './c3-network.model';
 import {
     inspectSerializedCBTForceV2,
     prepareInitialCBTForceV2,
@@ -396,36 +393,6 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         this.force[publishReservedUnitGroupOwnerMutation](intent);
     }
 
-    /** Remove and return the unit at the given index, or null if out of range. */
-    removeUnitAt(index: number): TUnit | null {
-        const units = [...this.units()];
-        if (index < 0 || index >= units.length) return null;
-        const intent = this.force[reserveUnitGroupOwnerMutation](this);
-        if (intent === null) return null;
-        const [removed] = units.splice(index, 1);
-        this.units.set(units);
-        this.force[publishReservedUnitGroupOwnerMutation](intent);
-        return removed;
-    }
-
-    /** Insert a pre-existing ForceUnit at the given index (appends if omitted). Updates the unit's force reference. */
-    insertUnit(unit: ForceUnit, index?: number): void {
-        const intent = this.force[reserveUnitGroupOwnerMutation](this);
-        if (intent === null) return;
-        unit.force = this.force;
-        if (unit.commander()) {
-            const existingCommander = this.units().find((candidate) => candidate.commander());
-            if (existingCommander) {
-                unit.setFormationCommander(false);
-            }
-        }
-        const units = [...this.units()];
-        const insertAt = index !== undefined ? Math.min(Math.max(0, index), units.length) : units.length;
-        units.splice(insertAt, 0, unit as TUnit);
-        this.units.set(units);
-        this.force[publishReservedUnitGroupOwnerMutation](intent);
-    }
-
     /**
      * Move a unit from this group to another group (may be in a different force).
      * Returns the moved unit, or null if the index is out of range.
@@ -483,18 +450,12 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         this.units.set(sourceUnits as TUnit[]);
         if (this === targetGroup) this.units.set(targetUnits as TUnit[]);
         else targetGroup.units.set(targetUnits);
-        if (replacement !== undefined && replacement !== sourceUnit) sourceUnit.destroy();
         if (sourceForce !== targetForce) sourceForce[pruneUnitGroupOwnerLegacyC3](sourceUnit.id);
         sourceForce[publishReservedUnitGroupOwnerMutation](sourceIntent);
         if (targetForce !== sourceForce) {
             targetForce[publishReservedUnitGroupOwnerMutation](targetIntent);
         }
         return insertedUnit;
-    }
-
-    /** Create and add a new unit via the owning Force's factory. */
-    addUnit(unit: UnitSummary): ForceUnit {
-        return this.force.addUnit(unit, this as UnitGroup);
     }
 
     /** Direct domain members used by formation and organization rules. */
@@ -951,9 +912,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     protected isWholeOwnerSubclassAuthorityFenceCurrent(fence: unknown): boolean {
         return fence === null;
     }
-
-    /** Saved units whose complete source payload is not materialized yet. */
-    public abstract getDeferredUnitDescriptors(): readonly DeferredUnitDescriptor[];
 
     public hasCBTForceV2(): boolean {
         return this.getSupportedCBTForceV2Envelope() !== null;
@@ -1533,12 +1491,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     /** One normalized, indexed structural/runtime snapshot per force revision. */
     c3Network = computed(() => new C3Network(this.c3Networks(), this.units()));
 
-    /** One structural C3 tax snapshot shared by every unit in this force revision. */
-    c3TaxCalculator = computed(() => new C3TaxCalculator(
-        this.c3Networks(),
-        this.units() as unknown as readonly (C3TaxUnit & C3UnitView)[],
-    ));
-
     /** Total BV (C3 tax is applied at unit level via adjustedBv, not here) */
     totalBv = computed(() => {
         return this.units().reduce((sum, unit) => sum + (unit.getBv()), 0);
@@ -1631,28 +1583,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     });
 
     /**
-     * Factory method to create the appropriate ForceUnit subclass.
-     * Must be implemented by subclasses that own grouped ForceUnit instances.
-     */
-    protected abstract createForceUnit(unit: UnitSummary): TUnit;
-
-    /**
-     * Async construction seam for mutations that must not expose a partially
-     * initialized unit. Alpha Strike keeps the no-op default; CBT overrides it.
-     */
-    protected async prepareCreatedForceUnit(forceUnit: TUnit): Promise<TUnit> {
-        return forceUnit;
-    }
-
-    /** The only construction gate for a fresh CBT runtime. Alpha Strike bypasses it. */
-    private createAdmittedForceUnit(unit: UnitSummary): TUnit {
-        if (this.gameSystem === GameSystem.CLASSIC) {
-            throw new Error('Classic units must be admitted through ForceUnitAdmissionService');
-        }
-        return this.createForceUnit(unit);
-    }
-
-    /**
      * Applies a tag mutation for a caller that will persist it explicitly.
      * This advances the same owner-generation and monotonic-time authority as
      * emitChanged(), but deliberately does not publish the normal autosave
@@ -1667,14 +1597,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         this.advanceForceOwnerGeneration();
         this.advanceMutationTimestamp();
         return true;
-    }
-
-    /**
-     * Creates a ForceUnit compatible with this force's game system,
-     * without adding it to any group. Useful for cross-system unit conversion.
-     */
-    public createCompatibleUnit(unit: UnitSummary): TUnit {
-        return this.createAdmittedForceUnit(unit);
     }
 
     getEraWarningMessage(
@@ -1705,66 +1627,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return authority !== null
             ? Object.freeze(authority.units.map(entry => String(entry.instanceId)))
             : Object.freeze([]);
-    }
-
-    /** Subclasses may reject cross-authority identity conflicts before group mutation. */
-    protected assertCanInsertCreatedForceUnit(_forceUnit: TUnit): void {
-    }
-
-    public addUnit(unit: UnitSummary, targetGroup?: UnitGroup<TUnit>): TUnit {
-        if (targetGroup !== undefined
-            && (targetGroup.force !== this || !this.groups().includes(targetGroup))) {
-            throw new Error('The requested target group is not owned by this force');
-        }
-        if (this.ownedMemberCountForCapacity() >= MAX_UNITS) {
-            throw new Error(`Cannot add more than ${MAX_UNITS} units to a single force`);
-        }
-        return this.insertCreatedForceUnit(
-            this.createAdmittedForceUnit(captureUnitForAsyncAdmission(unit)),
-            targetGroup,
-        );
-    }
-
-    /** Inserts a fully constructed subclass unit; readiness remains the subclass's responsibility. */
-    protected insertCreatedForceUnit(
-        forceUnit: TUnit,
-        targetGroup?: UnitGroup<TUnit>,
-        intentAlreadyReserved = false,
-    ): TUnit {
-        if (!this.loading && this.readOnly()) {
-            throw new Error(`Force "${this.name}" is read-only`);
-        }
-        if (forceUnit.force !== this) {
-            throw new Error('The prepared unit is not owned by this force');
-        }
-        this.assertCanInsertCreatedForceUnit(forceUnit);
-        if (this.ownedMemberCountForCapacity() >= MAX_UNITS) {
-            throw new Error(`Cannot add more than ${MAX_UNITS} units to a single force`);
-        }
-        if (targetGroup !== undefined
-            && (targetGroup.force !== this || !this.groups().includes(targetGroup))) {
-            throw new Error('The requested target group is not owned by this force');
-        }
-        const reservedHere = !this.loading && !intentAlreadyReserved;
-        if (reservedHere) this.reserveForceOwnerMutationIntent();
-        if (this.groups().length === 0) {
-            // The insertion itself publishes the one owner change below.
-            this.groups.set([new UnitGroup<TUnit>(this)]);
-        }
-
-        // Use provided target group or pick the last group
-        const groups = this.groups();
-        const group = targetGroup ?? groups[groups.length - 1];
-
-        const units = group.units();
-        group.units.set([...units, forceUnit]);
-        if (this.instanceId()) {
-            if (intentAlreadyReserved || reservedHere) this.emitChangedFromReservedIntent();
-            else this.emitChanged();
-        } else if (intentAlreadyReserved || reservedHere) {
-            this.advanceForceOwnerGeneration();
-        }
-        return forceUnit;
     }
 
     public hasMaxGroups = computed<boolean>(() => {
@@ -1920,9 +1782,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         const insertAt = atIndex !== undefined ? Math.min(Math.max(0, atIndex), groups.length) : groups.length;
         groups.splice(insertAt, 0, group as UnitGroup<TUnit>);
         this.groups.set(groups);
-        if (replacementUnits !== undefined) {
-            for (const unit of originalUnits) unit.destroy();
-        }
         if (source !== this) {
             for (const unit of originalUnits) source.removeUnitFromLegacyC3Networks(unit.id);
         }
@@ -1959,7 +1818,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 if (networks.length > 0 && new C3Network(networks).isUnitConnected(unit.id)) {
                     networks = C3NetworkEditor.removeUnit(networks, unit.id).networks;
                 }
-                unit.destroy();
             }
             this._c3Networks.set(networks);
         }
@@ -1988,7 +1846,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             this._c3Networks.set(result.networks);
         }
 
-        unitToRemove.destroy();
         if (remainingUnits.length === 0) {
             const remainingGroups = groups.filter(group => group !== ownerGroup);
             this.clearFormationTargetReferences(remainingGroups, new Set([ownerGroup.id]));
@@ -2004,22 +1861,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         const networks = this._c3Networks();
         if (networks.length === 0 || !new C3Network(networks).isUnitConnected(instanceId)) return;
         this._c3Networks.set(C3NetworkEditor.removeUnit(networks, instanceId).networks);
-    }
-
-    public removeEmptyGroups() {
-        if (this.readOnly()) return;
-        const groups = this.groups();
-        const nonEmptyGroups = groups.filter(g => g.units().length > 0);
-        if (nonEmptyGroups.length === groups.length) return; // No change
-        this.reserveForceOwnerMutationIntent();
-        this.clearFormationTargetReferences(
-            nonEmptyGroups,
-            new Set(groups.filter(group => group.units().length === 0).map(group => group.id)),
-        );
-        this.groups.set(nonEmptyGroups);
-        if (this.instanceId()) {
-            this.emitChangedFromReservedIntent();
-        }
     }
 
     private clearFormationTargetReferences(
@@ -2060,22 +1901,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return fixed;
     }
 
-    public setUnits(newUnits: TUnit[]) {
-        if (!this.loading && this.readOnly()) return;
-        const current = this.units();
-        if (current.length === newUnits.length && current.every((unit, index) => unit === newUnits[index])) return;
-        const intent = this.loading ? null : this.reserveForceOwnerMutationIntent();
-        const defaultGroup = new UnitGroup<TUnit>(this);
-        defaultGroup.units.set([...newUnits]);
-        this.groups.set([defaultGroup]);
-        if (this.instanceId()) {
-            if (intent === null) this.emitChanged();
-            else this.emitChangedFromReservedIntent();
-        } else if (intent !== null) {
-            this.advanceForceOwnerGeneration();
-        }
-    }
-
     public setNetwork(networks: SerializedC3NetworkGroup[]) {
         if (!this.loading && this.readOnly()) return;
         const detached = structuredClone(networks) as SerializedC3NetworkGroup[];
@@ -2110,19 +1935,15 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return true;
     }
 
-    /**
-     * Atomically applies a dialog's detached legacy-C3 graph and visual layout.
-     * The exact owner fingerprint binds both the ordered unit objects and their
-     * persistent state, so a stale dialog cannot touch replacement units.
-     */
-    public setC3ConfigurationIfWholeOwnerAuthorityCurrent(
-        fingerprint: ForceOwnerAuthorityFingerprint,
+    /** Atomically applies a dialog's detached Alpha Strike C3 graph and layout. */
+    public setC3ConfigurationIfOwnerRevisionCurrent(
+        revisionFence: ForceOwnerRevisionFence,
         networks: readonly SerializedC3NetworkGroup[],
         positions: readonly ForceC3UnitPosition[],
     ): boolean {
         if (!this.isWholeOwnerActive()
             || this.readOnly()
-            || !this.isWholeOwnerAuthorityFingerprintCurrent(fingerprint)) return false;
+            || !this.isForceOwnerRevisionFenceCurrent(revisionFence)) return false;
         let normalizedNetworks: SerializedC3NetworkGroup[];
         let normalizedPositions: ForceC3UnitPosition[];
         try {
@@ -2142,147 +1963,25 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         const positionsById = new Map(normalizedPositions.map(position => [position.unitId, position] as const));
         if (unitsById.size !== units.length
             || positionsById.size !== normalizedPositions.length
-            || normalizedPositions.length !== units.length
-            || units.some(unit => !positionsById.has(unit.id))) return false;
+            || normalizedPositions.some(position => !unitsById.has(position.unitId))) return false;
 
         const networksChanged = !jsonValuesEqual(normalizedNetworks, this._c3Networks());
-        const positionsChanged = units.some(unit => {
-            const current = unit.c3Position();
-            const next = positionsById.get(unit.id)!;
+        const positionsChanged = normalizedPositions.some(next => {
+            const current = unitsById.get(next.unitId)!.c3Position();
             return current?.x !== next.x || current?.y !== next.y;
         });
         if (!networksChanged && !positionsChanged) return false;
 
         this.reserveForceOwnerMutationIntent();
-        for (const unit of units) {
-            const position = positionsById.get(unit.id)!;
-            // The public unit command would publish once per row. This raw
-            // writer is protected and is used only inside this already-fenced,
-            // synchronous whole-owner transaction.
-            (unit as unknown as {
-                applyC3PositionFromOwnerTransaction(pos: { x: number; y: number } | null): void;
-            }).applyC3PositionFromOwnerTransaction({ x: position.x, y: position.y });
+        for (const position of normalizedPositions) {
+            const unit = unitsById.get(position.unitId)!;
+            unit[applyForceUnitOwnerC3Position]({ x: position.x, y: position.y });
         }
         this._c3Networks.set(normalizedNetworks);
         if (this.instanceId()) this.emitChangedFromReservedIntent();
         else this.advanceForceOwnerGeneration();
         return true;
     }
-
-    public loadAll() {
-        this.units().forEach(unit => unit.load());
-    }
-
-    /**
-     * Replaces a unit in the force with a new one, preserving pilot data and position.
-     * This is the core logic for unit replacement - dialogs and notifications should be handled by the caller.
-     * 
-     * @param originalUnit The ForceUnit to replace
-     * @param newUnitData The new Unit data to create the replacement from
-     * @returns Object containing the new ForceUnit and the group it was placed in, or null if failed
-     */
-    public async replaceUnit(
-        originalUnit: TUnit,
-        newUnitData: UnitSummary,
-    ): Promise<{ newUnit: TUnit; group: UnitGroup<TUnit> } | null> {
-        if (!this.isWholeOwnerActive()) return null;
-
-        // Bind the operation to the exact owned object, group and slot. A
-        // same-ID substitute is not the authority that the caller selected.
-        const groups = this.groups();
-        let originalGroup: UnitGroup<TUnit> | null = null;
-        let originalIndex = -1;
-
-        for (const group of groups) {
-            const groupUnits = group.units();
-            const idx = groupUnits.findIndex(u => u === originalUnit);
-            if (idx !== -1) {
-                originalGroup = group;
-                originalIndex = idx;
-                break;
-            }
-        }
-
-        if (!originalGroup || originalIndex === -1) {
-            return null; // Unit not found in any group
-        }
-
-        // Construct outside every force collection. The asynchronous preflight
-        // runs inside the owner tail so a later retirement barrier drains it.
-        const capturedNewUnitData = captureUnitForAsyncAdmission(newUnitData);
-        const newForceUnit = this.createAdmittedForceUnit(capturedNewUnitData);
-        return this.enqueueCBTForceV2AuthorityMutation(async () => {
-            const submittedGeneration = this.captureForceOwnerGeneration();
-            if (this.readOnly()
-                || !this.groups().includes(originalGroup!)
-                || originalGroup!.force !== this
-                || originalGroup!.units()[originalIndex] !== originalUnit
-                || originalUnit.force !== this
-                || newForceUnit.force !== this) {
-                newForceUnit.destroy();
-                return null;
-            }
-
-            try {
-                await this.prepareCreatedForceUnit(newForceUnit);
-                if (this.readOnly()
-                    || !this.isForceOwnerGenerationCurrent(submittedGeneration)
-                    || !this.groups().includes(originalGroup!)
-                    || originalGroup!.force !== this
-                    || originalGroup!.units()[originalIndex] !== originalUnit
-                    || originalUnit.force !== this
-                    || newForceUnit.force !== this) {
-                    newForceUnit.destroy();
-                    return null;
-                }
-                // This includes subclass cross-authority collision checks.
-                this.assertCanInsertCreatedForceUnit(newForceUnit);
-
-                // Disable saving during transfer to avoid triggering saves prematurely.
-                newForceUnit.disabledSaving = true;
-                try {
-                    this.transferPilotData(originalUnit, newForceUnit);
-                } finally {
-                    newForceUnit.disabledSaving = false;
-                }
-
-                // Recheck immediately before the synchronous owner install in
-                // case a subclass transfer hook attempted a reentrant write.
-                if (this.readOnly()
-                    || !this.isForceOwnerGenerationCurrent(submittedGeneration)
-                    || !this.groups().includes(originalGroup!)
-                    || originalGroup!.force !== this
-                    || originalGroup!.units()[originalIndex] !== originalUnit
-                    || originalUnit.force !== this
-                    || newForceUnit.force !== this) {
-                    newForceUnit.destroy();
-                    return null;
-                }
-
-                this.reserveForceOwnerMutationIntent();
-                const currentNetworks = this._c3Networks();
-                if (currentNetworks.length > 0 && new C3Network(currentNetworks).isUnitConnected(originalUnit.id)) {
-                    this._c3Networks.set(C3NetworkEditor.removeUnit(currentNetworks, originalUnit.id).networks);
-                }
-
-                const groupUnits = [...originalGroup!.units()];
-                groupUnits.splice(originalIndex, 1, newForceUnit);
-                originalGroup!.units.set(groupUnits);
-                originalUnit.destroy();
-                if (this.instanceId()) this.emitChangedFromReservedIntent();
-                return { newUnit: newForceUnit, group: originalGroup! };
-            } catch (error) {
-                newForceUnit.destroy();
-                throw error;
-            }
-        });
-    }
-
-    /**
-     * Transfers pilot data (name, skills, abilities) from one unit to another.
-     * Must be implemented by subclasses to handle game-system-specific pilot data.
-     */
-    protected abstract transferPilotData(fromUnit: TUnit, toUnit: TUnit): void;
 
     /** Serialize this Force instance to a plain object */
     public serialize(): SerializedForce {
@@ -2330,15 +2029,15 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             const formationTargetGroupId = g.formationTargetGroupId();
             return {
                 id: g.id,
-                name: g.name() || undefined,
-                color: g.color,
-                formationId: formation?.id,
-                formationLock: g.formationLock || undefined,
-                formationTargetGroupId: formationTargetGroupId !== null
+                ...(g.name() ? { name: g.name() } : {}),
+                ...(g.color ? { color: g.color } : {}),
+                ...(formation === null ? {} : { formationId: formation.id }),
+                ...(g.formationLock ? { formationLock: true } : {}),
+                ...(formationTargetGroupId !== null
                     && formationTargetGroupId !== g.id
                     && persistentGroupIds.has(formationTargetGroupId)
-                    ? formationTargetGroupId
-                    : undefined,
+                    ? { formationTargetGroupId }
+                    : {}),
                 units: g.units().map(u => u.serialize())
             };
             });
@@ -2348,20 +2047,15 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             instanceId: instanceId,
             type: this.gameSystem,
             name: this.name,
-            note: this.note || undefined,
-            tags: this.tags.length > 0 ? [...this.tags] : undefined,
-            factionId: this.faction()?.id,
-            factionLock: this.factionLock || undefined,
-            eraId: this.era()?.id,
-            eraLock: this.eraLock || undefined,
+            ...(this.note ? { note: this.note } : {}),
+            ...(this.tags.length === 0 ? {} : { tags: [...this.tags] }),
+            ...(this.faction() === null ? {} : { factionId: this.faction()!.id }),
+            ...(this.factionLock ? { factionLock: true } : {}),
+            ...(this.era() === null ? {} : { eraId: this.era()!.id }),
+            ...(this.eraLock ? { eraLock: true } : {}),
             groups: serializedGroups,
-            c3Networks: this.c3Networks().length > 0 ? this.c3Networks() : undefined,
+            ...(this.c3Networks().length === 0 ? {} : { c3Networks: this.c3Networks() }),
         };
-        if (this.gameSystem === GameSystem.ALPHA_STRIKE) {
-            result.pv = this.totalBv();
-        } else {
-            result.bv = this.totalBv();
-        }
         return Object.freeze(structuredClone(result));
     }
 
@@ -2413,21 +2107,12 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         if (changedUnitIds === null) {
             this.memberRevision.update(revision => revision + 1);
         }
-        // DataService is the sole persistence/network debounce. Emitting here
+        // ForcePersistenceService is the sole persistence/network debounce. Emitting here
         // synchronously makes accepted owner mutations visible to unload and
         // remote-arbitration code immediately, without a second lossy timer.
         this.changed.next(changedUnitIds === null
             ? null
             : Object.freeze([...new Set(changedUnitIds)]));
-    }
-
-    /**
-     * Flushes any pending debounced save, executing it immediately.
-     * Call this before tearing down a force slot so the save fires
-     * while the subscription is still active.
-     */
-    public flushPendingChanges() {
-        // Force mutations emit synchronously; DataService owns pending saves.
     }
 
     private advanceMutationTimestamp(): void {
@@ -2436,14 +2121,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             ? Math.max(Date.now(), previous + 1)
             : Date.now();
         this.timestamp = new Date(next).toISOString();
-    }
-
-    /**
-     * Cancels any pending debounced save.
-     * Call this before deleting a force to prevent stale saves.
-     */
-    public cancelPendingChanges() {
-        // Force mutations emit synchronously; there is no force-local timer.
     }
 
     /** Installs metadata for an already validated direct V2 CBT record. */
@@ -2498,20 +2175,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
      * using this instance's injected services.
      */
     protected abstract deserializeFrom(serialized: SerializedForce): Force;
-
-    /**
-     * Clone this force (uses serialize + deserialize)
-     * Returns a brand-new owned Force with fresh instanceId, group ids,
-     * unit ids, and remapped C3 network references.
-     */
-    public clone(): Force {
-        const encounter = this.getCBTEncounterStateForPersistence();
-        if ((encounter?.facts.length ?? 0) > 0
-            || (this.getSupportedCBTForceV2Envelope()?.units.length ?? 0) > 0) {
-            throw new Error('Typed CBT authority requires cloneForPersistence()');
-        }
-        return this.cloneLegacyGraph();
-    }
 
     /**
      * Async clone boundary for the completed force-target registry. Retained
@@ -2595,27 +2258,4 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         cloned.persistenceIdentityPromotionInstanceId = cloned.instanceId();
         return cloned;
     }
-}
-
-/**
- * Detaches caller-owned summary DTOs without erasing the prototype-backed,
- * catalog-owned Equipment profiles referenced by component rows.
- */
-export function captureUnitForAsyncAdmission(unit: UnitSummary): UnitSummary {
-    const { comp, ...structural } = unit;
-    return {
-        ...structuredClone(structural),
-        comp: comp.map(captureUnitComponentForAsyncAdmission),
-    };
-}
-
-function captureUnitComponentForAsyncAdmission(component: UnitComponent): UnitComponent {
-    const { eq, bay, ...structural } = component;
-    return {
-        ...structuredClone(structural),
-        ...(eq === undefined ? {} : { eq }),
-        ...(bay === undefined
-            ? {}
-            : { bay: bay.map(captureUnitComponentForAsyncAdmission) }),
-    };
 }

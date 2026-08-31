@@ -358,8 +358,8 @@ export class MekTurnSummaryRuntimeController {
         await this.dispatch({ type: 'apply-heat', policy: this.heatPolicy() });
     }
 
-    public async boundary(type: 'commit-pending' | 'cancel-pending' | 'end-phase' | 'end-turn'): Promise<void> {
-        await this.dispatch(type === 'end-turn' ? { type, policy: this.heatPolicy() } : { type });
+    public boundary(type: 'commit-pending' | 'cancel-pending' | 'end-phase' | 'end-turn'): Promise<boolean> {
+        return this.dispatch(type === 'end-turn' ? { type, policy: this.heatPolicy() } : { type });
     }
 
     private async dispatch(command: MekTurnCommand): Promise<boolean> {

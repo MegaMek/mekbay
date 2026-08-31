@@ -7,9 +7,9 @@ import { of } from 'rxjs';
 import { GameSystem } from '../models/common.model';
 import type { Force } from '../models/force.model';
 import type { ForceSlot } from '../models/force-slot.model';
-import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
 import { ForceOperationService, type ForceOperationHost } from './force-operation.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { LoggerService } from './logger.service';
 import { OperationStorageService } from './operation-storage.service';
 import { ToastService } from './toast.service';
@@ -24,7 +24,7 @@ describe('ForceOperationService', () => {
         const service = TestBed.configureTestingModule({
             providers: [
                 ForceOperationService,
-                { provide: DataService, useValue: { saveForce } },
+                { provide: ForcePersistenceService, useValue: { saveForce } },
                 { provide: OperationStorageService, useValue: { saveOperation } },
                 {
                     provide: DialogsService,

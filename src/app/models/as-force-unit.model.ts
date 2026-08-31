@@ -522,86 +522,48 @@ export class ASForceUnit extends ForceUnit {
             }
         }
         
-        const stateObj: ASSerializedState = {
-            modified: this.state.modified(),
-            destroyed: this.state.destroyed(),
-            conditions: this.state.conditionsForSerialization(),
-            c3Position: this.state.c3Position() ?? undefined,
-            heat: [this.state.heat(), this.state.pendingHeat()],
-            armor: [this.state.armor(), this.state.pendingArmor()],
-            internal: [this.state.internal(), this.state.pendingInternal()],
-            crits: [...this.state.crits()],
-            pCrits: [...this.state.pendingCrits()],
-            consumed: Object.keys(consumed).length > 0 ? consumed : undefined,
-            exhausted: (this.state.exhaustedAbilities().size > 0 || 
-                       this.state.pendingExhausted().size > 0 || 
-                       this.state.pendingRestored().size > 0) 
-                ? [
+        const heat: [number, number] = [this.state.heat(), this.state.pendingHeat()];
+        const armor: [number, number] = [this.state.armor(), this.state.pendingArmor()];
+        const internal: [number, number] = [this.state.internal(), this.state.pendingInternal()];
+        const crits = this.state.crits().map(({ key, timestamp }): [string, number] => [key, timestamp]);
+        const pendingCrits = this.state.pendingCrits()
+            .map(({ key, timestamp }): [string, number] => [key, timestamp]);
+        const hasExhausted = this.state.exhaustedAbilities().size > 0
+            || this.state.pendingExhausted().size > 0
+            || this.state.pendingRestored().size > 0;
+        const conditions = this.state.conditionsForSerialization();
+        const state: ASSerializedState = {
+            ...(this.state.modified() ? { modified: true } : {}),
+            ...(this.state.destroyed() ? { destroyed: true } : {}),
+            ...(conditions === undefined ? {} : { conditions }),
+            ...(this.state.c3Position() === null ? {} : { c3Position: this.state.c3Position()! }),
+            ...(heat[0] === 0 && heat[1] === 0 ? {} : { heat }),
+            ...(armor[0] === 0 && armor[1] === 0 ? {} : { armor }),
+            ...(internal[0] === 0 && internal[1] === 0 ? {} : { internal }),
+            ...(crits.length === 0 ? {} : { crits }),
+            ...(pendingCrits.length === 0 ? {} : { pCrits: pendingCrits }),
+            ...(Object.keys(consumed).length === 0 ? {} : { consumed }),
+            ...(hasExhausted
+                ? { exhausted: [
                     [...this.state.exhaustedAbilities()],
                     [...this.state.pendingExhausted()],
-                    [...this.state.pendingRestored()]
-                  ] 
-                : undefined,
+                    [...this.state.pendingRestored()],
+                ] as [string[], string[], string[]] }
+                : {}),
         };
-        const data: ASSerializedUnit = {
+        const abilities = this._pilotAbilities();
+        const formationAbilities = this._formationAbilities();
+        return {
             id: this.id,
-            state: stateObj,
-            unit: this.getSummary().name, // Serialize only the name,
-            alias: this.alias(),
-            updatedTs: this.updatedTs || undefined,
-            skill: this._pilotSkill(),
-            abilities: structuredClone(this._pilotAbilities()),
-            formationAbilities: this._formationAbilities().length > 0 ? [...this._formationAbilities()] : undefined,
-            commander: this._formationCommander() || undefined,
-            entityIdentity: typeof this.dataService.getSavedEntityIdentity === 'function'
-                ? this.dataService.getSavedEntityIdentity(this.getSummary())
-                : undefined,
+            uuid: this.getSummary().uuid,
+            ...(Object.keys(state).length === 0 ? {} : { state }),
+            ...(this.alias() === undefined ? {} : { alias: this.alias() }),
+            ...(this.updatedTs === 0 ? {} : { updatedTs: this.updatedTs }),
+            ...(this._pilotSkill() === 4 ? {} : { skill: this._pilotSkill() }),
+            ...(abilities.length === 0 ? {} : { abilities: structuredClone(abilities) }),
+            ...(formationAbilities.length === 0 ? {} : { formationAbilities: [...formationAbilities] }),
+            ...(this._formationCommander() ? { commander: true } : {}),
         };
-        return data;
-    }
-
-    protected deserializeState(state: ASSerializedState) {
-        // State is already sanitized by AS_SERIALIZED_STATE_SCHEMA via AS_SERIALIZED_UNIT_SCHEMA
-        this.state.modified.set(state.modified);
-        this.state.destroyed.set(state.destroyed);
-        this.state.setConditions(state.conditions ?? []);
-        
-        // Heat/armor/internal are already validated as [number, number] tuples
-        this.state.heat.set(state.heat[0]);
-        this.state.pendingHeat.set(state.heat[1]);
-        
-        this.state.armor.set(state.armor[0]);
-        this.state.pendingArmor.set(state.armor[1]);
-        
-        this.state.internal.set(state.internal[0]);
-        this.state.pendingInternal.set(state.internal[1]);
-        
-        // Crits are already validated arrays
-        this.state.crits.set([...state.crits]);
-        this.state.pendingCrits.set([...state.pCrits]);
-        
-        // Handle consumed abilities
-        if (state.consumed) {
-            const consumed: Record<string, number> = {};
-            const pending: Record<string, number> = {};
-            for (const [key, value] of Object.entries(state.consumed)) {
-                if (value[0]) consumed[key] = value[0];
-                if (value[1]) pending[key] = value[1];
-            }
-            this.state.consumedAbilities.set(consumed);
-            this.state.pendingConsumed.set(pending);
-        }
-        
-        // Handle exhausted abilities
-        if (state.exhausted) {
-            this.state.exhaustedAbilities.set(new Set(state.exhausted[0]));
-            this.state.pendingExhausted.set(new Set(state.exhausted[1]));
-            this.state.pendingRestored.set(new Set(state.exhausted[2]));
-        }
-        
-        if (state.c3Position) {
-            this.state.c3Position.set(state.c3Position);
-        }
     }
 
     public static deserialize(
@@ -613,21 +575,9 @@ export class ASForceUnit extends ForceUnit {
         // Sanitize the input data using the schema
         const sanitizedData = Sanitizer.sanitize(data, AS_SERIALIZED_UNIT_SCHEMA);
         
-        const resolution = typeof dataService.resolveSerializedUnit === 'function'
-            ? dataService.resolveSerializedUnit(sanitizedData)
-            : undefined;
-        const unit = resolution?.unit ?? dataService.getUnitByName(sanitizedData.unit);
-        if (!unit) throw new Error(`Unit with name "${sanitizedData.unit}" not found in dataService`);
+        const unit = dataService.getUnitByUuid(sanitizedData.uuid);
+        if (!unit) throw new Error(`Unit UUID "${sanitizedData.uuid}" is not installed`);
         const fu = new ASForceUnit(unit, force, dataService, injector);
-        if (resolution) {
-            fu.definitionResolution = {
-                savedIdentity: resolution.savedIdentity,
-                currentIdentity: resolution.currentIdentity,
-                usedLegacyNameFallback: resolution.usedLegacyNameFallback,
-                sourceChanged: resolution.sourceChanged,
-                formatChanged: resolution.formatChanged,
-            };
-        }
         fu.id = sanitizedData.id;
         
         if (sanitizedData.alias !== undefined) {
@@ -644,7 +594,7 @@ export class ASForceUnit extends ForceUnit {
         if (sanitizedData.updatedTs !== undefined) {
             fu.updatedTs = sanitizedData.updatedTs;
         }
-        fu.deserializeState(sanitizedData.state);
+        if (sanitizedData.state !== undefined) fu.state.update(sanitizedData.state);
         return fu;
     }
 

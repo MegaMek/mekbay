@@ -339,10 +339,15 @@ export interface C3UnitPresentation {
     readonly walk: number;
 }
 
-/** Narrow presentation/query surface; no force-unit mechanics owner is required. */
-export interface C3UnitView {
-    readonly id: string;
+/** Minimal capability source shared by editor, persistence, and mechanics boundaries. */
+export interface C3CapabilityView {
     readonly c3Components?: readonly C3Component[];
+    getC3Specials?(): readonly string[];
+}
+
+/** Narrow presentation/query surface; no force-unit mechanics owner is required. */
+export interface C3UnitView extends C3CapabilityView {
+    readonly id: string;
     getC3Specials(): readonly string[];
     getC3Presentation(): C3UnitPresentation;
     alias(): string | undefined;
@@ -501,7 +506,7 @@ export class C3Capabilities {
     readonly hasC3: boolean;
     readonly networkTypes: ReadonlySet<C3NetworkType>;
 
-    constructor(readonly unit: C3UnitView) {
+    constructor(readonly unit: C3CapabilityView) {
         this.components = unit.c3Components
             ? unit.c3Components.map((component, index) => Object.freeze({ ...component, index }))
             : C3Capabilities.fromAlphaStrike(unit);
@@ -523,9 +528,9 @@ export class C3Capabilities {
             && (role === undefined || component.role === role));
     }
 
-    private static fromAlphaStrike(unit: C3UnitView): C3Component[] {
+    private static fromAlphaStrike(unit: C3CapabilityView): C3Component[] {
         const components: C3Component[] = [];
-        for (const info of parseASC3Specials(unit.getC3Specials())) {
+        for (const info of parseASC3Specials(unit.getC3Specials?.() ?? [])) {
             const count = info.role === C3Role.MASTER ? info.count : 1;
             for (let index = 0; index < count; index++) {
                 components.push({

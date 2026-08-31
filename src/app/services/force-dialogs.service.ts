@@ -28,7 +28,7 @@ import { ASSummaryPrintUtil } from '../utils/as-summary-print.util';
 import { CBTPrintUtil } from '../utils/cbtprint.util';
 import { CBTSummaryPrintUtil } from '../utils/cbt-summary-print.util';
 import { AsAbilityLookupService } from './as-ability-lookup.service';
-import { DataService } from './data.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { DialogsService, type DialogRef } from './dialogs.service';
 import { ForceFormationService } from './force-formation.service';
 import { LoggerService } from './logger.service';
@@ -44,7 +44,7 @@ export interface ForceDialogWorkspace {
 /** Owns force dialogs, printing, naming, and save-confirmation interactions. */
 @Injectable({ providedIn: 'root' })
 export class ForceDialogsService {
-    private readonly dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly dialogs = inject(DialogsService);
     private readonly formations = inject(ForceFormationService);
     private readonly injector = inject(Injector);
@@ -153,7 +153,7 @@ export class ForceDialogsService {
         if (!result) return false;
         this.applyRenameForceDialogResult(force, result);
         try {
-            await this.dataService.saveForce(force);
+            await this.forcePersistence.saveForce(force);
             this.toast.showToast('Force saved successfully.', 'success');
             return true;
         } catch (error) {
@@ -191,7 +191,7 @@ export class ForceDialogsService {
     }
 
     async promptSaveForceIfNeeded(force: Force): Promise<boolean> {
-        if (this.dataService.hasDurableForceIdentity(force)
+        if (this.forcePersistence.hasDurableForceIdentity(force)
             || force.members().length === 0) return true;
         const result = await firstValueFrom(this.dialogs.createDialog<string>(ConfirmDialogComponent, {
             data: <ConfirmDialogData<string>>{
@@ -207,7 +207,7 @@ export class ForceDialogsService {
         if (result === 'no') return true;
         if (result !== 'yes') return false;
         try {
-            if (!await this.dataService.saveForceAndWaitForCloud(force)) {
+            if (!await this.forcePersistence.saveForceAndWaitForCloud(force)) {
                 throw new Error('The force ceased to be authoritative before persistence completed.');
             }
             return true;

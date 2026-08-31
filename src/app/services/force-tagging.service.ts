@@ -15,7 +15,7 @@ import {
 import type { ForceTaggableEntry } from '../components/force-tags/force-tags.component';
 import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
 import { sanitizeForceTagLabels, sanitizeForceTags } from '../models/force-serialization';
-import { DataService } from './data.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { DialogsService } from './dialogs.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { OverlayManagerService } from './overlay-manager.service';
@@ -41,7 +41,7 @@ const FORCE_TAG_SELECTOR_OVERLAY_KEY = 'forceTagSelector';
     providedIn: 'root'
 })
 export class ForceTaggingService {
-    private dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private overlayManager = inject(OverlayManagerService);
     private dialogsService = inject(DialogsService);
@@ -136,7 +136,7 @@ export class ForceTaggingService {
             addTags(force.tags);
         }
 
-        addTags(this.dataService.getCachedForceTagLabels());
+        addTags(this.forcePersistence.getCachedForceTagLabels());
 
         return Array.from(labels.values())
             .sort(naturalCompare);
@@ -269,7 +269,7 @@ export class ForceTaggingService {
 
         try {
             const updateCloud = options.updateCloud ?? force.cloud ?? true;
-            const updateResult = await this.dataService.updateForceTags(force.instanceId, nextTags, updateCloud);
+            const updateResult = await this.forcePersistence.updateForceTags(force.instanceId, nextTags, updateCloud);
             const normalizedTags = updateResult.tags;
             force.tags = normalizedTags.length > 0 ? normalizedTags : undefined;
 

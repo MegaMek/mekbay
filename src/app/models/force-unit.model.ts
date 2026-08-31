@@ -5,7 +5,7 @@
 import { signal, computed, type Injector, type Signal, type WritableSignal } from '@angular/core';
 import type { DataService } from '../services/data.service';
 import type { UnitSummary } from "./unit-summary.model";
-import type { SerializedUnit } from './force-serialization';
+import type { ASSerializedUnit } from './force-serialization';
 import type { Force, UnitGroup } from './force.model';
 import type { ForceUnitState } from './force-unit-state.model';
 import type { ConditionData } from './force-unit-state.model';
@@ -15,6 +15,8 @@ import type { UnitDefinitionResolutionWitness } from './persisted-unit-state';
 import type { UnitTagEcmCapabilitySummary } from './unit-capability-summary.model';
 import type { UnitConditionKey } from './unit-condition.model';
 
+/** @internal Friend capability for the synchronous Force-owned C3 transaction. */
+export const applyForceUnitOwnerC3Position = Symbol('applyForceUnitOwnerC3Position');
 
 export abstract class ForceUnit {
     protected unit: UnitSummary; // Original unit data
@@ -22,7 +24,6 @@ export abstract class ForceUnit {
     protected readonly _formationCommander = signal<boolean>(false);
     id: string;
     updatedTs: number = 0;
-    initialized = false;
     /** Compatibility witness from UUID-first catalog resolution; source drift is diagnostic, never rejection. */
     definitionResolution?: UnitDefinitionResolutionWitness;
 
@@ -39,7 +40,6 @@ export abstract class ForceUnit {
     protected injector: Injector;
     isLoaded: WritableSignal<boolean> = signal(false);
     public disabledSaving: boolean = false;
-    phaseTrigger = signal(0); // Used to trigger change detection on phase changes
 
     protected abstract state: ForceUnitState;
 
@@ -63,18 +63,10 @@ export abstract class ForceUnit {
         this.injector = injector;
     }
 
-    destroy() {}
-
     public abstract load(): Promise<void>;
 
     getDisplayName() {
         return (this.unit.chassis + ' ' + this.unit.model).trim();
-    }
-
-    getNotificationDisplayName() {
-        const pilotName = this.alias()?.trim();
-        const unitName = this.getDisplayName();
-        return pilotName ? `${unitName} (${pilotName})` : unitName;
     }
 
     get modified(): boolean {
@@ -92,24 +84,8 @@ export abstract class ForceUnit {
         return this.state.destroyed();
     }
 
-    setDestroyed(destroyed: boolean) {
-        this.state.destroyed.set(destroyed);
-    }
-
-    get shutdown(): boolean {
-        return this.state.hasCondition('shutdown');
-    }
-
-    get conditions(): ReadonlyMap<UnitConditionKey, ConditionData | undefined> {
-        return this.state.conditions();
-    }
-
     getConditions(): ReadonlyMap<UnitConditionKey, ConditionData | undefined> {
         return this.state.conditions();
-    }
-
-    getCondition(condition: UnitConditionKey): boolean {
-        return this.state.hasCondition(condition);
     }
 
     /** Runtime availability hook used by the force-level C3 graph. */
@@ -122,48 +98,12 @@ export abstract class ForceUnit {
         return false;
     }
 
-    isComputedCondition(_condition: UnitConditionKey): boolean {
-        return false;
-    }
-
-    hasComputedCondition(_condition: UnitConditionKey): boolean {
-        return false;
-    }
-
-    setCondition(condition: UnitConditionKey, active: boolean) {
-        if (!this.state.setCondition(condition, active)) return;
-        this.setModified();
-    }
-
-    /** Get/set the C3 visual editor position for this unit */
+    /** C3 visual editor position, mutated only by the Force-owned transaction. */
     get c3Position() {
         return this.state.c3Position;
     }
 
-    /**
-     * Applies a standalone visual-layout edit through the owning Force. A
-     * shared or retired unit must not be mutated first and merely have the
-     * eventual Force emission rejected.
-     */
-    setC3Position(pos: { x: number; y: number } | null): boolean {
-        const next = pos === null ? null : { x: pos.x, y: pos.y };
-        const current = this.state.c3Position();
-        if ((current === null && next === null)
-            || (current !== null && next !== null
-                && current.x === next.x && current.y === next.y)) return false;
-        if (this.disabledSaving
-            || this.readOnly()
-            || !this.force.groups().some(group =>
-                group.force === this.force && group.units().some(unit => unit === this))) return false;
-        this.state.c3Position.set(next);
-        this.state.modified.set(true);
-        this.updatedTs = Date.now();
-        this.force.emitChanged();
-        return true;
-    }
-
-    /** @internal Exact Force-owned multi-unit C3 transaction only. */
-    protected applyC3PositionFromOwnerTransaction(pos: { x: number; y: number } | null): void {
+    public [applyForceUnitOwnerC3Position](pos: { x: number; y: number } | null): void {
         this.state.c3Position.set(pos === null ? null : { x: pos.x, y: pos.y });
     }
 
@@ -182,7 +122,7 @@ export abstract class ForceUnit {
         return this.unit;
     }
 
-    /** Unloaded Alpha Strike/formation adapter; Classic members supply Entity instead. */
+    /** Alpha Strike formation and organization rules read the retained catalog facts. */
     getFormationSummary(): UnitSummary {
         return this.unit;
     }
@@ -219,16 +159,12 @@ export abstract class ForceUnit {
 
     abstract getBv: Signal<number>;
 
-    abstract getPilotStats: Signal<any>;
+    abstract getPilotStats: Signal<number>;
 
     abstract repairAll(): void;
 
-    abstract update(data: SerializedUnit): void;
+    abstract update(data: ASSerializedUnit): void;
 
-    abstract serialize(): SerializedUnit;
-
-    public getEquipmentRegistry() {
-        return this.dataService.getEquipmentRegistry();
-    }
+    abstract serialize(): ASSerializedUnit;
 
 }

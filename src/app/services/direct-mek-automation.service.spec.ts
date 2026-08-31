@@ -128,6 +128,33 @@ describe('DirectMekAutomationService', () => {
         );
     });
 
+    it('does not turn a manual shutdown toggle into a Piloting Skill Roll', async () => {
+        const harness = createHarness('total-warfare');
+        const command: CBTUnitCommand = {
+            type: 'set-mek-shutdown-state',
+            commandId: asCommandId('automation:manual-shutdown'),
+            expectedRevision: harness.fixture.instance.query().stateRevision,
+            shutdown: true,
+        };
+        const before = harness.snapshot();
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, command);
+        const result = harness.fixture.instance.dispatch(prepared.command);
+        await service.afterCommand(
+            harness.force,
+            harness.instanceId,
+            before,
+            prepared,
+            result,
+            harness.dispatch,
+        );
+
+        expect(result.accepted).toBeTrue();
+        expect(harness.fixture.instance.query().hasCondition('shutdown')).toBeTrue();
+        expect(harness.fixture.instance.query().mekPilotChecks()).toEqual([]);
+        expect(resolveAutomation).not.toHaveBeenCalled();
+    });
+
     it('uses one force-wide review when heat, effects, and pilot hits all ask', async () => {
         automationModes['heatAndDissipationResolution'] = 'ask';
         const harness = createHarness();

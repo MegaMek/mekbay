@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Injectable, inject, signal } from '@angular/core';
-import { WsService } from './ws.service';
+import { WsService, type WsMessage } from './ws.service';
 import { UserStateService } from './userState.service';
 import { DbService, type PublicTagData, type TagEntry, type TagOp } from './db.service';
 import { LoggerService } from './logger.service';
@@ -25,8 +25,9 @@ export function makeSubKey(publicId: string, tagName: string): string {
 }
 
 /** Parse a subscription key into publicId and tagName */
-export function parseSubKey(key: string): { publicId: string; tagName: string } {
+function parseSubKey(key: string): { publicId: string; tagName: string } | null {
     const idx = key.indexOf(':');
+    if (idx <= 0 || idx === key.length - 1) return null;
     return {
         publicId: key.substring(0, idx),
         tagName: key.substring(idx + 1)
@@ -37,18 +38,43 @@ export function parseSubKey(key: string): { publicId: string; tagName: string } 
  * Extract unit names and chassis keys from V3 tag data for a specific tag.
  */
 function extractFromV3Tags(
-    tags: Record<string, TagEntry> | undefined,
+    tags: Readonly<Record<string, TagEntry>> | undefined,
     tagName: string
 ): { unitNames: string[]; chassisKeys: string[] } {
-    if (!tags) return { unitNames: [], chassisKeys: [] };
     const tagId = tagName.toLowerCase();
-    const entry = tags[tagId];
+    const entry = tags?.[tagId];
     if (!entry) return { unitNames: [], chassisKeys: [] };
     return {
         unitNames: Object.keys(entry.units),
         chassisKeys: Object.keys(entry.chassis)
     };
 }
+
+type PublicTagUpdate = WsMessage & {
+    readonly publicId: string;
+    readonly tagName: string;
+    readonly ops?: TagOp[];
+    readonly tags?: Record<string, TagEntry>;
+    readonly timestamp?: number;
+};
+
+type TagSubscriptionsResponse = WsMessage & { readonly subscriptions: string[] };
+type PublicTagsResponse = WsMessage & {
+    readonly found: boolean;
+    readonly tagNames?: string[];
+    readonly tags?: Record<string, TagEntry>;
+    readonly ops?: TagOp[];
+    readonly timestamp: number;
+};
+type SubscribePublicTagResponse = WsMessage & {
+    readonly success: boolean;
+    readonly error?: string;
+    readonly tagName?: string;
+    readonly tags?: Record<string, TagEntry>;
+    readonly timestamp: number;
+};
+type UnsubscribePublicTagResponse = WsMessage & { readonly success: boolean };
+type TagSubscriberCountsResponse = WsMessage & { readonly counts: Record<string, number> };
 
 /**
  * Apply tag operations to public tag data.
@@ -132,7 +158,6 @@ export class PublicTagsService {
     private readonly userStateService = inject(UserStateService);
     private readonly dbService = inject(DbService);
     private readonly logger = inject(LoggerService);
-    private readonly tagsService = inject(TagsService);
     private readonly dialogsService = inject(DialogsService);
 
     /** Current temporary (session-only) public tags */
@@ -179,10 +204,8 @@ export class PublicTagsService {
      */
     public registerWsHandlers(): void {
         // Handle real-time updates for subscribed tags
-        this.wsService.registerMessageHandler('publicTagUpdate', (msg) => {
-            if (msg.publicId && msg.tagName) {
-                this.handlePublicTagUpdate(msg);
-            }
+        this.wsService.registerMessageHandler<PublicTagUpdate>('publicTagUpdate', (msg) => {
+            void this.handlePublicTagUpdate(msg);
         });
 
         // Load subscribed tags after registration
@@ -195,8 +218,9 @@ export class PublicTagsService {
      * Handle real-time updates for subscribed tags (V3 format).
      * Uses incremental ops when available, otherwise replaces with full state.
      */
-    private async handlePublicTagUpdate(msg: any): Promise<void> {
-        const lowerKey = makeSubKey(msg.publicId, msg.tagName.toLowerCase());
+    private async handlePublicTagUpdate(msg: PublicTagUpdate): Promise<void> {
+        const { publicId, tagName } = msg;
+        const lowerKey = makeSubKey(publicId, tagName.toLowerCase());
         
         // Find existing subscription by lowercase key
         let existing: PublicTagData | undefined;
@@ -212,10 +236,10 @@ export class PublicTagsService {
         if (!existing || !existingKey) return; // Not subscribed to this tag
 
         // If case changed, update the map key
-        const newKey = makeSubKey(msg.publicId, msg.tagName);
+        const newKey = makeSubKey(publicId, tagName);
         if (existingKey !== newKey) {
             this.subscribedTags.delete(existingKey);
-            existing.tagName = msg.tagName; // Update to new case
+            existing.tagName = tagName; // Update to new case
             this.subscribedTags.set(newKey, existing);
             existingKey = newKey;
             
@@ -235,18 +259,16 @@ export class PublicTagsService {
         // Server sends either ops (incremental) OR tags (full state), not both
         if (msg.ops && msg.ops.length > 0) {
             // Incremental update - apply ops
-            applyOpsToPublicTag(existing, msg.ops, msg.tagName);
+            applyOpsToPublicTag(existing, msg.ops, tagName);
         } else if (msg.tags !== undefined) {
             // Full state replacement (tags may be empty object for "deleted" state)
-            const { unitNames, chassisKeys } = extractFromV3Tags(msg.tags, msg.tagName);
+            const { unitNames, chassisKeys } = extractFromV3Tags(msg.tags, tagName);
             existing.unitNames = unitNames;
             existing.chassisKeys = chassisKeys;
         }
 
         // Update timestamp
-        if (msg.timestamp) {
-            existing.timestamp = msg.timestamp;
-        }
+        if (msg.timestamp !== undefined) existing.timestamp = msg.timestamp;
 
         // Save updated subscriptions to IndexedDB for offline access
         await this.dbService.saveSubscribedPublicTags(this.subscribedTags);
@@ -266,7 +288,7 @@ export class PublicTagsService {
 
         try {
             // Get user's subscriptions from server
-            const response = await this.wsService.sendAndWaitForResponse({
+            const response = await this.wsService.sendAndWaitForResponse<TagSubscriptionsResponse>({
                 action: 'getTagSubscriptions',
                 uuid
             });
@@ -274,7 +296,8 @@ export class PublicTagsService {
             // Track which keys are still valid from server
             const validKeys = new Set<string>();
 
-            if (!response?.subscriptions?.length) {
+            const subscriptions = response?.subscriptions ?? [];
+            if (subscriptions.length === 0) {
                 // No subscriptions - clear all
                 if (this.subscribedTags.size > 0) {
                     this.subscribedTags.clear();
@@ -287,8 +310,10 @@ export class PublicTagsService {
 
             // Group subscriptions by publicId, including cached timestamps for incremental sync
             const byPublicId = new Map<string, { tagNames: string[]; since: number }>();
-            for (const subKey of response.subscriptions) {
-                const { publicId, tagName } = parseSubKey(subKey);
+            for (const subKey of subscriptions) {
+                const parsed = parseSubKey(subKey);
+                if (!parsed) continue;
+                const { publicId, tagName } = parsed;
                 let group = byPublicId.get(publicId);
                 if (!group) {
                     group = { tagNames: [], since: 0 };
@@ -310,17 +335,18 @@ export class PublicTagsService {
 
             // Fetch actual tag data for each publicId (with incremental sync support)
             for (const [publicId, { tagNames, since }] of byPublicId) {
-                const tagResponse = await this.wsService.sendAndWaitForResponse({
+                const tagResponse = await this.wsService.sendAndWaitForResponse<PublicTagsResponse>({
                     action: 'getPublicTags',
                     publicId,
                     tagNames,
                     since: since > 0 ? since : undefined
                 });
 
-                if (tagResponse?.found) {
+                if (tagResponse?.found === true) {
                     // Use actualTagNames from response (has correct case)
-                    const actualTagNames: string[] = tagResponse.tagNames || tagNames;
-                    const serverTimestamp = tagResponse.timestamp || 0;
+                    const actualTagNames = tagResponse.tagNames ?? tagNames;
+                    const serverTimestamp = tagResponse.timestamp;
+                    const ops = tagResponse.ops;
                     
                     for (const actualTagName of actualTagNames) {
                         const subKey = makeSubKey(publicId, actualTagName);
@@ -341,17 +367,17 @@ export class PublicTagsService {
                         }
                         
                         // Check if this is an incremental response (has ops array, not full tags)
-                        const isIncrementalResponse = tagResponse.ops !== undefined;
+                        const isIncrementalResponse = ops !== undefined;
                         
                         if (isIncrementalResponse && existing) {
                             // Incremental update - apply ops to existing data (may be empty if up to date)
-                            if (tagResponse.ops.length > 0) {
-                                applyOpsToPublicTag(existing, tagResponse.ops, actualTagName);
+                            if (ops.length > 0) {
+                                applyOpsToPublicTag(existing, ops, actualTagName);
                             }
                             existing.tagName = actualTagName; // Update case if changed
                             existing.timestamp = serverTimestamp;
                             this.subscribedTags.set(subKey, existing);
-                        } else if (tagResponse.tags) {
+                        } else if (tagResponse.tags !== undefined) {
                             // Full state replacement
                             const { unitNames, chassisKeys } = extractFromV3Tags(tagResponse.tags, actualTagName);
                             this.subscribedTags.set(subKey, {
@@ -390,19 +416,19 @@ export class PublicTagsService {
      */
     public async importTemporary(publicId: string, tagNames: string[]): Promise<boolean> {
         try {
-            const response = await this.wsService.sendAndWaitForResponse({
+            const response = await this.wsService.sendAndWaitForResponse<PublicTagsResponse>({
                 action: 'getPublicTags',
                 publicId,
                 tagNames
             });
 
-            if (!response?.found) {
+            if (response?.found !== true) {
                 return false;
             }
 
             // Use actualTagNames from response (has correct case)
-            const actualTagNames: string[] = response.tagNames || tagNames;
-            const serverTimestamp = response.timestamp || 0;
+            const actualTagNames = response.tagNames ?? tagNames;
+            const serverTimestamp = response.timestamp;
 
             for (const actualTagName of actualTagNames) {
                 const subKey = makeSubKey(publicId, actualTagName);
@@ -437,19 +463,22 @@ export class PublicTagsService {
         if (!uuid) return { success: false, error: 'Not logged in' };
 
         try {
-            const response = await this.wsService.sendAndWaitForResponse({
+            const response = await this.wsService.sendAndWaitForResponse<SubscribePublicTagResponse>({
                 action: 'subscribePublicTag',
                 uuid,
                 publicId,
                 tagName
             });
 
-            if (!response?.success) {
-                return { success: false, error: response?.error };
+            if (response?.success !== true) {
+                return {
+                    success: false,
+                    ...(response?.error === undefined ? {} : { error: response.error }),
+                };
             }
 
             // Use actual tag name from response (has correct case)
-            const actualTagName: string = response.tagName || tagName;
+            const actualTagName = response.tagName ?? tagName;
             const subKey = makeSubKey(publicId, actualTagName);
             
             // Remove from temporary if it was there (check both cases)
@@ -466,7 +495,7 @@ export class PublicTagsService {
                 unitNames,
                 chassisKeys,
                 subscribed: true,
-                timestamp: response.timestamp || 0
+                timestamp: response.timestamp
             });
 
             // Also save to local user data
@@ -499,14 +528,14 @@ export class PublicTagsService {
         if (!uuid) return false;
 
         try {
-            const response = await this.wsService.sendAndWaitForResponse({
+            const response = await this.wsService.sendAndWaitForResponse<UnsubscribePublicTagResponse>({
                 action: 'unsubscribePublicTag',
                 uuid,
                 publicId,
                 tagName
             });
 
-            if (!response?.success) {
+            if (response?.success !== true) {
                 return false;
             }
 
@@ -589,8 +618,6 @@ export class PublicTagsService {
         const chassisKey = TagsService.getChassisTagKey(unit);
 
         for (const tagData of this.getAllPublicTags()) {
-            const lowerTag = tagData.tagName.toLowerCase();
-            
             // Check if unit name matches
             if (tagData.unitNames.includes(unit.name)) {
                 result.push({
@@ -665,15 +692,12 @@ export class PublicTagsService {
             const ws = this.wsService.getWebSocket();
             if (!ws || ws.readyState !== WebSocket.OPEN) return null;
 
-            const response = await this.wsService.sendAndWaitForResponse({
+            const response = await this.wsService.sendAndWaitForResponse<TagSubscriberCountsResponse>({
                 action: 'getOwnTagSubscriberCounts',
                 uuid
             });
 
-            if (response?.counts) {
-                return response.counts as Record<string, number>;
-            }
-            return {};
+            return response?.counts ?? {};
         } catch (err) {
             this.logger.error('Failed to get tag subscriber counts: ' + err);
             return null;

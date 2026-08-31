@@ -8,6 +8,9 @@ import { LoggerService } from './logger.service';
 import { UserStateService } from './userState.service';
 import { PROTOCOL_VERSION, WsService } from './ws.service';
 import { APP_VERSION, BUILD_BRANCH, BUILD_COMMIT_NUMBER } from '../build-meta';
+import { GameSystem } from '../models/common.model';
+import type { SerializedForce } from '../models/force-serialization';
+import { encodeForceForStorage } from '../models/runtime/force-storage-codec';
 
 function getPhase(service: WsService) {
     return service.connectionStatusPhase();
@@ -154,7 +157,15 @@ describe('WsService', () => {
         }));
         expect(oldSocket.removeEventListener).toHaveBeenCalled();
 
-        const updatedForce = { instanceId: 'force-1' };
+        const updatedForce: SerializedForce = {
+            version: 2,
+            instanceId: 'force-1',
+            timestamp: '2026-08-31T00:00:00Z',
+            type: GameSystem.ALPHA_STRIKE,
+            name: 'Force 1',
+            owned: true,
+            groups: [],
+        };
         const addEventListenerCalls = newSocket.addEventListener.calls.allArgs();
         const forceMessageHandler = addEventListenerCalls[0][1] as (event: MessageEvent) => void;
         const snapshotRequest = sentMessages(newSocket).find(message => message.action === 'getForce');
@@ -163,7 +174,7 @@ describe('WsService', () => {
             data: JSON.stringify({
                 action: 'forceData',
                 requestId: snapshotRequest!.requestId,
-                data: updatedForce,
+                data: encodeForceForStorage(updatedForce),
                 instanceId: 'force-1',
             }),
         } as MessageEvent;
@@ -174,9 +185,9 @@ describe('WsService', () => {
 
         expect(onRemoteUpdate).toHaveBeenCalledWith(updatedForce, 'reconnect');
 
-        const nextUpdatedForce = { instanceId: 'force-1', name: 'Updated' };
+        const nextUpdatedForce: SerializedForce = { ...updatedForce, name: 'Updated' };
         forceMessageHandler({
-            data: JSON.stringify({ action: 'updatedForce', data: nextUpdatedForce }),
+            data: JSON.stringify({ action: 'updatedForce', data: encodeForceForStorage(nextUpdatedForce) }),
         } as MessageEvent);
         await new Promise<void>(resolve => setTimeout(resolve, 0));
 
@@ -300,7 +311,7 @@ describe('WsService', () => {
         const requestHandler = socket.addEventListener.calls.mostRecent().args[1] as (event: MessageEvent) => void;
         requestHandler(event);
 
-        expect((await responsePromise).message).toBe('Lobby not found');
+        expect((await responsePromise)?.['message']).toBe('Lobby not found');
         expect(globalErrorHandler).not.toHaveBeenCalled();
     });
 

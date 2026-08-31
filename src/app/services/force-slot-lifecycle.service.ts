@@ -6,7 +6,7 @@ import { DestroyRef, inject, Injectable } from '@angular/core';
 import { Force } from '../models/force.model';
 import type { ForceAlignment, ForceSlot } from '../models/force-slot.model';
 import type { SerializedForce } from '../models/force-serialization';
-import { DataService } from './data.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { ForceRemoteSyncService } from './force-remote-sync.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { LoggerService } from './logger.service';
@@ -23,7 +23,7 @@ interface ForceSlotActivationPlan {
 /** Owns force-slot subscriptions, authority activation, replacement, and retirement. */
 @Injectable({ providedIn: 'root' })
 export class ForceSlotLifecycleService {
-    private readonly dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly logger = inject(LoggerService);
     private readonly remoteSync = inject(ForceRemoteSyncService);
     private readonly workspace = inject(ForceWorkspaceStateService);
@@ -42,7 +42,7 @@ export class ForceSlotLifecycleService {
             disposeDetachedForceSlot: slot => this.disposeDetachedForceSlot(slot),
             selectUnit: unit => this.workspace.selectUnit(unit),
         });
-        this.dataService.forceNeedsAdoption.subscribe(force => {
+        this.forcePersistence.forceNeedsAdoption.subscribe(force => {
             const slot = this.workspace.getForceSlot(force);
             if (!slot) return;
             void this.adoptForce(slot).catch(error => {
@@ -81,8 +81,8 @@ export class ForceSlotLifecycleService {
                 });
                 return;
             }
-            this.dataService.queueForceAutosave(force);
-            this.dataService.activateForceAuthority(force);
+            this.forcePersistence.queueForceAutosave(force);
+            this.forcePersistence.activateForceAuthority(force);
         });
         this.activationPlans.set(slot, activation);
         if (!activate) return slot;
@@ -102,7 +102,7 @@ export class ForceSlotLifecycleService {
         const force = slot.force;
         const activation = this.activationPlans.get(slot);
         if (!activation) throw new Error('Force slot has no prepared activation plan');
-        if (!this.dataService.activateForceAuthority(force)) {
+        if (!this.forcePersistence.activateForceAuthority(force)) {
             throw new Error(`Force authority for ${force.instanceId() ?? force.displayName()} is already claimed or inactive`);
         }
         activation.enabled = true;
@@ -141,7 +141,7 @@ export class ForceSlotLifecycleService {
             }
         }
         try {
-            this.dataService.deactivateForceAuthority(slot.force);
+            this.forcePersistence.deactivateForceAuthority(slot.force);
         } catch (error) {
             this.logger.warn(`Could not deactivate retired force ${instanceId}: ${error}`);
         }
@@ -212,7 +212,7 @@ export class ForceSlotLifecycleService {
                 fingerprint: entry.slot.force.captureWholeOwnerAuthorityFingerprint(),
             }));
             const persistenceResults = await Promise.allSettled(fingerprints.map(({ entry, fingerprint }) =>
-                this.dataService.drainForceAuthorityPersistence(entry.slot.force, fingerprint)));
+                this.forcePersistence.drainForceAuthorityPersistence(entry.slot.force, fingerprint)));
             const persistenceDrained = persistenceResults.every(result => result.status === 'fulfilled' && result.value);
             const slotsStillCurrent = this.workspace.loadedForces() === expectedSlots
                 && retiringSlots.every(slot => this.workspace.getForceSlot(slot.force) === slot);
@@ -241,7 +241,7 @@ export class ForceSlotLifecycleService {
                         || retiringSlots.some(slot => this.workspace.getForceSlot(slot.force) !== slot)) return null;
                     const finalizers: Array<() => void> = [];
                     for (let index = 0; index < retirements.length; index += 1) {
-                        const finalize = this.dataService.prepareForceAuthorityRemoval(
+                        const finalize = this.forcePersistence.prepareForceAuthorityRemoval(
                             retirements[index].slot.force,
                             authorities[index],
                         );
@@ -314,8 +314,8 @@ export class ForceSlotLifecycleService {
             this.activateForceSlot(newSlot);
 
             const oldInstanceId = oldForce.instanceId();
-            if (oldInstanceId) await this.dataService.deleteLocalForce(oldInstanceId);
-            await this.dataService.saveForceAndWaitForCloud(cloned);
+            if (oldInstanceId) await this.forcePersistence.deleteLocalForce(oldInstanceId);
+            await this.forcePersistence.saveForceAndWaitForCloud(cloned);
         } finally {
             if (!published) {
                 if (newSlot) this.disposeDetachedForceSlot(newSlot);

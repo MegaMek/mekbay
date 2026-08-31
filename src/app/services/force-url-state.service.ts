@@ -17,6 +17,7 @@ import {
     type ForceUrlUnitLookupMode,
 } from '../utils/force-url.util';
 import { DataService } from './data.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { DialogsService } from './dialogs.service';
 import { ForceOperationService } from './force-operation.service';
 import { ForceUnitAdmissionService } from './force-unit-admission.service';
@@ -38,6 +39,7 @@ export interface ForceUrlWorkspace {
 @Injectable({ providedIn: 'root' })
 export class ForceUrlStateService {
     private readonly dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly dialogsService = inject(DialogsService);
     private readonly layoutService = inject(LayoutService);
     private readonly logger = inject(LoggerService);
@@ -196,7 +198,7 @@ export class ForceUrlStateService {
                 const instanceId = enemy ? entry.substring('enemy:'.length) : entry;
                 if (workspace.loadedForces().some(slot => slot.force.instanceId() === instanceId)) continue;
 
-                const force = await this.dataService.getForce(instanceId);
+                const force = await this.forcePersistence.getForce(instanceId);
                 if (!force) {
                     this.logger.warn(`Force URL startup: instance "${instanceId}" was not found.`);
                     continue;

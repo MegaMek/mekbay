@@ -23,6 +23,21 @@ export type MekRuleCheckStatusV2 = 'pending' | MekRuleCheckOutcomeV2;
 declare const mekRuleCheckTokenBrand: unique symbol;
 export type MekRuleCheckTokenV2 = string & { readonly [mekRuleCheckTokenBrand]: true };
 
+export function isMekRuleCheckKeyV2(value: unknown): value is MekRuleCheckKeyV2 {
+    return value === MEK_TORSO_CRIPPLING_RULE_CHECK_KEY;
+}
+
+export function isMekRuleCheckStatusV2(value: unknown): value is MekRuleCheckStatusV2 {
+    return value === 'pending' || value === 'success' || value === 'failed';
+}
+
+export function asMekRuleCheckTokenV2(value: string): MekRuleCheckTokenV2 {
+    if (!value.trim() || value.length > 512 || value.includes('\0')) {
+        throw new Error('Invalid Mek rule-check token');
+    }
+    return value as MekRuleCheckTokenV2;
+}
+
 /** Persistent outcome state for one exact, deterministic mechanics trigger. */
 export interface MekRuleCheckStateV2 {
     readonly token: MekRuleCheckTokenV2;
@@ -104,7 +119,9 @@ export function createMekTorsoCripplingRuleCheckTokenV2(
     if (typeof triggerLocationId !== 'string' || !triggerLocationId.trim() || triggerLocationId.includes('\0')) {
         throw new Error('Invalid Mek rule-check trigger location');
     }
-    return `${MEK_TORSO_CRIPPLING_RULE_CHECK_KEY}:${openedRevision}:${triggerLocationId}` as MekRuleCheckTokenV2;
+    return asMekRuleCheckTokenV2(
+        `${MEK_TORSO_CRIPPLING_RULE_CHECK_KEY}:${openedRevision}:${triggerLocationId}`,
+    );
 }
 
 export function projectMekDestructionStateV2(

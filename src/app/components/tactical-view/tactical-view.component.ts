@@ -45,10 +45,8 @@ import type {
 } from '../../models/runtime/non-mek-record-sheet';
 import type { NonMekUnitCommand } from '../../models/runtime/non-mek-unit-instance';
 import type { CBTUnitCommand } from '../../models/runtime/unit-instance';
-import { hasMekRuntime, hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
+import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
 import { createCommandId, MAX_MEK_CREW_WOUNDS } from '../../models/runtime/runtime-state';
-import { hasPendingNonMekChanges } from '../../models/runtime/non-mek-unit-instance';
-import { isMekTurnPanelDirty } from '../../models/runtime/mek-turn-panel';
 import {
     MEK_CREW_STATE_CONTROLS,
     MEK_UNIT_CONDITION_CONTROLS,
@@ -189,31 +187,6 @@ export class TacticalViewComponent {
     protected readonly canNavigate = computed(() => this.forceMembers().length > 1);
     protected readonly pendingDamage = computed(() => this.options.options().trackPhaseAndTurn);
     protected readonly equipmentRuntime = signal<EquipmentDialogRuntimeController | null>(null);
-    protected readonly anyUnitTurnDirty = computed(() => {
-        this.equipmentRuntime()?.snapshot();
-        const force = this.force();
-        if (!force) return false;
-        const policy = this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
-            ? 'automatic'
-            : 'manual';
-        return force.members().some(member => {
-            if (isCBTMekForceMember(member)) {
-                const snapshot = force.getMekTurnPanelSnapshot(member.id, policy);
-                return snapshot !== null && isMekTurnPanelDirty(snapshot);
-            }
-            if (!isCBTForceMember(member)) return false;
-            const snapshot = force.getUnitSnapshot(member.id);
-            const state = snapshot && hasNonMekRuntime(snapshot) ? snapshot.state : undefined;
-            return state !== undefined && (
-                hasPendingNonMekChanges(state)
-                || state.turn.airborne !== null
-                || state.turn.movement !== null
-                || state.turn.cover !== null
-                || state.turn.spotting
-                || force.hasRuntimeHistoryForUnitTurn(member.id, state.turn.turnCounter + 1)
-            );
-        });
-    });
 
     protected readonly mekSnapshot = computed<MekRecordSheetSnapshot | null>(() => {
         this.equipmentRuntime()?.snapshot();
@@ -381,36 +354,6 @@ export class TacticalViewComponent {
     protected showSheetView(): void {
         this.overlayManager.closeAllManagedOverlays();
         this.unitViewMode.showSheet();
-    }
-
-    protected async endTurnForAll(): Promise<void> {
-        const force = this.force();
-        if (!force || !this.anyUnitTurnDirty()) return;
-        const confirm = await this.dialogs.requestConfirmation(
-            'Are you sure you want to end the turn for all units?',
-            'End Turn',
-            'info',
-        );
-        if (!confirm) return;
-        try {
-            const result = await force.endTurnForAllUnits();
-            if (result.accepted) return;
-            const failures = result.results
-                .filter(row => !row.accepted)
-                .map(row => `${row.instanceId}: ${(row.reason ?? 'command rejected').replaceAll('_', ' ').toLowerCase()}`);
-            const detail = failures.length > 0 ? failures.join('; ') : 'the force owner rejected the command';
-            this.toast.showToast(
-                result.changed
-                    ? `End turn completed only partially: ${detail}.`
-                    : `Could not end turn for all units: ${detail}.`,
-                'error',
-            );
-        } catch (error) {
-            this.toast.showToast(
-                `Could not end turn for all units: ${error instanceof Error ? error.message : 'unexpected error'}.`,
-                'error',
-            );
-        }
     }
 
     protected openTargets(event: MouseEvent): void {

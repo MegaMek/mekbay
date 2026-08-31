@@ -34,6 +34,7 @@ import type { SearchForceGeneratorDialogResult } from '../components/search-forc
 import type { DialogRef } from './dialogs.service';
 import { DialogsService } from './dialogs.service';
 import { DataService } from './data.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { ForceBuilderService } from './force-builder.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { ForceUnitLoadingService } from './force-unit-loading.service';
@@ -53,6 +54,7 @@ export class ForceImportService {
     private readonly workspace = inject(ForceWorkspaceStateService);
     private readonly unitLoading = inject(ForceUnitLoadingService);
     private readonly dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly dialogs = inject(DialogsService);
     private readonly toast = inject(ToastService);
     private readonly router = inject(Router);
@@ -75,7 +77,7 @@ export class ForceImportService {
                 this.toast.showToast('No editable force to insert into.', 'error');
                 return false;
             }
-            const sourceForce = await this.dataService.getForce(entry.instanceId, false);
+            const sourceForce = await this.forcePersistence.getForce(entry.instanceId, false);
             if (!sourceForce) {
                 this.toast.showToast('Failed to load force.', 'error');
                 return false;
@@ -83,7 +85,7 @@ export class ForceImportService {
             return this.insertForceInto(sourceForce, targetForce);
         }
 
-        const requestedForce = await this.dataService.getForce(entry.instanceId, false);
+        const requestedForce = await this.forcePersistence.getForce(entry.instanceId, false);
         if (!requestedForce) {
             this.toast.showToast('Failed to load force.', 'error');
             return false;
@@ -182,7 +184,7 @@ export class ForceImportService {
             if (result instanceof Force) {
                 await this.insertForceInto(result, targetForce);
             } else if (result instanceof LoadForceEntry) {
-                const forceToInsert = await this.dataService.getForce(result.instanceId, false);
+                const forceToInsert = await this.forcePersistence.getForce(result.instanceId, false);
                 if (!forceToInsert) {
                     this.toast.showToast('Failed to load force.', 'error');
                     return;
@@ -203,7 +205,7 @@ export class ForceImportService {
             return;
         }
         if (result instanceof LoadForceEntry) {
-            const requestedForce = await this.dataService.getForce(result.instanceId, false);
+            const requestedForce = await this.forcePersistence.getForce(result.instanceId, false);
             if (!requestedForce) {
                 this.toast.showToast('Failed to load force.', 'error');
                 return;

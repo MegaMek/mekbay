@@ -11,6 +11,25 @@ import {
 import type { SerializedForce } from '../force-serialization';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import type { DeferredUnitSource, JsonValue, SavedEntityIdentity } from '../persisted-unit-state';
+import {
+    asSourceHash,
+    asUnitProviderId,
+    asUnitUuid,
+} from '../../services/unit-catalog/unit-catalog.types';
+import {
+    asArmorFaceId,
+    asComponentId,
+    asCrewPositionId,
+    asLocationId,
+    asSystemDamageTrackId,
+} from '../entity/entity-identifiers';
+import { isNativeEntityType } from '../entity/codec-capabilities';
+import {
+    isEquipmentStatus,
+    isUnavailableEquipmentStatus,
+    type EquipmentStatus,
+    type UnavailableEquipmentStatus,
+} from '../equipment-status.model';
 import type {
     SavedAttackerTargetingState,
     SerializedCBTEncounterStateV2,
@@ -25,6 +44,7 @@ import {
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
+    asSavedTargetRef,
 } from './persistence-v2';
 import {
     CBT_FORCE_ROSTER_SCHEMA_VERSION,
@@ -33,6 +53,7 @@ import {
 import {
     NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
     NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
+    isNonMekEntityType,
     isSerializedNonMekUnit,
     type SerializedNonMekUnit,
 } from './non-mek-unit-persistence';
@@ -46,18 +67,43 @@ import {
 import {
     asStateRevision,
     asUnitInstanceId,
+    isBombastLaserChargeState,
+    isC3EmergencyMasterModeOverride,
+    isC3EmergencyMasterOperatingTurns,
     isMekLocationConditionKey,
-    type EscalatingFailureSequence,
+    isPpcCapacitorChargeState,
+    type BombastLaserChargeState,
+    type C3EmergencyMasterModeOverride,
+    type C3EmergencyMasterOperatingTurns,
     type MekLocationConditionKey,
+    type PpcCapacitorChargeState,
 } from './runtime-state';
-import type { SerializedMekMovementPsrStateV2 } from './mek-movement-psr-v2';
-import type { SerializedMekTurnStateV2 } from './mek-turn-state-v2';
+import {
+    deserializeMekMovementPsrStateV2,
+    serializeMekMovementPsrStateV2,
+    type SerializedMekMovementPsrStateV2,
+} from './mek-movement-psr-v2';
+import {
+    deserializeMekTurnStateV2,
+    serializeMekTurnStateV2,
+    type SerializedMekTurnStateV2,
+} from './mek-turn-state-v2';
 import {
     ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
+    deserializeAttackerTargetingState,
+    serializeAttackerTargetingState,
     type SerializedAttackerTargetingState,
 } from './attacker-targeting-state';
 import { MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
 import type { EquipmentRowOrderState } from './equipment-row-order';
+import { isSparseMekGaussPowerState, type SparseMekGaussPowerState } from './mek-gauss-power';
+import {
+    asMekRuleCheckTokenV2,
+    isMekRuleCheckKeyV2,
+    isMekRuleCheckStatusV2,
+    type MekRuleCheckKeyV2,
+    type MekRuleCheckStatusV2,
+} from './mek-destruction-state-v2';
 
 /**
  * The sole current Classic storage wire. The domain snapshot deliberately keeps
@@ -101,29 +147,62 @@ const MEK = 'm';
 const ENTITY = 'e';
 
 export function encodeForceForStorage(force: SerializedForce): StoredForceRecord {
-    const detached = clone(force) as unknown as Record<string, unknown>;
-    if (force.version === 1 || force.type !== GameSystem.CLASSIC) return detached;
-    if (force.version !== 2 || force.cbt === undefined) {
+    const detached = clone(force);
+    if (force.version === 1) return Object.freeze({ ...detached });
+    if (force.version !== 2) throw new Error('Unsupported force persistence version');
+    if (force.type !== GameSystem.CLASSIC) return Object.freeze({ ...detached });
+    if (force.cbt === undefined) {
         throw new Error('Current Classic persistence requires a current CBT snapshot');
     }
-    detached['cbt'] = packForce(force.cbt);
-    return Object.freeze(detached);
+    return Object.freeze({ ...detached, cbt: packForce(force.cbt) });
 }
 
 export function decodeForceFromStorage(value: unknown): SerializedForce {
     const detached = clone(value);
     const root = record(detached, 'force');
-    if (root['version'] === 1 || root['type'] !== GameSystem.CLASSIC) {
-        return detached as unknown as SerializedForce;
-    }
+    if (root['version'] === 1) return detached as unknown as SerializedForce;
     if (root['version'] !== 2) throw new Error('Unsupported force persistence version');
+    if (root['type'] !== GameSystem.CLASSIC) return detached as unknown as SerializedForce;
     const compact = record(root['cbt'], 'force.cbt');
     if ('schemaVersion' in compact || !('r' in compact) || !('u' in compact) || !('g' in compact)) {
         throw new Error('Unsupported intermediate Classic persistence shape');
     }
     const instanceId = text(root['instanceId'], 'force.instanceId');
-    root['cbt'] = unpackForce(compact, instanceId);
-    return root as unknown as SerializedForce;
+    return unpackClassicForce(root, instanceId, unpackForce(compact, instanceId));
+}
+
+function unpackClassicForce(
+    root: Record<string, unknown>,
+    instanceId: string,
+    cbt: SerializedCBTForceV2,
+): SerializedForce {
+    exactKeys(root, [
+        'version', 'timestamp', 'instanceId', 'type', 'name', 'note', 'tags',
+        'factionId', 'factionLock', 'eraId', 'eraLock', 'bv', 'pv', 'owned', 'cbt',
+    ], 'force');
+    return {
+        version: 2,
+        timestamp: text(root['timestamp'], 'force.timestamp'),
+        instanceId,
+        type: GameSystem.CLASSIC,
+        name: text(root['name'], 'force.name'),
+        ...(root['note'] === undefined ? {} : { note: text(root['note'], 'force.note') }),
+        ...(root['tags'] === undefined ? {} : { tags: unpackTextArray(root['tags'], 'force.tags') }),
+        ...(root['factionId'] === undefined ? {} : {
+            factionId: integer(root['factionId'], 'force.factionId'),
+        }),
+        ...(root['factionLock'] === undefined ? {} : {
+            factionLock: booleanValue(root['factionLock'], 'force.factionLock'),
+        }),
+        ...(root['eraId'] === undefined ? {} : { eraId: integer(root['eraId'], 'force.eraId') }),
+        ...(root['eraLock'] === undefined ? {} : {
+            eraLock: booleanValue(root['eraLock'], 'force.eraLock'),
+        }),
+        ...(root['bv'] === undefined ? {} : { bv: finiteNumber(root['bv'], 'force.bv') }),
+        ...(root['pv'] === undefined ? {} : { pv: finiteNumber(root['pv'], 'force.pv') }),
+        ...(root['owned'] === undefined ? {} : { owned: booleanValue(root['owned'], 'force.owned') }),
+        cbt,
+    };
 }
 
 function packForce(force: SerializedCBTForceV2): CompactForce {
@@ -269,20 +348,20 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
         ...(value['x'] === undefined ? {} : { destroyed: truthyOne(value['x'], `${path}.x`) }),
         ...(value['l'] === undefined ? {} : {
             locationState: unpackRows(value['l'], `${path}.l`, (row, rowPath) => ({
-                target: rowText(row, 0, rowPath) as SerializedCBTUnitV2['locationState'] extends readonly (infer T)[] ? T extends { target: infer R } ? R : never : never,
+                target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 damage: rowInteger(row, 1, rowPath),
             })),
         }),
         ...(value['n'] === undefined ? {} : {
             locationConditions: unpackRows(value['n'], `${path}.n`, (row, rowPath) => ({
-                target: rowText(row, 0, rowPath) as any,
+                target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 condition: unpackMekLocationCondition(row[1], `${rowPath}[1]`),
                 value: rowInteger(row, 2, rowPath),
             })),
         }),
         ...(value['s'] === undefined ? {} : {
             slotState: unpackRows(value['s'], `${path}.s`, (row, rowPath) => ({
-                target: rowText(row, 0, rowPath) as any,
+                target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 hits: rowInteger(row, 1, rowPath),
                 ...(row[2] === undefined ? {} : { destroyedTurn: rowInteger(row, 2, rowPath) }),
             })),
@@ -292,7 +371,7 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
         }),
         ...(value['a'] === undefined ? {} : {
             ammoState: unpackRows(value['a'], `${path}.a`, (row, rowPath) => ({
-                target: rowText(row, 0, rowPath) as any,
+                target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 shotsSpent: rowInteger(row, 1, rowPath),
                 ...(row[2] === undefined ? {} : { munitionOverride: rowText(row, 2, rowPath) }),
             })),
@@ -300,7 +379,7 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
         crew: {
             schemaVersion: 1,
             positions: value['w'] === undefined ? [] : unpackRows(value['w'], `${path}.w`, (row, rowPath) => ({
-                target: rowText(row, 0, rowPath) as any,
+                target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 wounds: rowInteger(row, 1, rowPath),
                 unconscious: rowBit(row, 2, rowPath),
                 ...(rowBit(row, 3, rowPath) ? { ejected: true as const } : {}),
@@ -313,11 +392,11 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
         ruleChecks: {
             schemaVersion: 1,
             entries: value['rC'] === undefined ? [] : unpackRows(value['rC'], `${path}.rC`, (row, rowPath) => ({
-                key: rowText(row, 0, rowPath) as any,
-                token: rowText(row, 1, rowPath) as any,
-                trigger: rowText(row, 2, rowPath) as any,
+                key: unpackMekRuleCheckKey(row[0], `${rowPath}[0]`),
+                token: asMekRuleCheckTokenV2(rowText(row, 1, rowPath)),
+                trigger: asSavedTargetRef(rowText(row, 2, rowPath)),
                 openedRevision: asStateRevision(rowInteger(row, 3, rowPath)),
-                status: rowText(row, 4, rowPath) as any,
+                status: unpackMekRuleCheckStatus(row[4], `${rowPath}[4]`),
             })),
         },
         movementPsr: unpackMovement(value['m'], `${path}.m`),
@@ -389,16 +468,16 @@ function unpackNonMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, p
         entity,
         baselineRefAtSave: baseline,
         deployment,
-        family: { kind: 'non-mek', entityType: text(value['t'], `${path}.t`) as SerializedNonMekUnit['family']['entityType'] },
+        family: { kind: 'non-mek', entityType: unpackNonMekEntityType(value['t'], `${path}.t`) },
         stateRevision: asStateRevision(value['r'] === undefined ? 0 : integer(value['r'], `${path}.r`)),
         ...(value['x'] === undefined ? {} : { destroyed: truthyOne(value['x'], `${path}.x`) }),
         ...(value['l'] === undefined ? {} : {
             locationState: unpackRows(value['l'], `${path}.l`, (row, rowPath) => ({
-                locationId: rowText(row, 0, rowPath) as any,
+                locationId: asLocationId(rowText(row, 0, rowPath)),
                 ...(rowInteger(row, 1, rowPath) === 0 ? {} : { internalDamage: rowInteger(row, 1, rowPath) }),
                 ...(row[2] === undefined ? {} : {
                     armorDamage: unpackRows(row[2], `${rowPath}[2]`, (armor, armorPath) => ({
-                        faceId: rowText(armor, 0, armorPath) as any,
+                        faceId: asArmorFaceId(rowText(armor, 0, armorPath)),
                         damage: rowInteger(armor, 1, armorPath),
                     })),
                 }),
@@ -412,8 +491,10 @@ function unpackNonMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, p
                     ? undefined
                     : array(state['e'], `${rowPath}[1].e`);
                 return {
-                    componentId: rowText(row, 0, rowPath) as any,
-                    ...(state['s'] === undefined ? {} : { status: text(state['s'], `${rowPath}[1].s`) as any }),
+                    componentId: asComponentId(rowText(row, 0, rowPath)),
+                    ...(state['s'] === undefined ? {} : {
+                        status: unpackUnavailableEquipmentStatus(state['s'], `${rowPath}[1].s`),
+                    }),
                     ...(state['m'] === undefined ? {} : { mode: text(state['m'], `${rowPath}[1].m`) }),
                     ...(state['j'] === undefined ? {} : { jammed: truthyOne(state['j'], `${rowPath}[1].j`) }),
                     ...(escalating === undefined ? {} : {
@@ -422,7 +503,7 @@ function unpackNonMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, p
                                 escalating,
                                 0,
                                 `${rowPath}[1].e`,
-                            ) as EscalatingFailureSequence,
+                            ),
                             ...(rowBit(escalating, 1, `${rowPath}[1].e`)
                                 ? { active: true as const }
                                 : {}),
@@ -433,14 +514,14 @@ function unpackNonMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, p
         }),
         ...(value['q'] === undefined ? {} : {
             damageTrackState: unpackRows(value['q'], `${path}.q`, (row, rowPath) => ({
-                damageTrackId: rowText(row, 0, rowPath) as any,
+                damageTrackId: asSystemDamageTrackId(rowText(row, 0, rowPath)),
                 hits: rowInteger(row, 1, rowPath),
-                hitTimestamps: clone(row[2]) as number[],
+                hitTimestamps: unpackIntegerArray(row[2], `${rowPath}[2]`),
             })),
         }),
         ...(value['a'] === undefined ? {} : {
             ammoState: unpackRows(value['a'], `${path}.a`, (row, rowPath) => ({
-                componentId: rowText(row, 0, rowPath) as any,
+                componentId: asComponentId(rowText(row, 0, rowPath)),
                 shotsSpent: rowInteger(row, 1, rowPath),
                 ...(row[2] === undefined ? {} : { munitionOverride: rowText(row, 2, rowPath) }),
             })),
@@ -549,7 +630,7 @@ function unpackNonMekMovement(
     const boosterComponentIds = movement[2] === undefined
         ? []
         : array(movement[2], `${path}[2]`).map((id, index) =>
-            text(id, `${path}[2][${index}]`) as any);
+            asComponentId(text(id, `${path}[2][${index}]`)));
     return {
         mode,
         distance: rowInteger(movement, 1, path),
@@ -574,7 +655,7 @@ function unpackNonMekCrewState(
     const state = row[2] === undefined ? 0 : rowInteger(row, 2, path);
     if (state < 0 || state > 4) throw new Error(`${path}[2] is not a non-Mek crew state`);
     return {
-        positionId: rowText(row, 0, path) as any,
+        positionId: asCrewPositionId(rowText(row, 0, path)),
         wounds: rowInteger(row, 1, path),
         unconscious: state === 1,
         ejected: state === 2,
@@ -602,7 +683,7 @@ function unpackIdentity(value: unknown, sourceFormat: 'mtf' | 'blk', path: strin
     exactKeys(identity, ['o', 'p', 'u', 'h'], path);
     const provider = identity['p'] === undefined
         ? MM_DATA_UNIT_PROVIDER_ID
-        : text(identity['p'], `${path}.p`) as SavedEntityIdentity['provider'];
+        : asUnitProviderId(text(identity['p'], `${path}.p`));
     const inferredOrigin = provider === MM_DATA_UNIT_PROVIDER_ID ? 'megamek' : 'user';
     const origin = identity['o'] === undefined
         ? inferredOrigin
@@ -610,8 +691,10 @@ function unpackIdentity(value: unknown, sourceFormat: 'mtf' | 'blk', path: strin
     return {
         origin,
         provider,
-        uuid: text(identity['u'], `${path}.u`) as SavedEntityIdentity['uuid'],
-        ...(identity['h'] === undefined ? {} : { sourceHashAtSave: text(identity['h'], `${path}.h`) as any }),
+        uuid: asUnitUuid(text(identity['u'], `${path}.u`)),
+        ...(identity['h'] === undefined ? {} : {
+            sourceHashAtSave: asSourceHash(text(identity['h'], `${path}.h`)),
+        }),
         sourceFormat,
     };
 }
@@ -726,7 +809,7 @@ function unpackCrewAssignment(value: unknown, path: string) {
                 throw new Error(`${rowPath} is not a compact crew position`);
             }
             return {
-                positionId: rowText(row, 0, rowPath) as any,
+                positionId: asCrewPositionId(rowText(row, 0, rowPath)),
                 name: row.length === 5 ? rowText(row, 3, rowPath) : '',
                 role: row.length === 5 ? rowText(row, 4, rowPath) : '',
                 gunnery: row.length === 1 ? DEFAULT_GUNNERY_SKILL : rowInteger(row, 1, rowPath),
@@ -769,35 +852,70 @@ function unpackComponentState(row: readonly unknown[], path: string): NonNullabl
     const bombast = state['b'] === undefined ? undefined : record(state['b'], `${path}[1].b`);
     const emergency = state['c'] === undefined ? undefined : record(state['c'], `${path}[1].c`);
     const shield = state['h'] === undefined ? undefined : array(state['h'], `${path}[1].h`);
-    return compactObject({
-        target: rowText(row, 0, path) as any,
-        statusOverride: optionalText(state['s'], `${path}[1].s`) as any,
-        mode: optionalText(state['m'], `${path}[1].m`),
-        jammed: state['j'] === undefined ? undefined : truthyOne(state['j'], `${path}[1].j`),
-        escalatingFailure: escalating === undefined ? undefined : compactObject({
-            sequence: rowInteger(escalating, 0, `${path}[1].e`),
-            active: rowBit(escalating, 1, `${path}[1].e`) ? true : undefined,
+    if (ppc !== undefined) exactKeys(ppc, ['w', 'c', 'f'], `${path}[1].p`);
+    if (bombast !== undefined) exactKeys(bombast, ['c', 'f'], `${path}[1].b`);
+    if (emergency !== undefined) exactKeys(emergency, ['m', 't'], `${path}[1].c`);
+
+    const statusOverride = optionalUnavailableEquipmentStatus(state['s'], `${path}[1].s`);
+    const chargeState = ppc === undefined
+        ? undefined
+        : optionalPpcChargeState(ppc['c'], `${path}[1].p.c`);
+    const bombastChargeState = bombast === undefined
+        ? undefined
+        : optionalBombastChargeState(bombast['c'], `${path}[1].b.c`);
+    const emergencyMode = emergency === undefined
+        ? undefined
+        : optionalC3EmergencyMasterMode(emergency['m'], `${path}[1].c.m`);
+    const operatingTurns = emergency === undefined
+        ? undefined
+        : optionalC3EmergencyMasterOperatingTurns(emergency['t'], `${path}[1].c.t`);
+    const gaussPower = optionalSparseMekGaussPower(state['g'], `${path}[1].g`);
+
+    return {
+        target: asSavedTargetRef(rowText(row, 0, path)),
+        ...(statusOverride === undefined ? {} : { statusOverride }),
+        ...(state['m'] === undefined ? {} : { mode: text(state['m'], `${path}[1].m`) }),
+        ...(state['j'] === undefined ? {} : { jammed: truthyOne(state['j'], `${path}[1].j`) }),
+        ...(escalating === undefined ? {} : {
+            escalatingFailure: {
+                sequence: rowInteger(escalating, 0, `${path}[1].e`),
+                ...(rowBit(escalating, 1, `${path}[1].e`) ? { active: true as const } : {}),
+            },
         }),
-        ppcCapacitor: ppc === undefined ? undefined : compactObject({
-            weaponId: text(ppc['w'], `${path}[1].p.w`) as any,
-            chargeState: optionalText(ppc['c'], `${path}[1].p.c`) as any,
-            firedThisTurn: ppc['f'] === undefined ? undefined : truthyOne(ppc['f'], `${path}[1].p.f`),
+        ...(ppc === undefined ? {} : {
+            ppcCapacitor: {
+                weaponId: asComponentId(text(ppc['w'], `${path}[1].p.w`)),
+                ...(chargeState === undefined ? {} : { chargeState }),
+                ...(ppc['f'] === undefined ? {} : {
+                    firedThisTurn: truthyOne(ppc['f'], `${path}[1].p.f`),
+                }),
+            },
         }),
-        bombastLaser: bombast === undefined ? undefined : compactObject({
-            chargeState: optionalText(bombast['c'], `${path}[1].b.c`) as any,
-            firedThisTurn: bombast['f'] === undefined ? undefined : truthyOne(bombast['f'], `${path}[1].b.f`),
+        ...(bombast === undefined ? {} : {
+            bombastLaser: {
+                ...(bombastChargeState === undefined ? {} : { chargeState: bombastChargeState }),
+                ...(bombast['f'] === undefined ? {} : {
+                    firedThisTurn: truthyOne(bombast['f'], `${path}[1].b.f`),
+                }),
+            },
         }),
-        c3EmergencyMaster: emergency === undefined ? undefined : compactObject({
-            mode: optionalText(emergency['m'], `${path}[1].c.m`) as any,
-            operatingTurns: optionalInteger(emergency['t'], `${path}[1].c.t`) as any,
+        ...(emergency === undefined ? {} : {
+            c3EmergencyMaster: {
+                ...(emergencyMode === undefined ? {} : { mode: emergencyMode }),
+                ...(operatingTurns === undefined ? {} : { operatingTurns }),
+            },
         }),
-        gaussPower: optionalText(state['g'], `${path}[1].g`) as any,
-        shieldDamage: shield === undefined ? undefined : {
-            absorptionDamage: rowInteger(shield, 0, `${path}[1].h`),
-            capacityDamage: rowInteger(shield, 1, `${path}[1].h`),
-        },
-        modularArmorDamage: optionalInteger(state['r'], `${path}[1].r`),
-    }) as unknown as NonNullable<SerializedCBTUnitV2['componentState']>[number];
+        ...(gaussPower === undefined ? {} : { gaussPower }),
+        ...(shield === undefined ? {} : {
+            shieldDamage: {
+                absorptionDamage: rowInteger(shield, 0, `${path}[1].h`),
+                capacityDamage: rowInteger(shield, 1, `${path}[1].h`),
+            },
+        }),
+        ...(state['r'] === undefined ? {} : {
+            modularArmorDamage: integer(state['r'], `${path}[1].r`),
+        }),
+    };
 }
 
 function packHeat(value: SerializedCBTUnitV2['heat']): unknown {
@@ -834,12 +952,14 @@ function unpackNonMekHeat(
 function unpackHeat(value: unknown, path: string): NonNullable<SerializedCBTUnitV2['heat']> {
     const heat = record(value, path);
     exactKeys(heat, ['c', 'p', 'o', 's'], path);
-    return compactObject({
+    return {
         heat: integer(heat['c'], `${path}.c`),
-        previous: optionalInteger(heat['p'], `${path}.p`),
-        pendingOverride: optionalInteger(heat['o'], `${path}.o`),
-        heatsinksOff: optionalInteger(heat['s'], `${path}.s`),
-    }) as NonNullable<SerializedCBTUnitV2['heat']>;
+        ...(heat['p'] === undefined ? {} : { previous: integer(heat['p'], `${path}.p`) }),
+        ...(heat['o'] === undefined ? {} : {
+            pendingOverride: integer(heat['o'], `${path}.o`),
+        }),
+        ...(heat['s'] === undefined ? {} : { heatsinksOff: integer(heat['s'], `${path}.s`) }),
+    };
 }
 
 function packMovement(value: SerializedMekMovementPsrStateV2): unknown {
@@ -876,7 +996,7 @@ function unpackMovement(value: unknown, path: string): SerializedMekMovementPsrS
     if (value === undefined) return { schemaVersion: 2 };
     const movement = record(value, path);
     exactKeys(movement, ['m', 'a', 's', 'c', 'd', 'k', 'f'], path);
-    return compactObject({
+    const expanded = compactObject({
         schemaVersion: 2,
         movement: movement['m'] === undefined ? undefined : clone(movement['m']),
         action: movement['a'] === undefined ? undefined : clone(movement['a']),
@@ -892,8 +1012,8 @@ function unpackMovement(value: unknown, path: string): SerializedMekMovementPsrS
                     sourceKind: text(source['s'], `${rowPath}[1].s`),
                     triggerKind: text(source['t'], `${rowPath}[1].t`),
                     witness: text(source['w'], `${rowPath}[1].w`),
-                    criticalSlotIds: clone(source['c'] ?? []) as string[],
-                    locationIds: clone(source['l'] ?? []) as string[],
+                    criticalSlotIds: unpackTextArray(source['c'] ?? [], `${rowPath}[1].c`),
+                    locationIds: unpackTextArray(source['l'] ?? [], `${rowPath}[1].l`),
                     baseTarget: integer(source['b'], `${rowPath}[1].b`),
                     triggerModifier: integer(source['m'], `${rowPath}[1].m`),
                 },
@@ -908,7 +1028,8 @@ function unpackMovement(value: unknown, path: string): SerializedMekMovementPsrS
             });
         }),
         automaticFalls: movement['f'] === undefined ? undefined : clone(movement['f']),
-    }) as unknown as SerializedMekMovementPsrStateV2;
+    });
+    return serializeMekMovementPsrStateV2(deserializeMekMovementPsrStateV2(expanded));
 }
 
 function packTurn(value: SerializedMekTurnStateV2): unknown {
@@ -929,7 +1050,7 @@ function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
     if (value === undefined) return { schemaVersion: 1 };
     const turn = record(value, path);
     exactKeys(turn, ['n', 'a', 'c', 'w', 'h', 'd', 's', 'e'], path);
-    return compactObject({
+    const expanded = compactObject({
         schemaVersion: 1,
         turnCounter: optionalInteger(turn['n'], `${path}.n`),
         airborne: turn['a'] as boolean | undefined,
@@ -941,7 +1062,8 @@ function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
         heatDissipationConsumed: optionalInteger(turn['d'], `${path}.d`),
         spotting: turn['s'] === undefined ? undefined : truthyOne(turn['s'], `${path}.s`),
         equipmentStateChanged: turn['e'] === undefined ? undefined : truthyOne(turn['e'], `${path}.e`),
-    }) as SerializedMekTurnStateV2;
+    });
+    return serializeMekTurnStateV2(deserializeMekTurnStateV2(expanded));
 }
 
 function packTargeting(value: SavedAttackerTargetingState): unknown {
@@ -960,19 +1082,85 @@ function unpackSavedTargeting(value: unknown, path: string): SavedAttackerTarget
     if (value === undefined) return { schemaVersion: 1, components: [], actions: [], targets: [] };
     const targeting = record(value, path);
     exactKeys(targeting, ['c', 'a', 't'], path);
-    return {
-        schemaVersion: 1,
-        components: targeting['c'] === undefined ? [] : unpackRows(targeting['c'], `${path}.c`, (row, rowPath) => {
+    const directComponents = targeting['c'] === undefined
+        ? []
+        : unpackRows(targeting['c'], `${path}.c`, (row, rowPath) => {
             const state = record(row[1], `${rowPath}[1]`);
             exactKeys(state, ['s', 'a'], `${rowPath}[1]`);
+            let ammo: Readonly<Record<string, unknown>> | undefined;
+            if (state['a'] !== undefined) {
+                const savedAmmo = record(state['a'], `${rowPath}[1].a`);
+                exactKeys(savedAmmo, ['munitionKey', 'preferredSourceTarget'], `${rowPath}[1].a`);
+                ammo = compactObject({
+                    munitionKey: text(savedAmmo['munitionKey'], `${rowPath}[1].a.munitionKey`),
+                    preferredSourceId: savedAmmo['preferredSourceTarget'] === undefined
+                        ? undefined
+                        : asComponentId(text(
+                            savedAmmo['preferredSourceTarget'],
+                            `${rowPath}[1].a.preferredSourceTarget`,
+                        )),
+                });
+            }
             return compactObject({
-                target: rowText(row, 0, rowPath) as any,
+                componentId: asComponentId(rowText(row, 0, rowPath)),
                 selection: state['s'] === undefined ? undefined : clone(state['s']),
-                ammo: state['a'] === undefined ? undefined : clone(state['a']),
-            }) as any;
-        }),
-        actions: clone(targeting['a'] ?? []) as SavedAttackerTargetingState['actions'],
-        targets: clone(targeting['t'] ?? []) as SavedAttackerTargetingState['targets'],
+                ammo,
+            });
+        });
+    const directActions = array(targeting['a'] ?? [], `${path}.a`).map((raw, index) => {
+        const actionPath = `${path}.a[${index}]`;
+        const action = record(raw, actionPath);
+        if (action['kind'] === 'intrinsic') {
+            exactKeys(action, ['kind', 'actionId', 'selection'], actionPath);
+            return {
+                target: { kind: 'intrinsic' as const, actionId: text(action['actionId'], `${actionPath}.actionId`) },
+                selection: clone(action['selection']),
+            };
+        }
+        if (action['kind'] === 'component') {
+            exactKeys(action, ['kind', 'target', 'selection'], actionPath);
+            return {
+                target: {
+                    kind: 'component' as const,
+                    componentId: asComponentId(text(action['target'], `${actionPath}.target`)),
+                },
+                selection: clone(action['selection']),
+            };
+        }
+        throw new Error(`${actionPath}.kind is not an attacker action kind`);
+    });
+    const canonical = serializeAttackerTargetingState(deserializeAttackerTargetingState({
+        schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
+        components: directComponents,
+        actions: directActions,
+        targets: clone(array(targeting['t'] ?? [], `${path}.t`)),
+    }));
+    return {
+        schemaVersion: 1,
+        components: canonical.components.map(component => ({
+            target: asSavedTargetRef(component.componentId),
+            ...(component.selection === undefined ? {} : { selection: component.selection }),
+            ...(component.ammo === undefined ? {} : {
+                ammo: {
+                    munitionKey: component.ammo.munitionKey,
+                    ...(component.ammo.preferredSourceId === undefined ? {} : {
+                        preferredSourceTarget: asSavedTargetRef(component.ammo.preferredSourceId),
+                    }),
+                },
+            }),
+        })),
+        actions: canonical.actions.map(action => action.target.kind === 'intrinsic'
+            ? {
+                kind: 'intrinsic' as const,
+                actionId: action.target.actionId,
+                selection: action.selection,
+            }
+            : {
+                kind: 'component' as const,
+                target: asSavedTargetRef(action.target.componentId),
+                selection: action.selection,
+            }),
+        targets: canonical.targets,
     };
 }
 
@@ -995,20 +1183,21 @@ function unpackDirectTargeting(value: unknown, path: string): SerializedAttacker
     };
     const targeting = record(value, path);
     exactKeys(targeting, ['c', 'a', 't'], path);
-    return {
+    const expanded = {
         schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
         components: targeting['c'] === undefined ? [] : unpackRows(targeting['c'], `${path}.c`, (row, rowPath) => {
             const state = record(row[1], `${rowPath}[1]`);
             exactKeys(state, ['s', 'a'], `${rowPath}[1]`);
             return compactObject({
-                componentId: rowText(row, 0, rowPath) as any,
+                componentId: asComponentId(rowText(row, 0, rowPath)),
                 selection: state['s'] === undefined ? undefined : clone(state['s']),
                 ammo: state['a'] === undefined ? undefined : clone(state['a']),
-            }) as any;
+            });
         }),
-        actions: clone(targeting['a'] ?? []) as SerializedAttackerTargetingState['actions'],
-        targets: clone(targeting['t'] ?? []) as SerializedAttackerTargetingState['targets'],
+        actions: clone(targeting['a'] ?? []),
+        targets: clone(targeting['t'] ?? []),
     };
+    return serializeAttackerTargetingState(deserializeAttackerTargetingState(expanded));
 }
 
 function packPending(value: SerializedCBTUnitV2['pendingCombat']): unknown {
@@ -1026,14 +1215,46 @@ function packPending(value: SerializedCBTUnitV2['pendingCombat']): unknown {
 function unpackPending(value: unknown, path: string): NonNullable<SerializedCBTUnitV2['pendingCombat']> {
     const pending = record(value, path);
     exactKeys(pending, ['l', 'n', 's', 'c', 'h', 'm'], path);
-    return compactObject({
-        locationDamage: pending['l'] === undefined ? undefined : unpackRows(pending['l'], `${path}.l`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, damage: rowInteger(row, 1, rowPath) })),
-        locationConditions: pending['n'] === undefined ? undefined : unpackRows(pending['n'], `${path}.n`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, condition: unpackMekLocationCondition(row[1], `${rowPath}[1]`), value: rowInteger(row, 2, rowPath) })),
-        slotHits: pending['s'] === undefined ? undefined : unpackRows(pending['s'], `${path}.s`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, hits: rowInteger(row, 1, rowPath) })),
-        componentStatus: pending['c'] === undefined ? undefined : unpackRows(pending['c'], `${path}.c`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, status: rowText(row, 1, rowPath) as any })),
-        shieldDamage: pending['h'] === undefined ? undefined : unpackRows(pending['h'], `${path}.h`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, absorptionDamage: rowInteger(row, 1, rowPath), capacityDamage: rowInteger(row, 2, rowPath) })),
-        modularArmorDamage: pending['m'] === undefined ? undefined : unpackRows(pending['m'], `${path}.m`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, damage: rowInteger(row, 1, rowPath) })),
-    }) as NonNullable<SerializedCBTUnitV2['pendingCombat']>;
+    return {
+        ...(pending['l'] === undefined ? {} : {
+            locationDamage: unpackRows(pending['l'], `${path}.l`, (row, rowPath) => ({
+                target: asSavedTargetRef(rowText(row, 0, rowPath)),
+                damage: rowInteger(row, 1, rowPath),
+            })),
+        }),
+        ...(pending['n'] === undefined ? {} : {
+            locationConditions: unpackRows(pending['n'], `${path}.n`, (row, rowPath) => ({
+                target: asSavedTargetRef(rowText(row, 0, rowPath)),
+                condition: unpackMekLocationCondition(row[1], `${rowPath}[1]`),
+                value: rowInteger(row, 2, rowPath),
+            })),
+        }),
+        ...(pending['s'] === undefined ? {} : {
+            slotHits: unpackRows(pending['s'], `${path}.s`, (row, rowPath) => ({
+                target: asSavedTargetRef(rowText(row, 0, rowPath)),
+                hits: rowInteger(row, 1, rowPath),
+            })),
+        }),
+        ...(pending['c'] === undefined ? {} : {
+            componentStatus: unpackRows(pending['c'], `${path}.c`, (row, rowPath) => ({
+                target: asSavedTargetRef(rowText(row, 0, rowPath)),
+                status: unpackEquipmentStatus(row[1], `${rowPath}[1]`),
+            })),
+        }),
+        ...(pending['h'] === undefined ? {} : {
+            shieldDamage: unpackRows(pending['h'], `${path}.h`, (row, rowPath) => ({
+                target: asSavedTargetRef(rowText(row, 0, rowPath)),
+                absorptionDamage: rowInteger(row, 1, rowPath),
+                capacityDamage: rowInteger(row, 2, rowPath),
+            })),
+        }),
+        ...(pending['m'] === undefined ? {} : {
+            modularArmorDamage: unpackRows(pending['m'], `${path}.m`, (row, rowPath) => ({
+                target: asSavedTargetRef(rowText(row, 0, rowPath)),
+                damage: rowInteger(row, 1, rowPath),
+            })),
+        }),
+    };
 }
 
 function packNonMekPending(value: SerializedNonMekUnit['pendingCombat']): unknown {
@@ -1049,12 +1270,33 @@ function packNonMekPending(value: SerializedNonMekUnit['pendingCombat']): unknow
 function unpackNonMekPending(value: unknown, path: string): NonNullable<SerializedNonMekUnit['pendingCombat']> {
     const pending = record(value, path);
     exactKeys(pending, ['l', 'a', 'c', 'q'], path);
-    return compactObject({
-        internalDamage: pending['l'] === undefined ? undefined : unpackRows(pending['l'], `${path}.l`, (row, rowPath) => ({ locationId: rowText(row, 0, rowPath) as any, damage: rowInteger(row, 1, rowPath) })),
-        armorDamage: pending['a'] === undefined ? undefined : unpackRows(pending['a'], `${path}.a`, (row, rowPath) => ({ faceId: rowText(row, 0, rowPath) as any, damage: rowInteger(row, 1, rowPath) })),
-        componentStatus: pending['c'] === undefined ? undefined : unpackRows(pending['c'], `${path}.c`, (row, rowPath) => ({ componentId: rowText(row, 0, rowPath) as any, status: rowText(row, 1, rowPath) as any })),
-        damageTrackHits: pending['q'] === undefined ? undefined : unpackRows(pending['q'], `${path}.q`, (row, rowPath) => ({ damageTrackId: rowText(row, 0, rowPath) as any, hitDelta: rowInteger(row, 1, rowPath), hitTimestamps: clone(row[2]) as number[] })),
-    }) as NonNullable<SerializedNonMekUnit['pendingCombat']>;
+    return {
+        ...(pending['l'] === undefined ? {} : {
+            internalDamage: unpackRows(pending['l'], `${path}.l`, (row, rowPath) => ({
+                locationId: asLocationId(rowText(row, 0, rowPath)),
+                damage: rowInteger(row, 1, rowPath),
+            })),
+        }),
+        ...(pending['a'] === undefined ? {} : {
+            armorDamage: unpackRows(pending['a'], `${path}.a`, (row, rowPath) => ({
+                faceId: asArmorFaceId(rowText(row, 0, rowPath)),
+                damage: rowInteger(row, 1, rowPath),
+            })),
+        }),
+        ...(pending['c'] === undefined ? {} : {
+            componentStatus: unpackRows(pending['c'], `${path}.c`, (row, rowPath) => ({
+                componentId: asComponentId(rowText(row, 0, rowPath)),
+                status: unpackEquipmentStatus(row[1], `${rowPath}[1]`),
+            })),
+        }),
+        ...(pending['q'] === undefined ? {} : {
+            damageTrackHits: unpackRows(pending['q'], `${path}.q`, (row, rowPath) => ({
+                damageTrackId: asSystemDamageTrackId(rowText(row, 0, rowPath)),
+                hitDelta: rowInteger(row, 1, rowPath),
+                hitTimestamps: unpackIntegerArray(row[2], `${rowPath}[2]`),
+            })),
+        }),
+    };
 }
 
 /** Current persistence keeps diagnostic text only; recovery graphs never cross the wire. */
@@ -1082,8 +1324,8 @@ function unpackNonMekDiagnostics(value: unknown, path: string): NonNullable<Seri
     const diagnostics = record(value, path);
     exactKeys(diagnostics, ['w', 'u'], path);
     return {
-        warnings: clone(diagnostics['w'] ?? []) as string[],
-        unresolved: clone(diagnostics['u'] ?? []) as string[],
+        warnings: unpackTextArray(diagnostics['w'] ?? [], `${path}.w`),
+        unresolved: unpackTextArray(diagnostics['u'] ?? [], `${path}.u`),
     };
 }
 
@@ -1211,7 +1453,7 @@ function unpackRows<T>(
     return array(value, path).map((raw, index) => map(array(raw, `${path}[${index}]`), `${path}[${index}]`, index));
 }
 
-function compactObject(value: Record<string, unknown>): Readonly<Record<string, any>> {
+function compactObject(value: Record<string, unknown>): Readonly<Record<string, unknown>> {
     return Object.freeze(Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)));
 }
 
@@ -1236,6 +1478,14 @@ function array(value: unknown, path: string): readonly unknown[] {
     return value;
 }
 
+function unpackTextArray(value: unknown, path: string): string[] {
+    return array(value, path).map((entry, index) => text(entry, `${path}[${index}]`));
+}
+
+function unpackIntegerArray(value: unknown, path: string): number[] {
+    return array(value, path).map((entry, index) => integer(entry, `${path}[${index}]`));
+}
+
 function unpackUnitConditions(value: unknown, path: string): UnitConditionKey[] {
     return array(value, path).map((entry, index) => {
         const key = text(entry, `${path}[${index}]`);
@@ -1246,6 +1496,85 @@ function unpackUnitConditions(value: unknown, path: string): UnitConditionKey[] 
 
 function unpackMekLocationCondition(value: unknown, path: string): MekLocationConditionKey {
     if (!isMekLocationConditionKey(value)) throw new Error(`${path} is not a Mek location condition`);
+    return value;
+}
+
+function unpackMekRuleCheckKey(value: unknown, path: string): MekRuleCheckKeyV2 {
+    if (!isMekRuleCheckKeyV2(value)) throw new Error(`${path} is not a Mek rule-check key`);
+    return value;
+}
+
+function unpackMekRuleCheckStatus(value: unknown, path: string): MekRuleCheckStatusV2 {
+    if (!isMekRuleCheckStatusV2(value)) throw new Error(`${path} is not a Mek rule-check status`);
+    return value;
+}
+
+function unpackNonMekEntityType(value: unknown, path: string): SerializedNonMekUnit['family']['entityType'] {
+    const entityType = text(value, path);
+    if (!isNativeEntityType(entityType) || !isNonMekEntityType(entityType)) {
+        throw new Error(`${path} is not a non-Mek entity type`);
+    }
+    return entityType;
+}
+
+function unpackEquipmentStatus(value: unknown, path: string): EquipmentStatus {
+    if (!isEquipmentStatus(value)) throw new Error(`${path} is not an equipment status`);
+    return value;
+}
+
+function unpackUnavailableEquipmentStatus(value: unknown, path: string): UnavailableEquipmentStatus {
+    if (!isUnavailableEquipmentStatus(value)) {
+        throw new Error(`${path} is not a sparse equipment status`);
+    }
+    return value;
+}
+
+function optionalUnavailableEquipmentStatus(
+    value: unknown,
+    path: string,
+): UnavailableEquipmentStatus | undefined {
+    return value === undefined || value === null
+        ? undefined
+        : unpackUnavailableEquipmentStatus(value, path);
+}
+
+function optionalPpcChargeState(value: unknown, path: string): PpcCapacitorChargeState | undefined {
+    if (value === undefined || value === null) return undefined;
+    if (!isPpcCapacitorChargeState(value)) throw new Error(`${path} is not a PPC charge state`);
+    return value;
+}
+
+function optionalBombastChargeState(value: unknown, path: string): BombastLaserChargeState | undefined {
+    if (value === undefined || value === null) return undefined;
+    if (!isBombastLaserChargeState(value)) throw new Error(`${path} is not a Bombast charge state`);
+    return value;
+}
+
+function optionalC3EmergencyMasterMode(
+    value: unknown,
+    path: string,
+): C3EmergencyMasterModeOverride | undefined {
+    if (value === undefined || value === null) return undefined;
+    if (!isC3EmergencyMasterModeOverride(value)) {
+        throw new Error(`${path} is not a C3 Emergency Master mode`);
+    }
+    return value;
+}
+
+function optionalC3EmergencyMasterOperatingTurns(
+    value: unknown,
+    path: string,
+): C3EmergencyMasterOperatingTurns | undefined {
+    if (value === undefined || value === null) return undefined;
+    if (!isC3EmergencyMasterOperatingTurns(value)) {
+        throw new Error(`${path} is not a C3 Emergency Master turn count`);
+    }
+    return value;
+}
+
+function optionalSparseMekGaussPower(value: unknown, path: string): SparseMekGaussPowerState | undefined {
+    if (value === undefined || value === null) return undefined;
+    if (!isSparseMekGaussPowerState(value)) throw new Error(`${path} is not a sparse Gauss power state`);
     return value;
 }
 
@@ -1271,6 +1600,18 @@ function integer(value: unknown, path: string): number {
 
 function optionalInteger(value: unknown, path: string): number | undefined {
     return value === undefined || value === null ? undefined : integer(value, path);
+}
+
+function finiteNumber(value: unknown, path: string): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new Error(`${path} must be a finite number`);
+    }
+    return value;
+}
+
+function booleanValue(value: unknown, path: string): boolean {
+    if (typeof value !== 'boolean') throw new Error(`${path} must be a boolean`);
+    return value;
 }
 
 function truthyOne(value: unknown, path: string): true {

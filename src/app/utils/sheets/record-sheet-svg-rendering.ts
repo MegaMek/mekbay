@@ -1598,6 +1598,12 @@ function normalizePaperdollPathStyle(path: SVGPathElement): void {
 const RECORD_SHEET_STYLE = `
 text { font-family: Roboto, Arial, sans-serif; }
 .pip { fill: #fff; stroke: #000; stroke-width: .5; vector-effect: non-scaling-stroke; }
+.capital-pip-state-damaged { fill: #111; }
+.capital-pip-state-pending-damage { fill: orange; }
+.capital-pip-state-fresh-damage { fill: #ff0; }
+.capital-pip-state-pending-repair { fill: #03a9f4; }
+.capital-pip-state-fresh-repair { fill: #80deea; }
+.capital-pip-interaction { fill: transparent; stroke: transparent; }
 .systemHitPip { fill: none; stroke: #000; stroke-width: 1.72; }
 .structuralIntegrityPip { fill: none; stroke: #000; stroke-width: 1.72; }
 .hsPip { fill: #fff; stroke: #000; stroke-width: .9; }

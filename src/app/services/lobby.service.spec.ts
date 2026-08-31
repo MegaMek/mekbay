@@ -5,10 +5,10 @@
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { from, of } from 'rxjs';
-import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
 import { DisplayNameService } from './display-name.service';
 import { ForceBuilderService } from './force-builder.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { LobbyService } from './lobby.service';
 import { ToastService } from './toast.service';
@@ -33,7 +33,7 @@ describe('LobbyService', () => {
     let wsService: any;
     let forceBuilderService: any;
     let forceWorkspace: any;
-    let dataService: any;
+    let forcePersistence: any;
     let dialogsService: any;
     let toastService: any;
     let displayNameService: any;
@@ -64,7 +64,7 @@ describe('LobbyService', () => {
                 forceBuilderService.loadedForces.update((slots: any[]) => slots.filter(slot => slot.force !== force));
             }),
         };
-        dataService = {
+        forcePersistence = {
             getForce: jasmine.createSpy('getForce'),
             saveForce: jasmine.createSpy('saveForce').and.resolveTo(),
         };
@@ -87,7 +87,7 @@ describe('LobbyService', () => {
                 { provide: WsService, useValue: wsService },
                 { provide: ForceBuilderService, useValue: forceBuilderService },
                 { provide: ForceWorkspaceStateService, useValue: forceWorkspace },
-                { provide: DataService, useValue: dataService },
+                { provide: ForcePersistenceService, useValue: forcePersistence },
                 { provide: DialogsService, useValue: dialogsService },
                 { provide: DisplayNameService, useValue: displayNameService },
                 { provide: ToastService, useValue: toastService },
@@ -326,7 +326,7 @@ describe('LobbyService', () => {
         const ownForce = createForce('own-force', true);
         const remoteForce = createForce('remote-force', false);
         forceBuilderService.loadedForces.set([{ force: ownForce, alignment: 'friendly', changeSub: null }]);
-        dataService.getForce.and.resolveTo(remoteForce);
+        forcePersistence.getForce.and.resolveTo(remoteForce);
         const service = TestBed.inject(LobbyService);
 
         handlers.get('lobbyState')?.({
@@ -342,7 +342,7 @@ describe('LobbyService', () => {
         await settleEffects();
 
         expect(wsService.send).toHaveBeenCalledWith({ action: 'syncLobbyForces', instanceIds: ['own-force'] });
-        expect(dataService.getForce).toHaveBeenCalledWith('remote-force', false, {
+        expect(forcePersistence.getForce).toHaveBeenCalledWith('remote-force', false, {
             skipLocal: true,
             showLoading: false,
         });
@@ -370,7 +370,7 @@ describe('LobbyService', () => {
 
     it('activates the first remote force for a force-less spectator', async () => {
         const remoteForce = createForce('remote-force', false);
-        dataService.getForce.and.resolveTo(remoteForce);
+        forcePersistence.getForce.and.resolveTo(remoteForce);
         TestBed.inject(LobbyService);
 
         handlers.get('lobbyState')?.({
@@ -463,7 +463,7 @@ describe('LobbyService', () => {
         await settleEffects();
 
         expect(wsService.send).toHaveBeenCalledWith({ action: 'syncLobbyForces', instanceIds: [] });
-        expect(dataService.saveForce).toHaveBeenCalledWith(hostileForce);
+        expect(forcePersistence.saveForce).toHaveBeenCalledWith(hostileForce);
         expect(forceBuilderService.removeLoadedForce).toHaveBeenCalledWith(hostileForce, { skipPrompt: true });
         expect(forceBuilderService.loadedForces()).toEqual([]);
         expect(toastService.showToast).toHaveBeenCalledWith(

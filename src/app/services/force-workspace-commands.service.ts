@@ -11,6 +11,7 @@ import { GameSystem } from '../models/common.model';
 import {
     Force,
     MAX_UNITS,
+    type ForceGroupPatch,
     type UnitGroup,
 } from '../models/force.model';
 import {
@@ -28,6 +29,7 @@ import {
     type ConfirmDialogData,
 } from '../components/confirm-dialog/confirm-dialog.component';
 import { DataService } from './data.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { DialogsService } from './dialogs.service';
 import { ForceBuilderService } from './force-builder.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
@@ -42,6 +44,7 @@ import { LayoutService } from './layout.service';
 import { LoggerService } from './logger.service';
 import { ToastService } from './toast.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
+import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 
 /** Owns force/member mutations; the workspace service owns only slots and selection. */
 @Injectable({ providedIn: 'root' })
@@ -49,6 +52,7 @@ export class ForceWorkspaceCommandsService {
     private readonly builder = inject(ForceBuilderService);
     private readonly workspace = inject(ForceWorkspaceStateService);
     private readonly dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly layoutService = inject(LayoutService);
     private readonly toastService = inject(ToastService);
     private readonly logger = inject(LoggerService);
@@ -358,7 +362,7 @@ export class ForceWorkspaceCommandsService {
         }
 
         targetForce.removeUnit(unitToRemove);
-        this.dataService.deleteCanvasDataOfUnit(unitToRemove);
+        this.forcePersistence.deleteCanvasDataOfUnit(unitToRemove);
 
         if (this.workspace.selectedUnit() === unitToRemove) {
             const updatedUnits = targetForce.units();
@@ -437,7 +441,7 @@ export class ForceWorkspaceCommandsService {
         }
 
         const { newUnit: newForceUnit, group: originalGroup } = replaceResult;
-        this.dataService.deleteCanvasDataOfUnit(originalUnit);
+        this.forcePersistence.deleteCanvasDataOfUnit(originalUnit);
 
         // Select the new unit if the old one was selected
         if (wasSelected) {
@@ -507,7 +511,7 @@ export class ForceWorkspaceCommandsService {
         const units = cloned.members();
         this.workspace.selectUnit(selectedIdx >= 0 && selectedIdx < units.length ? units[selectedIdx] : units[0] ?? null);
 
-        await this.dataService.saveForceAndWaitForCloud(cloned);
+        await this.forcePersistence.saveForceAndWaitForCloud(cloned);
         this.toastService.showToast(`A copy of this force was created and saved. You can now edit the copy without affecting the original.`, 'success');
         return true;
     }
@@ -544,18 +548,30 @@ export class ForceWorkspaceCommandsService {
 
         try {
             // Recreate groups and units - process one canonical group at a time.
+            const convertedGroupBySourceId = new Map<string, UnitGroup>();
             for (const sourceGroup of force.groups()) {
                 const newGroup = await newForce.addGroup();
-                if (!await newForce.updateGroup(newGroup, {
-                    name: sourceGroup.name() ?? null,
-                    color: sourceGroup.color ?? null,
-                    formation: sourceGroup.formation(),
-                    formationLock: sourceGroup.formationLock === true,
-                })) {
+                convertedGroupBySourceId.set(sourceGroup.id, newGroup);
+                const groupName = sourceGroup.name();
+                const groupColor = sourceGroup.color;
+                const sourceFormation = sourceGroup.formation();
+                const convertedFormation = sourceFormation
+                    ? LanceTypeIdentifierUtil.getDefinitionById(sourceFormation.id, newForce.gameSystem)
+                    : null;
+                const groupPatch: ForceGroupPatch = {
+                    ...(groupName ? { name: groupName } : {}),
+                    ...(groupColor ? { color: groupColor } : {}),
+                    ...(convertedFormation ? {
+                        formation: convertedFormation,
+                        ...(sourceGroup.formationLock === true ? { formationLock: true } : {}),
+                    } : {}),
+                };
+                if ((groupName || groupColor || convertedFormation)
+                    && !await newForce.updateGroup(newGroup, groupPatch)) {
                     throw new Error(`Could not copy force group ${sourceGroup.id}`);
                 }
-                if (!newGroup.formationLock && sourceGroup.formation()) {
-                    newGroup.formationHistory.add(sourceGroup.formation()!.id);
+                if (!newGroup.formationLock && convertedFormation) {
+                    newGroup.formationHistory.add(convertedFormation.id);
                 }
 
                 for (const sourceUnit of force.membersInGroup(sourceGroup)) {
@@ -583,8 +599,22 @@ export class ForceWorkspaceCommandsService {
                         newForce.gameSystem,
                     );
                 }
+            }
 
-                await this.formations.assignFormationIfNeeded(newGroup); // re-evaluate after conversion because the unit type changed
+            for (const sourceGroup of force.groups()) {
+                const sourceTargetId = sourceGroup.formationTargetGroupId();
+                if (!sourceTargetId) continue;
+                const convertedGroup = convertedGroupBySourceId.get(sourceGroup.id);
+                const convertedTarget = convertedGroupBySourceId.get(sourceTargetId);
+                if (!convertedGroup || !convertedTarget
+                    || !await newForce.updateGroup(convertedGroup, {
+                        formationTargetGroupId: convertedTarget.id,
+                    })) {
+                    throw new Error(`Could not copy formation target for group ${sourceGroup.id}`);
+                }
+            }
+            for (const convertedGroup of convertedGroupBySourceId.values()) {
+                await this.formations.assignFormationIfNeeded(convertedGroup);
             }
         } finally {
             newForce.loading = false;
@@ -602,7 +632,7 @@ export class ForceWorkspaceCommandsService {
         if (!this.builder.addLoadedForce(newForce, alignment, { activate: true })) {
             return false;
         }
-        await this.dataService.saveForceAndWaitForCloud(newForce);
+        await this.forcePersistence.saveForceAndWaitForCloud(newForce);
 
         this.toastService.showToast(`Force converted to ${targetSystemLabel} and saved.`, 'success');
         return true;

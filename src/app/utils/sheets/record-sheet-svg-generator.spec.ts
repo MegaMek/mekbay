@@ -394,9 +394,21 @@ describe('RecordSheetSvgGenerator', () => {
         expect(pages[1].textContent).toContain('Laser 0');
         expect(pages[1].textContent).toContain('ADVANCED MOVEMENT');
         expect(pages[1].textContent).toContain('VELOCITY RECORD');
-        expect(pages[1].querySelectorAll('[data-mekbay-vector-diagram]').length).toBe(9);
-        expect(pages[1].querySelectorAll('.vector-arrow').length).toBe(18);
-        expect(pages[1].querySelectorAll('.vector-result').length).toBe(6);
+        expect(pages[1].textContent).toContain('note down that number on the record');
+        const compass = pages[1].querySelector('[data-mekbay-region="advanced-movement-compass"]')!;
+        expect(Array.from(compass.firstElementChild!.children)
+            .filter(child => child.tagName.toLowerCase() === 'path').length).toBe(2);
+        const vectorDiagram = pages[1].querySelector('#aero_vector_diagram');
+        expect(vectorDiagram).not.toBeNull();
+        expect(Array.from(vectorDiagram!.querySelectorAll('tspan'))
+            .filter(label => label.textContent === 'X').length).toBe(6);
+        expect(pages[1].querySelector('#cglLogo')).not.toBeNull();
+        const velocity = pages[1].querySelector('[data-mekbay-region="advanced-velocity-record"]')!;
+        expect(velocity.querySelector('rect')).toBeNull();
+        expect(velocity.textContent).toContain('Turn');
+        expect(velocity.textContent).toContain('Velocity');
+        expect(velocity.textContent).toContain('Fuel');
+        expect(velocity.textContent).toContain('20');
         expect(pages[1].dataset['mekbayPartialSheet']).toBe('1');
     });
 

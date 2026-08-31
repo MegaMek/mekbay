@@ -3,6 +3,7 @@
 
 import {
     CBTEncounterRuntime,
+    decodeCBTEncounterStateV2,
     type EncounterNetwork,
     type TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
@@ -116,6 +117,7 @@ import {
     CBTForceC3,
     emptyC3EmergencyMasterMutation,
     publishC3EmergencyMasterNotices,
+    validateCBTEncounterNetworks,
 } from './cbt-force-c3';
 
 interface CBTForceAuthorityState {
@@ -236,6 +238,10 @@ export class CBTForceAuthority {
         const hydratedEnvelope = jsonValuesEqual(hydratedUnits, envelope.units)
             ? envelope
             : await validateSerializedCBTForceV2({ ...envelope, units: hydratedUnits });
+        const encounter = decodeCBTEncounterStateV2(hydratedEnvelope.encounter.state).snapshot;
+        if (!validateCBTEncounterNetworks(encounter.networks, units)) {
+            throw new Error('Restored C3 network facts are not canonical for the restored units');
+        }
         const nextBinding: CBTForceAuthorityState = Object.freeze({
             envelope: hydratedEnvelope,
             units,

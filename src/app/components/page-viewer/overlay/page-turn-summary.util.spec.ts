@@ -5,9 +5,34 @@ import {
     actionableMekPilotChecks,
     composeMekPsrDisplayModifiers,
     composeTurnSummaryHeatRows,
+    runWithTurnSummaryCloseBlocked,
 } from './page-turn-summary.util';
 import { asLocationId } from '../../../models/entity/entity-identifiers';
 import type { MekPilotCheckV2 } from '../../../models/runtime/mek-movement-psr-v2';
+import type { OverlayManagerService } from '../../../services/overlay-manager.service';
+
+describe('runWithTurnSummaryCloseBlocked', () => {
+    it('keeps the summary blocked until a dismissed confirmation settles', async () => {
+        const overlayManager = jasmine.createSpyObj<OverlayManagerService>(
+            'OverlayManagerService',
+            ['blockCloseUntil', 'unblockClose'],
+        );
+        let dismiss!: (confirmed: boolean) => void;
+        const operation = jasmine.createSpy('operation').and.returnValue(
+            new Promise<boolean>(resolve => dismiss = resolve),
+        );
+
+        const result = runWithTurnSummaryCloseBlocked(overlayManager, 'unit-1', operation);
+
+        expect(overlayManager.blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+        expect(overlayManager.unblockClose).not.toHaveBeenCalled();
+
+        dismiss(false);
+
+        await expectAsync(result).toBeResolvedTo(false);
+        expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+    });
+});
 
 describe('actionableMekPilotChecks', () => {
     const check = (triggerKind: MekPilotCheckV2['source']['triggerKind']): MekPilotCheckV2 => ({

@@ -68,7 +68,61 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
         expect(harness.dispatchMekCore).not.toHaveBeenCalled();
     });
 
-    it('cancels a force-wide heat review before dispatching any unit end turn', async () => {
+    it('ends the phase for every unit without entering end-turn heat work', async () => {
+        const prepareCommand = jasmine.createSpy('prepareCommand')
+            .and.callFake(async (_force, _instanceId, command) => Object.freeze({
+                command,
+                deferredPilotHits: 0 as const,
+            }));
+        const prepareEndTurnCommands = jasmine.createSpy('prepareEndTurnCommands');
+        const harness = createBatchHarness({
+            prepareCommand,
+            afterCommand: async () => true,
+            prepareEndTurnCommands,
+        });
+
+        const result = await harness.dispatcher.endPhaseForAll();
+
+        expect(result.accepted).toBeTrue();
+        expect(result.changed).toBeTrue();
+        expect(result.results.map(row => row.instanceId)).toEqual([...harness.ids]);
+        expect(result.results.every(row => row.accepted && row.changed)).toBeTrue();
+        expect(prepareCommand).toHaveBeenCalledTimes(2);
+        expect(prepareEndTurnCommands).not.toHaveBeenCalled();
+        expect(harness.dispatchMekCore.calls.allArgs().map(([, command]) => command.type))
+            .toEqual(['end-phase', 'end-phase']);
+        expect(harness.ids.map(instanceId =>
+            harness.fixtures.get(instanceId)!.instance.query().turnState().turnCounter))
+            .toEqual([0, 0]);
+    });
+
+    it('preflights every all-unit phase before committing the first unit', async () => {
+        let reviewed = 0;
+        const harness = createBatchHarness({
+            prepareCommand: async (_force, _instanceId, command) => Object.freeze({
+                command,
+                deferredPilotHits: 0,
+                ...(++reviewed === 2 ? { cancelled: true as const } : {}),
+            }),
+            afterCommand: async () => true,
+            prepareEndTurnCommands: jasmine.createSpy('prepareEndTurnCommands'),
+        });
+        const revisions = harness.ids.map(instanceId =>
+            harness.fixtures.get(instanceId)!.instance.query().stateRevision);
+
+        const result = await harness.dispatcher.endPhaseForAll();
+
+        expect(result.accepted).toBeFalse();
+        expect(result.changed).toBeFalse();
+        expect(result.results.map(row => row.reason))
+            .toEqual(['AUTOMATION_CANCELLED', 'AUTOMATION_CANCELLED']);
+        expect(harness.dispatchMekCore).not.toHaveBeenCalled();
+        expect(harness.ids.map(instanceId =>
+            harness.fixtures.get(instanceId)!.instance.query().stateRevision))
+            .toEqual(revisions);
+    });
+
+    it('cancels force-wide heat before any turn reset and reports the committed phases', async () => {
         const prepareEndTurnCommands = jasmine.createSpy('prepareEndTurnCommands')
             .and.resolveTo(null);
         const harness = createBatchHarness({
@@ -81,7 +135,8 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
         const result = await harness.dispatcher.endTurnForAll();
 
         expect(result.accepted).toBeFalse();
-        expect(result.changed).toBeFalse();
+        expect(result.changed).toBeTrue();
+        expect(result.results.every(row => row.changed)).toBeTrue();
         expect(result.results.map(row => row.reason))
             .toEqual(['AUTOMATION_CANCELLED', 'AUTOMATION_CANCELLED']);
         expect(prepareEndTurnCommands).toHaveBeenCalledTimes(1);

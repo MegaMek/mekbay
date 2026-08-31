@@ -455,7 +455,7 @@ describe('ForceBuilderService remote force updates', () => {
         const expectedSlot = { force: targetForce, alignment: 'friendly', changeSub: null };
         const loadedForces = signal<any[]>([expectedSlot]);
         const selectedUnit = signal<ForceUnit | null>(null);
-        service.dataService = {
+        service.forcePersistence = {
             saveForce: jasmine.createSpy('saveForce').and.resolveTo(),
             queueForceAutosave: jasmine.createSpy('queueForceAutosave'),
             saveForceAndWaitForCloud: jasmine.createSpy('saveForceAndWaitForCloud').and.resolveTo(),
@@ -476,7 +476,7 @@ describe('ForceBuilderService remote force updates', () => {
                     }
                     return Object.freeze({
                         accepted: true,
-                        finalize: () => service.dataService.acceptRemoteForceSnapshot(prepared),
+                        finalize: () => service.forcePersistence.acceptRemoteForceSnapshot(prepared),
                         persistence: () => Promise.resolve(),
                     });
                 },
@@ -515,7 +515,7 @@ describe('ForceBuilderService remote force updates', () => {
             promptSaveIfChanged: jasmine.createSpy('promptSaveIfChanged').and.resolveTo(true),
         };
         const slotLifecycle = Object.create(ForceSlotLifecycleService.prototype) as any;
-        slotLifecycle.dataService = service.dataService;
+        slotLifecycle.forcePersistence = service.forcePersistence;
         slotLifecycle.logger = service.logger;
         slotLifecycle.workspace = service.workspace;
         slotLifecycle.teardownForceSlot = jasmine.createSpy('teardownForceSlot');
@@ -527,7 +527,7 @@ describe('ForceBuilderService remote force updates', () => {
         service.slotLifecycle = slotLifecycle;
         service.unitLoading = { load: jasmine.createSpy('load').and.resolveTo() };
         const remoteSync = Object.create(ForceRemoteSyncService.prototype) as any;
-        for (const dependency of ['dataService', 'logger', 'optionsService', 'dialogsService', 'toastService', 'forceUrl']) {
+        for (const dependency of ['forcePersistence', 'logger', 'optionsService', 'dialogsService', 'toastService', 'forceUrl']) {
             Object.defineProperty(remoteSync, dependency, {
                 configurable: true,
                 get: () => service[dependency],
@@ -558,8 +558,8 @@ describe('ForceBuilderService remote force updates', () => {
 
         await remoteSync.reconcileRemoteForce(targetForce, createSerializedForce());
 
-        expect(service.dataService.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
-        expect(service.dataService.discardRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.discardRemoteForceSnapshot).toHaveBeenCalledTimes(1);
     });
 
     it('skips an older remote snapshot', async () => {
@@ -571,7 +571,7 @@ describe('ForceBuilderService remote force updates', () => {
             name: 'Older Force',
         }));
 
-        expect(service.dataService.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
     });
 
     it('ignores a remote snapshot when its timestamp cannot be compared', async () => {
@@ -587,10 +587,10 @@ describe('ForceBuilderService remote force updates', () => {
             name: 'Invalid Remote Force',
         }));
 
-        expect(service.dataService.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
-        expect(service.dataService.saveForce).not.toHaveBeenCalled();
-        expect(service.dataService.saveForceAndWaitForCloud).not.toHaveBeenCalled();
-        expect(service.dataService.discardRemoteForceSnapshot).toHaveBeenCalledTimes(2);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForceAndWaitForCloud).not.toHaveBeenCalled();
+        expect(service.forcePersistence.discardRemoteForceSnapshot).toHaveBeenCalledTimes(2);
     });
 
     it('serializes reconnect conflict dialogs across forces', async () => {
@@ -641,8 +641,8 @@ describe('ForceBuilderService remote force updates', () => {
             timestamp: '2026-08-06T19:59:00.000Z',
         }), 'reconnect');
 
-        expect(service.dataService.saveForceAndWaitForCloud).toHaveBeenCalledOnceWith(targetForce);
-        expect(service.dataService.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForceAndWaitForCloud).toHaveBeenCalledOnceWith(targetForce);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
     });
 
     it('does not push a local-only force when reconnect finds an older snapshot', async () => {
@@ -653,8 +653,8 @@ describe('ForceBuilderService remote force updates', () => {
             timestamp: '2026-08-06T19:59:00.000Z',
         }), 'reconnect');
 
-        expect(service.dataService.saveForce).not.toHaveBeenCalled();
-        expect(service.dataService.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
     });
 
     it('applies a newer reconnect snapshot without pushing local state', async () => {
@@ -669,10 +669,10 @@ describe('ForceBuilderService remote force updates', () => {
         const replacement = service.workspace.loadedForces()[0].force;
         expect(replacement).not.toBe(targetForce);
         expect(replacement.timestamp).toBe(incomingData.timestamp);
-        expect(service.dataService.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
         expect(service.slotLifecycle.teardownForceSlot).toHaveBeenCalledOnceWith(jasmine.objectContaining({ force: targetForce }));
         expect(remoteSync.remoteForceUpdated$.next).toHaveBeenCalledWith({ force: replacement, alignment: 'friendly' });
-        expect(service.dataService.saveForce).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
         expect(service.dialogsService.createDialog).not.toHaveBeenCalled();
     });
 
@@ -692,17 +692,17 @@ describe('ForceBuilderService remote force updates', () => {
             incomingData,
             jasmine.any(Number),
         );
-        expect(service.dataService.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
         // The queue re-stages its retained bytes against the owner that is live
         // when the dialog actually executes; both detached tokens are released.
-        expect(service.dataService.discardRemoteForceSnapshot).toHaveBeenCalledTimes(2);
+        expect(service.forcePersistence.discardRemoteForceSnapshot).toHaveBeenCalledTimes(2);
     });
 
     it('re-arbitrates after delayed staging and rejects a snapshot older than the current live slot', async () => {
         const currentData = createSerializedForce();
         const { service, remoteSync, targetForce } = createUpdateHarness(currentData);
         let releaseStage!: (staged: { force: Force }) => void;
-        service.dataService.stageRemoteForceSnapshot.and.returnValue(new Promise(resolve => {
+        service.forcePersistence.stageRemoteForceSnapshot.and.returnValue(new Promise(resolve => {
             releaseStage = resolve;
         }));
 
@@ -712,9 +712,9 @@ describe('ForceBuilderService remote force updates', () => {
         releaseStage({ force: createRemoteForce(incoming) });
         await reconciliation;
 
-        expect(service.dataService.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
         expect(service.workspace.loadedForces()[0].force).toBe(targetForce);
-        expect(service.dataService.discardRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.discardRemoteForceSnapshot).toHaveBeenCalledTimes(1);
     });
 
     it('does not overwrite an edit made while an explicit conflict snapshot is staging', async () => {
@@ -722,7 +722,7 @@ describe('ForceBuilderService remote force updates', () => {
         const incoming = createSerializedForce({ timestamp: '2026-08-06T20:03:00.000Z' });
         const { service, remoteSync, targetForce, expectedSlot } = createUpdateHarness(current);
         let releaseStage!: (staged: { force: Force }) => void;
-        service.dataService.stageRemoteForceSnapshot.and.returnValue(new Promise(resolve => {
+        service.forcePersistence.stageRemoteForceSnapshot.and.returnValue(new Promise(resolve => {
             releaseStage = resolve;
         }));
 
@@ -732,8 +732,8 @@ describe('ForceBuilderService remote force updates', () => {
 
         expect(await application).toBeNull();
         expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
-        expect(service.dataService.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
-        expect(service.dataService.discardRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.discardRemoteForceSnapshot).toHaveBeenCalledTimes(1);
     });
 
     it('treats equal-time divergent CBT revisions as a remote authority update', async () => {
@@ -752,7 +752,7 @@ describe('ForceBuilderService remote force updates', () => {
 
         await remoteSync.reconcileRemoteForce(targetForce, incoming);
 
-        expect(service.dataService.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
         expect(service.workspace.loadedForces()[0].force.getCBTForceV2Revision()).toBe(2);
     });
 
@@ -773,7 +773,7 @@ describe('ForceBuilderService remote force updates', () => {
         const { service, remoteSync, targetForce } = createUpdateHarness(local);
 
         await remoteSync.reconcileRemoteForce(targetForce, structuredClone(local));
-        expect(service.dataService.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
 
         const incoming = createSerializedForce({
             type: GameSystem.CLASSIC,
@@ -782,7 +782,7 @@ describe('ForceBuilderService remote force updates', () => {
         });
         await remoteSync.reconcileRemoteForce(targetForce, incoming);
 
-        expect(service.dataService.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
         expect(service.workspace.loadedForces()[0].force.serialize().cbt).toEqual(incoming.cbt);
     });
 
@@ -799,7 +799,7 @@ describe('ForceBuilderService remote force updates', () => {
         const { service, remoteSync, targetForce } = createUpdateHarness(current);
         const firstStage = deferred<{ force: Force }>();
         const secondStage = deferred<{ force: Force }>();
-        service.dataService.stageRemoteForceSnapshot.and.returnValues(
+        service.forcePersistence.stageRemoteForceSnapshot.and.returnValues(
             firstStage.promise,
             secondStage.promise,
         );
@@ -812,7 +812,7 @@ describe('ForceBuilderService remote force updates', () => {
         await firstReconciliation;
 
         expect(service.workspace.loadedForces()[0].force.displayName()).toBe('Second Receipt');
-        expect(service.dataService.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
     });
 
     it('lets a later receipt publish after an older receipt releases retirement', async () => {
@@ -846,12 +846,12 @@ describe('ForceBuilderService remote force updates', () => {
         await Promise.all([firstReconciliation, secondReconciliation]);
 
         expect(service.workspace.loadedForces()[0].force.displayName()).toBe('Second Receipt');
-        expect(service.dataService.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.acceptRemoteForceSnapshot).toHaveBeenCalledTimes(1);
     });
 
     it('does not swap the slot when staged-token acceptance throws synchronously', async () => {
         const { service, remoteSync, targetForce, expectedSlot } = createUpdateHarness(createSerializedForce());
-        service.dataService.commitPreparedRemoteForceReplacement.and.callFake(() => {
+        service.forcePersistence.commitPreparedRemoteForceReplacement.and.callFake(() => {
             throw new Error('already consumed');
         });
 
@@ -874,7 +874,7 @@ describe('ForceBuilderService remote force updates', () => {
         }));
 
         expect(beginRetirement).not.toHaveBeenCalled();
-        expect(service.dataService.prepareRemoteForceSnapshotAcceptance).not.toHaveBeenCalled();
+        expect(service.forcePersistence.prepareRemoteForceSnapshotAcceptance).not.toHaveBeenCalled();
         expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
         expect(service.slotLifecycle.teardownForceSlot).not.toHaveBeenCalled();
     });
@@ -895,7 +895,7 @@ describe('ForceBuilderService remote force updates', () => {
         const incoming = createSerializedForce({ timestamp: '2026-08-06T20:01:00.000Z' });
         const { service, remoteSync, targetForce } = createUpdateHarness(current, [], [previousGroup]);
         const replacement = createRemoteForce(incoming, [], [replacementGroup]);
-        service.dataService.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
+        service.forcePersistence.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
 
         await remoteSync.reconcileRemoteForce(targetForce, incoming);
 
@@ -921,7 +921,7 @@ describe('ForceBuilderService remote force updates', () => {
         const incoming = createSerializedForce({ timestamp: '2026-08-06T20:01:00.000Z' });
         const { service, remoteSync, targetForce, expectedSlot } = createUpdateHarness(current, [], [previousGroup]);
         const replacement = createRemoteForce(incoming, [], [replacementGroup]);
-        service.dataService.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
+        service.forcePersistence.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
         const drain = deferred<boolean>();
         const beginRetirement = targetForce.beginWholeOwnerRetirement.bind(targetForce);
         spyOn(targetForce, 'beginWholeOwnerRetirement').and.callFake(() => {
@@ -931,12 +931,12 @@ describe('ForceBuilderService remote force updates', () => {
 
         const reconciliation = remoteSync.reconcileRemoteForce(targetForce, incoming);
         for (let index = 0;
-            index < 8 && service.dataService.prepareRemoteForceSnapshotAcceptance.calls.count() === 0;
+            index < 8 && service.forcePersistence.prepareRemoteForceSnapshotAcceptance.calls.count() === 0;
             index += 1) {
             await Promise.resolve();
         }
         expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
-        expect(service.dataService.commitPreparedRemoteForceReplacement).not.toHaveBeenCalled();
+        expect(service.forcePersistence.commitPreparedRemoteForceReplacement).not.toHaveBeenCalled();
 
         history.add('during-drain');
         drain.resolve(true);
@@ -963,13 +963,13 @@ describe('ForceBuilderService remote force updates', () => {
         const incoming = createSerializedForce({ timestamp: '2026-08-06T20:01:00.000Z' });
         const { service, remoteSync, targetForce, expectedSlot } = createUpdateHarness(current, [], [previousGroup]);
         const replacement = createRemoteForce(incoming, [], [replacementGroup]);
-        service.dataService.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
+        service.forcePersistence.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
         const cancelRetirement = spyOn(targetForce, 'cancelWholeOwnerRetirement').and.callThrough();
 
         await remoteSync.reconcileRemoteForce(targetForce, incoming);
 
         expect(cancelRetirement).toHaveBeenCalledTimes(1);
-        expect(service.dataService.commitPreparedRemoteForceReplacement).not.toHaveBeenCalled();
+        expect(service.forcePersistence.commitPreparedRemoteForceReplacement).not.toHaveBeenCalled();
         expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
         expect(service.logger.error).toHaveBeenCalledWith(jasmine.stringMatching(/transient force session state/u));
     });
@@ -995,7 +995,7 @@ describe('ForceBuilderService remote force updates', () => {
         const { service, remoteSync, targetForce, selectedUnit } = createUpdateHarness(current, [oldUnit]);
         selectedUnit.set(oldUnit);
         const replacement = createRemoteForce(incoming, [newUnit]);
-        service.dataService.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
+        service.forcePersistence.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
 
         await remoteSync.reconcileRemoteForce(targetForce, incoming);
 
@@ -1014,7 +1014,7 @@ describe('ForceBuilderService remote force updates', () => {
         selectedUnit.set(oldUnit);
         service.workspace.followLastModifiedUnit = () => true;
         const replacement = createRemoteForce(incoming, [newUnit]);
-        service.dataService.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
+        service.forcePersistence.stageRemoteForceSnapshot.and.resolveTo(Object.freeze({ force: replacement }));
 
         await remoteSync.reconcileRemoteForce(targetForce, incoming);
 
@@ -1025,7 +1025,7 @@ describe('ForceBuilderService remote force updates', () => {
     it('prebuilds a dormant change subscription that cannot save before activation', () => {
         const service = Object.create(ForceSlotLifecycleService.prototype) as any;
         service.activationPlans = new WeakMap();
-        service.dataService = {
+        service.forcePersistence = {
             saveForce: jasmine.createSpy('saveForce').and.resolveTo(),
             queueForceAutosave: jasmine.createSpy('queueForceAutosave'),
             activateForceAuthority: jasmine.createSpy('activateForceAuthority').and.returnValue(true),
@@ -1049,15 +1049,15 @@ describe('ForceBuilderService remote force updates', () => {
 
         const slot = service.setupForceSlot(force, 'friendly', false);
         changed.next();
-        expect(service.dataService.saveForce).not.toHaveBeenCalled();
-        expect(service.dataService.activateForceAuthority).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
+        expect(service.forcePersistence.activateForceAuthority).not.toHaveBeenCalled();
 
         service.activateForceSlot(slot);
-        expect(service.dataService.activateForceAuthority).toHaveBeenCalledOnceWith(force);
+        expect(service.forcePersistence.activateForceAuthority).toHaveBeenCalledOnceWith(force);
         changed.next();
-        expect(service.dataService.activateForceAuthority).toHaveBeenCalledTimes(2);
-        expect(service.dataService.queueForceAutosave).toHaveBeenCalledOnceWith(force);
-        expect(service.dataService.saveForce).not.toHaveBeenCalled();
+        expect(service.forcePersistence.activateForceAuthority).toHaveBeenCalledTimes(2);
+        expect(service.forcePersistence.queueForceAutosave).toHaveBeenCalledOnceWith(force);
+        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
     });
 
     it('rejects duplicate durable live unit IDs before beginning retirement', async () => {
@@ -1080,7 +1080,7 @@ describe('ForceBuilderService remote force updates', () => {
         }));
 
         expect(beginRetirement).not.toHaveBeenCalled();
-        expect(service.dataService.prepareRemoteForceSnapshotAcceptance).not.toHaveBeenCalled();
+        expect(service.forcePersistence.prepareRemoteForceSnapshotAcceptance).not.toHaveBeenCalled();
         expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
         expect(service.logger.error).toHaveBeenCalledWith(jasmine.stringMatching(/duplicate durable unit ID/u));
     });
@@ -1108,7 +1108,7 @@ describe('ForceBuilderService remote force updates', () => {
 
     it('retries removal with a fresh retirement after a drained CBT acknowledgement refreshes authority', async () => {
         const { service, targetForce, expectedSlot } = createUpdateHarness(createSerializedForce());
-        service.dataService.drainForceAuthorityPersistence.and.returnValues(
+        service.forcePersistence.drainForceAuthorityPersistence.and.returnValues(
             Promise.resolve(false),
             Promise.resolve(true),
         );
@@ -1117,7 +1117,7 @@ describe('ForceBuilderService remote force updates', () => {
         expect(await service.removeLoadedForce(targetForce, { skipPrompt: true })).toBeTrue();
 
         expect(beginRetirement).toHaveBeenCalledTimes(2);
-        expect(service.dataService.drainForceAuthorityPersistence).toHaveBeenCalledTimes(2);
+        expect(service.forcePersistence.drainForceAuthorityPersistence).toHaveBeenCalledTimes(2);
         expect(service.workspace.loadedForces()).toEqual([]);
         expect(service.slotLifecycle.teardownForceSlot).toHaveBeenCalledOnceWith(expectedSlot);
     });
@@ -1131,7 +1131,7 @@ describe('ForceBuilderService remote force updates', () => {
         (cloned as any).setName = jasmine.createSpy('setCloneName');
         (targetForce as any).cloneForPersistence = jasmine.createSpy('cloneForPersistence').and.resolveTo(cloned);
         const drain = deferred<boolean>();
-        service.dataService.drainForceAuthorityPersistence.and.returnValue(drain.promise);
+        service.forcePersistence.drainForceAuthorityPersistence.and.returnValue(drain.promise);
         const fingerprint = targetForce.captureWholeOwnerAuthorityFingerprint();
 
         const cloning = remoteSync.replaceConflictForceWithClone(
@@ -1142,16 +1142,16 @@ describe('ForceBuilderService remote force updates', () => {
             () => true,
         );
         for (let index = 0;
-            index < 12 && service.dataService.drainForceAuthorityPersistence.calls.count() === 0;
+            index < 12 && service.forcePersistence.drainForceAuthorityPersistence.calls.count() === 0;
             index += 1) await Promise.resolve();
         expect(service.workspace.loadedForces()[0]).toBe(expectedSlot);
-        expect(service.dataService.prepareForceAuthorityRemoval).not.toHaveBeenCalled();
+        expect(service.forcePersistence.prepareForceAuthorityRemoval).not.toHaveBeenCalled();
 
         drain.resolve(true);
         expect(await cloning).toBe(cloned);
 
-        expect(service.dataService.drainForceAuthorityPersistence).toHaveBeenCalledTimes(1);
-        expect(service.dataService.prepareForceAuthorityRemoval).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.drainForceAuthorityPersistence).toHaveBeenCalledTimes(1);
+        expect(service.forcePersistence.prepareForceAuthorityRemoval).toHaveBeenCalledTimes(1);
         expect(service.workspace.loadedForces()[0].force).toBe(cloned);
         expect(service.slotLifecycle.teardownForceSlot).toHaveBeenCalledOnceWith(expectedSlot);
     });
@@ -1239,7 +1239,7 @@ describe('ForceBuilderService remote force updates', () => {
         service.dialogs = {
             createDialog: jasmine.createSpy('createDialog').and.returnValue({ closed: of('yes') }),
         };
-        service.dataService = {
+        service.forcePersistence = {
             saveForce: jasmine.createSpy('saveForce'),
             hasDurableForceIdentity: jasmine.createSpy('hasDurableForceIdentity').and.returnValue(false),
             saveForceAndWaitForCloud: jasmine.createSpy('saveForceAndWaitForCloud')
@@ -1249,8 +1249,8 @@ describe('ForceBuilderService remote force updates', () => {
         service.toast = { showToast: jasmine.createSpy('showToast') };
 
         expect(await service.promptSaveForceIfNeeded(force)).toBeFalse();
-        expect(service.dataService.saveForce).not.toHaveBeenCalled();
-        expect(service.dataService.saveForceAndWaitForCloud).toHaveBeenCalledOnceWith(force);
+        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
+        expect(service.forcePersistence.saveForceAndWaitForCloud).toHaveBeenCalledOnceWith(force);
         expect(service.toast.showToast).toHaveBeenCalledWith(
             'The force could not be saved. It was not removed.',
             'error',
@@ -1379,7 +1379,7 @@ describe('ForceImportService load dialog', () => {
                 }),
             }),
         };
-        service.dataService = {
+        service.forcePersistence = {
             getForce: jasmine.createSpy('getForce'),
         };
         service.builder = {
@@ -1388,7 +1388,7 @@ describe('ForceImportService load dialog', () => {
 
         await service.showLoadForceDialog();
 
-        expect(service.dataService.getForce).not.toHaveBeenCalled();
+        expect(service.forcePersistence.getForce).not.toHaveBeenCalled();
         expect(service.builder.loadForce).toHaveBeenCalledOnceWith(sourceForce);
         expect(sourceForce.instanceId()).toBeNull();
     });

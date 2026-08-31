@@ -25,7 +25,6 @@ import {
 } from './force.model';
 import {
     CBTEncounterRuntime,
-    reduceCBTEncounter,
     reduceTargetRegistry,
     type EncounterNetwork,
     type EncounterTargetId,
@@ -1355,6 +1354,9 @@ export class CBTForce extends Force<never> {
     }
 
     protected override getCBTEncounterStateForPersistence(): SerializedCBTEncounterStateV2 {
+        if (!this.authority.c3.validateConfiguredNetworks(this.encounterRuntime.snapshot().networks)) {
+            throw new Error('Cannot persist non-canonical C3 network facts');
+        }
         return this.encounterRuntime.serializedState();
     }
 
@@ -2051,6 +2053,11 @@ export class CBTForce extends Force<never> {
         });
     }
 
+    /** Commits the current phase for every canonical V2 unit after shared preflight. */
+    public endPhaseForAllUnits(): Promise<CBTForceEndTurnAllResult> {
+        return this.unitCommandDispatcher.endPhaseForAll();
+    }
+
     /** Ends every canonical V2 turn through one owner boundary. */
     public endTurnForAllUnits(): Promise<CBTForceEndTurnAllResult> {
         return this.unitCommandDispatcher.endTurnForAll();
@@ -2260,18 +2267,10 @@ export class CBTForce extends Force<never> {
             || this.c3Networks().length > 0) return false;
         const detached = structuredClone(networks);
         const current = this.encounterRuntime.snapshot();
-        const planned = reduceCBTEncounter(current, {
-            kind: 'replace-networks',
-            expectedRevision: current.revision,
-            networks: detached,
-        });
-        if (planned.kind === 'rejected'
-            || jsonValuesEqual(
-                current.networks,
-                planned.snapshot.networks,
-            )) return false;
+        if (jsonValuesEqual(current.networks, detached)
+            || !this.authority.c3.validateConfiguredNetworks(detached)) return false;
         const affectedUnitIds = new Set<UnitInstanceId>();
-        for (const network of [...current.networks, ...planned.snapshot.networks]) {
+        for (const network of [...current.networks, ...detached]) {
             for (const endpoint of network.endpoints) affectedUnitIds.add(endpoint.instanceId);
         }
         const c3UnitIds = this.authority.c3.emergencyMasterUnitIds();
@@ -2280,21 +2279,19 @@ export class CBTForce extends Force<never> {
             this.authority.readyUnit(instanceId)?.revision() ?? null,
         ] as const));
         this.reserveForceOwnerMutationIntent();
-        const changed = this.encounterRuntime.replaceNetworks(detached);
-        if (changed) {
-            const c3 = this.authority.c3.reconcileEmergencyMasters(
-                this.encounterRuntime.snapshot().networks,
-                c3UnitIds,
-            );
-            publishC3EmergencyMasterNotices(c3.notices, this.injector.get(ToastService));
-            for (const instanceId of c3UnitIds) {
-                if (this.authority.readyUnit(instanceId)?.revision() !== c3Revisions.get(instanceId)) {
-                    affectedUnitIds.add(instanceId);
-                }
+        this.encounterRuntime.replaceNetworks(detached);
+        const c3 = this.authority.c3.reconcileEmergencyMasters(
+            this.encounterRuntime.snapshot().networks,
+            c3UnitIds,
+        );
+        publishC3EmergencyMasterNotices(c3.notices, this.injector.get(ToastService));
+        for (const instanceId of c3UnitIds) {
+            if (this.authority.readyUnit(instanceId)?.revision() !== c3Revisions.get(instanceId)) {
+                affectedUnitIds.add(instanceId);
             }
-            this.emitChangedFromReservedIntent(Object.freeze([...affectedUnitIds]));
         }
-        return changed;
+        this.emitChangedFromReservedIntent(Object.freeze([...affectedUnitIds]));
+        return true;
     }
 
     /** Detached, deeply frozen compare-and-swap query. */

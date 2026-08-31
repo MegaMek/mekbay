@@ -115,7 +115,6 @@ describe('ForceGeneratorService', () => {
     const factionsByName = new Map<string, Faction>();
     const factionsById = new Map<number, Faction>();
     const megaMekAvailabilityByUnitName = new Map<string, { e: Record<string, Record<string, [number, number]>> }>();
-    const megaMekAvailabilityRecords: Array<{ e: Record<string, Record<string, [number, number]>> }> = [];
     const megaMekRulesetsByMulFactionId = new Map<number, MegaMekRulesetRecord[]>();
     const megaMekRulesetsByFactionKey = new Map<string, MegaMekRulesetRecord>();
     const megaMekFactionsByKey = new Map<string, MegaMekFactionRecord>();
@@ -144,7 +143,6 @@ describe('ForceGeneratorService', () => {
         getFactions: jasmine.createSpy('getFactions').and.callFake(() => [...factionsById.values()]),
         getFactionById: jasmine.createSpy('getFactionById').and.callFake((id: number) => factionsById.get(id)),
         getFactionByName: jasmine.createSpy('getFactionByName').and.callFake((name: string) => factionsByName.get(name)),
-        getMegaMekAvailabilityRecords: jasmine.createSpy('getMegaMekAvailabilityRecords').and.callFake(() => megaMekAvailabilityRecords),
         getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return megaMekAvailabilityByUnitName.get(unit.name);
         }),
@@ -281,7 +279,6 @@ describe('ForceGeneratorService', () => {
         factionsByName.clear();
         factionsById.clear();
         megaMekAvailabilityByUnitName.clear();
-        megaMekAvailabilityRecords.length = 0;
         megaMekRulesetsByMulFactionId.clear();
         megaMekRulesetsByFactionKey.clear();
         megaMekFactionsByKey.clear();
@@ -456,7 +453,6 @@ describe('ForceGeneratorService', () => {
             },
         };
         megaMekAvailabilityByUnitName.set(unit.name, availabilityRecord);
-        megaMekAvailabilityRecords.push(availabilityRecord);
         units.push(unit);
 
         filtersServiceMock.effectiveFilterState.and.returnValue({
@@ -1021,7 +1017,6 @@ describe('ForceGeneratorService', () => {
         factionsByName.set(capellanConfederation.name, capellanConfederation);
         factionsById.set(capellanConfederation.id, capellanConfederation);
         megaMekAvailabilityByUnitName.set(unit.name, availabilityRecord);
-        megaMekAvailabilityRecords.push(availabilityRecord);
         units.push(unit);
         optionsServiceMock.options.set({ availabilitySource: 'mul', forceGenerator: { failureSearchWindowMs: 300 } });
 

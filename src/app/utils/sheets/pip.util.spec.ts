@@ -24,35 +24,87 @@ describe('Pip renderers', () => {
         svgRoots.length = 0;
     });
 
-    it('reproduces capital-vessel square armor blocks and shadows', () => {
+    it('reproduces capital-vessel square armor blocks with layered paths', () => {
         const pips = CapitalShipPipRenderer.createPips(100, 200, 100, 'armor', 'NOS');
-        const armor = Array.from(pips?.querySelectorAll<SVGRectElement>('rect:not([data-pip-shadow])') ?? []);
-        const shadows = Array.from(pips?.querySelectorAll<SVGRectElement>('rect[data-pip-shadow]') ?? []);
-        const xs = new Set(armor.map(pip => pip.getAttribute('x')));
-        const ys = new Set(armor.map(pip => pip.getAttribute('y')));
+        const block = pips?.querySelector<SVGGElement>('.capital-pip-block');
+        const shadow = block?.querySelector<SVGPathElement>('.capital-pip-shadow');
+        const backdrop = block?.querySelector<SVGPathElement>('.capital-pip-backdrop');
+        const grid = block?.querySelector<SVGPathElement>('.capital-pip-grid-lines');
 
-        expect(armor.length).toBe(100);
-        expect(shadows.length).toBe(100);
-        expect(xs.size).toBe(10);
-        expect(ys.size).toBe(10);
-        expect(armor[0].getAttribute('x')).toBe('78');
-        expect(armor[0].getAttribute('y')).toBe('25.25');
-        expect(armor[0].getAttribute('width')).toBe('4.5');
-        expect(shadows[0].getAttribute('x')).toBe('79.35');
+        expect(pips?.querySelectorAll('rect').length).toBe(0);
+        expect(pips?.querySelectorAll('.pip').length).toBe(0);
+        expect(pips?.querySelectorAll('.capital-pip-block').length).toBe(1);
+        expect(block?.dataset['pipBlockX']).toBe('78');
+        expect(block?.dataset['pipBlockY']).toBe('25.25');
+        expect(block?.dataset['pipCellWidth']).toBe('4.5');
+        expect(shadow?.getAttribute('d')).toContain('M79.35 26.6H124.35');
+        expect(backdrop?.getAttribute('d')).toContain('M78 25.25H123');
+        expect(grid?.getAttribute('d')).toContain('M82.5 25.25V29.75');
+        expect(block?.querySelectorAll('.capital-pip-state').length).toBe(5);
+        expect(block?.querySelectorAll('.capital-pip-interaction').length).toBe(1);
+        expect(pips?.dataset['pipCapacity']).toBe('100');
         expect(pips?.dataset['pipLayout']).toBe('capital-grid');
     });
 
     it('uses the capital-vessel structure block capacity for each track', () => {
         const kf = CapitalShipPipRenderer.createPips(14, 80, 15, 'structure', 'KF');
         const sail = CapitalShipPipRenderer.createPips(5, 80, 5, 'structure', 'SAIL');
-        const kfPips = Array.from(kf?.querySelectorAll<SVGRectElement>('rect') ?? []);
-        const sailPips = Array.from(sail?.querySelectorAll<SVGRectElement>('rect') ?? []);
+        const kfBlock = kf?.querySelector<SVGGElement>('.capital-pip-block');
+        const sailBlock = sail?.querySelector<SVGGElement>('.capital-pip-block');
 
-        expect(kfPips.length).toBe(14);
-        expect(new Set(kfPips.map(pip => pip.getAttribute('y'))).size).toBe(2);
-        expect(kfPips[0].getAttribute('x')).toBe('20.5');
-        expect(sailPips.length).toBe(5);
-        expect(sailPips[0].getAttribute('x')).toBe('30.5');
+        expect(kfBlock?.dataset['pipBlockCount']).toBe('14');
+        expect(kfBlock?.dataset['pipBlockX']).toBe('20.5');
+        expect(kfBlock?.querySelector('.capital-pip-grid-lines')?.getAttribute('d'))
+            .toContain('M32.5 4H48.5');
+        expect(sailBlock?.dataset['pipBlockCount']).toBe('5');
+        expect(sailBlock?.querySelector('.capital-pip-grid-lines')?.getAttribute('d'))
+            .toContain('M30.5 0H50.5');
+    });
+
+    it('reduces six thousand capital points to sixty block targets', () => {
+        const pips = CapitalShipPipRenderer.createPips(6_000, 1_000, 500, 'armor', 'NOS');
+        const blocks = pips?.querySelectorAll('.capital-pip-block') ?? [];
+        const targets = pips?.querySelectorAll('.capital-pip-interaction') ?? [];
+
+        expect(blocks.length).toBe(60);
+        expect(targets.length).toBe(60);
+        expect(pips?.querySelectorAll('.pip').length).toBe(0);
+        expect(pips?.querySelectorAll('rect').length).toBe(0);
+        expect(pips?.querySelectorAll('*').length).toBe(600);
+    });
+
+    it('keeps block gaps and unused cells outside the capital-grid hit targets', () => {
+        const pips = CapitalShipPipRenderer.createPips(101, 200, 100, 'armor', 'NOS')!;
+        const targets = [...pips.querySelectorAll<SVGPathElement>('.capital-pip-interaction')];
+
+        expect(targets.length).toBe(2);
+        expect(pips.querySelector(':scope > .capital-pip-interaction')).toBeNull();
+        expect(targets.every(target => target.parentElement?.classList.contains('capital-pip-block')))
+            .toBeTrue();
+        expect(targets[1].getAttribute('d')?.match(/Z/gu)?.length).toBe(1);
+    });
+
+    it('projects pending and fresh capital-grid damage and repairs into solid paths', () => {
+        const pips = CapitalShipPipRenderer.createPips(100, 200, 100, 'armor', 'NOS')!;
+        const statePath = (className: string): string =>
+            pips.querySelector(`.${className}`)?.getAttribute('d') ?? '';
+
+        CapitalShipPipRenderer.renderDamage([pips], 100, 98, 96);
+        expect(statePath('capital-pip-state-damaged')).not.toBe('');
+        expect(statePath('capital-pip-state-pending-damage')).not.toBe('');
+        expect(statePath('capital-pip-state-fresh-damage')).toBe('');
+
+        CapitalShipPipRenderer.renderDamage([pips], 100, 98, 94, true);
+        expect(statePath('capital-pip-state-pending-damage')).not.toBe('');
+        expect(statePath('capital-pip-state-fresh-damage')).not.toBe('');
+
+        CapitalShipPipRenderer.renderDamage([pips], 100, 94, 98, true);
+        expect(statePath('capital-pip-state-fresh-repair')).not.toBe('');
+        expect(statePath('capital-pip-state-pending-repair')).toBe('');
+
+        CapitalShipPipRenderer.renderDamage([pips], 100, 94, 98, true);
+        expect(statePath('capital-pip-state-fresh-repair')).toBe('');
+        expect(statePath('capital-pip-state-pending-repair')).not.toBe('');
     });
 
     it('keeps the rendered canon radius stable as a location gains pips', () => {
@@ -626,4 +678,3 @@ describe('Pip renderers', () => {
         return path;
     }
 });
-

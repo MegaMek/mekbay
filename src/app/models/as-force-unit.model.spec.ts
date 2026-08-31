@@ -30,7 +30,8 @@ describe('ASForceUnit ability effects', () => {
         return new ASForceUnit(
             unit,
             force,
-            {} as DataService,            injector,
+            {} as DataService,
+            injector,
         );
     }
 
@@ -74,51 +75,13 @@ describe('ASForceUnit ability effects', () => {
         const forceUnit = new ASForceUnit(
             createTestUnit(),
             force,
-            { readNativeUnitSource } as unknown as DataService,            injector,
+            { readNativeUnitSource } as unknown as DataService,
+            injector,
         );
 
         await forceUnit.load();
         expect(forceUnit.isLoaded()).toBeTrue();
         expect(readNativeUnitSource).not.toHaveBeenCalled();
-    });
-
-    it('rejects a direct C3 position write on a read-only unit', () => {
-        const emitChanged = jasmine.createSpy('emitChanged');
-        const force = {
-            owned: () => false,
-            emitChanged,
-            groups: () => [],
-        } as unknown as ASForce;
-        const forceUnit = new ASForceUnit(
-            createTestUnit(),
-            force,
-            {} as DataService,            injector,
-        );
-
-        expect(forceUnit.setC3Position({ x: 12, y: 34 })).toBeFalse();
-        expect(forceUnit.c3Position()).toBeNull();
-        expect(emitChanged).not.toHaveBeenCalled();
-    });
-
-    it('rejects a direct C3 position write after exact membership is lost', () => {
-        const emitChanged = jasmine.createSpy('emitChanged');
-        const group = { force: null as unknown as ASForce, units: () => [] as ASForceUnit[] };
-        const force = {
-            owned: () => true,
-            readOnly: () => false,
-            emitChanged,
-            groups: () => [group],
-        } as unknown as ASForce;
-        group.force = force;
-        const forceUnit = new ASForceUnit(
-            createTestUnit(),
-            force,
-            {} as DataService,            injector,
-        );
-
-        expect(forceUnit.setC3Position({ x: 56, y: 78 })).toBeFalse();
-        expect(forceUnit.c3Position()).toBeNull();
-        expect(emitChanged).not.toHaveBeenCalled();
     });
 
     it('keeps default heat behavior without Hot Dog', () => {

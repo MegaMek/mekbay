@@ -19,11 +19,22 @@ import {
 import { ReadyNonMekUnit } from './ready-non-mek-unit';
 import { asStateRevision, asUnitInstanceId } from './runtime-state';
 import { nonMekDamageTrackId } from '../rules/non-mek-damage-track-rules';
+import { DEFAULT_FORCE_DEPLOYMENT_ID } from './unit-state-initializer';
 
 const PROVIDER = asUnitProviderId('mm-data');
 const UUID = asUnitUuid('01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
 
 describe('Classic V1 force converter', () => {
+    it('treats a missing legacy game-system discriminator as Classic', async () => {
+        const source = { ...v1Force() } as unknown as Record<string, unknown>;
+        delete source['type'];
+
+        const converted = await convertPersistedForceV1(source as unknown as SerializedForce, { resolveIdentity });
+
+        expect(converted.type).toBe(GameSystem.CLASSIC);
+        expect(converted.cbt?.units.length).toBe(2);
+    });
+
     it('converts each saved unit and roster member directly to one deferred V2 entry', async () => {
         const source = v1Force();
         const converted = await convertPersistedForceV1(source, { resolveIdentity });
@@ -137,8 +148,8 @@ describe('Classic V1 force converter', () => {
         const fresh = ReadyNonMekUnit.create(entity, {
             instanceId: asUnitInstanceId('unit:tank'),
             identity,
-            deployment: { id: 'v1-conversion' },
-            scenario: { id: 'test', ruleset: CORE_2026_RULESET },
+            deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
+            scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
             initialStateProfileId: 'pristine-non-mek-v1',
         });
         const location = [...fresh.getIndex().locations.values()]
@@ -184,10 +195,7 @@ describe('Classic V1 force converter', () => {
         expect(saved.deployment.values.crewAssignment.positions[0]).toEqual(jasmine.objectContaining({
             name: 'Ada', gunnery: 3, piloting: 4,
         }));
-        expect(saved.restoration?.unresolved).toContain(
-            'Malformed V1 heat state was retained for recovery.',
-        );
-        expect(saved.restoration?.unresolved.join('\n')).not.toContain('V1 turn field');
+        expect(saved.restoration).toBeUndefined();
         expect(saved.turn).toEqual({
             turnCounter: 3,
             airborne: true,
@@ -217,7 +225,7 @@ describe('Classic V1 force converter', () => {
         const positionId = [...fresh.getIndex().crewPositions.keys()][0];
         expect(ReadyNonMekUnit.restore(stunnedSaved, entity, identity)
             .getInstance().snapshot().crew.get(positionId)?.state).toBe('stunned');
-        expect(stunnedSaved.restoration?.unresolved.join('\n')).not.toContain('stunned crew state');
+        expect(stunnedSaved.restoration).toBeUndefined();
 
         legacyCrew['state'] = 4;
         const killedSaved = convertPersistedNonMekUnitV1(source, fresh);
@@ -238,8 +246,8 @@ describe('Classic V1 force converter', () => {
         const fresh = ReadyNonMekUnit.create(entity, {
             instanceId: asUnitInstanceId('unit:aero-v1'),
             identity,
-            deployment: { id: 'v1-conversion' },
-            scenario: { id: 'test', ruleset: CORE_2026_RULESET },
+            deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
+            scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
             initialStateProfileId: 'pristine-non-mek-v1',
         });
         const source: DeferredUnitSource = {
@@ -264,7 +272,7 @@ describe('Classic V1 force converter', () => {
             pendingOverride: 19,
             heatsinksOff: 2,
         });
-        expect(saved.restoration?.unresolved.join('\n') ?? '').not.toContain('heat');
+        expect(saved.restoration).toBeUndefined();
         expect(ReadyNonMekUnit.restore(saved, entity, identity).getInstance().snapshot().heat)
             .toEqual(saved.heat!);
     });
@@ -281,8 +289,8 @@ describe('Classic V1 force converter', () => {
         const fresh = ReadyNonMekUnit.create(entity, {
             instanceId: asUnitInstanceId('unit:vtol-v1'),
             identity,
-            deployment: { id: 'v1-conversion' },
-            scenario: { id: 'test', ruleset: CORE_2026_RULESET },
+            deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
+            scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
             initialStateProfileId: 'pristine-non-mek-v1',
         });
         const source: DeferredUnitSource = {
@@ -330,13 +338,12 @@ describe('Classic V1 force converter', () => {
             { damageTrackId: motive, timestamp: 40 },
             { damageTrackId: motive, timestamp: 50 },
         ]);
-        expect(saved.restoration?.unresolved.join('\n') ?? '')
-            .not.toContain('has no unique current component');
+        expect(saved.restoration).toBeUndefined();
     });
 });
 
 describe('Alpha Strike V1 force converter', () => {
-    it('changes only the force version and detaches the persisted graph', async () => {
+    it('resolves the V1 unit name to the canonical V2 UUID and drops pristine defaults', async () => {
         const source = {
             version: 1,
             timestamp: '2026-08-10T00:00:00.000Z',
@@ -363,9 +370,24 @@ describe('Alpha Strike V1 force converter', () => {
             }],
         };
 
-        const converted = await convertPersistedForceV1(source as unknown as SerializedForce);
+        const converted = await convertPersistedForceV1(source as unknown as SerializedForce, {
+            resolveIdentity: () => ({
+                kind: 'resolved',
+                savedIdentity: { origin: 'megamek', provider: PROVIDER, uuid: UUID },
+            }),
+        });
 
-        expect(converted).toEqual({ ...source, version: 2 });
+        expect(converted).toEqual({
+            version: 2,
+            timestamp: source.timestamp,
+            instanceId: source.instanceId,
+            type: GameSystem.ALPHA_STRIKE,
+            name: source.name,
+            groups: [{
+                id: 'group:as',
+                units: [{ id: 'unit:as', uuid: UUID }],
+            }],
+        });
         expect(converted).not.toBe(source);
         expect(converted.groups).not.toBe(source.groups);
     });

@@ -19,7 +19,12 @@ import type {
     LocationId,
 } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import { getTopologyFor, LEG_LOCATIONS, MEK_TORSO_LOCATIONS } from '../entity/types';
+import {
+    getTopologyFor,
+    LEG_LOCATIONS,
+    MEK_TORSO_LOCATIONS,
+    type MekLocation,
+} from '../entity/types';
 import { gameRulesFor, type MekExplosionProtection } from '../rules/game-rules';
 import {
     BOMBAST_LASER_CHARGED_STATE,
@@ -86,7 +91,7 @@ export interface MekCriticalChanceModifier {
 
 export interface MekCriticalChanceProfileV2 {
     readonly locationId: LocationId;
-    readonly locationCode: string;
+    readonly locationCode: MekLocation;
     readonly canBlowOff: boolean;
     readonly industrialMek: boolean;
     readonly modifiers: readonly MekCriticalChanceModifier[];
@@ -105,7 +110,7 @@ export type MekBlowOffPlanV2 =
 
 export interface MekExplosionLocationDamageV2 {
     readonly locationId: LocationId;
-    readonly locationCode: string;
+    readonly locationCode: MekLocation;
     readonly internalDamage: number;
     readonly armorFaceId?: ArmorFaceId;
     readonly armorDamage: number;
@@ -116,7 +121,7 @@ export interface MekExplosionLocationDamageV2 {
 export interface MekAutomaticCriticalV2 {
     readonly equipment: string;
     readonly locationId: LocationId;
-    readonly locationCode: string;
+    readonly locationCode: MekLocation;
     readonly slotId: CriticalSlotId;
     readonly slotNumber: number;
     readonly hits: number;
@@ -390,12 +395,12 @@ export function projectPendingMekCriticalExplosionV2(
     return null;
 }
 
-export function criticalRollDiceCount(locationCode: string): 1 | 2 {
+export function criticalRollDiceCount(locationCode: MekLocation): 1 | 2 {
     return locationCode === 'HD' || LEG_LOCATIONS.has(locationCode) ? 1 : 2;
 }
 
 export function criticalSlotIndexForRoll(
-    locationCode: string,
+    locationCode: MekLocation,
     results: readonly number[],
 ): number | null {
     if (criticalRollDiceCount(locationCode) === 1) {
@@ -915,7 +920,7 @@ function criticalSlotLabel(index: MekRuntimeIndex, slot: MekIndexedCriticalSlot)
     return labels.length === 0 ? null : labels.join(' / ');
 }
 
-function diceForSlotIndex(locationCode: string, slotIndex: number): number[] {
+function diceForSlotIndex(locationCode: MekLocation, slotIndex: number): number[] {
     if (criticalRollDiceCount(locationCode) === 1) return [slotIndex + 1];
     return [slotIndex < 6 ? 1 : 4, slotIndex % 6 + 1];
 }

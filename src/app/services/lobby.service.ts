@@ -7,7 +7,7 @@ import { firstValueFrom } from 'rxjs';
 import type { ForceAlignment } from '../models/force-slot.model';
 import type { Force } from '../models/force.model';
 import type { LobbyParticipant, LobbyState } from '../models/lobby.model';
-import { DataService } from './data.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { DialogsService } from './dialogs.service';
 import { DisplayNameService } from './display-name.service';
 import { ForceBuilderService } from './force-builder.service';
@@ -21,10 +21,14 @@ const MAX_LOBBY_PARTICIPANTS = 32;
 const MAX_LOBBY_FORCES = 8;
 const MAX_REMOTE_LOAD_ATTEMPTS = 8;
 
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 @Injectable({ providedIn: 'root' })
 export class LobbyService {
     private readonly wsService = inject(WsService);
-    private readonly dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly dialogsService = inject(DialogsService);
     private readonly displayNameService = inject(DisplayNameService);
     private readonly forceBuilderService = inject(ForceBuilderService);
@@ -61,7 +65,7 @@ export class LobbyService {
         const unregisterClosed = this.wsService.registerMessageHandler('lobbyClosed', msg => {
             this.invalidateRestore();
             this.lobbyStateKnown.set(true);
-            const message = msg.reason === 'inactivity'
+            const message = msg['reason'] === 'inactivity'
                 ? 'Operation lobby closed due to inactivity'
                 : 'The lobby was closed.';
             void this.clearLobby(message);
@@ -72,11 +76,11 @@ export class LobbyService {
             void this.clearLobby('You were removed from the lobby.');
         });
         const unregisterResume = this.wsService.registerMessageHandler('lobbyResumeResult', msg => {
-            if (msg.resumed !== true && this.state()) {
+            if (msg['resumed'] !== true && this.state()) {
                 this.invalidateRestore();
                 this.lobbyStateKnown.set(true);
                 void this.clearLobby('The lobby is no longer available.');
-            } else if (msg.resumed !== true) {
+            } else if (msg['resumed'] !== true) {
                 this.lobbyStateKnown.set(true);
             } else if (this.state()) {
                 this.lobbyStateKnown.set(true);
@@ -158,10 +162,10 @@ export class LobbyService {
         this.lobbyStateKnown.set(false);
         try {
             const response = await this.request({ action: 'createLobby' });
-            if (response.action !== 'lobbyCreated') {
+            if (response['action'] !== 'lobbyCreated') {
                 throw new Error('The lobby could not be created.');
             }
-            const state = this.parseState(response.state);
+            const state = this.parseState(response['state']);
             if (!state) throw new Error('The server returned an invalid lobby.');
             this.applyState(state);
         } finally {
@@ -180,10 +184,10 @@ export class LobbyService {
         this.lobbyStateKnown.set(false);
         try {
             const response = await this.request({ action: 'joinLobby', code });
-            if (response.action !== 'lobbyJoined') {
+            if (response['action'] !== 'lobbyJoined') {
                 throw new Error('The lobby could not be joined.');
             }
-            const state = this.parseState(response.state);
+            const state = this.parseState(response['state']);
             if (!state) throw new Error('The server returned an invalid lobby.');
             this.applyState(state);
         } finally {
@@ -255,15 +259,19 @@ export class LobbyService {
         this.wsService.send({ action: 'kickLobbyParticipant', publicId });
     }
 
-    private async request(payload: object): Promise<any> {
+    private async request(payload: object): Promise<Readonly<Record<string, unknown>>> {
         if (!this.wsService.wsConnected()) {
             throw new Error('The server is not connected.');
         }
-        const response = await this.wsService.sendAndWaitForResponse(payload, {
+        const response: unknown = await this.wsService.sendAndWaitForResponse(payload, {
             suppressGlobalError: true,
         });
-        if (!response) throw new Error('The server did not respond.');
-        if (response.action === 'error') throw new Error(response.message || 'Lobby request failed.');
+        if (!isRecord(response)) throw new Error('The server did not return a valid response.');
+        if (response['action'] === 'error') {
+            throw new Error(typeof response['message'] === 'string'
+                ? response['message']
+                : 'Lobby request failed.');
+        }
         return response;
     }
 
@@ -274,13 +282,15 @@ export class LobbyService {
     private async restoreLobbyState(): Promise<void> {
         const version = ++this.restoreVersion;
         this.lobbyStateKnown.set(false);
-        const response = await this.wsService.sendAndWaitForResponse({ action: 'getLobbyState' });
-        if (version !== this.restoreVersion || response?.action !== 'lobbyStateResult') return;
+        const response: unknown = await this.wsService.sendAndWaitForResponse({ action: 'getLobbyState' });
+        if (version !== this.restoreVersion
+            || !isRecord(response)
+            || response['action'] !== 'lobbyStateResult') return;
 
-        if (response.state === null) {
+        if (response['state'] === null) {
             await this.clearLobby();
         } else {
-            const state = this.parseState(response.state);
+            const state = this.parseState(response['state']);
             if (!state) return;
             this.applyState(state);
         }
@@ -295,42 +305,56 @@ export class LobbyService {
     private saveDraftForLobby(force: Force): void {
         if (this.pendingDraftSaves.has(force)) return;
         this.pendingDraftSaves.add(force);
-        void this.dataService.saveForce(force)
+        void this.forcePersistence.saveForce(force)
             .catch(() => this.toastService.showToast('A force could not be added to the lobby.', 'error'))
             .finally(() => this.pendingDraftSaves.delete(force));
     }
 
-    private parseState(value: any): LobbyState | null {
-        if (!value || !LOBBY_CODE_PATTERN.test(value.code) || typeof value.locked !== 'boolean'
-            || typeof value.isHost !== 'boolean' || !Array.isArray(value.participants)
-            || value.participants.length > MAX_LOBBY_PARTICIPANTS) {
+    private parseState(value: unknown): LobbyState | null {
+        if (!isRecord(value)
+            || typeof value['code'] !== 'string'
+            || !LOBBY_CODE_PATTERN.test(value['code'])
+            || typeof value['locked'] !== 'boolean'
+            || typeof value['isHost'] !== 'boolean'
+            || !Array.isArray(value['participants'])
+            || value['participants'].length > MAX_LOBBY_PARTICIPANTS) {
             return null;
         }
 
         const participants: LobbyParticipant[] = [];
-        for (const entry of value.participants) {
-            if (!entry || typeof entry.publicId !== 'string' || entry.publicId.length === 0 || entry.publicId.length > 128
-                || typeof entry.self !== 'boolean' || typeof entry.host !== 'boolean'
-                || typeof entry.connected !== 'boolean'
-                || (entry.alignment !== 'friendly' && entry.alignment !== 'enemy')
-                || !Array.isArray(entry.instanceIds) || entry.instanceIds.length > MAX_LOBBY_FORCES
-                || !entry.instanceIds.every((id: unknown) => typeof id === 'string' && id.length > 0 && id.length <= 128)) {
+        for (const entry of value['participants']) {
+            if (!isRecord(entry)
+                || typeof entry['publicId'] !== 'string'
+                || entry['publicId'].length === 0
+                || entry['publicId'].length > 128
+                || typeof entry['self'] !== 'boolean'
+                || typeof entry['host'] !== 'boolean'
+                || typeof entry['connected'] !== 'boolean'
+                || (entry['alignment'] !== 'friendly' && entry['alignment'] !== 'enemy')
+                || !Array.isArray(entry['instanceIds'])
+                || entry['instanceIds'].length > MAX_LOBBY_FORCES
+                || !entry['instanceIds'].every((id: unknown) => typeof id === 'string' && id.length > 0 && id.length <= 128)) {
                 return null;
             }
-            const displayName = normalizeDisplayName(entry.displayName) ?? `Player ${entry.publicId.slice(0, 8)}`;
+            const displayName = normalizeDisplayName(entry['displayName']) ?? `Player ${entry['publicId'].slice(0, 8)}`;
             participants.push({
-                publicId: entry.publicId,
+                publicId: entry['publicId'],
                 displayName,
-                self: entry.self,
-                host: entry.host,
-                connected: entry.connected,
-                alignment: entry.alignment,
-                instanceIds: [...new Set<string>(entry.instanceIds)],
+                self: entry['self'],
+                host: entry['host'],
+                connected: entry['connected'],
+                alignment: entry['alignment'],
+                instanceIds: [...new Set(entry['instanceIds'])],
             });
         }
         if (participants.filter(participant => participant.self).length !== 1) return null;
 
-        return { code: value.code, locked: value.locked, isHost: value.isHost, participants };
+        return {
+            code: value['code'],
+            locked: value['locked'],
+            isHost: value['isHost'],
+            participants,
+        };
     }
 
     private queueReconcile(): void {
@@ -360,7 +384,7 @@ export class LobbyService {
 
             try {
                 if (slot.force.owned() && slot.force.units().length > 0) {
-                    await this.dataService.saveForce(slot.force);
+                    await this.forcePersistence.saveForce(slot.force);
                 }
                 await this.forceBuilderService.removeLoadedForce(slot.force, { skipPrompt: true });
                 unloadedHostile = true;
@@ -410,7 +434,7 @@ export class LobbyService {
             const attempts = this.remoteLoadAttempts.get(instanceId) ?? 0;
             if (attempts >= MAX_REMOTE_LOAD_ATTEMPTS) continue;
             this.remoteLoadAttempts.set(instanceId, attempts + 1);
-            const force = await this.dataService.getForce(instanceId, false, {
+            const force = await this.forcePersistence.getForce(instanceId, false, {
                 skipLocal: true,
                 showLoading: false,
             });

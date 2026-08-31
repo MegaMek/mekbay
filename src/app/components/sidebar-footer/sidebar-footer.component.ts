@@ -15,6 +15,7 @@ import { ForceWorkspaceCommandsService } from '../../services/force-workspace-co
 import { ForceImportService } from '../../services/force-import.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { DataService } from '../../services/data.service';
+import { ForcePersistenceService } from '../../services/force-persistence.service';
 import { OrganizationStorageService } from '../../services/organization-storage.service';
 import type { ForceAlignment } from '../../models/force-slot.model';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
@@ -58,6 +59,7 @@ export class SidebarFooterComponent {
     operationService = inject(ForceOperationService);
     dialogsService = inject(DialogsService);
     dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly organizationStorage = inject(OrganizationStorageService);
     appUpdateService = inject(AppUpdateService);
     lobbyService = inject(LobbyService);
@@ -293,7 +295,7 @@ export class SidebarFooterComponent {
             return;
         }
 
-        const force = await this.dataService.getForce(instanceId);
+        const force = await this.forcePersistence.getForce(instanceId);
         if (!force) {
             this.toastService.showToast('Force not found.', 'error');
             return;
@@ -311,7 +313,7 @@ export class SidebarFooterComponent {
             forceToAdd = await force.cloneForPersistence();
             forceToAdd.loading = true;
             try {
-                await this.dataService.saveForce(forceToAdd);
+                await this.forcePersistence.saveForce(forceToAdd);
             } finally {
                 forceToAdd.loading = false;
             }

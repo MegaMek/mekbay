@@ -46,6 +46,7 @@ Thumbs.db
 
 # Environment files
 .env
+AGENTS.md
 /src/app/build-meta.ts
 /plans
 /rules

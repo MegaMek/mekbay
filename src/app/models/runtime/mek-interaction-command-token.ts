@@ -6,10 +6,7 @@ import type {
     V2EquipmentInteractionChoiceBinding,
     V2EquipmentInteractionKind,
 } from '../../services/equipment-interaction-registry.service';
-import type {
-    MekEquipmentChoiceToken,
-    MekHeatCommandToken,
-} from '../cbt-force-api';
+import type { MekEquipmentChoiceToken } from '../cbt-force-api';
 import {
     asStateRevision,
     asUnitInstanceId,
@@ -34,14 +31,7 @@ export interface EquipmentChoiceTokenPayload {
     readonly groupLabel?: string;
 }
 
-export interface HeatCommandTokenPayload {
-    readonly instanceId: UnitInstanceId;
-    readonly entityUuid: string;
-    readonly stateRevision: StateRevision;
-}
-
 const EQUIPMENT_CHOICE_TOKEN_KIND = 'mek-equipment-choice-v1';
-const HEAT_COMMAND_TOKEN_KIND = 'mek-heat-command-v1';
 export function encodeEquipmentChoiceToken(input: {
     readonly instanceId: UnitInstanceId;
     readonly entityUuid: string;
@@ -103,31 +93,6 @@ export function equipmentChoiceMatches(
         && Object.is(interaction.choice.value, selected.value)
         && interaction.choice.label === selected.label
         && interaction.groupLabel === selected.groupLabel;
-}
-
-export function encodeHeatCommandToken(input: HeatCommandTokenPayload): MekHeatCommandToken {
-    return JSON.stringify([
-        HEAT_COMMAND_TOKEN_KIND,
-        input.instanceId,
-        input.entityUuid,
-        input.stateRevision,
-    ]) as MekHeatCommandToken;
-}
-
-export function decodeHeatCommandToken(token: MekHeatCommandToken): HeatCommandTokenPayload | null {
-    try {
-        const row: unknown = JSON.parse(token);
-        if (!Array.isArray(row) || row.length !== 4 || row[0] !== HEAT_COMMAND_TOKEN_KIND
-            || typeof row[1] !== 'string' || typeof row[2] !== 'string'
-            || !Number.isSafeInteger(row[3]) || (row[3] as number) < 0) return null;
-        return Object.freeze({
-            instanceId: asUnitInstanceId(row[1]),
-            entityUuid: row[2],
-            stateRevision: asStateRevision(row[3] as number),
-        });
-    } catch {
-        return null;
-    }
 }
 
 export function expandV2EquipmentDropdownBinding(

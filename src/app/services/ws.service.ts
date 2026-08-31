@@ -7,14 +7,40 @@ import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import type { SerializedForce } from '../models/force-serialization';
 import type { ServerMessage } from '../models/server-message.model';
+import type { UserStateSnapshot } from '../models/account-auth.model';
 import { APP_VERSION, BUILD_BRANCH, BUILD_COMMIT_NUMBER } from '../build-meta';
 import { uuidv7 } from '../utils/uuid.util';
+import { decodeForceFromStorage } from '../models/runtime/force-storage-codec';
 
 /** Client protocol version - increment when breaking changes are made */
 export const PROTOCOL_VERSION = 2;
 
 export type ConnectionStatusPhase = 'hidden' | 'offline' | 'online';
 export type ForceUpdateSource = 'live' | 'reconnect';
+export type WsMessage = Readonly<Record<string, unknown>>;
+
+function isRecord(value: unknown): value is WsMessage {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseWsMessage(value: unknown): WsMessage | null {
+    if (typeof value !== 'string') return null;
+    try {
+        const parsed: unknown = JSON.parse(value);
+        return isRecord(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function decodeRemoteForce(value: unknown, instanceId: string): SerializedForce | null {
+    try {
+        const force = decodeForceFromStorage(value);
+        return force.instanceId === instanceId ? force : null;
+    } catch {
+        return null;
+    }
+}
 
 interface WsRequestOptions {
     timeout?: number;
@@ -40,7 +66,7 @@ export class WsService {
     private wsReadyResolver: (() => void) | null = null;
     private readonly wsSessionId = uuidv7();
     private subscriptions = new Map<string, ForceSubscription>();
-    private actionHandlers = new Map<string, Set<(msg: any, event: MessageEvent) => void>>();
+    private actionHandlers = new Map<string, Set<(msg: WsMessage, event: MessageEvent) => void>>();
     
     // Connection state management
     private reconnectTimeoutId: number | null = null;
@@ -99,19 +125,8 @@ export class WsService {
      * Setup handler for userState responses from server
      */
     private setupUserStateHandler(): void {
-        this.registerMessageHandler('userState', (msg) => {
-            const snapshot = {
-                publicId: msg.publicId ?? null,
-                displayName: typeof msg.displayName === 'string' ? msg.displayName : null,
-                hasOAuth: msg.hasOAuth,
-                oauthProviderCount: msg.oauthProviderCount,
-                oauthProviders: Array.isArray(msg.oauthProviders) ? msg.oauthProviders : undefined,
-                availableAuthProviders: Array.isArray(msg.availableAuthProviders) ? msg.availableAuthProviders : undefined,
-                ...(typeof msg.accountProtectionPromptDismissed === 'boolean'
-                    ? { accountProtectionPromptDismissed: msg.accountProtectionPromptDismissed }
-                    : {}),
-            };
-            void this.userStateService.applyServerState(snapshot);
+        this.registerMessageHandler<WsMessage & UserStateSnapshot>('userState', (msg) => {
+            void this.userStateService.applyServerState(msg);
         });
     }
 
@@ -187,7 +202,7 @@ export class WsService {
         this.lastResumeProbeAt = now;
         try {
             const response = await this.sendAndWaitForResponse({ action: 'ping' }, this.resumeProbeTimeout);
-            if (this.ws !== socket || response?.action === 'pong') return;
+            if (this.ws !== socket || response?.['action'] === 'pong') return;
 
             this.logger.warn('WebSocket health check failed after page resume; reconnecting.');
             this.wsConnected.set(false);
@@ -308,25 +323,21 @@ export class WsService {
      * Handle incoming WebSocket messages
      */
     private handleMessage(event: MessageEvent): void {
-        let msg: any;
-        try {
-            msg = JSON.parse(event.data);
-        } catch {
-            return;
-        }
+        const msg = parseWsMessage(event.data);
+        if (!msg) return;
 
-        if (msg?.action === 'error') {
-            const locallyHandled = typeof msg.requestId === 'string'
-                && this.locallyHandledErrorRequestIds.delete(msg.requestId);
+        if (msg['action'] === 'error') {
+            const locallyHandled = typeof msg['requestId'] === 'string'
+                && this.locallyHandledErrorRequestIds.delete(msg['requestId']);
             if (!locallyHandled && this.globalErrorHandler) {
-                this.globalErrorHandler(msg.message || 'Unknown error');
+                this.globalErrorHandler(typeof msg['message'] === 'string'
+                    ? msg['message']
+                    : 'Unknown error');
             }
         }
 
-        const action = msg?.action;
-        if (!action) {
-            return;
-        }
+        const action = msg['action'];
+        if (typeof action !== 'string' || action.length === 0) return;
         // Dispatch to specific action handlers
         const handlers = this.actionHandlers.get(action);
         if (handlers) {
@@ -581,10 +592,10 @@ export class WsService {
     /**
      * Send a message and wait for response
      */
-    public async sendAndWaitForResponse(
+    public async sendAndWaitForResponse<TResponse extends WsMessage = WsMessage>(
         payload: object,
         timeoutOrOptions: number | WsRequestOptions = 5000,
-    ): Promise<any | null> {
+    ): Promise<TResponse | null> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             this.logger.warn('Cannot send: WebSocket not connected');
             return null;
@@ -606,22 +617,18 @@ export class WsService {
 
         const ws = this.ws;
 
-        return new Promise<any | null>((resolve) => {
+        return new Promise<TResponse | null>((resolve) => {
             let timeoutId: number | null = null;
 
             const handler = (event: MessageEvent) => {
-                try {
-                    const msg = JSON.parse(event.data);
-                    if (msg.requestId === requestId) {
-                        const preserveErrorOwnership = options.suppressGlobalError && msg.action === 'error';
-                        cleanup(preserveErrorOwnership);
-                        if (preserveErrorOwnership) {
-                            queueMicrotask(() => this.locallyHandledErrorRequestIds.delete(requestId));
-                        }
-                        resolve(msg);
+                const msg = parseWsMessage(event.data);
+                if (msg?.['requestId'] === requestId) {
+                    const preserveErrorOwnership = options.suppressGlobalError && msg['action'] === 'error';
+                    cleanup(preserveErrorOwnership);
+                    if (preserveErrorOwnership) {
+                        queueMicrotask(() => this.locallyHandledErrorRequestIds.delete(requestId));
                     }
-                } catch {
-                    // Ignore parse errors
+                    resolve(msg as TResponse);
                 }
             };
 
@@ -728,14 +735,10 @@ export class WsService {
         }
 
         const handler = (event: MessageEvent) => {
-            try {
-                const msg = JSON.parse(event.data);
-                if (msg.action === 'updatedForce' && msg.data?.instanceId === instanceId) {
-                    void this.notifyForceSubscription(subscription, msg.data as SerializedForce, 'live', instanceId);
-                }
-            } catch {
-                // Ignore parse errors
-            }
+            const msg = parseWsMessage(event.data);
+            if (msg?.['action'] !== 'updatedForce') return;
+            const force = decodeRemoteForce(msg['data'], instanceId);
+            if (force) void this.notifyForceSubscription(subscription, force, 'live', instanceId);
         };
 
         socket.addEventListener('message', handler);
@@ -791,10 +794,8 @@ export class WsService {
                 return;
             }
 
-            const data = response?.data;
-            if (data?.instanceId === instanceId) {
-                await this.notifyForceSubscription(subscription, data as SerializedForce, 'reconnect', instanceId);
-            }
+            const force = decodeRemoteForce(response?.['data'], instanceId);
+            if (force) await this.notifyForceSubscription(subscription, force, 'reconnect', instanceId);
         } catch (error) {
             this.logger.error(`Failed to refresh force subscription ${instanceId}: ${error}`);
         }
@@ -828,22 +829,28 @@ export class WsService {
         }
     }
 
-    public registerMessageHandler(actions: string | string[], handler: (msg: any, event: MessageEvent) => void): () => void {
+    public registerMessageHandler<TMessage extends WsMessage = WsMessage>(
+        actions: string | string[],
+        handler: (msg: TMessage, event: MessageEvent) => void,
+    ): () => void {
         const list = Array.isArray(actions) ? actions : [actions];
+        const wrappedHandler = (msg: WsMessage, event: MessageEvent) => {
+            handler(msg as TMessage, event);
+        };
         list.forEach(action => {
             let set = this.actionHandlers.get(action);
             if (!set) {
                 set = new Set();
                 this.actionHandlers.set(action, set);
             }
-            set.add(handler);
+            set.add(wrappedHandler);
         });
         // Unsubscribe closure
         return () => {
             list.forEach(action => {
                 const set = this.actionHandlers.get(action);
                 if (set) {
-                    set.delete(handler);
+                    set.delete(wrappedHandler);
                     if (set.size === 0) {
                         this.actionHandlers.delete(action);
                     }
@@ -858,10 +865,15 @@ export class WsService {
     ): () => void {
         const types = Array.isArray(messageTypes) ? messageTypes : [messageTypes];
         return this.registerMessageHandler('serverMessage', (msg, event) => {
-            if (!types.includes(msg?.messageType)) {
-                return;
-            }
-            handler(msg as ServerMessage, event);
+            if (msg['action'] !== 'serverMessage'
+                || typeof msg['messageType'] !== 'string'
+                || !types.includes(msg['messageType'])
+                || !('payload' in msg)) return;
+            handler({
+                action: 'serverMessage',
+                messageType: msg['messageType'],
+                payload: msg['payload'],
+            }, event);
         });
     }
 

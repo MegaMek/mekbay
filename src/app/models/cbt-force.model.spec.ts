@@ -26,7 +26,11 @@ import {
     type SerializedCBTUnitV2,
     type SerializedCBTForceV2,
 } from './runtime/persistence-v2';
-import { asEncounterNetworkId, asEncounterTargetId } from './runtime/encounter-runtime';
+import {
+    asEncounterNetworkId,
+    asEncounterTargetId,
+    type EncounterNetwork,
+} from './runtime/encounter-runtime';
 import { RUNTIME_HISTORY_MESSAGE } from './runtime/runtime-history';
 import { ReadyMekUnitFactory } from './runtime/ready-unit-factory';
 import { decodeForceFromStorage, encodeForceForStorage } from './runtime/force-storage-codec';
@@ -723,7 +727,10 @@ describe('CBTForce V2 encounter persistence', () => {
 
         const loading = force.loadCBTForceV2Persistence(saved);
         await preparationEntered;
-        expect(force.replaceC3EncounterNetworks([])).toBeFalse();
+        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            [],
+        )).toBeFalse();
         release();
 
         expect(await loading).toBeTrue();
@@ -830,7 +837,6 @@ describe('CBTForce V2 encounter persistence', () => {
         (force as any)._owned.set(false);
         const original = force.queryInventoryControlTargetRegistry();
 
-        expect(() => force.clone()).toThrowError(/cloneForPersistence/u);
         const cloned = await force.cloneForPersistence() as CBTForce;
         const copied = cloned.queryInventoryControlTargetRegistry();
 
@@ -1286,15 +1292,18 @@ describe('CBTForce V2 encounter persistence', () => {
 
     it('evaluates non-Mek Entity C3 endpoints from sparse runtime state', async () => {
         const { force, firstId, secondId, componentId } = await readyEntityC3Force();
-        expect(force.replaceC3EncounterNetworks([{
-            id: asEncounterNetworkId('network:entity-c3i'),
-            networkType: 'c3i',
-            color: '#1565C0',
-            endpoints: [
-                { instanceId: firstId, componentId, role: 'peer' },
-                { instanceId: secondId, componentId, role: 'peer' },
-            ],
-        }])).toBeTrue();
+        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            [{
+                id: asEncounterNetworkId('network:entity-c3i'),
+                networkType: 'c3i',
+                color: '#1565C0',
+                endpoints: [
+                    { instanceId: firstId, componentId, role: 'peer' },
+                    { instanceId: secondId, componentId, role: 'peer' },
+                ],
+            }],
+        )).toBeTrue();
         expect(force.getC3State(firstId)).toBe('operational');
         expect(force.getC3State(secondId)).toBe('operational');
         expect(force.isC3EndpointOperational(firstId, componentId)).toBeTrue();
@@ -1339,6 +1348,91 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(callsFor(secondId)).toBe(secondBaseCallsAfterDamage + 1);
     });
 
+    it('rejects a non-canonical graph at the force commit boundary', async () => {
+        const { force, firstId, componentId } = await readyEntityC3Force();
+        const invalid: EncounterNetwork = {
+            id: asEncounterNetworkId('network:single-peer'),
+            networkType: 'c3i',
+            color: '#1565C0',
+            endpoints: [{ instanceId: firstId, componentId, role: 'peer' }],
+        };
+
+        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            [invalid],
+        )).toBeFalse();
+        expect(force.c3EncounterNetworks()).toEqual([]);
+    });
+
+    it('validates encounter networks with the canonical utility before saving', async () => {
+        const { force, firstId, componentId } = await readyEntityC3Force();
+        const invalid: EncounterNetwork = {
+            id: asEncounterNetworkId('network:invalid-save'),
+            networkType: 'c3i',
+            color: '#1565C0',
+            endpoints: [{ instanceId: firstId, componentId, role: 'peer' }],
+        };
+        const seam = force as unknown as {
+            encounterRuntime: { replaceNetworks(networks: readonly EncounterNetwork[]): void };
+        };
+        seam.encounterRuntime.replaceNetworks([invalid]);
+
+        await expectAsync(force.serializeForPersistence())
+            .toBeRejectedWithError(/Cannot persist non-canonical C3 network facts/u);
+    });
+
+    it('validates encounter networks with the canonical utility after hydrating a load', async () => {
+        const { force, firstId, secondId, componentId } = await readyEntityC3Force();
+        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            [{
+                id: asEncounterNetworkId('network:invalid-load'),
+                networkType: 'c3i',
+                color: '#1565C0',
+                endpoints: [
+                    { instanceId: firstId, componentId, role: 'peer' },
+                    { instanceId: secondId, componentId, role: 'peer' },
+                ],
+            }],
+        )).toBeTrue();
+        const tampered = structuredClone(await force.serializeForPersistence()) as any;
+        const fact = tampered.cbt.encounter.state.facts.find((candidate: { kind: string }) =>
+            candidate.kind === 'network');
+        fact.network.endpoints = [fact.network.endpoints[0]];
+
+        await expectAsync(force.loadCBTForceV2Persistence(tampered))
+            .toBeRejectedWithError(/Restored C3 network facts are not canonical/u);
+        expect(force.c3EncounterNetworks()[0].endpoints).toHaveSize(2);
+    });
+
+    it('commits and persists a C3 editor linkage across a cloud-save acknowledgement', async () => {
+        const { force, firstId, secondId, componentId } = await readyEntityC3Force();
+        const baseline = await force.serializeForPersistence();
+        const editorFence = force.captureForceOwnerRevisionFence();
+        const persistenceFingerprint = force.captureWholeOwnerAuthorityFingerprint();
+        let changedUnitIds: readonly string[] | null | undefined;
+        const subscription = force.changed.subscribe(ids => { changedUnitIds = ids; });
+        force.markCloudCBTForceV2Saved(baseline);
+
+        expect(force.isWholeOwnerAuthorityFingerprintCurrent(persistenceFingerprint)).toBeFalse();
+        expect(force.isForceOwnerRevisionFenceCurrent(editorFence)).toBeTrue();
+        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(editorFence, [{
+            id: asEncounterNetworkId('network:cloud-ack'),
+            networkType: 'c3i',
+            color: '#1565C0',
+            endpoints: [
+                { instanceId: firstId, componentId, role: 'peer' },
+                { instanceId: secondId, componentId, role: 'peer' },
+            ],
+        }])).toBeTrue();
+        expect(changedUnitIds).toEqual([firstId, secondId]);
+
+        const saved = await force.serializeForPersistence();
+        expect(saved.cbt!.encounter.state.facts.some(fact =>
+            fact.kind === 'network' && fact.network.id === 'network:cloud-ack')).toBeTrue();
+        subscription.unsubscribe();
+    });
+
     it('keeps C3 topology outside undo while preserving prior unit commands', async () => {
         const { force, firstId, secondId, componentId } = await readyEntityC3Force();
         const before = entityRuntimeSnapshot(force, firstId);
@@ -1360,7 +1454,10 @@ describe('CBTForce V2 encounter persistence', () => {
             ],
         };
 
-        expect(force.replaceC3EncounterNetworks([network])).toBeTrue();
+        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            [network],
+        )).toBeTrue();
         expect(force.getRuntimeUndoState()).toEqual(undoBeforeNetwork);
         expect(force.getRuntimeHistory()).toEqual(historyBeforeNetwork);
 

@@ -6,29 +6,13 @@ import { Sanitizer } from '../utils/sanitizer.util';
 import { GameSystem } from './common.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import type { C3NetworkType } from './c3-network.model';
-import { DEFAULT_GUNNERY_SKILL } from './crew.model';
-import {
-    cloneAsJson,
-    sanitizeSavedEntityIdentity,
-    type SavedEntityIdentity,
-} from './persisted-unit-state';
 import type { SerializedCBTForceV2 } from './runtime/persistence-v2';
 import { isUnitConditionKey, type UnitConditionKey } from './unit-condition.model';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 export const FORCE_NOTE_MAX_LENGTH = 2000;
 const FORCE_TAG_MAX_LENGTH = 48;
 const FORCE_TAG_MAX_COUNT = 32;
-
-function preserveEntityIdentityForDeferredResolution(value: unknown): SavedEntityIdentity | undefined {
-    if (value === undefined || value === null) return undefined;
-    try {
-        return sanitizeSavedEntityIdentity(value);
-    } catch {
-        // Do not turn a malformed identity into an unsafe name fallback. The UUID-first
-        // resolver receives the original JSON and converts the unit to a deferred record.
-        return cloneAsJson(value) as unknown as SavedEntityIdentity;
-    }
-}
 
 function sanitizeForceTagLabel(rawTag: unknown): string | null {
     if (typeof rawTag !== 'string') {
@@ -114,12 +98,14 @@ export interface SerializedGroup {
     formationId?: string;
     formationLock?: boolean;
     formationTargetGroupId?: string;
-    units: SerializedUnit[];
+    units: (SerializedUnit | ASSerializedUnit)[];
 }
 
-interface ASSerializedGroup extends SerializedGroup {
+export interface ASSerializedGroup extends SerializedGroup {
     units: ASSerializedUnit[];
 }
+
+/** V1-only unit row. Current Alpha Strike persistence uses UUIDs below. */
 export interface SerializedUnit {
     id: string;
     unit: string; // Unit name
@@ -128,16 +114,25 @@ export interface SerializedUnit {
     alias?: string;
     commander?: boolean;
     updatedTs?: number;
-    /** UUID/provider identity plus optional source-revision witnesses at save time. */
-    entityIdentity?: SavedEntityIdentity;
+    /** Historical UUID/provider identity used only while importing V1. */
+    entityIdentity?: import('./persisted-unit-state').SavedEntityIdentity;
     state: SerializedState;
 }
-export interface ASSerializedUnit extends SerializedUnit {
-    state: ASSerializedState;
-    skill: number;
-    abilities: (string | ASCustomPilotAbility)[]; // Array of ability IDs or custom abilities
+
+/**
+ * Current Alpha Strike unit wire row. Catalog facts are derived from UUID;
+ * every other field is omitted when it equals the runtime default.
+ */
+export interface ASSerializedUnit {
+    id: string;
+    uuid: UnitUuid;
+    alias?: string;
+    updatedTs?: number;
+    state?: ASSerializedState;
+    skill?: number;
+    abilities?: (string | ASCustomPilotAbility)[];
     formationAbilities?: string[];
-    commander?: boolean;
+    commander?: true;
 }
 
 export interface ConditionData {
@@ -178,8 +173,8 @@ export function conditionsForSerialization(conditions: ReadonlyMap<UnitCondition
 }
 
 export interface SerializedState {
-    modified: boolean;
-    destroyed: boolean;
+    modified?: boolean;
+    destroyed?: boolean;
     conditions?: SerializedCondition[];
     /** Position in the C3 network visual editor */
     c3Position?: { x: number; y: number };
@@ -221,20 +216,20 @@ export interface SerializedC3NetworkGroup {
 
 export interface ASSerializedState extends SerializedState {
     /** Heat as [committed, pendingDelta]. pendingDelta of 0 means no pending change. */
-    heat: [number, number];
+    heat?: [number, number];
     /** Armor as [committed, pendingDelta]. Positive = damage, negative = heal. */
-    armor: [number, number];
+    armor?: [number, number];
     /** Internal as [committed, pendingDelta]. Positive = damage, negative = heal. */
-    internal: [number, number];
+    internal?: [number, number];
     /** 
      * Array of committed critical hits with timestamps for ordering.
      */
-    crits: ASCriticalHit[];
+    crits?: [key: string, timestamp: number][];
     /**
      * Array of pending critical hit changes.
      * Positive timestamp = pending damage, negative timestamp = pending heal.
      */
-    pCrits: ASCriticalHit[];
+    pCrits?: [key: string, timestamp: number][];
     /**
      * Consumed ability counts. Key is ability originalText, value is [committed, pendingDelta].
      * Example: { "BOMB4": [2, 1] } means 2 bombs used, 1 more pending.
@@ -322,14 +317,6 @@ function sanitizeConditions(value: unknown): SerializedCondition[] | undefined {
 // ===== Alpha Strike Schemas =====
 
 /**
- * Schema for ASCriticalHit - single critical hit with timestamp
- */
-const AS_CRITICAL_HIT_SCHEMA = Sanitizer.schema<ASCriticalHit>()
-    .string('key')
-    .number('timestamp', { default: 0 })
-    .build();
-
-/**
  * Schema for ASCustomPilotAbility
  */
 const AS_CUSTOM_PILOT_ABILITY_SCHEMA = Sanitizer.schema<ASCustomPilotAbility>()
@@ -342,8 +329,8 @@ const AS_CUSTOM_PILOT_ABILITY_SCHEMA = Sanitizer.schema<ASCustomPilotAbility>()
  * Schema for ASSerializedState
  */
 export const AS_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<ASSerializedState>()
-    .boolean('modified', { default: false })
-    .boolean('destroyed', { default: false })
+    .boolean('modified')
+    .boolean('destroyed')
     .custom('conditions', sanitizeConditions)
     .custom('c3Position', (value: unknown) => {
         if (!value || typeof value !== 'object') return undefined;
@@ -356,7 +343,7 @@ export const AS_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<ASSerializedState>()
                 typeof value[1] === 'number' ? value[1] : 0
             ] as [number, number];
         }
-        return [0, 0] as [number, number];
+        return undefined;
     })
     .custom('armor', (value: unknown) => {
         if (Array.isArray(value) && value.length >= 2) {
@@ -365,7 +352,7 @@ export const AS_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<ASSerializedState>()
                 typeof value[1] === 'number' ? value[1] : 0
             ] as [number, number];
         }
-        return [0, 0] as [number, number];
+        return undefined;
     })
     .custom('internal', (value: unknown) => {
         if (Array.isArray(value) && value.length >= 2) {
@@ -374,15 +361,31 @@ export const AS_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<ASSerializedState>()
                 typeof value[1] === 'number' ? value[1] : 0
             ] as [number, number];
         }
-        return [0, 0] as [number, number];
+        return undefined;
     })
     .custom('crits', (value: unknown) => {
-        if (!Array.isArray(value)) return [];
-        return Sanitizer.sanitizeArray(value, AS_CRITICAL_HIT_SCHEMA);
+        if (!Array.isArray(value)) return undefined;
+        const rows = value.flatMap((entry): [string, number][] => (
+            Array.isArray(entry)
+                && typeof entry[0] === 'string'
+                && typeof entry[1] === 'number'
+                && Number.isFinite(entry[1])
+                ? [[entry[0], entry[1]]]
+                : []
+        ));
+        return rows.length > 0 ? rows : undefined;
     })
     .custom('pCrits', (value: unknown) => {
-        if (!Array.isArray(value)) return [];
-        return Sanitizer.sanitizeArray(value, AS_CRITICAL_HIT_SCHEMA);
+        if (!Array.isArray(value)) return undefined;
+        const rows = value.flatMap((entry): [string, number][] => (
+            Array.isArray(entry)
+                && typeof entry[0] === 'string'
+                && typeof entry[1] === 'number'
+                && Number.isFinite(entry[1])
+                ? [[entry[0], entry[1]]]
+                : []
+        ));
+        return rows.length > 0 ? rows : undefined;
     })
     .custom('consumed', (value: unknown) => {
         if (!value || typeof value !== 'object') return undefined;
@@ -414,33 +417,29 @@ export const AS_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<ASSerializedState>()
  */
 export const AS_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<ASSerializedUnit>()
     .string('id')
-    .string('unit')
-    .string('model')
-    .string('chassis')
+    .string('uuid')
     .string('alias')
     .number('updatedTs')
-    .custom('entityIdentity', preserveEntityIdentityForDeferredResolution)
-    .number('skill', { default: DEFAULT_GUNNERY_SKILL, min: 0, max: 8 })
+    .number('skill', { min: 0, max: 8 })
     .custom('abilities', (value: unknown) => {
-        if (!Array.isArray(value)) return [];
-        return value.map((item: unknown) => {
+        if (!Array.isArray(value)) return undefined;
+        const abilities = value.map((item: unknown) => {
             if (typeof item === 'string') return item;
             if (typeof item === 'object' && item !== null) {
                 return Sanitizer.sanitize(item, AS_CUSTOM_PILOT_ABILITY_SCHEMA);
             }
             return null;
         }).filter((item): item is string | ASCustomPilotAbility => item !== null);
+        return abilities.length > 0 ? abilities : undefined;
     })
     .custom('formationAbilities', (value: unknown) => {
         if (!Array.isArray(value)) return undefined;
         const abilities = value.filter((item): item is string => typeof item === 'string');
         return abilities.length > 0 ? [...new Set(abilities)] : undefined;
     })
-    .boolean('commander')
+    .custom('commander', (value: unknown) => value === true ? true : undefined)
     .custom('state', (value: unknown) => {
-        if (!value || typeof value !== 'object') {
-            return Sanitizer.sanitize({}, AS_SERIALIZED_STATE_SCHEMA);
-        }
+        if (!value || typeof value !== 'object') return undefined;
         return Sanitizer.sanitize(value, AS_SERIALIZED_STATE_SCHEMA);
     })
     .build();

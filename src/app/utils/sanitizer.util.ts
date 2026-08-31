@@ -255,7 +255,7 @@ export class SchemaBuilder<T extends object> {
         return this;
     }
 
-    enum<K extends keyof T>(key: K, values: readonly any[], defaultValue?: any): this {
+    enum<K extends keyof T>(key: K, values: readonly T[K][], defaultValue?: T[K]): this {
         this._rules[key] = { kind: 'enum', values, default: defaultValue } as Rule;
         return this;
     }
@@ -265,7 +265,7 @@ export class SchemaBuilder<T extends object> {
         return this;
     }
 
-    any<K extends keyof T>(key: K, defaultValue?: any): this {
+    any<K extends keyof T>(key: K, defaultValue?: T[K]): this {
         this._rules[key] = { kind: 'any', default: defaultValue } as Rule;
         return this;
     }
@@ -288,10 +288,10 @@ export class Schema<T extends object> {
     }
 
     _createDefault(): T {
-        const result: any = {};
+        const result: Partial<T> = {};
         for (const [key, rule] of Object.entries(this._rules) as Array<[keyof T, Rule]>) {
             if (rule.default !== undefined) {
-                result[key] = rule.default;
+                result[key] = rule.default as T[keyof T];
             }
         }
         return result as T;
@@ -332,28 +332,28 @@ interface BooleanRule {
 
 interface ObjectRule {
     kind: 'object';
-    schema?: Schema<any>;
-    default?: any;
+    schema?: Schema<object>;
+    default?: unknown;
 }
 
 interface ArrayRule {
     kind: 'array';
-    itemSchema?: Schema<any>;
-    default?: any[];
+    itemSchema?: Schema<object>;
+    default?: unknown[];
     minLength?: number;
     maxLength?: number;
 }
 
 interface RecordRule {
     kind: 'record';
-    valueSchema?: Schema<any>;
-    default?: Record<string, any>;
+    valueSchema?: Schema<object>;
+    default?: Record<string, unknown>;
 }
 
 interface EnumRule {
     kind: 'enum';
-    values: readonly any[];
-    default?: any;
+    values: readonly unknown[];
+    default?: unknown;
 }
 
 interface DateRule {
@@ -363,13 +363,13 @@ interface DateRule {
 
 interface AnyRule {
     kind: 'any';
-    default?: any;
+    default?: unknown;
 }
 
 interface CustomRule {
     kind: 'custom';
-    validate: (value: unknown, options: SanitizeOptions) => any;
-    default?: any;
+    validate: (value: unknown, options: SanitizeOptions) => unknown;
+    default?: unknown;
 }
 
 export class SanitizationError extends Error {

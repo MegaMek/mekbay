@@ -29,6 +29,7 @@ import {
     UNIT_CONDITION_DEFINITIONS,
     unitConditionControls,
 } from '../../models/unit-status-presentation';
+import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
 import {
     renderRecordSheetConditions,
     renderRecordSheetCrewState,
@@ -159,6 +160,9 @@ export function bindNonMekRecordSheet(
             }
             const code = attributeValue(location.sheetCode);
             const internalPips = [...svg.querySelectorAll<SVGElement>(`.structure.pip[loc="${code}"]`)];
+            const internalGrids = [
+                ...svg.querySelectorAll<SVGElement>(`.capital-pip-grid.structure[loc="${code}"]`),
+            ];
             renderRecordSheetPips(
                 internalPips,
                 location.maximumInternal,
@@ -166,8 +170,16 @@ export function bindNonMekRecordSheet(
                 location.previewRemainingInternal,
                 markChanges,
             );
-            if (location.maximumInternal > 0 && internalPips.length < location.maximumInternal) {
-                issues.push(`Missing structure pips for ${location.sheetCode}: ${internalPips.length}/${location.maximumInternal}`);
+            CapitalShipPipRenderer.renderDamage(
+                internalGrids,
+                location.maximumInternal,
+                location.remainingInternal,
+                location.previewRemainingInternal,
+                markChanges,
+            );
+            const internalCapacity = internalPips.length + CapitalShipPipRenderer.capacity(internalGrids);
+            if (location.maximumInternal > 0 && internalCapacity < location.maximumInternal) {
+                issues.push(`Missing structure pips for ${location.sheetCode}: ${internalCapacity}/${location.maximumInternal}`);
             }
             const internalTargets = interactionTargets(
                 svg.querySelector<SVGElement>(`.unitLocation.structure[loc="${code}"]`),
@@ -522,9 +534,20 @@ function renderArmorFace(
     const rear = face.face === 'rear';
     const rearSelector = rear ? '[rear]' : ':not([rear])';
     const pips = [...svg.querySelectorAll<SVGElement>(`.armor.pip${rearSelector}[loc="${code}"]`)];
+    const grids = [
+        ...svg.querySelectorAll<SVGElement>(`.capital-pip-grid.armor${rearSelector}[loc="${code}"]`),
+    ];
     renderRecordSheetPips(pips, face.maximum, face.remaining, face.previewRemaining, markChanges);
-    if (face.maximum > 0 && pips.length < face.maximum) {
-        issues.push(`Missing ${rear ? 'rear ' : ''}armor pips for ${sheetCode}: ${pips.length}/${face.maximum}`);
+    CapitalShipPipRenderer.renderDamage(
+        grids,
+        face.maximum,
+        face.remaining,
+        face.previewRemaining,
+        markChanges,
+    );
+    const capacity = pips.length + CapitalShipPipRenderer.capacity(grids);
+    if (face.maximum > 0 && capacity < face.maximum) {
+        issues.push(`Missing ${rear ? 'rear ' : ''}armor pips for ${sheetCode}: ${capacity}/${face.maximum}`);
     }
     const targets = interactionTargets(
         svg.querySelector<SVGElement>(`.unitLocation.armor${rearSelector}[loc="${code}"]`),

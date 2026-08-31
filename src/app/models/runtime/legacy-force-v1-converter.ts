@@ -2,7 +2,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { GameSystem } from '../common.model';
-import type { SerializedForce } from '../force-serialization';
+import { CORE_2026_RULESET } from '../cbt-ruleset.model';
+import { DEFAULT_GUNNERY_SKILL } from '../crew.model';
+import type {
+    ASSerializedForce,
+    ASSerializedGroup,
+    ASSerializedState,
+    ASSerializedUnit,
+    ConditionData,
+    SerializedCondition,
+    SerializedForce,
+} from '../force-serialization';
+import type { ASCustomPilotAbility } from '../pilot-abilities.model';
 import {
     cloneAsJson,
     extractDeferredUnitRecovery,
@@ -57,7 +68,6 @@ import type {
     SystemDamageTrackId,
 } from '../entity/entity-identifiers';
 import { restoreLegacyUnitState } from './state-restorer';
-import { encodeLegacyUnitRestorationSidecarV2 } from './legacy-restoration-sidecar';
 import { serializeCBTUnitStateV2 } from './runtime-state-codec-v2';
 import { canonicalizeMekTurnStateV2 } from './mek-turn-state-v2';
 import { buildMekRuntimeIndex } from './mek-runtime-index';
@@ -67,13 +77,14 @@ import {
 } from './mek-heat-state-v2';
 import { createMekMechanicsContextV2 } from './mek-mechanics-context-v2';
 import { CBTUnitInstance } from './unit-instance';
+import { DEFAULT_FORCE_DEPLOYMENT_ID } from './unit-state-initializer';
 
 const V1_SCENARIO_RULES = Object.freeze({
     schemaVersion: 1 as const,
-    values: Object.freeze({ id: 'v1-conversion' }),
+    values: Object.freeze({ id: 'megamek', ruleset: CORE_2026_RULESET }),
 });
 
-const V1_CONVERSION_DEPLOYMENT = Object.freeze({ id: 'legacy-v1-to-v2' });
+const V1_CONVERSION_DEPLOYMENT = Object.freeze({ id: DEFAULT_FORCE_DEPLOYMENT_ID });
 
 export interface PersistedForceV1ConversionOptions {
     readonly resolveIdentity?: UnitIdentityResolver;
@@ -83,6 +94,13 @@ export interface PersistedForceV1ConversionOptions {
         readonly deployment: typeof V1_CONVERSION_DEPLOYMENT;
         readonly scenario: typeof V1_SCENARIO_RULES.values;
     }) => Promise<SerializedCBTUnitV2 | SerializedNonMekUnit | undefined>;
+    readonly onWarning?: (warning: PersistedForceV1ConversionWarning) => void;
+}
+
+export interface PersistedForceV1ConversionWarning {
+    readonly kind: 'unit-skipped' | 'state-reset';
+    readonly unit: string;
+    readonly message: string;
 }
 
 /** The only force V1 ingress. Runtime construction receives the returned V2 record. */
@@ -93,18 +111,180 @@ export async function convertPersistedForceV1(
     if (force.version !== 1) {
         throw new Error('Force V1 conversion requires a version 1 force');
     }
-    if (force.type === GameSystem.ALPHA_STRIKE) {
-        const payload = requireObject(cloneAsJson(force), 'Alpha Strike V1 force');
-        return Object.freeze({
-            ...payload,
-            version: 2,
-        }) as unknown as SerializedForce;
+    const legacyType = (force as SerializedForce & { readonly type?: unknown }).type;
+    if (legacyType === GameSystem.ALPHA_STRIKE) {
+        return convertAlphaStrikeForce(force, options);
     }
-    if (force.type !== GameSystem.CLASSIC || force.cbt !== undefined) {
+    // Early production V1 records had no game-system discriminator. Like the
+    // origin/next loader, treat every non-AS record as Classic.
+    if ((legacyType !== undefined && legacyType !== GameSystem.CLASSIC) || force.cbt !== undefined) {
         throw new Error('Unsupported version 1 force type');
     }
 
     return convertClassicForce(force, options);
+}
+
+function convertAlphaStrikeForce(
+    force: SerializedForce,
+    options: PersistedForceV1ConversionOptions,
+): ASSerializedForce {
+    const payload = requireObject(cloneAsJson(force), 'Alpha Strike V1 force');
+    const rawGroups = payload['groups'];
+    if (!Array.isArray(rawGroups)) throw new Error('Alpha Strike V1 force groups must be an array');
+    if (!options.resolveIdentity) throw new Error('Alpha Strike V1 conversion requires the unit catalog');
+
+    const groupIds = new Set<string>();
+    const unitIds = new Set<string>();
+    const groups: ASSerializedGroup[] = rawGroups.map((rawGroup, groupOrder) => {
+        const group = requireObject(rawGroup, `Alpha Strike V1 group ${groupOrder}`);
+        const id = readGroupId(group, groupOrder);
+        if (groupIds.has(id)) throw new Error(`Alpha Strike V1 force has duplicate group ID ${id}`);
+        groupIds.add(id);
+        const rawUnits = group['units'];
+        if (!Array.isArray(rawUnits)) throw new Error(`Alpha Strike V1 group ${id} requires a units array`);
+        const units = rawUnits.flatMap((rawUnit, unitOrder): ASSerializedUnit[] => {
+            const unit = requireObject(rawUnit, `Alpha Strike V1 unit ${groupOrder}:${unitOrder}`);
+            const rowLabel = `Alpha Strike V1 unit ${groupOrder}:${unitOrder}`;
+            const instanceId = requireV1Text(unit, 'id', rowLabel);
+            const legacyName = requireV1Text(unit, 'unit', rowLabel);
+            if (unitIds.has(instanceId)) {
+                throw new Error(`Alpha Strike V1 force has duplicate unit ID ${instanceId}`);
+            }
+            unitIds.add(instanceId);
+
+            const identity = options.resolveIdentity!(unit);
+            if (identity.kind !== 'resolved') {
+                options.onWarning?.({
+                    kind: 'unit-skipped',
+                    unit: legacyName,
+                    message: `Unit "${legacyName}" is not installed and was skipped.`,
+                });
+                return [];
+            }
+
+            const base: ASSerializedUnit = { id: instanceId, uuid: identity.savedIdentity.uuid };
+            try {
+                return [{ ...base, ...convertAlphaStrikeV1MutableState(unit) }];
+            } catch (error) {
+                const detail = error instanceof Error ? error.message : String(error);
+                options.onWarning?.({
+                    kind: 'state-reset',
+                    unit: legacyName,
+                    message: `Unit "${legacyName}" loaded without its saved state: ${detail}`,
+                });
+                return [base];
+            }
+        });
+
+        const name = optionalMetadata(group, 'name', `Alpha Strike V1 group ${id}`);
+        const color = optionalMetadata(group, 'color', `Alpha Strike V1 group ${id}`);
+        const formationId = optionalMetadata(group, 'formationId', `Alpha Strike V1 group ${id}`);
+        const formationTargetGroupId = optionalMetadata(
+            group,
+            'formationTargetGroupId',
+            `Alpha Strike V1 group ${id}`,
+        );
+        const formationLock = sparseTrue(group, 'formationLock', `Alpha Strike V1 group ${id}`);
+        return {
+            id,
+            ...(name === undefined ? {} : { name }),
+            ...(color === undefined ? {} : { color }),
+            ...(formationId === undefined ? {} : { formationId }),
+            ...(formationTargetGroupId === undefined ? {} : { formationTargetGroupId }),
+            ...(formationLock ? { formationLock: true } : {}),
+            units,
+        };
+    });
+
+    return Object.freeze({
+        version: 2,
+        timestamp: requireV1Text(payload, 'timestamp', 'Alpha Strike V1 force'),
+        instanceId: requireV1Text(payload, 'instanceId', 'Alpha Strike V1 force'),
+        type: GameSystem.ALPHA_STRIKE,
+        name: requireV1Text(payload, 'name', 'Alpha Strike V1 force'),
+        ...(typeof force.note === 'string' && force.note.length > 0 ? { note: force.note } : {}),
+        ...(Array.isArray(force.tags) && force.tags.length > 0 ? { tags: [...force.tags] } : {}),
+        ...(typeof force.factionId === 'number' ? { factionId: force.factionId } : {}),
+        ...(force.factionLock === true ? { factionLock: true } : {}),
+        ...(typeof force.eraId === 'number' ? { eraId: force.eraId } : {}),
+        ...(force.eraLock === true ? { eraLock: true } : {}),
+        ...(force.owned === false ? { owned: false } : {}),
+        groups,
+        ...(Array.isArray(force.c3Networks) && force.c3Networks.length > 0
+            ? { c3Networks: structuredClone(force.c3Networks) }
+            : {}),
+    });
+}
+
+function convertAlphaStrikeV1MutableState(unit: JsonObject): Omit<ASSerializedUnit, 'id' | 'uuid'> {
+    const rawAlias = unit['alias'];
+    const rawUpdatedTs = unit['updatedTs'];
+    const rawSkill = unit['skill'];
+    const rawCommander = unit['commander'];
+    if (rawAlias !== undefined && (typeof rawAlias !== 'string' || rawAlias.includes('\0'))) {
+        throw new Error('pilot alias is invalid');
+    }
+    if (rawUpdatedTs !== undefined
+        && (typeof rawUpdatedTs !== 'number' || !Number.isFinite(rawUpdatedTs) || rawUpdatedTs < 0)) {
+        throw new Error('updated timestamp is invalid');
+    }
+    if (rawSkill !== undefined
+        && (typeof rawSkill !== 'number' || !Number.isFinite(rawSkill) || rawSkill < 0)) {
+        throw new Error('pilot skill is invalid');
+    }
+    if (rawCommander !== undefined && typeof rawCommander !== 'boolean') {
+        throw new Error('commander state is invalid');
+    }
+    const alias = typeof rawAlias === 'string' && rawAlias.length > 0 ? rawAlias : undefined;
+    const updatedTs = typeof rawUpdatedTs === 'number' ? rawUpdatedTs : undefined;
+    const skill = typeof rawSkill === 'number' ? rawSkill : undefined;
+    if (skill !== undefined && (!Number.isInteger(skill) || skill < 0 || skill > 8)) {
+        throw new Error('pilot skill is outside 0..8');
+    }
+    const abilities = convertAlphaStrikeV1Abilities(unit['abilities']);
+    const formationAbilities = convertAlphaStrikeV1StringArray(unit['formationAbilities'], 'formation abilities');
+    const state = convertAlphaStrikeV1State(unit['state']);
+    return {
+        ...(alias === undefined ? {} : { alias }),
+        ...(updatedTs === undefined || updatedTs === 0 ? {} : { updatedTs }),
+        ...(skill === undefined || skill === DEFAULT_GUNNERY_SKILL ? {} : { skill }),
+        ...(abilities === undefined || abilities.length === 0 ? {} : { abilities }),
+        ...(formationAbilities === undefined || formationAbilities.length === 0 ? {} : { formationAbilities }),
+        ...(rawCommander === true ? { commander: true } : {}),
+        ...(state === undefined ? {} : { state }),
+    };
+}
+
+function convertAlphaStrikeV1State(value: JsonValue | undefined): ASSerializedState | undefined {
+    if (value === undefined || value === null) return undefined;
+    const state = requireObject(value, 'Alpha Strike V1 unit state');
+    const modified = state['modified'];
+    const destroyed = state['destroyed'];
+    if (modified !== undefined && typeof modified !== 'boolean') throw new Error('modified state is invalid');
+    if (destroyed !== undefined && typeof destroyed !== 'boolean') throw new Error('destroyed state is invalid');
+    const conditions = convertAlphaStrikeV1Conditions(state['conditions']);
+    const c3Position = convertAlphaStrikeV1Position(state['c3Position']);
+    const heat = convertAlphaStrikeV1Track(state['heat'], 'heat');
+    const armor = convertAlphaStrikeV1Track(state['armor'], 'armor');
+    const internal = convertAlphaStrikeV1Track(state['internal'], 'internal');
+    const crits = convertAlphaStrikeV1Crits(state['crits'], 'critical hits');
+    const pCrits = convertAlphaStrikeV1Crits(state['pCrits'], 'pending critical hits');
+    const consumed = convertAlphaStrikeV1Consumed(state['consumed']);
+    const exhausted = convertAlphaStrikeV1Exhausted(state['exhausted']);
+    const result: ASSerializedState = {
+        ...(modified ? { modified: true } : {}),
+        ...(destroyed ? { destroyed: true } : {}),
+        ...(conditions === undefined || conditions.length === 0 ? {} : { conditions }),
+        ...(c3Position === undefined ? {} : { c3Position }),
+        ...(heat === undefined || (heat[0] === 0 && heat[1] === 0) ? {} : { heat }),
+        ...(armor === undefined || (armor[0] === 0 && armor[1] === 0) ? {} : { armor }),
+        ...(internal === undefined || (internal[0] === 0 && internal[1] === 0) ? {} : { internal }),
+        ...(crits === undefined || crits.length === 0 ? {} : { crits }),
+        ...(pCrits === undefined || pCrits.length === 0 ? {} : { pCrits }),
+        ...(consumed === undefined ? {} : { consumed }),
+        ...(exhausted === undefined ? {} : { exhausted }),
+    };
+    return Object.keys(result).length === 0 ? undefined : result;
 }
 
 /** Converts one pristine V2 Mek baseline plus its V1 payload into a standalone V2 snapshot. */
@@ -125,7 +305,6 @@ export async function convertPersistedMekUnitV1(
         fresh,
         baseline,
     );
-    const restoration = encodeLegacyUnitRestorationSidecarV2(source, restored.metadata);
     const state = freezeRuntimeState({
         ...restoredState,
         crew: restoreLegacyCrewRuntime(
@@ -150,7 +329,6 @@ export async function convertPersistedMekUnitV1(
                 ),
             }),
         }),
-        ...(restoration === undefined ? {} : { restoration }),
     });
 }
 
@@ -255,8 +433,6 @@ export function convertPersistedNonMekUnitV1(
                 .map(([damageTrackId, state]) => Object.freeze({ damageTrackId, ...state }))) }),
     });
     const hasPendingCombat = Object.keys(pendingCombat).length > 0;
-    const hasRestoration = warnings.length > 0 || unresolved.length > 0;
-
     return Object.freeze({
         ...baseline,
         deployment: Object.freeze({
@@ -288,14 +464,6 @@ export function convertPersistedNonMekUnitV1(
         ...(heat === undefined ? {} : { heat }),
         ...(turn === undefined ? {} : { turn }),
         ...(hasPendingCombat ? { pendingCombat } : {}),
-        ...(hasRestoration
-            ? {
-                restoration: Object.freeze({
-                    warnings: Object.freeze(warnings),
-                    unresolved: Object.freeze(unresolved),
-                }),
-            }
-            : {}),
     });
 }
 
@@ -1270,6 +1438,154 @@ async function materializeResolvedUnits(
             }))),
         }),
     });
+}
+
+function requireV1Text(
+    record: JsonObject,
+    key: string,
+    label: string,
+): string {
+    const value = record[key];
+    if (typeof value !== 'string' || !value.trim() || value.includes('\0')) {
+        throw new Error(`${label} has invalid ${key}`);
+    }
+    return value;
+}
+
+function convertAlphaStrikeV1Abilities(
+    value: JsonValue | undefined,
+): (string | ASCustomPilotAbility)[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value)) throw new Error('pilot abilities are invalid');
+    return value.map((entry, index) => {
+        if (typeof entry === 'string') return entry;
+        const custom = requireObject(entry, `Alpha Strike V1 pilot ability ${index}`);
+        const name = custom['name'] ?? '';
+        const cost = custom['cost'] ?? 1;
+        const summary = custom['summary'] ?? '';
+        if (typeof name !== 'string'
+            || typeof cost !== 'number'
+            || !Number.isFinite(cost)
+            || typeof summary !== 'string') {
+            throw new Error(`Alpha Strike V1 pilot ability ${index} is invalid`);
+        }
+        return { name, cost, summary };
+    });
+}
+
+function convertAlphaStrikeV1StringArray(
+    value: JsonValue | undefined,
+    label: string,
+): string[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value) || value.some(entry => typeof entry !== 'string')) {
+        throw new Error(`${label} are invalid`);
+    }
+    return [...new Set(value.filter((entry): entry is string => typeof entry === 'string'))];
+}
+
+function convertAlphaStrikeV1Conditions(value: JsonValue | undefined): SerializedCondition[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value)) throw new Error('conditions are invalid');
+    return value.map((entry, index): SerializedCondition => {
+        if (typeof entry === 'string') {
+            if (!isUnitConditionKey(entry)) throw new Error(`condition ${index} is unknown`);
+            return entry;
+        }
+        const condition = requireObject(entry, `Alpha Strike V1 condition ${index}`);
+        const key = condition['key'];
+        if (!isUnitConditionKey(key)) throw new Error(`condition ${index} is unknown`);
+        const rawValue = condition['value'];
+        const rawPending = condition['pending'];
+        if (rawValue !== undefined && (typeof rawValue !== 'number' || !Number.isFinite(rawValue))) {
+            throw new Error(`condition ${index} has invalid value`);
+        }
+        if (rawPending !== undefined && typeof rawPending !== 'boolean') {
+            throw new Error(`condition ${index} has invalid pending state`);
+        }
+        const data: ConditionData = {
+            ...(typeof rawValue === 'number' && rawValue !== 0 ? { value: rawValue } : {}),
+            ...(rawPending === true ? { pending: true } : {}),
+        };
+        return Object.keys(data).length === 0 ? key : { key, ...data };
+    });
+}
+
+function convertAlphaStrikeV1Position(
+    value: JsonValue | undefined,
+): { x: number; y: number } | undefined {
+    if (value === undefined) return undefined;
+    const position = requireObject(value, 'Alpha Strike V1 C3 position');
+    const x = position['x'];
+    const y = position['y'];
+    if (typeof x !== 'number' || !Number.isFinite(x)
+        || typeof y !== 'number' || !Number.isFinite(y)) {
+        throw new Error('C3 position is invalid');
+    }
+    return { x, y };
+}
+
+function convertAlphaStrikeV1Track(
+    value: JsonValue | undefined,
+    label: string,
+): [number, number] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value)
+        || value.length < 2
+        || typeof value[0] !== 'number'
+        || !Number.isFinite(value[0])
+        || typeof value[1] !== 'number'
+        || !Number.isFinite(value[1])) {
+        throw new Error(`${label} is invalid`);
+    }
+    return [value[0], value[1]];
+}
+
+function convertAlphaStrikeV1Crits(
+    value: JsonValue | undefined,
+    label: string,
+): [string, number][] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value)) throw new Error(`${label} are invalid`);
+    return value.map((entry, index): [string, number] => {
+        const crit = requireObject(entry, `Alpha Strike V1 ${label} ${index}`);
+        const key = crit['key'];
+        const timestamp = crit['timestamp'];
+        if (typeof key !== 'string'
+            || typeof timestamp !== 'number'
+            || !Number.isFinite(timestamp)) {
+            throw new Error(`${label} ${index} is invalid`);
+        }
+        return [key, timestamp];
+    });
+}
+
+function convertAlphaStrikeV1Consumed(
+    value: JsonValue | undefined,
+): Record<string, [number, number]> | undefined {
+    if (value === undefined) return undefined;
+    const consumed = requireObject(value, 'Alpha Strike V1 consumed abilities');
+    const result: Record<string, [number, number]> = {};
+    for (const [key, counts] of Object.entries(consumed)) {
+        const converted = convertAlphaStrikeV1Track(counts, `consumed ability ${key}`);
+        if (converted !== undefined && (converted[0] !== 0 || converted[1] !== 0)) result[key] = converted;
+    }
+    return Object.keys(result).length === 0 ? undefined : result;
+}
+
+function convertAlphaStrikeV1Exhausted(
+    value: JsonValue | undefined,
+): [string[], string[], string[]] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value) || value.length < 3) throw new Error('exhausted abilities are invalid');
+    const rows = value.slice(0, 3).map((entry, index) => {
+        if (!Array.isArray(entry) || entry.some(item => typeof item !== 'string')) {
+            throw new Error(`exhausted ability set ${index} is invalid`);
+        }
+        return [...new Set(entry.filter((item): item is string => typeof item === 'string'))];
+    });
+    if (rows.every(row => row.length === 0)) return undefined;
+    return [rows[0], rows[1], rows[2]];
 }
 
 function buildDeferredSource(

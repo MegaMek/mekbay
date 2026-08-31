@@ -51,11 +51,14 @@ export class ForceCrewTransferService {
                 throw new Error('Alpha Strike to CBT transfer requires canonical AS and Classic members');
             }
             const name = source.alias();
-            await this.replaceCrew(target, (position, index) => index === 0 ? {
+            const gunnery = source.getPilotSkill();
+            // AS has one skill: it becomes every CBT crew member's gunnery.
+            // Only the first crew member receives the AS pilot name; piloting stays pristine.
+            await this.replaceCrew(target, (position, index) => ({
                 ...position,
-                ...(name ? { name } : {}),
-                gunnery: source.getPilotSkill(),
-            } : position);
+                ...(index === 0 && name ? { name } : {}),
+                gunnery,
+            }));
             return;
         }
         if (!isCBTForceMember(source) || !(target instanceof ASForceUnit)) {

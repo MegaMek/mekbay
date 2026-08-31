@@ -121,6 +121,21 @@ export function composeMekPsrDisplayModifiers(
     return Object.freeze(rows.map(row => Object.freeze(row)));
 }
 
+/** Prevent a modal confirmation from being mistaken for an outside click. */
+export async function runWithTurnSummaryCloseBlocked<T>(
+    overlayManager: OverlayManagerService,
+    unitId: string,
+    operation: () => Promise<T>,
+): Promise<T> {
+    const parentKey = `turnSummary-${unitId}`;
+    overlayManager.blockCloseUntil(parentKey);
+    try {
+        return await operation();
+    } finally {
+        overlayManager.unblockClose(parentKey);
+    }
+}
+
 /** Keep the parent summary open while one of its modal child panels is active. */
 export function openTurnSummaryChildOverlay<T>(
     overlayManager: OverlayManagerService,

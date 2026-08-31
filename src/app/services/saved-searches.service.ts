@@ -5,7 +5,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { DbService, type StoredSavedSearches, type SavedSearchOp } from './db.service';
 import type { SerializedSearchFilter } from './unit-search-filters.model';
-import { WsService } from './ws.service';
+import { WsService, type WsMessage } from './ws.service';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import { DialogsService } from './dialogs.service';
@@ -20,6 +20,12 @@ import { naturalCompare } from '../utils/sort.util';
 
 const MAX_SAVED_SEARCHES = 100;
 
+type RemoteSavedSearchState = WsMessage & {
+    readonly serverTs: number;
+    readonly searches?: StoredSavedSearches;
+    readonly ops?: SavedSearchOp[];
+};
+type SavedSearchOpsUpdate = WsMessage & { readonly ops: SavedSearchOp[] };
 @Injectable({
     providedIn: 'root'
 })
@@ -177,15 +183,18 @@ export class SavedSearchesService {
             const syncState = await this.dbService.getSavedSearchSyncState();
             if (syncState.pendingOps.length === 0) return;
 
-            const response = await this.wsService.sendAndWaitForResponse({
+            const response = await this.wsService.sendAndWaitForResponse<RemoteSavedSearchState>({
                 action: 'savedSearchOps',
                 uuid,
                 ops: syncState.pendingOps,
                 savedSearchCount: Object.keys(this.cachedSearches()).length,
             });
 
-            if (response && response.action !== 'error') {
-                await this.dbService.clearPendingSavedSearchOps(response.serverTs || Date.now());
+            const serverTs = response?.['serverTs'];
+            if (response?.['action'] !== 'error'
+                && typeof serverTs === 'number'
+                && Number.isFinite(serverTs)) {
+                await this.dbService.clearPendingSavedSearchOps(serverTs);
             }
         } catch (err) {
             this.logger.error('Failed to sync saved searches to cloud: ' + err);
@@ -204,18 +213,20 @@ export class SavedSearchesService {
             const hasPending = pendingOps.length > 0;
             const hasLocal = Object.keys(searches).length > 0;
 
-            const response = await this.wsService.sendAndWaitForResponse({
+            const response = await this.wsService.sendAndWaitForResponse<RemoteSavedSearchState>({
                 action: 'getSavedSearches',
                 uuid,
                 since: lastSyncTs
             });
 
-            if (!response || response.action === 'error') return;
-
-            const serverTs: number = response.serverTs ?? 0;
+            if (!response || response['action'] === 'error') return;
+            const remoteState = response;
+            const { serverTs } = remoteState;
 
             // Migration: local has data but server is empty
-            if (hasLocal && serverTs === 0 && !response.searches && (!response.ops || response.ops.length === 0)) {
+            if (hasLocal && serverTs === 0
+                && !remoteState.searches
+                && (!remoteState.ops || remoteState.ops.length === 0)) {
                 this.logger.info('Migrating local saved searches to cloud');
                 await this.pushFullStateToCloud();
                 return;
@@ -226,10 +237,10 @@ export class SavedSearchesService {
                 const resolution = await this.showConflictDialog();
                 switch (resolution) {
                     case 'cloud':
-                        await this.applyCloudState(response, serverTs);
+                        await this.applyCloudState(remoteState, serverTs);
                         break;
                     case 'merge':
-                        await this.mergeCloudAndLocal(response, pendingOps, serverTs);
+                        await this.mergeCloudAndLocal(remoteState, pendingOps, serverTs);
                         break;
                     case 'local':
                         await this.pushFullStateToCloud();
@@ -242,17 +253,17 @@ export class SavedSearchesService {
             if (hasPending) {
                 await this.syncToCloud();
             } else {
-                await this.applyCloudState(response, serverTs);
+                await this.applyCloudState(remoteState, serverTs);
             }
         } catch (err) {
             this.logger.error('Failed to sync saved searches from cloud: ' + err);
         }
     }
 
-    private async applyCloudState(response: any, serverTs: number): Promise<void> {
+    private async applyCloudState(response: RemoteSavedSearchState, serverTs: number): Promise<void> {
         if (response.searches) {
             // Full state from server
-            const cloudSearches = response.searches as StoredSavedSearches;
+            const cloudSearches = response.searches;
             await this.dbService.saveAllSavedSearchData(cloudSearches, serverTs);
             this.cachedSearches.set(cloudSearches);
             this.version.update(v => v + 1);
@@ -268,12 +279,16 @@ export class SavedSearchesService {
         }
     }
 
-    private async mergeCloudAndLocal(response: any, pendingOps: SavedSearchOp[], serverTs: number): Promise<void> {
+    private async mergeCloudAndLocal(
+        response: RemoteSavedSearchState,
+        pendingOps: SavedSearchOp[],
+        serverTs: number,
+    ): Promise<void> {
         const searches = { ...this.cachedSearches() };
 
         // Apply cloud changes first
         if (response.searches) {
-            const cloudSearches = response.searches as StoredSavedSearches;
+            const cloudSearches = response.searches;
             for (const [id, search] of Object.entries(cloudSearches)) {
                 if (!searches[id] || (searches[id].timestamp ?? 0) < (search.timestamp ?? 0)) {
                     searches[id] = search;
@@ -315,8 +330,11 @@ export class SavedSearchesService {
             savedSearchCount: Object.keys(searches).length,
         });
 
-        if (response && response.action !== 'error') {
-            await this.dbService.clearPendingSavedSearchOps(response.serverTs || Date.now());
+        const serverTs = response?.['serverTs'];
+        if (response?.['action'] !== 'error'
+            && typeof serverTs === 'number'
+            && Number.isFinite(serverTs)) {
+            await this.dbService.clearPendingSavedSearchOps(serverTs);
         }
     }
 
@@ -336,11 +354,10 @@ export class SavedSearchesService {
     /** Register WebSocket handlers for real-time updates from other sessions */
     public registerWsHandlers(): void {
         // Handle remote saved search operations from other sessions
-        this.wsService.registerMessageHandler('savedSearchOpsUpdate', async (msg) => {
-            if (!msg.ops || !Array.isArray(msg.ops)) return;
-            
+        this.wsService.registerMessageHandler<SavedSearchOpsUpdate>('savedSearchOpsUpdate', async (msg) => {
+            const { ops } = msg;
             const searches = { ...this.cachedSearches() };
-            this.applyOps(searches, msg.ops);
+            this.applyOps(searches, ops);
             
             await this.dbService.saveSavedSearches(searches);
             this.cachedSearches.set(searches);

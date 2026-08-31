@@ -11,6 +11,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { MeasureClampOverflowDirective } from '../../directives/measure-clamp-overflow.directive';
 import { DataService } from '../../services/data.service';
+import { ForcePersistenceService } from '../../services/force-persistence.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ToastService } from '../../services/toast.service';
 import { Pipe, type PipeTransform } from "@angular/core";
@@ -128,6 +129,7 @@ export class ForceLoadDialogComponent {
     private dialogRef = inject(DialogRef<ForceLoadDialogResult>);
     private dialogData: ForceLoadDialogData | null = inject(DIALOG_DATA, { optional: true });
     private dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private operationStorage = inject(OperationStorageService);
     private organizationStorage = inject(OrganizationStorageService);
     private destroyRef = inject(DestroyRef);
@@ -798,7 +800,7 @@ export class ForceLoadDialogComponent {
     private async loadForces(): Promise<void> {
         this.loading.set(true);
         try {
-            const result = await this.dataService.listForces();
+            const result = await this.forcePersistence.listForces();
             const enriched = (result || []).map(f => {
                 f._searchText = this.computeSearchText(f);
                 return f;

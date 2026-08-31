@@ -4,25 +4,20 @@
 
 import type { Injector } from '@angular/core';
 import type { DataService } from '../services/data.service';
-import type { UnitSummary } from "./unit-summary.model";
+import type { UnitComponent, UnitSummary } from "./unit-summary.model";
 import { type ASSerializedForce, AS_SERIALIZED_FORCE_SCHEMA, type SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
-import { Force, resolveSerializedFormation, UnitGroup } from './force.model';
+import { Force, MAX_UNITS, resolveSerializedFormation, UnitGroup } from './force.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnit } from './as-force-unit.model';
+import { C3NetworkEditor } from './c3-network-editor';
+import { C3Network } from './c3-network.model';
 import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
-import { LoggerService } from '../services/logger.service';
-import { DialogsService } from '../services/dialogs.service';
-import {
-    DeferredUnitResolutionError,
-    type DeferredUnitDescriptor,
-} from './persisted-unit-state';
 
 
 
 export class ASForce extends Force<ASForceUnit> {
     override gameSystem: GameSystem = GameSystem.ALPHA_STRIKE;
-    private deferredUnitDescriptors: DeferredUnitDescriptor[] = [];
 
     constructor(name: string,
         dataService: DataService,
@@ -30,8 +25,100 @@ export class ASForce extends Force<ASForceUnit> {
         super(name, dataService, injector);
     }
 
-    protected override createForceUnit(unit: UnitSummary): ASForceUnit {
+    private createForceUnit(unit: UnitSummary): ASForceUnit {
         return new ASForceUnit(unit, this, this.dataService, this.injector);
+    }
+
+    /** Creates a detached Alpha Strike unit for an explicit cross-system transfer. */
+    public createCompatibleUnit(unit: UnitSummary): ASForceUnit {
+        return this.createForceUnit(captureUnitForAdmission(unit));
+    }
+
+    public addUnit(unit: UnitSummary, targetGroup?: UnitGroup<ASForceUnit>): ASForceUnit {
+        if (targetGroup !== undefined
+            && (targetGroup.force !== this || !this.groups().includes(targetGroup))) {
+            throw new Error('The requested target group is not owned by this force');
+        }
+        if (this.units().length >= MAX_UNITS) {
+            throw new Error(`Cannot add more than ${MAX_UNITS} units to a single force`);
+        }
+        if (!this.loading && this.readOnly()) {
+            throw new Error(`Force "${this.name}" is read-only`);
+        }
+
+        const forceUnit = this.createForceUnit(captureUnitForAdmission(unit));
+        const intentReserved = !this.loading;
+        if (intentReserved) this.reserveForceOwnerMutationIntent();
+        if (this.groups().length === 0) {
+            this.groups.set([new UnitGroup<ASForceUnit>(this)]);
+        }
+        const groups = this.groups();
+        const group = targetGroup ?? groups[groups.length - 1];
+        group.units.set([...group.units(), forceUnit]);
+        if (this.instanceId()) {
+            if (intentReserved) this.emitChangedFromReservedIntent();
+            else this.emitChanged();
+        } else if (intentReserved) {
+            this.advanceForceOwnerGeneration();
+        }
+        return forceUnit;
+    }
+
+    /** Replaces one exact grouped AS unit while preserving its pilot assignment. */
+    public replaceUnit(
+        originalUnit: ASForceUnit,
+        newUnitData: UnitSummary,
+    ): { newUnit: ASForceUnit; group: UnitGroup<ASForceUnit> } | null {
+        if (!this.isWholeOwnerActive() || this.readOnly()) return null;
+
+        let originalGroup: UnitGroup<ASForceUnit> | null = null;
+        let originalIndex = -1;
+        for (const group of this.groups()) {
+            const index = group.units().findIndex(unit => unit === originalUnit);
+            if (index === -1) continue;
+            originalGroup = group;
+            originalIndex = index;
+            break;
+        }
+        if (originalGroup === null || originalIndex === -1 || originalUnit.force !== this) return null;
+
+        const newForceUnit = this.createForceUnit(captureUnitForAdmission(newUnitData));
+        newForceUnit.disabledSaving = true;
+        try {
+            this.transferPilotData(originalUnit, newForceUnit);
+        } finally {
+            newForceUnit.disabledSaving = false;
+        }
+
+        this.reserveForceOwnerMutationIntent();
+        const currentNetworks = this._c3Networks();
+        if (currentNetworks.length > 0 && new C3Network(currentNetworks).isUnitConnected(originalUnit.id)) {
+            this._c3Networks.set(C3NetworkEditor.removeUnit(currentNetworks, originalUnit.id).networks);
+        }
+        const groupUnits = [...originalGroup.units()];
+        groupUnits.splice(originalIndex, 1, newForceUnit);
+        originalGroup.units.set(groupUnits);
+        if (this.instanceId()) this.emitChangedFromReservedIntent();
+        return { newUnit: newForceUnit, group: originalGroup };
+    }
+
+    public removeEmptyGroups(): void {
+        if (this.readOnly()) return;
+        const groups = this.groups();
+        const removedGroupIds = new Set(
+            groups.filter(group => group.units().length === 0).map(group => group.id),
+        );
+        if (removedGroupIds.size === 0) return;
+        const nonEmptyGroups = groups.filter(group => group.units().length > 0);
+        this.reserveForceOwnerMutationIntent();
+        for (const group of nonEmptyGroups) {
+            if (group.formationTargetGroupId() !== null
+                && removedGroupIds.has(group.formationTargetGroupId()!)) {
+                group.formationTargetGroupId.set(null);
+            }
+        }
+        this.groups.set(nonEmptyGroups);
+        if (this.instanceId()) this.emitChangedFromReservedIntent();
     }
 
     protected override projectMembers(): ASForceUnit[] {
@@ -46,7 +133,7 @@ export class ASForce extends Force<ASForceUnit> {
     /**
      * Transfers pilot data (name, skill, abilities) from one AS unit to another.
      */
-    protected override transferPilotData(fromUnit: ASForceUnit, toUnit: ASForceUnit): void {
+    private transferPilotData(fromUnit: ASForceUnit, toUnit: ASForceUnit): void {
         const pilotName = fromUnit.alias();
         if (pilotName) {
             toUnit.setPilotName(pilotName);
@@ -58,21 +145,6 @@ export class ASForce extends Force<ASForceUnit> {
         }
         toUnit.setFormationAbilities([...fromUnit.formationAbilities()]);
         toUnit.setFormationCommander(fromUnit.commander());
-    }
-
-    public override getDeferredUnitDescriptors(): readonly DeferredUnitDescriptor[] {
-        return this.deferredUnitDescriptors;
-    }
-
-    private addDeferredUnitDescriptor(descriptor: DeferredUnitDescriptor): void {
-        const duplicate = this.deferredUnitDescriptors.some(existing => (
-            descriptor.instanceId !== undefined
-                ? existing.instanceId === descriptor.instanceId
-                : existing.rawLegacyName === descriptor.rawLegacyName
-                    && existing.requestedIdentity?.provider === descriptor.requestedIdentity?.provider
-                    && existing.requestedIdentity?.uuid === descriptor.requestedIdentity?.uuid
-        ));
-        if (!duplicate) this.deferredUnitDescriptors.push(descriptor);
     }
 
     /** Installs a current Alpha Strike grouped record into this owner. */
@@ -92,43 +164,16 @@ export class ASForce extends Force<ASForceUnit> {
         const sanitizedData = Sanitizer.sanitize(data, AS_SERIALIZED_FORCE_SCHEMA);
         this.loading = true;
         try {
-            this.deferredUnitDescriptors = [];
             this.populateSerializedMetadata(sanitizedData);
 
-            const logger = this.injector.get(LoggerService);
             const parsedGroups: UnitGroup<ASForceUnit>[] = [];
             for (const serializedGroup of sanitizedData.groups) {
-                const units: ASForceUnit[] = [];
-                for (const serializedUnit of serializedGroup.units) {
-                    try {
-                        units.push(ASForceUnit.deserialize(
-                            serializedUnit,
-                            this,
-                            this.dataService,
-                            this.injector,
-                        ));
-                    } catch (error) {
-                        if (error instanceof DeferredUnitResolutionError) {
-                            this.addDeferredUnitDescriptor({
-                                ...error.descriptor,
-                                instanceId: serializedUnit.id,
-                                sourcePayload: structuredClone(serializedUnit) as unknown as DeferredUnitDescriptor['sourcePayload'],
-                            });
-                            logger.warn(`ASForce.deserialize deferred unit "${serializedUnit.unit}": ${error.message}`);
-                            continue;
-                        }
-
-                        logger.error(`ASForce.deserialize error on unit "${serializedUnit.unit}": ${error}`);
-                        const errorDetail = error instanceof Error ? error.message : String(error);
-                        const dialogs = this.injector.get(DialogsService);
-                        void dialogs.showError(
-                            `Unable to load unit "${serializedUnit.unit}". The unit was skipped.\n\n${errorDetail}`,
-                            'Unit Load Error',
-                        ).catch(dialogError => {
-                            logger.error(`Unable to show unit load error dialog: ${dialogError}`);
-                        });
-                    }
-                }
+                const units = serializedGroup.units.map(serializedUnit => ASForceUnit.deserialize(
+                    serializedUnit,
+                    this,
+                    this.dataService,
+                    this.injector,
+                ));
 
                 const group = new UnitGroup<ASForceUnit>(this);
                 group.id = serializedGroup.id;
@@ -178,4 +223,22 @@ export class ASForce extends Force<ASForceUnit> {
             this.dataService, this.injector
         );
     }
+}
+
+/** Detaches mutable summary data while retaining catalog-owned Equipment profiles. */
+function captureUnitForAdmission(unit: UnitSummary): UnitSummary {
+    const { comp, ...structural } = unit;
+    return {
+        ...structuredClone(structural),
+        comp: comp.map(captureUnitComponentForAdmission),
+    };
+}
+
+function captureUnitComponentForAdmission(component: UnitComponent): UnitComponent {
+    const { eq, bay, ...structural } = component;
+    return {
+        ...structuredClone(structural),
+        ...(eq === undefined ? {} : { eq }),
+        ...(bay === undefined ? {} : { bay: bay.map(captureUnitComponentForAdmission) }),
+    };
 }

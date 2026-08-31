@@ -18,7 +18,7 @@ import {
     type OperationDialogData,
     type OperationDialogResult,
 } from '../components/save-operation-dialog/save-operation-dialog.component';
-import { DataService } from './data.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { OperationStorageService } from './operation-storage.service';
 import { DialogsService } from './dialogs.service';
 import { LoggerService } from './logger.service';
@@ -45,7 +45,7 @@ export interface ForceOperationHost {
  */
 @Injectable({ providedIn: 'root' })
 export class ForceOperationService {
-    private readonly data = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly operationStorage = inject(OperationStorageService);
     private readonly dialogs = inject(DialogsService);
     private readonly logger = inject(LoggerService);
@@ -219,7 +219,7 @@ export class ForceOperationService {
         if (!entry) return false;
         if (entry.owned) {
             try {
-                await this.data.cacheForcesLocally(entry.forces.map(force => force.instanceId));
+                await this.forcePersistence.cacheForcesLocally(entry.forces.map(force => force.instanceId));
             } catch (error) {
                 this.logger.warn(`Failed to cache operation forces locally: ${String(error)}`);
             }
@@ -230,7 +230,7 @@ export class ForceOperationService {
             let loadedAny = false;
             const failedForces: string[] = [];
             for (const forceInfo of entry.forces) {
-                const force = await this.data.getForce(forceInfo.instanceId);
+                const force = await this.forcePersistence.getForce(forceInfo.instanceId);
                 if (!force) {
                     failedForces.push(forceInfo.name || forceInfo.instanceId);
                     continue;
@@ -283,7 +283,7 @@ export class ForceOperationService {
 
     private async cacheForcesLocally(slots: readonly ForceSlot[]): Promise<void> {
         for (const slot of slots) {
-            if (!slot.force.readOnly()) await this.data.saveForce(slot.force, true);
+            if (!slot.force.readOnly()) await this.forcePersistence.saveForce(slot.force, true);
         }
     }
 

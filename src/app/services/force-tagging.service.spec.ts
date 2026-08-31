@@ -7,8 +7,8 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { ForceTagSelectorComponent } from '../components/force-tag-selector/force-tag-selector.component';
-import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { ForceTaggingService } from './force-tagging.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { OverlayManagerService } from './overlay-manager.service';
@@ -25,7 +25,7 @@ describe('ForceTaggingService', () => {
     let forceTagSelector: ForceTagSelectorComponent;
     let closed: Subject<void>;
 
-    const dataServiceMock = {
+    const forcePersistenceMock = {
         getCachedForceTagLabels: jasmine.createSpy('getCachedForceTagLabels'),
         updateForceTags: jasmine.createSpy('updateForceTags'),
     };
@@ -57,7 +57,7 @@ describe('ForceTaggingService', () => {
             providers: [
                 provideZonelessChangeDetection(),
                 ForceTaggingService,
-                { provide: DataService, useValue: dataServiceMock },
+                { provide: ForcePersistenceService, useValue: forcePersistenceMock },
                 { provide: ForceWorkspaceStateService, useValue: forceBuilderServiceMock },
                 { provide: OverlayManagerService, useValue: overlayManagerMock },
                 { provide: DialogsService, useValue: dialogsServiceMock },
@@ -69,10 +69,10 @@ describe('ForceTaggingService', () => {
         forceTagSelector = fixture.componentInstance;
         closed = new Subject<void>();
 
-        dataServiceMock.getCachedForceTagLabels.calls.reset();
-        dataServiceMock.getCachedForceTagLabels.and.returnValue([]);
-        dataServiceMock.updateForceTags.calls.reset();
-        dataServiceMock.updateForceTags.and.resolveTo({ tags: [], timestamp: null });
+        forcePersistenceMock.getCachedForceTagLabels.calls.reset();
+        forcePersistenceMock.getCachedForceTagLabels.and.returnValue([]);
+        forcePersistenceMock.updateForceTags.calls.reset();
+        forcePersistenceMock.updateForceTags.and.resolveTo({ tags: [], timestamp: null });
         forceBuilderServiceMock.loadedForces.calls.reset();
         forceBuilderServiceMock.loadedForces.and.returnValue([]);
         overlayManagerMock.has.calls.reset();

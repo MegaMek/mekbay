@@ -8,8 +8,10 @@ import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { GameSystem } from '../models/common.model';
-import type { SerializedForce } from '../models/force-serialization';
+import type { ASSerializedState, SerializedForce } from '../models/force-serialization';
+import { ASForce } from '../models/as-force.model';
 import { DataService } from './data.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { DbService } from './db.service';
 import { LoggerService } from './logger.service';
 import { PublicTagsService } from './public-tags.service';
@@ -54,6 +56,19 @@ function createSerializedForceForTest(overrides: Partial<SerializedForce> = {}):
     };
 }
 
+function createASStateForTest(overrides: Partial<ASSerializedState> = {}): ASSerializedState {
+    return {
+        modified: false,
+        destroyed: false,
+        heat: [0, 0],
+        armor: [0, 0],
+        internal: [0, 0],
+        crits: [],
+        pCrits: [],
+        ...overrides,
+    };
+}
+
 function deferred<T>() {
     let resolve!: (value: T | PromiseLike<T>) => void;
     let reject!: (reason?: unknown) => void;
@@ -64,8 +79,21 @@ function deferred<T>() {
     return { promise, resolve, reject };
 }
 
-function withMockWholeOwnerAuthority<T extends Record<string, any>>(force: T): T {
+function waitForUnitCatalogSettlement(service: DataService): Promise<void> {
+    return (service as any).unitCatalogSettlement;
+}
+
+function withMockWholeOwnerAuthority<T extends Record<string, any>>(
+    force: T,
+    canonicalSerialization?: SerializedForce,
+): T {
     const mock = force as any;
+    const canonical = canonicalSerialization === undefined
+        ? undefined
+        : structuredClone(canonicalSerialization);
+    if (canonical !== undefined) {
+        mock.serialize ??= () => structuredClone(canonical);
+    }
     mock.owned ??= signal(true);
     mock.readOnly ??= () => !mock.owned();
     mock.isWholeOwnerActive ??= () => true;
@@ -156,9 +184,10 @@ function withMockWholeOwnerAuthority<T extends Record<string, any>>(force: T): T
 
 describe('DataService', () => {
     let service: DataService;
-    const acceptStagedRemoteForce = (staged: Awaited<ReturnType<DataService['stageRemoteForceSnapshot']>>) => {
-        const prepared = service.prepareRemoteForceSnapshotAcceptance(staged);
-        const activeAuthorities = (service as any).activeForceAuthority as Map<string, any>;
+    let forcePersistence: ForcePersistenceService;
+    const acceptStagedRemoteForce = (staged: Awaited<ReturnType<ForcePersistenceService['stageRemoteForceSnapshot']>>) => {
+        const prepared = forcePersistence.prepareRemoteForceSnapshotAcceptance(staged);
+        const activeAuthorities = (forcePersistence as any).activeForceAuthority as Map<string, any>;
         const instanceId = staged.force.instanceId();
         if (!instanceId) throw new Error('Staged test force has no instance ID.');
         let predecessor = activeAuthorities.get(instanceId);
@@ -169,11 +198,11 @@ describe('DataService', () => {
                 consumeWholeOwnerReplacementCommitAuthority: () => true,
                 isWholeOwnerRetired: () => true,
             };
-            service.activateForceAuthority(predecessor);
+            forcePersistence.activateForceAuthority(predecessor);
         } else if (!predecessor.consumeWholeOwnerReplacementCommitAuthority) {
             predecessor.consumeWholeOwnerReplacementCommitAuthority = () => true;
         }
-        const result = service.commitPreparedRemoteForceReplacement(
+        const result = forcePersistence.commitPreparedRemoteForceReplacement(
             prepared,
             predecessor,
             Object.freeze({}) as any,
@@ -185,6 +214,7 @@ describe('DataService', () => {
     };
     const dbServiceMock = {
         getForce: jasmine.createSpy('getForce'),
+        listForces: jasmine.createSpy('listForces'),
         countForces: jasmine.createSpy('countForces'),
         saveForce: jasmine.createSpy('saveForce'),
         deleteForce: jasmine.createSpy('deleteForce'),
@@ -192,6 +222,8 @@ describe('DataService', () => {
         waitForDbReady: jasmine.createSpy('waitForDbReady').and.resolveTo(undefined),
     };
     const wsServiceMock = {
+        getWebSocket: jasmine.createSpy('getWebSocket').and.returnValue(null),
+        getWsReady: jasmine.createSpy('getWsReady').and.resolveTo(undefined),
         sendAndWaitForResponse: jasmine.createSpy('sendAndWaitForResponse'),
         send: jasmine.createSpy('send'),
     };
@@ -201,6 +233,8 @@ describe('DataService', () => {
     const unitRuntimeServiceMock = {
         getUnitByName: jasmine.createSpy('getUnitByName').and.returnValue(undefined),
         getUnitByUuid: jasmine.createSpy('getUnitByUuid').and.returnValue(undefined),
+        getSavedEntityIdentity: jasmine.createSpy('getSavedEntityIdentity').and.returnValue(undefined),
+        resolveUnitReference: jasmine.createSpy('resolveUnitReference'),
         resolvePersistedUnitIdentity: jasmine.createSpy('resolvePersistedUnitIdentity').and.callFake(
             (reference: { unit: string }) => ({
                 kind: 'unresolved' as const,
@@ -350,6 +384,8 @@ describe('DataService', () => {
         TestBed.resetTestingModule();
         dbServiceMock.getForce.calls.reset();
         dbServiceMock.getForce.and.resolveTo(null);
+        dbServiceMock.listForces.calls.reset();
+        dbServiceMock.listForces.and.resolveTo([]);
         dbServiceMock.countForces.calls.reset();
         dbServiceMock.countForces.and.resolveTo(1);
         dbServiceMock.saveForce.calls.reset();
@@ -362,6 +398,10 @@ describe('DataService', () => {
         dbServiceMock.waitForDbReady.and.resolveTo(undefined);
         wsServiceMock.sendAndWaitForResponse.calls.reset();
         wsServiceMock.send.calls.reset();
+        wsServiceMock.getWebSocket.calls.reset();
+        wsServiceMock.getWebSocket.and.returnValue(null);
+        wsServiceMock.getWsReady.calls.reset();
+        wsServiceMock.getWsReady.and.resolveTo(undefined);
         wsServiceMock.sendAndWaitForResponse.and.resolveTo(undefined);
         userStateServiceMock.uuid.calls.reset();
         userStateServiceMock.uuid.and.returnValue('user-1');
@@ -369,6 +409,9 @@ describe('DataService', () => {
         unitRuntimeServiceMock.getUnitByName.and.returnValue(undefined);
         unitRuntimeServiceMock.getUnitByUuid.calls.reset();
         unitRuntimeServiceMock.getUnitByUuid.and.returnValue(undefined);
+        unitRuntimeServiceMock.getSavedEntityIdentity.calls.reset();
+        unitRuntimeServiceMock.getSavedEntityIdentity.and.returnValue(undefined);
+        unitRuntimeServiceMock.resolveUnitReference.calls.reset();
         unitRuntimeServiceMock.resolvePersistedUnitIdentity.calls.reset();
         unitRuntimeServiceMock.prepareRuntimeCatalog.calls.reset();
         unitRuntimeServiceMock.prepareRuntimeCatalog.and.returnValue({
@@ -504,6 +547,7 @@ describe('DataService', () => {
             providers: [
                 provideZonelessChangeDetection(),
                 DataService,
+                ForcePersistenceService,
                 { provide: DbService, useValue: dbServiceMock },
                 { provide: WsService, useValue: wsServiceMock },
                 { provide: UserStateService, useValue: userStateServiceMock },
@@ -528,6 +572,7 @@ describe('DataService', () => {
         });
 
         service = TestBed.inject(DataService);
+        forcePersistence = TestBed.inject(ForcePersistenceService);
     });
 
     it('delegates unit lookup to the runtime service', () => {
@@ -625,7 +670,7 @@ describe('DataService', () => {
         });
 
         await service.initialize();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
 
         const activeEras = service.getEras();
         const activeFactions = service.getFactions();
@@ -672,7 +717,7 @@ describe('DataService', () => {
         dbServiceMock.getForce.and.callFake(async (instanceId: string) => {
             if (instanceId !== 'force-1') return null;
             return {
-                version: 1,
+                version: 2,
                 instanceId: 'force-1',
                 timestamp: '2026-04-01T00:00:00Z',
                 type: GameSystem.ALPHA_STRIKE,
@@ -718,9 +763,9 @@ describe('DataService', () => {
                 },
             ],
         });
-        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
 
-        const entries = await service.getLoadForceEntriesByIds(['force-1', 'force-2']);
+        const entries = await forcePersistence.getLoadForceEntriesByIds(['force-1', 'force-2']);
 
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'getForcesBulk',
@@ -748,10 +793,10 @@ describe('DataService', () => {
         dbServiceMock.getForce.and.callFake(async (instanceId: string) => (
             instanceId === 'force-local'
                 ? {
-                    version: 1,
+                    version: 2,
                     instanceId,
                     timestamp: '2026-04-01T00:00:00Z',
-                    type: GameSystem.CLASSIC,
+                    type: GameSystem.ALPHA_STRIKE,
                     name: 'Local Only',
                     groups: [],
                 }
@@ -760,22 +805,18 @@ describe('DataService', () => {
         wsServiceMock.sendAndWaitForResponse.and.callFake(async (payload: { instanceId: string }) => {
             if (payload.instanceId === 'force-missing') {
                 return {
-                    data: {
-                        version: 1,
+                    data: encodeForceForStorage(createSerializedForceForTest({
                         instanceId: 'force-missing',
-                        timestamp: '2026-04-05T00:00:00Z',
-                        type: GameSystem.CLASSIC,
                         name: 'Fetched Force',
-                        groups: [],
-                    },
+                    })),
                 };
             }
 
             return { data: null };
         });
-        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
 
-        const cached = await service.cacheForcesLocally(['force-local', 'force-missing', 'force-unknown', 'force-missing']);
+        const cached = await forcePersistence.cacheForcesLocally(['force-local', 'force-missing', 'force-unknown', 'force-missing']);
 
         expect(cached).toBe(1);
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
@@ -797,20 +838,20 @@ describe('DataService', () => {
     });
 
     it('saves an owned cloud-only force locally when opened', async () => {
-        const cloudRawForce = {
-            version: 1,
+        const cloudRawForce: SerializedForce = {
+            version: 2,
             instanceId: 'force-cloud-owned',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.CLASSIC,
             name: 'Owned Cloud Force',
             owned: true,
-            groups: [],
+            cbt: createEmptyCBTForceForTest('force-cloud-owned'),
         };
         dbServiceMock.getForce.and.resolveTo(null);
-        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: cloudRawForce });
-        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: encodeForceForStorage(cloudRawForce) });
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
 
-        const force = await service.getForce('force-cloud-owned', true);
+        const force = await forcePersistence.getForce('force-cloud-owned', true);
 
         expect(force?.name).toBe('Owned Cloud Force');
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
@@ -838,20 +879,20 @@ describe('DataService', () => {
         wsServiceMock.sendAndWaitForResponse.and.callFake(async (payload: any) => payload.action === 'getForce'
             ? { data: null }
             : { action: 'forceSaved' });
-        spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
 
-        const force = await service.getForce(local.instanceId);
+        const force = await forcePersistence.getForce(local.instanceId);
 
         expect(force).not.toBeNull();
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith(jasmine.objectContaining({
             action: 'saveForce',
             data: local,
         }));
-        expect(service.activateForceAuthority(force!)).toBeTrue();
-        expect((service as any).currentForceAuthorityGeneration(local.instanceId)).toBe(1);
+        expect(forcePersistence.activateForceAuthority(force!)).toBeTrue();
+        expect((forcePersistence as any).currentForceAuthorityGeneration(local.instanceId)).toBe(1);
     });
 
-    it('keeps local authority when equal-time V2 copies diverge, matching the V1 loader', async () => {
+    it('keeps local authority when equal-time copies diverge', async () => {
         const local = createSerializedForceForTest({
             instanceId: 'force-equal-divergence',
             timestamp: '2026-04-05T00:00:00Z',
@@ -863,103 +904,148 @@ describe('DataService', () => {
         };
         dbServiceMock.getForce.and.resolveTo(local);
         wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: encodeForceForStorage(cloud) });
-        spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
 
-        expect((await service.getForce(local.instanceId, false))?.name).toBe('Local Branch');
+        expect((await forcePersistence.getForce(local.instanceId, false))?.name).toBe('Local Branch');
         expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
     });
 
-    it('loads equal-time divergent V1 data through deterministic legacy migration', async () => {
-        const local: SerializedForce = {
+    it('loads a persisted V1 Classic force through the one-way storage converter', async () => {
+        const legacy: SerializedForce = {
             version: 1,
-            instanceId: 'force-equal-v1-divergence',
+            instanceId: 'force-v1-local',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.CLASSIC,
-            name: 'Local Legacy Branch',
+            name: 'Legacy Local',
             owned: true,
             groups: [],
         };
-        const cloud: SerializedForce = { ...local, name: 'Cloud Legacy Branch' };
-        dbServiceMock.getForce.and.resolveTo(local);
-        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: cloud });
-        spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
+        dbServiceMock.getForce.and.resolveTo(legacy);
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo(null);
 
-        const force = await service.getForce(local.instanceId, false);
+        const loaded = await forcePersistence.getForce(legacy.instanceId);
 
-        expect(force?.name).toBe('Local Legacy Branch');
+        expect(loaded?.name).toBe('Legacy Local');
+        expect(loaded?.gameSystem).toBe(GameSystem.CLASSIC);
+        expect((await loaded!.serializeForPersistence()).version).toBe(2);
     });
 
-    it('prefers V2 over V1 when local and cloud timestamps tie', async () => {
-        const timestamp = '2026-04-05T00:00:00Z';
-        const local: SerializedForce = {
+    it('loads a persisted V1 Alpha Strike force with its units intact', async () => {
+        const atlas = createUnit('Atlas');
+        unitRuntimeServiceMock.resolveUnitReference.and.returnValue({
+            kind: 'resolved',
+            unit: atlas,
+            usedLegacyNameFallback: true,
+            sourceChanged: false,
+            formatChanged: false,
+        });
+        const legacy: SerializedForce = {
             version: 1,
-            instanceId: 'force-equal-mixed-version',
+            instanceId: 'force-v1-as',
+            timestamp: '2026-04-05T00:00:00Z',
+            type: GameSystem.ALPHA_STRIKE,
+            name: 'Legacy AS',
+            groups: [{
+                id: 'group-v1-as',
+                name: 'Lance',
+                units: [{
+                    id: 'unit-v1-as',
+                    unit: 'Atlas',
+                    state: createASStateForTest(),
+                }],
+            }],
+        };
+        dbServiceMock.getForce.and.resolveTo(legacy);
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo(null);
+
+        const loaded = await forcePersistence.getForce(legacy.instanceId);
+
+        expect(loggerServiceMock.error.calls.allArgs()).toEqual([]);
+        const asForce = loaded instanceof ASForce ? loaded : null;
+        expect(asForce?.name).toBe('Legacy AS');
+        expect(asForce?.units().length).toBe(1);
+        expect(asForce?.units()[0].getSummary().name).toBe('Atlas');
+        expect((await loaded!.serializeForPersistence()).version).toBe(2);
+    });
+
+    it('loads a current Alpha Strike cloud save without a second storage-parser pass', async () => {
+        const atlas = createUnit('Atlas');
+        unitRuntimeServiceMock.resolveUnitReference.and.returnValue({
+            kind: 'resolved',
+            unit: atlas,
+            usedLegacyNameFallback: true,
+            sourceChanged: false,
+            formatChanged: false,
+        });
+        const current = createSerializedForceForTest({
+            instanceId: 'force-current-as',
+            name: 'Current AS',
+            groups: [{
+                id: 'group-current-as',
+                name: 'Lance',
+                units: [{
+                    id: 'unit-current-as',
+                    unit: 'Atlas',
+                    state: createASStateForTest(),
+                }],
+            }],
+        });
+        dbServiceMock.getForce.and.resolveTo(null);
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: encodeForceForStorage(current) });
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
+
+        const loaded = await forcePersistence.getForce(current.instanceId);
+
+        expect(loggerServiceMock.error.calls.allArgs()).toEqual([]);
+        const asForce = loaded instanceof ASForce ? loaded : null;
+        expect(asForce?.name).toBe('Current AS');
+        expect(asForce?.units().length).toBe(1);
+        expect(asForce?.units()[0].getSummary().name).toBe('Atlas');
+    });
+
+    it('prefers current storage over V1 when equal-time local and cloud copies compete', async () => {
+        const timestamp = '2026-04-05T00:00:00Z';
+        const legacy: SerializedForce = {
+            version: 1,
+            instanceId: 'force-v1-v2-tie',
             timestamp,
             type: GameSystem.CLASSIC,
             name: 'Legacy Local',
             owned: true,
             groups: [],
         };
-        const cloud: SerializedForce = {
+        const current: SerializedForce = {
             version: 2,
-            instanceId: local.instanceId,
+            instanceId: legacy.instanceId,
             timestamp,
             type: GameSystem.CLASSIC,
             name: 'Current Cloud',
             owned: true,
-            cbt: createEmptyCBTForceForTest(local.instanceId),
+            cbt: createEmptyCBTForceForTest(legacy.instanceId),
         };
-        dbServiceMock.getForce.and.resolveTo(local);
-        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: encodeForceForStorage(cloud) });
-        spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
+        dbServiceMock.getForce.and.resolveTo(legacy);
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: encodeForceForStorage(current) });
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
 
-        const loaded = await service.getForce(local.instanceId, false);
-        expect(loaded?.name).toBe('Current Cloud');
-    });
-
-    it('keeps local V2 over cloud V1 when their timestamps tie', async () => {
-        const timestamp = '2026-04-05T00:00:00Z';
-        const local: SerializedForce = {
-            version: 2,
-            instanceId: 'force-equal-mixed-version-local-v2',
-            timestamp,
-            type: GameSystem.CLASSIC,
-            name: 'Current Local',
-            owned: true,
-            cbt: createEmptyCBTForceForTest('force-equal-mixed-version-local-v2'),
-        };
-        const cloud: SerializedForce = {
-            version: 1,
-            instanceId: local.instanceId,
-            timestamp,
-            type: GameSystem.CLASSIC,
-            name: 'Legacy Cloud',
-            owned: true,
-            groups: [],
-        };
-        dbServiceMock.getForce.and.resolveTo(local);
-        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: cloud });
-        spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
-
-        expect((await service.getForce(local.instanceId, false))?.name).toBe('Current Local');
+        expect((await forcePersistence.getForce(legacy.instanceId))?.name).toBe('Current Cloud');
     });
 
     it('loads a remote force without touching local storage when requested', async () => {
         wsServiceMock.sendAndWaitForResponse.and.resolveTo({
             data: {
-                version: 1,
+                version: 2,
                 instanceId: 'remote-force',
                 timestamp: '2026-04-05T00:00:00Z',
-                type: GameSystem.CLASSIC,
+                type: GameSystem.ALPHA_STRIKE,
                 name: 'Remote Force',
                 owned: false,
                 groups: [],
             },
         });
-        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
 
-        service.isCloudForceLoading.set(false);
-        const force = await service.getForce('remote-force', false, {
+        forcePersistence.isCloudForceLoading.set(false);
+        const force = await forcePersistence.getForce('remote-force', false, {
             skipLocal: true,
             showLoading: false,
         });
@@ -974,36 +1060,36 @@ describe('DataService', () => {
             ownedOnly: false,
         });
         expect(JSON.stringify(wsServiceMock.sendAndWaitForResponse.calls.allArgs())).not.toContain('uuid');
-        expect(service.isCloudForceLoading()).toBeFalse();
+        expect(forcePersistence.isCloudForceLoading()).toBeFalse();
     });
 
     it('flushes reconnect cloud saves immediately and waits for acknowledgement', async () => {
-        const serializedForce = {
-            version: 1,
+        const serializedForce: SerializedForce = {
+            version: 2,
             instanceId: 'force-1',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.CLASSIC,
+            type: GameSystem.ALPHA_STRIKE,
             name: 'Reconnect Force',
             groups: [],
         };
         const force = withMockWholeOwnerAuthority({
             name: 'Reconnect Force',
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.ALPHA_STRIKE,
             readOnly: () => false,
             instanceId: () => 'force-1',
             serializeForPersistence: () => Promise.resolve(serializedForce),
             getExpectedCloudCBTForceV2Revision: () => undefined,
             markCloudCBTForceV2Saved: () => undefined,
         } as any);
-        expect(service.activateForceAuthority(force)).toBeTrue();
-        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+        expect(forcePersistence.activateForceAuthority(force)).toBeTrue();
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
         wsServiceMock.sendAndWaitForResponse.and.resolveTo({
             action: 'forceSaved',
             instanceId: 'force-1',
         });
 
-        await service.saveForce(force);
-        await service.saveForceAndWaitForCloud(force);
+        await forcePersistence.saveForce(force);
+        await forcePersistence.saveForceAndWaitForCloud(force);
 
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledOnceWith({
             action: 'saveForce',
@@ -1027,17 +1113,17 @@ describe('DataService', () => {
             isWholeOwnerRetired: () => false,
         } as any;
 
-        expect(service.activateForceAuthority(first)).toBeTrue();
-        expect(service.activateForceAuthority(first)).toBeTrue();
-        expect(service.activateForceAuthority(second)).toBeFalse();
-        expect(service.deactivateForceAuthority(first)).toBeFalse();
-        expect((service as any).activeForceAuthority.get('force-authority-lifecycle')).toBe(first);
+        expect(forcePersistence.activateForceAuthority(first)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(first)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(second)).toBeFalse();
+        expect(forcePersistence.deactivateForceAuthority(first)).toBeFalse();
+        expect((forcePersistence as any).activeForceAuthority.get('force-authority-lifecycle')).toBe(first);
 
         firstActive = false;
         firstRetired = true;
-        expect(service.deactivateForceAuthority(first)).toBeTrue();
-        expect(service.activateForceAuthority(second)).toBeTrue();
-        expect((service as any).activeForceAuthority.get('force-authority-lifecycle')).toBe(second);
+        expect(forcePersistence.deactivateForceAuthority(first)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(second)).toBeTrue();
+        expect((forcePersistence as any).activeForceAuthority.get('force-authority-lifecycle')).toBe(second);
     });
 
     it('keeps a provisionally activated owner object-keyed after its ID is minted until proven save promotion', async () => {
@@ -1064,15 +1150,15 @@ describe('DataService', () => {
             isPersistenceIdentityPromotion: (candidate: object) => candidate === proof,
             getExpectedCloudCBTForceV2Revision: () => undefined,
         } as any);
-        expect(service.activateForceAuthority(force)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(force)).toBeTrue();
         instanceId.set(serialized.instanceId);
-        expect(service.activateForceAuthority(force)).toBeFalse();
+        expect(forcePersistence.activateForceAuthority(force)).toBeFalse();
 
-        await service.saveForce(force, true);
+        await forcePersistence.saveForce(force, true);
 
         expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(serialized);
-        expect(service.activateForceAuthority(force)).toBeTrue();
-        expect(service.hasDurableForceIdentity(force)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(force)).toBeTrue();
+        expect(forcePersistence.hasDurableForceIdentity(force)).toBeTrue();
     });
 
     it('drains and prepares removal of a provisional owner whose Force-minted ID is not promoted', async () => {
@@ -1087,18 +1173,18 @@ describe('DataService', () => {
             isWholeOwnerRetired: () => retired,
             consumeWholeOwnerReplacementCommitAuthority: jasmine.createSpy('consumeRemoval').and.returnValue(true),
         } as any);
-        expect(service.activateForceAuthority(force)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(force)).toBeTrue();
         instanceId.set('force-provisional-discard');
         const fingerprint = force.captureWholeOwnerAuthorityFingerprint();
 
-        expect(await service.drainForceAuthorityPersistence(force, fingerprint)).toBeTrue();
-        const finalize = service.prepareForceAuthorityRemoval(force, Object.freeze({}) as any);
+        expect(await forcePersistence.drainForceAuthorityPersistence(force, fingerprint)).toBeTrue();
+        const finalize = forcePersistence.prepareForceAuthorityRemoval(force, Object.freeze({}) as any);
         expect(finalize).not.toBeNull();
         retired = true;
         finalize!();
 
-        expect((service as any).provisionalForceAuthority.has(force)).toBeFalse();
-        expect((service as any).activeForceAuthority.has('force-provisional-discard')).toBeFalse();
+        expect((forcePersistence as any).provisionalForceAuthority.has(force)).toBeFalse();
+        expect((forcePersistence as any).activeForceAuthority.has('force-provisional-discard')).toBeFalse();
     });
 
     it('retains a rejected local persistence outcome so a later retirement drain fails closed', async () => {
@@ -1117,13 +1203,13 @@ describe('DataService', () => {
             getExpectedCloudCBTForceV2Revision: () => undefined,
             markCloudCBTForceV2Saved: () => undefined,
         } as any);
-        expect(service.activateForceAuthority(force)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(force)).toBeTrue();
         const fingerprint = force.captureWholeOwnerAuthorityFingerprint();
         dbServiceMock.saveForce.and.rejectWith(new Error('IDB rejected the write'));
 
-        await expectAsync(service.saveForce(force, true)).toBeRejectedWithError('IDB rejected the write');
+        await expectAsync(forcePersistence.saveForce(force, true)).toBeRejectedWithError('IDB rejected the write');
 
-        expect(await service.drainForceAuthorityPersistence(force, fingerprint)).toBeFalse();
+        expect(await forcePersistence.drainForceAuthorityPersistence(force, fingerprint)).toBeFalse();
     });
 
     it('rejects a local dispatch when the exact owner fingerprint changes in its queue', async () => {
@@ -1142,17 +1228,17 @@ describe('DataService', () => {
             getExpectedCloudCBTForceV2Revision: () => undefined,
             markCloudCBTForceV2Saved: () => undefined,
         } as any);
-        expect(service.activateForceAuthority(force)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(force)).toBeTrue();
         const predecessor = deferred<void>();
-        (service as any).forceLocalSaveChain.set(serialized.instanceId, predecessor.promise);
+        (forcePersistence as any).forceLocalSaveChain.set(serialized.instanceId, predecessor.promise);
 
-        const save = service.saveForce(force, true);
+        const save = forcePersistence.saveForce(force, true);
         for (let index = 0; index < 12
-            && (service as any).forceLocalSaveChain.get(serialized.instanceId) === predecessor.promise;
+            && (forcePersistence as any).forceLocalSaveChain.get(serialized.instanceId) === predecessor.promise;
             index += 1) {
             await Promise.resolve();
         }
-        expect((service as any).forceLocalSaveChain.get(serialized.instanceId)).not.toBe(predecessor.promise);
+        expect((forcePersistence as any).forceLocalSaveChain.get(serialized.instanceId)).not.toBe(predecessor.promise);
         force.name = 'Changed Outside Save';
         predecessor.resolve();
         await save;
@@ -1176,12 +1262,12 @@ describe('DataService', () => {
             getExpectedCloudCBTForceV2Revision: () => undefined,
             markCloudCBTForceV2Saved: jasmine.createSpy('markFingerprintCloudSaved'),
         } as any);
-        expect(service.activateForceAuthority(force)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(force)).toBeTrue();
         const cloudReady = deferred<WebSocket>();
-        spyOn<any>(service, 'canUseCloud').and.returnValue(cloudReady.promise);
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(cloudReady.promise);
 
-        const save = service.saveForceAndWaitForCloud(force);
-        for (let index = 0; index < 12 && !(service as any).forceCloudSaveChain.size; index += 1) {
+        const save = forcePersistence.saveForceAndWaitForCloud(force);
+        for (let index = 0; index < 12 && !(forcePersistence as any).forceCloudSaveChain.size; index += 1) {
             await Promise.resolve();
         }
         force.name = 'Changed While Cloud Prepared';
@@ -1193,7 +1279,7 @@ describe('DataService', () => {
     });
 
     it('sends the prepared V2 payload with the observed cloud revision instead of reserializing', async () => {
-        const serializedForce = {
+        const serializedForce: SerializedForce = {
             version: 2,
             instanceId: 'force-v2',
             timestamp: '2026-04-05T00:00:00Z',
@@ -1210,11 +1296,11 @@ describe('DataService', () => {
             getExpectedCloudCBTForceV2Revision: () => 17,
             markCloudCBTForceV2Saved: jasmine.createSpy('markCloudCBTForceV2Saved'),
         } as any);
-        expect(service.activateForceAuthority(force)).toBeTrue();
-        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+        expect(forcePersistence.activateForceAuthority(force)).toBeTrue();
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
         wsServiceMock.sendAndWaitForResponse.and.resolveTo({ action: 'forceSaved', instanceId: 'force-v2' });
 
-        await service.saveForceAndWaitForCloud(force);
+        await forcePersistence.saveForceAndWaitForCloud(force);
 
         expect(force.serializeForPersistence).toHaveBeenCalledTimes(1);
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
@@ -1246,15 +1332,15 @@ describe('DataService', () => {
             getExpectedCloudCBTForceV2Revision: () => undefined,
             markCloudCBTForceV2Saved: jasmine.createSpy('markCloudCBTForceV2Saved'),
         } as any);
-        service.activateForceAuthority(force);
+        forcePersistence.activateForceAuthority(force);
         const fingerprint = force.captureWholeOwnerAuthorityFingerprint();
         const response = deferred<any>();
-        spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
         wsServiceMock.sendAndWaitForResponse.and.returnValue(response.promise);
 
-        await service.saveForce(force);
+        await forcePersistence.saveForce(force);
         let drained = false;
-        const drain = service.drainForceAuthorityPersistence(force, fingerprint)
+        const drain = forcePersistence.drainForceAuthorityPersistence(force, fingerprint)
             .then(result => {
                 drained = true;
                 return result;
@@ -1300,10 +1386,10 @@ describe('DataService', () => {
                 expectedRevision = saved.cbt!.forceRevision;
             },
         } as any);
-        expect(service.activateForceAuthority(force)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(force)).toBeTrue();
         let acknowledgeFirst!: (value: unknown) => void;
         let requestCount = 0;
-        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
         wsServiceMock.sendAndWaitForResponse.and.callFake(() => {
             requestCount += 1;
             return requestCount === 1
@@ -1311,8 +1397,8 @@ describe('DataService', () => {
                 : Promise.resolve({ action: 'forceSaved', instanceId: 'force-chain' });
         });
 
-        const firstSave = service.saveForceAndWaitForCloud(force);
-        const secondSave = service.saveForceAndWaitForCloud(force);
+        const firstSave = forcePersistence.saveForceAndWaitForCloud(force);
+        const secondSave = forcePersistence.saveForceAndWaitForCloud(force);
         for (let index = 0;
             index < 12 && wsServiceMock.sendAndWaitForResponse.calls.count() === 0;
             index += 1) {
@@ -1341,17 +1427,15 @@ describe('DataService', () => {
             instanceId: signal('force-staged'),
             groups: () => [],
             units: () => [],
-            getDeferredUnitDescriptors: () => [],
             markCloudCBTForceV2Saved: jasmine.createSpy('markCloudCBTForceV2Saved'),
-        } as any);
+        } as any, incoming);
         let deserializedBytes: SerializedForce | undefined;
-        spyOn<any>(service, 'deserializeNormalizedForce').and.callFake(async (raw: SerializedForce) => {
+        spyOn<any>(forcePersistence, 'deserializeCurrentForce').and.callFake(async (raw: SerializedForce) => {
             deserializedBytes = raw;
-            raw.name = 'Deserializer Retained Mutation';
             return stagedForce;
         });
 
-        const staged = await service.stageRemoteForceSnapshot(incoming);
+        const staged = await forcePersistence.stageRemoteForceSnapshot(incoming);
         incoming.name = 'Mutated After Stage';
         const persistence = acceptStagedRemoteForce(staged);
 
@@ -1368,7 +1452,7 @@ describe('DataService', () => {
         );
     });
 
-    it('destroys discarded staged units and rejects identity-mutated tokens before persistence', async () => {
+    it('invalidates discarded and identity-mutated tokens before persistence', async () => {
         const incoming: SerializedForce = {
             version: 2,
             instanceId: 'force-discard',
@@ -1377,125 +1461,31 @@ describe('DataService', () => {
             name: 'Discarded Remote',
             groups: [],
         };
-        const firstUnit = { id: 'unit-discard', destroy: jasmine.createSpy('destroyDiscarded') };
         const discardedForce = withMockWholeOwnerAuthority({
             instanceId: signal('force-discard'),
             groups: () => [],
-            units: () => [firstUnit],
-            getDeferredUnitDescriptors: () => [],
+            units: () => [],
+            serialize: () => structuredClone(incoming),
         } as any);
-        const secondUnit = { id: 'unit-identity', destroy: jasmine.createSpy('destroyIdentity') };
         const identityForce = withMockWholeOwnerAuthority({
             instanceId: signal('force-discard'),
             groups: () => [],
-            units: () => [secondUnit],
-            getDeferredUnitDescriptors: () => [],
+            units: () => [],
+            serialize: () => structuredClone(incoming),
         } as any);
-        spyOn<any>(service, 'deserializeNormalizedForce').and.returnValues(
+        spyOn<any>(forcePersistence, 'deserializeCurrentForce').and.returnValues(
             Promise.resolve(discardedForce),
             Promise.resolve(identityForce),
         );
 
-        const discarded = await service.stageRemoteForceSnapshot(incoming);
-        service.discardRemoteForceSnapshot(discarded);
-        expect(firstUnit.destroy).toHaveBeenCalledTimes(1);
+        const discarded = await forcePersistence.stageRemoteForceSnapshot(incoming);
+        forcePersistence.discardRemoteForceSnapshot(discarded);
         expect(() => acceptStagedRemoteForce(discarded)).toThrowError(/already consumed/u);
 
-        const identityChanged = await service.stageRemoteForceSnapshot(incoming);
+        const identityChanged = await forcePersistence.stageRemoteForceSnapshot(incoming);
         identityForce.instanceId.set('different-force');
         expect(() => acceptStagedRemoteForce(identityChanged)).toThrowError(/authority changed/u);
-        expect(secondUnit.destroy).toHaveBeenCalledTimes(1);
         expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
-    });
-
-    it('rejects duplicate durable group and unit IDs before deserialization or token issuance', async () => {
-        const deserialize = spyOn<any>(service, 'deserializeNormalizedForce');
-        const unit = (id: string) => ({ id, unit: `Unit ${id}`, state: {} as any });
-        const duplicateGroups: SerializedForce = {
-            version: 2,
-            instanceId: 'force-duplicate-groups',
-            timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
-            name: 'Duplicate Groups',
-            groups: [
-                { id: 'group-1', units: [unit('unit-1')] },
-                { id: 'group-1', units: [unit('unit-2')] },
-            ],
-        };
-        await expectAsync(service.stageRemoteForceSnapshot(duplicateGroups))
-            .toBeRejectedWithError(/duplicate durable group ID/u);
-
-        const duplicateUnits: SerializedForce = {
-            ...duplicateGroups,
-            instanceId: 'force-duplicate-units',
-            name: 'Duplicate Units',
-            groups: [
-                { id: 'group-1', units: [unit('unit-1')] },
-                { id: 'group-2', units: [unit('unit-1')] },
-            ],
-        };
-        await expectAsync(service.stageRemoteForceSnapshot(duplicateUnits))
-            .toBeRejectedWithError(/duplicate durable unit ID/u);
-        expect(deserialize).not.toHaveBeenCalled();
-    });
-
-    it('rejects transport values that schema sanitization would change before token issuance', async () => {
-        const deserialize = spyOn<any>(service, 'deserializeNormalizedForce');
-        const nonBooleanOwned = createSerializedForceForTest({
-            instanceId: 'force-noncanonical-owned',
-            owned: 'false' as unknown as boolean,
-        });
-        const filteredC3 = createSerializedForceForTest({
-            instanceId: 'force-noncanonical-c3',
-            c3Networks: [{
-                id: 'network-1',
-                type: 'C3' as any,
-                color: '#000000',
-                members: ['unit-1', 7 as unknown as string],
-            }],
-        });
-
-        await expectAsync(service.stageRemoteForceSnapshot(nonBooleanOwned))
-            .toBeRejectedWithError(/canonical persisted form/u);
-        await expectAsync(service.stageRemoteForceSnapshot(filteredC3))
-            .toBeRejectedWithError(/canonical persisted form/u);
-        expect(deserialize).not.toHaveBeenCalled();
-    });
-
-    it('rejects V2 bytes that differ from the canonical persistence writer', async () => {
-        const emptyGroup = createSerializedForceForTest({
-            instanceId: 'force-writer-noncanonical-group',
-            factionLock: false,
-            c3Networks: [],
-            groups: [{
-                id: 'empty-group',
-                name: '',
-                formationLock: false,
-                units: [],
-            }],
-        });
-
-        await expectAsync(service.stageRemoteForceSnapshot(emptyGroup))
-            .toBeRejectedWithError(/canonical persistence writer/u);
-        expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
-    });
-
-    it('rejects missing writer-required legacy fields before deserialization', async () => {
-        const deserialize = spyOn<any>(service, 'deserializeNormalizedForce');
-        const missingVersion = createSerializedForceForTest({
-            instanceId: 'force-missing-version',
-        }) as Partial<SerializedForce>;
-        delete missingVersion.version;
-        const missingName = createSerializedForceForTest({
-            instanceId: 'force-missing-name',
-        }) as Partial<SerializedForce>;
-        delete missingName.name;
-
-        await expectAsync(service.stageRemoteForceSnapshot(missingVersion as SerializedForce))
-            .toBeRejectedWithError(/required canonical persistence fields/u);
-        await expectAsync(service.stageRemoteForceSnapshot(missingName as SerializedForce))
-            .toBeRejectedWithError(/required canonical persistence fields/u);
-        expect(deserialize).not.toHaveBeenCalled();
     });
 
     it('keeps prepared Data authority reversible until the predecessor is retired', async () => {
@@ -1504,9 +1494,8 @@ describe('DataService', () => {
             instanceId: signal(incoming.instanceId),
             groups: () => [],
             units: () => [],
-            getDeferredUnitDescriptors: () => [],
-        } as any);
-        spyOn<any>(service, 'deserializeNormalizedForce').and.resolveTo(stagedForce);
+        } as any, incoming);
+        spyOn<any>(forcePersistence, 'deserializeCurrentForce').and.resolveTo(stagedForce);
         let retired = false;
         const predecessor = {
             instanceId: signal(incoming.instanceId),
@@ -1514,10 +1503,10 @@ describe('DataService', () => {
             consumeWholeOwnerReplacementCommitAuthority: () => true,
             isWholeOwnerRetired: () => retired,
         } as any;
-        service.activateForceAuthority(predecessor);
-        const staged = await service.stageRemoteForceSnapshot(incoming);
-        const prepared = service.prepareRemoteForceSnapshotAcceptance(staged);
-        const plan = service.commitPreparedRemoteForceReplacement(
+        forcePersistence.activateForceAuthority(predecessor);
+        const staged = await forcePersistence.stageRemoteForceSnapshot(incoming);
+        const prepared = forcePersistence.prepareRemoteForceSnapshotAcceptance(staged);
+        const plan = forcePersistence.commitPreparedRemoteForceReplacement(
             prepared,
             predecessor,
             Object.freeze({}) as any,
@@ -1528,12 +1517,12 @@ describe('DataService', () => {
         }
 
         plan.finalize();
-        expect((service as any).activeForceAuthority.get(incoming.instanceId)).toBe(predecessor);
+        expect((forcePersistence as any).activeForceAuthority.get(incoming.instanceId)).toBe(predecessor);
         expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
 
         retired = true;
         plan.finalize();
-        expect((service as any).activeForceAuthority.get(incoming.instanceId)).toBe(stagedForce);
+        expect((forcePersistence as any).activeForceAuthority.get(incoming.instanceId)).toBe(stagedForce);
         await plan.persistence();
         expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(incoming);
     });
@@ -1544,9 +1533,8 @@ describe('DataService', () => {
             instanceId: signal(incoming.instanceId),
             groups: () => [],
             units: () => [],
-            getDeferredUnitDescriptors: () => [],
-        } as any);
-        spyOn<any>(service, 'deserializeNormalizedForce').and.resolveTo(stagedForce);
+        } as any, incoming);
+        spyOn<any>(forcePersistence, 'deserializeCurrentForce').and.resolveTo(stagedForce);
         const localWrite = deferred<void>();
         dbServiceMock.saveForce.and.returnValue(localWrite.promise);
         let retired = false;
@@ -1556,10 +1544,10 @@ describe('DataService', () => {
             consumeWholeOwnerReplacementCommitAuthority: () => true,
             isWholeOwnerRetired: () => retired,
         } as any;
-        expect(service.activateForceAuthority(predecessor)).toBeTrue();
-        const staged = await service.stageRemoteForceSnapshot(incoming);
-        const prepared = service.prepareRemoteForceSnapshotAcceptance(staged);
-        const plan = service.commitPreparedRemoteForceReplacement(
+        expect(forcePersistence.activateForceAuthority(predecessor)).toBeTrue();
+        const staged = await forcePersistence.stageRemoteForceSnapshot(incoming);
+        const prepared = forcePersistence.prepareRemoteForceSnapshotAcceptance(staged);
+        const plan = forcePersistence.commitPreparedRemoteForceReplacement(
             prepared,
             predecessor,
             Object.freeze({}) as any,
@@ -1573,7 +1561,7 @@ describe('DataService', () => {
         plan.finalize();
         const fingerprint = stagedForce.captureWholeOwnerAuthorityFingerprint();
         let drainSettled = false;
-        const drain = service.drainForceAuthorityPersistence(stagedForce, fingerprint)
+        const drain = forcePersistence.drainForceAuthorityPersistence(stagedForce, fingerprint)
             .then(result => {
                 drainSettled = true;
                 return result;
@@ -1587,7 +1575,7 @@ describe('DataService', () => {
         localWrite.resolve();
         await expectAsync(plan.persistence()).toBeResolved();
         await expectAsync(drain).toBeResolvedTo(true);
-        expect(service.hasDurableForceIdentity(stagedForce)).toBeTrue();
+        expect(forcePersistence.hasDurableForceIdentity(stagedForce)).toBeTrue();
     });
 
     it('does not let a prepared candidate replace Data authority without retirement proof', async () => {
@@ -1596,18 +1584,17 @@ describe('DataService', () => {
             instanceId: signal(incoming.instanceId),
             groups: () => [],
             units: () => [],
-            getDeferredUnitDescriptors: () => [],
-        } as any);
-        spyOn<any>(service, 'deserializeNormalizedForce').and.resolveTo(stagedForce);
+        } as any, incoming);
+        spyOn<any>(forcePersistence, 'deserializeCurrentForce').and.resolveTo(stagedForce);
         const predecessor = {
             instanceId: signal(incoming.instanceId),
             isWholeOwnerActive: () => true,
             consumeWholeOwnerReplacementCommitAuthority: jasmine.createSpy('consumeAuthority').and.returnValue(false),
         } as any;
-        service.activateForceAuthority(predecessor);
-        const staged = await service.stageRemoteForceSnapshot(incoming);
-        const prepared = service.prepareRemoteForceSnapshotAcceptance(staged);
-        const result = service.commitPreparedRemoteForceReplacement(
+        forcePersistence.activateForceAuthority(predecessor);
+        const staged = await forcePersistence.stageRemoteForceSnapshot(incoming);
+        const prepared = forcePersistence.prepareRemoteForceSnapshotAcceptance(staged);
+        const result = forcePersistence.commitPreparedRemoteForceReplacement(
             prepared,
             predecessor,
             Object.freeze({}) as any,
@@ -1616,131 +1603,7 @@ describe('DataService', () => {
         expect(result).toEqual({ accepted: false, reason: 'PREDECESSOR_NOT_RETIRED' });
         expect(predecessor.consumeWholeOwnerReplacementCommitAuthority).toHaveBeenCalledTimes(1);
         expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
-        service.discardPreparedRemoteForceAcceptance(prepared);
-    });
-
-    it('rejects cyclic transport graphs and non-deferred rows skipped during setup', async () => {
-        const cyclic = {
-            version: 2,
-            instanceId: 'force-cycle',
-            timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
-            name: 'Cyclic Remote',
-            groups: [],
-        } as SerializedForce & { cycle?: unknown };
-        cyclic.cycle = cyclic;
-        await expectAsync(service.stageRemoteForceSnapshot(cyclic))
-            .toBeRejectedWithError(/circular|cycle|cyclic/u);
-
-        const skipped: SerializedForce = {
-            version: 2,
-            instanceId: 'force-skipped',
-            timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
-            name: 'Skipped Remote',
-            groups: [{
-                id: 'group-1',
-                units: [{ id: 'unit-skipped', unit: 'Setup Throws', state: {} as any }],
-            }],
-        };
-        const detachedGroup = {
-            id: 'group-1',
-            units: () => [],
-        };
-        const detachedForce = {
-            instanceId: signal('force-skipped'),
-            groups: () => [detachedGroup],
-            units: () => [],
-            getDeferredUnitDescriptors: () => [],
-        } as any;
-        spyOn<any>(service, 'deserializeNormalizedForce').and.resolveTo(detachedForce);
-
-        await expectAsync(service.stageRemoteForceSnapshot(skipped))
-            .toBeRejectedWithError(/skipped a non-deferred unit row: unit-skipped/u);
-    });
-
-    it('permits an omitted row only with one exact detached deferred payload', async () => {
-        const row = { id: 'unit-deferred', unit: 'Unavailable Unit', state: {} as any };
-        const incoming: SerializedForce = {
-            version: 2,
-            instanceId: 'force-deferred',
-            timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
-            name: 'Deferred Remote',
-            groups: [{ id: 'group-1', units: [row] }],
-        };
-        const detachedForce = withMockWholeOwnerAuthority({
-            instanceId: signal('force-deferred'),
-            groups: () => [{ id: 'group-1', units: () => [] }],
-            units: () => [],
-            getDeferredUnitDescriptors: () => [{
-                rawLegacyName: row.unit,
-                candidates: [],
-                reason: 'not-found',
-                sourcePayload: structuredClone(row),
-            }],
-        } as any);
-        spyOn<any>(service, 'deserializeNormalizedForce').and.resolveTo(detachedForce);
-
-        const staged = await service.stageRemoteForceSnapshot(incoming);
-        expect(staged.force).toBe(detachedForce);
-        service.discardRemoteForceSnapshot(staged);
-    });
-
-    it('permits one uniquely identified deferred unit absent from visible groups', async () => {
-        const retained = { id: 'unit-retained-only', unit: 'Retained Sidecar Unit', state: {} as any };
-        const incoming: SerializedForce = {
-            version: 2,
-            instanceId: 'force-retained-only',
-            timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
-            name: 'Retained Remote',
-            groups: [],
-        };
-        const detachedForce = withMockWholeOwnerAuthority({
-            instanceId: signal('force-retained-only'),
-            groups: () => [],
-            units: () => [],
-            getDeferredUnitDescriptors: () => [{
-                rawLegacyName: retained.unit,
-                candidates: [],
-                reason: 'catalog-not-ready',
-                sourcePayload: structuredClone(retained),
-            }],
-        } as any);
-        spyOn<any>(service, 'deserializeNormalizedForce').and.resolveTo(detachedForce);
-
-        const staged = await service.stageRemoteForceSnapshot(incoming);
-        expect(staged.force).toBe(detachedForce);
-        service.discardRemoteForceSnapshot(staged);
-    });
-
-    it('rejects duplicate durable IDs in deferred authority', async () => {
-        const retained = { id: 'unit-retained-duplicate', unit: 'Retained Duplicate', state: {} as any };
-        const incoming: SerializedForce = {
-            version: 2,
-            instanceId: 'force-retained-duplicate',
-            timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
-            name: 'Duplicate Retained Remote',
-            groups: [],
-        };
-        const descriptor = {
-            rawLegacyName: retained.unit,
-            candidates: [],
-            reason: 'catalog-not-ready',
-            sourcePayload: retained,
-        };
-        const detachedForce = {
-            instanceId: signal('force-retained-duplicate'),
-            groups: () => [],
-            units: () => [],
-            getDeferredUnitDescriptors: () => [descriptor, { ...descriptor }],
-        } as any;
-        spyOn<any>(service, 'deserializeNormalizedForce').and.resolveTo(detachedForce);
-
-        await expectAsync(service.stageRemoteForceSnapshot(incoming))
-            .toBeRejectedWithError(/duplicate retained durable unit ID/u);
+        forcePersistence.discardPreparedRemoteForceAcceptance(prepared);
     });
 
     it('fences delayed pre-remote serialization and keeps remote bytes until a post-remote edit', async () => {
@@ -1778,35 +1641,34 @@ describe('DataService', () => {
             instanceId: signal('force-generation'),
             groups: () => [],
             units: () => [],
-            getDeferredUnitDescriptors: () => [],
             serializeForPersistence: jasmine.createSpy('serializeReplacement').and.resolveTo(postRemoteBytes),
             getExpectedCloudCBTForceV2Revision: () => undefined,
             markCloudCBTForceV2Saved: jasmine.createSpy('markRemoteSaved'),
-        } as any);
-        spyOn<any>(service, 'deserializeNormalizedForce').and.resolveTo(remoteForce);
-        expect(service.activateForceAuthority(liveForce)).toBeTrue();
+        } as any, remoteBytes);
+        spyOn<any>(forcePersistence, 'deserializeCurrentForce').and.resolveTo(remoteForce);
+        expect(forcePersistence.activateForceAuthority(liveForce)).toBeTrue();
 
-        const oldSave = service.saveForce(liveForce, true);
-        expect(service.hasPendingForceSaves()).toBeTrue();
-        const staged = await service.stageRemoteForceSnapshot(remoteBytes);
+        const oldSave = forcePersistence.saveForce(liveForce, true);
+        expect(forcePersistence.hasPendingForceSaves()).toBeTrue();
+        const staged = await forcePersistence.stageRemoteForceSnapshot(remoteBytes);
         await acceptStagedRemoteForce(staged);
         // ForceBuilder tears down the old slot after registering the staged
         // replacement; that must not unregister the new active object.
-        expect(service.deactivateForceAuthority(liveForce)).toBeFalse();
+        expect(forcePersistence.deactivateForceAuthority(liveForce)).toBeFalse();
         oldPreparation.resolve(oldBytes);
         await oldSave;
 
         expect(dbServiceMock.saveForce).toHaveBeenCalledTimes(1);
         expect(dbServiceMock.saveForce).toHaveBeenCalledWith(remoteBytes);
 
-        await service.saveForce(liveForce, true);
+        await forcePersistence.saveForce(liveForce, true);
         expect(liveForce.serializeForPersistence).toHaveBeenCalledTimes(1);
-        await service.saveForce(remoteForce, true);
+        await forcePersistence.saveForce(remoteForce, true);
         expect(dbServiceMock.saveForce.calls.allArgs().map(args => args[0])).toEqual([
             remoteBytes,
             postRemoteBytes,
         ]);
-        expect(service.hasPendingForceSaves()).toBeFalse();
+        expect(forcePersistence.hasPendingForceSaves()).toBeFalse();
     });
 
     it('orders an already-enqueued local write before remote authority so remote is the final IDB value', async () => {
@@ -1839,18 +1701,17 @@ describe('DataService', () => {
             instanceId: signal('force-local-order'),
             groups: () => [],
             units: () => [],
-            getDeferredUnitDescriptors: () => [],
             markCloudCBTForceV2Saved: jasmine.createSpy('markRemoteSaved'),
-        } as any);
-        spyOn<any>(service, 'deserializeNormalizedForce').and.resolveTo(remoteForce);
-        expect(service.activateForceAuthority(liveForce)).toBeTrue();
+        } as any, remoteBytes);
+        spyOn<any>(forcePersistence, 'deserializeCurrentForce').and.resolveTo(remoteForce);
+        expect(forcePersistence.activateForceAuthority(liveForce)).toBeTrue();
 
-        const localSave = service.saveForce(liveForce, true);
+        const localSave = forcePersistence.saveForce(liveForce, true);
         for (let index = 0; index < 12 && dbServiceMock.saveForce.calls.count() === 0; index += 1) {
             await Promise.resolve();
         }
         expect(dbServiceMock.saveForce).toHaveBeenCalledTimes(1);
-        const staged = await service.stageRemoteForceSnapshot(remoteBytes);
+        const staged = await forcePersistence.stageRemoteForceSnapshot(remoteBytes);
         const remoteSave = acceptStagedRemoteForce(staged);
         await Promise.resolve();
         expect(dbServiceMock.saveForce).toHaveBeenCalledTimes(1);
@@ -1883,18 +1744,18 @@ describe('DataService', () => {
             serializeForPersistence: () => preparation.promise,
             getExpectedCloudCBTForceV2Revision: () => undefined,
         } as any);
-        expect(service.activateForceAuthority(force)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(force)).toBeTrue();
 
-        const save = service.saveForce(force, true);
-        expect(service.hasPendingForceSaves()).toBeTrue();
+        const save = forcePersistence.saveForce(force, true);
+        expect(forcePersistence.hasPendingForceSaves()).toBeTrue();
         preparation.resolve(serialized);
         for (let index = 0; index < 12 && dbServiceMock.saveForce.calls.count() === 0; index += 1) {
             await Promise.resolve();
         }
-        expect(service.hasPendingForceSaves()).toBeTrue();
+        expect(forcePersistence.hasPendingForceSaves()).toBeTrue();
         dbWrite.resolve();
         await save;
-        expect(service.hasPendingForceSaves()).toBeFalse();
+        expect(forcePersistence.hasPendingForceSaves()).toBeFalse();
     });
 
     it('defers and coalesces UI autosaves so the originating interaction can paint', async () => {
@@ -1903,13 +1764,13 @@ describe('DataService', () => {
             instanceId: () => 'force-deferred-autosave',
             isWholeOwnerActive: () => true,
         } as unknown as import('../models/force.model').Force;
-        const save = spyOn(service, 'saveForce').and.resolveTo();
+        const save = spyOn(forcePersistence, 'saveForce').and.resolveTo();
 
-        service.queueForceAutosave(force);
-        service.queueForceAutosave(force);
+        forcePersistence.queueForceAutosave(force);
+        forcePersistence.queueForceAutosave(force);
 
         expect(save).not.toHaveBeenCalled();
-        expect(service.hasPendingForceSaves()).toBeTrue();
+        expect(forcePersistence.hasPendingForceSaves()).toBeTrue();
 
         await new Promise<void>(resolve => setTimeout(resolve, 0));
         for (let index = 0; index < 8 && save.calls.count() === 0; index += 1) {
@@ -1918,7 +1779,7 @@ describe('DataService', () => {
 
         expect(save).toHaveBeenCalledOnceWith(force);
         await Promise.resolve();
-        expect(service.hasPendingForceSaves()).toBeFalse();
+        expect(forcePersistence.hasPendingForceSaves()).toBeFalse();
     });
 
     it('drops a deferred autosave after its force authority retires', async () => {
@@ -1927,14 +1788,14 @@ describe('DataService', () => {
             instanceId: () => 'force-retired-autosave',
             isWholeOwnerActive: () => false,
         } as unknown as import('../models/force.model').Force;
-        const save = spyOn(service, 'saveForce').and.resolveTo();
+        const save = spyOn(forcePersistence, 'saveForce').and.resolveTo();
 
-        service.queueForceAutosave(force);
+        forcePersistence.queueForceAutosave(force);
         await new Promise<void>(resolve => setTimeout(resolve, 0));
         await Promise.resolve();
 
         expect(save).not.toHaveBeenCalled();
-        expect(service.hasPendingForceSaves()).toBeFalse();
+        expect(forcePersistence.hasPendingForceSaves()).toBeFalse();
     });
 
     it('detaches an in-flight old cloud generation and never sends its already-queued successor', async () => {
@@ -1961,37 +1822,36 @@ describe('DataService', () => {
             getExpectedCloudCBTForceV2Revision: () => undefined,
             markCloudCBTForceV2Saved: jasmine.createSpy('markOldGenerationSaved'),
         } as any);
-        expect(service.activateForceAuthority(force)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(force)).toBeTrue();
         const response = deferred<any>();
-        spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
         wsServiceMock.sendAndWaitForResponse.and.returnValue(response.promise);
         const adoption = jasmine.createSpy('adoption');
-        service.forceNeedsAdoption.subscribe(adoption);
+        forcePersistence.forceNeedsAdoption.subscribe(adoption);
 
-        const firstSave = service.saveForceAndWaitForCloud(force);
+        const firstSave = forcePersistence.saveForceAndWaitForCloud(force);
         for (let index = 0; index < 16 && wsServiceMock.sendAndWaitForResponse.calls.count() === 0; index += 1) {
             await Promise.resolve();
         }
-        const firstChain = (service as any).forceCloudSaveChain.get('force-cloud-generation');
-        const secondSave = service.saveForceAndWaitForCloud(force);
+        const firstChain = (forcePersistence as any).forceCloudSaveChain.get('force-cloud-generation');
+        const secondSave = forcePersistence.saveForceAndWaitForCloud(force);
         for (let index = 0; index < 16
-            && (service as any).forceCloudSaveChain.get('force-cloud-generation') === firstChain;
+            && (forcePersistence as any).forceCloudSaveChain.get('force-cloud-generation') === firstChain;
             index += 1) {
             await Promise.resolve();
         }
-        expect((service as any).forceCloudSaveChain.get('force-cloud-generation')).not.toBe(firstChain);
+        expect((forcePersistence as any).forceCloudSaveChain.get('force-cloud-generation')).not.toBe(firstChain);
 
         const remoteForce = withMockWholeOwnerAuthority({
             instanceId: signal('force-cloud-generation'),
             groups: () => [],
             units: () => [],
-            getDeferredUnitDescriptors: () => [],
             markCloudCBTForceV2Saved: jasmine.createSpy('markRemoteSaved'),
-        } as any);
-        spyOn<any>(service, 'deserializeNormalizedForce').and.resolveTo(remoteForce);
-        const staged = await service.stageRemoteForceSnapshot(remote);
+        } as any, remote);
+        spyOn<any>(forcePersistence, 'deserializeCurrentForce').and.resolveTo(remoteForce);
+        const staged = await forcePersistence.stageRemoteForceSnapshot(remote);
         await acceptStagedRemoteForce(staged);
-        expect(service.hasPendingForceSaves()).toBeFalse();
+        expect(forcePersistence.hasPendingForceSaves()).toBeFalse();
 
         response.resolve({ code: 'not_owner', action: 'error' });
         await Promise.all([firstSave, secondSave]);
@@ -2015,7 +1875,7 @@ describe('DataService', () => {
             name: 'Remote During canUseCloud',
         };
         const cloudReady = deferred<WebSocket>();
-        spyOn<any>(service, 'canUseCloud').and.returnValue(cloudReady.promise);
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(cloudReady.promise);
         const liveForce = withMockWholeOwnerAuthority({
             name: 'Stale During canUseCloud',
             gameSystem: GameSystem.ALPHA_STRIKE,
@@ -2025,19 +1885,18 @@ describe('DataService', () => {
             getExpectedCloudCBTForceV2Revision: () => undefined,
             markCloudCBTForceV2Saved: jasmine.createSpy('markStaleSaved'),
         } as any);
-        const pendingSave = service.saveForceAndWaitForCloud(liveForce);
-        for (let index = 0; index < 12 && !(service as any).forceCloudSaveChain.size; index += 1) {
+        const pendingSave = forcePersistence.saveForceAndWaitForCloud(liveForce);
+        for (let index = 0; index < 12 && !(forcePersistence as any).forceCloudSaveChain.size; index += 1) {
             await Promise.resolve();
         }
         const remoteForce = withMockWholeOwnerAuthority({
             instanceId: signal('force-cloud-await'),
             groups: () => [],
             units: () => [],
-            getDeferredUnitDescriptors: () => [],
             markCloudCBTForceV2Saved: jasmine.createSpy('markRemoteSaved'),
-        } as any);
-        spyOn<any>(service, 'deserializeNormalizedForce').and.resolveTo(remoteForce);
-        const staged = await service.stageRemoteForceSnapshot(remote);
+        } as any, remote);
+        spyOn<any>(forcePersistence, 'deserializeCurrentForce').and.resolveTo(remoteForce);
+        const staged = await forcePersistence.stageRemoteForceSnapshot(remote);
         await acceptStagedRemoteForce(staged);
         cloudReady.resolve({} as WebSocket);
         await pendingSave;
@@ -2063,10 +1922,10 @@ describe('DataService', () => {
             name: 'Post-Remote Edit',
             cbt: createEmptyCBTForceForTest('force-rebase', postRevision),
         };
-        spyOn<any>(service, 'canUseCloud').and.resolveTo({} as WebSocket);
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
         wsServiceMock.sendAndWaitForResponse.and.resolveTo({ action: 'forceSaved' });
 
-        const staged = await service.stageRemoteForceSnapshot(remote);
+        const staged = await forcePersistence.stageRemoteForceSnapshot(remote);
         const replacement = staged.force;
         const identityPromotionProof = (await replacement.serializeForPersistenceWithRevisionFence())
             .identityPromotionProof;
@@ -2076,7 +1935,7 @@ describe('DataService', () => {
             identityPromotionProof,
         }));
         await acceptStagedRemoteForce(staged);
-        await service.saveForceAndWaitForCloud(replacement);
+        await forcePersistence.saveForceAndWaitForCloud(replacement);
 
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledOnceWith(jasmine.objectContaining({
             data: encodeForceForStorage(post),
@@ -2095,16 +1954,16 @@ describe('DataService', () => {
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.CLASSIC,
             name: 'Wire Force',
-        };
+        } as const;
         const valid = {
             ...base,
             cbt: createEmptyCBTForceForTest('force-wire'),
         };
 
-        await service.saveSerializedForceToLocalStorage(valid);
+        await forcePersistence.saveSerializedForceToLocalStorage(valid);
         expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(valid);
 
-        await expectAsync(service.saveSerializedForceToLocalStorage({
+        await expectAsync(forcePersistence.saveSerializedForceToLocalStorage({
             ...base,
             cbt: {
                 schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION + 1,
@@ -2123,40 +1982,36 @@ describe('DataService', () => {
             name: 'Original Raw',
             cbt: createEmptyCBTForceForTest('force-raw-race'),
         };
-        const inspection = deferred<any>();
-        const inspect = spyOn<any>(service, 'resolveLegacyUnitIdentity').and.callFake(() => inspection.promise);
-        // Direct V2 does not invoke V1 identity resolution. Delay the per-ID
-        // write queue and activate before its callback executes.
+        // Delay the per-ID write queue and activate before its callback executes.
         const predecessor = deferred<void>();
-        (service as any).forceLocalSaveChain.set(raw.instanceId, predecessor.promise);
-        const cache = service.saveSerializedForceToLocalStorage(raw);
+        (forcePersistence as any).forceLocalSaveChain.set(raw.instanceId, predecessor.promise);
+        const cache = forcePersistence.saveSerializedForceToLocalStorage(raw);
         raw.name = 'Mutated Caller Bytes';
         const active = { instanceId: signal(raw.instanceId), isWholeOwnerActive: () => true } as any;
-        expect(service.activateForceAuthority(active)).toBeFalse();
+        expect(forcePersistence.activateForceAuthority(active)).toBeFalse();
         predecessor.resolve();
         expect(await cache).toBeTrue();
 
-        expect(inspect).not.toHaveBeenCalled();
         expect(dbServiceMock.saveForce).toHaveBeenCalledWith(
             jasmine.objectContaining({ name: 'Original Raw' }),
         );
-        expect(service.activateForceAuthority(active)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(active)).toBeTrue();
     });
 
     it('blocks activation for the complete ownerless IDB write window', async () => {
         const raw = createSerializedForceForTest({ instanceId: 'force-ownerless-idb-window' });
         const write = deferred<void>();
         dbServiceMock.saveForce.and.returnValue(write.promise);
-        const cache = service.saveSerializedForceToLocalStorage(raw);
+        const cache = forcePersistence.saveSerializedForceToLocalStorage(raw);
         for (let index = 0; index < 12 && dbServiceMock.saveForce.calls.count() === 0; index += 1) {
             await Promise.resolve();
         }
         const active = { instanceId: signal(raw.instanceId), isWholeOwnerActive: () => true } as any;
 
-        expect(service.activateForceAuthority(active)).toBeFalse();
+        expect(forcePersistence.activateForceAuthority(active)).toBeFalse();
         write.resolve();
         expect(await cache).toBeTrue();
-        expect(service.activateForceAuthority(active)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(active)).toBeTrue();
     });
 
     it('preserves ownerless raw submission order while the operation lane is delayed', async () => {
@@ -2165,13 +2020,13 @@ describe('DataService', () => {
             name: 'Older',
         });
         const newer = { ...older, name: 'Newer' };
-        const lane = (service as any).acquireOwnerlessForceOperation(older.instanceId);
+        const lane = (forcePersistence as any).acquireOwnerlessForceOperation(older.instanceId);
         expect(lane).not.toBeNull();
-        const first = service.saveSerializedForceToLocalStorage(older);
-        const second = service.saveSerializedForceToLocalStorage(newer);
+        const first = forcePersistence.saveSerializedForceToLocalStorage(older);
+        const second = forcePersistence.saveSerializedForceToLocalStorage(newer);
         await Promise.resolve();
         expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
-        (service as any).releaseOwnerlessForceOperation(older.instanceId, lane);
+        (forcePersistence as any).releaseOwnerlessForceOperation(older.instanceId, lane);
         await Promise.all([first, second]);
 
         expect(dbServiceMock.saveForce.calls.allArgs().map(args => args[0].name)).toEqual(['Older', 'Newer']);
@@ -2179,13 +2034,13 @@ describe('DataService', () => {
 
     it('holds deletion authority through cloud dispatch before the same ID can reopen', async () => {
         const cloudReady = deferred<WebSocket>();
-        spyOn<any>(service, 'canUseCloud').and.returnValue(cloudReady.promise);
-        const deletion = service.deleteForce('force-delete-race');
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(cloudReady.promise);
+        const deletion = forcePersistence.deleteForce('force-delete-race');
         for (let index = 0; index < 8 && dbServiceMock.deleteForce.calls.count() === 0; index += 1) {
             await Promise.resolve();
         }
         const reopened = { instanceId: signal('force-delete-race'), isWholeOwnerActive: () => true } as any;
-        expect(service.activateForceAuthority(reopened)).toBeFalse();
+        expect(forcePersistence.activateForceAuthority(reopened)).toBeFalse();
         cloudReady.resolve({ readyState: WebSocket.OPEN } as WebSocket);
         await deletion;
 
@@ -2194,18 +2049,18 @@ describe('DataService', () => {
             action: 'delForce',
             instanceId: 'force-delete-race',
         }));
-        expect(service.activateForceAuthority(reopened)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(reopened)).toBeTrue();
     });
 
     it('orders a later get behind an in-flight delete for the same ID', async () => {
         const deleted = deferred<void>();
         dbServiceMock.deleteForce.and.returnValue(deleted.promise);
-        spyOn<any>(service, 'canUseCloud').and.resolveTo(null);
-        const deletion = service.deleteLocalForce('force-delete-before-get');
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo(null);
+        const deletion = forcePersistence.deleteLocalForce('force-delete-before-get');
         for (let index = 0; index < 12 && dbServiceMock.deleteForce.calls.count() === 0; index += 1) {
             await Promise.resolve();
         }
-        const get = service.getForce('force-delete-before-get');
+        const get = forcePersistence.getForce('force-delete-before-get');
         await Promise.resolve();
         expect(dbServiceMock.getForce).toHaveBeenCalledOnceWith('force-delete-before-get');
         deleted.resolve();
@@ -2217,9 +2072,9 @@ describe('DataService', () => {
     it('orders a later delete behind an in-flight get for the same ID', async () => {
         const loaded = deferred<any>();
         dbServiceMock.getForce.and.returnValue(loaded.promise);
-        spyOn<any>(service, 'canUseCloud').and.resolveTo(null);
-        const get = service.getForce('force-get-before-delete');
-        const deletion = service.deleteLocalForce('force-get-before-delete');
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo(null);
+        const get = forcePersistence.getForce('force-get-before-delete');
+        const deletion = forcePersistence.deleteLocalForce('force-get-before-delete');
         await Promise.resolve();
         expect(dbServiceMock.deleteForce).not.toHaveBeenCalled();
         loaded.resolve(null);
@@ -2228,13 +2083,13 @@ describe('DataService', () => {
         expect(dbServiceMock.deleteForce).toHaveBeenCalledOnceWith('force-get-before-delete', []);
     });
 
-    it('normalizes persisted topology before asking storage to delete unit canvases', async () => {
+    it('uses current persisted topology when deleting unit canvases', async () => {
         dbServiceMock.getForce.and.resolveTo({
-            version: 1,
+            version: 2,
             timestamp: '2026-08-22T00:00:00.000Z',
-            instanceId: 'force-delete-v1',
+            instanceId: 'force-delete-current',
             type: GameSystem.ALPHA_STRIKE,
-            name: 'Old AS force',
+            name: 'AS force',
             groups: [{
                 id: 'group:one',
                 units: [{
@@ -2243,23 +2098,23 @@ describe('DataService', () => {
                     state: { modified: false, destroyed: false },
                 }],
             }],
-        } as SerializedForce);
+        } satisfies SerializedForce);
 
-        await service.deleteLocalForce('force-delete-v1');
+        await forcePersistence.deleteLocalForce('force-delete-current');
 
         expect(dbServiceMock.deleteForce).toHaveBeenCalledOnceWith(
-            'force-delete-v1',
+            'force-delete-current',
             ['unit:one'],
         );
     });
 
     it('rejects direct deletion of a loaded force owner', async () => {
-        service.activateForceAuthority({
+        forcePersistence.activateForceAuthority({
             instanceId: signal('force-loaded-delete'),
             isWholeOwnerActive: () => true,
         } as any);
 
-        await expectAsync(service.deleteForce('force-loaded-delete'))
+        await expectAsync(forcePersistence.deleteForce('force-loaded-delete'))
             .toBeRejectedWithError(/loaded force must be retired/u);
         expect(dbServiceMock.deleteForce).not.toHaveBeenCalled();
     });
@@ -2288,10 +2143,10 @@ describe('DataService', () => {
             serializeForPersistence: jasmine.createSpy('serializeForPersistence').and.resolveTo(persisted),
             getExpectedCloudCBTForceV2Revision: () => undefined,
         } as any);
-        service.activateForceAuthority(activeForce);
-        const deserialize = spyOn<any>(service, 'deserializePersistedForce');
+        forcePersistence.activateForceAuthority(activeForce);
+        const deserialize = spyOn<any>(forcePersistence, 'deserializeCurrentForce');
 
-        const result = await service.updateForceTags('force-live-tags', ['  Recon ', 'recon'], false);
+        const result = await forcePersistence.updateForceTags('force-live-tags', ['  Recon ', 'recon'], false);
 
         expect(activeForce.setTagsForExplicitPersistence).toHaveBeenCalledOnceWith(['Recon']);
         expect(activeForce.serializeForPersistence).toHaveBeenCalledTimes(1);
@@ -2319,9 +2174,9 @@ describe('DataService', () => {
             tags: ['Recon', 'Fire Support'],
             timestamp: '2026-04-02T00:00:00Z',
         });
-        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
 
-        const result = await service.updateForceTags('force-1', ['  Recon ', 'recon', 'Fire   Support'], true);
+        const result = await forcePersistence.updateForceTags('force-1', ['  Recon ', 'recon', 'Fire   Support'], true);
 
         expect(result).toEqual({
             tags: ['Recon', 'Fire Support'],
@@ -2342,7 +2197,7 @@ describe('DataService', () => {
             instanceId: 'force-inactive-tag-lease',
         }));
         dbServiceMock.updateForceTags.and.returnValue(write.promise);
-        const update = service.updateForceTags('force-inactive-tag-lease', ['Recon'], false);
+        const update = forcePersistence.updateForceTags('force-inactive-tag-lease', ['Recon'], false);
         for (let index = 0; index < 12 && dbServiceMock.updateForceTags.calls.count() === 0; index += 1) {
             await Promise.resolve();
         }
@@ -2351,13 +2206,13 @@ describe('DataService', () => {
             isWholeOwnerActive: () => true,
         } as any;
 
-        expect(service.activateForceAuthority(owner)).toBeFalse();
+        expect(forcePersistence.activateForceAuthority(owner)).toBeFalse();
         write.resolve(createSerializedForceForTest({
             instanceId: 'force-inactive-tag-lease',
             tags: ['Recon'],
         }));
         expect((await update).tags).toEqual(['Recon']);
-        expect(service.activateForceAuthority(owner)).toBeTrue();
+        expect(forcePersistence.activateForceAuthority(owner)).toBeTrue();
     });
 
     it('persists inactive CBT tags through the ownerless byte transaction', async () => {
@@ -2384,9 +2239,9 @@ describe('DataService', () => {
             serializeForPersistence: jasmine.createSpy('serialize').and.resolveTo(updated),
             getExpectedCloudCBTForceV2Revision: () => undefined,
         } as any);
-        spyOn<any>(service, 'deserializePersistedForce').and.resolveTo(detached);
+        spyOn<any>(forcePersistence, 'deserializeCurrentForce').and.resolveTo(detached);
 
-        const result = await service.updateForceTags(existing.instanceId, [' Recon '], false);
+        const result = await forcePersistence.updateForceTags(existing.instanceId, [' Recon '], false);
 
         expect(result).toEqual({ tags: ['Recon'], timestamp: updated.timestamp });
         expect(dbServiceMock.updateForceTags).not.toHaveBeenCalled();
@@ -2394,9 +2249,9 @@ describe('DataService', () => {
     });
 
     it('rejects lightweight tag updates when neither local nor cloud storage can be updated', async () => {
-        spyOn<any>(service, 'canUseCloud').and.returnValue(Promise.resolve(null));
+        spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve(null));
 
-        await expectAsync(service.updateForceTags('force-missing', ['Recon'], true)).toBeRejectedWithError(
+        await expectAsync(forcePersistence.updateForceTags('force-missing', ['Recon'], true)).toBeRejectedWithError(
             'The selected force is missing, protected, or read-only and cannot be retagged.',
         );
     });
@@ -2490,13 +2345,13 @@ describe('DataService', () => {
         const initialUnits = [createUnit('A')];
         unitsCatalogMock.getUnits.and.returnValue(initialUnits);
         await service.initialize();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
 
         const replacementUnits = [createUnit('B')];
         unitsCatalogMock.getUnits.and.returnValue(replacementUnits);
         queueMockCatalogActivation(replacementUnits);
         TestBed.tick();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
 
         expect(unitsCatalogMock.commitPendingActivation.calls.allArgs()).toEqual([[1], [2]]);
         expect(unitRuntimeServiceMock.commitPreparedRuntimeCatalog).toHaveBeenCalledTimes(2);
@@ -2509,13 +2364,13 @@ describe('DataService', () => {
         const unit = createUnit('MM-Data');
         unitsCatalogMock.getUnits.and.returnValue([unit]);
         await service.initialize();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
 
         const savedUser = createUnit('Saved User');
         const afterSave = [unit, savedUser];
         queueMockCatalogActivation(afterSave);
         TestBed.tick();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
 
         expect(unitsCatalogMock.commitPendingActivation.calls.allArgs()).toEqual([[1], [2]]);
         expect(unitRuntimeServiceMock.prepareRuntimeCatalog.calls.mostRecent().args[0]).toBe(afterSave);
@@ -2525,7 +2380,7 @@ describe('DataService', () => {
         const afterDelete = [unit];
         queueMockCatalogActivation(afterDelete);
         TestBed.tick();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
 
         expect(unitsCatalogMock.commitPendingActivation.calls.allArgs()).toEqual([[1], [2], [3]]);
         expect(unitRuntimeServiceMock.prepareRuntimeCatalog.calls.mostRecent().args[0]).toBe(afterDelete);
@@ -2539,7 +2394,7 @@ describe('DataService', () => {
         const initialUnits = [createUnit('A')];
         unitsCatalogMock.getUnits.and.returnValue(initialUnits);
         await service.initialize();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
 
         const unitsB = [createUnit('B')];
         const unitsC = [createUnit('C')];
@@ -2551,7 +2406,7 @@ describe('DataService', () => {
         unitsCatalogMock.getUnits.and.returnValue(unitsC);
         queueMockCatalogActivation(unitsC);
         TestBed.tick();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
 
         expect(unitsCatalogMock.commitPendingActivation.calls.allArgs()).toEqual([[1], [3]]);
         expect(unitRuntimeServiceMock.postprocessUnits.calls.allArgs().some(args => args[0] === unitsB)).toBeFalse();
@@ -2563,7 +2418,7 @@ describe('DataService', () => {
         const unitsA = [createUnit('A')];
         unitsCatalogMock.getUnits.and.returnValue(unitsA);
         await service.initialize();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
         unitRuntimeServiceMock.applyTagDataToUnits.calls.reset();
         unitRuntimeServiceMock.applyPreparedTagDataToUnits.calls.reset();
         unitRuntimeServiceMock.applyPublicTagsToUnits.calls.reset();
@@ -2592,7 +2447,7 @@ describe('DataService', () => {
 
         queueMockCatalogActivation(unitsB);
         TestBed.tick();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
 
         expect(unitRuntimeServiceMock.applyPreparedTagDataToUnits)
             .toHaveBeenCalledWith(unitsB, tagData, { rebuildTagSearchIndex: false });
@@ -2626,7 +2481,7 @@ describe('DataService', () => {
         const unitsA = [createEmptyUnit({ id: 101, name: 'A', year: 3100 })];
         unitsCatalogMock.getUnits.and.returnValue(unitsA);
         await service.initialize();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
         const activeEra = service.getEras()[0]!;
         const activeFaction = service.getFactions()[0]!;
         expect(activeEra).not.toBe(era);
@@ -2665,7 +2520,7 @@ describe('DataService', () => {
         expect(preparedArgs[1][0].units).toEqual(new Set([101, 202]));
 
         finishFinalize(true);
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
         expect(service.getEras()[0]).not.toBe(activeEra);
         expect(service.getFactions()[0]).not.toBe(activeFaction);
         expect(service.getEras()[0].units).toEqual(new Set([101, 202]));
@@ -2678,7 +2533,7 @@ describe('DataService', () => {
         const initialUnits = [createUnit('A')];
         unitsCatalogMock.getUnits.and.returnValue(initialUnits);
         await service.initialize();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
         const replacementUnits = [createUnit('B')];
         unitSearchIndexServiceMock.prepareCatalogIndexes.and.callFake((units: UnitSummary[]) => {
             if (units === replacementUnits) throw new Error('index failed');
@@ -2691,7 +2546,7 @@ describe('DataService', () => {
 
         queueMockCatalogActivation(replacementUnits);
         TestBed.tick();
-        await service.whenUnitCatalogSettled();
+        await waitForUnitCatalogSettlement(service);
 
         expect(unitsCatalogMock.commitPendingActivation.calls.allArgs()).toEqual([[1]]);
         expect(unitsCatalogMock.rejectPendingActivation).toHaveBeenCalledWith(2, jasmine.any(Error));

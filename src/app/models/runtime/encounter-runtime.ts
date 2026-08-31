@@ -3,7 +3,6 @@
 // Author: Drake
 
 import type {
-    InventoryControlRuntimeTarget,
     InventoryControlRuntimeTargetId,
 } from '../inventory-control-runtime-state.model';
 import {
@@ -63,46 +62,6 @@ export interface CBTEncounterSnapshot {
     readonly targets: readonly EncounterTarget[];
     readonly networks: readonly EncounterNetwork[];
 }
-
-export type CBTEncounterCommand =
-    | {
-        readonly kind: 'put-target';
-        readonly expectedRevision: StateRevision;
-        readonly target: EncounterTarget;
-    }
-    | {
-        readonly kind: 'remove-target';
-        readonly expectedRevision: StateRevision;
-        readonly targetId: EncounterTargetId;
-    }
-    | {
-        readonly kind: 'replace-targets';
-        readonly expectedRevision: StateRevision;
-        readonly targets: readonly EncounterTarget[];
-    }
-    | {
-        readonly kind: 'put-network';
-        readonly expectedRevision: StateRevision;
-        readonly network: EncounterNetwork;
-    }
-    | {
-        readonly kind: 'remove-network';
-        readonly expectedRevision: StateRevision;
-        readonly networkId: EncounterNetworkId;
-    }
-    | {
-        readonly kind: 'replace-networks';
-        readonly expectedRevision: StateRevision;
-        readonly networks: readonly EncounterNetwork[];
-    };
-
-export type CBTEncounterReduction =
-    | { readonly kind: 'applied'; readonly snapshot: CBTEncounterSnapshot }
-    | {
-        readonly kind: 'rejected';
-        readonly snapshot: CBTEncounterSnapshot;
-        readonly reason: 'stale-revision' | 'invalid-target' | 'invalid-network';
-    };
 
 /** Detached force-shared target query. It never contains attacker-local target state. */
 export interface TargetRegistrySnapshot {
@@ -278,65 +237,6 @@ export function reduceTargetRegistry(
     }
 }
 
-/** Pure encounter reducer. It owns only cross-unit facts, never attacker-local selections. */
-export function reduceCBTEncounter(
-    current: CBTEncounterSnapshot,
-    command: CBTEncounterCommand,
-): CBTEncounterReduction {
-    if (command.expectedRevision !== current.revision) {
-        return Object.freeze({ kind: 'rejected', snapshot: current, reason: 'stale-revision' });
-    }
-
-    const targets = new Map(current.targets.map(target => [target.id, target]));
-    const networks = new Map(current.networks.map(network => [network.id, network]));
-    try {
-        switch (command.kind) {
-            case 'put-target':
-                targets.set(command.target.id, freezeTarget(command.target));
-                validateTargets(targets.values());
-                break;
-            case 'remove-target':
-                targets.delete(command.targetId);
-                break;
-            case 'replace-targets':
-                targets.clear();
-                for (const target of command.targets) {
-                    if (targets.has(target.id)) throw new EncounterInputError('invalid-target');
-                    targets.set(target.id, freezeTarget(target));
-                }
-                validateTargets(targets.values());
-                break;
-            case 'put-network':
-                networks.set(command.network.id, freezeNetwork(command.network));
-                validateNetworks(networks.values());
-                break;
-            case 'remove-network':
-                networks.delete(command.networkId);
-                break;
-            case 'replace-networks':
-                networks.clear();
-                for (const network of command.networks) {
-                    if (networks.has(network.id)) throw new EncounterInputError('invalid-network');
-                    networks.set(network.id, freezeNetwork(network));
-                }
-                validateNetworks(networks.values());
-                break;
-        }
-    } catch (error) {
-        const reason = error instanceof EncounterInputError ? error.reason : 'invalid-network';
-        return Object.freeze({ kind: 'rejected', snapshot: current, reason });
-    }
-
-    return Object.freeze({
-        kind: 'applied',
-        snapshot: freezeSnapshot({
-            revision: asStateRevision(Number(current.revision) + 1),
-            targets: [...targets.values()],
-            networks: [...networks.values()],
-        }),
-    });
-}
-
 /** Stateful owner around the explicit query/dispatch encounter contract. */
 export class CBTEncounterRuntime {
     #snapshot: CBTEncounterSnapshot;
@@ -371,48 +271,22 @@ export class CBTEncounterRuntime {
         return encodeCBTEncounterStateV2(this.#snapshot, this.#preservedFacts);
     }
 
-    public targetsMap(): ReadonlyMap<InventoryControlRuntimeTargetId, Readonly<InventoryControlRuntimeTarget>> {
-        return new Map(this.#snapshot.targets.map(target => [target.id, projectInventoryControlTarget(target)]));
-    }
-
-    public getTargets(): InventoryControlRuntimeTarget[] {
-        return this.#snapshot.targets.map(projectInventoryControlTarget);
-    }
-
-    public getTarget(targetId: InventoryControlRuntimeTargetId): InventoryControlRuntimeTarget | undefined {
-        const target = this.#snapshot.targets.find(candidate => candidate.id === targetId);
-        return target ? projectInventoryControlTarget(target) : undefined;
-    }
-
-    public putNetwork(network: EncounterNetwork): boolean {
-        return this.apply({ kind: 'put-network', expectedRevision: this.#snapshot.revision, network });
-    }
-
-    public removeNetwork(networkId: EncounterNetworkId): boolean {
-        return this.apply({ kind: 'remove-network', expectedRevision: this.#snapshot.revision, networkId });
-    }
-
-    public replaceNetworks(networks: readonly EncounterNetwork[]): boolean {
-        return this.apply({ kind: 'replace-networks', expectedRevision: this.#snapshot.revision, networks });
-    }
-
-    /** Replaces the complete verified snapshot, e.g. after a sealed force envelope load/save. */
-    public restore(snapshot: CBTEncounterSnapshot): void {
-        this.#snapshot = freezeSnapshot(snapshot);
-        this.#preservedFacts = Object.freeze([]);
+    /** Stores an already-canonical graph; C3 admission belongs to the network utility boundary. */
+    public replaceNetworks(networks: readonly EncounterNetwork[]): void {
+        if (Number(this.#snapshot.revision) >= Number.MAX_SAFE_INTEGER) {
+            throw new Error('Encounter revision exhausted');
+        }
+        this.#snapshot = freezeSnapshot({
+            revision: asStateRevision(Number(this.#snapshot.revision) + 1),
+            targets: this.#snapshot.targets,
+            networks,
+        });
     }
 
     public restoreSerialized(state: SerializedCBTEncounterStateV2): void {
         const decoded = decodeCBTEncounterStateV2(state);
         this.#snapshot = decoded.snapshot;
         this.#preservedFacts = decoded.preservedFacts;
-    }
-
-    private apply(command: CBTEncounterCommand): boolean {
-        const result = reduceCBTEncounter(this.#snapshot, command);
-        if (result.kind === 'rejected') return false;
-        this.#snapshot = result.snapshot;
-        return true;
     }
 }
 
@@ -823,71 +697,6 @@ function freezeTarget(target: EncounterTarget, validateOrigin = true): Encounter
     });
 }
 
-export function projectInventoryControlTarget(target: EncounterTarget): InventoryControlRuntimeTarget {
-    return {
-        ...target,
-        distance: 1,
-        tnModifier: 0,
-        ...(target.tnCalculator && { tnCalculator: copyTargetCalculator(target.tnCalculator) }),
-    };
-}
-
-function toEncounterTarget(target: Readonly<InventoryControlRuntimeTarget>): EncounterTarget {
-    return freezeTarget({
-        id: asEncounterTargetId(target.id),
-        letter: target.letter,
-        name: target.name,
-        color: target.color,
-        ...(target.source !== undefined && { source: target.source }),
-        ...(target.readOnly !== undefined && { readOnly: target.readOnly }),
-        ...(target.unitType !== undefined && { unitType: target.unitType }),
-        ...(target.tnCalculator && { tnCalculator: sharedCalculator(target.tnCalculator) }),
-    });
-}
-
-function sharedCalculator(
-    calculator: Readonly<InventoryControlRuntimeTarget>['tnCalculator'],
-): SerializedEncounterTargetCalculatorV2 {
-    return {
-        ...(calculator?.isAirborne !== undefined && { isAirborne: calculator.isAirborne }),
-        ...(calculator?.targetMovementBracket !== undefined && { targetMovementBracket: calculator.targetMovementBracket }),
-        ...(calculator?.targetMovementDistance !== undefined && { targetMovementDistance: calculator.targetMovementDistance }),
-        ...(calculator?.skidding !== undefined && { skidding: calculator.skidding }),
-        ...(calculator?.prone !== undefined && { prone: calculator.prone }),
-        ...(calculator?.immobile !== undefined && { immobile: calculator.immobile }),
-        ...(calculator?.targetHexCover !== undefined && { targetHexCover: calculator.targetHexCover }),
-        ...(calculator?.waterDepth !== undefined && { waterDepth: calculator.waterDepth }),
-        ...(calculator?.buildingCover !== undefined && { buildingCover: calculator.buildingCover }),
-        ...(calculator?.targetHeight !== undefined && { targetHeight: calculator.targetHeight }),
-        ...(calculator?.largeTarget !== undefined && { largeTarget: calculator.largeTarget }),
-        ...(calculator?.narcAboveWater !== undefined && { narcAboveWater: calculator.narcAboveWater }),
-        ...(calculator?.narcUnderwater !== undefined && { narcUnderwater: calculator.narcUnderwater }),
-        ...(calculator?.tagged !== undefined && { tagged: calculator.tagged }),
-        ...(calculator?.ecmShielded !== undefined && { ecmShielded: calculator.ecmShielded }),
-        ...(calculator?.stealth !== undefined && {
-            stealth: typeof calculator.stealth === 'boolean'
-                ? calculator.stealth
-                : copyStealth(calculator.stealth),
-        }),
-        ...(calculator?.stealthSystem !== undefined && { stealthSystem: calculator.stealthSystem }),
-    };
-}
-
-function validateTargets(targets: Iterable<EncounterTarget>): void {
-    const seen = new Set<string>();
-    const letters = new Set<string>();
-    let count = 0;
-    for (const target of targets) {
-        count += 1;
-        if (seen.has(target.id)) throw new EncounterInputError('invalid-target');
-        if (letters.has(target.letter)) throw new EncounterInputError('invalid-target');
-        seen.add(target.id);
-        letters.add(target.letter);
-        validateTarget(target);
-    }
-    if (count > INVENTORY_CONTROL_TARGET_MAX_COUNT) throw new EncounterInputError('invalid-target');
-}
-
 function validateTarget(target: EncounterTarget, validateOrigin = true): void {
     if (!isPlainRecord(target)
         || !hasExactKeys(target, [
@@ -989,58 +798,17 @@ function validStealth(value: unknown): boolean {
 }
 
 function freezeNetwork(network: EncounterNetwork): EncounterNetwork {
-    validateNetwork(network);
+    // C3NetworkEditor and the stable endpoint projection own network rules.
+    // The encounter runtime only detaches, freezes, revisions, and stores the
+    // already-canonical cross-unit fact; it must not become a second validator.
     return Object.freeze({
         ...network,
         endpoints: Object.freeze(network.endpoints.map(endpoint => Object.freeze({ ...endpoint }))),
     });
 }
 
-function validateNetworks(networks: Iterable<EncounterNetwork>): void {
-    const seen = new Set<string>();
-    for (const network of networks) {
-        if (seen.has(network.id)) throw new EncounterInputError('invalid-network');
-        seen.add(network.id);
-        validateNetwork(network);
-    }
-}
-
-function validateNetwork(network: EncounterNetwork): void {
-    try { asEncounterNetworkId(network.id); } catch { throw new EncounterInputError('invalid-network'); }
-    if (!['c3', 'c3i', 'naval', 'nova'].includes(network.networkType)
-        || !/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(network.color)) {
-        throw new EncounterInputError('invalid-network');
-    }
-    const limit = network.networkType === 'c3' ? 12 : network.networkType === 'nova' ? 3 : 6;
-    if (network.endpoints.length < 2 || network.endpoints.length > limit) throw new EncounterInputError('invalid-network');
-    const endpoints = new Set<string>();
-    const units = new Set<UnitInstanceId>();
-    let masters = 0;
-    for (const endpoint of network.endpoints) {
-        try {
-            asUnitInstanceId(endpoint.instanceId);
-            asComponentId(endpoint.componentId);
-        } catch {
-            throw new EncounterInputError('invalid-network');
-        }
-        if (network.networkType === 'c3') {
-            if (endpoint.role === 'peer') throw new EncounterInputError('invalid-network');
-            if (endpoint.role === 'master') masters += 1;
-        } else if (endpoint.role !== 'peer') {
-            throw new EncounterInputError('invalid-network');
-        }
-        const key = `${endpoint.instanceId}\0${endpoint.componentId}`;
-        if (endpoints.has(key) || units.has(endpoint.instanceId)) {
-            throw new EncounterInputError('invalid-network');
-        }
-        endpoints.add(key);
-        units.add(endpoint.instanceId);
-    }
-    if (network.networkType === 'c3' && masters !== 1) throw new EncounterInputError('invalid-network');
-}
-
 class EncounterInputError extends Error {
-    public constructor(public readonly reason: 'invalid-target' | 'invalid-network') {
+    public constructor(public readonly reason: 'invalid-target') {
         super(reason);
     }
 }

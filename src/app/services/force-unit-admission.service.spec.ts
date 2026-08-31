@@ -47,12 +47,14 @@ describe('ForceUnitAdmissionService', () => {
             force,
             summary,
             rosterMemberIndex: 0,
+            commander: true,
         });
 
         expect(force.groups()).toHaveSize(1);
         expect(admit).toHaveBeenCalledWith(jasmine.objectContaining({
             targetRosterGroupId: force.groups()[0].id,
             targetRosterMemberIndex: 0,
+            commander: true,
         }));
         expect(isCBTMekForceMember(member)).toBeTrue();
         expect(member).toBe(ownedMember);

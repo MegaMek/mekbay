@@ -74,7 +74,7 @@ export function projectMekCombatModifiers(
         if (!equipment) continue;
         const locations = componentLocationIds(index, componentId)
             .map(locationId => index.locations.get(locationId)?.code)
-            .filter((code): code is string => code !== undefined);
+            .filter(code => code !== undefined);
         const modifiers = isPhysicalWeaponEquipment(equipment)
             ? physicalComponentModifiers(locations, arms)
             : equipment instanceof WeaponEquipment

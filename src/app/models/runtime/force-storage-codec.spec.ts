@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { GameSystem } from '../common.model';
-import type { SerializedClassicForce, SerializedForce } from '../force-serialization';
+import type { SerializedClassicForce } from '../force-serialization';
 import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -85,18 +85,6 @@ describe('compact force storage codec', () => {
         expect(((unit['s'] as unknown[][])[0]![0] as string)).toMatch(/^s:/u);
         expect(JSON.stringify(unit)).not.toMatch(/(?:location|armor|slot|critical|mek):/u);
         expect(byteLength(stored)).toBeLessThan(byteLength(force) * 0.55);
-    });
-
-    it('passes the sole supported production V1 input through untouched', () => {
-        const legacy: SerializedForce = {
-            version: 1,
-            timestamp: '2026-08-23T00:00:00.000Z',
-            instanceId: 'force:v1',
-            type: GameSystem.CLASSIC,
-            name: 'Legacy',
-            groups: [],
-        };
-        expect(decodeForceFromStorage(encodeForceForStorage(legacy))).toEqual(legacy);
     });
 
     it('stores committed and pending Modular Armor damage in compact component rows', () => {

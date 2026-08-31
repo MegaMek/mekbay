@@ -9,6 +9,7 @@ import { PageViewerComponent } from './components/page-viewer/page-viewer.compon
 import { TacticalViewComponent } from './components/tactical-view/tactical-view.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
 import { DataService } from './services/data.service';
+import { ForcePersistenceService } from './services/force-persistence.service';
 import { ForceWorkspaceStateService } from './services/force-workspace-state.service';
 import { ForceDialogsService } from './services/force-dialogs.service';
 import { ForceImportService } from './services/force-import.service';
@@ -91,6 +92,7 @@ declare global {
 export class App {
     logger = inject(LoggerService);
     protected dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private readonly forceDialogs = inject(ForceDialogsService);
     private readonly forceImport = inject(ForceImportService);
@@ -451,7 +453,7 @@ export class App {
         window.close();
     }
 
-    isCloudForceLoading = computed(() => this.dataService.isCloudForceLoading());
+    isCloudForceLoading = computed(() => this.forcePersistence.isCloudForceLoading());
 
     onOnline() {
         void this.checkForUpdateAfterFocusAndRestartTimer();
@@ -624,7 +626,7 @@ export class App {
     };
 
     private hasBlockingUnsavedWork(): boolean {
-        if (this.dataService.hasPendingForceSaves()) {
+        if (this.forcePersistence.hasPendingForceSaves()) {
             return true;
         }
 

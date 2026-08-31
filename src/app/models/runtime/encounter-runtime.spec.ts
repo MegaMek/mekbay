@@ -12,7 +12,6 @@ import {
     emptyCBTEncounterSnapshot,
     encodeCBTEncounterStateV2,
     queryTargetRegistry,
-    reduceCBTEncounter,
     reduceTargetRegistry,
     type EncounterTarget,
 } from './encounter-runtime';
@@ -49,106 +48,68 @@ describe('CBT encounter runtime', () => {
 
         const firstId = first.id;
         const secondId = second.id;
-        const copy = runtime.getTarget(firstId)!;
-        copy.name = 'mutated copy';
-        expect(runtime.getTarget(firstId)?.name).toBe('Target A');
+        expect(Object.isFrozen(runtime.targetRegistry().targets[0])).toBeTrue();
 
         runtime.dispatchTargetRegistry({
             kind: 'update-target', expectedRevision: runtime.targetRegistry().revision,
             targetId: firstId, patch: { name: 'Primary' },
         });
-        expect(runtime.getTarget(firstId)).toEqual(jasmine.objectContaining({
+        expect(runtime.targetRegistry().targets.find(target => target.id === firstId)).toEqual(jasmine.objectContaining({
             name: 'Primary',
-            // Range is attacker-local and cannot become a force-owned target fact.
-            distance: 1,
         }));
         runtime.dispatchTargetRegistry({
             kind: 'delete-target', expectedRevision: runtime.targetRegistry().revision, targetId: secondId,
         });
-        expect(runtime.getTargets().map(target => target.id)).toEqual([firstId]);
+        expect(runtime.targetRegistry().targets.map(target => target.id)).toEqual([firstId]);
     });
 
-    it('rejects stale or invalid commands without changing the snapshot', () => {
-        const current = emptyCBTEncounterSnapshot();
-        const stale = reduceCBTEncounter(current, {
-            kind: 'replace-targets', expectedRevision: asStateRevision(1), targets: [],
-        });
-        const invalid = reduceCBTEncounter(current, {
-            kind: 'put-target', expectedRevision: asStateRevision(0),
-            target: { id: asEncounterTargetId('invalid'), letter: '', name: 'Bad', color: '#ffffff' },
-        });
-
-        expect(stale).toEqual({ kind: 'rejected', snapshot: current, reason: 'stale-revision' });
-        expect(invalid).toEqual({ kind: 'rejected', snapshot: current, reason: 'invalid-target' });
-        expect(current.revision).toBe(asStateRevision(0));
-    });
-
-    it('stores typed C3 endpoints without unit names or component indexes', () => {
+    it('stores detached network facts without reimplementing C3 rule validation', () => {
         const runtime = new CBTEncounterRuntime();
-        const networkId = asEncounterNetworkId('network:c3:1');
-        expect(runtime.putNetwork({
-            id: networkId,
-            networkType: 'c3',
+        const network = {
+            id: asEncounterNetworkId('network:c3:internal-master'),
+            networkType: 'c3' as const,
             color: '#123456',
             endpoints: [
                 {
                     instanceId: asUnitInstanceId('instance-1'),
-                    componentId: asComponentId('component:c3-master'),
-                    role: 'master',
-                },
-                {
-                    instanceId: asUnitInstanceId('instance-2'),
-                    componentId: asComponentId('component:c3-slave'),
-                    role: 'member',
-                },
-            ],
-        })).toBeTrue();
-        expect(runtime.snapshot().networks[0].endpoints[0].componentId).toBe(asComponentId('component:c3-master'));
-
-        const duplicateEndpoint = {
-            id: asEncounterNetworkId('network:c3:2'),
-            networkType: 'c3' as const,
-            color: '#abcdef',
-            endpoints: [
-                {
-                    instanceId: asUnitInstanceId('instance-1'),
-                    componentId: asComponentId('component:c3-master'),
+                    componentId: asComponentId('component:c3-master-a'),
                     role: 'master' as const,
                 },
                 {
                     instanceId: asUnitInstanceId('instance-1'),
-                    componentId: asComponentId('component:c3-master'),
+                    componentId: asComponentId('component:c3-master-b'),
                     role: 'member' as const,
                 },
             ],
         };
-        expect(runtime.putNetwork(duplicateEndpoint)).toBeFalse();
-        expect(runtime.snapshot().networks.length).toBe(1);
+        runtime.replaceNetworks([network]);
+        network.color = '#abcdef';
+        network.endpoints[0].componentId = asComponentId('caller-mutation');
 
-        expect(runtime.putNetwork({
-            ...duplicateEndpoint,
-            id: asEncounterNetworkId('network:c3:multiple-components'),
+        expect(runtime.snapshot().networks[0]).toEqual(jasmine.objectContaining({
+            color: '#123456',
             endpoints: [
-                duplicateEndpoint.endpoints[0],
-                {
-                    ...duplicateEndpoint.endpoints[1],
-                    componentId: asComponentId('component:c3-member-on-same-unit'),
-                },
+                jasmine.objectContaining({ componentId: asComponentId('component:c3-master-a') }),
+                jasmine.objectContaining({ componentId: asComponentId('component:c3-master-b') }),
             ],
-        })).toBeFalse();
-        expect(runtime.putNetwork({
-            ...duplicateEndpoint,
-            id: asEncounterNetworkId('network:c3:multiple-masters'),
-            endpoints: [
-                duplicateEndpoint.endpoints[0],
-                {
-                    instanceId: asUnitInstanceId('instance-2'),
-                    componentId: asComponentId('component:c3-master-2'),
-                    role: 'master',
-                },
-            ],
-        })).toBeFalse();
-        expect(runtime.snapshot().networks.length).toBe(1);
+        }));
+
+        // Domain-invalid topology is deliberately not rejected here. Admission
+        // belongs to C3NetworkEditor/projectC3EditorNetworksToEncounter.
+        runtime.replaceNetworks([...runtime.snapshot().networks, {
+            id: asEncounterNetworkId('network:opaque-fact'),
+            networkType: 'c3',
+            color: '#123456',
+            endpoints: [],
+        }]);
+
+        const restored = decodeCBTEncounterStateV2(encodeCBTEncounterStateV2(runtime.snapshot(), []));
+        expect(restored.snapshot.networks
+            .find(candidate => candidate.id === asEncounterNetworkId('network:c3:internal-master'))
+            ?.endpoints.map(endpoint => endpoint.componentId)).toEqual([
+            asComponentId('component:c3-master-a'),
+            asComponentId('component:c3-master-b'),
+        ]);
     });
 
     it('round-trips owned facts and preserves unknown typed facts without adopting them', () => {
@@ -170,7 +131,7 @@ describe('CBT encounter runtime', () => {
         restored.restoreSerialized(encoded);
 
         expect(decoded.preservedFacts).toEqual([preserved]);
-        expect(restored.getTargets().map(target => target.id)).toEqual([created.id]);
+        expect(restored.targetRegistry().targets.map(target => target.id)).toEqual([created.id]);
         expect(restored.serializedState().facts).toEqual(encoded.facts);
     });
 

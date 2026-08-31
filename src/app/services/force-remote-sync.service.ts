@@ -17,10 +17,10 @@ import {
     isCompactStoredForce,
 } from '../models/runtime/force-storage-codec';
 import {
-    DataService,
+    ForcePersistenceService,
     type PreparedRemoteForceAcceptance,
     type StagedRemoteForceSnapshot,
-} from './data.service';
+} from './force-persistence.service';
 import { DialogsService } from './dialogs.service';
 import { ForceUrlStateService } from './force-url-state.service';
 import { LoggerService } from './logger.service';
@@ -103,7 +103,7 @@ function compareForceAuthority(targetForce: Force, incomingForce: Force): ForceA
 /** Owns remote snapshot arbitration, conflict handling, and atomic owner replacement. */
 @Injectable({ providedIn: 'root' })
 export class ForceRemoteSyncService {
-    private readonly dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly dialogsService = inject(DialogsService);
     private readonly forceUrl = inject(ForceUrlStateService);
     private readonly logger = inject(LoggerService);
@@ -204,7 +204,7 @@ export class ForceRemoteSyncService {
 
         let staged: StagedRemoteForceSnapshot;
         try {
-            staged = await this.dataService.stageRemoteForceSnapshot(incomingSnapshot);
+            staged = await this.forcePersistence.stageRemoteForceSnapshot(incomingSnapshot);
         } catch (error) {
             this.logger.error(`Ignoring unsafe remote force update for ${currentTarget.instanceId()}: ${error}`);
             return;
@@ -240,7 +240,7 @@ export class ForceRemoteSyncService {
             if (authorityComparison === 'incoming-older') {
                 if (source === 'reconnect' && currentTarget.owned()) {
                     try {
-                        await this.dataService.saveForceAndWaitForCloud(currentTarget);
+                        await this.forcePersistence.saveForceAndWaitForCloud(currentTarget);
                     } catch (error) {
                         this.logger.error(`Failed to push local force ${currentTarget.instanceId()} after reconnect: ${error}`);
                     }
@@ -295,7 +295,7 @@ export class ForceRemoteSyncService {
         } finally {
             // A successful accept already consumed the token. Every ignored,
             // superseded, or conflict-queued snapshot is torn down here.
-            this.dataService.discardRemoteForceSnapshot(staged);
+            this.forcePersistence.discardRemoteForceSnapshot(staged);
         }
     }
 
@@ -339,7 +339,7 @@ export class ForceRemoteSyncService {
 
         let acceptance: PreparedRemoteForceAcceptance;
         try {
-            acceptance = this.dataService.prepareRemoteForceSnapshotAcceptance(staged);
+            acceptance = this.forcePersistence.prepareRemoteForceSnapshotAcceptance(staged);
         } catch (error) {
             this.disposePreparedRemoteForceSwapPlan(plan);
             throw error;
@@ -357,7 +357,7 @@ export class ForceRemoteSyncService {
                 let persistenceDrained = false;
                 if (ready) {
                     try {
-                        persistenceDrained = await this.dataService.drainForceAuthorityPersistence(
+                        persistenceDrained = await this.forcePersistence.drainForceAuthorityPersistence(
                             targetForce,
                             commitFence.authorityFingerprint,
                         );
@@ -422,14 +422,14 @@ export class ForceRemoteSyncService {
             // through the one slot publication. No fallible teardown/setup is
             // allowed to separate retiring the old owner from exposing the new.
             let committedAcceptance: Extract<
-                ReturnType<DataService['commitPreparedRemoteForceReplacement']>,
+                ReturnType<ForcePersistenceService['commitPreparedRemoteForceReplacement']>,
                 { readonly accepted: true }
             > | undefined;
             const retired = targetForce.commitWholeOwnerRetirement(retirement.token, authority => {
                 if (!isPublicationCurrent()
                     || this.workspace.loadedForces() !== plan.expectedSlots
                     || this.workspace.getForceSlot(targetForce) !== expectedSlot) return null;
-                const result = this.dataService.commitPreparedRemoteForceReplacement(
+                const result = this.forcePersistence.commitPreparedRemoteForceReplacement(
                     acceptance,
                     targetForce,
                     authority,
@@ -486,7 +486,7 @@ export class ForceRemoteSyncService {
         } finally {
             if (!published) {
                 if (retirement) targetForce.cancelWholeOwnerRetirement(retirement.token);
-                this.dataService.discardPreparedRemoteForceAcceptance(acceptance);
+                this.forcePersistence.discardPreparedRemoteForceAcceptance(acceptance);
                 this.disposePreparedRemoteForceSwapPlan(plan);
             }
         }
@@ -617,7 +617,7 @@ export class ForceRemoteSyncService {
         const commitFence = captureRemoteForceCommitFence(targetForce);
         let staged: StagedRemoteForceSnapshot;
         try {
-            staged = await this.dataService.stageRemoteForceSnapshot(serializedForce);
+            staged = await this.forcePersistence.stageRemoteForceSnapshot(serializedForce);
         } catch (error) {
             this.logger.error(`Ignoring unsafe remote force update for ${targetForce.instanceId()}: ${error}`);
             return null;
@@ -632,7 +632,7 @@ export class ForceRemoteSyncService {
                 isPublicationCurrent,
             );
         } finally {
-            this.dataService.discardRemoteForceSnapshot(staged);
+            this.forcePersistence.discardRemoteForceSnapshot(staged);
         }
     }
 
@@ -722,7 +722,7 @@ export class ForceRemoteSyncService {
                 let persistenceDrained = false;
                 if (ready) {
                     try {
-                        persistenceDrained = await this.dataService.drainForceAuthorityPersistence(
+                        persistenceDrained = await this.forcePersistence.drainForceAuthorityPersistence(
                             localForce,
                             retirementFingerprint,
                         );
@@ -761,7 +761,7 @@ export class ForceRemoteSyncService {
                     || expectedSlot.alignment !== expectedAlignment
                     || localForce.getWholeOwnerPersistentAuthoritySnapshotJson() !== persistentDigest
                     || !localForce.isWholeOwnerAuthorityFingerprintCurrent(retirementFingerprint)) return null;
-                const finalizeDataRemoval = this.dataService.prepareForceAuthorityRemoval(localForce, authority);
+                const finalizeDataRemoval = this.forcePersistence.prepareForceAuthorityRemoval(localForce, authority);
                 if (!finalizeDataRemoval) return null;
                 return () => {
                     finalizeDataRemoval();
@@ -847,7 +847,7 @@ export class ForceRemoteSyncService {
         } else if (result === 'local') {
             try {
                 if (!isReceiptCurrent()) return;
-                await this.dataService.saveForceOverRemoteConflict(
+                await this.forcePersistence.saveForceOverRemoteConflict(
                     localForce,
                     remoteForce,
                     localFingerprint,
@@ -869,7 +869,7 @@ export class ForceRemoteSyncService {
                     isReceiptCurrent,
                 );
                 if (!cloned) return;
-                await this.dataService.saveForceAndWaitForCloud(cloned);
+                await this.forcePersistence.saveForceAndWaitForCloud(cloned);
                 this.toastService.showToast('Local version has been cloned', 'success');
             } catch (error) {
                 this.logger.error(`Could not clone local force ${localForce.instanceId()} after sync conflict: ${error}`);

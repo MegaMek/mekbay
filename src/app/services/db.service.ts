@@ -7,10 +7,6 @@ import type { Options } from '../models/options.model';
 import type { SerializedForce } from '../models/force-serialization';
 import { DialogsService } from './dialogs.service';
 import type { SerializedSearchFilter } from './unit-search-filters.model';
-import {
-    LoadForceEntry,
-} from '../models/load-force-entry.model';
-import type { ForceEntryResolver } from '../models/force-entry-resolver.model';
 import { LoggerService } from './logger.service';
 import type { SerializedOperation } from '../models/operation.model';
 import type { SerializedOrganization } from '../models/organization.model';
@@ -20,15 +16,6 @@ import {
     encodeForceForStorage,
     type StoredForceRecord,
 } from '../models/runtime/force-storage-codec';
-
-interface PersistedForceEntryResolver extends ForceEntryResolver {
-    createLoadForceEntryFromPersistedForce(
-        raw: SerializedForce,
-        options?: { cloud?: boolean; local?: boolean },
-    ): Promise<LoadForceEntry>;
-}
-
-
 
 const DB_NAME = 'mekbay';
 const DB_VERSION = 18;
@@ -943,10 +930,10 @@ export class DbService {
     /**
      * Retrieves all forces from IndexedDB, sorted by timestamp descending.
      */
-    public async listForces(dataService: PersistedForceEntryResolver): Promise<LoadForceEntry[]> {
+    public async listForces(): Promise<SerializedForce[]> {
         const db = await this.dbPromise;
         if (!db) return []; // Degraded mode
-        return new Promise<LoadForceEntry[]>((resolve, reject) => {
+        return new Promise<SerializedForce[]>((resolve, reject) => {
             const transaction = db.transaction(FORCE_STORE, 'readonly');
             const store = transaction.objectStore(FORCE_STORE);
             // Use index if available, otherwise iterate and sort manually
@@ -959,7 +946,7 @@ export class DbService {
             } else {
                 request = store.openCursor();
             }
-            request.onsuccess = async () => {
+            request.onsuccess = () => {
                 const cursor = request.result;
                 if (cursor) {
                     forces.push(cursor.value);
@@ -969,13 +956,10 @@ export class DbService {
                     if (!store.indexNames.contains('timestamp')) {
                         forces.sort((left, right) => forceTimestamp(right).localeCompare(forceTimestamp(left)));
                     }
-                    const entries: LoadForceEntry[] = [];
+                    const entries: SerializedForce[] = [];
                     for (const raw of forces) {
                         try {
-                            entries.push(await dataService.createLoadForceEntryFromPersistedForce(
-                                decodeForceFromStorage(raw),
-                                { local: true },
-                            ));
+                            entries.push(decodeForceFromStorage(raw));
                         } catch (error) {
                             this.logger.warn(`Skipping unreadable saved force: ${error instanceof Error ? error.message : String(error)}`);
                         }

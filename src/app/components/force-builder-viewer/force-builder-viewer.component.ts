@@ -10,6 +10,7 @@ import { ForceDialogsService } from '../../services/force-dialogs.service';
 import { ForceRemoteSyncService } from '../../services/force-remote-sync.service';
 import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
 import { ASForceUnit } from '../../models/as-force-unit.model';
+import { ASForce } from '../../models/as-force.model';
 import { ForceFormationService } from '../../services/force-formation.service';
 import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { LayoutService } from '../../services/layout.service';
@@ -390,7 +391,7 @@ export class ForceBuilderViewerComponent {
         });
     }
 
-    onUnitDragMoved(event: CdkDragMove<any>) {
+    onUnitDragMoved(event: CdkDragMove<unknown>) {
         const scrollRef = this.scrollableContent?.();
         if (!scrollRef) {
             this.stopAutoScrollLoop();
@@ -589,7 +590,7 @@ export class ForceBuilderViewerComponent {
                 await this.formations.assignFormationIfNeeded(fromGroup);
                 await this.formations.assignFormationIfNeeded(toGroup);
             }
-            fromForce.removeEmptyGroups();
+            if (fromForce instanceof ASForce) fromForce.removeEmptyGroups();
             if (fromForce.instanceId()) {
                 fromForce.emitChanged();
             }
@@ -639,7 +640,6 @@ export class ForceBuilderViewerComponent {
                 : null;
             if (crossSystem && !preparedConversion) return;
             if (fromGroup.units()[event.previousIndex] !== sourceUnitToConvert) {
-                preparedConversion?.destroy();
                 return;
             }
 
@@ -650,7 +650,6 @@ export class ForceBuilderViewerComponent {
                 crossSystem ? preparedConversion! : undefined,
             );
             if (!unitToInsert) {
-                preparedConversion?.destroy();
                 return;
             }
             this.formations.generateFactionAndForceNameIfNeeded(fromForce);
@@ -658,7 +657,7 @@ export class ForceBuilderViewerComponent {
             await this.formations.assignFormationIfNeeded(fromGroup);
             await this.formations.assignFormationIfNeeded(toGroup);
             toForce.deduplicateIds();
-            fromForce.removeEmptyGroups();
+            if (fromForce instanceof ASForce) fromForce.removeEmptyGroups();
 
             // Select the inserted unit
             this.forceWorkspace.selectUnit(
@@ -842,7 +841,6 @@ export class ForceBuilderViewerComponent {
             : null;
         if (crossSystem && !preparedConversion) return;
         if (sourceGroup.units()[event.previousIndex] !== sourceUnitToConvert) {
-            preparedConversion?.destroy();
             return;
         }
 
@@ -858,7 +856,6 @@ export class ForceBuilderViewerComponent {
         );
         if (!unitToInsert) {
             await targetForce.removeGroup(newGroup);
-            preparedConversion?.destroy();
             return;
         }
         if (crossForce) {
@@ -867,7 +864,7 @@ export class ForceBuilderViewerComponent {
         }
         await this.formations.assignFormationIfNeeded(sourceGroup);
         await this.formations.assignFormationIfNeeded(newGroup);
-        sourceForce.removeEmptyGroups();
+        if (sourceForce instanceof ASForce) sourceForce.removeEmptyGroups();
         if (crossForce) targetForce.deduplicateIds();
 
         // Select the moved unit
@@ -925,7 +922,6 @@ export class ForceBuilderViewerComponent {
                 convertedUnits.push(converted);
                 continue;
             }
-            convertedUnits.forEach(unit => unit.destroy());
             return null;
         }
         return convertedUnits;
@@ -1120,12 +1116,10 @@ export class ForceBuilderViewerComponent {
             const unitsStillCurrent = groupToMove?.units().length === sourceUnits.length
                 && groupToMove.units().every((unit, index) => unit === sourceUnits[index]);
             if (!groupStillCurrent || !unitsStillCurrent) {
-                preparedConversions?.forEach(unit => unit.destroy());
                 return;
             }
 
             if (!groupToMove) {
-                preparedConversions?.forEach(unit => unit.destroy());
                 return;
             }
             try {
@@ -1135,7 +1129,6 @@ export class ForceBuilderViewerComponent {
                     crossSystem ? preparedConversions! : undefined,
                 );
             } catch {
-                preparedConversions?.forEach(unit => unit.destroy());
                 return;
             }
             const movedGroup = groupToMove;

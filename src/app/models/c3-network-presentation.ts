@@ -9,6 +9,7 @@ import {
     C3Role,
     type C3Component,
 } from './c3-network.model';
+import { C3NetworkEditor } from './c3-network-editor';
 import {
     asEncounterNetworkId,
     type EncounterNetwork,
@@ -20,6 +21,50 @@ import type { UnitInstanceId } from './runtime/runtime-state';
 export interface C3EncounterPresentationUnit {
     readonly instanceId: UnitInstanceId;
     readonly c3Components: readonly C3Component[];
+}
+
+/**
+ * Applies only roles that stable facts can state unambiguously. `member` is a
+ * storage relationship, not a capability role: it may be a Slave or a Master.
+ */
+export function projectEncounterC3Components(
+    instanceId: UnitInstanceId,
+    components: readonly C3Component[],
+    networks: readonly EncounterNetwork[],
+): readonly C3Component[] {
+    const explicitRoles = new Map<ComponentId, C3Role>();
+    for (const network of networks) {
+        for (const endpoint of network.endpoints) {
+            if (endpoint.instanceId !== instanceId || endpoint.role === 'member') continue;
+            if (endpoint.role === 'master') explicitRoles.set(endpoint.componentId, C3Role.MASTER);
+            else if (!explicitRoles.has(endpoint.componentId)) explicitRoles.set(endpoint.componentId, C3Role.PEER);
+        }
+    }
+    return Object.freeze(components.map(component => Object.freeze({
+        ...component,
+        ...(component.componentId === undefined
+            ? {}
+            : { role: explicitRoles.get(component.componentId) ?? component.role }),
+    })));
+}
+
+/**
+ * Validates stable encounter facts by round-tripping them through the one
+ * canonical C3 rule utility. This layer owns identity projection, not rules.
+ */
+export function validateEncounterNetworks(
+    networks: readonly EncounterNetwork[],
+    units: readonly C3EncounterPresentationUnit[],
+): boolean {
+    try {
+        const unitsById = indexUnits(units);
+        return C3NetworkEditor.validate(
+            projectEncounterNetworksToC3Editor(networks, units),
+            unitsById,
+        );
+    } catch {
+        return false;
+    }
 }
 
 /** Projects stable encounter endpoints into the existing visual editor grammar. */

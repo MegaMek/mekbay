@@ -3,7 +3,7 @@
 
 import type { ComponentId, LocationId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import { getMekLocationParent } from '../entity/types';
+import { getMekLocationParent, type MekLocation } from '../entity/types';
 import type { IntrinsicWeapon } from '../entity/types/weapon';
 import type { MekUnitQueryPort } from './unit-instance';
 import type { AttackerActionTarget } from './attacker-targeting-state';
@@ -234,10 +234,14 @@ interface PhysicalCapabilities {
 
 function physicalCapabilities(index: MekRuntimeIndex, runtime: MekActionRuntimePort): PhysicalCapabilities {
     const locationCodes = new Set([...index.locations.values()].map(location => location.code));
-    const legCodes = locationCodes.has('LL') && locationCodes.has('RL')
-        ? ['LL', 'RL', ...(locationCodes.has('CL') ? ['CL'] : [])]
-        : ['RLL', 'FLL', 'RRL', 'FRL'].every(code => locationCodes.has(code))
-            ? ['RLL', 'FLL', 'RRL', 'FRL']
+    const bipedLegCodes: readonly MekLocation[] = locationCodes.has('CL')
+        ? ['LL', 'RL', 'CL']
+        : ['LL', 'RL'];
+    const quadLegCodes: readonly MekLocation[] = ['RLL', 'FLL', 'RRL', 'FRL'];
+    const legCodes: readonly MekLocation[] = locationCodes.has('LL') && locationCodes.has('RL')
+        ? bipedLegCodes
+        : quadLegCodes.every(code => locationCodes.has(code))
+            ? quadLegCodes
             : [];
     let destroyedLegs = 0;
     let destroyedHips = 0;

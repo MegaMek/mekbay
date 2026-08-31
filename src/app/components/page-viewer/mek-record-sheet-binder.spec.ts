@@ -183,7 +183,7 @@ describe('Mek record-sheet binder', () => {
         const torso = {
             ...current.locations[0],
             locationId: asLocationId('location-lt'),
-            code: 'LT',
+            code: 'LT' as const,
             committedRemainingInternal: 0,
             previewRemainingInternal: 0,
             committedStructurallyDestroyed: true,
@@ -192,7 +192,7 @@ describe('Mek record-sheet binder', () => {
         const arm = {
             ...current.locations[0],
             locationId: asLocationId('location-la'),
-            code: 'LA',
+            code: 'LA' as const,
             committedDetached: true,
             previewDetached: true,
         };
@@ -521,7 +521,7 @@ describe('Mek record-sheet binder', () => {
             <g class="critSlot" loc="RT" slot="0"><text></text></g>`);
         const base = snapshot();
         const systemSlot = (
-            locationCode: string,
+            locationCode: MekRecordSheetSnapshot['criticalSlots'][number]['locationCode'],
             componentId: string,
             system: string,
         ): MekRecordSheetSnapshot['criticalSlots'][number] => ({

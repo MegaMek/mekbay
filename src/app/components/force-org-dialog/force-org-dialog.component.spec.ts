@@ -11,8 +11,10 @@ import { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { ForcePersistenceService } from '../../services/force-persistence.service';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { LayoutService } from '../../services/layout.service';
+import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { UrlService } from '../../services/url.service';
 import { ForceOrgDialogComponent } from './force-org-dialog.component';
@@ -29,10 +31,16 @@ describe('ForceOrgDialogComponent', () => {
     };
 
     const dataServiceStub = {
-        listForces: jasmine.createSpy('listForces').and.resolveTo([]),
-        getLoadForceEntriesByIds: jasmine.createSpy('getLoadForceEntriesByIds').and.resolveTo([]),
         getFactionById: jasmine.createSpy('getFactionById').and.returnValue(undefined),
         getEras: jasmine.createSpy('getEras').and.returnValue([]),
+    };
+
+    const forcePersistenceStub = {
+        listForces: jasmine.createSpy('listForces').and.resolveTo([]),
+        getLoadForceEntriesByIds: jasmine.createSpy('getLoadForceEntriesByIds').and.resolveTo([]),
+    };
+
+    const organizationStorageStub = {
         saveOrganization: jasmine.createSpy('saveOrganization').and.resolveTo(undefined),
         getOrganization: jasmine.createSpy('getOrganization').and.resolveTo(null),
     };
@@ -59,12 +67,12 @@ describe('ForceOrgDialogComponent', () => {
 
     beforeEach(async () => {
         nextPlacementId = 0;
-        dataServiceStub.listForces.calls.reset();
-        dataServiceStub.listForces.and.resolveTo([]);
-        dataServiceStub.getLoadForceEntriesByIds.calls.reset();
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([]);
-        dataServiceStub.getOrganization.calls.reset();
-        dataServiceStub.getOrganization.and.resolveTo(null);
+        forcePersistenceStub.listForces.calls.reset();
+        forcePersistenceStub.listForces.and.resolveTo([]);
+        forcePersistenceStub.getLoadForceEntriesByIds.calls.reset();
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([]);
+        organizationStorageStub.getOrganization.calls.reset();
+        organizationStorageStub.getOrganization.and.resolveTo(null);
         dialogRefStub = {
             close: jasmine.createSpy('close'),
             backdropClick: new Subject<MouseEvent>(),
@@ -78,6 +86,8 @@ describe('ForceOrgDialogComponent', () => {
                 provideZonelessChangeDetection(),
                 { provide: DialogRef, useValue: dialogRefStub },
                 { provide: DataService, useValue: dataServiceStub },
+                { provide: ForcePersistenceService, useValue: forcePersistenceStub },
+                { provide: OrganizationStorageService, useValue: organizationStorageStub },
                 { provide: DialogsService, useValue: dialogsServiceStub },
                 { provide: ForceWorkspaceStateService, useValue: forceBuilderServiceStub },
                 { provide: LayoutService, useValue: layoutServiceStub },
@@ -297,11 +307,11 @@ describe('ForceOrgDialogComponent', () => {
         const shadowForce = createPlacedForce('force-1', 40, 0, null, 'shadow-placement');
 
         (component as any).placedForces.set([mainForce, shadowForce]);
-        dataServiceStub.saveOrganization.calls.reset();
+        organizationStorageStub.saveOrganization.calls.reset();
 
         await (component as any).saveOrganization();
 
-        expect(dataServiceStub.saveOrganization).toHaveBeenCalledWith(jasmine.objectContaining({
+        expect(organizationStorageStub.saveOrganization).toHaveBeenCalledWith(jasmine.objectContaining({
             forces: [
                 jasmine.objectContaining({ placementId: 'main-placement', instanceId: 'force-1' }),
                 jasmine.objectContaining({ placementId: 'shadow-placement', instanceId: 'force-1' }),
@@ -369,8 +379,8 @@ describe('ForceOrgDialogComponent', () => {
         const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
         const forceB = createLoadForce('force-b', [createBattleMek('Locust')]);
 
-        dataServiceStub.listForces.and.resolveTo([forceA, forceB]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.listForces.and.resolveTo([forceA, forceB]);
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-1',
             name: 'Loaded Org',
             timestamp: Date.now(),
@@ -535,8 +545,8 @@ describe('ForceOrgDialogComponent', () => {
     it('shows a centered loading message while the organization shell is pending', async () => {
         const orgDeferred = createDeferred<any>();
 
-        dataServiceStub.getOrganization.and.returnValue(orgDeferred.promise);
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([]);
+        organizationStorageStub.getOrganization.and.returnValue(orgDeferred.promise);
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([]);
 
         const loadPromise = (component as any).loadOrganization('org-slow');
         fixture.detectChanges();
@@ -564,7 +574,7 @@ describe('ForceOrgDialogComponent', () => {
         const forceDeferred = createDeferred<LoadForceEntry[]>();
         const hydratedForce = createLoadForce('force-a', [createBattleMek('Atlas')]);
 
-        dataServiceStub.getOrganization.and.resolveTo({
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-shared',
             name: 'Shared Org',
             timestamp: Date.now(),
@@ -577,7 +587,7 @@ describe('ForceOrgDialogComponent', () => {
                 { id: 'group-a', name: 'Alpha', x: 20, y: 20, width: 240, height: 180, zIndex: 0, parentGroupId: null },
             ],
         });
-        dataServiceStub.getLoadForceEntriesByIds.and.returnValue(forceDeferred.promise);
+        forcePersistenceStub.getLoadForceEntriesByIds.and.returnValue(forceDeferred.promise);
 
         const loadPromise = (component as any).loadOrganization('org-shared');
         await flushPromises();
@@ -720,8 +730,8 @@ describe('ForceOrgDialogComponent', () => {
     it('treats non-owned organizations as read-only and blocks saving', async () => {
         const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
 
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-shared',
             name: 'Shared Org',
             timestamp: Date.now(),
@@ -736,20 +746,20 @@ describe('ForceOrgDialogComponent', () => {
         await (component as any).loadOrganization('org-shared');
     setDirtyState(true);
         fixture.detectChanges();
-        dataServiceStub.saveOrganization.calls.reset();
+        organizationStorageStub.saveOrganization.calls.reset();
 
         await (component as any).saveOrganization();
 
         expect((component as any).readOnly()).toBeTrue();
-        expect(dataServiceStub.saveOrganization).not.toHaveBeenCalled();
+        expect(organizationStorageStub.saveOrganization).not.toHaveBeenCalled();
         expect(urlServiceStub.setQueryParams).toHaveBeenCalledWith({ toe: 'org-shared' });
     });
 
     it('opens force details when clicking a force card in read-only mode', async () => {
         const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
 
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-shared',
             name: 'Shared Org',
             timestamp: Date.now(),
@@ -805,8 +815,8 @@ describe('ForceOrgDialogComponent', () => {
     it('does not open force details when the readonly card gesture turns into a drag', async () => {
         const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
 
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([forceA]);
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-shared',
             name: 'Shared Org',
             timestamp: Date.now(),
@@ -867,9 +877,9 @@ describe('ForceOrgDialogComponent', () => {
     it('loads foreign organization forces by instance id instead of listing the viewer\'s own forces', async () => {
         const foreignForce = createLoadForce('force-foreign', [createBattleMek('Atlas')]);
 
-        dataServiceStub.listForces.calls.reset();
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([foreignForce]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.listForces.calls.reset();
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([foreignForce]);
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-foreign',
             name: 'Foreign Org',
             timestamp: Date.now(),
@@ -883,15 +893,15 @@ describe('ForceOrgDialogComponent', () => {
 
         await (component as any).loadOrganization('org-foreign');
 
-        expect(dataServiceStub.listForces).not.toHaveBeenCalled();
-        expect(dataServiceStub.getLoadForceEntriesByIds).toHaveBeenCalledWith(['force-foreign']);
+        expect(forcePersistenceStub.listForces).not.toHaveBeenCalled();
+        expect(forcePersistenceStub.getLoadForceEntriesByIds).toHaveBeenCalledWith(['force-foreign']);
         expect((component as any).placedForces().map((pf: any) => pf.force.instanceId)).toEqual(['force-foreign']);
     });
 
     it('keeps missing force references as placeholders so saving the TO&E preserves them', async () => {
-        dataServiceStub.listForces.and.resolveTo([]);
-        dataServiceStub.getLoadForceEntriesByIds.and.resolveTo([]);
-        dataServiceStub.getOrganization.and.resolveTo({
+        forcePersistenceStub.listForces.and.resolveTo([]);
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([]);
+        organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-missing',
             name: 'Missing Org',
             timestamp: Date.now(),
@@ -904,13 +914,13 @@ describe('ForceOrgDialogComponent', () => {
         });
 
         await (component as any).loadOrganization('org-missing');
-        dataServiceStub.saveOrganization.calls.reset();
+        organizationStorageStub.saveOrganization.calls.reset();
 
         await (component as any).saveOrganization();
 
         expect((component as any).placedForces().length).toBe(1);
         expect((component as any).placedForces()[0].force.missing).toBeTrue();
-        expect(dataServiceStub.saveOrganization).toHaveBeenCalledWith(jasmine.objectContaining({
+        expect(organizationStorageStub.saveOrganization).toHaveBeenCalledWith(jasmine.objectContaining({
             organizationId: 'org-missing',
             forces: [jasmine.objectContaining({ instanceId: 'force-missing' })],
         }));

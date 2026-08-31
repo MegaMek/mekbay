@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
-import type { ComponentId } from '../entity/entity-identifiers';
-import type { EncounterTargetId } from './encounter-runtime';
+import { asComponentId, type ComponentId } from '../entity/entity-identifiers';
+import { asEncounterTargetId, type EncounterTargetId } from './encounter-runtime';
 import type { StateRevision } from './runtime-state';
 import {
     TN_CUSTOM_MODIFIER_MAX,
@@ -12,7 +12,7 @@ import {
 
 export const ATTACKER_TARGETING_STATE_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_ATTACKER_TARGET_DISTANCE = 1;
-export const MAX_ATTACKER_TARGETING_COMPONENTS = 256;
+export const MAX_ATTACKER_TARGETING_COMPONENTS = 1024;
 export const MAX_ATTACKER_TARGETING_ACTIONS = 256;
 export const MAX_ATTACKER_TARGETS = 12;
 export const MAX_ATTACKER_AMMO_SOURCES_PER_WEAPON = 512;
@@ -565,39 +565,83 @@ export function deserializeAttackerTargetingState(
         || record['schemaVersion'] !== ATTACKER_TARGETING_STATE_SCHEMA_VERSION
         || !Array.isArray(record['components'])
         || !Array.isArray(record['actions'])
-        || !Array.isArray(record['targets'])) {
+        || !Array.isArray(record['targets'])
+        || record['components'].length > MAX_ATTACKER_TARGETING_COMPONENTS
+        || record['actions'].length > MAX_ATTACKER_TARGETING_ACTIONS
+        || record['targets'].length > MAX_ATTACKER_TARGETS) {
         throw new Error('Invalid attacker-targeting wire state');
     }
-    const wire = record as unknown as SerializedAttackerTargetingState;
-    const components = new Map(wire.components.map(component => [
-        component.componentId,
-        Object.freeze({
-            ...(component.selection === undefined ? {} : { selection: component.selection }),
-            ...(component.ammo === undefined ? {} : { ammo: component.ammo }),
-        }),
-    ] as const));
-    const actions = new Map(wire.actions.map(action => [
-        attackerActionTargetKey(action.target),
-        Object.freeze({ target: action.target, selection: action.selection }),
-    ] as const));
-    const targets = new Map(wire.targets.map(({ targetId, ...facts }) => [
-        targetId,
-        Object.freeze(facts),
-    ] as const));
-    if (components.size !== wire.components.length
-        || actions.size !== wire.actions.length
-        || targets.size !== wire.targets.length) {
-        throw new Error('Duplicate attacker-targeting entry');
+
+    const components = new Map<ComponentId, AttackerComponentState>();
+    for (const raw of record['components']) {
+        if (!isPlainRecord(raw)) throw new Error('Invalid attacker-targeting component');
+        const row = raw as Record<string, unknown>;
+        if (!hasExactKeys(row, ['componentId', 'selection', 'ammo'])
+            || !validId(row['componentId'])) {
+            throw new Error('Invalid attacker-targeting component');
+        }
+        const componentId = asComponentId(row['componentId']);
+        const component = canonicalComponentState({
+            selection: row['selection'],
+            ammo: row['ammo'],
+        } as AttackerComponentState);
+        if (component === null || components.has(componentId)) {
+            throw new Error('Invalid or duplicate attacker-targeting component');
+        }
+        components.set(componentId, component);
     }
+
+    const actions = new Map<string, AttackerActionState>();
+    for (const raw of record['actions']) {
+        if (!isPlainRecord(raw)) throw new Error('Invalid attacker-targeting action');
+        const row = raw as Record<string, unknown>;
+        if (!hasExactKeys(row, ['target', 'selection'])) {
+            throw new Error('Invalid attacker-targeting action');
+        }
+        const target = canonicalActionTarget(row['target'] as AttackerActionTarget);
+        const selectionResult = canonicalSelection(row['selection'] as AttackerSelection);
+        const selection = selectionResult.selection;
+        if (selectionResult.reason || selection === undefined || selection.kind === 'manual-range') {
+            throw new Error('Invalid attacker-targeting action selection');
+        }
+        const key = attackerActionTargetKey(target);
+        if (actions.has(key)) throw new Error('Duplicate attacker-targeting action');
+        actions.set(key, Object.freeze({ target, selection }));
+    }
+
+    const targets = new Map<EncounterTargetId, AttackerLocalTargetState>();
+    for (const raw of record['targets']) {
+        if (!isPlainRecord(raw)) throw new Error('Invalid attacker-targeting target');
+        const row = raw as Record<string, unknown>;
+        if (!hasExactKeys(row, [
+                'targetId', 'distance', 'c3Distance', 'useC3', 'calculator', 'manualTnOverride',
+            ])
+            || !validId(row['targetId'])) {
+            throw new Error('Invalid attacker-targeting target');
+        }
+        const targetId = row['targetId'] as EncounterTargetId;
+        const facts = canonicalTargetFacts({
+            distance: row['distance'],
+            c3Distance: row['c3Distance'],
+            useC3: row['useC3'],
+            calculator: row['calculator'],
+            manualTnOverride: row['manualTnOverride'],
+        } as AttackerLocalTargetState);
+        if (facts === null || targets.has(targetId)) {
+            throw new Error('Invalid or duplicate attacker-targeting target');
+        }
+        targets.set(targetId, facts);
+    }
+
     return freezeAttackerTargetingState({
-        schemaVersion: wire.schemaVersion,
+        schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
         components,
         actions,
         targets,
     });
 }
 
-function validateContext(context: AttackerTargetingValidationContext): {
+function validateContext(context: unknown): {
     readonly context: ValidatedContext;
     readonly reason?: 'INVALID_CONTEXT' | 'INVALID_TARGET_POLICY';
 } {
@@ -608,71 +652,74 @@ function validateContext(context: AttackerTargetingValidationContext): {
     });
     if (!isPlainRecord(context)
         || !hasExactKeys(context, ['registryRevision', 'forceReadOnly', 'targets', 'weapons', 'actions'])
-        || !validRevision(context.registryRevision)
-        || typeof context.forceReadOnly !== 'boolean'
-        || !Array.isArray(context.targets)
-        || !Array.isArray(context.weapons)
-        || !Array.isArray(context.actions)
-        || context.targets.length > MAX_ATTACKER_TARGETS
-        || context.weapons.length > MAX_ATTACKER_TARGETING_COMPONENTS
-        || context.actions.length > MAX_ATTACKER_TARGETING_ACTIONS) {
+        || !validRevision(context['registryRevision'])
+        || typeof context['forceReadOnly'] !== 'boolean'
+        || !Array.isArray(context['targets'])
+        || !Array.isArray(context['weapons'])
+        || !Array.isArray(context['actions'])
+        || context['targets'].length > MAX_ATTACKER_TARGETS
+        || context['weapons'].length > MAX_ATTACKER_TARGETING_COMPONENTS
+        || context['actions'].length > MAX_ATTACKER_TARGETING_ACTIONS) {
         return { context: empty, reason: 'INVALID_CONTEXT' };
     }
 
     const targetIds = new Set<EncounterTargetId>();
-    for (const target of context.targets) {
+    for (const target of context['targets']) {
         if (!isPlainRecord(target)
             || !hasExactKeys(target, ['id', 'source', 'readOnly'])
-            || !validId(target.id)
-            || (target.source !== 'manual' && target.source !== 'opfor')
-            || typeof target.readOnly !== 'boolean'
-            || targetIds.has(target.id)) {
+            || !validId(target['id'])
+            || (target['source'] !== 'manual' && target['source'] !== 'opfor')
+            || typeof target['readOnly'] !== 'boolean') {
             return { context: empty, reason: 'INVALID_CONTEXT' };
         }
-        if ((target.source === 'opfor') !== target.readOnly) {
+        const targetId = asEncounterTargetId(target['id']);
+        if (targetIds.has(targetId)) return { context: empty, reason: 'INVALID_CONTEXT' };
+        if ((target['source'] === 'opfor') !== target['readOnly']) {
             return { context: empty, reason: 'INVALID_TARGET_POLICY' };
         }
-        targetIds.add(target.id);
+        targetIds.add(targetId);
     }
 
     const weapons = new Map<ComponentId, ValidatedWeapon>();
-    for (const weapon of context.weapons) {
+    for (const weapon of context['weapons']) {
         if (!isPlainRecord(weapon)
             || !hasExactKeys(weapon, ['componentId', 'compatibleMunitionKeys', 'sources'])
-            || !validId(weapon.componentId)
-            || weapons.has(weapon.componentId)
-            || !Array.isArray(weapon.compatibleMunitionKeys)
-            || weapon.compatibleMunitionKeys.length > MAX_ATTACKER_MUNITIONS_PER_WEAPON
-            || !Array.isArray(weapon.sources)
-            || weapon.sources.length > MAX_ATTACKER_AMMO_SOURCES_PER_WEAPON) {
+            || !validId(weapon['componentId'])
+            || !Array.isArray(weapon['compatibleMunitionKeys'])
+            || weapon['compatibleMunitionKeys'].length > MAX_ATTACKER_MUNITIONS_PER_WEAPON
+            || !Array.isArray(weapon['sources'])
+            || weapon['sources'].length > MAX_ATTACKER_AMMO_SOURCES_PER_WEAPON) {
             return { context: empty, reason: 'INVALID_CONTEXT' };
         }
-        const compatibleMunitions = stringSet(weapon.compatibleMunitionKeys);
+        const weaponId = asComponentId(weapon['componentId']);
+        if (weapons.has(weaponId)) return { context: empty, reason: 'INVALID_CONTEXT' };
+        const compatibleMunitions = stringSet(weapon['compatibleMunitionKeys']);
         if (!compatibleMunitions) return { context: empty, reason: 'INVALID_CONTEXT' };
         const sources = new Map<ComponentId, ReadonlySet<string>>();
-        for (const source of weapon.sources) {
+        for (const source of weapon['sources']) {
             if (!isPlainRecord(source)
                 || !hasExactKeys(source, ['componentId', 'munitionKeys'])
-                || !validId(source.componentId)
-                || sources.has(source.componentId)
-                || !Array.isArray(source.munitionKeys)
-                || source.munitionKeys.length > MAX_ATTACKER_MUNITIONS_PER_WEAPON) {
+                || !validId(source['componentId'])
+                || !Array.isArray(source['munitionKeys'])
+                || source['munitionKeys'].length > MAX_ATTACKER_MUNITIONS_PER_WEAPON) {
                 return { context: empty, reason: 'INVALID_CONTEXT' };
             }
-            const sourceMunitions = stringSet(source.munitionKeys);
+            const sourceId = asComponentId(source['componentId']);
+            if (sources.has(sourceId)) return { context: empty, reason: 'INVALID_CONTEXT' };
+            const sourceMunitions = stringSet(source['munitionKeys']);
             if (!sourceMunitions
                 || [...sourceMunitions].some(munition => !compatibleMunitions.has(munition))) {
                 return { context: empty, reason: 'INVALID_CONTEXT' };
             }
-            sources.set(source.componentId, sourceMunitions);
+            sources.set(sourceId, sourceMunitions);
         }
-        weapons.set(weapon.componentId, Object.freeze({
+        weapons.set(weaponId, Object.freeze({
             compatibleMunitions,
             sources: new ImmutableIndex(sources),
         }));
     }
     const actions = new Map<string, AttackerActionTarget>();
-    for (const candidate of context.actions) {
+    for (const candidate of context['actions']) {
         let target: AttackerActionTarget;
         try {
             target = canonicalActionTarget(candidate);
@@ -904,19 +951,19 @@ export function attackerActionSelection(
     return state.actions.get(attackerActionTargetKey(target))?.selection;
 }
 
-function canonicalActionTarget(target: AttackerActionTarget): AttackerActionTarget {
-    if (!isPlainRecord(target) || typeof target.kind !== 'string') {
+function canonicalActionTarget(target: unknown): AttackerActionTarget {
+    if (!isPlainRecord(target) || typeof target['kind'] !== 'string') {
         throw new Error('Invalid targeting action target');
     }
-    if (target.kind === 'component'
+    if (target['kind'] === 'component'
         && hasExactKeys(target, ['kind', 'componentId'])
-        && validId(target.componentId)) {
-        return Object.freeze({ kind: 'component', componentId: target.componentId });
+        && validId(target['componentId'])) {
+        return Object.freeze({ kind: 'component', componentId: asComponentId(target['componentId']) });
     }
-    if (target.kind === 'intrinsic'
+    if (target['kind'] === 'intrinsic'
         && hasExactKeys(target, ['kind', 'actionId'])
-        && validId(target.actionId)) {
-        return Object.freeze({ kind: 'intrinsic', actionId: target.actionId });
+        && validId(target['actionId'])) {
+        return Object.freeze({ kind: 'intrinsic', actionId: target['actionId'] });
     }
     throw new Error('Invalid targeting action target');
 }
@@ -961,7 +1008,7 @@ function sortedEntries<K extends string, V>(values: ReadonlyMap<K, V>): readonly
     return [...values].sort(([left], [right]) => compareText(left, right));
 }
 
-function stringSet(values: readonly string[]): ReadonlySet<string> | null {
+function stringSet(values: readonly unknown[]): ReadonlySet<string> | null {
     const result = new Set<string>();
     for (const value of values) {
         if (!validCanonicalText(value) || result.has(value)) return null;
@@ -1015,6 +1062,8 @@ function isReadonlyMap(value: unknown): value is ReadonlyMap<unknown, unknown> {
         && typeof (value as ReadonlyMap<unknown, unknown>).size === 'number';
 }
 
+function isPlainRecord<T extends object>(value: T): boolean;
+function isPlainRecord(value: unknown): value is Record<string, unknown>;
 function isPlainRecord(value: unknown): boolean {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
     const prototype = Object.getPrototypeOf(value);

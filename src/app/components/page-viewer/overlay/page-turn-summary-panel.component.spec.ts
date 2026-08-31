@@ -27,6 +27,7 @@ import {
 import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
 import { OptionsService } from '../../../services/options.service';
+import { DialogsService } from '../../../services/dialogs.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
 import { STANDING_UP_REVIEW_ONLY } from './page-standing-up-panel.component';
@@ -58,9 +59,9 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(fixture.nativeElement.querySelector('.immobile-status')?.textContent.trim())
             .toBe('Unit is immobile');
         expect(Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.move-button'))
-            .map(button => button.textContent?.replace(/\s+/gu, ' ').trim())).toEqual(['', 'Run 0 +2']);
+            .map(button => button.textContent?.replace(/\s+/gu, ' ').trim())).toEqual(['', 'Run0+2']);
         expect(fixture.nativeElement.querySelector('.move-button.selected')?.textContent.replace(/\s+/gu, ' ').trim())
-            .toBe('Run 0 +2');
+            .toBe('Run0+2');
         expect(fixture.nativeElement.querySelector('hex-slider')).not.toBeNull();
     });
 
@@ -146,24 +147,79 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(fixture.nativeElement.querySelectorAll('.move-mode-row .move-button').length).toBe(5);
     });
 
-    it('keeps both embedded end-turn actions visible and disables unavailable actions', () => {
-        const fixture = createComponent(turnMember(turnSnapshot()).member, overlayManager());
+    it('shows the current and all-unit phase/turn scopes only while they are actionable', () => {
+        const harness = turnMember(turnSnapshot());
+        const fixture = createComponent(harness.member, overlayManager());
         fixture.componentRef.setInput('embedded', true);
         fixture.detectChanges();
 
-        const actions = () => Array.from<HTMLButtonElement>(
-            fixture.nativeElement.querySelectorAll('.summary-actions > .bt-button'),
-        );
-        expect(actions().map(button => button.textContent?.trim())).toEqual([
-            'End Turn',
-            'All units',
-        ]);
-        expect(actions().every(button => button.querySelector('.turn-action-icon') !== null)).toBeTrue();
-        expect(actions().map(button => button.disabled)).toEqual([true, true]);
+        expect(fixture.nativeElement.querySelector('.phase-actions')).toBeNull();
+        expect(fixture.nativeElement.querySelectorAll('.turn-actions button').length).toBe(0);
 
-        fixture.componentRef.setInput('endTurnForAllButtonVisible', true);
+        const dirty = turnSnapshot({ selectedMode: 'run', distance: 2 });
+        harness.set({
+            ...dirty,
+            hasPendingCombat: true,
+            movementState: {
+                ...dirty.movementState,
+                damageThisPhase: 1,
+            },
+        } as MekTurnPanelSnapshot);
         fixture.detectChanges();
-        expect(actions().map(button => button.disabled)).toEqual([true, false]);
+
+        const phaseActions = Array.from<HTMLButtonElement>(
+            fixture.nativeElement.querySelectorAll('.phase-actions button'),
+        );
+        const turnActions = Array.from<HTMLButtonElement>(
+            fixture.nativeElement.querySelectorAll('.turn-actions button'),
+        );
+        expect(phaseActions.map(button => button.textContent?.trim())).toEqual([
+            'End Phase',
+            'All Units',
+        ]);
+        expect(turnActions.map(button => button.textContent?.trim())).toEqual([
+            'End Turn',
+            'All Units',
+        ]);
+        expect([...phaseActions, ...turnActions].every(button =>
+            button.querySelector('.turn-action-icon') !== null)).toBeTrue();
+    });
+
+    it('dispatches selected and force-wide phase boundaries through the V2 owner', async () => {
+        const base = turnSnapshot({ selectedMode: 'run', distance: 2 });
+        const harness = turnMember({
+            ...base,
+            hasPendingCombat: true,
+            movementState: { ...base.movementState, damageThisPhase: 1 },
+        } as MekTurnPanelSnapshot);
+        const manager = overlayManager();
+        const fixture = createComponent(harness.member, manager);
+        fixture.detectChanges();
+        const event = jasmine.createSpyObj<MouseEvent>('event', ['stopPropagation']);
+
+        await fixture.componentInstance.endPhase(event);
+
+        expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+        expect(harness.dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
+            type: 'end-phase',
+            expectedRevision: 1,
+        }));
+        expect(manager.closeManagedOverlay).toHaveBeenCalledWith('turnSummary-mek-1');
+
+        harness.dispatch.calls.reset();
+        manager.closeManagedOverlay.calls.reset();
+        const dialogs = TestBed.inject(DialogsService) as jasmine.SpyObj<DialogsService>;
+        await fixture.componentInstance.endPhaseForAll(event);
+
+        expect(dialogs.requestConfirmation).toHaveBeenCalledWith(
+            'Are you sure you want to end the phase for all units?',
+            'End Phase',
+            'info',
+        );
+        expect(manager.blockCloseUntil).toHaveBeenCalledWith('turnSummary-mek-1');
+        expect(manager.unblockClose).toHaveBeenCalledWith('turnSummary-mek-1');
+        expect(manager.closeManagedOverlay).toHaveBeenCalledWith('turnSummary-mek-1');
+        expect(harness.member.force.endPhaseForAllUnits).toHaveBeenCalledTimes(1);
     });
 
     it('moves the Mek PSR modifier breakdown out of the embedded turn tracker', () => {
@@ -197,7 +253,7 @@ describe('PageTurnSummaryPanelComponent', () => {
         const labels = Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.move-button'))
             .map(button => button.textContent?.replace(/\s+/gu, ' ').trim())
             .filter(Boolean);
-        expect(labels).toEqual(['Cruise 4 +1', 'Flank 6 +2']);
+        expect(labels).toEqual(['Cruise4+1', 'Flank6+2']);
         expect(fixture.nativeElement.querySelector('.spotting-button')).not.toBeNull();
         expect(fixture.nativeElement.querySelector('.cover-control')).not.toBeNull();
         expect(fixture.nativeElement.querySelector('[aria-label="Defense"]')).not.toBeNull();
@@ -355,6 +411,9 @@ function createComponent(member: CBTForceMember, manager: ReturnType<typeof over
                 cbtAutomationMode: () => 'no',
             } },
             { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
+            { provide: DialogsService, useValue: {
+                requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(true),
+            } },
             { provide: OverlayManagerService, useValue: manager },
             { provide: Overlay, useValue: { scrollStrategies: { block: () => ({}) } } },
         ],
@@ -400,20 +459,23 @@ function entityTurnMember(
         changed: true,
         state: snapshot.state,
     });
+    let member!: CBTForceMember;
     const force = {
         changed,
+        members: () => [member],
         getUnitSnapshot: () => snapshot,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
         hasRuntimeHistoryForUnitTurn: () => false,
         dispatchNonMekUnitCommand: dispatch,
     };
+    member = {
+        kind: 'cbt',
+        id: 'tank-1',
+        entity,
+        force,
+    } as unknown as CBTForceMember;
     return {
-        member: {
-            kind: 'cbt',
-            id: 'tank-1',
-            entity,
-            force,
-        } as unknown as CBTForceMember,
+        member,
         dispatch,
         boosterComponentId,
     };
@@ -441,21 +503,22 @@ function battleArmorTurnMember() {
         ruleset: 'core-2026' as const,
         state,
     };
+    let member!: CBTForceMember;
     const force = {
         changed,
+        members: () => [member],
         getUnitSnapshot: () => snapshot,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
         hasRuntimeHistoryForUnitTurn: () => false,
         dispatchNonMekUnitCommand: jasmine.createSpy('dispatchNonMekUnitCommand'),
     };
-    return {
-        member: {
-            kind: 'cbt',
-            id: 'battle-armor-1',
-            entity,
-            force,
-        } as unknown as CBTForceMember,
-    };
+    member = {
+        kind: 'cbt',
+        id: 'battle-armor-1',
+        entity,
+        force,
+    } as unknown as CBTForceMember;
+    return { member };
 }
 
 function aeroTurnMember() {
@@ -477,21 +540,22 @@ function aeroTurnMember() {
             turn: { ...pristine.turn, weaponsHeat: 7 },
         },
     };
+    let member!: CBTForceMember;
     const force = {
         changed,
+        members: () => [member],
         getUnitSnapshot: () => snapshot,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
         hasRuntimeHistoryForUnitTurn: () => false,
         dispatchNonMekUnitCommand: jasmine.createSpy('dispatchNonMekUnitCommand'),
     };
-    return {
-        member: {
-            kind: 'cbt',
-            id: 'aero-1',
-            entity,
-            force,
-        } as unknown as CBTForceMember,
-    };
+    member = {
+        kind: 'cbt',
+        id: 'aero-1',
+        entity,
+        force,
+    } as unknown as CBTForceMember;
+    return { member };
 }
 
 function overlayManager() {
@@ -515,20 +579,36 @@ function turnMember(initial: MekTurnPanelSnapshot) {
         changed: false,
         revision: current.stateRevision,
     });
+    let member!: CBTMekForceMember;
     const force = {
         changed,
+        members: () => [member],
         getMekTurnPanelSnapshot: () => current,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
         getMekEquipmentInteractions: () => [],
         dispatchMekUnitCommand: dispatch,
+        hasRuntimeHistoryForUnitTurn: () => false,
+        endPhaseForAllUnits: jasmine.createSpy('endPhaseForAllUnits').and.resolveTo({
+            accepted: true,
+            changed: true,
+            atomic: false,
+            results: [],
+        }),
+        endTurnForAllUnits: jasmine.createSpy('endTurnForAllUnits').and.resolveTo({
+            accepted: true,
+            changed: true,
+            atomic: false,
+            results: [],
+        }),
     };
+    member = {
+        kind: 'cbt',
+        id: 'mek-1',
+        entity,
+        force,
+    } as unknown as CBTMekForceMember;
     return {
-        member: {
-            kind: 'cbt',
-            id: 'mek-1',
-            entity,
-            force,
-        } as unknown as CBTMekForceMember,
+        member,
         dispatch,
         set: (snapshot: MekTurnPanelSnapshot) => {
             current = snapshot;

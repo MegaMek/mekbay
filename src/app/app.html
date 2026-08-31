@@ -189,7 +189,7 @@
                             <div [cdkPortalOutlet]="unitSearchPortalMain()"></div>
                         </div>
                     </div>
-                    @if (this.dataService.isCloudForceLoading()) {
+                    @if (this.isCloudForceLoading()) {
                     <loading-spinner class="spinner-container" message="Loading force..." ariaLabel="Loading force"></loading-spinner>
                     }
                 </div>

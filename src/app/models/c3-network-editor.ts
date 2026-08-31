@@ -5,11 +5,11 @@
 import type { SerializedC3NetworkGroup } from './force-serialization';
 import {
     type C3Component,
+    type C3CapabilityView,
     C3Capabilities,
     C3Network,
     C3NetworkType,
     type C3Node,
-    type C3UnitView,
     C3Role,
     C3_MAX_NETWORK_DEPTH,
     C3_MAX_NETWORK_TOTAL,
@@ -17,6 +17,7 @@ import {
     C3_NETWORK_LIMITS,
 } from './c3-network.model';
 import { uuidv7 } from '../utils/uuid.util';
+import { jsonValuesEqual } from '../utils/json-value.util';
 
 export interface NetworkMutationResult {
     networks: SerializedC3NetworkGroup[];
@@ -169,7 +170,19 @@ export class C3NetworkEditor {
         return selected;
     }
 
-    static clean(networks: SerializedC3NetworkGroup[], unitsById: ReadonlyMap<string, C3UnitView>): SerializedC3NetworkGroup[] {
+    /** True only when the supplied graph is already canonical under the editor's exact rules. */
+    static validate(
+        networks: readonly SerializedC3NetworkGroup[],
+        unitsById: ReadonlyMap<string, C3CapabilityView>,
+    ): boolean {
+        const candidate = structuredClone(networks) as SerializedC3NetworkGroup[];
+        return jsonValuesEqual(networks, this.clean(candidate, unitsById));
+    }
+
+    static clean(
+        networks: SerializedC3NetworkGroup[],
+        unitsById: ReadonlyMap<string, C3CapabilityView>,
+    ): SerializedC3NetworkGroup[] {
         if (!networks?.length) return [];
         const capabilities = new Map<string, C3Capabilities>();
         for (const [id, unit] of unitsById) capabilities.set(id, new C3Capabilities(unit));

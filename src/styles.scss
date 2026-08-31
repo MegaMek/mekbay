@@ -45,6 +45,7 @@
     --pip-pending-damage-color: orange;
     --pip-pending-repair-color: #03a9f4;
     --pip-fresh-damage-color: #FF0;
+    --pip-fresh-repair-color: #80DEEA;
     --success: #7dcc80;
     --danger: #F00;
     --undamaged-highlight-color: #FEE;
@@ -1818,6 +1819,31 @@ hr.divider {
         &.half {
             clip-path: polygon(50% -50%, 150% -50%, 150% 150%, 50% 150%)
         }
+    }
+
+    .capital-pip-state-damaged {
+        fill: var(--damage-color) !important;
+    }
+
+    .capital-pip-state-pending-damage {
+        fill: var(--pip-pending-damage-color) !important;
+    }
+
+    .capital-pip-state-fresh-damage {
+        fill: var(--pip-fresh-damage-color) !important;
+    }
+
+    .capital-pip-state-pending-repair {
+        fill: var(--pip-pending-repair-color) !important;
+    }
+
+    .capital-pip-state-fresh-repair {
+        fill: var(--pip-fresh-repair-color) !important;
+    }
+
+    .capital-pip-interaction {
+        fill: transparent !important;
+        stroke: transparent !important;
     }
 
     .soldierPip.damaged {

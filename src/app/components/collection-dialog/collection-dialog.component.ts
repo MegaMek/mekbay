@@ -8,6 +8,7 @@ import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
 import type { UnitSummary, UnitTagEntry } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
+import { ForcePersistenceService } from '../../services/force-persistence.service';
 import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { GameService } from '../../services/game.service';
@@ -95,6 +96,7 @@ type CollectionExportValue = string | number;
 export class CollectionDialogComponent {
     private readonly dialogRef = inject(DialogRef<void>);
     private readonly dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly organizationStorage = inject(OrganizationStorageService);
     private readonly dialogsService = inject(DialogsService);
     private readonly gameService = inject(GameService);
@@ -1062,7 +1064,7 @@ export class CollectionDialogComponent {
             }
 
             const forceInstanceIds = organization.forces.map(force => force.instanceId).filter(Boolean);
-            const forces = await this.dataService.getLoadForceEntriesByIds(forceInstanceIds);
+            const forces = await this.forcePersistence.getLoadForceEntriesByIds(forceInstanceIds);
             if (loadToken !== this.organizationFilterLoadToken) {
                 return;
             }

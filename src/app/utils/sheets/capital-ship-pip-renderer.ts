@@ -2,21 +2,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { PipRenderOptions } from './pip-renderer.types';
-import { PipRendererShared, SVG_NAMESPACE } from './pip-renderer.shared';
-
-type CapitalShipPipType = 'armor' | 'structure';
+import { PipRendererShared } from './pip-renderer.shared';
+import {
+    appendCapitalPipBlock,
+    capitalPipGridCapacity,
+    renderCapitalPipGridDamage,
+    type CapitalPipType,
+} from './capital-ship-pip-block';
 
 const ARMOR_PIP_SIZE = 4.5;
 const STRUCTURE_PIP_SIZE = 4;
 const PIPS_PER_ROW = 10;
 const MAX_PIP_ROWS = 10;
 const PIPS_PER_ARMOR_BLOCK = PIPS_PER_ROW * MAX_PIP_ROWS;
-const ARMOR_SHADOW_OFFSET = 0.3;
-const ARMOR_SHADOW_FILL = '#c7c7c7';
 
 /**
  * Reproduces MegaMekLab's compact square grids for capital-vessel armor and
- * structure. Geometry is relative to the authored placeholder rectangle.
+ * structure using aggregate block paths.
  */
 export class CapitalShipPipRenderer {
 
@@ -24,7 +26,7 @@ export class CapitalShipPipRenderer {
         count: number,
         containerWidth: number,
         containerHeight: number,
-        type: CapitalShipPipType,
+        type: CapitalPipType,
         location: string,
         options: PipRenderOptions = {},
     ): SVGGElement | null {
@@ -45,12 +47,36 @@ export class CapitalShipPipRenderer {
             pipCount,
             'capital-grid',
         );
+        group.classList.add('capital-pip-grid', type);
+        group.setAttribute('loc', location);
+        group.setAttribute('data-pip-capacity', String(pipCount));
+        group.setAttribute('data-rendered-visible-pips', String(pipCount));
         if (type === 'armor') {
             this.appendArmorPips(group, pipCount, containerWidth, containerHeight, location, options);
         } else {
             this.appendStructurePips(group, pipCount, containerWidth, location, options);
         }
         return group;
+    }
+
+    public static capacity(grids: readonly SVGElement[]): number {
+        return capitalPipGridCapacity(grids);
+    }
+
+    public static renderDamage(
+        grids: readonly SVGElement[],
+        maximum: number,
+        committedRemaining: number,
+        previewRemaining: number,
+        markChanges = false,
+    ): void {
+        renderCapitalPipGridDamage(
+            grids,
+            maximum,
+            committedRemaining,
+            previewRemaining,
+            markChanges,
+        );
     }
 
     private static appendArmorPips(
@@ -119,7 +145,6 @@ export class CapitalShipPipRenderer {
                     'armor',
                     location,
                     options,
-                    true,
                 );
                 remainingBlocks--;
                 x += blockWidth;
@@ -155,7 +180,6 @@ export class CapitalShipPipRenderer {
             'structure',
             location,
             options,
-            false,
         );
         if (count > firstBlockCount) {
             this.appendPipBlock(
@@ -168,7 +192,6 @@ export class CapitalShipPipRenderer {
                 'structure',
                 location,
                 options,
-                false,
             );
         }
     }
@@ -180,78 +203,23 @@ export class CapitalShipPipRenderer {
         count: number,
         pipWidth: number,
         pipHeight: number,
-        type: CapitalShipPipType,
+        type: CapitalPipType,
         location: string,
         options: PipRenderOptions,
-        shadow: boolean,
     ): number {
-        let remaining = count;
-        let y = startY;
-        for (let row = 0; row < MAX_PIP_ROWS && remaining > 0; row++) {
-            const rowPips = Math.min(remaining, PIPS_PER_ROW);
-            let x = startX + (PIPS_PER_ROW - rowPips) / 2 * pipWidth + 0.5;
-            for (let column = 0; column < rowPips; column++) {
-                if (shadow) {
-                    group.appendChild(this.createSquare(
-                        x + pipWidth * ARMOR_SHADOW_OFFSET,
-                        y + pipHeight * ARMOR_SHADOW_OFFSET,
-                        pipWidth,
-                        pipHeight,
-                        ARMOR_SHADOW_FILL,
-                        null,
-                        null,
-                        true,
-                    ));
-                }
-                group.appendChild(this.createSquare(
-                    x,
-                    y,
-                    pipWidth,
-                    pipHeight,
-                    options.fill ?? '#fff',
-                    options.stroke ?? '#000',
-                    0.5,
-                    false,
-                    type,
-                    location,
-                ));
-                x += pipWidth;
-                remaining--;
-            }
-            y += pipHeight;
-        }
-        return remaining;
-    }
-
-    private static createSquare(
-        x: number,
-        y: number,
-        width: number,
-        height: number,
-        fill: string,
-        stroke: string | null,
-        strokeWidth: number | null,
-        shadow: boolean,
-        type?: CapitalShipPipType,
-        location?: string,
-    ): SVGRectElement {
-        const square = document.createElementNS(SVG_NAMESPACE, 'rect');
-        square.setAttribute('x', x.toString());
-        square.setAttribute('y', y.toString());
-        square.setAttribute('width', width.toString());
-        square.setAttribute('height', height.toString());
-        square.setAttribute('fill', fill);
-        if (shadow) {
-            square.setAttribute('data-pip-shadow', '1');
-            square.style.setProperty('pointer-events', 'none');
-        } else {
-            square.classList.add('square');
-            if (type) square.classList.add(type);
-            if (location) square.setAttribute('loc', location);
-        }
-        if (stroke !== null) square.setAttribute('stroke', stroke);
-        if (strokeWidth !== null) square.setAttribute('stroke-width', strokeWidth.toString());
-        return square;
+        return appendCapitalPipBlock(
+            group,
+            startX,
+            startY,
+            count,
+            pipWidth,
+            pipHeight,
+            type,
+            location,
+            options.fill,
+            options.stroke,
+            options.strokeWidth,
+        );
     }
 
     private static structurePipsPerBlock(location: string): number {

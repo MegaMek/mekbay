@@ -11,6 +11,8 @@ import {
 import type { EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
 import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
 import { asStateRevision } from '../../models/runtime/runtime-state';
+import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
+import { optimizeGeneratedSvg } from '../../utils/sheets/record-sheet-svg-rendering';
 import {
     bindNonMekRecordSheet,
     type NonMekRecordSheetInteraction,
@@ -112,6 +114,45 @@ describe('bindNonMekRecordSheet', () => {
         expect(interactions).toEqual([
             jasmine.objectContaining({ kind: 'armor', faceId: FACE_ID, locationId: LOCATION_ID }),
             jasmine.objectContaining({ kind: 'internal', locationId: LOCATION_ID }),
+        ]);
+    });
+
+    it('binds and updates one aggregate target per capital-grid block', () => {
+        const svg = capitalGridSheet();
+        const interactions: NonMekRecordSheetInteraction[] = [];
+        const binding = bindNonMekRecordSheet(
+            svg,
+            capitalSnapshot(5_999),
+            interaction => interactions.push(interaction),
+        );
+        const grid = svg.querySelector<SVGElement>('.capital-pip-grid')!;
+        const targets = [...svg.querySelectorAll<SVGElement>('.capital-pip-interaction')];
+        const path = (className: string): string =>
+            svg.querySelector(`.${className}`)?.getAttribute('d') ?? '';
+
+        expect(targets.length).toBe(60);
+        expect(targets.every(target => target.dataset['mekbayEntityBound'] === '1')).toBeTrue();
+        expect(targets.every(target => target.style.fill === 'transparent'
+            && target.style.getPropertyPriority('fill') === 'important')).toBeTrue();
+        expect(grid.dataset['mekbayEntityBound']).toBeUndefined();
+        expect(svg.querySelectorAll('.pip').length).toBe(0);
+        expect(path('capital-pip-state-damaged')).not.toBe('');
+
+        expect(binding.render(capitalSnapshot(5_999, 5_997))).toEqual([]);
+        expect(path('capital-pip-state-fresh-damage')).not.toBe('');
+        expect(path('capital-pip-state-pending-damage')).toBe('');
+
+        expect(binding.render(capitalSnapshot(5_999, 5_997))).toEqual([]);
+        expect(path('capital-pip-state-fresh-damage')).toBe('');
+        expect(path('capital-pip-state-pending-damage')).not.toBe('');
+
+        expect(binding.render(capitalSnapshot(5_997, 5_999))).toEqual([]);
+        expect(path('capital-pip-state-fresh-repair')).not.toBe('');
+        expect(path('capital-pip-state-pending-repair')).toBe('');
+
+        targets[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions).toEqual([
+            jasmine.objectContaining({ kind: 'armor', faceId: FACE_ID, locationId: LOCATION_ID }),
         ]);
     });
 
@@ -417,6 +458,30 @@ function heatSnapshot(): NonMekRecordSheetSnapshot {
     });
 }
 
+function capitalSnapshot(
+    remaining: number,
+    previewRemaining = remaining,
+): NonMekRecordSheetSnapshot {
+    const base = snapshot(3);
+    const location = base.locations[0];
+    const face = location.armor[0];
+    return Object.freeze({
+        ...base,
+        locations: Object.freeze([Object.freeze({
+            ...location,
+            maximumInternal: 0,
+            remainingInternal: 0,
+            previewRemainingInternal: 0,
+            armor: Object.freeze([Object.freeze({
+                ...face,
+                maximum: 6_000,
+                remaining,
+                previewRemaining,
+            })]),
+        })]),
+    });
+}
+
 function criticalSnapshot(
     engineCommitted: number,
     enginePreview: number,
@@ -566,6 +631,12 @@ function pipOnlySheet(): SVGSVGElement {
         <circle class="pip structure" loc="FR"></circle>
     </svg>`;
     return host.querySelector('svg') as SVGSVGElement;
+}
+
+function capitalGridSheet(): SVGSVGElement {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.appendChild(CapitalShipPipRenderer.createPips(6_000, 1_000, 500, 'armor', 'FR')!);
+    return optimizeGeneratedSvg(svg);
 }
 
 function criticalSheet(): SVGSVGElement {

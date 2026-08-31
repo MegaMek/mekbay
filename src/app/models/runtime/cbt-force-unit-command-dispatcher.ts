@@ -40,6 +40,7 @@ type PreparedForcePhaseBoundary =
     | Readonly<{
         readonly kind: 'non-mek';
         readonly instanceId: UnitInstanceId;
+        readonly before: CBTUnitSnapshot;
         readonly prepared: PreparedDirectNonMekAutomationCommand;
     }>;
 
@@ -47,6 +48,10 @@ function turnCounter(snapshot: CBTUnitSnapshot | null): number | null {
     if (snapshot && hasMekRuntime(snapshot)) return snapshot.state.turn.turnCounter;
     if (snapshot && hasNonMekRuntime(snapshot)) return snapshot.state.turn.turnCounter;
     return null;
+}
+
+function stateRevision(snapshot: CBTUnitSnapshot | null): number | null {
+    return snapshot?.query.stateRevision ?? null;
 }
 
 export interface CBTForceUnitCommandBoundary {
@@ -71,7 +76,7 @@ export interface CBTForceUnitCommandBoundary {
  * of the authoritative callbacks supplied by CBTForce.
  */
 export class CBTForceUnitCommandDispatcher {
-    private endTurnQueue: Promise<void> = Promise.resolve();
+    private boundaryQueue: Promise<void> = Promise.resolve();
 
     constructor(
         private readonly force: CBTForce,
@@ -87,7 +92,7 @@ export class CBTForceUnitCommandDispatcher {
             const requested = this.boundary.snapshot(instanceId);
             if (requested && hasNonMekRuntime(requested)) {
                 const turnCounter = requested.state.turn.turnCounter;
-                return this.enqueueEndTurn(async () => {
+                return this.enqueueBoundary(async () => {
                     const current = this.boundary.snapshot(instanceId);
                     if (current && hasNonMekRuntime(current)
                         && current.state.turn.turnCounter !== turnCounter) {
@@ -112,7 +117,7 @@ export class CBTForceUnitCommandDispatcher {
             const requested = this.boundary.snapshot(instanceId);
             if (requested && hasMekRuntime(requested)) {
                 const turnCounter = requested.state.turn.turnCounter;
-                return this.enqueueEndTurn(async () => {
+                return this.enqueueBoundary(async () => {
                     const current = this.boundary.snapshot(instanceId);
                     if (current && hasMekRuntime(current)
                         && current.state.turn.turnCounter !== turnCounter) {
@@ -142,7 +147,7 @@ export class CBTForceUnitCommandDispatcher {
                 turnCounter: turnCounter(snapshot),
             });
         });
-        return this.enqueueEndTurn(async () => {
+        return this.enqueueBoundary(async () => {
             const activeIds = requested.flatMap(row => {
                 const current = this.boundary.snapshot(row.instanceId);
                 return current && row.turnCounter !== null
@@ -186,9 +191,58 @@ export class CBTForceUnitCommandDispatcher {
         });
     }
 
-    private enqueueEndTurn<T>(operation: () => Promise<T>): Promise<T> {
-        const result = this.endTurnQueue.then(operation);
-        this.endTurnQueue = result.then(() => undefined, () => undefined);
+    endPhaseForAll(): Promise<CBTForceEndTurnAllResult> {
+        const requested = this.boundary.instanceIds().map(instanceId => Object.freeze({
+            instanceId,
+            stateRevision: stateRevision(this.boundary.snapshot(instanceId)),
+        }));
+        return this.enqueueBoundary(async () => {
+            const activeIds = requested.flatMap(row => {
+                const current = this.boundary.snapshot(row.instanceId);
+                return current && row.stateRevision !== null
+                    && stateRevision(current) === row.stateRevision
+                    ? [row.instanceId]
+                    : [];
+            });
+            const active = activeIds.length === 0
+                ? Object.freeze({
+                    accepted: true,
+                    changed: false,
+                    atomic: false as const,
+                    results: Object.freeze([]),
+                })
+                : await this.endPhaseForAllWithAutomation(activeIds);
+            const activeResults = new Map(active.results.map(row => [row.instanceId, row] as const));
+            const results = requested.map(row => {
+                const result = activeResults.get(row.instanceId);
+                if (result) return result;
+                const current = this.boundary.snapshot(row.instanceId);
+                return current && row.stateRevision !== null
+                    && stateRevision(current) !== row.stateRevision
+                    ? Object.freeze({
+                        instanceId: row.instanceId,
+                        accepted: true,
+                        changed: false,
+                    })
+                    : Object.freeze({
+                        instanceId: row.instanceId,
+                        accepted: false,
+                        changed: false,
+                        reason: 'NOT_ADMITTED',
+                    });
+            });
+            return Object.freeze({
+                accepted: results.every(result => result.accepted),
+                changed: results.some(result => result.changed),
+                atomic: false as const,
+                results: Object.freeze(results),
+            });
+        });
+    }
+
+    private enqueueBoundary<T>(operation: () => Promise<T>): Promise<T> {
+        const result = this.boundaryQueue.then(operation);
+        this.boundaryQueue = result.then(() => undefined, () => undefined);
         return result;
     }
 
@@ -299,29 +353,19 @@ export class CBTForceUnitCommandDispatcher {
         return completed ? result : this.cancelledMek(instanceId);
     }
 
-    private async endTurnForAllWithAutomation(
+    private async endPhaseForAllWithAutomation(
         instanceIds: readonly UnitInstanceId[],
     ): Promise<CBTForceEndTurnAllResult> {
         if (this.boundary.readOnly()) {
-            return Object.freeze({
-                accepted: false,
-                changed: false,
-                atomic: false as const,
-                results: Object.freeze(instanceIds.map(instanceId => Object.freeze({
-                    instanceId,
-                    accepted: false,
-                    changed: false,
-                    reason: 'READ_ONLY',
-                }))),
-            });
+            return this.rejectedBoundaryBatch(instanceIds, 'READ_ONLY');
         }
 
         const mekAutomation = this.mekAutomation();
         const nonMekAutomation = this.nonMekAutomation();
-
-        // Review every phase before committing the first one. A cancellation
-        // anywhere in a mixed force therefore leaves every unit untouched.
         const preparedPhases: PreparedForcePhaseBoundary[] = [];
+
+        // Complete every review before committing the first unit. Closing any
+        // review therefore leaves the entire force at its current phase.
         for (const instanceId of instanceIds) {
             const snapshot = this.boundary.snapshot(instanceId);
             if (!snapshot) continue;
@@ -334,7 +378,9 @@ export class CBTForceUnitCommandDispatcher {
                 const prepared: PreparedDirectMekAutomationCommand = mekAutomation
                     ? await mekAutomation.prepareCommand(this.force, instanceId, command)
                     : Object.freeze({ command, deferredPilotHits: 0 });
-                if (prepared.cancelled) return this.cancelledEndTurnBatch(instanceIds);
+                if (prepared.cancelled) {
+                    return this.rejectedBoundaryBatch(instanceIds, 'AUTOMATION_CANCELLED');
+                }
                 preparedPhases.push(Object.freeze({
                     kind: 'mek',
                     instanceId,
@@ -351,25 +397,32 @@ export class CBTForceUnitCommandDispatcher {
             const prepared: PreparedDirectNonMekAutomationCommand = nonMekAutomation
                 ? await nonMekAutomation.prepareCommand(this.force, instanceId, command)
                 : Object.freeze({ command });
-            if (prepared.cancelled) return this.cancelledEndTurnBatch(instanceIds);
+            if (prepared.cancelled) {
+                return this.rejectedBoundaryBatch(instanceIds, 'AUTOMATION_CANCELLED');
+            }
             preparedPhases.push(Object.freeze({
                 kind: 'non-mek',
                 instanceId,
+                before: snapshot,
                 prepared,
             }));
         }
 
+        const results: CBTForceEndTurnUnitResult[] = [];
         for (const phase of preparedPhases) {
+            const beforeRevision = stateRevision(phase.before);
             if (phase.kind === 'mek') {
                 const result = await this.boundary.dispatchMekCore(
                     phase.instanceId,
                     phase.prepared.command,
                 );
                 if (!result.accepted) {
-                    return this.failedEndTurnBatch(
+                    return this.failedBoundaryBatch(
                         instanceIds,
+                        results,
                         phase.instanceId,
                         result.reason,
+                        false,
                     );
                 }
                 const completed = !mekAutomation || await mekAutomation.afterCommand(
@@ -385,22 +438,36 @@ export class CBTForceUnitCommandDispatcher {
                             generatedAutomate,
                         ),
                 );
-                if (!completed) return this.failedEndTurnBatch(
-                    instanceIds,
-                    phase.instanceId,
-                    'AUTOMATION_CANCELLED',
-                );
+                const changed = stateRevision(this.boundary.snapshot(phase.instanceId))
+                    !== beforeRevision;
+                if (!completed) {
+                    return this.failedBoundaryBatch(
+                        instanceIds,
+                        results,
+                        phase.instanceId,
+                        'AUTOMATION_CANCELLED',
+                        changed,
+                    );
+                }
+                results.push(Object.freeze({
+                    instanceId: phase.instanceId,
+                    accepted: true,
+                    changed,
+                }));
                 continue;
             }
+
             const result = await this.boundary.dispatchNonMekCore(
                 phase.instanceId,
                 phase.prepared.command,
             );
             if (!result.accepted) {
-                return this.failedEndTurnBatch(
+                return this.failedBoundaryBatch(
                     instanceIds,
+                    results,
                     phase.instanceId,
                     result.reason,
+                    false,
                 );
             }
             const completed = !nonMekAutomation || await nonMekAutomation.afterCommand(
@@ -415,12 +482,38 @@ export class CBTForceUnitCommandDispatcher {
                         generatedAutomate,
                     ),
             );
-            if (!completed) return this.failedEndTurnBatch(
-                instanceIds,
-                phase.instanceId,
-                'AUTOMATION_CANCELLED',
-            );
+            const changed = stateRevision(this.boundary.snapshot(phase.instanceId))
+                !== beforeRevision;
+            if (!completed) {
+                return this.failedBoundaryBatch(
+                    instanceIds,
+                    results,
+                    phase.instanceId,
+                    'AUTOMATION_CANCELLED',
+                    changed,
+                );
+            }
+            results.push(Object.freeze({
+                instanceId: phase.instanceId,
+                accepted: true,
+                changed,
+            }));
         }
+
+        return this.completedBoundaryBatch(instanceIds, results);
+    }
+
+    private async endTurnForAllWithAutomation(
+        instanceIds: readonly UnitInstanceId[],
+    ): Promise<CBTForceEndTurnAllResult> {
+        const initialRevisions = new Map(instanceIds.map(instanceId => [
+            instanceId,
+            stateRevision(this.boundary.snapshot(instanceId)),
+        ] as const));
+        const phaseResult = await this.endPhaseForAllWithAutomation(instanceIds);
+        if (!phaseResult.accepted) return phaseResult;
+        const mekAutomation = this.mekAutomation();
+        const nonMekAutomation = this.nonMekAutomation();
 
         const mekRequests: DirectMekEndTurnAutomationRequest[] = [];
         const nonMekRequests: DirectNonMekEndTurnAutomationRequest[] = [];
@@ -456,14 +549,18 @@ export class CBTForceUnitCommandDispatcher {
                 instanceId: request.instanceId,
                 prepared: Object.freeze({ command: request.command, deferredPilotHits: 0 }),
             })));
-        if (preparedMeks === null) return this.cancelledEndTurnBatch(instanceIds);
+        if (preparedMeks === null) {
+            return this.failedEndTurnBatch(instanceIds, initialRevisions);
+        }
         const preparedNonMeks = nonMekAutomation
             ? await nonMekAutomation.prepareEndTurnCommands(this.force, nonMekRequests)
             : Object.freeze(nonMekRequests.map(request => Object.freeze({
                 instanceId: request.instanceId,
                 prepared: Object.freeze({ command: request.command }),
             })));
-        if (preparedNonMeks === null) return this.cancelledEndTurnBatch(instanceIds);
+        if (preparedNonMeks === null) {
+            return this.failedEndTurnBatch(instanceIds, initialRevisions);
+        }
 
         const preparedMekById = new Map(preparedMeks.map(row => [row.instanceId, row.prepared] as const));
         const preparedNonMekById = new Map(preparedNonMeks.map(row => [row.instanceId, row.prepared] as const));
@@ -479,7 +576,7 @@ export class CBTForceUnitCommandDispatcher {
                 )
                 : prepared;
             if (settled === null) {
-                return this.failedEndTurnBatch(instanceIds, instanceId, 'AUTOMATION_CANCELLED');
+                return this.failedEndTurnBatch(instanceIds, initialRevisions);
             }
             settledMekById.set(instanceId, settled);
         }
@@ -495,7 +592,7 @@ export class CBTForceUnitCommandDispatcher {
                 )
                 : prepared;
             if (settled === null) {
-                return this.failedEndTurnBatch(instanceIds, instanceId, 'AUTOMATION_CANCELLED');
+                return this.failedEndTurnBatch(instanceIds, initialRevisions);
             }
             settledNonMekById.set(instanceId, settled);
         }
@@ -532,7 +629,8 @@ export class CBTForceUnitCommandDispatcher {
                 results.push(Object.freeze({
                     instanceId,
                     accepted: completed && result.accepted,
-                    changed: result.accepted && !result.idempotent,
+                    changed: stateRevision(this.boundary.snapshot(instanceId))
+                        !== initialRevisions.get(instanceId),
                     ...(!completed
                         ? { reason: 'AUTOMATION_CANCELLED' }
                         : !result.accepted ? { reason: result.reason } : {}),
@@ -559,7 +657,8 @@ export class CBTForceUnitCommandDispatcher {
             results.push(Object.freeze({
                 instanceId,
                 accepted: completed && result.accepted,
-                changed: result.accepted && result.changed,
+                changed: stateRevision(this.boundary.snapshot(instanceId))
+                    !== initialRevisions.get(instanceId),
                 ...(!completed
                     ? { reason: 'AUTOMATION_CANCELLED' }
                     : !result.accepted ? { reason: result.reason } : {}),
@@ -572,7 +671,8 @@ export class CBTForceUnitCommandDispatcher {
             .map(instanceId => Object.freeze({
                 instanceId,
                 accepted: false,
-                changed: false,
+                changed: stateRevision(this.boundary.snapshot(instanceId))
+                    !== initialRevisions.get(instanceId),
                 reason: 'AUTOMATION_CANCELLED',
             })));
         return Object.freeze({
@@ -583,25 +683,28 @@ export class CBTForceUnitCommandDispatcher {
         });
     }
 
-    private cancelledEndTurnBatch(
+    private completedBoundaryBatch(
         instanceIds: readonly UnitInstanceId[],
+        completed: readonly CBTForceEndTurnUnitResult[],
     ): CBTForceEndTurnAllResult {
-        return Object.freeze({
-            accepted: false,
-            changed: false,
-            atomic: false as const,
-            results: Object.freeze(instanceIds.map(instanceId => Object.freeze({
+        const completedById = new Map(completed.map(row => [row.instanceId, row] as const));
+        const results = instanceIds.map(instanceId => completedById.get(instanceId)
+            ?? Object.freeze({
                 instanceId,
                 accepted: false,
                 changed: false,
-                reason: 'AUTOMATION_CANCELLED',
-            }))),
+                reason: 'NOT_ADMITTED',
+            }));
+        return Object.freeze({
+            accepted: results.every(result => result.accepted),
+            changed: results.some(result => result.changed),
+            atomic: false as const,
+            results: Object.freeze(results),
         });
     }
 
-    private failedEndTurnBatch(
+    private rejectedBoundaryBatch(
         instanceIds: readonly UnitInstanceId[],
-        failedInstanceId: UnitInstanceId,
         reason: string,
     ): CBTForceEndTurnAllResult {
         return Object.freeze({
@@ -612,8 +715,56 @@ export class CBTForceUnitCommandDispatcher {
                 instanceId,
                 accepted: false,
                 changed: false,
-                reason: instanceId === failedInstanceId ? reason : 'AUTOMATION_CANCELLED',
+                reason,
             }))),
+        });
+    }
+
+    private failedBoundaryBatch(
+        instanceIds: readonly UnitInstanceId[],
+        completed: readonly CBTForceEndTurnUnitResult[],
+        failedInstanceId: UnitInstanceId,
+        reason: string,
+        changed: boolean,
+    ): CBTForceEndTurnAllResult {
+        const completedById = new Map(completed.map(row => [row.instanceId, row] as const));
+        completedById.set(failedInstanceId, Object.freeze({
+            instanceId: failedInstanceId,
+            accepted: false,
+            changed,
+            reason,
+        }));
+        const results = instanceIds.map(instanceId => completedById.get(instanceId)
+            ?? Object.freeze({
+                instanceId,
+                accepted: false,
+                changed: false,
+                reason: 'AUTOMATION_CANCELLED',
+            }));
+        return Object.freeze({
+            accepted: false,
+            changed: results.some(result => result.changed),
+            atomic: false as const,
+            results: Object.freeze(results),
+        });
+    }
+
+    private failedEndTurnBatch(
+        instanceIds: readonly UnitInstanceId[],
+        initialRevisions: ReadonlyMap<UnitInstanceId, number | null>,
+    ): CBTForceEndTurnAllResult {
+        const results = instanceIds.map(instanceId => Object.freeze({
+            instanceId,
+            accepted: false,
+            changed: stateRevision(this.boundary.snapshot(instanceId))
+                !== initialRevisions.get(instanceId),
+            reason: 'AUTOMATION_CANCELLED',
+        }));
+        return Object.freeze({
+            accepted: false,
+            changed: results.some(result => result.changed),
+            atomic: false as const,
+            results: Object.freeze(results),
         });
     }
 

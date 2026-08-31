@@ -16,7 +16,6 @@ import {
 } from '@angular/core';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { OptionsService } from '../../../services/options.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { LoggerService } from '../../../services/logger.service';
@@ -24,7 +23,7 @@ import { OverlayManagerService } from '../../../services/overlay-manager.service
 import { ToastService } from '../../../services/toast.service';
 import type { CBTForce } from '../../../models/cbt-force.model';
 import type { PageViewerMember } from '../internal/types';
-import { isCBTForceMember, isCBTMekForceMember } from '../../../models/force-member.model';
+import { isCBTMekForceMember } from '../../../models/force-member.model';
 import { createCommandId } from '../../../models/runtime/runtime-state';
 import { hasPendingNonMekChanges } from '../../../models/runtime/non-mek-unit-instance';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
@@ -173,32 +172,6 @@ export class PageInteractionOverlayComponent {
         );
     });
 
-    endTurnButtonVisible(): boolean {
-        const force = this.force();
-        if (!force) return false;
-        const policy = this.optionsService.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
-            ? 'automatic'
-            : 'manual';
-        return force.members().some(member => {
-            if (isCBTMekForceMember(member)) {
-                const snapshot = force.getMekTurnPanelSnapshot(member.id, policy);
-                return snapshot !== null && isMekTurnPanelDirty(snapshot);
-            }
-            if (!isCBTForceMember(member)) return false;
-            const snapshot = force.getUnitSnapshot(member.id);
-            const entity = snapshot && hasNonMekRuntime(snapshot) ? snapshot.state : undefined;
-            return entity !== undefined && (
-                hasPendingNonMekChanges(entity)
-                || entity.turn.airborne !== null
-                || entity.turn.movement !== null
-                || force.hasRuntimeHistoryForUnitTurn(
-                    member.id,
-                    entity.turn.turnCounter + 1,
-                )
-            );
-        });
-    }
-
     turnTrackerVisible = computed(() => !this.pageViewerState.inventoryDialogOpen());
 
     constructor() {
@@ -250,10 +223,6 @@ export class PageInteractionOverlayComponent {
 
         if (componentRef) {
             componentRef.setInput('member', member);
-            componentRef.setInput('endTurnForAllButtonVisible', this.endTurnButtonVisible());
-            outputToObservable(componentRef.instance.endTurnForAllClicked).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-                this.endTurnForAll();
-            });
         }
     }
 
@@ -376,36 +345,6 @@ export class PageInteractionOverlayComponent {
 
     private targetsOverlayKey(unitId: string): string {
         return `${PAGE_TARGETS_OVERLAY_PREFIX}-${unitId}`;
-    }
-
-    async endTurnForAll(): Promise<void> {
-        const force = this.force();
-        if (!force) return;
-        const confirm = await this.dialogsService.requestConfirmation(
-            'Are you sure you want to end the turn for all units?',
-            'End Turn',
-            'info'
-        );
-        if (!confirm) return;
-        try {
-            const result = await force.endTurnForAllUnits();
-            if (result.accepted) return;
-            const failures = result.results
-                .filter(row => !row.accepted)
-                .map(row => `${row.instanceId}: ${(row.reason ?? 'command rejected').replaceAll('_', ' ').toLowerCase()}`);
-            const detail = failures.length > 0 ? failures.join('; ') : 'the force owner rejected the command';
-            this.toastService.showToast(
-                result.changed
-                    ? `End turn completed only partially: ${detail}.`
-                    : `Could not end turn for all units: ${detail}.`,
-                'error',
-            );
-        } catch (error) {
-            this.toastService.showToast(
-                `Could not end turn for all units: ${error instanceof Error ? error.message : 'unexpected error'}.`,
-                'error',
-            );
-        }
     }
 
     async endPhase(event: MouseEvent) {

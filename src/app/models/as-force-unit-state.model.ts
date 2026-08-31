@@ -400,23 +400,22 @@ export class ASForceUnitState extends ForceUnitState {
         // Sanitize the input data using the schema
         const sanitized = Sanitizer.sanitize(data, AS_SERIALIZED_STATE_SCHEMA);
         
-        this.modified.set(sanitized.modified);
-        this.destroyed.set(sanitized.destroyed);
+        this.modified.set(sanitized.modified ?? false);
+        this.destroyed.set(sanitized.destroyed ?? false);
         this.setConditions(sanitized.conditions ?? []);
-        
-        // Heat/armor/internal are already validated as [number, number] tuples
-        this.heat.set(sanitized.heat[0]);
-        this.pendingHeat.set(sanitized.heat[1]);
-        
-        this.armor.set(sanitized.armor[0]);
-        this.pendingArmor.set(sanitized.armor[1]);
-        
-        this.internal.set(sanitized.internal[0]);
-        this.pendingInternal.set(sanitized.internal[1]);
-        
-        // Crits are already validated arrays
-        this.crits.set([...sanitized.crits]);
-        this.pendingCrits.set([...sanitized.pCrits]);
+
+        const heat = sanitized.heat ?? [0, 0];
+        const armor = sanitized.armor ?? [0, 0];
+        const internal = sanitized.internal ?? [0, 0];
+        this.heat.set(heat[0]);
+        this.pendingHeat.set(heat[1]);
+        this.armor.set(armor[0]);
+        this.pendingArmor.set(armor[1]);
+        this.internal.set(internal[0]);
+        this.pendingInternal.set(internal[1]);
+
+        this.crits.set((sanitized.crits ?? []).map(([key, timestamp]) => ({ key, timestamp })));
+        this.pendingCrits.set((sanitized.pCrits ?? []).map(([key, timestamp]) => ({ key, timestamp })));
         
         // Handle consumed abilities
         if (sanitized.consumed) {
@@ -444,8 +443,6 @@ export class ASForceUnitState extends ForceUnitState {
             this.pendingRestored.set(new Set());
         }
         
-        if (sanitized.c3Position) {
-            this.c3Position.set(sanitized.c3Position);
-        }
+        this.c3Position.set(sanitized.c3Position ?? null);
     }
 }

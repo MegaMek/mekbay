@@ -296,7 +296,7 @@ describe('MTF parser identity', () => {
     expect(context.errors.filter(error => error.message.includes('Conversion Gear'))).toEqual([]);
     expect(entity.equipment().some(mount => mount.equipmentId === 'Conversion Gear')).toBeFalse();
 
-    for (const location of ['FLL', 'FRL', 'RLL', 'RRL']) {
+    for (const location of ['FLL', 'FRL', 'RLL', 'RRL'] as const) {
       expect(entity.criticalSlotGrid().get(location)?.[4]).toEqual(jasmine.objectContaining({
         type: 'system',
         systemType: 'Conversion Gear',

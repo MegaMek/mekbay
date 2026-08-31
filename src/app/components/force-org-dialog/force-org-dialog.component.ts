@@ -18,6 +18,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { sanitizeForceTags } from '../../models/force-serialization';
 import { DataService } from '../../services/data.service';
+import { ForcePersistenceService } from '../../services/force-persistence.service';
 import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
@@ -283,6 +284,7 @@ function createMissingForceEntry(instanceId: string): LoadForceEntry {
 export class ForceOrgDialogComponent {
     private dialogRef = inject(DialogRef<void>);
     private dataService = inject(DataService);
+    private readonly forcePersistence = inject(ForcePersistenceService);
     private organizationStorage = inject(OrganizationStorageService);
     private dialogsService = inject(DialogsService);
     private readonly forceWorkspace = inject(ForceWorkspaceStateService);
@@ -926,7 +928,7 @@ export class ForceOrgDialogComponent {
     private async loadForces(): Promise<void> {
         this.sidebarLoading.set(true);
         try {
-            const result = await this.dataService.listForces();
+            const result = await this.forcePersistence.listForces();
             for (const f of result || []) {
                 f._searchText = this.computeSearchText(f);
             }
@@ -1123,7 +1125,7 @@ export class ForceOrgDialogComponent {
     private async loadOrganizationForceEntries(instanceIds: readonly string[]): Promise<LoadForceEntry[]> {
         if (instanceIds.length === 0) return [];
 
-        const forces = await this.dataService.getLoadForceEntriesByIds(instanceIds);
+        const forces = await this.forcePersistence.getLoadForceEntriesByIds(instanceIds);
         this.primeForceSearchText(forces);
         return forces;
     }
@@ -1131,7 +1133,7 @@ export class ForceOrgDialogComponent {
     private async loadOrganizationSidebarForces(): Promise<LoadForceEntry[]> {
         this.sidebarLoading.set(true);
         try {
-            const forces = await this.dataService.listForces();
+            const forces = await this.forcePersistence.listForces();
             this.primeForceSearchText(forces);
             return forces;
         } catch {

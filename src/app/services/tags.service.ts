@@ -4,7 +4,7 @@
 
 import { Injectable, inject, signal } from '@angular/core';
 import { DbService, type TagData, type TagEntry, type UnitTagData, type TagOp, type StoredTags, type StoredChassisTags } from './db.service';
-import { WsService } from './ws.service';
+import { WsService, type WsMessage } from './ws.service';
 import { UserStateService } from './userState.service';
 import { LoggerService } from './logger.service';
 import { DialogsService } from './dialogs.service';
@@ -41,6 +41,13 @@ interface TagCommitOptions {
     syncToCloud?: boolean;
 }
 
+type RemoteTagState = WsMessage & {
+    readonly serverTs: number;
+    readonly ops?: TagOp[];
+    readonly fullState?: TagData;
+    readonly formatVersion?: 3 | 4;
+};
+type TagOpsUpdate = WsMessage & { readonly ops: TagOp[] };
 @Injectable({
     providedIn: 'root'
 })
@@ -915,8 +922,9 @@ export class TagsService {
                     ops: chunk
                 });
                 // Clear pending ops after successful sync
-                if (response?.serverTs) {
-                    await this.dbService.clearPendingTagOps(response.serverTs);
+                const serverTs = response?.['serverTs'];
+                if (typeof serverTs === 'number' && Number.isFinite(serverTs)) {
+                    await this.dbService.clearPendingTagOps(serverTs);
                 }
             } catch (err) {
                 this.logger.error('Failed to sync tag ops to cloud: ' + err);
@@ -942,8 +950,9 @@ export class TagsService {
             data: localData
         });
 
-        if (response && response.serverTs) {
-            await this.dbService.clearPendingTagOps(response.serverTs);
+        const serverTs = response?.['serverTs'];
+        if (typeof serverTs === 'number' && Number.isFinite(serverTs)) {
+            await this.dbService.clearPendingTagOps(serverTs);
         }
     }
 
@@ -965,19 +974,21 @@ export class TagsService {
             const hasLocalTags = Object.keys(localData.tags).length > 0;
 
             // Request server state info (timestamp) and any ops since our last sync
-            const response = await this.wsService.sendAndWaitForResponse({
+            const response = await this.wsService.sendAndWaitForResponse<RemoteTagState>({
                 action: 'getTagOps',
                 uuid,
                 since: syncState.lastSyncTs
             });
 
-            if (!response || response.action === 'error') return;
-
-            const serverTs: number = response.serverTs ?? 0;
+            if (!response || response['action'] === 'error') return;
+            const remoteState = response;
+            const { serverTs } = remoteState;
 
             // Migration case: local has tags but server has no data
             // Push local state to cloud to preserve existing tags
-            if (hasLocalTags && serverTs === 0 && !response.fullState && (!response.ops || response.ops.length === 0)) {
+            if (hasLocalTags && serverTs === 0
+                && !remoteState.fullState
+                && (!remoteState.ops || remoteState.ops.length === 0)) {
                 this.logger.info('Migrating local tags to cloud (first sync)');
                 await this.pushFullStateToCloud();
                 return;
@@ -992,11 +1003,11 @@ export class TagsService {
                 switch (resolution) {
                     case 'cloud':
                         // Drop local pending, use cloud state
-                        await this.applyCloudState(response, serverTs);
+                        await this.applyCloudState(remoteState, serverTs);
                         break;
                     case 'merge':
                         // Apply cloud changes first, then re-apply our pending ops on top
-                        await this.mergeCloudAndLocal(response, syncState.pendingOps, serverTs);
+                        await this.mergeCloudAndLocal(remoteState, syncState.pendingOps, serverTs);
                         break;
                     case 'local':
                         // Push our full local state to cloud
@@ -1012,9 +1023,9 @@ export class TagsService {
                 await this.syncToCloud(syncState.pendingOps);
             } else {
                 // No pending ops - apply any cloud changes
-                await this.applyCloudState(response, serverTs);
+                await this.applyCloudState(remoteState, serverTs);
                 const upgradedLocalData = await this.getTagData();
-                if (this.shouldUpgradeRemoteTagState(response, upgradedLocalData)) {
+                if (this.shouldUpgradeRemoteTagState(remoteState, upgradedLocalData)) {
                     await this.pushFullStateToCloud();
                 }
             }
@@ -1023,8 +1034,10 @@ export class TagsService {
         }
     }
 
-    private shouldUpgradeRemoteTagState(response: any, localData: TagData): boolean {
-        const remoteFormatVersion = response.formatVersion ?? response.fullState?.formatVersion ?? TAG_FORMAT_VERSION;
+    private shouldUpgradeRemoteTagState(response: RemoteTagState, localData: TagData): boolean {
+        const remoteFormatVersion = response.formatVersion
+            ?? response.fullState?.formatVersion
+            ?? TAG_FORMAT_VERSION;
         return response.serverTs > 0
             && remoteFormatVersion < TAG_FORMAT_VERSION
             && localData.formatVersion >= TAG_FORMAT_VERSION;
@@ -1033,17 +1046,11 @@ export class TagsService {
     /**
      * Apply cloud state (either full state or incremental ops).
      */
-    private async applyCloudState(response: any, serverTs: number): Promise<void> {
+    private async applyCloudState(response: RemoteTagState, serverTs: number): Promise<void> {
         if (response.fullState) {
-            // Server sent full state in V3 format
-            const v3Data: TagData = {
-                tags: response.fullState.tags || {},
-                timestamp: serverTs,
-                formatVersion: response.fullState.formatVersion ?? TAG_FORMAT_VERSION
-            };
-            await this.dbService.saveAllTagData(v3Data);
+            await this.dbService.saveAllTagData(response.fullState);
             await this.dbService.clearPendingTagOps(serverTs);
-            this.applyLocalTagState(v3Data, { searchIndexChanged: true });
+            this.applyLocalTagState(response.fullState, { searchIndexChanged: true });
         } else if (response.ops && response.ops.length > 0) {
             // Apply incremental operations
             const localData = await this.getTagData();
@@ -1061,15 +1068,18 @@ export class TagsService {
     /**
      * Merge cloud state with local pending operations (V3 format).
      */
-    private async mergeCloudAndLocal(response: any, pendingOps: TagOp[], serverTs: number): Promise<void> {
+    private async mergeCloudAndLocal(
+        response: RemoteTagState,
+        pendingOps: TagOp[],
+        serverTs: number,
+    ): Promise<void> {
         // Start with current local state
         const tagData = await this.getTagData();
 
         // Apply cloud changes first (server ops or full state)
         if (response.fullState) {
             // Merge cloud V3 state into local: cloud additions get added, but don't remove local tags
-            const cloudTags = response.fullState.tags || {};
-            for (const [tagId, cloudEntry] of Object.entries(cloudTags) as [string, TagEntry][]) {
+            for (const [tagId, cloudEntry] of Object.entries(response.fullState.tags)) {
                 if (!tagData.tags[tagId]) {
                     // New tag from cloud - add it
                     tagData.tags[tagId] = { ...cloudEntry };
@@ -1181,10 +1191,8 @@ export class TagsService {
     /** Register WebSocket handlers for real-time updates from other sessions */
     public registerWsHandlers(): void {
         // Handle remote tag operations from other sessions of the same user
-        this.wsService.registerMessageHandler('tagOps', async (msg) => {
-            if (msg.ops) {
-                await this.handleRemoteTagOps(msg.ops);
-            }
+        this.wsService.registerMessageHandler<TagOpsUpdate>('tagOps', async (msg) => {
+            await this.handleRemoteTagOps(msg.ops);
         });
 
         // Handle state reset notification - another session did a full state replacement
