@@ -14,6 +14,7 @@ import {
     type PersistedUnitIdentity,
     type UnitIdentityResolver,
 } from '../persisted-unit-state';
+import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -135,6 +136,7 @@ export async function convertPersistedMekUnitV1(
     });
     return serializeCBTUnitStateV2({
         entity: fresh.getUnit(),
+        index: fresh.getIndex(),
         instanceId: baseline.instanceId,
         baselineRef: baseline.baselineRefAtSave,
         state,
@@ -796,13 +798,13 @@ function matchLegacyNonMekComponent(
     return candidates.length === 1 ? candidates[0] : null;
 }
 
-function restoreLegacyEntityConditions(raw: JsonValue | undefined, unresolved: string[]): readonly string[] {
+function restoreLegacyEntityConditions(raw: JsonValue | undefined, unresolved: string[]): readonly UnitConditionKey[] {
     if (raw === undefined) return Object.freeze([]);
     if (!Array.isArray(raw)) {
         unresolved.push('Malformed V1 unit conditions were retained for recovery.');
         return Object.freeze([]);
     }
-    const conditions = new Set<string>();
+    const conditions = new Set<UnitConditionKey>();
     for (const value of raw) {
         const record = isRecord(value) ? value : undefined;
         const key = typeof value === 'string'
@@ -810,16 +812,15 @@ function restoreLegacyEntityConditions(raw: JsonValue | undefined, unresolved: s
             : typeof record?.['key'] === 'string'
                 ? record['key']
                 : undefined;
-        const condition = key?.trim().toLowerCase();
-        if (!condition || condition.length > 64 || condition.includes('\0')) {
-            unresolved.push('A malformed V1 unit condition was retained for recovery.');
+        if (!isUnitConditionKey(key)) {
+            unresolved.push('An unknown V1 unit condition was retained for recovery.');
             continue;
         }
         if (record?.['pending'] === true || record?.['value'] !== undefined) {
-            unresolved.push(`V1 condition details for ${condition} have no generic family runtime field.`);
+            unresolved.push(`V1 condition details for ${key} have no generic family runtime field.`);
             if (record['pending'] === true) continue;
         }
-        conditions.add(condition);
+        conditions.add(key);
     }
     return Object.freeze([...conditions].sort(compareText));
 }
@@ -1051,6 +1052,7 @@ function convertLegacyMovementHeatAcknowledgement(
         baseline.instanceId,
         baseline.baselineRefAtSave,
         entity,
+        index,
         ruleset,
         projectionState,
         fresh.getCrewAssignment(),

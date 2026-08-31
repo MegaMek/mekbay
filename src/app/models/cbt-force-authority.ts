@@ -33,6 +33,7 @@ import {
     type SerializedNonMekUnit,
 } from './runtime/non-mek-unit-persistence';
 import { jsonValuesEqual } from '../utils/json-value.util';
+import type { UnitConditionKey } from './unit-condition.model';
 import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { scenarioRuleset } from './runtime/unit-state-initializer';
 import type { CBTRuleset } from './cbt-ruleset.model';
@@ -596,7 +597,7 @@ export class CBTForceAuthority {
         return this.readyUnit(instanceId)?.getCrewAssignment() ?? null;
     }
 
-    public unitConditions(instanceId: UnitInstanceId): readonly string[] | null {
+    public unitConditions(instanceId: UnitInstanceId): readonly UnitConditionKey[] | null {
         const unit = this.readyUnit(instanceId);
         return unit?.captureRuntime().query.conditions() ?? null;
     }

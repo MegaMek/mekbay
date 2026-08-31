@@ -15,6 +15,21 @@
             display="overlay"
             [interactive]="true"
             (activated)="openNotification($event)" />
+        <button role="button" class="overlay-button overlay-round-button preventZoomReset" tabindex="0"
+            [attr.aria-label]="unitViewMode.mode() === 'sheet' ? 'Open tactical view' : 'Open sheet view'"
+            [title]="unitViewMode.mode() === 'sheet' ? 'Tactical View' : 'Sheet View'"
+            (click)="toggleUnitView($event)">
+            @if (unitViewMode.mode() === 'sheet') {
+            <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                <path d="M4 5h7v6H4zM13 5h7v4h-7zM4 13h7v6H4zM13 11h7v8h-7z" />
+            </svg>
+            } @else {
+            <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                <path d="M6 3h9l3 3v15H6z" />
+                <path d="M15 3v4h4M9 11h6M9 15h6M9 18h4" />
+            </svg>
+            }
+        </button>
         <button role="button" class="overlay-button overlay-round-button inventory-dialog-button preventZoomReset" tabindex="0" aria-label="Weapons and equipment" title="Weapons & Equipment" (click)="openWeaponEquipmentDialog($event)">
             <svg aria-hidden="true" fill="currentColor" width="24px" height="24px" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><circle cx="256" cy="256" r="48"/><path d="M223.47,335.59l-51.71,68a169.73,169.73,0,0,0,168.48,0l-51.71-68" style="fill:none"/><path d="M403.08,108.92A208,208,0,0,0,108.92,403.08,208,208,0,0,0,403.08,108.92ZM342,256a86.13,86.13,0,0,1-53.47,79.59l51.71,68a169.73,169.73,0,0,1-168.48,0l51.71-68a86,86,0,0,1-50.56-101.77l-85.48.09a170.21,170.21,0,0,1,73.83-119L199.2,191.5a85.78,85.78,0,0,1,113.6,0l37.94-76.59a170.21,170.21,0,0,1,73.83,119l-85.48-.09A85.87,85.87,0,0,1,342,256Z"/></svg>
         </button>

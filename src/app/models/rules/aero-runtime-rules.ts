@@ -13,6 +13,7 @@ import { gameRulesFor } from './game-rules';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
 import { projectNonMekComponentStatuses } from '../runtime/non-mek-component-status';
+import type { UnitConditionKey } from '../unit-condition.model';
 
 export interface AeroHeatEffects {
     readonly fireModifier: number;
@@ -24,8 +25,8 @@ export interface AeroHeatEffects {
 
 export interface AeroRuntimeRulesProjection {
     readonly destroyed: boolean;
-    readonly computedConditions: readonly string[];
-    readonly conditionControlKeys: readonly string[];
+    readonly computedConditions: readonly UnitConditionKey[];
+    readonly conditionControlKeys: readonly UnitConditionKey[];
     readonly crewStateControlKeys: readonly NonMekCrewState[];
     readonly crewStateDisplayKeys: readonly CrewMemberState[];
     readonly heat: Readonly<{
@@ -105,17 +106,13 @@ export function projectAeroRuntimeRules(
     const drone = [...index.components.values()].find(component =>
         isDroneOperatingSystemEquipment(component.mount.equipment));
     const disconnected = drone !== undefined && statuses.get(drone.id) !== 'available';
-    const computedConditions: readonly string[] = disconnected
-        ? Object.freeze(['disconnected'])
-        : Object.freeze([]);
-    const conditionControlKeys = Object.freeze([
-        'swarmed',
-        'tagged',
-        'ecm-shielded',
-        ...(gameRulesFor(ruleset).supportsSkidding ? ['skidding'] : []),
-        'jammed',
-        ...(drone === undefined ? [] : ['disconnected']),
-    ]);
+    const computedConditions: readonly UnitConditionKey[] = disconnected
+        ? Object.freeze<UnitConditionKey[]>(['disconnected'])
+        : Object.freeze<UnitConditionKey[]>([]);
+    const conditionControlKeys: UnitConditionKey[] = ['swarmed', 'tagged', 'ecm-shielded'];
+    if (gameRulesFor(ruleset).supportsSkidding) conditionControlKeys.push('skidding');
+    conditionControlKeys.push('jammed');
+    if (drone !== undefined) conditionControlKeys.push('disconnected');
 
     const tracked = entity.tracksHeat();
     const heatSinkCount = tracked ? Math.max(0, entity.engineHeatSinks()) : 0;
@@ -140,7 +137,7 @@ export function projectAeroRuntimeRules(
     return Object.freeze({
         destroyed: state.explicitlyDestroyed || siDestroyed || damageTrackDestroyed,
         computedConditions,
-        conditionControlKeys,
+        conditionControlKeys: Object.freeze(conditionControlKeys),
         crewStateControlKeys: Object.freeze([]),
         crewStateDisplayKeys: Object.freeze([]),
         heat: Object.freeze({

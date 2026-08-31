@@ -1,52 +1,72 @@
 <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
     <div class="header">{{ data.title }}</div>
     <div class="body automation-review-body">
-        <p>{{ data.message }}</p>
+        <p class="automation-review-message">{{ data.message }}</p>
+
         <div class="automation-event-list">
             @for (item of data.events; track item.id) {
                 <article class="automation-event"
+                    [class.single-event]="data.events.length === 1"
                     [class.accepted]="decision(item.id) === true"
                     [class.rejected]="decision(item.id) === false">
                     <div class="automation-event-info">
                         <h3>{{ item.subject }}</h3>
-                        <strong>{{ item.event }}</strong>
-                        <div>
-                            {{ item.description }}
+                        <div class="automation-event-name">{{ item.event }}</div>
+                        <div class="automation-event-description">
+                            <span>{{ item.description }}</span>
                             @if (item.delta) {
-                                <span [class.cooling]="item.delta < 0" [class.heating]="item.delta > 0">
+                                <strong class="automation-event-delta"
+                                    [class.cooling]="item.delta < 0"
+                                    [class.heating]="item.delta > 0">
                                     ({{ signed(item.delta) }})
-                                </span>
+                                </strong>
                             }
                         </div>
                         @if (item.effects?.length) {
-                            <div class="automation-event-effects">
-                                @for (effect of item.effects; track effect) { <span>{{ effect }}</span> }
+                            <div class="automation-event-effects" aria-label="Effects">
+                                @for (effect of item.effects; track effect) {
+                                    <span>{{ effect }}</span>
+                                }
                             </div>
                         }
                     </div>
-                    @if (item.breakdown?.length) {
-                        <div class="automation-event-breakdown">
-                            @for (detail of item.breakdown; track detail.id) {
-                                <div><span>{{ detail.label }}</span><strong>{{ signed(detail.value) }}</strong></div>
+                    @if (item.breakdown?.length || data.events.length > 1) {
+                        <div class="automation-event-side">
+                            @if (item.breakdown?.length) {
+                                <div class="automation-event-breakdown" aria-label="Heat breakdown">
+                                    @for (detail of item.breakdown; track detail.id) {
+                                        <div class="automation-event-breakdown-row">
+                                            <span>{{ detail.label }}</span>
+                                            <strong [class.cooling]="detail.value < 0"
+                                                [class.heating]="detail.value > 0">
+                                                {{ signed(detail.value) }}
+                                            </strong>
+                                        </div>
+                                    }
+                                </div>
                             }
-                        </div>
-                    }
-                    @if (data.events.length > 1) {
-                        <div class="automation-event-actions" role="radiogroup" [attr.aria-label]="item.subject + ': ' + item.event">
-                            <button type="button" class="bt-button success" role="radio"
-                                [class.selected]="decision(item.id) === true"
-                                [attr.aria-checked]="decision(item.id) === true"
-                                (click)="choose(item.id, true)">ACCEPT</button>
-                            <button type="button" class="bt-button danger" role="radio"
-                                [class.selected]="decision(item.id) === false"
-                                [attr.aria-checked]="decision(item.id) === false"
-                                (click)="choose(item.id, false)">SKIP</button>
+                            @if (data.events.length > 1) {
+                                <div class="automation-event-actions" role="radiogroup"
+                                    [attr.aria-label]="item.subject + ': ' + item.event">
+                                    <button type="button" class="bt-button success"
+                                        role="radio"
+                                        [class.selected]="decision(item.id) === true"
+                                        [attr.aria-checked]="decision(item.id) === true"
+                                        (click)="choose(item.id, true)">ACCEPT</button>
+                                    <button type="button" class="bt-button danger"
+                                        role="radio"
+                                        [class.selected]="decision(item.id) === false"
+                                        [attr.aria-checked]="decision(item.id) === false"
+                                        (click)="choose(item.id, false)">SKIP</button>
+                                </div>
+                            }
                         </div>
                     }
                 </article>
             }
         </div>
     </div>
+
     <div class="actions automation-review-actions">
         @if (data.events.length === 1) {
             <button type="button" class="bt-button primary" (click)="resolveSingle(true)">ACCEPT</button>
@@ -57,7 +77,9 @@
                 [class.primary]="reviewAction().tone === 'primary'"
                 [class.danger]="reviewAction().tone === 'danger'"
                 [disabled]="reviewAction().disabled"
-                (click)="performReviewAction()">{{ reviewAction().label }}</button>
+                (click)="performReviewAction()">
+                {{ reviewAction().label }}
+            </button>
         }
         @if (data.allowCancel) {
             <button type="button" class="bt-button" (click)="cancel()">CANCEL</button>

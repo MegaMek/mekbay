@@ -11,6 +11,12 @@ import {
 import { asEncounterTargetId, type TargetRegistrySnapshot } from './encounter-runtime';
 
 describe('CBTUnitInstance with a direct MekEntity', () => {
+    it('uses the exact runtime index supplied by its admission owner', () => {
+        const fixture = createDirectMekRuntimeFixture();
+
+        expect(fixture.instance.getIndex()).toBe(fixture.index);
+    });
+
     it('accepts an empty phase boundary so history can advance independently of damage', () => {
         const { instance } = createDirectMekRuntimeFixture();
 

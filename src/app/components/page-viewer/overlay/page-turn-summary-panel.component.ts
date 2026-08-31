@@ -108,6 +108,7 @@ export class PageTurnSummaryPanelComponent {
     private readonly destroyRef = inject(DestroyRef);
 
     readonly member = input<CBTForceMember | null>(null);
+    readonly embedded = input(false);
     readonly endTurnForAllButtonVisible = input(false);
     readonly endTurnForAllClicked = output<void>();
     readonly renderReady = signal(false);

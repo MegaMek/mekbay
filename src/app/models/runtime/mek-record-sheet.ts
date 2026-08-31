@@ -13,6 +13,7 @@ import type {
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import { MiscEquipment } from '../equipment.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { UnitConditionKey } from '../unit-condition.model';
 import type {
     MekHeatAutomationPolicyV2,
     MekHeatProjectionResultV2,
@@ -42,7 +43,10 @@ import {
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import { mekAmmoLoadouts } from './mek-ammo';
-import { mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
+import {
+    mekCriticalSlotHittable,
+    mekCriticalSlotMaximumHits,
+} from './mek-critical-slot-rules';
 import { mekLocationParentId } from './mek-location-state-kernel';
 import {
     projectMekLifeSupportPilotDamage,
@@ -112,6 +116,7 @@ export interface MekRecordSheetCriticalSlot {
     readonly locationCode: string;
     readonly slotIndex: number;
     readonly armored: boolean;
+    readonly hittable: boolean;
     readonly hitCapacity: number;
     readonly committedHits: number;
     readonly previewHits: number;
@@ -148,7 +153,7 @@ export interface MekRecordSheetCrewPosition {
 /** Lightweight status facts for force cards and other non-sheet presentation. */
 export interface MekUnitStatusSnapshot {
     readonly stateRevision: StateRevision;
-    readonly conditions: readonly string[];
+    readonly conditions: readonly UnitConditionKey[];
     readonly crew: readonly Readonly<{
         readonly positionId: CrewPositionId;
         readonly effectiveState: MekRecordSheetCrewPosition['effectiveState'];
@@ -208,7 +213,7 @@ export interface MekRecordSheetSnapshot {
     readonly lifeSupport: MekLifeSupportPilotDamage;
     readonly destroyed: boolean;
     readonly crippled: boolean;
-    readonly conditions: readonly string[];
+    readonly conditions: readonly UnitConditionKey[];
     readonly locations: readonly MekRecordSheetLocation[];
     readonly criticalSlots: readonly MekRecordSheetCriticalSlot[];
     readonly shields: readonly MekRecordSheetShieldTrack[];
@@ -388,6 +393,7 @@ export function projectMekRecordSheet(
                 locationCode: location.code,
                 slotIndex: slot.slotIndex,
                 armored: slot.armored,
+                hittable: mekCriticalSlotHittable(index, slot),
                 hitCapacity: mekCriticalSlotMaximumHits(index, ruleset, slot),
                 committedHits: query.criticalHits(slot.id, 'committed'),
                 previewHits: query.criticalHits(slot.id, 'preview'),
@@ -549,12 +555,7 @@ function projectMekUnitStatusFromDestruction(
     query: MekUnitQueryPort,
     destruction: Extract<ReturnType<MekUnitQueryPort['mekDestruction']>, { readonly kind: 'supported' }>,
 ): MekUnitStatusSnapshot {
-    const conditions = new Set([
-        ...state.conditions,
-        ...['abandoned', 'disconnected', 'immobile', 'crippled', 'spotting']
-            .filter(condition => query.hasCondition(condition)),
-    ]);
-    if (destruction.facts.preview.crippled) conditions.add('crippled');
+    const conditions = new Set(query.conditions());
     const crew = [...index.crewPositions.values()]
         .sort((left, right) => left.occurrence - right.occurrence
             || compareText(left.id, right.id))

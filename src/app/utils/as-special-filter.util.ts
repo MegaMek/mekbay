@@ -81,6 +81,16 @@ interface ParsedSpecialQuery {
     tokens: SpecialQueryToken[];
 }
 
+export interface CompiledASSpecialQuery {
+    matches(occurrence: ASSpecialOccurrence): boolean;
+}
+
+export interface CompiledASSpecialSelections {
+    readonly or: readonly CompiledASSpecialQuery[];
+    readonly and: readonly CompiledASSpecialQuery[];
+    readonly not: readonly CompiledASSpecialQuery[];
+}
+
 const SPECIAL_EXPLICIT_NUMERIC_QUERY_PATTERN = /(?:>=|<=|!=|>|<|=)\s*-?\d|\[[^\]]+\]/;
 const DAMAGE_VALUE_PATTERN = /^(?:-|0\*|\d+(?:\.\d+)?)(?:\/(?:-|0\*|\d+(?:\.\d+)?))+$/i;
 interface ASSpecialTokenSchema {
@@ -130,10 +140,19 @@ const AS_SPECIAL_TOKEN_SCHEMAS = new Map<string, ASSpecialTokenSchema>([
     ['VTS', { fieldLabels: ['Cap', 'Doors'] }],
 ]);
 
-const parsedSpecialQueryCache = new Map<string, ParsedSpecialQuery | null>();
-const parsedAbilityCache = new Map<string, ASSpecialAbilityNode | null>();
-const parsedTopLevelValueCache = new Map<string, ParsedASSpecials>();
-const parsedSpecialCollectionCache = new Map<string, ParsedASSpecials>();
+interface ASSpecialParseContext {
+    readonly abilities: Map<string, ASSpecialAbilityNode | null>;
+    readonly topLevelValues: Map<string, ParsedASSpecials>;
+    readonly collections: Map<string, ParsedASSpecials>;
+}
+
+function createASSpecialParseContext(): ASSpecialParseContext {
+    return {
+        abilities: new Map(),
+        topLevelValues: new Map(),
+        collections: new Map(),
+    };
+}
 
 function normalizeSpecialText(value: string): string {
     return value.replace(/\s+/g, '').toUpperCase();
@@ -276,14 +295,21 @@ function extractOccurrenceValues(text: string, token: string): readonly (ASSpeci
 
 /** Parse one ability into the structural AST used everywhere else. */
 export function parseASSpecialAbility(value: string): ASSpecialAbilityNode | null {
-    const cached = parsedAbilityCache.get(value);
+    return parseASSpecialAbilityInContext(value, createASSpecialParseContext());
+}
+
+function parseASSpecialAbilityInContext(
+    value: string,
+    context: ASSpecialParseContext,
+): ASSpecialAbilityNode | null {
+    const cached = context.abilities.get(value);
     if (cached !== undefined) {
         return cached;
     }
 
     const trimmedValue = value.trim();
     if (!trimmedValue) {
-        parsedAbilityCache.set(value, null);
+        context.abilities.set(value, null);
         return null;
     }
 
@@ -302,10 +328,10 @@ export function parseASSpecialAbility(value: string): ASSpecialAbilityNode | nul
             ...(turretDamage ? { turretDamage: turretDamage.trim() } : {}),
             children: parts
                 .filter(part => !isASSpecialDamageValue(part))
-                .map(parseASSpecialAbility)
+                .map(part => parseASSpecialAbilityInContext(part, context))
                 .filter((child): child is ASSpecialAbilityNode => child !== null),
         };
-        parsedAbilityCache.set(value, node);
+        context.abilities.set(value, node);
         return node;
     }
 
@@ -316,7 +342,7 @@ export function parseASSpecialAbility(value: string): ASSpecialAbilityNode | nul
         values: extractOccurrenceValues(trimmedValue, token),
         children: [],
     };
-    parsedAbilityCache.set(value, node);
+    context.abilities.set(value, node);
     return node;
 }
 
@@ -332,27 +358,34 @@ function flattenASSpecialAbility(node: ASSpecialAbilityNode, topLevel: boolean):
     ];
 }
 
-function parseTopLevelValue(value: string): ParsedASSpecials {
-    const cached = parsedTopLevelValueCache.get(value);
+function parseTopLevelValue(value: string, context: ASSpecialParseContext): ParsedASSpecials {
+    const cached = context.topLevelValues.get(value);
     if (cached) {
         return cached;
     }
 
     const topLevelValues = splitASSpecialArguments(value);
     const abilities = topLevelValues
-        .map(parseASSpecialAbility)
+        .map(ability => parseASSpecialAbilityInContext(ability, context))
         .filter((ability): ability is ASSpecialAbilityNode => ability !== null);
     const parsed: ParsedASSpecials = {
         topLevelValues,
         abilities,
         occurrences: abilities.flatMap(ability => flattenASSpecialAbility(ability, true)),
     };
-    parsedTopLevelValueCache.set(value, parsed);
+    context.topLevelValues.set(value, parsed);
     return parsed;
 }
 
-/** Parse top-level and TUR-contained specials once per raw value/array. */
+/** Parse one specials value without retaining session-global parser state. */
 export function parseASSpecials(unitValue: unknown): ParsedASSpecials {
+    return parseASSpecialsInContext(unitValue, createASSpecialParseContext());
+}
+
+function parseASSpecialsInContext(
+    unitValue: unknown,
+    context: ASSpecialParseContext,
+): ParsedASSpecials {
     if (unitValue == null) {
         return { topLevelValues: [], abilities: [], occurrences: [] };
     }
@@ -360,33 +393,34 @@ export function parseASSpecials(unitValue: unknown): ParsedASSpecials {
     if (Array.isArray(unitValue)) {
         const values = unitValue.map(value => String(value));
         const cacheKey = values.join('\u0000');
-        const cached = parsedSpecialCollectionCache.get(cacheKey);
+        const cached = context.collections.get(cacheKey);
         if (cached) {
             return cached;
         }
 
-        const parts = values.map(value => parseTopLevelValue(value));
+        const parts = values.map(value => parseTopLevelValue(value, context));
         const parsed: ParsedASSpecials = {
             topLevelValues: parts.flatMap(part => part.topLevelValues),
             abilities: parts.flatMap(part => part.abilities),
             occurrences: parts.flatMap(part => part.occurrences),
         };
-        parsedSpecialCollectionCache.set(cacheKey, parsed);
+        context.collections.set(cacheKey, parsed);
         return parsed;
     }
 
-    return parseTopLevelValue(String(unitValue));
+    return parseTopLevelValue(String(unitValue), context);
 }
 
-/** Build the per-unit parsed tuple index used by both sync and worker search. */
+/** Build one generation-local parsed tuple index used by both sync and worker search. */
 export function buildASSpecialsByUnitIndex<T>(
     units: readonly T[],
     getUnitId: (unit: T) => string,
     getSpecials: (unit: T) => unknown,
 ): Map<string, ParsedASSpecials> {
     const index = new Map<string, ParsedASSpecials>();
+    const context = createASSpecialParseContext();
     for (const unit of units) {
-        index.set(getUnitId(unit), parseASSpecials(getSpecials(unit)));
+        index.set(getUnitId(unit), parseASSpecialsInContext(getSpecials(unit), context));
     }
     return index;
 }
@@ -479,11 +513,6 @@ function parseSpecialQuery(value: string): ParsedSpecialQuery | null {
         return null;
     }
 
-    const cached = parsedSpecialQueryCache.get(value);
-    if (cached !== undefined) {
-        return cached;
-    }
-
     const text = normalizeSpecialText(value);
     const tokens: SpecialQueryToken[] = [];
     let literal = '';
@@ -503,7 +532,6 @@ function parseSpecialQuery(value: string): ParsedSpecialQuery | null {
         if (operator) {
             const slotValue = parseSpecialSlotValue(text, operator.end);
             if (!slotValue) {
-                parsedSpecialQueryCache.set(value, null);
                 return null;
             }
 
@@ -550,9 +578,7 @@ function parseSpecialQuery(value: string): ParsedSpecialQuery | null {
     }
 
     flushSpecialLiteral(tokens, literal);
-    const parsed = tokens.some(token => token.type === 'slot') ? { tokens } : null;
-    parsedSpecialQueryCache.set(value, parsed);
-    return parsed;
+    return tokens.some(token => token.type === 'slot') ? { tokens } : null;
 }
 
 function parseSpecialTarget(value: string): SpecialTargetToken[] {
@@ -708,30 +734,34 @@ function parseAbstractSlotMatchers(value: string, token: string): SpecialSlotMat
     return matchers;
 }
 
-function occurrenceMatchesQuery(occurrence: ASSpecialOccurrence, queryValue: string): boolean {
-    const normalizedQuery = normalizeSpecialText(queryValue);
-    if (normalizedQuery === occurrence.token) {
-        return true;
-    }
+function compileASSpecialQuery(value: string): CompiledASSpecialQuery {
+    const normalized = normalizeSpecialText(value);
+    const token = getASSpecialToken(value);
+    const abstractMatchers = token ? parseAbstractSlotMatchers(value, token) : null;
+    const numeric = parseSpecialQuery(value);
+    const wildcard = value.includes('*')
+        ? new RegExp(`^${value.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`, 'i')
+        : null;
 
-    const abstractMatchers = parseAbstractSlotMatchers(queryValue, occurrence.token);
-    if (abstractMatchers && abstractMatchers.length > 0 && abstractMatchers.length <= occurrence.values.length) {
-        if (abstractMatchers.every((matcher, index) => specialSlotMatches(occurrence.values[index] ?? null, matcher))) {
-            return true;
-        }
-    }
+    return Object.freeze({
+        matches: (occurrence: ASSpecialOccurrence): boolean => {
+            if (normalized === occurrence.token) return true;
+            if (token === occurrence.token && abstractMatchers && abstractMatchers.length > 0) {
+                return abstractMatchers.length <= occurrence.values.length
+                    && abstractMatchers.every((matcher, index) => (
+                        specialSlotMatches(occurrence.values[index] ?? null, matcher)
+                    ));
+            }
+            if (numeric && legacyNumericQueryMatches(occurrence.rawText, numeric)) return true;
+            if (wildcard) return wildcard.test(occurrence.rawText);
+            return normalizeSpecialText(occurrence.rawText) === normalized;
+        },
+    });
+}
 
-    const numericQuery = parseSpecialQuery(queryValue);
-    if (numericQuery) {
-        return legacyNumericQueryMatches(occurrence.rawText, numericQuery);
-    }
-
-    if (queryValue.includes('*')) {
-        const escaped = queryValue.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-        return new RegExp(`^${escaped}$`, 'i').test(occurrence.rawText);
-    }
-
-    return normalizeSpecialText(occurrence.rawText) === normalizedQuery;
+/** Compile user query text once before evaluating it against a unit collection. */
+export function compileASSpecialQueries(values: readonly string[]): readonly CompiledASSpecialQuery[] {
+    return Object.freeze(values.map(compileASSpecialQuery));
 }
 
 export type ASSpecialSemanticOperator = '=' | '==' | '!=' | '&=' | '>' | '<' | '>=' | '<=';
@@ -740,7 +770,7 @@ export type ASSpecialSemanticOperator = '=' | '==' | '!=' | '&=' | '>' | '<' | '
 export function evaluateASSpecialsFilter(
     unitValue: unknown,
     operator: ASSpecialSemanticOperator,
-    values: readonly string[],
+    queries: readonly CompiledASSpecialQuery[],
     parsedSpecials?: ParsedASSpecials,
 ): boolean {
     const parsed = parsedSpecials ?? parseASSpecials(unitValue);
@@ -750,18 +780,18 @@ export function evaluateASSpecialsFilter(
     }
 
     if (operator === '&=') {
-        return values.every(value => parsed.occurrences.some(occurrence => occurrenceMatchesQuery(occurrence, value)));
+        return queries.every(query => parsed.occurrences.some(query.matches));
     }
 
     if (operator === '==') {
         const topLevelOccurrences = parsed.occurrences.filter(occurrence => occurrence.topLevel);
         return topLevelOccurrences.length > 0 && topLevelOccurrences.every(occurrence => (
-            values.some(value => occurrenceMatchesQuery(occurrence, value))
+            queries.some(query => query.matches(occurrence))
         ));
     }
 
-    for (const value of values) {
-        const matches = parsed.occurrences.some(occurrence => occurrenceMatchesQuery(occurrence, value));
+    for (const query of queries) {
+        const matches = parsed.occurrences.some(query.matches);
         if (operator === '!=') {
             if (matches) {
                 return false;
@@ -917,27 +947,42 @@ export function buildIndexedASSpecialSelectionCandidates<T>(
 
 export function unitMatchesASSpecialSelections(
     unitValue: unknown,
-    selections: readonly ASSpecialMinimumSelection[],
+    selections: CompiledASSpecialSelections,
     parsedSpecials?: ParsedASSpecials,
 ): boolean {
-    const activeSelections = selections.filter(selection => selection.state !== false);
-    const orSelections = activeSelections.filter(selection => selection.state === 'or');
-    const andSelections = activeSelections.filter(selection => selection.state === 'and');
-    const notSelections = activeSelections.filter(selection => selection.state === 'not');
-    const queryFor = (selection: ASSpecialMinimumSelection) => (
-        formatASSpecialMinimumQuery(selection.name, selection.minimumValues)
-    );
-
-    if (notSelections.some(selection => evaluateASSpecialsFilter(unitValue, '=', [queryFor(selection)], parsedSpecials))) {
+    if (selections.not.some(query => evaluateASSpecialsFilter(unitValue, '=', [query], parsedSpecials))) {
         return false;
     }
-    if (andSelections.some(selection => !evaluateASSpecialsFilter(unitValue, '=', [queryFor(selection)], parsedSpecials))) {
+    if (selections.and.some(query => !evaluateASSpecialsFilter(unitValue, '=', [query], parsedSpecials))) {
         return false;
     }
-    if (orSelections.length > 0 && !orSelections.some(selection => (
-        evaluateASSpecialsFilter(unitValue, '=', [queryFor(selection)], parsedSpecials)
+    if (selections.or.length > 0 && !selections.or.some(query => (
+        evaluateASSpecialsFilter(unitValue, '=', [query], parsedSpecials)
     ))) {
         return false;
     }
     return true;
+}
+
+/** Compile contextual dropdown selections once before scanning matching units. */
+export function compileASSpecialSelections(
+    selections: readonly ASSpecialMinimumSelection[],
+): CompiledASSpecialSelections {
+    const compiled: {
+        or: CompiledASSpecialQuery[];
+        and: CompiledASSpecialQuery[];
+        not: CompiledASSpecialQuery[];
+    } = { or: [], and: [], not: [] };
+
+    for (const selection of selections) {
+        if (selection.state === false) continue;
+        compiled[selection.state].push(compileASSpecialQuery(
+            formatASSpecialMinimumQuery(selection.name, selection.minimumValues),
+        ));
+    }
+    return Object.freeze({
+        or: Object.freeze(compiled.or),
+        and: Object.freeze(compiled.and),
+        not: Object.freeze(compiled.not),
+    });
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { GameSystem } from '../common.model';
-import type { ASSerializedForce, SerializedForce } from '../force-serialization';
+import type { SerializedForce } from '../force-serialization';
 import type { JsonObject, PersistedUnitIdentity } from '../persisted-unit-state';
 import type { DeferredUnitSource } from '../persisted-unit-state';
 import { asUnitProviderId, asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
@@ -155,7 +155,7 @@ describe('Classic V1 force converter', () => {
                             pendingArmor: 1,
                         },
                     },
-                    conditions: ['immobilized'],
+                    conditions: ['immobile'],
                     crew: [{
                         id: 0,
                         name: 'Ada',
@@ -195,7 +195,7 @@ describe('Classic V1 force converter', () => {
         });
         expect(JSON.stringify(saved)).not.toContain('"heat":5');
         expect(state.explicitlyDestroyed).toBeTrue();
-        expect(state.conditions.has('immobilized')).toBeTrue();
+        expect(state.conditions.has('immobile')).toBeTrue();
         expect(state.crew.get([...fresh.getIndex().crewPositions.keys()][0])).toEqual({
             wounds: 2, unconscious: true, ejected: false,
         });
@@ -337,7 +337,7 @@ describe('Classic V1 force converter', () => {
 
 describe('Alpha Strike V1 force converter', () => {
     it('changes only the force version and detaches the persisted graph', async () => {
-        const source: ASSerializedForce = {
+        const source = {
             version: 1,
             timestamp: '2026-08-10T00:00:00.000Z',
             instanceId: 'force:as',
@@ -363,7 +363,7 @@ describe('Alpha Strike V1 force converter', () => {
             }],
         };
 
-        const converted = await convertPersistedForceV1(source);
+        const converted = await convertPersistedForceV1(source as unknown as SerializedForce);
 
         expect(converted).toEqual({ ...source, version: 2 });
         expect(converted).not.toBe(source);

@@ -54,9 +54,7 @@ export function mekComponentBayTopologyProblem(entity: MekEntity): string | null
         }
         const controller = bay.controller.equipment;
         if (!(controller instanceof WeaponEquipment)
-            || !controller.hasWeaponTrait('machine-gun-array')
-            || !controller.hasMode('Linked')
-            || !controller.hasMode('Off')) return 'MALFORMED_RELATION';
+            || !controller.hasWeaponTrait('machine-gun-array')) return 'MALFORMED_RELATION';
         for (const member of bay.mounts) {
             const weapon = member.equipment;
             if (!(weapon instanceof WeaponEquipment)

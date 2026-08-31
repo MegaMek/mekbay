@@ -77,9 +77,11 @@ export class CBTForceMemberRegistry {
                     requiresMembershipSync = true;
                     break;
                 }
-                if (baseBattleValueChanged === null || baseBattleValueChanged.has(instanceId)) {
-                    member.bindRuntime(runtime, runtime.revision());
-                }
+                member.bindRuntime(
+                    runtime,
+                    runtime.revision(),
+                    baseBattleValueChanged === null || baseBattleValueChanged.has(instanceId),
+                );
             }
             members = requiresMembershipSync
                 ? this.synchronize(envelope)

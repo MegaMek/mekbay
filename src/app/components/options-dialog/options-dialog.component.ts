@@ -20,6 +20,7 @@ import type {
     AvailabilitySource,
     CBTAutomationKey,
     CBTOptionalRules,
+    ClassicUnitViewMode,
     ForceViewerBVPVDisplay,
     ForceViewerBVPVDisplayDamage,
     RecordSheetDoubleTapZoomResetMode,
@@ -39,6 +40,7 @@ import { AppUpdateService } from '../../services/app-update.service';
 import { CatalogStorage } from '../../services/catalogs/catalog-storage.service';
 import { deleteUnitCatalogDatabase } from '../../services/unit-catalog/unit-catalog-database';
 import { DisplayNameService } from '../../services/display-name.service';
+import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
 
 type OptionsSectionId = 'General' | 'Search' | 'Account' | 'Tags' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
 
@@ -81,7 +83,7 @@ const OPTIONS_VIEW_DEFINITIONS: readonly OptionsViewDefinition[] = [
     {
         id: 'Classic BattleTech',
         title: 'Classic BattleTech',
-        description: 'Rules, Record sheet appearance, automation, and navigation.'
+        description: 'Rules, unit views, record sheet appearance, automation, and navigation.'
     },
     {
         id: 'Alpha Strike',
@@ -160,7 +162,7 @@ const CBT_AUTOMATION_OPTIONS: readonly CBTAutomationOptionDefinition[] = [
 @Component({
     selector: 'options-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [DatePipe, NgTemplateOutlet, BaseDialogComponent, RangeSliderComponent],
+    imports: [DatePipe, NgTemplateOutlet, BaseDialogComponent, RangeSliderComponent, ModeSwitchComponent],
     templateUrl: './options-dialog.component.html',
     styleUrl: './options-dialog.component.scss'
 })
@@ -520,6 +522,11 @@ export class OptionsDialogComponent {
     onTrackPhaseAndTurn(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('trackPhaseAndTurn', value);
+    }
+
+    onClassicUnitViewModeChange(showTactical: boolean): void {
+        const mode: ClassicUnitViewMode = showTactical ? 'tactical' : 'sheet';
+        this.optionsService.setOption('classicUnitViewMode', mode);
     }
 
     onCbtAutomationModeChange(key: CBTAutomationKey, value: AutomationMode) {

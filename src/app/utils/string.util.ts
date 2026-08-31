@@ -16,28 +16,29 @@ export function escapeRegExp(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/**
- * Cache for wildcard pattern RegExp objects to avoid repeated allocations.
- * Maps pattern string to compiled RegExp.
- */
+const WILDCARD_REGEX_CACHE_LIMIT = 256;
 const wildcardRegexCache = new Map<string, RegExp>();
 
 /**
  * Convert a wildcard pattern (e.g., "AC*" or "*/3/*") to a RegExp.
  * Supports * as a wildcard for any characters.
- * Results are cached to avoid repeated RegExp creation in hot loops.
+ * The small bound covers active search patterns without retaining query history forever.
  * @param pattern The wildcard pattern.
  * @returns A case-insensitive RegExp matching the pattern.
  */
 export function wildcardToRegex(pattern: string): RegExp {
     const cached = wildcardRegexCache.get(pattern);
     if (cached) return cached;
-    
+
     const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
     const regexStr = '^' + escaped.replace(/\*/g, '.*') + '$';
-    const regex = new RegExp(regexStr, 'i');
-    wildcardRegexCache.set(pattern, regex);
-    return regex;
+    const result = new RegExp(regexStr, 'i');
+    if (wildcardRegexCache.size >= WILDCARD_REGEX_CACHE_LIMIT) {
+        const oldest = wildcardRegexCache.keys().next().value;
+        if (oldest !== undefined) wildcardRegexCache.delete(oldest);
+    }
+    wildcardRegexCache.set(pattern, result);
+    return result;
 }
 
 /**

@@ -6,7 +6,7 @@ import { signal, computed, type Signal, type WritableSignal, type Injector } fro
 import { Subject } from 'rxjs';
 import type { DataService } from '../services/data.service';
 import type { UnitSummary, UnitComponent } from "./unit-summary.model";
-import { type SerializedClassicForce, type SerializedForce, type SerializedUnit, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA, C3_POSITION_SCHEMA, FORCE_NOTE_MAX_LENGTH, sanitizeForceTags } from './force-serialization';
+import { type SerializedClassicForce, type SerializedForce, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA, C3_POSITION_SCHEMA, FORCE_NOTE_MAX_LENGTH, sanitizeForceTags } from './force-serialization';
 import type { ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { C3NetworkEditor } from './c3-network-editor';
@@ -25,9 +25,7 @@ import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from
 import { uuidv7 } from '../utils/uuid.util';
 import { jsonValuesEqual } from '../utils/json-value.util';
 import { C3Network, C3TaxCalculator, type C3TaxUnit, type C3UnitView } from './c3-network.model';
-import { DialogsService } from '../services/dialogs.service';
 import {
-    DeferredUnitResolutionError,
     type DeferredUnitDescriptor,
 } from './persisted-unit-state';
 import {
@@ -627,8 +625,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     private expectedCloudCBTForceV2Revision: number | null | undefined = undefined;
     /** Force-minted provisional identity retained until the owner is replaced/rekeyed. */
     private persistenceIdentityPromotionInstanceId: string | null = null;
-    private _deferredUnitDescriptors: DeferredUnitDescriptor[] = [];
-
     protected dataService: DataService;
     protected injector: Injector;
 
@@ -957,9 +953,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     }
 
     /** Saved units whose complete source payload is not materialized yet. */
-    public getDeferredUnitDescriptors(): readonly DeferredUnitDescriptor[] {
-        return this._deferredUnitDescriptors;
-    }
+    public abstract getDeferredUnitDescriptors(): readonly DeferredUnitDescriptor[];
 
     public hasCBTForceV2(): boolean {
         return this.getSupportedCBTForceV2Envelope() !== null;
@@ -1517,17 +1511,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         // Base/Alpha Strike forces have no typed CBT encounter runtime.
     }
 
-    private addDeferredUnitDescriptor(descriptor: DeferredUnitDescriptor): void {
-        const duplicate = this._deferredUnitDescriptors.some(existing => (
-            descriptor.instanceId !== undefined
-                ? existing.instanceId === descriptor.instanceId
-                : existing.rawLegacyName === descriptor.rawLegacyName
-                    && existing.requestedIdentity?.provider === descriptor.requestedIdentity?.provider
-                    && existing.requestedIdentity?.uuid === descriptor.requestedIdentity?.uuid
-        ));
-        if (!duplicate) this._deferredUnitDescriptors.push(descriptor);
-    }
-
     units = computed<TUnit[]>(() => {
         return this.groups().flatMap(g => g.units());
     });
@@ -1693,12 +1676,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     public createCompatibleUnit(unit: UnitSummary): TUnit {
         return this.createAdmittedForceUnit(unit);
     }
-
-    /**
-     * Factory method to deserialize the appropriate ForceUnit subclass.
-     * Must be implemented by subclasses that persist grouped ForceUnit instances.
-     */
-    protected abstract deserializeForceUnit(data: SerializedUnit): TUnit;
 
     getEraWarningMessage(
         era: Era | null,
@@ -2410,11 +2387,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         });
     }
 
-    /** Deserialize a plain object to a Force instance - must be implemented by subclass */
-    public static deserialize(data: SerializedForce, dataService: DataService, injector: Injector): Force<ForceUnit> {
-        throw new Error('Force.deserialize must be implemented by subclass');
-    }
-
     emitChanged(changedUnitIds: readonly string[] | null = null) {
         if (this.loading) return;
         if (this.readOnly()) {
@@ -2474,12 +2446,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         // Force mutations emit synchronously; there is no force-local timer.
     }
 
-    /**
-     * Sanitize incoming serialized data using a schema.
-     * Must be implemented by subclasses to apply the appropriate schema.
-     */
-    protected abstract sanitizeForceData(data: SerializedForce): SerializedForce;
-
     /** Installs metadata for an already validated direct V2 CBT record. */
     protected populateFromCBTForceV2(data: SerializedForce): void {
         if (data.version !== 2
@@ -2502,7 +2468,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
     }
 
-    private populateSerializedMetadata(data: SerializedForce): void {
+    protected populateSerializedMetadata(data: SerializedForce): void {
         this._instanceId.set(data.instanceId);
         this._owned.set(data.owned !== false);
         this._name.set(data.name);
@@ -2517,90 +2483,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             ? null
             : this.dataService.getEraById(data.eraId) ?? null);
         this.timestamp = data.timestamp ?? null;
-    }
-
-    /**
-     * Populates this force instance from serialized data.
-    * Called by subclass static deserialize() methods after creating the instance.
-     */
-    protected populateFromSerialized(data: SerializedForce): void {
-        if (data.version !== 2) {
-            throw new Error('Force V1 data must be converted to V2 before runtime construction');
-        }
-        if (data.type === GameSystem.CLASSIC) {
-            throw new Error('Classic forces require direct V2 runtime construction');
-        }
-        const sanitizedData = this.sanitizeForceData(data);
-        if (!sanitizedData.groups || !Array.isArray(sanitizedData.groups)) {
-            throw new Error('Invalid serialized Force: missing or invalid groups array');
-        }
-        this.loading = true;
-        try {
-            this._deferredUnitDescriptors = [];
-            this.populateSerializedMetadata(sanitizedData);
-
-            const logger = this.injector.get(LoggerService);
-            const dialogs = this.injector.get(DialogsService);
-            const parsedGroups: UnitGroup<TUnit>[] = [];
-            for (const g of sanitizedData.groups) {
-                const groupUnits: TUnit[] = [];
-                for (const unitData of g.units) {
-                    try {
-                        groupUnits.push(this.deserializeForceUnit(unitData));
-                    } catch (err) {
-                        if (err instanceof DeferredUnitResolutionError) {
-                            this.addDeferredUnitDescriptor({
-                                ...err.descriptor,
-                                instanceId: unitData.id,
-                                sourcePayload: structuredClone(unitData) as unknown as DeferredUnitDescriptor['sourcePayload'],
-                            });
-                            logger.warn(`Force.deserialize deferred unit "${unitData.unit}": ${err.message}`);
-                            continue;
-                        }
-                        logger.error(`Force.deserialize error on unit "${unitData.unit}": ${err}`);
-                        const errorDetail = err instanceof Error ? err.message : String(err);
-                        void dialogs.showError(
-                            `Unable to load unit "${unitData.unit}". The unit was skipped.\n\n${errorDetail}`,
-                            'Unit Load Error',
-                        ).catch(dialogError => {
-                            logger.error(`Unable to show unit load error dialog: ${dialogError}`);
-                        });
-                        continue;
-                    }
-                }
-                const group = new UnitGroup<TUnit>(this);
-                if (g.id) {
-                    group.id = g.id;
-                }
-                if (g.name) {
-                    group.setName(g.name, false);
-                } else {
-                    group.setName(undefined, false);
-                }
-                group.color = g.color || '';
-                group.formationLock = g.formationLock || undefined;
-                group.formation.set(resolveSerializedFormation(g.formationId, group.formationLock, this.gameSystem));
-                group.formationTargetGroupId.set(g.formationTargetGroupId ?? null);
-                group.units.set(groupUnits);
-                parsedGroups.push(group);
-            }
-            this.groups.set(parsedGroups);
-            for (const group of parsedGroups) {
-                const targetGroupId = group.formationTargetGroupId();
-                if (targetGroupId !== null
-                    && (targetGroupId === group.id
-                        || !parsedGroups.some(candidate => candidate.id === targetGroupId))) {
-                    group.formationTargetGroupId.set(null);
-                }
-            }
-            if (sanitizedData.c3Networks) {
-                const sanitizedNetworks = Sanitizer.sanitizeArray(sanitizedData.c3Networks, C3_NETWORK_GROUP_SCHEMA);
-                this.setNetwork(sanitizedNetworks);
-            }
-        } finally {
-            this.loading = false;
-            this.reconcileCBTForceV2Projection();
-        }
     }
 
     private areTagsEqual(currentTags: readonly string[], nextTags: readonly string[]): boolean {

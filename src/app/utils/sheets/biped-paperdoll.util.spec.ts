@@ -4,6 +4,45 @@ import { PipShapeProfileGenerator } from './pip-shape-profile-generator';
 import { RailPipRenderer } from './rail-pip-renderer';
 
 describe('BipedPaperdollUtil', () => {
+    it('shares failures and retries a rejected paperdoll asset', async () => {
+        const assetUrl = 'https://example.test/retry-paperdoll.svg';
+        const source = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g id="paperdoll-art-armor" /></svg>';
+        let attempts = 0;
+        const fetcher = spyOn(globalThis, 'fetch').and.callFake(async () => {
+            attempts++;
+            return attempts === 1
+                ? new Response('', { status: 503 })
+                : new Response(source, { status: 200 });
+        });
+
+        const first = BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl });
+        const second = BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl });
+        await expectAsync(Promise.all([first, second])).toBeRejectedWithError(/503/u);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+
+        await expectAsync(BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl })).toBeResolved();
+        expect(fetcher).toHaveBeenCalledTimes(2);
+    });
+
+    it('bounds settled custom paperdoll assets without thrashing the working set', async () => {
+        const source = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g id="paperdoll-art-armor" /></svg>';
+        const fetcher = spyOn(globalThis, 'fetch').and.callFake(async () =>
+            new Response(source, { status: 200 }));
+        const urls = Array.from(
+            { length: 33 },
+            (_, index) => `https://example.test/cache-paperdoll-${index}.svg`,
+        );
+
+        for (const assetUrl of urls) {
+            await BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl });
+        }
+        await BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl: urls.at(-1)! });
+        expect(fetcher).toHaveBeenCalledTimes(urls.length);
+
+        await BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl: urls[0] });
+        expect(fetcher).toHaveBeenCalledTimes(urls.length + 1);
+    });
+
     it('renders armor and structure silhouettes with location pip layers', async () => {
         const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, {
             HD: 5,

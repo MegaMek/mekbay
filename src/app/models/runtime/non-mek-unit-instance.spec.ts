@@ -353,6 +353,30 @@ describe('NonMekUnitInstance', () => {
         }));
     });
 
+    it('scopes projected Non-Mek rules to one immutable query revision', () => {
+        const entity = new TestTankEntity();
+        entity.uuid.set(UUID);
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:tank-query-projection-scope'),
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const before = runtime.query();
+        expect(before.destroyed()).toBeFalse();
+
+        expect(runtime.dispatch({
+            kind: 'set-destroyed',
+            expectedRevision: runtime.revision(),
+            destroyed: true,
+        }).accepted).toBeTrue();
+
+        const after = runtime.query();
+        expect(after.stateRevision).not.toBe(before.stateRevision);
+        expect(before.destroyed()).toBeFalse();
+        expect(after.destroyed()).toBeTrue();
+    });
+
     it('keeps phase-tracked Entity damage pending until combat is committed', () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
@@ -811,7 +835,7 @@ describe('NonMekUnitInstance', () => {
         expect(runtime.ammoRemaining(componentId)).toBe(3);
     });
 
-    it('stores only a non-default Entity equipment mode', () => {
+    it('ignores catalog-authored modes when no runtime behavior owns them', () => {
         const weapon = new WeaponEquipment({
             id: 'TestEntityWeapon',
             name: 'Test Entity Weapon',
@@ -823,7 +847,60 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         addTestEquipment(entity, weapon, { location: entity.locationOrder[0] });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-mode'),
+            asUnitInstanceId('unit:tank-unowned-mode'),
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const componentId = [...runtime.getIndex().components.keys()][0]!;
+        expect(runtime.componentMode(componentId)).toBeUndefined();
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId,
+            mode: 'Rapid',
+        }).accepted).toBeFalse();
+        expect(runtime.snapshot().components.has(componentId)).toBeFalse();
+
+        const saved = serializeNonMekUnit({
+            instance: runtime,
+            sourceRef: baseline().entity,
+            deployment: {
+                schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
+                values: {
+                    id: 'deployment:tank-unowned-mode',
+                    crewAssignment: createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+                },
+            },
+        });
+        const restored = restoreNonMekUnit({
+            ...saved,
+            componentState: Object.freeze([Object.freeze({ componentId, mode: 'Rapid' })]),
+        }, entity);
+        expect(restored.componentMode(componentId)).toBeUndefined();
+        expect(restored.snapshot().components.has(componentId)).toBeFalse();
+    });
+
+    it('stores only a non-default mode owned by the UAC/RAC behavior', () => {
+        const weapon = new WeaponEquipment({
+            id: 'TestUltraAutocannon',
+            name: 'Test Ultra Autocannon',
+            type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            modes: ['Single', 'Ultra'],
+            weapon: {
+                ammoType: 'AC_ULTRA',
+                rackSize: 5,
+                damage: 5,
+                heat: 1,
+                ranges: [3, 6, 9, 12],
+            },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [weapon.id]: weapon }));
+        entity.uuid.set(UUID);
+        addTestEquipment(entity, weapon, { location: entity.locationOrder[0] });
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:tank-uac-mode'),
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -835,10 +912,10 @@ describe('NonMekUnitInstance', () => {
             kind: 'set-component-mode',
             expectedRevision: runtime.revision(),
             componentId,
-            mode: 'Rapid',
+            mode: 'Ultra',
         }).accepted).toBeTrue();
-        expect(runtime.snapshot().components.get(componentId)?.mode).toBe('Rapid');
-        expect(runtime.componentMode(componentId)).toBe('Rapid');
+        expect(runtime.snapshot().components.get(componentId)?.mode).toBe('Ultra');
+        expect(runtime.componentMode(componentId)).toBe('Ultra');
 
         expect(runtime.dispatch({
             kind: 'set-component-mode',
@@ -860,7 +937,7 @@ describe('NonMekUnitInstance', () => {
             kind: 'set-component-mode',
             expectedRevision: runtime.revision(),
             componentId,
-            mode: 'Rapid',
+            mode: 'Ultra',
         }).accepted).toBeTrue();
         runtime.dispatch({ kind: 'end-phase', expectedRevision: runtime.revision() });
         expect(runtime.dispatch({
@@ -869,6 +946,55 @@ describe('NonMekUnitInstance', () => {
             componentId,
             mode: 'Single',
         }).accepted).toBeFalse();
+    });
+
+    it('derives an unedited non-Mek MML mode from compatible installed ammunition', () => {
+        const weapon = new WeaponEquipment({
+            id: 'TestMML7',
+            name: 'Test MML 7',
+            type: 'weapon',
+            flags: ['F_MISSILE', 'F_MML'],
+            weapon: {
+                ammoType: 'MML',
+                rackSize: 7,
+                damage: 'cluster',
+                heat: 4,
+                ranges: [3, 6, 9, 12],
+            },
+        });
+        const ammunition = new AmmoEquipment({
+            id: 'TestMML7LRMAmmo',
+            name: 'Test MML 7 LRM Ammo',
+            type: 'ammo',
+            flags: ['F_MML_LRM'],
+            ammo: { type: 'MML', rackSize: 7, shots: 17 },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({
+            [weapon.id]: weapon,
+            [ammunition.id]: ammunition,
+        }));
+        entity.uuid.set(UUID);
+        const weaponMount = addTestEquipment(entity, weapon, { location: entity.locationOrder[0] });
+        addTestEquipment(entity, ammunition, {
+            location: entity.locationOrder[0],
+            shotsCount: 17,
+        });
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:tank-mml-mode'),
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const componentId = componentIdForMount(weaponMount);
+
+        expect(runtime.componentMode(componentId)).toBe('LRM');
+        expect(runtime.dispatch({
+            kind: 'set-component-mode',
+            expectedRevision: runtime.revision(),
+            componentId,
+            mode: 'SRM',
+        }).accepted).toBeTrue();
+        expect(runtime.componentMode(componentId)).toBe('SRM');
     });
 
     it('owns vehicle weapon targeting and exact ammunition preference in sparse runtime state', () => {

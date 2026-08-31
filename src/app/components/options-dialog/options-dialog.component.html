@@ -475,6 +475,19 @@
                             transient conditions never change BV.</p>
                     </div>
                 </div>
+                <div class="option-col">
+                    <div class="option-row">
+                        <span id="classicUnitViewModeLabel">Default unit view:</span>
+                        <mode-switch leftLabel="Sheet" rightLabel="Tactical"
+                            ariaLabel="Default Classic BattleTech unit view"
+                            switchAriaLabel="Switch default Classic BattleTech unit view"
+                            [selectedRight]="optionsService.options().classicUnitViewMode === 'tactical'"
+                            (selectedRightChange)="onClassicUnitViewModeChange($event)"></mode-switch>
+                    </div>
+                    <div class="description">
+                        <p>Chooses which view opens by default. Switching views from either toolbar also updates this preference.</p>
+                    </div>
+                </div>
                 <div class="option-row">
                     <label for="recordSheetCenterPanelContent">Center panel:</label>
                     <select id="recordSheetCenterPanelContent" class="bt-select"

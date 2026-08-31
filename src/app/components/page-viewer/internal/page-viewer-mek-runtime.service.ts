@@ -68,14 +68,14 @@ export class PageViewerMekRuntimeService {
     }
 
     private requiredSnapshot(member: CBTMekForceMember): MekRecordSheetSnapshot {
-        const snapshot = member.force.getMekRecordSheetSnapshot(member.id);
+        const snapshot = member.mekRecordSheetSnapshot();
         if (!snapshot) throw new Error('The selected V2 Mek is no longer admitted');
         return snapshot;
     }
 
     private render(member: CBTMekForceMember): void {
         const current = this.bound.get(member.id);
-        const snapshot = member.force.getMekRecordSheetSnapshot(member.id);
+        const snapshot = member.mekRecordSheetSnapshot();
         if (!current || current.member !== member || !snapshot) return;
         const issues = current.binding.render(snapshot);
         if (issues.length > 0) {

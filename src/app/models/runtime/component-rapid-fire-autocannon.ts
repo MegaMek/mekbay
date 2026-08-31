@@ -27,6 +27,7 @@ import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ComponentId } from '../entity/entity-identifiers';
+import { rapidFireAutocannonComponentModes } from '../rapid-fire-autocannon-mode.model';
 
 export function rapidFireAutocannonSupportsJamming(
     index: MekRuntimeIndex,
@@ -45,12 +46,12 @@ export function rapidFireAutocannonShotCount(
     equipment: WeaponEquipment,
     selectedMode: string | undefined,
 ): number {
-    if (!equipment.hasWeaponTrait('autocannon')
-        || !['AC_ROTARY', 'AC_ULTRA', 'AC_ULTRA_THB'].includes(equipment.ammoType)) return 1;
-    const mode = selectedMode && equipment.modes.includes(selectedMode)
+    const definition = rapidFireAutocannonComponentModes(equipment);
+    if (definition === null) return 1;
+    const mode = selectedMode && definition.modes.includes(selectedMode)
         ? selectedMode
-        : equipment.modes[0];
-    const index = mode === undefined ? -1 : equipment.modes.indexOf(mode);
+        : definition.defaultMode;
+    const index = mode === undefined ? -1 : definition.modes.indexOf(mode);
     return index < 0 ? 1 : index + 1;
 }
 

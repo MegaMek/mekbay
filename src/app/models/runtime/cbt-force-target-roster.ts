@@ -125,7 +125,6 @@ export function entityTargetRosterRow(
             skidding: runtime.hasCondition('skidding'),
             prone: runtime.hasCondition('prone'),
             immobile: runtime.hasCondition('immobile')
-                || runtime.hasCondition('immobilized')
                 || entity.motiveType() === 'None',
             targetHexCover: cover === 'light' || cover === 'heavy' ? cover : 'none',
             ...(isUnitWaterDepth(cover) ? { waterDepth: cover } : {}),

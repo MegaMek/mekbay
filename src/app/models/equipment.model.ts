@@ -546,7 +546,6 @@ export class Equipment {
     hasWeaponTrait(trait: import('./weapon-traits-kernel').WeaponTrait): boolean {
         return hasWeaponTrait(this, trait);
     }
-    hasMode(mode: string): boolean { return this.modes.includes(mode); }
     isExplosive() { return this.stats.explosive ?? false; }
     getNumCriticalSlots(entity: BaseEntity, size: number = 1): number | undefined {
         return getNumCriticalSlots(entity, this, size);

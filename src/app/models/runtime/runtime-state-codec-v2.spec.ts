@@ -32,13 +32,14 @@ describe('direct Mek V2 state codec', () => {
         }).accepted).toBeTrue();
 
         const saved = serialize(fixture);
+        expect(Object.prototype.hasOwnProperty.call(saved, 'index')).toBeFalse();
         expect(saved.baselineRefAtSave.entity).toEqual(fixture.identity);
         expect(Object.prototype.hasOwnProperty.call(saved.baselineRefAtSave, 'published')).toBeFalse();
         expect(saved.locationState?.length).toBe(1);
         expect(saved.ammoState?.length).toBe(1);
 
         const wire = JSON.parse(JSON.stringify(saved));
-        const restored = await restoreSerializedCBTUnitV2(wire, fixture.entity, fixture.initialized);
+        const restored = await restoreSerializedCBTUnitV2(wire, fixture.entity, fixture.index, fixture.initialized);
         const replay = fixture.createInstance('unit:codec-replay');
         expect(restored.state.locations.size).toBe(1);
         expect(restored.state.ammo.size).toBe(1);
@@ -62,7 +63,7 @@ describe('direct Mek V2 state codec', () => {
             },
         };
 
-        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.initialized);
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
         expect(restored.metadata.sourceChanged).toBeTrue();
         expect(restored.baselineRef.entity).toEqual(fixture.identity);
     });
@@ -86,7 +87,7 @@ describe('direct Mek V2 state codec', () => {
             }],
         }));
 
-        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.initialized);
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
         expect(restored.state.movementPsr.automaticFalls).toEqual([{
             triggerKind: 'leg-destroyed-auto-fall',
             locationIds: [leg.id],
@@ -125,7 +126,7 @@ describe('direct Mek V2 state codec', () => {
         expect(saved.turn.turnCounter).toBe(1);
         expect(savedHip?.destroyedTurn).toBe(1);
 
-        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.initialized);
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
         expect(restored.state.turn.turnCounter).toBe(1);
         expect(restored.state.slots.get(hip.id)?.destroyedTurn).toBe(1);
     });
@@ -159,7 +160,7 @@ describe('direct Mek V2 state codec', () => {
             gaussPower: 'Powered Down',
         }));
 
-        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.initialized);
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
         expect(restored.unresolved).toEqual([]);
         expect(restored.state.components.get(hag.id)).toEqual(jasmine.objectContaining({
             mode: 'Flak',
@@ -185,7 +186,7 @@ describe('direct Mek V2 state codec', () => {
         });
         expect(componentState).toEqual(jasmine.objectContaining({ mode: 'Enabling' }));
 
-        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.initialized);
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
         expect(restored.unresolved).toEqual([]);
         expect(restored.state.components.get(stealth.id)?.mode).toBe('Enabling');
     });
@@ -204,7 +205,7 @@ describe('direct Mek V2 state codec', () => {
         }
 
         const saved = serialize(fixture);
-        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.initialized);
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
         expect(restored.unresolved).toEqual([]);
         expect(restored.state.components.get(blueShield.id)?.escalatingFailure)
             .toEqual({ sequence: 14, active: true });
@@ -234,7 +235,7 @@ describe('direct Mek V2 state codec', () => {
             capacityDamage: 4,
         }));
 
-        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.initialized);
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
         expect(restored.unresolved).toEqual([]);
         expect(restored.state.components.get(shield.id)?.shieldDamage).toEqual({
             absorptionDamage: 2,
@@ -275,7 +276,7 @@ describe('direct Mek V2 state codec', () => {
             damage: 3,
         }));
 
-        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.initialized);
+        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
         expect(restored.unresolved).toEqual([]);
         expect(restored.state.components.get(panel.id)?.modularArmorDamage).toBe(6);
         expect(restored.state.pendingCombat.modularArmorDamage.get(panel.id)).toBe(3);
@@ -309,7 +310,7 @@ describe('direct Mek V2 state codec', () => {
             capacityDamage: 19,
         };
 
-        const restored = await restoreSerializedCBTUnitV2(stale, fixture.entity, fixture.initialized);
+        const restored = await restoreSerializedCBTUnitV2(stale, fixture.entity, fixture.index, fixture.initialized);
         expect(restored.state.components.get(shield.id)?.shieldDamage).toEqual({
             absorptionDamage: 5,
             capacityDamage: 18,
@@ -335,7 +336,7 @@ describe('direct Mek V2 state codec', () => {
                 entity: changedIdentity,
             },
         };
-        await expectAsync(restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.initialized))
+        await expectAsync(restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized))
             .toBeRejectedWithError(/UUID/u);
     });
 });
@@ -346,6 +347,7 @@ function serialize(
 ) {
     return structuredClone(serializeCBTUnitStateV2({
         entity: fixture.entity,
+        index: fixture.index,
         instanceId: fixture.instance.id,
         baselineRef: fixture.instance.baselineRef,
         state,

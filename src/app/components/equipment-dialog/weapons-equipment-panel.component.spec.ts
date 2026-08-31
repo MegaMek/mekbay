@@ -105,7 +105,6 @@ function createRuntime() {
     const configureAmmo = jasmine.createSpy('configureAmmo').and.resolveTo();
     const changeStatus = jasmine.createSpy('changeStatus').and.resolveTo();
     const chooseInteraction = jasmine.createSpy('chooseInteraction').and.resolveTo();
-    const changeMode = jasmine.createSpy('changeMode').and.resolveTo();
     const fire = jasmine.createSpy('fire').and.resolveTo();
     const reorderEquipmentRows = jasmine.createSpy('reorderEquipmentRows').and.resolveTo();
     const interaction = {
@@ -161,12 +160,12 @@ function createRuntime() {
         missingAttackMovementModifier: () => false,
         c3Available: () => false,
         c3DegradationSource: () => 'none',
+        supportsMekTurnTools: () => true,
         selectTarget,
         selectPhysicalTarget,
         selectWeaponAmmo: jasmine.createSpy('selectWeaponAmmo').and.resolveTo(),
         configureAmmo,
         changeStatus,
-        changeMode,
         chooseInteraction,
         resetSelections: jasmine.createSpy('resetSelections').and.resolveTo(),
         hasSelections: () => false,
@@ -175,7 +174,7 @@ function createRuntime() {
     } as unknown as EquipmentDialogRuntimeController;
     return {
         runtime, weaponRow, ammoRow, physicalRow, selectTarget, selectPhysicalTarget,
-        configureAmmo, changeStatus, changeMode, chooseInteraction, fire, reorderEquipmentRows,
+        configureAmmo, changeStatus, chooseInteraction, fire, reorderEquipmentRows,
     };
 }
 
@@ -429,16 +428,49 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(harness.reorderEquipmentRows).toHaveBeenCalledOnceWith('physical', [1, 0]);
     });
 
-    it('uses the common mode control when a family has no specialized handler', async () => {
+    it('does not expose raw catalog modes without a runtime interaction handler', () => {
         const harness = createRuntime();
         (harness.runtime.interaction as jasmine.Spy).and.returnValue(undefined);
-        const { component } = createComponent(harness.runtime);
+        const { fixture, component } = createComponent(harness.runtime);
         const row = component.groups()[0]!.rows[0]!;
-        const choice = component.modeChoice(row)!;
 
-        await component.selectHandlerDropdown(row, choice, 'Rapid');
+        expect(row.component?.modes).toEqual(['Standard', 'Rapid']);
+        expect(component.modeChoice(row)).toBeUndefined();
+        expect(fixture.nativeElement.querySelector('.mode-choice')).toBeNull();
+    });
 
-        expect(harness.changeMode).toHaveBeenCalledWith(harness.weaponRow, 'Rapid');
+    it('hides direct component damage controls for Meks', () => {
+        const mek = createRuntime();
+        const mekView = createComponent(mek.runtime);
+        const mekRow = mekView.component.groups()[0]!.rows[0]!;
+        const destroyedMekRow = {
+            ...mekRow,
+            component: { ...mekRow.component!, previewStatus: 'destroyed' } as EquipmentPanelComponent,
+        };
+
+        expect(mekView.component.canMarkDestroyed(mekRow)).toBeFalse();
+        expect(mekView.component.canRepair(destroyedMekRow)).toBeFalse();
+        expect((Array.from(mekView.fixture.nativeElement.querySelectorAll('.controls-cell button')) as HTMLElement[])
+            .some(button => button.textContent?.trim() === 'HIT')).toBeFalse();
+    });
+
+    it('keeps direct component damage controls for non-Meks', () => {
+        const harness = createRuntime();
+        const nonMekRuntime = {
+            ...harness.runtime,
+            supportsMekTurnTools: () => false,
+        } as unknown as EquipmentDialogRuntimeController;
+        const nonMekView = createComponent(nonMekRuntime);
+        const nonMekRow = nonMekView.component.groups()[0]!.rows[0]!;
+        const destroyedNonMekRow = {
+            ...nonMekRow,
+            component: { ...nonMekRow.component!, previewStatus: 'destroyed' } as EquipmentPanelComponent,
+        };
+
+        expect(nonMekView.component.canMarkDestroyed(nonMekRow)).toBeTrue();
+        expect(nonMekView.component.canRepair(destroyedNonMekRow)).toBeTrue();
+        expect((Array.from(nonMekView.fixture.nativeElement.querySelectorAll('.controls-cell button')) as HTMLElement[])
+            .some(button => button.textContent?.trim() === 'HIT')).toBeTrue();
     });
 
     it('fires only through the retained runtime command', async () => {

@@ -12,6 +12,7 @@ import type { SavedEntityIdentity } from '../persisted-unit-state';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import type { EquipmentStatus } from '../equipment-status.model';
+import type { UnitConditionKey } from '../unit-condition.model';
 import {
     canonicalizeMekTurnStateV2,
     createPristineMekTurnStateV2,
@@ -65,6 +66,12 @@ export const MEK_LOCATION_CONDITION_KEYS = Object.freeze([
     'narc',
 ] as const);
 export type MekLocationConditionKey = typeof MEK_LOCATION_CONDITION_KEYS[number];
+const MEK_LOCATION_CONDITION_KEY_SET: ReadonlySet<string> = new Set(MEK_LOCATION_CONDITION_KEYS);
+
+export function isMekLocationConditionKey(value: unknown): value is MekLocationConditionKey {
+    return typeof value === 'string' && MEK_LOCATION_CONDITION_KEY_SET.has(value);
+}
+
 export const MAX_MEK_LOCATION_CONDITION_VALUE = 1_000_000;
 
 export interface InitialStateProfileRef {
@@ -184,7 +191,7 @@ export interface MekUnitRuntimeState extends ClassicUnitRuntimeState {
     /** Sparse deviations from the healthy/conscious crew baseline. */
     readonly crew: ReadonlyMap<CrewPositionId, CrewRuntimeState>;
     readonly heat: MekHeatStateV2;
-    readonly conditions: ReadonlySet<string>;
+    readonly conditions: ReadonlySet<UnitConditionKey>;
     readonly family: { readonly kind: 'mek' };
     /** Persistent typed outcomes; required even when empty in runtime schema V4. */
     readonly ruleChecks: MekRuleChecksV2;

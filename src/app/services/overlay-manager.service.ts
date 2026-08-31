@@ -3,7 +3,13 @@
 // Author: Drake
 
 import { Injectable, type ElementRef, Injector, effect, type ComponentRef } from '@angular/core';
-import { type GlobalPositionStrategy, Overlay, type OverlayRef } from '@angular/cdk/overlay';
+import {
+    type ConnectedPosition,
+    type GlobalPositionStrategy,
+    Overlay,
+    type OverlayRef,
+    type ScrollStrategy,
+} from '@angular/cdk/overlay';
 import type { ComponentPortal } from '@angular/cdk/portal';
 import { DOCUMENT } from '@angular/common';
 import { inject } from '@angular/core';
@@ -25,7 +31,7 @@ type ManagedEntry = {
     overlayRef: OverlayRef;
     closed: Subject<void>;
     clickListener?: (ev: MouseEvent) => void;
-    triggerElement?: HTMLElement;
+    triggerElement?: Element;
     resizeObserver?: ResizeObserver;
     mutationObserver?: MutationObserver;
     contentResizeObserver?: ResizeObserver;
@@ -33,7 +39,7 @@ type ManagedEntry = {
     pointerDownListener?: (ev: PointerEvent) => void;
     pointerUpListener?: (ev: PointerEvent) => void;
     pointerStart?: { id: number | null; x: number; y: number } | null;
-    closeAreaElement?: HTMLElement | null;
+    closeAreaElement?: Element | null;
     closeBlockUntil?: number;
     matchTriggerWidth?: boolean;
     expandToContentWidth?: boolean;
@@ -112,18 +118,18 @@ export class OverlayManagerService {
 
     createManagedOverlay<T>(
         key: string,
-        target: HTMLElement | ElementRef<HTMLElement> | null,
+        target: Element | ElementRef<Element> | null,
         portal: ComponentPortal<T>,
         opts?: {
-            positions?: Array<any>,
+            positions?: ConnectedPosition[],
             hasBackdrop?: boolean,
-            backdropClass?: string,
-            panelClass?: string,
-            scrollStrategy?: any,
+            backdropClass?: string | string[],
+            panelClass?: string | string[],
+            scrollStrategy?: ScrollStrategy,
             closeOnOutsidePointerDown?: boolean,
             closeOnOutsideClick?: boolean,
             closeOnOutsideClickOnly?: boolean,
-            sensitiveAreaReferenceElement?: HTMLElement,
+            sensitiveAreaReferenceElement?: Element,
             disableCloseForMs?: number,
             matchTriggerWidth?: boolean,
             expandToContentWidth?: boolean,
@@ -132,7 +138,7 @@ export class OverlayManagerService {
     ): ManagedOverlayRef<T> {
         // close existing with same key first
         this.closeManagedOverlay(key);
-        const el = target ? ((target as ElementRef<HTMLElement>)?.nativeElement ?? (target as HTMLElement)) : null;
+        const el = resolveElement(target);
     
         let positionStrategy;
         let anchorStrategy: GlobalPositionStrategy | undefined;
@@ -198,16 +204,7 @@ export class OverlayManagerService {
             }
         });
 
-        const resolveEl = (v?: HTMLElement | ElementRef<HTMLElement> | null): HTMLElement | null => {
-            if (!v) return null;
-            // ElementRef-like detection
-            // (avoid importing types at top; runtime duck-typing)
-            const anyV = v as any;
-            if (anyV && anyV.nativeElement) return anyV.nativeElement as HTMLElement;
-            return v as HTMLElement;
-        };
-
-        entry.closeAreaElement = resolveEl(opts?.sensitiveAreaReferenceElement);
+        entry.closeAreaElement = opts?.sensitiveAreaReferenceElement ?? null;
         entry.triggerElement = el ?? undefined;
         entry.matchTriggerWidth = opts?.matchTriggerWidth ?? false;
         entry.expandToContentWidth = opts?.expandToContentWidth ?? false;
@@ -241,7 +238,7 @@ export class OverlayManagerService {
                 this.closeManagedOverlay(key);
             });
         } else if (opts?.closeOnOutsidePointerDown ?? false) {
-            const triggerEl = el as HTMLElement;
+            const triggerEl = el;
             const onPointerDown = (ev: PointerEvent) => {
                 try {
                     if (this.isCloseBlocked(entry)) return;
@@ -262,10 +259,10 @@ export class OverlayManagerService {
             this.document.addEventListener('pointerdown', onPointerDown, true);
             // store references for later cleanup
             entry.pointerDownListener = onPointerDown;
-            entry.triggerElement = triggerEl;
+            entry.triggerElement = triggerEl ?? undefined;
         } else if (opts?.closeOnOutsideClickOnly ?? false) {
             // Close only for "click-like" pointer interactions (no large movement / swipes)
-            const triggerEl = el as HTMLElement;
+            const triggerEl = el;
             
             // Fallback for environments without pointer events: keep the old click behavior
             // We unregister this if a pointerdown listener triggers
@@ -345,9 +342,9 @@ export class OverlayManagerService {
             entry.pointerUpListener = onPointerUp;
             this.document.addEventListener('click', clickFallback, true);
             entry.clickListener = clickFallback;
-            entry.triggerElement = triggerEl;
+            entry.triggerElement = triggerEl ?? undefined;
         } else if (opts?.closeOnOutsideClick ?? ( opts?.closeOnOutsideClickOnly ? false : true )) {
-            const triggerEl = el as HTMLElement;
+            const triggerEl = el;
             const listener = (ev: MouseEvent) => {
                 if (this.isCloseBlocked(entry)) return;
                 const overlayEl = overlayRef.overlayElement;
@@ -366,7 +363,7 @@ export class OverlayManagerService {
             };
             this.document.addEventListener('click', listener, true);
             entry.clickListener = listener;
-            entry.triggerElement = triggerEl;
+            entry.triggerElement = triggerEl ?? undefined;
         }
 
         if (el) {
@@ -698,10 +695,15 @@ export class OverlayManagerService {
     }
     
     /** Check whether the pointer event landed inside the given element's bounding box. */
-    private isInsideArea(ev: MouseEvent, area: HTMLElement): boolean {
+    private isInsideArea(ev: MouseEvent, area: Element): boolean {
         const rect = area.getBoundingClientRect();
         return ev.clientX >= rect.left && ev.clientX <= rect.right &&
                ev.clientY >= rect.top && ev.clientY <= rect.bottom;
     }
 
+}
+
+function resolveElement(value: Element | ElementRef<Element> | null): Element | null {
+    if (value === null) return null;
+    return 'nativeElement' in value ? value.nativeElement : value;
 }

@@ -4,8 +4,7 @@
 
 import { Injectable, signal } from '@angular/core';
 
-import type { ViewportTransform } from '../../../models/force-serialization';
-import type { PageViewerMember, PageViewerViewStateRecord } from './types';
+import type { PageViewerMember, PageViewerViewStateRecord, ViewportTransform } from './types';
 
 @Injectable()
 export class PageViewerViewStateService {

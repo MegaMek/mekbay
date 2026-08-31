@@ -865,6 +865,8 @@ describe('Mek record-sheet binder', () => {
             heatPolicy: 'manual',
         });
         expect(svg.querySelector('#heat-projection-target-marker')).not.toBeNull();
+        expect(svg.querySelector('#heat-projection-target-marker')?.getAttribute('points'))
+            .toBe('14,42.5 6,40 6,45');
         expect(svg.querySelector('#heat-projection-path')).toBeNull();
         binding.destroy();
     });

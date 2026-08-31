@@ -3,6 +3,7 @@
 
 import { heatLevels } from '../../models/common.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
+import { formatEquipmentLocationCodes } from '../equipment-location-display.util';
 import type { EntityDamageLocation } from '../../models/entity/types';
 import {
     ATM_AMMO_PROFILES,
@@ -12,6 +13,7 @@ import {
 import type { WeaponEquipment } from '../../models/equipment.model';
 import { buildNonMekRuntimeIndex } from '../../models/runtime/non-mek-runtime-index';
 import { clusterHits } from '../cluster-hit-table';
+import { recordSheetAmmoName } from '../record-sheet-ammo.util';
 import { defaultRecordSheetWeaponDamageText } from '../record-sheet-weapon-info.util';
 import type { BipedPaperdollPipLayout } from './biped-paperdoll.util';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
@@ -258,7 +260,7 @@ export function recordSheetInventoryWeapons(entity: BaseEntity, mergeIdentical =
         const semanticDamage = defaultRecordSheetWeaponDamageText(mount.equipment, entity.getEquipmentRegistry());
         return {
             name: mount.displayName(),
-            location: mount.getOccupiedLocations().join('/'),
+            location: formatEquipmentLocationCodes(mount.getOccupiedLocations()),
             heat: String(mount.equipment.heat),
             damage: alternativeModes.length > 0
                 ? semanticDamage.match(/\[[^\]]+\]\s*$/u)?.[0] ?? ''
@@ -364,13 +366,6 @@ export function recordSheetAmmoProfile(entity: BaseEntity): readonly string[] {
         .map(([name, shots]) => `(${name}) ${shots}`));
 }
 
-export function recordSheetAmmoName(value: string): string {
-    return value
-        .replace(/\s*\(Clan\)\s*/gu, ' ')
-        .replace(/\s+Ammo$/u, '')
-        .trim();
-}
-
 export function formatDamageValue(value: string | number | readonly number[]): string {
     return Array.isArray(value) ? value.join('/') : String(value);
 }
@@ -470,7 +465,11 @@ function appendInventoryRows(
             class: 'name', size: fontSize, maxWidth: Math.max(25, width - (mekLayout ? 116 : 60)),
         });
         const location = mount
-            ? mount.getOccupiedLocations().map(value => entity.componentLocationLabel(value)).filter(Boolean).join('/')
+            ? formatEquipmentLocationCodes(
+                mount.getOccupiedLocations().map(value => entity.componentLocationLabel(value)),
+                '/',
+                '',
+            )
             : '';
         addText(row, location, width - (mekLayout ? 65 : 7), rowHeight - 1.5, {
             class: 'location', size: Math.max(3.4, fontSize - 0.5), maxWidth: 48, anchor: 'end',
@@ -883,19 +882,18 @@ export function drawHeatScale(svg: SVGSVGElement, box: Box): void {
     for (let index = 0; index <= 30; index++) {
         const heat = 30 - index;
         const cellY = cellTop + index * cellHeight;
-        const cell = svgElement('g');
         const heatLevel = heatLevels.find(level => heat >= level.min && heat <= level.max);
-        cell.setAttribute('class', ['heat', heatLevel?.class, heatLevel ? 'no-autocolor' : undefined]
+        const rect = svgElement('rect');
+        rect.setAttribute('class', ['heat', heatLevel?.class, heatLevel ? 'no-autocolor' : undefined]
             .filter((value): value is string => value !== undefined)
             .join(' '));
-        cell.setAttribute('heat', String(heat));
-        const rect = svgElement('rect');
+        rect.setAttribute('heat', String(heat));
         setAttributes(rect, {
             x: 0, y: y(cellY), width: x(16.792), height: y(cellHeight),
             fill: '#fff', stroke: '#000', 'stroke-width': 1.45 * fontScale,
         });
-        cell.appendChild(rect);
-        addText(cell, String(heat), x(8.396), y(cellY + 7.401), {
+        group.appendChild(rect);
+        addText(group, String(heat), x(8.396), y(cellY + 7.401), {
             size: font(6.76), weight: 700, anchor: 'middle',
         });
         if (effectLevels.has(heat)) {
@@ -903,9 +901,9 @@ export function drawHeatScale(svg: SVGSVGElement, box: Box): void {
             const cy = y(cellY + 5.035);
             marker.setAttribute('points', `${x(16.792)},${cy - y(3.617)} ${x(12.659)},${cy} ${x(16.792)},${cy + y(3.616)}`);
             marker.setAttribute('class', 'heat-effect-marker');
-            cell.appendChild(marker);
+            marker.setAttribute('pointer-events', 'none');
+            group.appendChild(marker);
         }
-        group.appendChild(cell);
     }
     svg.appendChild(group);
 }
@@ -1605,14 +1603,11 @@ text { font-family: Roboto, Arial, sans-serif; }
 .hsPip { fill: #fff; stroke: #000; stroke-width: .9; }
 .pip.damaged, .crewHit.damaged, .criticalPip.damaged, .motiveHitPip.damaged { fill: #111; }
 .crewHit.damaged + .crewHitLabel { fill: #fff; }
-.pip.pending, .critSlot.pending, .inventoryEntry.pending { stroke: #d23a2e; }
-.pip.fresh { fill: #d7ebff; }
 .pip.disabled, .inventoryEntry.disabled { opacity: .38; }
 .inventoryEntry > text, .inventoryEntry > g:not(.alternativeMode) text,
 .hitMod-rect, .hitMod-text, .targetTn-rect, .targetTn-text { pointer-events: none; }
 .inventoryEntryButton { pointer-events: all; }
 .hidden { display: none; }
-.hot rect { filter: brightness(.78); }
 .inventoryEntry.damaged text, .critSlot.damaged text { text-decoration: line-through; }
 .interactive, .selectable, .unitLocation, .crewHit, .crewStateButton, .crewNameButton, .crewSkillButton { cursor: pointer; }
 .crewStateBanner, .unitConditionBanner { pointer-events: none; }

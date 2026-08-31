@@ -232,6 +232,7 @@ export class ReadyMekUnit implements ReadyClassicUnit {
     public serialize(): SerializedCBTUnitV2 {
         return serializeCBTUnitStateV2({
             entity: this.entity,
+            index: this.runtime.getIndex(),
             instanceId: this.instanceId,
             baselineRef: this.baselineRef,
             state: this.runtime.snapshot(),
@@ -275,7 +276,8 @@ export class ReadyMekUnitFactory {
         const saved = current.serialize();
         const state = runtime.snapshot();
         const nativeSource = current.getNativeSource();
-        const initialized = initializeUnitState(entity, sourceRef, options);
+        const runtimeIndex = buildMekRuntimeIndex(entity);
+        const initialized = initializeUnitState(entity, runtimeIndex, sourceRef, options);
         if (runtime.revision() !== 0 || runtime.snapshot() !== state) {
             throw new Error('The V2 runtime changed while redeployment was being prepared');
         }
@@ -293,6 +295,7 @@ export class ReadyMekUnitFactory {
 
         const heatContext = await bindMekHeatRuntimeContext(
             entity,
+            runtimeIndex,
             initialized.baselineRef.ruleset,
             options.scenario,
         );
@@ -308,12 +311,14 @@ export class ReadyMekUnitFactory {
             instanceId,
             initialized.baselineRef,
             entity,
+            runtimeIndex,
             initialized.baselineRef.ruleset,
             state,
             initialized.deployment.crewAssignment,
             heatContext,
             bindMekMechanicsContext(
                 entity,
+                runtimeIndex,
                 initialized.baselineRef.ruleset,
                 options.scenario,
             ),
@@ -353,7 +358,8 @@ export class ReadyMekUnitFactory {
             deployment: saved.deployment.values,
             scenario,
         });
-        const initialized = initializeUnitState(entity, sourceRef, options);
+        const runtimeIndex = buildMekRuntimeIndex(entity);
+        const initialized = initializeUnitState(entity, runtimeIndex, sourceRef, options);
         if (!jsonValuesEqual(initialized.baselineRef, saved.baselineRefAtSave)) {
             throw new Error('Repair cannot change the unit baseline');
         }
@@ -366,6 +372,7 @@ export class ReadyMekUnitFactory {
         });
         const heat = await bindMekHeatRuntimeContext(
             entity,
+            runtimeIndex,
             initialized.baselineRef.ruleset,
             scenario,
         );
@@ -378,11 +385,12 @@ export class ReadyMekUnitFactory {
             current.instanceId,
             initialized.baselineRef,
             entity,
+            runtimeIndex,
             initialized.baselineRef.ruleset,
             state,
             initialized.deployment.crewAssignment,
             heat,
-            bindMekMechanicsContext(entity, initialized.baselineRef.ruleset, scenario),
+            bindMekMechanicsContext(entity, runtimeIndex, initialized.baselineRef.ruleset, scenario),
         );
         const deployment: SerializedDeploymentConfigurationV2 = Object.freeze({
             schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
@@ -464,21 +472,25 @@ export class ReadyMekUnitFactory {
             throw new Error('Entity does not match the requested provider/UUID');
         }
         nativeSource = verifyNativeSource(sourceRef, nativeSource);
-        const initialized = initializeUnitState(entity, sourceRef, this.initializeOptions);
+        const runtimeIndex = buildMekRuntimeIndex(entity);
+        const initialized = initializeUnitState(entity, runtimeIndex, sourceRef, this.initializeOptions);
         const instance = new CBTUnitInstance(
             request.instanceId,
             initialized.baselineRef,
             entity,
+            runtimeIndex,
             initialized.baselineRef.ruleset,
             initialized.state,
             initialized.deployment.crewAssignment,
             await bindMekHeatRuntimeContext(
                 entity,
+                runtimeIndex,
                 initialized.baselineRef.ruleset,
                 this.initializeOptions.scenario,
             ),
             bindMekMechanicsContext(
                 entity,
+                runtimeIndex,
                 initialized.baselineRef.ruleset,
                 this.initializeOptions.scenario,
             ),
@@ -515,9 +527,10 @@ export class ReadyMekUnitFactory {
             throw new Error('Entity does not match the persisted V2 provider/UUID');
         }
         nativeSource = verifyNativeSource(sourceRef, nativeSource);
+        const runtimeIndex = buildMekRuntimeIndex(entity);
         const storedCrew = saved.deployment.values.crewAssignment;
         const crewAssignment = storedCrew.positions.length === 0
-            ? createDefaultCrewAssignment(buildMekRuntimeIndex(entity).crewPositions)
+            ? createDefaultCrewAssignment(runtimeIndex.crewPositions)
             : storedCrew;
         const deploymentValues = crewAssignment === storedCrew
             ? saved.deployment.values
@@ -528,7 +541,7 @@ export class ReadyMekUnitFactory {
                 deployment: Object.freeze({ ...saved.deployment, values: deploymentValues }),
             });
         }
-        const initialized = initializeUnitState(entity, sourceRef, {
+        const initialized = initializeUnitState(entity, runtimeIndex, sourceRef, {
             ...this.initializeOptions,
             deployment: deploymentValues,
         });
@@ -538,23 +551,27 @@ export class ReadyMekUnitFactory {
             ...saved,
             blueprintReferences: buildSavedBlueprintReferenceTableV2(
                 entity,
+                runtimeIndex,
                 initialized.baselineRef.ruleset,
             ),
-        }, entity, initialized);
+        }, entity, runtimeIndex, initialized);
         const instance = new CBTUnitInstance(
             saved.instanceId,
             restored.baselineRef,
             entity,
+            runtimeIndex,
             initialized.baselineRef.ruleset,
             restored.state,
             initialized.deployment.crewAssignment,
             await bindMekHeatRuntimeContext(
                 entity,
+                runtimeIndex,
                 initialized.baselineRef.ruleset,
                 this.initializeOptions.scenario,
             ),
             bindMekMechanicsContext(
                 entity,
+                runtimeIndex,
                 initialized.baselineRef.ruleset,
                 this.initializeOptions.scenario,
             ),
@@ -601,12 +618,13 @@ function verifyNativeSource(
 
 function bindMekHeatRuntimeContext(
     entity: MekEntity,
+    index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     scenario: ScenarioRules,
 ): MekHeatRuntimeContextV2 {
     return createMekHeatContextV2(
         entity,
-        buildMekRuntimeIndex(entity),
+        index,
         ruleset,
         runtimeScenario(scenario),
     );
@@ -614,12 +632,13 @@ function bindMekHeatRuntimeContext(
 
 function bindMekMechanicsContext(
     entity: MekEntity,
+    index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     scenario: ScenarioRules,
 ): MekMechanicsContextV2 {
     return createMekMechanicsContextV2(
         entity,
-        buildMekRuntimeIndex(entity),
+        index,
         ruleset,
         runtimeScenario(scenario),
     );

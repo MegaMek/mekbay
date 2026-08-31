@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { EquipmentStatus } from '../equipment-status.model';
+import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import { jsonValuesEqual } from '../../utils/json-value.util';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import {
@@ -67,9 +68,9 @@ import {
     type PpcCapacitorRuntimeState,
     type StateRevision,
     type UnitInstanceId,
+    isMekLocationConditionKey,
     MAX_MEK_CREW_WOUNDS,
     MAX_MEK_LOCATION_CONDITION_VALUE,
-    MEK_LOCATION_CONDITION_KEYS,
 } from './runtime-state';
 import { ppcCapacitorWeaponId } from './component-ppc-capacitor';
 import { componentEscalatingFailureProfile } from './component-escalating-failure';
@@ -82,7 +83,6 @@ import {
     STEALTH_ENABLING_MODE,
 } from '../stealth-equipment.model';
 import {
-    buildMekRuntimeIndex,
     equipmentForComponent,
     type MekRuntimeIndex,
     type MekIndexedComponent,
@@ -204,6 +204,7 @@ export interface V2StateRestoreWarning {
 
 export interface SerializeCBTUnitStateV2Input {
     readonly entity: MekEntity;
+    readonly index: MekRuntimeIndex;
     readonly instanceId: UnitInstanceId;
     readonly baselineRef: InstanceBaselineRef;
     readonly state: MekUnitRuntimeState;
@@ -313,8 +314,8 @@ interface MekCodecUnit {
     readonly ruleset: CBTRuleset;
 }
 
-function codecUnit(entity: MekEntity, ruleset: CBTRuleset): MekCodecUnit {
-    return Object.freeze({ entity, index: buildMekRuntimeIndex(entity), ruleset });
+function codecUnit(entity: MekEntity, index: MekRuntimeIndex, ruleset: CBTRuleset): MekCodecUnit {
+    return Object.freeze({ entity, index, ruleset });
 }
 
 /**
@@ -323,9 +324,10 @@ function codecUnit(entity: MekEntity, ruleset: CBTRuleset): MekCodecUnit {
  */
 export function buildSavedBlueprintReferenceTableV2(
     entity: MekEntity,
+    index: MekRuntimeIndex,
     ruleset: CBTRuleset,
 ): SavedBlueprintReferenceTableV2 {
-    return buildCurrentTargetIndex(codecUnit(entity, ruleset)).table;
+    return buildCurrentTargetIndex(codecUnit(entity, index, ruleset)).table;
 }
 
 function serializeAttackerTargeting(
@@ -621,7 +623,7 @@ export function serializeCBTUnitStateV2(
     input: SerializeCBTUnitStateV2Input,
 ): SerializedCBTUnitV2 {
     assertBaselineMatchesEntity(input.baselineRef, input.entity, '$.baselineRef');
-    const unit = codecUnit(input.entity, input.baselineRef.ruleset);
+    const unit = codecUnit(input.entity, input.index, input.baselineRef.ruleset);
     asUnitInstanceId(input.instanceId);
     asStateRevision(input.state.stateRevision);
     if (input.state.schemaVersion !== 7 || input.state.family.kind !== 'mek') {
@@ -796,8 +798,12 @@ export function serializeCBTUnitStateV2(
         });
     }
 
-    const conditions = [...input.state.conditions].map((condition, index) =>
-        canonicalBoundedText(condition, `$.state.conditions[${index}]`)).sort(compareText);
+    const conditions = [...input.state.conditions].map((condition, index): UnitConditionKey => {
+        if (!isUnitConditionKey(condition)) {
+            codecFail('INVALID_RUNTIME_STATE', `$.state.conditions[${index}]`, 'unknown unit condition');
+        }
+        return condition;
+    }).sort(compareText);
     if (new Set(conditions).size !== conditions.length) {
         codecFail('INVALID_RUNTIME_STATE', '$.state.conditions', 'conditions must be unique');
     }
@@ -1104,6 +1110,7 @@ function restoreSavedMekRuleChecks(
 export async function restoreSerializedCBTUnitV2(
     savedInput: SerializedCBTUnitV2,
     entity: MekEntity,
+    index: MekRuntimeIndex,
     initialized: { readonly baselineRef: InstanceBaselineRef; readonly state: MekUnitRuntimeState },
 ): Promise<RestoreSerializedCBTUnitV2Result> {
     // The initializer projection is caller-owned too. Capture its structural baseline and clone
@@ -1125,7 +1132,7 @@ export async function restoreSerializedCBTUnitV2(
     assertExactSerializedUnitKeys(saved);
     assertSerializedIdentity(saved, initialized.baselineRef, entity);
     assertBaselineMatchesEntity(initialized.baselineRef, entity, '$.initialized.baselineRef');
-    const unit = codecUnit(entity, initialized.baselineRef.ruleset);
+    const unit = codecUnit(entity, index, initialized.baselineRef.ruleset);
     if (saved.schemaVersion !== CBT_UNIT_PERSISTENCE_SCHEMA_VERSION || saved.family.kind !== 'mek') {
         codecFail('INVALID_SERIALIZED_STATE', '$', 'only the current Mek serialized unit schema is supported');
     }
@@ -1626,7 +1633,19 @@ export async function restoreSerializedCBTUnitV2(
     });
     const conditions = saved.conditions === undefined
         ? initialized.state.conditions
-        : new ImmutableSet<string>(validateSortedUniqueText(saved.conditions.values, '$.conditions.values'));
+        : new ImmutableSet<UnitConditionKey>(validateSortedUniqueText(
+            saved.conditions.values,
+            '$.conditions.values',
+        ).map((condition, index): UnitConditionKey => {
+            if (!isUnitConditionKey(condition)) {
+                codecFail(
+                    'INVALID_SERIALIZED_STATE',
+                    `$.conditions.values[${index}]`,
+                    'unknown unit condition',
+                );
+            }
+            return condition;
+        }));
     let heat = initialized.state.heat;
     if (saved.heat !== undefined) {
         const current = requireNonnegativeFinite(saved.heat.heat, '$.heat.heat');
@@ -4990,10 +5009,10 @@ function requireMekLocationConditionKey(
     path: string,
     errorCode: V2StateCodecErrorCode,
 ): MekLocationConditionKey {
-    if (typeof value !== 'string' || !(MEK_LOCATION_CONDITION_KEYS as readonly string[]).includes(value)) {
+    if (!isMekLocationConditionKey(value)) {
         codecFail(errorCode, path, 'unknown Mek location condition');
     }
-    return value as MekLocationConditionKey;
+    return value;
 }
 
 function requireMekLocationConditionValue(

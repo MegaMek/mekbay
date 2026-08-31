@@ -4,6 +4,7 @@
 import { Subject } from 'rxjs';
 
 import type { CBTForceMember, CBTMekForceMember } from '../../models/force-member.model';
+import type { MekEquipmentInteraction } from '../../models/cbt-force.model';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
 import { TestTankEntity } from '../../models/entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../../models/entity/testing/test-mounted-equipment';
@@ -71,7 +72,7 @@ describe('EquipmentDialogRuntimeController', () => {
         expect(getSnapshot).toHaveBeenCalledTimes(2);
     });
 
-    it('lists mounted inventory equipment but not entity systems or heat-sink bookkeeping mounts', () => {
+    it('lists only handler-backed passive equipment', () => {
         const changed = new Subject<void>();
         const row = (
             componentId: string,
@@ -100,10 +101,20 @@ describe('EquipmentDialogRuntimeController', () => {
                 row('mount:ecm', false),
             ],
         } as EquipmentPanelSnapshot;
+        const interactions = [{
+            instanceId: 'mek-1',
+            unitLabel: 'Inventory filtering',
+            componentId: 'mount:ecm' as ComponentId,
+            componentLabel: 'mount:ecm',
+            stateRevision: 0,
+            choices: [],
+        }] as unknown as readonly MekEquipmentInteraction[];
+        const getInteractions = jasmine.createSpy('getMekEquipmentInteractions')
+            .and.returnValue(interactions);
         const force = {
             changed,
             getEquipmentPanelSnapshot: () => panel,
-            getMekEquipmentInteractions: () => [],
+            getMekEquipmentInteractions: getInteractions,
         };
         const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
         const controller = new EquipmentDialogRuntimeController(
@@ -114,6 +125,7 @@ describe('EquipmentDialogRuntimeController', () => {
 
         expect(controller.equipment().map(candidate => candidate.componentId))
             .toEqual(['mount:ecm' as ComponentId]);
+        expect(getInteractions).toHaveBeenCalledWith('inventory');
         const charge = {
             effect: {
                 kind: 'damage', damage: 16, maximumDamage: 56, baseDamage: 14,

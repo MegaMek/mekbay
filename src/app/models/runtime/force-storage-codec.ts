@@ -9,6 +9,7 @@ import {
     type CBTRuleset,
 } from '../cbt-ruleset.model';
 import type { SerializedForce } from '../force-serialization';
+import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import type { DeferredUnitSource, JsonValue, SavedEntityIdentity } from '../persisted-unit-state';
 import type {
     SavedAttackerTargetingState,
@@ -45,7 +46,9 @@ import {
 import {
     asStateRevision,
     asUnitInstanceId,
+    isMekLocationConditionKey,
     type EscalatingFailureSequence,
+    type MekLocationConditionKey,
 } from './runtime-state';
 import type { SerializedMekMovementPsrStateV2 } from './mek-movement-psr-v2';
 import type { SerializedMekTurnStateV2 } from './mek-turn-state-v2';
@@ -273,7 +276,7 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
         ...(value['n'] === undefined ? {} : {
             locationConditions: unpackRows(value['n'], `${path}.n`, (row, rowPath) => ({
                 target: rowText(row, 0, rowPath) as any,
-                condition: rowText(row, 1, rowPath) as any,
+                condition: unpackMekLocationCondition(row[1], `${rowPath}[1]`),
                 value: rowInteger(row, 2, rowPath),
             })),
         }),
@@ -322,7 +325,9 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
         ...(value['y'] === undefined ? {} : {
             equipmentRowOrder: unpackEquipmentRowOrder(value['y'], `${path}.y`),
         }),
-        ...(value['o'] === undefined ? {} : { conditions: { values: clone(value['o']) as string[] } }),
+        ...(value['o'] === undefined ? {} : {
+            conditions: { values: unpackUnitConditions(value['o'], `${path}.o`) },
+        }),
         turn: unpackTurn(value['t'], `${path}.t`),
         ...(value['p'] === undefined ? {} : { pendingCombat: unpackPending(value['p'], `${path}.p`) }),
         ...(value['z'] === undefined ? {} : {
@@ -443,7 +448,9 @@ function unpackNonMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, p
         ...(value['w'] === undefined ? {} : {
             crewState: unpackRows(value['w'], `${path}.w`, unpackNonMekCrewState),
         }),
-        ...(value['o'] === undefined ? {} : { conditions: clone(value['o']) as string[] }),
+        ...(value['o'] === undefined ? {} : {
+            conditions: unpackUnitConditions(value['o'], `${path}.o`),
+        }),
         ...(value['h'] === undefined ? {} : { heat: unpackNonMekHeat(value['h'], `${path}.h`) }),
         ...(value['v'] === undefined ? {} : { turn: unpackNonMekTurn(value['v'], `${path}.v`) }),
         attackerTargeting: unpackDirectTargeting(value['tA'], `${path}.tA`),
@@ -1021,7 +1028,7 @@ function unpackPending(value: unknown, path: string): NonNullable<SerializedCBTU
     exactKeys(pending, ['l', 'n', 's', 'c', 'h', 'm'], path);
     return compactObject({
         locationDamage: pending['l'] === undefined ? undefined : unpackRows(pending['l'], `${path}.l`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, damage: rowInteger(row, 1, rowPath) })),
-        locationConditions: pending['n'] === undefined ? undefined : unpackRows(pending['n'], `${path}.n`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, condition: rowText(row, 1, rowPath) as any, value: rowInteger(row, 2, rowPath) })),
+        locationConditions: pending['n'] === undefined ? undefined : unpackRows(pending['n'], `${path}.n`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, condition: unpackMekLocationCondition(row[1], `${rowPath}[1]`), value: rowInteger(row, 2, rowPath) })),
         slotHits: pending['s'] === undefined ? undefined : unpackRows(pending['s'], `${path}.s`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, hits: rowInteger(row, 1, rowPath) })),
         componentStatus: pending['c'] === undefined ? undefined : unpackRows(pending['c'], `${path}.c`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, status: rowText(row, 1, rowPath) as any })),
         shieldDamage: pending['h'] === undefined ? undefined : unpackRows(pending['h'], `${path}.h`, (row, rowPath) => ({ target: rowText(row, 0, rowPath) as any, absorptionDamage: rowInteger(row, 1, rowPath), capacityDamage: rowInteger(row, 2, rowPath) })),
@@ -1226,6 +1233,19 @@ function record(value: unknown, path: string): Record<string, unknown> {
 
 function array(value: unknown, path: string): readonly unknown[] {
     if (!Array.isArray(value)) throw new Error(`${path} must be an array`);
+    return value;
+}
+
+function unpackUnitConditions(value: unknown, path: string): UnitConditionKey[] {
+    return array(value, path).map((entry, index) => {
+        const key = text(entry, `${path}[${index}]`);
+        if (!isUnitConditionKey(key)) throw new Error(`${path}[${index}] is not a unit condition`);
+        return key;
+    });
+}
+
+function unpackMekLocationCondition(value: unknown, path: string): MekLocationConditionKey {
+    if (!isMekLocationConditionKey(value)) throw new Error(`${path} is not a Mek location condition`);
     return value;
 }
 

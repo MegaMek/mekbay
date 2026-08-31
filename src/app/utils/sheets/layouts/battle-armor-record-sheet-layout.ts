@@ -7,6 +7,7 @@ import { isBattleArmorEntity } from '../../../models/entity/utils/entity-type-gu
 import { BattleArmorBVCalculator } from '../../../models/entity/utils/battle-value';
 import { hasStealthFlag } from '../../../models/stealth-equipment.model';
 import { isJumpJetEquipment, isUmuEquipment } from '../../../models/jump-equipment.model';
+import { recordSheetAmmoName } from '../../record-sheet-ammo.util';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
     type Box,
@@ -18,7 +19,6 @@ import {
     drawClusterHitsReference,
     drawGeneratedFooter,
     formatNumber,
-    recordSheetAmmoName,
     recordSheetInventoryWeapons,
     scaleCompactBox,
     scalePageBox,

@@ -22,6 +22,8 @@ import { UnitStateDropdownComponent } from '../unit-state-dropdown.component';
 import { PageViewerOverlayService } from './page-viewer-overlay.service';
 import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
+import type { UnitConditionKey } from '../../../models/unit-condition.model';
+import type { MekLocationConditionKey } from '../../../models/runtime/runtime-state';
 
 describe('PageViewerMekInteractionService', () => {
     let service: PageViewerMekInteractionService;
@@ -55,9 +57,9 @@ describe('PageViewerMekInteractionService', () => {
                 crewState: (positionId: string) => currentSnapshot.crew
                     .find(row => row.positionId === positionId)?.state
                     ?? { wounds: 0, unconscious: false, ejected: false },
-                hasCondition: (condition: string) => currentSnapshot.conditions.includes(condition),
+                hasCondition: (condition: UnitConditionKey) => currentSnapshot.conditions.includes(condition),
                 heatState: () => currentSnapshot.heat,
-                locationCondition: (locationId: string, condition: string, perspective: string) => {
+                locationCondition: (locationId: string, condition: MekLocationConditionKey, perspective: string) => {
                     const row = currentSnapshot.locations.find(location => location.locationId === locationId)
                         ?.conditions.find(candidate => candidate.condition === condition);
                     return perspective === 'preview' ? row?.preview ?? 0 : row?.committed ?? 0;
@@ -191,9 +193,11 @@ describe('PageViewerMekInteractionService', () => {
             kind: 'critical', slotId: 'slot-ct-0', componentIds: ['ammo-1'], button: 'primary', expectedRevision: 1,
         } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
 
-        expect(choiceConfig).toEqual(jasmine.objectContaining({ style: 'linear', targetType: 'crit' }));
-        expect(choiceConfig!.values.map(choice => choice.label)).toContain('Critical Hit');
-        expect(choiceConfig!.values.map(choice => choice.label)).toContain('-1 AC/20 Ammo');
+        expect(choiceConfig).toEqual(jasmine.objectContaining({
+            style: 'linear', targetType: 'crit', title: 'Ammo (AC/20)',
+        }));
+        expect(choiceConfig!.values.slice(0, 4).map(choice => choice.label))
+            .toEqual(['-1', '+1', 'Critical Hit', 'Set Ammo']);
         const handler = choiceConfig!.values.find(choice => choice.label === 'Special mode')!;
         choiceConfig!.onPick(handler);
         await settleAsyncHandlers();
@@ -406,7 +410,7 @@ describe('PageViewerMekInteractionService', () => {
         expect(service.heatPreview('unit-1')).toBeNull();
     });
 
-    it('uses the original active-heatsinks picker while dispatching the typed disabled count', async () => {
+    it('uses an active-heatsinks delta picker while dispatching the resulting disabled count', async () => {
         currentSnapshot = {
             ...currentSnapshot,
             heat: { ...currentSnapshot.heat, heatsinksOff: 3 },
@@ -416,9 +420,9 @@ describe('PageViewerMekInteractionService', () => {
         } as MekRecordSheetInteraction, anchoredMouseEvent());
 
         expect(numericConfig).toEqual(jasmine.objectContaining({
-            min: 0, max: 10, selected: 7, title: 'Active Heatsinks',
+            min: -7, max: 3, selected: 0, title: 'Active Heatsinks',
         }));
-        numericConfig!.onPick({ value: 5 });
+        numericConfig!.onPick({ value: -2 });
         await settleAsyncHandlers();
         expect(force.dispatchMekUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'set-heatsinks-off', heatsinksOff: 5, expectedRevision: 1,

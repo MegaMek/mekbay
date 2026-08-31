@@ -367,6 +367,7 @@ describe('RecordSheetSvgGenerator', () => {
 
         expect(svg.classList.contains('mekbay-sheet')).toBeTrue();
         expect(svg.querySelectorAll('#mekbay-svg-style').length).toBe(1);
+        expect(svg.querySelector('#mekbay-svg-style')?.textContent).not.toContain('.critSlot.pending');
         expect(svg.querySelectorAll('#mekbay-night-image-invert').length).toBe(1);
         expect(svg.dataset['mekbayRecordSheetPrepared']).toBeUndefined();
         expect(svg.querySelectorAll('.unitConditionButton[condition]').length).toBe(3);
@@ -375,6 +376,11 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.querySelectorAll('mask[id^="generated_condition_banner_fade_"]').length)
             .toBe(UNIT_CONDITION_DEFINITIONS.length);
         expect(svg.querySelector('.crewStateButton[crewId="0"] text')?.textContent).toBe('...');
+        expect(svg.querySelectorAll('.crewStateButton[crewId="0"]').length).toBe(1);
+        const crewStateRect = svg.querySelector<SVGRectElement>('.crewStateButton[crewId="0"] rect')!;
+        expect(crewStateRect.getAttribute('x')).toBe('129.6');
+        expect(crewStateRect.getAttribute('y')).toBe('4');
+        expect(crewStateRect.getAttribute('width')).toBe('10');
         expect(svg.querySelector('.crewStateBanner[crewId="0"] .unitConditionBannerRect')).not.toBeNull();
         expect(svg.querySelector('.crewStateBanner[crewId="0"] .unitConditionBannerText')).not.toBeNull();
         expect(svg.getElementById('lifeSupportPilotDamageWarning')).not.toBeNull();
@@ -385,6 +391,7 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.querySelectorAll('.locationNarcBanner[loc]').length).toBe(8);
         expect(svg.querySelector('#heatScale .overflowButton')).not.toBeNull();
         expect(svg.querySelectorAll('#heatScale .heat.no-autocolor').length).toBe(31);
+        expect(svg.querySelector('#heatScale .heat')?.tagName.toLowerCase()).toBe('rect');
         expect(svg.querySelectorAll('.critSlot[loc][slot]').length).toBe(66);
         expect(svg.querySelectorAll('.critSlot[hittable="1"] > .critSlot-bg-rect').length).toBe(66);
         expect(svg.querySelectorAll('.critSlot > .extraHitPip[display="none"]').length).toBe(66);
@@ -416,6 +423,14 @@ describe('RecordSheetSvgGenerator', () => {
         expect(children.indexOf(shortButton)).toBeLessThan(children.indexOf(shortText));
         expect(children.indexOf(hitModRect)).toBeLessThan(children.indexOf(name));
         expect(children.indexOf(hitModRect)).toBeLessThan(children.indexOf(hitModText));
+        expect(mainButton.getAttribute('x')).toBe('2');
+        expect(mainButton.getAttribute('width')).toBe('177.104');
+        expect(shortButton.getAttribute('x')).toBe('180.304');
+        expect(shortButton.getAttribute('width')).toBe('10.448');
+        expect(hitModRect.getAttribute('x')).toBe('-5');
+        expect(hitModRect.getAttribute('width')).toBe('10');
+        expect(hitModText.getAttribute('x')).toBe('0');
+        expect(hitModText.getAttribute('font-family')).toBe('monospace');
         expect(quantity).not.toBeNull();
         expect(name).not.toBeNull();
     });

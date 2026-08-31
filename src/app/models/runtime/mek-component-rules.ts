@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import { WeaponEquipment } from '../equipment.model';
 import {
     bombastLaserEquipmentModes,
 } from '../bombast-laser-mode.model';
@@ -23,6 +22,8 @@ import {
 } from './component-electronic-suite';
 import { mobileHpgComponentModes } from './component-mobile-hpg';
 import { boobyTrapComponentModes } from './component-booby-trap';
+import { rapidFireAutocannonComponentModes } from '../rapid-fire-autocannon-mode.model';
+import { stealthComponentModes } from '../stealth-equipment.model';
 
 export interface MekComponentModes {
     readonly modes: readonly string[];
@@ -31,7 +32,7 @@ export interface MekComponentModes {
 
 /** One direct rules path for pristine defaults and runtime mode validation. */
 export function mekComponentModes(
-    entity: MekEntity,
+    _entity: MekEntity,
     index: MekRuntimeIndex,
     componentId: ComponentId,
     ruleset: CBTRuleset,
@@ -66,18 +67,9 @@ export function mekComponentModes(
     if (shieldModes !== null) return shieldModes;
     const coolantPodModes = coolantPodComponentModes(equipment);
     if (coolantPodModes !== null) return coolantPodModes;
-    const modes = Object.freeze([...equipment.modes]);
-    return fixedModes(modes, defaultMode(modes));
-}
-
-function defaultMode(modes: readonly string[]): string | undefined {
-    return modes.find(mode => mode.toLowerCase() === 'off') ?? modes[0];
-}
-
-function fixedModes(modes: readonly string[], selected?: string): MekComponentModes {
-    const copy = Object.freeze([...modes]);
-    return Object.freeze({
-        modes: copy,
-        ...(selected === undefined ? {} : { defaultMode: selected }),
-    });
+    const rapidFireModes = rapidFireAutocannonComponentModes(equipment);
+    if (rapidFireModes !== null) return rapidFireModes;
+    const stealthModes = stealthComponentModes(equipment);
+    if (stealthModes !== null) return stealthModes;
+    return Object.freeze({ modes: Object.freeze([]) });
 }

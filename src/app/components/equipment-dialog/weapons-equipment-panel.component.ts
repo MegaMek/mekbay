@@ -1197,8 +1197,6 @@ export class WeaponsEquipmentPanelComponent {
         const selected = interaction?.choices.find(candidate => candidate.token === choice.value);
         if (interaction && selected) {
             await this.runtime().chooseInteraction(interaction, selected.token);
-        } else if (row.component && this.isModeChoice(choice)) {
-            await this.runtime().changeMode(row.component, String(choice.value));
         }
     }
 
@@ -1254,18 +1252,6 @@ export class WeaponsEquipmentPanelComponent {
                 ...(choice.failureTarget === undefined ? {} : { failureTarget: choice.failureTarget }),
             });
         }
-        if (interaction === undefined && row.component && row.component.modes.length > 0) {
-            const selected = row.component.mode ?? row.component.defaultMode ?? row.component.modes[0]!;
-            result.push({
-                handlerId: INVENTORY_MODE_HANDLER_ID,
-                label: INVENTORY_MODE_CHOICE_LABEL,
-                value: selected,
-                active: true,
-                disabled: row.component.status !== 'available',
-                displayType: 'dropdown',
-                choices: row.component.modes.map(mode => ({ label: mode, value: mode })),
-            });
-        }
         return result;
     }
 
@@ -1276,6 +1262,7 @@ export class WeaponsEquipmentPanelComponent {
 
     canMarkDestroyed(row: EquipmentPanelRow): boolean {
         return !this.readOnly()
+            && !this.runtime().supportsMekTurnTools()
             && row.component !== undefined
             && row.component.previewStatus !== 'destroyed';
     }
@@ -1286,7 +1273,9 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     canRepair(row: EquipmentPanelRow): boolean {
-        return !this.readOnly() && row.component?.previewStatus === 'destroyed';
+        return !this.readOnly()
+            && !this.runtime().supportsMekTurnTools()
+            && row.component?.previewStatus === 'destroyed';
     }
 
     rowEffectivelyDestroyed(row: EquipmentPanelRow): boolean {

@@ -43,7 +43,9 @@ export class Sanitizer {
                 }
 
                 if (sanitizedValue !== undefined) {
-                    result[key] = sanitizedValue;
+                    // The schema owns the key/value pairing; iteration erases that
+                    // correlation while interpreting heterogeneous rules.
+                    result[key] = sanitizedValue as T[keyof T];
                 }
             } catch (error) {
                 if (strict) {
@@ -116,7 +118,7 @@ export class Sanitizer {
         return result;
     }
 
-    private static validateValue(value: unknown, rule: Rule, options: SanitizeOptions): any {
+    private static validateValue(value: unknown, rule: Rule, options: SanitizeOptions): unknown {
         if (value === undefined || value === null) {
             return rule.default;
         }
@@ -135,9 +137,14 @@ export class Sanitizer {
             case 'record':
                 return rule.valueSchema ? this.sanitizeRecord(value, rule.valueSchema, options) : (rule.default ?? {});
             case 'enum':
-                return rule.values.includes(value as any) ? value : rule.default ?? rule.values[0];
+                return rule.values.some(candidate => Object.is(candidate, value))
+                    ? value
+                    : rule.default ?? rule.values[0];
             case 'date':
-                const date = value instanceof Date ? value : new Date(value as any);
+                if (!(value instanceof Date) && typeof value !== 'string' && typeof value !== 'number') {
+                    return rule.default ?? new Date();
+                }
+                const date = value instanceof Date ? value : new Date(value);
                 return isNaN(date.getTime()) ? (rule.default ?? new Date()) : date;
             case 'custom':
                 try {
@@ -147,8 +154,6 @@ export class Sanitizer {
                 }
             case 'any':
                 return value;
-            default:
-                return (rule as any).default;
         }
     }
 

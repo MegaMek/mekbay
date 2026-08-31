@@ -9,6 +9,7 @@ import type {
     LocationId,
 } from '../../models/entity/entity-identifiers';
 import type { StateRevision } from '../../models/runtime/runtime-state';
+import type { UnitConditionKey } from '../../models/unit-condition.model';
 import type {
     MekRecordSheetArmorFace,
     MekRecordSheetLocation,
@@ -43,7 +44,9 @@ import { isHeatSinkEquipment } from '../../models/heat-equipment.model';
 import { isJumpJetEquipment } from '../../models/jump-equipment.model';
 import { isTargetingComputerEquipment } from '../../models/entity/utils/targeting-computer';
 import { isMekRecordSheetInventorySupport } from '../../utils/sheets/record-sheet-inventory-equipment';
+import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
 import { formatRecordSheetWeaponDamageText } from '../../utils/record-sheet-weapon-info.util';
+import { recordSheetAmmoName } from '../../utils/record-sheet-ammo.util';
 import {
     renderRecordSheetConditions,
     renderRecordSheetCrewState,
@@ -147,7 +150,7 @@ export type MekRecordSheetInteraction =
     }>
     | Readonly<{
         kind: 'condition';
-        condition: string;
+        condition: UnitConditionKey;
         expectedRevision: StateRevision;
     }>
     | Readonly<{
@@ -1197,7 +1200,7 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
             kind: 'weapon' as const,
             baseLabel: component.label,
             label,
-            location: component.locations.map(location => location.code).join('/'),
+            location: formatEquipmentLocationCodes(component.locations.map(location => location.code)),
             status: component.status,
             selected: selection !== undefined,
             ammo: false,
@@ -1238,7 +1241,7 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
             componentIds: Object.freeze([component.componentId]),
             baseLabel: component.label,
             label: component.label,
-            location: component.locations.map(location => location.code).join('/'),
+            location: formatEquipmentLocationCodes(component.locations.map(location => location.code)),
             status: component.status,
             selected: false,
             ammo: false,
@@ -1503,13 +1506,6 @@ function renderAmmoProfile(svg: SVGSVGElement, snapshot: MekRecordSheetSnapshot)
             .sort(([left], [right]) => left.localeCompare(right))
             .map(([name, remaining]) => `(${name}) ${remaining}`)
             .join(', ')}`;
-}
-
-function recordSheetAmmoName(value: string): string {
-    return value
-        .replace(/\s*\(Clan\)\s*/gu, ' ')
-        .replace(/\s+Ammo$/u, '')
-        .trim();
 }
 
 function renderCrew(
@@ -2148,8 +2144,8 @@ function updateHeatTargetMarker(
     const target = heatElement(svg, Math.max(0, value), highestHeat);
     const zero = heatElement(svg, 0, highestHeat);
     const center = target ? heatMarkerCenter(target) : null;
-    const zeroCenter = zero ? heatMarkerCenter(zero) : null;
-    if (!center || !zeroCenter) {
+    const zeroBox = zero ? heatMarkerBox(zero) : null;
+    if (!center || !zeroBox) {
         heatScale.querySelector(`#${id}`)?.remove();
         return;
     }
@@ -2163,7 +2159,7 @@ function updateHeatTargetMarker(
         marker.setAttribute('pointer-events', 'none');
         heatScale.appendChild(marker);
     }
-    const tipX = zeroCenter.x + 4;
+    const tipX = zeroBox.x + 4;
     marker.setAttribute('fill', fill);
     marker.setAttribute('points', `${tipX},${center.y} ${tipX - 8},${center.y - 2.5} ${tipX - 8},${center.y + 2.5}`);
     heatScale.appendChild(marker);

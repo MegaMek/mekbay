@@ -213,7 +213,6 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
             dependencies: request.getUnitFilterKernelDependencies(),
         });
 
-    const contextUnitsCache = new Map<string, UnitSummary[]>();
     const contextSnapshotCache = new WeakMap<UnitSummary[], AdvOptionsContextSnapshot>();
     let availabilityContextUnits: UnitSummary[] | null = null;
 
@@ -268,17 +267,12 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                 contextUnits = baseUnits;
             } else {
                 contextStrategy = 'excluded-filter';
-                let cachedContextUnits = contextUnitsCache.get(conf.key);
-                if (!cachedContextUnits) {
-                    cachedContextUnits = applyFilterStateToUnits({
-                        units: baseUnits,
-                        state: request.state,
-                        skipKey: conf.key,
-                        dependencies: request.getUnitFilterKernelDependencies(),
-                    });
-                    contextUnitsCache.set(conf.key, cachedContextUnits);
-                }
-                contextUnits = cachedContextUnits;
+                contextUnits = applyFilterStateToUnits({
+                    units: baseUnits,
+                    state: request.state,
+                    skipKey: conf.key,
+                    dependencies: request.getUnitFilterKernelDependencies(),
+                });
             }
         }
 

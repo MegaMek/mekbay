@@ -36,6 +36,27 @@ describe('OptionsService theme migration', () => {
         expect(service.options().colorScheme).toBe('default');
     });
 
+    it('defaults Classic units to Sheet View', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().classicUnitViewMode).toBe('sheet');
+    });
+
+    it('restores and validates the Classic unit view preference', async () => {
+        savedOptions = { classicUnitViewMode: 'tactical' };
+        let service = await createService();
+
+        expect(service.options().classicUnitViewMode).toBe('tactical');
+
+        TestBed.resetTestingModule();
+        savedOptions = { classicUnitViewMode: 'invalid' };
+        service = await createService();
+
+        expect(service.options().classicUnitViewMode).toBe('sheet');
+    });
+
     it('disables the force sync conflict dialog by default', async () => {
         savedOptions = null;
 

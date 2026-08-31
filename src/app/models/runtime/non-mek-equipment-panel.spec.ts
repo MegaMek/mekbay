@@ -110,7 +110,6 @@ describe('Entity equipment panel projection', () => {
             name: 'AC/10',
             type: 'weapon',
             flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
-            modes: ['Single', 'Rapid'],
             weapon: {
                 ammoType: 'AC',
                 rackSize: 10,
@@ -165,12 +164,6 @@ describe('Entity equipment panel projection', () => {
             })]),
         });
 
-        runtime.dispatch({
-            kind: 'set-component-mode',
-            expectedRevision: runtime.revision(),
-            componentId: weaponId,
-            mode: 'Rapid',
-        });
         runtime.dispatch({
             kind: 'configure-ammo-source',
             expectedRevision: runtime.revision(),
@@ -238,7 +231,7 @@ describe('Entity equipment panel projection', () => {
         expect(snapshot.tracksHeat).toBeFalse();
         expect(weaponRow.status).toBe('available');
         expect(weaponRow.previewStatus).toBe('destroyed');
-        expect(weaponRow.mode).toBe('Rapid');
+        expect(weaponRow.mode).toBeUndefined();
         expect(weaponRow.weapon?.damage).toBe(10);
         expect(weaponRow.weapon?.selectable).toBeTrue();
         expect(weaponRow.weapon?.selection).toEqual({ kind: 'target', targetId });

@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CrewMemberState } from './crew.model';
+import type { MekLocationConditionKey } from './runtime/runtime-state';
+import type { UnitConditionKey } from './unit-condition.model';
 
 export const NARC_CONDITION_COLOR = '#f00';
 
 export interface LocationConditionControl {
-    readonly key: string;
+    readonly key: MekLocationConditionKey;
     readonly label: string;
     readonly color: string;
     readonly counted?: boolean;
@@ -15,7 +17,7 @@ export interface LocationConditionControl {
 export type UnitConditionControlPlacement = 'button' | 'menu';
 
 export interface UnitConditionDefinition {
-    readonly key: string;
+    readonly key: UnitConditionKey;
     readonly label: string;
     readonly bannerLabel?: string;
     readonly bannerFontScaling?: number;
@@ -56,16 +58,18 @@ export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = Ob
     Object.freeze({ key: 'out-of-control', important: true, label: 'OUT OF CONTROL', color: '#d46b00', placement: 'menu' }),
     Object.freeze({ key: 'random-movement', important: true, label: 'RANDOM MOVEMENT', color: '#b56bdb', placement: 'menu' }),
     Object.freeze({ key: 'spotting', label: 'SPOTTING', color: '#471fad' }),
+    Object.freeze({ key: 'stealth', label: 'STEALTH', color: '#226' }),
+    Object.freeze({ key: 'airborne', label: 'AIRBORNE', color: '#1976d2' }),
 ]);
 
-const UNIT_CONDITION_BY_KEY = new Map(
+const UNIT_CONDITION_BY_KEY = new Map<UnitConditionKey, UnitConditionDefinition>(
     UNIT_CONDITION_DEFINITIONS.map(condition => [condition.key, condition]),
 );
 const UNIT_CONDITION_SORT_INDEX = new Map(
     UNIT_CONDITION_DEFINITIONS.map((condition, index) => [condition.key, index]),
 );
 
-export function unitConditionControls(keys: readonly string[]): readonly UnitConditionControl[] {
+export function unitConditionControls(keys: readonly UnitConditionKey[]): readonly UnitConditionControl[] {
     return Object.freeze(keys.map(key => {
         const condition = UNIT_CONDITION_BY_KEY.get(key);
         if (!condition?.placement) throw new Error(`Unknown controllable unit condition: ${key}`);
@@ -73,11 +77,13 @@ export function unitConditionControls(keys: readonly string[]): readonly UnitCon
     }));
 }
 
-export function getUnitConditionDefinition(key: string): UnitConditionDefinition {
-    return UNIT_CONDITION_BY_KEY.get(key) ?? Object.freeze({ key, label: key, color: '#666' });
+export function getUnitConditionDefinition(key: UnitConditionKey): UnitConditionDefinition {
+    const condition = UNIT_CONDITION_BY_KEY.get(key);
+    if (!condition) throw new Error(`Missing presentation for unit condition ${key}`);
+    return condition;
 }
 
-export function unitConditionSortIndex(key: string): number {
+export function unitConditionSortIndex(key: UnitConditionKey): number {
     return UNIT_CONDITION_SORT_INDEX.get(key) ?? UNIT_CONDITION_DEFINITIONS.length;
 }
 

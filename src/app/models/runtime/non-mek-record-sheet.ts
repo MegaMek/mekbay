@@ -34,6 +34,7 @@ import { projectProtoMekRuntimeRules } from '../rules/protomek-runtime-rules';
 import { projectInfantryRuntimeRules } from '../rules/infantry-runtime-rules';
 import { projectAeroRuntimeRules, type AeroHeatEffects } from '../rules/aero-runtime-rules';
 import { projectNonMekComponentStatuses } from './non-mek-component-status';
+import type { UnitConditionKey } from '../unit-condition.model';
 
 export interface NonMekRecordSheetArmorFace {
     readonly faceId: ArmorFaceId;
@@ -116,8 +117,8 @@ export interface NonMekRecordSheetSnapshot {
     readonly structureType: string;
     readonly crewSize: number;
     readonly crew: readonly NonMekRecordSheetCrewPosition[];
-    readonly conditions: readonly string[];
-    readonly conditionControlKeys: readonly string[];
+    readonly conditions: readonly UnitConditionKey[];
+    readonly conditionControlKeys: readonly UnitConditionKey[];
     readonly crewStateControlKeys: readonly CrewMemberState[];
     readonly crewStateDisplayKeys: readonly CrewMemberState[];
     readonly destroyed: boolean;
@@ -278,8 +279,7 @@ export function projectNonMekRecordSheet(
         ?? state.explicitlyDestroyed;
     const movementBlocked = destroyed
         || protoMekRules?.computedConditions.includes('immobile') === true
-        || state.conditions.has('immobile')
-        || state.conditions.has('immobilized');
+        || state.conditions.has('immobile');
     return Object.freeze({
         entityUuid: entity.uuid(),
         stateRevision: state.stateRevision,

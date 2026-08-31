@@ -11,6 +11,7 @@ import {
 import { isDroneOperatingSystemEquipment } from '../../models/drone-operating-system.model';
 import { MEK_UNIT_CONDITION_CONTROLS } from '../../models/mek-record-sheet-controls';
 import type { CBTRuleset } from '../../models/cbt-ruleset.model';
+import type { UnitConditionKey } from '../../models/unit-condition.model';
 import { gameRulesFor } from '../../models/rules/game-rules';
 import {
     NARC_CONDITION_COLOR,
@@ -61,14 +62,11 @@ export function generatedUnitConditionControls(
     if (!isVehicleEntity(entity) && !isProtoMekEntity(entity) && !isAeroEntity(entity)) return [];
 
     const drone = entity.equipment().some(mount => isDroneOperatingSystemEquipment(mount.equipment));
-    return unitConditionControls([
-        'swarmed',
-        'tagged',
-        'ecm-shielded',
-        ...(gameRulesFor(ruleset).supportsSkidding ? ['skidding'] : []),
-        'jammed',
-        ...(drone ? ['disconnected'] : []),
-    ]);
+    const keys: UnitConditionKey[] = ['swarmed', 'tagged', 'ecm-shielded'];
+    if (gameRulesFor(ruleset).supportsSkidding) keys.push('skidding');
+    keys.push('jammed');
+    if (drone) keys.push('disconnected');
+    return unitConditionControls(keys);
 }
 
 function appendUnitConditionPresentation(
@@ -306,9 +304,15 @@ function appendCrewStateMenuIndicators(svg: SVGSVGElement, entity: BaseEntity): 
         || isVehicleEntity(entity) && !drone;
     if (!hasCrewStateControls) return;
 
-    const occurrences = new Set(Array.from(svg.querySelectorAll<SVGElement>('.crewStateButton[crewId]'))
-        .map(control => control.getAttribute('crewId'))
-        .filter((value): value is string => value !== null));
+    const occurrences = new Set<string>();
+    svg.querySelectorAll<SVGElement>('[id^="pilotName"], [id^="crewName"]').forEach(name => {
+        const match = /^(?:pilotName|crewName)(\d+)$/u.exec(name.id);
+        if (match) occurrences.add(match[1]);
+    });
+    svg.querySelectorAll<SVGElement>('.crewStateButton[crewId]').forEach(control => {
+        const occurrence = control.getAttribute('crewId');
+        if (occurrence !== null) occurrences.add(occurrence);
+    });
     for (const occurrence of occurrences) {
         if (svg.getElementById(`generated_crew_state_menu_${occurrence}`)) continue;
         const name = svg.getElementById(`pilotName${occurrence}`)
@@ -321,15 +325,15 @@ function appendCrewStateMenuIndicators(svg: SVGSVGElement, entity: BaseEntity): 
         const nameY = Number(name.getAttribute('y')) || 12;
         const control = svgElement('g');
         control.id = `generated_crew_state_menu_${occurrence}`;
-        control.setAttribute('class', 'crewStateButton unitConditionButton screen-only');
+        control.setAttribute('class', 'crewStateButton unitConditionButton screen-only edit-only');
         control.setAttribute('crewId', occurrence);
         control.setAttribute('data-mekbay-control-id', 'menu');
-        const x = Math.max(0, width - 14);
-        const rect = transparentRect(x, nameY - 10, 11, 11, 'crew-state-menu-hit-area');
+        const x = Math.max(0, width - 16);
+        const rect = transparentRect(x, nameY - 8, 10, 10, 'crew-state-menu-hit-area');
         rect.setAttribute('fill', '#fff');
         rect.setAttribute('stroke', '#000');
-        rect.setAttribute('stroke-width', '0.9');
-        const text = addText(control, '...', x + 5.5, nameY - 2.5, {
+        rect.setAttribute('stroke-width', '0.72');
+        const text = addText(control, '...', x + 5, nameY - 2.5, {
             size: 6.5,
             weight: 700,
             anchor: 'middle',
@@ -337,7 +341,7 @@ function appendCrewStateMenuIndicators(svg: SVGSVGElement, entity: BaseEntity): 
         });
         control.insertBefore(rect, text);
         parent.appendChild(control);
-        ensureGeneratedCrewStateBanners(svg, parent, occurrence, x - 64, nameY - 10);
+        ensureGeneratedCrewStateBanners(svg, parent, occurrence, x - 64, nameY - 8);
     }
 }
 

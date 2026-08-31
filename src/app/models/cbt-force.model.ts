@@ -12,6 +12,7 @@ import {
 } from './force-member.model';
 import type { SerializedClassicForce, SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
+import type { UnitConditionKey } from './unit-condition.model';
 import {
     Force,
     MAX_UNITS,
@@ -28,7 +29,6 @@ import {
     type EncounterNetwork,
     type EncounterTargetId,
     type TargetRegistryCommand,
-    type TargetRegistryCommandResult,
     type TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
 import {
@@ -210,6 +210,10 @@ import {
     pruneRemovedUnitsFromEncounter,
     remapCBTForceCloneEnvelope,
 } from './runtime/cbt-force-persistence-helpers';
+import {
+    authorizeCBTForceTargetRegistryCommand,
+    rejectedCBTForceTargetRegistry,
+} from './cbt-force-target-registry';
 
 import type {
     AttackerTargetingCommandResult,
@@ -1416,7 +1420,7 @@ export class CBTForce extends Force<never> {
         return this.authority.unitCrewAssignment(instanceId);
     }
 
-    public getUnitConditions(instanceId: UnitInstanceId): readonly string[] | null {
+    public getUnitConditions(instanceId: UnitInstanceId): readonly UnitConditionKey[] | null {
         return this.authority.unitConditions(instanceId);
     }
 
@@ -2393,11 +2397,11 @@ export class CBTForce extends Force<never> {
     ): CBTForceTargetRegistryDispatchResult {
         const current = this.queryInventoryControlTargetRegistry();
         if (command.expectedRevision !== current.revision) {
-            return rejectedForceTargetRegistry(current, 'STALE_REVISION');
+            return rejectedCBTForceTargetRegistry(current, 'STALE_REVISION');
         }
-        if (this.readOnly()) return rejectedForceTargetRegistry(current, 'FORCE_READ_ONLY');
+        if (this.readOnly()) return rejectedCBTForceTargetRegistry(current, 'FORCE_READ_ONLY');
 
-        const authorized = this.authorizeInventoryControlTargetCommand(current, command, authority);
+        const authorized = authorizeCBTForceTargetRegistryCommand(current, command, authority);
         if ('accepted' in authorized) return authorized;
         const planned = reduceTargetRegistry(current, authorized);
         if (!planned.accepted || !planned.changed) return planned;
@@ -2416,7 +2420,6 @@ export class CBTForce extends Force<never> {
         const result = this.encounterRuntime.dispatchTargetRegistry(authorized);
         if (result.accepted && result.changed) {
             this.authority.installTargetingReconciliation(targetingReconciliation);
-            this.reconcileInventoryControlTargetRegistry(current, result.snapshot);
             this.targetRegistryVersionState.update(version => version + 1);
             this.emitChangedFromReservedIntent(Object.freeze([]));
         }
@@ -2441,77 +2444,12 @@ export class CBTForce extends Force<never> {
         return Object.freeze(rows);
     }
 
-    private authorizeInventoryControlTargetCommand(
-        current: TargetRegistrySnapshot,
-        command: TargetRegistryCommand,
-        authority: CBTForceTargetRegistryAuthority,
-    ): TargetRegistryCommand | CBTForceTargetRegistryDispatchResult {
-        const manualTargets = current.targets.filter(target => target.source !== 'opfor');
-        const opforTargets = current.targets.filter(target => target.source === 'opfor');
-        if (authority === 'registry-reset') {
-            return command.kind === 'reset-targets'
-                ? command
-                : rejectedForceTargetRegistry(current, 'TARGET_ORIGIN_POLICY');
-        }
-        if (authority === 'opfor-sync') {
-            if (command.kind !== 'replace-targets'
-                || command.targets.some(target => target.source !== 'opfor' || target.readOnly !== true)) {
-                return rejectedForceTargetRegistry(current, 'TARGET_ORIGIN_POLICY');
-            }
-            return { ...command, targets: [...manualTargets, ...command.targets] };
-        }
-
-        if (command.kind === 'create-target'
-            && (command.target.source === 'opfor' || command.target.readOnly === true)) {
-            return rejectedForceTargetRegistry(current, 'TARGET_ORIGIN_POLICY');
-        }
-        if (command.kind === 'delete-target'
-            && opforTargets.some(target => target.id === command.targetId)) {
-            return rejectedForceTargetRegistry(current, 'TARGET_ORIGIN_POLICY');
-        }
-        if (command.kind === 'replace-targets') {
-            if (command.targets.some(target => target.source === 'opfor' || target.readOnly === true)) {
-                return rejectedForceTargetRegistry(current, 'TARGET_ORIGIN_POLICY');
-            }
-            return { ...command, targets: [...command.targets, ...opforTargets] };
-        }
-        if (command.kind === 'reset-targets') {
-            return {
-                kind: 'replace-targets',
-                expectedRevision: command.expectedRevision,
-                targets: opforTargets,
-            };
-        }
-        return command;
-    }
-
-    private reconcileInventoryControlTargetRegistry(
-        previous: TargetRegistrySnapshot,
-        next: TargetRegistrySnapshot,
-    ): void {
-        if (previous.targets.length === 0 && next.targets.length > 0) {
-            // The force-owned targeting reconciliation prepared above owns
-            // first-target adoption. No mutable unit projection participates.
-        }
-        void next;
-    }
-
     private invalidateInventoryControlTargetRegistry(): void {
-        const snapshot = this.queryInventoryControlTargetRegistry();
-        this.reconcileInventoryControlTargetRegistry(snapshot, snapshot);
         this.targetRegistryVersionState.update(version => version + 1);
     }
 
     protected override transferPilotData(_fromUnit: never, _toUnit: never): void {
         throw new Error('Classic crew transfer requires canonical V2 members');
-    }
-
-    protected override deserializeForceUnit(_data: never): never {
-        throw new Error('V1 Classic units must be converted to V2 before runtime admission');
-    }
-
-    protected override sanitizeForceData(data: SerializedForce): SerializedForce {
-        throw new Error(`Classic force ${data.instanceId} must use direct current persistence loading`);
     }
 
     protected override buildCBTForcePersistenceRecord(
@@ -2587,13 +2525,6 @@ export class CBTForce extends Force<never> {
             this.dataService, this.injector
         );
     }
-}
-
-function rejectedForceTargetRegistry(
-    snapshot: TargetRegistrySnapshot,
-    reason: Extract<TargetRegistryCommandResult, { readonly accepted: false }>['reason'] | 'FORCE_READ_ONLY',
-): CBTForceTargetRegistryDispatchResult {
-    return Object.freeze({ accepted: false, changed: false, reason, snapshot });
 }
 
 function directAdmissionFailure(

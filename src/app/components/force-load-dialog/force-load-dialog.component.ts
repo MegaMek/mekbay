@@ -152,7 +152,7 @@ export class ForceLoadDialogComponent {
     private readonly hangarDefaultItemSize = 142;
     private readonly hangarItemSizeSignal = signal(this.hangarDefaultItemSize);
     readonly hangarItemSize = computed(() => this.hangarItemSizeSignal());
-    private hangarHeightTrackingDebounceTimer: any;
+    private hangarHeightTrackingDebounceTimer: ReturnType<typeof setTimeout> | undefined;
     private readonly hangarMeasuredItemHeights = new Map<string, number>();
 
     readonly HANGAR_SORT_OPTIONS: { key: string; label: string }[] = [
@@ -558,7 +558,7 @@ export class ForceLoadDialogComponent {
         const MAX_GAP_CORRECTIONS = 3;
         let gapCorrectionPending: { destroy: () => void } | null = null;
         let gapCorrectionCount = 0;
-        let scrollGapTimer: any;
+        let scrollGapTimer: ReturnType<typeof setTimeout> | undefined;
         let currentViewportElement: HTMLElement | null = null;
         let viewportResizeObserver: ResizeObserver | null = null;
         let prevLayoutKey: string | undefined;
@@ -1230,7 +1230,7 @@ export class ForceLoadDialogComponent {
     }
 
     /** Shared sort comparator for forces and packs */
-    private sortItems<T extends { name?: string; type?: GameSystem; bv?: number; pv?: number; faction?: Faction | null; factionId?: number; timestamp?: string; groups?: { units?: any[] }[]; units?: any[] }>(items: T[], sortKey: string, sortDir: SortDirection): T[] {
+    private sortItems<T extends { name?: string; type?: GameSystem; bv?: number; pv?: number; faction?: Faction | null; factionId?: number; timestamp?: string; groups?: { units?: unknown[] }[]; units?: unknown[] }>(items: T[], sortKey: string, sortDir: SortDirection): T[] {
         const dir = sortDir === 'asc' ? 1 : -1;
         return items.sort((a, b) => {
             switch (sortKey) {
@@ -1739,7 +1739,7 @@ export class ForceLoadDialogComponent {
                 ...f,
                 timestamp: originalForce?.timestamp || new Date().toISOString(),
             };
-        }) as any;
+        });
         this.operations.set([...this.operations()]);
     }
 
@@ -1856,7 +1856,7 @@ export class ForceLoadDialogComponent {
      * Waits for the org dialog to close, but also closes the load dialog
      * immediately if a force is loaded/added while the org dialog is open.
      */
-    private async awaitOrgDialogOrForceLoad(ref: { closed: import('rxjs').Observable<any> }): Promise<void> {
+    private async awaitOrgDialogOrForceLoad(ref: { closed: import('rxjs').Observable<unknown> }): Promise<void> {
         const reason = await firstValueFrom(
             race([
                 ref.closed.pipe(map(() => 'closed' as const)),

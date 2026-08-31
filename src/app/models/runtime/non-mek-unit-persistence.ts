@@ -20,6 +20,7 @@ import {
     type LocationId,
 } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
+import { requireUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import {
     deserializeUnitCover,
     serializeUnitCover,
@@ -40,6 +41,7 @@ import {
     NON_MEK_UNIT_RUNTIME_SCHEMA_VERSION,
     NonMekUnitInstance,
     freezeNonMekUnitState,
+    nonMekComponentStateModes,
     type NonMekCrewState,
     type NonMekMovementDeclaration,
     type NonMekUnitRuntimeState,
@@ -115,7 +117,7 @@ export interface SerializedNonMekUnit {
         readonly ejected: boolean;
         readonly state?: NonMekCrewState;
     }>[];
-    readonly conditions?: readonly string[];
+    readonly conditions?: readonly UnitConditionKey[];
     readonly heat?: Readonly<{
         readonly current: number;
         readonly previous: number;
@@ -296,7 +298,8 @@ export function restoreNonMekUnit(
         || saved.baselineRefAtSave.entity.uuid !== entity.uuid()) {
         throw new Error('Persisted runtime identity does not match the entity');
     }
-    if (saved.baselineRefAtSave.ruleset === undefined) throw new Error('Persisted runtime has no ruleset');
+    const ruleset = saved.baselineRefAtSave.ruleset;
+    if (ruleset === undefined) throw new Error('Persisted runtime has no ruleset');
     const index = buildNonMekRuntimeIndex(entity);
     assertCanonicalCrewAssignment(index.crewPositions, saved.deployment.values.crewAssignment);
 
@@ -313,17 +316,29 @@ export function restoreNonMekUnit(
         }));
     }
     const components = new Map<ComponentId, NonMekUnitRuntimeState['components'] extends ReadonlyMap<ComponentId, infer T> ? T : never>();
+    const seenComponents = new Set<ComponentId>();
     for (const entry of saved.componentState ?? []) {
         const componentId = asComponentId(entry.componentId);
-        if (components.has(componentId)) throw new Error(`Duplicate persisted component ${componentId}`);
-        components.set(componentId, Object.freeze({
+        if (seenComponents.has(componentId)) throw new Error(`Duplicate persisted component ${componentId}`);
+        seenComponents.add(componentId);
+        const component = index.components.get(componentId);
+        const modes = component === undefined
+            ? null
+            : nonMekComponentStateModes(entity, component.mount.equipment, ruleset);
+        const mode = entry.mode !== undefined
+            && modes?.modes.includes(entry.mode) === true
+            && entry.mode !== modes.defaultMode
+            ? entry.mode
+            : undefined;
+        const restored: ComponentRuntimeState = Object.freeze({
             ...(entry.status === undefined ? {} : { statusOverride: entry.status }),
-            ...(entry.mode === undefined ? {} : { mode: entry.mode }),
+            ...(mode === undefined ? {} : { mode }),
             ...(entry.jammed === true ? { jammed: true } : {}),
             ...(entry.escalatingFailure === undefined
                 ? {}
                 : { escalatingFailure: Object.freeze({ ...entry.escalatingFailure }) }),
-        }));
+        });
+        if (Object.keys(restored).length > 0) components.set(componentId, restored);
     }
     const damageTracks = new Map<SystemDamageTrackId, NonMekUnitRuntimeState['damageTracks'] extends ReadonlyMap<SystemDamageTrackId, infer T> ? T : never>();
     for (const entry of saved.damageTrackState ?? []) {
@@ -354,7 +369,7 @@ export function restoreNonMekUnit(
             ...(entry.state === undefined ? {} : { state: entry.state }),
         }));
     }
-    const conditions = new Set(saved.conditions ?? []);
+    const conditions = new Set((saved.conditions ?? []).map(requireUnitConditionKey));
     if (conditions.size !== (saved.conditions?.length ?? 0)) throw new Error('Duplicate persisted condition');
     const equipmentRowOrder = freezeEquipmentRowOrder(saved.equipmentRowOrder);
     const state = freezeNonMekUnitState({
@@ -385,7 +400,7 @@ export function restoreNonMekUnit(
         asUnitInstanceId(saved.instanceId),
         freezeBaseline(saved.baselineRefAtSave),
         entity,
-        saved.baselineRefAtSave.ruleset,
+        ruleset,
         state,
     );
 }

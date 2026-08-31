@@ -181,6 +181,20 @@ export function isSwitchableStealthEquipment(equipment: Equipment): boolean {
         && equipment.modes.some(mode => mode.toLowerCase() === 'on');
 }
 
+export function stealthComponentModes(
+    equipment: Equipment,
+): Readonly<{ readonly modes: readonly string[]; readonly defaultMode?: string }> | null {
+    if (!isInteractiveStealthFlags(equipment.flags)) return null;
+    const modes = Object.freeze(equipment.modes.filter(mode => {
+        const normalized = mode.toLowerCase();
+        return normalized === 'on' || normalized === 'off';
+    }));
+    const enabled = modes.find(mode => mode.toLowerCase() === 'on');
+    const disabled = modes.find(mode => mode.toLowerCase() === 'off');
+    if (!enabled || !disabled) return Object.freeze({ modes: Object.freeze([]) });
+    return Object.freeze({ modes, defaultMode: disabled });
+}
+
 export function stealthStateForMode(
     equipment: Equipment,
     mode: string | undefined,

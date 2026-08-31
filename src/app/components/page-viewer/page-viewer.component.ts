@@ -23,7 +23,6 @@ import {
     ApplicationRef
 } from '@angular/core';
 
-import type { ViewportTransform } from '../../models/force-serialization';
 import {
     PageViewerZoomPanService,
     type SwipeCallbacks,
@@ -75,7 +74,7 @@ import { PageViewerSwipeDomService } from './internal/page-viewer-swipe-dom.serv
 import { PageViewerSwipeRenderPlanService } from './internal/page-viewer-swipe-render-plan.service';
 import { PageViewerSwipeRendererService } from './internal/page-viewer-swipe-renderer.service';
 import { PageViewerWrapperLayoutService } from './internal/page-viewer-wrapper-layout.service';
-import type { PageViewerMember, PageViewerPageDescriptor, PageViewerShadowDescriptor } from './internal/types';
+import type { PageViewerMember, PageViewerPageDescriptor, PageViewerShadowDescriptor, ViewportTransform } from './internal/types';
 import { PageViewerSheetSourceService } from './internal/page-viewer-sheet-source.service';
 import { PageViewerMekRuntimeService } from './internal/page-viewer-mek-runtime.service';
 import { PageViewerMekInteractionService } from './internal/page-viewer-mek-interaction.service';

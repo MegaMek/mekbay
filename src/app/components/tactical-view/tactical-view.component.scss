@@ -1,0 +1,563 @@
+:host {
+    --tactical-accent: #d2ae39;
+    --tactical-cyan: #70d9df;
+    --tactical-danger: #db4d43;
+    --tactical-panel: color-mix(in srgb, var(--background-color) 89%, #252525);
+    --tactical-panel-strong: color-mix(in srgb, var(--background-color) 79%, #343434);
+    --tactical-line: color-mix(in srgb, var(--text-color) 17%, transparent);
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    color: var(--text-color);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--background-color) 90%, #1c2427), var(--background-color) 52%);
+    container-type: inline-size;
+}
+
+* { box-sizing: border-box; }
+button { font: inherit; }
+h1, h2, h3, p { margin: 0; }
+
+.tactical-shell,
+.tactical-scroll {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
+
+.tactical-scroll {
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: max(6px, var(--safe-area-inset-top)) max(8px, var(--safe-area-inset-right)) calc(16px + var(--safe-area-inset-bottom)) max(8px, var(--safe-area-inset-left));
+    scrollbar-gutter: stable;
+}
+
+.tactical-toolbar,
+.unit-hero,
+.command-strip,
+.status-banner-list,
+.turn-summary-host,
+.tactical-grid {
+    width: min(100%, 1760px);
+    margin-inline: auto;
+}
+
+.tactical-toolbar {
+    position: sticky;
+    z-index: 30;
+    top: 0;
+    display: flex;
+    min-height: 36px;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 6px;
+    padding: 3px 5px;
+    border: 1px solid var(--tactical-line);
+    background: color-mix(in srgb, var(--background-color) 92%, #161a1b);
+    box-shadow: 0 5px 16px #0006;
+}
+
+.toolbar-spacer { flex: 1 1 auto; }
+
+.toolbar-button,
+.toolbar-icon-button,
+.nav-button,
+.compact-stepper button,
+.expand-all-button,
+.row-expand-button,
+.target-chip,
+.nested-link,
+.handler-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    border: 1px solid var(--tactical-line);
+    background: color-mix(in srgb, var(--tactical-panel-strong) 88%, transparent);
+    color: var(--text-color);
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.toolbar-button {
+    min-height: 28px;
+    gap: 5px;
+    padding: 2px 8px;
+    font-size: 0.66rem;
+    font-weight: 750;
+}
+
+.toolbar-button svg,
+.toolbar-icon-button svg { width: 16px; height: 16px; }
+.toolbar-icon-button { width: 28px; height: 28px; padding: 0; }
+.toolbar-count {
+    display: grid;
+    min-width: 17px;
+    height: 17px;
+    place-items: center;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--tactical-accent) 30%, transparent);
+    font-size: 0.56rem;
+}
+
+.toolbar-button:hover:not(:disabled),
+.toolbar-icon-button:hover:not(:disabled),
+.nav-button:hover:not(:disabled),
+.compact-stepper button:hover:not(:disabled),
+.expand-all-button:hover:not(:disabled),
+.row-expand-button:hover:not(:disabled),
+.target-chip:hover:not(:disabled),
+.nested-link:hover:not(:disabled),
+.handler-button:hover:not(:disabled),
+.damage-strip:hover:not(:disabled),
+.critical-row:hover:not(:disabled),
+.entity-damage-track:hover:not(:disabled) {
+    border-color: var(--tactical-accent);
+    background-color: color-mix(in srgb, var(--tactical-accent) 13%, var(--tactical-panel-strong));
+}
+
+button:disabled { cursor: default; opacity: 0.38; }
+
+.unit-hero {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    border: 1px solid var(--tactical-line);
+    border-left: 3px solid var(--tactical-accent);
+    background: linear-gradient(100deg, var(--tactical-panel-strong), color-mix(in srgb, var(--tactical-panel) 72%, transparent));
+}
+
+.unit-icon { opacity: 0.9; filter: drop-shadow(0 3px 6px #0008); }
+.unit-title-block { min-width: 0; }
+.eyebrow, .panel-kicker {
+    color: var(--tactical-accent);
+    font-size: 0.54rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+}
+h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: clamp(1rem, 3.3cqi, 1.5rem);
+    line-height: 1.05;
+}
+.unit-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    margin-top: 2px;
+    color: var(--text-color-secondary);
+    font-size: 0.59rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.unit-navigation,
+.compact-stepper { display: inline-flex; align-items: center; }
+.unit-navigation { gap: 3px; }
+.nav-button { width: 28px; height: 28px; padding: 0; }
+.nav-button svg { width: 15px; height: 15px; }
+.unit-position {
+    min-width: 36px;
+    color: var(--text-color-secondary);
+    font-size: 0.61rem;
+    font-weight: 800;
+    text-align: center;
+}
+
+.command-strip {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.25fr);
+    align-items: stretch;
+    gap: 5px;
+    margin-bottom: 5px;
+}
+.command-strip.crew-only { grid-template-columns: minmax(0, 1fr); }
+.unit-capabilities,
+.crew-card {
+    border: 1px solid var(--tactical-line);
+    background: var(--tactical-panel);
+}
+.unit-capabilities { display: flex; flex-flow: column wrap; gap: 4px; padding: 4px 6px; }
+.condition-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.skills span { color: var(--text-color-secondary); font-size: 0.59rem; font-weight: 700; }
+.skills strong { margin-left: 2px; color: var(--text-color); font-size: 0.72rem; }
+
+.state-chip {
+    min-height: 22px;
+    padding: 1px 5px;
+    border: 1px solid var(--tactical-line);
+    background: transparent;
+    color: var(--text-color-secondary);
+    font-size: 0.55rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+.state-chip.active {
+    border-color: var(--state-color);
+    background: color-mix(in srgb, var(--state-color) 64%, #111);
+    color: #fff;
+}
+
+.crew-scroll {
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+}
+.crew-track { display: flex; min-width: max-content; height: 100%; gap: 5px; }
+.crew-card {
+    display: flex;
+    width: clamp(230px, 28vw, 320px);
+    min-height: 54px;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 7px;
+    padding: 4px 6px;
+    scroll-snap-align: start;
+}
+.crew-identity { display: flex; min-width: 80px; flex: 1 1 90px; flex-direction: column; }
+.crew-identity strong { font-size: 0.68rem; }
+.crew-identity span { color: var(--text-color-secondary); font-size: 0.51rem; text-transform: uppercase; }
+.skills, .crew-state-controls { display: flex; align-items: center; gap: 4px; }
+.wound-stepper { gap: 2px; }
+.wound-stepper > span { margin-right: 2px; color: var(--text-color-secondary); font-size: 0.5rem; font-weight: 800; }
+.compact-stepper button { width: 22px; height: 22px; padding: 0; font-weight: 800; }
+.compact-stepper strong { min-width: 23px; font-size: 0.6rem; text-align: center; }
+
+.status-banner-list { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; }
+.status-banner {
+    padding: 3px 6px;
+    border-left: 2px solid var(--state-color, var(--tactical-accent));
+    background: color-mix(in srgb, var(--state-color, var(--tactical-accent)) 18%, var(--tactical-panel));
+    font-size: 0.56rem;
+    font-weight: 800;
+}
+.status-banner.danger { --state-color: var(--tactical-danger); }
+
+.turn-summary-host { margin-bottom: 6px; }
+page-turn-summary-panel { display: block; width: 100%; }
+
+.tactical-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 7px;
+}
+.tactical-panel {
+    min-width: 0;
+    border: 1px solid var(--tactical-line);
+    background: var(--tactical-panel);
+    box-shadow: 0 8px 20px #0003;
+}
+.panel-heading {
+    display: flex;
+    min-height: 38px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 7px;
+    border-bottom: 1px solid var(--tactical-line);
+    background: linear-gradient(100deg, var(--tactical-panel-strong), transparent);
+}
+.panel-heading h2 { font-size: 0.82rem; line-height: 1.05; }
+.panel-heading-actions { display: flex; align-items: center; gap: 5px; }
+.panel-count {
+    display: inline-flex;
+    min-width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--tactical-line);
+    color: var(--text-color-secondary);
+    font-size: 0.58rem;
+    font-weight: 800;
+}
+.expand-all-button { min-height: 22px; padding: 1px 6px; font-size: 0.54rem; font-weight: 750; }
+
+.inventory-group + .inventory-group { border-top: 1px solid var(--tactical-line); }
+.inventory-group-heading {
+    display: flex;
+    min-height: 26px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 3px 7px;
+    background: color-mix(in srgb, var(--background-color) 70%, #111);
+}
+.inventory-group-heading h3 { font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.inventory-group-heading span { color: var(--text-color-secondary); font-size: 0.54rem; text-transform: uppercase; }
+.inventory-group-heading strong { margin-left: 2px; color: var(--text-color); font-size: 0.68rem; }
+.inventory-head,
+.inventory-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) 43px 47px 30px 69px 53px 28px;
+    align-items: center;
+    gap: 4px;
+}
+.inventory-head {
+    padding: 3px 6px;
+    border-bottom: 1px solid var(--tactical-line);
+    color: var(--text-color-secondary);
+    font-size: 0.47rem;
+    font-weight: 800;
+}
+.inventory-entry { border-bottom: 1px solid color-mix(in srgb, var(--tactical-line) 66%, transparent); }
+.inventory-entry:last-child { border-bottom: 0; }
+.inventory-entry.expanded { box-shadow: inset 2px 0 color-mix(in srgb, var(--tactical-accent) 70%, transparent); }
+.inventory-row { min-height: 29px; padding: 2px 6px; font-size: 0.59rem; }
+.inventory-row.unavailable { background: repeating-linear-gradient(-45deg, transparent 0 5px, #7771 5px 7px); }
+.equipment-name { display: flex; min-width: 0; flex-direction: column; }
+.equipment-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.equipment-name small, .equipment-location { color: var(--text-color-secondary); }
+.ammo-summary { color: var(--tactical-accent) !important; font-size: 0.48rem; }
+.equipment-location, .equipment-stat { text-align: center; }
+.equipment-status { color: var(--tactical-danger); font-size: 0.47rem; font-weight: 900; text-align: center; }
+.equipment-status.available { color: var(--tactical-cyan); }
+.equipment-actions { display: grid; min-width: 0; place-items: center; }
+.row-expand-button { width: 22px; height: 22px; padding: 0; }
+.row-expand-button svg { width: 13px; height: 13px; transition: transform 120ms ease; }
+.inventory-entry.expanded .row-expand-button svg { transform: rotate(180deg); }
+
+.inventory-nested-row {
+    display: flex;
+    flex-flow: column wrap;
+    gap: 4px;
+    padding: 4px 6px 5px 22px;
+    border-top: 1px dashed color-mix(in srgb, var(--tactical-line) 70%, transparent);
+    background: color-mix(in srgb, var(--background-color) 55%, transparent);
+}
+.nested-control { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 5px; }
+.nested-label { color: var(--text-color-secondary); font-size: 0.48rem; font-weight: 850; letter-spacing: 0.08em; }
+.target-options, .handler-options { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 3px; }
+.target-chip { width: 23px; height: 23px; padding: 0; border-color: color-mix(in srgb, var(--target-color, var(--tactical-line)) 68%, var(--tactical-line)); font-size: 0.58rem; font-weight: 900; }
+.target-chip.active { border-color: var(--target-color, var(--tactical-accent)); background: var(--target-color, color-mix(in srgb, var(--tactical-accent) 38%, transparent)); color: #fff; box-shadow: inset 0 0 0 1px #fff6; }
+.nested-link { min-height: 23px; padding: 1px 7px; color: var(--tactical-accent); font-size: 0.54rem; }
+.handler-label { padding: 2px 4px; color: var(--text-color-secondary); font-size: 0.53rem; }
+.handler-button { min-height: 23px; gap: 3px; padding: 2px 6px; font-size: 0.55rem; }
+.handler-button.active { border-color: var(--tactical-accent); box-shadow: inset 0 -2px var(--tactical-accent); }
+.handler-button small { color: var(--text-color-secondary); font-size: 0.45rem; }
+
+.location-block { border-bottom: 1px solid var(--tactical-line); }
+.location-block:last-child { border-bottom: 0; }
+.location-block.destroyed { background: color-mix(in srgb, var(--tactical-danger) 10%, transparent); }
+.location-line {
+    display: grid;
+    grid-template-columns: 31px minmax(0, 1fr);
+    align-items: stretch;
+    min-height: 25px;
+}
+.location-line + .location-line { border-top: 1px dashed color-mix(in srgb, var(--tactical-line) 60%, transparent); }
+.location-name {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    border-right: 1px solid var(--tactical-line);
+}
+.location-name strong { font-size: 0.66rem; }
+.location-name span { color: var(--tactical-danger); font-size: 0.4rem; font-weight: 900; }
+.location-tracks {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 5px;
+    padding: 2px 3px;
+}
+.damage-strip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    min-height: 22px;
+    padding: 1px 3px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-color);
+    text-align: left;
+    cursor: pointer;
+}
+.armor-strip { flex: 1 1 245px; }
+.internal-strip {
+    flex: 1 1 150px;
+    border-left-color: color-mix(in srgb, var(--tactical-cyan) 48%, var(--tactical-line));
+}
+.track-value {
+    min-width: 18px;
+    color: var(--text-color-secondary);
+    font-size: 0.52rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+.pip-segments {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 4px;
+}
+.pip-ten {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 1px;
+    padding-right: 4px;
+    border-right: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent);
+}
+.pip-ten:last-child { padding-right: 0; border-right: 0; }
+.damage-pip {
+    display: block;
+    width: 5px;
+    height: 5px;
+    flex: 0 0 auto;
+    border: 1px solid color-mix(in srgb, var(--text-color) 42%, transparent);
+    border-radius: 50%;
+    background: transparent;
+}
+.damage-pip.five-end { margin-right: 3px; }
+.damage-pip.damaged { border-color: color-mix(in srgb, var(--tactical-danger) 86%, #fff); background: var(--tactical-danger); }
+.structure-pip { border-radius: 1px; border-color: color-mix(in srgb, var(--tactical-cyan) 58%, transparent); }
+.structure-pip.damaged { border-color: color-mix(in srgb, var(--tactical-danger) 86%, #fff); }
+
+/* Critical anatomy stays in three columns, including narrow/mobile layouts. */
+.critical-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+.critical-column { min-width: 0; border-right: 1px solid var(--tactical-line); }
+.critical-column:last-child { border-right: 0; }
+.critical-group { min-width: 0; padding: 3px 4px 4px; border-bottom: 1px solid var(--tactical-line); }
+.critical-group:last-child { border-bottom: 0; }
+.critical-group h3 { margin-bottom: 1px; color: var(--tactical-accent); font-size: 0.55rem; letter-spacing: 0.08em; }
+.critical-row {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    min-height: 18px;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 2px;
+    border: 1px solid transparent;
+    border-top-color: color-mix(in srgb, var(--tactical-line) 54%, transparent);
+    background: transparent;
+    color: var(--text-color);
+    font-size: 0.51rem;
+    text-align: left;
+    cursor: pointer;
+}
+.critical-row.hit { background: color-mix(in srgb, var(--tactical-danger) 7%, transparent); }
+.critical-row.destroyed { background: color-mix(in srgb, var(--tactical-danger) 14%, transparent); }
+.critical-row.destroyed .critical-name { color: #ff9582; text-decoration: line-through; text-decoration-thickness: 1px; }
+.critical-row.unhittable { opacity: 0.44; }
+.slot-number {
+    display: grid;
+    width: 13px;
+    height: 13px;
+    flex: 0 0 auto;
+    place-items: center;
+    background: color-mix(in srgb, var(--text-color) 9%, transparent);
+    color: var(--text-color-secondary);
+    font-size: 0.42rem;
+    font-weight: 800;
+}
+.critical-name { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; font-weight: 650; line-height: 1.04; }
+.critical-pip { display: block; width: 7px; height: 7px; flex: 0 0 auto; border: 1px solid color-mix(in srgb, var(--text-color) 48%, transparent); background: transparent; }
+.armor-critical-pip { border-radius: 50%; }
+.extra-critical-pip { border-radius: 1px; }
+.critical-pip.hit { border-color: #ff9b81; background: var(--tactical-danger); box-shadow: 0 0 4px color-mix(in srgb, var(--tactical-danger) 60%, transparent); }
+.damage-track-list { padding: 3px 5px; }
+.entity-damage-track {
+    display: flex;
+    width: 100%;
+    min-height: 25px;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 4px;
+    border: 1px solid transparent;
+    border-bottom-color: var(--tactical-line);
+    background: transparent;
+    color: var(--text-color);
+    font-size: 0.58rem;
+    cursor: pointer;
+}
+.entity-damage-track:last-child { border-bottom-color: transparent; }
+.damage-track-pips { display: inline-flex; flex-wrap: wrap; gap: 2px; }
+.entity-damage-track strong { margin-left: auto; font-size: 0.52rem; }
+
+.heat-panel { padding-bottom: 6px; }
+.heat-readout { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 5px 7px; }
+.heat-value, .heat-stat { display: flex; min-width: 48px; flex-direction: column; }
+.heat-value span, .heat-stat span { color: var(--text-color-secondary); font-size: 0.47rem; font-weight: 800; }
+.heat-value strong { color: #ff8c58; font-size: 1.15rem; line-height: 1; }
+.heat-stat strong { font-size: 0.74rem; }
+.heat-scale { display: grid; grid-template-columns: repeat(30, minmax(2px, 1fr)); gap: 1px; padding: 0 7px; }
+.heat-scale span { height: 8px; border: 1px solid var(--tactical-line); background: #0002; }
+.heat-scale span.active { border-color: #e28c35; background: #e28c35; }
+.heat-scale span.active.hot { border-color: #db653d; background: #db653d; }
+.heat-scale span.active.critical { border-color: #ca2f2f; background: #ca2f2f; }
+
+.tactical-empty { display: grid; width: 100%; height: 100%; place-items: center; color: var(--text-color-secondary); }
+
+@container (min-width: 720px) {
+    .tactical-grid { grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr); }
+    .critical-panel, .heat-panel { grid-column: 1 / -1; }
+}
+
+@container (min-width: 1220px) {
+    .mek-grid { grid-template-columns: minmax(400px, 1.1fr) minmax(430px, 1.22fr) minmax(360px, 0.95fr); }
+    .entity-grid { grid-template-columns: minmax(410px, 1.12fr) minmax(360px, 1fr) minmax(300px, 0.8fr); }
+    .critical-panel, .heat-panel { grid-column: auto; }
+    .mek-grid .heat-panel { grid-column: 1; }
+}
+
+@container (max-width: 620px) {
+    .tactical-scroll { padding-inline: max(4px, var(--safe-area-inset-left)) max(4px, var(--safe-area-inset-right)); }
+    .tactical-toolbar { min-height: 34px; }
+    .toolbar-button { padding-inline: 6px; }
+    .unit-hero { grid-template-columns: 34px minmax(0, 1fr) auto; padding: 4px 5px; }
+    .unit-icon { margin: -6px; transform: scale(0.72); }
+    .nav-button { width: 25px; height: 25px; }
+    .unit-position { min-width: 29px; }
+    .command-strip { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+    .unit-capabilities { padding: 3px 4px; }
+    .crew-card { width: min(260px, 82vw); min-height: 48px; }
+    .inventory-head { display: none; }
+    .inventory-row { grid-template-columns: minmax(0, 1fr) 34px 48px 25px; gap: 3px; min-height: 28px; padding-inline: 4px; }
+    .inventory-row .equipment-stat { display: none; }
+    .equipment-location { grid-column: 2; }
+    .equipment-status { grid-column: 3; }
+    .equipment-actions { grid-column: 4; }
+    .inventory-nested-row { padding-left: 11px; }
+    .nested-control { grid-template-columns: 45px minmax(0, 1fr); }
+    .location-line { grid-template-columns: 28px minmax(0, 1fr); }
+    .location-tracks { gap: 1px 3px; padding-inline: 2px; }
+    .armor-strip { flex-basis: 210px; }
+    .internal-strip { flex-basis: 125px; }
+    .damage-pip { width: 5px; height: 5px; }
+    .critical-group { padding-inline: 2px; }
+    .critical-row { gap: 2px; padding-inline: 1px; font-size: 0.46rem; }
+    .slot-number { width: 11px; height: 11px; font-size: 0.38rem; }
+    .critical-pip { width: 6px; height: 6px; }
+}
+
+@container (max-width: 390px) {
+    .toolbar-button span:not(.toolbar-count) { display: none; }
+    .toolbar-button { width: 30px; padding: 0; }
+    .view-button { width: 30px; }
+    .unit-meta span:nth-child(3) { display: none; }
+    .critical-group h3 { font-size: 0.49rem; }
+    .critical-row { font-size: 0.42rem; }
+    .critical-pip { width: 5px; height: 5px; }
+}
+
+@media print { :host { display: none !important; } }

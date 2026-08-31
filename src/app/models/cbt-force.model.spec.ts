@@ -935,16 +935,27 @@ describe('CBTForce V2 encounter persistence', () => {
 
     it('keeps base BV computed signals cold for transient Mek state changes', async () => {
         const { force, armorFaceId } = await readyCloneForce();
+        spyOn(force as any, 'currentHeatPolicy').and.returnValue('manual');
+        spyOn(force, 'getUnitAdjustedBattleValue').and.returnValue(0);
         const [firstMember, secondMember] = force.getClassicMembers();
         if (!firstMember || !secondMember) throw new Error('Ready Mek members are missing');
         const baseProjection = spyOn(force, 'getUnitCurrentBaseBattleValue').and.callThrough();
         const callsFor = (instanceId: UnitInstanceId) => baseProjection.calls.allArgs()
             .filter(([candidate]) => candidate === instanceId).length;
+        const sheetProjection = spyOn(force, 'getMekRecordSheetSnapshot').and.callThrough();
+        const sheetCallsFor = (instanceId: UnitInstanceId) => sheetProjection.calls.allArgs()
+            .filter(([candidate]) => candidate === instanceId).length;
 
         firstMember.currentBaseBattleValue();
         secondMember.currentBaseBattleValue();
+        firstMember.mekRecordSheetSnapshot();
+        firstMember.mekRecordSheetSnapshot();
+        secondMember.mekRecordSheetSnapshot();
+        secondMember.mekRecordSheetSnapshot();
         const firstCallsBefore = callsFor(firstMember.id);
         const secondCallsBefore = callsFor(secondMember.id);
+        const firstSheetCallsBefore = sheetCallsFor(firstMember.id);
+        const secondSheetCallsBefore = sheetCallsFor(secondMember.id);
 
         const transientCommands = [
             { type: 'set-heat' as const, heat: 5 },
@@ -952,7 +963,7 @@ describe('CBTForce V2 encounter persistence', () => {
             { type: 'set-condition' as const, condition: 'prone', active: true },
             { type: 'set-condition' as const, condition: 'swarmed', active: true },
             { type: 'set-condition' as const, condition: 'jammed', active: true },
-        ];
+        ] as const;
         for (const [index, command] of transientCommands.entries()) {
             const before = mekRuntimeSnapshot(force, firstMember.id);
             const result = await force.dispatchMekUnitCommand(firstMember.id, {
@@ -963,10 +974,15 @@ describe('CBTForce V2 encounter persistence', () => {
             expect(result.accepted).toBeTrue();
             firstMember.currentBaseBattleValue();
             secondMember.currentBaseBattleValue();
+            firstMember.mekRecordSheetSnapshot();
+            firstMember.mekRecordSheetSnapshot();
+            secondMember.mekRecordSheetSnapshot();
         }
 
         expect(callsFor(firstMember.id)).toBe(firstCallsBefore);
         expect(callsFor(secondMember.id)).toBe(secondCallsBefore);
+        expect(sheetCallsFor(firstMember.id)).toBe(firstSheetCallsBefore + transientCommands.length);
+        expect(sheetCallsFor(secondMember.id)).toBe(secondSheetCallsBefore);
 
         const beforePendingDamage = mekRuntimeSnapshot(force, firstMember.id);
         const pendingDamage = await force.dispatchMekUnitCommand(firstMember.id, {
@@ -1329,7 +1345,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect((await force.dispatchNonMekUnitCommand(firstId, {
             kind: 'set-condition',
             expectedRevision: before.state.stateRevision,
-            condition: 'immobilized',
+            condition: 'immobile',
             active: true,
         })).accepted).toBeTrue();
         const undoBeforeNetwork = force.getRuntimeUndoState();
@@ -1591,11 +1607,11 @@ describe('CBTForce V2 encounter persistence', () => {
         const changed = await target.dispatchNonMekUnitCommand(instanceId, {
             kind: 'set-condition',
             expectedRevision: snapshot.state.stateRevision,
-            condition: 'immobilized',
+            condition: 'immobile',
             active: true,
         });
         expect(changed.accepted).toBeTrue();
-        expect(target.getUnitConditions(instanceId)).toEqual(['immobilized']);
+        expect(target.getUnitConditions(instanceId)).toEqual(['immobile']);
         const registry = target.queryInventoryControlTargetRegistry();
         const targetId = asEncounterTargetId('target:entity-force');
         expect(target.dispatchInventoryControlTargetRegistry({
@@ -1626,7 +1642,7 @@ describe('CBTForce V2 encounter persistence', () => {
             .find(unit => unit.instanceId === instanceId);
         expect(entry?.kind === 'ready'
             && isSerializedNonMekUnit(entry.unit)
-            && entry.unit.conditions?.includes('immobilized')
+            && entry.unit.conditions?.includes('immobile')
             && entry.unit.attackerTargeting.targets[0]?.targetId === targetId).toBeTrue();
         const beforeDelete = target.queryInventoryControlTargetRegistry();
         expect(target.dispatchInventoryControlTargetRegistry({
@@ -1712,17 +1728,17 @@ describe('CBTForce V2 encounter persistence', () => {
         const changed = await force.dispatchNonMekUnitCommand(instanceId, {
             kind: 'set-condition',
             expectedRevision: before.state.stateRevision,
-            condition: 'immobilized',
+            condition: 'immobile',
             active: true,
         });
 
         expect(changed.accepted).toBeTrue();
-        expect(force.getUnitConditions(instanceId)).toEqual(['immobilized']);
+        expect(force.getUnitConditions(instanceId)).toEqual(['immobile']);
         expect(force.getRuntimeUndoState()).toEqual({ canUndo: true, canRedo: false });
         expect([...force.getRuntimeHistory()[0].event.message] as unknown[]).toEqual([
             RUNTIME_HISTORY_MESSAGE.CONDITION_CHANGED,
             instanceId,
-            'immobilized',
+            'immobile',
             false,
             true,
         ] as unknown[]);
@@ -1734,14 +1750,14 @@ describe('CBTForce V2 encounter persistence', () => {
 
         const redo = await force.redoRuntimeCommand();
         expect(redo).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        expect(force.getUnitConditions(instanceId)).toEqual(['immobilized']);
+        expect(force.getUnitConditions(instanceId)).toEqual(['immobile']);
         expect(force.getRuntimeUndoState()).toEqual({ canUndo: true, canRedo: false });
 
         const serialized = await force.serializeForPersistence();
         expect(serialized.cbt!.history.u).toEqual([instanceId]);
         expect(serialized.cbt!.history.t).toEqual([jasmine.objectContaining({
             n: 1,
-            p: [[[RUNTIME_HISTORY_MESSAGE.CONDITION_CHANGED, 0, 'immobilized', false, true]]],
+            p: [[[RUNTIME_HISTORY_MESSAGE.CONDITION_CHANGED, 0, 'immobile', false, true]]],
         })]);
         expect(JSON.stringify(serialized.cbt)).not.toContain('before');
         expect(JSON.stringify(serialized.cbt)).not.toContain('after');
@@ -1930,7 +1946,7 @@ describe('CBTForce V2 encounter persistence', () => {
             type: 'set-condition',
             commandId: asCommandId('independent:first:t3:condition'),
             expectedRevision: turnThree.state.stateRevision,
-            condition: 'immobilized',
+            condition: 'immobile',
             active: true,
         })).accepted).toBeTrue();
         expect((await force.serializeForPersistence()).cbt!.history.t.map(turn => turn.n)).toEqual([2, 3]);
@@ -2153,7 +2169,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect((await force.dispatchNonMekUnitCommand(instanceId, {
             kind: 'set-condition',
             expectedRevision: snapshot.state.stateRevision,
-            condition: 'immobilized',
+            condition: 'immobile',
             active: true,
         })).accepted).toBeTrue();
         expect((await setDistance(7, 'targeting:distance:7')).accepted).toBeTrue();
@@ -2163,7 +2179,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(force.getAttackerTargeting(instanceId)?.state.targets.get(targetId)?.distance).toBe(7);
 
         expect((await force.redoRuntimeCommand()).accepted).toBeTrue();
-        expect(force.getUnitConditions(instanceId)).toEqual(['immobilized']);
+        expect(force.getUnitConditions(instanceId)).toEqual(['immobile']);
         expect(force.getAttackerTargeting(instanceId)?.state.targets.get(targetId)?.distance).toBe(7);
         expect(force.getRuntimeHistory().map(row => row.event.message[0])).toEqual([
             RUNTIME_HISTORY_MESSAGE.CONDITION_CHANGED,

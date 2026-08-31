@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ViewportTransform } from '../../../models/force-serialization';
 import type { CBTForceMember } from '../../../models/force-member.model';
 import type { ASForceUnit } from '../../../models/as-force-unit.model';
+
+export interface ViewportTransform {
+    scale: number;
+    translateX: number;
+    translateY: number;
+}
 
 /** A Classic record-sheet owner. V2 members expose Entity + runtime through CBTForce. */
 export type PageViewerMember = CBTForceMember;

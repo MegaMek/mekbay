@@ -42,6 +42,7 @@ import {
 import { mekUnitHeight, resolveMekUnitWaterState } from './mek-targeting-rules';
 import { MAX_MEK_CREW_WOUNDS } from './runtime-state';
 import { getMekLocationLabel } from '../entity/types';
+import type { UnitConditionKey } from '../unit-condition.model';
 
 export type MekAttackMovementModifiers = Readonly<Record<MekMovementModeV2, number>>;
 
@@ -78,7 +79,7 @@ export interface MekTurnPanelSnapshot {
     }>;
     readonly heat: MekHeatStateV2;
     readonly heatProjection: MekHeatProjectionResultV2;
-    readonly conditions: readonly string[];
+    readonly conditions: readonly UnitConditionKey[];
 }
 
 export function projectMekTurnPanel(
@@ -101,7 +102,10 @@ export function projectMekTurnPanel(
             location.id,
             getMekLocationLabel(location.code) ?? location.code,
         ])));
-    const conditions = ['shutdown', 'prone', 'immobile', 'skidding', 'disconnected']
+    const displayedConditions: readonly UnitConditionKey[] = [
+        'shutdown', 'prone', 'immobile', 'skidding', 'disconnected',
+    ];
+    const conditions = displayedConditions
         .filter(condition => query.hasCondition(condition));
     const prone = conditions.includes('prone');
     const height = mekUnitHeight(entity, prone);
@@ -227,7 +231,7 @@ function projectMekDefenseModifierBreakdown(
     ruleset: CBTRuleset,
     movementState: MekMovementPsrStateV2,
     turn: MekTurnStateV2,
-    conditions: readonly string[],
+    conditions: readonly UnitConditionKey[],
 ): readonly UnitModifierBreakdownEntry[] {
     const entries: UnitModifierBreakdownEntry[] = [];
     if (conditions.includes('immobile')) entries.push({ label: 'Immobile', modifier: TN_IMMOBILE });

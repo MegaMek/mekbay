@@ -32,6 +32,7 @@ import {
 import type { AmmoLoadout } from './mek-ammo';
 import {
     componentCriticalSlotIds,
+    mekCriticalSlotHittable,
     mekCriticalSlotDirectHitThreshold,
     mekCriticalSlotMaximumHits,
 } from './mek-critical-slot-rules';
@@ -495,7 +496,7 @@ function criticalSlotRollability(
     target: MekCriticalMutationTarget,
 ): 'rollable' | 'empty' | 'unhittable' | 'already-damaged' {
     if (!slot) return 'empty';
-    if (!criticalSlotHittable(index, slot)) return 'unhittable';
+    if (!mekCriticalSlotHittable(index, slot)) return 'unhittable';
     if (target === 'pending'
         && runtime.criticalHits(slot.id, 'preview') !== runtime.criticalHits(slot.id, 'committed')) {
         return 'already-damaged';
@@ -504,13 +505,6 @@ function criticalSlotRollability(
     return hits < mekCriticalSlotMaximumHits(index, ruleset, slot)
         ? 'rollable'
         : 'already-damaged';
-}
-
-function criticalSlotHittable(index: MekRuntimeIndex, slot: MekIndexedCriticalSlot): boolean {
-    return slot.componentIds.some(componentId => {
-        const component = index.components.get(componentId);
-        return component?.kind === 'system' || component?.mount.equipment?.hittable !== false;
-    });
 }
 
 function criticalExplosionSource(

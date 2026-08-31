@@ -46,4 +46,19 @@ describe('AsAbilityLookupService shared specials AST', () => {
         expect(parsed.subAbilities).toEqual([]);
         expect(parsed.turretDamage).toBeUndefined();
     });
+
+    it('bounds cached lookup results and retains the current working set', () => {
+        const finder = spyOn<any>(service as any, 'findAbilityByPattern').and.callThrough();
+        const firstText = 'MISSING-ABILITY-CACHE-0';
+        expect(service.lookupAbility(firstText)).toBeNull();
+        for (let index = 1; index <= 4_096; index += 1) {
+            service.lookupAbility(`MISSING-ABILITY-CACHE-${index}`);
+        }
+        const callsAtCapacity = finder.calls.count();
+
+        expect(service.lookupAbility('MISSING-ABILITY-CACHE-4096')).toBeNull();
+        expect(finder.calls.count()).toBe(callsAtCapacity);
+        expect(service.lookupAbility(firstText)).toBeNull();
+        expect(finder.calls.count()).toBe(callsAtCapacity + 1);
+    });
 });

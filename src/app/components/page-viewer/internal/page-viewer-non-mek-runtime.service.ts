@@ -23,6 +23,7 @@ import {
 import type { AttackerSelection } from '../../../models/runtime/attacker-targeting-state';
 import type { EncounterTargetId } from '../../../models/runtime/encounter-runtime';
 import type { StateRevision } from '../../../models/runtime/runtime-state';
+import { isUnitConditionKey, type UnitConditionKey } from '../../../models/unit-condition.model';
 import { createCommandId } from '../../../models/runtime/runtime-state';
 import type { NonMekUnitCommand } from '../../../models/runtime/non-mek-unit-instance';
 import {
@@ -129,7 +130,7 @@ export class PageViewerNonMekRuntimeService {
     }
 
     private snapshot(member: CBTForceMember): NonMekRecordSheetSnapshot | null {
-        return member.force.getNonMekRecordSheetSnapshot(member.id);
+        return member.nonMekRecordSheetSnapshot();
     }
 
     private render(member: CBTForceMember): void {
@@ -145,7 +146,7 @@ export class PageViewerNonMekRuntimeService {
         }
     }
 
-    private handle(member: CBTForceMember, interaction: NonMekRecordSheetInteraction, event: Event): void {
+    handle(member: CBTForceMember, interaction: NonMekRecordSheetInteraction, event: Event): void {
         const snapshot = this.snapshot(member);
         if (!snapshot || snapshot.stateRevision !== interaction.expectedRevision) return;
         if (interaction.kind === 'heat') {
@@ -454,7 +455,7 @@ export class PageViewerNonMekRuntimeService {
         this.picker = { unitId: member.id, instance, target };
     }
 
-    private async setCondition(member: CBTForceMember, condition: string, active: boolean): Promise<void> {
+    private async setCondition(member: CBTForceMember, condition: UnitConditionKey, active: boolean): Promise<void> {
         const snapshot = this.snapshot(member);
         if (!snapshot) return;
         const result = await member.force.dispatchNonMekUnitCommand(member.id, {
@@ -488,6 +489,7 @@ export class PageViewerNonMekRuntimeService {
             active: snapshot.conditions.includes(control.key),
         })));
         outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(condition => {
+            if (!isUnitConditionKey(condition)) return;
             const current = this.snapshot(member);
             if (current) void this.setCondition(member, condition, !current.conditions.includes(condition));
             this.overlayManager.closeManagedOverlay(ENTITY_CONDITION_OVERLAY);

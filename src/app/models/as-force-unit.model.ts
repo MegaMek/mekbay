@@ -604,7 +604,7 @@ export class ASForceUnit extends ForceUnit {
         }
     }
 
-    public static override deserialize(
+    public static deserialize(
         data: ASSerializedUnit,
         force: ASForce,
         dataService: DataService,

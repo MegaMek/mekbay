@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { GameSystem } from './common.model';
-import type { CBTSerializedUnit, SerializedForce } from './force-serialization';
+import type { SerializedForce } from './force-serialization';
 import { createLoadForceEntry, createLoadForceEntryFromSerializedForce, LoadForceEntry, type RemoteLoadForceEntry } from './load-force-entry.model';
 
 describe('createLoadForceEntry', () => {
@@ -79,7 +79,7 @@ describe('createLoadForceEntryFromSerializedForce', () => {
     };
 
     it('rejects V1 data that bypassed the one persistence-ingress converter', () => {
-        const serializedUnit: CBTSerializedUnit = {
+        const serializedUnit = {
             id: 'cbt-1',
             unit: 'Atlas AS7-D',
             commander: false,

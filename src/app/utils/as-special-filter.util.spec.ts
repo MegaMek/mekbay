@@ -3,6 +3,9 @@
 // Author: Drake
 
 import {
+    buildASSpecialsByUnitIndex,
+    compileASSpecialQueries,
+    compileASSpecialSelections,
     evaluateASSpecialsFilter,
     formatASSpecialMinimumQuery,
     getASSpecialMinimumFieldLabels,
@@ -20,6 +23,7 @@ describe('Alpha Strike special filtering', () => {
         'TSM',
         'TUR(3/3/3,IF2,LRM3/3/2)',
     ];
+    const queries = (...values: string[]) => compileASSpecialQueries(values);
 
     it('tokenizes top-level and turret-contained abilities without exposing turret damage as an ability', () => {
         const parsed = parseASSpecials(specials);
@@ -100,7 +104,7 @@ describe('Alpha Strike special filtering', () => {
             token: 'ARTCM5',
             minimumValues: [1],
         });
-        expect(evaluateASSpecialsFilter(['ARTCM5-1'], '=', [formatted])).toBeTrue();
+        expect(evaluateASSpecialsFilter(['ARTCM5-1'], '=', queries(formatted))).toBeTrue();
     });
 
     it('materializes declared implicit-one values without adding fields to flag abilities', () => {
@@ -111,38 +115,51 @@ describe('Alpha Strike special filtering', () => {
         expect(parsed.occurrences.find(occurrence => occurrence.token === 'CNARC')?.values)
             .toEqual([{ text: '1', rank: 1 }]);
         expect(parsed.occurrences.find(occurrence => occurrence.token === 'TAG')?.values).toEqual([]);
-        expect(evaluateASSpecialsFilter(['SNARC'], '=', ['SNARC>=1'])).toBeTrue();
-        expect(evaluateASSpecialsFilter(['SNARC'], '=', ['SNARC>=2'])).toBeFalse();
+        expect(evaluateASSpecialsFilter(['SNARC'], '=', queries('SNARC>=1'))).toBeTrue();
+        expect(evaluateASSpecialsFilter(['SNARC'], '=', queries('SNARC>=2'))).toBeFalse();
     });
 
     it('applies only populated minima and matches nested turret abilities', () => {
-        expect(unitMatchesASSpecialSelections(specials, [{
+        expect(unitMatchesASSpecialSelections(specials, compileASSpecialSelections([{
             name: 'AC',
             state: 'or',
             minimumValues: [null, null, 2],
-        }])).toBeTrue();
-        expect(unitMatchesASSpecialSelections(specials, [{
+        }]))).toBeTrue();
+        expect(unitMatchesASSpecialSelections(specials, compileASSpecialSelections([{
             name: 'AC',
             state: 'or',
             minimumValues: [null, null, 3],
-        }])).toBeFalse();
-        expect(unitMatchesASSpecialSelections(specials, [{
+        }]))).toBeFalse();
+        expect(unitMatchesASSpecialSelections(specials, compileASSpecialSelections([{
             name: 'TUR',
             state: 'or',
             minimumValues: [null, null, 3],
-        }])).toBeTrue();
-        expect(unitMatchesASSpecialSelections(specials, [{
+        }]))).toBeTrue();
+        expect(unitMatchesASSpecialSelections(specials, compileASSpecialSelections([{
             name: 'IF',
             state: 'or',
             minimumValues: [2],
-        }])).toBeTrue();
+        }]))).toBeTrue();
     });
 
     it('retains legacy exact, comparison, wildcard, and zero-star semantics', () => {
-        expect(evaluateASSpecialsFilter(['FLK2/3/1'], '=', ['FLK2/>2'])).toBeTrue();
-        expect(evaluateASSpecialsFilter(['FLK2/2/2'], '=', ['FLK2/2/2'])).toBeTrue();
-        expect(evaluateASSpecialsFilter(['FLK0*/0*/0*'], '=', ['FLK*/*/0*'])).toBeTrue();
-        expect(evaluateASSpecialsFilter(['TUR(0*/0*/0*,FLK2/1/0)'], '=', ['FLK>=2'])).toBeTrue();
+        expect(evaluateASSpecialsFilter(['FLK2/3/1'], '=', queries('FLK2/>2'))).toBeTrue();
+        expect(evaluateASSpecialsFilter(['FLK2/2/2'], '=', queries('FLK2/2/2'))).toBeTrue();
+        expect(evaluateASSpecialsFilter(['FLK0*/0*/0*'], '=', queries('FLK*/*/0*'))).toBeTrue();
+        expect(evaluateASSpecialsFilter(['TUR(0*/0*/0*,FLK2/1/0)'], '=', queries('FLK>=2'))).toBeTrue();
+    });
+
+    it('shares parsed collections only within one catalog generation', () => {
+        const units = [
+            { id: 'a', specials: ['TAG', 'IF2'] },
+            { id: 'b', specials: ['TAG', 'IF2'] },
+        ];
+        const first = buildASSpecialsByUnitIndex(units, unit => unit.id, unit => unit.specials);
+        const second = buildASSpecialsByUnitIndex(units, unit => unit.id, unit => unit.specials);
+
+        expect(first.get('a')).toBe(first.get('b'));
+        expect(second.get('a')).toBe(second.get('b'));
+        expect(second.get('a')).not.toBe(first.get('a'));
     });
 
     it('provides range labels only for observed numeric fields', () => {

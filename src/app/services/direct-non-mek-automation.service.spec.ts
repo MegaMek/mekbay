@@ -6,6 +6,7 @@ import { TestBed } from '@angular/core/testing';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTNonMekUnitCommandResult } from '../models/cbt-force-api';
 import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
+import type { UnitConditionKey } from '../models/unit-condition.model';
 import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
 import { AmmoEquipment } from '../models/equipment.model';
 import { TestAeroSpaceFighterEntity } from '../models/entity/testing/test-entities';
@@ -403,7 +404,7 @@ function setHeat(runtime: NonMekUnitInstance, heat: number): void {
     if (!result.accepted) throw new Error('Failed to seed test heat');
 }
 
-function setCondition(runtime: NonMekUnitInstance, condition: string, active: boolean): void {
+function setCondition(runtime: NonMekUnitInstance, condition: UnitConditionKey, active: boolean): void {
     const result = runtime.dispatch({
         kind: 'set-condition',
         expectedRevision: runtime.revision(),

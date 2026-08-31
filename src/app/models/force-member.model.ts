@@ -9,6 +9,7 @@ import type { UnitInstanceId } from './runtime/runtime-state';
 import type { UnitSummary } from './unit-summary.model';
 import type { UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type { ForceViewerBVPVDisplayDamage } from './options.model';
+import type { NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
 
 /** A direct Classic member. Its force owns the entity, rules, and sparse runtime. */
 export class CBTForceMember {
@@ -22,11 +23,27 @@ export class CBTForceMember {
         owner: object | null;
         revision: number | null;
     }>>(Object.freeze({ owner: null, revision: null }));
+    readonly #battleValueRuntime = signal<Readonly<{
+        owner: object | null;
+        revision: number | null;
+    }>>(Object.freeze({ owner: null, revision: null }));
 
     /** Current entity + rules + sparse-runtime BV; only this unit can invalidate it. */
     readonly currentBaseBattleValue = computed(() => {
-        this.#runtime();
+        this.#battleValueRuntime();
         return this.force.getUnitCurrentBaseBattleValue(this.id);
+    });
+
+    /** One reactive record-sheet projection per exact runtime revision. */
+    readonly mekRecordSheetSnapshot = computed(() => {
+        this.#runtime();
+        return this.force.getMekRecordSheetSnapshot(this.id);
+    });
+
+    /** One reactive non-Mek record-sheet projection per exact runtime revision. */
+    readonly nonMekRecordSheetSnapshot = computed<NonMekRecordSheetSnapshot | null>(() => {
+        this.#runtime();
+        return this.force.getNonMekRecordSheetSnapshot(this.id);
     });
 
     /** Immutable entity BV before damage and force-level adjustments. */
@@ -83,11 +100,21 @@ export class CBTForceMember {
     }
 
     /** Publishes a new runtime witness only when this exact member changed. */
-    public bindRuntime(owner: object | null, revision: number | null): boolean {
+    public bindRuntime(
+        owner: object | null,
+        revision: number | null,
+        battleValueChanged = true,
+    ): boolean {
         const current = this.#runtime();
-        if (current.owner === owner && current.revision === revision) return false;
-        this.#runtime.set(Object.freeze({ owner, revision }));
-        return true;
+        const changed = current.owner !== owner || current.revision !== revision;
+        if (changed) this.#runtime.set(Object.freeze({ owner, revision }));
+        if (battleValueChanged) {
+            const battleValueCurrent = this.#battleValueRuntime();
+            if (battleValueCurrent.owner !== owner || battleValueCurrent.revision !== revision) {
+                this.#battleValueRuntime.set(Object.freeze({ owner, revision }));
+            }
+        }
+        return changed;
     }
 
     public get rosterGroupId(): string {

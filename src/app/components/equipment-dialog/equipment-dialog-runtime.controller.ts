@@ -45,7 +45,7 @@ import {
 } from '../../models/rules/game-rules';
 import { getDefaultAttackerMovementModifier } from '../../models/target-number-calculator.model';
 import { hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
-import { isHeatSinkEquipment } from '../../models/heat-equipment.model';
+import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
 import {
     prototypeLaserMaximumExtraHeat,
     type PrototypeLaserHeatResult,
@@ -168,15 +168,16 @@ export class EquipmentDialogRuntimeController {
         this.toast = toast;
         this.dialogs = dialogs;
         this.snapshot = signal(this.requiredSnapshot());
+        this.interactions = signal(this.interactionRows());
         this.weapons = computed(() => this.snapshot().components.filter(row => row.weapon !== undefined));
-        this.equipment = computed(() => this.snapshot().components.filter(
-            row => row.weapon === undefined
+        this.equipment = computed(() => {
+            const actionable = new Set(this.interactions().map(row => row.componentId));
+            return this.snapshot().components.filter(row => row.weapon === undefined
                 && row.ammo === undefined
                 && row.equipment !== undefined
-                && !isHeatSinkEquipment(row.equipment),
-        ));
+                && actionable.has(row.componentId));
+        });
         this.ammo = computed(() => this.snapshot().components.filter(row => row.ammo !== undefined));
-        this.interactions = signal(this.interactionRows());
         this.forceChanges = member.force.changed.subscribe(() => this.refresh());
     }
 
@@ -186,7 +187,11 @@ export class EquipmentDialogRuntimeController {
     }
 
     public locations(row: EquipmentPanelComponent): string {
-        return row.locations.map(location => location.code).join(', ') || 'Unallocated';
+        return formatEquipmentLocationCodes(
+            row.locations.map(location => location.code),
+            ', ',
+            'Unallocated',
+        );
     }
 
     public weaponDamage(row: EquipmentPanelComponent): string {
@@ -658,7 +663,7 @@ export class EquipmentDialogRuntimeController {
     private interactionRows(): readonly MekEquipmentInteraction[] {
         this.entityInteractionBindings.clear();
         if (isCBTMekForceMember(this.member)) {
-            return this.member.force.getMekEquipmentInteractions()
+            return this.member.force.getMekEquipmentInteractions('inventory')
                 .filter(row => row.instanceId === this.member.id);
         }
         // A few lightweight presentation hosts deliberately omit the Entity;

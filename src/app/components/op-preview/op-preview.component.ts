@@ -7,7 +7,7 @@ import { DecimalPipe } from '@angular/common';
 import { type CdkDragDrop, DragDropModule, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 import type { ForceAlignment } from '../../models/force-slot.model';
 import type { GameSystem } from '../../models/common.model';
-import { FactionId, getFactionImg } from '../../models/factions.model';
+import { type FactionId, getFactionImg } from '../../models/factions.model';
 import { DataService } from '../../services/data.service';
 
 /*
@@ -24,7 +24,7 @@ export interface OpPreviewForce {
     type?: GameSystem;
     bv?: number;
     pv?: number;
-    factionId?:  FactionId;
+    factionId?: FactionId;
     eraId?: number;
     exists?: boolean;
 }
@@ -52,43 +52,19 @@ export class OpPreviewComponent {
     allowDragDrop = input<boolean>(false);
 
     private displayForces = computed<OpPreviewDisplayForce[]>(() => {
-        const factionImgCache = new Map<FactionId, string | undefined>();
-        const eraCache = new Map<number, { imgUrl?: string; name?: string }>();
-
         return this.forces().map(force => {
-            const factionId = force.factionId;
-            const eraId = force.eraId;
-
-            let factionImgUrl: string | undefined;
-            if (factionId != null) {
-                if (!factionImgCache.has(factionId)) {
-                    const faction = this.dataService.getFactionById(factionId);
-                    factionImgCache.set(factionId, faction ? getFactionImg(faction) : undefined);
-                }
-                factionImgUrl = factionImgCache.get(factionId);
-            }
-
-            let eraImgUrl: string | undefined;
-            let eraName: string | undefined;
-            if (eraId != null) {
-                if (!eraCache.has(eraId)) {
-                    const era = this.dataService.getEraById(eraId);
-                    eraCache.set(eraId, {
-                        imgUrl: era?.img || era?.icon,
-                        name: era?.name,
-                    });
-                }
-
-                const eraInfo = eraCache.get(eraId);
-                eraImgUrl = eraInfo?.imgUrl;
-                eraName = eraInfo?.name;
-            }
+            const faction = force.factionId == null
+                ? undefined
+                : this.dataService.getFactionById(force.factionId);
+            const era = force.eraId == null
+                ? undefined
+                : this.dataService.getEraById(force.eraId);
 
             return {
                 ...force,
-                factionImgUrl,
-                eraImgUrl,
-                eraName,
+                factionImgUrl: faction ? getFactionImg(faction) : undefined,
+                eraImgUrl: era?.img || era?.icon,
+                eraName: era?.name,
             };
         });
     });

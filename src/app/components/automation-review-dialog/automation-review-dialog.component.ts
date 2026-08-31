@@ -18,9 +18,13 @@ type ReviewAction = Readonly<{
 
 @Component({
     selector: 'automation-review-dialog',
+    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './automation-review-dialog.component.html',
-    styleUrl: './automation-review-dialog.component.scss',
+    styleUrls: [
+        '../page-viewer/overlay/page-psr-warning-panel.component.scss',
+        './automation-review-dialog.component.scss',
+    ],
 })
 export class AutomationReviewDialogComponent {
     readonly data = inject<AutomationReviewDialogData>(DIALOG_DATA);

@@ -269,6 +269,16 @@ describe('C3TaxCalculator', () => {
         expect(tax.core2026(bravo.unit)).toBe(81);
     });
 
+    it('caps a Nova-only force at the seven-unit tax rate', () => {
+        const nova = Array.from({ length: 8 }, (_, index) =>
+            unit(`nova-${index}`, [component(C3NetworkType.NOVA, C3Role.PEER)], 1000));
+        const tax = new C3TaxCalculator([], nova.map(candidate => candidate.unit), operational);
+
+        expect(tax.core2026(nova[0].unit)).toBe(350);
+        expect(tax.totalWar(nova[0].unit)).toBe(350);
+        expect(new C3TaxCalculator([], [nova[0].unit], operational).core2026(nova[0].unit)).toBe(0);
+    });
+
     it('uses its single eligibility gate for implicit Nova and configured C3 endpoints', () => {
         const novaAlpha = unit('nova-alpha', [component(C3NetworkType.NOVA, C3Role.PEER)], 1000);
         const novaBravo = unit('nova-bravo', [component(C3NetworkType.NOVA, C3Role.PEER)], 500);

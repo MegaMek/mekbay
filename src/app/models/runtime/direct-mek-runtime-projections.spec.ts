@@ -328,6 +328,34 @@ describe('direct Mek entity/runtime projections', () => {
         expect(status.hasNarc).toBeTrue();
     });
 
+    it('projects active stealth as a derived condition without storing it', () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const stealth = fixture.equipmentComponent('Test Stealth');
+
+        expect(fixture.instance.query().conditions()).not.toContain('stealth');
+        expect(fixture.instance.dispatch({
+            type: 'set-stealth-state',
+            commandId: asCommandId('unit-status:enable-stealth'),
+            expectedRevision: fixture.instance.revision(),
+            componentId: stealth.id,
+            state: 'enabling',
+        }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({
+            type: 'end-turn',
+            commandId: asCommandId('unit-status:settle-stealth'),
+            expectedRevision: fixture.instance.revision(),
+            policy: 'automatic',
+        }).accepted).toBeTrue();
+
+        const state = fixture.instance.snapshot();
+        const query = fixture.instance.query();
+        expect(state.conditions.has('stealth')).toBeFalse();
+        expect(query.hasCondition('stealth')).toBeTrue();
+        expect(query.conditions()).toContain('stealth');
+        expect(projectMekUnitStatus(fixture.entity, fixture.index, state, query).conditions)
+            .toContain('stealth');
+    });
+
     it('derives a dead crew display from committed cockpit destruction', () => {
         const fixture = createDirectMekRuntimeFixture();
         const cockpit = [...fixture.index.components.values()].find(component =>

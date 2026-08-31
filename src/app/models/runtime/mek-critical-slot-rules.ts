@@ -36,6 +36,17 @@ export function mekCriticalSlotMaximumHits(
     return componentHits + (slot.armored ? 1 : 0);
 }
 
+/** Whether a slot can receive a rules-owned critical hit. */
+export function mekCriticalSlotHittable(
+    index: MekRuntimeIndex,
+    slot: MekIndexedCriticalSlot,
+): boolean {
+    return slot.componentIds.some(componentId => {
+        const component = index.components.get(componentId);
+        return component?.kind === 'system' || component?.mount.equipment?.hittable !== false;
+    });
+}
+
 export function componentCriticalSlotIds(
     index: MekRuntimeIndex,
     componentId: ComponentId,

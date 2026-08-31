@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { EquipmentStatus } from '../equipment-status.model';
+import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import type {
     BombastLaserRuntimeState,
     C3EmergencyMasterRuntimeState,
@@ -11,8 +12,8 @@ import type {
     PpcCapacitorRuntimeState,
 } from './runtime-state';
 import {
+    isMekLocationConditionKey,
     MAX_MEK_LOCATION_CONDITION_VALUE,
-    MEK_LOCATION_CONDITION_KEYS,
 } from './runtime-state';
 import {
     asComponentId,
@@ -440,7 +441,7 @@ export interface SerializedHeatStateV2 {
 }
 
 export interface SerializedCommonConditionStateV2 {
-    readonly values: readonly string[];
+    readonly values: readonly UnitConditionKey[];
 }
 
 export interface SerializedPendingCombatStateV2 {
@@ -1283,7 +1284,7 @@ function validateV2Unit(
     if (record['conditions'] !== undefined) {
         const conditions = requireRecord(record['conditions'], `${path}.conditions`);
         exactKeys(conditions, ['values'], `${path}.conditions`);
-        validateUniqueSortedStrings(conditions['values'], `${path}.conditions.values`);
+        validateUniqueSortedUnitConditions(conditions['values'], `${path}.conditions.values`);
     }
     if (record['pendingCombat'] !== undefined) validatePending(record['pendingCombat'], `${path}.pendingCombat`, targets);
     if (record['restoration'] !== undefined) {
@@ -1752,10 +1753,10 @@ function validateLocationConditionStateArray(
 }
 
 function validateMekLocationConditionKey(value: unknown, path: string): MekLocationConditionKey {
-    if (typeof value !== 'string' || !(MEK_LOCATION_CONDITION_KEYS as readonly string[]).includes(value)) {
+    if (!isMekLocationConditionKey(value)) {
         fail('INVALID_SHAPE', path, 'unknown Mek location condition');
     }
-    return value as MekLocationConditionKey;
+    return value;
 }
 
 function validateMekLocationConditionValue(
@@ -2832,6 +2833,19 @@ function validateUniqueSortedStrings(value: unknown, path: string): void {
     requireArray(value, path).forEach((entry, index) => {
         const current = validateId(entry, `${path}[${index}]`);
         if (previous !== undefined && previous >= current) fail('INVALID_SHAPE', `${path}[${index}]`, 'values must be unique and sorted');
+        previous = current;
+    });
+}
+
+function validateUniqueSortedUnitConditions(value: unknown, path: string): void {
+    let previous: UnitConditionKey | undefined;
+    requireArray(value, path).forEach((entry, index) => {
+        const entryPath = `${path}[${index}]`;
+        const current = validateId(entry, entryPath);
+        if (!isUnitConditionKey(current)) fail('INVALID_SHAPE', entryPath, 'unknown unit condition');
+        if (previous !== undefined && previous >= current) {
+            fail('INVALID_SHAPE', entryPath, 'values must be unique and sorted');
+        }
         previous = current;
     });
 }

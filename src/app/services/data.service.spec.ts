@@ -561,6 +561,18 @@ describe('DataService', () => {
         expect(sarnaPageTitlesCatalogMock.getPageTitleForUnit).toHaveBeenCalledOnceWith(unit);
     });
 
+    it('delegates faction and era ID lookups to their indexed catalogs before activation', () => {
+        const era = { id: 42, name: 'Indexed Era' } as Era;
+        const faction = { id: 17, name: 'Indexed Faction' } as Faction;
+        erasCatalogMock.getEraById.and.returnValue(era);
+        factionsCatalogMock.getFactionById.and.returnValue(faction);
+
+        expect(service.getEraById(era.id)).toBe(era);
+        expect(service.getFactionById(faction.id)).toBe(faction);
+        expect(erasCatalogMock.getEraById).toHaveBeenCalledOnceWith(era.id);
+        expect(factionsCatalogMock.getFactionById).toHaveBeenCalledOnceWith(faction.id);
+    });
+
     it('adds units with no faction data to the synthetic None faction for valid eras', async () => {
         const earlyEra: Era = {
             id: 1,
@@ -621,6 +633,13 @@ describe('DataService', () => {
         const activeIntro = activeEras.find(era => era.id === introEra.id)!;
         const activeOpen = activeEras.find(era => era.id === openEra.id)!;
         const activeNone = activeFactions.find(faction => faction.id === MULFACTION_NONE)!;
+        const activeHouse = activeFactions.find(faction => faction.id === houseFaction.id)!;
+        erasCatalogMock.getEraById.calls.reset();
+        factionsCatalogMock.getFactionById.calls.reset();
+        expect(service.getEraById(activeIntro.id)).toBe(activeIntro);
+        expect(service.getFactionById(activeHouse.id)).toBe(activeHouse);
+        expect(erasCatalogMock.getEraById).not.toHaveBeenCalled();
+        expect(factionsCatalogMock.getFactionById).not.toHaveBeenCalled();
         expect(activeNone.eras[introEra.id]).toEqual(new Set<number>([noFactionUnit.id]));
         expect(activeNone.eras[openEra.id]).toEqual(new Set<number>([noFactionUnit.id, futureNoFactionUnit.id]));
         expect(activeNone.eras[earlyEra.id]).toBeUndefined();

@@ -18,6 +18,7 @@ import type { CrewAssignment } from './crew-assignment';
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
 import {
     nonMekComponentModes,
+    effectiveNonMekComponentMode,
     type NonMekUnitRuntimeState,
 } from './non-mek-unit-instance';
 import {
@@ -202,8 +203,8 @@ function projectComponent(
     const previewStatus = vehicleRules?.previewComponentStatuses.get(componentId)
         ?? entityStatuses.preview.get(componentId)
         ?? status;
-    const modeDefinition = nonMekComponentModes(entity, equipment);
-    const mode = componentState?.mode ?? modeDefinition.defaultMode;
+    const modeDefinition = nonMekComponentModes(entity, equipment, ruleset);
+    const mode = effectiveNonMekComponentMode(entity, index, state, ruleset, componentId);
     const locations = mount.getOccupiedLocations().map(code => {
         const location = [...index.locations.values()].find(candidate => candidate.code === code);
         return Object.freeze({
@@ -232,7 +233,7 @@ function projectComponent(
             ruleset,
             state,
             equipment,
-            componentState?.mode,
+            mode,
             vehicleRules,
             entityStatuses,
         )

@@ -41,6 +41,24 @@ function isCatchAllFaction(name: string): boolean {
     return CATCH_ALL_FACTIONS[name] !== undefined || name === PREFIX_CATCH_ALL;
 }
 
+function splitFactionName(name: string): FactionNameWrapParts {
+    const firstSpaceIndex = name.indexOf(' ');
+    const lastSpaceIndex = name.lastIndexOf(' ');
+    return firstSpaceIndex > 0
+        ? {
+            head: name.slice(0, firstSpaceIndex),
+            middle: name.slice(firstSpaceIndex, lastSpaceIndex + 1),
+            tail: name.slice(lastSpaceIndex + 1),
+            hasMultipleWords: true,
+        }
+        : {
+            head: '',
+            middle: '',
+            tail: name,
+            hasMultipleWords: false,
+        };
+}
+
 interface FactionMegaMekAvailability {
     source: MegaMekAvailabilityFrom;
     rarity: typeof MEGAMEK_AVAILABILITY_RARITY_OPTIONS[number];
@@ -57,6 +75,7 @@ interface FactionNameWrapParts {
 
 interface FactionAvailabilityItem {
     name: string;
+    nameParts: FactionNameWrapParts;
     img: string;
     megaMekAvailability: FactionMegaMekAvailability[];
     megaMekTooltip: TooltipLine[] | null;
@@ -86,7 +105,6 @@ export interface FactionAvailability {
 export class UnitDetailsFactionTabComponent {
     private dataService = inject(DataService);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
-    private factionNameWrapPartsCache = new Map<string, FactionNameWrapParts>();
 
     readonly megaMekRequisitionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
     readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
@@ -126,32 +144,6 @@ export class UnitDetailsFactionTabComponent {
 
     isCatchAllExpanded(eraIndex: number, factionName: string): boolean {
         return this.expandedCatchAlls().has(`${eraIndex}:${factionName}`);
-    }
-
-    getFactionNameWrapParts(name: string): FactionNameWrapParts {
-        const cached = this.factionNameWrapPartsCache.get(name);
-        if (cached) {
-            return cached;
-        }
-
-        const firstSpaceIndex = name.indexOf(' ');
-        const lastSpaceIndex = name.lastIndexOf(' ');
-        const parts = firstSpaceIndex > 0
-            ? {
-                head: name.slice(0, firstSpaceIndex),
-                middle: name.slice(firstSpaceIndex, lastSpaceIndex + 1),
-                tail: name.slice(lastSpaceIndex + 1),
-                hasMultipleWords: true,
-            }
-            : {
-                head: '',
-                middle: '',
-                tail: name,
-                hasMultipleWords: false,
-            };
-
-        this.factionNameWrapPartsCache.set(name, parts);
-        return parts;
     }
 
     private buildMulFactionAvailability(
@@ -298,6 +290,7 @@ export class UnitDetailsFactionTabComponent {
     ): FactionAvailabilityCandidate {
         return {
             name: faction.name,
+            nameParts: splitFactionName(faction.name),
             img: faction.img,
             group: faction.group,
             megaMekAvailability: [...megaMekAvailability],
@@ -367,6 +360,7 @@ export class UnitDetailsFactionTabComponent {
             if (isCatchAllFaction(faction.name)) {
                 factions.push({
                     name: faction.name,
+                    nameParts: faction.nameParts,
                     img: faction.img,
                     megaMekAvailability: faction.megaMekAvailability,
                     megaMekTooltip,
@@ -375,6 +369,7 @@ export class UnitDetailsFactionTabComponent {
             } else if (hasPrefixCatchAll && faction.name.startsWith(PREFIX_CATCH_ALL_PREFIX)) {
                 prefixCollapsed.push({
                     name: faction.name,
+                    nameParts: faction.nameParts,
                     img: faction.img,
                     megaMekAvailability: faction.megaMekAvailability,
                     megaMekTooltip,
@@ -384,6 +379,7 @@ export class UnitDetailsFactionTabComponent {
                 if (groupItems) {
                     groupItems.push({
                         name: faction.name,
+                        nameParts: faction.nameParts,
                         img: faction.img,
                         megaMekAvailability: faction.megaMekAvailability,
                         megaMekTooltip,
@@ -391,6 +387,7 @@ export class UnitDetailsFactionTabComponent {
                 } else {
                     collapsedByGroup.set(faction.group, [{
                         name: faction.name,
+                        nameParts: faction.nameParts,
                         img: faction.img,
                         megaMekAvailability: faction.megaMekAvailability,
                         megaMekTooltip,
@@ -399,6 +396,7 @@ export class UnitDetailsFactionTabComponent {
             } else {
                 factions.push({
                     name: faction.name,
+                    nameParts: faction.nameParts,
                     img: faction.img,
                     megaMekAvailability: faction.megaMekAvailability,
                     megaMekTooltip,

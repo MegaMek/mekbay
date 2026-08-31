@@ -13,6 +13,7 @@ import { AmmoEquipment } from '../models/equipment.model';
 import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import type { BaseEntity } from '../models/entity/base-entity';
 import type { ComponentId, CrewPositionId } from '../models/entity/entity-identifiers';
+import type { UnitConditionKey } from '../models/unit-condition.model';
 import { isAeroEntity } from '../models/entity/utils/entity-type-guards';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
 import {
@@ -859,7 +860,7 @@ export class DirectNonMekAutomationService {
     private async setCondition(
         force: CBTForce,
         instanceId: UnitInstanceId,
-        condition: string,
+        condition: UnitConditionKey,
         active: boolean,
         dispatch: DirectNonMekAutomationDispatch,
     ): Promise<void> {

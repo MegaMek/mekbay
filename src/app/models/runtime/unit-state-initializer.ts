@@ -22,7 +22,7 @@ import {
     createDefaultCrewAssignment,
     type CrewAssignment,
 } from './crew-assignment';
-import { buildMekRuntimeIndex, type MekRuntimeIndex } from './mek-runtime-index';
+import type { MekRuntimeIndex } from './mek-runtime-index';
 
 export const UNIT_STATE_INITIALIZER_SCHEMA_VERSION = 7 as const;
 export const UNIT_STATE_INITIALIZER_REVISION = 1 as const;
@@ -71,6 +71,7 @@ export interface InitializedUnitState {
 /** Deterministic pristine baseline. Sparse absence means exactly this versioned projection. */
 export function initializeUnitState(
     entity: MekEntity,
+    index: MekRuntimeIndex,
     identity: SavedEntityIdentity,
     options: InitializeUnitStateOptions,
 ): InitializedUnitState {
@@ -83,7 +84,6 @@ export function initializeUnitState(
         throw new Error('Initializer revision must be a positive integer');
     }
     if (!options.profileId.trim()) throw new Error('Initial-state profile ID cannot be empty');
-    const index = buildMekRuntimeIndex(entity);
     const deployment = canonicalizeDeploymentConfiguration(index, options.deployment);
     const ruleset = scenarioRuleset(options.scenario);
     const initialHeat = deployment.initialHeat ?? 0;

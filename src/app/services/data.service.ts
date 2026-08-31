@@ -23,7 +23,6 @@ import {
 import {
     FORCE_NOTE_MAX_LENGTH,
     AS_SERIALIZED_FORCE_SCHEMA,
-    CBT_SERIALIZED_FORCE_SCHEMA,
     sanitizeForceTags,
     type ASSerializedForce,
     type SerializedClassicForce,
@@ -151,13 +150,28 @@ export interface UnitSubtypeMaxStats {
     [unitSubtype: string]: MinMaxStatsRange
 }
 
-// Generic store update payload used for cross-tab notifications
+type TagRefreshOptions = Readonly<{ searchIndexChanged?: boolean }>;
+
+// Cross-tab message for the one store that currently needs live refresh.
 export type BroadcastPayload = {
-    source: 'mekbay';
-    action: 'update';   // e.g. 'update'
-    context?: string;     // e.g. 'tags'
-    meta?: any;         // optional misc info
+    readonly source: 'mekbay';
+    readonly action: 'update';
+    readonly context: 'tags';
+    readonly meta?: TagRefreshOptions;
 };
+
+function isBroadcastPayload(value: unknown): value is BroadcastPayload {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+    const message = value as Readonly<Record<string, unknown>>;
+    if (message['source'] !== 'mekbay'
+        || message['action'] !== 'update'
+        || message['context'] !== 'tags') return false;
+    const meta = message['meta'];
+    if (meta === undefined) return true;
+    if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) return false;
+    const searchIndexChanged = (meta as Readonly<Record<string, unknown>>)['searchIndexChanged'];
+    return searchIndexChanged === undefined || typeof searchIndexChanged === 'boolean';
+}
 
 export interface ForceTagsUpdateResult {
     tags: string[];
@@ -261,12 +275,10 @@ function assertCanonicalRemoteForceMetadata(serialized: SerializedForce): void {
         || typeof serialized.name !== 'string') {
         throw new Error('Remote force snapshot is missing required canonical persistence fields');
     }
-    if (serialized.type === GameSystem.ALPHA_STRIKE || serialized.version === 1) {
+    if (serialized.type === GameSystem.ALPHA_STRIKE) {
         const sanitized = Sanitizer.sanitize(
             serialized,
-            serialized.type === GameSystem.ALPHA_STRIKE
-                ? AS_SERIALIZED_FORCE_SCHEMA
-                : CBT_SERIALIZED_FORCE_SCHEMA as any,
+            AS_SERIALIZED_FORCE_SCHEMA,
         ) as unknown as JsonValue;
         if (serialized.version === 1
             && sanitized !== null
@@ -486,7 +498,7 @@ function assertStrictRemoteForceMaterialization(serialized: SerializedForce, for
 export class DataService {
     private logger = inject(LoggerService);
     private broadcast?: BroadcastChannel;
-    private broadcastHandler?: (ev: MessageEvent) => void;
+    private broadcastHandler?: (ev: MessageEvent<unknown>) => void;
     private injector = inject(Injector);
     private dbService = inject(DbService);
     private wsService = inject(WsService);
@@ -586,8 +598,12 @@ export class DataService {
     };
     private bufferedPublicTagRefresh = false;
     /** Atomic derived membership projection paired with the visible Unit[] activation. */
-    private activeEras?: Era[];
-    private activeFactions?: Faction[];
+    private activeMemberships?: Readonly<{
+        eras: Era[];
+        factions: Faction[];
+        erasById: ReadonlyMap<number, Era>;
+        factionsById: ReadonlyMap<FactionId, Faction>;
+    }>;
 
 
     constructor() {
@@ -600,8 +616,8 @@ export class DataService {
         try {
             if (typeof BroadcastChannel !== 'undefined') {
                 this.broadcast = new BroadcastChannel('mekbay-updates');
-                this.broadcastHandler = (ev: MessageEvent) => {
-                    void this.handleStoreUpdate(ev.data as any);
+                this.broadcastHandler = (event: MessageEvent<unknown>) => {
+                    void this.handleStoreUpdate(event.data);
                 };
                 this.broadcast.addEventListener('message', this.broadcastHandler);
                 inject(DestroyRef).onDestroy(() => {
@@ -656,7 +672,7 @@ export class DataService {
             this.applyTagDataToUnits(tagData, options);
         });
         this.tagsService.setNotifyStoreUpdatedCallback((options) => {
-            this.notifyStoreUpdated('update', 'tags', options);
+            this.notifyTagStoreUpdated(options);
         });
 
         // Register WS message handlers for tag sync (handled by TagsService)
@@ -680,7 +696,7 @@ export class DataService {
      * 
      * V3 format: tags = { tagId: { label, units: {unitName: {}}, chassis: {chassisKey: {}} } }
      */
-    private applyTagDataToUnits(tagData: TagData | null, options?: { searchIndexChanged?: boolean }): void {
+    private applyTagDataToUnits(tagData: TagData | null, options?: TagRefreshOptions): void {
         const searchIndexChanged = options?.searchIndexChanged ?? true;
         this.latestTagDataSnapshot = tagData;
         this.hasLatestTagDataSnapshot = true;
@@ -739,24 +755,19 @@ export class DataService {
         return Boolean(local?.searchIndexChanged || refreshPublic);
     }
 
-    public notifyStoreUpdated(action: BroadcastPayload['action'], store?: string, meta?: any) {
+    private notifyTagStoreUpdated(meta?: TagRefreshOptions): void {
         if (!this.broadcast) return;
-        const payload: any = { source: 'mekbay', action, store, meta };
+        const payload: BroadcastPayload = { source: 'mekbay', action: 'update', context: 'tags', meta };
         try {
             this.broadcast?.postMessage(payload);
         } catch { /* best-effort */ }
     }
 
-    private async handleStoreUpdate(msg: BroadcastPayload): Promise<void> {
+    private async handleStoreUpdate(value: unknown): Promise<void> {
         try {
-            if (!msg || msg.source !== 'mekbay') return;
-            const action = msg.action;
-            const context = msg.context;
-            if (action === 'update' && context === 'tags') {
-                // Reload tag data from TagsService and apply to units
-                const tagData = await this.tagsService.getTagData();
-                this.applyTagDataToUnits(tagData, msg.meta);
-            }
+            if (!isBroadcastPayload(value)) return;
+            const tagData = await this.tagsService.getTagData();
+            this.applyTagDataToUnits(tagData, value.meta);
         } catch (err) {
             this.logger.error('Error handling store update broadcast: ' + err);
         }
@@ -850,30 +861,35 @@ export class DataService {
     }
 
     public getFactions(): Faction[] {
-        return this.activeFactions ?? this.factionsCatalog.getFactions();
+        return this.activeMemberships?.factions ?? this.factionsCatalog.getFactions();
     }
 
     public getFactionByName(name: string): Faction | undefined {
         const canonical = this.factionsCatalog.getFactionByName(name);
-        return canonical === undefined
-            ? undefined
-            : this.getFactions().find(faction => faction.id === canonical.id);
+        return canonical === undefined ? undefined : this.getFactionById(canonical.id);
     }
 
     public getFactionById(id: FactionId): Faction | undefined {
-        return this.getFactions().find(faction => faction.id === id);
+        const active = this.activeMemberships;
+        return active === undefined
+            ? this.factionsCatalog.getFactionById(id)
+            : active.factionsById.get(id);
     }
 
     public getEras(): Era[] {
-        return this.activeEras ?? this.erasCatalog.getEras();
+        return this.activeMemberships?.eras ?? this.erasCatalog.getEras();
     }
 
     public getEraByName(name: string): Era | undefined {
-        return this.getEras().find(era => era.name === name);
+        const canonical = this.erasCatalog.getEraByName(name);
+        return canonical === undefined ? undefined : this.getEraById(canonical.id);
     }
 
     public getEraById(id: number): Era | undefined {
-        return this.getEras().find(era => era.id === id);
+        const active = this.activeMemberships;
+        return active === undefined
+            ? this.erasCatalog.getEraById(id)
+            : active.erasById.get(id);
     }
 
     public getQuirkByName(name: string): Quirk | undefined {
@@ -1133,8 +1149,14 @@ export class DataService {
             // One synchronous publication boundary: consumers can never see a
             // new summary paired with old memberships, derived fields, or indexes.
             this.unitRuntimeService.commitPreparedRuntimeCatalog(runtimeCandidate);
-            this.activeEras = membershipState.eras;
-            this.activeFactions = membershipState.factions;
+            this.activeMemberships = Object.freeze({
+                eras: membershipState.eras,
+                factions: membershipState.factions,
+                erasById: new Map(membershipState.eras.map(era => [era.id, era])),
+                factionsById: new Map(
+                    membershipState.factions.map(faction => [faction.id, faction]),
+                ),
+            });
             this.unitSearchIndexService.commitPreparedCatalogIndexes(searchCandidate);
             this.appliedUnitCatalogRevision = committed.revision;
             this.invalidateForcePackCaches();
@@ -2012,7 +2034,7 @@ export class DataService {
         await ownerlessLease.ready;
         if (!detachedAuthorityIsCurrent()) return null;
         const localRaw = skipLocal ? null : await this.dbService.getForce(instanceId);
-        let cloudRaw: any | null = null;
+        let cloudRaw: SerializedForce | null = null;
         let triedCloud = false;
         if (showLoading) this.isCloudForceLoading.set(true);
         try {
@@ -2037,14 +2059,14 @@ export class DataService {
             try {
                 local = await this.deserializePersistedForce(localRaw);
             } catch (error) { 
-                this.logger.error((error as any)?.message ?? error);
+                this.logger.error(error instanceof Error ? error.message : String(error));
             }
         }
         if (cloudRaw) {
             try {
-                cloud = await this.deserializePersistedForce(cloudRaw as SerializedForce);
+                cloud = await this.deserializePersistedForce(cloudRaw);
             } catch (error) { 
-                this.logger.error((error as any)?.message ?? error);
+                this.logger.error(error instanceof Error ? error.message : String(error));
             }
         }
 
@@ -2067,7 +2089,7 @@ export class DataService {
             } else if (cloudRaw === null) {
                 result.setExpectedCloudCBTForceV2Revision(null);
             } else {
-                result.markCloudCBTForceV2Saved(cloudRaw as SerializedForce);
+                result.markCloudCBTForceV2Saved(cloudRaw);
             }
         }
 
@@ -2091,6 +2113,7 @@ export class DataService {
         if (triedCloud
             && (cloudIsNewer || !local)
             && cloud
+            && cloudRaw !== null
             && cloud.owned()
             && !skipLocal
             && detachedAuthorityIsCurrent()) {
@@ -2101,7 +2124,7 @@ export class DataService {
             }
             resultHasDurableLocalIdentity = ownerlessLease !== null
                 && await this.saveSerializedForceToLocalStorageUnderLease(
-                    cloneAsJson(cloudRaw as SerializedForce) as unknown as SerializedForce,
+                    structuredClone(cloudRaw),
                     ownerlessLease,
                     authorityGeneration,
                 );
@@ -3891,7 +3914,7 @@ export class DataService {
         instanceId: string,
         ownedOnly: boolean,
         includeOwnership: boolean = true,
-    ): Promise<any | null> {
+    ): Promise<SerializedForce | null> {
         const ws = await this.canUseCloud();
         if (!ws) return null;
         const payload = {

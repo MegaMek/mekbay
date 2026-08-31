@@ -51,7 +51,13 @@ export class RepositoryAssetManifestService implements RepositoryAssetReader {
 
     public loadManifest(signal?: AbortSignal): Promise<RepositoryAssetsManifest> {
         if (signal?.aborted) return Promise.reject(abortError());
-        this.manifestPromise ??= this.fetchManifest();
+        if (!this.manifestPromise) {
+            const load = this.fetchManifest();
+            this.manifestPromise = load;
+            void load.catch(() => {
+                if (this.manifestPromise === load) this.manifestPromise = undefined;
+            });
+        }
         return signal === undefined ? this.manifestPromise : raceAbort(this.manifestPromise, signal);
     }
 

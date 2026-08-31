@@ -13,11 +13,12 @@ import type {
     NonMekUnitRuntimeState,
 } from '../runtime/non-mek-unit-instance';
 import { gameRulesFor } from './game-rules';
+import type { UnitConditionKey } from '../unit-condition.model';
 
 export interface ProtoMekRuntimeRulesProjection {
     readonly destroyed: boolean;
-    readonly computedConditions: readonly string[];
-    readonly conditionControlKeys: readonly string[];
+    readonly computedConditions: readonly UnitConditionKey[];
+    readonly conditionControlKeys: readonly UnitConditionKey[];
     readonly crewStateControlKeys: readonly CrewMemberState[];
     readonly crewStateDisplayKeys: readonly CrewMemberState[];
     readonly attackMovementModifier: number;
@@ -48,21 +49,19 @@ export function projectProtoMekRuntimeRules(
     const torsoDamage = [...index.damageTracks.values()].some(track =>
         track.sheetId === 'torso_hit_3'
         && (state.damageTracks.get(track.id)?.hits ?? 0) > 0);
-    const computedConditions: string[] = [];
+    const computedConditions: UnitConditionKey[] = [];
     if (abandoned) computedConditions.push('abandoned');
     if (allLimbsDestroyed || !functionalCrew) computedConditions.push('immobile');
     if (crippled) computedConditions.push('crippled');
 
+    const conditionControlKeys: UnitConditionKey[] = ['swarmed', 'tagged', 'ecm-shielded'];
+    if (gameRulesFor(ruleset).supportsSkidding) conditionControlKeys.push('skidding');
+    conditionControlKeys.push('jammed');
+
     return Object.freeze({
         destroyed: state.explicitlyDestroyed || torsoDestroyed || torsoDamage,
         computedConditions: Object.freeze(computedConditions),
-        conditionControlKeys: Object.freeze([
-            'swarmed',
-            'tagged',
-            'ecm-shielded',
-            ...(gameRulesFor(ruleset).supportsSkidding ? ['skidding'] : []),
-            'jammed',
-        ]),
+        conditionControlKeys: Object.freeze(conditionControlKeys),
         crewStateControlKeys: Object.freeze(['unconscious'] as const),
         crewStateDisplayKeys: Object.freeze(['unconscious', 'dead'] as const),
         attackMovementModifier: getDefaultAttackerMovementModifier(state.turn.movement?.mode),

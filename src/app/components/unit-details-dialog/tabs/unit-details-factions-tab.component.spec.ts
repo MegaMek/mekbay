@@ -212,6 +212,15 @@ describe('UnitDetailsFactionTabComponent', () => {
             expect(clanSeaFoxItem?.querySelector('.faction-name-tail')?.textContent?.trim().startsWith('Fox')).toBeTrue();
             expect(clanSeaFoxItem?.querySelector('.faction-name-head .faction-icon')).toBeTruthy();
 
+            const clanSeaFox = fixture.componentInstance.factionAvailability()[0].factions
+                .find((faction) => faction.name === 'Clan Sea Fox');
+            expect(clanSeaFox?.nameParts).toEqual({
+                head: 'Clan',
+                middle: ' Sea ',
+                tail: 'Fox',
+                hasMultipleWords: true,
+            });
+
             expect(catchAllLabel).toBeTruthy();
             expect(catchAllLabel?.querySelector('.faction-name-head')?.textContent?.trim()).toBe('Inner');
             expect(catchAllLabel?.querySelector('.faction-name-middle')?.textContent).toBe(' Sphere ');

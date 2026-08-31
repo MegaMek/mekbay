@@ -46,6 +46,7 @@ import {
     UnitNotificationBadgesComponent,
     type UnitNotificationActivation,
 } from '../../unit-notification-badges/unit-notification-badges.component';
+import { ClassicUnitViewModeService } from '../../../services/classic-unit-view-mode.service';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 const PAGE_RUNTIME_HISTORY_OVERLAY_PREFIX = 'page-viewer-runtime-history';
@@ -79,6 +80,7 @@ export class PageInteractionOverlayComponent {
     private pageViewerState = inject(PageViewerStateService);
     private forceWorkspace = inject(ForceWorkspaceStateService);
     private toastService = inject(ToastService);
+    protected readonly unitViewMode = inject(ClassicUnitViewModeService);
     private targetsOverlay = new WeaponTargetsOverlayController({
         overlay: this.overlay,
         overlayManager: this.overlayManager,
@@ -270,6 +272,12 @@ export class PageInteractionOverlayComponent {
 
     openNotification({ event }: UnitNotificationActivation): void {
         this.openPsrWarning(event);
+    }
+
+    toggleUnitView(event: Event): void {
+        event.stopPropagation();
+        this.closeAllOverlays();
+        this.unitViewMode.toggle();
     }
 
     openTargets(event: MouseEvent): void {

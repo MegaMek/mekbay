@@ -501,7 +501,7 @@ function createFixture(
         sourceHashAtSave: asSourceHash('A'.repeat(27)),
         sourceFormat: 'mtf',
     });
-    const initialized = initializeUnitState(entity, identity, {
+    const initialized = initializeUnitState(entity, index, identity, {
         initializerRevision: 1,
         profileId: 'pristine',
         deployment: { id: 'default' },
@@ -526,6 +526,7 @@ function createFixture(
             asUnitInstanceId(id),
             initialized.baselineRef,
             entity,
+            index,
             ruleset,
             initialized.state,
             initialized.deployment.crewAssignment,

@@ -591,8 +591,8 @@ export class C3Network {
     private readonly linksByNetwork = new Map<string, C3Link[]>();
     private readonly incidentByNetworkUnit = new Map<string, C3Link[]>();
     private readonly exactLinks = new Map<string, C3Link>();
-    private readonly stateCache = new Map<string, C3RuntimeState>();
-    private readonly networkStateCache = new Map<string, C3RuntimeState>();
+    private readonly stateByUnitType = new Map<string, C3RuntimeState>();
+    private readonly stateByNetworkUnit = new Map<string, C3RuntimeState>();
     private readonly emergencyNetworkIds = new Set<string>();
     private readonly emergencyMasterByNetworkId = new Map<string, C3EndpointRef>();
     private readonly unitsById: ReadonlyMap<string, C3UnitView>;
@@ -614,6 +614,7 @@ export class C3Network {
         this.topLevelNetworks = networks.filter(network => !this.parentById.has(network.id));
         this.links = includeRuntime ? this.buildLinks() : [];
         if (includeRuntime) this.indexLinks();
+        this.indexRuntimeStates();
     }
 
     capability(unitId: string): C3Capabilities | undefined { return this.capabilitiesByUnitId.get(unitId); }
@@ -695,75 +696,12 @@ export class C3Network {
         return endpoints;
     }
     stateForNetwork(unitId: string, networkId: string): C3RuntimeState {
-        const cacheKey = `${networkId}\0${unitId}`;
-        const cached = this.networkStateCache.get(cacheKey);
-        if (cached) return cached;
         const network = this.network(networkId);
         if (!network || !this.networkUnitIds(network).includes(unitId)) return UNLINKED_C3_STATE;
-        const links = this.linksForNetwork(networkId);
-        const localKeys = new Set<string>();
-        for (const link of links) {
-            if (link.source.unitId === unitId) localKeys.add(C3Network.endpointKey(link.source));
-            if (link.target.unitId === unitId) localKeys.add(C3Network.endpointKey(link.target));
-        }
-        const adjacency = new Map<string, Set<string>>();
-        const operational = links.filter(link => link.operational);
-        for (const link of operational) {
-            C3Network.addToSet(adjacency, C3Network.endpointKey(link.source), C3Network.endpointKey(link.target));
-            C3Network.addToSet(adjacency, C3Network.endpointKey(link.target), C3Network.endpointKey(link.source));
-        }
-        const stack = [...localKeys].filter(key => adjacency.has(key));
-        if (stack.length === 0) {
-            const state = { linked: false, degraded: false, color: network.color };
-            this.networkStateCache.set(cacheKey, state);
-            return state;
-        }
-        const component = new Set<string>();
-        while (stack.length) {
-            const key = stack.pop()!;
-            if (component.has(key)) continue;
-            component.add(key);
-            for (const adjacent of adjacency.get(key) ?? []) stack.push(adjacent);
-        }
-        const componentLinks = operational.filter(link => component.has(C3Network.endpointKey(link.source))
-            && component.has(C3Network.endpointKey(link.target)));
-        const unitIds = new Set([...component].map(C3Network.endpointUnitId));
-        const jammed = (id: string) => this.jammedUnitIds.has(id);
-        const directSlaveIds = new Set((network.members ?? []).flatMap(member => {
-            const parsed = C3Network.parseMember(member);
-            return parsed.compIndex === undefined ? [parsed.unitId] : [];
-        }));
-        const effectiveMasterId = componentLinks[0]?.source.unitId;
-        const isEffectiveMaster = unitId === effectiveMasterId;
-        const degraded = network.type === C3NetworkType.C3
-            ? jammed(unitId) || (
-                isEffectiveMaster
-                    ? componentLinks.some(link => directSlaveIds.has(link.target.unitId) && jammed(link.target.unitId))
-                    : !!effectiveMasterId && jammed(effectiveMasterId)
-            )
-            : jammed(unitId) || [...unitIds].filter(id => id !== unitId).every(jammed);
-        const state = { linked: true, degraded, color: this.effectiveComponentColor(localKeys, network) };
-        this.networkStateCache.set(cacheKey, state);
-        return state;
+        return this.stateByNetworkUnit.get(`${networkId}\0${unitId}`) ?? UNLINKED_C3_STATE;
     }
     stateFor(unitId: string, type: C3NetworkType): C3RuntimeState {
-        const cacheKey = C3Network.unitTypeKey(unitId, type);
-        const cached = this.stateCache.get(cacheKey);
-        if (cached) return cached;
-        const states = this.networksForUnit(unitId)
-            .filter(network => network.type === type)
-            .map(network => this.stateForNetwork(unitId, network.id));
-        if (states.length === 0) return UNLINKED_C3_STATE;
-        const linked = states.filter(state => state.linked);
-        const state = linked.length === 0
-            ? { linked: false, degraded: false, color: states[0].color }
-            : {
-                linked: true,
-                degraded: linked.every(state => state.degraded),
-                color: (linked.find(state => !state.degraded) ?? linked[0]).color,
-            };
-        this.stateCache.set(cacheKey, state);
-        return state;
+        return this.stateByUnitType.get(C3Network.unitTypeKey(unitId, type)) ?? UNLINKED_C3_STATE;
     }
     statesFor(unitId: string): readonly C3RuntimeState[] {
         return this.networksForUnit(unitId).map(network => this.stateForNetwork(unitId, network.id));
@@ -1028,6 +966,76 @@ export class C3Network {
                 && !this.jammedUnitIds.has(candidate.unitId)) return candidate;
         }
         return undefined;
+    }
+    private indexRuntimeStates(): void {
+        const statesByUnitType = new Map<string, C3RuntimeState[]>();
+        for (const network of this.networks) {
+            for (const unitId of this.networkUnitIds(network)) {
+                const state = this.computeNetworkState(unitId, network);
+                this.stateByNetworkUnit.set(`${network.id}\0${unitId}`, state);
+                const key = C3Network.unitTypeKey(unitId, network.type);
+                const states = statesByUnitType.get(key);
+                if (states) states.push(state);
+                else statesByUnitType.set(key, [state]);
+            }
+        }
+        for (const [key, states] of statesByUnitType) {
+            const linked = states.filter(state => state.linked);
+            this.stateByUnitType.set(key, Object.freeze(linked.length === 0
+                ? { linked: false, degraded: false, color: states[0].color }
+                : {
+                    linked: true,
+                    degraded: linked.every(state => state.degraded),
+                    color: (linked.find(state => !state.degraded) ?? linked[0]).color,
+                }));
+        }
+    }
+    private computeNetworkState(unitId: string, network: SerializedC3NetworkGroup): C3RuntimeState {
+        const links = this.linksForNetwork(network.id);
+        const localKeys = new Set<string>();
+        for (const link of links) {
+            if (link.source.unitId === unitId) localKeys.add(C3Network.endpointKey(link.source));
+            if (link.target.unitId === unitId) localKeys.add(C3Network.endpointKey(link.target));
+        }
+        const adjacency = new Map<string, Set<string>>();
+        const operational = links.filter(link => link.operational);
+        for (const link of operational) {
+            C3Network.addToSet(adjacency, C3Network.endpointKey(link.source), C3Network.endpointKey(link.target));
+            C3Network.addToSet(adjacency, C3Network.endpointKey(link.target), C3Network.endpointKey(link.source));
+        }
+        const stack = [...localKeys].filter(key => adjacency.has(key));
+        if (stack.length === 0) {
+            return Object.freeze({ linked: false, degraded: false, color: network.color });
+        }
+        const component = new Set<string>();
+        while (stack.length) {
+            const key = stack.pop()!;
+            if (component.has(key)) continue;
+            component.add(key);
+            for (const adjacent of adjacency.get(key) ?? []) stack.push(adjacent);
+        }
+        const componentLinks = operational.filter(link => component.has(C3Network.endpointKey(link.source))
+            && component.has(C3Network.endpointKey(link.target)));
+        const unitIds = new Set([...component].map(C3Network.endpointUnitId));
+        const jammed = (id: string) => this.jammedUnitIds.has(id);
+        const directSlaveIds = new Set((network.members ?? []).flatMap(member => {
+            const parsed = C3Network.parseMember(member);
+            return parsed.compIndex === undefined ? [parsed.unitId] : [];
+        }));
+        const effectiveMasterId = componentLinks[0]?.source.unitId;
+        const isEffectiveMaster = unitId === effectiveMasterId;
+        const degraded = network.type === C3NetworkType.C3
+            ? jammed(unitId) || (
+                isEffectiveMaster
+                    ? componentLinks.some(link => directSlaveIds.has(link.target.unitId) && jammed(link.target.unitId))
+                    : !!effectiveMasterId && jammed(effectiveMasterId)
+            )
+            : jammed(unitId) || [...unitIds].filter(id => id !== unitId).every(jammed);
+        return Object.freeze({
+            linked: true,
+            degraded,
+            color: this.effectiveComponentColor(localKeys, network),
+        });
     }
     private indexLinks(): void {
         for (const link of this.links) {

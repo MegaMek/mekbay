@@ -20,6 +20,7 @@ import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
 import { isCaseIIEquipment, isStandardCaseEquipment } from '../../../models/case-equipment.model';
 import { isTargetingComputerEquipment } from '../../../models/entity/utils/targeting-computer';
 import { isMekRecordSheetInventorySupport } from '../record-sheet-inventory-equipment';
+import { formatEquipmentLocationCodes } from '../../equipment-location-display.util';
 import {
     fullRecordSheetLayoutProfile,
     type RecordSheetLayoutProfile,
@@ -28,6 +29,7 @@ import {
 } from '../record-sheet-layout';
 import { clusterTableForMekEntity, clusterTableRows, hitLocationRows, recordSheetPhysicalLocationRows, referenceTableNotes } from '../../record-sheet-reference-table';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
+import { recordSheetAmmoName } from '../../record-sheet-ammo.util';
 import {
     type Box,
     addDiagramHeading,
@@ -51,7 +53,6 @@ import {
     makeDistributedPips,
     paperdollPipOptions,
     type RecordSheetInventoryAlternativeMode,
-    recordSheetAmmoName,
     recordSheetAmmoProfile,
     recordSheetInventoryWeapons,
     scalePageBox,
@@ -560,26 +561,32 @@ function appendMekInventoryRows(
         }
 
         const localBaseline = rowStep - y(1.4);
-        row.appendChild(transparentRect(x(6), 0, x(160), rowStep, 'inventoryEntryButton mainButton'));
-        const buttons: readonly [string, number][] = [
-            ['shrButton', 179], ['medButton', 192.4], ['lngButton', 206.2],
+        const controlY = localBaseline - y(6.5) * rowFontScale;
+        const controlHeight = y(8) * rowFontScale;
+        row.appendChild(transparentRect(
+            x(2), controlY, x(177.104), controlHeight, 'inventoryEntryButton mainButton',
+        ));
+        const buttons: readonly [string, number, number][] = [
+            ['shrButton', 180.304, 10.448],
+            ['medButton', 192.154, 13.569],
+            ['lngButton', 207.252, 11.447],
         ];
-        buttons.forEach(([className, position]) => row.appendChild(
-            transparentRect(x(position), 0, x(13.4), rowStep, `inventoryEntryButton ${className}`),
+        buttons.forEach(([className, position, width]) => row.appendChild(
+            transparentRect(x(position), controlY, x(width), controlHeight, `inventoryEntryButton ${className}`),
         ));
 
-        const badgeY = rowStep * 0.08;
-        const badgeHeight = rowStep * 0.84;
+        const badgeY = localBaseline - y(7) * rowFontScale;
+        const badgeHeight = y(9) * rowFontScale;
+        const badgeFont = rowFont * 1.1;
         const hitModRect = svgElement('rect');
         setAttributes(hitModRect, {
-            x: x(0.5), y: badgeY, width: x(6.6), height: badgeHeight,
-            rx: x(0.7),
+            x: x(-5), y: badgeY, width: x(10), height: badgeHeight,
             fill: '#000', class: 'hitMod-rect', display: 'none',
         });
         row.appendChild(hitModRect);
         const targetTnRect = svgElement('rect');
         setAttributes(targetTnRect, {
-            x: x(158.5), y: badgeY, width: x(12), height: badgeHeight,
+            x: x(-5), y: badgeY, width: x(10), height: badgeHeight,
             fill: '#fff', stroke: '#000', 'stroke-width': 0.8,
             class: 'targetTn-rect', display: 'none',
         });
@@ -620,11 +627,11 @@ function appendMekInventoryRows(
                 alternative.setAttribute('data-mekbay-mode-label-only', '1');
                 const alternativeY = (modeIndex + 1) * rowStep;
                 alternative.appendChild(transparentRect(
-                    x(6), alternativeY, x(160), rowStep,
+                    x(2), controlY + alternativeY, x(177.104), controlHeight,
                     'inventoryEntryButton alternativeModeButton',
                 ));
-                buttons.forEach(([className, position]) => alternative.appendChild(
-                    transparentRect(x(position), alternativeY, x(13.4), rowStep,
+                buttons.forEach(([className, position, width]) => alternative.appendChild(
+                    transparentRect(x(position), controlY + alternativeY, x(width), controlHeight,
                         `inventoryEntryButton ${className}`),
                 ));
                 const modeBaseline = localBaseline + alternativeY;
@@ -658,13 +665,16 @@ function appendMekInventoryRows(
         addText(row, '', x(-4), localBaseline, { class: 'quantity', size: font(6.1) * rowFontScale });
         addText(row, '', x(106), localBaseline, { class: 'mekbay-inventory-summary', size: 0.1, fill: '#fff' });
 
-        const hitMod = addText(row, '', x(3.8), badgeY + badgeHeight * 0.73, {
-            class: 'hitMod-text', size: font(4.25) * rowFontScale, weight: 700, fill: '#fff', anchor: 'middle',
+        const badgeTextY = badgeY + badgeHeight / 2 + badgeFont / 3;
+        const hitMod = addText(row, '', x(0), badgeTextY, {
+            class: 'hitMod-text', size: badgeFont, weight: 700, fill: '#fff', anchor: 'middle',
         });
+        hitMod.setAttribute('font-family', 'monospace');
         hitMod.setAttribute('display', 'none');
-        const targetTn = addText(row, '', x(164.5), badgeY + badgeHeight * 0.73, {
-            class: 'targetTn-text', size: font(5) * rowFontScale, weight: 700, anchor: 'middle',
+        const targetTn = addText(row, '', x(0), badgeTextY, {
+            class: 'targetTn-text', size: badgeFont, weight: 700, anchor: 'middle',
         });
+        targetTn.setAttribute('font-family', 'monospace');
         targetTn.setAttribute('display', 'none');
         group.appendChild(row);
     }
@@ -732,7 +742,7 @@ function mekRecordSheetInventoryRows(entity: MekEntity): readonly MekRecordSheet
         })
         .map(mount => Object.freeze({
             name: mekInventoryMountName(entity, mount),
-            location: mount.getOccupiedLocations().join('/'),
+            location: formatEquipmentLocationCodes(mount.getOccupiedLocations()),
             heat: '—',
             damage: mekMiscInventoryDamage(mount),
             minimumRange: '—',
@@ -901,9 +911,6 @@ function drawLamMekCrewPanelContents(group: SVGGElement, box: Box): void {
         x: x(61), y: y(82), cellWidth: x(13.2), cellHeight: y(10.5),
         labelX: x(3), labelWidth: x(56), fontScale,
     });
-    const state = transparentRect(x(3), y(16), box.width - x(6), box.height - y(19), 'crewStateButton');
-    state.setAttribute('crewId', '0');
-    group.insertBefore(state, group.children[3] ?? null);
     const banner = svgElement('g');
     banner.id = 'crewState0';
     banner.setAttribute('crewId', '0');
@@ -991,7 +998,7 @@ function appendMmlMekCrewOccurrence(
         fill: 'none',
     });
     block.appendChild(blankName);
-    const nameButton = transparentRect(3.228, 1, 110, 12, 'crewNameButton');
+    const nameButton = transparentRect(3.228, 1, 124.372, 12, 'crewNameButton');
     nameButton.id = `crewNameButton${occurrence}`;
     nameButton.setAttribute('crewId', String(occurrence));
     nameButton.setAttribute('textElement', pilotName.id);
@@ -1083,9 +1090,6 @@ function appendMmlMekCrewOccurrence(
     pilotButton.setAttribute('skill', 'piloting');
     pilotButton.setAttribute('textElement', piloting.id);
     block.appendChild(pilotButton);
-    const state = transparentRect(0, 0, 145.6, 52, 'crewStateButton');
-    state.setAttribute('crewId', String(occurrence));
-    block.insertBefore(state, block.firstChild);
     const banner = svgElement('g');
     banner.id = `crewState${occurrence}`;
     banner.setAttribute('crewId', String(occurrence));
@@ -2431,7 +2435,7 @@ async function drawCanonicalMekCriticalContents(
             );
             slotGroup.appendChild(transparentRect(
                 x(locationLayout.numberX - locationLayout.textX - 2),
-                0,
+                1,
                 x(locationLayout.rightEdge - locationLayout.numberX - 4),
                 y(locationLayout.step),
                 'critSlot-bg-rect',

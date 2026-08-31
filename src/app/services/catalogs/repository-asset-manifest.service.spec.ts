@@ -65,6 +65,30 @@ describe('RepositoryAssetManifestService', () => {
             .toBeRejectedWithError(/corrupt or incomplete/u);
     });
 
+    it('shares a failed manifest request but retries on the next call', async () => {
+        const manifest = await manifestFor();
+        let attempts = 0;
+        const fetcher = jasmine.createSpy('fetcher').and.callFake(async () => {
+            attempts++;
+            return attempts === 1
+                ? new Response('', { status: 503 })
+                : new Response(JSON.stringify(manifest), { status: 200 });
+        });
+        TestBed.configureTestingModule({ providers: [
+            provideZonelessChangeDetection(),
+            { provide: DOCUMENT, useValue: { baseURI: 'https://example.test/' } },
+            { provide: REPOSITORY_ASSET_FETCHER, useValue: fetcher },
+        ] });
+
+        const service = TestBed.inject(RepositoryAssetManifestService);
+        await expectAsync(Promise.all([service.loadManifest(), service.loadManifest()]))
+            .toBeRejectedWithError(/HTTP 503/u);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+
+        await expectAsync(service.loadManifest()).toBeResolvedTo(manifest);
+        expect(fetcher).toHaveBeenCalledTimes(2);
+    });
+
     it('accepts an unordered direct path-to-hash object and rejects invalid hashes', async () => {
         const hash = await sha1Base64Url(new TextEncoder().encode(assetText));
         expect(normalizeRepositoryAssetsManifest({

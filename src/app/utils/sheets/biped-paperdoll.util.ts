@@ -141,8 +141,15 @@ interface PlaceholderRenderContext {
     options: BipedPaperdollLayerOptions;
 }
 
+interface PaperdollAssetCacheEntry {
+    readonly promise: Promise<SVGSVGElement>;
+    settled: boolean;
+}
+
+const MAX_PAPERDOLL_ASSET_CACHE_ENTRIES = 32;
+
 export class BipedPaperdollUtil {
-    private static readonly assetCache = new Map<string, Promise<SVGSVGElement>>();
+    private static readonly assetCache = new Map<string, PaperdollAssetCacheEntry>();
 
     public static createArmorPaperdoll(
         width: number,
@@ -295,7 +302,9 @@ export class BipedPaperdollUtil {
     private static async loadAsset(url: string): Promise<SVGSVGElement> {
         const cached = this.assetCache.get(url);
         if (cached) {
-            return cached;
+            this.assetCache.delete(url);
+            this.assetCache.set(url, cached);
+            return cached.promise;
         }
 
         const load = fetch(url).then(async response => {
@@ -310,8 +319,27 @@ export class BipedPaperdollUtil {
             const asset = parsed.documentElement as unknown as SVGSVGElement;
             return asset;
         });
-        this.assetCache.set(url, load);
+        const entry: PaperdollAssetCacheEntry = { promise: load, settled: false };
+        this.assetCache.set(url, entry);
+        void load.then(
+            () => {
+                entry.settled = true;
+                this.trimAssetCache();
+            },
+            () => {
+                if (this.assetCache.get(url) === entry) this.assetCache.delete(url);
+            },
+        );
+        this.trimAssetCache();
         return load;
+    }
+
+    private static trimAssetCache(): void {
+        while (this.assetCache.size > MAX_PAPERDOLL_ASSET_CACHE_ENTRIES) {
+            const settled = [...this.assetCache].find(([, entry]) => entry.settled);
+            if (!settled) return;
+            this.assetCache.delete(settled[0]);
+        }
     }
 
     private static readViewBox(source: SVGSVGElement): ViewBox {

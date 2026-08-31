@@ -1,5 +1,6 @@
 <aside
     class="turn-summary glass preventZoomReset framed-borders has-shadow"
+    [class.embedded]="embedded()"
     [class.render-ready]="renderReady()"
     aria-labelledby="turn-summary-title"
     (click)="$event.stopPropagation()"

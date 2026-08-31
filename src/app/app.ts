@@ -6,6 +6,7 @@ import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, v
 
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
+import { TacticalViewComponent } from './components/tactical-view/tactical-view.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
 import { DataService } from './services/data.service';
 import { ForceWorkspaceStateService } from './services/force-workspace-state.service';
@@ -42,10 +43,22 @@ import { projectBackgroundCatalogProgress } from './models/startup-progress.mode
 import { GameSystem } from './models/common.model';
 import { Router, RouterOutlet } from '@angular/router';
 import { UrlService } from './services/url.service';
+import { ClassicUnitViewModeService } from './services/classic-unit-view-mode.service';
 
 const ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY = 'mekbayAndroidPwaBackExit';
 const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
 const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+interface BeforeInstallPromptEvent extends Event {
+    readonly userChoice: Promise<Readonly<{ outcome: 'accepted' | 'dismissed' }>>;
+    prompt(): Promise<void>;
+}
+
+declare global {
+    interface WindowEventMap {
+        beforeinstallprompt: BeforeInstallPromptEvent;
+    }
+}
 
 
 @Component({
@@ -54,6 +67,7 @@ const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
     imports: [
     ToastsComponent,
     PageViewerComponent,
+    TacticalViewComponent,
     AlphaStrikeViewerComponent,
     LayoutModule,
     SidebarComponent,
@@ -94,6 +108,7 @@ export class App {
     private accountProtectionService = inject(AccountProtectionService);
     private router = inject(Router);
     private urlService = inject(UrlService);
+    protected readonly classicUnitViewMode = inject(ClassicUnitViewModeService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
     private overlayContainer = inject(OverlayContainer);
@@ -115,7 +130,7 @@ export class App {
     private initialServicesTimeoutId: number | null = null;
     protected showInstallButton = signal(false);
     protected homeActionsPanelOpen = signal(false);
-    private deferredPrompt: any;
+    private deferredPrompt: BeforeInstallPromptEvent | null = null;
     private urlAtLastBlur = this.getCurrentAppUrl();
     private lastHandledCapturedUrl: string | null = null;
     private lastHandledCapturedUrlAt = 0;
@@ -138,13 +153,13 @@ export class App {
 
 
     private readonly applicationViewport = viewChild.required<ElementRef<HTMLElement>>('applicationViewport');
-    private readonly unitSearchContainer = viewChild.required<ElementRef>('unitSearchContainer');
+    private readonly unitSearchContainer = viewChild.required<ElementRef<HTMLElement>>('unitSearchContainer');
     public readonly unitSearchComponentRef = viewChild(UnitSearchComponent);
-    protected unitSearchPortal: DomPortal<ElementRef> | null = null;
+    protected unitSearchPortal: DomPortal<HTMLElement> | null = null;
     private currentPortalOutlet: 'extended' | 'forceBuilder' | 'main' | null = null;
-    protected unitSearchPortalMain = signal<DomPortal<any> | undefined>(undefined);
-    protected unitSearchPortalExtended = signal<DomPortal<any> | undefined>(undefined);
-    protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
+    protected unitSearchPortalMain = signal<DomPortal<HTMLElement> | undefined>(undefined);
+    protected unitSearchPortalExtended = signal<DomPortal<HTMLElement> | undefined>(undefined);
+    protected unitSearchPortalForceBuilder = signal<DomPortal<HTMLElement> | undefined>(undefined);
 
     constructor() {
         afterNextRender(() => {
@@ -157,9 +172,6 @@ export class App {
             this.scheduleInitialServicesAfterFirstPaint();
         }, { injector: this.injector });
 
-        // if ("virtualKeyboard" in navigator) {
-        //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
-        // }
         void this.accountProtectionService;
         
         // Set up foreign tag import dialog callback
@@ -557,9 +569,9 @@ export class App {
         }
     }
 
-    private beforeInstallPromptHandler = (e: any) => {
-        e.preventDefault();
-        this.deferredPrompt = e;
+    private beforeInstallPromptHandler = (event: BeforeInstallPromptEvent) => {
+        event.preventDefault();
+        this.deferredPrompt = event;
         this.showInstallButton.set(true);
     };
 

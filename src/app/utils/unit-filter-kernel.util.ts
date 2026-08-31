@@ -27,6 +27,7 @@ import { getUnitVariantGroupKey } from './unit-variant.util';
 import { isCountableBackedDropdown } from './unit-search-filter-config.util';
 import {
     buildIndexedASSpecialSelectionCandidates,
+    compileASSpecialSelections,
     unitMatchesASSpecialSelections,
     type ParsedASSpecials,
 } from './as-special-filter.util';
@@ -324,9 +325,10 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                 if (indexedCandidates) {
                     results = results.filter(unit => indexedCandidates.has(unit.uuid));
                 }
+                const compiledSelections = compileASSpecialSelections(specialSelections);
                 results = results.filter(unit => unitMatchesASSpecialSelections(
                     dependencies.getProperty(unit, conf.key),
-                    specialSelections,
+                    compiledSelections,
                     dependencies.getIndexedASSpecials?.(unit.uuid),
                 ));
                 continue;
@@ -349,6 +351,9 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
             const includePatterns = wildcardPatterns?.filter(p => p.state === 'or') || [];
             const excludePatterns = wildcardPatterns?.filter(p => p.state === 'not') || [];
             const andPatterns = wildcardPatterns?.filter(p => p.state === 'and') || [];
+            const includeMatchers = includePatterns.map(pattern => wildcardToRegex(pattern.pattern));
+            const excludeMatchers = excludePatterns.map(pattern => wildcardToRegex(pattern.pattern));
+            const andMatchers = andPatterns.map(pattern => wildcardToRegex(pattern.pattern));
 
             if (hasSearchTerms || hasWildcards) {
                 const searchTermsLower = searchTerms.map(term => term.toLowerCase());
@@ -357,13 +362,11 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                     if (unitValue == null) return false;
                     const unitStr = String(unitValue).toLowerCase();
 
-                    for (const pattern of excludePatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of excludeMatchers) {
                         if (regex.test(unitStr)) return false;
                     }
 
-                    for (const pattern of andPatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of andMatchers) {
                         if (!regex.test(unitStr)) return false;
                     }
 
@@ -375,8 +378,7 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                         if (unitStr === term) return true;
                     }
 
-                    for (const pattern of includePatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of includeMatchers) {
                         if (regex.test(unitStr)) return true;
                     }
 
@@ -397,21 +399,22 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                 const orPatterns = wildcardPatterns?.filter(p => p.state === 'or') || [];
                 const andPatterns = wildcardPatterns?.filter(p => p.state === 'and') || [];
                 const notPatterns = wildcardPatterns?.filter(p => p.state === 'not') || [];
+                const orMatchers = orPatterns.map(pattern => wildcardToRegex(pattern.pattern));
+                const andMatchers = andPatterns.map(pattern => wildcardToRegex(pattern.pattern));
+                const notMatchers = notPatterns.map(pattern => wildcardToRegex(pattern.pattern));
 
                 results = results.filter(unit => {
                     const propertyValue = dependencies.getProperty(unit, conf.key);
                     const unitValues = Array.isArray(propertyValue) ? propertyValue : [propertyValue];
                     const unitStrings = unitValues.filter(value => value != null).map(value => String(value).toLowerCase());
 
-                    for (const pattern of notPatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of notMatchers) {
                         for (const unitValue of unitStrings) {
                             if (regex.test(unitValue)) return false;
                         }
                     }
 
-                    for (const pattern of andPatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of andMatchers) {
                         let hasMatch = false;
                         for (const unitValue of unitStrings) {
                             if (regex.test(unitValue)) {
@@ -432,8 +435,7 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
                         }
                     }
 
-                    for (const pattern of orPatterns) {
-                        const regex = wildcardToRegex(pattern.pattern);
+                    for (const regex of orMatchers) {
                         for (const unitValue of unitStrings) {
                             if (regex.test(unitValue)) return true;
                         }

@@ -55,6 +55,7 @@ const DEFAULT_OPTIONS: Options = {
     recordSheetDoubleTapZoomReset: 'contextual',
     syncZoomBetweenSheets: true,
     trackPhaseAndTurn: true,
+    classicUnitViewMode: 'sheet',
     cbtAutomationOptions: {
         pilotSkillCheck: 'no',
         heatAndDissipationResolution: 'no',
@@ -282,6 +283,7 @@ export class OptionsService {
         printAllOptions: { ...DEFAULT_OPTIONS.printAllOptions },
         recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
         trackPhaseAndTurn: DEFAULT_OPTIONS.trackPhaseAndTurn,
+        classicUnitViewMode: DEFAULT_OPTIONS.classicUnitViewMode,
         cbtAutomationOptions: { ...DEFAULT_OPTIONS.cbtAutomationOptions },
         CBTOptionalRules: { ...DEFAULT_OPTIONS.CBTOptionalRules },
         CBTRules: DEFAULT_OPTIONS.CBTRules,
@@ -329,6 +331,11 @@ export class OptionsService {
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
             trackPhaseAndTurn: saved?.trackPhaseAndTurn ?? DEFAULT_OPTIONS.trackPhaseAndTurn,
+            classicUnitViewMode: resolveSavedValue(
+                saved?.classicUnitViewMode,
+                DEFAULT_OPTIONS.classicUnitViewMode,
+                OPTION_VALUES.classicUnitViewMode,
+            ),
             cbtAutomationOptions: resolveCBTAutomationOptions(saved),
             CBTOptionalRules: resolveCBTOptionalRules(saved),
             CBTRules: isCBTRuleset(saved?.CBTRules) ? saved.CBTRules : DEFAULT_OPTIONS.CBTRules,

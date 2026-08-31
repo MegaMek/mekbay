@@ -82,6 +82,15 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplayDamage', 'pristine');
     });
 
+    it('persists the selected Classic unit view', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({ options: () => ({}), setOption });
+
+        component.onClassicUnitViewModeChange(true);
+
+        expect(setOption).toHaveBeenCalledOnceWith('classicUnitViewMode', 'tactical');
+    });
+
     it('persists each CBT automation mode independently', () => {
         const setCbtAutomationMode = jasmine.createSpy('setCbtAutomationMode');
         const component = configureComponent({ options: () => ({}), setCbtAutomationMode });

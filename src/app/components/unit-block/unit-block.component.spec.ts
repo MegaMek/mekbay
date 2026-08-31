@@ -11,7 +11,10 @@ import {
     TestBipedMekEntity,
     TestTankEntity,
 } from '../../models/entity/testing/test-entities';
+import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
+import { createEquipment, WeaponEquipment } from '../../models/equipment.model';
 import type { ForceUnit } from '../../models/force-unit.model';
+import { buildMekRuntimeIndex } from '../../models/runtime/mek-runtime-index';
 import { asUnitInstanceId } from '../../models/runtime/runtime-state';
 import { createUnitTagEcmCapabilitySummary } from '../../models/unit-capability-summary.model';
 import { OptionsService } from '../../services/options.service';
@@ -55,6 +58,44 @@ describe('UnitBlockComponent capability badges', () => {
 
         expect(fixture.componentInstance.tagDisplay()).toBeUndefined();
         expect(fixture.componentInstance.ecmDisplay()).toBeNull();
+    });
+
+    it('projects Classic capability badges from Entity equipment and runtime state', () => {
+        const changed = new Subject<void>();
+        const entity = new TestBipedMekEntity();
+        addTestEquipment(entity, new WeaponEquipment({
+            id: 'Test Light TAG',
+            name: 'Test Light TAG',
+            type: 'weapon',
+            flags: ['F_TAG'],
+            weapon: { ammoType: 'NA', damage: 0, rackSize: 0, ranges: [3, 6, 9, 12] },
+        }));
+        addTestEquipment(entity, createEquipment({
+            id: 'Test ECM', name: 'Test ECM', type: 'misc', flags: ['F_ECM'],
+        }));
+        const index = buildMekRuntimeIndex(entity);
+        const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({
+            index,
+            query: {
+                destroyed: () => false,
+                hasCondition: () => false,
+                componentStatus: () => 'available',
+                componentMode: () => undefined,
+            },
+        });
+        const force = { changed, getUnitSnapshot } as unknown as CBTForce;
+        const member = new CBTForceMember(
+            asUnitInstanceId('unit:classic-capability-card'),
+            force,
+            entity,
+        );
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', member);
+
+        expect(fixture.componentInstance.tagDisplay()).toEqual({ label: 'LTAG', unavailable: false });
+        expect(fixture.componentInstance.ecmDisplay()).toEqual({ mode: 'ecm', unavailable: false });
+        expect(getUnitSnapshot).toHaveBeenCalledWith(member.id);
+        fixture.destroy();
     });
 
     it('includes computed and transient V2 conditions in the unit-card badges', () => {

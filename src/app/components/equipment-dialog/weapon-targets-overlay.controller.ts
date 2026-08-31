@@ -4,7 +4,7 @@
 
 import { type DestroyRef, Injector, type ComponentRef } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { type Overlay } from '@angular/cdk/overlay';
+import { type ConnectedPosition, type Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Subscription } from 'rxjs';
@@ -51,13 +51,13 @@ import {
 import { TnCalculatorDialogComponent, type TnCalculatorDialogData, type TnCalculatorDialogResult } from './tn-calculator-dialog.component';
 import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
 
-const WEAPON_TARGET_OVERLAY_POSITIONS = [
+const WEAPON_TARGET_OVERLAY_POSITIONS: ConnectedPosition[] = [
     { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
     { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
     { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
     { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
 ];
-const TN_CALCULATOR_OVERLAY_POSITIONS = [
+const TN_CALCULATOR_OVERLAY_POSITIONS: ConnectedPosition[] = [
     { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
     { originX: 'start', originY: 'center', overlayX: 'end', overlayY: 'center', offsetX: -4 },
     { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { afterNextRender, DestroyRef, inject, Injectable, Injector } from '@angular/core';
+import { afterNextRender, DestroyRef, inject, Injectable, Injector, type ComponentRef } from '@angular/core';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { FloatingCompInfoComponent } from '../components/floating-comp-info/floating-comp-info.component';
@@ -14,9 +14,9 @@ export class FloatingOverlayService {
     private overlay = inject(Overlay);
     private injector = inject(Injector);
     private overlayRef: OverlayRef | null = null;
-    private compRef: any = null;
+    private compRef: ComponentRef<FloatingCompInfoComponent> | null = null;
     private isPointerOver = false;
-    private hideTimeout: any = null;
+    private hideTimeout: ReturnType<typeof setTimeout> | null = null;
 
     constructor() {
         window.addEventListener('scroll', this.onScroll, true);
@@ -56,7 +56,7 @@ export class FloatingOverlayService {
 
     private createPositionStrategy(origin: HTMLElement) {
         return this.overlay.position()
-            .flexibleConnectedTo(origin as any)
+            .flexibleConnectedTo(origin)
             .withPositions([
                 { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 6, offsetY: 0 },
                 { originX: 'start', originY: 'top', overlayX: 'end', overlayY: 'top', offsetX: -6, offsetY: 0 },

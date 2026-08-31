@@ -13,6 +13,7 @@ import { uuidv7 } from '../utils/uuid.util';
 import type { C3Component } from './c3-network.model';
 import type { UnitDefinitionResolutionWitness } from './persisted-unit-state';
 import type { UnitTagEcmCapabilitySummary } from './unit-capability-summary.model';
+import type { UnitConditionKey } from './unit-condition.model';
 
 
 export abstract class ForceUnit {
@@ -99,15 +100,15 @@ export abstract class ForceUnit {
         return this.state.hasCondition('shutdown');
     }
 
-    get conditions(): ReadonlyMap<string, ConditionData | undefined> {
+    get conditions(): ReadonlyMap<UnitConditionKey, ConditionData | undefined> {
         return this.state.conditions();
     }
 
-    getConditions(): ReadonlyMap<string, ConditionData | undefined> {
+    getConditions(): ReadonlyMap<UnitConditionKey, ConditionData | undefined> {
         return this.state.conditions();
     }
 
-    getCondition(condition: string): boolean {
+    getCondition(condition: UnitConditionKey): boolean {
         return this.state.hasCondition(condition);
     }
 
@@ -121,15 +122,15 @@ export abstract class ForceUnit {
         return false;
     }
 
-    isComputedCondition(_condition: string): boolean {
+    isComputedCondition(_condition: UnitConditionKey): boolean {
         return false;
     }
 
-    hasComputedCondition(_condition: string): boolean {
+    hasComputedCondition(_condition: UnitConditionKey): boolean {
         return false;
     }
 
-    setCondition(condition: string, active: boolean) {
+    setCondition(condition: UnitConditionKey, active: boolean) {
         if (!this.state.setCondition(condition, active)) return;
         this.setModified();
     }
@@ -225,16 +226,6 @@ export abstract class ForceUnit {
     abstract update(data: SerializedUnit): void;
 
     abstract serialize(): SerializedUnit;
-
-    /** Deserialize a plain object to a ForceUnit instance - must be implemented by subclasses */
-    public static deserialize(
-        _data: SerializedUnit,
-        _force: Force,
-        _dataService: DataService,
-        _injector: Injector
-    ): ForceUnit {
-        throw new Error('ForceUnit.deserialize must be implemented by subclass');
-    }
 
     public getEquipmentRegistry() {
         return this.dataService.getEquipmentRegistry();

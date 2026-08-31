@@ -12,6 +12,7 @@ import type {
 import { asComponentId } from '../entity/entity-identifiers';
 import type { EntityStateView } from '../entity/entity-state-view';
 import type { EquipmentStatus } from '../equipment-status.model';
+import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import {
     RuntimeEquipmentStatusKernel,
     type RuntimeEquipmentCommittedState,
@@ -40,9 +41,9 @@ import {
     type StateRevision,
     type UnitInstanceId,
     freezeRuntimeState,
+    isMekLocationConditionKey,
     MAX_MEK_CREW_WOUNDS,
     MAX_MEK_LOCATION_CONDITION_VALUE,
-    MEK_LOCATION_CONDITION_KEYS,
 } from './runtime-state';
 import type { MekShieldTrack } from './mek-shield-rules';
 import {
@@ -322,7 +323,6 @@ import {
     type MekCriticalRuntimeViewV2,
 } from './mek-critical-hit-v2';
 import {
-    buildMekRuntimeIndex,
     componentLocationIds,
     equipmentForComponent,
     type MekRuntimeIndex,
@@ -547,7 +547,7 @@ export type CBTUnitCommand = CommandEnvelope & (
     }
     | {
         readonly type: 'set-condition';
-        readonly condition: string;
+        readonly condition: UnitConditionKey;
         readonly active: boolean;
     }
     | {
@@ -793,13 +793,14 @@ export class CBTUnitInstance {
         public readonly id: UnitInstanceId,
         public readonly baselineRef: InstanceBaselineRef,
         public readonly unit: MekEntity,
+        runtimeIndex: MekRuntimeIndex,
         ruleset: CBTRuleset,
         initialState: MekUnitRuntimeState,
         crewAssignment?: CrewAssignment,
         heatContext: MekHeatRuntimeContextV2 = createUnboundMekHeatContextV2(),
         mechanicsContext: MekMechanicsContextV2 = createUnboundMekMechanicsContextV2(),
     ) {
-        this.#runtimeIndex = buildMekRuntimeIndex(unit);
+        this.#runtimeIndex = runtimeIndex;
         this.#source = Object.freeze({ entity: unit, index: this.#runtimeIndex, ruleset });
         validateState(initialState, this.#source);
         this.#crewAssignment = canonicalizeCrewAssignment(
@@ -928,31 +929,39 @@ export class CBTUnitInstance {
             if (crew.unconscious) return 'unconscious';
             return 'healthy';
         };
-        const hasEffectiveCondition = (condition: string): boolean => {
-            if (state.conditions.has(condition)) return true;
-            if (condition === 'spotting') return state.turn.spotting;
-            if (condition === 'disconnected') {
-                return hasDroneOperatingSystem && droneOperatingSystemIds.every(componentId =>
-                    statusKernel('committed').component(componentId).status !== 'available');
+        let projectedDerivedConditions: ReadonlySet<UnitConditionKey> | undefined;
+        const derivedConditions = (): ReadonlySet<UnitConditionKey> => {
+            if (projectedDerivedConditions) return projectedDerivedConditions;
+            const conditions = new Set<UnitConditionKey>();
+            if (state.turn.spotting) conditions.add('spotting');
+            if (hasDroneOperatingSystem && droneOperatingSystemIds.every(componentId =>
+                statusKernel('committed').component(componentId).status !== 'available')) {
+                conditions.add('disconnected');
             }
-            if (condition === 'abandoned') {
-                const positions = [...unit.index.crewPositions.values()];
-                return !hasDroneOperatingSystem
-                    && positions.length > 0
-                    && positions.every(position => {
-                        const crew = effectiveCrewState(position.id);
-                        return crew === 'dead' || crew === 'ejected';
-                    });
+            const positions = [...unit.index.crewPositions.values()];
+            if (!hasDroneOperatingSystem
+                && positions.length > 0
+                && positions.every(position => {
+                    const crew = effectiveCrewState(position.id);
+                    return crew === 'dead' || crew === 'ejected';
+                })) {
+                conditions.add('abandoned');
             }
-            if (condition === 'immobile') {
-                const movement = movementProjection();
-                return movement.kind === 'supported' && movement.immobile;
+            const movement = movementProjection();
+            if (movement.kind === 'supported' && movement.immobile) conditions.add('immobile');
+            const destruction = mechanicsProjection();
+            if (destruction.kind === 'supported' && destruction.facts.preview.crippled) {
+                conditions.add('crippled');
             }
-            if (condition === 'crippled') {
-                const destruction = mechanicsProjection();
-                return destruction.kind === 'supported' && destruction.facts.preview.crippled;
+            if (getActiveStealthTnModifiers(
+                buildMekStealthFacts(unit, state, statusTopology, 'preview'),
+                0,
+                state.destroyed || state.conditions.has('shutdown'),
+            ) !== undefined) {
+                conditions.add('stealth');
             }
-            return false;
+            projectedDerivedConditions = new ImmutableSet(conditions);
+            return projectedDerivedConditions;
         };
         const pilotChecksProjection = () => projectMekPilotChecksContextV2(
             this.#mechanicsContext,
@@ -1252,11 +1261,15 @@ export class CBTUnitInstance {
                 : Object.freeze({ kind: 'supported' as const, mode: state.movementPsr.movement?.mode ?? null }),
             attackerTargetingState: () => state.attackerTargeting,
             equipmentRowOrder: () => state.equipmentRowOrder,
-            hasCondition: (condition: string) => {
-                if (!boundedRuntimeText(condition)) throw new Error('Invalid runtime condition');
-                return hasEffectiveCondition(condition);
-            },
-            conditions: () => Object.freeze([...state.conditions]),
+            hasCondition: (condition: UnitConditionKey) => (
+                state.conditions.has(condition) || derivedConditions().has(condition)
+            ),
+            conditions: () => Object.freeze([
+                ...new Set([
+                    ...state.conditions,
+                    ...derivedConditions(),
+                ]),
+            ].sort(compareText)),
             crewAssignment: () => this.#crewAssignment,
             crewState: (positionId: CrewPositionId) => {
                 if (!unit.index.crewPositions.has(positionId)) {
@@ -2608,7 +2621,7 @@ function reduce(
             break;
         }
         case 'set-condition': {
-            if (!boundedRuntimeText(command.condition) || typeof command.active !== 'boolean') {
+            if (!isUnitConditionKey(command.condition) || typeof command.active !== 'boolean') {
                 return rejected(state, 'INVALID_TARGET');
             }
             // Shutdown is owned by typed shutdown/startup actions. Generic
@@ -5420,7 +5433,7 @@ function validateState(
         throw new Error(`Invalid Mek turn state: ${error instanceof Error ? error.message : String(error)}`);
     }
     for (const condition of state.conditions) {
-        if (!boundedRuntimeText(condition)) throw new Error(`Invalid runtime condition ${String(condition)}`);
+        if (!isUnitConditionKey(condition)) throw new Error(`Invalid runtime condition ${String(condition)}`);
     }
     for (const [id, locationState] of state.locations) {
         const location = unit.index.locations.get(id);
@@ -6002,11 +6015,6 @@ function signedNonzeroInteger(value: number): boolean {
 
 function compareText(left: string, right: string): number {
     return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function isMekLocationConditionKey(value: unknown): value is MekLocationConditionKey {
-    return typeof value === 'string'
-        && (MEK_LOCATION_CONDITION_KEYS as readonly string[]).includes(value);
 }
 
 function isMekLocationConditionValue(

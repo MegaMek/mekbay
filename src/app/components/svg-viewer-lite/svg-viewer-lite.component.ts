@@ -204,7 +204,7 @@ export class SvgViewerLiteComponent {
         if (topLeftElement?.parentElement) {
             injectParent = topLeftElement.parentElement;
         }
-        const parentCTM = (injectParent as any).getCTM ? (injectParent as SVGGraphicsElement).getCTM() : null;
+        const parentCTM = injectParent instanceof SVGGraphicsElement ? injectParent.getCTM() : null;
         const invParent = parentCTM ? parentCTM.inverse() : new DOMMatrix();
         pt.x = minX; pt.y = minY;
         const localTL = pt.matrixTransform(invParent);

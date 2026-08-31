@@ -455,8 +455,8 @@ function criticalSnapshot(
 function stateSnapshot(wounds: number): NonMekRecordSheetSnapshot {
     return Object.freeze({
         ...snapshot(3),
-        conditions: Object.freeze(['tagged', 'abandoned']),
-        conditionControlKeys: Object.freeze(['tagged', 'disconnected']),
+        conditions: Object.freeze(['tagged', 'abandoned'] as const),
+        conditionControlKeys: Object.freeze(['tagged', 'disconnected'] as const),
         crewStateControlKeys: Object.freeze(['killed', 'stunned'] as const),
         crewStateDisplayKeys: Object.freeze(['killed', 'stunned'] as const),
         crew: Object.freeze([Object.freeze({

@@ -40,6 +40,8 @@ import {
 import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
 import { hasMekRuntime, hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
 import { UnitNotificationBadgesComponent } from '../unit-notification-badges/unit-notification-badges.component';
+import { projectClassicUnitTagEcmCapabilitySummary } from '../../models/runtime/classic-unit-capability-projection';
+import type { UnitConditionKey } from '../../models/unit-condition.model';
 
 interface UnitConditionDisplay {
     key: string;
@@ -225,7 +227,7 @@ export class UnitBlockComponent {
         const forceUnit = this.forceUnit();
         if (!forceUnit) return [];
         this.runtimeRevision();
-        const conditionKeys = new Set<string>();
+        const conditionKeys = new Set<UnitConditionKey>();
         let crewConditions: UnitConditionDisplay[] = [];
         let locationConditions: UnitConditionDisplay[] = [];
         if (isCBTMekForceMember(forceUnit)) {
@@ -280,9 +282,11 @@ export class UnitBlockComponent {
 
     private readonly capabilitySummary = computed(() => {
         const member = this.forceUnit();
-        return !member || isCBTForceMember(member)
-            ? null
-            : member.getTagEcmCapabilitySummary();
+        if (!member) return null;
+        if (!isCBTForceMember(member)) return member.getTagEcmCapabilitySummary();
+        this.runtimeRevision();
+        const snapshot = member.force.getUnitSnapshot(member.id);
+        return snapshot ? projectClassicUnitTagEcmCapabilitySummary(snapshot) : null;
     });
 
     tagDisplay = computed(() => this.capabilitySummary()?.tag ?? undefined);

@@ -22,6 +22,7 @@ import {
 } from '../../models/runtime/equipment-panel';
 import type { AttackerSelection } from '../../models/runtime/attacker-targeting-state';
 import type { StateRevision } from '../../models/runtime/runtime-state';
+import type { UnitConditionKey } from '../../models/unit-condition.model';
 import {
     crewStateDefinitions,
     UNIT_CONDITION_DEFINITIONS,
@@ -54,7 +55,7 @@ export type NonMekRecordSheetInteraction = Readonly<{
     readonly expectedRevision: StateRevision;
 }> | Readonly<{
     readonly kind: 'condition';
-    readonly condition: string;
+    readonly condition: UnitConditionKey;
     readonly expectedRevision: StateRevision;
 }> | Readonly<{
     readonly kind: 'condition-menu';

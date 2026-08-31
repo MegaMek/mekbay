@@ -13,6 +13,7 @@ import {
     type PreparedLoadedCBTForceV2Authority,
     buildEraWarningMessage,
     getEraUnitValidationSummary,
+    resolveSerializedFormation,
 } from './force.model';
 import type { ForceUnit } from './force-unit.model';
 import type { SerializedForce, SerializedUnit } from './force-serialization';
@@ -22,7 +23,6 @@ import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { ForceAvailabilityContext } from '../utils/force-availability.util';
 import { NO_FORMATION } from '../utils/formation-type.model';
 import { C3NetworkType } from './c3-network.model';
-import { DeferredUnitResolutionError } from './persisted-unit-state';
 import type { PreparedCBTForcePersistenceV2 } from './runtime/force-persistence-boundary';
 import {
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -159,14 +159,7 @@ class TestForce extends Force<ForceUnit> {
         return forceUnit;
     }
 
-    protected override deserializeForceUnit(data: SerializedUnit): ForceUnit {
-        if (data.unit === 'Deferred Unit') {
-            throw new DeferredUnitResolutionError({
-                rawLegacyName: data.unit,
-                candidates: [],
-                reason: 'not-found',
-            });
-        }
+    private deserializeTestUnit(data: SerializedUnit): ForceUnit {
         const forceUnit = createStubDeserializedUnit(data);
         forceUnit.force = this;
         return forceUnit;
@@ -175,19 +168,48 @@ class TestForce extends Force<ForceUnit> {
     protected override transferPilotData(_fromUnit: ForceUnit, _toUnit: ForceUnit): void {
     }
 
-    protected override sanitizeForceData(data: SerializedForce): SerializedForce {
-        return data;
-    }
-
     protected override deserializeFrom(_serialized: SerializedForce): Force<ForceUnit> {
         const force = new TestForce(this.gameSystem);
         force.loadSerialized(structuredClone(_serialized));
         return force;
     }
 
+    public override getDeferredUnitDescriptors(): readonly never[] {
+        return [];
+    }
+
     loadSerialized(data: SerializedForce): void {
-        if (data.cbt === undefined) this.populateFromSerialized(data);
-        else this.populateFromCBTForceV2(data);
+        if (data.cbt !== undefined) {
+            this.populateFromCBTForceV2(data);
+            return;
+        }
+        if (!Array.isArray(data.groups)) {
+            throw new Error('Invalid test force fixture: missing groups');
+        }
+
+        this.loading = true;
+        try {
+            this.populateSerializedMetadata(data);
+            const groups = data.groups.map(serializedGroup => {
+                const group = new UnitGroup<ForceUnit>(this);
+                group.id = serializedGroup.id;
+                group.setName(serializedGroup.name, false);
+                group.color = serializedGroup.color ?? '';
+                group.formationLock = serializedGroup.formationLock || undefined;
+                group.formation.set(resolveSerializedFormation(
+                    serializedGroup.formationId,
+                    group.formationLock,
+                    this.gameSystem,
+                ));
+                group.formationTargetGroupId.set(serializedGroup.formationTargetGroupId ?? null);
+                group.units.set(serializedGroup.units.map(unit => this.deserializeTestUnit(unit)));
+                return group;
+            });
+            this.groups.set(groups);
+            this.setNetwork(data.c3Networks ?? []);
+        } finally {
+            this.loading = false;
+        }
     }
 
     protected override getSupportedCBTForceV2Envelope(): SerializedCBTForceV2 | null {
@@ -428,24 +450,6 @@ describe('Force C3 cleanup', () => {
 });
 
 describe('Force owner structure', () => {
-    it('rejects grouped Classic records before runtime construction', () => {
-        const force = new TestForce(GameSystem.CLASSIC);
-        const serialized = {
-            ...createSerializedForce([]),
-            type: GameSystem.CLASSIC,
-        };
-
-        expect(() => force.loadSerialized(serialized))
-            .toThrowError(/direct V2 runtime construction/);
-    });
-
-    it('rejects Alpha Strike V1 before runtime construction', () => {
-        const force = new TestForce();
-
-        expect(() => force.loadSerialized({ ...createSerializedForce([]), version: 1 }))
-            .toThrowError(/must be converted to V2/);
-    });
-
     it('writes grouped Alpha Strike forces only as V2', () => {
         const force = new TestForce();
         force.loadSerialized(createSerializedForce([]));

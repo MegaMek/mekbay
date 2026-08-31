@@ -5,7 +5,7 @@
 let isiDevice: boolean | undefined = undefined;
 
 export function isAndroid(): boolean {
-    const nav = typeof navigator !== 'undefined' ? navigator : typeof window !== 'undefined' ? (window as any).navigator : undefined;
+    const nav = typeof navigator === 'undefined' ? undefined : navigator;
     const ua = nav?.userAgent || '';
     return /Android/i.test(ua);
 }
@@ -14,18 +14,21 @@ export function isIOS(): boolean {
     if (typeof isiDevice !== 'undefined') {
         return isiDevice;
     }
-    const nav = typeof navigator !== 'undefined' ? navigator : (window as any).navigator;
+    const nav = typeof navigator === 'undefined' ? undefined : navigator;
     if (!nav) {
         isiDevice = false;
     } else {
         const ua = nav.userAgent || nav.vendor || '';
         // covers iPhone/iPad/iPod and iPadOS on Intel (Mac with touch points)
         isiDevice = /iPad|iPhone|iPod/.test(ua)
-            || (nav.platform === 'MacIntel' && (nav as any).maxTouchPoints > 1);
+            || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
     }
     return isiDevice;
 }
 
 export function isRunningStandalone(): boolean {
-    return (window.navigator as any).standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+    if (typeof window === 'undefined') return false;
+    const nav = window.navigator;
+    return ('standalone' in nav && nav.standalone === true)
+        || window.matchMedia('(display-mode: standalone)').matches;
 }

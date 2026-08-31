@@ -80,6 +80,22 @@ assert.doesNotMatch(baseline, /readonly published:/u);
 const force = source(join(app, 'models', 'force.model.ts'));
 assert.doesNotMatch(force, /cbtForceV2State/u);
 assert.match(force, /public readonly members = computed<ForceMember\[\]>/u);
+assert.doesNotMatch(
+    force,
+    /deserializeForceUnit|sanitizeForceData|populateFromGroupedSerialized|public static deserialize/u,
+    'the shared Force model must not expose deserialization dispatch or compatibility hooks',
+);
+
+const forceUnit = source(join(app, 'models', 'force-unit.model.ts'));
+assert.doesNotMatch(
+    forceUnit,
+    /static deserialize|must be implemented by subclass/u,
+    'the shared ForceUnit model must not expose a throwing static deserialization stub',
+);
+
+const asForce = source(join(app, 'models', 'as-force.model.ts'));
+assert.match(asForce, /private populateFromSerialized\(data: ASSerializedForce\): void/u);
+assert.doesNotMatch(asForce, /deserializeForceUnit|sanitizeForceData|populateFromGroupedSerialized/u);
 
 const cbtForce = source(join(app, 'models', 'cbt-force.model.ts'));
 const cbtAuthority = source(join(app, 'models', 'cbt-force-authority.ts'));
@@ -94,7 +110,11 @@ assert.match(cbtForce, /return this\.authority\.envelope\(\);/u);
 assert.doesNotMatch(cbtForce, /CBTForceUnitStore|memberProjection|runtimeCommands/u);
 assert.match(cbtForce, /export class CBTForce extends Force<never>/u);
 assert.match(cbtForce, /protected override createForceUnit\(unit: UnitSummary\): never/u);
-assert.match(cbtForce, /protected override deserializeForceUnit\(_data: never\): never/u);
+assert.doesNotMatch(
+    cbtForce,
+    /deserializeForceUnit|sanitizeForceData|populateFromGroupedSerialized/u,
+    'current Classic forces must not expose grouped-force deserialization hooks',
+);
 assert.match(cbtForce, /public getRuntimeInstanceIds\(\): readonly UnitInstanceId\[\]/u);
 assert.match(cbtForce, /public async admitRetainedUnit\(/u);
 assert.doesNotMatch(
@@ -133,6 +153,24 @@ assert.match(nonMekRuntime, /private readonly entity: BaseEntity/u);
 assert.match(nonMekRuntime, /this\.entity\.battleValueFor\(this\.stateView\(\), this\.ruleset\)/u);
 assert.doesNotMatch(nonMekRuntime, /ForceUnit|Facade|Published/u);
 
+const directCatalogModeReaders = production
+    .filter(path => /\b(?:equipment|weapon)\.modes\b/u.test(source(path)))
+    .map(display)
+    .sort();
+assert.deepEqual(
+    directCatalogModeReaders,
+    [
+        'src/app/models/rapid-fire-autocannon-mode.model.ts',
+        'src/app/models/stealth-equipment.model.ts',
+    ],
+    'catalog modes are inert metadata and may only be interpreted by explicit behavior owners',
+);
+assert.doesNotMatch(
+    source(join(app, 'models', 'equipment.model.ts')),
+    /\bhasMode\(/u,
+    'Equipment must not expose a generic catalog-mode behavior API',
+);
+
 const unitSnapshot = source(join(app, 'models', 'cbt-unit-snapshot.ts'));
 const classicRuntime = source(join(app, 'models', 'runtime', 'classic-unit-runtime.ts'));
 assert.match(unitSnapshot, /export interface CBTUnitSnapshot/u);
@@ -146,8 +184,14 @@ assert.doesNotMatch(nonMekRuntime, /readonly slots:|readonly criticalHits:/u);
 const operationalC3 = source(join(app, 'models', 'runtime', 'c3-operational-network.ts'));
 const forceBv = source(join(app, 'models', 'cbt-force-battle-value.ts'));
 assert.match(operationalC3, /export function projectOperationalC3Networks/u);
-assert.match(forceBv, /projectOperationalC3Networks\(/u);
 assert.match(cbtC3, /projectOperationalC3Networks\(/u);
+assert.doesNotMatch(
+    forceBv,
+    /projectOperationalC3Networks\(/u,
+    'force BV must not duplicate C3 endpoint eligibility outside the tax calculator',
+);
+assert.match(forceBv, /new C3TaxCalculator\(/u);
+assert.match(forceBv, /isC3EndpointOperational:[\s\S]*isIntact\(/u);
 assert.match(forceBv, /adjustEntityBattleValueForSkills\(/u);
 assert.doesNotMatch(
     forceBv,
@@ -187,10 +231,20 @@ assert.match(commandSession, /interface RuntimeCommandCheckpoint\s*\{\s*readonly
 assert.doesNotMatch(commandSession, /encounter/u);
 
 const forceSerialization = source(join(app, 'models', 'force-serialization.ts'));
-assert.match(
+assert.doesNotMatch(
     forceSerialization,
-    /interface CBTSerializedForce extends SerializedForce\s*\{\s*version: 1;\s*type: GameSystem\.CLASSIC;\s*cbt\?: never;/u,
-    'the grouped Classic DTO must remain an exact V1 ingress type',
+    /CBTSerialized|CBT_SERIALIZED|SerializedLegacyCriticalSlotV1|SerializedTurnState/u,
+    'grouped Classic deserialization must stay out of the current force serialization model',
+);
+assert.doesNotMatch(
+    forceSerialization,
+    /ViewportTransform|conditionIsActive|conditionsHasActive|conditionsHasCommittedActive|committedConditionData/u,
+    'force serialization must not retain unrelated UI types or unused condition helpers',
+);
+assert.doesNotMatch(
+    forceSerialization,
+    /export const (?:FORCE_TAG_MAX_(?:LENGTH|COUNT)|AS_(?:CRITICAL_HIT|CUSTOM_PILOT_ABILITY|SERIALIZED_GROUP)_SCHEMA)/u,
+    'implementation details must not be exported solely for tests',
 );
 
 const forceMember = source(join(app, 'models', 'force-member.model.ts'));
@@ -309,12 +363,11 @@ const directV1ForceSurface = production
 assert.deepEqual(
     directV1ForceSurface,
     [
-        'src/app/models/force-serialization.ts',
         'src/app/models/runtime/force-storage-codec.ts',
         'src/app/models/runtime/legacy-force-v1-converter.ts',
         'src/app/services/data.service.ts',
     ],
-    'V1 force handling must stay inside its DTO, transparent storage ingress, converter, and DataService boundary',
+    'V1 force handling must stay inside transparent storage ingress, the converter, and the DataService boundary',
 );
 
 const storageCodec = source(join(app, 'models', 'runtime', 'force-storage-codec.ts'));

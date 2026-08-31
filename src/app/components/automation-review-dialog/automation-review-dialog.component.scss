@@ -1,14 +1,184 @@
-:host { display: block; max-width: min(760px, 94vw); }
-.panel { max-height: 90vh; overflow: auto; }
-.automation-review-body { display: grid; gap: 0.75rem; }
-.automation-event-list { display: grid; gap: 0.6rem; }
-.automation-event { display: grid; gap: 0.6rem; padding: 0.75rem; border: 1px solid var(--border-color, #777); border-radius: 4px; }
-.automation-event.accepted { border-color: var(--success-color, #3a6); }
-.automation-event.rejected { opacity: 0.75; }
-.automation-event-info h3 { margin: 0; }
-.automation-event-effects { display: grid; margin-top: 0.4rem; }
-.automation-event-breakdown { display: grid; gap: 0.2rem; }
-.automation-event-breakdown > div { display: flex; justify-content: space-between; gap: 1rem; }
-.automation-event-actions, .automation-review-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
-.cooling { color: #4da3ff; }
-.heating { color: #ff5a5a; }
+:host {
+    display: block;
+}
+
+.panel {
+    width: min(520px, calc(100vw - 24px));
+}
+
+.automation-review-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.automation-review-message {
+    margin: 0 8px 4px;
+    color: var(--text-color-secondary);
+    font-size: 0.9em;
+    line-height: 1.35;
+}
+
+.automation-event-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0 4px;
+}
+
+.automation-event {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(230px, 1fr);
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--bt-yellow);
+    background: var(--background-input);
+    transition: opacity 0.2s, border-color 0.2s;
+}
+
+.automation-event.accepted {
+    border-left-color: #9a9aff;
+}
+
+.automation-event.rejected {
+    border-left-color: #666;
+    opacity: 0.8;
+}
+
+.automation-event.single-event {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.automation-event-info {
+    min-width: 0;
+}
+
+.automation-event h3 {
+    margin: 0;
+    color: var(--text-color);
+    font-size: 0.95em;
+    line-height: 1.25;
+}
+
+.automation-event-name {
+    color: var(--bt-yellow);
+    font-size: 0.82em;
+    font-weight: 600;
+}
+
+.automation-event-description {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+    color: var(--text-color-secondary);
+    font-size: 0.82em;
+}
+
+.automation-event-delta,
+.automation-event-breakdown-row strong {
+    color: var(--text-color-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.automation-event-delta.cooling,
+.automation-event-breakdown-row strong.cooling {
+    color: #2070d1;
+}
+
+.automation-event-delta.heating,
+.automation-event-breakdown-row strong.heating {
+    color: var(--danger);
+}
+
+.automation-event-effects {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.automation-event-effects span {
+    padding: 2px 5px;
+    border: 1px solid var(--danger);
+    background: #311;
+    color: var(--danger);
+    font-size: 0.78em;
+    line-height: 1.2;
+}
+
+.automation-event-side {
+    align-self: stretch;
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.automation-event-breakdown {
+    display: grid;
+    gap: 1px;
+}
+
+.automation-event-breakdown-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 52px;
+    background: var(--background-highlight);
+    color: var(--text-color-secondary);
+    font-size: 0.78em;
+}
+
+.automation-event-breakdown-row > span {
+    align-self: center;
+    min-width: 0;
+    padding: 1px 4px;
+    border-left: 1px solid var(--border-color);
+}
+
+.automation-event-breakdown-row > strong {
+    display: grid;
+    place-items: center;
+    border-left: 1px solid var(--border-color);
+}
+
+.automation-event-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    align-self: stretch;
+}
+
+.automation-event-actions .bt-button {
+    width: 100%;
+    min-width: 0;
+}
+
+.automation-event-actions .bt-button.success.selected {
+    background-color: var(--success);
+}
+
+.automation-event-actions .bt-button.danger.selected {
+    background-color: var(--danger);
+    --btn-text-color: #fff;
+}
+
+.automation-review-actions {
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.automation-review-actions .bt-button {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 120px;
+}
+
+@media (max-width: 440px) {
+    .automation-event {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

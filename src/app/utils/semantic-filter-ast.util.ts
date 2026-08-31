@@ -36,8 +36,10 @@ import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
 import { checkQuantityConstraint as checkQuantityConstraintCore, isEmbeddedApostrophe, unitMatchesRulesRefsSelection } from './unit-search-shared.util';
 import { isASDamageSemanticKey, parseASDamageValue } from './as-damage.util';
 import {
+    compileASSpecialQueries,
     buildIndexedASSpecialSelectionCandidates,
     evaluateASSpecialsFilter,
+    type CompiledASSpecialQuery,
     type ParsedASSpecials,
 } from './as-special-filter.util';
 
@@ -1147,6 +1149,7 @@ const AS_DAMAGE_RANGE_VALUE_PATTERN = /^(0\*|-?\d+(?:\.\d+)?)[-~](0\*|-?\d+(?:\.
 const FILTER_CONFIGS_BY_SEMANTIC_KEY = new Map<string, AdvFilterConfig[]>();
 const sortedFilterConfigsCache = new WeakMap<EvaluatorContext, Map<string, readonly AdvFilterConfig[]>>();
 const parsedRangeValuesCache = new WeakMap<SemanticToken, ParsedRangeValue[]>();
+const compiledASSpecialQueriesCache = new WeakMap<readonly string[], readonly CompiledASSpecialQuery[]>();
 
 for (const filterConfig of ADVANCED_FILTERS) {
     const semanticKey = (filterConfig.semanticKey || filterConfig.key).toLowerCase();
@@ -2316,10 +2319,15 @@ function evaluateDropdownFilter(
     context: EvaluatorContext
 ): boolean {
     if (conf.key === 'as.specials') {
+        let queries = compiledASSpecialQueriesCache.get(values);
+        if (!queries) {
+            queries = compileASSpecialQueries(values);
+            compiledASSpecialQueriesCache.set(values, queries);
+        }
         return evaluateASSpecialsFilter(
             unitValue,
             operator,
-            values,
+            queries,
             context.getIndexedASSpecials?.(context.getUnitId(unit)),
         );
     }

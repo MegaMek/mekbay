@@ -16,6 +16,49 @@
     overflow-y: auto;
 }
 
+.turn-summary.embedded {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
+    align-items: start;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    gap: 6px;
+    padding: 6px;
+
+    .panel-header,
+    .summary-actions {
+        grid-column: 1 / -1;
+    }
+
+    .panel-header {
+        padding: 3px 6px 6px;
+        text-align: left;
+    }
+
+    .summary-section {
+        min-width: 0;
+        padding: 5px 6px;
+        border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+        background: color-mix(in srgb, var(--background-color) 62%, transparent);
+        white-space: normal;
+    }
+
+    .move-button,
+    .immobile-status {
+        min-height: 30px;
+    }
+
+    .summary-actions {
+        display: flex;
+        flex-flow: row wrap;
+    }
+
+    .summary-actions .bt-button {
+        flex: 1 1 150px;
+    }
+}
+
 .panel-header {
     padding: 8px 12px;
     border-bottom: 1px solid var(--border-color);

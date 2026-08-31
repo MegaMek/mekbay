@@ -389,8 +389,8 @@ export class CBTPrintUtil {
         document.body.classList.add('multipage-container-active');
 
         // Wait for fonts and all <image> elements in the SVGs
-        if ((document as any).fonts?.ready) {
-            try { await (document as any).fonts.ready; } catch { }
+        if (document.fonts?.ready) {
+            try { await document.fonts.ready; } catch { }
         }
         await this.waitForSvgImagesToLoad(overlay);
         await this.nextAnimationFrames(2);

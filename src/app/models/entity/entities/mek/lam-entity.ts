@@ -3,13 +3,13 @@
 // Author: Drake
 
 import { computed, signal } from '@angular/core';
-import { CriticalSlotView, MekConfig, type TechRatingSource } from '../../types';
+import { CriticalSlotView, MekConfig, type MekSystemType, type TechRatingSource } from '../../types';
 import { getLamConstructionTech } from '../../components';
 import { BipedMekEntity } from './biped-mek-entity';
 
 /** Helper to create a system slot view. */
-function sys(systemType: string): CriticalSlotView {
-  return { type: 'system', systemType: systemType as any, armored: false, omniPod: false };
+function sys(systemType: MekSystemType): CriticalSlotView {
+  return { type: 'system', systemType, armored: false, omniPod: false };
 }
 
 /** Land-Air Mek - a biped Mek with LAM-specific fields. */

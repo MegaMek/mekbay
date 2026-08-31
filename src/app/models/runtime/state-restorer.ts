@@ -8,6 +8,7 @@ import {
     type JsonValue,
 } from '../persisted-unit-state';
 import type { SavedEntityIdentity } from '../persisted-unit-state';
+import { isUnitConditionKey } from '../unit-condition.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import { INTRINSIC_ONE_SHOT_AMMO_STATE } from '../ammo-weapon-profile.model';
 import type {
@@ -33,8 +34,8 @@ import {
     type MekShieldDamageRuntimeState,
     type PendingCombatOverlay,
     type PpcCapacitorRuntimeState,
+    isMekLocationConditionKey,
     MAX_MEK_LOCATION_CONDITION_VALUE,
-    MEK_LOCATION_CONDITION_KEYS,
 } from './runtime-state';
 import {
     GAUSS_POWERED_UP,
@@ -588,7 +589,7 @@ export async function restoreLegacyUnitState(
         warnings, unresolved, idTranslation, recover,
     );
     for (const condition of array(rawState['conditions'])) {
-        if (typeof condition === 'string' && condition.trim()) conditions.add(condition.trim());
+        if (isUnitConditionKey(condition)) conditions.add(condition);
         else unresolved.push(recover('unit-family', 'Condition needs a typed V2 codec', condition));
     }
     const rawHeat = recordObject(rawState['heat']);
@@ -1272,7 +1273,6 @@ function restoreLegacyLocationConditions(
     const pending = new Map(pendingConditions.get(locationId) ?? []);
     for (const entry of raw) {
         const parsed = parseLegacyLocationCondition(entry);
-        if (parsed.kind === 'ignored') continue;
         if (parsed.kind === 'unresolved') {
             unresolved.push(recover('location', `${parsed.reason} at ${savedCode}`, entry));
             if (parsed.recognizedKey !== undefined) {
@@ -1304,7 +1304,6 @@ function restoreLegacyLocationConditions(
 }
 
 type ParsedLegacyLocationCondition =
-    | { readonly kind: 'ignored' }
     | {
         readonly kind: 'unresolved';
         readonly reason: string;
@@ -1320,55 +1319,48 @@ type ParsedLegacyLocationCondition =
 
 function parseLegacyLocationCondition(raw: JsonValue): ParsedLegacyLocationCondition {
     if (typeof raw === 'string') {
-        const normalized = normalizeLegacyConditionKey(raw);
-        if (normalized === null) return { kind: 'unresolved', reason: 'Malformed location condition key' };
-        if (!isMekLocationConditionKey(normalized)) {
-            return { kind: 'unresolved', reason: `Unknown location condition ${normalized}` };
+        if (!isMekLocationConditionKey(raw)) {
+            return { kind: 'unresolved', reason: `Unknown location condition ${raw}` };
         }
-        if (normalized === 'narc') {
+        if (raw === 'narc') {
             return {
                 kind: 'unresolved',
                 reason: 'Counted NARC condition has no positive integer value',
-                recognizedKey: normalized,
+                recognizedKey: raw,
             };
         }
         return {
             kind: 'supported',
-            key: normalized,
+            key: raw,
             value: 1,
             pending: false,
-            ...(normalized === raw ? {} : { retainEvidence: 'Normalized legacy location condition key' }),
         };
     }
     const record = recordObject(raw);
     if (!record) return { kind: 'unresolved', reason: 'Location condition is not a string or object' };
-    if (record['remove'] === true) return { kind: 'ignored' };
-    const keySource = record['key'] ?? record['state'];
-    const normalized = normalizeLegacyConditionKey(keySource);
-    if (normalized === null) return { kind: 'unresolved', reason: 'Malformed location condition key' };
-    if (!isMekLocationConditionKey(normalized)) {
-        return { kind: 'unresolved', reason: `Unknown location condition ${normalized}` };
+    const condition = record['key'];
+    if (!isMekLocationConditionKey(condition)) {
+        return { kind: 'unresolved', reason: `Unknown location condition ${String(condition)}` };
     }
     const value = record['value'];
     const pending = record['pending'] === true;
-    const allowed = new Set(['key', 'state', 'value', 'pending', 'remove']);
+    const allowed = new Set(['key', 'value', 'pending']);
     const malformedMetadata = Object.keys(record).some(key => !allowed.has(key))
-        || (record['key'] !== undefined && record['state'] !== undefined)
         || (record['pending'] !== undefined && typeof record['pending'] !== 'boolean')
         || (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value)));
 
-    if (normalized === 'narc') {
+    if (condition === 'narc') {
         if (typeof value !== 'number' || !Number.isSafeInteger(value)
             || value <= 0 || value > MAX_MEK_LOCATION_CONDITION_VALUE) {
             return {
                 kind: 'unresolved',
                 reason: 'Counted NARC condition requires a bounded positive integer value',
-                recognizedKey: normalized,
+                recognizedKey: condition,
             };
         }
         return {
             kind: 'supported',
-            key: normalized,
+            key: condition,
             value,
             pending,
             ...(malformedMetadata ? { retainEvidence: 'Malformed legacy NARC metadata was not promoted' } : {}),
@@ -1378,23 +1370,13 @@ function parseLegacyLocationCondition(raw: JsonValue): ParsedLegacyLocationCondi
     const discardedBooleanValue = value !== undefined;
     return {
         kind: 'supported',
-        key: normalized,
+        key: condition,
         value: 1,
         pending,
         ...(malformedMetadata || discardedBooleanValue
             ? { retainEvidence: 'Non-canonical boolean location-condition metadata was not promoted' }
             : {}),
     };
-}
-
-function normalizeLegacyConditionKey(value: JsonValue | undefined): string | null {
-    if (typeof value !== 'string') return null;
-    const normalized = value.trim().slice(0, 48);
-    return normalized.length === 0 ? null : normalized;
-}
-
-function isMekLocationConditionKey(value: string): value is MekLocationConditionKey {
-    return (MEK_LOCATION_CONDITION_KEYS as readonly string[]).includes(value);
 }
 
 function clearRestoredNarcFromPhysicallyDestroyedLocations(

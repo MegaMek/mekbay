@@ -15,7 +15,12 @@ import {
     type ParseResult,
 } from './semantic-filter-ast.util';
 import { createSearchMatcher, parseSearchQuery, type SearchTokensGroup } from './search.util';
-import { compareUnitsByName, computeRelevanceScore, naturalCompare } from './sort.util';
+import {
+    compareUnitsByName,
+    compileRelevanceSearchGroups,
+    computeRelevanceScore,
+    naturalCompare,
+} from './sort.util';
 import { removeAccents, wildcardToRegex } from './string.util';
 import { getNowMs, getProperty, getUnitCountableFilterData, isCommittedSemanticToken, measureStage } from './unit-search-shared.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './unit-filter-kernel.util';
@@ -276,6 +281,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
     }
 
     const sorted = [...results];
+    const compiledSearchTokens = compileRelevanceSearchGroups(request.searchTokens);
     let relevanceScores: WeakMap<UnitSummary, number> | null = null;
     let megaMekRarityScores: WeakMap<UnitSummary, number> | null = null;
     if (request.sortKey === '' && hasTextSearch) {
@@ -300,20 +306,22 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                         if (matchingTexts.length > 0) {
                             let bestScore = 0;
                             for (const text of matchingTexts) {
-                                const textTokens = parseSearchQuery(text);
+                                const textTokens = compileRelevanceSearchGroups(parseSearchQuery(text));
                                 const score = computeRelevanceScore(chassis, model, textTokens);
                                 if (score > bestScore) {
                                     bestScore = score;
                                 }
                             }
-                            const combinedTokens = parseSearchQuery(matchingTexts.join(' '));
+                            const combinedTokens = compileRelevanceSearchGroups(
+                                parseSearchQuery(matchingTexts.join(' ')),
+                            );
                             const combinedScore = computeRelevanceScore(chassis, model, combinedTokens);
                             scores.set(unit, Math.max(bestScore, combinedScore));
                         } else {
                             scores.set(unit, 0);
                         }
                     } else {
-                        scores.set(unit, computeRelevanceScore(chassis, model, request.searchTokens));
+                        scores.set(unit, computeRelevanceScore(chassis, model, compiledSearchTokens));
                     }
                 }
 

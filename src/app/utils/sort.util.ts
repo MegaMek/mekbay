@@ -7,16 +7,20 @@ import { escapeRegExp, removeAccents } from './string.util';
 
 
 type Part = { raw: string; normalized: string; isNum: boolean; num?: number };
-type CacheEntry = { parts: Part[] };
+type NaturalSortKey = { raw: string; parts: Part[] };
 
-let naturalCompareCache = new Map<string, CacheEntry>();
+// The checked-in 9,876-unit corpus needs 7,419 distinct chassis/model keys.
+// 16K leaves room for the expected ~15K catalog without retaining arbitrary input forever.
+const NATURAL_SORT_CACHE_LIMIT = 16_384;
+const naturalSortKeyCache = new Map<string, NaturalSortKey>();
 
-function tokenizeForNaturalCompare(s: string, isModel: boolean): CacheEntry {
+function tokenizeForNaturalCompare(s: string, isModel: boolean): NaturalSortKey {
     // Normalize input
     if (typeof s !== 'string') {
         if (s == null) s = '';
         else s = String(s);
     }
+    const raw = s;
     s = s.trim();
 
     // Make 'Prime' and 'Standard' variants go first, but only if this is the entire model name
@@ -28,7 +32,7 @@ function tokenizeForNaturalCompare(s: string, isModel: boolean): CacheEntry {
                 isNum: false,
                 num: 0
             };
-            return {parts: [part]};
+            return { raw, parts: [part] };
         }
         if (s == '') {
             const part: Part = {
@@ -37,7 +41,7 @@ function tokenizeForNaturalCompare(s: string, isModel: boolean): CacheEntry {
                 isNum: true,
                 num: 0
             };
-            return {parts: [part]};
+            return { raw, parts: [part] };
         }
     }
 
@@ -53,17 +57,22 @@ function tokenizeForNaturalCompare(s: string, isModel: boolean): CacheEntry {
             num: isNum ? parseInt(p, 10) : undefined
         };
     });
-    return { parts };
+    return { raw, parts };
 }
 
-function getCachedParts(s: string, isModel: boolean): CacheEntry {
-    const token = (typeof s === 'string') ? s : (s == null ? '' : String(s));
-    const key = token + (isModel ? '~model' : '');
-    const existing = naturalCompareCache.get(key);
-    if (existing) return existing;
-    const entry = tokenizeForNaturalCompare(token, isModel);
-    naturalCompareCache.set(key, entry);
-    return entry;
+function naturalSortKey(value: string, isModel: boolean): NaturalSortKey {
+    const token = typeof value === 'string' ? value : (value == null ? '' : String(value));
+    const cacheKey = `${token}\0${isModel ? 'model' : 'plain'}`;
+    const cached = naturalSortKeyCache.get(cacheKey);
+    if (cached) return cached;
+
+    const result = tokenizeForNaturalCompare(token, isModel);
+    if (naturalSortKeyCache.size >= NATURAL_SORT_CACHE_LIMIT) {
+        const oldest = naturalSortKeyCache.keys().next().value;
+        if (oldest !== undefined) naturalSortKeyCache.delete(oldest);
+    }
+    naturalSortKeyCache.set(cacheKey, result);
+    return result;
 }
 
 /**
@@ -75,8 +84,8 @@ function getCachedParts(s: string, isModel: boolean): CacheEntry {
 export function naturalCompare(a: string, b: string, isModel: boolean = false): number {
     if (a === b) return 0;
 
-    const entryA = getCachedParts(a, isModel);
-    const entryB = getCachedParts(b, isModel);
+    const entryA = naturalSortKey(a, isModel);
+    const entryB = naturalSortKey(b, isModel);
 
     const partsA = entryA.parts;
     const partsB = entryB.parts;
@@ -108,7 +117,7 @@ export function naturalCompare(a: string, b: string, isModel: boolean = false): 
     }
 
     // Fallback to locale compare if all tokens equal
-    return a.localeCompare(b);
+    return entryA.raw.localeCompare(entryB.raw);
 }
 
 export function compareUnitsByName(a: UnitSummary, b: UnitSummary) {
@@ -127,32 +136,59 @@ type RelevanceNormalizedText = {
     alphaNum: string;
 };
 
-const relevanceNormalizeCache = new Map<string, RelevanceNormalizedText>();
-const relevanceFlexRegexCache = new Map<string, RegExp>();
+export interface RelevanceSearchToken {
+    readonly token: string;
+    readonly mode: 'exact' | 'partial';
+}
+
+export interface RelevanceSearchGroup {
+    readonly tokens: readonly RelevanceSearchToken[];
+}
+
+export interface CompiledRelevanceSearchGroup {
+    readonly tokens: readonly CompiledRelevanceSearchToken[];
+}
+
+interface CompiledRelevanceSearchToken extends RelevanceSearchToken {
+    readonly lower: string;
+    readonly alphaNum: string;
+    readonly exactRegex: RegExp | null;
+    readonly flexRegex: RegExp | null;
+}
 
 function normalizeForRelevance(text: string): RelevanceNormalizedText {
     const token = (typeof text === 'string') ? text : (text == null ? '' : String(text));
-    const cached = relevanceNormalizeCache.get(token);
-    if (cached) return cached;
-
     const lower = removeAccents(token).toLowerCase();
     const alphaNum = lower.replace(/[^a-z0-9]/gi, '');
-    const entry = { lower, alphaNum };
-    relevanceNormalizeCache.set(token, entry);
-    return entry;
+    return { lower, alphaNum };
 }
 
 function getFlexTokenRegex(tokenAlphaNum: string): RegExp {
-    const cached = relevanceFlexRegexCache.get(tokenAlphaNum);
-    if (cached) return cached;
-
     // Allow gaps made of non-alphanumerics between each character.
     // This matches things like "tia n" or "t (ian)".
     const parts = tokenAlphaNum.split('').map(ch => escapeRegExp(ch));
     const pattern = parts.join('[^a-z0-9]*');
-    const re = new RegExp(pattern, 'i');
-    relevanceFlexRegexCache.set(tokenAlphaNum, re);
-    return re;
+    return new RegExp(pattern, 'i');
+}
+
+/** Compile immutable search text once before scoring a unit collection. */
+export function compileRelevanceSearchGroups(
+    groups: readonly RelevanceSearchGroup[],
+): readonly CompiledRelevanceSearchGroup[] {
+    return Object.freeze(groups.map(group => Object.freeze({
+        tokens: Object.freeze(group.tokens.map(token => {
+            const normalized = normalizeForRelevance(token.token);
+            return Object.freeze({
+                ...token,
+                lower: normalized.lower,
+                alphaNum: normalized.alphaNum,
+                exactRegex: token.mode === 'exact' && normalized.lower
+                    ? new RegExp(`(^|[^a-z0-9])(${escapeRegExp(normalized.lower)})($|[^a-z0-9])`, 'i')
+                    : null,
+                flexRegex: normalized.alphaNum ? getFlexTokenRegex(normalized.alphaNum) : null,
+            });
+        })),
+    })));
 }
 
 function isBoundaryChar(ch: string | undefined): boolean {
@@ -177,61 +213,53 @@ function boundaryBonus(textLower: string, startIndex: number, matchLength: numbe
 function scoreTokenInText(
     textLower: string,
     textAlphaNum: string,
-    token: { token: string; mode: 'exact' | 'partial' }
+    token: CompiledRelevanceSearchToken,
 ): number {
-    const rawToken = token.token ?? '';
-    if (!rawToken) return 0;
-
-    const normalized = normalizeForRelevance(rawToken);
-    const tokenLower = normalized.lower;
-    const tokenAlpha = normalized.alphaNum;
+    if (!token.token) return 0;
 
     // Exact tokens: prioritize whole-token matches with boundaries.
     if (token.mode === 'exact') {
-        const escaped = escapeRegExp(tokenLower);
-        const re = new RegExp(`(^|[^a-z0-9])(${escaped})($|[^a-z0-9])`, 'i');
-        const m = re.exec(textLower);
+        const m = token.exactRegex?.exec(textLower);
         if (m && typeof m.index === 'number') {
             const start = m.index + (m[1]?.length ?? 0);
-            const len = tokenLower.length;
+            const len = token.lower.length;
             const posPenalty = start * 8;
             const lengthPenalty = Math.max(0, textLower.length - len);
             return 16000 - posPenalty - lengthPenalty + boundaryBonus(textLower, start, len) + 1200;
         }
         // Fallback: if alphanumeric-normalized text equals token (rare but possible)
-        if (tokenAlpha && textAlphaNum === tokenAlpha) {
+        if (token.alphaNum && textAlphaNum === token.alphaNum) {
             return 15000;
         }
         return -Infinity;
     }
 
     // Partial tokens: contiguous match in the original normalized text.
-    const directIdx = tokenLower ? textLower.indexOf(tokenLower) : -1;
+    const directIdx = token.lower ? textLower.indexOf(token.lower) : -1;
     if (directIdx !== -1) {
         const posPenalty = directIdx * 6;
-        const lengthPenalty = Math.max(0, textLower.length - tokenLower.length);
-        return 14000 - posPenalty - lengthPenalty + boundaryBonus(textLower, directIdx, tokenLower.length);
+        const lengthPenalty = Math.max(0, textLower.length - token.lower.length);
+        return 14000 - posPenalty - lengthPenalty + boundaryBonus(textLower, directIdx, token.lower.length);
     }
 
     // Contiguous match after removing non-alphanumerics.
-    if (tokenAlpha) {
-        const alphaIdx = textAlphaNum.indexOf(tokenAlpha);
+    if (token.alphaNum) {
+        const alphaIdx = textAlphaNum.indexOf(token.alphaNum);
         if (alphaIdx !== -1) {
             const posPenalty = alphaIdx * 5;
-            const lengthPenalty = Math.max(0, textAlphaNum.length - tokenAlpha.length);
+            const lengthPenalty = Math.max(0, textAlphaNum.length - token.alphaNum.length);
             // Slightly lower than direct contiguous because it may cross separators.
             return 11000 - posPenalty - lengthPenalty + 250;
         }
 
         // Flexible match allowing punctuation/space between characters.
-        const flexRe = getFlexTokenRegex(tokenAlpha);
-        const flexMatch = flexRe.exec(textLower);
+        const flexMatch = token.flexRegex?.exec(textLower);
         if (flexMatch && typeof flexMatch.index === 'number') {
             const span = flexMatch[0].length;
             const start = flexMatch.index;
             const posPenalty = start * 7;
-            const spanPenalty = Math.max(0, span - tokenAlpha.length) * 30;
-            const lengthPenalty = Math.max(0, textLower.length - tokenAlpha.length);
+            const spanPenalty = Math.max(0, span - token.alphaNum.length) * 30;
+            const lengthPenalty = Math.max(0, textLower.length - token.alphaNum.length);
             return 9000 - posPenalty - spanPenalty - lengthPenalty + boundaryBonus(textLower, start, span);
         }
     }
@@ -244,9 +272,9 @@ function scoreTokenInText(
  * Returns a bonus score if tokens match in sequence, 0 otherwise.
  */
 function sequentialMatchBonus(
-    textLower: string,
+    _textLower: string,
     textAlphaNum: string,
-    tokens: Array<{ token: string; mode: 'exact' | 'partial' }>
+    tokens: readonly CompiledRelevanceSearchToken[],
 ): number {
     if (tokens.length < 2) return 0;
     
@@ -257,7 +285,7 @@ function sequentialMatchBonus(
     let matchCount = 0;
     
     for (const t of tokens) {
-        const tokenAlpha = normalizeForRelevance(t.token).alphaNum;
+        const tokenAlpha = t.alphaNum;
         if (!tokenAlpha) continue;
         
         const idx = textAlphaNum.indexOf(tokenAlpha, lastEnd);
@@ -286,7 +314,7 @@ function sequentialMatchBonus(
 function bestGroupScore(
     chassis: RelevanceNormalizedText,
     model: RelevanceNormalizedText,
-    group: { tokens: Array<{ token: string; mode: 'exact' | 'partial' }> }
+    group: CompiledRelevanceSearchGroup,
 ): number {
     if (!group.tokens || group.tokens.length === 0) return 0;
 
@@ -335,7 +363,7 @@ function bestGroupScore(
 export function computeRelevanceScore(
     chassisText: string,
     modelText: string,
-    searchTokens: Array<{ tokens: Array<{ token: string; mode: 'exact' | 'partial' }> }>
+    searchTokens: readonly CompiledRelevanceSearchGroup[],
 ): number {
     if (!searchTokens || searchTokens.length === 0) return 0;
 

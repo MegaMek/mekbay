@@ -37,9 +37,8 @@ export class AsAbilityLookupService {
 
     /** Index for fast lookup by normalized tag patterns */
     private readonly abilityIndex: Map<string, ASSpecialAbility>;
-
-    /** Cache for ability lookups */
     private readonly lookupCache = new Map<string, ASSpecialAbility | null>();
+    private static readonly LOOKUP_CACHE_LIMIT = 4_096;
 
     constructor() {
         this.abilityIndex = this.buildAbilityIndex();
@@ -199,15 +198,18 @@ export class AsAbilityLookupService {
 
     /**
      * Looks up a single ability by its text representation.
-     * Uses caching for performance.
+     * The bounded result cache avoids repeating pattern scans while retaining
+     * enough headroom for the expected 15K-unit catalog.
      */
     lookupAbility(abilityText: string): ASSpecialAbility | null {
-        // Check cache first
-        if (this.lookupCache.has(abilityText)) {
-            return this.lookupCache.get(abilityText) ?? null;
-        }
+        const cached = this.lookupCache.get(abilityText);
+        if (cached !== undefined || this.lookupCache.has(abilityText)) return cached ?? null;
 
         const result = this.findAbilityByPattern(abilityText);
+        if (this.lookupCache.size >= AsAbilityLookupService.LOOKUP_CACHE_LIMIT) {
+            const oldest = this.lookupCache.keys().next().value;
+            if (oldest !== undefined) this.lookupCache.delete(oldest);
+        }
         this.lookupCache.set(abilityText, result);
         return result;
     }

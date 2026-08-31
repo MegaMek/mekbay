@@ -19,6 +19,7 @@ import type {
 } from '../runtime/non-mek-unit-instance';
 import type { CrewMemberState } from '../crew.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { UnitConditionKey } from '../unit-condition.model';
 import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
 import {
     calculateChargeDamage,
@@ -66,8 +67,8 @@ export interface VehicleRuntimeRuleModifiers {
  */
 export interface VehicleRuntimeRulesProjection {
     readonly destroyed: boolean;
-    readonly computedConditions: readonly string[];
-    readonly conditionControlKeys: readonly string[];
+    readonly computedConditions: readonly UnitConditionKey[];
+    readonly conditionControlKeys: readonly UnitConditionKey[];
     readonly crewStateControlKeys: readonly NonMekCrewState[];
     readonly crewStateDisplayKeys: readonly CrewMemberState[];
     readonly systems: VehicleRuntimeSystems;
@@ -159,8 +160,8 @@ export function projectVehicleRuntimeRules(
         stabilizerLocations: new ImmutableSet(stabilizerLocations),
     });
     const motiveImmobile = motiveHits.some(hit => hit.level === 4);
-    const storedImmobile = state.conditions.has('immobile') || state.conditions.has('immobilized');
-    const computedConditions = new Set<string>();
+    const storedImmobile = state.conditions.has('immobile');
+    const computedConditions = new Set<UnitConditionKey>();
     if (crewKilled && !hasDroneOperatingSystem) computedConditions.add('abandoned');
     if (disconnected) computedConditions.add('disconnected');
     if (crewKilled || motiveImmobile || disconnected) computedConditions.add('immobile');
@@ -184,14 +185,10 @@ export function projectVehicleRuntimeRules(
             stabilizerAffectedComponentIds.add(component.id);
         }
     }
-    const conditionControlKeys = [
-        'swarmed',
-        'tagged',
-        'ecm-shielded',
-        ...(ruleset === 'total-warfare' ? ['skidding'] : []),
-        'jammed',
-        ...(hasDroneOperatingSystem ? ['disconnected'] : []),
-    ];
+    const conditionControlKeys: UnitConditionKey[] = ['swarmed', 'tagged', 'ecm-shielded'];
+    if (ruleset === 'total-warfare') conditionControlKeys.push('skidding');
+    conditionControlKeys.push('jammed');
+    if (hasDroneOperatingSystem) conditionControlKeys.push('disconnected');
     const movementMode = state.turn.movement?.mode ?? null;
     const ramPlates = [...index.components.values()].filter(component =>
         isRamPlateEquipment(component.mount.equipment));

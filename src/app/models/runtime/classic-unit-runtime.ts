@@ -10,6 +10,7 @@ import type {
 } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { AmmoEquipment } from '../equipment.model';
+import type { UnitConditionKey } from '../unit-condition.model';
 import type { AttackerTargetingState } from './attacker-targeting-state';
 import type { EquipmentRowOrderState } from './equipment-row-order';
 import type {
@@ -84,7 +85,7 @@ export interface ClassicUnitRuntimeState {
     readonly components: ReadonlyMap<ComponentId, ComponentRuntimeState>;
     readonly ammo: ReadonlyMap<ComponentId, AmmoRuntimeState>;
     readonly crew: ReadonlyMap<CrewPositionId, ClassicCrewRuntimeState>;
-    readonly conditions: ReadonlySet<string>;
+    readonly conditions: ReadonlySet<UnitConditionKey>;
     readonly attackerTargeting: AttackerTargetingState;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
 }
@@ -107,8 +108,8 @@ export interface ClassicUnitQueryPort {
     ammoEquipment(componentId: ComponentId): AmmoEquipment | null;
     attackerTargetingState(): AttackerTargetingState;
     equipmentRowOrder(): EquipmentRowOrderState | undefined;
-    hasCondition(condition: string): boolean;
-    conditions(): readonly string[];
+    hasCondition(condition: UnitConditionKey): boolean;
+    conditions(): readonly UnitConditionKey[];
     crewState(positionId: CrewPositionId): ClassicCrewRuntimeState;
 }
 

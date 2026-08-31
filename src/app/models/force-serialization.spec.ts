@@ -3,21 +3,17 @@
 // Author: Drake
 
 import {
-    AS_SERIALIZED_GROUP_SCHEMA,
-    CBT_SERIALIZED_GROUP_SCHEMA,
-    CBT_SERIALIZED_STATE_SCHEMA,
+    AS_SERIALIZED_FORCE_SCHEMA,
+    AS_SERIALIZED_STATE_SCHEMA,
     C3_NETWORK_GROUP_SCHEMA,
-    CRIT_SLOT_SCHEMA,
-    FORCE_TAG_MAX_COUNT,
-    HEAT_SCHEMA,
     sanitizeForceTagLabels,
     sanitizeForceTags,
-    TURN_STATE_SCHEMA,
 } from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { C3NetworkType } from './c3-network.model';
+import { GameSystem } from './common.model';
 
-describe('C3 network serialization compatibility', () => {
+describe('C3 network serialization', () => {
     it('preserves peer IDs as ordered bare strings', () => {
         const serialized = {
             id: 'peer-network', type: C3NetworkType.C3I, color: '#1565C0',
@@ -55,12 +51,18 @@ describe('C3 network serialization compatibility', () => {
     });
 });
 
-describe('production V1 formation-target serialization', () => {
-    it('preserves a string target id in both game-system group schemas', () => {
-        const group = { id: 'support', formationTargetGroupId: 'target', units: [] };
+describe('Alpha Strike formation-target serialization', () => {
+    it('preserves a string target id', () => {
+        const force = {
+            version: 2,
+            timestamp: '2026-01-01T00:00:00.000Z',
+            instanceId: 'force',
+            type: GameSystem.ALPHA_STRIKE,
+            name: 'Force',
+            groups: [{ id: 'support', formationTargetGroupId: 'target', units: [] }],
+        };
 
-        expect(Sanitizer.sanitize(group, CBT_SERIALIZED_GROUP_SCHEMA).formationTargetGroupId).toBe('target');
-        expect(Sanitizer.sanitize(group, AS_SERIALIZED_GROUP_SCHEMA).formationTargetGroupId).toBe('target');
+        expect(Sanitizer.sanitize(force, AS_SERIALIZED_FORCE_SCHEMA).groups[0].formationTargetGroupId).toBe('target');
     });
 });
 
@@ -83,155 +85,29 @@ describe('force tag sanitization', () => {
     it('still applies the per-force tag count limit to assigned force tags', () => {
         const tags = sanitizeForceTags(manyTags);
 
-        expect(tags).toEqual(manyTags.slice(0, FORCE_TAG_MAX_COUNT));
+        expect(tags.length).toBeLessThan(manyTags.length);
+        expect(tags).toEqual(manyTags.slice(0, tags.length));
         expect(tags).not.toContain('aa');
         expect(tags).not.toContain('zz');
     });
 });
 
-describe('heat state sanitization', () => {
-    it('discards malformed optional values instead of creating a zero target', () => {
-        expect(Sanitizer.sanitize({ current: 4, previous: 3, next: 'invalid', heatsinksOff: Infinity }, HEAT_SCHEMA)).toEqual({
-            current: 4,
-            previous: 3,
-        });
-
-        expect(Sanitizer.sanitize({
-            moveDistance: 'invalid',
-            dmgReceived: Number.NaN,
-            weaponsHeat: Number.POSITIVE_INFINITY,
-            heatDissipationConsumed: Number.POSITIVE_INFINITY,
-        }, TURN_STATE_SCHEMA)).toEqual({});
-    });
-
-    it('normalizes valid optional numeric values to non-negative values', () => {
-        expect(Sanitizer.sanitize({ current: 4, previous: 3, next: '7', heatsinksOff: -2 }, HEAT_SCHEMA)).toEqual({
-            current: 4,
-            previous: 3,
-            next: 7,
-            heatsinksOff: 0,
-        });
-    });
-
-    it('sanitizes consumed heat dissipation as a non-negative finite number', () => {
-        expect(Sanitizer.sanitize({ heatDissipationConsumed: '6' }, TURN_STATE_SCHEMA)).toEqual({
-            heatDissipationConsumed: 6,
-        });
-        expect(Sanitizer.sanitize({ heatDissipationConsumed: -2 }, TURN_STATE_SCHEMA)).toEqual({
-            heatDissipationConsumed: 0,
-        });
-    });
-
-    it('imports the latest V1 turn chronology, cover, stand, and critical timestamp fields', () => {
-        expect(Sanitizer.sanitize({
-            turnCounter: 4.9,
-            endTurnCheckpoint: 'heat-staged',
-            standAttempts: 2,
-            carefulStand: true,
-            cover: 3,
-        }, TURN_STATE_SCHEMA)).toEqual({
-            turnCounter: 4,
-            endTurnCheckpoint: 'heat-staged',
-            standAttempts: 2,
-            carefulStand: true,
-            cover: 3,
-        });
-        expect(Sanitizer.sanitize({ id: 'crit', destroyedTurn: 7.8 }, CRIT_SLOT_SCHEMA))
-            .toEqual({ id: 'crit', destroyedTurn: 7 });
-    });
-
-    it('imports the latest V1 pending-event union without obsolete UI fields', () => {
-        expect(Sanitizer.sanitize({
-            pendingEvents: [
-                {
-                    type: 'unit-check',
-                    id: ' check:1 ',
-                    kind: 'consciousness',
-                    pilotDamageGroup: ' P ',
-                    crewId: 2,
-                    target: 7,
-                    result: { kind: 'roll', dice: [3, 2] },
-                    description: 'not persisted',
-                },
-                {
-                    type: 'mek-critical-hit',
-                    id: 'critical:1',
-                    location: ' LT ',
-                    targetLocation: ' CT ',
-                    remainingHits: 2,
-                    chanceOrigin: {},
-                    caseII: { status: 'passed' },
-                    roll: [3, 4],
-                },
-            ],
-        }, TURN_STATE_SCHEMA)).toEqual({
-            pendingEvents: [
-                {
-                    type: 'unit-check',
-                    id: 'check:1',
-                    kind: 'consciousness',
-                    pilotDamageGroup: 'P',
-                    crewId: 2,
-                    target: 7,
-                    result: { kind: 'roll', dice: [3, 2] },
-                },
-                {
-                    type: 'mek-critical-hit',
-                    id: 'critical:1',
-                    location: 'LT',
-                    targetLocation: 'CT',
-                    remainingHits: 2,
-                    chanceOrigin: {},
-                    caseII: { status: 'passed' },
-                    roll: [3, 4],
-                },
-            ],
-        });
-    });
-
-    it('normalizes PSR locations and rejects non-positive or fractional hit counts', () => {
-        expect(Sanitizer.sanitize({
-            psrChecks: {
-                legActuators: { ' LL ': 2, RL: -1, LA: 0, RA: 1.5 }
-            }
-        }, TURN_STATE_SCHEMA)).toEqual({
-            psrChecks: { legActuators: { LL: 2 } }
-        });
-    });
-
-    it('keeps valid PSR outcomes and rejects malformed outcomes', () => {
-        expect(Sanitizer.sanitize({
-            psrOutcomes: {
-                first: 'success',
-                second: 'failed',
-                invalid: 'pending',
-                numeric: 1,
-            },
-        }, TURN_STATE_SCHEMA)).toEqual({
-            psrOutcomes: { first: 'success', second: 'failed' },
-        });
-    });
-});
-
-describe('rule check sanitization', () => {
-    it('preserves valid records and rejects malformed records', () => {
+describe('unit condition sanitization', () => {
+    it('keeps exact typed keys and drops aliases or normalized spellings', () => {
         const sanitized = Sanitizer.sanitize({
-            modified: false,
-            destroyed: false,
-            crew: [],
-            crits: [],
-            locations: {},
-            heat: { current: 0, previous: 0 },
-            ruleChecks: {
-                valid: { token: 'token-1', trigger: 'LT', status: 'success' },
-                invalidStatus: { token: 'token-2', trigger: 'RT', status: 'ignored' },
-                missingToken: { trigger: 'CT', status: 'failed' },
-                missingTrigger: { token: 'token-3', status: 'pending' },
-            },
-        }, CBT_SERIALIZED_STATE_SCHEMA);
+            conditions: [
+                'prone',
+                ' prone ',
+                'immobilized',
+                { key: 'jammed', pending: true },
+                { state: 'tagged' },
+                { key: 'not-a-condition' },
+            ],
+        }, AS_SERIALIZED_STATE_SCHEMA);
 
-        expect(sanitized.ruleChecks).toEqual({
-            valid: { token: 'token-1', trigger: 'LT', status: 'success' },
-        });
+        expect(sanitized.conditions).toEqual([
+            { key: 'jammed', pending: true },
+            'prone',
+        ]);
     });
 });

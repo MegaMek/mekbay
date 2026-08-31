@@ -1,0 +1,1003 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import {
+    ChangeDetectionStrategy,
+    Component,
+    DestroyRef,
+    ElementRef,
+    Injector,
+    computed,
+    effect,
+    inject,
+    signal,
+} from '@angular/core';
+import { Overlay } from '@angular/cdk/overlay';
+
+import {
+    type CBTForceMember,
+    isCBTForceMember,
+    isCBTMekForceMember,
+} from '../../models/force-member.model';
+import type {
+    MekEquipmentChoice,
+    MekEquipmentInteraction,
+} from '../../models/cbt-force.model';
+import type {
+    EquipmentPanelComponent,
+    EquipmentPanelTarget,
+    MekPhysicalAttackRow,
+} from '../../models/runtime/equipment-panel';
+import type {
+    MekRecordSheetArmorFace,
+    MekRecordSheetCriticalSlot,
+    MekRecordSheetCrewPosition,
+    MekRecordSheetLocation,
+    MekRecordSheetSnapshot,
+} from '../../models/runtime/mek-record-sheet';
+import type {
+    NonMekRecordSheetArmorFace,
+    NonMekRecordSheetComponent,
+    NonMekRecordSheetCrewPosition,
+    NonMekRecordSheetDamageTrack,
+    NonMekRecordSheetLocation,
+    NonMekRecordSheetSnapshot,
+} from '../../models/runtime/non-mek-record-sheet';
+import type { NonMekUnitCommand } from '../../models/runtime/non-mek-unit-instance';
+import type { CBTUnitCommand } from '../../models/runtime/unit-instance';
+import { hasMekRuntime, hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
+import { createCommandId, MAX_MEK_CREW_WOUNDS } from '../../models/runtime/runtime-state';
+import { hasPendingNonMekChanges } from '../../models/runtime/non-mek-unit-instance';
+import { isMekTurnPanelDirty } from '../../models/runtime/mek-turn-panel';
+import {
+    MEK_CREW_STATE_CONTROLS,
+    MEK_UNIT_CONDITION_CONTROLS,
+} from '../../models/mek-record-sheet-controls';
+import {
+    crewStateDefinitions,
+    getUnitConditionDefinition,
+    unitConditionControls,
+} from '../../models/unit-status-presentation';
+import type { CrewMemberState } from '../../models/crew.model';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
+import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
+import { OptionsService } from '../../services/options.service';
+import { ToastService } from '../../services/toast.service';
+import { DialogsService } from '../../services/dialogs.service';
+import { OverlayManagerService } from '../../services/overlay-manager.service';
+import { ClassicUnitViewModeService } from '../../services/classic-unit-view-mode.service';
+import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
+import { EquipmentDialogRuntimeController } from '../equipment-dialog/equipment-dialog-runtime.controller';
+import { WeaponTargetsOverlayController } from '../equipment-dialog/weapon-targets-overlay.controller';
+import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary-panel.component';
+import { PageViewerStateService } from '../page-viewer/internal/page-viewer-state.service';
+import { PageViewerMekInteractionService } from '../page-viewer/internal/page-viewer-mek-interaction.service';
+import { PageViewerNonMekRuntimeService } from '../page-viewer/internal/page-viewer-non-mek-runtime.service';
+import { PageViewerOverlayService } from '../page-viewer/internal/page-viewer-overlay.service';
+import { PageViewerZoomPanService } from '../page-viewer/page-viewer-zoom-pan.service';
+import type { MekRecordSheetInteraction } from '../page-viewer/mek-record-sheet-binder';
+import type { NonMekRecordSheetInteraction } from '../page-viewer/non-mek-record-sheet-binder';
+import { recordSheetCommand } from '../page-viewer/mek-record-sheet-interaction.util';
+import type { UnitConditionKey } from '../../models/unit-condition.model';
+
+interface MekCriticalGroup {
+    readonly code: string;
+    readonly slots: readonly MekRecordSheetCriticalSlot[];
+}
+
+type TacticalInventoryGroupId = 'ranged' | 'physical' | 'equipment';
+
+interface TacticalInventoryRow {
+    readonly id: string;
+    readonly component?: EquipmentPanelComponent;
+    readonly physical?: MekPhysicalAttackRow;
+    readonly interaction?: MekEquipmentInteraction;
+    readonly label: string;
+    readonly location: string;
+    readonly damage: string;
+    readonly heat: string;
+    readonly range: string;
+    readonly status: string;
+    readonly mode?: string;
+    readonly ammo?: Readonly<{ remaining: number; capacity: number }>;
+}
+
+interface TacticalInventoryGroup {
+    readonly id: TacticalInventoryGroupId;
+    readonly title: string;
+    readonly skill?: Readonly<{ label: string; value: number }>;
+    readonly rows: readonly TacticalInventoryRow[];
+}
+
+const LEFT_CRITICAL_LOCATIONS = new Set(['LA', 'LT', 'LL', 'FLL', 'RLL', 'LS', 'LWG']);
+const RIGHT_CRITICAL_LOCATIONS = new Set(['RA', 'RT', 'RL', 'FRL', 'RRL', 'RS', 'RWG']);
+
+@Component({
+    selector: 'tactical-view',
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    providers: [
+        PageViewerStateService,
+        PageViewerOverlayService,
+        PageViewerZoomPanService,
+        PageViewerMekInteractionService,
+        PageViewerNonMekRuntimeService,
+    ],
+    imports: [PageTurnSummaryPanelComponent, UnitIconComponent],
+    templateUrl: './tactical-view.component.html',
+    styleUrl: './tactical-view.component.scss',
+})
+export class TacticalViewComponent {
+    private readonly workspace = inject(ForceWorkspaceStateService);
+    private readonly forceCommands = inject(ForceWorkspaceCommandsService);
+    private readonly keyboardShortcuts = inject(KeyboardShortcutService);
+    private readonly options = inject(OptionsService);
+    private readonly toast = inject(ToastService);
+    private readonly dialogs = inject(DialogsService);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly host = inject(ElementRef<HTMLElement>);
+    private readonly injector = inject(Injector);
+    private readonly overlay = inject(Overlay);
+    private readonly overlayManager = inject(OverlayManagerService);
+    private readonly unitViewMode = inject(ClassicUnitViewModeService);
+    private readonly mekInteractions = inject(PageViewerMekInteractionService);
+    private readonly nonMekInteractions = inject(PageViewerNonMekRuntimeService);
+    private readonly targetsOverlay = new WeaponTargetsOverlayController({
+        overlay: this.overlay,
+        overlayManager: this.overlayManager,
+        injector: this.injector,
+        destroyRef: this.destroyRef,
+    });
+
+    protected readonly maximumRenderedPips = 72;
+    protected readonly mekCrewStateControls = MEK_CREW_STATE_CONTROLS;
+
+    protected readonly member = computed<CBTForceMember | null>(() => {
+        const selected = this.workspace.selectedUnit();
+        return isCBTForceMember(selected) ? selected : null;
+    });
+    protected readonly force = computed(() => this.member()?.force ?? null);
+    protected readonly readOnly = computed(() => this.force()?.readOnly() ?? true);
+    protected readonly forceMembers = computed(() => this.force()?.members()
+        .filter(isCBTForceMember) ?? []);
+    protected readonly unitIndex = computed(() => {
+        const member = this.member();
+        return member ? this.forceMembers().findIndex(candidate => candidate.id === member.id) : -1;
+    });
+    protected readonly canNavigate = computed(() => this.forceMembers().length > 1);
+    protected readonly pendingDamage = computed(() => this.options.options().trackPhaseAndTurn);
+    protected readonly equipmentRuntime = signal<EquipmentDialogRuntimeController | null>(null);
+    protected readonly collapsedInventoryRows = signal<ReadonlySet<string>>(new Set());
+    protected readonly anyUnitTurnDirty = computed(() => {
+        this.equipmentRuntime()?.snapshot();
+        const force = this.force();
+        if (!force) return false;
+        const policy = this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
+            ? 'automatic'
+            : 'manual';
+        return force.members().some(member => {
+            if (isCBTMekForceMember(member)) {
+                const snapshot = force.getMekTurnPanelSnapshot(member.id, policy);
+                return snapshot !== null && isMekTurnPanelDirty(snapshot);
+            }
+            if (!isCBTForceMember(member)) return false;
+            const snapshot = force.getUnitSnapshot(member.id);
+            const state = snapshot && hasNonMekRuntime(snapshot) ? snapshot.state : undefined;
+            return state !== undefined && (
+                hasPendingNonMekChanges(state)
+                || state.turn.airborne !== null
+                || state.turn.movement !== null
+                || state.turn.cover !== null
+                || state.turn.spotting
+                || force.hasRuntimeHistoryForUnitTurn(member.id, state.turn.turnCounter + 1)
+            );
+        });
+    });
+
+    protected readonly mekSnapshot = computed<MekRecordSheetSnapshot | null>(() => {
+        this.equipmentRuntime()?.snapshot();
+        const member = this.member();
+        return isCBTMekForceMember(member) ? member.mekRecordSheetSnapshot() : null;
+    });
+    protected readonly nonMekSnapshot = computed<NonMekRecordSheetSnapshot | null>(() => {
+        this.equipmentRuntime()?.snapshot();
+        const member = this.member();
+        return member && !isCBTMekForceMember(member) ? member.nonMekRecordSheetSnapshot() : null;
+    });
+    protected readonly nonMekConditionControls = computed(() => {
+        const snapshot = this.nonMekSnapshot();
+        return snapshot && !this.readOnly() ? unitConditionControls(snapshot.conditionControlKeys) : [];
+    });
+    protected readonly mekConditionControls = computed(() =>
+        this.mekSnapshot() && !this.readOnly() ? MEK_UNIT_CONDITION_CONTROLS : []);
+    protected readonly nonMekCrewStateControls = computed(() => {
+        const snapshot = this.nonMekSnapshot();
+        return snapshot ? crewStateDefinitions(snapshot.crewStateControlKeys) : [];
+    });
+    protected readonly mekCriticalGroups = computed<readonly MekCriticalGroup[]>(() => {
+        const groups = new Map<string, MekRecordSheetCriticalSlot[]>();
+        for (const slot of this.mekSnapshot()?.criticalSlots ?? []) {
+            if (slot.components.length === 0 && slot.committedHits === 0 && slot.previewHits === 0) continue;
+            const slots = groups.get(slot.locationCode) ?? [];
+            slots.push(slot);
+            groups.set(slot.locationCode, slots);
+        }
+        return [...groups].map(([code, slots]) => Object.freeze({
+            code,
+            slots: Object.freeze(slots),
+        }));
+    });
+    protected readonly mekCriticalColumns = computed<readonly (readonly MekCriticalGroup[])[]>(() => {
+        const columns: MekCriticalGroup[][] = [[], [], []];
+        for (const group of this.mekCriticalGroups()) {
+            if (LEFT_CRITICAL_LOCATIONS.has(group.code)) columns[0]!.push(group);
+            else if (RIGHT_CRITICAL_LOCATIONS.has(group.code)) columns[2]!.push(group);
+            else columns[1]!.push(group);
+        }
+        return Object.freeze(columns.map(column => Object.freeze(column)));
+    });
+    protected readonly inventoryGroups = computed<readonly TacticalInventoryGroup[]>(() => {
+        const runtime = this.equipmentRuntime();
+        if (!runtime) return Object.freeze([]);
+        const snapshot = runtime.snapshot();
+        const groups: TacticalInventoryGroup[] = [
+            {
+                id: 'ranged',
+                title: 'Ranged',
+                skill: Object.freeze({ label: 'Gunnery', value: snapshot.crew.gunnery }),
+                rows: Object.freeze(runtime.weapons().map(component => this.inventoryComponentRow(runtime, component))),
+            },
+            {
+                id: 'physical',
+                title: 'Physical',
+                skill: Object.freeze({ label: 'Piloting', value: snapshot.crew.piloting }),
+                rows: Object.freeze(snapshot.physicalAttacks.map(attack => this.inventoryPhysicalRow(runtime, attack))),
+            },
+            {
+                id: 'equipment',
+                title: 'Equipment',
+                rows: Object.freeze(runtime.equipment().map(component => this.inventoryComponentRow(runtime, component))),
+            },
+        ];
+        return Object.freeze(groups.filter(group => group.rows.length > 0));
+    });
+    protected readonly inventoryRowCount = computed(() => this.inventoryGroups()
+        .reduce((count, group) => count + group.rows.length, 0));
+    protected readonly targets = computed<readonly EquipmentPanelTarget[]>(() =>
+        this.equipmentRuntime()?.snapshot().targets ?? Object.freeze([]));
+    protected readonly supportsTargeting = computed(() => {
+        this.equipmentRuntime()?.snapshot();
+        const member = this.member();
+        return member !== null && member.force.getAttackerTargeting(member.id) !== null;
+    });
+    protected readonly inventoryDetailRowIds = computed(() => this.inventoryGroups()
+        .flatMap(group => group.rows)
+        .filter(row => this.rowHasNestedControls(row))
+        .map(row => row.id));
+    protected readonly allInventoryRowsExpanded = computed(() => {
+        const ids = this.inventoryDetailRowIds();
+        const collapsed = this.collapsedInventoryRows();
+        return ids.length > 0 && ids.every(id => !collapsed.has(id));
+    });
+
+    constructor() {
+        effect(onCleanup => {
+            const member = this.member();
+            this.collapsedInventoryRows.set(new Set());
+            this.overlayManager.closeManagedOverlay('tactical-targets');
+            this.targetsOverlay.clearRef();
+            if (!member) {
+                this.equipmentRuntime.set(null);
+                return;
+            }
+            const runtime = new EquipmentDialogRuntimeController(
+                member,
+                this.options,
+                this.toast,
+                this.dialogs,
+            );
+            this.equipmentRuntime.set(runtime);
+            onCleanup(() => {
+                runtime.dispose();
+                if (isCBTMekForceMember(member)) this.mekInteractions.cleanup(member.id);
+                else this.nonMekInteractions.clear();
+            });
+        });
+        this.keyboardShortcuts.register({
+            id: 'tactical-view',
+            active: () => this.member() !== null,
+            handle: event => this.handleShortcut(event),
+        }, this.destroyRef);
+    }
+
+    protected previousUnit(): void {
+        this.forceCommands.selectPreviousUnit();
+    }
+
+    protected nextUnit(): void {
+        this.forceCommands.selectNextUnit();
+    }
+
+    protected showSheetView(): void {
+        this.overlayManager.closeAllManagedOverlays();
+        this.unitViewMode.showSheet();
+    }
+
+    protected async endTurnForAll(): Promise<void> {
+        const force = this.force();
+        if (!force || !this.anyUnitTurnDirty()) return;
+        const confirm = await this.dialogs.requestConfirmation(
+            'Are you sure you want to end the turn for all units?',
+            'End Turn',
+            'info',
+        );
+        if (!confirm) return;
+        try {
+            const result = await force.endTurnForAllUnits();
+            if (result.accepted) return;
+            const failures = result.results
+                .filter(row => !row.accepted)
+                .map(row => `${row.instanceId}: ${(row.reason ?? 'command rejected').replaceAll('_', ' ').toLowerCase()}`);
+            const detail = failures.length > 0 ? failures.join('; ') : 'the force owner rejected the command';
+            this.toast.showToast(
+                result.changed
+                    ? `End turn completed only partially: ${detail}.`
+                    : `Could not end turn for all units: ${detail}.`,
+                'error',
+            );
+        } catch (error) {
+            this.toast.showToast(
+                `Could not end turn for all units: ${error instanceof Error ? error.message : 'unexpected error'}.`,
+                'error',
+            );
+        }
+    }
+
+    protected openTargets(event: MouseEvent): void {
+        event.stopPropagation();
+        const member = this.member();
+        if (!member || !this.supportsTargeting()) return;
+        const key = 'tactical-targets';
+        if (this.targetsOverlay.has(key)) {
+            this.targetsOverlay.close(key);
+            return;
+        }
+        this.overlayManager.closeAllManagedOverlays();
+        this.targetsOverlay.open({
+            overlayKey: key,
+            target: event.currentTarget as HTMLElement,
+            member,
+            sensitiveAreaReferenceElement: this.host.nativeElement,
+        });
+    }
+
+    protected canUndo(): boolean {
+        return this.force()?.getRuntimeUndoState().canUndo === true && !this.readOnly();
+    }
+
+    protected canRedo(): boolean {
+        return this.force()?.getRuntimeUndoState().canRedo === true && !this.readOnly();
+    }
+
+    protected async undoRuntimeCommand(): Promise<void> {
+        const force = this.force();
+        if (!force || !this.canUndo()) return;
+        const result = await force.undoRuntimeCommand();
+        if (!result.accepted) this.showRejectedEdit(result.reason);
+    }
+
+    protected async redoRuntimeCommand(): Promise<void> {
+        const force = this.force();
+        if (!force || !this.canRedo()) return;
+        const result = await force.redoRuntimeCommand();
+        if (!result.accepted) this.showRejectedEdit(result.reason);
+    }
+
+    protected pips(maximum: number): readonly number[] {
+        return Array.from({ length: Math.max(0, Math.trunc(maximum)) }, (_, index) => index + 1);
+    }
+
+    protected pipSegments(maximum: number): readonly (readonly number[])[] {
+        const segments: number[][] = [];
+        for (let first = 1; first <= maximum; first += 10) {
+            segments.push(Array.from(
+                { length: Math.min(10, maximum - first + 1) },
+                (_value, index) => first + index,
+            ));
+        }
+        return segments;
+    }
+
+    protected percentage(remaining: number, maximum: number): number {
+        return maximum <= 0 ? 0 : Math.max(0, Math.min(100, remaining / maximum * 100));
+    }
+
+    protected conditionLabel(key: UnitConditionKey): string {
+        return getUnitConditionDefinition(key).label;
+    }
+
+    protected conditionColor(key: UnitConditionKey): string {
+        return getUnitConditionDefinition(key).color;
+    }
+
+    protected formatStatus(status: string): string {
+        return status.replaceAll('-', ' ').toUpperCase();
+    }
+
+    protected mekArmorRemaining(face: MekRecordSheetArmorFace): number {
+        return this.pendingDamage() ? face.previewRemaining : face.committedRemaining;
+    }
+
+    protected mekInternalRemaining(location: MekRecordSheetLocation): number {
+        return this.pendingDamage()
+            ? location.previewRemainingInternal
+            : location.committedRemainingInternal;
+    }
+
+    protected mekCriticalHits(slot: MekRecordSheetCriticalSlot): number {
+        return this.pendingDamage() ? slot.previewHits : slot.committedHits;
+    }
+
+    protected mekHeat(snapshot: MekRecordSheetSnapshot): number {
+        return Math.max(0, snapshot.heat.pendingOverride ?? snapshot.heat.current);
+    }
+
+    protected nonMekArmorRemaining(face: NonMekRecordSheetArmorFace): number {
+        return this.pendingDamage() ? face.previewRemaining : face.remaining;
+    }
+
+    protected nonMekInternalRemaining(location: NonMekRecordSheetLocation): number {
+        return this.pendingDamage() ? location.previewRemainingInternal : location.remainingInternal;
+    }
+
+    protected nonMekTrackHits(track: NonMekRecordSheetDamageTrack): number {
+        return this.pendingDamage() ? track.previewHits : track.committedHits;
+    }
+
+    protected nonMekHeat(snapshot: NonMekRecordSheetSnapshot): number {
+        return Math.max(0, snapshot.heat.pending ?? snapshot.heat.current);
+    }
+
+    protected equipmentLocation(component: MekRecordSheetSnapshot['equipment'][number]): string {
+        return formatEquipmentLocationCodes(component.locations.map(location => location.code));
+    }
+
+    protected equipmentRanges(component: MekRecordSheetSnapshot['equipment'][number]): string {
+        return component.weapon?.ranges.slice(0, 4).join('/') ?? '—';
+    }
+
+    protected criticalLabel(slot: MekRecordSheetCriticalSlot): string {
+        return slot.components.map(component => component.label).join(' / ') || `Slot ${slot.slotIndex + 1}`;
+    }
+
+    protected rowHasNestedControls(row: TacticalInventoryRow): boolean {
+        return row.interaction?.choices.some(choice => choice.displayType !== 'label') === true
+            || (this.supportsTargeting() && (
+                row.component?.weapon?.selectable === true
+                || (row.physical?.available === true && row.physical.selectable)
+            ));
+    }
+
+    protected inventoryRowExpanded(row: TacticalInventoryRow): boolean {
+        return this.rowHasNestedControls(row) && !this.collapsedInventoryRows().has(row.id);
+    }
+
+    protected toggleInventoryRow(row: TacticalInventoryRow): void {
+        if (!this.rowHasNestedControls(row)) return;
+        this.collapsedInventoryRows.update(current => {
+            const next = new Set(current);
+            if (next.has(row.id)) next.delete(row.id);
+            else next.add(row.id);
+            return next;
+        });
+    }
+
+    protected toggleAllInventoryRows(): void {
+        const ids = this.inventoryDetailRowIds();
+        this.collapsedInventoryRows.set(this.allInventoryRowsExpanded()
+            ? new Set(ids)
+            : new Set());
+    }
+
+    protected inventoryTargetSelection(row: TacticalInventoryRow): string {
+        const runtime = this.equipmentRuntime();
+        if (!runtime) return '';
+        if (row.component) return runtime.selectedTarget(row.component);
+        const selection = row.physical?.selection;
+        if (!selection) return '';
+        return selection.kind === 'target' ? selection.targetId : 'selected';
+    }
+
+    protected async selectInventoryTarget(row: TacticalInventoryRow, targetId: string): Promise<void> {
+        const runtime = this.equipmentRuntime();
+        if (!runtime || this.readOnly()) return;
+        if (row.component) await runtime.selectTarget(row.component, targetId);
+        else if (row.physical) await runtime.selectPhysicalTarget(row.physical, targetId);
+    }
+
+    protected async chooseEquipmentInteraction(
+        row: TacticalInventoryRow,
+        choice: MekEquipmentChoice,
+    ): Promise<void> {
+        const runtime = this.equipmentRuntime();
+        if (!runtime || !row.interaction || choice.disabled) return;
+        await runtime.chooseInteraction(row.interaction, choice.token);
+    }
+
+    protected choiceBackground(choice: MekEquipmentChoice): string | null {
+        if (choice.disabled) return choice.colors?.disabled ?? null;
+        if (!choice.active) return choice.colors?.normal ?? null;
+        return choice.selectionTone === 'muted'
+            ? choice.colors?.mutedSelected ?? null
+            : choice.colors?.selected ?? null;
+    }
+
+    protected choiceTextColor(choice: MekEquipmentChoice): string | null {
+        if (choice.disabled) return choice.colors?.disabledText ?? null;
+        if (!choice.active) return choice.colors?.normalText ?? null;
+        return choice.selectionTone === 'muted'
+            ? choice.colors?.mutedSelectedText ?? null
+            : choice.colors?.selectedText ?? null;
+    }
+
+    protected criticalIntermediatePips(slot: MekRecordSheetCriticalSlot): readonly number[] {
+        const componentCapacity = slot.hitCapacity - (slot.armored ? 1 : 0);
+        return this.pips(Math.max(0, componentCapacity - 1));
+    }
+
+    protected criticalArmorHit(slot: MekRecordSheetCriticalSlot): boolean {
+        return slot.armored && this.mekCriticalHits(slot) > 0;
+    }
+
+    protected criticalIntermediateHit(slot: MekRecordSheetCriticalSlot, index: number): boolean {
+        return this.mekCriticalHits(slot) > (slot.armored ? 1 : 0) + index - 1;
+    }
+
+    protected criticalDestroyed(slot: MekRecordSheetCriticalSlot): boolean {
+        return this.mekCriticalHits(slot) >= slot.hitCapacity;
+    }
+
+    protected activateMekCritical(slot: MekRecordSheetCriticalSlot, event: MouseEvent): void {
+        if (this.readOnly() || !slot.hittable) return;
+        const member = this.member();
+        const snapshot = isCBTMekForceMember(member) ? member.mekRecordSheetSnapshot() : null;
+        if (!isCBTMekForceMember(member) || !snapshot) return;
+        const componentIds = slot.components.map(component => component.componentId);
+        const hasHandler = this.equipmentRuntime()?.interactions()
+            .some(interaction => componentIds.includes(interaction.componentId)) === true;
+        const needsPicker = slot.hitCapacity > 1
+            || slot.components.some(component => component.ammo !== undefined)
+            || hasHandler;
+        if (!needsPicker) {
+            void this.adjustMekCritical(slot, this.mekCriticalHits(slot) > 0 ? -1 : 1);
+            return;
+        }
+        this.mekInteractions.handle(member, {
+            kind: 'critical',
+            slotId: slot.slotId,
+            componentIds,
+            button: 'primary',
+            expectedRevision: snapshot.stateRevision,
+        }, event);
+    }
+
+    protected openMekArmorPicker(face: MekRecordSheetArmorFace, event: MouseEvent): void {
+        const member = this.member();
+        const snapshot = isCBTMekForceMember(member) ? member.mekRecordSheetSnapshot() : null;
+        if (!isCBTMekForceMember(member) || !snapshot || this.readOnly()) return;
+        this.mekInteractions.handle(member, {
+            kind: 'armor',
+            faceId: face.faceId,
+            locationId: face.locationId,
+            button: 'primary',
+            expectedRevision: snapshot.stateRevision,
+        }, event);
+    }
+
+    protected openMekInternalPicker(location: MekRecordSheetLocation, event: MouseEvent): void {
+        const member = this.member();
+        const snapshot = isCBTMekForceMember(member) ? member.mekRecordSheetSnapshot() : null;
+        if (!isCBTMekForceMember(member) || !snapshot || this.readOnly()) return;
+        this.mekInteractions.handle(member, {
+            kind: 'internal',
+            locationId: location.locationId,
+            button: 'primary',
+            expectedRevision: snapshot.stateRevision,
+        }, event);
+    }
+
+    protected openNonMekDamagePicker(
+        interaction: Readonly<{
+            readonly kind: 'armor';
+            readonly faceId: NonMekRecordSheetArmorFace['faceId'];
+            readonly locationId: NonMekRecordSheetArmorFace['locationId'];
+        }> | Readonly<{
+            readonly kind: 'internal';
+            readonly locationId: NonMekRecordSheetLocation['locationId'];
+        }>,
+        event: MouseEvent,
+    ): void {
+        const member = this.member();
+        const snapshot = member && !isCBTMekForceMember(member)
+            ? member.nonMekRecordSheetSnapshot()
+            : null;
+        if (!member || isCBTMekForceMember(member) || !snapshot || this.readOnly()) return;
+        this.nonMekInteractions.handle(member, {
+            ...interaction,
+            expectedRevision: snapshot.stateRevision,
+        } as Extract<NonMekRecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>, event);
+    }
+
+    protected openNonMekTrackPicker(track: NonMekRecordSheetDamageTrack, event: MouseEvent): void {
+        const member = this.member();
+        const snapshot = this.nonMekSnapshot();
+        if (!member || isCBTMekForceMember(member) || !snapshot || this.readOnly()) return;
+        this.nonMekInteractions.handle(member, {
+            kind: 'damage-track',
+            damageTrackId: track.damageTrackId,
+            expectedRevision: snapshot.stateRevision,
+        }, event);
+    }
+
+    protected async toggleMekCondition(key: UnitConditionKey): Promise<void> {
+        const snapshot = this.mekSnapshot();
+        if (!snapshot) return;
+        await this.dispatchMekInteraction(key === 'shutdown'
+            ? { kind: 'shutdown', expectedRevision: snapshot.stateRevision }
+            : { kind: 'condition', condition: key, expectedRevision: snapshot.stateRevision });
+    }
+
+    protected async adjustMekArmor(face: MekRecordSheetArmorFace, delta: 1 | -1): Promise<void> {
+        const snapshot = this.mekSnapshot();
+        if (!snapshot) return;
+        await this.dispatchMekInteraction({
+            kind: 'armor',
+            faceId: face.faceId,
+            locationId: face.locationId,
+            button: delta > 0 ? 'primary' : 'secondary',
+            expectedRevision: snapshot.stateRevision,
+        }, delta);
+    }
+
+    protected async adjustMekInternal(location: MekRecordSheetLocation, delta: 1 | -1): Promise<void> {
+        const snapshot = this.mekSnapshot();
+        if (!snapshot) return;
+        await this.dispatchMekInteraction({
+            kind: 'internal',
+            locationId: location.locationId,
+            button: delta > 0 ? 'primary' : 'secondary',
+            expectedRevision: snapshot.stateRevision,
+        }, delta);
+    }
+
+    protected async adjustMekCritical(slot: MekRecordSheetCriticalSlot, delta: 1 | -1): Promise<void> {
+        const snapshot = this.mekSnapshot();
+        if (!snapshot) return;
+        await this.dispatchMekInteraction({
+            kind: 'critical',
+            slotId: slot.slotId,
+            componentIds: slot.components.map(component => component.componentId),
+            button: delta > 0 ? 'primary' : 'secondary',
+            expectedRevision: snapshot.stateRevision,
+        }, delta);
+    }
+
+    protected async adjustMekHeat(delta: 1 | -1): Promise<void> {
+        const snapshot = this.mekSnapshot();
+        if (!snapshot) return;
+        await this.dispatchMekInteraction({
+            kind: 'heat',
+            heat: Math.max(0, this.mekHeat(snapshot) + delta),
+            expectedRevision: snapshot.stateRevision,
+        });
+    }
+
+    protected async adjustMekCrewWounds(position: MekRecordSheetCrewPosition, delta: 1 | -1): Promise<void> {
+        const snapshot = this.mekSnapshot();
+        if (!snapshot) return;
+        await this.dispatchMekInteraction({
+            kind: 'crew-wounds',
+            positionId: position.positionId,
+            wounds: Math.max(0, Math.min(MAX_MEK_CREW_WOUNDS, position.state.wounds + delta)),
+            expectedRevision: snapshot.stateRevision,
+        });
+    }
+
+    protected async toggleMekCrewState(
+        position: MekRecordSheetCrewPosition,
+        state: CrewMemberState,
+    ): Promise<void> {
+        if (state !== 'unconscious' && state !== 'ejected') return;
+        const snapshot = this.mekSnapshot();
+        if (!snapshot) return;
+        const current = snapshot.crew.find(candidate => candidate.positionId === position.positionId);
+        if (!current) return;
+        await this.sendMekCommand({
+            type: 'set-crew-state',
+            commandId: createCommandId(),
+            expectedRevision: snapshot.stateRevision,
+            positionId: current.positionId,
+            wounds: current.state.wounds,
+            unconscious: state === 'unconscious' ? !current.state.unconscious : current.state.unconscious,
+            ejected: state === 'ejected' ? !current.state.ejected : current.state.ejected,
+        });
+    }
+
+    protected async adjustMekAmmo(
+        component: MekRecordSheetSnapshot['equipment'][number],
+        deltaRemaining: 1 | -1,
+    ): Promise<void> {
+        const snapshot = this.mekSnapshot();
+        const current = snapshot?.equipment.find(candidate => candidate.componentId === component.componentId);
+        if (!snapshot || !current?.ammo) return;
+        await this.sendMekCommand(deltaRemaining < 0
+            ? {
+                type: 'spend-ammo',
+                commandId: createCommandId(),
+                expectedRevision: snapshot.stateRevision,
+                componentId: current.componentId,
+                amount: 1,
+            }
+            : {
+                type: 'configure-ammo-source',
+                commandId: createCommandId(),
+                expectedRevision: snapshot.stateRevision,
+                componentId: current.componentId,
+                munitionKey: current.ammo.munitionKey,
+                remaining: Math.min(current.ammo.capacity, current.ammo.remaining + 1),
+            });
+    }
+
+    protected async toggleNonMekCondition(key: UnitConditionKey): Promise<void> {
+        const snapshot = this.nonMekSnapshot();
+        if (!snapshot) return;
+        await this.sendNonMekCommand({
+            kind: 'set-condition',
+            expectedRevision: snapshot.stateRevision,
+            condition: key,
+            active: !snapshot.conditions.includes(key),
+        });
+    }
+
+    protected async adjustNonMekArmor(face: NonMekRecordSheetArmorFace, delta: 1 | -1): Promise<void> {
+        const snapshot = this.nonMekSnapshot();
+        if (!snapshot) return;
+        await this.sendNonMekCommand(delta > 0
+            ? {
+                kind: 'damage-armor',
+                expectedRevision: snapshot.stateRevision,
+                faceId: face.faceId,
+                amount: delta,
+                target: this.damageTarget(),
+            }
+            : {
+                kind: 'repair-armor',
+                expectedRevision: snapshot.stateRevision,
+                faceId: face.faceId,
+                amount: Math.abs(delta),
+                target: this.damageTarget(),
+            });
+    }
+
+    protected async adjustNonMekInternal(location: NonMekRecordSheetLocation, delta: 1 | -1): Promise<void> {
+        const snapshot = this.nonMekSnapshot();
+        if (!snapshot) return;
+        await this.sendNonMekCommand(delta > 0
+            ? {
+                kind: 'damage-internal',
+                expectedRevision: snapshot.stateRevision,
+                locationId: location.locationId,
+                amount: delta,
+                target: this.damageTarget(),
+            }
+            : {
+                kind: 'repair-internal',
+                expectedRevision: snapshot.stateRevision,
+                locationId: location.locationId,
+                amount: Math.abs(delta),
+                target: this.damageTarget(),
+            });
+    }
+
+    protected async adjustNonMekTrack(track: NonMekRecordSheetDamageTrack, delta: 1 | -1): Promise<void> {
+        const snapshot = this.nonMekSnapshot();
+        if (!snapshot) return;
+        await this.sendNonMekCommand(delta > 0
+            ? {
+                kind: 'damage-track',
+                expectedRevision: snapshot.stateRevision,
+                damageTrackId: track.damageTrackId,
+                amount: delta,
+                target: this.damageTarget(),
+                timestamp: Date.now(),
+            }
+            : {
+                kind: 'repair-damage-track',
+                expectedRevision: snapshot.stateRevision,
+                damageTrackId: track.damageTrackId,
+                amount: Math.abs(delta),
+                target: this.damageTarget(),
+            });
+    }
+
+    protected async adjustNonMekHeat(delta: 1 | -1): Promise<void> {
+        const snapshot = this.nonMekSnapshot();
+        if (!snapshot?.heat.tracked) return;
+        await this.sendNonMekCommand({
+            kind: 'set-heat',
+            expectedRevision: snapshot.stateRevision,
+            heat: Math.max(0, this.nonMekHeat(snapshot) + delta),
+            target: this.damageTarget(),
+        });
+    }
+
+    protected async adjustNonMekAmmo(component: NonMekRecordSheetComponent, deltaRemaining: 1 | -1): Promise<void> {
+        const snapshot = this.nonMekSnapshot();
+        const current = snapshot?.components.find(candidate => candidate.componentId === component.componentId);
+        if (!snapshot || !current?.ammo) return;
+        const remaining = Math.max(0, Math.min(current.ammo.capacity, current.ammo.remaining + deltaRemaining));
+        await this.sendNonMekCommand({
+            kind: 'set-ammo-spent',
+            expectedRevision: snapshot.stateRevision,
+            componentId: current.componentId,
+            shotsSpent: current.ammo.capacity - remaining,
+        });
+    }
+
+    protected async toggleNonMekComponent(component: NonMekRecordSheetComponent): Promise<void> {
+        const snapshot = this.nonMekSnapshot();
+        const current = snapshot?.components.find(candidate => candidate.componentId === component.componentId);
+        if (!snapshot || !current) return;
+        await this.sendNonMekCommand({
+            kind: 'set-component-status',
+            expectedRevision: snapshot.stateRevision,
+            componentId: current.componentId,
+            status: current.previewStatus === 'available' ? 'destroyed' : 'available',
+            target: this.damageTarget(),
+        });
+    }
+
+    protected async adjustNonMekCrewWounds(
+        position: NonMekRecordSheetCrewPosition,
+        delta: 1 | -1,
+    ): Promise<void> {
+        const snapshot = this.nonMekSnapshot();
+        const current = snapshot?.crew.find(candidate => candidate.positionId === position.positionId);
+        if (!snapshot || !current) return;
+        await this.sendNonMekCommand({
+            kind: 'set-crew-state',
+            expectedRevision: snapshot.stateRevision,
+            positionId: current.positionId,
+            wounds: Math.max(0, current.state.wounds + delta),
+            unconscious: current.state.unconscious,
+            ejected: current.state.ejected,
+            ...(current.state.state === undefined ? {} : { state: current.state.state }),
+        });
+    }
+
+    protected async toggleNonMekCrewState(
+        position: NonMekRecordSheetCrewPosition,
+        selected: CrewMemberState,
+    ): Promise<void> {
+        if (selected !== 'unconscious'
+            && selected !== 'ejected'
+            && selected !== 'killed'
+            && selected !== 'stunned') return;
+        const snapshot = this.nonMekSnapshot();
+        const current = snapshot?.crew.find(candidate => candidate.positionId === position.positionId);
+        if (!snapshot || !current) return;
+        const next = current.effectiveState === selected ? null : selected;
+        await this.sendNonMekCommand({
+            kind: 'set-crew-state',
+            expectedRevision: snapshot.stateRevision,
+            positionId: current.positionId,
+            wounds: current.state.wounds,
+            unconscious: next === 'unconscious',
+            ejected: next === 'ejected',
+            ...(next === 'killed' || next === 'stunned' ? { state: next } : {}),
+        });
+    }
+
+    private inventoryComponentRow(
+        runtime: EquipmentDialogRuntimeController,
+        component: EquipmentPanelComponent,
+    ): TacticalInventoryRow {
+        const ammoSources = component.weapon?.ammoSources ?? [];
+        const ammo = ammoSources.length === 0
+            ? undefined
+            : Object.freeze({
+                remaining: ammoSources.reduce((total, source) => total + source.remaining, 0),
+                capacity: ammoSources.reduce((total, source) => total + source.capacity, 0),
+            });
+        const ranges = component.weapon?.ranges.slice(0, 3) ?? [];
+        return Object.freeze({
+            id: component.componentId,
+            component,
+            ...(runtime.interaction(component) === undefined
+                ? {}
+                : { interaction: runtime.interaction(component) }),
+            label: component.label,
+            location: runtime.locations(component),
+            damage: component.weapon?.damageText ?? '—',
+            heat: component.weapon === undefined
+                ? '—'
+                : `${component.weapon.heat}${component.weapon.heatSuffix ?? ''}`,
+            range: ranges.length === 0 ? '—' : ranges.join('/'),
+            status: component.previewStatus,
+            ...(component.mode === undefined || component.mode === component.defaultMode
+                ? {}
+                : { mode: component.mode }),
+            ...(ammo === undefined ? {} : { ammo }),
+        });
+    }
+
+    private inventoryPhysicalRow(
+        runtime: EquipmentDialogRuntimeController,
+        attack: MekPhysicalAttackRow,
+    ): TacticalInventoryRow {
+        return Object.freeze({
+            id: `physical:${attack.target.kind === 'component'
+                ? attack.target.componentId
+                : attack.target.actionId}`,
+            physical: attack,
+            label: attack.label,
+            location: formatEquipmentLocationCodes(attack.locationCodes, ', '),
+            damage: runtime.physicalDamage(attack),
+            heat: attack.firingHeat > 0 ? String(attack.firingHeat) : '—',
+            range: '—',
+            status: attack.available ? 'available' : 'disabled',
+        });
+    }
+
+    private handleShortcut(event: KeyboardEvent): boolean {
+        if (event.ctrlKey || event.altKey || event.metaKey || !this.canNavigate()) return false;
+        if (event.key === 'ArrowLeft') {
+            this.previousUnit();
+            return true;
+        }
+        if (event.key === 'ArrowRight') {
+            this.nextUnit();
+            return true;
+        }
+        return false;
+    }
+
+    private damageTarget(): 'committed' | 'pending' {
+        return this.pendingDamage() ? 'pending' : 'committed';
+    }
+
+    private async dispatchMekInteraction(
+        interaction: MekRecordSheetInteraction,
+        delta?: number,
+    ): Promise<void> {
+        const member = this.member();
+        const snapshot = this.mekSnapshot();
+        const unit = member?.force.getUnitSnapshot(member.id);
+        if (!isCBTMekForceMember(member) || !snapshot || !unit || !hasMekRuntime(unit)) return;
+        const command = recordSheetCommand(interaction, {
+            query: unit.query,
+            heatSinkCount: snapshot.heatSinks.count,
+            heatPolicy: snapshot.heatPolicy,
+        }, this.pendingDamage(), delta);
+        await this.sendMekCommand(command);
+    }
+
+    private async sendMekCommand(command: CBTUnitCommand): Promise<void> {
+        const member = this.member();
+        if (!isCBTMekForceMember(member) || this.readOnly()) return;
+        const result = await member.force.dispatchMekUnitCommand(member.id, command);
+        if (!result.accepted) this.showRejectedEdit(result.reason);
+    }
+
+    private async sendNonMekCommand(command: NonMekUnitCommand): Promise<void> {
+        const member = this.member();
+        if (!member || isCBTMekForceMember(member) || this.readOnly()) return;
+        const result = await member.force.dispatchNonMekUnitCommand(member.id, command);
+        if (!result.accepted) this.showRejectedEdit(result.reason);
+    }
+
+    private showRejectedEdit(reason: unknown): void {
+        this.toast.showToast(`Tactical edit rejected: ${String(reason ?? 'unknown reason')}`, 'error');
+    }
+}

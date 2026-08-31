@@ -94,7 +94,7 @@ import {
     type ResolvedDropdownNames,
 } from '../utils/filter-name-resolution.util';
 import { sortDropdownOptionObjects } from '../utils/unit-search-dropdown-sort.util';
-import { unitMatchesASSpecialSelections } from '../utils/as-special-filter.util';
+import { compileASSpecialSelections, unitMatchesASSpecialSelections } from '../utils/as-special-filter.util';
 import { compareUnitsByName } from '../utils/sort.util';
 import type {
     UnitSearchWorkerCorpusSnapshot,
@@ -2980,6 +2980,7 @@ export class UnitSearchFiltersService {
                     const constrainedSelections = Object.values(selection).filter(selected => (
                         selected.state === 'and' || selected.state === 'not'
                     ));
+                    const compiledSelections = compileASSpecialSelections(constrainedSelections);
                     const unitsByUuid = new Map<string, UnitSummary>(
                         units.map(unit => [unit.uuid, unit]),
                     );
@@ -2988,7 +2989,7 @@ export class UnitSearchFiltersService {
                         const unit = unitsByUuid.get(unitId);
                         if (!unit || !unitMatchesASSpecialSelections(
                             getProperty(unit, filterKey),
-                            constrainedSelections,
+                            compiledSelections,
                             this.dataService.getIndexedASSpecials(unitId),
                         )) {
                             constrainedUnitIds.delete(unitId);
