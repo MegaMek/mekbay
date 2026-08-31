@@ -18,6 +18,21 @@ export interface TurnSummaryHeatRow {
 
 export const TURN_SUMMARY_UNDERWATER_HEAT_SOURCE_ID = 'underwater-dissipation';
 
+/** Prevents a modal interaction from being mistaken for a click outside the turn summary. */
+export async function runWithTurnSummaryCloseBlocked<T>(
+    overlayManager: OverlayManagerService,
+    unitId: string,
+    operation: () => Promise<T>,
+): Promise<T> {
+    const parentOverlayKey = `turnSummary-${unitId}`;
+    overlayManager.blockCloseUntil(parentOverlayKey);
+    try {
+        return await operation();
+    } finally {
+        overlayManager.unblockClose(parentOverlayKey);
+    }
+}
+
 /** Keeps the summary's capture-phase outside-click handler dormant while a modal child is open. */
 export function openTurnSummaryChildOverlay<T>(
     overlayManager: OverlayManagerService,

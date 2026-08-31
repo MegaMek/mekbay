@@ -39,6 +39,7 @@ import {
 } from '../../unit-notification-badges/unit-notification-badges.component';
 import { WeaponTargetsOverlayController } from '../../equipment-dialog/weapon-targets-overlay.controller';
 import { getTurnMovementIndicator } from '../../../utils/turn-movement-indicator.util';
+import { runWithTurnSummaryCloseBlocked } from './page-turn-summary.util';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 
@@ -298,11 +299,16 @@ export class PageInteractionOverlayComponent {
 
     async endTurnForAll() {
         const force = this.force();
-        if (!force) return;
-        const confirm = await this.dialogsService.requestConfirmation(
-            'Are you sure you want to end the turn for all units?',
-            'End Turn',
-            'info'
+        const unitId = this.unit()?.id;
+        if (!force || !unitId) return;
+        const confirm = await runWithTurnSummaryCloseBlocked(
+            this.overlayManager,
+            unitId,
+            () => this.dialogsService.requestConfirmation(
+                'Are you sure you want to end the turn for all units?',
+                'End Turn',
+                'info'
+            )
         );
         if (!confirm) return;
         const units = force.units();

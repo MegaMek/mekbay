@@ -4,7 +4,30 @@
 
 import { Subject } from 'rxjs';
 import type { ManagedOverlayRef, OverlayManagerService } from '../../../services/overlay-manager.service';
-import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne, openTurnSummaryChildOverlay } from './page-turn-summary.util';
+import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne, openTurnSummaryChildOverlay, runWithTurnSummaryCloseBlocked } from './page-turn-summary.util';
+
+describe('runWithTurnSummaryCloseBlocked', () => {
+    it('keeps the summary blocked until a dismissed confirmation settles', async () => {
+        const overlayManager = jasmine.createSpyObj<OverlayManagerService>(
+            'OverlayManagerService',
+            ['blockCloseUntil', 'unblockClose'],
+        );
+        let dismiss!: (confirmed: boolean) => void;
+        const operation = jasmine.createSpy('operation').and.returnValue(new Promise<boolean>(resolve => {
+            dismiss = resolve;
+        }));
+
+        const result = runWithTurnSummaryCloseBlocked(overlayManager, 'unit-1', operation);
+
+        expect(overlayManager.blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+        expect(overlayManager.unblockClose).not.toHaveBeenCalled();
+
+        dismiss(false);
+
+        await expectAsync(result).toBeResolvedTo(false);
+        expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+    });
+});
 
 describe('openTurnSummaryChildOverlay', () => {
     it('blocks the parent summary until the child overlay closes', () => {

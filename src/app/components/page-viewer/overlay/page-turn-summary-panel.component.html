@@ -278,11 +278,43 @@
                 }
             </button>
         }
-        @if (dirty()) {
-            <button type="button" class="bt-button" (click)="endTurn()">End Turn</button>
+        @if (phaseDirty() || endPhaseForAllButtonVisible()) {
+            <div class="phase-actions">
+                @if (phaseDirty()) {
+                    <button type="button" class="phase-button end-phase-action" (click)="endPhase($event)">
+                        <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                            <path d="M4 12l5 5L20 6" />
+                        </svg>
+                        <span>End Phase</span>
+                    </button>
+                }
+                @if (endPhaseForAllButtonVisible()) {
+                    <button type="button" class="phase-button end-phase-action" (click)="endPhaseForAll($event)">
+                        <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                            <path d="M3 6l2 2 4-4M3 13l2 2 4-4M3 20l2 2 4-4M12 6h9M12 13h9M12 20h9" />
+                        </svg>
+                        <span>All Units</span>
+                    </button>
+                }
+            </div>
         }
-        @if (endTurnForAllButtonVisible()) {
-            <button type="button" class="bt-button large-action" (click)="endTurnForAll($event)">End Turn for All Units</button>
-        }
+        <div class="turn-actions">
+            @if (dirty()) {
+                <button type="button" class="bt-button turn-action end-turn-action large-action" (click)="endTurn()">
+                    <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M3 12h13M11 7l5 5-5 5M20 4v16" />
+                    </svg>
+                    <span>End Turn</span>
+                </button>
+            }
+            @if (endTurnForAllButtonVisible()) {
+                <button type="button" class="bt-button turn-action all-units-action large-action" (click)="endTurnForAll($event)">
+                    <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M3 6h11M10 3l4 3-4 3M3 12h11M10 9l4 3-4 3M3 18h11M10 15l4 3-4 3M20 3v18" />
+                    </svg>
+                    <span>{{ (dirty()) ? "All Units" : "End Turn for All Units" }}</span>
+                </button>
+            }
+        </div>
     </footer>
 </aside>

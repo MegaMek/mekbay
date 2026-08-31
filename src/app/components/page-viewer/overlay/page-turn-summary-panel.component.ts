@@ -19,12 +19,13 @@ import { DataService } from '../../../services/data.service';
 import type { MountedEquipment } from '../../../models/mounted-equipment.model';
 import { EscalatingFailureHandler } from '../../../equipment-handlers/escalatingfailure.handler';
 import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
-import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne } from './page-turn-summary.util';
+import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne, runWithTurnSummaryCloseBlocked } from './page-turn-summary.util';
 import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.util';
 import { toggleStandingUpOverlay } from './page-standing-up-panel.component';
 import { isUnitBuildingLevel, isUnitWaterDepth, type UnitCover } from '../../../models/unit-cover.model';
 import { CoverLevelPickerComponent } from '../../cover-level-picker/cover-level-picker.component';
 import { CBTEndTurnService } from '../../../services/cbt-end-turn.service';
+import { CBTPhaseResolutionService } from '../../../services/cbt-phase-resolution.service';
 
 interface EquipmentTrackControlRow {
     entry: MountedEquipment;
@@ -74,6 +75,7 @@ export class PageTurnSummaryPanelComponent {
     private readonly dialogsService = inject(DialogsService);
     private readonly dataService = inject(DataService);
     private readonly cbtEndTurnService = inject(CBTEndTurnService);
+    private readonly phaseResolution = inject(CBTPhaseResolutionService);
     readonly unit = this.parent.unit;
     readonly force = this.parent.force;
     readonly endTurnForAllButtonVisible = input<boolean>(false);
@@ -105,6 +107,18 @@ export class PageTurnSummaryPanelComponent {
         const unit = this.unit();
         if (!unit) return false;
         return unit.turnState().dirty();
+    });
+
+    readonly phaseDirty = computed(() => {
+        const unit = this.unit();
+        if (!unit) return false;
+        return unit.turnState().dirtyPhase();
+    });
+
+    readonly endPhaseForAllButtonVisible = computed(() => {
+        const force = this.force();
+        if (!force) return false;
+        return force.units().some(unit => unit.turnState().dirtyPhase());
     });
 
     readonly damageReceived = computed(() => {
@@ -308,6 +322,36 @@ export class PageTurnSummaryPanelComponent {
     async endTurn(): Promise<void> {
         const unit = this.unit();
         if (unit) await this.cbtEndTurnService.endTurn([unit]);
+    }
+
+    async endPhase(event: MouseEvent): Promise<void> {
+        event.stopPropagation();
+        const unit = this.unit();
+        if (!unit) return;
+
+        this.close();
+        await this.phaseResolution.endPhase(unit);
+    }
+
+    async endPhaseForAll(event: MouseEvent): Promise<void> {
+        event.stopPropagation();
+        const force = this.force();
+        const unitId = this.unit()?.id;
+        if (!force || !unitId) return;
+
+        const confirmed = await runWithTurnSummaryCloseBlocked(
+            this.overlayManager,
+            unitId,
+            () => this.dialogsService.requestConfirmation(
+                'Are you sure you want to end the phase for all units?',
+                'End Phase',
+                'info'
+            )
+        );
+        if (!confirmed) return;
+
+        this.close();
+        await this.phaseResolution.endPhase(force.units());
     }
 
     openPsrWarning(event: MouseEvent): void {

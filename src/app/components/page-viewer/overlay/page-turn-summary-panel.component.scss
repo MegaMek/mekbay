@@ -33,6 +33,13 @@
     white-space: nowrap;
 }
 
+.phase-actions,
+.turn-actions {
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+}
+
 .section-title {
     margin: 0;
     font-size: 1em;
@@ -72,6 +79,47 @@
     padding: 0 8px;
     outline: none;
     transition: none;
+}
+
+.phase-button,
+.turn-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 1 1 0%;
+    min-width: 0;
+}
+
+.phase-button {
+    cursor: pointer;
+    opacity: 1;
+    margin-inline: auto;
+    width: fit-content;
+    border: 0;
+    padding: 8px;
+    text-align: center;
+    font-weight: bold;
+    transition: background-color 0.2s;
+    font-size: 0.9em;
+    flex-direction: row;
+    background-color: #a00;
+    color: #fff;
+
+    span {
+        line-height: 1.1;
+        white-space: normal;
+    }
+
+    &:hover {
+        background-color: #f00;
+    }
+}
+
+.turn-action-icon {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
 }
 
 .turn-summary.render-ready .bt-button {
