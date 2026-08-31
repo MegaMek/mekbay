@@ -63,7 +63,7 @@ import {
     measureStage,
     normalizeMultiStateSelection,
 } from '../utils/unit-search-shared.util';
-import { executeUnitSearch } from '../utils/unit-search-executor.util';
+import { executeUnitSearch, type UnitSearchExecutionResult } from '../utils/unit-search-executor.util';
 import { UnitSearchWorkerClient } from '../utils/unit-search-worker-client.util';
 import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
 import {
@@ -115,6 +115,7 @@ import {
     FORMATION_TARGET_FILTER_KEY,
     DROPDOWN_FILTERS,
     getMegaMekRaritySortAvailabilitySources,
+    isFilterRangeValue,
     isMegaMekRaritySortKey,
     normalizeTriStateBooleanFilterValue,
     RANGE_FILTERS,
@@ -3643,7 +3644,7 @@ export class UnitSearchFiltersService {
     }
 
     private executeSyncSearch(options: { ignoreFormationTarget?: boolean; ignoreNormalization?: boolean } = {}): {
-        execution: ReturnType<typeof executeUnitSearch>;
+        execution: UnitSearchExecutionResult<UnitSummary>;
         parseTelemetry: SearchTelemetryStage[];
     } {
         this.dataService.searchCorpusVersion();
@@ -4021,15 +4022,16 @@ export class UnitSearchFiltersService {
         });
     }
 
-    setFilter(key: string, value: any) {
+    setFilter(key: string, value: unknown): void {
         key = normalizeUnitSearchPropertyKey(key);
         const conf = getAdvancedFilterConfigByKey(key);
         if (!conf) return;
 
+        let filterValue = value;
         if (conf.type === AdvFilterType.DROPDOWN && conf.multistate) {
-            value = normalizeMultiStateSelection(value);
+            filterValue = normalizeMultiStateSelection(filterValue);
         } else if (conf.type === AdvFilterType.BOOLEAN) {
-            value = normalizeTriStateBooleanFilterValue(value);
+            filterValue = normalizeTriStateBooleanFilterValue(filterValue);
         }
 
         let interacted = true;
@@ -4037,12 +4039,13 @@ export class UnitSearchFiltersService {
         let atRightBoundary = false;
 
         if (conf.type === AdvFilterType.RANGE) {
+            if (!isFilterRangeValue(filterValue)) return;
             // For range filters, check which boundaries the value matches.
             const option = this.advOptions()[key];
             const availableRange = option?.type === 'range' ? option.options : undefined;
             if (availableRange) {
-                atLeftBoundary = value[0] === availableRange[0];
-                atRightBoundary = value[1] === availableRange[1];
+                atLeftBoundary = filterValue[0] === availableRange[0];
+                atRightBoundary = filterValue[1] === availableRange[1];
                 // Only "not interacted" if BOTH boundaries match
                 if (atLeftBoundary && atRightBoundary) {
                     interacted = false;
@@ -4051,17 +4054,19 @@ export class UnitSearchFiltersService {
         } else if (conf.type === AdvFilterType.DROPDOWN) {
             if (conf.multistate) {
                 // For multistate dropdowns, check if all states are false or object is empty
-                if (!value || typeof value !== 'object' || Object.keys(value).length === 0 ||
-                    Object.values(value).every((selectionValue: any) => selectionValue.state === false)) {
+                const selection = normalizeMultiStateSelection(filterValue);
+                filterValue = selection;
+                if (Object.keys(selection).length === 0
+                    || Object.values(selection).every(selectionValue => selectionValue.state === false)) {
                     interacted = false;
                 }
             } else {
                 // For regular dropdowns, if the value is an empty array, it's not interacted.
-                if (Array.isArray(value) && value.length === 0) {
+                if (Array.isArray(filterValue) && filterValue.length === 0) {
                     interacted = false;
                 }
             }
-        } else if (conf.type === AdvFilterType.BOOLEAN && value === null) {
+        } else if (conf.type === AdvFilterType.BOOLEAN && filterValue === null) {
             interacted = false;
         }
 
@@ -4072,12 +4077,12 @@ export class UnitSearchFiltersService {
 
         if (shouldSyncToText) {
             // Update the semantic text for this specific filter
-            this.updateSemanticTextForFilter(key, value, interacted, conf);
+            this.updateSemanticTextForFilter(key, filterValue, interacted, conf);
         } else {
             // Just update filterState (UI-only filter)
             this.filterState.update(current => ({
                 ...current,
-                [key]: { value, interactedWith: interacted }
+                [key]: { value: filterValue, interactedWith: interacted }
             }));
             this.refreshWorkerSearchIfNeeded();
         }
@@ -4120,7 +4125,7 @@ export class UnitSearchFiltersService {
      * Update the semantic text to reflect a filter value change.
      * This replaces/adds/removes the token for the specified filter key.
      */
-    private updateSemanticTextForFilter(key: string, value: any, interacted: boolean, conf: AdvFilterConfig): void {
+    private updateSemanticTextForFilter(key: string, value: unknown, interacted: boolean, conf: AdvFilterConfig): void {
         if (this.isSyncingToText) return; // Prevent re-entry
 
         this.isSyncingToText = true;
@@ -4443,7 +4448,7 @@ export class UnitSearchFiltersService {
 
         // Save only interacted filters (UI filters, not from semantic text)
         const state = this.getApplicableFilterState(this.filterState());
-        const savedFilters: Record<string, any> = {};
+        const savedFilters: Record<string, unknown> = {};
         for (const [key, val] of Object.entries(state)) {
             if (val.interactedWith) {
                 savedFilters[key] = val.value;
@@ -4468,7 +4473,7 @@ export class UnitSearchFiltersService {
      * Only UI filters (not semantic text) are considered game-specific.
      * Returns true if any filter or sort key is specific to a game mode.
      */
-    private isSearchGameSpecific(savedFilters: Record<string, any>, sortKey?: string): boolean {
+    private isSearchGameSpecific(savedFilters: Readonly<Record<string, unknown>>, sortKey?: string): boolean {
         // Check if sort key is game-specific
         if (sortKey) {
             const sortConfig = getAdvancedFilterConfigByKey(sortKey);

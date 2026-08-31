@@ -26,7 +26,7 @@ export function buildFluffImageCatalog(input: BuildFluffImageCatalogInput): Fluf
 
 function parseJson(json: string): unknown {
   try {
-    return JSON.parse(json) as unknown;
+    return JSON.parse(json);
   } catch (error) {
     throw new Error(`Invalid presentation catalog JSON: ${error instanceof Error ? error.message : String(error)}`);
   }

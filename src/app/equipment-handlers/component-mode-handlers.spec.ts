@@ -28,14 +28,14 @@ import {
 import { ECMHandler } from '../models/runtime/component-ecm-mode';
 import { HAG_FLAK_MODE, HAG_STANDARD_MODE, HagHandler } from '../models/runtime/component-hag-mode';
 import { StealthHandler } from '../models/runtime/component-stealth';
-import { BAPHandler } from '../models/runtime/component-bap';
+import { EquipmentPowerHandler } from '../models/runtime/component-equipment-power';
 
 describe('direct V2 component-mode handlers', () => {
     it('keeps an active probe effective until its End-Turn power transition settles', () => {
         const fixture = createDirectBapRuntimeFixture();
         const component = fixture.equipmentComponent('Test BAP');
         const setup = directModeSetup('Test BAP', fixture);
-        const handler = new BAPHandler();
+        const handler = new EquipmentPowerHandler();
         const input = interactionInput(setup);
 
         expect(fixture.instance.query().componentMode(component.id)).toBe('enabled');

@@ -235,13 +235,13 @@ export class ForceDialogsService {
         const expectedSlot = workspace.getForceSlot(force);
         if (!expectedSlot || expectedSlot.force !== force || !force.isWholeOwnerActive()) return;
         const expectedUnits = force instanceof CBTForce ? null : [...force.units()];
-        const authorityFingerprint = force.captureWholeOwnerAuthorityFingerprint();
+        const ownerRevisionFence = force.captureForceOwnerRevisionFence();
         const { C3NetworkDialogComponent } = await import('../components/c3-network-dialog/c3-network-dialog.component');
         type C3NetworkDialogData = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogData;
         type C3NetworkDialogResult = import('../components/c3-network-dialog/c3-network-dialog.component').C3NetworkDialogResult;
         if (workspace.getForceSlot(force) !== expectedSlot
             || !force.isWholeOwnerActive()
-            || !force.isWholeOwnerAuthorityFingerprintCurrent(authorityFingerprint)
+            || !force.isForceOwnerRevisionFenceCurrent(ownerRevisionFence)
             || (expectedUnits !== null
                 && (force.units().length !== expectedUnits.length
                     || force.units().some((unit, index) => unit !== expectedUnits[index])))) return;
@@ -255,16 +255,17 @@ export class ForceDialogsService {
         let changed = false;
         if (force instanceof CBTForce && result.authority === 'cbt') {
             changed = workspace.getForceSlot(force) === expectedSlot
-                && force.isWholeOwnerActive()
-                && force.isWholeOwnerAuthorityFingerprintCurrent(authorityFingerprint)
-                && force.replaceC3EncounterNetworks(result.networks);
+                && force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+                    ownerRevisionFence,
+                    result.networks,
+                );
         } else if (!(force instanceof CBTForce) && result.authority === 'alpha-strike') {
             changed = workspace.getForceSlot(force) === expectedSlot
                 && expectedUnits !== null
                 && force.units().length === expectedUnits.length
                 && force.units().every((unit, index) => unit === expectedUnits[index])
-                && force.setC3ConfigurationIfWholeOwnerAuthorityCurrent(
-                    authorityFingerprint,
+                && force.setC3ConfigurationIfOwnerRevisionCurrent(
+                    ownerRevisionFence,
                     result.networks,
                     result.positions,
                 );

@@ -13,7 +13,6 @@ import {
     MAX_UNITS,
     type UnitGroup,
 } from '../models/force.model';
-import type { ForceUnit } from '../models/force-unit.model';
 import {
     forceMemberCommander,
     isCBTForceMember,
@@ -493,19 +492,16 @@ export class ForceWorkspaceCommandsService {
         const cloned = await force.cloneForPersistence();
         if (this.workspace.getForceSlot(force) !== forceSlot
             || !force.isWholeOwnerAuthorityFingerprintCurrent(sourceFingerprint)) {
-            this.destroyDetachedForceUnits(cloned);
             return false;
         }
 
         // Unload old, load clone
         const removed = await this.builder.removeLoadedForce(force, { skipPrompt: true });
         if (!removed) {
-            this.destroyDetachedForceUnits(cloned);
             return false;
         }
         // Load the new force (this handles URL state and other housekeeping)
         if (!this.builder.addLoadedForce(cloned, alignment, { activate: true })) {
-            this.destroyDetachedForceUnits(cloned);
             return false;
         }
         const units = cloned.members();
@@ -596,17 +592,14 @@ export class ForceWorkspaceCommandsService {
 
         if (this.workspace.getForceSlot(force) !== forceSlot
             || !force.isWholeOwnerAuthorityFingerprintCurrent(sourceFingerprint)) {
-            this.destroyDetachedForceUnits(newForce);
             return false;
         }
         const removed = await this.builder.removeLoadedForce(force);
         if (!removed) {
-            this.destroyDetachedForceUnits(newForce);
             return false;
         }
         // Load the new force (this handles URL state and other housekeeping)
         if (!this.builder.addLoadedForce(newForce, alignment, { activate: true })) {
-            this.destroyDetachedForceUnits(newForce);
             return false;
         }
         await this.dataService.saveForceAndWaitForCloud(newForce);
@@ -633,23 +626,18 @@ export class ForceWorkspaceCommandsService {
             throw new Error('Classic units must be admitted from their canonical native source.');
         }
         const newUnit = targetForce.createCompatibleUnit(unitData);
+        newUnit.disabledSaving = true;
         try {
-            newUnit.disabledSaving = true;
-            try {
-                await this.crewTransfers.transferCrossSystem(
-                    sourceUnit,
-                    newUnit,
-                    sourceForce.gameSystem,
-                    targetForce.gameSystem,
-                );
-            } finally {
-                newUnit.disabledSaving = false;
-            }
-            return newUnit;
-        } catch (error) {
-            newUnit.destroy();
-            throw error;
+            await this.crewTransfers.transferCrossSystem(
+                sourceUnit,
+                newUnit,
+                sourceForce.gameSystem,
+                targetForce.gameSystem,
+            );
+        } finally {
+            newUnit.disabledSaving = false;
         }
+        return newUnit;
     }
 
     private async removeClassicMember(
@@ -781,22 +769,6 @@ export class ForceWorkspaceCommandsService {
             this.workspace.selectedUnit.set(otherUnits[0] ?? null);
         }
         await force.removeGroup(group);
-    }
-
-    private destroyDetachedForceUnits(force: Force): void {
-        let units: readonly ForceUnit[];
-        try {
-            units = force.units();
-        } catch {
-            return;
-        }
-        for (const unit of units) {
-            try {
-                unit.destroy();
-            } catch {
-                // Detached cleanup is best-effort.
-            }
-        }
     }
 
 }

@@ -38,6 +38,8 @@ import type { SearchWorkerLike } from '../utils/unit-search-worker-client.util';
 import type { UnitSearchWorkerResponseMessage } from '../utils/unit-search-worker-protocol.util';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
+import { UnitRuntimeService } from './unit-runtime.service';
+import { UnitSearchIndexService } from './unit-search-index.service';
 
 const originalJasmineTimeoutInterval = jasmine.DEFAULT_TIMEOUT_INTERVAL;
 jasmine.DEFAULT_TIMEOUT_INTERVAL = 60000;
@@ -53,6 +55,14 @@ interface SyntheticMegaMekRarityBenchmarkScenario {
     availabilityRecords: MegaMekWeightedAvailabilityRecord[];
     availabilityRecordsByName: ReadonlyMap<string, MegaMekWeightedAvailabilityRecord>;
     expectedTopScore: number;
+}
+
+function stubMegaMekAvailabilityRecords(
+    dataService: DataService,
+    records: readonly MegaMekWeightedAvailabilityRecord[],
+): void {
+    spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake(unit =>
+        records.find(record => record.n === unit.name));
 }
 
 class FakeSearchWorker implements SearchWorkerLike {
@@ -117,6 +127,28 @@ function cloneUnit<T>(value: T): T {
         return structuredClone(value);
     }
     return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function refreshSearchCorpusForTest(dataService: DataService): void {
+    const units = dataService.getUnits();
+    const eras = dataService.getEras();
+    const factions = dataService.getFactions();
+    const internals = dataService as any;
+
+    internals.runtimeSearchIndexesReady.set(false);
+    internals.invalidateForcePackCaches();
+    TestBed.inject(UnitRuntimeService).preprocessUnits(units);
+    internals.applyNoneFactionMemberships(units, eras, factions);
+    TestBed.inject(UnitRuntimeService).postprocessUnits(units, eras);
+    TestBed.inject(UnitSearchIndexService).rebuildIndexes(
+        units,
+        eras,
+        factions,
+        dataService.getFactionById(MULFACTION_EXTINCT),
+        dataService.getEquipmentRegistry(),
+    );
+    internals.runtimeSearchIndexesReady.set(true);
+    dataService.searchCorpusVersion.update(version => version + 1);
 }
 
 function prepareUnitForSearch(unit: UnitSummary, index: number): UnitSummary {
@@ -680,7 +712,7 @@ function hydrateDataService(
     unitsCatalog.replaceUnits(bundle.units);
     (dataService as any).erasCatalog.hydrate(cloneUnit(bundle.eras));
     (dataService as any).factionsCatalog.hydrate(cloneUnit(bundle.factions));
-    dataService.refreshSearchCorpus();
+    refreshSearchCorpusForTest(dataService);
     dataService.isDataReady.set(true);
 }
 
@@ -909,7 +941,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         addedUnit.name = 'Refresh Probe Unit';
 
         dataService.getUnits().push(addedUnit);
-        dataService.refreshSearchCorpus();
+        refreshSearchCorpusForTest(dataService);
 
         const results = service.filteredUnits();
         await Promise.resolve();
@@ -934,7 +966,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             ['Stale Unit|Mek|BattleMek', ['stale-pack']],
         ]);
 
-        dataService.refreshSearchCorpus();
+        refreshSearchCorpusForTest(dataService);
 
         expect((dataService as any).forcePackToLookupKey).toBeNull();
         expect((dataService as any).lookupKeyToForcePacks).toBeNull();
@@ -1263,7 +1295,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
     it('limits MegaMek faction dropdown availability by semantic formation targets', () => {
         const bundle = createFormationFactionBundle();
         const { dataService, service, optionsServiceStub, gameServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -1277,9 +1309,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
             availabilitySource: 'megamek',
@@ -1375,7 +1404,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             },
         ];
         const { dataService, service, optionsServiceStub, gameServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -1389,9 +1418,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
             availabilitySource: 'megamek',
@@ -1706,7 +1732,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 // t: bundle.units.units[0].type,
@@ -1728,11 +1754,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => (
-                record.n === unit.name
-            ));
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -1802,7 +1823,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 // t: bundle.units.units[0].type,
@@ -1824,11 +1845,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => (
-                record.n === unit.name
-            ));
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -2086,7 +2102,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }));
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 // t: 'Mek',
@@ -2105,11 +2121,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => (
-                record.n === unit.name
-            ));
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -2191,7 +2202,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -2201,9 +2212,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -2289,7 +2297,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2303,9 +2311,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         const rasalhagueDominion = {
             'Rasalhague Dominion': {
@@ -2408,7 +2413,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2422,9 +2427,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         const rasalhagueDominion = {
             'Rasalhague Dominion': {
@@ -2524,7 +2526,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2538,9 +2540,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         const rasalhagueDominion = {
             'Rasalhague Dominion': {
@@ -2642,7 +2641,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2658,9 +2657,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         service.searchText.set('BattleMaster');
         service.setFilter('era', ['Dark Age']);
@@ -2741,7 +2737,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2752,9 +2748,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         service.searchText.set('BattleMaster');
         service.setFilter('era', ['ilClan']);
@@ -2873,7 +2866,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -2884,9 +2877,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         service.searchText.set('BattleMaster');
         service.setFilter('era', ['ilClan']);
@@ -2936,7 +2926,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 // t: bundle.units.units[0].type,
@@ -2949,11 +2939,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => (
-                record.n === unit.name
-            ));
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -2983,7 +2968,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.factions.factions[0].eras[1] = new Set([1, 2]);
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Requisition Unit',
                 e: {
@@ -3001,9 +2986,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3031,7 +3013,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.factions.factions[0].eras[1] = new Set([1, 2]);
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Very Rare Unit',
                 e: {
@@ -3049,9 +3031,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3078,7 +3057,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service, optionsServiceStub } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Very Common Crab',
                 e: {
@@ -3088,9 +3067,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         expect(bundle.units.units.map(unit => dataService.getUnitByIdentity(
             unit.provider,
@@ -3148,7 +3124,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service, optionsServiceStub } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Known Crab',
                 e: {
@@ -3158,9 +3134,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         await flushAsyncWork();
 
@@ -3210,7 +3183,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.factions.factions[0].eras[1] = new Set([1, 2]);
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Known Unit',
                 e: {
@@ -3220,9 +3193,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3256,7 +3226,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.factions.factions[0].eras[1] = new Set([1, 2, 3]);
 
         const { dataService, service } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: lowUnit.name,
                 e: {
@@ -3274,9 +3244,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
         service.setSortDirection('desc');
@@ -3322,7 +3289,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -3340,9 +3307,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3395,7 +3359,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
         const unitAvailabilitySource = TestBed.inject(UnitAvailabilitySourceService);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -3413,9 +3377,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3488,7 +3449,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -3509,9 +3470,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3596,7 +3554,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -3612,9 +3570,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3691,7 +3646,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -3707,9 +3662,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -3746,7 +3698,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             workerFactory: () => worker,
         });
 
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 // t: bundle.units.units[0].type,
@@ -3759,9 +3711,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         await flushAsyncWork();
 
@@ -3871,7 +3820,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service, optionsServiceStub } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -3893,9 +3842,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         const rasalhagueDominion = {
             'Rasalhague Dominion': {
@@ -4018,7 +3964,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service, optionsServiceStub } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -4029,9 +3975,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         await flushAsyncWork();
 
@@ -4095,7 +4038,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Rare Salvage Crab',
                 e: {
@@ -4113,9 +4056,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         await flushAsyncWork();
 
@@ -4210,7 +4150,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -4229,9 +4169,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         await flushAsyncWork();
 
@@ -4324,7 +4261,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'BattleMaster C3',
                 e: {
@@ -4335,9 +4272,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         await flushAsyncWork();
 
@@ -4407,7 +4341,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Very Common Crab',
                 e: {
@@ -4417,9 +4351,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         await flushAsyncWork();
 
@@ -4474,7 +4405,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service, optionsServiceStub } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Rare Salvage Crab',
                 e: {
@@ -4492,9 +4423,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         await flushAsyncWork();
 
@@ -4535,7 +4463,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service, optionsServiceStub } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Known Unit',
                 e: {
@@ -4545,9 +4473,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         await flushAsyncWork();
 
@@ -4622,7 +4547,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: 'Very Common Crab',
                 e: {
@@ -4632,9 +4557,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         await flushAsyncWork();
 
@@ -4670,7 +4592,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { dataService, service } = createService(bundle, {
             workerFactory: () => worker,
         });
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: lowUnit.name,
                 e: {
@@ -4688,9 +4610,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         await flushAsyncWork();
 
@@ -4838,7 +4757,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         ];
 
         const { dataService, service, optionsServiceStub } = createService(bundle);
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue([
+        stubMegaMekAvailabilityRecords(dataService, [
             {
                 n: bundle.units.units[0].name,
                 e: {
@@ -4857,9 +4776,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 },
             },
         ]);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return dataService.getMegaMekAvailabilityRecords().find((record) => record.n === unit.name);
-        });
 
         optionsServiceStub.options.set({
             ...optionsServiceStub.options(),
@@ -6376,10 +6292,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const scenario = buildSyntheticMegaMekRarityBenchmarkScenario(50000);
         const { dataService, service } = createService(scenario.bundle);
 
-        spyOn(dataService, 'getMegaMekAvailabilityRecords').and.returnValue(scenario.availabilityRecords);
-        spyOn(dataService, 'getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
-            return scenario.availabilityRecordsByName.get(unit.name);
-        });
+        stubMegaMekAvailabilityRecords(dataService, scenario.availabilityRecords);
 
         (service as any).slowSearchTelemetryThresholdMs = 0;
         service.setSortOrder('name');
@@ -6557,7 +6470,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const oldExecute = worker.messages.filter((message: any) => message.type === 'execute').at(-1) as any;
         const messageCountBeforeSwap = worker.messages.length;
 
-        dataService.refreshSearchCorpus();
+        refreshSearchCorpusForTest(dataService);
 
         expect((service as any).getWorkerCorpusVersion()).not.toBe(oldExecute.request.corpusVersion);
         expect(worker.messages.length).toBe(messageCountBeforeSwap);

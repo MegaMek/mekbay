@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { JsonValue } from '../persisted-unit-state';
+import { isMekLocationConditionKey } from './runtime-state';
 
 /** Stable wire IDs. Existing numeric meanings must never be reassigned. */
 export const RUNTIME_HISTORY_MESSAGE = Object.freeze({
@@ -334,7 +335,8 @@ function formatCrewSkillChange(
 }
 
 function formatLocationConditionChange(data: readonly JsonValue[], target: string): string {
-    const condition = text(data[2]);
+    const condition = data[2];
+    if (!isMekLocationConditionKey(condition)) return `${target}: condition changed`;
     const before = number(data[3]);
     const after = number(data[4]);
     const suffix = pending(data[5]);

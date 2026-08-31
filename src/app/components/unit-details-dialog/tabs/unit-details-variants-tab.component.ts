@@ -12,6 +12,7 @@ import { isMegaMekRaritySortKey, SORT_OPTIONS } from '../../../services/unit-sea
 import { GameService } from '../../../services/game.service';
 import { OptionsService } from '../../../services/options.service';
 import { isSameVariantGroup } from '../../../utils/unit-variant.util';
+import { getProperty } from '../../../utils/unit-search-shared.util';
 
 /**
  * State for the variants tab that can be persisted by parent components.
@@ -117,8 +118,8 @@ export class UnitDetailsVariantsTabComponent {
         // Sort based on selected key
         return filtered.sort((a, b) => {
             let result = 0;
-            const valA = this.getNestedProperty(a, sortKey);
-            const valB = this.getNestedProperty(b, sortKey);
+            const valA = getProperty(a, sortKey);
+            const valB = getProperty(b, sortKey);
             if (typeof valA === 'number' && typeof valB === 'number') {
                 result = valA - valB;
             } else if (typeof valA === 'string' && typeof valB === 'string') {
@@ -133,19 +134,6 @@ export class UnitDetailsVariantsTabComponent {
             return sortDir === 'desc' ? -result : result;
         });
     });
-
-    /** Get a nested property value using dot notation (e.g., 'as.PV') */
-    private getNestedProperty(obj: any, key: string): any {
-        if (!obj || !key) return undefined;
-        if (!key.includes('.')) return obj[key];
-        const parts = key.split('.');
-        let cur = obj;
-        for (const p of parts) {
-            if (cur == null) return undefined;
-            cur = cur[p];
-        }
-        return cur;
-    }
 
     /** Check if a variant is the current unit */
     isCurrentUnit(variant: UnitSummary): boolean {

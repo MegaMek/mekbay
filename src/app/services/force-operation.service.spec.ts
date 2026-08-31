@@ -11,6 +11,7 @@ import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
 import { ForceOperationService, type ForceOperationHost } from './force-operation.service';
 import { LoggerService } from './logger.service';
+import { OperationStorageService } from './operation-storage.service';
 import { ToastService } from './toast.service';
 
 describe('ForceOperationService', () => {
@@ -23,7 +24,8 @@ describe('ForceOperationService', () => {
         const service = TestBed.configureTestingModule({
             providers: [
                 ForceOperationService,
-                { provide: DataService, useValue: { saveOperation, saveForce } },
+                { provide: DataService, useValue: { saveForce } },
+                { provide: OperationStorageService, useValue: { saveOperation } },
                 {
                     provide: DialogsService,
                     useValue: {
@@ -90,7 +92,6 @@ function host(
         removeAllForces: async () => true,
         clearLoadedForcesForOperation: async () => true,
         addLoadedForce: () => true,
-        destroyDetachedForce: () => undefined,
         loadAllUnits: async () => undefined,
         setUrlInitializationPending: () => undefined,
     };

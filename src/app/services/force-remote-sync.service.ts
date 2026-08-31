@@ -54,7 +54,6 @@ export interface ForceRemoteWorkspace {
     readonly activateForceSlot: (slot: ForceSlot) => void;
     readonly teardownForceSlot: (slot: ForceSlot) => void;
     readonly disposeDetachedForceSlot: (slot: ForceSlot) => void;
-    readonly destroyDetachedForceUnits: (force: Force) => void;
     readonly selectUnit: (unit: ForceMember | null) => void;
 }
 
@@ -790,7 +789,6 @@ export class ForceRemoteSyncService {
             if (!published) {
                 if (retirement) localForce.cancelWholeOwnerRetirement(retirement.token);
                 if (replacementSlot) this.workspace.disposeDetachedForceSlot(replacementSlot);
-                this.workspace.destroyDetachedForceUnits(cloned);
             }
         }
     }

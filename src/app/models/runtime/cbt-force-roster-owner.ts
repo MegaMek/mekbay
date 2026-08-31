@@ -509,9 +509,9 @@ function removeMember(
     return { roster: freezeRoster(groups), removedInstanceIds: Object.freeze([command.instanceId]) };
 }
 
-function validateCommand(value: CBTForceRosterCommand): CBTForceRosterCommand {
+function validateCommand(value: unknown): CBTForceRosterCommand {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid command');
-    const detached = deepFreezeCommand(structuredClone(value)) as unknown;
+    const detached = deepFreezeCommand(structuredClone(value));
     return validateDetachedCommand(detached);
 }
 

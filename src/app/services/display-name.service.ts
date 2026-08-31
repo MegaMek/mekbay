@@ -102,9 +102,13 @@ export class DisplayNameService {
             { action: 'setDisplayName', displayName },
             { suppressGlobalError: true },
         );
-        if (response?.action === 'error') throw new Error(response.message || 'Could not save the display name.');
-        const savedName = normalizeDisplayName(response?.displayName);
-        if (response?.action !== 'displayNameUpdated' || !savedName) {
+        if (response?.['action'] === 'error') {
+            throw new Error(typeof response['message'] === 'string'
+                ? response['message']
+                : 'Could not save the display name.');
+        }
+        const savedName = normalizeDisplayName(response?.['displayName']);
+        if (response?.['action'] !== 'displayNameUpdated' || !savedName) {
             throw new Error('Could not save the display name.');
         }
 

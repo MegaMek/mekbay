@@ -19,6 +19,7 @@ import {
     type OperationDialogResult,
 } from '../components/save-operation-dialog/save-operation-dialog.component';
 import { DataService } from './data.service';
+import { OperationStorageService } from './operation-storage.service';
 import { DialogsService } from './dialogs.service';
 import { LoggerService } from './logger.service';
 import { ToastService } from './toast.service';
@@ -32,7 +33,6 @@ export interface ForceOperationHost {
     removeAllForces(): Promise<boolean>;
     clearLoadedForcesForOperation(): Promise<boolean>;
     addLoadedForce(force: Force, alignment: ForceAlignment, activate: boolean): boolean;
-    destroyDetachedForce(force: Force): void;
     loadAllUnits(forces: Force[]): Promise<void>;
     setUrlInitializationPending(pending: boolean): void;
 }
@@ -46,6 +46,7 @@ export interface ForceOperationHost {
 @Injectable({ providedIn: 'root' })
 export class ForceOperationService {
     private readonly data = inject(DataService);
+    private readonly operationStorage = inject(OperationStorageService);
     private readonly dialogs = inject(DialogsService);
     private readonly logger = inject(LoggerService);
     private readonly toast = inject(ToastService);
@@ -139,7 +140,7 @@ export class ForceOperationService {
             forces: operationForceRefs(slots),
         };
         try {
-            await this.data.saveOperation(serialized);
+            await this.operationStorage.saveOperation(serialized);
             this.currentOperation.set(operationEntry(serialized, slots));
             this.toast.showToast('Operation saved.', 'success');
             return true;
@@ -180,7 +181,7 @@ export class ForceOperationService {
             forces: operationForceRefs(slots),
         };
         try {
-            await this.data.saveOperation(serialized);
+            await this.operationStorage.saveOperation(serialized);
             this.currentOperation.set(operationEntry(serialized, slots));
             this.toast.showToast('Operation updated.', 'success');
             return true;
@@ -214,7 +215,7 @@ export class ForceOperationService {
             if ((!current || current.operationId !== operationId)
                 && (!await this.promptSaveIfChanged() || !await host.checkForcesBeforeReplacement())) return false;
         }
-        const entry = await this.data.getOperation(operationId);
+        const entry = await this.operationStorage.getOperation(operationId);
         if (!entry) return false;
         if (entry.owned) {
             try {
@@ -237,7 +238,6 @@ export class ForceOperationService {
                 const added = host.addLoadedForce(force, forceInfo.alignment, !loadedAny);
                 if (added) loadedAny = true;
                 else {
-                    if (!host.loadedForces().some(slot => slot.force === force)) host.destroyDetachedForce(force);
                     failedForces.push(forceInfo.name || forceInfo.instanceId);
                 }
             }

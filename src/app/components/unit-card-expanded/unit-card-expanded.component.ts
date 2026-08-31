@@ -49,6 +49,7 @@ import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { DataService } from '../../services/data.service';
+import { getProperty } from '../../utils/unit-search-shared.util';
 
 /**
  * An unit card component for displaying detailed unit information.
@@ -173,7 +174,7 @@ export class UnitCardExpandedComponent {
     readonly pilotStats = computed<string | null>(() => {
         const u = this.unit();
         if (this.isForceUnit(u)) {
-            return u.getPilotStats?.() ?? null;
+            return `${u.getPilotStats()}`;
         }
         if (this.forceShowPilotInfo() || this.searchResultContext()) {
             if (this.isAlphaStrike()) {
@@ -391,7 +392,7 @@ export class UnitCardExpandedComponent {
         }
 
         // Use nested property access for dotted keys like 'as.PV'
-        const raw = this.getNestedProperty(unit, key);
+        const raw = getProperty(unit, key);
         let value: string;
 
         if (raw == null) {
@@ -522,7 +523,7 @@ export class UnitCardExpandedComponent {
             };
         }
 
-        const raw = this.getNestedProperty(unit, sortKey);
+        const raw = getProperty(unit, sortKey);
         let value: string;
         let numeric = false;
 
@@ -572,19 +573,6 @@ export class UnitCardExpandedComponent {
             }
         }
         return false;
-    }
-
-    /** Get a nested property value using dot notation (e.g., 'as.PV') */
-    private getNestedProperty(obj: any, key: string): any {
-        if (!obj || !key) return undefined;
-        if (!key.includes('.')) return obj[key];
-        const parts = key.split('.');
-        let cur: any = obj;
-        for (const p of parts) {
-            if (cur == null) return undefined;
-            cur = cur[p];
-        }
-        return cur;
     }
 
     /** Map of normalized location code -> '[CASE]' or '[CASE II]' for locations that have CASE equipment */

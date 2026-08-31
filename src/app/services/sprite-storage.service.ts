@@ -490,7 +490,7 @@ export class SpriteStorageService {
         sourceLabel: 'cached' | 'remote',
     ): LoadedSpriteManifest | null {
         try {
-            const parsed = JSON.parse(cache.manifestText) as unknown;
+            const parsed: unknown = JSON.parse(cache.manifestText);
             const manifest = spriteManifestFromUnknown(parsed);
             if (!manifest?.assignments) {
                 throw new Error('Unit sprite manifest types, icons, or assignments are invalid');

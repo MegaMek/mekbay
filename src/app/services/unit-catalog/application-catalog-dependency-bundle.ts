@@ -77,7 +77,7 @@ export function parseApplicationCatalogDependencyBundle(
         const json = typeof input === 'string'
             ? input
             : new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-        parsed = JSON.parse(json) as unknown;
+        parsed = JSON.parse(json);
     } catch (error) {
         throw new Error('Application catalog dependency bundle is invalid JSON', { cause: error });
     }

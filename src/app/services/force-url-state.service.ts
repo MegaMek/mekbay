@@ -31,7 +31,6 @@ export interface ForceUrlWorkspace {
     readonly clear: () => Promise<boolean>;
     readonly addLoadedForce: (force: Force, alignment: ForceAlignment, activate: boolean) => boolean;
     readonly getForceSlot: (force: Force) => ForceSlot | undefined;
-    readonly destroyDetachedForce: (force: Force) => void;
     readonly loadAllUnits: (forces: readonly Force[]) => Promise<void>;
 }
 
@@ -205,8 +204,6 @@ export class ForceUrlStateService {
                 const added = workspace.addLoadedForce(force, alignment, !loadedAny && isFirst);
                 if (added) {
                     loadedAny = true;
-                } else if (!workspace.getForceSlot(force)) {
-                    workspace.destroyDetachedForce(force);
                 }
             }
         }
@@ -222,7 +219,6 @@ export class ForceUrlStateService {
                 const admitted = await this.parseUnitsFromUrl(force, inlineUnitsParam, lookupMode);
                 if (admitted.length > 0) {
                     this.logger.info(`Force URL startup: loaded ${admitted.length} units.`);
-                    force.removeEmptyGroups();
                     if (this.layoutService.isMobile()) this.layoutService.openMenu();
                 }
             } finally {
@@ -233,8 +229,6 @@ export class ForceUrlStateService {
                 const added = workspace.addLoadedForce(force, defaultAlignment, !loadedAny && isFirst);
                 if (added) {
                     loadedAny = true;
-                } else if (!workspace.getForceSlot(force)) {
-                    workspace.destroyDetachedForce(force);
                 }
             }
         }

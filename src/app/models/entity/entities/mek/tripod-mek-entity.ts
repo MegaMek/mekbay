@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { signal } from '@angular/core';
-import { MEK_TRIPOD_LOCATIONS, MekConfig, MotiveType } from '../../types';
+import { MEK_TRIPOD_LOCATIONS, MekConfig, type MekLocation, MotiveType } from '../../types';
 import { MekWithArmsEntity } from './mek-entity';
 
 /** Tripod BattleMek - adds Center Leg location. */
@@ -14,7 +14,7 @@ export class TripodMekEntity extends MekWithArmsEntity {
     return 'Tripod';
   }
 
-  get locationOrder(): string[] {
+  override get locationOrder(): readonly MekLocation[] {
     return [...MEK_TRIPOD_LOCATIONS];
   }
 

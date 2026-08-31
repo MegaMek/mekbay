@@ -46,6 +46,12 @@ export type DropdownPropertyShape = 'scalar' | 'array' | 'component' | 'countabl
 export type BooleanFilterSource = 'boolean' | 'nonEmptyArray' | 'truthy';
 export type TriStateBooleanFilterValue = null | 'or' | 'not';
 
+export function isFilterRangeValue(value: unknown): value is [number, number] {
+    return Array.isArray(value)
+        && value.length === 2
+        && value.every(bound => typeof bound === 'number' && Number.isFinite(bound));
+}
+
 export enum AdvFilterType {
     DROPDOWN = 'dropdown',
     RANGE = 'range',
@@ -61,7 +67,7 @@ export interface AdvFilterConfig {
     sortOptions?: string[]; // For dropdowns, can be pre-defined sort order, supports wildcard '*' at the end for prefix matching
     external?: boolean; // If true, this filter datasource is not from the local data, but from an external source (era, faction, etc.)
     curve?: number; // for range sliders, defines the curve of the slider
-    ignoreValues?: any[]; // Values to ignore in the range filter, e.g. [-1] for heat/dissipation
+    ignoreValues?: unknown[]; // Values to ignore in the range filter, e.g. [-1] for heat/dissipation
     multistate?: boolean; // if true, the filter (dropdown) can have multiple states (OR, AND, NOT)
     countable?: boolean; // if true, show amount next to options
     stepSize?: number; // for range sliders, defines the step size
@@ -189,7 +195,7 @@ export interface SerializedSearchFilter {
     /** Sort direction */
     sortDir?: 'asc' | 'desc';
     /** Advanced filter values */
-    filters?: Record<string, any>;
+    filters?: Record<string, unknown>;
     /** Pilot gunnery skill for BV/PV calculations */
     gunnery?: number;
     /** Pilot piloting skill for BV calculations */

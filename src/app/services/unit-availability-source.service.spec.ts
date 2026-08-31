@@ -34,7 +34,6 @@ describe('UnitAvailabilitySourceService', () => {
     const orderedEras: Era[] = [];
     const units: UnitSummary[] = [];
     const megaMekAvailabilityByUnitName = new Map<string, { n?: string; e: Record<string, Record<string, [number, number]>> }>();
-    const megaMekAvailabilityRecords: Array<{ n?: string; e: Record<string, Record<string, [number, number]>> }> = [];
     const optionsServiceMock = {
         options: signal<{
             availabilitySource: AvailabilitySource;
@@ -56,7 +55,6 @@ describe('UnitAvailabilitySourceService', () => {
         getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake((unit: Pick<UnitSummary, 'name'>) => {
             return megaMekAvailabilityByUnitName.get(unit.name);
         }),
-        getMegaMekAvailabilityRecords: jasmine.createSpy('getMegaMekAvailabilityRecords').and.callFake(() => megaMekAvailabilityRecords),
     };
 
     beforeEach(() => {
@@ -65,7 +63,6 @@ describe('UnitAvailabilitySourceService', () => {
         orderedEras.length = 0;
         units.length = 0;
         megaMekAvailabilityByUnitName.clear();
-        megaMekAvailabilityRecords.length = 0;
         dataServiceMock.searchCorpusVersion.set(1);
         dataServiceMock.megaMekAvailabilityVersion.set(0);
         dataServiceMock.getUnits.calls.reset();
@@ -75,7 +72,6 @@ describe('UnitAvailabilitySourceService', () => {
         dataServiceMock.getFactionById.calls.reset();
         dataServiceMock.getMegaMekFactionsByMulId.calls.reset();
         dataServiceMock.getMegaMekAvailabilityRecordForUnit.calls.reset();
-        dataServiceMock.getMegaMekAvailabilityRecords.calls.reset();
         optionsServiceMock.options.set({ availabilitySource: 'mul', megaMekAvailabilityFiltersUseAllScopedOptions: true });
 
         TestBed.configureTestingModule({
@@ -152,7 +148,6 @@ describe('UnitAvailabilitySourceService', () => {
                 },
             },
         });
-        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
 
         expect(service.getFactionEraUnitIds(faction, era).size).toBe(0);
         expect(service.getFactionEraUnitIds(faction, era, 'megamek').has(unit.name)).toBeTrue();
@@ -464,7 +459,6 @@ describe('UnitAvailabilitySourceService', () => {
                 },
             },
         });
-        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(scopedUnit.name)!);
 
         expect(service.getMegaMekAvailabilityScore(scopedUnit)).toBe(61);
         expect(service.getMegaMekAvailabilityScore(scopedUnit, {
@@ -515,7 +509,6 @@ describe('UnitAvailabilitySourceService', () => {
                 },
             },
         });
-        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
 
         expect(service.unitMatchesAvailabilityRarity(unit, 'Common', {
             eraIds: new Set([ilClan.id]),
@@ -599,7 +592,6 @@ describe('UnitAvailabilitySourceService', () => {
                 },
             },
         });
-        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
 
         const context = {
             eraIds: new Set([ilClan.id]),
@@ -688,7 +680,6 @@ describe('UnitAvailabilitySourceService', () => {
                 },
             },
         });
-        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
 
         const darkAgeContext = {
             bridgeThroughMulMembership: true,
@@ -773,7 +764,6 @@ describe('UnitAvailabilitySourceService', () => {
                 },
             },
         });
-        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
 
         const ilClanContext = {
             bridgeThroughMulMembership: true,
@@ -846,7 +836,6 @@ describe('UnitAvailabilitySourceService', () => {
                 },
             },
         });
-        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
 
         expect(service.getVisibleEraUnitIds(era).has(unit.name)).toBeTrue();
         expect(service.getFactionEraUnitIds(faction, era).has(unit.name)).toBeTrue();
@@ -911,10 +900,6 @@ describe('UnitAvailabilitySourceService', () => {
                 '900': { '1': [55, 0] },
             },
         });
-        megaMekAvailabilityRecords.push(
-            megaMekAvailabilityByUnitName.get(returningUnit.name)!,
-            megaMekAvailabilityByUnitName.get(goneUnit.name)!,
-        );
 
         expect(Array.from(service.getFactionEraUnitIds(extinctFaction, middleEra)).sort((left, right) => left.localeCompare(right))).toEqual(['Boomerang', 'Ghost']);
         expect(Array.from(service.getFactionEraUnitIds(extinctFaction, lateEra)).sort((left, right) => left.localeCompare(right))).toEqual(['Ghost']);
@@ -947,7 +932,6 @@ describe('UnitAvailabilitySourceService', () => {
                 },
             },
         });
-        megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(knownUnit.name)!);
 
         const salvageScope = {
             eraIds: new Set([3050]),
@@ -1007,7 +991,6 @@ describe('UnitAvailabilitySourceService', () => {
                     },
                 },
             });
-            megaMekAvailabilityRecords.push(megaMekAvailabilityByUnitName.get(unit.name)!);
         }
 
         for (const unit of scoredUnits) {

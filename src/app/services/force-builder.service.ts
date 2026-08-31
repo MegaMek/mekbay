@@ -56,7 +56,6 @@ export class ForceBuilderService {
             removeAllForces: () => this.removeAllForces(),
             clearLoadedForcesForOperation: () => this.clearLoadedForcesForOperation(),
             addLoadedForce: (force, alignment, activate) => this.addLoadedForce(force, alignment, { activate }),
-            destroyDetachedForce: force => this.slotLifecycle.destroyDetachedForceUnits(force),
             loadAllUnits: forces => this.unitLoading.load(forces),
             setUrlInitializationPending: pending => this.forceUrl.setSynchronizationEnabled(!pending),
         });
@@ -67,7 +66,6 @@ export class ForceBuilderService {
             clear: () => this.clear(),
             addLoadedForce: (force, alignment, activate) => this.addLoadedForce(force, alignment, { activate }),
             getForceSlot: force => this.workspace.getForceSlot(force),
-            destroyDetachedForce: force => this.slotLifecycle.destroyDetachedForceUnits(force),
             loadAllUnits: forces => this.unitLoading.load(forces),
         });
         this.forceUrl.start();
@@ -326,7 +324,6 @@ export class ForceBuilderService {
                 const cleared = await this.clear();
                 if (!cleared) return false; // User cancelled operation/force save prompt
                 if (!this.addLoadedForce(force, 'friendly', { activate: true })) {
-                    this.slotLifecycle.destroyDetachedForceUnits(force);
                     return false;
                 }
             }
@@ -345,7 +342,6 @@ export class ForceBuilderService {
         this.forceUrl.setSynchronizationEnabled(false);
         try {
             if (!this.addLoadedForce(force, alignment, { activate })) {
-                if (!this.workspace.getForceSlot(force)) this.slotLifecycle.destroyDetachedForceUnits(force);
                 return false;
             }
             await this.unitLoading.load([force]);

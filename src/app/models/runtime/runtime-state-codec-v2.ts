@@ -2518,7 +2518,7 @@ function recordEmbeddedIdTranslation(
 
 function parseJsonArray(value: string, length: number): unknown[] | null {
     try {
-        const parsed = JSON.parse(value) as unknown;
+        const parsed: unknown = JSON.parse(value);
         return Array.isArray(parsed) && parsed.length === length ? parsed : null;
     } catch {
         return null;
@@ -4375,8 +4375,7 @@ function validatePpcCapacitorState(
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
         codecFail(code, path, 'must be a PPC capacitor object');
     }
-    const lifecycle = value as unknown as Record<string, unknown>;
-    const unknownKey = Object.keys(lifecycle).find(key =>
+    const unknownKey = Object.keys(value).find(key =>
         key !== 'weaponId' && key !== 'chargeState' && key !== 'firedThisTurn');
     if (unknownKey !== undefined) {
         codecFail(code, `${path}.${unknownKey}`, 'is not a recognized PPC capacitor field');
@@ -4406,8 +4405,7 @@ function validateBombastLaserState(
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
         codecFail(code, path, 'must be a Bombast Laser object');
     }
-    const lifecycle = value as unknown as Record<string, unknown>;
-    const unknownKey = Object.keys(lifecycle).find(key =>
+    const unknownKey = Object.keys(value).find(key =>
         key !== 'chargeState' && key !== 'firedThisTurn');
     if (unknownKey !== undefined) {
         codecFail(code, `${path}.${unknownKey}`, 'is not a recognized Bombast Laser field');
@@ -4434,8 +4432,7 @@ function validateC3EmergencyMasterState(
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
         codecFail(code, path, 'must be a C3 Emergency Master object');
     }
-    const lifecycle = value as unknown as Record<string, unknown>;
-    const unknownKey = Object.keys(lifecycle).find(key =>
+    const unknownKey = Object.keys(value).find(key =>
         key !== 'mode' && key !== 'operatingTurns');
     if (unknownKey !== undefined) {
         codecFail(code, `${path}.${unknownKey}`, 'is not a recognized C3 Emergency Master field');

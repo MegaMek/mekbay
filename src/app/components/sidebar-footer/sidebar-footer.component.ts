@@ -15,6 +15,7 @@ import { ForceWorkspaceCommandsService } from '../../services/force-workspace-co
 import { ForceImportService } from '../../services/force-import.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { DataService } from '../../services/data.service';
+import { OrganizationStorageService } from '../../services/organization-storage.service';
 import type { ForceAlignment } from '../../models/force-slot.model';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { CompactModeService } from '../../services/compact-mode.service';
@@ -57,6 +58,7 @@ export class SidebarFooterComponent {
     operationService = inject(ForceOperationService);
     dialogsService = inject(DialogsService);
     dataService = inject(DataService);
+    private readonly organizationStorage = inject(OrganizationStorageService);
     appUpdateService = inject(AppUpdateService);
     lobbyService = inject(LobbyService);
     compactModeService = inject(CompactModeService);
@@ -225,7 +227,7 @@ export class SidebarFooterComponent {
             this.forceHasOrganizations.set(false);
             return;
         }
-        this.forceOrgEntries = await this.dataService.findOrganizationsForForce(instanceId);
+        this.forceOrgEntries = await this.organizationStorage.findOrganizationsForForce(instanceId);
         this.forceHasOrganizations.set(this.forceOrgEntries.length > 0);
     }
 

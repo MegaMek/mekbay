@@ -367,7 +367,6 @@ describe('ForceBuilderService remote force updates', () => {
                 timestamp: force.timestamp ?? data.timestamp,
                 owned: force.owned(),
             }),
-            flushPendingChanges: () => undefined,
             hasCBTForceV2: () => data.cbt !== undefined,
             getCBTForceV2Revision: () => revisionFromSerialized(data),
             getWholeOwnerPersistentAuthoritySnapshotJson: () => JSON.stringify({
@@ -525,7 +524,6 @@ describe('ForceBuilderService remote force updates', () => {
         );
         slotLifecycle.activateForceSlot = jasmine.createSpy('activateForceSlot');
         slotLifecycle.disposeDetachedForceSlot = jasmine.createSpy('disposeDetachedForceSlot');
-        slotLifecycle.destroyDetachedForceUnits = jasmine.createSpy('destroyDetachedForceUnits');
         service.slotLifecycle = slotLifecycle;
         service.unitLoading = { load: jasmine.createSpy('load').and.resolveTo() };
         const remoteSync = Object.create(ForceRemoteSyncService.prototype) as any;
@@ -545,7 +543,6 @@ describe('ForceBuilderService remote force updates', () => {
             activateForceSlot: (slot: any) => service.slotLifecycle.activateForceSlot(slot),
             teardownForceSlot: (slot: any) => service.slotLifecycle.teardownForceSlot(slot),
             disposeDetachedForceSlot: (slot: any) => service.slotLifecycle.disposeDetachedForceSlot(slot),
-            destroyDetachedForceUnits: (force: Force) => service.slotLifecycle.destroyDetachedForceUnits(force),
             selectUnit: (unit: ForceUnit | null) => service.workspace.selectUnit(unit),
         };
         remoteSync.remoteForceReceiptGeneration = new Map<string, number>();

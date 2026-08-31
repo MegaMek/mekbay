@@ -4,9 +4,7 @@
 import { DestroyRef, inject, Injectable } from '@angular/core';
 
 import { Force } from '../models/force.model';
-import { CBTForce } from '../models/cbt-force.model';
 import type { ForceAlignment, ForceSlot } from '../models/force-slot.model';
-import type { ForceUnit } from '../models/force-unit.model';
 import type { SerializedForce } from '../models/force-serialization';
 import { DataService } from './data.service';
 import { ForceRemoteSyncService } from './force-remote-sync.service';
@@ -42,7 +40,6 @@ export class ForceSlotLifecycleService {
             activateForceSlot: slot => this.activateForceSlot(slot),
             teardownForceSlot: slot => this.teardownForceSlot(slot),
             disposeDetachedForceSlot: slot => this.disposeDetachedForceSlot(slot),
-            destroyDetachedForceUnits: force => this.destroyDetachedForceUnits(force),
             selectUnit: unit => this.workspace.selectUnit(unit),
         });
         this.dataService.forceNeedsAdoption.subscribe(force => {
@@ -128,11 +125,6 @@ export class ForceSlotLifecycleService {
         if (activation) activation.enabled = false;
         this.activationPlans.delete(slot);
         try {
-            slot.force.flushPendingChanges();
-        } catch (error) {
-            this.logger.warn(`Could not flush retired force ${slot.force.instanceId()}: ${error}`);
-        }
-        try {
             slot.changeSub?.unsubscribe();
         } catch (error) {
             this.logger.warn(`Could not unsubscribe retired force changes ${slot.force.instanceId()}: ${error}`);
@@ -153,21 +145,6 @@ export class ForceSlotLifecycleService {
         } catch (error) {
             this.logger.warn(`Could not deactivate retired force ${instanceId}: ${error}`);
         }
-        if (slot.force instanceof CBTForce) return;
-        let retiredUnits: readonly ForceUnit[];
-        try {
-            retiredUnits = slot.force.units();
-        } catch (error) {
-            this.logger.warn(`Could not enumerate retired force units ${instanceId}: ${error}`);
-            return;
-        }
-        for (const unit of retiredUnits) {
-            try {
-                unit.destroy();
-            } catch (error) {
-                this.logger.warn(`Could not destroy retired force unit ${unit.id}: ${error}`);
-            }
-        }
     }
 
     disposeDetachedForceSlot(slot: ForceSlot): void {
@@ -180,23 +157,6 @@ export class ForceSlotLifecycleService {
             // Detached cleanup is best-effort.
         }
         slot.changeSub = null;
-    }
-
-    destroyDetachedForceUnits(force: Force): void {
-        if (force instanceof CBTForce) return;
-        let units: readonly ForceUnit[];
-        try {
-            units = force.units();
-        } catch {
-            return;
-        }
-        for (const unit of units) {
-            try {
-                unit.destroy();
-            } catch {
-                // Detached cleanup is best-effort.
-            }
-        }
     }
 
     async retireAndPublishSlotRemoval(
@@ -329,7 +289,6 @@ export class ForceSlotLifecycleService {
         if (this.workspace.loadedForces() !== expectedSlots
             || this.workspace.getForceSlot(oldForce) !== slot
             || !oldForce.isWholeOwnerAuthorityFingerprintCurrent(sourceFingerprint)) {
-            this.destroyDetachedForceUnits(cloned);
             return;
         }
         let newSlot: ForceSlot | null = null;
@@ -360,7 +319,6 @@ export class ForceSlotLifecycleService {
         } finally {
             if (!published) {
                 if (newSlot) this.disposeDetachedForceSlot(newSlot);
-                this.destroyDetachedForceUnits(cloned);
             }
         }
     }

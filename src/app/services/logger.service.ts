@@ -67,8 +67,8 @@ export class LoggerService {
         this.log('INFO', message);
     }
 
-    handleError(error: any): void {
-        const message = error?.message ? error.message : String(error);
+    handleError(error: unknown): void {
+        const message = error instanceof Error ? error.message : String(error);
         this.error(`Unhandled error: ${message}`);
         console.trace(error);
     }

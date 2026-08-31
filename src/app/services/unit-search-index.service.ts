@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Injectable } from '@angular/core';
-import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
+import type { UnitSummary, UnitComponent, UnitType } from '../models/unit-summary.model';
 import { type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
 import type { BucketStatSummary, MinMaxStatsRange, UnitSubtypeMaxStats } from './data.service';
@@ -786,7 +786,7 @@ export class UnitSearchIndexService {
         return result;
     }
 
-    private formatUnitType(type: string): string {
+    private formatUnitType(type: UnitType): string {
         if (type === 'Handheld Weapon') {
             return 'Weapon';
         }

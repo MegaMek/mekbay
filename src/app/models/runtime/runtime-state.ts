@@ -107,6 +107,10 @@ export interface EscalatingFailureRuntimeState {
 
 export type PpcCapacitorChargeState = 'charging' | 'charged';
 
+export function isPpcCapacitorChargeState(value: unknown): value is PpcCapacitorChargeState {
+    return value === 'charging' || value === 'charged';
+}
+
 /** Sparse pair-local state stored on the capacitor and bound to one exact PPC. */
 export interface PpcCapacitorRuntimeState {
     readonly weaponId: ComponentId;
@@ -116,6 +120,10 @@ export interface PpcCapacitorRuntimeState {
 
 export type BombastLaserChargeState = 'charging' | 'charged';
 
+export function isBombastLaserChargeState(value: unknown): value is BombastLaserChargeState {
+    return value === 'charging' || value === 'charged';
+}
+
 /** Sparse component-local Bombast lifecycle. Charge and fired are mutually exclusive. */
 export interface BombastLaserRuntimeState {
     readonly chargeState?: BombastLaserChargeState;
@@ -124,6 +132,15 @@ export interface BombastLaserRuntimeState {
 
 export type C3EmergencyMasterModeOverride = 'on' | 'off';
 export type C3EmergencyMasterOperatingTurns = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+export function isC3EmergencyMasterModeOverride(value: unknown): value is C3EmergencyMasterModeOverride {
+    return value === 'on' || value === 'off';
+}
+
+export function isC3EmergencyMasterOperatingTurns(value: unknown): value is C3EmergencyMasterOperatingTurns {
+    return value === 1 || value === 2 || value === 3 || value === 4
+        || value === 5 || value === 6 || value === 7;
+}
 
 /** Sparse component-local request/operating lifecycle. Absence means auto with zero turns. */
 export interface C3EmergencyMasterRuntimeState {

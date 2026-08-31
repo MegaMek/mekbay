@@ -3311,7 +3311,7 @@ function projectRuntimeMekBattleValue(
             location.internalPoints - internalDamage(state, location.id, 'committed'),
         ));
     }
-    const locationIdByCode = new Map(
+    const locationIdByCode = new Map<string, LocationId>(
         [...runtimeIndex.locations.values()].map(location => [location.code, location.id] as const),
     );
     const armorFaceIdByLocation = new Map<string, ArmorFaceId>();
