@@ -196,12 +196,6 @@ const SYSTEM_DAMAGE_ANCHORS: Readonly<Record<string, string>> = Object.freeze({
     Cockpit: 'cockpit_hit_',
 });
 const CONDITION_PRESENTATION = UNIT_CONDITION_DEFINITIONS;
-const LOCATION_OUTPUT_CLASSES = [
-    'flooded',
-    'detached',
-    'disabledLocation',
-    'locationDestroyed',
-] as const;
 const EQUIPMENT_HOVER_SECONDARY_CLASS = 'equipment-hover-secondary';
 const COMPONENT_IDS_ATTRIBUTE = 'data-mekbay-component-ids';
 const HEAT_PROJECTION_ORIGINAL_STROKE = 'data-mekbay-original-projection-stroke';
@@ -346,7 +340,7 @@ export function bindMekRecordSheet(
         const issues: string[] = [];
         const markChanges = !firstRender;
 
-        resetUnitDataLayout(svg, manifest, firstRender);
+        if (firstRender) resetUnitDataLayout(svg, manifest);
         renderIdentity(svg, snapshot);
         renderConditions(
             svg,
@@ -357,7 +351,6 @@ export function bindMekRecordSheet(
             onInteraction !== undefined,
         );
         renderHeatSinks(svg, manifest, snapshot);
-        clearLocationClasses(svg);
 
         for (const location of snapshot.locations) {
             renderLocation(
@@ -1080,6 +1073,17 @@ function renderInventory(
                 expectedRevision: revision(),
             }), event));
         }
+    });
+    layoutRows.slice(rows.length).forEach(element => {
+        element.style.display = 'none';
+        element.removeAttribute(COMPONENT_IDS_ATTRIBUTE);
+        element.classList.remove(
+            'damaged',
+            'disabled',
+            'disabledInventory',
+            'selected',
+            'selected-alternative-mode',
+        );
     });
     if (layoutRows.length < rows.length) {
         issues.push(`Missing equipment layout rows: ${layoutRows.length}/${rows.length}`);
@@ -2270,24 +2274,17 @@ function renderHeatPreview(svg: SVGSVGElement, heat: number): void {
     });
 }
 
-function clearLocationClasses(svg: SVGSVGElement): void {
-    for (const className of LOCATION_OUTPUT_CLASSES) {
-        svg.querySelectorAll<SVGElement>(`.${className}`).forEach(element => element.classList.remove(className));
-    }
-}
-
 /** Erases every legacy unit-specific value before applying entity/runtime facts. */
 function resetUnitDataLayout(
     svg: SVGSVGElement,
     manifest: MekSheetBindingManifestV1,
-    resetPipState: boolean,
 ): void {
     svg.querySelectorAll<SVGElement>(
         `${manifest.selectors.armorPip}, ${manifest.selectors.structurePip}`,
     ).forEach(element => {
         element.style.display = 'none';
         element.style.pointerEvents = '';
-        if (resetPipState) element.classList.remove('damaged', 'pending', 'fresh');
+        element.classList.remove('damaged', 'pending', 'fresh');
     });
     svg.querySelectorAll<SVGElement>(manifest.selectors.criticalSlot).forEach(element => {
         const generatedEmptySlot = element.dataset['mekbayEmptySlot'] === '1';
@@ -2297,10 +2294,8 @@ function resetUnitDataLayout(
         element.removeAttribute('totalAmmo');
         element.removeAttribute('data-mekbay-slot-id');
         element.removeAttribute('data-mekbay-component-ids');
-        if (resetPipState) {
-            element.querySelectorAll<SVGElement>('.armoredLocPip, .extraHitPip')
-                .forEach(pip => pip.classList.remove('damaged', 'pending', 'fresh'));
-        }
+        element.querySelectorAll<SVGElement>('.armoredLocPip, .extraHitPip')
+            .forEach(pip => pip.classList.remove('damaged', 'pending', 'fresh'));
         const label = element.querySelector<SVGTextElement>('text');
         if (label) label.textContent = generatedEmptySlot ? 'Roll Again' : '';
     });
@@ -2343,7 +2338,7 @@ function resetUnitDataLayout(
     });
     svg.querySelectorAll<SVGElement>('.pip.shield').forEach(pip => {
         pip.style.display = 'none';
-        if (resetPipState) pip.classList.remove('damaged', 'pending', 'fresh');
+        pip.classList.remove('damaged', 'pending', 'fresh');
     });
     svg.querySelectorAll<SVGElement>('.locationNarcBanner').forEach(element => {
         element.setAttribute('display', 'none');

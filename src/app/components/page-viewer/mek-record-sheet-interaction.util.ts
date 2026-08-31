@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { PickerChoice } from '../picker/picker.interface';
-import type { CBTUnitCommand } from '../../models/runtime/unit-instance';
+import type { CBTUnitCommand, MekUnitQueryPort } from '../../models/runtime/unit-instance';
 import { createCommandId } from '../../models/runtime/runtime-state';
 import { MEK_ACTION_DECLARATION_SCHEMA_VERSION } from '../../models/runtime/mek-movement-psr-v2';
+import type { MekHeatAutomationPolicyV2 } from '../../models/runtime/mek-heat-state-v2';
 import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
 import type { MekRecordSheetInteraction } from './mek-record-sheet-binder';
 
@@ -13,6 +14,13 @@ export interface RecordSheetDamagePickerRange {
     readonly max: number;
     readonly threshold?: number;
     readonly title: string;
+}
+
+/** Minimal live runtime facts needed to turn one displayed interaction into a command. */
+export interface MekRecordSheetCommandSource {
+    readonly query: Pick<MekUnitQueryPort, 'crewState' | 'hasCondition'>;
+    readonly heatSinkCount: number;
+    readonly heatPolicy: MekHeatAutomationPolicyV2;
 }
 
 export function recordSheetDamagePickerRange(
@@ -80,7 +88,7 @@ export function recordSheetDamageChoices(min: number, max: number): PickerChoice
 
 export function recordSheetCommand(
     interaction: MekRecordSheetInteraction,
-    snapshot: MekRecordSheetSnapshot,
+    source: MekRecordSheetCommandSource,
     trackPhaseAndTurn: boolean,
     delta?: number,
 ): CBTUnitCommand {
@@ -124,15 +132,14 @@ export function recordSheetCommand(
                 : { ...common, type: 'repair-critical', slotId: interaction.slotId, hits: Math.abs(change), target };
         }
         case 'crew-wounds': {
-            const position = snapshot.crew.find(row => row.positionId === interaction.positionId);
-            if (!position) throw new Error(`Unknown crew position ${interaction.positionId}`);
+            const state = source.query.crewState(interaction.positionId);
             return {
                 ...common,
                 type: 'set-crew-state',
                 positionId: interaction.positionId,
                 wounds: interaction.wounds,
-                unconscious: position.state.unconscious,
-                ejected: position.state.ejected,
+                unconscious: state.unconscious,
+                ejected: state.ejected,
             };
         }
         case 'heat':
@@ -140,18 +147,18 @@ export function recordSheetCommand(
                 ? { ...common, type: 'set-pending-heat', heat: interaction.heat }
                 : { ...common, type: 'set-heat', heat: interaction.heat };
         case 'heat-sinks-off':
-            return { ...common, type: 'set-heatsinks-off', heatsinksOff: Math.max(0, Math.min(snapshot.heatSinks.count, Math.trunc(delta ?? 0))) };
+            return { ...common, type: 'set-heatsinks-off', heatsinksOff: Math.max(0, Math.min(source.heatSinkCount, Math.trunc(delta ?? 0))) };
         case 'apply-heat':
-            return { ...common, type: 'apply-heat', policy: snapshot.heatPolicy };
+            return { ...common, type: 'apply-heat', policy: source.heatPolicy };
         case 'condition':
-            return { ...common, type: 'set-condition', condition: interaction.condition, active: !snapshot.conditions.includes(interaction.condition) };
+            return { ...common, type: 'set-condition', condition: interaction.condition, active: !source.query.hasCondition(interaction.condition) };
         case 'shutdown':
             return {
                 ...common,
                 type: 'declare-mek-action',
                 action: {
                     schemaVersion: MEK_ACTION_DECLARATION_SCHEMA_VERSION,
-                    kind: snapshot.conditions.includes('shutdown') ? 'startup' : 'shutdown',
+                    kind: source.query.hasCondition('shutdown') ? 'startup' : 'shutdown',
                 },
             };
         case 'crew-skill':

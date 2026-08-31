@@ -36,6 +36,7 @@
     "typecheck:equipment-status-profile": "tsc -p scripts/tsconfig.equipment-status-profile.json",
     "profile:equipment-status": "node --expose-gc --import tsx scripts/benchmark-equipment-status.ts",
     "profile:equipment-status:save": "npm run profile:equipment-status -- --output scripts/benchmarks/equipment-status-profile-baseline.json",
+    "profile:runtime-mutations": "node --import tsx scripts/benchmark-runtime-mutations.ts",
     "test:bfs-generator": "tsx scripts/bfs-generator.test.ts",
     "typecheck:bfs-generator": "tsc -p scripts/tsconfig.bfs.json",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json",

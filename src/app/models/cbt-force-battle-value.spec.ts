@@ -31,10 +31,10 @@ describe('Classic force battle value authority', () => {
     } as UnitSummary;
 
     const result = calculateCBTForceBattleValues({
-      units: [{ unit, currentBaseBattleValue: base }],
+      units: [{ unit, baseBattleValue: base }],
       scenario: { id: 'test', ruleset: 'core-2026' },
       networks: [],
-      isC3EndpointOperational: () => false,
+      isC3EndpointIntact: () => false,
     }).get(unit.instanceId)!;
 
     expect(result.adjusted).toBe(adjustEntityBattleValueForSkills(fixture.entity, base, 4, 2));

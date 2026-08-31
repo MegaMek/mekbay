@@ -29,7 +29,7 @@ export class CBTForceMember {
     /** Immutable entity BV before damage and force-level adjustments. */
     readonly pristineBattleValue = computed(() => this.force.getUnitPristineBattleValue(this.id));
 
-    /** TAG + operational C3 network + skills over current base BV. */
+    /** TAG + configured, intact C3 topology + skills over current base BV. */
     readonly adjustedBattleValue = computed(() => this.force.getUnitAdjustedBattleValue(this.id));
 
     readonly c3State = computed(() => this.force.getC3State(this.id));

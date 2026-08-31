@@ -450,7 +450,10 @@ export class UnitBlockComponent {
             if (pristine === null || current === null || tag === null || c3 === null || adjusted === null
                 || (current === pristine && adjusted === current)) return null;
             const lines: TooltipLine[] = [{ label: 'Base', value: `${pristine}` }];
-            if (current !== pristine) lines.push({ label: 'Damage', value: `${current}` });
+            if (current !== pristine) {
+                const damage = current - pristine;
+                lines.push({ label: 'Damage', value: `${damage}` });
+            }
             if (tag !== 0) lines.push({ label: 'TAG', value: `+${tag}` });
             if (c3 !== 0) lines.push({ label: 'C3', value: `+${c3}` });
             const preSkill = current + tag + c3;

@@ -218,6 +218,12 @@ export interface MekRecordSheetSnapshot {
     readonly crew: readonly MekRecordSheetCrewPosition[];
 }
 
+export interface MekRecordSheetBattleValueSnapshot {
+    readonly pristine: number | null;
+    readonly current: number | null;
+    readonly adjusted: number | null;
+}
+
 /** Projects only the runtime facts needed by compact unit-status presentation. */
 export function projectMekUnitStatus(
     entity: MekEntity,
@@ -242,7 +248,7 @@ export function projectMekRecordSheet(
     state: MekUnitRuntimeState,
     query: MekUnitQueryPort,
     targetRegistry: TargetRegistrySnapshot,
-    adjustedBattleValue: number | null,
+    suppliedBattleValue: MekRecordSheetBattleValueSnapshot | null,
     heatPolicy: MekHeatAutomationPolicyV2 = 'manual',
 ): MekRecordSheetSnapshot {
     if (state.stateRevision !== query.stateRevision) {
@@ -268,7 +274,6 @@ export function projectMekRecordSheet(
             modularArmorByLocation.set(slot.locationId, components);
         }
     }
-
     const locations = [...index.locations.values()]
         .sort(compareLocation)
         .map(location => {
@@ -342,7 +347,6 @@ export function projectMekRecordSheet(
                 modularArmor,
             });
         });
-
     const criticalSlots = [...index.slots.values()]
         .sort((left, right) => compareText(left.locationId, right.locationId)
             || left.slotIndex - right.slotIndex
@@ -390,7 +394,6 @@ export function projectMekRecordSheet(
                 components: Object.freeze(components),
             });
         });
-
     const committedShields = query.mekShields('committed');
     const previewShields = query.mekShields('preview');
     const previewShieldById = previewShields.kind === 'supported'
@@ -426,7 +429,6 @@ export function projectMekRecordSheet(
             ];
         })
         : [];
-
     const effectiveCrewStateById = new Map(unitStatus.crew.map(position => [
         position.positionId,
         position.effectiveState,
@@ -467,8 +469,11 @@ export function projectMekRecordSheet(
     );
     const physicalAttacks = projectMekPhysicalAttackPresentation(entity, index, ruleset, query, targeting);
     const construction = constructionLabels(index);
-    const pristineBattleValue = safePristineMekBattleValue(entity);
-    const currentBattleValue = safeCurrentMekBattleValue(query);
+    const battleValue = suppliedBattleValue ?? Object.freeze({
+        pristine: safePristineMekBattleValue(entity),
+        current: safeCurrentMekBattleValue(query),
+        adjusted: null,
+    });
     const heat = query.heatState();
     const lifeSupport = projectMekLifeSupportPilotDamage(
         entity,
@@ -498,11 +503,7 @@ export function projectMekRecordSheet(
             myomer: entity.myomerType(),
         }),
         construction,
-        battleValue: Object.freeze({
-            pristine: pristineBattleValue,
-            current: currentBattleValue,
-            adjusted: adjustedBattleValue,
-        }),
+        battleValue,
         movement: Object.freeze({
             walkMp: entity.walkMP(),
             runMp: entity.runMP(),

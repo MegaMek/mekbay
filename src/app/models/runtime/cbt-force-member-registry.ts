@@ -13,18 +13,20 @@ import type { ScenarioRules } from './unit-state-initializer';
 export type CBTForceMemberRegistryRefresh = Readonly<{
     membershipChanged: boolean;
     runtimeChanged: boolean;
-    forceInputsChanged: boolean;
+    battleValueInputsChanged: boolean;
+    operationalC3InputsChanged: boolean;
 }>;
 
 /**
  * Stable presentation handles and their exact reactive witnesses. This stores
- * no BV result: each member's base signal remains unit-local, while the single
- * force-input revision invalidates only adjusted BV/C3 state.
+ * no BV result: each member's base signal remains unit-local. Configured BV
+ * topology and live operational C3 state deliberately have separate witnesses.
  */
 export class CBTForceMemberRegistry {
     private readonly byId = new Map<UnitInstanceId, CBTForceMember>();
     private readonly membersState = signal<readonly CBTForceMember[]>(Object.freeze([]));
-    private readonly forceInputRevision = signal(0);
+    private readonly battleValueInputRevision = signal(0);
+    private readonly operationalC3InputRevision = signal(0);
     private observedNetworks: readonly EncounterNetwork[] | null = null;
     private observedScenario: ScenarioRules | null = null;
 
@@ -41,8 +43,12 @@ export class CBTForceMemberRegistry {
         return this.byId.get(instanceId) ?? null;
     }
 
-    public dependOnForceInputs(): void {
-        this.forceInputRevision();
+    public dependOnBattleValueInputs(): void {
+        this.battleValueInputRevision();
+    }
+
+    public dependOnOperationalC3Inputs(): void {
+        this.operationalC3InputRevision();
     }
 
     public refresh(
@@ -50,13 +56,19 @@ export class CBTForceMemberRegistry {
         networks: readonly EncounterNetwork[],
         scenario: ScenarioRules | null,
         changedUnitIds: readonly string[] | null = null,
+        baseBattleValueChangedUnitIds: readonly string[] | null = changedUnitIds,
+        runtimeBattleValueInputsChanged = true,
+        runtimeOperationalC3InputsChanged = true,
     ): CBTForceMemberRegistryRefresh {
         let members: Readonly<{ membershipChanged: boolean; runtimeChanged: boolean }>;
         if (changedUnitIds === null) {
             members = this.synchronize(envelope);
         } else {
-            let runtimeChanged = false;
+            let runtimeChanged = changedUnitIds.length > 0;
             let requiresMembershipSync = false;
+            const baseBattleValueChanged = baseBattleValueChangedUnitIds === null
+                ? null
+                : new Set(baseBattleValueChangedUnitIds.map(asUnitInstanceId));
             for (const value of new Set(changedUnitIds)) {
                 const instanceId = asUnitInstanceId(value);
                 const member = this.byId.get(instanceId);
@@ -65,20 +77,27 @@ export class CBTForceMemberRegistry {
                     requiresMembershipSync = true;
                     break;
                 }
-                runtimeChanged = member.bindRuntime(runtime, runtime.revision()) || runtimeChanged;
+                if (baseBattleValueChanged === null || baseBattleValueChanged.has(instanceId)) {
+                    member.bindRuntime(runtime, runtime.revision());
+                }
             }
             members = requiresMembershipSync
                 ? this.synchronize(envelope)
                 : Object.freeze({ membershipChanged: false, runtimeChanged });
         }
-        const forceInputsChanged = members.membershipChanged
-            || members.runtimeChanged
-            || networks !== this.observedNetworks
+        const networksChanged = networks !== this.observedNetworks;
+        const battleValueInputsChanged = members.membershipChanged
+            || (members.runtimeChanged && runtimeBattleValueInputsChanged)
+            || networksChanged
             || scenario !== this.observedScenario;
+        const operationalC3InputsChanged = members.membershipChanged
+            || (members.runtimeChanged && runtimeOperationalC3InputsChanged)
+            || networksChanged;
         this.observedNetworks = networks;
         this.observedScenario = scenario;
-        if (forceInputsChanged) this.forceInputRevision.update(revision => revision + 1);
-        return Object.freeze({ ...members, forceInputsChanged });
+        if (battleValueInputsChanged) this.battleValueInputRevision.update(revision => revision + 1);
+        if (operationalC3InputsChanged) this.operationalC3InputRevision.update(revision => revision + 1);
+        return Object.freeze({ ...members, battleValueInputsChanged, operationalC3InputsChanged });
     }
 
     private synchronize(

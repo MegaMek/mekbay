@@ -859,25 +859,48 @@ export class CBTUnitInstance {
         const state = this.#state;
         const unit = this.#source;
         const statusTopology = this.#statusTopology;
-        const statusKernel = (perspective: StatePerspective): RuntimeEquipmentStatusKernel =>
+        let committedStatus: RuntimeEquipmentStatusKernel | undefined;
+        let previewStatus: RuntimeEquipmentStatusKernel | undefined;
+        const createStatusKernel = (perspective: StatePerspective): RuntimeEquipmentStatusKernel =>
             new RuntimeEquipmentStatusKernel(
                 statusTopology,
                 statusState(unit, state, perspective),
                 { rules: unit.ruleset, family: 'mek' },
             );
+        // One query captures one immutable state revision. Build each perspective's
+        // shared rules context once instead of rebuilding and revalidating it for
+        // every component, slot, and location lookup in the same projection.
+        const statusKernel = (perspective: StatePerspective): RuntimeEquipmentStatusKernel => {
+            if (perspective === 'committed') {
+                return committedStatus ??= createStatusKernel(perspective);
+            }
+            return previewStatus ??= createStatusKernel(perspective);
+        };
+        let destructionProjection: MekDestructionProjectionResultV2 | undefined;
         const mechanicsProjection = (): MekDestructionProjectionResultV2 =>
-            projectRuntimeMekDestruction(
+            destructionProjection ??= projectRuntimeMekDestruction(
                 unit,
                 state,
                 this.#mechanicsContext,
             );
+        let sharedProjectionContext: MekRuntimeProjectionContext | undefined;
+        const projectionContext = (): MekRuntimeProjectionContext =>
+            sharedProjectionContext ??= Object.freeze({
+                committedStatus: statusKernel('committed'),
+                destruction: mechanicsProjection(),
+            });
+        let criticalProjectionView: MekCriticalRuntimeViewV2 | undefined;
+        const criticalView = (): MekCriticalRuntimeViewV2 =>
+            criticalProjectionView ??= criticalRuntimeView(unit, state, statusTopology);
+        let movementResult: MekMovementPsrProjectionResultV2 | undefined;
         const movementProjection = (): MekMovementPsrProjectionResultV2 =>
-            projectRuntimeMekMovementPsr(
+            movementResult ??= projectRuntimeMekMovementPsr(
                 unit,
                 state,
                 statusTopology,
                 this.#crewAssignment,
                 this.#mechanicsContext,
+                projectionContext(),
             );
         const droneOperatingSystemIds = [...unit.index.components.values()]
             .filter(component => component.kind === 'equipment'
@@ -943,6 +966,7 @@ export class CBTUnitInstance {
             statusTopology,
             this.#crewAssignment,
             this.#mechanicsContext,
+            projectionContext(),
         );
         return Object.freeze({
             stateRevision: state.stateRevision,
@@ -972,6 +996,7 @@ export class CBTUnitInstance {
                 statusTopology,
                 this.#crewAssignment,
                 this.#mechanicsContext,
+                projectionContext(),
             ),
             mekShields: (perspective: StatePerspective = 'committed') => projectRuntimeMekShields(
                 unit,
@@ -979,6 +1004,7 @@ export class CBTUnitInstance {
                 statusTopology,
                 this.#mechanicsContext,
                 perspective,
+                statusKernel(perspective),
             ),
             mekCombatModifiers: () => projectRuntimeMekCombatModifiers(
                 unit,
@@ -986,18 +1012,19 @@ export class CBTUnitInstance {
                 statusTopology,
                 this.#crewAssignment,
                 this.#mechanicsContext,
+                projectionContext(),
             ),
             mekCriticalChance: (locationId: LocationId, target: 'committed' | 'pending') => projectMekCriticalChanceV2(
                 unit.entity,
                 unit.index,
                 unit.ruleset,
-                criticalRuntimeView(unit, state, statusTopology),
+                criticalView(),
                 locationId,
                 target,
             ),
             mekBlowOff: (locationId: LocationId, target: 'committed' | 'pending') => projectMekBlowOffV2(
                 unit.index,
-                criticalRuntimeView(unit, state, statusTopology),
+                criticalView(),
                 locationId,
                 target,
             ),
@@ -1008,7 +1035,7 @@ export class CBTUnitInstance {
                 unit.entity,
                 unit.index,
                 unit.ruleset,
-                criticalRuntimeView(unit, state, statusTopology),
+                criticalView(),
                 locationId,
                 target,
             ),
@@ -1020,7 +1047,7 @@ export class CBTUnitInstance {
                 unit.entity,
                 unit.index,
                 unit.ruleset,
-                criticalRuntimeView(unit, state, statusTopology),
+                criticalView(),
                 locationId,
                 results,
                 target,
@@ -1052,7 +1079,8 @@ export class CBTUnitInstance {
                 return criticalHits(state, slotId, perspective);
             },
             componentStatus: (componentId: ComponentId, perspective: StatePerspective = 'committed') => {
-                const status = statusKernel(perspective).component(componentId).status;
+                const kernel = statusKernel(perspective);
+                const status = kernel.component(componentId).status;
                 return shieldAwareComponentStatus(
                     unit,
                     state,
@@ -1061,6 +1089,7 @@ export class CBTUnitInstance {
                     componentId,
                     perspective,
                     status,
+                    kernel,
                 );
             },
             componentStatusAtLocation: (
@@ -1071,7 +1100,8 @@ export class CBTUnitInstance {
                 if (!componentLocationIds(unit.index, componentId).includes(locationId)) {
                     throw new Error(`Component ${componentId} is not installed at ${locationId}`);
                 }
-                const status = statusKernel(perspective).componentAtLocation(componentId, locationId).status;
+                const kernel = statusKernel(perspective);
+                const status = kernel.componentAtLocation(componentId, locationId).status;
                 return shieldAwareComponentStatus(
                     unit,
                     state,
@@ -1080,6 +1110,7 @@ export class CBTUnitInstance {
                     componentId,
                     perspective,
                     status,
+                    kernel,
                 );
             }),
             locationCondition: (
@@ -3187,12 +3218,18 @@ function hasDetonatedBoobyTrap(unit: MekRuntimeSource, state: MekUnitRuntimeStat
         && isBoobyTrapDetonated(state.components.get(componentId)?.mode));
 }
 
+interface MekRuntimeProjectionContext {
+    readonly committedStatus: RuntimeEquipmentStatusKernel;
+    readonly destruction: MekDestructionProjectionResultV2;
+}
+
 function projectRuntimeMekMovementPsr(
     unit: MekRuntimeSource,
     state: MekUnitRuntimeState,
     statusTopology: RuntimeEquipmentStatusTopology,
     crewAssignment: CrewAssignment,
     mechanicsContext: MekMechanicsContextV2,
+    context?: MekRuntimeProjectionContext,
 ): MekMovementPsrProjectionResultV2 {
     const input = createMovementRuntimeInput(
         unit,
@@ -3200,6 +3237,7 @@ function projectRuntimeMekMovementPsr(
         statusTopology,
         crewAssignment,
         mechanicsContext,
+        context,
     );
     return input === null
         ? Object.freeze({
@@ -3221,6 +3259,7 @@ function projectRuntimeMekBattleValue(
     statusTopology: RuntimeEquipmentStatusTopology,
     crewAssignment: CrewAssignment,
     mechanicsContext: MekMechanicsContextV2,
+    context?: MekRuntimeProjectionContext,
 ): MekBattleValueProjection {
     const input = createMovementRuntimeInput(
         unit,
@@ -3228,6 +3267,7 @@ function projectRuntimeMekBattleValue(
         statusTopology,
         crewAssignment,
         mechanicsContext,
+        context,
     );
     if (input === null) throw new Error('Mek current BV mechanics context is unsupported');
     const movement = projectMekBattleValueMovementContextV2(
@@ -3242,7 +3282,7 @@ function projectRuntimeMekBattleValue(
     if (entity === undefined || runtimeIndex === null) {
         throw new Error('Mek current BV requires the canonical entity');
     }
-    const status = new RuntimeEquipmentStatusKernel(
+    const status = context?.committedStatus ?? new RuntimeEquipmentStatusKernel(
         statusTopology,
         statusState(unit, state, 'committed'),
         { rules: unit.ruleset, family: 'mek' },
@@ -3334,6 +3374,7 @@ function projectRuntimeMekPhysicalAttacks(
     statusTopology: RuntimeEquipmentStatusTopology,
     crewAssignment: CrewAssignment,
     mechanicsContext: MekMechanicsContextV2,
+    context?: MekRuntimeProjectionContext,
 ): MekPhysicalAttackProjectionResultV2 {
     const input = createMovementRuntimeInput(
         unit,
@@ -3341,6 +3382,7 @@ function projectRuntimeMekPhysicalAttacks(
         statusTopology,
         crewAssignment,
         mechanicsContext,
+        context,
     );
     if (input === null) {
         return Object.freeze({
@@ -3364,9 +3406,10 @@ function projectRuntimeMekShields(
     statusTopology: RuntimeEquipmentStatusTopology,
     mechanicsContext: MekMechanicsContextV2,
     perspective: StatePerspective,
+    sharedStatus?: RuntimeEquipmentStatusKernel,
 ): MekShieldProjectionResultV2 {
     const committed = statusState(unit, state, perspective);
-    const status = new RuntimeEquipmentStatusKernel(
+    const status = sharedStatus ?? new RuntimeEquipmentStatusKernel(
         statusTopology,
         committed,
         { rules: unit.ruleset, family: 'mek' },
@@ -3395,6 +3438,7 @@ function shieldAwareComponentStatus(
     componentId: ComponentId,
     perspective: StatePerspective,
     status: EquipmentStatus,
+    sharedStatus?: RuntimeEquipmentStatusKernel,
 ): EquipmentStatus {
     if (status !== 'available') return status;
     const component = unit.index.components.get(componentId);
@@ -3407,6 +3451,7 @@ function shieldAwareComponentStatus(
         statusTopology,
         mechanicsContext,
         perspective,
+        sharedStatus,
     );
     if (projection.kind === 'unsupported') return status;
     return projection.shields.find(shield => shield.componentId === componentId)?.operational === false
@@ -3420,6 +3465,7 @@ function projectRuntimeMekCombatModifiers(
     statusTopology: RuntimeEquipmentStatusTopology,
     crewAssignment: CrewAssignment,
     mechanicsContext: MekMechanicsContextV2,
+    context?: MekRuntimeProjectionContext,
 ): MekCombatModifierProjectionResult {
     const input = createMovementRuntimeInput(
         unit,
@@ -3427,6 +3473,7 @@ function projectRuntimeMekCombatModifiers(
         statusTopology,
         crewAssignment,
         mechanicsContext,
+        context,
     );
     if (input === null) {
         return Object.freeze({
@@ -3461,10 +3508,12 @@ function createMovementRuntimeInput(
     statusTopology: RuntimeEquipmentStatusTopology,
     crewAssignment: CrewAssignment,
     mechanicsContext: MekMechanicsContextV2,
+    context?: MekRuntimeProjectionContext,
 ): MekMovementRuntimeContextInputV2 | null {
-    const destruction = projectRuntimeMekDestruction(unit, state, mechanicsContext);
+    const destruction = context?.destruction
+        ?? projectRuntimeMekDestruction(unit, state, mechanicsContext);
     if (destruction.kind === 'unsupported') return null;
-    const status = new RuntimeEquipmentStatusKernel(
+    const status = context?.committedStatus ?? new RuntimeEquipmentStatusKernel(
         statusTopology,
         statusState(unit, state, 'committed'),
         { rules: unit.ruleset, family: 'mek' },
@@ -3856,11 +3905,16 @@ function criticalRuntimeView(
     state: MekUnitRuntimeState,
     statusTopology: RuntimeEquipmentStatusTopology,
 ): MekCriticalRuntimeViewV2 {
-    const status = (perspective: StatePerspective) => new RuntimeEquipmentStatusKernel(
+    let committedStatus: RuntimeEquipmentStatusKernel | undefined;
+    let previewStatus: RuntimeEquipmentStatusKernel | undefined;
+    const createStatus = (perspective: StatePerspective) => new RuntimeEquipmentStatusKernel(
         statusTopology,
         statusState(unit, state, perspective),
         { rules: unit.ruleset, family: 'mek' },
     );
+    const status = (perspective: StatePerspective) => perspective === 'committed'
+        ? committedStatus ??= createStatus(perspective)
+        : previewStatus ??= createStatus(perspective);
     return Object.freeze({
         remainingArmor: (faceId: ArmorFaceId, perspective: StatePerspective) => {
             const face = unit.index.armorFaces.get(faceId);

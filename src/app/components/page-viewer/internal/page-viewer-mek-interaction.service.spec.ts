@@ -42,6 +42,51 @@ describe('PageViewerMekInteractionService', () => {
         revision = 1;
         currentSnapshot = recordSheetSnapshot(revision);
         panel = equipmentPanel(revision);
+        const directUnitSnapshot = () => ({
+            entity: {
+                entityType: 'Mek',
+                mountedCockpit: () => ({ canEject: true }),
+                totalHeatSinks: () => currentSnapshot.heatSinks.count,
+            },
+            state: { stateRevision: revision },
+            index: { locations: new Map([['loc-ct', { code: 'CT' }]]) },
+            query: {
+                stateRevision: revision,
+                crewState: (positionId: string) => currentSnapshot.crew
+                    .find(row => row.positionId === positionId)?.state
+                    ?? { wounds: 0, unconscious: false, ejected: false },
+                hasCondition: (condition: string) => currentSnapshot.conditions.includes(condition),
+                heatState: () => currentSnapshot.heat,
+                locationCondition: (locationId: string, condition: string, perspective: string) => {
+                    const row = currentSnapshot.locations.find(location => location.locationId === locationId)
+                        ?.conditions.find(candidate => candidate.condition === condition);
+                    return perspective === 'preview' ? row?.preview ?? 0 : row?.committed ?? 0;
+                },
+                ammoLoadout: (componentId: string) => {
+                    const ammo = currentSnapshot.criticalSlots.flatMap(slot => slot.components)
+                        .find(component => component.componentId === componentId)?.ammo;
+                    if (!ammo) throw new Error(`Unknown ammo ${componentId}`);
+                    return ammo;
+                },
+                ammoCapacity: (componentId: string) => {
+                    const ammo = currentSnapshot.criticalSlots.flatMap(slot => slot.components)
+                        .find(component => component.componentId === componentId)?.ammo;
+                    if (!ammo) throw new Error(`Unknown ammo ${componentId}`);
+                    return ammo.capacity;
+                },
+                remainingAmmo: (componentId: string) => {
+                    const ammo = currentSnapshot.criticalSlots.flatMap(slot => slot.components)
+                        .find(component => component.componentId === componentId)?.ammo;
+                    if (!ammo) throw new Error(`Unknown ammo ${componentId}`);
+                    return ammo.remaining;
+                },
+                mekCriticalChance: () => ({
+                    locationId: 'loc-ct', locationCode: 'CT', canBlowOff: false,
+                    industrialMek: false, modifiers: [],
+                }),
+                mekBlowOff: () => ({ kind: 'blown-off', locationId: 'loc-ct' }),
+            },
+        });
         force = {
             getMekRecordSheetSnapshot: jasmine.createSpy().and.callFake(() => currentSnapshot),
             getEquipmentPanelSnapshot: jasmine.createSpy().and.callFake(() => panel),
@@ -66,18 +111,7 @@ describe('PageViewerMekInteractionService', () => {
                 accepted: true, idempotent: false, currentRevision: 2,
             }),
             getRosterGroupId: () => 'group-1',
-            getUnitSnapshot: jasmine.createSpy().and.returnValue({
-                entity: { entityType: 'Mek', mountedCockpit: () => ({ canEject: true }) },
-                index: { locations: new Map([['loc-ct', { code: 'CT' }]]) },
-                query: {
-                    stateRevision: 1,
-                    mekCriticalChance: () => ({
-                        locationId: 'loc-ct', locationCode: 'CT', canBlowOff: false,
-                        industrialMek: false, modifiers: [],
-                    }),
-                    mekBlowOff: () => ({ kind: 'blown-off', locationId: 'loc-ct' }),
-                },
-            }),
+            getUnitSnapshot: jasmine.createSpy().and.callFake(directUnitSnapshot),
         };
         const entity = new TestBipedMekEntity();
         entity.chassis.set('Atlas');
@@ -92,7 +126,10 @@ describe('PageViewerMekInteractionService', () => {
                 { provide: DialogsService, useValue: dialogs },
                 {
                     provide: OptionsService,
-                    useValue: { options: () => ({ pickerStyle: 'default', colorScheme: 'default', trackPhaseAndTurn: true }) },
+                    useValue: {
+                        options: () => ({ pickerStyle: 'default', colorScheme: 'default', trackPhaseAndTurn: true }),
+                        cbtAutomationMode: () => 'no',
+                    },
                 },
                 {
                     provide: PickerFactoryService,

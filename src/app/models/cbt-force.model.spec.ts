@@ -928,6 +928,79 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(sheet?.battleValue.current).toBe(force.getUnitCurrentBaseBattleValue(instanceId));
     });
 
+    it('keeps base BV computed signals cold for transient Mek state changes', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const [firstMember, secondMember] = force.getClassicMembers();
+        if (!firstMember || !secondMember) throw new Error('Ready Mek members are missing');
+        const baseProjection = spyOn(force, 'getUnitCurrentBaseBattleValue').and.callThrough();
+        const callsFor = (instanceId: UnitInstanceId) => baseProjection.calls.allArgs()
+            .filter(([candidate]) => candidate === instanceId).length;
+
+        firstMember.currentBaseBattleValue();
+        secondMember.currentBaseBattleValue();
+        const firstCallsBefore = callsFor(firstMember.id);
+        const secondCallsBefore = callsFor(secondMember.id);
+
+        const transientCommands = [
+            { type: 'set-heat' as const, heat: 5 },
+            { type: 'set-mek-shutdown-state' as const, shutdown: true },
+            { type: 'set-condition' as const, condition: 'prone', active: true },
+            { type: 'set-condition' as const, condition: 'swarmed', active: true },
+            { type: 'set-condition' as const, condition: 'jammed', active: true },
+        ];
+        for (const [index, command] of transientCommands.entries()) {
+            const before = mekRuntimeSnapshot(force, firstMember.id);
+            const result = await force.dispatchMekUnitCommand(firstMember.id, {
+                ...command,
+                commandId: asCommandId(`bv:transient:${index}`),
+                expectedRevision: before.state.stateRevision,
+            });
+            expect(result.accepted).toBeTrue();
+            firstMember.currentBaseBattleValue();
+            secondMember.currentBaseBattleValue();
+        }
+
+        expect(callsFor(firstMember.id)).toBe(firstCallsBefore);
+        expect(callsFor(secondMember.id)).toBe(secondCallsBefore);
+
+        const beforePendingDamage = mekRuntimeSnapshot(force, firstMember.id);
+        const pendingDamage = await force.dispatchMekUnitCommand(firstMember.id, {
+            type: 'damage-armor',
+            commandId: asCommandId('bv:pending-damage'),
+            expectedRevision: beforePendingDamage.state.stateRevision,
+            faceId: armorFaceId,
+            amount: 1,
+            target: 'pending',
+        });
+        expect(pendingDamage.accepted).toBeTrue();
+        firstMember.currentBaseBattleValue();
+        secondMember.currentBaseBattleValue();
+        expect(callsFor(firstMember.id)).toBe(firstCallsBefore);
+        expect(callsFor(secondMember.id)).toBe(secondCallsBefore);
+
+        const beforeCancel = mekRuntimeSnapshot(force, firstMember.id);
+        expect((await force.dispatchMekUnitCommand(firstMember.id, {
+            type: 'cancel-pending',
+            commandId: asCommandId('bv:cancel-pending-damage'),
+            expectedRevision: beforeCancel.state.stateRevision,
+        })).accepted).toBeTrue();
+
+        const beforeDamage = mekRuntimeSnapshot(force, firstMember.id);
+        const damaged = await force.dispatchMekUnitCommand(firstMember.id, {
+            type: 'damage-armor',
+            commandId: asCommandId('bv:committed-damage'),
+            expectedRevision: beforeDamage.state.stateRevision,
+            faceId: armorFaceId,
+            amount: 1,
+            target: 'committed',
+        });
+        expect(damaged.accepted).toBeTrue();
+        firstMember.currentBaseBattleValue();
+        secondMember.currentBaseBattleValue();
+        expect(callsFor(firstMember.id)).toBe(firstCallsBefore + 1);
+        expect(callsFor(secondMember.id)).toBe(secondCallsBefore);
+    });
+
     it('dispatches a canonical turn state without corrupting its immutable map', async () => {
         const { force } = await readyCloneForce();
         const saved = await force.serializeForPersistence();
@@ -1059,6 +1132,69 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(mekRuntimeSnapshot(force, emergencyId).query
             .componentC3EmergencyMaster(emergencyComponentId)?.operatingTurns).toBe(2);
         expect(force.c3EncounterNetworks()).toEqual(configuredNetwork);
+    });
+
+    it('keeps transient C3 operation out of adjusted BV while refreshing live state', async () => {
+        const { force, masterId } = await readyC3Force();
+        const master = force.getClassicMember(masterId);
+        if (!master) throw new Error('C3 master member is missing');
+        const stateProjection = spyOn(force, 'getC3State').and.callThrough();
+        const adjustedProjection = spyOn(force, 'getUnitAdjustedBattleValue').and.callThrough();
+
+        expect(master.c3State()).toBe('operational');
+        const adjustedBefore = master.adjustedBattleValue();
+        const stateCallsBefore = stateProjection.calls.count();
+        const adjustedCallsBefore = adjustedProjection.calls.count();
+        const beforeProne = mekRuntimeSnapshot(force, masterId);
+        const prone = await force.dispatchMekUnitCommand(masterId, {
+            type: 'set-condition',
+            commandId: asCommandId('c3-force:prone-master'),
+            expectedRevision: beforeProne.state.stateRevision,
+            condition: 'prone',
+            active: true,
+        });
+        expect(prone.accepted).toBeTrue();
+        expect(master.c3State()).toBe('operational');
+        expect(stateProjection.calls.count()).toBe(stateCallsBefore);
+
+        const beforeShutdown = mekRuntimeSnapshot(force, masterId);
+        const shutdown = await force.dispatchMekUnitCommand(masterId, {
+            type: 'set-mek-shutdown-state',
+            commandId: asCommandId('c3-force:shutdown-master'),
+            expectedRevision: beforeShutdown.state.stateRevision,
+            shutdown: true,
+        });
+        expect(shutdown.accepted).toBeTrue();
+        expect(master.c3State()).toBe('degraded');
+        expect(stateProjection.calls.count()).toBe(stateCallsBefore + 1);
+        expect(master.adjustedBattleValue()).toBe(adjustedBefore);
+        expect(adjustedProjection.calls.count()).toBe(adjustedCallsBefore);
+
+        const beforeStartup = mekRuntimeSnapshot(force, masterId);
+        const startup = await force.dispatchMekUnitCommand(masterId, {
+            type: 'set-mek-shutdown-state',
+            commandId: asCommandId('c3-force:startup-master'),
+            expectedRevision: beforeStartup.state.stateRevision,
+            shutdown: false,
+        });
+        expect(startup.accepted).toBeTrue();
+        expect(master.c3State()).toBe('operational');
+        expect(stateProjection.calls.count()).toBe(stateCallsBefore + 2);
+
+        const beforeJam = mekRuntimeSnapshot(force, masterId);
+        const jammed = await force.dispatchMekUnitCommand(masterId, {
+            type: 'set-condition',
+            commandId: asCommandId('c3-force:jam-master'),
+            expectedRevision: beforeJam.state.stateRevision,
+            condition: 'jammed',
+            active: true,
+        });
+
+        expect(jammed.accepted).toBeTrue();
+        expect(master.c3State()).toBe('none');
+        expect(stateProjection.calls.count()).toBe(stateCallsBefore + 3);
+        expect(master.adjustedBattleValue()).toBe(adjustedBefore);
+        expect(adjustedProjection.calls.count()).toBe(adjustedCallsBefore);
     });
 
     it('evaluates non-Mek Entity C3 endpoints from sparse runtime state', async () => {
@@ -1359,6 +1495,13 @@ describe('CBTForce V2 encounter persistence', () => {
                 : position),
         });
         expect(crewChanged?.accepted).toBeTrue();
+        expect(target.getUnitCrewProfile(instanceId)?.positions[0]).toEqual(jasmine.objectContaining({
+            name: 'Vehicle Commander', gunnery: 3, piloting: 4,
+        }));
+        expect((await target.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(target.getUnitCrewProfile(instanceId)?.positions[0]?.name)
+            .not.toBe('Vehicle Commander');
+        expect((await target.redoRuntimeCommand()).accepted).toBeTrue();
         expect(target.getUnitCrewProfile(instanceId)?.positions[0]).toEqual(jasmine.objectContaining({
             name: 'Vehicle Commander', gunnery: 3, piloting: 4,
         }));

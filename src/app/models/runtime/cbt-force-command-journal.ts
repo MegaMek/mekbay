@@ -1,7 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { jsonValuesEqual } from '../../utils/json-value.util';
 import type { ReadyClassicUnit } from './ready-classic-unit';
 import { emptyRuntimeHistory } from './persistence-v2';
 import {
@@ -32,6 +31,10 @@ export interface RuntimeCommandJournalUnitAccess {
 
 export interface CapturedRuntimeCommandMutation {
     readonly checkpoint: RuntimeCommandCheckpoint;
+    readonly openingWitnesses: ReadonlyMap<UnitInstanceId, Readonly<{
+        unit: ReadyClassicUnit;
+        revision: number;
+    }>>;
 }
 
 export interface RecordedRuntimeCommandMutation {
@@ -44,13 +47,19 @@ export function captureRuntimeCommandMutation(
     instanceIds: readonly UnitInstanceId[],
 ): CapturedRuntimeCommandMutation {
     const ids = [...new Set(instanceIds)].sort(compareUnitInstanceIds);
+    const openingWitnesses = new Map<UnitInstanceId, Readonly<{
+        unit: ReadyClassicUnit;
+        revision: number;
+    }>>();
     const units = Object.freeze(ids.map(instanceId => {
         const unit = authority.readyUnit(instanceId);
         if (!unit) throw new Error(`Cannot capture unknown runtime ${instanceId}`);
+        openingWitnesses.set(instanceId, Object.freeze({ unit, revision: unit.revision() }));
         return Object.freeze({ instanceId, unit: unit.serialize() });
     }));
     return Object.freeze({
         checkpoint: Object.freeze({ units }),
+        openingWitnesses,
     });
 }
 
@@ -61,14 +70,14 @@ export function recordRuntimeCommandMutation(
     history: RuntimeHistoryInput,
     boundary?: 'phase',
 ): RecordedRuntimeCommandMutation {
-    const after = captureRuntimeCommandMutation(
-        authority,
-        captured.checkpoint.units.map(row => row.instanceId),
-    ).checkpoint;
-    const beforeById = new Map(captured.checkpoint.units.map(row => [row.instanceId, row] as const));
-    const changedUnitIds = after.units
-        .filter(row => !jsonValuesEqual(beforeById.get(row.instanceId)!.unit, row.unit))
-        .map(row => row.instanceId);
+    const changedUnitIds = captured.checkpoint.units.flatMap(row => {
+        const current = authority.readyUnit(row.instanceId);
+        if (!current) throw new Error(`Cannot record unknown runtime ${row.instanceId}`);
+        const opening = captured.openingWitnesses.get(row.instanceId);
+        return opening?.unit === current && opening.revision === current.revision()
+            ? []
+            : [row.instanceId];
+    });
     if (changedUnitIds.length === 0) {
         return Object.freeze({ session, changedUnitIds: Object.freeze([]) });
     }
@@ -77,8 +86,12 @@ export function recordRuntimeCommandMutation(
     const before = Object.freeze({
         units: Object.freeze(captured.checkpoint.units.filter(row => changed.has(row.instanceId))),
     });
-    const next = Object.freeze({
-        units: Object.freeze(after.units.filter(row => changed.has(row.instanceId))),
+    const after = Object.freeze({
+        units: Object.freeze(changedUnitIds.map(instanceId => {
+            const unit = authority.readyUnit(instanceId);
+            if (!unit) throw new Error(`Cannot record unknown runtime ${instanceId}`);
+            return Object.freeze({ instanceId, unit: unit.serialize() });
+        })),
     });
     const positionedHistory = positionRuntimeHistory(
         authority.history() ?? emptyRuntimeHistory(),
@@ -92,7 +105,7 @@ export function recordRuntimeCommandMutation(
             history: positionedHistory,
             ...(boundary === 'phase' ? { boundary: 'phase' as const } : {}),
             before,
-            after: next,
+            after,
         }),
         changedUnitIds: Object.freeze(changedUnitIds),
     });

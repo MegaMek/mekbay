@@ -80,13 +80,29 @@ export class CBTForceC3 {
         try {
             if (isReadyMekUnit(unit)) {
                 const query = unit.getInstance().query();
-                return !query.hasCondition('jammed')
+                return !query.hasCondition('shutdown')
+                    && !query.hasCondition('jammed')
                     && !query.c3DisruptedByStealth('preview')
                     && query.componentStatus(componentId, 'preview') === 'available';
             }
             const query = unit.captureRuntime().query;
-            return !query.hasCondition('jammed')
+            return !query.hasCondition('shutdown')
+                && !query.hasCondition('jammed')
                 && query.componentStatus(componentId, 'preview') === 'available';
+        } catch {
+            return false;
+        }
+    }
+
+    /** BV follows configured wiring and permanent loss, never transient operation. */
+    public isEndpointIntact(instanceId: UnitInstanceId, componentId: ComponentId): boolean {
+        const unit = this.currentUnits()?.get(instanceId);
+        if (!unit) return false;
+        try {
+            const query = isReadyMekUnit(unit)
+                ? unit.getInstance().query()
+                : unit.captureRuntime().query;
+            return query.componentStatus(componentId, 'committed') !== 'destroyed';
         } catch {
             return false;
         }
@@ -139,9 +155,10 @@ export class CBTForceC3 {
 
     public reconcileEmergencyMasters(
         configured: readonly EncounterNetwork[],
+        candidateUnitIds: readonly UnitInstanceId[] = this.emergencyMasterUnitIds(),
     ): C3EmergencyMasterMutation {
         const units = this.currentUnits();
-        if (!units) return emptyC3EmergencyMasterMutation();
+        if (!units || candidateUnitIds.length === 0) return emptyC3EmergencyMasterMutation();
         const effectiveNetworks = this.effectiveNetworks(configured);
         const statuses: Array<{ readonly key: string; readonly status: ReturnType<
             typeof componentC3EmergencyMasterFacts
@@ -150,8 +167,9 @@ export class CBTForceC3 {
         const eventsByUnit = new Map<UnitInstanceId, UnitDomainEvent[]>();
         let changed = false;
 
-        for (const [instanceId, unit] of units) {
-            if (!isReadyMekUnit(unit)) continue;
+        for (const instanceId of new Set(candidateUnitIds)) {
+            const unit = units.get(instanceId);
+            if (!unit || !isReadyMekUnit(unit)) continue;
             const runtime = unit.getInstance();
             for (const [componentId] of unit.getIndex().components) {
                 if (!isC3EmergencyMasterEquipment(

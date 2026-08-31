@@ -51,7 +51,6 @@ export class PageViewerMekRuntimeService {
             if (changedUnitIds?.includes(member.id) ?? true) this.render(member);
         });
         this.bound.set(member.id, { member, svg, binding, subscription });
-        this.render(member);
         return true;
     }
 

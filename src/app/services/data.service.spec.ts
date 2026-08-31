@@ -1902,6 +1902,22 @@ describe('DataService', () => {
         expect(service.hasPendingForceSaves()).toBeFalse();
     });
 
+    it('drops a deferred autosave after its force authority retires', async () => {
+        const force = {
+            name: 'Retired Autosave',
+            instanceId: () => 'force-retired-autosave',
+            isWholeOwnerActive: () => false,
+        } as unknown as import('../models/force.model').Force;
+        const save = spyOn(service, 'saveForce').and.resolveTo();
+
+        service.queueForceAutosave(force);
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        await Promise.resolve();
+
+        expect(save).not.toHaveBeenCalled();
+        expect(service.hasPendingForceSaves()).toBeFalse();
+    });
+
     it('detaches an in-flight old cloud generation and never sends its already-queued successor', async () => {
         const persisted = (timestamp: string, name: string): SerializedForce => ({
             version: 2,

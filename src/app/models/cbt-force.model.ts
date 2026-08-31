@@ -121,7 +121,6 @@ import {
     readyEnvelopeRosterOwnerFact,
     type CBTForceOwnedRosterQueryResult,
     type CBTForceRosterCommand,
-    type CBTForceRosterCommandRejection,
     type CBTForceRosterCommandResult,
     type CBTForceRosterGroupMetadataPatch,
     type CBTForceRosterMutationPlanResult,
@@ -198,6 +197,13 @@ import {
     type MekTurnPanelSnapshot,
 } from './runtime/mek-turn-panel';
 import { CBTForceMemberRegistry } from './runtime/cbt-force-member-registry';
+import { CBTForceMekMutationImpact } from './runtime/cbt-force-mek-mutation-impact';
+import {
+    rejectedRosterCommand,
+    rejectedRuntimeUndoCommand,
+    rejectedUnitRepair,
+    rejectedUnitTransfer,
+} from './runtime/cbt-force-command-rejections';
 import { CBTForceUnitCommandDispatcher } from './runtime/cbt-force-unit-command-dispatcher';
 import {
     nextForceRevision,
@@ -232,34 +238,6 @@ import type {
 } from './cbt-force-api';
 export type * from './cbt-force-api';
 
-
-function rejectedRosterCommand(
-    reason: CBTForceRosterCommandRejection['reason'],
-): CBTForceRosterCommandRejection {
-    return Object.freeze({
-        accepted: false,
-        changed: false,
-        reason,
-    });
-}
-
-function rejectedUnitRepair(
-    reason: Extract<CBTUnitRepairResult, { readonly accepted: false }>['reason'],
-): Extract<CBTUnitRepairResult, { readonly accepted: false }> {
-    return Object.freeze({ accepted: false, changed: false, reason });
-}
-
-function rejectedUnitTransfer(
-    reason: Extract<CBTUnitTransferResult, { readonly accepted: false }>['reason'],
-): Extract<CBTUnitTransferResult, { readonly accepted: false }> {
-    return Object.freeze({ accepted: false, changed: false, reason });
-}
-
-function rejectedRuntimeUndoCommand(
-    reason: NonNullable<RuntimeUndoCommandResult['reason']>,
-): RuntimeUndoCommandResult {
-    return Object.freeze({ accepted: false, changed: false, reason });
-}
 
 type PreparedCBTForcePersistenceWithFence = PreparedCBTForcePersistenceV2 & Readonly<{
     authorityFence: CBTForceAuthorityFence;
@@ -298,9 +276,10 @@ export class CBTForce extends Force<never> {
         instanceId => this.authority.readyUnit(instanceId),
     );
     private readonly runtimeJournal = new CBTForceRuntimeJournal(this.authority);
+    private readonly mekMutationImpact = new CBTForceMekMutationImpact();
     private readonly unitCommandDispatcher: CBTForceUnitCommandDispatcher;
     private readonly adjustedBattleValues = computed(() => {
-        this.memberRegistry.dependOnForceInputs();
+        this.memberRegistry.dependOnBattleValueInputs();
         return this.calculateAdjustedBattleValues(this.encounterRuntime.snapshot().networks);
     });
 
@@ -321,9 +300,9 @@ export class CBTForce extends Force<never> {
         return calculateCBTForceBattleValues({
             units,
             scenario,
-            networks: this.authority.c3.effectiveNetworks(networks),
-            isC3EndpointOperational: (instanceId, componentId) =>
-                this.authority.c3.isEndpointOperational(instanceId, componentId),
+            networks,
+            isC3EndpointIntact: (instanceId, componentId) =>
+                this.authority.c3.isEndpointIntact(instanceId, componentId),
         });
     }
     constructor(name: string,
@@ -396,12 +375,18 @@ export class CBTForce extends Force<never> {
 
     private refreshForceMemberDependencies(
         changedUnitIds: readonly string[] | null = null,
+        baseBattleValueChangedUnitIds: readonly string[] | null = changedUnitIds,
+        runtimeForceInputsChanged = true,
+        runtimeOperationalC3InputsChanged = true,
     ): void {
         this.memberRegistry.refresh(
             this.getSupportedCBTForceV2Envelope(),
             this.encounterRuntime.snapshot().networks,
             this.authority.scenarioRules(),
             changedUnitIds,
+            baseBattleValueChangedUnitIds,
+            runtimeForceInputsChanged,
+            runtimeOperationalC3InputsChanged,
         );
     }
 
@@ -1472,6 +1457,12 @@ export class CBTForce extends Force<never> {
         const registry = this.queryInventoryControlTargetRegistry();
         const heatPolicy = this.currentHeatPolicy();
         const adjustedBattleValue = this.getUnitAdjustedBattleValue(instanceId);
+        const member = this.memberRegistry.member(instanceId);
+        const battleValue = Object.freeze({
+            pristine: member?.pristineBattleValue() ?? this.getUnitPristineBattleValue(instanceId),
+            current: member?.currentBaseBattleValue() ?? this.getUnitCurrentBaseBattleValue(instanceId),
+            adjusted: adjustedBattleValue,
+        });
         return projectMekRecordSheet(
             unit.entity,
             unit.index,
@@ -1479,7 +1470,7 @@ export class CBTForce extends Force<never> {
             unit.state,
             unit.query,
             registry,
-            adjustedBattleValue,
+            battleValue,
             heatPolicy,
         );
     }
@@ -1693,9 +1684,12 @@ export class CBTForce extends Force<never> {
     }
 
     /** Primary runtime plus the only peers C3 reconciliation is allowed to mutate. */
-    private c3RuntimeMutationScope(instanceId: UnitInstanceId): readonly UnitInstanceId[] {
+    private c3RuntimeMutationScope(
+        instanceId: UnitInstanceId,
+        emergencyMasterUnitIds = this.authority.c3.emergencyMasterUnitIds(),
+    ): readonly UnitInstanceId[] {
         return Object.freeze([
-            ...new Set([instanceId, ...this.authority.c3.emergencyMasterUnitIds()]),
+            ...new Set([instanceId, ...emergencyMasterUnitIds]),
         ]);
     }
 
@@ -1755,7 +1749,9 @@ export class CBTForce extends Force<never> {
                     nonMekCommandBoundary(captured),
                 );
                 this.reserveForceOwnerMutationIntent();
-                this.emitChangedFromReservedIntent(changedUnitIds.length > 0 ? changedUnitIds : [instanceId]);
+                this.emitChangedFromReservedIntent(
+                    changedUnitIds.length > 0 ? changedUnitIds : [instanceId],
+                );
             }
             return result;
         });
@@ -1778,9 +1774,12 @@ export class CBTForce extends Force<never> {
             const beforeMode = command.type === 'set-component-mode'
                 ? ready?.getInstance().query().componentMode(command.componentId)
                 : undefined;
+            const emergencyMasterUnitIds = this.authority.c3.emergencyMasterUnitIds();
             const capture = ready === null
                 ? null
-                : this.captureRuntimeCommandMutation(this.c3RuntimeMutationScope(instanceId));
+                : this.captureRuntimeCommandMutation(
+                    this.c3RuntimeMutationScope(instanceId, emergencyMasterUnitIds),
+                );
             const configuredNetworks = this.encounterRuntime.snapshot().networks;
             const c3EndTurn = command.type === 'end-turn'
                 ? this.authority.c3.planEmergencyMasterEndTurn(instanceId, configuredNetworks)
@@ -1792,7 +1791,10 @@ export class CBTForce extends Force<never> {
             );
             if (!reduction.accepted) return reduction;
             const settled = this.authority.c3.settleEmergencyMasterEndTurn(c3EndTurn);
-            const reconciled = this.authority.c3.reconcileEmergencyMasters(configuredNetworks);
+            const reconciled = this.authority.c3.reconcileEmergencyMasters(
+                configuredNetworks,
+                emergencyMasterUnitIds,
+            );
             const toast = this.injector.get(ToastService);
             publishC3EmergencyMasterNotices(settled.notices, toast);
             publishC3EmergencyMasterNotices(reconciled.notices, toast);
@@ -1818,7 +1820,12 @@ export class CBTForce extends Force<never> {
                     mekCommandBoundary(command, ready.getInstance().snapshot()),
                 );
                 this.reserveForceOwnerMutationIntent();
-                this.emitChangedFromReservedIntent(changedUnitIds.length > 0 ? changedUnitIds : [instanceId]);
+                this.mekMutationImpact.publish(
+                    instanceId,
+                    command,
+                    changedUnitIds.length > 0 ? changedUnitIds : [instanceId],
+                    changed => this.emitChangedFromReservedIntent(changed),
+                );
             }
             const runtime = this.authority.readyMekUnit(instanceId)?.getInstance();
             return runtime
@@ -1895,7 +1902,7 @@ export class CBTForce extends Force<never> {
     }
 
     public getC3State(instanceId: UnitInstanceId): C3State {
-        this.memberRegistry.dependOnForceInputs();
+        this.memberRegistry.dependOnOperationalC3Inputs();
         return this.authority.c3.state(instanceId, this.encounterRuntime.snapshot().networks);
     }
 
@@ -2186,9 +2193,12 @@ export class CBTForce extends Force<never> {
     }
 
     protected override onForceChanged(changedUnitIds: readonly string[] | null): void {
-        // Runtime edits publish only the changed members. Cross-unit C3 and adjusted BV
-        // still share the force-level revision below; unrelated base-BV signals stay cold.
-        this.refreshForceMemberDependencies(changedUnitIds);
+        // Runtime edits publish only the changed members and the dependency domains
+        // their command can affect. Unrelated base BV and C3 projections stay cold.
+        this.refreshForceMemberDependencies(
+            changedUnitIds,
+            ...this.mekMutationImpact.dependencyRefresh(changedUnitIds),
+        );
     }
 
     protected override async prepareLoadedCBTForceV2Authority(
@@ -2339,6 +2349,7 @@ export class CBTForce extends Force<never> {
         if (changed) {
             const c3 = this.authority.c3.reconcileEmergencyMasters(
                 this.encounterRuntime.snapshot().networks,
+                c3UnitIds,
             );
             publishC3EmergencyMasterNotices(c3.notices, this.injector.get(ToastService));
             const changedUnitIds = c3UnitIds.filter(instanceId =>
@@ -2560,7 +2571,6 @@ export class CBTForce extends Force<never> {
         );
     }
 }
-
 
 function rejectedForceTargetRegistry(
     snapshot: TargetRegistrySnapshot,

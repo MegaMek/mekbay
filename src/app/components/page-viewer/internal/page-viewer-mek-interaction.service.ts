@@ -66,6 +66,7 @@ import {
     recordSheetDamageChoices,
     recordSheetDamagePickerRange,
     recordSheetEventPosition,
+    type MekRecordSheetCommandSource,
 } from '../mek-record-sheet-interaction.util';
 import { PageViewerOverlayService } from './page-viewer-overlay.service';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
@@ -262,7 +263,7 @@ export class PageViewerMekInteractionService {
         );
         const pick = (value: number): void => {
             this.closePicker();
-            if (value !== 0) void this.dispatchDamage(member, interaction, value);
+            if (value !== 0) void this.dispatchDamage(member, interaction, value, snapshot);
         };
         if (this.options.options().pickerStyle === 'linear') {
             this.openChoicePicker(member.id, event, {
@@ -288,9 +289,8 @@ export class PageViewerMekInteractionService {
         member: CBTMekForceMember,
         interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'armor' | 'internal' | 'shield' }>,
         delta: number,
+        snapshot: MekRecordSheetSnapshot,
     ): Promise<void> {
-        const snapshot = member.force.getMekRecordSheetSnapshot(member.id);
-        if (!snapshot) return;
         if (interaction.kind !== 'armor' || delta <= 0) {
             await this.dispatchDirect(member, { ...interaction, expectedRevision: snapshot.stateRevision }, delta);
             return;
@@ -328,12 +328,12 @@ export class PageViewerMekInteractionService {
         }
         const internalDamage = delta - armorDamage;
         if (internalDamage <= 0) return;
-        const current = member.force.getMekRecordSheetSnapshot(member.id);
+        const current = this.currentMekUnit(member);
         if (!current) return;
         await this.dispatchCommand(member, {
             type: 'damage-internal',
             commandId: createCommandId(),
-            expectedRevision: current.stateRevision,
+            expectedRevision: current.state.stateRevision,
             locationId: interaction.locationId,
             amount: internalDamage,
             target: pending ? 'pending' : 'committed',
@@ -408,33 +408,42 @@ export class PageViewerMekInteractionService {
         if (!choice.keepOpen) this.closePicker();
         const value = String(choice.value);
         if (value === 'hit' || value === 'repair') {
-            const current = member.force.getMekRecordSheetSnapshot(member.id);
+            const current = this.currentMekUnit(member);
             if (current) await this.dispatchDirect(
                 member,
-                { ...interaction, expectedRevision: current.stateRevision },
+                { ...interaction, expectedRevision: current.state.stateRevision },
                 value === 'hit' ? 1 : -1,
             );
         } else if (value === 'open-ammo') {
             this.overlays.openEquipment(member.id, new Event('click'), 'ammo');
         } else if (value.startsWith('ammo-add:') || value.startsWith('ammo-spend:')) {
             const componentId = value.slice(value.indexOf(':') + 1) as ComponentId;
-            const snapshot = member.force.getMekRecordSheetSnapshot(member.id);
-            const component = snapshot?.criticalSlots.flatMap(slot => slot.components)
-                .find(candidate => candidate.componentId === componentId);
-            if (snapshot && component?.ammo) {
+            const current = this.currentMekUnit(member);
+            if (current) {
+                let munitionKey: string;
+                let capacity: number;
+                let remaining: number;
+                try {
+                    const loadout = current.query.ammoLoadout(componentId);
+                    munitionKey = loadout.munitionKey;
+                    capacity = current.query.ammoCapacity(componentId);
+                    remaining = current.query.remainingAmmo(componentId);
+                } catch {
+                    return;
+                }
                 const command: CBTUnitCommand = value.startsWith('ammo-add:')
                     ? {
                         type: 'configure-ammo-source',
                         commandId: createCommandId(),
-                        expectedRevision: snapshot.stateRevision,
+                        expectedRevision: current.state.stateRevision,
                         componentId,
-                        munitionKey: component.ammo.munitionKey,
-                        remaining: Math.min(component.ammo.capacity, component.ammo.remaining + 1),
+                        munitionKey,
+                        remaining: Math.min(capacity, remaining + 1),
                     }
                     : {
                         type: 'spend-ammo',
                         commandId: createCommandId(),
-                        expectedRevision: snapshot.stateRevision,
+                        expectedRevision: current.state.stateRevision,
                         componentId,
                         amount: 1,
                     };
@@ -461,16 +470,17 @@ export class PageViewerMekInteractionService {
         interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'heat-sinks-off' }>,
         event: Event,
     ): void {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
-        if (!snapshot) return;
-        const activeHeatSinks = Math.max(0, snapshot.heatSinks.count - snapshot.heat.heatsinksOff);
+        const unit = this.currentMekUnit(member, interaction.expectedRevision);
+        if (!unit) return;
+        const heatSinkCount = unit.entity.totalHeatSinks();
+        const activeHeatSinks = Math.max(0, heatSinkCount - unit.query.heatState().heatsinksOff);
         const apply = (active: number): void => {
             this.closePicker();
-            void this.dispatchDirect(member, interaction, snapshot.heatSinks.count - active);
+            void this.dispatchDirect(member, interaction, heatSinkCount - active);
         };
         if (this.options.options().pickerStyle === 'linear') {
             this.openChoicePicker(member.id, event, {
-                values: Array.from({ length: snapshot.heatSinks.count + 1 }, (_, value) => ({ label: String(value), value })),
+                values: Array.from({ length: heatSinkCount + 1 }, (_, value) => ({ label: String(value), value })),
                 selected: activeHeatSinks,
                 title: 'Active Heatsinks',
                 targetType: 'heatsinks',
@@ -480,7 +490,7 @@ export class PageViewerMekInteractionService {
         }
         this.openNumericPicker(member.id, event, {
             min: 0,
-            max: snapshot.heatSinks.count,
+            max: heatSinkCount,
             selected: activeHeatSinks,
             title: 'Active Heatsinks',
             onPick: apply,
@@ -491,11 +501,12 @@ export class PageViewerMekInteractionService {
         member: CBTMekForceMember,
         interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'heat-overflow' }>,
     ): Promise<void> {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
-        if (!snapshot) return;
+        const unit = this.currentMekUnit(member, interaction.expectedRevision);
+        if (!unit) return;
+        const heat = unit.query.heatState();
         const current = this.options.options().trackPhaseAndTurn
-            ? snapshot.heat.pendingOverride ?? snapshot.heat.current
-            : snapshot.heat.current;
+            ? heat.pendingOverride ?? heat.current
+            : heat.current;
         const ref = this.dialogs.createDialog<number | null>(InputDialogComponent, {
                 data: {
                     title: 'Heat',
@@ -509,12 +520,12 @@ export class PageViewerMekInteractionService {
         });
         const value = await firstValueFrom(ref.closed);
         if (value === null || value === undefined || !Number.isFinite(Number(value))) return;
-        const latest = member.force.getMekRecordSheetSnapshot(member.id);
+        const latest = this.currentMekUnit(member);
         if (!latest) return;
         await this.dispatchDirect(member, {
             kind: 'heat',
             heat: Math.max(0, Number(value)),
-            expectedRevision: latest.stateRevision,
+            expectedRevision: latest.state.stateRevision,
         });
     }
 
@@ -523,9 +534,9 @@ export class PageViewerMekInteractionService {
         interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'condition-menu' }>,
         event: Event,
     ): void {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
+        const unit = this.currentMekUnit(member, interaction.expectedRevision);
         const anchor = event.currentTarget;
-        if (!snapshot || !(anchor instanceof Element)) return;
+        if (!unit || !(anchor instanceof Element)) return;
         const { componentRef, closed } = this.openStateDropdown(UNIT_CONDITION_OVERLAY, anchor, event, true);
         componentRef.setInput('choices', MEK_UNIT_CONDITION_CONTROLS
             .filter(control => control.placement === 'menu')
@@ -533,14 +544,14 @@ export class PageViewerMekInteractionService {
                 key: control.key,
                 label: control.label,
                 color: control.color,
-                active: snapshot.conditions.includes(control.key),
+                active: unit.query.hasCondition(control.key),
             })));
         outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(condition => {
-            const current = member.force.getMekRecordSheetSnapshot(member.id);
+            const current = this.currentMekUnit(member);
             if (current) void this.dispatchDirect(member, {
                 kind: 'condition',
                 condition,
-                expectedRevision: current.stateRevision,
+                expectedRevision: current.state.stateRevision,
             });
             this.overlayManager.closeManagedOverlay(UNIT_CONDITION_OVERLAY);
         });
@@ -552,20 +563,24 @@ export class PageViewerMekInteractionService {
         interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'location-condition-menu' }>,
         event: Event,
     ): void {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
+        const unit = this.currentMekUnit(member, interaction.expectedRevision);
         const anchor = event.currentTarget;
-        const location = snapshot?.locations.find(row => row.locationId === interaction.locationId);
-        if (!snapshot || !location || !(anchor instanceof Element)) return;
+        const location = unit?.index.locations.get(interaction.locationId);
+        if (!unit || !location || !(anchor instanceof Element)) return;
         const { componentRef, closed } = this.openStateDropdown(LOCATION_CONDITION_OVERLAY, anchor, event, false);
         const update = (): void => {
-            const current = member.force.getMekRecordSheetSnapshot(member.id);
-            const currentLocation = current?.locations.find(row => row.locationId === interaction.locationId);
+            const current = this.currentMekUnit(member);
+            const currentLocation = current?.index.locations.get(interaction.locationId);
             if (!current || !currentLocation) return;
+            const perspective = this.options.options().trackPhaseAndTurn ? 'preview' : 'committed';
             const conditions = MEK_LOCATION_CONDITION_CONTROLS
                 .filter(control => control.key !== 'blown-off' || !MEK_TORSO_LOCATIONS.has(currentLocation.code))
                 .map(control => {
-                    const row = currentLocation.conditions.find(candidate => candidate.condition === control.key);
-                    const value = this.options.options().trackPhaseAndTurn ? row?.preview ?? 0 : row?.committed ?? 0;
+                    const value = current.query.locationCondition(
+                        interaction.locationId,
+                        control.key as MekLocationConditionKey,
+                        perspective,
+                    );
                     return {
                         key: control.key,
                         label: control.label,
@@ -584,23 +599,27 @@ export class PageViewerMekInteractionService {
             componentRef.changeDetectorRef.detectChanges();
         };
         const set = async (condition: string, operation: 'toggle' | 'increment' | 'decrement'): Promise<void> => {
-            const current = member.force.getMekRecordSheetSnapshot(member.id);
-            const currentLocation = current?.locations.find(row => row.locationId === interaction.locationId);
+            const current = this.currentMekUnit(member);
+            const currentLocation = current?.index.locations.get(interaction.locationId);
             const control = MEK_LOCATION_CONDITION_CONTROLS.find(row => row.key === condition);
             if (!current || !currentLocation || !control) return;
-            const row = currentLocation.conditions.find(candidate => candidate.condition === condition);
-            const value = this.options.options().trackPhaseAndTurn ? row?.preview ?? 0 : row?.committed ?? 0;
+            const pending = this.options.options().trackPhaseAndTurn;
+            const value = current.query.locationCondition(
+                interaction.locationId,
+                condition as MekLocationConditionKey,
+                pending ? 'preview' : 'committed',
+            );
             const next = operation === 'increment' ? value + 1
                 : operation === 'decrement' ? Math.max(0, value - 1)
                     : control.counted ? (value > 0 ? 0 : 1) : (value > 0 ? 0 : 1);
             await this.dispatchCommand(member, {
                 type: 'set-location-condition',
                 commandId: createCommandId(),
-                expectedRevision: current.stateRevision,
+                expectedRevision: current.state.stateRevision,
                 locationId: interaction.locationId,
                 condition: condition as MekLocationConditionKey,
                 value: next,
-                target: this.options.options().trackPhaseAndTurn ? 'pending' : 'committed',
+                target: pending ? 'pending' : 'committed',
             });
             update();
         };
@@ -1282,11 +1301,11 @@ export class PageViewerMekInteractionService {
         interaction: MekRecordSheetInteraction,
         delta?: number,
     ): Promise<boolean> {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
-        if (!snapshot) return false;
+        const source = this.currentCommandSource(member, interaction.expectedRevision);
+        if (!source) return false;
         const command = recordSheetCommand(
             interaction,
-            snapshot,
+            source,
             this.options.options().trackPhaseAndTurn,
             delta,
         );
@@ -1305,6 +1324,29 @@ export class PageViewerMekInteractionService {
     private currentSnapshot(member: CBTMekForceMember, expectedRevision: number): MekRecordSheetSnapshot | null {
         const snapshot = member.force.getMekRecordSheetSnapshot(member.id);
         return snapshot?.stateRevision === expectedRevision ? snapshot : null;
+    }
+
+    private currentCommandSource(
+        member: CBTMekForceMember,
+        expectedRevision: number,
+    ): MekRecordSheetCommandSource | null {
+        const unit = this.currentMekUnit(member, expectedRevision);
+        if (!unit) return null;
+        return Object.freeze({
+            query: unit.query,
+            heatSinkCount: unit.entity.totalHeatSinks(),
+            heatPolicy: this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
+                ? 'automatic'
+                : 'manual',
+        });
+    }
+
+    private currentMekUnit(member: CBTMekForceMember, expectedRevision?: number) {
+        const unit = member.force.getUnitSnapshot(member.id);
+        if (!unit || !hasMekRuntime(unit)) return null;
+        return expectedRevision === undefined || unit.state.stateRevision === expectedRevision
+            ? unit
+            : null;
     }
 
     private closePicker(): void {

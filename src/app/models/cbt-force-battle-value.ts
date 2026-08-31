@@ -29,7 +29,7 @@ import { adjustEntityBattleValueForSkills } from './entity/utils/battle-value/sk
 
 export interface CBTForceBattleValueUnit {
     readonly unit: ReadyClassicUnit;
-    readonly currentBaseBattleValue: number | null;
+    readonly baseBattleValue: number | null;
 }
 
 export interface CBTForceBattleValueBreakdown {
@@ -44,7 +44,7 @@ export interface CBTForceBattleValueInput {
     readonly units: readonly CBTForceBattleValueUnit[];
     readonly scenario: ScenarioRules;
     readonly networks: readonly EncounterNetwork[];
-    readonly isC3EndpointOperational: (
+    readonly isC3EndpointIntact: (
         instanceId: UnitInstanceId,
         componentId: ComponentId,
     ) => boolean;
@@ -100,28 +100,30 @@ export function calculateCBTForceBattleValues(
     const views = input.units.map(row => battleValueC3View(
         row,
         tagValues.get(row.unit.instanceId) ?? 0,
-        input.isC3EndpointOperational,
+        input.isC3EndpointIntact,
     ));
-    const operationalNetworks = projectOperationalC3Networks(
+    const intactNetworks = projectOperationalC3Networks(
         input.networks,
-        input.isC3EndpointOperational,
+        input.isC3EndpointIntact,
     );
-    const activeEndpoints = new Set(operationalNetworks.flatMap(network =>
+    const activeEndpoints = new Set(intactNetworks.flatMap(network =>
         network.endpoints.map(endpoint => endpointKey(endpoint.instanceId, endpoint.componentId))));
-    const activeViews = views.map(view => Object.freeze({
+    const taxViews = views.map(view => Object.freeze({
         ...view,
         c3Components: Object.freeze((view.c3Components ?? []).filter(component =>
             component.componentId !== undefined
-            && activeEndpoints.has(endpointKey(view.instanceId, component.componentId)))),
+            && input.isC3EndpointIntact(view.instanceId, component.componentId)
+            && (component.networkType === C3NetworkType.NOVA
+                || activeEndpoints.has(endpointKey(view.instanceId, component.componentId))))),
     }));
-    const activeViewsById = new Map(activeViews.map(view => [view.instanceId, view] as const));
-    const editorNetworks = projectEncounterNetworksToC3Editor(operationalNetworks, activeViews);
-    const tax = new C3TaxCalculator(editorNetworks, activeViews);
+    const taxViewsById = new Map(taxViews.map(view => [view.instanceId, view] as const));
+    const editorNetworks = projectEncounterNetworksToC3Editor(intactNetworks, taxViews);
+    const tax = new C3TaxCalculator(editorNetworks, taxViews);
 
     return new Map(input.units.flatMap(row => {
-        const base = row.currentBaseBattleValue;
+        const base = row.baseBattleValue;
         if (base === null) return [];
-        const view = activeViewsById.get(row.unit.instanceId)!;
+        const view = taxViewsById.get(row.unit.instanceId)!;
         const tag = tagValues.get(row.unit.instanceId) ?? 0;
         const c3 = ruleset === 'total-warfare' ? tax.totalWar(view) : tax.core2026(view);
         const preSkill = base + tag + c3;
@@ -186,7 +188,7 @@ interface BattleValueC3View extends C3UnitView {
 function battleValueC3View(
     row: CBTForceBattleValueUnit,
     tag: number,
-    isOperational: CBTForceBattleValueInput['isC3EndpointOperational'],
+    isIntact: CBTForceBattleValueInput['isC3EndpointIntact'],
 ): BattleValueC3View {
     const { unit } = row;
     const entity = unit.getUnit();
@@ -212,8 +214,8 @@ function battleValueC3View(
         isC3Jammed: () => false,
         isC3EndpointOperational: (_index: number, component: C3Component) =>
             component.componentId !== undefined
-            && isOperational(unit.instanceId, component.componentId),
-        getBaseBv: () => row.currentBaseBattleValue ?? 0,
+            && isIntact(unit.instanceId, component.componentId),
+        getBaseBv: () => row.baseBattleValue ?? 0,
         tagBV: () => tag,
     });
 }

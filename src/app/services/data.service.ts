@@ -1541,10 +1541,12 @@ export class DataService {
         }
     }
 
-    private isCloudNewer(localRaw: any, cloudRaw: any): boolean {
-        const localTs = localRaw?.timestamp ? new Date(localRaw.timestamp).getTime() : 0;
-        const cloudTs = cloudRaw?.timestamp ? new Date(cloudRaw.timestamp).getTime() : 0;
-        return cloudTs > localTs;
+    /** Newer timestamp wins; an equal-time mixed-version tie belongs to V2, otherwise local wins. */
+    private preferCloudForce(localRaw: SerializedForce, cloudRaw: SerializedForce): boolean {
+        const localTimestamp = this.getComparableTimestamp(localRaw.timestamp);
+        const cloudTimestamp = this.getComparableTimestamp(cloudRaw.timestamp);
+        if (cloudTimestamp !== localTimestamp) return cloudTimestamp > localTimestamp;
+        return localRaw.version === 1 && cloudRaw.version === 2;
     }
 
     /** Build derived memberships without mutating a prepared or already-live catalog bundle. */
@@ -2048,14 +2050,7 @@ export class DataService {
 
         let cloudIsNewer = false;
         if (local && cloud) {
-            const localTimestamp = this.getComparableTimestamp(localRaw?.timestamp);
-            const cloudTimestamp = this.getComparableTimestamp(cloudRaw?.timestamp);
-            const sameTimestamp = localTimestamp === cloudTimestamp;
-            const localIsV1 = localRaw?.version === 1;
-            const cloudIsV2 = cloudRaw?.version === 2;
-            cloudIsNewer = sameTimestamp && localIsV1 && cloudIsV2
-                ? true
-                : this.isCloudNewer(localRaw, cloudRaw);
+            cloudIsNewer = this.preferCloudForce(localRaw!, cloudRaw!);
             result = cloudIsNewer ? cloud : local;
             resultHasDurableLocalIdentity = result === local;
         } else if (!triedCloud && local) {
@@ -2180,7 +2175,8 @@ export class DataService {
         } finally {
             state.running = false;
             this.pendingForceAutosaves = Math.max(0, this.pendingForceAutosaves - 1);
-            if (state.dirty && !this.destroyed) this.queueForceAutosave(force);
+            if (!force.isWholeOwnerActive()) state.dirty = false;
+            else if (state.dirty && !this.destroyed) this.queueForceAutosave(force);
         }
     }
 
@@ -2592,14 +2588,7 @@ export class DataService {
 
             let force: Force | null;
             if (local && cloud) {
-                const localTimestamp = this.getComparableTimestamp(localRaw?.timestamp);
-                const cloudTimestamp = this.getComparableTimestamp(cloudRaw?.timestamp);
-                if (localTimestamp === cloudTimestamp
-                    && local.getWholeOwnerPersistentAuthoritySnapshotJson()
-                        !== cloud.getWholeOwnerPersistentAuthoritySnapshotJson()) {
-                    throw new Error('The selected force has divergent local and cloud authority at the same timestamp.');
-                }
-                force = this.isCloudNewer(localRaw, cloudRaw) ? cloud : local;
+                force = this.preferCloudForce(localRaw!, cloudRaw!) ? cloud : local;
             } else {
                 force = cloud ?? local;
             }
