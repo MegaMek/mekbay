@@ -67,7 +67,7 @@ export class PageViewerShadowRenderService {
             setPromotedShadowState(wrapper, false);
             applyWrapperLayout(wrapper, { originalLeft: descriptor.originalLeft, scale });
 
-            const sourceSvg = this.sheetSource.svg(descriptor.unit);
+            const sourceSvg = descriptor.unit.recordSheet();
             const existingSvg = wrapper.querySelector(':scope > svg');
             const currentBinding = this.shadowBindings.get(wrapper);
             const canReuseExistingSvg =

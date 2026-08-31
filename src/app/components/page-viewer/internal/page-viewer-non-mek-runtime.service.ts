@@ -69,7 +69,7 @@ interface OpenEntityPicker {
     readonly target: Element | null;
 }
 
-/** Direct non-Mek Entity + sparse-runtime binding for supplied record-sheet artwork. */
+/** Direct non-Mek Entity + sparse-runtime binding for a supplied record sheet. */
 @Injectable()
 export class PageViewerNonMekRuntimeService {
     private readonly logger = inject(LoggerService);

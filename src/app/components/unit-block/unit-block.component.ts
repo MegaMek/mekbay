@@ -149,17 +149,18 @@ export class UnitBlockComponent {
     displayedBvPv = computed(() => {
         const unit = this.forceUnit();
         if (!unit) return '';
+        const options = this.optionsService.options();
         if (isCBTForceMember(unit)) {
             return formatBvPv(
-                forceMemberAdjustedValue(unit),
-                forceMemberBaseValue(unit),
-                this.optionsService.options().forceViewerBVPVDisplay,
+                forceMemberAdjustedValue(unit, options.forceViewerBVPVDisplayDamage),
+                forceMemberBaseValue(unit, options.forceViewerBVPVDisplayDamage),
+                options.forceViewerBVPVDisplay,
             );
         }
         return formatBvPv(
             unit.getBv(),
             unit.getPreSkillBv(),
-            this.optionsService.options().forceViewerBVPVDisplay,
+            options.forceViewerBVPVDisplay,
         );
     });
 

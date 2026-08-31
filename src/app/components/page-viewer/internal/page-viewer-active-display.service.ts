@@ -6,7 +6,6 @@ import { Injectable, inject } from '@angular/core';
 
 import { PageViewerDisplayWindowService } from './page-viewer-display-window.service';
 import { PageViewerInPlaceUpdateService } from './page-viewer-in-place-update.service';
-import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 import type { PageViewerInPlaceUpdatePlan, PageViewerMember } from './types';
 
 export interface PageViewerActiveDisplayPreparation {
@@ -24,7 +23,6 @@ export interface PageViewerActiveInPlacePreparation {
 export class PageViewerActiveDisplayService {
     private readonly pageViewerDisplayWindow = inject(PageViewerDisplayWindowService);
     private readonly pageViewerInPlaceUpdate = inject(PageViewerInPlaceUpdateService);
-    private readonly sheetSource = inject(PageViewerSheetSourceService);
 
     clearActivePageElements(content: HTMLDivElement, pageElements: readonly HTMLDivElement[]): HTMLDivElement[] {
         pageElements.forEach((element) => {
@@ -53,7 +51,7 @@ export class PageViewerActiveDisplayService {
             };
         }
 
-        if (!this.sheetSource.svg(currentUnit)) {
+        if (!currentUnit.recordSheet()) {
             return {
                 canRender: false,
                 displayedUnits: [],

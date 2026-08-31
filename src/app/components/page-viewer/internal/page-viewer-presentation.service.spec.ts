@@ -5,20 +5,13 @@
 import { TestBed } from '@angular/core/testing';
 
 import { PageViewerPresentationService } from './page-viewer-presentation.service';
-import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 
 describe('PageViewerPresentationService', () => {
     let service: PageViewerPresentationService;
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            providers: [
-                PageViewerPresentationService,
-                {
-                    provide: PageViewerSheetSourceService,
-                    useValue: { svg: (unit: { svg(): SVGSVGElement | null }) => unit.svg() },
-                },
-            ]
+            providers: [PageViewerPresentationService]
         });
 
         service = TestBed.inject(PageViewerPresentationService);
@@ -39,7 +32,7 @@ describe('PageViewerPresentationService', () => {
 
     it('toggles fluff visibility on displayed unit svgs', () => {
         const svg = createSheetSvg();
-        const displayedUnits = [{ svg: () => svg }] as never[];
+        const displayedUnits = [{ recordSheet: () => svg }] as never[];
 
         service.setDisplayedFluffImageVisibility(displayedUnits, true);
 
@@ -54,7 +47,7 @@ describe('PageViewerPresentationService', () => {
 
     it('restores cached reference tables after they have been hidden', () => {
         const svg = createSheetSvg();
-        const displayedUnits = [{ svg: () => svg }] as never[];
+        const displayedUnits = [{ recordSheet: () => svg }] as never[];
 
         service.setDisplayedFluffImageVisibility(displayedUnits, true);
         expect(getReferenceTable(svg)?.style.display).toBe('none');
@@ -64,7 +57,7 @@ describe('PageViewerPresentationService', () => {
         expect(getReferenceTable(svg)?.style.display).toBe('block');
     });
 
-    it('keeps reference tables visible when artwork is unavailable', () => {
+    it('keeps reference tables visible when the fluff image is unavailable', () => {
         const svg = createSheetSvgWithoutFluff();
 
         service.applyFluffImageVisibilityToSvg(svg, true);

@@ -21,7 +21,6 @@ describe('PageViewerShadowRenderService', () => {
                 {
                     provide: PageViewerSheetSourceService,
                     useValue: {
-                        svg: (unit: { svg(): SVGSVGElement | null }) => unit.svg(),
                         load: (unit: { load(): Promise<void> }) => unit.load(),
                     },
                 },
@@ -41,7 +40,7 @@ describe('PageViewerShadowRenderService', () => {
             currentCleanups: [],
             descriptors: [{
                 key: 'right:2',
-                unit: { svg: () => unitSvg } as never,
+                unit: { recordSheet: () => unitSvg } as never,
                 unitId: 'u2',
                 unitIndex: 2,
                 direction: 'right',
@@ -81,7 +80,7 @@ describe('PageViewerShadowRenderService', () => {
             currentCleanups: [],
             descriptors: [{
                 key: 'right:2',
-                unit: { svg: () => unitSvg } as never,
+                unit: { recordSheet: () => unitSvg } as never,
                 unitId: 'u2',
                 unitIndex: 2,
                 direction: 'right',
@@ -105,7 +104,7 @@ describe('PageViewerShadowRenderService', () => {
             currentCleanups: cleanups,
             descriptors: [{
                 key: 'right:2',
-                unit: { svg: () => unitSvg } as never,
+                unit: { recordSheet: () => unitSvg } as never,
                 unitId: 'u2',
                 unitIndex: 2,
                 direction: 'right',

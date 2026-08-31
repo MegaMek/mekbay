@@ -231,6 +231,9 @@ describe('C3Network', () => {
 });
 
 describe('C3TaxCalculator', () => {
+    const operational = (candidate: ReturnType<typeof unit>['unit'], candidateComponent: C3Component) =>
+        candidate.isC3EndpointOperational(candidateComponent.index, candidateComponent);
+
     it('calculates from canonical network membership and base values', () => {
         const master = unit('master', [component(C3NetworkType.C3, C3Role.MASTER)], 1000);
         const slave = unit('slave', [component(C3NetworkType.C3, C3Role.SLAVE)], 500);
@@ -243,5 +246,33 @@ describe('C3TaxCalculator', () => {
         expect(tax.core2026(slave.unit)).toBe(50);
         expect(tax.totalWar(master.unit)).toBe(75);
         expect(tax.totalWar(slave.unit)).toBe(75);
+    });
+
+    it('charges eligible Nova CEWS units without an explicit network', () => {
+        const alpha = unit('alpha', [component(C3NetworkType.NOVA, C3Role.PEER)], 1000);
+        const bravo = unit('bravo', [component(C3NetworkType.NOVA, C3Role.PEER)], 500);
+        const tax = new C3TaxCalculator([], [alpha.unit, bravo.unit], operational);
+
+        expect(tax.core2026(alpha.unit)).toBe(75);
+        expect(tax.core2026(bravo.unit)).toBe(75);
+    });
+
+    it('uses its single eligibility gate for implicit Nova and configured C3 endpoints', () => {
+        const novaAlpha = unit('nova-alpha', [component(C3NetworkType.NOVA, C3Role.PEER)], 1000);
+        const novaBravo = unit('nova-bravo', [component(C3NetworkType.NOVA, C3Role.PEER)], 500);
+        novaBravo.operational.set(false);
+        const novaTax = new C3TaxCalculator([], [novaAlpha.unit, novaBravo.unit], operational);
+        expect(novaTax.core2026(novaAlpha.unit)).toBe(0);
+        expect(novaTax.core2026(novaBravo.unit)).toBe(0);
+
+        const master = unit('master', [component(C3NetworkType.C3, C3Role.MASTER)], 1000);
+        const slave = unit('slave', [component(C3NetworkType.C3, C3Role.SLAVE)], 500);
+        slave.operational.set(false);
+        const c3Tax = new C3TaxCalculator([{
+            id: 'network', type: C3NetworkType.C3, color: '#123',
+            masterId: 'master', masterCompIndex: 0, members: ['slave'],
+        }], [master.unit, slave.unit], operational);
+        expect(c3Tax.core2026(master.unit)).toBe(0);
+        expect(c3Tax.core2026(slave.unit)).toBe(0);
     });
 });

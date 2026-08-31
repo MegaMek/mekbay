@@ -5,7 +5,6 @@
 import { TestBed } from '@angular/core/testing';
 
 import { PageViewerActiveRenderService } from './page-viewer-active-render.service';
-import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 
 function createSvg(): SVGSVGElement {
     return document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -16,13 +15,7 @@ describe('PageViewerActiveRenderService', () => {
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            providers: [
-                PageViewerActiveRenderService,
-                {
-                    provide: PageViewerSheetSourceService,
-                    useValue: { svg: (unit: { svg(): SVGSVGElement | null }) => unit.svg() },
-                },
-            ]
+            providers: [PageViewerActiveRenderService]
         });
 
         service = TestBed.inject(PageViewerActiveRenderService);
@@ -49,7 +42,7 @@ describe('PageViewerActiveRenderService', () => {
     it('binds active wrapper metadata and delegates svg attachment', () => {
         const wrapper = document.createElement('div');
         const svg = createSvg();
-        const unit = { id: 'unit-a', svg: () => svg } as never;
+        const unit = { id: 'unit-a', recordSheet: () => svg } as never;
         const attachSvgToWrapper = jasmine.createSpy('attachSvgToWrapper');
         const bindWrapperInteractiveLayers = jasmine.createSpy('bindWrapperInteractiveLayers');
 

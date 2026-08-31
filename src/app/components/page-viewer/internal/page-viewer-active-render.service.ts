@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 
-import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 import type { PageViewerMember, PageViewerPageDescriptor } from './types';
 
 export interface PageViewerActiveRenderFinalizePlan {
@@ -18,7 +17,6 @@ export interface PageViewerActiveRenderFinalizePlan {
 
 @Injectable()
 export class PageViewerActiveRenderService {
-    private readonly sheetSource = inject(PageViewerSheetSourceService);
     pruneOverlappingShadows(options: {
         shadowPageElements: readonly HTMLDivElement[];
         activeUnitIds: ReadonlySet<string>;
@@ -62,7 +60,7 @@ export class PageViewerActiveRenderService {
             bindWrapperInteractiveLayers
         } = options;
 
-        const svg = this.sheetSource.svg(unit);
+        const svg = unit.recordSheet();
         if (!svg || !descriptor) {
             return false;
         }

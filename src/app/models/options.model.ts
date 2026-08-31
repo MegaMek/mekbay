@@ -15,6 +15,7 @@ export const OPTION_VALUES = {
     gameSystem: [GameSystem.CLASSIC, GameSystem.ALPHA_STRIKE],
     availabilitySource: ['mul', 'megamek'],
     forceViewerBVPVDisplay: ['adjusted', 'base', 'both'],
+    forceViewerBVPVDisplayDamage: ['damaged', 'pristine'],
     recordSheetDoubleTapZoomReset: ['disabled', 'fit-to-screen', 'full-width', 'contextual'],
     unitSearchExpandedViewLayout: ['panel-list-filters', 'filters-list-panel'],
     unitSearchViewMode: ['list', 'card', 'chassis', 'table'],
@@ -23,12 +24,13 @@ export const OPTION_VALUES = {
     automationMode: ['yes', 'ask', 'no'],
 } as const;
 
+type OptionValue<K extends keyof typeof OPTION_VALUES> = (typeof OPTION_VALUES)[K][number];
 
-export type AvailabilitySource = 'mul' | 'megamek';
-export type RecordSheetDoubleTapZoomResetMode = 'disabled' | 'fit-to-screen' | 'full-width' | 'contextual';
-export type ColorScheme = 'default' | 'night';
-export type UnitSearchViewMode = 'list' | 'card' | 'chassis' | 'table';
-export type AutomationMode = typeof OPTION_VALUES.automationMode[number];
+export type AvailabilitySource = OptionValue<'availabilitySource'>;
+export type RecordSheetDoubleTapZoomResetMode = OptionValue<'recordSheetDoubleTapZoomReset'>;
+export type ColorScheme = OptionValue<'colorScheme'>;
+export type UnitSearchViewMode = OptionValue<'unitSearchViewMode'>;
+export type AutomationMode = OptionValue<'automationMode'>;
 
 export const CBT_AUTOMATION_KEYS = [
     'pilotSkillCheck',
@@ -74,7 +76,8 @@ export interface ForceGeneratorOptions {
     useUnitTagsAsChassisTags: boolean;
 }
 
-export type ForceViewerBVPVDisplay = 'adjusted' | 'base' | 'both';
+export type ForceViewerBVPVDisplay = OptionValue<'forceViewerBVPVDisplay'>;
+export type ForceViewerBVPVDisplayDamage = OptionValue<'forceViewerBVPVDisplayDamage'>;
 
 export interface CBTOptionalRules {
     floatingCriticals: boolean;
@@ -85,15 +88,16 @@ export interface CBTOptionalRules {
 
 export interface Options {
     colorScheme: ColorScheme;
-    pickerStyle: 'default' | 'radial' | 'linear';
-    canvasInput: 'all' | 'touch' | 'pen';
-    swipeToNextSheet: 'vertical' | 'horizontal' | 'disabled';
+    pickerStyle: OptionValue<'pickerStyle'>;
+    canvasInput: OptionValue<'canvasInput'>;
+    swipeToNextSheet: OptionValue<'swipeToNextSheet'>;
     syncZoomBetweenSheets: boolean;
-    unitDisplayName: 'chassisModel' | 'alias' | 'both';
+    unitDisplayName: OptionValue<'unitDisplayName'>;
     gameSystem: GameSystem;
     availabilitySource: AvailabilitySource;
     megaMekAvailabilityFiltersUseAllScopedOptions: boolean;
     forceViewerBVPVDisplay: ForceViewerBVPVDisplay;
+    forceViewerBVPVDisplayDamage: ForceViewerBVPVDisplayDamage;
     printAllOptions: PrintAllOptions;
     recordSheetDoubleTapZoomReset: RecordSheetDoubleTapZoomResetMode;
     lastCanvasState?: {
@@ -109,12 +113,12 @@ export interface Options {
     c3NetworkConnectionsAboveNodes: boolean;
     automaticallyConvertFiltersToSemantic: boolean;
     allowMultipleActiveSheets: boolean;
-    unitSearchExpandedViewLayout: 'panel-list-filters' | 'filters-list-panel';
+    unitSearchExpandedViewLayout: OptionValue<'unitSearchExpandedViewLayout'>;
     showFilteredComponents: boolean;
     unitSearchViewMode: UnitSearchViewMode;
-    forceOverviewViewMode: 'expanded' | 'compact' | 'table';
+    forceOverviewViewMode: OptionValue<'forceOverviewViewMode'>;
     ASUseAutomations: boolean;
-    ASVehiclesCriticalHitTable: 'default' | 'scouringSands';
+    ASVehiclesCriticalHitTable: OptionValue<'ASVehiclesCriticalHitTable'>;
     ASUnifiedDamagePicker: boolean;
     performanceMode: boolean;
     enableForceSyncConflictDialog: boolean;

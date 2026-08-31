@@ -28,7 +28,7 @@ describe('RecordSheetSourceService', () => {
         });
     });
 
-    it('always generates record-sheet artwork from the Entity and active ruleset', async () => {
+    it('always generates a record sheet from the Entity and active ruleset', async () => {
         const generated = svg('generated');
         const generate = spyOn(RecordSheetSvgGenerator, 'generate').and.resolveTo(generated);
         const entity = new TestTankEntity();

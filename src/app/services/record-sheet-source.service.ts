@@ -20,7 +20,7 @@ export interface RecordSheetEntitySourceContext {
     readonly design?: DesignIdentity;
 }
 
-/** Generates record-sheet artwork from the admitted Entity. */
+/** Generates a record sheet from the admitted Entity. */
 @Injectable({ providedIn: 'root' })
 export class RecordSheetSourceService {
     private readonly options = inject(OptionsService);

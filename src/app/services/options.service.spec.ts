@@ -52,6 +52,22 @@ describe('OptionsService theme migration', () => {
         expect(service.options().enableForceSyncConflictDialog).toBeTrue();
     });
 
+    it('defaults Classic force BV to the current damaged state', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().forceViewerBVPVDisplayDamage).toBe('damaged');
+    });
+
+    it('restores and validates the Classic force BV damage policy', async () => {
+        savedOptions = { forceViewerBVPVDisplayDamage: 'pristine' };
+
+        const service = await createService();
+
+        expect(service.options().forceViewerBVPVDisplayDamage).toBe('pristine');
+    });
+
     it('uses complete print defaults', async () => {
         savedOptions = null;
 

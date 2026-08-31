@@ -339,21 +339,26 @@ async function readyEntityForce(options: Readonly<{
     return { force, instanceId, createTargetForce };
 }
 
-async function readyEntityC3Force(): Promise<Readonly<{
+async function readyEntityC3Force(
+    system: 'c3i' | 'nova' = 'c3i',
+): Promise<Readonly<{
     force: CBTForce;
     firstId: ReturnType<typeof asUnitInstanceId>;
     secondId: ReturnType<typeof asUnitInstanceId>;
     componentId: ReturnType<typeof asComponentId>;
 }>> {
-    const c3i = new MiscEquipment({
-        id: 'TestC3i', name: 'C3i Computer', type: 'misc', flags: ['F_C3I'],
+    const c3 = new MiscEquipment({
+        id: system === 'nova' ? 'TestNovaCEWS' : 'TestC3i',
+        name: system === 'nova' ? 'Nova CEWS' : 'C3i Computer',
+        type: 'misc',
+        flags: system === 'nova' ? ['F_NOVA', 'F_ECM', 'F_BAP'] : ['F_C3I'],
     });
-    const entity = new TestTankEntity(createTestEquipmentRegistry({ [c3i.id]: c3i }));
-    const componentId = asComponentId('c3i');
+    const entity = new TestTankEntity(createTestEquipmentRegistry({ [c3.id]: c3 }));
+    const componentId = asComponentId(system);
     entity.setEquipment([new EntityMountedEquipment({
         mountId: componentId,
-        equipmentId: c3i.id,
-        equipment: c3i,
+        equipmentId: c3.id,
+        equipment: c3,
         allocation: { kind: 'location', location: 'Front' },
         rearMounted: false,
         turretMounted: false,
@@ -397,7 +402,7 @@ async function readyEntityC3Force(): Promise<Readonly<{
             groups: [{
                 groupId: 'group:entity-c3',
                 order: 0,
-                name: 'Vehicle C3i',
+                name: system === 'nova' ? 'Vehicle Nova' : 'Vehicle C3i',
                 members: [
                     { instanceId: firstId, kind: 'ready', order: 0 },
                     { instanceId: secondId, kind: 'ready', order: 1 },
@@ -1001,6 +1006,48 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(callsFor(secondMember.id)).toBe(secondCallsBefore);
     });
 
+    it('projects current damage and pristine Entity BV through the same force adjustments', async () => {
+        const laser = new WeaponEquipment({
+            id: 'DamagePolicyLaser',
+            name: 'Damage Policy Laser',
+            type: 'weapon',
+            stats: { bv: 200 },
+            weapon: { ammoType: 'NA', heat: 0, damage: 10 },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        const componentId = asComponentId('damage-policy-laser');
+        entity.setEquipment([new EntityMountedEquipment({
+            mountId: componentId,
+            equipmentId: laser.id,
+            equipment: laser,
+            allocation: { kind: 'location', location: 'Front' },
+            rearMounted: false,
+            turretMounted: false,
+            omniPodMounted: false,
+            armored: false,
+        })]);
+        const { force, instanceId } = await readyEntityForce({ entity });
+        const member = force.getClassicMember(instanceId)!;
+        const currentBefore = member.currentBaseBattleValue()!;
+        const adjustedBefore = member.adjustedBattleValue()!;
+        const pristineBefore = member.pristineBattleValue()!;
+        const pristineAdjustedBefore = member.pristineAdjustedBattleValue()!;
+
+        const snapshot = entityRuntimeSnapshot(force, instanceId);
+        expect((await force.dispatchNonMekUnitCommand(instanceId, {
+            kind: 'set-component-status',
+            expectedRevision: snapshot.state.stateRevision,
+            componentId,
+            status: 'destroyed',
+            target: 'committed',
+        })).accepted).toBeTrue();
+
+        expect(member.currentBaseBattleValue()!).toBeLessThan(currentBefore);
+        expect(member.adjustedBattleValue()!).toBeLessThan(adjustedBefore);
+        expect(member.pristineBattleValue()).toBe(pristineBefore);
+        expect(member.pristineAdjustedBattleValue()).toBe(pristineAdjustedBefore);
+    });
+
     it('dispatches a canonical turn state without corrupting its immutable map', async () => {
         const { force } = await readyCloneForce();
         const saved = await force.serializeForPersistence();
@@ -1195,6 +1242,30 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(stateProjection.calls.count()).toBe(stateCallsBefore + 3);
         expect(master.adjustedBattleValue()).toBe(adjustedBefore);
         expect(adjustedProjection.calls.count()).toBe(adjustedCallsBefore);
+    });
+
+    it('charges intact Nova CEWS units without configured links and removes destroyed endpoints', async () => {
+        const { force, firstId, secondId, componentId } = await readyEntityC3Force('nova');
+        const first = force.getClassicMember(firstId)!;
+        const second = force.getClassicMember(secondId)!;
+        const forceBase = first.currentBaseBattleValue()! + second.currentBaseBattleValue()!;
+        const expectedTax = Math.round((forceBase * 0.10) / 2);
+
+        expect(force.c3EncounterNetworks()).toEqual([]);
+        expect(first.c3BattleValue()).toBe(expectedTax);
+        expect(second.c3BattleValue()).toBe(expectedTax);
+
+        const secondRuntime = entityRuntimeSnapshot(force, secondId);
+        expect((await force.dispatchNonMekUnitCommand(secondId, {
+            kind: 'set-component-status',
+            expectedRevision: secondRuntime.state.stateRevision,
+            componentId,
+            status: 'destroyed',
+            target: 'committed',
+        })).accepted).toBeTrue();
+
+        expect(first.c3BattleValue()).toBe(0);
+        expect(second.c3BattleValue()).toBe(0);
     });
 
     it('evaluates non-Mek Entity C3 endpoints from sparse runtime state', async () => {

@@ -21,6 +21,7 @@ import type {
     CBTAutomationKey,
     CBTOptionalRules,
     ForceViewerBVPVDisplay,
+    ForceViewerBVPVDisplayDamage,
     RecordSheetDoubleTapZoomResetMode,
 } from '../../models/options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
@@ -479,6 +480,11 @@ export class OptionsDialogComponent {
     onForceViewerBVPVDisplayChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as ForceViewerBVPVDisplay;
         this.optionsService.setOption('forceViewerBVPVDisplay', value);
+    }
+
+    onForceViewerBVPVDisplayDamageChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as ForceViewerBVPVDisplayDamage;
+        this.optionsService.setOption('forceViewerBVPVDisplayDamage', value);
     }
 
     onAutoConvertFiltersChange(event: Event) {

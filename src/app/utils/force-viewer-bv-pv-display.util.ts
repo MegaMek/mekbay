@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ForceViewerBVPVDisplay } from '../models/options.model';
+import type {
+    ForceViewerBVPVDisplay,
+    ForceViewerBVPVDisplayDamage,
+} from '../models/options.model';
 import type { ForceMember } from '../models/force-member.model';
 import { forceMemberAdjustedValue, forceMemberBaseValue } from '../models/force-member.model';
 import { FormatNumberPipe } from '../pipes/format-number.pipe';
@@ -22,10 +25,13 @@ export function formatBvPv(
 export function formatForceMembersBvPv(
     members: readonly ForceMember[],
     mode: ForceViewerBVPVDisplay,
+    damageMode: ForceViewerBVPVDisplayDamage,
 ): string {
     return formatBvPv(
-        members.reduce((total, member) => total + forceMemberAdjustedValue(member), 0),
-        members.reduce((total, member) => total + forceMemberBaseValue(member), 0),
+        members.reduce((total, member) =>
+            total + forceMemberAdjustedValue(member, damageMode), 0),
+        members.reduce((total, member) =>
+            total + forceMemberBaseValue(member, damageMode), 0),
         mode,
     );
 }

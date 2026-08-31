@@ -319,7 +319,8 @@ export function createForcePreviewEntryFromForce(
             };
         })
         .filter(group => group.units.length > 0);
-    const total = members.reduce((sum, member) => sum + forceMemberAdjustedValue(member), 0);
+    const total = members.reduce((sum, member) =>
+        sum + forceMemberAdjustedValue(member, 'damaged'), 0);
 
     return createForcePreviewEntryData({
         cloud: options.cloud ?? false,

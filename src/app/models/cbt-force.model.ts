@@ -261,7 +261,7 @@ export class CBTForce extends Force<never> {
     });
     public override totalBv = computed(() => {
         return this.getClassicMembers().reduce(
-            (total, member) => total + forceMemberAdjustedValue(member),
+            (total, member) => total + forceMemberAdjustedValue(member, 'damaged'),
             0,
         );
     });
@@ -280,11 +280,22 @@ export class CBTForce extends Force<never> {
     private readonly unitCommandDispatcher: CBTForceUnitCommandDispatcher;
     private readonly adjustedBattleValues = computed(() => {
         this.memberRegistry.dependOnBattleValueInputs();
-        return this.calculateAdjustedBattleValues(this.encounterRuntime.snapshot().networks);
+        return this.calculateAdjustedBattleValues(
+            this.encounterRuntime.snapshot().networks,
+            'damaged',
+        );
+    });
+    private readonly pristineAdjustedBattleValues = computed(() => {
+        this.memberRegistry.dependOnBattleValueInputs();
+        return this.calculateAdjustedBattleValues(
+            this.encounterRuntime.snapshot().networks,
+            'pristine',
+        );
     });
 
     private calculateAdjustedBattleValues(
         networks: readonly EncounterNetwork[],
+        damageMode: 'damaged' | 'pristine',
     ): ReadonlyMap<UnitInstanceId, CBTForceBattleValueBreakdown> {
         const scenario = this.authority.scenarioRules();
         if (!scenario) return new Map<UnitInstanceId, CBTForceBattleValueBreakdown>();
@@ -293,7 +304,9 @@ export class CBTForce extends Force<never> {
             return unit
                 ? [{
                     unit,
-                    currentBaseBattleValue: member.currentBaseBattleValue(),
+                    baseBattleValue: damageMode === 'damaged'
+                        ? member.currentBaseBattleValue()
+                        : member.pristineBattleValue(),
                 }]
                 : [];
         });
@@ -1411,11 +1424,15 @@ export class CBTForce extends Force<never> {
         return this.adjustedBattleValues().get(instanceId)?.adjusted ?? null;
     }
 
+    public getUnitPristineAdjustedBattleValue(instanceId: UnitInstanceId): number | null {
+        return this.pristineAdjustedBattleValues().get(instanceId)?.adjusted ?? null;
+    }
+
     /** Canonical formula projected against a prospective C3 graph; no state is retained. */
     public previewAdjustedBattleValues(
         networks: readonly EncounterNetwork[],
     ): ReadonlyMap<UnitInstanceId, CBTForceBattleValueBreakdown> {
-        return this.calculateAdjustedBattleValues(networks);
+        return this.calculateAdjustedBattleValues(networks, 'damaged');
     }
 
     public getUnitCurrentBaseBattleValue(instanceId: UnitInstanceId): number | null {

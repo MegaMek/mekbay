@@ -84,16 +84,16 @@ export class SvgViewerLiteComponent {
                 try {
                     const loaded = await this.nativeEntities.load({ provider: u.provider, uuid: u.uuid });
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;
-                    const artwork = await this.recordSheets.load(loaded.entity, {}, {
+                    const sheets = await this.recordSheets.load(loaded.entity, {}, {
                         design: { provider: u.provider, uuid: u.uuid },
                     });
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;
 
-                    const svgs = artwork.svgs.map((svg, index) => {
+                    const svgs = sheets.svgs.map((svg, index) => {
                         svg.removeAttribute('id');
                         svg.setAttribute(
                             'aria-label',
-                            artwork.svgs.length === 1
+                            sheets.svgs.length === 1
                                 ? `${u.name} record sheet`
                                 : `${u.name} record sheet page ${index + 1}`,
                         );

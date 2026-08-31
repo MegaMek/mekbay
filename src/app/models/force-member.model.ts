@@ -8,6 +8,7 @@ import type { BaseEntity } from './entity/base-entity';
 import type { UnitInstanceId } from './runtime/runtime-state';
 import type { UnitSummary } from './unit-summary.model';
 import type { UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import type { ForceViewerBVPVDisplayDamage } from './options.model';
 
 /** A direct Classic member. Its force owns the entity, rules, and sparse runtime. */
 export class CBTForceMember {
@@ -15,6 +16,8 @@ export class CBTForceMember {
     readonly id: UnitInstanceId;
     readonly force: CBTForce;
     readonly entity: BaseEntity;
+    #recordSheet: SVGSVGElement | null = null;
+    #recordSheetLoad: Promise<SVGSVGElement> | null = null;
     readonly #runtime = signal<Readonly<{
         owner: object | null;
         revision: number | null;
@@ -32,6 +35,10 @@ export class CBTForceMember {
     /** TAG + configured, intact C3 topology + skills over current base BV. */
     readonly adjustedBattleValue = computed(() => this.force.getUnitAdjustedBattleValue(this.id));
 
+    /** The same force adjustments over immutable Entity BV instead of runtime-damaged BV. */
+    readonly pristineAdjustedBattleValue = computed(() =>
+        this.force.getUnitPristineAdjustedBattleValue(this.id));
+
     readonly c3State = computed(() => this.force.getC3State(this.id));
 
     public tagBattleValue(): number | null {
@@ -40,6 +47,27 @@ export class CBTForceMember {
 
     public c3BattleValue(): number | null {
         return this.force.getUnitC3BattleValue(this.id);
+    }
+
+    /** One lazily generated live sheet owned for exactly this member's lifetime. */
+    public recordSheet(): SVGSVGElement | null {
+        return this.#recordSheet;
+    }
+
+    public loadRecordSheet(create: () => Promise<SVGSVGElement>): Promise<SVGSVGElement> {
+        if (this.#recordSheet) return Promise.resolve(this.#recordSheet);
+        if (this.#recordSheetLoad) return this.#recordSheetLoad;
+
+        const pending = create()
+            .then(svg => {
+                this.#recordSheet = svg;
+                return svg;
+            })
+            .finally(() => {
+                this.#recordSheetLoad = null;
+            });
+        this.#recordSheetLoad = pending;
+        return pending;
     }
 
     public constructor(
@@ -143,15 +171,25 @@ export function forceMemberPilotStats(value: ForceMember): string {
 }
 
 /** Current skill-adjusted BV/PV for one visible force member. */
-export function forceMemberAdjustedValue(value: ForceMember): number {
+export function forceMemberAdjustedValue(
+    value: ForceMember,
+    damageMode: ForceViewerBVPVDisplayDamage,
+): number {
     if (!isCBTForceMember(value)) return value.getBv();
-    return value.adjustedBattleValue() ?? value.entity.battleValue();
+    return damageMode === 'pristine'
+        ? value.pristineAdjustedBattleValue() ?? value.entity.battleValue()
+        : value.adjustedBattleValue() ?? value.entity.battleValue();
 }
 
-/** Pristine/base BV/PV for one visible force member. */
-export function forceMemberBaseValue(value: ForceMember): number {
+/** Pre-skill BV/PV under the selected Classic damage policy. */
+export function forceMemberBaseValue(
+    value: ForceMember,
+    damageMode: ForceViewerBVPVDisplayDamage,
+): number {
     if (!isCBTForceMember(value)) return value.getPreSkillBv();
-    return value.pristineBattleValue() ?? value.entity.battleValue();
+    return damageMode === 'pristine'
+        ? value.pristineBattleValue() ?? value.entity.battleValue()
+        : value.currentBaseBattleValue() ?? value.entity.battleValue();
 }
 
 export function forceMemberCommander(value: ForceMember): boolean {

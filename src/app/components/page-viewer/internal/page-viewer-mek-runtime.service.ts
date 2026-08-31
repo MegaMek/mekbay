@@ -12,7 +12,6 @@ import {
     type MekRecordSheetBinding,
 } from '../mek-record-sheet-binder';
 import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
-import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 
 interface BoundMekSheet {
     readonly member: CBTMekForceMember;
@@ -26,7 +25,6 @@ interface BoundMekSheet {
 export class PageViewerMekRuntimeService {
     private readonly interactions = inject(PageViewerMekInteractionService);
     private readonly logger = inject(LoggerService);
-    private readonly sheetSource = inject(PageViewerSheetSourceService);
     private readonly bound = new Map<string, BoundMekSheet>();
 
     bind(member: CBTMekForceMember, svg: SVGSVGElement): boolean {

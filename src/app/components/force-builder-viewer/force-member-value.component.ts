@@ -23,6 +23,7 @@ export class ForceMemberValueComponent {
         return formatForceMembersBvPv(
             members,
             this.options.options().forceViewerBVPVDisplay,
+            this.options.options().forceViewerBVPVDisplayDamage,
         );
     });
 }

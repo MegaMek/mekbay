@@ -122,7 +122,7 @@ export class CBTPrintUtil {
             pageFormat: paperSize,
         } as const;
         const identity = member.force.getUnitSourceIdentity(member.id);
-        const artwork = await recordSheetSource.load(entity, generatorOptions, {
+        const sheets = await recordSheetSource.load(entity, generatorOptions, {
             ...(identity ? { design: identity } : {}),
         });
         const compact = profile.compact;
@@ -131,7 +131,7 @@ export class CBTPrintUtil {
             const current = member.force.getMekRecordSheetSnapshot(member.id);
             if (!current) throw new Error(`CBT Mek ${member.id} is no longer admitted`);
             const snapshot = clean ? this.pristinePrintSnapshot(current) : current;
-            return artwork.svgs.map(svg => {
+            return sheets.svgs.map(svg => {
                 const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, snapshot);
                 binding.render(snapshot);
                 binding.destroy();
@@ -152,7 +152,7 @@ export class CBTPrintUtil {
         const current = member.force.getNonMekRecordSheetSnapshot(member.id);
         if (!current) throw new Error(`Classic Entity ${member.id} is no longer admitted`);
         const snapshot = clean ? this.pristineEntityPrintSnapshot(current) : current;
-        return artwork.svgs.map(svg => {
+        return sheets.svgs.map(svg => {
             const binding = bindNonMekRecordSheet(svg, snapshot);
             binding.render(snapshot);
             binding.destroy();

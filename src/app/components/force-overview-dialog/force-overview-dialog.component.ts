@@ -324,6 +324,7 @@ export class ForceOverviewDialogComponent {
         return formatForceMembersBvPv(
             members,
             this.optionsService.options().forceViewerBVPVDisplay,
+            this.optionsService.options().forceViewerBVPVDisplayDamage,
         );
     }
 

@@ -70,6 +70,18 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplay', 'both');
     });
 
+    it('persists the selected Classic force viewer damage policy', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({ options: () => ({}), setOption });
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="pristine">Pristine</option>';
+        select.value = 'pristine';
+
+        component.onForceViewerBVPVDisplayDamageChange({ target: select } as unknown as Event);
+
+        expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplayDamage', 'pristine');
+    });
+
     it('persists each CBT automation mode independently', () => {
         const setCbtAutomationMode = jasmine.createSpy('setCbtAutomationMode');
         const component = configureComponent({ options: () => ({}), setCbtAutomationMode });

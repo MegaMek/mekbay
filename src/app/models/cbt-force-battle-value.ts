@@ -24,7 +24,6 @@ import {
 import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { scenarioRuleset } from './runtime/unit-state-initializer';
 import type { UnitInstanceId } from './runtime/runtime-state';
-import { projectOperationalC3Networks } from './runtime/c3-operational-network';
 import { adjustEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
 
 export interface CBTForceBattleValueUnit {
@@ -102,28 +101,18 @@ export function calculateCBTForceBattleValues(
         tagValues.get(row.unit.instanceId) ?? 0,
         input.isC3EndpointIntact,
     ));
-    const intactNetworks = projectOperationalC3Networks(
-        input.networks,
-        input.isC3EndpointIntact,
+    const viewsById = new Map(views.map(view => [view.instanceId, view] as const));
+    const editorNetworks = projectEncounterNetworksToC3Editor(input.networks, views);
+    const tax = new C3TaxCalculator(
+        editorNetworks,
+        views,
+        (unit, component) => unit.isC3EndpointOperational(component.index, component),
     );
-    const activeEndpoints = new Set(intactNetworks.flatMap(network =>
-        network.endpoints.map(endpoint => endpointKey(endpoint.instanceId, endpoint.componentId))));
-    const taxViews = views.map(view => Object.freeze({
-        ...view,
-        c3Components: Object.freeze((view.c3Components ?? []).filter(component =>
-            component.componentId !== undefined
-            && input.isC3EndpointIntact(view.instanceId, component.componentId)
-            && (component.networkType === C3NetworkType.NOVA
-                || activeEndpoints.has(endpointKey(view.instanceId, component.componentId))))),
-    }));
-    const taxViewsById = new Map(taxViews.map(view => [view.instanceId, view] as const));
-    const editorNetworks = projectEncounterNetworksToC3Editor(intactNetworks, taxViews);
-    const tax = new C3TaxCalculator(editorNetworks, taxViews);
 
     return new Map(input.units.flatMap(row => {
         const base = row.baseBattleValue;
         if (base === null) return [];
-        const view = taxViewsById.get(row.unit.instanceId)!;
+        const view = viewsById.get(row.unit.instanceId)!;
         const tag = tagValues.get(row.unit.instanceId) ?? 0;
         const c3 = ruleset === 'total-warfare' ? tax.totalWar(view) : tax.core2026(view);
         const preSkill = base + tag + c3;
@@ -181,6 +170,7 @@ function tagBattleValueInventory(unit: ReadyClassicUnit): ReadyTagBattleValueInv
 
 interface BattleValueC3View extends C3UnitView {
     readonly instanceId: UnitInstanceId;
+    readonly c3Components: readonly C3Component[];
     getBaseBv(): number;
     tagBV(): number;
 }
@@ -243,8 +233,4 @@ function mekC3Components(unit: ReadyClassicUnit): readonly C3Component[] {
             index,
         });
     }));
-}
-
-function endpointKey(instanceId: UnitInstanceId, componentId: ComponentId): string {
-    return `${instanceId}\0${componentId}`;
 }

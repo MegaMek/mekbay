@@ -9,11 +9,9 @@ import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { OptionsService } from '../../services/options.service';
 import { getFactionImg } from '../../models/factions.model';
-import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
+import { formatForceMembersBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 import {
-    forceMemberAdjustedValue,
     forceMemberAlias,
-    forceMemberBaseValue,
     forceMemberCommander,
     forceMemberChassis,
     forceMemberDestroyed,
@@ -325,11 +323,11 @@ export class ForcePreviewComponent {
     });
 
     displayedBvPv = computed(() => {
-        const units = this.force().members();
-        return formatBvPv(
-            units.reduce((total, unit) => total + forceMemberAdjustedValue(unit), 0),
-            units.reduce((total, unit) => total + forceMemberBaseValue(unit), 0),
-            this.optionsService.options().forceViewerBVPVDisplay,
+        const options = this.optionsService.options();
+        return formatForceMembersBvPv(
+            this.force().members(),
+            options.forceViewerBVPVDisplay,
+            options.forceViewerBVPVDisplayDamage,
         );
     });
     protected readonly forceMemberAlias = forceMemberAlias;

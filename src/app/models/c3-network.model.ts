@@ -1069,20 +1069,40 @@ export interface C3TaxUnit {
     tagBV(): number;
 }
 
-/** Structural BV tax calculator; damage and jamming intentionally do not affect tax. */
+export type C3TaxComponentEligibility = (
+    unit: C3TaxUnit & C3UnitView,
+    component: C3Component,
+) => boolean;
+
+/** Owns the single endpoint-eligibility gate for every C3-family BV tax. */
 export class C3TaxCalculator {
     private readonly model: C3Network;
     private readonly unitsById: ReadonlyMap<string, C3TaxUnit>;
+    private readonly eligibleComponentIndexes: ReadonlyMap<string, ReadonlySet<number>>;
     private readonly novaUnits: readonly C3TaxUnit[];
     private readonly forceBv: number;
 
     constructor(
         networks: readonly SerializedC3NetworkGroup[],
-        private readonly units: readonly (C3TaxUnit & C3UnitView)[],
+        units: readonly (C3TaxUnit & C3UnitView)[],
+        isComponentEligible: C3TaxComponentEligibility = () => true,
     ) {
-        this.model = new C3Network(networks, units, false);
         this.unitsById = new Map(units.map(unit => [unit.id, unit]));
-        this.novaUnits = units.filter(unit => this.model.capability(unit.id)?.has(C3NetworkType.NOVA));
+        const structuralModel = new C3Network(networks, units, false);
+        this.eligibleComponentIndexes = new Map(units.map(unit => [
+            unit.id,
+            new Set((structuralModel.capability(unit.id)?.components ?? [])
+                .filter(component => isComponentEligible(unit, component))
+                .map(component => component.index)),
+        ] as const));
+        this.model = new C3Network(
+            eligibleC3TaxNetworks(networks, structuralModel, this.eligibleComponentIndexes),
+            units,
+            false,
+        );
+        this.novaUnits = units.filter(unit =>
+            this.hasEligibleComponent(unit.id, component =>
+                component.networkType === C3NetworkType.NOVA));
         this.forceBv = units.reduce((sum, unit) => sum + unit.getBaseBv() + unit.tagBV(), 0);
     }
 
@@ -1092,7 +1112,7 @@ export class C3TaxCalculator {
         const networked = this.networkUnits(unit.id);
         if (networked.length < 2) return 0;
         const networkRate = Math.min(0.4, networked.length * C3_TAX_RATE);
-        const boosted = this.model.capability(unit.id)?.components.some(component => component.boosted) ?? false;
+        const boosted = this.hasEligibleComponent(unit.id, component => component.boosted);
         return Math.round((unit.getBaseBv() + unit.tagBV()) * (networkRate + (boosted ? C3_TAX_RATE : 0)));
     }
 
@@ -1101,14 +1121,15 @@ export class C3TaxCalculator {
         if (nova !== null) return nova;
         const networked = this.networkUnits(unit.id);
         if (networked.length < 2) return 0;
-        const boosted = this.model.capability(unit.id)?.components.some(component => component.boosted) ?? false;
+        const boosted = this.hasEligibleComponent(unit.id, component => component.boosted);
         const rate = boosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
         return Math.round(networked.reduce((sum, candidate) =>
             sum + candidate.getBaseBv() + candidate.tagBV(), 0) * rate);
     }
 
     private nova(unit: C3TaxUnit): number | null {
-        if (!this.model.capability(unit.id)?.has(C3NetworkType.NOVA)) return null;
+        if (!this.hasEligibleComponent(unit.id, component =>
+            component.networkType === C3NetworkType.NOVA)) return null;
         if (this.novaUnits.length < 2) return 0;
         const rate = Math.min(this.novaUnits.length * C3_TAX_RATE, NOVA_MAX_TAX_RATE);
         return Math.round((this.forceBv * rate) / this.novaUnits.length);
@@ -1123,4 +1144,60 @@ export class C3TaxCalculator {
             return unit ? [unit] : [];
         });
     }
+
+    private hasEligibleComponent(
+        unitId: string,
+        predicate: (component: C3Component) => boolean,
+    ): boolean {
+        const eligible = this.eligibleComponentIndexes.get(unitId);
+        return this.model.capability(unitId)?.components.some(component =>
+            eligible?.has(component.index) === true && predicate(component)) ?? false;
+    }
+}
+
+function eligibleC3TaxNetworks(
+    networks: readonly SerializedC3NetworkGroup[],
+    model: C3Network,
+    eligible: ReadonlyMap<string, ReadonlySet<number>>,
+): SerializedC3NetworkGroup[] {
+    const result: SerializedC3NetworkGroup[] = [];
+    for (const network of networks) {
+        if (network.type !== C3NetworkType.C3) {
+            const peerIds = (network.peerIds ?? []).filter(unitId =>
+                eligibleNetworkComponent(model, eligible, unitId, network, C3Role.PEER));
+            if (new Set(peerIds).size >= 2) result.push({ ...network, peerIds });
+            continue;
+        }
+
+        const masterId = network.masterId;
+        if (!masterId
+            || !eligibleNetworkComponent(model, eligible, masterId, network, C3Role.MASTER)) {
+            continue;
+        }
+        const members = (network.members ?? []).filter(rawMember => {
+            const member = C3Network.parseMember(rawMember);
+            return eligibleNetworkComponent(
+                model,
+                eligible,
+                member.unitId,
+                network,
+                member.compIndex === undefined ? C3Role.SLAVE : C3Role.MASTER,
+            );
+        });
+        const distinctUnits = new Set([masterId, ...members.map(member =>
+            C3Network.parseMember(member).unitId)]);
+        if (members.length > 0 && distinctUnits.size >= 2) result.push({ ...network, members });
+    }
+    return result;
+}
+
+function eligibleNetworkComponent(
+    model: C3Network,
+    eligible: ReadonlyMap<string, ReadonlySet<number>>,
+    unitId: string,
+    network: SerializedC3NetworkGroup,
+    role: C3Role,
+): boolean {
+    const componentIndex = model.resolveComponentIndex(unitId, network, role);
+    return componentIndex !== undefined && eligible.get(unitId)?.has(componentIndex) === true;
 }

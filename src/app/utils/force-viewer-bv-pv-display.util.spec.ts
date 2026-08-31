@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { formatBvPv } from './force-viewer-bv-pv-display.util';
+import type { ForceMember } from '../models/force-member.model';
+import { formatBvPv, formatForceMembersBvPv } from './force-viewer-bv-pv-display.util';
 
 describe('force viewer BV/PV display', () => {
     it('formats the adjusted value', () => {
@@ -27,5 +28,19 @@ describe('force viewer BV/PV display', () => {
 
     it('formats zero totals', () => {
         expect(formatBvPv(0, 0, 'both')).toBe('0');
+    });
+
+    it('selects damaged or pristine Classic base and adjusted projections independently', () => {
+        const member = {
+            kind: 'cbt',
+            adjustedBattleValue: () => 800,
+            pristineAdjustedBattleValue: () => 1_000,
+            currentBaseBattleValue: () => 700,
+            pristineBattleValue: () => 900,
+            entity: { battleValue: () => 900 },
+        } as unknown as ForceMember;
+
+        expect(formatForceMembersBvPv([member], 'both', 'damaged')).toBe('800 (700)');
+        expect(formatForceMembersBvPv([member], 'both', 'pristine')).toBe('1,000 (900)');
     });
 });

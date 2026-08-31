@@ -37,7 +37,7 @@ let unitConditionBannerFadeMaskSequence = 0;
 
 /**
  * Emits application interaction/presentation markup as part of SVG generation.
- * This is the sole record-sheet control contract; generated artwork owns it natively.
+ * This is the sole record-sheet control contract; the generated sheet owns it natively.
  */
 export function renderGeneratedRecordSheetControls(
     svg: SVGSVGElement,

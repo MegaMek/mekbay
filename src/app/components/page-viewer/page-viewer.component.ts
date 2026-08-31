@@ -1439,7 +1439,7 @@ export class PageViewerComponent implements AfterViewInit {
             slots: slotStates,
             units: allUnits.map((unit) => ({
                 unitId: unit.id,
-                svg: this.pageViewerSheetSource.svg(unit)
+                svg: unit.recordSheet()
             })),
             visibleLeft,
             visibleRight,
@@ -1810,7 +1810,7 @@ export class PageViewerComponent implements AfterViewInit {
                 return;
             }
 
-            const svg = this.pageViewerSheetSource.svg(targetUnit);
+            const svg = targetUnit.recordSheet();
             if (!svg) {
                 // Fallback to instant navigation if no SVG
                 this.pageViewerNavigation.suppressNextSelectionRedisplay();
@@ -2239,7 +2239,7 @@ export class PageViewerComponent implements AfterViewInit {
         
         // Replace the cloned SVG with the real SVG in the shadow wrapper
         // This prevents the "black flash" when the shadow is cleared
-        const realSvg = this.pageViewerSheetSource.svg(unit);
+        const realSvg = unit.recordSheet();
         const centerContent = this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
         const showFluff = centerContent === 'fluffImage';
         
