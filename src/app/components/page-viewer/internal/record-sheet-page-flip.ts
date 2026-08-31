@@ -28,6 +28,7 @@ function addRecordSheetPageFlipControl(
     const viewBox = parseViewBox(svg);
     const group = document.createElementNS(SVG_NS, 'g');
     group.classList.add(CONTROL_CLASS);
+    group.classList.add('interactive');
     group.dataset['nextPageIndex'] = String((pageIndex + 1) % pageCount);
     group.setAttribute('role', 'button');
     group.setAttribute('tabindex', '0');
