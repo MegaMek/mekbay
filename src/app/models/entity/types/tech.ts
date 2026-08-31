@@ -89,7 +89,12 @@ function availabilityTuple(source: TechRatingSource): TechAvailabilityTuple {
         return source.availability as TechAvailabilityTuple;
     }
     const availability = source.availability as TechAvailability;
-    return TECH_ERAS.map(era => availability[era] ?? 'X') as unknown as TechAvailabilityTuple;
+    return [
+        availability.sl ?? 'X',
+        availability.sw ?? 'X',
+        availability.clan ?? 'X',
+        availability.da ?? 'X',
+    ];
 }
 
 function harderAvailability(value: CompositeAvailabilityCode): CompositeAvailabilityCode {

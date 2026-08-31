@@ -19,6 +19,7 @@ import {
     resolveSerializedFormation,
     UnitGroup,
     type CBTForceV2AuthorityMutationContext,
+    type ForceOwnerRevisionFence,
     type ForceGroupPatch,
     type PreparedLoadedCBTForceV2Authority,
 } from './force.model';
@@ -55,7 +56,7 @@ import {
 } from './runtime/ready-classic-unit';
 import { isSerializedNonMekUnit } from './runtime/non-mek-unit-persistence';
 import { jsonValuesEqual } from '../utils/json-value.util';
-import type { DeferredUnitDescriptor, JsonValue, SavedEntityIdentity } from './persisted-unit-state';
+import type { JsonValue, SavedEntityIdentity } from './persisted-unit-state';
 import {
     prepareCBTForcePersistenceV2 as prepareCurrentCBTForcePersistenceV2,
     prepareDirectUnitAdmission,
@@ -137,7 +138,6 @@ import {
 } from './cbt-unit-snapshot';
 import {
     CBTForceAuthority,
-    rejectedHeatCommand,
     type CBTForceAuthorityFence,
     type PreparedTargetingReconciliation,
     type PreparedUnitAdmission,
@@ -179,7 +179,6 @@ import {
     nonMekCommandBoundary,
     nonMekCommandHistory,
     forceHistory,
-    heatHistory,
     historyCrewLabel,
     historyTargetLabel,
     mekCommandBoundary,
@@ -234,9 +233,6 @@ import type {
     MekEquipmentChoiceDispatchResult,
     MekEquipmentChoiceToken,
     MekEquipmentInteraction,
-    MekHeatCommand,
-    MekHeatCommandResult,
-    MekHeatInteraction,
     RuntimeUndoCommandResult,
     SelectedWeaponFireCommandResult,
 } from './cbt-force-api';
@@ -540,10 +536,6 @@ export class CBTForce extends Force<never> {
         return (await this.removeRosterGroup(group, relocateMembersToGroupId, !relocateUnits)).accepted;
     }
 
-    /** Empty canonical groups are intentional organization state, not stale unit containers. */
-    public override removeEmptyGroups(): void {
-    }
-
     public moveMember(
         instanceId: UnitInstanceId,
         targetGroupId: string,
@@ -555,13 +547,6 @@ export class CBTForce extends Force<never> {
             targetGroupId,
             atIndex,
         });
-    }
-
-    public setUnitCommander(
-        instanceId: UnitInstanceId,
-        commander: boolean,
-    ): Promise<CBTForceRosterCommandResult> {
-        return this.dispatchCanonicalRosterCommand({ kind: 'set-commander', instanceId, commander });
     }
 
     public removeClassicMember(instanceId: UnitInstanceId): Promise<CBTForceRosterCommandResult> {
@@ -1034,46 +1019,12 @@ export class CBTForce extends Force<never> {
         });
     }
 
-    protected override createForceUnit(unit: UnitSummary): never {
-        void unit;
-        throw new Error('Classic units must be admitted through ForceUnitAdmissionService');
-    }
-
     protected override shouldPersistEmptyGroup(_group: UnitGroup<never>): boolean {
         return true;
     }
 
     protected override ownedMemberCountForCapacity(): number {
         return this.cbtForceV2MemberInstanceIds().length;
-    }
-
-    public override getDeferredUnitDescriptors(): readonly DeferredUnitDescriptor[] {
-        const envelope = this.getSupportedCBTForceV2Envelope();
-        if (!envelope) return Object.freeze([]);
-        return Object.freeze(envelope.units.flatMap(entry => {
-            if (entry.kind !== 'deferred') return [];
-            const source = entry.source;
-            const payload = source.payload;
-            const rawLegacyName = payload !== null && typeof payload === 'object' && !Array.isArray(payload)
-                && typeof payload['unit'] === 'string'
-                ? payload['unit']
-                : String(entry.instanceId);
-            return [Object.freeze({
-                instanceId: entry.instanceId,
-                rawLegacyName,
-                requestedIdentity: source.identity.kind === 'resolved' ? source.identity.savedIdentity : undefined,
-                candidates: source.identity.kind === 'resolved'
-                    ? [source.identity.savedIdentity]
-                    : source.identity.candidates,
-                reason: 'catalog-not-ready' as const,
-                gameplayAdmission: Object.freeze({
-                    gameSystem: 'CBT' as const,
-                    code: 'NO_RUNTIME_AUTHORITY',
-                    message: 'This saved unit has no V2 runtime authority yet.',
-                }),
-                sourcePayload: source.payload,
-            })];
-        }));
     }
 
     /** Resolves one exact native Entity and atomically admits its sparse runtime. */
@@ -2100,52 +2051,6 @@ export class CBTForce extends Force<never> {
         });
     }
 
-    /** Detached Mek heat rows; no runtime, profile, entity, or facade escapes. */
-    public getMekHeatInteractions(): readonly MekHeatInteraction[] {
-        return this.authority.heatInteractions(this.currentHeatPolicy(), this.readOnly());
-    }
-
-    public async dispatchMekHeatCommand(
-        command: MekHeatCommand,
-    ): Promise<MekHeatCommandResult> {
-        let capturedCommand: MekHeatCommand;
-        try {
-            capturedCommand = structuredClone(command);
-        } catch {
-            return rejectedHeatCommand('COMMAND_REJECTED');
-        }
-        return this.enqueueCBTForceV2AuthorityMutation(() => {
-            if (this.readOnly()) return rejectedHeatCommand('READ_ONLY');
-            const selectedId = this.authority.heatCommandInstanceId(capturedCommand.token);
-            const selectedReady = selectedId === null ? null : this.authority.readyMekUnit(selectedId);
-            const beforeState = selectedReady?.getInstance().snapshot();
-            const capture = this.captureRuntimeCommandMutation(
-                selectedId === null ? Object.freeze([]) : this.c3RuntimeMutationScope(selectedId),
-            );
-            return this.authority.dispatchHeatCommand(
-                capturedCommand,
-                () => this.readOnly(),
-                () => this.currentHeatPolicy(),
-                () => this.trackPhaseAndTurn(),
-                this.encounterRuntime.snapshot().networks,
-                this.injector.get(ToastService),
-                () => {
-                    const afterState = selectedReady?.getInstance().snapshot();
-                    const changedUnitIds = this.recordRuntimeCommandMutation(
-                        capture,
-                        capturedCommand.type === 'end-turn'
-                            ? forceHistory(RUNTIME_HISTORY_MESSAGE.TURN_ENDED)
-                            : selectedId !== null && beforeState !== undefined && afterState !== undefined
-                                ? heatHistory(selectedId, beforeState.heat, afterState.heat)
-                                : undefined,
-                    );
-                    this.reserveForceOwnerMutationIntent();
-                    this.emitChangedFromReservedIntent(changedUnitIds);
-                },
-            );
-        });
-    }
-
     /** Ends every canonical V2 turn through one owner boundary. */
     public endTurnForAllUnits(): Promise<CBTForceEndTurnAllResult> {
         return this.unitCommandDispatcher.endTurnForAll();
@@ -2345,9 +2250,14 @@ export class CBTForce extends Force<never> {
         return this.encounterRuntime.snapshot().networks;
     }
 
-    /** Replaces the complete encounter-owned C3 graph in one force revision. */
-    public replaceC3EncounterNetworks(networks: readonly EncounterNetwork[]): boolean {
-        if (this.readOnly() || this.c3Networks().length > 0) return false;
+    /** Atomically replaces the complete encounter-owned C3 graph for a current editor session. */
+    public replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+        revisionFence: ForceOwnerRevisionFence,
+        networks: readonly EncounterNetwork[],
+    ): boolean {
+        if (this.readOnly()
+            || !this.isForceOwnerRevisionFenceCurrent(revisionFence)
+            || this.c3Networks().length > 0) return false;
         const detached = structuredClone(networks);
         const current = this.encounterRuntime.snapshot();
         const planned = reduceCBTEncounter(current, {
@@ -2357,9 +2267,13 @@ export class CBTForce extends Force<never> {
         });
         if (planned.kind === 'rejected'
             || jsonValuesEqual(
-                current.networks as unknown as JsonValue,
-                planned.snapshot.networks as unknown as JsonValue,
+                current.networks,
+                planned.snapshot.networks,
             )) return false;
+        const affectedUnitIds = new Set<UnitInstanceId>();
+        for (const network of [...current.networks, ...planned.snapshot.networks]) {
+            for (const endpoint of network.endpoints) affectedUnitIds.add(endpoint.instanceId);
+        }
         const c3UnitIds = this.authority.c3.emergencyMasterUnitIds();
         const c3Revisions = new Map(c3UnitIds.map(instanceId => [
             instanceId,
@@ -2373,9 +2287,12 @@ export class CBTForce extends Force<never> {
                 c3UnitIds,
             );
             publishC3EmergencyMasterNotices(c3.notices, this.injector.get(ToastService));
-            const changedUnitIds = c3UnitIds.filter(instanceId =>
-                this.authority.readyUnit(instanceId)?.revision() !== c3Revisions.get(instanceId));
-            this.emitChangedFromReservedIntent(changedUnitIds);
+            for (const instanceId of c3UnitIds) {
+                if (this.authority.readyUnit(instanceId)?.revision() !== c3Revisions.get(instanceId)) {
+                    affectedUnitIds.add(instanceId);
+                }
+            }
+            this.emitChangedFromReservedIntent(Object.freeze([...affectedUnitIds]));
         }
         return changed;
     }
@@ -2446,10 +2363,6 @@ export class CBTForce extends Force<never> {
 
     private invalidateInventoryControlTargetRegistry(): void {
         this.targetRegistryVersionState.update(version => version + 1);
-    }
-
-    protected override transferPilotData(_fromUnit: never, _toUnit: never): void {
-        throw new Error('Classic crew transfer requires canonical V2 members');
     }
 
     protected override buildCBTForcePersistenceRecord(

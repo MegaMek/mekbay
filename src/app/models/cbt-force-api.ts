@@ -22,7 +22,6 @@ import type {
 } from './runtime/crew-profile';
 import type { AttackerTargetingState } from './runtime/attacker-targeting-state';
 import type { RuntimeCommandEntry } from './runtime/runtime-command-session';
-import type { MekHeatAutomationPolicyV2 } from './runtime/mek-heat-state-v2';
 
 export type CBTForceTargetRegistryAuthority = 'user' | 'opfor-sync' | 'registry-reset';
 
@@ -254,79 +253,6 @@ export type MekEquipmentChoiceDispatchResult =
             | 'NOT_ADMITTED'
             | 'CHOICE_UNAVAILABLE'
             | 'HANDLER_REJECTED';
-    };
-
-declare const MEK_HEAT_COMMAND_TOKEN: unique symbol;
-export type MekHeatCommandToken = string & { readonly [MEK_HEAT_COMMAND_TOKEN]: true };
-
-export interface MekHeatSourceRow {
-    readonly id: string;
-    readonly label: string;
-    readonly value: number;
-}
-
-export type MekHeatInteraction =
-    | {
-        readonly kind: 'supported';
-        readonly token: MekHeatCommandToken;
-        readonly instanceId: UnitInstanceId;
-        readonly unitLabel: string;
-        readonly stateRevision: StateRevision;
-        readonly policy: MekHeatAutomationPolicyV2;
-        readonly current: number;
-        readonly previous: number;
-        readonly pendingOverride?: number;
-        readonly heatsinksOff: number;
-        readonly maxHeatsinksOff: number;
-        readonly projected: number;
-        readonly delta: number;
-        readonly capacity: number;
-        readonly remainingDissipation: number;
-        readonly dissipated: number;
-        readonly sources: readonly MekHeatSourceRow[];
-        readonly hasPendingSettlement: boolean;
-        readonly disabled: boolean;
-    }
-    | {
-        readonly kind: 'unsupported';
-        readonly instanceId: UnitInstanceId;
-        readonly unitLabel: string;
-        readonly blockers: readonly string[];
-        readonly disabled: true;
-    };
-
-export type MekHeatCommand =
-    | {
-        readonly type: 'set-target';
-        readonly token: MekHeatCommandToken;
-        readonly heat: number | null;
-    }
-    | {
-        readonly type: 'set-heatsinks-off';
-        readonly token: MekHeatCommandToken;
-        readonly heatsinksOff: number;
-    }
-    | {
-        readonly type: 'apply' | 'end-turn';
-        readonly token: MekHeatCommandToken;
-    };
-
-export type MekHeatCommandResult =
-    | { readonly accepted: true; readonly changed: boolean }
-    | {
-        readonly accepted: false;
-        readonly changed: false;
-        readonly reason:
-            | 'UNKNOWN_TOKEN'
-            | 'READ_ONLY'
-            | 'OWNER_CHANGED'
-            | 'STALE_REVISION'
-            | 'ENTITY_MISMATCH'
-            | 'NOT_ADMITTED'
-            | 'UNSUPPORTED_HEAT_CONTEXT'
-            | 'INVALID_AMOUNT'
-            | 'EXCEEDS_CAPACITY'
-            | 'COMMAND_REJECTED';
     };
 
 export interface CBTForceEndTurnUnitResult {

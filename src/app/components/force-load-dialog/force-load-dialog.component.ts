@@ -30,6 +30,7 @@ import { ForceWorkspaceStateService } from '../../services/force-workspace-state
 import { ForceDialogsService } from '../../services/force-dialogs.service';
 import { ForceOperationService } from '../../services/force-operation.service';
 import { OperationStorageService } from '../../services/operation-storage.service';
+import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { type ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
@@ -128,6 +129,7 @@ export class ForceLoadDialogComponent {
     private dialogData: ForceLoadDialogData | null = inject(DIALOG_DATA, { optional: true });
     private dataService = inject(DataService);
     private operationStorage = inject(OperationStorageService);
+    private organizationStorage = inject(OrganizationStorageService);
     private destroyRef = inject(DestroyRef);
     private injector = inject(Injector);
     private sessionPersistenceService = inject(SessionPersistenceService);
@@ -1816,7 +1818,7 @@ export class ForceLoadDialogComponent {
     private async loadOrganizations(): Promise<void> {
         this.organizationsLoading.set(true);
         try {
-            const result = await this.dataService.listOrganizations();
+            const result = await this.organizationStorage.listOrganizations();
             this.organizations.set(result || []);
         } finally {
             this.organizationsLoading.set(false);
@@ -1890,7 +1892,7 @@ export class ForceLoadDialogComponent {
             'danger'
         );
         if (confirmed) {
-            await this.dataService.deleteOrganization(org.organizationId);
+            await this.organizationStorage.deleteOrganization(org.organizationId);
             this.organizations.update(orgs => orgs.filter(o => o !== org));
             this.selectedOrganization.set(null);
         }
@@ -1899,7 +1901,7 @@ export class ForceLoadDialogComponent {
     private async reloadOrganizations(): Promise<void> {
         this.organizationsLoading.set(true);
         try {
-            const result = await this.dataService.listOrganizations();
+            const result = await this.organizationStorage.listOrganizations();
             const orgs = result || [];
             this.organizations.set(orgs);
             const prev = this.selectedOrganization();

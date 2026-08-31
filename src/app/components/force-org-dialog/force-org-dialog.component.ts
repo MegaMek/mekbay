@@ -18,6 +18,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import { sanitizeForceTags } from '../../models/force-serialization';
 import { DataService } from '../../services/data.service';
+import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { LayoutService } from '../../services/layout.service';
@@ -282,6 +283,7 @@ function createMissingForceEntry(instanceId: string): LoadForceEntry {
 export class ForceOrgDialogComponent {
     private dialogRef = inject(DialogRef<void>);
     private dataService = inject(DataService);
+    private organizationStorage = inject(OrganizationStorageService);
     private dialogsService = inject(DialogsService);
     private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private destroyRef = inject(DestroyRef);
@@ -3048,7 +3050,7 @@ export class ForceOrgDialogComponent {
                 } as OrgGroupData)),
             };
 
-            await this.dataService.saveOrganization(serialized);
+            await this.organizationStorage.saveOrganization(serialized);
             this.resetDirtyTracking();
         } finally {
             this.saving.set(false);
@@ -3059,7 +3061,7 @@ export class ForceOrgDialogComponent {
         this.loading.set(true);
         this.sidebarLoading.set(false);
         try {
-            const org = await this.dataService.getOrganization(organizationId);
+            const org = await this.organizationStorage.getOrganization(organizationId);
             if (!org) {
                 this.organizationId.set(null);
                 this.organizationOwned.set(true);

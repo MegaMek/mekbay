@@ -57,10 +57,14 @@ const ENTITY_CONDITION_OVERLAY = 'entity-sheet-unit-condition';
 const ENTITY_CREW_STATE_OVERLAY = 'entity-sheet-crew-state';
 const ENTITY_WEAPON_TARGET_OVERLAY = 'entity-sheet-weapon-target';
 
-interface BoundEntitySheet {
-    readonly member: CBTForceMember;
+interface BoundEntitySheetPage {
     readonly svg: SVGSVGElement;
     readonly binding: NonMekRecordSheetBinding;
+}
+
+interface BoundEntitySheets {
+    readonly member: CBTForceMember;
+    readonly pages: Map<SVGSVGElement, BoundEntitySheetPage>;
     readonly subscription: { unsubscribe(): void };
 }
 
@@ -82,7 +86,7 @@ export class PageViewerNonMekRuntimeService {
     private readonly pilotEditor = inject(ForcePilotEditorService);
     private readonly toast = inject(ToastService);
     private readonly zoomPan = inject(PageViewerZoomPanService);
-    private readonly bound = new Map<string, BoundEntitySheet>();
+    private readonly bound = new Map<string, BoundEntitySheets>();
     private picker: OpenEntityPicker | null = null;
 
     isPickerOpen(unitId: string): boolean {
@@ -91,29 +95,37 @@ export class PageViewerNonMekRuntimeService {
 
     bind(member: CBTForceMember, svg: SVGSVGElement): boolean {
         if (isCBTMekForceMember(member)) return false;
-        const existing = this.bound.get(member.id);
-        if (existing?.svg === svg && existing.member === member) {
-            this.render(member);
-            return true;
+        let current = this.bound.get(member.id);
+        if (current?.member !== member) {
+            this.destroyBinding(member.id);
+            current = undefined;
         }
-        this.destroyBinding(member.id);
+        if (current?.pages.has(svg)) return true;
 
         const snapshot = this.snapshot(member);
         if (!snapshot) return false;
         svg.classList.toggle('read-only', member.force.readOnly());
+        const equipment = member.force.getEquipmentPanelSnapshot(member.id);
         const binding = bindNonMekRecordSheet(
             svg,
             snapshot,
             member.force.readOnly()
                 ? undefined
                 : (interaction, event) => this.handle(member, interaction, event),
-            member.force.getEquipmentPanelSnapshot(member.id),
+            equipment,
         );
-        const subscription = member.force.changed.subscribe(changedUnitIds => {
-            if (changedUnitIds?.includes(member.id) ?? true) this.render(member);
-        });
-        this.bound.set(member.id, { member, svg, binding, subscription });
-        this.render(member);
+        if (!current) {
+            current = {
+                member,
+                pages: new Map(),
+                subscription: member.force.changed.subscribe(changedUnitIds => {
+                    if (changedUnitIds?.includes(member.id) ?? true) this.render(member);
+                }),
+            };
+            this.bound.set(member.id, current);
+        }
+        current.pages.set(svg, { svg, binding });
+        this.renderPage(current.pages.get(svg)!, snapshot, equipment);
         return true;
     }
 
@@ -137,11 +149,17 @@ export class PageViewerNonMekRuntimeService {
         const current = this.bound.get(member.id);
         const snapshot = this.snapshot(member);
         if (!current || current.member !== member || !snapshot) return;
-        const issues = current.binding.render(
-            snapshot,
-            member.force.getEquipmentPanelSnapshot(member.id),
-        );
-        if (issues.length > 0) {
+        const equipment = member.force.getEquipmentPanelSnapshot(member.id);
+        for (const page of current.pages.values()) this.renderPage(page, snapshot, equipment);
+    }
+
+    private renderPage(
+        page: BoundEntitySheetPage,
+        snapshot: NonMekRecordSheetSnapshot,
+        equipment: EquipmentPanelSnapshot | null,
+    ): void {
+        const issues = page.binding.render(snapshot, equipment);
+        if (issues.length > 0 && page.svg.dataset['mekbayPartialSheet'] !== '1') {
             this.logger.warn(`Record-sheet layout omissions for ${snapshot.displayName}: ${issues.join('; ')}`);
         }
     }
@@ -305,7 +323,7 @@ export class PageViewerNonMekRuntimeService {
         const portal = new ComponentPortal(WeaponTargetChoiceMenuComponent, null, this.injector);
         const { componentRef, closed } = this.overlayManager.createManagedOverlay(
             ENTITY_WEAPON_TARGET_OVERLAY,
-            anchor as unknown as HTMLElement,
+            anchor,
             portal,
             {
                 hasBackdrop: false,
@@ -562,7 +580,7 @@ export class PageViewerNonMekRuntimeService {
         const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
         const result = this.overlayManager.createManagedOverlay(
             key,
-            anchor as unknown as HTMLElement,
+            anchor,
             portal,
             {
                 hasBackdrop: false,
@@ -901,7 +919,7 @@ export class PageViewerNonMekRuntimeService {
         const current = this.bound.get(unitId);
         if (!current) return;
         current.subscription.unsubscribe();
-        current.binding.destroy();
+        for (const page of current.pages.values()) page.binding.destroy();
         this.bound.delete(unitId);
     }
 }

@@ -1150,11 +1150,36 @@ export class PageViewerComponent implements AfterViewInit {
             const interactive = this.pageViewerMekRuntime.bind(member, svg);
             if (!interactive) return;
         } else {
-            const interactive = this.pageViewerEntityRuntime.bind(member, svg);
+            const interactive = member.recordSheets()
+                .every(page => this.pageViewerEntityRuntime.bind(member, page));
             if (!interactive) return;
         }
         if (!this.readOnly()) this.getOrCreateCanvasOverlay(wrapper, member);
         this.getOrCreateInteractionOverlay(wrapper, member, overlayMode);
+    }
+
+    protected onRecordSheetPageFlip(event: Event): void {
+        if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
+        if (!(event.target instanceof Element)) return;
+        const control = event.target.closest('.record-sheet-page-flip-control');
+        const wrapper = control?.closest<HTMLDivElement>('.page-wrapper.active-page');
+        const svg = control?.closest<SVGSVGElement>('svg');
+        const unitId = wrapper?.dataset['unitId'];
+        if (!control || !wrapper || !svg || !unitId) return;
+        const member = this.forceUnits().find(candidate => candidate.id === unitId);
+        if (!member) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        const next = member.showNextRecordSheet();
+        if (!next || next === svg) return;
+
+        const setAsCurrent = this.currentSvg() === svg;
+        this.attachSvgToWrapper({ wrapper, svg: next, setAsCurrent });
+        const showFluff = this.optionsService.options().printAllOptions.recordSheetCenterPanelContent === 'fluffImage';
+        this.pageViewerPresentation.applyFluffImageVisibilityToSvg(next, showFluff);
+        this.syncZoomPanTransformTargets();
+        this.zoomPanService.applyCurrentTransform();
     }
 
     private syncZoomPanTransformTargets(): void {
@@ -2211,10 +2236,10 @@ export class PageViewerComponent implements AfterViewInit {
         const totalUnits = allUnits.length;
         const currentStartIndex = this.viewStartIndex();
         const effectiveVisible = this.effectiveVisiblePageCount();
-        const direction = clickedShadow.dataset['shadowDirection'];
+        const rawDirection = clickedShadow.dataset['shadowDirection'];
         const scale = this.zoomPanService.scale();
         const shadowNavigationPlan = this.pageViewerShadowNavigation.buildPlan({
-            rawDirection: direction ?? undefined,
+            rawDirection,
             source,
             unitId: unit.id,
             currentStartIndex,
@@ -2274,8 +2299,8 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Create incoming shadow pages that will slide into view during animation
         // These are the pages beyond the clicked shadow in the direction of movement
-        if (direction) {
-            this.createIncomingShadowPages(clickedShadow, targetIndex, direction, shadowNavigationPlan.pagesToMove, scale, showFluff, allUnits, animationVersion);
+        if (rawDirection) {
+            this.createIncomingShadowPages(clickedShadow, targetIndex, shadowNavigationPlan.direction, shadowNavigationPlan.pagesToMove, scale, showFluff, allUnits, animationVersion);
         }
 
         this.startSwipeAnimation({
@@ -2316,7 +2341,7 @@ export class PageViewerComponent implements AfterViewInit {
     private createIncomingShadowPages(
         clickedShadow: HTMLDivElement,
         targetIndex: number,
-        direction: string,
+        direction: ShadowDirection,
         pagesToMove: number,
         scale: number,
         showFluff: boolean,
@@ -2326,7 +2351,7 @@ export class PageViewerComponent implements AfterViewInit {
         this.pageViewerShadowRender.createIncomingShadowPages({
             clickedShadow,
             targetIndex,
-            direction: direction === 'right' ? 'right' : 'left',
+            direction,
             pagesToMove,
             scale,
             showFluff,

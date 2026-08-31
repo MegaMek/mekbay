@@ -3,6 +3,7 @@
 
 import type { Equipment } from './equipment.model';
 import { hasEquipmentVariant } from './equipment-variant.model';
+import type { WeightClass } from './entity/types';
 
 export type JumpJetKind = 'standard' | 'improved' | 'prototype-improved';
 
@@ -71,7 +72,7 @@ export function isSuperCooledMyomerEquipment(equipment: Equipment | undefined): 
     return equipment?.hasFlag(SUPER_COOLED_MYOMER_FLAG) === true;
 }
 
-export function partialWingJumpBonus(weightClass: string): 1 | 2 {
+export function partialWingJumpBonus(weightClass: WeightClass): 1 | 2 {
     return ['Ultra Light', 'Light', 'Medium'].includes(weightClass) ? 2 : 1;
 }
 
@@ -93,7 +94,7 @@ export function jumpBoosterVariableTonnage(
     equipment: Equipment | null | undefined,
     context: Readonly<{
         entityTonnage: number;
-        entityWeightClass: string;
+        entityWeightClass: WeightClass;
         mountSize: number;
         standardRound: (value: number) => number;
     }>,
@@ -113,7 +114,7 @@ export function jumpBoosterVariableTonnage(
 
 export function jumpBoosterVariableCost(
     equipment: Equipment | null | undefined,
-    weightClass: string,
+    weightClass: WeightClass,
 ): number | null {
     if (!isMechanicalJumpBoosterEquipment(equipment)) return null;
     if (weightClass === 'Assault') return 300000;

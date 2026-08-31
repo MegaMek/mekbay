@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
+import type { MotiveType } from '../../types';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { nextHalfTon, standardRound } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
@@ -102,7 +103,7 @@ function floorSupportWeight(weight: number, tonnage: number): number {
   return tonnage < 5 ? Math.floor(weight * 1000) / 1000 : Math.floor(weight * 2) / 2;
 }
 
-function fixedWingPriceMultiplier(motiveType: string, tonnage: number): number {
+function fixedWingPriceMultiplier(motiveType: MotiveType, tonnage: number): number {
   if (motiveType === 'Airship') return 1 + tonnage / 10000;
   if (motiveType === 'Station Keeping') return 1 + tonnage / 75;
   return 1 + tonnage / 50;

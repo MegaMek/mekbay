@@ -107,18 +107,18 @@ describe('page-viewer published Mek runtime commands', () => {
             }));
     });
 
-    it('routes the sheet shutdown control through typed shutdown and startup actions', () => {
+    it('maps the manual shutdown control to transient state without declaring a PSR action', () => {
         const interaction = { kind: 'shutdown', expectedRevision: revision } as MekRecordSheetInteraction;
         expect(recordSheetCommand(interaction, source, false)).toEqual(jasmine.objectContaining({
-            type: 'declare-mek-action',
-            action: { schemaVersion: 1, kind: 'shutdown' },
+            type: 'set-mek-shutdown-state',
+            shutdown: true,
         }));
         expect(recordSheetCommand(interaction, {
             ...source,
             query: { ...source.query, hasCondition: condition => condition === 'shutdown' },
         }, false)).toEqual(jasmine.objectContaining({
-            type: 'declare-mek-action',
-            action: { schemaVersion: 1, kind: 'startup' },
+            type: 'set-mek-shutdown-state',
+            shutdown: false,
         }));
     });
 });

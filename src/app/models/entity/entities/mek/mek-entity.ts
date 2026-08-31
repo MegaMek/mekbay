@@ -68,6 +68,7 @@ import {
   HeatSinkType,
   IntegralHeatSinkCapability,
   IntrinsicWeapon,
+  isMekLocation,
   isMekLegLocation,
   isTechAvailableForBase,
   MEK_INTERNAL_STRUCTURE,
@@ -119,7 +120,9 @@ const MEK_GYRO_FEATURES: Readonly<Partial<Record<GyroType, EntityFeature>>> = {
 };
 
 export abstract class MekEntity extends BaseEntity {
-  override componentLocationOrder(): readonly string[] {
+  abstract override get locationOrder(): readonly MekLocation[];
+
+  override componentLocationOrder(): readonly MekLocation[] {
     if (this.chassisConfig === 'Quad') return ['HD', 'CT', 'RT', 'LT', 'FRL', 'FLL', 'RRL', 'RLL'];
     if (this.chassisConfig === 'Tripod') return ['HD', 'CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL', 'CL'];
     return ['HD', 'CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL'];
@@ -246,7 +249,7 @@ export abstract class MekEntity extends BaseEntity {
     super.setStructureAt(location, structure);
     if (!previous.equals(structure)) this.structureDonors.update(current => {
       const next = new Map(current);
-      next.delete(location as MekLocation);
+      if (isMekLocation(location)) next.delete(location);
       return next;
     });
     if (!this.hasHybridStructure()) this.structureDonors.set(new Map());
@@ -723,14 +726,14 @@ export abstract class MekEntity extends BaseEntity {
    * This is a READ-ONLY view.  To change slot assignments, mutate the
    * `equipment` signal (update mount placements), and this recomputes.
    */
-  criticalSlotGrid = computed<Map<string, CriticalSlotView[]>>(() => {
-    const grid = new Map<string, CriticalSlotView[]>();
+  criticalSlotGrid = computed<Map<MekLocation, CriticalSlotView[]>>(() => {
+    const grid = new Map<MekLocation, CriticalSlotView[]>();
     const slotsPerLoc = MEK_SLOTS_PER_LOCATION;
     const armoredSys = this.armoredSystemSlots();
 
     for (const loc of this.locationOrder) {
       // Start with system template + empty fill
-      const systemSlots = this.getSystemSlotsForLocation(loc as string);
+      const systemSlots = this.getSystemSlotsForLocation(loc);
       const slots: CriticalSlotView[] = [];
       for (let i = 0; i < slotsPerLoc; i++) {
         const s = systemSlots[i] ?? EMPTY_SLOT;
@@ -742,7 +745,7 @@ export abstract class MekEntity extends BaseEntity {
         }
       }
 
-      grid.set(loc as string, slots);
+      grid.set(loc, slots);
     }
 
     // Overlay equipment placements. Superheavy Meks may share a physical slot
@@ -750,7 +753,7 @@ export abstract class MekEntity extends BaseEntity {
     for (const mount of this.equipment()) {
       if (!mount.placements) continue;
       for (const p of mount.placements) {
-        const slots = grid.get(p.location);
+        const slots = isMekLocation(p.location) ? grid.get(p.location) : undefined;
         if (slots && p.slotIndex >= 0 && p.slotIndex < MEK_SLOTS_PER_LOCATION) {
           const existing = slots[p.slotIndex];
           slots[p.slotIndex] = existing.type === 'equipment'
@@ -782,9 +785,8 @@ export abstract class MekEntity extends BaseEntity {
   protected override computeStructureValues(tonnage: number): Map<string, number> {
     const values = new Map<string, number>();
     for (const loc of this.locationOrder) {
-      const location = loc as MekLocation;
-      const structureTonnage = this.structureTonnages().get(location) ?? tonnage;
-      values.set(location, getInternalForTonnage(structureTonnage, location));
+      const structureTonnage = this.structureTonnages().get(loc) ?? tonnage;
+      values.set(loc, getInternalForTonnage(structureTonnage, loc));
     }
     return values;
   }

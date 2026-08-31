@@ -8,6 +8,7 @@ import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
 import type { UnitSummary, UnitTagEntry } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
+import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { GameService } from '../../services/game.service';
 import { TagsService } from '../../services/tags.service';
@@ -94,6 +95,7 @@ type CollectionExportValue = string | number;
 export class CollectionDialogComponent {
     private readonly dialogRef = inject(DialogRef<void>);
     private readonly dataService = inject(DataService);
+    private readonly organizationStorage = inject(OrganizationStorageService);
     private readonly dialogsService = inject(DialogsService);
     private readonly gameService = inject(GameService);
     private readonly tagsService = inject(TagsService);
@@ -1035,7 +1037,7 @@ export class CollectionDialogComponent {
 
         this.organizationsLoading.set(true);
         try {
-            const organizations = await this.dataService.listOrganizations();
+            const organizations = await this.organizationStorage.listOrganizations();
             this.organizations.set(organizations || []);
             this.organizationsLoaded.set(true);
         } catch {
@@ -1051,7 +1053,7 @@ export class CollectionDialogComponent {
         this.organizationUnitCounts.set(new Map<string, number>());
 
         try {
-            const organization = await this.dataService.getOrganization(organizationId);
+            const organization = await this.organizationStorage.getOrganization(organizationId);
             if (!organization) {
                 if (loadToken === this.organizationFilterLoadToken) {
                     this.statusMessage.set('Could not find the selected TO&E.');

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EntityFluff } from '../types';
+import { EntityFluff, type EntityMountedEquipment } from '../types';
 import {
   encodeBlkArmorTechLevel,
   encodeBlkArmorTechRating,
@@ -260,7 +260,7 @@ export function writeEquipmentByLocation(
   w: BuildingBlockWriter,
   entity: BaseEntity,
   equipTags: [string, string][],
-  encodeLineFn: (m: any, opts: any) => string,
+  encodeLineFn: (mount: EntityMountedEquipment, options: EncodeEquipmentOptions) => string,
   writeEmpty = false,
   encodeOptions: EncodeEquipmentOptions = { blkMode: true },
 ): Map<string, string[]> {

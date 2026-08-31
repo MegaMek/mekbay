@@ -11,14 +11,17 @@ import type { UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-cat
 import type { ForceViewerBVPVDisplayDamage } from './options.model';
 import type { NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
 
+const MAX_RECORD_SHEET_PAGES = 2;
+
 /** A direct Classic member. Its force owns the entity, rules, and sparse runtime. */
 export class CBTForceMember {
     readonly kind: 'cbt';
     readonly id: UnitInstanceId;
     readonly force: CBTForce;
     readonly entity: BaseEntity;
-    #recordSheet: SVGSVGElement | null = null;
-    #recordSheetLoad: Promise<SVGSVGElement> | null = null;
+    #recordSheets: readonly SVGSVGElement[] = [];
+    #recordSheetLoad: Promise<readonly SVGSVGElement[]> | null = null;
+    readonly #recordSheetIndex = signal(0);
     readonly #runtime = signal<Readonly<{
         owner: object | null;
         revision: number | null;
@@ -27,6 +30,7 @@ export class CBTForceMember {
         owner: object | null;
         revision: number | null;
     }>>(Object.freeze({ owner: null, revision: null }));
+    readonly #tacticalInventoryExpandedRows = signal<ReadonlySet<string>>(new Set());
 
     /** Current entity + rules + sparse-runtime BV; only this unit can invalidate it. */
     readonly currentBaseBattleValue = computed(() => {
@@ -66,25 +70,62 @@ export class CBTForceMember {
         return this.force.getUnitC3BattleValue(this.id);
     }
 
-    /** One lazily generated live sheet owned for exactly this member's lifetime. */
+    /** The currently visible page of this member's lazily generated sheet set. */
     public recordSheet(): SVGSVGElement | null {
-        return this.#recordSheet;
+        return this.#recordSheets[this.#recordSheetIndex()] ?? null;
     }
 
-    public loadRecordSheet(create: () => Promise<SVGSVGElement>): Promise<SVGSVGElement> {
-        if (this.#recordSheet) return Promise.resolve(this.#recordSheet);
+    public recordSheets(): readonly SVGSVGElement[] {
+        return this.#recordSheets;
+    }
+
+    public recordSheetIndex(): number {
+        return this.#recordSheetIndex();
+    }
+
+    public loadRecordSheets(
+        create: () => Promise<readonly SVGSVGElement[]>,
+    ): Promise<readonly SVGSVGElement[]> {
+        if (this.#recordSheets.length > 0) return Promise.resolve(this.#recordSheets);
         if (this.#recordSheetLoad) return this.#recordSheetLoad;
 
         const pending = create()
-            .then(svg => {
-                this.#recordSheet = svg;
-                return svg;
+            .then(svgs => {
+                if (svgs.length === 0) throw new Error('A record-sheet set cannot be empty');
+                this.#recordSheets = Object.freeze(svgs.slice(0, MAX_RECORD_SHEET_PAGES));
+                this.#recordSheetIndex.set(0);
+                return this.#recordSheets;
             })
             .finally(() => {
                 this.#recordSheetLoad = null;
             });
         this.#recordSheetLoad = pending;
         return pending;
+    }
+
+    /** Cycles this member's presentation page without changing gameplay state. */
+    public showNextRecordSheet(): SVGSVGElement | null {
+        if (this.#recordSheets.length === 0) return null;
+        this.#recordSheetIndex.update(index => (index + 1) % this.#recordSheets.length);
+        return this.recordSheet();
+    }
+
+    /** Runtime-only presentation memory; never enters persistence or gameplay history. */
+    public isTacticalInventoryRowExpanded(rowId: string): boolean {
+        return this.#tacticalInventoryExpandedRows().has(rowId);
+    }
+
+    public setTacticalInventoryRowExpanded(rowId: string, expanded: boolean): void {
+        const current = this.#tacticalInventoryExpandedRows();
+        if (current.has(rowId) === expanded) return;
+        const next = new Set(current);
+        if (expanded) next.add(rowId);
+        else next.delete(rowId);
+        this.#tacticalInventoryExpandedRows.set(next);
+    }
+
+    public setTacticalInventoryRowsExpanded(rowIds: readonly string[]): void {
+        this.#tacticalInventoryExpandedRows.set(new Set(rowIds));
     }
 
     public constructor(

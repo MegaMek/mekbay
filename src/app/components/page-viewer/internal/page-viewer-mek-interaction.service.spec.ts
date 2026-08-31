@@ -429,16 +429,16 @@ describe('PageViewerMekInteractionService', () => {
         }));
     });
 
-    it('routes the sheet shutdown button through typed shutdown and startup actions', async () => {
+    it('toggles manual shutdown state without declaring a PSR action', async () => {
         service.handle(member, {
             kind: 'shutdown', expectedRevision: 1,
         } as MekRecordSheetInteraction, anchoredMouseEvent());
         await settleAsyncHandlers();
 
         expect(force.dispatchMekUnitCommand.calls.argsFor(0)[1]).toEqual(jasmine.objectContaining({
-            type: 'declare-mek-action',
+            type: 'set-mek-shutdown-state',
             expectedRevision: 1,
-            action: jasmine.objectContaining({ kind: 'shutdown' }),
+            shutdown: true,
         }));
 
         currentSnapshot = {
@@ -451,9 +451,9 @@ describe('PageViewerMekInteractionService', () => {
         await settleAsyncHandlers();
 
         expect(force.dispatchMekUnitCommand.calls.argsFor(1)[1]).toEqual(jasmine.objectContaining({
-            type: 'declare-mek-action',
+            type: 'set-mek-shutdown-state',
             expectedRevision: 2,
-            action: jasmine.objectContaining({ kind: 'startup' }),
+            shutdown: false,
         }));
     });
 

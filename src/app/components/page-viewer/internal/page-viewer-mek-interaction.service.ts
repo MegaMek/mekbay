@@ -1022,7 +1022,7 @@ export class PageViewerMekInteractionService {
         const portal = new ComponentPortal(WeaponTargetChoiceMenuComponent, null, this.injector);
         const { componentRef, closed } = this.overlayManager.createManagedOverlay(
             TARGET_OVERLAY,
-            anchor as unknown as HTMLElement,
+            anchor,
             portal,
             {
                 hasBackdrop: false,
@@ -1224,7 +1224,7 @@ export class PageViewerMekInteractionService {
         const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
         const result = this.overlayManager.createManagedOverlay(
             key,
-            anchor as unknown as HTMLElement,
+            anchor,
             portal,
             {
                 hasBackdrop: false,

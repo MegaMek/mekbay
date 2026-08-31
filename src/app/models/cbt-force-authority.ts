@@ -98,10 +98,6 @@ import type {
     MekEquipmentChoiceDispatchResult,
     MekEquipmentChoiceToken,
     MekEquipmentInteraction,
-    MekHeatCommand,
-    MekHeatCommandResult,
-    MekHeatCommandToken,
-    MekHeatInteraction,
     SelectedWeaponFireCommandResult,
 } from './cbt-force-api';
 import {
@@ -111,9 +107,7 @@ import {
 import { entityUnitLabel } from './runtime/cbt-unit-label';
 import {
     decodeEquipmentChoiceToken,
-    decodeHeatCommandToken,
     encodeEquipmentChoiceToken,
-    encodeHeatCommandToken,
     equipmentChoiceMatches,
     expandV2EquipmentDropdownBinding,
     type ExpandedV2EquipmentInteractionChoiceBinding,
@@ -830,10 +824,6 @@ export class CBTForceAuthority {
         }));
     }
 
-    public hasInstanceId(instanceId: string): boolean {
-        return this.binding?.units.has(asUnitInstanceId(instanceId)) ?? false;
-    }
-
     public crewProfile(instanceId: UnitInstanceId): CrewProfileSnapshot | null {
         const binding = this.binding;
         const unit = binding?.units.get(instanceId);
@@ -1078,108 +1068,6 @@ export class CBTForceAuthority {
         return decodeEquipmentChoiceToken(token)?.instanceId ?? null;
     }
 
-    public heatInteractions(
-        policy: MekHeatAutomationPolicyV2,
-        readOnly: boolean,
-    ): readonly MekHeatInteraction[] {
-        const owner = this.binding;
-        if (!owner) return Object.freeze([]);
-        const rows: MekHeatInteraction[] = [];
-        for (const [instanceId, unit] of owner.units) {
-            if (!isReadyMekUnit(unit)) continue;
-            const entity = unit.getUnit();
-            const runtime = unit.getInstance();
-            const query = runtime.query();
-            const unitLabel = entityUnitLabel(entity, instanceId);
-            const admission = evaluateMekRuntimeCapability(entity);
-            const capability = query.heatCapability();
-            const blockers = [
-                ...(admission.readiness === 'deferred'
-                    ? admission.blockers.map(blocker => `${blocker.code}: ${blocker.message}`)
-                    : []),
-                ...(capability.kind === 'unsupported' ? capability.blockers : []),
-            ];
-            if (blockers.length > 0 || capability.kind === 'unsupported') {
-                rows.push(Object.freeze({
-                    kind: 'unsupported',
-                    instanceId,
-                    unitLabel,
-                    blockers: Object.freeze([...new Set(blockers)]),
-                    disabled: true,
-                }));
-                continue;
-            }
-            const projection = query.heatProjection(policy);
-            if (projection.kind === 'unsupported') {
-                rows.push(Object.freeze({
-                    kind: 'unsupported',
-                    instanceId,
-                    unitLabel,
-                    blockers: projection.blockers,
-                    disabled: true,
-                }));
-                continue;
-            }
-            const state = query.heatState();
-            const token = encodeHeatCommandToken({
-                instanceId,
-                entityUuid: entity.uuid(),
-                stateRevision: query.stateRevision,
-            });
-            rows.push(Object.freeze({
-                kind: 'supported',
-                token,
-                instanceId,
-                unitLabel,
-                stateRevision: query.stateRevision,
-                policy,
-                current: state.current,
-                previous: state.previous,
-                ...(state.pendingOverride === undefined ? {} : { pendingOverride: state.pendingOverride }),
-                heatsinksOff: state.heatsinksOff,
-                maxHeatsinksOff: capability.maxHeatsinksOff,
-                projected: projection.projection.projected,
-                delta: projection.projection.delta,
-                capacity: projection.projection.capacity,
-                remainingDissipation: projection.projection.remainingDissipation,
-                dissipated: projection.projection.dissipated,
-                sources: Object.freeze(projection.projection.sources.map(source => Object.freeze({
-                    id: source.id,
-                    label: source.label,
-                    value: source.value,
-                }))),
-                hasPendingSettlement: projection.projection.hasPendingSettlement,
-                disabled: readOnly,
-            }));
-        }
-        return Object.freeze(rows);
-    }
-
-    public heatCommandInstanceId(token: MekHeatCommandToken): UnitInstanceId | null {
-        return decodeHeatCommandToken(token)?.instanceId ?? null;
-    }
-
-    public dispatchHeatCommand(
-        command: MekHeatCommand,
-        isReadOnly: () => boolean,
-        policy: () => MekHeatAutomationPolicyV2,
-        trackPhaseAndTurn: () => boolean,
-        configuredNetworks: readonly EncounterNetwork[],
-        toast: Pick<ToastService, 'showToast'>,
-        publishChanged: () => void,
-    ): MekHeatCommandResult {
-        const result = this.dispatchHeatCommandNow(
-            command,
-            isReadOnly,
-            policy,
-            trackPhaseAndTurn,
-            configuredNetworks,
-            toast,
-        );
-        if (result.accepted && result.changed) publishChanged();
-        return result;
-    }
-
     public endTurnForAll(
         isReadOnly: () => boolean,
         policy: () => MekHeatAutomationPolicyV2,
@@ -1322,96 +1210,6 @@ export class CBTForceAuthority {
         } catch {
             return finalize(false, true);
         }
-    }
-
-    private dispatchHeatCommandNow(
-        command: MekHeatCommand,
-        isReadOnly: () => boolean,
-        policy: () => MekHeatAutomationPolicyV2,
-        trackPhaseAndTurn: () => boolean,
-        configuredNetworks: readonly EncounterNetwork[],
-        toast: Pick<ToastService, 'showToast'>,
-    ): MekHeatCommandResult {
-        const selected = decodeHeatCommandToken(command.token);
-        if (!selected) return rejectedHeatCommand('UNKNOWN_TOKEN');
-        const owner = this.binding;
-        const candidate = owner?.units.get(selected.instanceId);
-        if (!owner || !candidate || !isReadyMekUnit(candidate)) {
-            return rejectedHeatCommand('OWNER_CHANGED');
-        }
-        const unit = candidate;
-        const runtime = unit.getInstance();
-        if (isReadOnly()) return rejectedHeatCommand('READ_ONLY', runtime.revision());
-        const entity = unit.getUnit();
-        if (runtime.revision() !== selected.stateRevision) {
-            return rejectedHeatCommand('STALE_REVISION', runtime.revision());
-        }
-        if (entity.uuid() !== selected.entityUuid || !unit.matchesEntity(entity)) {
-            return rejectedHeatCommand('ENTITY_MISMATCH', runtime.revision());
-        }
-        if (evaluateMekRuntimeCapability(entity).readiness !== 'ready') {
-            return rejectedHeatCommand('NOT_ADMITTED', runtime.revision());
-        }
-        if (runtime.query().heatCapability().kind === 'unsupported') {
-            return rejectedHeatCommand('UNSUPPORTED_HEAT_CONTEXT', runtime.revision());
-        }
-
-        const expectedRevision = runtime.revision();
-        const c3EndTurn = command.type === 'end-turn'
-            ? this.c3.planEmergencyMasterEndTurn(selected.instanceId, configuredNetworks)
-            : null;
-        const commandId = createCommandId();
-        const reduction = command.type === 'set-target'
-            ? runtime.dispatch(command.heat === null || trackPhaseAndTurn()
-                ? {
-                    type: 'set-pending-heat',
-                    commandId,
-                    expectedRevision,
-                    heat: command.heat,
-                }
-                : {
-                    type: 'set-heat',
-                    commandId,
-                    expectedRevision,
-                    heat: command.heat,
-                })
-            : command.type === 'set-heatsinks-off'
-                ? runtime.dispatch({
-                    type: 'set-heatsinks-off',
-                    commandId,
-                    expectedRevision,
-                    heatsinksOff: command.heatsinksOff,
-                })
-                : runtime.dispatch({
-                    type: command.type === 'apply' ? 'apply-heat' : 'end-turn',
-                    commandId,
-                    expectedRevision,
-                    policy: policy(),
-                });
-        if (reduction.accepted || reduction.reason === 'NO_CHANGE') {
-            const settled = command.type === 'end-turn'
-                ? this.c3.settleEmergencyMasterEndTurn(c3EndTurn)
-                : emptyC3EmergencyMasterMutation();
-            const reconciled = command.type === 'end-turn'
-                ? this.c3.reconcileEmergencyMasters(configuredNetworks)
-                : emptyC3EmergencyMasterMutation();
-            publishC3EmergencyMasterNotices(settled.notices, toast);
-            publishC3EmergencyMasterNotices(reconciled.notices, toast);
-            return Object.freeze({
-                accepted: true,
-                changed: runtime.revision() !== expectedRevision || settled.changed || reconciled.changed,
-            });
-        }
-        const reason: MekHeatCommandRejectionReason = reduction.reason === 'REVISION_CONFLICT'
-            ? 'STALE_REVISION'
-            : reduction.reason === 'UNSUPPORTED_HEAT_CONTEXT'
-                ? 'UNSUPPORTED_HEAT_CONTEXT'
-                : reduction.reason === 'INVALID_AMOUNT'
-                    ? 'INVALID_AMOUNT'
-                    : reduction.reason === 'EXCEEDS_CAPACITY'
-                        ? 'EXCEEDS_CAPACITY'
-                        : 'COMMAND_REJECTED';
-        return rejectedHeatCommand(reason, runtime.revision());
     }
 
     private endTurnForAllNow(
@@ -1559,18 +1357,6 @@ type MekEquipmentChoiceRejectionReason = Extract<
 export function rejectedEquipmentChoice(
     reason: MekEquipmentChoiceRejectionReason,
 ): MekEquipmentChoiceDispatchResult {
-    return Object.freeze({ accepted: false, changed: false, reason });
-}
-
-type MekHeatCommandRejectionReason = Extract<
-    MekHeatCommandResult,
-    { readonly accepted: false }
->['reason'];
-
-export function rejectedHeatCommand(
-    reason: MekHeatCommandRejectionReason,
-    _currentRevision?: StateRevision,
-): MekHeatCommandResult {
     return Object.freeze({ accepted: false, changed: false, reason });
 }
 

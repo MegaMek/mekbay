@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { signal } from '@angular/core';
-import { MEK_QUAD_LOCATIONS, MekConfig, MotiveType } from '../../types';
+import { MEK_QUAD_LOCATIONS, MekConfig, type MekLocation, MotiveType } from '../../types';
 import { MekEntity } from './mek-entity';
 
 /** Quad BattleMek - no arm actuators, uses leg-based locations. */
@@ -14,7 +14,7 @@ export class QuadMekEntity extends MekEntity {
     return 'Quad';
   }
 
-  get locationOrder(): string[] {
+  override get locationOrder(): readonly MekLocation[] {
     return [...MEK_QUAD_LOCATIONS];
   }
 

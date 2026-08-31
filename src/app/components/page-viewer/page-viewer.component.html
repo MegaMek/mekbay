@@ -1,7 +1,9 @@
 <viewer-stage #container
               [swiping]="stageSwiping()"
               [multipleVisible]="effectiveVisiblePageCount() > 1"
-              [atMinZoom]="isFullyVisible()">
+              [atMinZoom]="isFullyVisible()"
+              (click)="onRecordSheetPageFlip($event)"
+              (keydown)="onRecordSheetPageFlip($event)">
     <!-- Swipe wrapper handles X translation during swipe (separate from zoom) -->
     <div #swipeWrapper class="swipe-wrapper">
         <!-- Content wrapper receives zoom/pan transforms, contains all pages -->
