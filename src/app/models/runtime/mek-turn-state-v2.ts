@@ -213,7 +213,7 @@ function iterableEntries(value: unknown, path: string): readonly (readonly [unkn
         if (!Array.isArray(row) || row.length !== 2) {
             fail('must contain key/value entries', `${path}[${index}]`);
         }
-        return row as unknown as readonly [unknown, unknown];
+        return [row[0], row[1]] as const;
     });
 }
 

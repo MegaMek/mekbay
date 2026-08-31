@@ -831,10 +831,12 @@ export async function validateSerializedCBTForceV2(value: unknown): Promise<Seri
         throw validationError('INVALID_SHAPE', error, '$');
     }
     validateForceEnvelope(root);
-    return deepFreeze(root) as unknown as SerializedCBTForceV2;
+    return deepFreeze(root);
 }
 
-function validateForceEnvelope(root: Record<string, unknown>): void {
+function validateForceEnvelope(
+    root: Record<string, unknown>,
+): asserts root is Record<string, unknown> & SerializedCBTForceV2 {
     exactKeys(root, [
         'schemaVersion', 'minimumWriterVersion', 'forceId', 'forceRevision', 'scenarioRules',
         'history', 'units', 'roster', 'encounter', 'restoration',
@@ -2919,7 +2921,7 @@ function requireString(record: Record<string, unknown>, key: string, path: strin
 
 function requireArray(value: unknown, path: string): unknown[] {
     if (!Array.isArray(value)) fail('INVALID_SHAPE', path, 'must be an array');
-    return value as unknown[];
+    return value;
 }
 
 function requireRecord(value: unknown, path: string): Record<string, unknown> {

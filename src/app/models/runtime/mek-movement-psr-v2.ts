@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { jsonValuesEqual } from '../../utils/json-value.util';
-import type {
-    ComponentId,
-    CriticalSlotId,
-    LocationId,
+import {
+    asCriticalSlotId,
+    asLocationId,
+    type ComponentId,
+    type CriticalSlotId,
+    type LocationId,
 } from '../entity/entity-identifiers';
 import type {
     MekActuatorKind,
@@ -455,11 +457,37 @@ const ACTION_KINDS = Object.freeze([
 const CHECK_STATUSES = Object.freeze([
     'pending', 'success', 'failed',
 ] as const satisfies readonly MekPilotCheckStatusV2[]);
+const CHECK_STATUS_SET: ReadonlySet<string> = new Set(CHECK_STATUSES);
+const SOURCE_KINDS = Object.freeze([
+    'damage', 'movement', 'action',
+] as const satisfies readonly MekPilotCheckSourceKindV2[]);
+const SOURCE_KIND_SET: ReadonlySet<string> = new Set(SOURCE_KINDS);
 const TRIGGER_KINDS = Object.freeze([
     'damage-total-20', 'leg-actuator-hit', 'hip-hit', 'gyro-hit', 'leg-destroyed',
     'move-damaged-gyro', 'move-damaged-leg', 'move-damaged-actuator', 'sprint-booster',
     'get-up', 'shutdown',
 ] as const satisfies readonly MekPilotCheckTriggerKindV2[]);
+const TRIGGER_KIND_SET: ReadonlySet<string> = new Set(TRIGGER_KINDS);
+const AUTOMATIC_FALL_TRIGGER_KINDS = Object.freeze([
+    'gyro-destroyed', 'leg-destroyed-auto-fall',
+] as const satisfies readonly MekAutomaticFallTriggerKindV2[]);
+const AUTOMATIC_FALL_TRIGGER_KIND_SET: ReadonlySet<string> = new Set(AUTOMATIC_FALL_TRIGGER_KINDS);
+
+function isMekPilotCheckStatus(value: unknown): value is MekPilotCheckStatusV2 {
+    return typeof value === 'string' && CHECK_STATUS_SET.has(value);
+}
+
+function isMekPilotCheckSourceKind(value: unknown): value is MekPilotCheckSourceKindV2 {
+    return typeof value === 'string' && SOURCE_KIND_SET.has(value);
+}
+
+function isMekPilotCheckTriggerKind(value: unknown): value is MekPilotCheckTriggerKindV2 {
+    return typeof value === 'string' && TRIGGER_KIND_SET.has(value);
+}
+
+function isMekAutomaticFallTriggerKind(value: unknown): value is MekAutomaticFallTriggerKindV2 {
+    return typeof value === 'string' && AUTOMATIC_FALL_TRIGGER_KIND_SET.has(value);
+}
 
 const PRISTINE_STATE = freezeState({
     movement: null,
@@ -1246,7 +1274,7 @@ export function deserializeMekMovementPsrStateV2(value: unknown): MekMovementPsr
         carefulStand,
         damageThisPhase,
         checks,
-        automaticFalls: rawAutomaticFalls as unknown as MekAutomaticFallV2[],
+        automaticFalls: rawAutomaticFalls.map(canonicalizeMekAutomaticFallV2),
     });
 }
 
@@ -1314,24 +1342,27 @@ export function remapMekMovementPsrStateIdsV2(
     }
 }
 
-export function canonicalizeMekAutomaticFallV2(value: MekAutomaticFallV2): MekAutomaticFallV2 {
+export function canonicalizeMekAutomaticFallV2(value: unknown): MekAutomaticFallV2 {
     if (!plainRecord(value)
         || !exactKeys(value, ['triggerKind', 'locationIds'])
-        || !['gyro-destroyed', 'leg-destroyed-auto-fall'].includes(value.triggerKind)
-        || !Array.isArray(value.locationIds)) {
+        || !isMekAutomaticFallTriggerKind(value['triggerKind'])
+        || !Array.isArray(value['locationIds'])) {
         throw new Error('Invalid Mek automatic fall');
     }
+    const triggerKind = value['triggerKind'];
+    const rawLocationIds = value['locationIds'];
     const locationIds = canonicalIds(
-        value.locationIds,
+        rawLocationIds,
         'automatic fall location',
-    ) as LocationId[];
-    if (!sameStrings(value.locationIds, locationIds)
-        || value.triggerKind === 'gyro-destroyed' && locationIds.length !== 0
-        || value.triggerKind === 'leg-destroyed-auto-fall' && locationIds.length !== 1) {
+    ).map(asLocationId);
+    if (rawLocationIds.length !== locationIds.length
+        || rawLocationIds.some((id, index) => id !== locationIds[index])
+        || triggerKind === 'gyro-destroyed' && locationIds.length !== 0
+        || triggerKind === 'leg-destroyed-auto-fall' && locationIds.length !== 1) {
         throw new Error('Mek automatic fall locations are not canonical');
     }
     return Object.freeze({
-        triggerKind: value.triggerKind,
+        triggerKind,
         locationIds: Object.freeze(locationIds),
     });
 }
@@ -2552,71 +2583,82 @@ function seed(source: MekPilotCheckSourceV2, reason: string): MekPilotCheckSeedV
     return Object.freeze({ source: canonicalizeSource(source), reason: canonicalText(reason, 512) });
 }
 
-function canonicalizeCheck(value: MekPilotCheckV2): MekPilotCheckV2 {
+function canonicalizeCheck(value: unknown): MekPilotCheckV2 {
     if (!plainRecord(value)
         || !exactKeys(value, [
             'checkId', 'source', 'producingRevision', 'ordinal', 'targetNumber', 'reason', 'status', 'resolution',
         ])
-        || !boundedText(value.checkId, 256)
-        || !canonicalNonnegativeInteger(value.producingRevision, Number.MAX_SAFE_INTEGER)
-        || !canonicalNonnegativeInteger(value.ordinal, MAX_MEK_PILOT_CHECKS_V2 - 1)
-        || !canonicalInteger(value.targetNumber, -MAX_MEK_PILOT_TARGET_V2, MAX_MEK_PILOT_TARGET_V2)
-        || !boundedCanonicalText(value.reason, 512)
-        || !CHECK_STATUSES.includes(value.status)) {
+        || !boundedText(value['checkId'], 256)
+        || !canonicalNonnegativeInteger(value['producingRevision'], Number.MAX_SAFE_INTEGER)
+        || !canonicalNonnegativeInteger(value['ordinal'], MAX_MEK_PILOT_CHECKS_V2 - 1)
+        || !canonicalInteger(value['targetNumber'], -MAX_MEK_PILOT_TARGET_V2, MAX_MEK_PILOT_TARGET_V2)
+        || !boundedCanonicalText(value['reason'], 512)
+        || !isMekPilotCheckStatus(value['status'])) {
         throw new Error('Invalid Mek pilot check');
     }
-    const source = canonicalizeSource(value.source);
-    if (value.targetNumber !== source.baseTarget + source.triggerModifier
-        || value.checkId !== createCheckId(value.producingRevision, value.ordinal)) {
+    const checkId = value['checkId'];
+    const producingRevision = value['producingRevision'];
+    const ordinal = value['ordinal'];
+    const targetNumber = value['targetNumber'];
+    const reason = value['reason'];
+    const status = value['status'];
+    const source = canonicalizeSource(value['source']);
+    if (targetNumber !== source.baseTarget + source.triggerModifier
+        || checkId !== createCheckId(producingRevision, ordinal)) {
         throw new Error('Mek pilot check identity or target drifted');
     }
     let resolution: MekPilotCheckResolutionEvidenceV2 | undefined;
-    if (value.status === 'pending') {
-        if (value.resolution !== undefined) throw new Error('Pending Mek pilot check has resolution evidence');
+    if (status === 'pending') {
+        if (value['resolution'] !== undefined) throw new Error('Pending Mek pilot check has resolution evidence');
     } else {
-        resolution = canonicalResolution(value.resolution);
-        const outcome = resolution.total >= value.targetNumber ? 'success' : 'failed';
-        if (outcome !== value.status) throw new Error('Mek pilot check outcome contradicts its dice');
+        resolution = canonicalResolution(value['resolution']);
+        const outcome = resolution.total >= targetNumber ? 'success' : 'failed';
+        if (outcome !== status) throw new Error('Mek pilot check outcome contradicts its dice');
     }
     return Object.freeze({
-        checkId: value.checkId,
+        checkId,
         source,
-        producingRevision: value.producingRevision,
-        ordinal: value.ordinal,
-        targetNumber: value.targetNumber,
-        reason: value.reason,
-        status: value.status,
+        producingRevision,
+        ordinal,
+        targetNumber,
+        reason,
+        status,
         ...(resolution === undefined ? {} : { resolution }),
     });
 }
 
-function canonicalizeSource(value: MekPilotCheckSourceV2): MekPilotCheckSourceV2 {
+function canonicalizeSource(value: unknown): MekPilotCheckSourceV2 {
     if (!plainRecord(value)
         || !exactKeys(value, [
             'sourceKind', 'triggerKind', 'witness', 'criticalSlotIds', 'locationIds',
             'baseTarget', 'triggerModifier',
         ])
-        || !['damage', 'movement', 'action'].includes(value.sourceKind)
-        || !TRIGGER_KINDS.includes(value.triggerKind)
-        || !boundedCanonicalText(value.witness, MAX_MEK_PILOT_CHECK_WITNESS_LENGTH_V2)
-        || !canonicalInteger(value.baseTarget, -MAX_MEK_PILOT_TARGET_V2, MAX_MEK_PILOT_TARGET_V2)
-        || !canonicalInteger(value.triggerModifier, -MAX_MEK_PILOT_TARGET_V2, MAX_MEK_PILOT_TARGET_V2)) {
+        || !isMekPilotCheckSourceKind(value['sourceKind'])
+        || !isMekPilotCheckTriggerKind(value['triggerKind'])
+        || !boundedCanonicalText(value['witness'], MAX_MEK_PILOT_CHECK_WITNESS_LENGTH_V2)
+        || !canonicalInteger(value['baseTarget'], -MAX_MEK_PILOT_TARGET_V2, MAX_MEK_PILOT_TARGET_V2)
+        || !canonicalInteger(value['triggerModifier'], -MAX_MEK_PILOT_TARGET_V2, MAX_MEK_PILOT_TARGET_V2)) {
         throw new Error('Invalid Mek pilot check source');
     }
+    const sourceKind = value['sourceKind'];
+    const triggerKind = value['triggerKind'];
+    const witness = value['witness'];
+    const baseTarget = value['baseTarget'];
+    const triggerModifier = value['triggerModifier'];
     let decodedWitness: unknown;
     try {
-        decodedWitness = JSON.parse(value.witness);
+        decodedWitness = JSON.parse(witness);
     } catch {
         throw new Error('Mek pilot check witness is not valid JSON');
     }
     const result = Object.freeze({
-        sourceKind: value.sourceKind,
-        triggerKind: value.triggerKind,
-        witness: value.witness,
-        criticalSlotIds: Object.freeze(canonicalIds(value.criticalSlotIds, 'critical slot') as CriticalSlotId[]),
-        locationIds: Object.freeze(canonicalIds(value.locationIds, 'location') as LocationId[]),
-        baseTarget: value.baseTarget,
-        triggerModifier: value.triggerModifier,
+        sourceKind,
+        triggerKind,
+        witness,
+        criticalSlotIds: Object.freeze(canonicalIds(value['criticalSlotIds'], 'critical slot').map(asCriticalSlotId)),
+        locationIds: Object.freeze(canonicalIds(value['locationIds'], 'location').map(asLocationId)),
+        baseTarget,
+        triggerModifier,
     });
     validateSourceSemantics(result, decodedWitness);
     return result;
@@ -2655,8 +2697,7 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
                 || witness['mutations'].length > MAX_MEK_PILOT_CHECKS_V2) {
                 throw new Error('Invalid 20-damage pilot check witness');
             }
-            const mutations = witness['mutations'].map(mutation =>
-                canonicalDamageMutation(mutation as MekCommittedDamageMutationV2));
+            const mutations = witness['mutations'].map(canonicalDamageMutation);
             const received = mutations.reduce((sum, mutation) => sum + mutation.receivedDamage, 0);
             if (witness['after'] !== witness['before'] + received) {
                 throw new Error('20-damage pilot check witness does not balance');
@@ -2666,7 +2707,7 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
         case 'leg-actuator-hit':
         case 'hip-hit': {
             requireSource('damage', 1, 1, 0);
-            const mutation = canonicalDamageMutation(decodedWitness as MekCommittedDamageMutationV2);
+            const mutation = canonicalDamageMutation(decodedWitness);
             if (mutation.kind !== 'critical'
                 || mutation.beforeUnavailable
                 || !mutation.afterUnavailable
@@ -2684,7 +2725,7 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
                 || source.locationIds.length !== 1) {
                 throw new Error('Mek pilot check source does not match its trigger semantics');
             }
-            const mutation = canonicalDamageMutation(decodedWitness as MekCommittedDamageMutationV2);
+            const mutation = canonicalDamageMutation(decodedWitness);
             if (mutation.kind !== 'critical'
                 || mutation.beforeUnavailable
                 || !mutation.afterUnavailable
@@ -2695,7 +2736,7 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
         }
         case 'leg-destroyed': {
             requireSource('damage', 0, 1, 0);
-            const mutation = canonicalDamageMutation(decodedWitness as MekCommittedDamageMutationV2);
+            const mutation = canonicalDamageMutation(decodedWitness);
             if (mutation.kind !== 'internal'
                 || mutation.beforeDestroyed
                 || !mutation.afterDestroyed
@@ -2854,53 +2895,90 @@ function canonicalResolution(value: unknown): MekPilotCheckResolutionEvidenceV2 
     });
 }
 
-function canonicalDamageMutation(value: MekCommittedDamageMutationV2): MekCommittedDamageMutationV2 {
+function canonicalDamageMutation(value: unknown): MekCommittedDamageMutationV2 {
     if (!plainRecord(value)) throw new Error('Invalid committed Mek damage mutation');
-    if (value.kind === 'critical') {
+    if (value['kind'] === 'critical') {
+        const slotId = value['slotId'];
+        const beforeHits = value['beforeHits'];
+        const afterHits = value['afterHits'];
+        const beforeUnavailable = value['beforeUnavailable'];
+        const afterUnavailable = value['afterUnavailable'];
+        const receivedDamage = value['receivedDamage'];
         if (!exactKeys(value, [
             'kind', 'slotId', 'beforeHits', 'afterHits', 'beforeUnavailable', 'afterUnavailable', 'receivedDamage',
-        ]) || !boundedCanonicalText(value.slotId, 512)
-            || !canonicalNonnegativeInteger(value.beforeHits, 1_000_000)
-            || !canonicalNonnegativeInteger(value.afterHits, 1_000_000)
-            || typeof value.beforeUnavailable !== 'boolean'
-            || typeof value.afterUnavailable !== 'boolean'
-            || value.receivedDamage !== 0
-            || value.afterHits < value.beforeHits
-            || value.beforeUnavailable && !value.afterUnavailable
-            || value.beforeUnavailable !== value.afterUnavailable
-                && value.afterHits === value.beforeHits) {
+        ]) || !boundedCanonicalText(slotId, 512)
+            || !canonicalNonnegativeInteger(beforeHits, 1_000_000)
+            || !canonicalNonnegativeInteger(afterHits, 1_000_000)
+            || typeof beforeUnavailable !== 'boolean'
+            || typeof afterUnavailable !== 'boolean'
+            || receivedDamage !== 0
+            || afterHits < beforeHits
+            || beforeUnavailable && !afterUnavailable
+            || beforeUnavailable !== afterUnavailable && afterHits === beforeHits) {
             throw new Error('Invalid committed critical mutation');
         }
-        return Object.freeze({ ...value });
+        return Object.freeze({
+            kind: 'critical',
+            slotId: asCriticalSlotId(slotId),
+            beforeHits,
+            afterHits,
+            beforeUnavailable,
+            afterUnavailable,
+            receivedDamage,
+        });
     }
-    if (value.kind === 'internal') {
+    if (value['kind'] === 'internal') {
+        const locationId = value['locationId'];
+        const beforeRemaining = value['beforeRemaining'];
+        const afterRemaining = value['afterRemaining'];
+        const beforeDestroyed = value['beforeDestroyed'];
+        const afterDestroyed = value['afterDestroyed'];
+        const receivedDamage = value['receivedDamage'];
         if (!exactKeys(value, [
             'kind', 'locationId', 'beforeRemaining', 'afterRemaining', 'beforeDestroyed', 'afterDestroyed',
             'receivedDamage',
-        ]) || !boundedCanonicalText(value.locationId, 512)
-            || !canonicalNonnegativeInteger(value.beforeRemaining, 1_000_000)
-            || !canonicalNonnegativeInteger(value.afterRemaining, 1_000_000)
-            || typeof value.beforeDestroyed !== 'boolean'
-            || typeof value.afterDestroyed !== 'boolean'
-            || !canonicalNonnegativeInteger(value.receivedDamage, 1_000_000)
-            || value.afterRemaining > value.beforeRemaining
-            || value.receivedDamage !== value.beforeRemaining - value.afterRemaining
-            || value.beforeDestroyed && !value.afterDestroyed) {
+        ]) || !boundedCanonicalText(locationId, 512)
+            || !canonicalNonnegativeInteger(beforeRemaining, 1_000_000)
+            || !canonicalNonnegativeInteger(afterRemaining, 1_000_000)
+            || typeof beforeDestroyed !== 'boolean'
+            || typeof afterDestroyed !== 'boolean'
+            || !canonicalNonnegativeInteger(receivedDamage, 1_000_000)
+            || afterRemaining > beforeRemaining
+            || receivedDamage !== beforeRemaining - afterRemaining
+            || beforeDestroyed && !afterDestroyed) {
             throw new Error('Invalid committed internal mutation');
         }
-        return Object.freeze({ ...value });
+        return Object.freeze({
+            kind: 'internal',
+            locationId: asLocationId(locationId),
+            beforeRemaining,
+            afterRemaining,
+            beforeDestroyed,
+            afterDestroyed,
+            receivedDamage,
+        });
     }
-    if (value.kind === 'armor') {
+    if (value['kind'] === 'armor') {
+        const faceId = value['faceId'];
+        const beforeRemaining = value['beforeRemaining'];
+        const afterRemaining = value['afterRemaining'];
+        const receivedDamage = value['receivedDamage'];
         if (!exactKeys(value, ['kind', 'faceId', 'beforeRemaining', 'afterRemaining', 'receivedDamage'])
-            || !boundedCanonicalText(value.faceId, 512)
-            || !canonicalNonnegativeInteger(value.beforeRemaining, 1_000_000)
-            || !canonicalNonnegativeInteger(value.afterRemaining, 1_000_000)
-            || !canonicalNonnegativeInteger(value.receivedDamage, 1_000_000)
-            || value.afterRemaining > value.beforeRemaining
-            || value.receivedDamage !== value.beforeRemaining - value.afterRemaining) {
+            || !boundedCanonicalText(faceId, 512)
+            || !canonicalNonnegativeInteger(beforeRemaining, 1_000_000)
+            || !canonicalNonnegativeInteger(afterRemaining, 1_000_000)
+            || !canonicalNonnegativeInteger(receivedDamage, 1_000_000)
+            || afterRemaining > beforeRemaining
+            || receivedDamage !== beforeRemaining - afterRemaining) {
             throw new Error('Invalid committed armor mutation');
         }
-        return Object.freeze({ ...value });
+        return Object.freeze({
+            kind: 'armor',
+            faceId,
+            beforeRemaining,
+            afterRemaining,
+            receivedDamage,
+        });
     }
     throw new Error('Unknown committed Mek damage mutation');
 }
@@ -2954,7 +3032,7 @@ function deserializeActionDeclaration(value: unknown): MekActionDeclarationV2 {
 
 function deserializeCheck(value: unknown): MekPilotCheckV2 {
     if (!plainRecord(value)) throw new Error('Invalid serialized Mek pilot check');
-    const result = canonicalizeCheck(value as unknown as MekPilotCheckV2);
+    const result = canonicalizeCheck(value);
     const source = value['source'];
     if (!plainRecord(source)
         || !sameStrings(source['criticalSlotIds'] as readonly string[], result.source.criticalSlotIds)
@@ -3060,11 +3138,7 @@ function collectPilotCheckWitnessReferences(
         case 'hip-hit':
         case 'gyro-hit':
         case 'leg-destroyed':
-            collectDamageMutationReferences(
-                witness as unknown as MekCommittedDamageMutationV2,
-                path,
-                references,
-            );
+            collectDamageMutationReferences(canonicalDamageMutation(witness), path, references);
             return;
         case 'move-damaged-gyro':
             collectMovementDeclarationReferences(
@@ -3324,10 +3398,7 @@ function remapPilotCheckWitness(
         case 'hip-hit':
         case 'gyro-hit':
         case 'leg-destroyed':
-            return canonicalWitness(remapDamageMutation(
-                witness as unknown as MekCommittedDamageMutationV2,
-                ids,
-            ));
+            return canonicalWitness(remapDamageMutation(canonicalDamageMutation(witness), ids));
         case 'move-damaged-gyro':
             return canonicalWitness({
                 declaration: remapMovementDeclaration(

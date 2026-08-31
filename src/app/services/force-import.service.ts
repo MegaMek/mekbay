@@ -24,7 +24,11 @@ import {
 } from '../models/force-member.model';
 import { LoadOperationEntry } from '../models/operation.model';
 import type { ForceAlignment } from '../models/force-slot.model';
-import { ForceLoadDialogComponent, type ForceLoadDialogResult } from '../components/force-load-dialog/force-load-dialog.component';
+import {
+    ForceLoadDialogComponent,
+    type ForceLoadDialogResult,
+    type ForceLoadTab,
+} from '../components/force-load-dialog/force-load-dialog.component';
 import { ForcePackDialogComponent, type ForcePackDialogResult } from '../components/force-pack-dialog/force-pack-dialog.component';
 import type { SearchForceGeneratorDialogResult } from '../components/search-force-generator-dialog/search-force-generator-dialog.component';
 import type { DialogRef } from './dialogs.service';
@@ -145,7 +149,7 @@ export class ForceImportService {
             if (force.name !== entry.name) force.setName(entry.name, false);
             force.faction.set(entry.faction ?? null);
             force.era.set(entry.era ?? null);
-            if (!(force instanceof CBTForce)) force.removeEmptyGroups();
+            if (force instanceof ASForce) force.removeEmptyGroups();
         } finally {
             force.factionLock = false;
             force.eraLock = false;
@@ -156,7 +160,7 @@ export class ForceImportService {
         return force;
     }
 
-    async showLoadForceDialog(options?: { initialTab?: string }): Promise<void> {
+    async showLoadForceDialog(options?: { initialTab?: ForceLoadTab }): Promise<void> {
         const ref = this.dialogs.createDialog<ForceLoadDialogResult>(ForceLoadDialogComponent, {
             data: options ?? undefined,
         });

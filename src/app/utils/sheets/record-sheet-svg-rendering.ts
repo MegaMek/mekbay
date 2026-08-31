@@ -4,7 +4,7 @@
 import { heatLevels } from '../../models/common.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
 import { formatEquipmentLocationCodes } from '../equipment-location-display.util';
-import type { EntityDamageLocation } from '../../models/entity/types';
+import type { EntityDamageLocation, EntityTechBase } from '../../models/entity/types';
 import {
     ATM_AMMO_PROFILES,
     MML_AMMO_PROFILES,
@@ -1524,7 +1524,7 @@ function mergeSheetDefinitions(target: SVGSVGElement, source: Element): void {
     }
 }
 
-export function formatTechBase(value: string, mixedTech = false): string {
+export function formatTechBase(value: EntityTechBase, mixedTech = false): string {
     if (mixedTech) return 'Mixed';
     return value === 'IS' ? 'Inner Sphere' : value;
 }

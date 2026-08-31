@@ -17,7 +17,7 @@ import {
     isVehicleEntity,
 } from '../entity/utils/entity-type-guards';
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import { STANDARD_MOVEMENT_CALCULATION } from '../entity/types';
+import { STANDARD_MOVEMENT_CALCULATION, type EntityTechBase } from '../entity/types';
 import type { UnitType } from '../unit-summary.model';
 import type { CrewMemberState } from '../crew.model';
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
@@ -103,7 +103,7 @@ export interface NonMekRecordSheetSnapshot {
     readonly subtype: string;
     readonly tonnage: number;
     readonly year: number;
-    readonly techBase: string;
+    readonly techBase: EntityTechBase;
     readonly mixedTech?: boolean;
     readonly role: string;
     readonly movementType: string;

@@ -762,7 +762,7 @@ function iterableEntries(value: unknown, path: string, maximum: number): readonl
     if (rows.length > maximum) fail(`must contain at most ${maximum} entries`, path);
     return rows.map((row, index) => {
         if (!Array.isArray(row) || row.length !== 2) fail('must contain key/value entries', `${path}[${index}]`);
-        return row as unknown as readonly [unknown, unknown];
+        return [row[0], row[1]] as const;
     });
 }
 

@@ -7,6 +7,7 @@ import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type {
     EntityMountedEquipment,
     IntrinsicWeapon,
+    MekLocation,
     MekSystemType,
 } from '../entity/types';
 import type { Equipment } from '../equipment.model';
@@ -35,6 +36,7 @@ import type {
 } from './classic-unit-runtime';
 
 export interface MekIndexedLocation extends ClassicRuntimeLocation {
+    readonly code: MekLocation;
     readonly armor: MountedArmor;
     readonly structure: MountedStructure;
 }
@@ -129,7 +131,7 @@ export function componentLocationIds(
 }
 
 export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
-    const locationIdByCode = new Map<string, LocationId>();
+    const locationIdByCode = new Map<MekLocation, LocationId>();
     const locations = new Map<LocationId, MekIndexedLocation>();
     const armorFaces = new Map<ArmorFaceId, MekIndexedArmorFace>();
 

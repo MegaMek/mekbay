@@ -30,7 +30,7 @@ describe('RecordSheetSourceService', () => {
 
     it('always generates a record sheet from the Entity and active ruleset', async () => {
         const generated = svg('generated');
-        const generate = spyOn(RecordSheetSvgGenerator, 'generate').and.resolveTo(generated);
+        const generate = spyOn(RecordSheetSvgGenerator, 'generatePages').and.resolveTo([generated]);
         const entity = new TestTankEntity();
         const service = TestBed.inject(RecordSheetSourceService);
 

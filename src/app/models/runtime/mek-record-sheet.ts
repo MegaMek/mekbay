@@ -11,6 +11,7 @@ import type {
     LocationId,
 } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { EntityTechBase, MekLocation } from '../entity/types';
 import { MiscEquipment } from '../equipment.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { UnitConditionKey } from '../unit-condition.model';
@@ -60,7 +61,7 @@ import {
 export interface MekRecordSheetArmorFace {
     readonly faceId: ArmorFaceId;
     readonly locationId: LocationId;
-    readonly locationCode: string;
+    readonly locationCode: MekLocation;
     readonly face: 'front' | 'rear';
     readonly maximum: number;
     readonly committedRemaining: number;
@@ -69,7 +70,7 @@ export interface MekRecordSheetArmorFace {
 
 export interface MekRecordSheetLocation {
     readonly locationId: LocationId;
-    readonly code: string;
+    readonly code: MekLocation;
     readonly maximumInternal: number;
     readonly committedRemainingInternal: number;
     readonly previewRemainingInternal: number;
@@ -113,7 +114,7 @@ export interface MekRecordSheetSlotComponent {
 export interface MekRecordSheetCriticalSlot {
     readonly slotId: CriticalSlotId;
     readonly locationId: LocationId;
-    readonly locationCode: string;
+    readonly locationCode: MekLocation;
     readonly slotIndex: number;
     readonly armored: boolean;
     readonly hittable: boolean;
@@ -176,7 +177,7 @@ export interface MekRecordSheetSnapshot {
         displayName: string;
         massTons: number;
         year: number;
-        techBase: string;
+        techBase: EntityTechBase;
         mixedTech?: boolean;
         form: 'biped' | 'quad' | 'tripod' | 'lam' | 'quadvee';
         engine: string;

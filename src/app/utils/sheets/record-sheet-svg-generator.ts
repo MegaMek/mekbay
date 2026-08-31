@@ -33,16 +33,36 @@ export class RecordSheetSvgGenerator {
         entity: BaseEntity,
         options: RecordSheetSvgGeneratorOptions = {},
     ): Promise<SVGSVGElement> {
+        const pages = await this.generatePages(entity, options);
+        const primary = pages[0];
+        if (!primary) throw new Error(`No record sheet was generated for ${entity.displayName()}`);
+        return primary;
+    }
+
+    public static async generatePages(
+        entity: BaseEntity,
+        options: RecordSheetSvgGeneratorOptions = {},
+    ): Promise<readonly SVGSVGElement[]> {
         const format = options.format ?? 'letter';
         const pageFormat = options.pageFormat ?? (format === 'a4' ? 'a4' : 'letter');
         const page = recordSheetPageProfile(pageFormat);
         const layout = resolveRecordSheetLayout(entity);
         const profile = layout.profile(entity, pageFormat);
-        const svg = await layout.generate(entity, { format, page, profile });
-        svg.setAttribute('data-mekbay-layout', layout.id);
-        svg.setAttribute('data-mekbay-page-format', page.format);
-        renderGeneratedRecordSheetControls(svg, entity, options);
-        return optimizeGeneratedSvg(svg);
+        const request = { format, page, profile } as const;
+        const pages = layout.generatePages
+            ? [...await layout.generatePages(entity, request)]
+            : [await layout.generate(entity, request)];
+        const primary = pages[0];
+        if (!primary) throw new Error(`No record sheet was generated for ${entity.displayName()}`);
+        renderGeneratedRecordSheetControls(primary, entity, options);
+        return Object.freeze(pages.map((svg, index) => {
+            svg.setAttribute('data-mekbay-layout', layout.id);
+            svg.setAttribute('data-mekbay-page-format', page.format);
+            svg.setAttribute('data-mekbay-page-index', String(index));
+            svg.setAttribute('data-mekbay-page-count', String(pages.length));
+            svg.setAttribute('data-mekbay-page-role', index === 0 ? 'primary' : 'supplemental');
+            return optimizeGeneratedSvg(svg);
+        }));
     }
 
     /** Composes already-generated compact blocks into one printable page. */

@@ -12,7 +12,6 @@ import {
 } from '../inventory-control-runtime-state.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { asComponentId } from '../entity/entity-identifiers';
-import type { JsonValue } from '../persisted-unit-state';
 import type { TnTargetUnitType } from '../target-number-calculator.model';
 import { uuidv4 } from '../../utils/uuid.util';
 import {
@@ -520,7 +519,7 @@ function serializedEncounterTarget(target: EncounterTarget): SerializedEncounter
 }
 
 function encounterTargetFromSerialized(target: SerializedEncounterTargetV2): EncounterTarget {
-    const record = requirePlainRecord(target as unknown as JsonValue, 'encounter target');
+    const record = requirePlainRecord(target, 'encounter target');
     exactOperationKeys(record, ['id', 'letter', 'name', 'color', 'source', 'readOnly', 'unitType', 'tnCalculator']);
     return freezeTarget({
         id: asEncounterTargetId(requireText(record['id'])),
@@ -593,7 +592,7 @@ function endpointKey(endpoint: EncounterNetworkEndpoint): string {
 }
 
 function encounterNetworkFromSerialized(network: SerializedEncounterNetworkV2): EncounterNetwork {
-    const record = requirePlainRecord(network as unknown as JsonValue, 'encounter network');
+    const record = requirePlainRecord(network, 'encounter network');
     exactOperationKeys(record, ['id', 'networkType', 'color', 'endpoints']);
     return freezeNetwork({
         id: asEncounterNetworkId(requireText(record['id'])),
@@ -611,22 +610,22 @@ function encounterNetworkFromSerialized(network: SerializedEncounterNetworkV2): 
     });
 }
 
-function requirePlainRecord(value: JsonValue, label: string): Record<string, JsonValue> {
+function requirePlainRecord(value: unknown, label: string): Record<string, unknown> {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be an object`);
-    return value as Record<string, JsonValue>;
+    return value as Record<string, unknown>;
 }
 
-function requireList(value: JsonValue | undefined): JsonValue[] {
+function requireList(value: unknown): unknown[] {
     if (!Array.isArray(value)) throw new Error('Encounter operation field must be an array');
     return value;
 }
 
-function requireText(value: JsonValue | undefined): string {
+function requireText(value: unknown): string {
     if (typeof value !== 'string') throw new Error('Encounter operation field must be a string');
     return value;
 }
 
-function exactOperationKeys(record: Readonly<Record<string, JsonValue>>, allowed: readonly string[]): void {
+function exactOperationKeys(record: Readonly<Record<string, unknown>>, allowed: readonly string[]): void {
     const keys = new Set(allowed);
     for (const key of Object.keys(record)) if (!keys.has(key)) throw new Error(`Unknown encounter field: ${key}`);
 }

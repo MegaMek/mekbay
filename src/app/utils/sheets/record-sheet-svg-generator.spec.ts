@@ -362,6 +362,44 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.textContent).not.toContain('Standard Scale on Reverse');
     });
 
+    it('splits crowded capital and standard weapon inventories into front and reverse pages', async () => {
+        const entity = new TestWarShipEntity();
+        for (let index = 0; index < 20; index++) {
+            const capital = addTestEquipment(entity, new WeaponEquipment({
+                id: `Test NAC ${index}`,
+                name: `NAC ${index}`,
+                shortName: `NAC ${index}`,
+                type: 'weapon',
+                weapon: { capital: true, heat: 10, av: [2, 2, 1, 0] },
+            }), { location: 'Nose' });
+            const standard = addTestEquipment(entity, new WeaponEquipment({
+                id: `Test Laser ${index}`,
+                name: `Laser ${index}`,
+                shortName: `Laser ${index}`,
+                type: 'weapon',
+                weapon: { heat: 5, av: [8, 8, 0, 0] },
+            }), { location: 'Nose' });
+            entity.addEquipmentBay('weapon-bay', { mounts: [capital] });
+            entity.addEquipmentBay('weapon-bay', { mounts: [standard] });
+        }
+
+        const pages = await RecordSheetSvgGenerator.generatePages(entity);
+
+        expect(pages.length).toBe(2);
+        expect(pages.map(page => page.dataset['mekbayPageRole'])).toEqual(['primary', 'supplemental']);
+        expect(pages[0].textContent).toContain('Standard Scale on Reverse');
+        expect(pages[0].textContent).toContain('NAC 0');
+        expect(pages[0].textContent).not.toContain('Laser 0');
+        expect(pages[1].textContent).toContain('Standard Scale');
+        expect(pages[1].textContent).toContain('Laser 0');
+        expect(pages[1].textContent).toContain('ADVANCED MOVEMENT');
+        expect(pages[1].textContent).toContain('VELOCITY RECORD');
+        expect(pages[1].querySelectorAll('[data-mekbay-vector-diagram]').length).toBe(9);
+        expect(pages[1].querySelectorAll('.vector-arrow').length).toBe(18);
+        expect(pages[1].querySelectorAll('.vector-result').length).toBe(6);
+        expect(pages[1].dataset['mekbayPartialSheet']).toBe('1');
+    });
+
     it('generates runtime binding anchors without a downloaded sheet', async () => {
         const svg = await RecordSheetSvgGenerator.generate(new TestQuadMekEntity());
 

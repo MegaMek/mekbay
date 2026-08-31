@@ -56,8 +56,7 @@ describe('ReadyMekUnitFactory direct entity boundary', () => {
         const converted = await convertPersistedMekUnitV1(source, ready);
         expect(converted.schemaVersion).toBe(CBT_UNIT_PERSISTENCE_SCHEMA_VERSION);
         expect(converted.conditions?.values).toContain('prone');
-        expect(converted.restoration?.warnings.some(warning =>
-            warning.code === 'LEGACY_STATE_NOT_CONVERTED')).toBeTrue();
+        expect(converted.restoration).toBeUndefined();
         expect(JSON.stringify(converted)).not.toContain('sourceOwned');
         expect('convertLegacyV1' in ready).toBeFalse();
 
@@ -68,8 +67,46 @@ describe('ReadyMekUnitFactory direct entity boundary', () => {
         );
         expect(restored.getInstance().query().heatCapability().kind).toBe('supported');
         expect(restored.getInstance().query().mekDestruction().kind).toBe('supported');
-        expect(restored.serialize().restoration?.warnings.some(warning =>
-            warning.code === 'LEGACY_STATE_NOT_CONVERTED')).toBeTrue();
+        expect(restored.serialize().restoration).toBeUndefined();
+    });
+
+    it('converts V1 crew and manual shutdown without persisting migration diagnostics', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const factory = readyFactory();
+        const ready = await factory.createFromEntity({
+            identity: fixture.identity,
+            instanceId: asUnitInstanceId('unit:v1-crew-shutdown'),
+        }, fixture.entity, fixture.identity);
+        const source: DeferredUnitSource = {
+            payload: { state: {
+                shutdown: true,
+                crew: [{
+                    id: 0,
+                    name: 'Ada',
+                    gunnerySkill: 3,
+                    pilotingSkill: 4,
+                    hits: 2,
+                    state: 1,
+                }],
+            } },
+            identity: { kind: 'resolved', savedIdentity: fixture.identity },
+        };
+
+        const converted = await convertPersistedMekUnitV1(source, ready);
+        const restored = await factory.restoreFromEntity(converted, fixture.entity, fixture.identity);
+        const positionId = [...ready.getIndex().crewPositions.keys()][0]!;
+
+        expect(converted.conditions?.values).toContain('shutdown');
+        expect(converted.deployment.values.crewAssignment.positions[0]).toEqual(
+            jasmine.objectContaining({ name: 'Ada', gunnery: 3, piloting: 4 }),
+        );
+        expect(converted.restoration).toBeUndefined();
+        expect(restored.getInstance().query().hasCondition('shutdown')).toBeTrue();
+        expect(restored.getInstance().query().crewState(positionId)).toEqual({
+            wounds: 2,
+            unconscious: true,
+            ejected: false,
+        });
     });
 
     it('converts the V1 movement heat witness only at legacy ingress', async () => {
@@ -150,9 +187,7 @@ describe('ReadyMekUnitFactory direct entity boundary', () => {
             standAttempts: 1,
             carefulStand: true,
         }));
-        expect(converted.restoration?.warnings.some(warning =>
-            warning.code === 'LEGACY_STATE_NOT_CONVERTED'
-            && warning.message.includes('legacy turn facts'))).toBeTrue();
+        expect(converted.restoration).toBeUndefined();
 
         const restored = await factory.restoreFromEntity(converted, fixture.entity, fixture.identity);
         expect(restored.getInstance().query().turnState()).toEqual(jasmine.objectContaining({

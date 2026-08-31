@@ -1,8 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { BaseEntity } from '../../../models/entity/base-entity';
 import { type AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
+import { JumpShipEntity } from '../../../models/entity/entities/largecraft/jumpship-entity';
 import {
     type BipedArmorValues,
     type BipedPaperdollPipLayout,
@@ -227,7 +227,7 @@ export function drawAeroDataPanel(
         heatProfile.id = 'heatProfile';
         detailY += 10;
     }
-    const gravDecks = readEntityNumberArraySignal(entity, 'gravDecks');
+    const gravDecks = entity instanceof JumpShipEntity ? entity.gravDecks() : [];
     if (gravDecks.length > 0 && detailY < referenceHeight - footerReserve) {
         addText(group, 'Grav Decks:', x(8), y(detailY), { size: font(6.2), weight: 700 });
         addText(group, gravDecks.map((diameter, index) => `#${index + 1}: ${formatWholeNumber(diameter)}m`).join(' · '),
@@ -708,13 +708,6 @@ export function drawAeroHeatDataPanel(svg: SVGSVGElement, entity: AeroEntity, bo
     );
     apply.id = 'applyHeatButton';
     group.appendChild(apply);
-}
-
-function readEntityNumberArraySignal(entity: BaseEntity, key: string): readonly number[] {
-    const value = (entity as unknown as Record<string, unknown>)[key];
-    if (typeof value !== 'function') return [];
-    const resolved = (value as () => unknown)();
-    return Array.isArray(resolved) ? resolved.filter(item => typeof item === 'number' && Number.isFinite(item)) : [];
 }
 
 function drawAeroDamagePanel(

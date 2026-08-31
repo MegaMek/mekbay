@@ -2161,7 +2161,17 @@ function buildNonMekAttackerTargetingContext(
         source: target.source ?? 'manual' as const,
         readOnly: target.readOnly ?? false,
     }));
-    const weapons = [...index.components.values()]
+    const components = [...index.components.values()];
+    // Ammo loadouts depend on the source mount, not on the weapon considering
+    // that source. Resolve them once per projection; large craft otherwise
+    // repeated the same registry work hundreds of times per weapon.
+    const ammoSources = components.flatMap(source => {
+        const loadouts = entityAmmoLoadouts(entity, source.mount, ruleset);
+        return loadouts.length === 0
+            ? []
+            : [Object.freeze({ componentId: source.id, loadouts })];
+    });
+    const weapons = components
         .filter(component => component.mount.equipment instanceof WeaponEquipment
             && !component.mount.isPhysicalWeapon())
         .map(component => {
@@ -2174,16 +2184,16 @@ function buildNonMekAttackerTargetingContext(
                 ruleset,
                 component.id,
             );
-            const sources = [...index.components.values()].flatMap(source => {
-                const munitionKeys = entityAmmoLoadouts(entity, source.mount, ruleset)
+            const sources = ammoSources.flatMap(source => {
+                const munitionKeys = source.loadouts
                     .filter(loadout => weaponAcceptsAmmo(weapon, loadout.equipment, selectedMode))
-                    .map(loadout => loadout.munitionKey)
-                    .sort(compareText);
-                return munitionKeys.length === 0
+                    .map(loadout => loadout.munitionKey);
+                const uniqueMunitionKeys = [...new Set(munitionKeys)].sort(compareText);
+                return uniqueMunitionKeys.length === 0
                     ? []
                     : [Object.freeze({
-                        componentId: source.id,
-                        munitionKeys: Object.freeze(munitionKeys),
+                        componentId: source.componentId,
+                        munitionKeys: Object.freeze(uniqueMunitionKeys),
                     })];
             }).sort((left, right) => compareText(left.componentId, right.componentId));
             return Object.freeze({
@@ -2195,7 +2205,7 @@ function buildNonMekAttackerTargetingContext(
             });
         }).sort((left, right) => compareText(left.componentId, right.componentId));
     const actions = Object.freeze([
-        ...[...index.components.values()]
+        ...components
             .filter(component => component.mount.isPhysicalWeapon())
             .map(component => Object.freeze({
                 kind: 'component' as const,
@@ -2902,8 +2912,11 @@ function validateState(
             false,
         ),
     );
-    if (!targetingValidation.accepted || targetingValidation.changed) {
-        throw new Error('Runtime has invalid attacker targeting state');
+    if (!targetingValidation.accepted) {
+        throw new Error(`Runtime has invalid attacker targeting state: ${targetingValidation.reason}`);
+    }
+    if (targetingValidation.changed) {
+        throw new Error('Runtime has non-canonical attacker targeting state');
     }
     for (const [locationId, delta] of state.pendingCombat.locationInternalDamage) {
         const location = index.locations.get(locationId);

@@ -32,13 +32,13 @@ export class RecordSheetSourceService {
         context: RecordSheetEntitySourceContext = {},
     ): Promise<RecordSheetSourceResult> {
         const currentOptions = this.options.options();
-        const svg = await RecordSheetSvgGenerator.generate(entity, {
+        const svgs = await RecordSheetSvgGenerator.generatePages(entity, {
             ...generatorOptions,
             ruleset: generatorOptions.ruleset ?? currentOptions.CBTRules,
             fluffImageUrl: generatorOptions.fluffImageUrl
                 ?? this.fluffImages.resolveEntityUrl(entity, context.design),
         });
-        svg.dataset['mekbaySheetSource'] = 'generated';
-        return Object.freeze({ svgs: Object.freeze([svg]) });
+        svgs.forEach(svg => { svg.dataset['mekbaySheetSource'] = 'generated'; });
+        return Object.freeze({ svgs });
     }
 }
