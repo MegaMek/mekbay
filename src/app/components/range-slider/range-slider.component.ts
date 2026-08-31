@@ -21,7 +21,7 @@ export class RangeSliderComponent {
     private readonly DEBOUNCE_TIME_MS = 150;
     private readonly DOUBLE_CLICK_TIME_MS = 500;
     private readonly DOUBLE_CLICK_TOLERANCE_PX = 6;
-    private debounceTimer: any;
+    private debounceTimer: ReturnType<typeof setTimeout> | undefined;
     private lastThumbPointerDown: {
         which: SliderThumb;
         timeStamp: number;

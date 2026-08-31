@@ -10,7 +10,11 @@ export interface UnitVariantGroupIdentity {
     omni: boolean;
 }
 
-export type UnitVariantGroupLike = Pick<UnitSummary, 'chassis' | 'as' | 'omni'>;
+export interface UnitVariantGroupLike {
+    readonly chassis: UnitSummary['chassis'];
+    readonly as: Pick<UnitSummary['as'], 'TP'>;
+    readonly omni: UnitSummary['omni'];
+}
 
 export function getUnitVariantGroupIdentity(unit: UnitVariantGroupLike): UnitVariantGroupIdentity {
     return {

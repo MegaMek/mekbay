@@ -28,28 +28,31 @@ import type { AvailabilityFilterScope } from '../services/unit-search-filters.mo
 import { findBvNormalizationMatch } from './bv-normalization.util';
 import { findPvNormalizationMatch } from './pv-normalization.util';
 import type { ParsedASSpecials } from './as-special-filter.util';
+import type { UnitSearchRecord } from './unit-search-worker-protocol.util';
 
-export interface UnitSearchExecutionRequest {
-    units: UnitSummary[];
+export interface UnitSearchExecutionRequest<
+    TUnit extends UnitSearchRecord = UnitSummary,
+> {
+    units: TUnit[];
     parsedQuery: ParseResult;
     searchTokens: SearchTokensGroup[];
     uiOnlyFilterState?: FilterState;
-    uiOnlyFilterDependencies?: UnitFilterKernelDependencies;
+    uiOnlyFilterDependencies?: UnitFilterKernelDependencies<NoInfer<TUnit>>;
     initialAvailabilityScope?: AvailabilityFilterScope;
     gameSystem: GameSystem;
     sortKey: string;
     sortDirection: 'asc' | 'desc';
     bvPvLimit: number;
     forceTotalBvPv: number;
-    getAdjustedBV: (unit: UnitSummary) => number;
-    getAdjustedPV: (unit: UnitSummary) => number;
+    getAdjustedBV: (unit: NoInfer<TUnit>) => number;
+    getAdjustedPV: (unit: NoInfer<TUnit>) => number;
     normalization?: UnitSearchNormalization | null;
-    unitBelongsToEra: (unit: UnitSummary, eraName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitBelongsToFaction: (unit: UnitSummary, factionName: string, eraNames?: readonly string[]) => boolean;
-    unitMatchesAvailabilityFrom?: (unit: UnitSummary, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitMatchesAvailabilityRarity?: (unit: UnitSummary, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitBelongsToForcePack: (unit: UnitSummary, packName: string) => boolean;
-    unitMatchesFormationTarget?: (unit: UnitSummary, formationName: string) => boolean;
+    unitBelongsToEra: (unit: NoInfer<TUnit>, eraName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitBelongsToFaction: (unit: NoInfer<TUnit>, factionName: string, eraNames?: readonly string[]) => boolean;
+    unitMatchesAvailabilityFrom?: (unit: NoInfer<TUnit>, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityRarity?: (unit: NoInfer<TUnit>, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitBelongsToForcePack: (unit: NoInfer<TUnit>, packName: string) => boolean;
+    unitMatchesFormationTarget?: (unit: NoInfer<TUnit>, formationName: string) => boolean;
     getAllEraNames: () => string[];
     getAllFactionNames: () => string[];
     getAllAvailabilityFromNames?: () => string[];
@@ -60,11 +63,13 @@ export interface UnitSearchExecutionRequest {
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
     getIndexedASSpecials?: (unitUuid: string) => ParsedASSpecials | undefined;
     availabilitySortScope?: AvailabilityFilterScope;
-    getMegaMekRaritySortScore?: (unit: UnitSummary, scope?: AvailabilityFilterScope) => number;
+    getMegaMekRaritySortScore?: (unit: NoInfer<TUnit>, scope?: AvailabilityFilterScope) => number;
 }
 
-export interface UnitSearchExecutionResult {
-    results: UnitSummary[];
+export interface UnitSearchExecutionResult<
+    TUnit extends UnitSearchRecord = UnitSummary,
+> {
+    results: TUnit[];
     normalizationMatchesByUnitUuid: ReadonlyMap<string, UnitSearchNormalizationMatch>;
     telemetryStages: SearchTelemetryStage[];
     totalMs: number;
@@ -125,7 +130,9 @@ function getSelectedASMotiveCodes(
     return selectedCodes.size > 0 ? selectedCodes : null;
 }
 
-export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSearchExecutionResult {
+export function executeUnitSearch<TUnit extends UnitSearchRecord>(
+    request: UnitSearchExecutionRequest<TUnit>,
+): UnitSearchExecutionResult<TUnit> {
     const telemetryStages: SearchTelemetryStage[] = [];
     const searchStartedAt = getNowMs();
     const allUnits = request.units;
@@ -153,7 +160,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         && ((normalization.kind === 'bv' && request.gameSystem === GameSystem.CLASSIC)
             || (normalization.kind === 'pv' && request.gameSystem === GameSystem.ALPHA_STRIKE));
     const normalizationMatchCache = new Map<string, UnitSearchNormalizationMatch | null>();
-    const resolveNormalizationMatch = (unit: UnitSummary): UnitSearchNormalizationMatch | null => {
+    const resolveNormalizationMatch = (unit: TUnit): UnitSearchNormalizationMatch | null => {
         if (!normalizationEnabled) {
             return null;
         }
@@ -166,25 +173,25 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         }
         return normalizationMatchCache.get(unit.uuid) ?? null;
     };
-    const getContextualAdjustedBV = (unit: UnitSummary): number => {
+    const getContextualAdjustedBV = (unit: TUnit): number => {
         return resolveNormalizationMatch(unit)?.adjustedValue ?? request.getAdjustedBV(unit);
     };
-    const getContextualAdjustedPV = (unit: UnitSummary): number => {
+    const getContextualAdjustedPV = (unit: TUnit): number => {
         return resolveNormalizationMatch(unit)?.adjustedValue ?? request.getAdjustedPV(unit);
     };
 
-    const context: EvaluatorContext = {
+    const context: EvaluatorContext<TUnit> = {
         getProperty,
         getUnitId: unit => unit.uuid,
         getAdjustedBV: getContextualAdjustedBV,
         getAdjustedPV: getContextualAdjustedPV,
         gameSystem: request.gameSystem,
-        matchesText: (unit: UnitSummary, text: string) => {
+        matchesText: (unit: TUnit, text: string) => {
             const searchableText = unit._searchKey
                 || removeAccents(`${unit.chassis ?? ''} ${unit.model ?? ''}`.toLowerCase());
             return getSearchMatcher(text)(searchableText, unit._searchKeyAlphanumeric);
         },
-        getCountableValues: (unit: UnitSummary, filterKey: string) => {
+        getCountableValues: (unit: TUnit, filterKey: string) => {
             switch (filterKey) {
                 case 'componentName':
                 case 'weaponType':
@@ -205,7 +212,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         getAllAvailabilityRarityNames: request.getAllAvailabilityRarityNames,
         getAllFormationNames: request.getAllFormationNames,
         getAllForcePackNames: () => getForcePacks().map(pack => pack.name),
-        getASMovementValues: (unit: UnitSummary) => {
+        getASMovementValues: (unit: TUnit) => {
             const mvm = unit.as?.MVm;
             if (!mvm) return [];
             if (selectedMotiveCodes === null) {
@@ -282,15 +289,15 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
 
     const sorted = [...results];
     const compiledSearchTokens = compileRelevanceSearchGroups(request.searchTokens);
-    let relevanceScores: WeakMap<UnitSummary, number> | null = null;
-    let megaMekRarityScores: WeakMap<UnitSummary, number> | null = null;
+    let relevanceScores: WeakMap<TUnit, number> | null = null;
+    let megaMekRarityScores: WeakMap<TUnit, number> | null = null;
     if (request.sortKey === '' && hasTextSearch) {
         relevanceScores = measureStage(
             telemetryStages,
             'relevance-prep',
             sorted.length,
             () => {
-                const scores = new WeakMap<UnitSummary, number>();
+                const scores = new WeakMap<TUnit, number>();
 
                 for (const unit of sorted) {
                     const chassis = (unit.chassis ?? '').toLowerCase();
@@ -331,7 +338,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
     }
 
     if (isMegaMekRaritySortKey(request.sortKey) && request.getMegaMekRaritySortScore) {
-        megaMekRarityScores = new WeakMap<UnitSummary, number>();
+        megaMekRarityScores = new WeakMap<TUnit, number>();
         for (const unit of sorted) {
             megaMekRarityScores.set(unit, request.getMegaMekRaritySortScore(unit, request.availabilitySortScope));
         }

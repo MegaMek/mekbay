@@ -10,6 +10,7 @@ import { getFormationDefinition, getFormationDefinitionSource, getFormationDefin
 import { FormationRequirementEngine } from './formation-requirement-engine.util';
 import { normalizeLooseText } from './string.util';
 import type { Era } from '../models/eras.model';
+import type { TechBase } from '../models/tech.model';
 import { compileFormationUnitFacts, type FormationUnitLike } from './formation-unit-facts.util';
 import { collectGroupUnits, compileGroupFacts } from './org/org-facts.util';
 import { groupMatchesChildRole } from './org/org-role-match.util';
@@ -38,7 +39,7 @@ interface FormationForceLike {
     readonly gameSystem: GameSystem;
     faction(): Faction | null;
     era(): Era | null;
-    techBase(): string;
+    techBase(): TechBase;
 }
 
 type FormationFactionReference = Faction | string | null | undefined;
@@ -305,7 +306,7 @@ export class LanceTypeIdentifierUtil {
 
     public static identifyLanceTypes(
         units: readonly FormationUnitLike[],
-        techBase: string,
+        techBase: TechBase,
         faction: FormationFactionReference,
         gameSystem: GameSystem,
     ): FormationTypeDefinition[] {
@@ -322,9 +323,8 @@ export class LanceTypeIdentifierUtil {
                     continue;
                 }
 
-                if (techBase && definition.techBase
+                if (definition.techBase
                     && definition.techBase !== 'Special'
-                    && techBase !== 'Mixed'
                     && definition.techBase !== techBase) {
                     continue;
                 }
@@ -350,7 +350,7 @@ export class LanceTypeIdentifierUtil {
 
     public static identifyFormations(
         units: readonly FormationUnitLike[],
-        techBase: string,
+        techBase: TechBase,
         faction: FormationFactionReference,
         gameSystem: GameSystem,
         options: FormationIdentificationOptions = {},
@@ -438,7 +438,7 @@ export class LanceTypeIdentifierUtil {
 
     public static getBestMatch(
         units: readonly FormationUnitLike[],
-        techBase: string,
+        techBase: TechBase,
         faction: FormationFactionReference,
         gameSystem: GameSystem,
         preferredIds?: ReadonlySet<string>,

@@ -13,7 +13,9 @@ import {
  * Returns the fixed Piloting value for units whose Piloting cannot be changed.
  * Returns `null` when the unit uses the requested Piloting value.
  */
-export function getFixedPilotingSkill(unit: UnitSummary): number | null {
+export function getFixedPilotingSkill(
+    unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
+): number | null {
     return fixedClassicPilotingSkill(summarySkillFacts(unit));
 }
 
@@ -31,11 +33,16 @@ export function getFixedPilotingSkill(unit: UnitSummary): number | null {
  * @param pilotingSkill - The raw/requested piloting skill
  * @returns The effective piloting skill after applying CBT rules
  */
-export function getEffectivePilotingSkill(unit: UnitSummary, pilotingSkill: number): number {
+export function getEffectivePilotingSkill(
+    unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
+    pilotingSkill: number,
+): number {
     return effectiveClassicPilotingSkill(summarySkillFacts(unit), pilotingSkill);
 }
 
-function summarySkillFacts(unit: UnitSummary): ClassicSkillUnitFacts {
+function summarySkillFacts(
+    unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
+): ClassicSkillUnitFacts {
     return Object.freeze({
         unitType: unit.type,
         unitSubtype: unit.subtype,

@@ -316,9 +316,6 @@ export class SidebarFooterComponent {
         }
 
         if (!this.forceBuilderService.addLoadedForce(forceToAdd, result.alignment)) {
-            if (!this.forceWorkspace.getForceSlot(forceToAdd)) {
-                for (const unit of forceToAdd.units()) unit.destroy();
-            }
             this.toastService.showToast('This force is already loaded or no longer active.', 'info');
             return;
         }

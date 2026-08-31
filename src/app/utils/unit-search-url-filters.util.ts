@@ -6,7 +6,7 @@ import type { MultiState, MultiStateSelection } from '../components/multi-select
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
 import type { GameSystem } from '../models/common.model';
 import { getAvailableDropdownValuesMap, type UnitSearchDropdownValuesDependencies } from './unit-search-dropdown-values.util';
-import { AdvFilterType, normalizeTriStateBooleanFilterValue, type FilterState, SORT_OPTIONS } from '../services/unit-search-filters.model';
+import { AdvFilterType, isFilterRangeValue, normalizeTriStateBooleanFilterValue, type FilterState, SORT_OPTIONS } from '../services/unit-search-filters.model';
 import { getAdvancedFilterConfigByKey, getPublicUnitSearchPropertyKey, normalizeUnitSearchPropertyKey } from './unit-search-filter-config.util';
 import { parseValues } from './semantic-filter.util';
 import { normalizeMultiStateSelection } from './unit-search-shared.util';
@@ -267,6 +267,7 @@ function generateCompactFiltersParam(state: FilterState): string | null {
         const publicKey = getPublicUnitSearchPropertyKey(key);
 
         if (conf.type === AdvFilterType.RANGE) {
+            if (!isFilterRangeValue(filterState.value)) continue;
             const [min, max] = filterState.value;
             parts.push(`${publicKey}:${min}-${max}`);
         } else if (conf.type === AdvFilterType.BOOLEAN) {

@@ -1566,7 +1566,7 @@ function compatibleAmmoSources(
                     || (source.kind === 'equipment' ? source.mount.equipmentId : String(source.systemType)),
                 location: componentLocationIds(index, sourceId)
                     .map(locationId => index.locations.get(locationId)?.code)
-                    .filter((code): code is string => code !== undefined)
+                    .filter(code => code !== undefined)
                     .join('/'),
                 status,
                 munitionKey: current.munitionKey,

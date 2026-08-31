@@ -30,6 +30,7 @@ import {
 import { clusterTableForMekEntity, clusterTableRows, hitLocationRows, recordSheetPhysicalLocationRows, referenceTableNotes } from '../../record-sheet-reference-table';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { recordSheetAmmoName } from '../../record-sheet-ammo.util';
+import { mekCriticalLocationCells } from '../../mek-location-layout.util';
 import {
     type Box,
     addDiagramHeading,
@@ -1109,6 +1110,21 @@ function mekCrewRoleLabels(entity: MekEntity, count: number): readonly string[] 
     return Array.from({ length: count }, (_, index) => index === 0 ? 'Pilot' : `Crew ${index + 1}`);
 }
 
+function bipedStructureTonnage(entity: MekEntity): Exclude<BipedStructureTonnage, number> {
+    const tonnages = entity.structureTonnages();
+    const fallback = entity.tonnage();
+    return {
+        HD: tonnages.get('HD') ?? fallback,
+        CT: tonnages.get('CT') ?? fallback,
+        LT: tonnages.get('LT') ?? fallback,
+        RT: tonnages.get('RT') ?? fallback,
+        LA: tonnages.get('LA') ?? fallback,
+        RA: tonnages.get('RA') ?? fallback,
+        LL: tonnages.get('LL') ?? fallback,
+        RL: tonnages.get('RL') ?? fallback,
+    };
+}
+
 async function drawMekDamagePanel(svg: SVGSVGElement, entity: MekEntity, box: Box): Promise<void> {
     const group = addFrame(svg, 'ARMOR / INTERNAL', box);
     const pipLayout = mekPaperdollPipLayout(entity);
@@ -1122,9 +1138,7 @@ async function drawMekDamagePanel(svg: SVGSVGElement, entity: MekEntity, box: Bo
         armor[location.code] = location.armor.front;
         if (location.armor.rear > 0) armor[`${location.code}_R`] = location.armor.rear;
     }
-    const structureTonnage = Object.fromEntries(
-        entity.locationOrder.map(location => [location, entity.structureTonnages().get(location) ?? entity.tonnage()]),
-    ) as unknown as BipedStructureTonnage;
+    const structureTonnage = bipedStructureTonnage(entity);
     try {
         const front = await BipedPaperdollUtil.createArmorPaperdoll(126, 278, armor as BipedArmorValues, {
             centeredHorizontally: true,
@@ -1179,9 +1193,7 @@ export async function drawMekPaperdolls(svg: SVGSVGElement, entity: MekEntity, b
         armor[location.code] = location.armor.front;
         if (location.armor.rear > 0) armor[`${location.code}_R`] = location.armor.rear;
     }
-    const structureTonnage = Object.fromEntries(
-        entity.locationOrder.map(location => [location, entity.structureTonnages().get(location) ?? entity.tonnage()]),
-    ) as unknown as BipedStructureTonnage;
+    const structureTonnage = bipedStructureTonnage(entity);
 
     addDiagramHeading(
         group,
@@ -2362,7 +2374,10 @@ async function drawCanonicalMekCriticalContents(
         class: 'critical-roll-range',
     }));
 
-    Object.entries(layout).forEach(([location, locationLayout]) => {
+    mekCriticalLocationCells(entity.chassisConfig).forEach(location => {
+        if (location === null) return;
+        const locationLayout = layout[location];
+        if (!locationLayout) return;
         const criticalGroup = svgElement('g');
         criticalGroup.setAttribute('class', 'critGroup');
         criticalGroup.setAttribute('loc', location);
@@ -2714,20 +2729,6 @@ async function drawVariantDamageTransferDiagram(
 
 function mekCriticalSlotCount(location: string): 6 | 12 {
     return ['HD', 'LL', 'RL', 'CL', 'FLL', 'FRL', 'RLL', 'RRL'].includes(location) ? 6 : 12;
-}
-
-function mekCriticalGridCells(entity: MekEntity): readonly (string | null)[] {
-    switch (entity.chassisConfig) {
-        case 'Quad':
-        case 'QuadVee':
-            return ['FLL', 'HD', 'FRL', 'LT', 'CT', 'RT', 'RLL', null, 'RRL'];
-        case 'Tripod':
-            return ['LA', 'HD', 'RA', 'LT', 'CT', 'RT', 'LL', 'CL', 'RL'];
-        case 'Biped':
-        case 'LAM':
-        default:
-            return ['LA', 'HD', 'RA', 'LT', 'CT', 'RT', 'LL', null, 'RL'];
-    }
 }
 
 function mekCriticalLocationHeading(entity: MekEntity, location: string): string {

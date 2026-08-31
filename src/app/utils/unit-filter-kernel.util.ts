@@ -4,6 +4,7 @@
 
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { UnitSummary } from '../models/unit-summary.model';
+import type { UnitSearchRecord } from './unit-search-worker-protocol.util';
 import {
     ADVANCED_FILTERS,
     AS_MOVEMENT_MODE_DISPLAY_NAMES,
@@ -32,10 +33,12 @@ import {
     type ParsedASSpecials,
 } from './as-special-filter.util';
 
-export interface UnitFilterKernelDependencies {
-    getProperty: (unit: UnitSummary, key?: string) => unknown;
-    getAdjustedBV: (unit: UnitSummary) => number;
-    getAdjustedPV: (unit: UnitSummary) => number;
+export interface UnitFilterKernelDependencies<
+    TUnit extends UnitSearchRecord = UnitSummary,
+> {
+    getProperty: (unit: TUnit, key?: string) => unknown;
+    getAdjustedBV: (unit: TUnit) => number;
+    getAdjustedPV: (unit: TUnit) => number;
     getUnitIdsForExternalFilters: (
         eraFilterState?: FilterState[string],
         factionFilterState?: FilterState[string],
@@ -44,30 +47,30 @@ export interface UnitFilterKernelDependencies {
         selectedFactionEntries: MultiStateSelection,
         wildcardPatterns?: WildcardPattern[],
     ) => string[];
-    unitMatchesAvailabilityFrom: (unit: UnitSummary, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitMatchesAvailabilityRarity: (unit: UnitSummary, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityFrom: (unit: TUnit, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityRarity: (unit: TUnit, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
     getForcePackLookupSet: (packName: string) => ReadonlySet<string> | undefined;
-    getAvailabilityLookupKey: (unit: UnitSummary) => string;
+    getAvailabilityLookupKey: (unit: TUnit) => string;
     getIndexedUnitIds?: (filterKey: string, value: string) => ReadonlySet<string> | undefined;
     getIndexedASSpecials?: (unitUuid: string) => ParsedASSpecials | undefined;
 }
 
-interface ApplyUnitFilterStateRequest {
-    units: UnitSummary[];
+interface ApplyUnitFilterStateRequest<TUnit extends UnitSearchRecord> {
+    units: TUnit[];
     state: FilterState;
-    dependencies: UnitFilterKernelDependencies;
+    dependencies: UnitFilterKernelDependencies<TUnit>;
     skipKey?: string;
 }
 
 const ADVANCED_FILTER_CONFIG_BY_KEY = new Map(ADVANCED_FILTERS.map(conf => [conf.key, conf]));
 
-function filterUnitsByMultiState(
-    units: UnitSummary[],
+function filterUnitsByMultiState<TUnit extends UnitSearchRecord>(
+    units: TUnit[],
     key: string,
     selection: MultiStateSelection,
-    getProperty: UnitFilterKernelDependencies['getProperty'],
+    getProperty: UnitFilterKernelDependencies<TUnit>['getProperty'],
     wildcardPatterns?: WildcardPattern[],
-): UnitSummary[] {
+): TUnit[] {
     const orList: MultiStateOption[] = [];
     const andList: MultiStateOption[] = [];
     const notList: MultiStateOption[] = [];
@@ -207,7 +210,9 @@ function filterUnitsByMultiState(
     });
 }
 
-export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): UnitSummary[] {
+export function applyFilterStateToUnits<TUnit extends UnitSearchRecord>(
+    request: ApplyUnitFilterStateRequest<TUnit>,
+): TUnit[] {
     const { units, state, dependencies, skipKey } = request;
     let results = units;
     const activeFilters: Record<string, unknown> = {};
@@ -345,7 +350,11 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
         }
 
         if (conf.type === AdvFilterType.SEMANTIC) {
-            const searchTerms: string[] = Array.isArray(val) ? val : (typeof val === 'object' ? Object.keys(val) : [String(val)]);
+            const searchTerms: string[] = Array.isArray(val)
+                ? val.filter((value): value is string => typeof value === 'string')
+                : val !== null && typeof val === 'object'
+                    ? Object.keys(val)
+                    : [String(val)];
             const hasSearchTerms = searchTerms.length > 0;
             const hasWildcards = wildcardPatterns && wildcardPatterns.length > 0;
             const includePatterns = wildcardPatterns?.filter(p => p.state === 'or') || [];

@@ -30,6 +30,7 @@
     "test:deploy-pipeline": "node --import tsx --test scripts/deploy-build.test.ts scripts/validate-deployed-core-assets.test.ts",
     "validate:deployed-core-assets": "tsx scripts/validate-deployed-core-assets.ts",
     "test:convergence-architecture": "tsx scripts/convergence-architecture.test.ts",
+    "test:v1-force-corpus": "tsx scripts/audit-v1-force-corpus.ts",
     "refresh:origin-main-delta": "tsx scripts/refresh-origin-main-delta.ts",
     "test:equipment-status-architecture": "tsx scripts/equipment-status-architecture.test.ts",
     "check:mek-domain-corpus": "npm run test:unit-report-oracles && npm run test:unit-diagnostics",

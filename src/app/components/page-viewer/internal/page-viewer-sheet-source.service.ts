@@ -5,6 +5,7 @@ import { Injectable, inject } from '@angular/core';
 
 import { RecordSheetSourceService } from '../../../services/record-sheet-source.service';
 import type { PageViewerMember } from './types';
+import { addRecordSheetPageFlipControls } from './record-sheet-page-flip';
 
 /** Lazily generates a member-owned sheet. Runtime state is bound separately. */
 @Injectable()
@@ -12,18 +13,23 @@ export class PageViewerSheetSourceService {
     private readonly source = inject(RecordSheetSourceService);
 
     async load(member: PageViewerMember): Promise<void> {
-        await member.loadRecordSheet(async () => {
+        const pages = await member.loadRecordSheets(async () => {
             const unit = member.force.getUnitSnapshot(member.id);
             if (!unit) throw new Error('The selected Classic unit is no longer admitted');
             const identity = member.force.getUnitSourceIdentity(member.id);
             const result = await this.source.load(unit.entity, {}, {
                 ...(identity ? { design: identity } : {}),
             });
-            const svg = result.svgs[0];
-            if (!svg) throw new Error(`No record sheet is available for ${member.entity.displayName()}`);
+            if (result.svgs.length === 0) {
+                throw new Error(`No record sheet is available for ${member.entity.displayName()}`);
+            }
             if (document.fonts?.ready) await document.fonts.ready.catch(() => undefined);
-            svg.removeAttribute('id');
-            return svg;
+            const svgs = result.svgs.map(svg => {
+                svg.removeAttribute('id');
+                return svg;
+            });
+            return svgs;
         });
+        addRecordSheetPageFlipControls(pages);
     }
 }

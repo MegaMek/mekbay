@@ -6,7 +6,7 @@ import { isAerospace } from './as-common.util';
 
 describe('isAerospace', () => {
     it('recognizes aerospace combat and large-craft types', () => {
-        for (const type of ['AF', 'CF', 'DA', 'DS', 'SC', 'WS', 'SS', 'JS']) {
+        for (const type of ['AF', 'CF', 'DA', 'DS', 'SC', 'WS', 'SS', 'JS'] as const) {
             expect(isAerospace(type, {})).withContext(type).toBeTrue();
         }
     });

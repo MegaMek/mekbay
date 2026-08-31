@@ -4,7 +4,6 @@
 
 /// <reference lib="webworker" />
 
-import type { UnitSummary } from './models/unit-summary.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './models/crew.model';
 import { getForcePacks } from './models/forcepacks.model';
 import {
@@ -31,13 +30,14 @@ import type {
     UnitSearchWorkerRequestMessage,
     UnitSearchWorkerResponseMessage,
     UnitSearchWorkerResultMessage,
+    UnitSearchWorkerUnit,
 } from './utils/unit-search-worker-protocol.util';
 import { getUnitVariantGroupKey } from './utils/unit-variant.util';
 import { buildASSpecialsByUnitIndex, type ParsedASSpecials } from './utils/as-special-filter.util';
 
 interface WorkerCorpusRuntime extends MulFactionEraSearchIndex {
     corpusVersion: string;
-    units: UnitSummary[];
+    units: UnitSearchWorkerUnit[];
     allUnitUuids: ReadonlySet<string>;
     indexedUnitUuids: Map<string, Map<string, ReadonlySet<string>>>;
     indexedFilterValues: Map<string, string[]>;
@@ -90,7 +90,7 @@ function addUnitUuids(target: Set<string>, source: ReadonlySet<string> | undefin
     }
 }
 
-function buildForcePackIndex(units: UnitSummary[]): Map<string, Set<string>> {
+function buildForcePackIndex(units: UnitSearchWorkerUnit[]): Map<string, Set<string>> {
     const unitsByName = new Map(units.map(unit => [getUnitNameKey(unit.name), unit]));
     const result = new Map<string, Set<string>>();
 
@@ -119,7 +119,7 @@ function hydrateCorpus(
     snapshot: UnitSearchWorkerCorpusSnapshot,
     onProgress: (completed: number, detail: string) => void = () => undefined,
 ): WorkerCorpusRuntime {
-    const units = snapshot.units as unknown as UnitSummary[];
+    const units = snapshot.units;
     const allUnitUuids = new Set(units.map(unit => unit.uuid));
     const forcePackToLookupKey = buildForcePackIndex(units);
     onProgress(1, `Loaded ${units.length.toLocaleString()} compact unit search records`);
@@ -261,20 +261,20 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         bvPvLimit: request.bvPvLimit,
         forceTotalBvPv: request.forceTotalBvPv,
         normalization: request.normalization,
-        getAdjustedBV: (unit: UnitSummary) => {
+        getAdjustedBV: (unit: UnitSearchWorkerUnit) => {
             const gunnery = request.pilotGunnerySkill;
             const piloting = request.pilotPilotingSkill;
             return BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
         },
-        getAdjustedPV: (unit: UnitSummary) => {
+        getAdjustedPV: (unit: UnitSearchWorkerUnit) => {
             if (request.pilotGunnerySkill === DEFAULT_GUNNERY_SKILL) {
                 return unit.as.PV;
             }
             return adjustPointValueForSkill(unit.as.PV, request.pilotGunnerySkill);
         },
-        unitBelongsToEra: (unit: UnitSummary, eraName: string, scope?: AvailabilityFilterScope) => getScopedEraUnitUuids(eraName, scope).has(unit.uuid),
-        unitBelongsToFaction: (unit: UnitSummary, factionName: string, eraNames?: readonly string[]) => getScopedFactionUnitUuids(factionName, eraNames).has(unit.uuid),
-        unitBelongsToForcePack: (unit: UnitSummary, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getUnitVariantGroupKey(unit)) ?? false,
+        unitBelongsToEra: (unit: UnitSearchWorkerUnit, eraName: string, scope?: AvailabilityFilterScope) => getScopedEraUnitUuids(eraName, scope).has(unit.uuid),
+        unitBelongsToFaction: (unit: UnitSearchWorkerUnit, factionName: string, eraNames?: readonly string[]) => getScopedFactionUnitUuids(factionName, eraNames).has(unit.uuid),
+        unitBelongsToForcePack: (unit: UnitSearchWorkerUnit, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getUnitVariantGroupKey(unit)) ?? false,
         getAllEraNames: getEraFilterValues,
         getAllFactionNames: getFactionFilterValues,
         getDisplayName: (filterKey: string, value: string) => workerDisplayNameFns.get(filterKey)?.(value),

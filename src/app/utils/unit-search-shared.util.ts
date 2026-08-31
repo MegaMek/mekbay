@@ -3,24 +3,18 @@
 // Author: Drake
 
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
-import type { UnitSummary } from '../models/unit-summary.model';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, type SearchTelemetryStage } from '../services/unit-search-filters.model';
-
-type CompactSearchUnit = UnitSummary & {
-    readonly _componentNameCounts?: Readonly<Record<string, number>>;
-    readonly _searchTags?: readonly string[];
-};
+import type { UnitSearchRecord } from './unit-search-worker-protocol.util';
 
 export interface UnitComponentData {
     names: Set<string>;
     counts: Map<string, number>;
 }
 
-const unitComponentCache = new WeakMap<UnitSummary, UnitComponentData>();
+const unitComponentCache = new WeakMap<UnitSearchRecord, UnitComponentData>();
 
-export function getMergedTags(unit: UnitSummary): string[] {
-    const projected = (unit as CompactSearchUnit)._searchTags;
-    if (projected) return [...projected];
+export function getMergedTags(unit: UnitSearchRecord): string[] {
+    if ('_searchTags' in unit) return [...unit._searchTags];
 
     const merged = new Set<string>();
     for (const entry of unit._chassisTags ?? []) merged.add(entry.tag);
@@ -55,7 +49,9 @@ function normalizeSourceValues(value: readonly string[] | null | undefined): str
     return result;
 }
 
-export function getUnitSourceFilterValues(unit: Pick<UnitSummary, 'source' | 'published'>): string[] {
+export function getUnitSourceFilterValues(
+    unit: Pick<UnitSearchRecord, 'source' | 'published'>,
+): string[] {
     const sources = normalizeSourceValues(unit.source);
     const published = normalizeSourceValues(unit.published);
 
@@ -123,19 +119,19 @@ export function unitMatchesRulesRefsSelection(unitRulesRefs: unknown, selectedRu
     });
 }
 
-export function getProperty(obj: any, key?: string) {
-    if (!obj || !key) return undefined;
+export function getProperty(obj: UnitSearchRecord, key?: string): unknown {
+    if (!key) return undefined;
     if (key === '_tags') {
-        return getMergedTags(obj as UnitSummary);
+        return getMergedTags(obj);
     }
     if (key === 'source') {
-        return getUnitSourceFilterValues(obj as UnitSummary);
+        return getUnitSourceFilterValues(obj);
     }
     if (key === 'weaponType') {
-        return (obj as UnitSummary)._weaponTypes ?? [];
+        return obj._weaponTypes ?? [];
     }
     if (key === 'as._motive') {
-        const mvm = (obj as UnitSummary).as?.MVm;
+        const mvm = obj.as?.MVm;
         if (!mvm) return [];
 
         const result: string[] = [];
@@ -152,19 +148,26 @@ export function getProperty(obj: any, key?: string) {
         return result;
     }
     if (key === 'as._mv') {
-        const mvm = (obj as UnitSummary).as?.MVm;
+        const mvm = obj.as?.MVm;
         if (!mvm) return 0;
         const values = Object.values(mvm);
         return values.length > 0 ? Math.max(...values) : 0;
     }
-    if (key.indexOf('.') === -1) return obj[key];
+    if (key.indexOf('.') === -1) return readProperty(obj, key);
     const parts = key.split('.');
-    let cur = obj;
+    let cur: unknown = obj;
     for (const part of parts) {
-        if (cur == null) return undefined;
-        cur = cur[part];
+        cur = readProperty(cur, part);
+        if (cur === undefined) return undefined;
     }
     return cur;
+}
+
+function readProperty(value: unknown, key: string): unknown {
+    if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {
+        return undefined;
+    }
+    return (value as Readonly<Record<string, unknown>>)[key];
 }
 
 export function getNowMs(): number {
@@ -304,23 +307,22 @@ export function isCommittedSemanticToken(token: { rawText: string; operator: str
     return !hasUnclosedQuote(rawValueText);
 }
 
-export function getUnitComponentData(unit: UnitSummary): UnitComponentData {
+export function getUnitComponentData(unit: UnitSearchRecord): UnitComponentData {
     let cached = unitComponentCache.get(unit);
     if (!cached) {
         const names = new Set<string>();
         const counts = new Map<string, number>();
 
-        const projectedCounts = (unit as CompactSearchUnit)._componentNameCounts;
-        if (projectedCounts) {
-            for (const [name, count] of Object.entries(projectedCounts)) {
-                names.add(name);
-                counts.set(name, count);
-            }
-        } else {
+        if ('comp' in unit) {
             for (const component of unit.comp) {
                 const name = component.n.toLowerCase();
                 names.add(name);
                 counts.set(name, (counts.get(name) || 0) + component.q);
+            }
+        } else {
+            for (const [name, count] of Object.entries(unit._componentNameCounts)) {
+                names.add(name);
+                counts.set(name, count);
             }
         }
 
@@ -331,7 +333,10 @@ export function getUnitComponentData(unit: UnitSummary): UnitComponentData {
     return cached;
 }
 
-export function getUnitCountableFilterData(unit: UnitSummary, filterKey: string): UnitComponentData | null {
+export function getUnitCountableFilterData(
+    unit: UnitSearchRecord,
+    filterKey: string,
+): UnitComponentData | null {
     if (filterKey === 'componentName') {
         return getUnitComponentData(unit);
     }

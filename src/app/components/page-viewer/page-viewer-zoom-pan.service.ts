@@ -385,7 +385,8 @@ export class PageViewerZoomPanService {
     }
 
     private removeMoveListeners(): void {
-        const container = this.containerRef.nativeElement;
+        const container = this.containerRef?.nativeElement;
+        if (!container) return;
         container.removeEventListener('pointermove', this.boundOnPointerMove);
         container.removeEventListener('pointerup', this.boundOnPointerUp);
         container.removeEventListener('pointerleave', this.boundOnPointerUp);

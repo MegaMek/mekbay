@@ -327,7 +327,7 @@
                 <div #newGroupDropzone class="group-container new-group-dropzone" 
                     cdkDropList 
                     id="new-group-dropzone"
-                    [cdkDropListData]="[]"
+                    [cdkDropListData]="newGroupDropData"
                     [cdkDropListConnectedTo]="connectedDropLists()"
                     [cdkDropListAutoScrollDisabled]="true"
                     [class.visible]="isUnitDragging() && !isGroupDragging() && !hasEmptyGroups()"

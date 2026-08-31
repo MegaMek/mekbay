@@ -46,6 +46,7 @@ export interface UnitSearchWorkerUnit {
     readonly quirks: string[];
     readonly features: string[];
     readonly _searchKey: string;
+    readonly _searchKeyAlphanumeric?: string;
     readonly _techBaseDisplay: string;
     readonly _maxRange: number;
     readonly _dissipationEfficiency: number;
@@ -73,6 +74,9 @@ export interface UnitSearchWorkerUnit {
         };
     };
 }
+
+/** The exact union accepted by the shared search kernel. */
+export type UnitSearchRecord = UnitSummary | UnitSearchWorkerUnit;
 
 export interface UnitSearchWorkerIndexSnapshot {
     [filterKey: string]: {

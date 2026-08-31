@@ -126,7 +126,7 @@ function parseUnitSpriteAssignmentContext(input: {
 }): UnitSpriteAssignmentContext {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(input.manifestText) as unknown;
+    parsed = JSON.parse(input.manifestText);
   } catch (error) {
     throw new Error(
       `Invalid unit sprite manifest JSON: ${error instanceof Error ? error.message : String(error)}`,

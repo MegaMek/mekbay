@@ -257,13 +257,13 @@ export class BipedPaperdollUtil {
             importedArt.setAttribute('id', `paperdoll-art-${type}`);
         }
         const ancestorTransforms: string[] = [];
-        let ancestor = art.parentElement;
-        while (ancestor && ancestor !== (source as unknown as HTMLElement)) {
+        let ancestor = art.parentNode;
+        while (ancestor instanceof SVGElement && ancestor !== source) {
             const transform = ancestor.getAttribute('transform');
             if (transform) {
                 ancestorTransforms.push(transform);
             }
-            ancestor = ancestor.parentElement;
+            ancestor = ancestor.parentNode;
         }
         for (const transform of ancestorTransforms) {
             const wrapper = document.createElementNS(SVG_NAMESPACE, 'g');
@@ -316,7 +316,10 @@ export class BipedPaperdollUtil {
             if (parsed.querySelector('parsererror')) {
                 throw new Error(`Unable to parse biped paperdoll SVG: ${url}`);
             }
-            const asset = parsed.documentElement as unknown as SVGSVGElement;
+            const asset = parsed.documentElement;
+            if (!(asset instanceof SVGSVGElement)) {
+                throw new Error(`Biped paperdoll asset is not an SVG document: ${url}`);
+            }
             return asset;
         });
         const entry: PaperdollAssetCacheEntry = { promise: load, settled: false };

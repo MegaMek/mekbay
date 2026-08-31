@@ -4,6 +4,7 @@
 
 
 import { AmmoEquipment, type AmmoCategory, type Equipment } from '../models/equipment.model';
+import type { UnitComponent } from '../models/unit-summary.model';
 
 export const weaponTypes: Array<{ code: string, color: string, name: string, img: string }> = [
     { code: 'B', color: '#9482B4', name: 'Ballistic', img: '/images/ballistic.svg' },
@@ -24,7 +25,7 @@ const AMMO_CATEGORY_CSS_CLASS: Record<AmmoCategory, string> = {
     Special: 'ammo-special'
 };
 
-export function getWeaponTypeCSSClass(typeCode: string, equipment?: Equipment | null): string {
+export function getWeaponTypeCSSClass(typeCode: UnitComponent['t'] | '', equipment?: Equipment | null): string {
     if (typeCode === 'HIDDEN') return '';
     if (typeCode === 'C') return 'misc';
     if (typeCode === 'S') return 'structural';

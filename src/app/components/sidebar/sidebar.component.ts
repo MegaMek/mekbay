@@ -36,7 +36,7 @@ export class SidebarComponent {
     renderer = inject(Renderer2);
     protected isNextBuild = BUILD_BRANCH !== 'main';
     private dialogsService = inject(DialogsService);
-    unitSearchPortal = input<Portal<any>>();
+    unitSearchPortal = input<Portal<HTMLElement>>();
     unitSearchComponent = input<UnitSearchComponent>();
 
     private burgerLipBtn = viewChild<ElementRef<HTMLButtonElement>>('burgerLipBtn');

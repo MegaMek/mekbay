@@ -65,13 +65,35 @@
             }
             <div class="crew-scroll" aria-label="Crew">
                 <div class="crew-track">
-                    @for (crew of mek.crew; track crew.positionId) {
+                    @for (crew of mek.crew; track crew.positionId; let crewIndex = $index) {
                     <article class="crew-card">
-                        <div class="crew-identity"><strong>{{ crew.name || crew.role || 'Crew' }}</strong><span>{{ crew.role }}</span></div>
-                        <div class="skills"><span>GUN <strong>{{ crew.gunnery }}</strong></span><span>PILOT <strong>{{ crew.piloting }}</strong></span></div>
-                        <div class="wound-stepper compact-stepper">
-                            <span>WOUNDS</span><button type="button" [disabled]="readOnly() || crew.state.wounds <= 0" (click)="adjustMekCrewWounds(crew, -1)">−</button>
-                            <strong>{{ crew.state.wounds }}</strong><button type="button" [disabled]="readOnly() || crew.state.wounds >= 6" (click)="adjustMekCrewWounds(crew, 1)">+</button>
+                        <button type="button" class="crew-identity" [disabled]="readOnly()" (click)="editCrew()"
+                            [attr.aria-label]="'Edit ' + crewPositionLabel(crewIndex) + ' name'"
+                            [attr.title]="'Edit ' + crewPositionLabel(crewIndex) + ' name'">
+                            <strong class="crew-position-label">{{ crewPositionLabel(crewIndex) }}</strong>
+                            @if (crew.name) { <span class="crew-name-text">: {{ crew.name }}</span> }
+                        </button>
+                        <div class="skills">
+                            <span class="skill-item"><span>Gunnery:</span><strong>{{ crew.gunnery }}</strong></span>
+                            <span class="skill-item"><span>Piloting:</span><strong>{{ crew.piloting }}</strong>
+                                <button type="button" class="psr-modifier" [class.danger]="mekPsrModifierTotal() > 0" [class.bonus]="mekPsrModifierTotal() < 0"
+                                    [tooltip]="mekPsrModifierTooltip()" [tooltipDelay]="0"
+                                    [attr.aria-label]="'PSR modifier ' + formatModifier(mekPsrModifierTotal()) + '. Show full breakdown'">
+                                    {{ formatModifier(mekPsrModifierTotal()) }} <small>PSR</small>
+                                </button>
+                            </span>
+                        </div>
+                        <div class="crew-wounds">
+                            <span class="crew-wounds-label">Wounds:</span>
+                            <div class="wound-track" role="group" [attr.aria-label]="'Wounds for ' + (crew.name || crewPositionLabel(crewIndex))">
+                                @for (wound of crewWoundSteps; track wound.wounds) {
+                                <button type="button" class="wound-button" [class.active]="wound.wounds <= crew.state.wounds"
+                                    [disabled]="readOnly()" [attr.aria-pressed]="wound.wounds <= crew.state.wounds"
+                                    [attr.aria-label]="'Wound ' + wound.wounds + ', consciousness check ' + wound.label"
+                                    [attr.title]="'Wound ' + wound.wounds + ': consciousness check ' + wound.label"
+                                    (click)="setMekCrewWounds(crew, wound.wounds)">{{ wound.label }}</button>
+                                }
+                            </div>
                         </div>
                         <div class="crew-state-controls">
                             @for (control of mekCrewStateControls; track control.key) {
@@ -105,13 +127,29 @@
             }
             <div class="crew-scroll" aria-label="Crew">
                 <div class="crew-track">
-                    @for (crew of entity.crew; track crew.positionId) {
+                    @for (crew of entity.crew; track crew.positionId; let crewIndex = $index) {
                     <article class="crew-card">
-                        <div class="crew-identity"><strong>{{ crew.name || crew.role || 'Crew' }}</strong><span>{{ crew.role }}</span></div>
-                        <div class="skills"><span>GUN <strong>{{ crew.gunnery }}</strong></span><span>PILOT <strong>{{ crew.piloting }}</strong></span></div>
-                        <div class="wound-stepper compact-stepper">
-                            <span>WOUNDS</span><button type="button" [disabled]="readOnly() || crew.state.wounds <= 0" (click)="adjustNonMekCrewWounds(crew, -1)">−</button>
-                            <strong>{{ crew.state.wounds }}</strong><button type="button" [disabled]="readOnly()" (click)="adjustNonMekCrewWounds(crew, 1)">+</button>
+                        <button type="button" class="crew-identity" [disabled]="readOnly()" (click)="editCrew()"
+                            [attr.aria-label]="'Edit ' + crewPositionLabel(crewIndex) + ' name'"
+                            [attr.title]="'Edit ' + crewPositionLabel(crewIndex) + ' name'">
+                            <strong class="crew-position-label">{{ crewPositionLabel(crewIndex) }}</strong>
+                            @if (crew.name) { <span class="crew-name-text">: {{ crew.name }}</span> }
+                        </button>
+                        <div class="skills">
+                            <span class="skill-item"><span>Gunnery:</span><strong>{{ crew.gunnery }}</strong></span>
+                            <span class="skill-item"><span>Piloting:</span><strong>{{ crew.piloting }}</strong></span>
+                        </div>
+                        <div class="crew-wounds">
+                            <span class="crew-wounds-label">Wounds:</span>
+                            <div class="wound-track" role="group" [attr.aria-label]="'Wounds for ' + (crew.name || crewPositionLabel(crewIndex))">
+                                @for (wound of crewWoundSteps; track wound.wounds) {
+                                <button type="button" class="wound-button" [class.active]="wound.wounds <= crew.state.wounds"
+                                    [disabled]="readOnly()" [attr.aria-pressed]="wound.wounds <= crew.state.wounds"
+                                    [attr.aria-label]="'Wound ' + wound.wounds + ', consciousness check ' + wound.label"
+                                    [attr.title]="'Wound ' + wound.wounds + ': consciousness check ' + wound.label"
+                                    (click)="setNonMekCrewWounds(crew, wound.wounds)">{{ wound.label }}</button>
+                                }
+                            </div>
                         </div>
                         @if (nonMekCrewStateControls().length > 0) {
                         <div class="crew-state-controls">
@@ -233,7 +271,7 @@
             <section class="tactical-panel armor-panel">
                 <div class="panel-heading"><div><span class="panel-kicker">{{ mek.construction.armor }} · {{ mek.construction.structure }}</span><h2>Armor + Internal</h2></div></div>
                 <div class="location-list">
-                    @for (location of mek.locations; track location.locationId) {
+                    @for (location of orderedMekLocations(); track location.locationId) {
                     <section class="location-block" [class.destroyed]="location.previewStructurallyDestroyed || location.previewDetached">
                         @for (face of location.armor; track face.faceId) {
                         @let remaining = mekArmorRemaining(face);
@@ -243,35 +281,51 @@
                                 @if ($first && location.previewDetached) { <span>OFF</span> } @else if ($first && location.previewStructurallyDestroyed) { <span>DEST</span> }
                             </div>
                             <div class="location-tracks">
-                                <button type="button" class="damage-strip armor-strip" [disabled]="readOnly()" (click)="openMekArmorPicker(face, $event)"
+                                <button type="button" class="damage-strip armor-strip" [class.numeric-damage-strip]="face.maximum > damagePipThreshold"
+                                    [disabled]="readOnly()" (click)="openMekArmorPicker(face, $event)"
                                     [attr.aria-label]="(face.face === 'rear' ? 'Rear armor' : 'Armor') + ' ' + remaining + ' of ' + face.maximum"
                                     [attr.title]="(face.face === 'rear' ? 'Rear armor' : 'Armor') + ': ' + remaining + ' / ' + face.maximum">
-                                    <strong class="track-value">{{ remaining }}</strong>
-                                    <span class="pip-segments" aria-hidden="true">
-                                        @for (segment of pipSegments(face.maximum); track $index) {
-                                        <span class="pip-ten">
-                                            @for (pip of segment; track pip; let pipIndex = $index) {
-                                            <span class="damage-pip" [class.five-end]="pipIndex === 4 && !$last" [class.damaged]="pip > remaining"></span>
-                                            }
+                                    @if (face.maximum > damagePipThreshold) {
+                                    <strong class="large-track-value" aria-hidden="true">{{ remaining }}/{{ face.maximum }}</strong>
+                                    } @else {
+                                    <strong class="track-value">{{ damageTrackValue(remaining, face.maximum) }}</strong>
+                                    <span class="pip-matrix"
+                                        [class.single-capacity]="face.maximum <= 5"
+                                        [class.low-capacity]="face.maximum > 5 && face.maximum <= 25"
+                                        [class.medium-capacity]="face.maximum > 25 && face.maximum <= 50"
+                                        [class.high-capacity]="face.maximum > 50"
+                                        aria-hidden="true">
+                                        @for (group of pipGroups(face.maximum); track $index) {
+                                        <span class="pip-group">
+                                            @for (pip of group; track pip) { <span class="damage-pip" [class.damaged]="pip <= face.maximum - remaining"></span> }
                                         </span>
                                         }
                                     </span>
+                                    }
                                 </button>
                                 @if ($first) {
                                 @let internal = mekInternalRemaining(location);
-                                <button type="button" class="damage-strip internal-strip" [disabled]="readOnly()" (click)="openMekInternalPicker(location, $event)"
+                                <button type="button" class="damage-strip internal-strip" [class.numeric-damage-strip]="location.maximumInternal > damagePipThreshold"
+                                    [disabled]="readOnly()" (click)="openMekInternalPicker(location, $event)"
                                     [attr.aria-label]="'Internal structure ' + internal + ' of ' + location.maximumInternal"
                                     [attr.title]="'Internal structure: ' + internal + ' / ' + location.maximumInternal">
-                                    <span class="pip-segments" aria-hidden="true">
-                                        @for (segment of pipSegments(location.maximumInternal); track $index) {
-                                        <span class="pip-ten">
-                                            @for (pip of segment; track pip; let pipIndex = $index) {
-                                            <span class="damage-pip structure-pip" [class.five-end]="pipIndex === 4 && !$last" [class.damaged]="pip > internal"></span>
-                                            }
+                                    @if (location.maximumInternal > damagePipThreshold) {
+                                    <strong class="large-track-value" aria-hidden="true">{{ internal }}/{{ location.maximumInternal }}</strong>
+                                    } @else {
+                                    <span class="pip-matrix"
+                                        [class.single-capacity]="location.maximumInternal <= 5"
+                                        [class.low-capacity]="location.maximumInternal > 5 && location.maximumInternal <= 25"
+                                        [class.medium-capacity]="location.maximumInternal > 25 && location.maximumInternal <= 50"
+                                        [class.high-capacity]="location.maximumInternal > 50"
+                                        aria-hidden="true">
+                                        @for (group of pipGroups(location.maximumInternal); track $index) {
+                                        <span class="pip-group">
+                                            @for (pip of group; track pip) { <span class="damage-pip structure-pip" [class.damaged]="pip <= location.maximumInternal - internal"></span> }
                                         </span>
                                         }
                                     </span>
-                                    <strong class="track-value">{{ internal }}</strong>
+                                    <strong class="track-value">{{ damageTrackValue(internal, location.maximumInternal) }}</strong>
+                                    }
                                 </button>
                                 }
                             </div>
@@ -285,10 +339,9 @@
             <section class="tactical-panel critical-panel">
                 <div class="panel-heading"><div><span class="panel-kicker">SYSTEMS</span><h2>Critical Hit Table</h2></div></div>
                 <div class="critical-columns">
-                    @for (column of mekCriticalColumns(); track $index) {
-                    <div class="critical-column">
-                        @for (group of column; track group.code) {
-                        <section class="critical-group">
+                    @for (group of mekCriticalCells(); track $index) {
+                        @if (group) {
+                        <section class="critical-cell critical-group">
                             <h3>{{ group.code }}</h3>
                             @for (slot of group.slots; track slot.slotId) {
                             @let hits = mekCriticalHits(slot);
@@ -304,8 +357,9 @@
                             </button>
                             }
                         </section>
+                        } @else {
+                        <div class="critical-cell critical-spacer" aria-hidden="true"></div>
                         }
-                    </div>
                     }
                 </div>
             </section>
@@ -331,37 +385,51 @@
                         <div class="location-line">
                             <div class="location-name"><strong>{{ $first ? (location.sheetCode || location.code) : '(R)' }}</strong></div>
                             <div class="location-tracks">
-                                <button type="button" class="damage-strip armor-strip" [disabled]="readOnly()"
+                                <button type="button" class="damage-strip armor-strip" [class.numeric-damage-strip]="face.maximum > damagePipThreshold" [disabled]="readOnly()"
                                     (click)="openNonMekDamagePicker({ kind: 'armor', faceId: face.faceId, locationId: face.locationId }, $event)"
                                     [attr.aria-label]="(face.face === 'rear' ? 'Rear armor' : 'Armor') + ' ' + remaining + ' of ' + face.maximum"
                                     [attr.title]="(face.face === 'rear' ? 'Rear armor' : 'Armor') + ': ' + remaining + ' / ' + face.maximum">
-                                    <strong class="track-value">{{ remaining }}</strong>
-                                    <span class="pip-segments" aria-hidden="true">
-                                        @for (segment of pipSegments(face.maximum); track $index) {
-                                        <span class="pip-ten">
-                                            @for (pip of segment; track pip; let pipIndex = $index) {
-                                            <span class="damage-pip" [class.five-end]="pipIndex === 4 && !$last" [class.damaged]="pip > remaining"></span>
-                                            }
+                                    @if (face.maximum > damagePipThreshold) {
+                                    <strong class="large-track-value" aria-hidden="true">{{ remaining }}/{{ face.maximum }}</strong>
+                                    } @else {
+                                    <strong class="track-value">{{ damageTrackValue(remaining, face.maximum) }}</strong>
+                                    <span class="pip-matrix"
+                                        [class.single-capacity]="face.maximum <= 5"
+                                        [class.low-capacity]="face.maximum > 5 && face.maximum <= 25"
+                                        [class.medium-capacity]="face.maximum > 25 && face.maximum <= 50"
+                                        [class.high-capacity]="face.maximum > 50"
+                                        aria-hidden="true">
+                                        @for (group of pipGroups(face.maximum); track $index) {
+                                        <span class="pip-group">
+                                            @for (pip of group; track pip) { <span class="damage-pip" [class.damaged]="pip <= face.maximum - remaining"></span> }
                                         </span>
                                         }
                                     </span>
+                                    }
                                 </button>
                                 @if ($first && location.maximumInternal > 0) {
                                 @let internal = nonMekInternalRemaining(location);
-                                <button type="button" class="damage-strip internal-strip" [disabled]="readOnly()"
+                                <button type="button" class="damage-strip internal-strip" [class.numeric-damage-strip]="location.maximumInternal > damagePipThreshold" [disabled]="readOnly()"
                                     (click)="openNonMekDamagePicker({ kind: 'internal', locationId: location.locationId }, $event)"
                                     [attr.aria-label]="'Internal structure ' + internal + ' of ' + location.maximumInternal"
                                     [attr.title]="'Internal structure: ' + internal + ' / ' + location.maximumInternal">
-                                    <span class="pip-segments" aria-hidden="true">
-                                        @for (segment of pipSegments(location.maximumInternal); track $index) {
-                                        <span class="pip-ten">
-                                            @for (pip of segment; track pip; let pipIndex = $index) {
-                                            <span class="damage-pip structure-pip" [class.five-end]="pipIndex === 4 && !$last" [class.damaged]="pip > internal"></span>
-                                            }
+                                    @if (location.maximumInternal > damagePipThreshold) {
+                                    <strong class="large-track-value" aria-hidden="true">{{ internal }}/{{ location.maximumInternal }}</strong>
+                                    } @else {
+                                    <span class="pip-matrix"
+                                        [class.single-capacity]="location.maximumInternal <= 5"
+                                        [class.low-capacity]="location.maximumInternal > 5 && location.maximumInternal <= 25"
+                                        [class.medium-capacity]="location.maximumInternal > 25 && location.maximumInternal <= 50"
+                                        [class.high-capacity]="location.maximumInternal > 50"
+                                        aria-hidden="true">
+                                        @for (group of pipGroups(location.maximumInternal); track $index) {
+                                        <span class="pip-group">
+                                            @for (pip of group; track pip) { <span class="damage-pip structure-pip" [class.damaged]="pip <= location.maximumInternal - internal"></span> }
                                         </span>
                                         }
                                     </span>
-                                    <strong class="track-value">{{ internal }}</strong>
+                                    <strong class="track-value">{{ damageTrackValue(internal, location.maximumInternal) }}</strong>
+                                    }
                                 </button>
                                 }
                             </div>

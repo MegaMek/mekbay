@@ -65,13 +65,21 @@ import { KeyboardShortcutService } from '../../services/keyboard-shortcut.servic
 import { OptionsService } from '../../services/options.service';
 import { ToastService } from '../../services/toast.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ClassicUnitViewModeService } from '../../services/classic-unit-view-mode.service';
+import { TooltipDirective } from '../../directives/tooltip.directive';
 import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
+import {
+    mekCriticalLocationCells,
+    mekDamageLocationOrder,
+} from '../../utils/mek-location-layout.util';
 import { EquipmentDialogRuntimeController } from '../equipment-dialog/equipment-dialog-runtime.controller';
 import { WeaponTargetsOverlayController } from '../equipment-dialog/weapon-targets-overlay.controller';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import type { TooltipLine } from '../tooltip/tooltip.component';
 import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary-panel.component';
+import { composeMekPsrDisplayModifiers } from '../page-viewer/overlay/page-turn-summary.util';
 import { PageViewerStateService } from '../page-viewer/internal/page-viewer-state.service';
 import { PageViewerMekInteractionService } from '../page-viewer/internal/page-viewer-mek-interaction.service';
 import { PageViewerNonMekRuntimeService } from '../page-viewer/internal/page-viewer-non-mek-runtime.service';
@@ -81,9 +89,10 @@ import type { MekRecordSheetInteraction } from '../page-viewer/mek-record-sheet-
 import type { NonMekRecordSheetInteraction } from '../page-viewer/non-mek-record-sheet-binder';
 import { recordSheetCommand } from '../page-viewer/mek-record-sheet-interaction.util';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
+import type { MekLocation } from '../../models/entity/types';
 
 interface MekCriticalGroup {
-    readonly code: string;
+    readonly code: MekLocation;
     readonly slots: readonly MekRecordSheetCriticalSlot[];
 }
 
@@ -111,8 +120,18 @@ interface TacticalInventoryGroup {
     readonly rows: readonly TacticalInventoryRow[];
 }
 
-const LEFT_CRITICAL_LOCATIONS = new Set(['LA', 'LT', 'LL', 'FLL', 'RLL', 'LS', 'LWG']);
-const RIGHT_CRITICAL_LOCATIONS = new Set(['RA', 'RT', 'RL', 'FRL', 'RRL', 'RS', 'RWG']);
+const TACTICAL_DAMAGE_PIP_THRESHOLD = 100;
+
+const CREW_WOUND_STEPS = Object.freeze([
+    Object.freeze({ wounds: 1, label: '3+' }),
+    Object.freeze({ wounds: 2, label: '5+' }),
+    Object.freeze({ wounds: 3, label: '7+' }),
+    Object.freeze({ wounds: 4, label: '10+' }),
+    Object.freeze({ wounds: 5, label: '11+' }),
+    Object.freeze({ wounds: 6, label: 'X' }),
+] as const);
+
+const CREW_POSITION_LABELS = Object.freeze(['Pilot', 'Gunner', 'Officer'] as const);
 
 @Component({
     selector: 'tactical-view',
@@ -124,7 +143,7 @@ const RIGHT_CRITICAL_LOCATIONS = new Set(['RA', 'RT', 'RL', 'FRL', 'RRL', 'RS', 
         PageViewerMekInteractionService,
         PageViewerNonMekRuntimeService,
     ],
-    imports: [PageTurnSummaryPanelComponent, UnitIconComponent],
+    imports: [PageTurnSummaryPanelComponent, UnitIconComponent, TooltipDirective],
     templateUrl: './tactical-view.component.html',
     styleUrl: './tactical-view.component.scss',
 })
@@ -135,6 +154,7 @@ export class TacticalViewComponent {
     private readonly options = inject(OptionsService);
     private readonly toast = inject(ToastService);
     private readonly dialogs = inject(DialogsService);
+    private readonly pilotEditor = inject(ForcePilotEditorService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly host = inject(ElementRef<HTMLElement>);
     private readonly injector = inject(Injector);
@@ -150,8 +170,9 @@ export class TacticalViewComponent {
         destroyRef: this.destroyRef,
     });
 
-    protected readonly maximumRenderedPips = 72;
     protected readonly mekCrewStateControls = MEK_CREW_STATE_CONTROLS;
+    protected readonly crewWoundSteps = CREW_WOUND_STEPS;
+    protected readonly damagePipThreshold = TACTICAL_DAMAGE_PIP_THRESHOLD;
 
     protected readonly member = computed<CBTForceMember | null>(() => {
         const selected = this.workspace.selectedUnit();
@@ -168,7 +189,6 @@ export class TacticalViewComponent {
     protected readonly canNavigate = computed(() => this.forceMembers().length > 1);
     protected readonly pendingDamage = computed(() => this.options.options().trackPhaseAndTurn);
     protected readonly equipmentRuntime = signal<EquipmentDialogRuntimeController | null>(null);
-    protected readonly collapsedInventoryRows = signal<ReadonlySet<string>>(new Set());
     protected readonly anyUnitTurnDirty = computed(() => {
         this.equipmentRuntime()?.snapshot();
         const force = this.force();
@@ -205,6 +225,30 @@ export class TacticalViewComponent {
         const member = this.member();
         return member && !isCBTMekForceMember(member) ? member.nonMekRecordSheetSnapshot() : null;
     });
+    protected readonly mekPsrModifiers = computed(() => {
+        const snapshot = this.mekSnapshot();
+        if (!snapshot) return Object.freeze([]);
+        const permanent = snapshot.movement.projection.kind === 'supported'
+            ? snapshot.movement.projection.permanentPsrModifiers
+            : [];
+        return composeMekPsrDisplayModifiers(permanent, snapshot.movement.psr.checks);
+    });
+    protected readonly mekPsrModifierTotal = computed(() => this.mekPsrModifiers()
+        .reduce((total, modifier) => total + modifier.modifier, 0));
+    protected readonly mekPsrModifierTooltip = computed<readonly TooltipLine[]>(() => {
+        const modifiers = this.mekPsrModifiers();
+        return Object.freeze([
+            Object.freeze({ value: 'Piloting Skill Roll Modifier', isHeader: true }),
+            ...(modifiers.length > 0
+                ? modifiers.map(modifier => Object.freeze({
+                    label: modifier.reason,
+                    value: this.formatModifier(modifier.modifier),
+                }))
+                : [Object.freeze({ label: 'No active modifiers', value: '+0' })]),
+            Object.freeze({ isBreak: true }),
+            Object.freeze({ label: 'Final modifier', value: this.formatModifier(this.mekPsrModifierTotal()) }),
+        ]);
+    });
     protected readonly nonMekConditionControls = computed(() => {
         const snapshot = this.nonMekSnapshot();
         return snapshot && !this.readOnly() ? unitConditionControls(snapshot.conditionControlKeys) : [];
@@ -216,7 +260,7 @@ export class TacticalViewComponent {
         return snapshot ? crewStateDefinitions(snapshot.crewStateControlKeys) : [];
     });
     protected readonly mekCriticalGroups = computed<readonly MekCriticalGroup[]>(() => {
-        const groups = new Map<string, MekRecordSheetCriticalSlot[]>();
+        const groups = new Map<MekLocation, MekRecordSheetCriticalSlot[]>();
         for (const slot of this.mekSnapshot()?.criticalSlots ?? []) {
             if (slot.components.length === 0 && slot.committedHits === 0 && slot.previewHits === 0) continue;
             const slots = groups.get(slot.locationCode) ?? [];
@@ -228,14 +272,28 @@ export class TacticalViewComponent {
             slots: Object.freeze(slots),
         }));
     });
-    protected readonly mekCriticalColumns = computed<readonly (readonly MekCriticalGroup[])[]>(() => {
-        const columns: MekCriticalGroup[][] = [[], [], []];
-        for (const group of this.mekCriticalGroups()) {
-            if (LEFT_CRITICAL_LOCATIONS.has(group.code)) columns[0]!.push(group);
-            else if (RIGHT_CRITICAL_LOCATIONS.has(group.code)) columns[2]!.push(group);
-            else columns[1]!.push(group);
+    protected readonly orderedMekLocations = computed<readonly MekRecordSheetLocation[]>(() => {
+        const snapshot = this.mekSnapshot();
+        if (!snapshot) return Object.freeze([]);
+        const order = mekDamageLocationOrder(snapshot.identity.form);
+        const priority = new Map(order.map((code, index) => [code, index]));
+        return Object.freeze([...snapshot.locations].sort((left, right) =>
+            (priority.get(left.code) ?? Number.MAX_SAFE_INTEGER)
+            - (priority.get(right.code) ?? Number.MAX_SAFE_INTEGER)));
+    });
+    protected readonly mekCriticalCells = computed<readonly (MekCriticalGroup | null)[]>(() => {
+        const snapshot = this.mekSnapshot();
+        if (!snapshot) return Object.freeze([]);
+        const groups = this.mekCriticalGroups();
+        const byCode = new Map(groups.map(group => [group.code, group]));
+        const cells = mekCriticalLocationCells(snapshot.identity.form)
+            .map(code => code === null ? null : byCode.get(code) ?? null);
+        const standardCodes = new Set(mekCriticalLocationCells(snapshot.identity.form));
+        const extras = groups.filter(group => !standardCodes.has(group.code));
+        while (extras.length > 0) {
+            cells.push(extras.shift() ?? null, extras.shift() ?? null, extras.shift() ?? null);
         }
-        return Object.freeze(columns.map(column => Object.freeze(column)));
+        return Object.freeze(cells);
     });
     protected readonly inventoryGroups = computed<readonly TacticalInventoryGroup[]>(() => {
         const runtime = this.equipmentRuntime();
@@ -277,14 +335,15 @@ export class TacticalViewComponent {
         .map(row => row.id));
     protected readonly allInventoryRowsExpanded = computed(() => {
         const ids = this.inventoryDetailRowIds();
-        const collapsed = this.collapsedInventoryRows();
-        return ids.length > 0 && ids.every(id => !collapsed.has(id));
+        const member = this.member();
+        return member !== null
+            && ids.length > 0
+            && ids.every(id => member.isTacticalInventoryRowExpanded(id));
     });
 
     constructor() {
         effect(onCleanup => {
             const member = this.member();
-            this.collapsedInventoryRows.set(new Set());
             this.overlayManager.closeManagedOverlay('tactical-targets');
             this.targetsOverlay.clearRef();
             if (!member) {
@@ -398,15 +457,37 @@ export class TacticalViewComponent {
         return Array.from({ length: Math.max(0, Math.trunc(maximum)) }, (_, index) => index + 1);
     }
 
-    protected pipSegments(maximum: number): readonly (readonly number[])[] {
-        const segments: number[][] = [];
-        for (let first = 1; first <= maximum; first += 10) {
-            segments.push(Array.from(
-                { length: Math.min(10, maximum - first + 1) },
+    protected pipGroups(maximum: number): readonly (readonly number[])[] {
+        const renderedMaximum = Math.min(
+            TACTICAL_DAMAGE_PIP_THRESHOLD,
+            Math.max(0, Math.trunc(maximum)),
+        );
+        const groups: number[][] = [];
+        for (let first = 1; first <= renderedMaximum; first += 5) {
+            groups.push(Array.from(
+                { length: Math.min(5, renderedMaximum - first + 1) },
                 (_value, index) => first + index,
             ));
         }
-        return segments;
+        return groups;
+    }
+
+    protected damageTrackValue(remaining: number, maximum: number): string {
+        return remaining === maximum ? `${remaining}` : `${remaining}/${maximum}`;
+    }
+
+    protected formatModifier(value: number): string {
+        return value >= 0 ? `+${value}` : `${value}`;
+    }
+
+    protected crewPositionLabel(index: number): string {
+        return CREW_POSITION_LABELS[index] ?? `Crew ${index + 1}`;
+    }
+
+    protected editCrew(): void {
+        const member = this.member();
+        if (!member || this.readOnly()) return;
+        void this.pilotEditor.editClassicMember(member.force, member.id);
     }
 
     protected percentage(remaining: number, maximum: number): number {
@@ -480,24 +561,24 @@ export class TacticalViewComponent {
     }
 
     protected inventoryRowExpanded(row: TacticalInventoryRow): boolean {
-        return this.rowHasNestedControls(row) && !this.collapsedInventoryRows().has(row.id);
+        return this.rowHasNestedControls(row)
+            && this.member()?.isTacticalInventoryRowExpanded(row.id) === true;
     }
 
     protected toggleInventoryRow(row: TacticalInventoryRow): void {
-        if (!this.rowHasNestedControls(row)) return;
-        this.collapsedInventoryRows.update(current => {
-            const next = new Set(current);
-            if (next.has(row.id)) next.delete(row.id);
-            else next.add(row.id);
-            return next;
-        });
+        const member = this.member();
+        if (!member || !this.rowHasNestedControls(row)) return;
+        member.setTacticalInventoryRowExpanded(
+            row.id,
+            !member.isTacticalInventoryRowExpanded(row.id),
+        );
     }
 
     protected toggleAllInventoryRows(): void {
+        const member = this.member();
+        if (!member) return;
         const ids = this.inventoryDetailRowIds();
-        this.collapsedInventoryRows.set(this.allInventoryRowsExpanded()
-            ? new Set(ids)
-            : new Set());
+        member.setTacticalInventoryRowsExpanded(this.allInventoryRowsExpanded() ? [] : ids);
     }
 
     protected inventoryTargetSelection(row: TacticalInventoryRow): string {
@@ -623,6 +704,16 @@ export class TacticalViewComponent {
             ? member.nonMekRecordSheetSnapshot()
             : null;
         if (!member || isCBTMekForceMember(member) || !snapshot || this.readOnly()) return;
+        if (interaction.kind === 'internal' && member.entity.entityType === 'BattleArmor') {
+            const location = snapshot.locations.find(candidate => candidate.locationId === interaction.locationId);
+            if (location?.maximumInternal === 1) {
+                void this.adjustNonMekInternal(
+                    location,
+                    this.nonMekInternalRemaining(location) > 0 ? 1 : -1,
+                );
+                return;
+            }
+        }
         this.nonMekInteractions.handle(member, {
             ...interaction,
             expectedRevision: snapshot.stateRevision,
@@ -693,13 +784,15 @@ export class TacticalViewComponent {
         });
     }
 
-    protected async adjustMekCrewWounds(position: MekRecordSheetCrewPosition, delta: 1 | -1): Promise<void> {
+    protected async setMekCrewWounds(position: MekRecordSheetCrewPosition, wounds: number): Promise<void> {
         const snapshot = this.mekSnapshot();
-        if (!snapshot) return;
+        const current = snapshot?.crew.find(candidate => candidate.positionId === position.positionId);
+        if (!snapshot || !current || !Number.isSafeInteger(wounds)) return;
+        const boundedWounds = Math.max(1, Math.min(MAX_MEK_CREW_WOUNDS, wounds));
         await this.dispatchMekInteraction({
             kind: 'crew-wounds',
-            positionId: position.positionId,
-            wounds: Math.max(0, Math.min(MAX_MEK_CREW_WOUNDS, position.state.wounds + delta)),
+            positionId: current.positionId,
+            wounds: current.state.wounds === boundedWounds ? boundedWounds - 1 : boundedWounds,
             expectedRevision: snapshot.stateRevision,
         });
     }
@@ -858,18 +951,19 @@ export class TacticalViewComponent {
         });
     }
 
-    protected async adjustNonMekCrewWounds(
+    protected async setNonMekCrewWounds(
         position: NonMekRecordSheetCrewPosition,
-        delta: 1 | -1,
+        wounds: number,
     ): Promise<void> {
         const snapshot = this.nonMekSnapshot();
         const current = snapshot?.crew.find(candidate => candidate.positionId === position.positionId);
-        if (!snapshot || !current) return;
+        if (!snapshot || !current || !Number.isSafeInteger(wounds)) return;
+        const boundedWounds = Math.max(1, Math.min(CREW_WOUND_STEPS.length, wounds));
         await this.sendNonMekCommand({
             kind: 'set-crew-state',
             expectedRevision: snapshot.stateRevision,
             positionId: current.positionId,
-            wounds: Math.max(0, current.state.wounds + delta),
+            wounds: current.state.wounds === boundedWounds ? boundedWounds - 1 : boundedWounds,
             unconscious: current.state.unconscious,
             ejected: current.state.ejected,
             ...(current.state.state === undefined ? {} : { state: current.state.state }),

@@ -5,6 +5,7 @@
 import { isCaseEquipment } from '../models/case-equipment.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { BaseEntity } from '../models/entity/base-entity';
+import type { EntityTechBase } from '../models/entity/types';
 import { AmmoEquipment } from '../models/equipment.model';
 import type { CBTForceMember } from '../models/force-member.model';
 import { isHeatSinkEquipment } from '../models/heat-equipment.model';
@@ -180,10 +181,8 @@ export class CBTSummaryPrintUtil {
         return parts.join('/');
     }
 
-    private static formatTechBase(techBase: string, mixed: boolean): string {
-        if (!techBase) return '';
-        const shortTechBase = techBase === 'Inner Sphere' ? 'IS' : 'Clan';
-        return mixed ? `Mixed (${shortTechBase})` : shortTechBase;
+    private static formatTechBase(techBase: EntityTechBase, mixed: boolean): string {
+        return mixed ? `Mixed (${techBase})` : techBase;
     }
 
     private static formatEquipmentSummary(entity: BaseEntity): string {

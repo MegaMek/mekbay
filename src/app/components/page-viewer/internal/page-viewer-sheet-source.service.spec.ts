@@ -71,6 +71,27 @@ describe('PageViewerSheetSourceService', () => {
         expect(source.load).toHaveBeenCalledTimes(2);
     });
 
+    it('retains every generated page and decorates multi-page sheets with flip controls', async () => {
+        const member = createMember('Tank', new TestTankEntity());
+        const front = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const reverse = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const unsupportedThirdPage = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        front.setAttribute('viewBox', '0 0 612 792');
+        reverse.setAttribute('viewBox', '0 0 612 792');
+        unsupportedThirdPage.setAttribute('viewBox', '0 0 612 792');
+        source.load.and.resolveTo({ svgs: [front, reverse, unsupportedThirdPage] });
+
+        await service.load(member);
+
+        expect(member.recordSheets()).toEqual([front, reverse]);
+        expect(front.querySelector('.record-sheet-page-flip-control')?.getAttribute('aria-label'))
+            .toBe('Show record sheet page 2 of 2');
+        expect(reverse.querySelector('.record-sheet-page-flip-control')?.getAttribute('aria-label'))
+            .toBe('Show record sheet page 1 of 2');
+        expect(front.querySelector('.record-sheet-page-flip-control text')?.textContent).toBe('PAGE 1 / 2');
+        expect(unsupportedThirdPage.querySelector('.record-sheet-page-flip-control')).toBeNull();
+    });
+
     it('coalesces concurrent generation on the member', async () => {
         const member = createMember('Mek', new TestQuadMekEntity());
 

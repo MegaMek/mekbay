@@ -58,8 +58,9 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(fixture.nativeElement.querySelector('.immobile-status')?.textContent.trim())
             .toBe('Unit is immobile');
         expect(Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.move-button'))
-            .map(button => button.textContent?.trim())).toEqual(['', 'Run+2']);
-        expect(fixture.nativeElement.querySelector('.move-button.selected')?.textContent.trim()).toBe('Run+2');
+            .map(button => button.textContent?.replace(/\s+/gu, ' ').trim())).toEqual(['', 'Run 0 +2']);
+        expect(fixture.nativeElement.querySelector('.move-button.selected')?.textContent.replace(/\s+/gu, ' ').trim())
+            .toBe('Run 0 +2');
         expect(fixture.nativeElement.querySelector('hex-slider')).not.toBeNull();
     });
 
@@ -120,7 +121,7 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(runButton().classList.contains('danger')).toBeTrue();
     });
 
-    it('uses the origin/next wrapped layout when more than four movement modes are visible', () => {
+    it('marks a movement row as crowded when more than four modes are visible', () => {
         const base = turnSnapshot();
         if (base.movement.kind !== 'supported') throw new Error('Turn fixture movement must be supported');
         const template = base.movement.actions[0];
@@ -145,6 +146,48 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(fixture.nativeElement.querySelectorAll('.move-mode-row .move-button').length).toBe(5);
     });
 
+    it('keeps both embedded end-turn actions visible and disables unavailable actions', () => {
+        const fixture = createComponent(turnMember(turnSnapshot()).member, overlayManager());
+        fixture.componentRef.setInput('embedded', true);
+        fixture.detectChanges();
+
+        const actions = () => Array.from<HTMLButtonElement>(
+            fixture.nativeElement.querySelectorAll('.summary-actions > .bt-button'),
+        );
+        expect(actions().map(button => button.textContent?.trim())).toEqual([
+            'End Turn',
+            'All units',
+        ]);
+        expect(actions().every(button => button.querySelector('.turn-action-icon') !== null)).toBeTrue();
+        expect(actions().map(button => button.disabled)).toEqual([true, true]);
+
+        fixture.componentRef.setInput('endTurnForAllButtonVisible', true);
+        fixture.detectChanges();
+        expect(actions().map(button => button.disabled)).toEqual([true, false]);
+    });
+
+    it('moves the Mek PSR modifier breakdown out of the embedded turn tracker', () => {
+        const base = turnSnapshot();
+        if (base.movement.kind !== 'supported') throw new Error('Turn fixture movement must be supported');
+        const withPsrModifier = {
+            ...base,
+            movement: {
+                ...base.movement,
+                permanentPsrModifiers: [{ modifier: 1, reason: 'Torso-mounted cockpit' }],
+            },
+        } as MekTurnPanelSnapshot;
+        const fixture = createComponent(turnMember(withPsrModifier).member, overlayManager());
+        fixture.componentRef.setInput('embedded', true);
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.control-roll-section')).toBeNull();
+
+        fixture.componentRef.setInput('embedded', false);
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.control-roll-section')?.textContent)
+            .toContain('Torso-mounted cockpit');
+    });
+
     it('uses the shared turn panel for direct vehicle Entity movement', () => {
         const manager = overlayManager();
         const harness = entityTurnMember();
@@ -154,7 +197,7 @@ describe('PageTurnSummaryPanelComponent', () => {
         const labels = Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.move-button'))
             .map(button => button.textContent?.replace(/\s+/gu, ' ').trim())
             .filter(Boolean);
-        expect(labels).toEqual(['Cruise+1', 'Flank+2']);
+        expect(labels).toEqual(['Cruise 4 +1', 'Flank 6 +2']);
         expect(fixture.nativeElement.querySelector('.spotting-button')).not.toBeNull();
         expect(fixture.nativeElement.querySelector('.cover-control')).not.toBeNull();
         expect(fixture.nativeElement.querySelector('[aria-label="Defense"]')).not.toBeNull();

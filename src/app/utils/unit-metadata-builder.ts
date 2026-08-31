@@ -201,7 +201,7 @@ export class UnitMetadataBuilder {
     }
   }
 
-  private buildEngineName(entity: BaseEntity): any {
+  private buildEngineName(entity: BaseEntity): string | null {
     if (!this.exportsEngine(entity)) return null;
 
     const engine = entity.mountedEngine();

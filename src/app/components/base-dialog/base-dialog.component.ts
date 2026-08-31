@@ -86,7 +86,7 @@ export class BaseDialogComponent implements AfterViewInit {
     private overlayManager = inject(OverlayManagerService);
     private injector = inject(Injector);
     
-    tabs = input<string[]>([]);
+    tabs = input<readonly string[]>([]);
     activeTab = input<string>();
     overflowToDropdown = input<boolean>(false);
     autoHeight = input<boolean>(false);
@@ -197,7 +197,7 @@ export class BaseDialogComponent implements AfterViewInit {
         }
     }
 
-    private measureTabWidths(tabs: string[]): number[] {
+    private measureTabWidths(tabs: readonly string[]): number[] {
         // Create a hidden container to measure tab widths
         const measurer = document.createElement('div');
         measurer.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-size:1em;';

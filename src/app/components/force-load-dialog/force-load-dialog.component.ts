@@ -29,6 +29,7 @@ import { ForceBuilderService } from '../../services/force-builder.service';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { ForceDialogsService } from '../../services/force-dialogs.service';
 import { ForceOperationService } from '../../services/force-operation.service';
+import { OperationStorageService } from '../../services/operation-storage.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { type ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
@@ -69,6 +70,7 @@ export class FormatTimestamp implements PipeTransform {
 }
 
 export type ForceLoadMode = 'load' | 'add' | 'insert' | 'operation';
+export type ForceLoadTab = 'Hangar' | 'Force Packs' | 'TO&E' | 'Operations';
 
 export interface ForceLoadDialogEnvelope {
     result: LoadForceEntry | ResolvedPack | LoadOperationEntry | Force;
@@ -79,7 +81,7 @@ export interface ForceLoadDialogEnvelope {
 export type ForceLoadDialogResult = ForceLoadDialogEnvelope | null;
 
 export interface ForceLoadDialogData {
-    initialTab?: string;
+    initialTab?: ForceLoadTab;
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -125,6 +127,7 @@ export class ForceLoadDialogComponent {
     private dialogRef = inject(DialogRef<ForceLoadDialogResult>);
     private dialogData: ForceLoadDialogData | null = inject(DIALOG_DATA, { optional: true });
     private dataService = inject(DataService);
+    private operationStorage = inject(OperationStorageService);
     private destroyRef = inject(DestroyRef);
     private injector = inject(Injector);
     private sessionPersistenceService = inject(SessionPersistenceService);
@@ -232,8 +235,12 @@ export class ForceLoadDialogComponent {
     loading = signal<boolean>(true);
     forceTagsVersion = signal(0);
 
-    tabs = ['Hangar', 'Force Packs', 'TO&E', 'Operations'];
-    activeTab = signal(this.dialogData?.initialTab ?? this.tabs[0]);
+    readonly tabs: readonly ForceLoadTab[] = ['Hangar', 'Force Packs', 'TO&E', 'Operations'];
+    activeTab = signal<ForceLoadTab>(this.dialogData?.initialTab ?? this.tabs[0]);
+
+    setActiveTab(tab: string): void {
+        if (this.tabs.includes(tab as ForceLoadTab)) this.activeTab.set(tab as ForceLoadTab);
+    }
 
     searchText = signal<string>('');
 
@@ -822,7 +829,7 @@ export class ForceLoadDialogComponent {
     private async loadOperations(selectOperationId?: string): Promise<void> {
         this.operationsLoading.set(true);
         try {
-            const result = await this.dataService.listOperations();
+            const result = await this.operationStorage.listOperations();
 
             // Build a local force lookup from the already-loaded forces list
             const forceMap = new Map<string, LoadForceEntry>();
@@ -860,7 +867,7 @@ export class ForceLoadDialogComponent {
             }
 
             if (missingInstanceIds.size > 0) {
-                const cloudInfo = await this.dataService.getForceInfoBulk(Array.from(missingInstanceIds));
+                const cloudInfo = await this.operationStorage.getForceInfoBulk(Array.from(missingInstanceIds));
                 if (cloudInfo.size > 0) {
                     // Apply cloud enrichment to the still-missing forces
                     for (const op of localOnlyOps) {
@@ -1686,7 +1693,7 @@ export class ForceLoadDialogComponent {
             'danger'
         );
         if (confirmed) {
-            await this.dataService.deleteOperation(op.operationId);
+            await this.operationStorage.deleteOperation(op.operationId);
             this.operations.update(ops => ops.filter(o => o !== op));
             this.selectedOperation.set(null);
         }
@@ -1728,7 +1735,7 @@ export class ForceLoadDialogComponent {
             }),
         };
 
-        await this.dataService.saveOperation(updatedOp);
+        await this.operationStorage.saveOperation(updatedOp);
 
         // Update the local list reactively
         op.name = result.name;

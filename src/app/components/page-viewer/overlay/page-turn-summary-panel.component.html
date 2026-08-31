@@ -7,7 +7,8 @@
 >
     <header id="turn-summary-title" class="panel-header">TURN TRACKER</header>
 
-    <section class="summary-section" aria-label="Movement">
+    <div class="summary-content">
+    <section class="summary-section movement-section" aria-label="Movement">
         @if (showImmobileStatus()) {
             <div class="summary-row immobile-status" role="status">Unit is immobile</div>
         }
@@ -52,7 +53,8 @@
                                 <path d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z" fill="currentColor"></path>
                             </svg>
                         } @else {
-                            <span>{{ moveMode.label }}</span>
+                            <span class="move-mode-label">{{ moveMode.label }}</span>
+                            <strong class="move-allowance">{{ moveModeAllowance(mode) }}</strong>
                             @if (moveModeModifierLabel(mode); as modifierLabel) {
                                 <span class="modifier-badge">{{ modifierLabel }}</span>
                             }
@@ -171,7 +173,7 @@
         </div>
     </section>
 
-    <section class="summary-section" aria-label="Defense">
+    <section class="summary-section defense-section" aria-label="Defense">
         <div class="summary-row tooltip-row" [tooltip]="defenseTargetModifierTooltip()">
             <span class="summary-caption">Defense Movement Modifier:</span>
             <span class="modifier important defense">{{ getTotalTargetModifierAsDefender() }}</span>
@@ -221,7 +223,7 @@
 
     @if (tracksHeat() && heatRows(); as heatRows) {
         @if (heatRows.length > 0) {
-            <section class="summary-section">
+            <section class="summary-section heat-section">
                 <h2 class="section-title">Heat</h2>
                 <div class="modifier-list">
                     @for (row of heatRows; track row.id) {
@@ -239,7 +241,7 @@
         }
     }
 
-    <section class="summary-section">
+    <section class="summary-section other-section">
         <h2 class="section-title">Other</h2>
         <div class="summary-row">
             <span>Damage received this phase:</span>
@@ -247,8 +249,8 @@
         </div>
     </section>
 
-    @if (psrModifiers().length > 0) {
-        <section class="summary-section">
+    @if (psrModifiers().length > 0 && (!embedded() || controlRollShortLabel() !== 'PSR')) {
+        <section class="summary-section control-roll-section">
             <h2 class="section-title">{{ controlRollShortLabel() }} Modifiers</h2>
             <div class="modifier-list">
                 @for (modifier of psrModifiers(); track $index) {
@@ -262,12 +264,13 @@
             </div>
         </section>
     }
+    </div>
 
     <footer class="summary-actions">
         @if (falling() || hasPSRChecks()) {
             <button
                 type="button"
-                class="bt-button"
+                class="bt-button roll-warning-action"
                 [class.full-danger]="falling()"
                 [class.warning]="!falling()"
                 (click)="openPsrWarning($event)"
@@ -279,11 +282,22 @@
                 }
             </button>
         }
-        @if (dirty()) {
-            <button type="button" class="bt-button" (click)="endTurn()">End Turn</button>
+        @if (embedded() || dirty()) {
+            <button type="button" class="bt-button turn-action end-turn-action" [disabled]="!dirty()" (click)="endTurn()">
+                <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                    <path d="M3 12h13M11 7l5 5-5 5M20 4v16" />
+                </svg>
+                <span>End Turn</span>
+            </button>
         }
-        @if (endTurnForAllButtonVisible()) {
-            <button type="button" class="bt-button large-action" (click)="endTurnForAll($event)">End Turn for All Units</button>
+        @if (embedded() || endTurnForAllButtonVisible()) {
+            <button type="button" class="bt-button turn-action all-units-action" [disabled]="!endTurnForAllButtonVisible()"
+                aria-label="End turn for all units" title="End turn for all units" (click)="endTurnForAll($event)">
+                <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                    <path d="M3 6h11M10 3l4 3-4 3M3 12h11M10 9l4 3-4 3M3 18h11M10 15l4 3-4 3M20 3v18" />
+                </svg>
+                <span>All units</span>
+            </button>
         }
     </footer>
 </aside>

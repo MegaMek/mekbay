@@ -41,6 +41,10 @@ export interface RecordSheetLayout {
         entity: BaseEntity,
         request: RecordSheetLayoutRequest,
     ): Promise<SVGSVGElement>;
+    generatePages?(
+        entity: BaseEntity,
+        request: RecordSheetLayoutRequest,
+    ): Promise<readonly SVGSVGElement[]>;
 }
 
 /** Shared compact/full-page behavior for the small-unit sheet families. */

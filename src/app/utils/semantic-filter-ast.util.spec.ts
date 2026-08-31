@@ -7,12 +7,14 @@ import { filterUnitsWithAST, getMatchingTextForUnit, parseSemanticQueryAST, toke
 import { filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';
 import { matchesSearch, parseSearchQuery } from './search.util';
 
-function getUnitId(unit: { id?: string | number; name?: string }): string {
-    if (unit.id !== undefined) {
-        return String(unit.id);
+function getUnitId(unit: unknown): string {
+    if (!unit || typeof unit !== 'object') return '';
+    const value = unit as { id?: string | number; name?: string };
+    if (value.id !== undefined) {
+        return String(value.id);
     }
 
-    return unit.name ?? '';
+    return value.name ?? '';
 }
 
 describe('semantic boolean filters', () => {
@@ -527,15 +529,15 @@ describe('semantic filter exclusivity', () => {
         const filtered = filterUnitsWithAST(units, result.ast, {
             gameSystem: GameSystem.CLASSIC,
             getUnitId,
-            getProperty: (unit: { era?: string[] }, key: string) => unit[key as keyof typeof unit],
-            unitBelongsToEra: (unit: { era?: string[] }, eraName: string) =>
+            getProperty: (unit: typeof units[number], key: string) => unit[key as keyof typeof unit],
+            unitBelongsToEra: (unit: typeof units[number], eraName: string) =>
                 (unit.era ?? []).includes(eraName),
             unitBelongsToFaction: (
-                unit: { factionEras?: Record<string, string[]> },
+                unit: typeof units[number],
                 factionName: string,
                 eraNames?: readonly string[],
             ) => {
-                const membershipEraNames = unit.factionEras?.[factionName] ?? [];
+                const membershipEraNames = (unit.factionEras as Record<string, string[]> | undefined)?.[factionName] ?? [];
                 if (eraNames !== undefined) {
                     return eraNames.some(eraName => membershipEraNames.includes(eraName));
                 }
@@ -619,27 +621,29 @@ describe('semantic filter exclusivity', () => {
             gameSystem: GameSystem.CLASSIC,
             getUnitId,
             getProperty: () => undefined,
-            unitBelongsToEra: (unit: { eras?: string[] }, eraName: string) => (unit.eras ?? []).includes(eraName),
+            unitBelongsToEra: (unit: typeof units[number], eraName: string) => (unit.eras ?? []).includes(eraName),
             unitBelongsToFaction: (
-                unit: { factionEras?: Record<string, string[]> },
+                unit: typeof units[number],
                 factionName: string,
                 eraNames?: readonly string[],
             ) => {
-                const membershipEraNames = unit.factionEras?.[factionName] ?? [];
+                const membershipEraNames = (unit.factionEras as Record<string, string[]> | undefined)?.[factionName] ?? [];
                 if (eraNames !== undefined) {
                     return eraNames.some((eraName) => membershipEraNames.includes(eraName));
                 }
                 return membershipEraNames.length > 0;
             },
             unitMatchesAvailabilityRarity: (
-                unit: { rarityByContext: Record<string, string> },
+                unit: typeof units[number],
                 rarityName: string,
                 scope,
             ) => {
                 const eraNames = scope?.eraNames ?? [];
                 const factionNames = scope?.factionNames ?? [];
                 return eraNames.some((eraName) => (
-                    factionNames.some((factionName) => unit.rarityByContext[`${eraName}|${factionName}`] === rarityName)
+                    factionNames.some((factionName) => (
+                        unit.rarityByContext as Record<string, string>
+                    )[`${eraName}|${factionName}`] === rarityName)
                 ));
             },
             getAllEraNames: () => ['Clan Invasion'],

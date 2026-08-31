@@ -23,6 +23,7 @@ import {
 import type { AttackerSelection } from '../../models/runtime/attacker-targeting-state';
 import type { StateRevision } from '../../models/runtime/runtime-state';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
+import type { EntityTechBase } from '../../models/entity/types';
 import {
     crewStateDefinitions,
     UNIT_CONDITION_DEFINITIONS,
@@ -894,7 +895,7 @@ function inventoryLocation(row: SVGElement): string {
     return row.querySelector<SVGElement>('.location')?.textContent?.trim() ?? '';
 }
 
-function formatTechBase(value: string, mixedTech = false): string {
+function formatTechBase(value: EntityTechBase, mixedTech = false): string {
     if (mixedTech) return 'Mixed';
     if (value === 'IS') return 'Inner Sphere';
     return value;

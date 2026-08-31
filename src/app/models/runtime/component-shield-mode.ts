@@ -9,6 +9,7 @@ import { isShieldEquipment } from '../entity/utils/physical-weapon';
 import { SHIELD_FLAG } from '../entity/utils/physical-weapon-kernel';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import { isMekLocation, type MekLocation } from '../entity/types';
 import { componentLocationIds, equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
 import type { MekUnitQueryPort } from './unit-instance';
 import {
@@ -67,7 +68,7 @@ export function shieldProtectsLocation(
     mode: ShieldMode,
     ruleset: CBTRuleset,
     arm: 'LA' | 'RA',
-    location: string,
+    location: MekLocation,
     rearMounted = false,
 ): boolean {
     switch (mode) {
@@ -112,7 +113,7 @@ export function shieldBlocksComponentAttack(
         index,
         ruleset,
         runtime,
-        componentLocationIds(index, componentId).map(id => index.locations.get(id)?.code).filter(isString),
+        componentLocationIds(index, componentId).map(id => index.locations.get(id)?.code).filter(isDefined),
         component.mount.rearMounted,
     );
 }
@@ -124,7 +125,14 @@ export function shieldBlocksIntrinsicAttack(
     runtime: ShieldAttackRuntimePort,
     locations: readonly string[],
 ): boolean {
-    return shieldBlocksLocations(entity, index, ruleset, runtime, locations, false);
+    return shieldBlocksLocations(
+        entity,
+        index,
+        ruleset,
+        runtime,
+        locations.filter(isMekLocation),
+        false,
+    );
 }
 
 /** Total Warfare's passive/inactive shield penalty for a ranged mounted weapon. */
@@ -140,7 +148,7 @@ export function shieldWeaponToHitAdjustment(
     if (component?.kind !== 'equipment') return null;
     const locations = componentLocationIds(index, componentId)
         .map(id => index.locations.get(id)?.code)
-        .filter(isString);
+        .filter(isDefined);
     const rearMounted = component.mount.rearMounted;
     let inactiveArm: 'LA' | 'RA' | null = null;
     for (const shield of operationalShields(entity, index, runtime)) {
@@ -214,7 +222,7 @@ function shieldBlocksLocations(
     index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     runtime: ShieldAttackRuntimePort,
-    locations: readonly string[],
+    locations: readonly MekLocation[],
     rearMounted: boolean,
 ): boolean {
     if (locations.length === 0) return false;
@@ -250,6 +258,6 @@ function selectedShieldMode(
     return isShieldMode(mode, ruleset) ? mode : SHIELD_INACTIVE_MODE;
 }
 
-function isString(value: string | undefined): value is string {
+function isDefined<T>(value: T | undefined): value is T {
     return value !== undefined;
 }

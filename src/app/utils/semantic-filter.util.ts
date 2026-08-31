@@ -65,7 +65,7 @@ export interface SemanticToken {
  */
 export interface SemanticFilterState {
     [key: string]: {
-        value: any;
+        value: unknown;
         interactedWith: boolean;
         includeRanges?: [number, number][];  // For range filters: multiple include ranges (OR logic)
         excludeRanges?: [number, number][];  // For range filters: multiple exclude ranges

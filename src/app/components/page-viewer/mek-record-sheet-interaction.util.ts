@@ -4,7 +4,6 @@
 import type { PickerChoice } from '../picker/picker.interface';
 import type { CBTUnitCommand, MekUnitQueryPort } from '../../models/runtime/unit-instance';
 import { createCommandId } from '../../models/runtime/runtime-state';
-import { MEK_ACTION_DECLARATION_SCHEMA_VERSION } from '../../models/runtime/mek-movement-psr-v2';
 import type { MekHeatAutomationPolicyV2 } from '../../models/runtime/mek-heat-state-v2';
 import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
 import type { MekRecordSheetInteraction } from './mek-record-sheet-binder';
@@ -155,11 +154,8 @@ export function recordSheetCommand(
         case 'shutdown':
             return {
                 ...common,
-                type: 'declare-mek-action',
-                action: {
-                    schemaVersion: MEK_ACTION_DECLARATION_SCHEMA_VERSION,
-                    kind: source.query.hasCondition('shutdown') ? 'startup' : 'shutdown',
-                },
+                type: 'set-mek-shutdown-state',
+                shutdown: !source.query.hasCondition('shutdown'),
             };
         case 'crew-skill':
         case 'crew-name':

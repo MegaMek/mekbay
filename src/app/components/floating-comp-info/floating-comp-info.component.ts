@@ -21,10 +21,6 @@ import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.u
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './floating-comp-info.component.html',
     styleUrl: './floating-comp-info.component.css',
-    host: {
-        '(pointerenter)': 'onPointerEnter()',
-        '(pointerleave)': 'onPointerLeave()'
-    }
 })
 export class FloatingCompInfoComponent {
     private dataService = inject(DataService);
@@ -44,14 +40,6 @@ export class FloatingCompInfoComponent {
     });
 
     equipmentDisplay = computed(() => this.computeEquipmentDisplay());
-
-    onPointerEnter() {
-        // overlay service listens for overlay element pointer events; parent keeps component state
-    }
-
-    onPointerLeave() {
-        // overlay service listens for overlay element pointer events; parent keeps component state
-    }
 
     get name(): string {
         return this.equipment()?.name ?? this.comp()?.n ?? '';
@@ -144,7 +132,10 @@ export class FloatingCompInfoComponent {
         return eq instanceof WeaponEquipment && eq.heat > 0;
     }
 
-    computeEquipmentDisplay(): Array<{ group: string, items: Array<{ label: string, value: any }> }> {
+    computeEquipmentDisplay(): Array<{
+        group: string;
+        items: Array<{ label: string; value: string | number }>;
+    }> {
         const unit = this.unit();
         if (!unit) return [];
         const eq = this.equipment();

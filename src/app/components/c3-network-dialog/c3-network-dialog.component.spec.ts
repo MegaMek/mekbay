@@ -69,7 +69,6 @@ interface C3NetworkDialogTestApi {
 
 interface TestC3Unit extends C3UnitView {
     getSummary?(): UnitSummary;
-    setC3Position(position: Readonly<{ x: number; y: number }> | null): void;
     getBaseBv(): number;
     tagBV(): number;
     externalStoresBv(): number;
@@ -82,7 +81,6 @@ interface TestUnitState {
     jammed: WritableSignal<boolean>;
     destroyedComponents: WritableSignal<ReadonlySet<number>>;
     actionUnavailableComponents: WritableSignal<ReadonlySet<number>>;
-    setC3Position: jasmine.Spy;
 }
 
 function c3Unit(id: string, flags: readonly string[]): TestUnitState {
@@ -93,7 +91,6 @@ function c3UnitWithComponents(id: string, componentFlags: readonly (readonly str
     const jammed = signal(false);
     const destroyedComponents = signal<ReadonlySet<number>>(new Set());
     const actionUnavailableComponents = signal<ReadonlySet<number>>(new Set());
-    const setC3Position = jasmine.createSpy('setC3Position');
     const components = componentFlags.map((flags, index) => c3Component(flags, index));
     const unit: TestC3Unit = {
         id,
@@ -112,9 +109,8 @@ function c3UnitWithComponents(id: string, componentFlags: readonly (readonly str
             && !actionUnavailableComponents().has(index),
         isC3Jammed: () => jammed(),
         c3Position: () => null,
-        setC3Position,
     };
-    return { unit, jammed, destroyedComponents, actionUnavailableComponents, setC3Position };
+    return { unit, jammed, destroyedComponents, actionUnavailableComponents };
 }
 
 function c3Component(flags: readonly string[], index: number): C3Component {
@@ -206,7 +202,7 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         };
     }
 
-    it('returns detached positions without mutating live units before the owner commit', async () => {
+    it('returns detached positions for the owner commit', async () => {
         const first = c3Unit('first', [C3_FLAGS.C3I]);
         const second = c3Unit('second', [C3_FLAGS.C3I]);
         const { component, close } = await createComponent([first, second], false);
@@ -217,8 +213,6 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
 
         component.saveAndClose();
 
-        expect(first.setC3Position).not.toHaveBeenCalled();
-        expect(second.setC3Position).not.toHaveBeenCalled();
         expect(close).toHaveBeenCalledWith(jasmine.objectContaining({
             positions: [
                 { unitId: 'first', x: 10, y: 20 },

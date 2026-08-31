@@ -12,7 +12,7 @@ import { matchesSearch, parseSearchQuery } from './search.util';
 import { getNowMs, getProperty, normalizeMultiStateSelection } from './unit-search-shared.util';
 import { isComponentBackedDropdown, isCountableBackedDropdown, usesIndexedDropdownAvailability, usesIndexedDropdownUniverse } from './unit-search-filter-config.util';
 import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from './unit-search-dropdown-sort.util';
-import { AdvFilterType, normalizeTriStateBooleanFilterValue, type AdvFilterConfig, type AdvFilterOptions, type AdvOptionsTelemetryFilterStage, type AdvOptionsTelemetrySnapshot, type FilterState, type SemanticDisplayItem } from '../services/unit-search-filters.model';
+import { AdvFilterType, isFilterRangeValue, normalizeTriStateBooleanFilterValue, type AdvFilterConfig, type AdvFilterOptions, type AdvOptionsTelemetryFilterStage, type AdvOptionsTelemetrySnapshot, type FilterState, type SemanticDisplayItem } from '../services/unit-search-filters.model';
 
 const AVAILABILITY_CASCADE_FILTER_KEYS = new Set(['era', 'faction', 'availabilityFrom', 'availabilityRarity']);
 
@@ -477,7 +477,12 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
             }
 
             const isInteracted = filterStateEntry?.interactedWith ?? false;
-            const filterValue = isInteracted ? filterStateEntry.value : [];
+            const rawFilterValue = isInteracted ? filterStateEntry.value : [];
+            const filterValue: string[] | MultiStateSelection = conf.multistate
+                ? normalizeMultiStateSelection(rawFilterValue)
+                : Array.isArray(rawFilterValue)
+                    ? rawFilterValue.filter((value): value is string => typeof value === 'string')
+                    : [];
             let semanticOnly = filterStateEntry?.semanticOnly ?? false;
             let displayText: string | undefined;
             let displayItems: SemanticDisplayItem[] | undefined;
@@ -534,7 +539,7 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                 }
             } else {
                 const selectedValues = filterValue as string[];
-                if (selectedValues && Array.isArray(selectedValues) && selectedValues.length > 0) {
+                if (selectedValues.length > 0) {
                     for (const value of selectedValues) {
                         if (!availableOptionNames.has(value)) {
                             availableOptions.push({
@@ -576,7 +581,9 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                 );
 
             const isInteracted = filterStateEntry?.interactedWith ?? false;
-            const originalValue: [number, number] = isInteracted ? filterStateEntry.value : availableRange;
+            const originalValue = isInteracted && isFilterRangeValue(filterStateEntry?.value)
+                ? filterStateEntry.value
+                : availableRange;
 
             let clampedMin = Math.max(availableRange[0], Math.min(originalValue[0], availableRange[1]));
             let clampedMax = Math.min(availableRange[1], Math.max(originalValue[1], availableRange[0]));

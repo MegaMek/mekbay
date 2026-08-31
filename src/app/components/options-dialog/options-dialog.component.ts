@@ -726,8 +726,10 @@ export class OptionsDialogComponent {
             }
             await this.userStateService.setUuid(trimmed);
             window.location.reload();
-        } catch (e: any) {
-            this.userUuidError = e?.message || 'An unknown error occurred.';
+        } catch (error: unknown) {
+            this.userUuidError = error instanceof Error && error.message
+                ? error.message
+                : 'An unknown error occurred.';
             return;
         }
     }
@@ -849,8 +851,10 @@ export class OptionsDialogComponent {
                     this.subscriptionError.set(result.error || 'Failed to subscribe. The tag may not exist or is not public.');
                 }
             }
-        } catch (e: any) {
-            this.subscriptionError.set(e?.message || 'Failed to subscribe');
+        } catch (error: unknown) {
+            this.subscriptionError.set(error instanceof Error && error.message
+                ? error.message
+                : 'Failed to subscribe');
         }
     }
 

@@ -27,6 +27,10 @@ describe('PageViewerZoomPanService', () => {
         service = TestBed.inject(PageViewerZoomPanService);
     });
 
+    it('allows picker interactions to cancel gestures before a page viewer is initialized', () => {
+        expect(() => service.cancelGesture()).not.toThrow();
+    });
+
     it('skips scale-dependent target writes during translate-only updates', () => {
         const content = createTrackedElement();
         const wrapper = createTrackedElement();

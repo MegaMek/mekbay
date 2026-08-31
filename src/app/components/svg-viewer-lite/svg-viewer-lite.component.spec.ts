@@ -214,6 +214,22 @@ describe('SvgViewerLiteComponent', () => {
         expect(container.classList).toContain('zoomable');
     });
 
+    it('shows every page returned for a multi-page unit', async () => {
+        recordSheets.load.and.callFake(async () => {
+            const front = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            const reverse = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            front.dataset['mekbayPageRole'] = 'primary';
+            reverse.dataset['mekbayPageRole'] = 'reverse';
+            return { svgs: [front, reverse] };
+        });
+
+        const { element } = await createViewer();
+        const pages = [...element.querySelectorAll<SVGSVGElement>('svg')];
+
+        expect(pages.map(page => page.dataset['mekbayPageRole'])).toEqual(['primary', 'reverse']);
+        expect(pages.every(page => page.style.width === '100%')).toBeTrue();
+    });
+
     it('ignores stale sheet loads when the unit changes before a previous request resolves', async () => {
         const atlasLoad = deferred<LoadedEntity>();
         const marauderLoad = deferred<LoadedEntity>();

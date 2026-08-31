@@ -19,6 +19,7 @@ import {
 } from './unit-search-normalization-range.util';
 
 type BvNormalizationMatch = Extract<UnitSearchNormalizationMatch, { kind: 'bv' }>;
+type BvNormalizationUnit = Pick<UnitSummary, 'bv' | 'type' | 'subtype' | 'canAntiMech'>;
 
 export function isValidTargetBvRange(range: UnitSearchNumericRange): boolean {
     return Number.isInteger(range.min)
@@ -48,7 +49,7 @@ export function isValidBvNormalizationSettings(settings: BvNormalizationSettings
  * delta, so only their Gunnery is normalized.
  */
 export function findBvNormalizationMatch(
-    unit: UnitSummary,
+    unit: BvNormalizationUnit,
     settings: BvNormalizationSettings,
 ): BvNormalizationMatch | null {
     if (!isValidBvNormalizationSettings(settings)
@@ -98,7 +99,7 @@ export function findBvNormalizationMatch(
     return bestMatch;
 }
 
-function createMatch(unit: UnitSummary, gunnery: number, piloting: number): BvNormalizationMatch {
+function createMatch(unit: BvNormalizationUnit, gunnery: number, piloting: number): BvNormalizationMatch {
     return {
         kind: 'bv',
         adjustedValue: BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting),

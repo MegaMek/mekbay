@@ -8,6 +8,7 @@ import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk
 import type { Force, UnitGroup } from '../../models/force.model';
 import type { ForceUnit } from '../../models/force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
+import { ASForce } from '../../models/as-force.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import {
     isCBTForceMember,
@@ -58,6 +59,7 @@ import {
     getUnitDataTableSortSlotHeader,
     isUnitDataTableSortActive,
 } from '../../utils/unit-data-table.util';
+import { getProperty } from '../../utils/unit-search-shared.util';
 
 export interface ForceOverviewDialogData {
     force: Force;
@@ -138,6 +140,7 @@ export class ForceOverviewDialogComponent {
 
     /** Reference to new group dropzone */
     private newGroupDropzone = viewChild<ElementRef<HTMLElement>>('newGroupDropzone');
+    protected readonly newGroupDropData: ForceMember[] = [];
 
     /** Reference to scrollable units list */
     private scrollContainer = viewChild<ElementRef<HTMLElement>>('scrollContainer');
@@ -585,8 +588,8 @@ export class ForceOverviewDialogComponent {
         // Sort the units (skip if no sort key - show default order)
         if (sortKey) {
             viewModels.sort((a, b) => {
-                const valA = this.getNestedProperty(a.unit, sortKey);
-                const valB = this.getNestedProperty(b.unit, sortKey);
+                const valA = getProperty(a.unit, sortKey);
+                const valB = getProperty(b.unit, sortKey);
 
                 let cmp = 0;
                 if (valA == null && valB == null) cmp = 0;
@@ -828,8 +831,8 @@ export class ForceOverviewDialogComponent {
         // Skip sorting if no sort key - show default order
         if (sortKey) {
             viewModels.sort((a, b) => {
-                const valA = this.getNestedProperty(a.unit, sortKey);
-                const valB = this.getNestedProperty(b.unit, sortKey);
+                const valA = getProperty(a.unit, sortKey);
+                const valB = getProperty(b.unit, sortKey);
 
                 let cmp = 0;
                 if (valA == null && valB == null) cmp = 0;
@@ -925,19 +928,6 @@ export class ForceOverviewDialogComponent {
         this.hoveredPreviewUnit.set(null);
     }
 
-    /** Get a nested property value using dot notation (e.g., 'as.PV') */
-    private getNestedProperty(obj: any, key: string): any {
-        if (!obj || !key) return undefined;
-        if (!key.includes('.')) return obj[key];
-        const parts = key.split('.');
-        let cur: any = obj;
-        for (const p of parts) {
-            if (cur == null) return undefined;
-            cur = cur[p];
-        }
-        return cur;
-    }
-
     // --- Drag and Drop ---
 
     /** Called when drag starts */
@@ -953,7 +943,7 @@ export class ForceOverviewDialogComponent {
     }
 
     /** Called when dragging moves */
-    onUnitDragMoved(event: CdkDragMove<any>): void {
+    onUnitDragMoved(event: CdkDragMove<unknown>): void {
         if (this.isReadOnly()) return;
 
         const scrollRef = this.scrollContainer?.();
@@ -1098,12 +1088,13 @@ export class ForceOverviewDialogComponent {
             await this.formations.assignFormationIfNeeded(toGroup);
         }
 
+        if (!(force instanceof ASForce)) return;
         force.removeEmptyGroups();
         force.emitChanged();
     }
 
     /** Handle drop to create a new group */
-    async dropForNewGroup(event: CdkDragDrop<any>): Promise<void> {
+    async dropForNewGroup(event: CdkDragDrop<ForceMember[]>): Promise<void> {
         if (this.isReadOnly()) return;
 
         const force = this.data.force;
@@ -1139,7 +1130,7 @@ export class ForceOverviewDialogComponent {
 
         await this.formations.assignFormationIfNeeded(sourceGroup);
         await this.formations.assignFormationIfNeeded(newGroup);
-        if (!(force instanceof CBTForce)) {
+        if (force instanceof ASForce) {
             force.removeEmptyGroups();
             force.emitChanged();
         }
@@ -1188,14 +1179,14 @@ export class ForceOverviewDialogComponent {
             if (this.AS_TABLE_VISIBLE_KEYS.includes(groupKey) && members.includes(sortKey)) return null;
         }
         
-        const val = this.getNestedProperty(vm.unit, sortKey);
+        const val = getProperty(vm.unit, sortKey);
         if (val == null) return null;
         return typeof val === 'number' ? String(val) : String(val);
     }
 
     getTableSortSlot(unit: UnitSummary): string {
         return formatUnitDataTableSortSlotValue(unit, this.selectedSort(), (candidate, key) => (
-            this.getNestedProperty(candidate, key)
+            getProperty(candidate, key)
         ));
     }
 

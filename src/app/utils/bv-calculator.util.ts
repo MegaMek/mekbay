@@ -14,7 +14,12 @@ export class BVCalculatorUtil {
      * @param pilotingSkill - Piloting skill level (0-8+)
      * @returns Adjusted Battle Value rounded to nearest integer
      */
-    static calculateAdjustedBV(unit: UnitSummary, baseBv: number, gunnerySkill: number, pilotingSkill: number): number {
+    static calculateAdjustedBV(
+        unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
+        baseBv: number,
+        gunnerySkill: number,
+        pilotingSkill: number,
+    ): number {
         return adjustClassicBattleValueForSkills(baseBv, gunnerySkill, pilotingSkill, {
             unitType: unit.type,
             unitSubtype: unit.subtype,

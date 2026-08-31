@@ -517,6 +517,13 @@ export class PageTurnSummaryPanelComponent {
         return modifier === 0 ? null : this.formatModifier(modifier);
     }
 
+    moveModeAllowance(mode: MotiveModes): number {
+        const runtime = this.runtime();
+        return runtime
+            ? runtime.movementMaximum(mode as MekMovementModeV2)
+            : this.entityMovementMaximum(mode);
+    }
+
     setAirborne(airborne: boolean): void {
         const runtime = this.runtime();
         if (runtime) {

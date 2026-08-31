@@ -42,6 +42,7 @@ describe('CBTSummaryPrintUtil', () => {
         expect(withPilot).toContain('Atlas (Morgan &amp; Co.)');
         expect(withPilot).toContain('<td class="col-gp is-numeric">3/4</td>');
         expect(withPilot).toContain('<td class="col-bv is-numeric is-bold">1,100</td>');
+        expect(withPilot).toContain('<td class="col-rules">IS<br/>Standard</td>');
     });
 
     it('keeps CASE-protected and unprotected Entity ammo bins separate', () => {
@@ -106,7 +107,7 @@ function createMember(force: CBTForce, chassis: string, rosterGroupId: string): 
         battleValue: () => 900,
         tonnage: () => 50,
         year: () => 3025,
-        techBase: () => 'Inner Sphere',
+        techBase: () => 'IS',
         mixedTech: () => false,
         staticTechLevel: () => 'Standard',
         walkMP: () => 5,

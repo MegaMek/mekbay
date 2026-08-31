@@ -120,7 +120,10 @@ export function naturalCompare(a: string, b: string, isModel: boolean = false): 
     return entryA.raw.localeCompare(entryB.raw);
 }
 
-export function compareUnitsByName(a: UnitSummary, b: UnitSummary) {
+export function compareUnitsByName(
+    a: Pick<UnitSummary, 'chassis' | 'model' | 'year'>,
+    b: Pick<UnitSummary, 'chassis' | 'model' | 'year'>,
+) {
     let comparison = naturalCompare(a.chassis || '', b.chassis || '');
     if (comparison === 0) {
         comparison = naturalCompare(a.model || '', b.model || '', true);
