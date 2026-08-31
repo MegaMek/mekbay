@@ -17,6 +17,7 @@ import { CoreUnitCatalogService } from './unit-catalog/core-unit-catalog.service
 import { DataService } from './data.service';
 import {
     MM_DATA_UNIT_PROVIDER_ID,
+    type SourceHash,
     type UnitProviderId,
     type UnitUuid,
 } from './unit-catalog/unit-catalog.types';
@@ -24,6 +25,7 @@ import {
 interface PreparedEntityRepository {
     readonly inputsKey: string;
     readonly repository: EntityRepository;
+    readonly generation: NonNullable<ReturnType<CoreUnitCatalogService['getPublishedGeneration']>>;
 }
 
 export type NativeEntityLoadErrorCode = 'UNSUPPORTED_PROVIDER' | 'CATALOG_NOT_READY';
@@ -80,6 +82,7 @@ export class NativeEntityService {
     public async load(identity: {
         readonly provider: UnitProviderId;
         readonly uuid: UnitUuid;
+        readonly sourceHashAtSave?: SourceHash;
     }): Promise<LoadedEntity> {
         const captured = Object.freeze({ ...identity });
         if (!this.canLoad(captured)) {
@@ -88,10 +91,16 @@ export class NativeEntityService {
                 `Native entity loading does not support provider ${captured.provider}`,
             );
         }
-        return (await this.prepareRepository()).load(captured);
+        const prepared = await this.prepareRepository();
+        const sourceHash = captured.sourceHashAtSave
+            ?? prepared.generation.manifest.manifest.units[captured.uuid]?.hash;
+        return prepared.repository.load({
+            ...captured,
+            ...(sourceHash === undefined ? {} : { sourceHash }),
+        });
     }
 
-    private async prepareRepository(): Promise<EntityRepository> {
+    private async prepareRepository(): Promise<PreparedEntityRepository> {
         try {
             await this.data.requireApplicationCatalogReady();
         } catch (error) {
@@ -100,18 +109,20 @@ export class NativeEntityService {
                 `The complete application catalog is not ready: ${error instanceof Error ? error.message : String(error)}`,
             );
         }
-        if (!this.coreCatalog.getPublishedGeneration()) {
+        const generation = this.coreCatalog.getPublishedGeneration();
+        if (!generation) {
             throw new NativeEntityLoadError(
                 'CATALOG_NOT_READY',
                 'The native unit catalog has no active generation',
             );
         }
         const inputsKey = [
+            generation.activationId,
             this.equipment.getCatalogRevision(),
             this.sourcebooks.getCatalogRevision(),
             this.quirks.getCatalogRevision(),
         ].join('\0');
-        if (this.cachedRepository?.inputsKey === inputsKey) return this.cachedRepository.repository;
+        if (this.cachedRepository?.inputsKey === inputsKey) return this.cachedRepository;
 
         const sourcebooks = this.sourcebooks.getSourcebooks();
         const quirks = this.quirks.getQuirksByKey();
@@ -123,8 +134,8 @@ export class NativeEntityService {
                 quirkResolver: key => quirks.get(key),
             },
         );
-        this.cachedRepository = Object.freeze({ inputsKey, repository });
-        return repository;
+        this.cachedRepository = Object.freeze({ inputsKey, repository, generation });
+        return this.cachedRepository;
     }
 }
 

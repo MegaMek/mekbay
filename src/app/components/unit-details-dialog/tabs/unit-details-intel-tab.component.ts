@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { Component, ChangeDetectionStrategy, DestroyRef, input, computed, effect, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import type { UnitSummary } from '../../../models/unit-summary.model';
 import type { UnitFluff } from '../../../models/unit-fluff.model';
 import { UnitFluffImageService } from '../../../services/catalogs/unit-fluff-image.service';
@@ -18,9 +17,8 @@ interface ManufacturerFactoryDisplay {
 @Component({
     selector: 'unit-details-intel-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
     templateUrl: './unit-details-intel-tab.component.html',
-    styleUrls: ['./unit-details-intel-tab.component.css']
+    styleUrl: './unit-details-intel-tab.component.css'
 })
 export class UnitDetailsIntelTabComponent {
     unit = input.required<UnitSummary>();

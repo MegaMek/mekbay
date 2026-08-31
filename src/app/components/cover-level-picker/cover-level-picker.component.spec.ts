@@ -10,7 +10,6 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { CoverLevelPickerComponent } from './cover-level-picker.component';
 
 @Component({
-    standalone: true,
     imports: [CoverLevelPickerComponent],
     template: `
         <cover-level-picker

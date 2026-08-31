@@ -15,7 +15,6 @@ export interface WeaponTargetChoiceRow {
 
 @Component({
     selector: 'weapon-target-choice-menu',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="weapon-target-choice-menu glass framed-borders has-shadow">

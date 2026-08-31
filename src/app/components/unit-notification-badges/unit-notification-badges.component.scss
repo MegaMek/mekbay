@@ -45,8 +45,52 @@
     .fall-symbol { fill: #fff; }
 }
 
+.pending-events-warning.fall-warning {
+    position: relative;
+}
+
+.fall-event-count {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    display: flex;
+    min-width: 10px;
+    height: 10px;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    padding-inline: 2px;
+    border: 0.5px solid #fff;
+    border-radius: 999px;
+    background: #000;
+    color: #fff;
+    font-size: 7px;
+    font-weight: bold;
+    line-height: 1;
+}
+
 .psr-warning {
     path { fill: var(--damage-color); }
+    text { fill: #000; }
+}
+
+.critical-chance-warning,
+.critical-hit-warning,
+.unit-check-warning {
+    polygon,
+    rect {
+        stroke: #fff;
+        stroke-width: 0.5;
+    }
+
+    text { fill: #fff; }
+}
+
+.critical-chance-warning rect { fill: #e88720; }
+.critical-hit-warning polygon { fill: var(--danger); }
+
+.unit-check-warning {
+    polygon { fill: var(--bt-yellow); }
     text { fill: #000; }
 }
 
@@ -61,6 +105,16 @@
     width: 40px;
     height: 40px;
     flex-basis: 40px;
+}
+
+:host(.overlay) .fall-event-count {
+    right: -4px;
+    bottom: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding-inline: 3px;
+    border-width: 1px;
+    font-size: 11px;
 }
 
 :host(.overlay.interactive) .unit-notification-badge {
@@ -78,5 +132,11 @@
         width: 46px;
         height: 46px;
         flex-basis: 46px;
+    }
+
+    :host(.overlay) .fall-event-count {
+        min-width: 20px;
+        height: 20px;
+        font-size: 12px;
     }
 }

@@ -84,7 +84,6 @@ type CollectionExportValue = string | number;
 
 @Component({
     selector: 'collection-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'fullscreen-dialog-host nopadding fullheight tv-fade'

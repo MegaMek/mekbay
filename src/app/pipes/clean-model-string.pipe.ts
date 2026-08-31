@@ -6,7 +6,6 @@ import { Pipe, type PipeTransform } from '@angular/core';
 
 @Pipe({
     name: 'cleanModelString',
-    standalone: true,
     pure: true
 })
 export class CleanModelStringPipe implements PipeTransform {

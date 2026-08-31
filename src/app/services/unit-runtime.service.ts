@@ -52,6 +52,7 @@ export type UnitReferenceResolution =
 export interface PreparedUnitRuntimeCatalog {
     readonly unitNameMap: ReadonlyMap<string, readonly UnitSummary[]>;
     readonly unitIdentityMap: ReadonlyMap<string, readonly UnitSummary[]>;
+    readonly unitUuidMap: ReadonlyMap<string, UnitSummary>;
 }
 
 @Injectable({
@@ -64,6 +65,7 @@ export class UnitRuntimeService {
 
     private unitNameMap: ReadonlyMap<string, readonly UnitSummary[]> = new Map();
     private unitIdentityMap: ReadonlyMap<string, readonly UnitSummary[]> = new Map();
+    private unitUuidMap: ReadonlyMap<string, UnitSummary> = new Map();
 
     private static getUnitNameKey(name: string): string {
         return name.toLowerCase();
@@ -78,6 +80,7 @@ export class UnitRuntimeService {
     public prepareRuntimeCatalog(units: UnitSummary[]): PreparedUnitRuntimeCatalog {
         const unitNameMap = new Map<string, UnitSummary[]>();
         const unitIdentityMap = new Map<string, UnitSummary[]>();
+        const unitUuidMap = new Map<string, UnitSummary>();
         for (const unit of units) {
             unit._techBaseDisplay = getUnitTechBaseDisplay(unit);
             const nameKey = UnitRuntimeService.getUnitNameKey(unit.name);
@@ -92,14 +95,16 @@ export class UnitRuntimeService {
                 identityMatches.push(unit);
                 unitIdentityMap.set(identityKey, identityMatches);
             }
+            unitUuidMap.set(unit.uuid, unit);
         }
-        return Object.freeze({ unitNameMap, unitIdentityMap });
+        return Object.freeze({ unitNameMap, unitIdentityMap, unitUuidMap });
     }
 
     /** Final reference-only lookup switch. */
     public commitPreparedRuntimeCatalog(candidate: PreparedUnitRuntimeCatalog): void {
         this.unitNameMap = candidate.unitNameMap;
         this.unitIdentityMap = candidate.unitIdentityMap;
+        this.unitUuidMap = candidate.unitUuidMap;
     }
 
     public postprocessUnits(
@@ -210,8 +215,16 @@ export class UnitRuntimeService {
     }
 
     public getUnitByName(name: string): UnitSummary | undefined {
-        const matches = this.unitNameMap.get(UnitRuntimeService.getUnitNameKey(name)) ?? [];
+        const matches = this.getUnitsByName(name);
         return matches.length === 1 ? matches[0] : undefined;
+    }
+
+    public getUnitsByName(name: string): readonly UnitSummary[] {
+        return this.unitNameMap.get(UnitRuntimeService.getUnitNameKey(name)) ?? [];
+    }
+
+    public getUnitByUuid(uuid: string): UnitSummary | undefined {
+        return this.unitUuidMap.get(uuid);
     }
 
     public getUnitByIdentity(provider: UnitProviderId, uuid: string): UnitSummary | undefined {

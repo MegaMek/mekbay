@@ -8,7 +8,6 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ViewerStageComponent } from './viewer-stage.component';
 
 @Component({
-    standalone: true,
     imports: [ViewerStageComponent],
     template: `
         <viewer-stage [swiping]="swiping" [multipleVisible]="multipleVisible" [atMinZoom]="atMinZoom">

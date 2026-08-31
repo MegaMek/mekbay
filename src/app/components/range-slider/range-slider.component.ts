@@ -10,7 +10,6 @@ type SliderThumb = 'min' | 'max' | 'single';
 @Component({
     selector: 'range-slider',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     templateUrl: './range-slider.component.html',
     styleUrl: './range-slider.component.css',
     host: {

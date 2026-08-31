@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
+import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
@@ -69,7 +69,7 @@ import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { SimpleSliderComponent } from '../simple-slider/simple-slider.component';
 import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
 import { LoadingSpinnerComponent } from '../loading-spinner/loading-spinner.component';
-import { decodeUnitSearchIdentityKey, getUnitSearchIdentityKey } from '../../utils/unit-search-shared.util';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -110,7 +110,7 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, OverlayModule, LongPressDirective, LoadingSpinnerComponent, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective, RangeSliderComponent, SimpleSliderComponent],
+    imports: [DecimalPipe, NgTemplateOutlet, ScrollingModule, OverlayModule, LongPressDirective, LoadingSpinnerComponent, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective, RangeSliderComponent, SimpleSliderComponent],
     templateUrl: './unit-search.component.html',
     styleUrls: [
         './unit-search.component.scss',
@@ -320,8 +320,9 @@ export class UnitSearchComponent {
     focused = signal(false);
     viewModeMenuOpen = signal(false);
     activeIndex = signal<number | null>(null);
-    selectedUnits = signal<Set<string>>(new Set());
-    private readonly selectedUnitContexts = new Map<string, UnitSearchNormalizationMatch>();
+    /** UUIDs of the selected search results. */
+    selectedUnits = signal<Set<UnitUuid>>(new Set());
+    private readonly selectedUnitContexts = new Map<UnitUuid, UnitSearchNormalizationMatch>();
     readonly activeVariantGroupFilter = signal<ActiveVariantGroupFilter | null>(null);
     private unitDetailsDialogOpen = signal(false);
 
@@ -366,7 +367,7 @@ export class UnitSearchComponent {
 
         return units.filter(unit => unitMatchesVariantGroup(unit, variantGroupFilter));
     });
-    readonly displayedUnitKeys = computed(() => this.displayedUnits().map(getUnitSearchIdentityKey));
+    readonly displayedUnitKeys = computed(() => this.displayedUnits().map(unit => unit.uuid));
     readonly activeVariantGroupRepresentativeUnit = computed(() => {
         return this.displayedUnits()[0] ?? this.activeVariantGroupFilter()?.representativeUnit ?? null;
     });
@@ -493,8 +494,7 @@ export class UnitSearchComponent {
     private inlinePanelIndex = computed(() => {
         const unit = this.inlinePanelUnit();
         if (!unit) return -1;
-        const identity = getUnitSearchIdentityKey(unit);
-        return this.displayedUnits().findIndex(candidate => getUnitSearchIdentityKey(candidate) === identity);
+        return this.displayedUnits().findIndex(candidate => candidate.uuid === unit.uuid);
     });
 
     /** Whether there is a previous unit to navigate to in the inline panel */
@@ -1135,15 +1135,15 @@ export class UnitSearchComponent {
             });
         });
         effect(() => {
-            const filteredIdentities = new Set(this.filtersService.filteredUnits().map(getUnitSearchIdentityKey));
-            const displayedIdentities = new Set(this.displayedUnits().map(getUnitSearchIdentityKey));
+            const filteredIdentities = new Set(this.filtersService.filteredUnits().map(unit => unit.uuid));
+            const displayedIdentities = new Set(this.displayedUnits().map(unit => unit.uuid));
             untracked(() => {
                 const selected = this.selectedUnits();
                 if (![...selected].every(identity => filteredIdentities.has(identity))) {
                     this.selectedUnits.set(new Set([...selected].filter(identity => filteredIdentities.has(identity))));
                 }
                 const inlineUnit = this.inlinePanelUnit();
-                if (inlineUnit && !displayedIdentities.has(getUnitSearchIdentityKey(inlineUnit))) {
+                if (inlineUnit && !displayedIdentities.has(inlineUnit.uuid)) {
                     this.inlinePanelUnit.set(null);
                 }
             });
@@ -1443,7 +1443,7 @@ export class UnitSearchComponent {
     readonly unitTableRowClass = (unit: UnitSummary, index: number) => ({
         'is-selected': this.isUnitSelected(unit),
         'is-active': this.activeIndex() === index,
-        'is-panel-selected': this.showInlinePanel() && this.inlinePanelUnit()?.name === unit.name,
+        'is-panel-selected': this.showInlinePanel() && this.inlinePanelUnit()?.uuid === unit.uuid,
     });
 
     focusInput() {
@@ -1935,10 +1935,9 @@ export class UnitSearchComponent {
 
     async showUnitDetails(unit: UnitSummary): Promise<void> {
         const filteredUnits = this.displayedUnits();
-        const identity = getUnitSearchIdentityKey(unit);
-        const filteredUnitIndex = filteredUnits.findIndex(candidate => getUnitSearchIdentityKey(candidate) === identity);
+        const filteredUnitIndex = filteredUnits.findIndex(candidate => candidate.uuid === unit.uuid);
         const searchResultContexts = new Map(
-            filteredUnits.map(resultUnit => [resultUnit.name, this.getSearchResultContext(resultUnit)]),
+            filteredUnits.map(resultUnit => [resultUnit.uuid, this.getSearchResultContext(resultUnit)]),
         );
         const { UnitDetailsDialogComponent } = await import('../unit-details-dialog/unit-details-dialog.component');
         const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
@@ -2308,8 +2307,8 @@ export class UnitSearchComponent {
         if (selectedIdentities.size > 0) {
             // Always include the clicked unit, even if not in the selection
             const selectedSet = new Set(selectedIdentities);
-            selectedSet.add(getUnitSearchIdentityKey(unit));
-            unitsToTag = allUnits.filter(candidate => selectedSet.has(getUnitSearchIdentityKey(candidate)));
+            selectedSet.add(unit.uuid);
+            unitsToTag = allUnits.filter(candidate => selectedSet.has(candidate.uuid));
         } else {
             unitsToTag = [unit];
         }
@@ -2500,7 +2499,7 @@ export class UnitSearchComponent {
     multiSelectUnit(unit: UnitSummary, event?: Event) {
         event?.stopPropagation();
         const selected = new Set(this.selectedUnits());
-        const identity = getUnitSearchIdentityKey(unit);
+        const identity = unit.uuid;
         if (selected.has(identity)) {
             selected.delete(identity);
             this.selectedUnitContexts.delete(identity);
@@ -2524,8 +2523,7 @@ export class UnitSearchComponent {
         if (this.showInlinePanel()) {
             // Update activeIndex to match clicked unit
             const filteredUnits = this.displayedUnits();
-            const identity = getUnitSearchIdentityKey(unit);
-            const index = filteredUnits.findIndex(candidate => getUnitSearchIdentityKey(candidate) === identity);
+            const index = filteredUnits.findIndex(candidate => candidate.uuid === unit.uuid);
             if (index >= 0) {
                 this.activeIndex.set(index);
             }
@@ -2567,7 +2565,7 @@ export class UnitSearchComponent {
     }
 
     isUnitSelected(unit: UnitSummary): boolean {
-        return this.selectedUnits().has(getUnitSearchIdentityKey(unit));
+        return this.selectedUnits().has(unit.uuid);
     }
 
     clearSelection() {
@@ -2579,21 +2577,20 @@ export class UnitSearchComponent {
 
     selectAll() {
         const allUnits = this.displayedUnits();
-        const allIdentities = new Set(allUnits.map(getUnitSearchIdentityKey));
+        const allIdentities = new Set(allUnits.map(unit => unit.uuid));
         this.selectedUnits.set(allIdentities);
         this.selectedUnitContexts.clear();
         for (const unit of allUnits) {
-            this.selectedUnitContexts.set(getUnitSearchIdentityKey(unit), this.getSearchResultContext(unit));
+            this.selectedUnitContexts.set(unit.uuid, this.getSearchResultContext(unit));
         }
     }
 
     async addSelectedUnits() {
         const selectedUnits = this.selectedUnits();
-        for (const selectedUnitIdentity of selectedUnits) {
-            const identity = decodeUnitSearchIdentityKey(selectedUnitIdentity);
-            const unit = this.dataService.getUnitByIdentity(identity.provider, identity.uuid);
+        for (const selectedUnitUuid of selectedUnits) {
+            const unit = this.dataService.getUnitByUuid(selectedUnitUuid);
             if (unit) {
-                const context = this.selectedUnitContexts.get(selectedUnitIdentity)
+                const context = this.selectedUnitContexts.get(selectedUnitUuid)
                     ?? this.getSearchResultContext(unit);
                 if (!await this.forceCommands.addUnit(
                     unit,

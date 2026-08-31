@@ -153,7 +153,9 @@ import { entityUnitLabel } from './runtime/cbt-unit-label';
 import { CBT_FORCE_UNASSIGNED_GROUP_ID } from './runtime/cbt-force-roster';
 import {
     projectMekRecordSheet,
+    projectMekUnitStatus,
     type MekRecordSheetSnapshot,
+    type MekUnitStatusSnapshot,
 } from './runtime/mek-record-sheet';
 import {
     projectNonMekRecordSheet,
@@ -1480,6 +1482,14 @@ export class CBTForce extends Force<never> {
             adjustedBattleValue,
             heatPolicy,
         );
+    }
+
+    /** Small Entity + runtime projection for force-card condition badges. */
+    public getMekUnitStatusSnapshot(instanceId: UnitInstanceId): MekUnitStatusSnapshot | null {
+        const unit = this.getUnitSnapshot(instanceId);
+        return unit && hasMekRuntime(unit)
+            ? projectMekUnitStatus(unit.entity, unit.index, unit.state, unit.query)
+            : null;
     }
 
     /** Total non-Mek Entity + sparse-runtime record-sheet projection; no SVG participates. */

@@ -25,7 +25,7 @@ import { AsLayoutBaseComponent } from './layout-base.component';
         UpperCasePipe,
     ],
     templateUrl: './layout-large-vessel-1.component.html',
-    styleUrls: ['./layout-large-vessel-1.component.scss'],
+    styleUrl: './layout-large-vessel-1.component.scss',
     host: {
         '[class.interactive]': 'interactive()',
         '[class.monochrome]': 'cardStyle() === "default"',

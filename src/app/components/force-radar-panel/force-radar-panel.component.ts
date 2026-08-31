@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
 import { GameSystem } from '../../models/common.model';
@@ -353,8 +352,6 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
 
 @Component({
     selector: 'force-radar-panel',
-    standalone: true,
-    imports: [CommonModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     @let axes = chartAxes();

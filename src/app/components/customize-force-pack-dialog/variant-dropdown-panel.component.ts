@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, type ElementRef, afterNextRender, inject, input, output, viewChild, type computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import type { GameSystem } from '../../models/common.model';
 import { UnitCardCompactComponent } from '../unit-card-compact/unit-card-compact.component';
@@ -13,7 +12,7 @@ import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 @Component({
     selector: 'variant-dropdown-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitCardCompactComponent],
+    imports: [UnitCardCompactComponent],
     template: `
         <div class="dropdown-panel glass has-shadow framed-borders" #panelContainer>
             @for (variant of variants(); track variant.name) {

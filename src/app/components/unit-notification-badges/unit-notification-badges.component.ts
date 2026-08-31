@@ -8,7 +8,12 @@ import type { MekTurnPanelSnapshot } from '../../models/runtime/mek-turn-panel';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { actionableMekPilotChecks } from '../page-viewer/overlay/page-turn-summary.util';
 
-export type UnitNotificationKind = 'fall' | 'psr';
+export type UnitNotificationKind =
+    | 'fall'
+    | 'psr'
+    | 'critical-chance'
+    | 'critical-hit'
+    | 'unit-check';
 
 export interface UnitNotificationActivation {
     readonly kind: UnitNotificationKind;
@@ -16,7 +21,7 @@ export interface UnitNotificationActivation {
 }
 
 export interface RuntimePendingNotificationSummary {
-    readonly kind: 'psr';
+    readonly kind: UnitNotificationKind;
     readonly count: number;
     readonly tooltip: readonly TooltipLine[];
 }
@@ -30,14 +35,21 @@ export function projectRuntimePendingNotification(
         snapshot.movementState.checks,
         snapshot.movementState.automaticFalls.length > 0,
     ).filter(check => check.status === 'pending');
-    if (checks.length === 0) return null;
+    const ruleChecks = snapshot.ruleChecks.filter(row => row.check.status === 'pending');
+    if (checks.length === 0 && ruleChecks.length === 0) return null;
     return Object.freeze({
         kind: 'psr',
-        count: checks.length,
-        tooltip: Object.freeze(checks.map(check => Object.freeze({
-            label: check.reason,
-            value: `Target ${check.targetNumber}+`,
-        }))),
+        count: checks.length + ruleChecks.length,
+        tooltip: Object.freeze([
+            ...ruleChecks.map(row => Object.freeze({
+                label: row.reason,
+                value: row.targetNumber === null ? 'Pending' : `Target ${row.targetNumber}+`,
+            })),
+            ...checks.map(check => Object.freeze({
+                label: check.reason,
+                value: `Target ${check.targetNumber}+`,
+            })),
+        ]),
     });
 }
 
@@ -79,7 +91,8 @@ export class UnitNotificationBadgesComponent {
 
     pendingNotificationAriaLabel(notification: RuntimePendingNotificationSummary): string {
         const eventLabel = notification.count === 1 ? 'event' : 'events';
-        return `${this.interactive() ? 'Resume' : ''} ${notification.count} pending ${eventLabel}; next: PSR checks`.trim();
+        const next = NOTIFICATION_KIND_LABELS[notification.kind];
+        return `${this.interactive() ? 'Resume' : ''} ${notification.count} pending ${eventLabel}; next: ${next}`.trim();
     }
 
     activate(event: Event, kind: UnitNotificationKind): void {
@@ -94,3 +107,11 @@ export class UnitNotificationBadgesComponent {
         this.activate(event, kind);
     }
 }
+
+const NOTIFICATION_KIND_LABELS: Readonly<Record<UnitNotificationKind, string>> = {
+    fall: 'fall damage',
+    psr: 'PSR checks',
+    'critical-chance': 'critical chance',
+    'critical-hit': 'critical hit',
+    'unit-check': 'unit checks',
+};

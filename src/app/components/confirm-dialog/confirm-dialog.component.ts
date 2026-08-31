@@ -22,7 +22,6 @@ export interface ConfirmDialogData<T = any> {
 
 @Component({
     selector: 'confirm-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'fullscreen-dialog-host glass'

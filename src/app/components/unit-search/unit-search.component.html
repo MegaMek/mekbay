@@ -268,7 +268,7 @@
                 minBufferPx="900" maxBufferPx="1600" tabindex="0">
                 <div class="card-view-row"
                     *cdkVirtualFor="let row of cardViewRows(); let rowIndex = index; trackBy: trackCardRow">
-                    @for (unit of row; let columnIndex = $index; track unit.name) {
+                    @for (unit of row; let columnIndex = $index; track unit.uuid) {
                     <div class="card-view-cell"
                         longPress
                         [class.selected]="isUnitSelected(unit)"
@@ -371,7 +371,7 @@
                     *cdkVirtualFor="let unit of resultUnits; let i = index; trackBy: trackByUnitId"
                     [class.selected]="isUnitSelected(unit)"
                     [class.active]="activeIndex() === i"
-                    [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.name === unit.name"
+                    [class.panel-selected]="showInlinePanel() && inlinePanelUnit()?.uuid === unit.uuid"
                     (pointerenter)="onResultPointerHover(i, $event)"
                     (pointermove)="onResultPointerHover(i, $event)">
                     @if (gameService.isAlphaStrike()) {

@@ -10,7 +10,6 @@ import { DialogRef } from '@angular/cdk/dialog';
 
 @Component({
     selector: 'add-external-force-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [NgComponentOutlet],
     host: {

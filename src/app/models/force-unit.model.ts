@@ -13,17 +13,12 @@ import { uuidv7 } from '../utils/uuid.util';
 import type { C3Component } from './c3-network.model';
 import type { UnitDefinitionResolutionWitness } from './persisted-unit-state';
 import type { UnitTagEcmCapabilitySummary } from './unit-capability-summary.model';
-import {
-    cloneNativeUnitSourceHandle,
-    type NativeUnitSourceHandle,
-} from './native-unit-source-handle';
 
 
 export abstract class ForceUnit {
     protected unit: UnitSummary; // Original unit data
     private _forceRef = signal<Force>(null!);
     protected readonly _formationCommander = signal<boolean>(false);
-    private nativeSource: NativeUnitSourceHandle | null = null;
     id: string;
     updatedTs: number = 0;
     initialized = false;
@@ -67,37 +62,9 @@ export abstract class ForceUnit {
         this.injector = injector;
     }
 
-    destroy() {
-        this.nativeSource = null;
-    }
+    destroy() {}
 
     public abstract load(): Promise<void>;
-
-    /** Exact detached MTF/BLK bytes retained for this loaded force-unit owner. */
-    getNativeSource(): NativeUnitSourceHandle | null {
-        return this.nativeSource ? cloneNativeUnitSourceHandle(this.nativeSource) : null;
-    }
-
-    protected async ensureNativeSourceLoaded(): Promise<NativeUnitSourceHandle | null> {
-        if (this.nativeSource) return this.nativeSource;
-        if (this.unit.origin !== 'megamek') return null;
-        const format = this.unit.entityType === 'Mek' ? 'mtf' : 'blk';
-
-        const source = await this.dataService.readNativeUnitSource(this.unit.provider, this.unit.uuid);
-        if (!source) {
-            throw new Error(`Native ${format.toUpperCase()} source for "${this.unit.name}" is unavailable`);
-        }
-        if (source.format !== format || source.hash !== this.unit.hash) {
-            throw new Error(`Native source for "${this.unit.name}" does not match its catalog publication`);
-        }
-        this.nativeSource = cloneNativeUnitSourceHandle({
-            file: source.file,
-            sourceHash: source.hash,
-            format: source.format,
-            bytes: source.bytes,
-        });
-        return this.nativeSource;
-    }
 
     getDisplayName() {
         return (this.unit.chassis + ' ' + this.unit.model).trim();

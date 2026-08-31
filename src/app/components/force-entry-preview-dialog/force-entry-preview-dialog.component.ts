@@ -4,7 +4,6 @@
 
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { CommonModule } from '@angular/common';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Options } from '../../models/options.model';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
@@ -27,14 +26,13 @@ export interface ForceEntryPreviewDialogData {
  */
 @Component({
     selector: 'force-entry-preview-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ForcePreviewPanelComponent],
+    imports: [ForcePreviewPanelComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
     templateUrl: './force-entry-preview-dialog.component.html',
-    styleUrls: ['./force-entry-preview-dialog.component.scss']
+    styleUrl: './force-entry-preview-dialog.component.scss'
 })
 export class ForceEntryPreviewDialogComponent {
     private dialogRef = inject(DialogRef<void>);

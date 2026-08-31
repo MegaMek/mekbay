@@ -60,7 +60,7 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true });
 
 /** UUID/source-hash cache of canonical native-codec entities. */
 export class EntityRepository {
-    private readonly cache = new Map<string, Promise<BaseEntity>>();
+    private readonly cache = new Map<string, Promise<LoadedEntity>>();
 
     public constructor(
         private readonly sources: NativeEntitySourceRepository,
@@ -71,7 +71,23 @@ export class EntityRepository {
     public async load(identity: Readonly<{
         provider: UnitProviderId;
         uuid: UnitUuid;
+        /** Lets generation-aware callers hit the canonical cache before source I/O. */
+        sourceHash?: SourceHash;
     }>): Promise<LoadedEntity> {
+        if (identity.sourceHash !== undefined) {
+            const key = cacheKey(identity.provider, identity.uuid, identity.sourceHash);
+            const cached = this.cache.get(key);
+            if (cached !== undefined) return cached;
+            const loading = this.loadSource(identity, identity.sourceHash);
+            this.cache.set(key, loading);
+            try {
+                return await loading;
+            } catch (error) {
+                if (this.cache.get(key) === loading) this.cache.delete(key);
+                throw error;
+            }
+        }
+
         const source = captureSource(await this.sources.read(identity));
         if (source === undefined) {
             throw new EntityRepositoryError(
@@ -86,18 +102,16 @@ export class EntityRepository {
             );
         }
         validateSource(source);
-        const key = `${source.provider}\0${source.uuid}\0${source.sourceHash}`;
+        const key = cacheKey(source.provider, source.uuid, source.sourceHash);
         const cached = this.cache.get(key);
-        if (cached !== undefined) return Object.freeze({ entity: await cached, source });
+        if (cached !== undefined) return cached;
 
-        const loading = Promise.resolve().then(() => parseNativeEntity(
-            source,
-            this.equipmentRegistry,
-            this.parseOptions,
+        const loading = Promise.resolve().then(() => loadedEntity(
+            source, this.equipmentRegistry, this.parseOptions,
         ));
         this.cache.set(key, loading);
         try {
-            return Object.freeze({ entity: await loading, source });
+            return await loading;
         } catch (error) {
             if (this.cache.get(key) === loading) this.cache.delete(key);
             throw error;
@@ -107,6 +121,43 @@ export class EntityRepository {
     public clear(): void {
         this.cache.clear();
     }
+
+    private async loadSource(
+        identity: Readonly<{ provider: UnitProviderId; uuid: UnitUuid }>,
+        expectedHash: SourceHash,
+    ): Promise<LoadedEntity> {
+        const source = captureSource(await this.sources.read(identity));
+        if (source === undefined) {
+            throw new EntityRepositoryError(
+                'SOURCE_NOT_FOUND',
+                `Native source is not installed for ${identity.provider}/${identity.uuid}`,
+            );
+        }
+        if (source.provider !== identity.provider || source.uuid !== identity.uuid
+            || source.sourceHash !== expectedHash) {
+            throw new EntityRepositoryError(
+                'SOURCE_IDENTITY_MISMATCH',
+                'Native source repository returned a different provider/UUID/source revision',
+            );
+        }
+        validateSource(source);
+        return loadedEntity(source, this.equipmentRegistry, this.parseOptions);
+    }
+}
+
+function cacheKey(provider: UnitProviderId, uuid: UnitUuid, hash: SourceHash): string {
+    return `${provider}\0${uuid}\0${hash}`;
+}
+
+function loadedEntity(
+    source: NativeEntitySource,
+    equipmentRegistry: EquipmentRegistry,
+    parseOptions: ParseContextOptions,
+): LoadedEntity {
+    return Object.freeze({
+        entity: parseNativeEntity(source, equipmentRegistry, parseOptions),
+        source,
+    });
 }
 
 export function parseNativeEntity(

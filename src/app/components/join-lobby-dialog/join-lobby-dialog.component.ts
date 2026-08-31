@@ -14,7 +14,6 @@ export interface JoinLobbyDialogData {
 
 @Component({
     selector: 'join-lobby-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: { class: 'fullscreen-dialog-host glass' },
     template: `
@@ -214,5 +213,4 @@ export class JoinLobbyDialogComponent {
         this.dialogRef.close(null);
     }
 }
-
 

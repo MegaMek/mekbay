@@ -9,7 +9,7 @@ import type { Era } from '../models/eras.model';
 import type { BucketStatSummary, MinMaxStatsRange, UnitSubtypeMaxStats } from './data.service';
 import { removeAccents } from '../utils/string.util';
 import { naturalCompare } from '../utils/sort.util';
-import { getMergedTags, getUnitSearchIdentityKey, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
+import { getMergedTags, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
 import { calculateWeightedMaxRange, getMaxRangeFromComponents } from '../utils/unit-range.util';
 import { parseASDamageValue } from '../utils/as-damage.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, BOOLEAN_FILTERS, getBooleanFilterUnitValue } from './unit-search-filters.model';
@@ -18,6 +18,17 @@ import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { WeaponEquipment } from '../models/equipment.model';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
+import {
+    buildASSpecialsByUnitIndex,
+    getASSpecialMinimumFieldLabels,
+    type ParsedASSpecials,
+} from '../utils/as-special-filter.util';
+
+export interface UnitSearchDropdownOption {
+    name: string;
+    img?: string;
+    minimumFieldLabels?: readonly string[];
+}
 
 interface ASUnitTypeMaxStats {
     [asUnitType: string]: MinMaxStatsRange;
@@ -36,8 +47,9 @@ export interface PreparedUnitSearchIndexes {
     readonly searchFilterIndex: Map<string, Map<string, Set<string>>>;
     readonly componentCountIndex: Map<string, Map<string, number>>;
     readonly searchFilterValues: Map<string, string[]>;
-    readonly dropdownOptionUniverse: Map<string, Array<{ name: string; img?: string }>>;
-    readonly unitIdentityKeysByName: Map<string, readonly string[]>;
+    readonly dropdownOptionUniverse: Map<string, UnitSearchDropdownOption[]>;
+    readonly asSpecialFieldCounts: Map<string, number>;
+    readonly asSpecialsByUnit: Map<string, ParsedASSpecials>;
     readonly factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot;
     readonly preparationTimings: {
         readonly unitDerivativesMs: number;
@@ -141,8 +153,9 @@ export class UnitSearchIndexService {
     private searchFilterIndex = new Map<string, Map<string, Set<string>>>();
     private componentCountIndex = new Map<string, Map<string, number>>();
     private searchFilterValues = new Map<string, string[]>();
-    private dropdownOptionUniverse = new Map<string, Array<{ name: string; img?: string }>>();
-    private unitIdentityKeysByName = new Map<string, readonly string[]>();
+    private dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
+    private asSpecialFieldCounts = new Map<string, number>();
+    private asSpecialsByUnit = new Map<string, ParsedASSpecials>();
     private indexStats: PreparedUnitSearchIndexes['indexStats'] = Object.freeze({
         filterKeys: 0,
         filterValues: 0,
@@ -160,7 +173,7 @@ export class UnitSearchIndexService {
         finalizationMs: 0,
     });
     private factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot = Object.freeze({
-        unitIdentityKeysByMulId: Object.freeze({}),
+        unitUuidsByMulId: Object.freeze({}),
         referenceIdsByEraAndFaction: Object.freeze({}),
     });
     /**
@@ -204,7 +217,8 @@ export class UnitSearchIndexService {
         this.componentCountIndex = candidate.componentCountIndex;
         this.searchFilterValues = candidate.searchFilterValues;
         this.dropdownOptionUniverse = candidate.dropdownOptionUniverse;
-        this.unitIdentityKeysByName = candidate.unitIdentityKeysByName;
+        this.asSpecialFieldCounts = candidate.asSpecialFieldCounts;
+        this.asSpecialsByUnit = candidate.asSpecialsByUnit;
         this.factionEraSnapshot = candidate.factionEraSnapshot;
     }
 
@@ -218,7 +232,8 @@ export class UnitSearchIndexService {
             componentCountIndex: this.componentCountIndex,
             searchFilterValues: this.searchFilterValues,
             dropdownOptionUniverse: this.dropdownOptionUniverse,
-            unitIdentityKeysByName: this.unitIdentityKeysByName,
+            asSpecialFieldCounts: this.asSpecialFieldCounts,
+            asSpecialsByUnit: this.asSpecialsByUnit,
             factionEraSnapshot: this.factionEraSnapshot,
             preparationTimings: Object.freeze(preparationTimings),
             indexStats: this.indexStats,
@@ -377,42 +392,43 @@ export class UnitSearchIndexService {
         this.searchFilterIndex = new Map<string, Map<string, Set<string>>>();
         this.componentCountIndex = new Map<string, Map<string, number>>();
         this.searchFilterValues = new Map<string, string[]>();
+        this.asSpecialFieldCounts = new Map<string, number>();
+        this.asSpecialsByUnit = buildASSpecialsByUnitIndex(
+            units,
+            unit => unit.uuid,
+            unit => unit.as?.specials,
+        );
         const identityMapStartedAt = Date.now();
-        const {
-            identityKeys,
-            unitIdentityKeysByMulId,
-            unitIdentityKeysByName,
-        } = this.createUnitIdentityIndexes(units);
+        const unitUuidsByMulId = this.createUnitUuidsByMulId(units);
         const identityMapMs = Math.max(0, Date.now() - identityMapStartedAt);
 
         const unitFiltersStartedAt = Date.now();
-        for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
-            const unit = units[unitIndex];
-            const unitIdentityKey = identityKeys[unitIndex];
-            this.addSearchIndexValue('type', unit.type, unitIdentityKey);
-            this.addSearchIndexValue('subtype', unit.subtype, unitIdentityKey);
-            this.addSearchIndexValue('_techBaseDisplay', unit._techBaseDisplay, unitIdentityKey);
-            this.addSearchIndexValue('role', unit.role, unitIdentityKey);
-            this.addSearchIndexValue('weightClass', unit.weightClass, unitIdentityKey);
-            this.addSearchIndexValue('level', String(unit.level), unitIdentityKey);
-            this.addSearchIndexValue('c3', unit.c3, unitIdentityKey);
-            this.addSearchIndexValue('moveType', unit.moveType, unitIdentityKey);
-            this.addSearchIndexValue('as.TP', unit.as?.TP, unitIdentityKey);
-            this.addSearchIndexValues('as.specials', unit.as?.specials ?? [], unitIdentityKey);
-            this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unitIdentityKey);
-            this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unitIdentityKey);
-            this.addSearchIndexValues('features', unit.features ?? [], unitIdentityKey);
-            this.addSearchIndexValues('quirks', unit.quirks ?? [], unitIdentityKey);
-            this.addSearchIndexValues('_tags', getMergedTags(unit), unitIdentityKey);
+        for (const unit of units) {
+            this.addSearchIndexValue('type', unit.type, unit.uuid);
+            this.addSearchIndexValue('subtype', unit.subtype, unit.uuid);
+            this.addSearchIndexValue('_techBaseDisplay', unit._techBaseDisplay, unit.uuid);
+            this.addSearchIndexValue('role', unit.role, unit.uuid);
+            this.addSearchIndexValue('weightClass', unit.weightClass, unit.uuid);
+            this.addSearchIndexValue('level', String(unit.level), unit.uuid);
+            this.addSearchIndexValue('c3', unit.c3, unit.uuid);
+            this.addSearchIndexValue('moveType', unit.moveType, unit.uuid);
+            this.addSearchIndexValue('as.TP', unit.as?.TP, unit.uuid);
+            this.addASSpecialIndexValues(this.asSpecialsByUnit.get(unit.uuid), unit.uuid);
+            this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unit.uuid);
+            this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unit.uuid);
+            this.addSearchIndexValues('rulesRefs', unit.rulesRefs?.flat() ?? [], unit.uuid);
+            this.addSearchIndexValues('features', unit.features ?? [], unit.uuid);
+            this.addSearchIndexValues('quirks', unit.quirks ?? [], unit.uuid);
+            this.addSearchIndexValues('_tags', getMergedTags(unit), unit.uuid);
             for (const filter of BOOLEAN_FILTERS) {
-                this.addSearchIndexValue(filter.key, getBooleanFilterUnitValue(filter, unit[filter.key as keyof UnitSummary]) ? 'yes' : 'no', unitIdentityKey);
+                this.addSearchIndexValue(filter.key, getBooleanFilterUnitValue(filter, unit[filter.key as keyof UnitSummary]) ? 'yes' : 'no', unit.uuid);
             }
         }
         const unitFiltersMs = Math.max(0, Date.now() - unitFiltersStartedAt);
 
         const componentIndexesStartedAt = Date.now();
-        for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
-            this.prepareUnitComponentIndexes(units[unitIndex], identityKeys[unitIndex], equipmentRegistry);
+        for (const unit of units) {
+            this.prepareUnitComponentIndexes(unit, unit.uuid, equipmentRegistry);
         }
         const componentIndexesMs = Math.max(0, Date.now() - componentIndexesStartedAt);
 
@@ -423,8 +439,8 @@ export class UnitSearchIndexService {
                 : undefined;
             for (const referenceId of era.units as Set<number>) {
                 if (!extinctReferenceIdsForEra?.has(referenceId)) {
-                    for (const unitIdentityKey of unitIdentityKeysByMulId.get(referenceId) ?? []) {
-                        this.addSearchIndexValue('era', era.name, unitIdentityKey);
+                    for (const unitUuid of unitUuidsByMulId.get(referenceId) ?? []) {
+                        this.addSearchIndexValue('era', era.name, unitUuid);
                     }
                 }
             }
@@ -435,8 +451,8 @@ export class UnitSearchIndexService {
         for (const faction of factions) {
             for (const referenceIds of Object.values(faction.eras) as Set<number>[]) {
                 for (const referenceId of referenceIds) {
-                    for (const unitIdentityKey of unitIdentityKeysByMulId.get(referenceId) ?? []) {
-                        this.addSearchIndexValue('faction', faction.name, unitIdentityKey);
+                    for (const unitUuid of unitUuidsByMulId.get(referenceId) ?? []) {
+                        this.addSearchIndexValue('faction', faction.name, unitUuid);
                     }
                 }
             }
@@ -460,8 +476,7 @@ export class UnitSearchIndexService {
         });
 
         this.rebuildDropdownOptionUniverse(eras, factions);
-        this.unitIdentityKeysByName = unitIdentityKeysByName;
-        this.factionEraSnapshot = this.createFactionEraSnapshot(unitIdentityKeysByMulId, eras, factions);
+        this.factionEraSnapshot = this.createFactionEraSnapshot(unitUuidsByMulId, eras, factions);
         const finalizationMs = Math.max(0, Date.now() - finalizationStartedAt);
         this.filterIndexTimings = Object.freeze({
             identityMapMs,
@@ -486,7 +501,7 @@ export class UnitSearchIndexService {
                     unitIds = new Set<string>();
                     tagIndex.set(tag, unitIds);
                 }
-                unitIds.add(getUnitSearchIdentityKey(unit));
+                unitIds.add(unit.uuid);
             }
         }
 
@@ -511,8 +526,8 @@ export class UnitSearchIndexService {
         return this.searchFilterValues.get(filterKey) ?? [];
     }
 
-    public getUnitIdentityKeysByName(unitName: string): readonly string[] {
-        return this.unitIdentityKeysByName.get(unitName) ?? [];
+    public getIndexedASSpecials(unitUuid: string): ParsedASSpecials | undefined {
+        return this.asSpecialsByUnit.get(unitUuid);
     }
 
     public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
@@ -520,8 +535,8 @@ export class UnitSearchIndexService {
 
         for (const [filterKey, valueMap] of this.searchFilterIndex.entries()) {
             snapshot[filterKey] = {};
-            for (const [value, unitIdentityKeys] of valueMap.entries()) {
-                snapshot[filterKey][value] = Array.from(unitIdentityKeys);
+            for (const [value, unitUuids] of valueMap.entries()) {
+                snapshot[filterKey][value] = Array.from(unitUuids);
             }
         }
 
@@ -532,7 +547,25 @@ export class UnitSearchIndexService {
         return this.factionEraSnapshot;
     }
 
-    public getDropdownOptionUniverse(filterKey: string): Array<{ name: string; img?: string }> {
+    public getFactionEraUnitUuids(
+        eraNames: readonly string[],
+        factionNames: readonly string[],
+    ): ReadonlySet<string> {
+        const unitUuids = new Set<string>();
+        for (const eraName of eraNames) {
+            const factionMap = this.factionEraSnapshot.referenceIdsByEraAndFaction[eraName];
+            for (const factionName of factionNames) {
+                for (const referenceId of factionMap?.[factionName] ?? []) {
+                    for (const unitUuid of this.factionEraSnapshot.unitUuidsByMulId[String(referenceId)] ?? []) {
+                        unitUuids.add(unitUuid);
+                    }
+                }
+            }
+        }
+        return unitUuids;
+    }
+
+    public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {
         return this.dropdownOptionUniverse.get(filterKey)?.map(option => ({ ...option })) ?? [];
     }
 
@@ -549,7 +582,7 @@ export class UnitSearchIndexService {
     }
 
     private rebuildDropdownOptionUniverse(eras: Era[], factions: Faction[]): void {
-        this.dropdownOptionUniverse = new Map<string, Array<{ name: string; img?: string }>>();
+        this.dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
         for (const filterKey of [
             'type',
             'subtype',
@@ -563,22 +596,43 @@ export class UnitSearchIndexService {
             'moveType',
             'as._motive',
             'source',
+            'rulesRefs',
             'componentName',
             'weaponType',
             'features',
             'quirks',
             '_tags',
         ]) {
-            const values = this.searchFilterValues.get(filterKey) ?? [];
-            this.dropdownOptionUniverse.set(filterKey, values.map(name => ({ name })));
+            this.dropdownOptionUniverse.set(filterKey, this.getIndexedFilterValues(filterKey).map(name => ({
+                name,
+                ...(filterKey === 'as.specials' && (this.asSpecialFieldCounts.get(name) ?? 0) > 0
+                    ? {
+                        minimumFieldLabels: getASSpecialMinimumFieldLabels(
+                            name,
+                            this.asSpecialFieldCounts.get(name) ?? 0,
+                        ),
+                    }
+                    : {}),
+            })));
         }
 
         this.dropdownOptionUniverse.set('era', eras.map(era => ({ name: era.name, img: era.img })));
         this.dropdownOptionUniverse.set('faction', factions.map(faction => ({ name: faction.name, img: faction.img })));
     }
 
+    private addASSpecialIndexValues(parsedSpecials: ParsedASSpecials | undefined, unitUuid: string): void {
+        for (const occurrence of parsedSpecials?.occurrences ?? []) {
+            if (!occurrence.token) continue;
+            this.addSearchIndexValue('as.specials', occurrence.token, unitUuid);
+            const currentFieldCount = this.asSpecialFieldCounts.get(occurrence.token) ?? 0;
+            if (occurrence.values.length > currentFieldCount) {
+                this.asSpecialFieldCounts.set(occurrence.token, occurrence.values.length);
+            }
+        }
+    }
+
     private createFactionEraSnapshot(
-        unitIdentityKeysByMulId: Map<number, string[]>,
+        unitUuidsByMulId: Map<number, string[]>,
         eras: Era[],
         factions: Faction[],
     ): UnitSearchWorkerFactionEraSnapshot {
@@ -607,49 +661,32 @@ export class UnitSearchIndexService {
                 Object.freeze(factionMap),
             ]),
         ));
-        const frozenIdentityKeys = Object.freeze(Object.fromEntries(
-            Array.from(unitIdentityKeysByMulId, ([mulId, identityKeys]) => [
+        const frozenUnitUuids = Object.freeze(Object.fromEntries(
+            Array.from(unitUuidsByMulId, ([mulId, unitUuids]) => [
                 String(mulId),
-                Object.freeze([...identityKeys]),
+                Object.freeze([...unitUuids]),
             ]),
         ));
         return Object.freeze({
-            unitIdentityKeysByMulId: frozenIdentityKeys,
+            unitUuidsByMulId: frozenUnitUuids,
             referenceIdsByEraAndFaction: frozenMemberships,
         });
     }
 
-    private createUnitIdentityIndexes(units: UnitSummary[]): {
-        identityKeys: string[];
-        unitIdentityKeysByMulId: Map<number, string[]>;
-        unitIdentityKeysByName: Map<string, string[]>;
-    } {
-        const identityKeys: string[] = [];
-        const unitIdentityKeysByMulId = new Map<number, string[]>();
-        const unitIdentityKeysByName = new Map<string, string[]>();
-
+    private createUnitUuidsByMulId(units: UnitSummary[]): Map<number, string[]> {
+        const unitUuidsByMulId = new Map<number, string[]>();
         for (const unit of units) {
-            const identityKey = getUnitSearchIdentityKey(unit);
-            identityKeys.push(identityKey);
-            const mulIdentityKeys = unitIdentityKeysByMulId.get(unit.id);
-            if (mulIdentityKeys) {
-                mulIdentityKeys.push(identityKey);
+            const unitUuids = unitUuidsByMulId.get(unit.id);
+            if (unitUuids) {
+                unitUuids.push(unit.uuid);
             } else {
-                unitIdentityKeysByMulId.set(unit.id, [identityKey]);
-            }
-
-            const nameIdentityKeys = unitIdentityKeysByName.get(unit.name);
-            if (nameIdentityKeys) {
-                nameIdentityKeys.push(identityKey);
-            } else {
-                unitIdentityKeysByName.set(unit.name, [identityKey]);
+                unitUuidsByMulId.set(unit.id, [unit.uuid]);
             }
         }
-
-        return { identityKeys, unitIdentityKeysByMulId, unitIdentityKeysByName };
+        return unitUuidsByMulId;
     }
 
-    private addSearchIndexValue(filterKey: string, value: string | undefined, unitIdentityKey: string): void {
+    private addSearchIndexValue(filterKey: string, value: string | undefined, unitUuid: string): void {
         if (!value) {
             return;
         }
@@ -667,18 +704,18 @@ export class UnitSearchIndexService {
             filterIndex.set(normalizedValue, unitIds);
         }
 
-        unitIds.add(unitIdentityKey);
+        unitIds.add(unitUuid);
     }
 
-    private addSearchIndexValues(filterKey: string, values: Iterable<string>, unitIdentityKey: string): void {
+    private addSearchIndexValues(filterKey: string, values: Iterable<string>, unitUuid: string): void {
         for (const value of values) {
-            this.addSearchIndexValue(filterKey, value, unitIdentityKey);
+            this.addSearchIndexValue(filterKey, value, unitUuid);
         }
     }
 
     private prepareUnitComponentIndexes(
         unit: UnitSummary,
-        unitIdentityKey: string,
+        unitUuid: string,
         equipmentRegistry?: EquipmentRegistry,
     ): void {
         const counts: Partial<Record<WeaponType, number>> = {};
@@ -702,21 +739,21 @@ export class UnitSearchIndexService {
         };
 
         for (const component of unit.comp) {
-            this.addSearchIndexValue('componentName', component.n, unitIdentityKey);
-            this.addComponentUnitCount(component.n, unit.name, component.q);
+            this.addSearchIndexValue('componentName', component.n, unitUuid);
+            this.addComponentUnitCount(component.n, unitUuid, component.q);
         }
         for (const name of this.getSyntheticComponentNames(unit)) {
-            this.addSearchIndexValue('componentName', name, unitIdentityKey);
-            this.addComponentUnitCount(name, unit.name, 1);
+            this.addSearchIndexValue('componentName', name, unitUuid);
+            this.addComponentUnitCount(name, unitUuid, 1);
         }
 
         addWeaponTypes(unit.comp);
         unit._weaponTypeCounts = counts;
         unit._weaponTypes = WEAPON_TYPES.filter(weaponType => (counts[weaponType] ?? 0) > 0);
-        this.addSearchIndexValues('weaponType', unit._weaponTypes, unitIdentityKey);
+        this.addSearchIndexValues('weaponType', unit._weaponTypes, unitUuid);
     }
 
-    private addComponentUnitCount(name: string, unitName: string, quantity: number): void {
+    private addComponentUnitCount(name: string, unitUuid: string, quantity: number): void {
         const normalizedName = name.toLowerCase();
         let unitCounts = this.componentCountIndex.get(normalizedName);
         if (!unitCounts) {
@@ -724,7 +761,7 @@ export class UnitSearchIndexService {
             this.componentCountIndex.set(normalizedName, unitCounts);
         }
 
-        unitCounts.set(unitName, (unitCounts.get(unitName) || 0) + quantity);
+        unitCounts.set(unitUuid, (unitCounts.get(unitUuid) || 0) + quantity);
     }
 
     private getASMotiveDisplayNames(unit: UnitSummary): string[] {

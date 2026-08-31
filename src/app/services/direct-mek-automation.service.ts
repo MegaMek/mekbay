@@ -36,6 +36,7 @@ import {
     roll2D6,
     succeedsOnTarget,
     twoD6Total,
+    type MekHeatAutomationCheck,
 } from '../models/runtime/mek-automation-rules';
 import {
     resolveMekFallArmorDamage,
@@ -45,6 +46,10 @@ import {
     resolveMekStructureDamage,
     resolvedMekFallDamageGroups,
 } from '../models/runtime/mek-fall-rules';
+import {
+    MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
+    type MekRuleCheckTokenV2,
+} from '../models/runtime/mek-destruction-state-v2';
 import { projectMekLifeSupportPilotDamage } from '../models/runtime/mek-life-support';
 import type { MekRuntimeIndex } from '../models/runtime/mek-runtime-index';
 import { resolveMekUnitWaterState } from '../models/runtime/mek-targeting-rules';
@@ -85,7 +90,20 @@ export type DirectMekAutomationDispatch = (
 export interface PreparedDirectMekAutomationCommand {
     readonly command: CBTUnitCommand;
     readonly deferredPilotHits: number;
+    readonly cancelled?: true;
     readonly criticalPlan?: Extract<MekCriticalRollPlanV2, { readonly kind: 'applied' }>;
+    readonly heatEffects?: PreparedMekHeatEffects;
+    readonly phaseBoundary?: PreparedMekPhaseBoundary;
+}
+
+export interface DirectMekEndTurnAutomationRequest {
+    readonly instanceId: UnitInstanceId;
+    readonly command: Extract<CBTUnitCommand, { readonly type: 'end-turn' }>;
+}
+
+export interface PreparedDirectMekEndTurnAutomation {
+    readonly instanceId: UnitInstanceId;
+    readonly prepared: PreparedDirectMekAutomationCommand;
 }
 
 interface DirectCriticalChanceContext {
@@ -97,6 +115,74 @@ interface DirectCriticalChanceContext {
     readonly explosionProtection?: MekExplosionProtection;
     /** A hit that consumed this location's last structure pip. */
     readonly locationDestroyed?: boolean;
+}
+
+interface RolledMekHeatCheck {
+    readonly check: MekHeatAutomationCheck;
+    readonly total: number | null;
+    readonly outcome: 'success' | 'failed';
+}
+
+interface StagedMekHeatEffects {
+    readonly id: string;
+    readonly heat: number;
+    readonly checks: readonly RolledMekHeatCheck[];
+    readonly lifeHits: number;
+    readonly ammoComponentId?: ComponentId;
+}
+
+interface PreparedMekHeatEffects {
+    readonly staged: StagedMekHeatEffects;
+    readonly applyEffects: boolean;
+    readonly applyPilotHits: boolean;
+}
+
+interface StagedMekPilotCheck {
+    readonly checkId: string;
+    readonly reason: string;
+    readonly targetNumber: number;
+    readonly dice: readonly [number, number];
+    readonly total: number;
+    readonly failed: boolean;
+}
+
+interface StagedMekRuleCheck {
+    readonly eventId: string;
+    readonly token: MekRuleCheckTokenV2;
+    readonly dice: readonly [number, number];
+    readonly total: number;
+    readonly targetNumber: number;
+    readonly outcome: 'success' | 'failed';
+}
+
+interface PreparedMekFall {
+    readonly eventId: string;
+    readonly accepted: boolean;
+    readonly damage: ReturnType<typeof resolveMekFallDamage>;
+    readonly orientation: ReturnType<typeof resolveMekFallOrientation>;
+    readonly locations: readonly Readonly<{
+        damage: number;
+        result: ReturnType<typeof resolveMekFallHitLocation>;
+    }>[];
+    readonly applyPilotHits: boolean;
+}
+
+interface PreparedMekConsciousnessRecovery {
+    readonly eventId: string;
+    readonly positionId: CrewPositionId;
+    readonly recovered: boolean;
+    readonly accepted: boolean;
+}
+
+interface PreparedMekPhaseBoundary {
+    readonly checks: readonly StagedMekPilotCheck[];
+    readonly ruleCheck: StagedMekRuleCheck | null;
+    readonly acceptedCheckIds: ReadonlySet<string>;
+    readonly hadAutomaticFall: boolean;
+    readonly fall: PreparedMekFall | null;
+    readonly recoveries: readonly PreparedMekConsciousnessRecovery[];
+    /** The first reduction deliberately leaves phase movement state open. */
+    readonly needsSettlement: boolean;
 }
 
 /**
@@ -116,42 +202,12 @@ export class DirectMekAutomationService {
         const snapshot = this.snapshot(force, instanceId);
         if (!snapshot) return Object.freeze({ command, deferredPilotHits: 0 });
         if (command.type === 'end-turn') {
-            const projection = snapshot.query.heatProjection('automatic');
-            if (projection.kind === 'unsupported') {
-                return Object.freeze({
-                    command: { ...command, policy: 'manual' as const },
-                    deferredPilotHits: 0,
-                });
-            }
-            const event: AutomationReviewEvent = Object.freeze({
-                id: `${command.commandId}:heat`,
-                subject: this.subject(snapshot),
-                event: 'Resolve Heat and Dissipation',
-                description: `${projection.projection.current} heat → ${projection.projection.projected} heat`,
-                delta: projection.projection.delta,
-                breakdown: Object.freeze([
-                    ...projection.projection.sources.map(source => Object.freeze({
-                        id: source.id,
-                        label: source.label,
-                        value: source.value,
-                    })),
-                    ...(projection.projection.dissipated > 0 ? [Object.freeze({
-                        id: 'dissipation', label: 'Dissipation', value: -projection.projection.dissipated,
-                    })] : []),
-                ]),
-            });
-            const accepted = await this.automation.resolve(
-                'heatAndDissipationResolution',
-                [event],
-                { title: 'Review Heat', message: 'Apply calculated heat and cooling?' },
-            );
-            return Object.freeze({
-                command: {
-                    ...command,
-                    policy: accepted?.has(event.id) ? 'automatic' as const : 'manual' as const,
-                },
-                deferredPilotHits: 0,
-            });
+            const batch = await this.prepareEndTurnCommands(force, [{ instanceId, command }]);
+            return batch?.[0]?.prepared
+                ?? Object.freeze({ command, deferredPilotHits: 0, cancelled: true });
+        }
+        if (command.type === 'end-phase') {
+            return this.preparePhaseBoundary(snapshot, command);
         }
         if (command.type !== 'apply-mek-critical-roll') {
             return Object.freeze({ command, deferredPilotHits: 0 });
@@ -179,14 +235,25 @@ export class DirectMekAutomationService {
         const explosionAccepted = await this.automation.resolve(
             'internalExplosionsCheck',
             [event],
-            { title: 'Review Internal Explosion' },
+            { title: 'Review Internal Explosion', allowCancel: true },
         );
-        const applyExplosion = explosionAccepted?.has(event.id) === true;
+        if (explosionAccepted === null) {
+            return Object.freeze({ command, deferredPilotHits: 0, cancelled: true });
+        }
+        const applyExplosion = explosionAccepted.has(event.id);
         const potentialPilotHits = plan.explosion?.pilotHits
             ?? gameRulesFor(snapshot.ruleset).getMekInternalExplosionPilotHits();
-        const deferredPilotHits = applyExplosion
-            ? await this.reviewPilotHits(snapshot, potentialPilotHits, `${command.commandId}:pilot`)
+        const reviewedPilotHits = applyExplosion
+            ? await this.reviewPilotHits(
+                snapshot,
+                potentialPilotHits,
+                `${command.commandId}:pilot`,
+                true,
+            )
             : 0;
+        if (reviewedPilotHits === null) {
+            return Object.freeze({ command, deferredPilotHits: 0, cancelled: true });
+        }
         return Object.freeze({
             command: {
                 ...command,
@@ -194,8 +261,238 @@ export class DirectMekAutomationService {
                 applyPilotHits: false,
                 settlePendingExplosion: true,
             },
-            deferredPilotHits,
+            deferredPilotHits: reviewedPilotHits,
             criticalPlan: plan,
+        });
+    }
+
+    /** Reviews the complete force-wide Mek end-turn plan before any turn is committed. */
+    async prepareEndTurnCommands(
+        force: CBTForce,
+        requests: readonly DirectMekEndTurnAutomationRequest[],
+    ): Promise<readonly PreparedDirectMekEndTurnAutomation[] | null> {
+        const rows = requests.map(request => {
+            const snapshot = this.snapshot(force, request.instanceId);
+            const projection = snapshot?.query.heatProjection('automatic');
+            const automaticHeat = snapshot === null
+                ? 0
+                : projection?.kind === 'supported'
+                    ? projection.projection.projected
+                    : snapshot.state.heat.current;
+            const staged = snapshot
+                ? this.stageMekHeatEffects(snapshot, automaticHeat, request.command.expectedRevision)
+                : null;
+            const effects = staged
+                ? this.reviewableMekHeatEffectDescriptions(staged)
+                : Object.freeze([]);
+            const event: AutomationReviewEvent | null = snapshot
+                && projection?.kind === 'supported'
+                ? Object.freeze({
+                id: `${request.command.commandId}:heat`,
+                subject: this.subject(snapshot),
+                event: 'Heat and dissipation',
+                description: `${projection.projection.current} heat → ${projection.projection.projected} heat`,
+                delta: projection.projection.delta,
+                breakdown: Object.freeze([
+                    ...projection.projection.sources.map(source => Object.freeze({
+                        id: source.id,
+                        label: source.label,
+                        value: source.value,
+                    })),
+                    ...(projection.projection.dissipated > 0 ? [Object.freeze({
+                        id: 'dissipation', label: 'Dissipation', value: -projection.projection.dissipated,
+                    })] : []),
+                ]),
+                ...(effects.length > 0 ? { effects } : {}),
+            }) : null;
+            return Object.freeze({ request, snapshot, event, staged });
+        });
+        const heatMode = this.options.cbtAutomationMode('heatAndDissipationResolution');
+        const effectsMode = this.options.cbtAutomationMode('heatEffectsCheck');
+        const pilotHitsMode = this.options.cbtAutomationMode('pilotHitsAndConsciousnessCheck');
+
+        if (heatMode === 'ask' && effectsMode === 'ask') {
+            const events = rows.flatMap(row => {
+                const effects = row.staged
+                    ? this.reviewableMekHeatEffectDescriptions(row.staged)
+                    : Object.freeze([]);
+                if (!row.snapshot || (!row.event && effects.length === 0)) return [];
+                return [Object.freeze({
+                    id: this.combinedHeatEventId(row.request),
+                    subject: this.subject(row.snapshot),
+                    event: pilotHitsMode === 'ask'
+                        ? 'Heat, dissipation, effects, and pilot hits'
+                        : 'Heat, dissipation, and effects',
+                    ...(row.event
+                        ? {
+                            description: row.event.description,
+                            ...(row.event.delta === undefined ? {} : { delta: row.event.delta }),
+                            ...(row.event.breakdown === undefined ? {} : { breakdown: row.event.breakdown }),
+                        }
+                        : { description: `Heat ${row.staged?.heat ?? row.snapshot.state.heat.current}` }),
+                    ...(effects.length === 0 ? {} : { effects }),
+                } satisfies AutomationReviewEvent)];
+            });
+            const accepted = await this.automation.resolve(
+                'heatAndDissipationResolution',
+                events,
+                {
+                    title: 'Review End-Turn Heat',
+                    message: pilotHitsMode === 'ask'
+                        ? 'Choose which units\' heat, dissipation, heat effects, and pilot hits to apply.'
+                        : 'Choose which units\' heat, dissipation, and heat effects to apply.',
+                    allowCancel: true,
+                },
+            );
+            if (accepted === null) return null;
+            return Object.freeze(rows.map(row => {
+                const selected = accepted.has(this.combinedHeatEventId(row.request));
+                return this.preparedMekEndTurn(
+                    row.request,
+                    row.event !== null && selected,
+                    row.staged,
+                    selected,
+                    selected && pilotHitsMode !== 'no',
+                );
+            }));
+        }
+
+        const acceptedHeat = await this.automation.resolve(
+            'heatAndDissipationResolution',
+            rows.flatMap(row => row.event ? [row.event] : []),
+            {
+                title: 'Review Heat and Dissipation',
+                message: 'Choose which heat and dissipation results to apply.',
+                allowCancel: true,
+            },
+        );
+        if (acceptedHeat === null) return null;
+
+        const finalRows = rows.map(row => {
+            const heatAccepted = row.event !== null && acceptedHeat.has(row.event.id);
+            const finalProjection = row.snapshot?.query.heatProjection('automatic');
+            const finalHeat = heatAccepted && finalProjection?.kind === 'supported'
+                ? finalProjection.projection.projected
+                : row.snapshot?.state.heat.pendingOverride
+                    ?? row.snapshot?.state.heat.current
+                    ?? 0;
+            const staged = row.snapshot
+                ? this.stageMekHeatEffects(
+                    row.snapshot,
+                    finalHeat,
+                    row.request.command.expectedRevision,
+                )
+                : null;
+            return Object.freeze({ ...row, heatAccepted, staged });
+        });
+        const combinesEffectsAndPilotHits = effectsMode === 'ask' && pilotHitsMode === 'ask';
+        const effectEvents = finalRows.flatMap(row => {
+            if (!row.snapshot || !row.staged) return [];
+            const effects = this.reviewableMekHeatEffectDescriptions(row.staged);
+            if (effects.length === 0) return [];
+            return [Object.freeze({
+                id: row.staged.id,
+                subject: this.subject(row.snapshot),
+                event: combinesEffectsAndPilotHits ? 'Heat effects and pilot hits' : 'Heat effects',
+                ...(row.heatAccepted && row.event
+                    ? {
+                        description: row.event.description,
+                        ...(row.event.delta === undefined ? {} : { delta: row.event.delta }),
+                        ...(row.event.breakdown === undefined ? {} : { breakdown: row.event.breakdown }),
+                    }
+                    : { description: `Heat ${row.staged.heat}` }),
+                effects,
+            } satisfies AutomationReviewEvent)];
+        });
+        const acceptedEffects = await this.automation.resolve(
+            'heatEffectsCheck',
+            effectEvents,
+            {
+                title: 'Review End-Turn Heat Effects',
+                message: combinesEffectsAndPilotHits
+                    ? 'Choose which units\' heat effects and pilot hits to resolve.'
+                    : 'Choose which units\' heat effects to resolve.',
+                allowCancel: true,
+            },
+        );
+        if (acceptedEffects === null) return null;
+
+        let acceptedPilotHits = new Set<string>();
+        if (combinesEffectsAndPilotHits) {
+            acceptedPilotHits = new Set(finalRows
+                .filter(row => row.staged && acceptedEffects.has(row.staged.id))
+                .map(row => this.pilotHitEventId(row.request)));
+        } else if (pilotHitsMode === 'yes') {
+            acceptedPilotHits = new Set(finalRows
+                .filter(row => row.staged?.lifeHits)
+                .filter(row => row.staged && acceptedEffects.has(row.staged.id))
+                .map(row => this.pilotHitEventId(row.request)));
+        } else if (pilotHitsMode === 'ask') {
+            const pilotEvents = finalRows.flatMap(row => {
+                if (!row.snapshot || !row.staged || row.staged.lifeHits === 0
+                    || !acceptedEffects.has(row.staged.id)) return [];
+                return [Object.freeze({
+                    id: this.pilotHitEventId(row.request),
+                    subject: this.subject(row.snapshot),
+                    event: 'Pilot hits and consciousness',
+                    description: `Heat ${row.staged.heat}`,
+                    effects: Object.freeze([
+                        `Damaged Life Support: ${row.staged.lifeHits} pilot hit${row.staged.lifeHits === 1 ? '' : 's'}`,
+                    ]),
+                } satisfies AutomationReviewEvent)];
+            });
+            const decision = await this.automation.resolve(
+                'pilotHitsAndConsciousnessCheck',
+                pilotEvents,
+                {
+                    title: 'Review Pilot Hits',
+                    message: 'Choose which units\' pilot-hit effects to apply. Accepted hits continue directly into any required Consciousness Rolls.',
+                    allowCancel: true,
+                },
+            );
+            if (decision === null) return null;
+            acceptedPilotHits = new Set(decision);
+        }
+
+        return Object.freeze(finalRows.map(row => this.preparedMekEndTurn(
+            row.request,
+            row.heatAccepted,
+            row.staged,
+            row.staged !== null && acceptedEffects.has(row.staged.id),
+            acceptedPilotHits.has(this.pilotHitEventId(row.request)),
+        )));
+    }
+
+    /** Applies the reviewed heat/consequence chain before the turn reset. */
+    async settleBeforeCommand(
+        force: CBTForce,
+        instanceId: UnitInstanceId,
+        prepared: PreparedDirectMekAutomationCommand,
+        dispatch: DirectMekAutomationDispatch,
+    ): Promise<PreparedDirectMekAutomationCommand | null> {
+        if (prepared.command.type !== 'end-turn') return prepared;
+        const initial = this.snapshot(force, instanceId);
+        if (!initial) return null;
+        const finalHeat = prepared.command.policy === 'automatic'
+            ? prepared.heatEffects?.staged.heat ?? initial.state.heat.current
+            : initial.state.heat.pendingOverride ?? initial.state.heat.current;
+        const heat = await dispatch(this.command(force, instanceId, {
+            type: 'set-heat',
+            heat: finalHeat,
+        }), false);
+        if (!heat.accepted) return null;
+        if (prepared.heatEffects) {
+            await this.applyMekHeatEffects(force, instanceId, prepared.heatEffects, dispatch);
+        }
+        const settled = this.snapshot(force, instanceId);
+        if (!settled) return null;
+        return Object.freeze({
+            ...prepared,
+            command: Object.freeze({
+                ...prepared.command,
+                expectedRevision: settled.query.stateRevision,
+                policy: 'manual' as const,
+            }),
         });
     }
 
@@ -206,8 +503,8 @@ export class DirectMekAutomationService {
         prepared: PreparedDirectMekAutomationCommand,
         result: CBTMekUnitCommandResult,
         dispatch: DirectMekAutomationDispatch,
-    ): Promise<void> {
-        if (!result.accepted || result.idempotent) return;
+    ): Promise<boolean> {
+        if (!result.accepted || result.idempotent) return true;
         const command = prepared.command;
         if (prepared.deferredPilotHits > 0) {
             await this.applyPilotHits(force, instanceId, prepared.deferredPilotHits, dispatch);
@@ -249,83 +546,226 @@ export class DirectMekAutomationService {
                 command.target,
                 dispatch,
             );
-        } else if (command.type === 'end-phase') {
-            await this.resolvePhaseBoundary(force, instanceId, dispatch);
-        } else if (command.type === 'end-turn') {
-            await this.resolveHeatEffects(force, instanceId, before, dispatch);
+        } else if (command.type === 'end-phase' && prepared.phaseBoundary) {
+            return this.applyPhaseBoundary(
+                force,
+                instanceId,
+                prepared.phaseBoundary,
+                dispatch,
+            );
         }
+        return true;
     }
 
-    private async resolvePhaseBoundary(
+    private async preparePhaseBoundary(
+        snapshot: MekSnapshot,
+        command: Extract<CBTUnitCommand, { readonly type: 'end-phase' }>,
+    ): Promise<PreparedDirectMekAutomationCommand> {
+        if (command.expectedRevision !== snapshot.query.stateRevision) {
+            return Object.freeze({ command, deferredPilotHits: 0 });
+        }
+        const preview = snapshot.query.previewEndPhase();
+        if (!preview.accepted) return Object.freeze({ command, deferredPilotHits: 0 });
+
+        const checks = preview.state.movementPsr.checks
+            .filter(check => check.status === 'pending')
+            .map(check => {
+                const dice = roll2D6();
+                const total = twoD6Total(dice);
+                return Object.freeze({
+                    checkId: check.checkId,
+                    reason: check.reason,
+                    targetNumber: check.targetNumber,
+                    dice,
+                    total,
+                    failed: total < check.targetNumber,
+                } satisfies StagedMekPilotCheck);
+            });
+        const movement = snapshot.query.mekMovementPsr();
+        const torsoCheck = preview.state.ruleChecks.get(MEK_TORSO_CRIPPLING_RULE_CHECK_KEY);
+        const ruleCheck = torsoCheck?.status === 'pending'
+            ? (() => {
+                const dice = roll2D6();
+                const total = twoD6Total(dice);
+                const targetNumber = movement.kind === 'supported'
+                    ? movement.pilotingTargetNumber
+                    : 7;
+                return Object.freeze({
+                    eventId: `rule-check:${torsoCheck.token}`,
+                    token: torsoCheck.token,
+                    dice,
+                    total,
+                    targetNumber,
+                    outcome: total >= targetNumber ? 'success' as const : 'failed' as const,
+                } satisfies StagedMekRuleCheck);
+            })()
+            : null;
+        const checkEvents: AutomationReviewEvent[] = [];
+        if (ruleCheck) {
+            checkEvents.push(Object.freeze({
+                id: ruleCheck.eventId,
+                subject: this.subject(snapshot),
+                event: 'Crippling Destruction Check',
+                description: `Rolled ${ruleCheck.total} against ${ruleCheck.targetNumber}+.`,
+                effects: Object.freeze([
+                    ruleCheck.outcome === 'success'
+                        ? 'Mek avoids becoming crippled'
+                        : 'Mek becomes crippled',
+                ]),
+            }));
+        }
+        checkEvents.push(...checks.map(row => Object.freeze({
+            id: row.checkId,
+            subject: this.subject(snapshot),
+            event: 'Piloting Skill Check',
+            description: `${row.reason}: rolled ${row.total} against ${row.targetNumber}+`,
+            effects: Object.freeze([row.failed ? 'Failed: the Mek falls' : 'Succeeded']),
+        } satisfies AutomationReviewEvent)));
+        const acceptedCheckIds = await this.automation.resolve(
+            'pilotSkillCheck',
+            checkEvents,
+            { title: 'Review Piloting Skill Checks', allowCancel: true },
+        );
+        if (acceptedCheckIds === null) {
+            return Object.freeze({ command, deferredPilotHits: 0, cancelled: true });
+        }
+
+        const hadAutomaticFall = preview.state.movementPsr.automaticFalls.length > 0;
+        const failedCheck = checks.find(check =>
+            check.failed && acceptedCheckIds.has(check.checkId));
+        const fall = failedCheck || hadAutomaticFall
+            ? await this.prepareFall(
+                snapshot,
+                failedCheck?.reason ?? 'Automatic fall',
+                true,
+            )
+            : undefined;
+        if (fall === null) {
+            return Object.freeze({ command, deferredPilotHits: 0, cancelled: true });
+        }
+
+        const recoveryRows = [...snapshot.index.crewPositions.values()]
+            .sort((left, right) => left.occurrence - right.occurrence)
+            .flatMap(position => {
+                const state = snapshot.query.crewState(position.id);
+                const target = mekConsciousnessTarget(state.wounds);
+                if (!state.unconscious || state.ejected || target === undefined) return [];
+                const total = twoD6Total(roll2D6());
+                const recovered = succeedsOnTarget(total, target);
+                const eventId = `consciousness:${snapshot.instanceId}:${command.expectedRevision}:${position.id}`;
+                return [Object.freeze({
+                    eventId,
+                    positionId: position.id,
+                    recovered,
+                    event: Object.freeze({
+                        id: eventId,
+                        subject: this.subject(snapshot),
+                        event: 'Consciousness Recovery',
+                        description: `Rolled ${total} against ${target}+.`,
+                        effects: Object.freeze([
+                            recovered ? 'Pilot regains consciousness' : 'Pilot remains unconscious',
+                        ]),
+                    } satisfies AutomationReviewEvent),
+                })];
+            });
+        const acceptedRecoveries = await this.automation.resolve(
+            'pilotHitsAndConsciousnessCheck',
+            recoveryRows.map(row => row.event),
+            { title: 'Review Consciousness Recovery', allowCancel: true },
+        );
+        if (acceptedRecoveries === null) {
+            return Object.freeze({ command, deferredPilotHits: 0, cancelled: true });
+        }
+
+        return Object.freeze({
+            command,
+            deferredPilotHits: 0,
+            phaseBoundary: Object.freeze({
+                checks: Object.freeze(checks),
+                ruleCheck,
+                acceptedCheckIds: new Set(acceptedCheckIds),
+                hadAutomaticFall,
+                fall: fall ?? null,
+                recoveries: Object.freeze(recoveryRows.map(row => Object.freeze({
+                    eventId: row.eventId,
+                    positionId: row.positionId,
+                    recovered: row.recovered,
+                    accepted: acceptedRecoveries.has(row.eventId),
+                } satisfies PreparedMekConsciousnessRecovery))),
+                needsSettlement: checks.length > 0 || hadAutomaticFall,
+            }),
+        });
+    }
+
+    private async applyPhaseBoundary(
         force: CBTForce,
         instanceId: UnitInstanceId,
+        prepared: PreparedMekPhaseBoundary,
         dispatch: DirectMekAutomationDispatch,
-    ): Promise<void> {
-        let handledBoundaryState = false;
-        let fallResolved = false;
-        for (let pass = 0; pass < 32; pass += 1) {
+    ): Promise<boolean> {
+        if (prepared.ruleCheck
+            && prepared.acceptedCheckIds.has(prepared.ruleCheck.eventId)) {
+            const result = await dispatch(this.command(force, instanceId, {
+                type: 'resolve-mek-rule-check',
+                key: MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
+                token: prepared.ruleCheck.token,
+                outcome: prepared.ruleCheck.outcome,
+            }), false);
+            if (!result.accepted) return false;
+        }
+        const dismissed = prepared.checks
+            .filter(check => !prepared.acceptedCheckIds.has(check.checkId))
+            .map(check => check.checkId);
+        if (dismissed.length > 0) {
+            const result = await dispatch(this.command(force, instanceId, {
+                type: 'dismiss-mek-pilot-checks',
+                checkIds: dismissed,
+            }), false);
+            if (!result.accepted) return false;
+        }
+        for (const check of prepared.checks.filter(row =>
+            prepared.acceptedCheckIds.has(row.checkId))) {
+            const result = await dispatch(this.command(force, instanceId, {
+                type: 'resolve-mek-pilot-check',
+                checkId: check.checkId,
+                evidence: { dice: check.dice },
+            }), false);
+            if (!result.accepted) return false;
+        }
+        if (prepared.fall?.accepted) {
+            if (!await this.applyPreparedFall(
+                force,
+                instanceId,
+                prepared.fall,
+                dispatch,
+            )) return false;
+        }
+        if (prepared.hadAutomaticFall) {
+            const result = await dispatch(this.command(force, instanceId, {
+                type: 'dismiss-mek-automatic-falls',
+            }), false);
+            if (!result.accepted) return false;
+        }
+        for (const recovery of prepared.recoveries) {
+            if (!recovery.accepted || !recovery.recovered) continue;
             const snapshot = this.snapshot(force, instanceId);
-            if (!snapshot) return;
-            const pendingChecks = snapshot.query.mekPilotChecks().filter(check => check.status === 'pending');
-            const automaticFalls = snapshot.query.mekMovementPsrState().automaticFalls;
-            if (pendingChecks.length === 0 && automaticFalls.length === 0) break;
-            handledBoundaryState = true;
-
-            if (pendingChecks.length > 0) {
-                const rolled = pendingChecks.map(check => {
-                    const dice = roll2D6();
-                    const total = twoD6Total(dice);
-                    return Object.freeze({ check, dice, total, failed: total < check.targetNumber });
-                });
-                const events = rolled.map(row => Object.freeze({
-                    id: row.check.checkId,
-                    subject: this.subject(snapshot),
-                    event: 'Piloting Skill Check',
-                    description: `${row.check.reason}: rolled ${row.total} against ${row.check.targetNumber}+`,
-                    effects: Object.freeze([row.failed ? 'Failed: the Mek falls' : 'Succeeded']),
-                } satisfies AutomationReviewEvent));
-                const accepted = await this.automation.resolve(
-                    'pilotSkillCheck',
-                    events,
-                    { title: 'Review Piloting Skill Checks' },
-                );
-                if (accepted === null) return;
-                const dismissed = rolled.filter(row => !accepted.has(row.check.checkId));
-                if (dismissed.length > 0) {
-                    await dispatch(this.command(force, instanceId, {
-                        type: 'dismiss-mek-pilot-checks',
-                        checkIds: dismissed.map(row => row.check.checkId),
-                    }), false);
-                }
-                for (const row of rolled.filter(candidate => accepted.has(candidate.check.checkId))) {
-                    const resolution = await dispatch(this.command(force, instanceId, {
-                        type: 'resolve-mek-pilot-check',
-                        checkId: row.check.checkId,
-                        evidence: { dice: row.dice },
-                    }), false);
-                    if (resolution.accepted && row.failed && !fallResolved) {
-                        await this.resolveFall(force, instanceId, row.check.reason, dispatch);
-                        fallResolved = true;
-                    }
-                }
-            }
-
-            const refreshed = this.snapshot(force, instanceId);
-            if (!refreshed) return;
-            if (refreshed.query.mekMovementPsrState().automaticFalls.length > 0) {
-                if (!fallResolved) {
-                    await this.resolveFall(force, instanceId, 'Automatic fall', dispatch);
-                    fallResolved = true;
-                }
-                await dispatch(this.command(force, instanceId, {
-                    type: 'dismiss-mek-automatic-falls',
-                }), false);
-            }
+            const state = snapshot?.query.crewState(recovery.positionId);
+            if (!snapshot || !state || state.ejected || !state.unconscious) continue;
+            const result = await dispatch(this.command(force, instanceId, {
+                type: 'set-crew-state',
+                positionId: recovery.positionId,
+                wounds: state.wounds,
+                unconscious: false,
+                ejected: false,
+            }), false);
+            if (!result.accepted) return false;
         }
-        await this.resolveConsciousnessRecovery(force, instanceId, dispatch);
-        if (handledBoundaryState) {
-            await dispatch(this.command(force, instanceId, { type: 'end-phase' }), false);
-        }
+        if (!prepared.needsSettlement) return true;
+        const settled = await dispatch(
+            this.command(force, instanceId, { type: 'end-phase' }),
+            true,
+        );
+        return settled.accepted;
     }
 
     private async resolveCriticalChance(
@@ -557,64 +997,98 @@ export class DirectMekAutomationService {
         }
     }
 
-    private async resolveHeatEffects(
-        force: CBTForce,
-        instanceId: UnitInstanceId,
-        _before: CBTUnitSnapshot | null,
-        dispatch: DirectMekAutomationDispatch,
-    ): Promise<void> {
-        let snapshot = this.snapshot(force, instanceId);
-        if (!snapshot) return;
+    private preparedMekEndTurn(
+        request: DirectMekEndTurnAutomationRequest,
+        heatAccepted: boolean,
+        staged: StagedMekHeatEffects | null,
+        applyEffects: boolean,
+        applyPilotHits: boolean,
+    ): PreparedDirectMekEndTurnAutomation {
+        return Object.freeze({
+            instanceId: request.instanceId,
+            prepared: Object.freeze({
+                command: Object.freeze({
+                    ...request.command,
+                    policy: heatAccepted ? 'automatic' as const : 'manual' as const,
+                }),
+                deferredPilotHits: 0,
+                ...(staged === null ? {} : {
+                    heatEffects: Object.freeze({ staged, applyEffects, applyPilotHits }),
+                }),
+            }),
+        });
+    }
+
+    private combinedHeatEventId(request: DirectMekEndTurnAutomationRequest): string {
+        return `end-turn-heat:${request.instanceId}:${request.command.expectedRevision}`;
+    }
+
+    private pilotHitEventId(request: DirectMekEndTurnAutomationRequest): string {
+        return `pilot-hits:${request.instanceId}:${request.command.expectedRevision}`;
+    }
+
+    private stageMekHeatEffects(
+        snapshot: MekSnapshot,
+        heat: number,
+        revision: number,
+    ): StagedMekHeatEffects {
         const ammo = this.preferredExplosiveAmmo(snapshot);
         const pilot = this.primaryPilot(snapshot);
         const checks = mekHeatAutomationChecks({
-            heat: snapshot.state.heat.current,
+            heat,
             shutdown: snapshot.query.hasCondition('shutdown'),
             consciousPilot: pilot !== null && !pilot.state.unconscious
                 && !pilot.state.ejected && pilot.state.wounds < MAX_MEK_CREW_WOUNDS,
             hasExplosiveAmmo: ammo !== null,
-        });
-        const rolled = checks.map((check, index) => {
-            const dice = check.target === undefined ? null : roll2D6();
-            const total = dice === null ? null : twoD6Total(dice);
+        }).map((check): RolledMekHeatCheck => {
+            const total = check.target === undefined ? null : twoD6Total(roll2D6());
             const outcome = check.automaticOutcome
                 ?? (total !== null && check.target !== undefined && succeedsOnTarget(total, check.target)
                     ? 'success' : 'failed');
-            return Object.freeze({ check, index, dice, total, outcome });
+            return Object.freeze({ check, total, outcome });
         });
         const lifeSupport = projectMekLifeSupportPilotDamage(
             snapshot.entity,
             snapshot.index,
             snapshot.ruleset,
             snapshot.query,
-            snapshot.state.heat.current,
+            heat,
         );
-        const events: AutomationReviewEvent[] = rolled.map(row => Object.freeze({
-            id: `heat-effect:${instanceId}:${snapshot!.query.stateRevision}:${row.index}`,
-            subject: this.subject(snapshot!),
-            event: heatCheckLabel(row.check.kind),
-            description: row.total === null
-                ? `Automatic ${row.outcome}.`
-                : `Rolled ${row.total} against ${row.check.target}+ (${row.outcome}).`,
-            effects: Object.freeze(heatCheckEffects(row.check.kind, row.outcome)),
-        }));
-        const lifeHits = lifeSupport.heatHits + lifeSupport.oxygenHits;
-        if (lifeHits > 0) events.push(Object.freeze({
-            id: `heat-effect:${instanceId}:${snapshot.query.stateRevision}:life-support`,
-            subject: this.subject(snapshot),
-            event: 'Damaged Life Support',
-            description: `${lifeHits} pilot hit${lifeHits === 1 ? '' : 's'} from heat or oxygen loss.`,
-            delta: lifeHits,
-        }));
-        const accepted = await this.automation.resolve(
-            'heatEffectsCheck',
-            events,
-            { title: 'Review Heat Effects' },
-        );
-        if (accepted === null) return;
-        for (const row of rolled) {
-            const id = `heat-effect:${instanceId}:${snapshot.query.stateRevision}:${row.index}`;
-            if (!accepted.has(id)) continue;
+        return Object.freeze({
+            id: `heat-effects:${snapshot.instanceId}:${revision}`,
+            heat,
+            checks: Object.freeze(checks),
+            lifeHits: lifeSupport.heatHits + lifeSupport.oxygenHits,
+            ...(ammo === null ? {} : { ammoComponentId: ammo.componentId }),
+        });
+    }
+
+    private reviewableMekHeatEffectDescriptions(
+        staged: StagedMekHeatEffects,
+    ): readonly string[] {
+        const pilotHitsMode = this.options.cbtAutomationMode('pilotHitsAndConsciousnessCheck');
+        return Object.freeze([
+            ...staged.checks.flatMap(row => [
+                `${heatCheckLabel(row.check.kind)}: ${row.total === null
+                    ? `automatic ${row.outcome}`
+                    : `rolled ${row.total} against ${row.check.target}+ (${row.outcome})`}`,
+                ...heatCheckEffects(row.check.kind, row.outcome),
+            ]),
+            ...(staged.lifeHits > 0 && pilotHitsMode !== 'no'
+                ? [`Damaged Life Support: ${staged.lifeHits} pilot hit${staged.lifeHits === 1 ? '' : 's'} from heat or oxygen loss`]
+                : []),
+        ]);
+    }
+
+    private async applyMekHeatEffects(
+        force: CBTForce,
+        instanceId: UnitInstanceId,
+        prepared: PreparedMekHeatEffects,
+        dispatch: DirectMekAutomationDispatch,
+    ): Promise<void> {
+        let snapshot = this.snapshot(force, instanceId);
+        if (!snapshot || !prepared.applyEffects) return;
+        for (const row of prepared.staged.checks) {
             if (row.check.kind === 'shutdown' && row.outcome === 'failed') {
                 const wasShutdown = snapshot.query.hasCondition('shutdown');
                 await dispatch(this.command(force, instanceId, {
@@ -627,17 +1101,24 @@ export class DirectMekAutomationService {
                 await dispatch(this.command(force, instanceId, {
                     type: 'set-mek-shutdown-state', shutdown: false,
                 }), false);
-            } else if (row.check.kind === 'ammo-explosion' && row.outcome === 'failed' && ammo) {
-                await this.explodeAmmo(force, instanceId, ammo.componentId, dispatch);
+            } else if (row.check.kind === 'ammo-explosion' && row.outcome === 'failed'
+                && prepared.staged.ammoComponentId) {
+                await this.explodeAmmo(
+                    force,
+                    instanceId,
+                    prepared.staged.ammoComponentId,
+                    dispatch,
+                );
             }
             snapshot = this.snapshot(force, instanceId) ?? snapshot;
         }
-        const lifeEventId = `heat-effect:${instanceId}:${snapshot.query.stateRevision}:life-support`;
-        // The revision can change while resolving preceding checks; match the originally emitted suffix too.
-        const acceptedLife = [...accepted].some(id => id.endsWith(':life-support'));
-        if ((accepted.has(lifeEventId) || acceptedLife) && lifeHits > 0) {
-            const hits = await this.reviewPilotHits(snapshot, lifeHits, `${lifeEventId}:pilot`);
-            await this.applyPilotHits(force, instanceId, hits, dispatch);
+        if (prepared.applyPilotHits && prepared.staged.lifeHits > 0) {
+            await this.applyPilotHits(
+                force,
+                instanceId,
+                prepared.staged.lifeHits,
+                dispatch,
+            );
         }
     }
 
@@ -672,9 +1153,21 @@ export class DirectMekAutomationService {
         instanceId: UnitInstanceId,
         reason: string,
         dispatch: DirectMekAutomationDispatch,
-    ): Promise<void> {
+        allowCancel = false,
+    ): Promise<boolean> {
         const snapshot = this.snapshot(force, instanceId);
-        if (!snapshot) return;
+        if (!snapshot) return false;
+        const prepared = await this.prepareFall(snapshot, reason, allowCancel);
+        if (prepared === null) return false;
+        return !prepared.accepted
+            || this.applyPreparedFall(force, instanceId, prepared, dispatch);
+    }
+
+    private async prepareFall(
+        snapshot: MekSnapshot,
+        reason: string,
+        allowCancel: boolean,
+    ): Promise<PreparedMekFall | null> {
         const waterDepth = coverWaterDepth(snapshot.query.turnState().cover);
         const damage = resolveMekFallDamage(snapshot.ruleset, snapshot.entity.tonnage(), 0, waterDepth);
         const groups = resolvedMekFallDamageGroups(damage);
@@ -689,7 +1182,7 @@ export class DirectMekAutomationService {
             return Object.freeze({ damage: group, result });
         });
         const event: AutomationReviewEvent = Object.freeze({
-            id: `fall:${instanceId}:${snapshot.query.stateRevision}`,
+            id: `fall:${snapshot.instanceId}:${snapshot.query.stateRevision}`,
             subject: this.subject(snapshot),
             event: reason,
             description: `${damage.totalDamage} fall damage from the ${orientation.hitArcLabel.toLowerCase()} arc.`,
@@ -703,11 +1196,40 @@ export class DirectMekAutomationService {
         const accepted = await this.automation.resolve(
             'fallingCheck',
             [event],
-            { title: 'Review Falling Damage' },
+            { title: 'Review Falling Damage', allowCancel },
         );
-        if (!accepted?.has(event.id)) return;
+        if (accepted === null) return null;
+        const applyFall = accepted.has(event.id);
+        const headHits = applyFall
+            ? locations.filter(row => row.result.location === 'HD').length
+            : 0;
+        const reviewedPilotHits = headHits > 0
+            ? await this.reviewPilotHits(
+                snapshot,
+                headHits,
+                `${event.id}:head`,
+                allowCancel,
+            )
+            : 0;
+        if (reviewedPilotHits === null) return null;
+        return Object.freeze({
+            eventId: event.id,
+            accepted: applyFall,
+            damage,
+            orientation,
+            locations: Object.freeze(locations),
+            applyPilotHits: reviewedPilotHits > 0,
+        });
+    }
+
+    private async applyPreparedFall(
+        force: CBTForce,
+        instanceId: UnitInstanceId,
+        prepared: PreparedMekFall,
+        dispatch: DirectMekAutomationDispatch,
+    ): Promise<boolean> {
         let headHits = 0;
-        for (const row of locations) {
+        for (const row of prepared.locations) {
             if (!row.result.location) continue;
             const applied = await this.applyFallDamageGroup(
                 force,
@@ -715,19 +1237,16 @@ export class DirectMekAutomationService {
                 row.result.location,
                 row.result.rear,
                 row.damage,
-                orientation.hitArc,
+                prepared.orientation.hitArc,
                 row.result.critical,
                 dispatch,
             );
             if (row.result.location === 'HD' && applied) headHits += 1;
         }
-        if (headHits > 0) {
-            const current = this.snapshot(force, instanceId);
-            if (current) {
-                const hits = await this.reviewPilotHits(current, headHits, `${event.id}:head`);
-                await this.applyPilotHits(force, instanceId, hits, dispatch);
-            }
+        if (prepared.applyPilotHits && headHits > 0) {
+            await this.applyPilotHits(force, instanceId, headHits, dispatch);
         }
+        return true;
     }
 
     private async applyFallDamageGroup(
@@ -903,7 +1422,8 @@ export class DirectMekAutomationService {
         snapshot: MekSnapshot,
         hits: number,
         eventId: string,
-    ): Promise<number> {
+        allowCancel = false,
+    ): Promise<number | null> {
         if (hits <= 0) return 0;
         const event: AutomationReviewEvent = Object.freeze({
             id: eventId,
@@ -915,8 +1435,9 @@ export class DirectMekAutomationService {
         const accepted = await this.automation.resolve(
             'pilotHitsAndConsciousnessCheck',
             [event],
-            { title: 'Review Pilot Injury' },
+            { title: 'Review Pilot Injury', allowCancel },
         );
+        if (accepted === null) return null;
         return accepted?.has(event.id) ? hits : 0;
     }
 
@@ -926,65 +1447,36 @@ export class DirectMekAutomationService {
         hits: number,
         dispatch: DirectMekAutomationDispatch,
     ): Promise<void> {
-        for (let index = 0; index < hits; index += 1) {
-            const snapshot = this.snapshot(force, instanceId);
-            const pilot = snapshot && this.primaryPilot(snapshot);
-            if (!snapshot || !pilot || pilot.state.wounds >= MAX_MEK_CREW_WOUNDS) return;
-            const wounds = Math.min(MAX_MEK_CREW_WOUNDS, pilot.state.wounds + 1);
-            await dispatch(this.command(force, instanceId, {
-                type: 'set-crew-state',
-                positionId: pilot.positionId,
-                wounds,
-                unconscious: pilot.state.unconscious,
-                ejected: pilot.state.ejected,
-            }), false);
-            const target = mekConsciousnessTarget(wounds);
-            if (target === undefined || pilot.state.ejected) continue;
-            const dice = roll2D6();
-            if (succeedsOnTarget(twoD6Total(dice), target)) continue;
-            const current = this.snapshot(force, instanceId);
-            const state = current?.query.crewState(pilot.positionId);
-            if (!current || !state || state.ejected || state.wounds >= MAX_MEK_CREW_WOUNDS) continue;
-            await dispatch(this.command(force, instanceId, {
-                type: 'set-crew-state',
-                positionId: pilot.positionId,
-                wounds: state.wounds,
-                unconscious: true,
-                ejected: false,
-            }), false);
-        }
-    }
-
-    private async resolveConsciousnessRecovery(
-        force: CBTForce,
-        instanceId: UnitInstanceId,
-        dispatch: DirectMekAutomationDispatch,
-    ): Promise<void> {
-        const snapshot = this.snapshot(force, instanceId);
-        if (!snapshot) return;
-        for (const position of [...snapshot.index.crewPositions.values()].sort((a, b) => a.occurrence - b.occurrence)) {
-            const state = snapshot.query.crewState(position.id);
-            const target = mekConsciousnessTarget(state.wounds);
-            if (!state.unconscious || state.ejected || target === undefined) continue;
-            const dice = roll2D6();
-            const total = twoD6Total(dice);
-            const recovered = succeedsOnTarget(total, target);
-            const event: AutomationReviewEvent = Object.freeze({
-                id: `consciousness:${instanceId}:${snapshot.query.stateRevision}:${position.id}`,
-                subject: this.subject(snapshot),
-                event: 'Consciousness Recovery',
-                description: `Rolled ${total} against ${target}+.`,
-                effects: Object.freeze([recovered ? 'Pilot regains consciousness' : 'Pilot remains unconscious']),
-            });
-            const accepted = await this.automation.resolve('pilotHitsAndConsciousnessCheck', [event]);
-            if (!accepted?.has(event.id) || !recovered) continue;
-            await dispatch(this.command(force, instanceId, {
-                type: 'set-crew-state',
-                positionId: position.id,
-                wounds: state.wounds,
-                unconscious: false,
-                ejected: false,
-            }), false);
+        const initial = this.snapshot(force, instanceId);
+        if (!initial || hits <= 0) return;
+        const positions = [...initial.index.crewPositions.values()]
+            .sort((left, right) => left.occurrence - right.occurrence);
+        for (const position of positions) {
+            for (let index = 0; index < hits; index += 1) {
+                const snapshot = this.snapshot(force, instanceId);
+                const crew = snapshot?.query.crewState(position.id);
+                if (!snapshot || !crew || crew.ejected || crew.wounds >= MAX_MEK_CREW_WOUNDS) break;
+                const wounds = Math.min(MAX_MEK_CREW_WOUNDS, crew.wounds + 1);
+                await dispatch(this.command(force, instanceId, {
+                    type: 'set-crew-state',
+                    positionId: position.id,
+                    wounds,
+                    unconscious: crew.unconscious,
+                    ejected: false,
+                }), false);
+                const target = mekConsciousnessTarget(wounds);
+                if (target === undefined || succeedsOnTarget(twoD6Total(roll2D6()), target)) continue;
+                const current = this.snapshot(force, instanceId);
+                const state = current?.query.crewState(position.id);
+                if (!current || !state || state.ejected || state.wounds >= MAX_MEK_CREW_WOUNDS) continue;
+                await dispatch(this.command(force, instanceId, {
+                    type: 'set-crew-state',
+                    positionId: position.id,
+                    wounds: state.wounds,
+                    unconscious: true,
+                    ejected: false,
+                }), false);
+            }
         }
     }
 

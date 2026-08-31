@@ -10,7 +10,6 @@ import { MultiSelectDropdownComponent } from './multi-select-dropdown.component'
 import { LayoutService } from '../../services/layout.service';
 
 @Component({
-    standalone: true,
     imports: [MultiSelectDropdownComponent],
     template: `
         <multi-select-dropdown

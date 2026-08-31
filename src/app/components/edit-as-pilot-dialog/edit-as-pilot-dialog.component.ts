@@ -75,7 +75,6 @@ interface FormationEffectCardView {
 @Component({
     selector: 'edit-as-pilot-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

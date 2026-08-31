@@ -8,7 +8,6 @@ import { LinearPickerBaseComponent } from './linear-picker-base.component';
 @Component({
     selector: 'linear-picker-vertical',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     templateUrl: './linear-picker-vertical.component.html',
     styleUrls: ['./linear-picker-common.scss', './linear-picker-vertical.component.scss']
 })

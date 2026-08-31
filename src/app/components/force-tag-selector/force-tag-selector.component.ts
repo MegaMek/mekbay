@@ -9,7 +9,6 @@ export const FORCE_TAG_SELECTOR_NEW_TAG = '__new__';
 @Component({
     selector: 'force-tag-selector',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     templateUrl: './force-tag-selector.component.html',
     styleUrl: './force-tag-selector.component.css'
 })

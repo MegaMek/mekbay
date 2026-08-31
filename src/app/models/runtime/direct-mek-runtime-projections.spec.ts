@@ -12,7 +12,7 @@ import {
     projectMekEquipmentPanel,
     projectWeaponTargetPresentation,
 } from './equipment-panel';
-import { projectMekRecordSheet } from './mek-record-sheet';
+import { projectMekRecordSheet, projectMekUnitStatus } from './mek-record-sheet';
 import { evaluateMekRuntimeCapability } from './mek-runtime-capability';
 import {
     deserializeMekMovementPsrStateV2,
@@ -279,6 +279,53 @@ describe('direct Mek entity/runtime projections', () => {
             query,
             'manual',
         ).canTakeActiveActions).toBeFalse();
+    });
+
+    it('keeps the lightweight unit status projection equivalent to sheet status facts', () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const pilot = [...fixture.index.crewPositions.values()]
+            .find(position => position.occurrence === 0)!;
+        const head = [...fixture.index.locations.values()].find(location => location.code === 'HD')!;
+
+        expect(fixture.instance.dispatch({
+            type: 'set-crew-state',
+            commandId: asCommandId('unit-status:unconscious'),
+            expectedRevision: fixture.instance.revision(),
+            positionId: pilot.id,
+            wounds: 1,
+            unconscious: true,
+            ejected: false,
+        }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({
+            type: 'set-location-condition',
+            commandId: asCommandId('unit-status:narc'),
+            expectedRevision: fixture.instance.revision(),
+            locationId: head.id,
+            condition: 'narc',
+            value: 2,
+            target: 'committed',
+        }).accepted).toBeTrue();
+
+        const state = fixture.instance.snapshot();
+        const query = fixture.instance.query();
+        const status = projectMekUnitStatus(fixture.entity, fixture.index, state, query);
+        const sheet = projectMekRecordSheet(
+            fixture.entity,
+            fixture.index,
+            fixture.instance.ruleset(),
+            state,
+            query,
+            emptyCBTEncounterSnapshot(),
+            null,
+        );
+
+        expect(status.stateRevision).toBe(sheet.stateRevision);
+        expect(status.conditions).toEqual(sheet.conditions);
+        expect(status.crew).toEqual(sheet.crew.map(position => ({
+            positionId: position.positionId,
+            effectiveState: position.effectiveState,
+        })));
+        expect(status.hasNarc).toBeTrue();
     });
 
     it('derives a dead crew display from committed cockpit destruction', () => {

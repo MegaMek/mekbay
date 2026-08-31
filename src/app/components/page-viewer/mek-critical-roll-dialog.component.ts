@@ -30,7 +30,6 @@ export interface MekCriticalRollDialogResult {
 
 @Component({
     selector: 'mek-critical-roll-dialog',
-    standalone: true,
     imports: [DiceRollerComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `

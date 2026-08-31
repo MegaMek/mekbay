@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
 import { type CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import type { LobbyParticipant } from '../../models/lobby.model';
@@ -36,12 +36,11 @@ interface LobbySideTotals {
 
 @Component({
     selector: 'lobby-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule],
+    imports: [DecimalPipe, DragDropModule],
     host: { class: 'fullscreen-dialog-host glass' },
     templateUrl: './lobby-dialog.component.html',
-    styleUrls: ['./lobby-dialog.component.scss'],
+    styleUrl: './lobby-dialog.component.scss',
 })
 export class LobbyDialogComponent {
     readonly lobbyService = inject(LobbyService);

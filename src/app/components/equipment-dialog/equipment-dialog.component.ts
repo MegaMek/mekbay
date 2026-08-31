@@ -51,7 +51,6 @@ const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
 
 @Component({
     selector: 'equipment-dialog',
-    standalone: true,
     imports: [SwipeDirective, WeaponsEquipmentPanelComponent, AmmoLoadoutPanelComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: { class: 'fullscreen-dialog-host glass' },

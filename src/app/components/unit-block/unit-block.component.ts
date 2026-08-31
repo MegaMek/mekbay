@@ -64,7 +64,6 @@ export interface UnitBlockPilotEditEvent {
 
 @Component({
     selector: 'unit-block',
-    standalone: true,
     imports: [
         CdkMenuModule,
         FormatTonsPipe,
@@ -75,7 +74,7 @@ export interface UnitBlockPilotEditEvent {
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './unit-block.component.html',
-    styleUrls: ['./unit-block.component.scss'],
+    styleUrl: './unit-block.component.scss',
 })
 export class UnitBlockComponent {
     optionsService = inject(OptionsService);
@@ -229,13 +228,9 @@ export class UnitBlockComponent {
         let crewConditions: UnitConditionDisplay[] = [];
         let locationConditions: UnitConditionDisplay[] = [];
         if (isCBTMekForceMember(forceUnit)) {
-            const sheet = forceUnit.force.getMekRecordSheetSnapshot(forceUnit.id);
-            const turn = forceUnit.force.getMekTurnPanelSnapshot(forceUnit.id, 'manual');
-            sheet?.conditions.forEach(condition => conditionKeys.add(condition));
-            turn?.conditions.forEach(condition => conditionKeys.add(condition));
-            if (sheet?.crippled) conditionKeys.add('crippled');
-            if (turn?.turn.spotting) conditionKeys.add('spotting');
-            const crewStates = new Set(sheet?.crew.map(position => position.effectiveState) ?? []);
+            const status = forceUnit.force.getMekUnitStatusSnapshot(forceUnit.id);
+            status?.conditions.forEach(condition => conditionKeys.add(condition));
+            const crewStates = new Set(status?.crew.map(position => position.effectiveState) ?? []);
             crewConditions = [...crewStates].flatMap(state => {
                 if (state === 'healthy') return [];
                 const definition = MEK_CREW_STATE_DISPLAYS.find(candidate => candidate.key === state);
@@ -245,9 +240,7 @@ export class UnitBlockComponent {
                     color: definition.color,
                 }] : [];
             });
-            const hasNarc = sheet?.locations.some(location => location.conditions.some(condition =>
-                condition.condition === 'narc' && condition.preview > 0)) ?? false;
-            if (hasNarc) {
+            if (status?.hasNarc) {
                 locationConditions = [{ key: 'location-narc', label: 'NARC', color: NARC_CONDITION_COLOR }];
             }
         } else if (isCBTForceMember(forceUnit)) {

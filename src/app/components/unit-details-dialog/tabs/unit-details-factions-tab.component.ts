@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Component, ChangeDetectionStrategy, input, inject, computed, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { NgTemplateOutlet } from '@angular/common';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import type { TooltipLine } from '../../tooltip/tooltip.component';
 import type { Era } from '../../../models/eras.model';
@@ -79,9 +79,9 @@ export interface FactionAvailability {
 @Component({
     selector: 'unit-details-factions-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, TooltipDirective],
+    imports: [NgTemplateOutlet, TooltipDirective],
     templateUrl: './unit-details-factions-tab.component.html',
-    styleUrls: ['./unit-details-factions-tab.component.css']
+    styleUrl: './unit-details-factions-tab.component.css'
 })
 export class UnitDetailsFactionTabComponent {
     private dataService = inject(DataService);

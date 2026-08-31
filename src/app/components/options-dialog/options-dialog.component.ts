@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, signal, viewChild } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
@@ -116,7 +116,7 @@ const CBT_AUTOMATION_OPTIONS: readonly CBTAutomationOptionDefinition[] = [
     {
         key: 'pilotSkillCheck',
         label: 'Piloting skill checks',
-        description: 'Resolve end-of-phase Piloting Skill Rolls. "No" keeps warnings available but skips resolution when the phase closes.',
+        description: 'Resolve end-of-phase Piloting Skill Rolls. "No" keeps the warnings available but skips them when the phase closes.',
     },
     {
         key: 'heatAndDissipationResolution',
@@ -126,12 +126,12 @@ const CBT_AUTOMATION_OPTIONS: readonly CBTAutomationOptionDefinition[] = [
     {
         key: 'heatEffectsCheck',
         label: 'Heat effects',
-        description: 'Resolve shutdown, ammunition explosion, life support, and aerospace heat checks after end-turn heat is applied.',
+        description: 'Resolve shutdown, ammunition explosion, life support, and aerospace heat checks after end-turn heat is applied. Pilot damage also follows its own setting.',
     },
     {
         key: 'pilotHitsAndConsciousnessCheck',
         label: 'Pilot hits and consciousness',
-        description: 'Apply pilot injuries, then resolve consciousness and recovery rolls.',
+        description: 'Apply pilot injuries from head hits and heat effects, then resolve consciousness and recovery rolls.',
     },
     {
         key: 'internalExplosionsCheck',
@@ -158,11 +158,10 @@ const CBT_AUTOMATION_OPTIONS: readonly CBTAutomationOptionDefinition[] = [
 
 @Component({
     selector: 'options-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, RangeSliderComponent],
+    imports: [DatePipe, NgTemplateOutlet, BaseDialogComponent, RangeSliderComponent],
     templateUrl: './options-dialog.component.html',
-    styleUrls: ['./options-dialog.component.scss']
+    styleUrl: './options-dialog.component.scss'
 })
 export class OptionsDialogComponent {
     logger = inject(LoggerService)

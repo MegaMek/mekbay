@@ -145,6 +145,17 @@ export interface MekRecordSheetCrewPosition {
     readonly effectiveState: Extract<CrewMemberState, 'healthy' | 'ejected' | 'unconscious' | 'dead'>;
 }
 
+/** Lightweight status facts for force cards and other non-sheet presentation. */
+export interface MekUnitStatusSnapshot {
+    readonly stateRevision: StateRevision;
+    readonly conditions: readonly string[];
+    readonly crew: readonly Readonly<{
+        readonly positionId: CrewPositionId;
+        readonly effectiveState: MekRecordSheetCrewPosition['effectiveState'];
+    }>[];
+    readonly hasNarc: boolean;
+}
+
 /**
  * Complete record-sheet data projection. A supplied SVG is only a layout for
  * these facts; no sheet attribute or text node participates in this model.
@@ -207,6 +218,23 @@ export interface MekRecordSheetSnapshot {
     readonly crew: readonly MekRecordSheetCrewPosition[];
 }
 
+/** Projects only the runtime facts needed by compact unit-status presentation. */
+export function projectMekUnitStatus(
+    entity: MekEntity,
+    index: MekRuntimeIndex,
+    state: MekUnitRuntimeState,
+    query: MekUnitQueryPort,
+): MekUnitStatusSnapshot {
+    if (state.stateRevision !== query.stateRevision) {
+        throw new Error('Unit-status state and query revisions do not match');
+    }
+    const destruction = query.mekDestruction();
+    if (destruction.kind === 'unsupported') {
+        throw new Error('Mek destruction mechanics context is unsupported');
+    }
+    return projectMekUnitStatusFromDestruction(entity, index, state, query, destruction);
+}
+
 export function projectMekRecordSheet(
     entity: MekEntity,
     index: MekRuntimeIndex,
@@ -226,6 +254,7 @@ export function projectMekRecordSheet(
     if (destruction.kind === 'unsupported') {
         throw new Error('Mek destruction mechanics context is unsupported');
     }
+    const unitStatus = projectMekUnitStatusFromDestruction(entity, index, state, query, destruction);
 
     const modularArmorByLocation = new Map<LocationId, Set<ComponentId>>();
     for (const slot of index.slots.values()) {
@@ -398,6 +427,10 @@ export function projectMekRecordSheet(
         })
         : [];
 
+    const effectiveCrewStateById = new Map(unitStatus.crew.map(position => [
+        position.positionId,
+        position.effectiveState,
+    ] as const));
     const crew = [...index.crewPositions.values()]
         .sort((left, right) => left.occurrence - right.occurrence
             || compareText(left.id, right.id))
@@ -405,13 +438,8 @@ export function projectMekRecordSheet(
             const assigned = assignedById.get(position.id);
             if (!assigned) throw new Error(`Crew assignment is missing ${position.id}`);
             const crewState = query.crewState(position.id);
-            const effectiveState = effectiveMekCrewState(
-                entity,
-                position.occurrence,
-                crewState,
-                destruction.facts.committed.mainCockpitUnavailable,
-                destruction.facts.committed.commandConsoleUnavailable,
-            );
+            const effectiveState = effectiveCrewStateById.get(position.id);
+            if (effectiveState === undefined) throw new Error(`Crew status is missing ${position.id}`);
             return Object.freeze({
                 positionId: position.id,
                 positionKey: position.id,
@@ -502,11 +530,7 @@ export function projectMekRecordSheet(
         lifeSupport,
         destroyed: destruction.facts.committed.destroyed,
         crippled: destruction.facts.preview.crippled,
-        conditions: Object.freeze([...new Set([
-            ...state.conditions,
-            ...['abandoned', 'disconnected', 'immobile', 'crippled', 'spotting']
-                .filter(condition => query.hasCondition(condition)),
-        ])].sort(compareText)),
+        conditions: unitStatus.conditions,
         locations: Object.freeze(locations),
         criticalSlots: Object.freeze(criticalSlots),
         shields: Object.freeze(shields),
@@ -514,6 +538,41 @@ export function projectMekRecordSheet(
         targets,
         physicalAttacks,
         crew: Object.freeze(crew),
+    });
+}
+
+function projectMekUnitStatusFromDestruction(
+    entity: MekEntity,
+    index: MekRuntimeIndex,
+    state: MekUnitRuntimeState,
+    query: MekUnitQueryPort,
+    destruction: Extract<ReturnType<MekUnitQueryPort['mekDestruction']>, { readonly kind: 'supported' }>,
+): MekUnitStatusSnapshot {
+    const conditions = new Set([
+        ...state.conditions,
+        ...['abandoned', 'disconnected', 'immobile', 'crippled', 'spotting']
+            .filter(condition => query.hasCondition(condition)),
+    ]);
+    if (destruction.facts.preview.crippled) conditions.add('crippled');
+    const crew = [...index.crewPositions.values()]
+        .sort((left, right) => left.occurrence - right.occurrence
+            || compareText(left.id, right.id))
+        .map(position => Object.freeze({
+            positionId: position.id,
+            effectiveState: effectiveMekCrewState(
+                entity,
+                position.occurrence,
+                query.crewState(position.id),
+                destruction.facts.committed.mainCockpitUnavailable,
+                destruction.facts.committed.commandConsoleUnavailable,
+            ),
+        }));
+    return Object.freeze({
+        stateRevision: state.stateRevision,
+        conditions: Object.freeze([...conditions].sort(compareText)),
+        crew: Object.freeze(crew),
+        hasNarc: [...index.locations.keys()].some(locationId =>
+            query.locationCondition(locationId, 'narc', 'preview') > 0),
     });
 }
 

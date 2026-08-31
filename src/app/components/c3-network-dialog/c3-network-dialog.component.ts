@@ -169,7 +169,7 @@ interface Vec2 {
         '[class.read-only]': 'data.readOnly'
     },
     templateUrl: './c3-network-dialog.component.html',
-    styleUrls: ['./c3-network-dialog.component.scss']
+    styleUrl: './c3-network-dialog.component.scss'
 })
 export class C3NetworkDialogComponent implements AfterViewInit {
     private dialogRef = inject(DialogRef<C3NetworkDialogResult>);

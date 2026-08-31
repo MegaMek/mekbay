@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
+import { LowerCasePipe } from '@angular/common';
 import { Component, ChangeDetectionStrategy, input, inject, computed, type ElementRef, viewChild } from '@angular/core';
 import type { UnitSummary, UnitComponent } from '../../models/unit-summary.model';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
@@ -13,9 +13,9 @@ type ComponentDisplayStyle = 'normal' | 'small' | 'tiny' | 'text' | 'additional'
 @Component({
     selector: 'unit-component-item',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
+    imports: [LowerCasePipe],
     templateUrl: './unit-component-item.component.html',
-    styleUrls: ['./unit-component-item.component.css'],
+    styleUrl: './unit-component-item.component.css',
     host: {
         '[style.display]': 'hostDisplay'
     }

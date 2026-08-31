@@ -14,7 +14,6 @@ import {
     effect,
     signal,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -61,12 +60,12 @@ const PAGE_RUNTIME_HISTORY_OVERLAY_PREFIX = 'page-viewer-runtime-history';
 @Component({
     selector: 'page-interaction-overlay',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitNotificationBadgesComponent],
+    imports: [UnitNotificationBadgesComponent],
     templateUrl: './page-interaction-overlay.component.html',
     host: {
         '[class.fixed-mode]': 'mode() === "fixed"'
     },
-    styleUrls: [`./page-interaction-overlay.component.scss`]
+    styleUrl: './page-interaction-overlay.component.scss'
 })
 export class PageInteractionOverlayComponent {
     private logger = inject(LoggerService);

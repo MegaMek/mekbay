@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject, DestroyRef, viewChild, effect } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameService } from '../../services/game.service';
@@ -38,7 +37,6 @@ import { UnitDetailsSummaryService } from '../../services/unit-details-summary.s
     selector: 'unit-details-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
         BasePanelComponent,
         UnitIconComponent,
         UnitTagsComponent,

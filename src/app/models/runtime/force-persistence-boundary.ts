@@ -80,15 +80,15 @@ export async function prepareCBTForcePersistenceV2(input: {
     readonly liveUnits: readonly ReadyClassicUnit[];
     readonly encounterState?: SerializedCBTEncounterStateV2;
 }): Promise<CBTForcePersistenceResultV2> {
-    let previous: SerializedCBTForceV2;
-    try {
-        previous = await validateSerializedCBTForceV2(input.previous);
-    } catch (error) {
-        return readOnly('INVALID_ENVELOPE', errorMessage(error));
-    }
+    // `previous` is the already validated, deeply frozen envelope installed by
+    // CBTForceAuthority. Revalidating it here cloned and walked the complete
+    // force on every autosave, then did the same work again for the candidate.
+    // Persistence is an internal typed transition; untrusted envelopes are
+    // still fully validated by inspect/load and direct-admission boundaries.
+    const previous = input.previous;
     let captures: readonly CapturedReadyUnit[];
     try {
-        captures = captureReadyUnits(input.liveUnits);
+        captures = captureReadyUnits(input.liveUnits, previous);
     } catch (error) {
         return readOnly('READY_RUNTIME_SERIALIZATION_FAILED', errorMessage(error));
     }
@@ -98,12 +98,7 @@ export async function prepareCBTForcePersistenceV2(input: {
     const encounter = materializeEncounter(previous.encounter, input.encounterState);
     if (encounter.kind === 'read-only') return encounter;
 
-    const atCurrentRevision: SerializedCBTForceV2 = {
-        ...previous,
-        units: materialized.units,
-        encounter: encounter.entry,
-    };
-    if (jsonValuesEqual(atCurrentRevision, previous)) {
+    if (!materialized.changed && !encounter.changed) {
         return Object.freeze({
             kind: 'writable' as const,
             envelope: previous,
@@ -111,9 +106,11 @@ export async function prepareCBTForcePersistenceV2(input: {
         });
     }
     try {
-        const envelope = await validateSerializedCBTForceV2({
-            ...atCurrentRevision,
+        const envelope: SerializedCBTForceV2 = Object.freeze({
+            ...previous,
             forceRevision: nextRevision(previous.forceRevision),
+            units: materialized.units,
+            encounter: encounter.entry,
         });
         if (!capturesAreCurrent(captures)) {
             return readOnly('READY_RUNTIME_SERIALIZATION_FAILED', 'A ready runtime changed while persistence was prepared');
@@ -293,13 +290,32 @@ export async function inspectSerializedCBTForceV2(
     return validateSerializedCBTForceV2(raw);
 }
 
-function captureReadyUnits(units: readonly ReadyClassicUnit[]): readonly CapturedReadyUnit[] {
+function captureReadyUnits(
+    units: readonly ReadyClassicUnit[],
+    previous?: SerializedCBTForceV2,
+): readonly CapturedReadyUnit[] {
     const ids = new Set<string>();
+    const previousById = new Map(previous?.units.flatMap(entry => entry.kind === 'ready'
+        ? [[entry.instanceId, entry] as const]
+        : []));
     return Object.freeze(units.map(ready => {
-        const serialized = ready.serialize();
         const revision = ready.revision();
+        const previousEntry = previousById.get(ready.instanceId);
+        const serialized = previousEntry
+            && previousEntry.stateRevision === revision
+            && jsonValuesEqual(
+                previousEntry.unit.deployment.values.crewAssignment,
+                ready.getCrewAssignment(),
+            )
+            ? previousEntry.unit
+            : ready.serialize();
+        const sourceRef = ready.getSourceRef();
         if (serialized.instanceId !== ready.instanceId || serialized.stateRevision !== revision) {
             throw new Error(`Ready runtime ${ready.instanceId} serialized a different identity or revision`);
+        }
+        if (serialized.entity.provider !== sourceRef.provider
+            || serialized.entity.uuid !== sourceRef.uuid) {
+            throw new Error(`Ready runtime ${ready.instanceId} serialized a different native source`);
         }
         if (ids.has(ready.instanceId)) throw new Error(`Duplicate ready runtime ${ready.instanceId}`);
         ids.add(ready.instanceId);
@@ -321,7 +337,11 @@ function capturesAreCurrent(captures: readonly CapturedReadyUnit[]): boolean {
 function materializeReadyEntries(
     previous: SerializedCBTForceV2,
     captures: readonly CapturedReadyUnit[],
-): { readonly kind: 'ready'; readonly units: readonly SerializedForceUnitEntryV2[] }
+): {
+    readonly kind: 'ready';
+    readonly units: readonly SerializedForceUnitEntryV2[];
+    readonly changed: boolean;
+}
     | Extract<CBTForcePersistenceResultV2, { readonly kind: 'read-only' }> {
     const expected = previous.units.filter(entry => entry.kind === 'ready');
     const byId = new Map(captures.map(capture => [capture.instanceId, capture] as const));
@@ -330,6 +350,7 @@ function materializeReadyEntries(
     }
 
     const units: SerializedForceUnitEntryV2[] = [];
+    let changed = false;
     for (const entry of previous.units) {
         if (entry.kind === 'deferred') {
             units.push(entry);
@@ -342,8 +363,13 @@ function materializeReadyEntries(
         if (capture.revision < entry.stateRevision) {
             return readOnly('READY_RUNTIME_REVISION_REGRESSION', `Ready runtime ${entry.instanceId} regressed its revision`);
         }
+        if (capture.revision === entry.stateRevision && capture.serialized === entry.unit) {
+            units.push(entry);
+            continue;
+        }
         // stateRevision belongs to combat state. An immutable wrapper replacement may change
         // deployment metadata at the same combat revision; the enclosing force revision records it.
+        changed = true;
         units.push(Object.freeze({
             kind: 'ready' as const,
             instanceId: capture.instanceId,
@@ -351,21 +377,34 @@ function materializeReadyEntries(
             unit: capture.serialized,
         }));
     }
-    return Object.freeze({ kind: 'ready' as const, units: Object.freeze(units) });
+    return Object.freeze({
+        kind: 'ready' as const,
+        units: changed ? Object.freeze(units) : previous.units,
+        changed,
+    });
 }
 
 function materializeEncounter(
     previous: SerializedForceEncounterEntryV2,
     next: SerializedCBTEncounterStateV2 | undefined,
-): { readonly kind: 'ready'; readonly entry: SerializedForceEncounterEntryV2 }
+): {
+    readonly kind: 'ready';
+    readonly entry: SerializedForceEncounterEntryV2;
+    readonly changed: boolean;
+}
     | Extract<CBTForcePersistenceResultV2, { readonly kind: 'read-only' }> {
-    if (!next) return Object.freeze({ kind: 'ready' as const, entry: previous });
+    if (!next || next === previous.state) {
+        return Object.freeze({ kind: 'ready' as const, entry: previous, changed: false });
+    }
     if (next.encounterRevision < previous.encounterRevision) {
         return readOnly('ENCOUNTER_REVISION_REGRESSION', 'The encounter revision regressed');
     }
     if (next.encounterRevision === previous.encounterRevision
         && !jsonValuesEqual(next, previous.state)) {
         return readOnly('ENCOUNTER_UNREVISIONED_CHANGE', 'The encounter changed without advancing its revision');
+    }
+    if (next.encounterRevision === previous.encounterRevision) {
+        return Object.freeze({ kind: 'ready' as const, entry: previous, changed: false });
     }
     return Object.freeze({
         kind: 'ready' as const,
@@ -374,6 +413,7 @@ function materializeEncounter(
             state: next,
             ...(previous.recovery === undefined ? {} : { recovery: previous.recovery }),
         }),
+        changed: true,
     });
 }
 

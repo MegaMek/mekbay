@@ -31,7 +31,6 @@ export interface SetAmmoDialogData {
 
 @Component({
     selector: 'set-ammo-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [SetAmmoDropdownComponent, AdvancementTimelineComponent],
     host: {

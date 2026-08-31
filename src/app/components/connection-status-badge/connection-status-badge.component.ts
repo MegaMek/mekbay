@@ -8,7 +8,6 @@ import { WsService, type ConnectionStatusPhase } from '../../services/ws.service
 
 @Component({
     selector: 'connection-status-badge',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './connection-status-badge.component.html',
     styleUrl: './connection-status-badge.component.scss',

@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal, DestroyRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
@@ -44,6 +43,7 @@ export interface UnitDetailsDialogData {
     unitIndex: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
+    /** Search normalization context keyed by unit UUID. */
     searchResultContexts?: ReadonlyMap<string, UnitSearchNormalizationMatch>;
     hideAddButton?: boolean;
     /** When true, ADD only emits the unit without adding to force */
@@ -64,9 +64,9 @@ export interface UnitDetailsChangeAction {
 @Component({
     selector: 'unit-details-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent, UnitDetailsFooterComponent],
+    imports: [BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent, UnitDetailsFooterComponent],
     templateUrl: './unit-details-dialog.component.html',
-    styleUrls: ['./unit-details-dialog.component.css'],
+    styleUrl: './unit-details-dialog.component.css',
     host: {
         '[class.fluff-background]': 'hostHasFluff',
         '[style.--fluff-bg]': 'hostFluffBg'
@@ -146,8 +146,8 @@ export class UnitDetailsDialogComponent {
     });
     readonly searchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const currentUnit = this.unitList()[this.unitIndex()];
-        const unitName = currentUnit instanceof ASForceUnit ? currentUnit.getSummary().name : currentUnit?.name;
-        return unitName ? this.data.searchResultContexts?.get(unitName) ?? null : null;
+        const unitUuid = currentUnit instanceof ASForceUnit ? currentUnit.getSummary().uuid : currentUnit?.uuid;
+        return unitUuid ? this.data.searchResultContexts?.get(unitUuid) ?? null : null;
     });
     gunnerySkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
@@ -166,8 +166,8 @@ export class UnitDetailsDialogComponent {
     isSwipeAnimating = signal(false);
     incomingUnit = signal<UnitSummary | null>(null);
     readonly incomingSearchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
-        const unitName = this.incomingUnit()?.name;
-        return unitName ? this.data.searchResultContexts?.get(unitName) ?? null : null;
+        const unitUuid = this.incomingUnit()?.uuid;
+        return unitUuid ? this.data.searchResultContexts?.get(unitUuid) ?? null : null;
     });
     readonly incomingGunnerySkill = computed<number | undefined>(() => {
         const context = this.incomingSearchResultContext();

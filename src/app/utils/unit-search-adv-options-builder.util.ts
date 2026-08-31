@@ -33,7 +33,13 @@ interface BuildUnitSearchAdvOptionsRequest {
         displayNameFn?: (value: string) => string | undefined,
         contextUnitIds?: ReadonlySet<string>,
         availabilityMode?: 'indexed' | 'all' | 'omit',
-    ) => { name: string; img?: string; displayName?: string; available?: boolean }[];
+    ) => {
+        name: string;
+        img?: string;
+        displayName?: string;
+        minimumFieldLabels?: readonly string[];
+        available?: boolean;
+    }[];
     buildForcePackDropdownOptions: (
         snapshot: AdvOptionsContextSnapshot,
         contextUnits: UnitSummary[],
@@ -403,10 +409,20 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                 const optionsWithAvailability = sortedNames.map(name => {
                     const normalizedName = isCountableFilter ? name.toLowerCase() : name;
                     const metadata = indexedOptionMetadata?.get(name);
-                    const option: { name: string; img?: string; displayName?: string; available: boolean; count?: number } = {
+                    const option: {
+                        name: string;
+                        img?: string;
+                        displayName?: string;
+                        minimumFieldLabels?: readonly string[];
+                        available: boolean;
+                        count?: number;
+                    } = {
                         name,
                         ...(metadata?.img ? { img: metadata.img } : {}),
                         ...(metadata?.displayName ? { displayName: metadata.displayName } : {}),
+                        ...(metadata?.minimumFieldLabels
+                            ? { minimumFieldLabels: metadata.minimumFieldLabels }
+                            : {}),
                         available: availableNameSet.has(normalizedName) || availableNameSet.has(name),
                     };
 

@@ -30,14 +30,21 @@ import {
 } from './unit-catalog/unit-catalog.types';
 import { CBTAutomationService } from './cbt-automation.service';
 import { DirectNonMekAutomationService } from './direct-non-mek-automation.service';
+import { OptionsService } from './options.service';
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5f1');
 
 describe('DirectNonMekAutomationService', () => {
     let resolveAutomation: jasmine.Spy;
     let service: DirectNonMekAutomationService;
+    let automationModes: Record<string, 'yes' | 'no' | 'ask'>;
 
     beforeEach(() => {
+        automationModes = {
+            heatAndDissipationResolution: 'yes',
+            heatEffectsCheck: 'ask',
+            pilotHitsAndConsciousnessCheck: 'ask',
+        };
         resolveAutomation = jasmine.createSpy('resolve').and.callFake(
             async (_key: string, events: readonly { readonly id: string }[]) =>
                 new Set(events.map(event => event.id)),
@@ -46,6 +53,10 @@ describe('DirectNonMekAutomationService', () => {
             providers: [
                 DirectNonMekAutomationService,
                 { provide: CBTAutomationService, useValue: { resolve: resolveAutomation } },
+                {
+                    provide: OptionsService,
+                    useValue: { cbtAutomationMode: (key: string) => automationModes[key] ?? 'ask' },
+                },
             ],
         });
         service = TestBed.inject(DirectNonMekAutomationService);
@@ -76,6 +87,133 @@ describe('DirectNonMekAutomationService', () => {
         }));
     });
 
+    it('cancels end turn when the heat review is closed', async () => {
+        const harness = createHarness();
+        setHeat(harness.runtime, 10);
+        resolveAutomation.and.resolveTo(null);
+        const command: NonMekUnitCommand = {
+            kind: 'end-turn',
+            expectedRevision: harness.runtime.revision(),
+            heatPolicy: 'automatic',
+        };
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, command);
+
+        expect(prepared).toEqual(jasmine.objectContaining({ command, cancelled: true }));
+        expect(resolveAutomation).toHaveBeenCalledWith(
+            'heatAndDissipationResolution',
+            jasmine.any(Array),
+            jasmine.objectContaining({ allowCancel: true }),
+        );
+    });
+
+    it('cancels an aerospace heat-effect review before mutating the turn', async () => {
+        const harness = createHarness();
+        setHeat(harness.runtime, 30);
+        resolveAutomation.and.callFake(async (key: string, events: readonly { readonly id: string }[]) =>
+            key === 'heatEffectsCheck' ? null : new Set(events.map(event => event.id)));
+        const command: NonMekUnitCommand = {
+            kind: 'end-turn',
+            expectedRevision: harness.runtime.revision(),
+            heatPolicy: 'automatic',
+        };
+        const revisionBefore = harness.runtime.revision();
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, command);
+
+        expect(prepared).toEqual(jasmine.objectContaining({ command, cancelled: true }));
+        expect(harness.runtime.revision()).toBe(revisionBefore);
+        expect(harness.runtime.hasCondition('shutdown')).toBeFalse();
+    });
+
+    it('reviews non-Mek consciousness recovery before committing End Phase', async () => {
+        const harness = createHarness();
+        const pilotId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
+        expect(harness.runtime.dispatch({
+            kind: 'set-crew-state',
+            expectedRevision: harness.runtime.revision(),
+            positionId: pilotId,
+            wounds: 1,
+            unconscious: true,
+            ejected: false,
+        }).accepted).toBeTrue();
+        spyOn(Math, 'random').and.returnValue(0.99);
+        const command: NonMekUnitCommand = {
+            kind: 'end-phase',
+            expectedRevision: harness.runtime.revision(),
+        };
+
+        const prepared = await service.prepareCommand(
+            harness.force,
+            harness.instanceId,
+            command,
+        );
+        const result = await harness.dispatch(prepared.command);
+        expect(result.accepted).toBeTrue();
+        expect(await service.afterCommand(
+            harness.force,
+            harness.instanceId,
+            prepared,
+            result,
+            harness.dispatch,
+        )).toBeTrue();
+
+        expect(harness.runtime.query().crewState(pilotId).unconscious).toBeFalse();
+        expect(resolveAutomation).toHaveBeenCalledWith(
+            'pilotHitsAndConsciousnessCheck',
+            jasmine.any(Array),
+            jasmine.objectContaining({ allowCancel: true }),
+        );
+    });
+
+    it('keeps a non-Mek phase uncommitted when recovery review closes', async () => {
+        const harness = createHarness();
+        const pilotId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
+        expect(harness.runtime.dispatch({
+            kind: 'set-crew-state',
+            expectedRevision: harness.runtime.revision(),
+            positionId: pilotId,
+            wounds: 1,
+            unconscious: true,
+            ejected: false,
+        }).accepted).toBeTrue();
+        const revision = harness.runtime.revision();
+        resolveAutomation.and.resolveTo(null);
+        const command: NonMekUnitCommand = {
+            kind: 'end-phase',
+            expectedRevision: revision,
+        };
+
+        const prepared = await service.prepareCommand(
+            harness.force,
+            harness.instanceId,
+            command,
+        );
+
+        expect(prepared.cancelled).toBeTrue();
+        expect(harness.runtime.revision()).toBe(revision);
+        expect(harness.runtime.query().crewState(pilotId).unconscious).toBeTrue();
+    });
+
+    it('uses one aerospace review when heat, effects, and pilot hits all ask', async () => {
+        automationModes['heatAndDissipationResolution'] = 'ask';
+        const harness = createHarness();
+        setHeat(harness.runtime, 30);
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+            kind: 'end-turn',
+            expectedRevision: harness.runtime.revision(),
+            heatPolicy: 'manual',
+        });
+
+        expect(prepared.cancelled).toBeUndefined();
+        expect(resolveAutomation).toHaveBeenCalledTimes(1);
+        expect(resolveAutomation.calls.argsFor(0)[1][0]).toEqual(jasmine.objectContaining({
+            event: 'Heat, dissipation, effects, and pilot hits',
+            effects: jasmine.arrayContaining([jasmine.stringMatching(/^Heat Shutdown Check:/)]),
+        }));
+    });
+
     it('applies aerospace shutdown, random movement, and pilot damage as typed commands', async () => {
         const harness = createHarness();
         setHeat(harness.runtime, 30);
@@ -94,7 +232,37 @@ describe('DirectNonMekAutomationService', () => {
         expect(resolveAutomation.calls.allArgs().map(args => args[0]))
             .toContain('heatEffectsCheck');
         expect(resolveAutomation.calls.allArgs().map(args => args[0]))
-            .toContain('pilotHitsAndConsciousnessCheck');
+            .not.toContain('pilotHitsAndConsciousnessCheck');
+        const heatEffectEvents = resolveAutomation.calls.allArgs()
+            .filter(args => args[0] === 'heatEffectsCheck')
+            .flatMap(args => args[1] as readonly { readonly event: string }[]);
+        expect(heatEffectEvents).toHaveSize(1);
+        expect(heatEffectEvents[0].event).toBe('Aerospace Heat Effects and Pilot Hits');
+    });
+
+    it('settles aerospace heat consequences before resetting the turn', async () => {
+        const harness = createHarness();
+        setHeat(harness.runtime, 30);
+        spyOn(Math, 'random').and.returnValue(0);
+        const turn = harness.runtime.snapshot().turn.turnCounter;
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+            kind: 'end-turn',
+            expectedRevision: harness.runtime.revision(),
+        });
+
+        const settled = await service.settleBeforeCommand(
+            harness.force,
+            harness.instanceId,
+            prepared,
+            harness.dispatch,
+        );
+
+        expect(settled).not.toBeNull();
+        expect(harness.runtime.hasCondition('shutdown')).toBeTrue();
+        expect(harness.runtime.snapshot().turn.turnCounter).toBe(turn);
+        const result = await harness.dispatch(settled!.command);
+        expect(result.accepted).toBeTrue();
+        expect(harness.runtime.snapshot().turn.turnCounter).toBe(turn + 1);
     });
 
     it('resolves a later aerospace Control Roll after heat-induced random movement', async () => {
@@ -110,8 +278,9 @@ describe('DirectNonMekAutomationService', () => {
         expect(harness.runtime.hasCondition('out-of-control')).toBeFalse();
         const heatEvents = resolveAutomation.calls.allArgs()
             .filter(args => args[0] === 'heatEffectsCheck')
-            .flatMap(args => args[1] as readonly { readonly event: string }[]);
-        expect(heatEvents.map(event => event.event)).toContain('Aerospace Control Roll');
+            .flatMap(args => args[1] as readonly { readonly effects?: readonly string[] }[]);
+        expect(heatEvents.flatMap(event => event.effects ?? []))
+            .toContain(jasmine.stringMatching(/^Aerospace Control Roll:/));
     });
 
     it('uses operational CASE to reduce aerospace ammunition explosions to one SI per 20 damage', async () => {
@@ -125,10 +294,10 @@ describe('DirectNonMekAutomationService', () => {
 
         const heatEvents = resolveAutomation.calls.allArgs()
             .filter(args => args[0] === 'heatEffectsCheck')
-            .flatMap(args => args[1] as readonly { readonly event: string; readonly description: string }[]);
-        expect(heatEvents.map(event => event.event)).toContain('Heat Ammunition Explosion Check');
-        expect(heatEvents.find(event => event.event === 'Heat Ammunition Explosion Check')?.description)
-            .toContain('(failed)');
+            .flatMap(args => args[1] as readonly { readonly effects?: readonly string[] }[]);
+        expect(heatEvents).toHaveSize(1);
+        expect(heatEvents.flatMap(event => event.effects ?? []))
+            .toContain(jasmine.stringMatching(/^Heat Ammunition Explosion Check:.*\(failed\)/));
         expect(harness.runtime.query().componentStatus(harness.ammoId!, 'committed'))
             .toBe('destroyed');
         const si = [...harness.runtime.getIndex().locations.values()]
@@ -207,11 +376,18 @@ async function executeEndTurn(
         kind: 'end-turn',
         expectedRevision: harness.runtime.revision(),
     });
-    const result = await harness.dispatch(prepared.command);
-    await service.afterCommand(
+    const settled = await service.settleBeforeCommand(
         harness.force,
         harness.instanceId,
         prepared,
+        harness.dispatch,
+    );
+    if (settled === null) throw new Error('Failed to settle reviewed end-turn effects');
+    const result = await harness.dispatch(settled.command);
+    await service.afterCommand(
+        harness.force,
+        harness.instanceId,
+        settled,
         result,
         harness.dispatch,
     );

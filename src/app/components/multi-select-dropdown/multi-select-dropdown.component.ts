@@ -65,11 +65,10 @@ type OptionScrollAlignment = 'nearest' | 'center';
 
 @Component({
     selector: 'multi-select-dropdown',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [ScrollingModule, OverlayModule],
     templateUrl: './multi-select-dropdown.component.html',
-    styleUrls: ['./multi-select-dropdown.component.css']
+    styleUrl: './multi-select-dropdown.component.css'
 })
 export class MultiSelectDropdownComponent {
     private static nextId = 0;

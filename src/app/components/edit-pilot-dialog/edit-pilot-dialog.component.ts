@@ -120,14 +120,12 @@ export function buildCrewSkillPreviewEntries(
 
 @Component({
     selector: 'edit-pilot-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
     templateUrl: './edit-pilot-dialog.component.html',
-    styleUrls: ['./edit-pilot-dialog.component.scss']
+    styleUrl: './edit-pilot-dialog.component.scss'
 })
 export class EditPilotDialogComponent {
     private commanderSelectionRequestId = 0;

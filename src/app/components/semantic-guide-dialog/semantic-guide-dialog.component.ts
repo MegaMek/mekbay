@@ -14,7 +14,7 @@ import { SemanticGuideComponent } from '../semantic-guide/semantic-guide.compone
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [BaseDialogComponent, SemanticGuideComponent],
     templateUrl: './semantic-guide-dialog.component.html',
-    styleUrls: ['./semantic-guide-dialog.component.css']
+    styleUrl: './semantic-guide-dialog.component.css'
 })
 export class SemanticGuideDialogComponent {
     private dialogRef = inject(DialogRef);

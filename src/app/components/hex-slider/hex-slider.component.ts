@@ -17,8 +17,6 @@ import {
 
 @Component({
     selector: 'hex-slider',
-    standalone: true,
-    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './hex-slider.component.html',
     styleUrl: './hex-slider.component.scss'

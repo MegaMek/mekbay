@@ -120,6 +120,39 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         expect(instance.query().mekPilotChecks()).toEqual([]);
     });
 
+    it('previews a phase boundary without committing pending damage or advancing revision', () => {
+        const { instance, index } = createDirectMekRuntimeFixture('total-warfare');
+        const slot = [...index.slots.values()].find(candidate =>
+            index.locations.get(candidate.locationId)?.code === 'LL'
+            && candidate.componentIds.some(componentId => {
+                const component = index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Foot Actuator';
+            }))!;
+        expect(instance.dispatch({
+            type: 'hit-critical',
+            commandId: asCommandId('preview-phase:hit'),
+            expectedRevision: instance.query().stateRevision,
+            slotId: slot.id,
+            hits: 1,
+            target: 'pending',
+        }).accepted).toBeTrue();
+        const revision = instance.query().stateRevision;
+
+        const preview = instance.query().previewEndPhase();
+
+        expect(preview.accepted).toBeTrue();
+        if (!preview.accepted) return;
+        expect(preview.state.stateRevision).toBe(asStateRevision(revision + 1));
+        expect(preview.state.movementPsr.checks).toContain(jasmine.objectContaining({
+            reason: 'Leg Actuator hit',
+            status: 'pending',
+        }));
+        expect(instance.query().stateRevision).toBe(revision);
+        expect(instance.query().criticalHits(slot.id, 'committed')).toBe(0);
+        expect(instance.query().criticalHits(slot.id, 'preview')).toBe(1);
+        expect(instance.query().mekPilotChecks()).toEqual([]);
+    });
+
     it('commits a pending reattachment without treating it as internal damage', () => {
         const { instance, index } = createDirectMekRuntimeFixture();
         const leg = [...index.locations.values()].find(location => location.code === 'LL')!;

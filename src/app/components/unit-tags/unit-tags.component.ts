@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import type { UnitSummary, PublicTagInfo, UnitTagEntry } from '../../models/unit-summary.model';
 import { PublicTagsService } from '../../services/public-tags.service';
 import { TagsService } from '../../services/tags.service';
@@ -25,7 +24,6 @@ export interface TagClickEvent {
 @Component({
     selector: 'unit-tags',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
     templateUrl: './unit-tags.component.html',
     styleUrl: './unit-tags.component.scss'
 })

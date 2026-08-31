@@ -15,7 +15,6 @@ export interface CompactFilterMenuOption {
 
 @Component({
     selector: 'compact-filter-menu',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [CdkMenuModule],
     host: {

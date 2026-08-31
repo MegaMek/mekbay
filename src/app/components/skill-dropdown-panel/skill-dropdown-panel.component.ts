@@ -15,7 +15,6 @@ export interface SkillPreviewEntry {
 @Component({
     selector: 'skill-dropdown-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     template: `
         <div class="dropdown-panel glass has-shadow framed-borders" data-scroll-container>
             @if (title()) {

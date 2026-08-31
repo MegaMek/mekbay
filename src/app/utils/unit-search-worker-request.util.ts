@@ -29,6 +29,8 @@ interface BuildWorkerExecutionQueryArgs {
     effectiveTextSearch: string;
     /** Original committed clauses, preserved so repeated constraints are not flattened. */
     semanticTokenTexts?: readonly string[];
+    /** Raw grouped query to preserve before applying UI-only filters. */
+    preservedQuery?: string;
     gameSystem: GameSystem;
     totalRangesCache: Record<string, [number, number]>;
 }
@@ -107,7 +109,6 @@ export function projectUnitSearchWorkerUnit(
 
     return {
         uuid: summary.uuid,
-        provider: summary.provider,
         name: summary.name,
         id: summary.id,
         chassis: summary.chassis,
@@ -123,6 +124,7 @@ export function projectUnitSearchWorkerUnit(
         omni: summary.omni,
         source: [...summary.source],
         published: [...summary.published],
+        rulesRefs: summary.rulesRefs.map(bucket => [...bucket]),
         canon: summary.canon,
         canAntiMech: summary.canAntiMech,
         role: summary.role,
@@ -204,15 +206,21 @@ export function buildWorkerExecutionQuery({
     effectiveFilterState,
     effectiveTextSearch,
     semanticTokenTexts = [],
+    preservedQuery,
     gameSystem,
     totalRangesCache,
 }: BuildWorkerExecutionQueryArgs): string {
+    const groupedQuery = preservedQuery?.trim();
     const uiFilterText = filterStateToSemanticText(
         effectiveFilterState,
-        escapePlainTextForWorkerExecutionQuery(effectiveTextSearch),
+        groupedQuery ? '' : escapePlainTextForWorkerExecutionQuery(effectiveTextSearch),
         gameSystem,
         totalRangesCache,
     ).trim();
+
+    if (groupedQuery) {
+        return uiFilterText ? `(${groupedQuery}) ${uiFilterText}` : groupedQuery;
+    }
 
     return [uiFilterText, ...semanticTokenTexts]
         .map(part => part.trim())

@@ -13,10 +13,8 @@ export type Phase = 'movement' | 'weapon' | 'physical' | 'heat';
 
 @Component({
     selector: 'mb-phase-selector',
-    standalone: true,
-    imports: [],
     templateUrl: './phase-selector.component.html',
-    styleUrls: ['./phase-selector.component.scss'],
+    styleUrl: './phase-selector.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PhaseSelectorComponent {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { DestroyRef, Directive, ElementRef, inject, input } from '@angular/core';
+import { DestroyRef, Directive, ElementRef, computed, inject, input } from '@angular/core';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { TooltipComponent, type TooltipContent, type TooltipType } from '../components/tooltip/tooltip.component';
@@ -15,19 +15,22 @@ const MOUSE_LOCK_DELAY = 2000;
 
 @Directive({
     selector: '[tooltip]',
-    standalone: true,
     host: {
-        '[attr.data-tooltip-host]': 'tooltipContent() ? "" : null',
+        '[attr.data-tooltip-host]': 'hasTooltipContent() ? "" : null',
     },
 })
 export class TooltipDirective {
     readonly tooltipContent = input<TooltipContent | null>(null, { alias: 'tooltip' });
     readonly tooltipType = input<TooltipType>('info');
     readonly tooltipDelay = input(400); // ms
+    readonly hasTooltipContent = computed(() => {
+        const content = this.tooltipContent();
+        return typeof content === 'string' ? content.length > 0 : (content?.length ?? 0) > 0;
+    });
 
-    private overlay = inject(Overlay);
-    private host = inject(ElementRef<HTMLElement>);
-    private destroyRef = inject(DestroyRef);
+    private readonly overlay = inject(Overlay);
+    private readonly host = inject(ElementRef<HTMLElement>);
+    private readonly destroyRef = inject(DestroyRef);
     private overlayRef: OverlayRef | null = null;
     private showTimeout: ReturnType<typeof setTimeout> | null = null;
     private lockTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -134,7 +137,7 @@ export class TooltipDirective {
 
     private show(lockOnHover: boolean) {
         const tooltipContent = this.tooltipContent();
-        if (!tooltipContent) return;
+        if (!this.hasTooltipContent() || tooltipContent === null) return;
         if (this.isVisible) return;
 
         // create overlay positioned relative to host native element
@@ -199,11 +202,9 @@ export class TooltipDirective {
 
         const portal = new ComponentPortal(TooltipComponent);
         const compRef = overlayRef.attach(portal);
-        compRef.instance.content = tooltipContent;
-        compRef.instance.type = this.tooltipType();
-        compRef.instance.lockProgressDuration = lockOnHover ? MOUSE_LOCK_DELAY : 0;
-        // ensure OnPush component renders immediately
-        compRef.changeDetectorRef.detectChanges();
+        compRef.setInput('content', tooltipContent);
+        compRef.setInput('type', this.tooltipType());
+        compRef.setInput('lockProgressDuration', lockOnHover ? MOUSE_LOCK_DELAY : 0);
 
         this.isVisible = true;
         this.isMouseLocked = false;

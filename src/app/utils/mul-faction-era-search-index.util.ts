@@ -7,12 +7,12 @@ import type { UnitSearchWorkerFactionEraSnapshot } from './unit-search-worker-pr
 /**
  * Runtime form of the compact MUL faction/era snapshot.
  *
- * Exact faction/era pairs are expanded to search identity keys only when a
+ * Exact faction/era pairs are expanded to unit UUIDs only when a
  * query touches them. This avoids both a catalog scan and a fully expanded
  * faction-by-era index containing millions of repeated identity strings.
  */
 export interface MulFactionEraSearchIndex {
-    readonly unitIdentityKeysByMulId: ReadonlyMap<number, readonly string[]>;
+    readonly unitUuidsByMulId: ReadonlyMap<number, readonly string[]>;
     readonly factionEraReferenceIds: ReadonlyMap<string, ReadonlyMap<string, readonly number[]>>;
     readonly factionEraUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
 }
@@ -21,9 +21,9 @@ export function createMulFactionEraSearchIndex(
     snapshot: UnitSearchWorkerFactionEraSnapshot,
 ): MulFactionEraSearchIndex {
     return {
-        unitIdentityKeysByMulId: new Map(
-            Object.entries(snapshot.unitIdentityKeysByMulId)
-                .map(([mulId, identityKeys]) => [Number(mulId), identityKeys] as const),
+        unitUuidsByMulId: new Map(
+            Object.entries(snapshot.unitUuidsByMulId)
+                .map(([mulId, unitUuids]) => [Number(mulId), unitUuids] as const),
         ),
         factionEraReferenceIds: new Map(
             Object.entries(snapshot.referenceIdsByEraAndFaction)
@@ -36,7 +36,7 @@ export function createMulFactionEraSearchIndex(
     };
 }
 
-function getExactFactionEraUnitIdentityKeys(
+function getExactFactionEraUnitUuids(
     index: MulFactionEraSearchIndex,
     eraName: string,
     factionName: string,
@@ -52,8 +52,8 @@ function getExactFactionEraUnitIdentityKeys(
         const expanded = new Set<string>();
         const referenceIds = index.factionEraReferenceIds.get(eraName)?.get(factionName) ?? [];
         for (const referenceId of referenceIds) {
-            for (const identityKey of index.unitIdentityKeysByMulId.get(referenceId) ?? []) {
-                expanded.add(identityKey);
+            for (const unitUuid of index.unitUuidsByMulId.get(referenceId) ?? []) {
+                expanded.add(unitUuid);
             }
         }
         exactPair = expanded;
@@ -63,7 +63,7 @@ function getExactFactionEraUnitIdentityKeys(
     return exactPair;
 }
 
-export function getMulFactionEraUnitIdentityKeys(
+export function getMulFactionEraUnitUuids(
     index: MulFactionEraSearchIndex,
     eraNames: readonly string[],
     factionNames: readonly string[],
@@ -73,17 +73,17 @@ export function getMulFactionEraUnitIdentityKeys(
     }
 
     if (eraNames.length === 1 && factionNames.length === 1) {
-        return getExactFactionEraUnitIdentityKeys(index, eraNames[0], factionNames[0]);
+        return getExactFactionEraUnitUuids(index, eraNames[0], factionNames[0]);
     }
 
-    const unitIdentityKeys = new Set<string>();
+    const unitUuids = new Set<string>();
     for (const eraName of eraNames) {
         for (const factionName of factionNames) {
-            for (const identityKey of getExactFactionEraUnitIdentityKeys(index, eraName, factionName)) {
-                unitIdentityKeys.add(identityKey);
+            for (const unitUuid of getExactFactionEraUnitUuids(index, eraName, factionName)) {
+                unitUuids.add(unitUuid);
             }
         }
     }
 
-    return unitIdentityKeys;
+    return unitUuids;
 }

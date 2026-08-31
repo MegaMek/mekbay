@@ -8,7 +8,6 @@ import type { PageViewerPageDescriptor } from '../../internal/types';
 
 @Component({
     selector: 'viewer-page',
-    standalone: true,
     templateUrl: './viewer-page.component.html',
     styleUrl: './viewer-page.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush

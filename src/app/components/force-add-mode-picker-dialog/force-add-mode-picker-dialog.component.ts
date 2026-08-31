@@ -20,7 +20,6 @@ export interface ForceAddModePickerData {
 
 @Component({
     selector: 'force-add-mode-picker-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'fullscreen-dialog-host glass'

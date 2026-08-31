@@ -1078,7 +1078,7 @@ export function isComplexQuery(ast: GroupASTNode): boolean {
 export interface EvaluatorContext {
     /** Get a property value from a unit by key path (e.g., 'as.PV', 'bv') */
     getProperty: (unit: any, key: string) => any;
-    /** Get a stable unit identifier for candidate prefiltering. */
+    /** Get the unit UUID used by indexed candidate postings. */
     getUnitId: (unit: any) => string;
     /** Get adjusted BV for a unit (with pilot skill modifiers) */
     getAdjustedBV?: (unit: any) => number;
@@ -1130,12 +1130,12 @@ export interface EvaluatorContext {
      * @returns The display name, or undefined if no lookup exists
      */
     getDisplayName?: (filterKey: string, value: string) => string | undefined;
-    /** Get indexed unit ids for an exact stored filter value. */
-    getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<string | number> | undefined;
+    /** Get indexed unit UUIDs for an exact stored filter value. */
+    getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<string> | undefined;
     /** Get all stored values available in an index for a filter key. */
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
     /** Get pre-parsed Alpha Strike special tuples for a unit. */
-    getIndexedASSpecials?: (unitId: string) => ParsedASSpecials | undefined;
+    getIndexedASSpecials?: (unitUuid: string) => ParsedASSpecials | undefined;
 }
 
 type ParsedRangeValue =
@@ -1235,7 +1235,7 @@ interface ExternalFilterRuntimeCache {
     allNamesByKey: Map<string, string[]>;
     expandedValuesByKey: Map<string, Map<string, string[]>>;
     unitMatchedNamesByKey: WeakMap<any, Map<string, Set<string>>>;
-    indexedResultsByKey: Map<string, { mode: 'match' | 'exclude'; unitIds: Set<string | number> }>;
+    indexedResultsByKey: Map<string, { mode: 'match' | 'exclude'; unitIds: Set<string> }>;
 }
 
 const externalFilterRuntimeCache = new WeakMap<EvaluatorContext, ExternalFilterRuntimeCache>();
@@ -1247,7 +1247,7 @@ function getExternalFilterRuntimeCache(context: EvaluatorContext): ExternalFilte
             allNamesByKey: new Map<string, string[]>(),
             expandedValuesByKey: new Map<string, Map<string, string[]>>(),
             unitMatchedNamesByKey: new WeakMap<any, Map<string, Set<string>>>(),
-            indexedResultsByKey: new Map<string, { mode: 'match' | 'exclude'; unitIds: Set<string | number> }>(),
+            indexedResultsByKey: new Map<string, { mode: 'match' | 'exclude'; unitIds: Set<string> }>(),
         };
         externalFilterRuntimeCache.set(context, cache);
     }
@@ -1324,19 +1324,9 @@ function getUnitMatchedExternalNames(
         runtimeCache.unitMatchedNamesByKey.set(unit, unitCache);
     }
 
-    const scopeParts: string[] = [];
-    if (activeScope?.eraNames && activeScope.eraNames.length > 0) {
-        scopeParts.push(`era=${[...activeScope.eraNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
-    }
-    if (activeScope?.factionNames && activeScope.factionNames.length > 0) {
-        scopeParts.push(`faction=${[...activeScope.factionNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
-    }
-    if (activeScope?.availabilityFromNames && activeScope.availabilityFromNames.length > 0) {
-        scopeParts.push(`from=${[...activeScope.availabilityFromNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
-    }
-
-    const cacheKey = scopeParts.length > 0
-        ? `${filterKey}\u0001${scopeParts.join('\u0002')}`
+    const scopeKey = buildExternalFilterScopeCacheKey(activeScope);
+    const cacheKey = scopeKey
+        ? `${filterKey}\u0001${scopeKey}`
         : filterKey;
     const cached = unitCache.get(cacheKey);
     if (cached) {
@@ -1356,19 +1346,21 @@ function getUnitMatchedExternalNames(
 
 function buildExternalFilterScopeCacheKey(activeScope?: AvailabilityFilterScope): string {
     const scopeParts: string[] = [];
+    const addNames = (key: string, names: readonly string[] | undefined): void => {
+        if (names === undefined) {
+            return;
+        }
+
+        scopeParts.push(`${key}=${[...names].map(name => name.toLowerCase()).sort().join('\u0001')}`);
+    };
 
     if (activeScope?.bridgeThroughMulMembership) {
         scopeParts.push('bridge=mul');
     }
-    if (activeScope?.eraNames && activeScope.eraNames.length > 0) {
-        scopeParts.push(`era=${[...activeScope.eraNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
-    }
-    if (activeScope?.factionNames && activeScope.factionNames.length > 0) {
-        scopeParts.push(`faction=${[...activeScope.factionNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
-    }
-    if (activeScope?.availabilityFromNames && activeScope.availabilityFromNames.length > 0) {
-        scopeParts.push(`from=${[...activeScope.availabilityFromNames].map(name => name.toLowerCase()).sort().join('\u0001')}`);
-    }
+    addNames('era', activeScope?.eraNames);
+    addNames('faction', activeScope?.factionNames);
+    addNames('from', activeScope?.availabilityFromNames);
+    addNames('rarity', activeScope?.availabilityRarityNames);
 
     return scopeParts.join('\u0002');
 }
@@ -1388,7 +1380,7 @@ function buildIndexedExternalFilterCacheKey(
 }
 
 function addIndexedExternalUnitIds(
-    target: Set<string | number>,
+    target: Set<string>,
     context: EvaluatorContext,
     filterKey: string,
     names: Iterable<string>,
@@ -1411,8 +1403,8 @@ function buildIndexedExternalUnitIdSet(
     filterKey: string,
     names: Iterable<string>,
     activeScope?: AvailabilityFilterScope,
-): Set<string | number> {
-    const unitIds = new Set<string | number>();
+): Set<string> {
+    const unitIds = new Set<string>();
     addIndexedExternalUnitIds(unitIds, context, filterKey, names, activeScope);
     return unitIds;
 }
@@ -1423,7 +1415,7 @@ function getIndexedExternalFilterResult(
     operator: SemanticOperator,
     values: readonly string[],
     activeScope?: AvailabilityFilterScope,
-): { mode: 'match' | 'exclude'; unitIds: Set<string | number> } | null {
+): { mode: 'match' | 'exclude'; unitIds: Set<string> } | null {
     if (!context.getIndexedUnitIds || !context.getIndexedFilterValues) {
         return null;
     }
@@ -1441,10 +1433,10 @@ function getIndexedExternalFilterResult(
         return cached;
     }
 
-    let result: { mode: 'match' | 'exclude'; unitIds: Set<string | number> };
+    let result: { mode: 'match' | 'exclude'; unitIds: Set<string> };
 
     if (operator === '!=') {
-        const excludedIds = new Set<string | number>();
+        const excludedIds = new Set<string>();
         for (const value of values) {
             addIndexedExternalUnitIds(
                 excludedIds,
@@ -1460,7 +1452,7 @@ function getIndexedExternalFilterResult(
             unitIds: excludedIds,
         };
     } else if (operator === '&=') {
-        let matchingIds: Set<string | number> | null = null;
+        let matchingIds: Set<string> | null = null;
 
         for (const value of values) {
             const expandedNames = expandExternalFilterValue(context, filterKey, value, allNames);
@@ -1480,7 +1472,7 @@ function getIndexedExternalFilterResult(
 
         result = {
             mode: 'match',
-            unitIds: matchingIds ?? new Set<string | number>(),
+            unitIds: matchingIds ?? new Set<string>(),
         };
     } else {
         const allowedNamesByLower = new Map<string, string>();
@@ -1501,7 +1493,7 @@ function getIndexedExternalFilterResult(
         );
 
         if (operator === '==') {
-            const excludedIds = new Set<string | number>();
+            const excludedIds = new Set<string>();
             for (const name of allNames) {
                 if (!allowedNamesByLower.has(name.toLowerCase())) {
                     addIndexedExternalUnitIds(excludedIds, context, filterKey, [name], activeScope);
@@ -1604,8 +1596,8 @@ function mergeActiveNames(
     inheritedNames: readonly string[] | undefined,
     scopedNames: readonly string[] | null,
 ): readonly string[] | undefined {
-    if (!inheritedNames || inheritedNames.length === 0) {
-        return scopedNames ? [...scopedNames] : inheritedNames;
+    if (inheritedNames === undefined) {
+        return scopedNames ? [...scopedNames] : undefined;
     }
 
     if (!scopedNames || scopedNames.length === 0) {
@@ -1622,6 +1614,20 @@ function mergeActiveNames(
     }
 
     return intersection;
+}
+
+function getAndGroupAvailabilityScope(
+    group: GroupASTNode,
+    context: EvaluatorContext,
+    activeScope?: AvailabilityFilterScope,
+): AvailabilityFilterScope {
+    return {
+        bridgeThroughMulMembership: activeScope?.bridgeThroughMulMembership,
+        eraNames: mergeActiveNames(activeScope?.eraNames, collectScopedNames(group, context, 'era')),
+        factionNames: mergeActiveNames(activeScope?.factionNames, collectScopedNames(group, context, 'faction')),
+        availabilityFromNames: mergeActiveNames(activeScope?.availabilityFromNames, collectScopedNames(group, context, 'availabilityFrom')),
+        availabilityRarityNames: activeScope?.availabilityRarityNames,
+    };
 }
 
 /**
@@ -1784,7 +1790,7 @@ function buildIndexedASSpecialCandidateSet(
     values: string[],
     context: EvaluatorContext,
     activeScope?: AvailabilityFilterScope,
-): Set<string | number> | null {
+): Set<string> | null {
     if (operator === '!=' || (operator !== '=' && operator !== '==' && operator !== '&=')) {
         return null;
     }
@@ -1806,7 +1812,7 @@ function buildIndexedCandidateSetForConfig(
     values: string[],
     context: EvaluatorContext,
     activeScope?: AvailabilityFilterScope,
-): Set<string | number> | null {
+): Set<string> | null {
     if (!context.getIndexedUnitIds || !context.getIndexedFilterValues) {
         return null;
     }
@@ -1828,7 +1834,7 @@ function buildIndexedCandidateSetForConfig(
     if (conf.external && operator !== '!=') {
         const indexedResult = getIndexedExternalFilterResult(context, conf.key, operator, values, activeScope);
         if (indexedResult && indexedResult.mode === 'match') {
-            return new Set<string | number>(indexedResult.unitIds);
+            return new Set<string>(indexedResult.unitIds);
         }
     }
 
@@ -1841,7 +1847,7 @@ function buildIndexedCandidateSetForConfig(
         return null;
     }
 
-    const addStoredValueUnits = (storedValue: string, target: Set<string | number>): void => {
+    const addStoredValueUnits = (storedValue: string, target: Set<string>): void => {
         const unitIds = context.getIndexedUnitIds?.(conf.key, storedValue, activeScope);
         if (!unitIds) {
             return;
@@ -1852,7 +1858,7 @@ function buildIndexedCandidateSetForConfig(
     };
 
     if (operator === '=' || operator === '==') {
-        const candidateIds = new Set<string | number>();
+        const candidateIds = new Set<string>();
         for (const value of values) {
             for (const storedValue of matchIndexedStoredValues(conf.key, value, context)) {
                 addStoredValueUnits(storedValue, candidateIds);
@@ -1862,9 +1868,9 @@ function buildIndexedCandidateSetForConfig(
     }
 
     if (operator === '&=') {
-        let candidateIds: Set<string | number> | null = null;
+        let candidateIds: Set<string> | null = null;
         for (const value of values) {
-            const valueCandidateIds = new Set<string | number>();
+            const valueCandidateIds = new Set<string>();
             for (const storedValue of matchIndexedStoredValues(conf.key, value, context)) {
                 addStoredValueUnits(storedValue, valueCandidateIds);
             }
@@ -1880,7 +1886,7 @@ function buildIndexedCandidateSetForConfig(
                 }
             }
         }
-        return candidateIds ?? new Set<string | number>();
+        return candidateIds ?? new Set<string>();
     }
 
     return null;
@@ -1892,7 +1898,7 @@ function buildIndexedBooleanCandidateSet(
     values: string[],
     context: EvaluatorContext,
     activeScope?: AvailabilityFilterScope,
-): Set<string | number> | null {
+): Set<string> | null {
     if (operator === '&=') {
         return null;
     }
@@ -1923,7 +1929,7 @@ function buildIndexedBooleanCandidateSet(
         }
     }
 
-    const candidateIds = new Set<string | number>();
+    const candidateIds = new Set<string>();
     for (const targetValue of targetValues) {
         const indexedIds = context.getIndexedUnitIds?.(conf.key, targetValue ? 'yes' : 'no', activeScope);
         if (!indexedIds) {
@@ -1942,7 +1948,7 @@ function getIndexedCandidateIdsForFilter(
     filter: SemanticToken,
     context: EvaluatorContext,
     activeScope?: AvailabilityFilterScope,
-): Set<string | number> | null {
+): Set<string> | null {
     const matchingFilters = ADVANCED_FILTERS.filter(f =>
         (f.semanticKey || f.key).toLowerCase() === filter.field.toLowerCase()
     );
@@ -1961,7 +1967,7 @@ function getIndexedCandidateIdsForFilter(
     for (const f of gameAgnostic) sortedFilters.push(f);
     for (const f of otherGame) sortedFilters.push(f);
 
-    const candidateSets: Set<string | number>[] = [];
+    const candidateSets: Set<string>[] = [];
     for (const conf of sortedFilters) {
         const candidateSet = buildIndexedCandidateSetForConfig(conf, filter.operator, filter.values, context, activeScope);
         if (!candidateSet) {
@@ -1970,7 +1976,7 @@ function getIndexedCandidateIdsForFilter(
         candidateSets.push(candidateSet);
     }
 
-    const combined = new Set<string | number>();
+    const combined = new Set<string>();
     for (const candidateSet of candidateSets) {
         for (const unitId of candidateSet) {
             combined.add(unitId);
@@ -1983,7 +1989,7 @@ function getIndexedCandidateIdsForNode(
     node: ASTNode,
     context: EvaluatorContext,
     activeScope?: AvailabilityFilterScope,
-): Set<string | number> | null {
+): Set<string> | null {
     switch (node.type) {
         case 'text':
             return null;
@@ -1995,21 +2001,16 @@ function getIndexedCandidateIdsForNode(
             }
 
             if (node.operator === 'AND') {
-                const nextActiveScope: AvailabilityFilterScope = {
-                    bridgeThroughMulMembership: activeScope?.bridgeThroughMulMembership,
-                    eraNames: mergeActiveNames(activeScope?.eraNames, collectScopedNames(node, context, 'era')),
-                    factionNames: mergeActiveNames(activeScope?.factionNames, collectScopedNames(node, context, 'faction')),
-                    availabilityFromNames: mergeActiveNames(activeScope?.availabilityFromNames, collectScopedNames(node, context, 'availabilityFrom')),
-                };
+                const nextActiveScope = getAndGroupAvailabilityScope(node, context, activeScope);
                 const childCandidates = node.children
                     .map(child => getIndexedCandidateIdsForNode(child, context, nextActiveScope))
-                    .filter((candidate): candidate is Set<string | number> => candidate !== null);
+                    .filter((candidate): candidate is Set<string> => candidate !== null);
 
                 if (childCandidates.length === 0) {
                     return null;
                 }
 
-                const intersection = new Set<string | number>(childCandidates[0]);
+                const intersection = new Set<string>(childCandidates[0]);
                 for (let index = 1; index < childCandidates.length; index++) {
                     const candidateSet = childCandidates[index];
                     for (const unitId of Array.from(intersection)) {
@@ -2021,7 +2022,7 @@ function getIndexedCandidateIdsForNode(
                 return intersection;
             }
 
-            const branchCandidates: Set<string | number>[] = [];
+            const branchCandidates: Set<string>[] = [];
             for (const child of node.children) {
                 const candidateSet = getIndexedCandidateIdsForNode(child, context, activeScope);
                 if (!candidateSet) {
@@ -2030,7 +2031,7 @@ function getIndexedCandidateIdsForNode(
                 branchCandidates.push(candidateSet);
             }
 
-            const union = new Set<string | number>();
+            const union = new Set<string>();
             for (const candidateSet of branchCandidates) {
                 for (const unitId of candidateSet) {
                     union.add(unitId);
@@ -2538,12 +2539,7 @@ function evaluateGroup(
     if (group.children.length === 0) return true;
     
     if (group.operator === 'AND') {
-        const nextActiveScope: AvailabilityFilterScope = {
-            bridgeThroughMulMembership: activeScope?.bridgeThroughMulMembership,
-            eraNames: mergeActiveNames(activeScope?.eraNames, collectScopedNames(group, context, 'era')),
-            factionNames: mergeActiveNames(activeScope?.factionNames, collectScopedNames(group, context, 'faction')),
-            availabilityFromNames: mergeActiveNames(activeScope?.availabilityFromNames, collectScopedNames(group, context, 'availabilityFrom')),
-        };
+        const nextActiveScope = getAndGroupAvailabilityScope(group, context, activeScope);
         // All children must match
         return group.children.every(child => evaluateASTNode(child, unit, context, nextActiveScope));
     } else {
@@ -2559,7 +2555,8 @@ function evaluateGroup(
 export function filterUnitsWithAST(
     units: any[],
     ast: GroupASTNode,
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    initialScope?: AvailabilityFilterScope,
 ): any[] {
     // If AST has no children, return all units
     if (ast.children.length === 0) return units;
@@ -2571,7 +2568,7 @@ export function filterUnitsWithAST(
 
     let candidateUnits = units;
     if (context.getIndexedUnitIds && context.getIndexedFilterValues) {
-        const candidateIds = getIndexedCandidateIdsForNode(ast, context);
+        const candidateIds = getIndexedCandidateIdsForNode(ast, context, initialScope);
         if (candidateIds) {
             candidateUnits = units.filter(unit => {
                 const unitId = context.getUnitId(unit);
@@ -2580,7 +2577,7 @@ export function filterUnitsWithAST(
         }
     }
 
-    return candidateUnits.filter(unit => evaluateASTNode(ast, unit, context));
+    return candidateUnits.filter(unit => evaluateASTNode(ast, unit, context, initialScope));
 }
 
 /**
@@ -2613,15 +2610,17 @@ function hasTextNodes(node: ASTNode): boolean {
 export function getMatchingTextForUnit(
     ast: GroupASTNode,
     unit: any,
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    initialScope?: AvailabilityFilterScope,
 ): string[] {
-    return collectMatchingText(ast, unit, context);
+    return collectMatchingText(ast, unit, context, initialScope);
 }
 
 function collectMatchingText(
     node: ASTNode,
     unit: any,
-    context: EvaluatorContext
+    context: EvaluatorContext,
+    activeScope?: AvailabilityFilterScope,
 ): string[] {
     if (node.type === 'text') {
         // Check if this text node matches the unit (use unescaped value for matching)
@@ -2638,17 +2637,18 @@ function collectMatchingText(
     
     if (node.type === 'group') {
         if (node.operator === 'AND') {
+            const nextActiveScope = getAndGroupAvailabilityScope(node, context, activeScope);
             // For AND, collect all matching text from all children
             const texts: string[] = [];
             for (const child of node.children) {
-                texts.push(...collectMatchingText(child, unit, context));
+                texts.push(...collectMatchingText(child, unit, context, nextActiveScope));
             }
             return texts;
         } else {
             // For OR, find the first matching child and return its text
             for (const child of node.children) {
-                if (evaluateASTNode(child, unit, context)) {
-                    return collectMatchingText(child, unit, context);
+                if (evaluateASTNode(child, unit, context, activeScope)) {
+                    return collectMatchingText(child, unit, context, activeScope);
                 }
             }
             return [];

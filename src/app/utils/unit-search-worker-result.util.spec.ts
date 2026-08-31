@@ -3,7 +3,6 @@
 // Author: Drake
 
 import type { UnitSummary } from '../models/unit-summary.model';
-import { asUnitProviderId, type UnitProviderId } from '../services/unit-catalog/unit-catalog.types';
 import type { UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
 import { hydrateWorkerSearchResult } from './unit-search-worker-result.util';
 
@@ -22,19 +21,16 @@ function createResult(entries: UnitSearchWorkerResultMessage['entries']): UnitSe
 }
 
 describe('hydrateWorkerSearchResult', () => {
-    const unitProviderId = asUnitProviderId('mm-data');
-    const custom = asUnitProviderId('custom:test');
     const alpha = { uuid: '01900000-0000-7000-8000-000000000001', name: 'Alpha' } as UnitSummary;
     const beta = { uuid: '01900000-0000-7000-8000-000000000002', name: 'Beta' } as UnitSummary;
-    const customAlpha = { uuid: '01900000-0000-7000-8000-000000000003', name: 'Alpha' } as UnitSummary;
-    const identityKey = (provider: UnitProviderId, uuid: string) => `${provider.length}:${provider}${uuid.length}:${uuid}`;
+    const otherAlpha = { uuid: '01900000-0000-7000-8000-000000000003', name: 'Alpha' } as UnitSummary;
     const units = new Map([
-        [identityKey(unitProviderId, alpha.uuid), alpha],
-        [identityKey(unitProviderId, beta.uuid), beta],
-        [identityKey(custom, customAlpha.uuid), customAlpha],
+        [alpha.uuid, alpha],
+        [beta.uuid, beta],
+        [otherAlpha.uuid, otherAlpha],
     ]);
-    const resolve = (provider: UnitProviderId, uuid: string) => units.get(identityKey(provider, uuid));
-    const entry = (unit: UnitSummary, provider = unitProviderId) => ({ provider, uuid: unit.uuid, unitName: unit.name });
+    const resolve = (unitUuid: string) => units.get(unitUuid as UnitSummary['uuid']);
+    const entry = (unit: UnitSummary) => ({ unitUuid: unit.uuid });
 
     it('hydrates known units and their matching normalization metadata atomically', () => {
         const match = { kind: 'bv' as const, adjustedValue: 1995, gunnery: 3, piloting: 4 };
@@ -44,17 +40,15 @@ describe('hydrateWorkerSearchResult', () => {
         );
 
         expect(hydrated.units).toEqual([alpha, beta]);
-        expect(hydrated.normalizationMatchesByUnit.get(alpha)).toEqual(match);
-        expect(hydrated.normalizationMatchesByUnit.has(beta)).toBeFalse();
+        expect(hydrated.normalizationMatchesByUnitUuid.get(alpha.uuid)).toEqual(match);
+        expect(hydrated.normalizationMatchesByUnitUuid.has(beta.uuid)).toBeFalse();
     });
 
     it('drops unknown units together with their metadata and preserves known ordering', () => {
         const hydrated = hydrateWorkerSearchResult(
             createResult([
                 {
-                    provider: unitProviderId,
-                    uuid: '01900000-0000-7000-8000-000000000099',
-                    unitName: 'Missing',
+                    unitUuid: '01900000-0000-7000-8000-000000000099',
                     match: { kind: 'bv', adjustedValue: 1, gunnery: 4, piloting: 5 },
                 },
                 entry(beta),
@@ -64,7 +58,7 @@ describe('hydrateWorkerSearchResult', () => {
         );
 
         expect(hydrated.units).toEqual([beta, alpha]);
-        expect(hydrated.normalizationMatchesByUnit.size).toBe(0);
+        expect(hydrated.normalizationMatchesByUnitUuid.size).toBe(0);
     });
 
     it('keeps only the first duplicate identity entry to avoid metadata drift', () => {
@@ -78,24 +72,15 @@ describe('hydrateWorkerSearchResult', () => {
         );
 
         expect(hydrated.units).toEqual([alpha]);
-        expect(hydrated.normalizationMatchesByUnit.get(alpha)).toEqual(firstMatch);
+        expect(hydrated.normalizationMatchesByUnitUuid.get(alpha.uuid)).toEqual(firstMatch);
     });
 
-    it('preserves same-named units from different providers by exact identity', () => {
+    it('preserves same-named units with distinct UUIDs', () => {
         const hydrated = hydrateWorkerSearchResult(
-            createResult([entry(alpha), entry(customAlpha, custom)]),
+            createResult([entry(alpha), entry(otherAlpha)]),
             resolve,
         );
 
-        expect(hydrated.units).toEqual([alpha, customAlpha]);
-    });
-
-    it('rejects an identity whose presentation name disagrees with the live unit', () => {
-        const hydrated = hydrateWorkerSearchResult(
-            createResult([{ ...entry(alpha), unitName: 'Wrong Alpha' }]),
-            resolve,
-        );
-
-        expect(hydrated.units).toEqual([]);
+        expect(hydrated.units).toEqual([alpha, otherAlpha]);
     });
 });

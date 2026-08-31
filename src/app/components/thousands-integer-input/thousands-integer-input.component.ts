@@ -7,7 +7,6 @@ import { normalizeBoundedInteger } from '../../utils/bounded-integer-input.util'
 
 @Component({
     selector: 'thousands-integer-input',
-    standalone: true,
     template: `
         <input
             #inputElement

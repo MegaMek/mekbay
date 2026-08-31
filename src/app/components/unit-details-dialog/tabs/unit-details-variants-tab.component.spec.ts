@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -50,7 +49,7 @@ describe('UnitDetailsVariantsTabComponent', () => {
         })
             .overrideComponent(UnitCardExpandedComponent, {
                 set: {
-                    imports: [CommonModule],
+                    imports: [],
                     template: '',
                 },
             })

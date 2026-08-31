@@ -25,9 +25,7 @@ export interface InputDialogData {
 
 @Component({
     selector: 'input-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

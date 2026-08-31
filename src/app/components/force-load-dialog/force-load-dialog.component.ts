@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, type ElementRef, DestroyRef, afterNextRender, Injector, untracked } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { firstValueFrom, map, race } from 'rxjs';
@@ -116,11 +116,10 @@ const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
 
 @Component({
     selector: 'force-load-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent, LoadingSpinnerComponent],
+    imports: [DecimalPipe, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent, LoadingSpinnerComponent],
     templateUrl: './force-load-dialog.component.html',
-    styleUrls: ['./force-load-dialog.component.css']
+    styleUrl: './force-load-dialog.component.css'
 })
 export class ForceLoadDialogComponent {
     private dialogRef = inject(DialogRef<ForceLoadDialogResult>);

@@ -8,8 +8,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { TooltipDirective } from './tooltip.directive';
 
 @Component({
-    standalone: true,
     imports: [TooltipDirective],
+    // Keep a real mouse pointer in the Karma page from affecting synthetic pointer tests.
+    host: { style: 'pointer-events: none' },
     template: `
         <div class="parent" [tooltip]="'Parent tooltip'" [tooltipDelay]="0">
             <span class="parent-label">Parent</span>
@@ -124,6 +125,7 @@ describe('TooltipDirective', () => {
             const child = fixture.nativeElement.querySelector('.child') as HTMLElement;
             dispatchTouchPointer(child, 'pointerdown');
             jasmine.clock().tick(300);
+            TestBed.tick();
 
             expect(getTooltipTexts()).toEqual(['Child tooltip']);
             expect(overlayContainerElement.querySelector('.tooltip-lock-progress')).toBeNull();
@@ -144,6 +146,7 @@ describe('TooltipDirective', () => {
 
             dispatchPointerOver(child);
             jasmine.clock().tick(0);
+            TestBed.tick();
 
             const progress = overlayContainerElement.querySelector('.tooltip-lock-progress') as HTMLElement | null;
             expect(progress).not.toBeNull();
@@ -153,7 +156,9 @@ describe('TooltipDirective', () => {
 
             dispatchPointerOver(child);
             jasmine.clock().tick(0);
+            TestBed.tick();
             jasmine.clock().tick(2000);
+            TestBed.tick();
 
             dispatchPointerOut(child);
             expect(getTooltipTexts()).toEqual(['Child tooltip']);

@@ -18,7 +18,6 @@ import { DialogsService } from '../../services/dialogs.service';
 @Component({
     selector: 'share-search-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

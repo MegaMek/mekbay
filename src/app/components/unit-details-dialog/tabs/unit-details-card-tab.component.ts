@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import type { UnitSummary } from '../../../models/unit-summary.model';
 import { AlphaStrikeCardComponent } from '../../alpha-strike-card/alpha-strike-card.component';
@@ -12,9 +11,9 @@ import { OptionsService } from '../../../services/options.service';
 @Component({
     selector: 'unit-details-card-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, AlphaStrikeCardComponent],
+    imports: [AlphaStrikeCardComponent],
     templateUrl: './unit-details-card-tab.component.html',
-    styleUrls: ['./unit-details-card-tab.component.css']
+    styleUrl: './unit-details-card-tab.component.css'
 })
 export class UnitDetailsCardTabComponent {
     optionsService = inject(OptionsService);

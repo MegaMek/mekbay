@@ -42,7 +42,6 @@ export interface FormationInfoDialogResult {
 
 @Component({
     selector: 'formation-info-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [FormationInfoComponent],
     host: {

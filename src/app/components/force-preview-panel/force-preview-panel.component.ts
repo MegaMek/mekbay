@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import {
     ChangeDetectionStrategy,
@@ -70,8 +70,7 @@ export interface ForcePreviewUnitMenuActionEvent {
 
 @Component({
     selector: 'force-preview-panel',
-    standalone: true,
-    imports: [CommonModule, CdkMenuModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent, ForceTagsComponent],
+    imports: [DecimalPipe, CdkMenuModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent, ForceTagsComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     @let unitDisplayName = effectiveUnitDisplayName();

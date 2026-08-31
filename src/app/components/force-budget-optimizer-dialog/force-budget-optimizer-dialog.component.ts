@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -76,14 +75,13 @@ const BALANCED_DAMAGE_RATIO = 0.5;
 
 @Component({
     selector: 'force-budget-optimizer-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, RangeSliderComponent, ThousandsIntegerInputComponent],
+    imports: [RangeSliderComponent, ThousandsIntegerInputComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },
     templateUrl: './force-budget-optimizer-dialog.component.html',
-    styleUrls: ['./force-budget-optimizer-dialog.component.scss'],
+    styleUrl: './force-budget-optimizer-dialog.component.scss',
 })
 export class ForceBudgetOptimizerDialogComponent {
     private readonly dialogRef = inject(DialogRef<null, ForceBudgetOptimizerDialogComponent>);

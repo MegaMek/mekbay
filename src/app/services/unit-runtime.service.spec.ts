@@ -80,6 +80,18 @@ describe('UnitRuntimeService', () => {
         expect(service.getUnitByName('MAD CAT PRIME')).toBe(unit);
     });
 
+    it('retrieves distinct units by UUID even when names collide', () => {
+        const first = createCatalogUnit('Duplicate Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
+        const second = createCatalogUnit('Duplicate Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d35678');
+
+        service.preprocessUnits([first, second]);
+
+        expect(service.getUnitsByName('duplicate name')).toEqual([first, second]);
+        expect(service.getUnitByName('Duplicate Name')).toBeUndefined();
+        expect(service.getUnitByUuid(first.uuid)).toBe(first);
+        expect(service.getUnitByUuid(second.uuid)).toBe(second);
+    });
+
     it('resolves provider plus UUID before a conflicting legacy name', () => {
         const requested = createCatalogUnit('Shared Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
         const collision = createCatalogUnit('Shared Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d35678');

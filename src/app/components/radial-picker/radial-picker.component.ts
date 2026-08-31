@@ -27,9 +27,8 @@ const BEGIN_END_SECTOR_PADDING = 110;
 @Component({
     selector: 'radial-picker',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     templateUrl: 'radial-picker.component.html',
-    styleUrls: ['radial-picker.component.css']
+    styleUrl: 'radial-picker.component.css'
 })
 export class RadialPickerComponent implements ChoicePickerComponent {
     private readonly injector = inject(Injector);

@@ -1284,12 +1284,13 @@ export class PageViewerMekInteractionService {
     ): Promise<boolean> {
         const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
         if (!snapshot) return false;
-        return this.dispatchCommand(member, recordSheetCommand(
+        const command = recordSheetCommand(
             interaction,
             snapshot,
             this.options.options().trackPhaseAndTurn,
             delta,
-        ));
+        );
+        return this.dispatchCommand(member, command);
     }
 
     private async dispatchCommand(member: CBTMekForceMember, command: CBTUnitCommand): Promise<boolean> {

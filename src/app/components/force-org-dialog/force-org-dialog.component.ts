@@ -277,7 +277,7 @@ function createMissingForceEntry(instanceId: string): LoadForceEntry {
         '(window:beforeunload)': 'onBeforeUnload($event)',
     },
     templateUrl: './force-org-dialog.component.html',
-    styleUrls: ['./force-org-dialog.component.scss']
+    styleUrl: './force-org-dialog.component.scss'
 })
 export class ForceOrgDialogComponent {
     private dialogRef = inject(DialogRef<void>);

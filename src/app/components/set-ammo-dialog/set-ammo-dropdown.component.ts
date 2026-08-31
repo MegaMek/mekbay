@@ -43,7 +43,6 @@ interface AmmoDropdownPointerHoverEvent {
 
 @Component({
     selector: 'set-ammo-dropdown-panel',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [AdvancementTimelineComponent],
     template: `
@@ -478,7 +477,6 @@ class SetAmmoDropdownPanelComponent {
 
 @Component({
     selector: 'set-ammo-dropdown',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="set-ammo-dropdown">

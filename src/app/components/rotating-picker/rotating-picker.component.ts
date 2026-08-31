@@ -35,7 +35,6 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
 @Component({
     selector: 'rotating-picker',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     host: {
         '(keydown)': 'onKeyDown($event)',
         '(wheel)': 'onWheel($event)'

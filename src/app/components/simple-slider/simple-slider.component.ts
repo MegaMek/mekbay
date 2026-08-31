@@ -6,8 +6,6 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 
 @Component({
     selector: 'simple-slider',
-    standalone: true,
-    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './simple-slider.component.html',
     styleUrl: './simple-slider.component.css'

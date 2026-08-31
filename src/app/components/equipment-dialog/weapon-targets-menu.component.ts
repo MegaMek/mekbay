@@ -61,7 +61,6 @@ export interface WeaponTargetCalculatorRequest {
 
 @Component({
     selector: 'weapon-targets-menu',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: { '[style.--jammed-condition-color]': 'jammedConditionColor' },
     imports: [ColorPickerButtonComponent, TooltipDirective],

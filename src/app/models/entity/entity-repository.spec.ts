@@ -53,6 +53,28 @@ describe('EntityRepository', () => {
         expect(loaded.entity.uuid()).toBe(UUID);
         expect(loaded.source.format).toBe('blk');
     });
+
+    it('uses a catalog-supplied source revision before reopening native content', async () => {
+        let reads = 0;
+        const repository = new EntityRepository(
+            { read: async () => {
+                reads += 1;
+                return nativeMtfSource(HASH);
+            } },
+            registry(),
+        );
+        const identity = {
+            provider: MM_DATA_UNIT_PROVIDER_ID,
+            uuid: UUID,
+            sourceHash: HASH,
+        } as const;
+
+        const first = await repository.load(identity);
+        const second = await repository.load(identity);
+
+        expect(second).toBe(first);
+        expect(reads).toBe(1);
+    });
 });
 
 function nativeMtfSource(sourceHash: typeof HASH | typeof OTHER_HASH): NativeEntitySource {

@@ -31,6 +31,10 @@ import type { StateRevision } from './runtime-state';
 import type { MekUnitQueryPort } from './unit-instance';
 import type { MekTurnStateV2 } from './mek-turn-state-v2';
 import {
+    MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
+    type MekRuleCheckStateV2,
+} from './mek-destruction-state-v2';
+import {
     isUnitBuildingLevel,
     resolveUnitBuildingCoverState,
     type UnitBuildingCoverState,
@@ -40,6 +44,13 @@ import { MAX_MEK_CREW_WOUNDS } from './runtime-state';
 import { getMekLocationLabel } from '../entity/types';
 
 export type MekAttackMovementModifiers = Readonly<Record<MekMovementModeV2, number>>;
+
+export interface MekTurnPanelRuleCheck {
+    readonly key: typeof MEK_TORSO_CRIPPLING_RULE_CHECK_KEY;
+    readonly check: MekRuleCheckStateV2;
+    readonly reason: 'Crippling destruction';
+    readonly targetNumber: number | null;
+}
 
 /**
  * Complete typed turn-tracker read model for the retained Mek UI. Neither an
@@ -51,6 +62,7 @@ export interface MekTurnPanelSnapshot {
     readonly hasPendingCombat: boolean;
     readonly movement: MekMovementPsrProjectionResultV2;
     readonly movementState: MekMovementPsrStateV2;
+    readonly ruleChecks: readonly MekTurnPanelRuleCheck[];
     readonly activeBoosterComponentIds: readonly ComponentId[];
     readonly locationLabels: Readonly<Record<string, string>>;
     readonly attackMovementModifiers: MekAttackMovementModifiers;
@@ -99,6 +111,17 @@ export function projectMekTurnPanel(
     const movementState = pilotChecks === runtimeMovementState.checks
         ? runtimeMovementState
         : Object.freeze({ ...runtimeMovementState, checks: pilotChecks });
+    const torsoCheck = query.mekRuleCheck(MEK_TORSO_CRIPPLING_RULE_CHECK_KEY);
+    const ruleChecks = torsoCheck?.status === 'pending'
+        ? Object.freeze([Object.freeze({
+            key: MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
+            check: torsoCheck,
+            reason: 'Crippling destruction' as const,
+            targetNumber: movement.kind === 'supported'
+                ? movement.pilotingTargetNumber
+                : null,
+        })])
+        : Object.freeze([]);
     const water = resolveMekUnitWaterState(entity, turn.cover, prone);
     const building = resolveUnitBuildingCoverState(
         isUnitBuildingLevel(turn.cover) ? turn.cover : undefined,
@@ -130,6 +153,7 @@ export function projectMekTurnPanel(
         hasPendingCombat: query.hasPendingCombat(),
         movement,
         movementState,
+        ruleChecks,
         activeBoosterComponentIds: Object.freeze(activeBoosterComponentIds),
         locationLabels,
         attackMovementModifiers,
@@ -165,6 +189,7 @@ export function isMekTurnPanelDirty(snapshot: MekTurnPanelSnapshot): boolean {
         || snapshot.movementState.damageThisPhase > 0
         || snapshot.movementState.checks.length > 0
         || snapshot.movementState.automaticFalls.length > 0
+        || snapshot.ruleChecks.length > 0
         || snapshot.turn.airborne !== null
         || snapshot.turn.cover !== null
         || snapshot.turn.weaponsHeat > 0
@@ -182,6 +207,7 @@ export function isMekTurnPanelDirtyPhase(snapshot: MekTurnPanelSnapshot): boolea
         || snapshot.movementState.damageThisPhase > 0
         || snapshot.movementState.checks.some(check => check.status === 'pending')
         || snapshot.movementState.automaticFalls.length > 0
+        || snapshot.ruleChecks.length > 0
         || snapshot.turn.equipmentStateChanged;
 }
 

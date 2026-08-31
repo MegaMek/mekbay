@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Component, inject, signal, ChangeDetectionStrategy, viewChild, type ElementRef, type afterNextRender, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
@@ -20,9 +20,9 @@ export type ForcePackDialogResult = PackUnitEntry[] | null;
 @Component({
     selector: 'force-pack-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, UnitIconComponent],
+    imports: [DecimalPipe, BaseDialogComponent, UnitIconComponent],
     templateUrl: './force-pack-dialog.component.html',
-    styleUrls: ['./force-pack-dialog.component.css']
+    styleUrl: './force-pack-dialog.component.css'
 })
 export class ForcePackDialogComponent {
     private dialogRef = inject(DialogRef<ForcePackDialogResult>);

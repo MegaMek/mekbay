@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { UnitSummary } from '../models/unit-summary.model';
-import { getProperty, getUnitComponentData, getUnitCountableFilterData, getUnitSearchIdentityKey } from './unit-search-shared.util';
+import { getProperty, getUnitComponentData, getUnitCountableFilterData } from './unit-search-shared.util';
 
 export interface AdvOptionsContextSnapshot {
     unitIds?: Set<string>;
@@ -31,7 +31,7 @@ export function getAdvOptionsContextSnapshot(
 
 export function getSnapshotUnitIds(snapshot: AdvOptionsContextSnapshot, units: UnitSummary[]): Set<string> {
     if (!snapshot.unitIds) {
-        snapshot.unitIds = new Set(units.map(getUnitSearchIdentityKey));
+        snapshot.unitIds = new Set(units.map(unit => unit.uuid));
     }
     return snapshot.unitIds;
 }

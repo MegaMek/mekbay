@@ -38,6 +38,21 @@ describe('direct runtime unit notifications', () => {
             count: 2,
         }));
     });
+
+    it('includes a durable torso rule check in the PSR badge', () => {
+        const snapshot = notificationSnapshot([], [], [{
+            key: 'core.torso-crippling',
+            check: { status: 'pending' },
+            reason: 'Crippling destruction',
+            targetNumber: 6,
+        }] as unknown as MekTurnPanelSnapshot['ruleChecks']);
+
+        expect(projectRuntimePendingNotification(snapshot)).toEqual({
+            kind: 'psr',
+            count: 1,
+            tooltip: [{ label: 'Crippling destruction', value: 'Target 6+' }],
+        });
+    });
 });
 
 function check(
@@ -58,8 +73,10 @@ function check(
 function notificationSnapshot(
     checks: readonly MekPilotCheckV2[],
     automaticFalls: MekTurnPanelSnapshot['movementState']['automaticFalls'] = [],
+    ruleChecks: MekTurnPanelSnapshot['ruleChecks'] = [],
 ): MekTurnPanelSnapshot {
     return {
         movementState: { checks, automaticFalls },
+        ruleChecks,
     } as unknown as MekTurnPanelSnapshot;
 }

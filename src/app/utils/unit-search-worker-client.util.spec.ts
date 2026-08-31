@@ -38,7 +38,7 @@ function createSnapshot(version: string): UnitSearchWorkerCorpusSnapshot {
             faction: {},
         },
         factionEraIndex: {
-            unitIdentityKeysByMulId: {},
+            unitUuidsByMulId: {},
             referenceIdsByEraAndFaction: {},
         },
     };

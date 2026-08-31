@@ -19,6 +19,7 @@ import {
 } from './equipment-status-kernel';
 import {
     asStateRevision,
+    createCommandId,
     type MekUnitRuntimeState,
     type AmmoRuntimeState,
     type BombastLaserRuntimeState,
@@ -746,6 +747,8 @@ export interface MekUnitQueryPort extends ClassicUnitQueryPort {
     mekMovementPsr(): MekMovementPsrProjectionResultV2;
     mekMovementPsrState(): MekMovementPsrStateV2;
     mekPilotChecks(): readonly MekPilotCheckV2[];
+    /** Pure preview of the exact phase-boundary reduction; never mutates runtime state. */
+    previewEndPhase(): CommandReduction;
     mekMovementMode():
         | { readonly kind: 'supported'; readonly mode: MekMovementModeV2 | null }
         | { readonly kind: 'unsupported' };
@@ -1231,6 +1234,11 @@ export class CBTUnitInstance {
                 return state.crew.get(positionId) ?? HEALTHY_CREW_STATE;
             },
             turnState: () => state.turn,
+            previewEndPhase: () => this.preview({
+                type: 'end-phase',
+                commandId: createCommandId(),
+                expectedRevision: state.stateRevision,
+            }),
             linkedTarget: (componentId: ComponentId) => requireComponent(unit, componentId, () =>
                 unit.index.relationships.linkedTargetBySource.get(componentId)),
             linkedSource: (componentId: ComponentId) => requireComponent(unit, componentId, () =>
@@ -1244,6 +1252,19 @@ export class CBTUnitInstance {
                 this.unit,
             ),
         });
+    }
+
+    private preview(command: CBTUnitCommand): CommandReduction {
+        return reduce(
+            this.#source,
+            this.getIndex(),
+            this.#state,
+            command,
+            this.query(),
+            this.#statusTopology,
+            this.#heatContext,
+            this.#mechanicsContext,
+        );
     }
 
     public dispatch(command: CBTUnitCommand): CommandReduction {

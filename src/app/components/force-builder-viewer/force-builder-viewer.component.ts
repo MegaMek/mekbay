@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { Component, computed, Injector, type ElementRef, effect, inject, ChangeDetectionStrategy, viewChild, viewChildren, input, signal, afterNextRender, DestroyRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import type { Subscription } from 'rxjs';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
@@ -46,16 +45,15 @@ import { ForceMemberValueComponent } from './force-member-value.component';
 
 @Component({
     selector: 'force-builder-viewer',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule, UnitBlockComponent, TooltipDirective, ForceMemberValueComponent],
+    imports: [DragDropModule, UnitBlockComponent, TooltipDirective, ForceMemberValueComponent],
     host: {
         '(window:keydown)': 'onKeyDown($event)',
         '(window:keyup)': 'onKeyUp($event)',
         '(window:blur)': 'onWindowBlur()',
     },
     templateUrl: './force-builder-viewer.component.html',
-    styleUrls: ['./force-builder-viewer.component.scss']
+    styleUrl: './force-builder-viewer.component.scss'
 })
 export class ForceBuilderViewerComponent {
     protected forceBuilderService = inject(ForceBuilderService);

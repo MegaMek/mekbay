@@ -19,7 +19,6 @@ import type { ForceAlignment } from '../../models/force-slot.model';
 import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { C3Capabilities } from '../../models/c3-network.model';
-import { CommonModule } from '@angular/common';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import type { ForceSlot } from '../../models/force-slot.model';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
@@ -39,11 +38,10 @@ import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
  */
 @Component({
     selector: 'sidebar-footer',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CdkMenuModule, CommonModule, FactionImgPipe],
+    imports: [CdkMenuModule, FactionImgPipe],
     templateUrl: './sidebar-footer.component.html',
-    styleUrls: ['./sidebar-footer.component.scss'],
+    styleUrl: './sidebar-footer.component.scss',
 })
 export class SidebarFooterComponent {
     elRef = inject(ElementRef<HTMLElement>);

@@ -8,7 +8,6 @@ import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { OptionsService } from '../../services/options.service';
-import { CommonModule } from '@angular/common';
 import { getFactionImg } from '../../models/factions.model';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 import {
@@ -30,9 +29,8 @@ import {
  */
 @Component({
     selector: 'force-preview',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitIconComponent, CleanModelStringPipe],
+    imports: [UnitIconComponent, CleanModelStringPipe],
     template: `
     @let unitDisplayName = optionsService.options().unitDisplayName;
     @let f = force();

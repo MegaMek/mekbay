@@ -61,11 +61,10 @@ describe('UnitBlockComponent capability badges', () => {
         const changed = new Subject<void>();
         const force = {
             changed,
-            getMekRecordSheetSnapshot: () => ({
-                conditions: ['prone'],
-                crippled: true,
+            getMekUnitStatusSnapshot: () => ({
+                conditions: ['prone', 'immobile', 'crippled', 'spotting'],
                 crew: [{ effectiveState: 'unconscious' }],
-                locations: [{ conditions: [{ condition: 'narc', committed: 0, preview: 1 }] }],
+                hasNarc: true,
             }),
             getMekTurnPanelSnapshot: () => ({
                 conditions: ['prone', 'immobile'],

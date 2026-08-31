@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Component, inject, signal, ChangeDetectionStrategy, computed, Injector, DestroyRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -44,9 +44,9 @@ interface CustomizableUnit extends PackUnitEntry {
 @Component({
     selector: 'customize-force-pack-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, BaseDialogComponent, UnitCardCompactComponent, VariantDropdownPanelComponent],
+    imports: [DecimalPipe, BaseDialogComponent, UnitCardCompactComponent, VariantDropdownPanelComponent],
     templateUrl: './customize-force-pack-dialog.component.html',
-    styleUrls: ['./customize-force-pack-dialog.component.css']
+    styleUrl: './customize-force-pack-dialog.component.css'
 })
 export class CustomizeForcePackDialogComponent {
     private dialogRef = inject(DialogRef<CustomizeForcePackDialogResult | null>);

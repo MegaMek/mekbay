@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
@@ -112,10 +111,8 @@ type FormationTargetDropdownOptionsProvider = UnitSearchFiltersService & {
 
 @Component({
     selector: 'search-force-generator-dialog',
-    standalone: true,
     providers: [ForceGeneratorService],
     imports: [
-        CommonModule,
         BaseDialogComponent,
         ForcePreviewPanelComponent,
         ForceRadarPanelComponent,
@@ -131,7 +128,7 @@ type FormationTargetDropdownOptionsProvider = UnitSearchFiltersService & {
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './search-force-generator-dialog.component.html',
-    styleUrls: ['./search-force-generator-dialog.component.scss'],
+    styleUrl: './search-force-generator-dialog.component.scss',
 })
 export class SearchForceGeneratorDialogComponent {
     readonly GameSystem = GameSystem;

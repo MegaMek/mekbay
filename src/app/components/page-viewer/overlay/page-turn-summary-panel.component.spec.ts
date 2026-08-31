@@ -545,6 +545,7 @@ function turnSnapshot(options: {
             movement,
             standAttempts: attempts,
         },
+        ruleChecks: [],
         activeBoosterComponentIds: [],
         attackMovementModifiers: { stationary: 0, walk: 1, run: 2, sprint: 0, jump: 3, UMU: 3 },
         defenseModifierBreakdown: [],

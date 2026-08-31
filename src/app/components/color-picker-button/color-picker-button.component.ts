@@ -9,7 +9,6 @@ import { OverlayManagerService } from '../../services/overlay-manager.service';
 
 @Component({
     selector: 'color-picker-panel',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="color-picker-panel glass framed-borders has-shadow">
@@ -57,7 +56,6 @@ let nextColorPickerId = 0;
 
 @Component({
     selector: 'color-picker-button',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <button

@@ -226,7 +226,7 @@ export function shouldShowAdjustedPilotSkills(
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective],
     templateUrl: './unit-details-general-tab.component.html',
-    styleUrls: ['./unit-details-general-tab.component.css']
+    styleUrl: './unit-details-general-tab.component.css'
 })
 export class UnitDetailsGeneralTabComponent {
     private dataService = inject(DataService);

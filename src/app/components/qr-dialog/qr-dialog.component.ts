@@ -14,7 +14,6 @@ export interface QrDialogData {
 
 @Component({
     selector: 'qr-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'fullscreen-dialog-host glass'

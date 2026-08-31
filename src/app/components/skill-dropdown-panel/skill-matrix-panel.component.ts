@@ -19,7 +19,6 @@ export interface SkillMatrixCell {
 @Component({
     selector: 'skill-matrix-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     template: `
         <div class="matrix-panel glass has-shadow framed-borders">
             <table class="matrix-table">

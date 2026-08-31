@@ -6,14 +6,12 @@ import type { GameSystem } from '../models/common.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { UnitSearchNormalization, UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
 import type { SearchTelemetryStage } from '../services/unit-search-filters.model';
-import type { UnitProviderId } from '../services/unit-catalog/unit-catalog.types';
 
 export type UnitSearchWorkerCorpusVersion = string;
 
 /** Search-only projection transferred to the worker instead of the runtime Unit graph. */
 export interface UnitSearchWorkerUnit {
     readonly uuid: UnitSummary['uuid'];
-    readonly provider?: UnitProviderId;
     readonly name: UnitSummary['name'];
     readonly id: UnitSummary['id'];
     readonly chassis: UnitSummary['chassis'];
@@ -29,6 +27,7 @@ export interface UnitSearchWorkerUnit {
     readonly omni: UnitSummary['omni'];
     readonly source: string[];
     readonly published: string[];
+    readonly rulesRefs: UnitSummary['rulesRefs'];
     readonly canon: UnitSummary['canon'];
     readonly canAntiMech: UnitSummary['canAntiMech'];
     readonly role: UnitSummary['role'];
@@ -77,7 +76,7 @@ export interface UnitSearchWorkerUnit {
 
 export interface UnitSearchWorkerIndexSnapshot {
     [filterKey: string]: {
-        /** Exact provider+UUID search identity keys, never display names. */
+        /** Unit UUIDs. */
         [value: string]: string[];
     };
 }
@@ -85,14 +84,14 @@ export interface UnitSearchWorkerIndexSnapshot {
 /**
  * Compact exact availability authority for the search worker.
  *
- * Do not expand every faction/era membership to provider+UUID strings on the
+ * Do not expand every faction/era membership to UUID strings on the
  * main thread. That representation repeats long identity strings millions of
  * times for the full catalog and is then duplicated again by structured clone.
  * The worker resolves MUL ids lazily for only the faction/era pairs a query
  * actually touches.
  */
 export interface UnitSearchWorkerFactionEraSnapshot {
-    readonly unitIdentityKeysByMulId: {
+    readonly unitUuidsByMulId: {
         readonly [mulId: string]: readonly string[];
     };
     readonly referenceIdsByEraAndFaction: {
@@ -125,10 +124,7 @@ export interface UnitSearchWorkerQueryRequest {
 }
 
 export interface UnitSearchWorkerResultEntry {
-    /** Durable catalog identity. Names are presentation only and are not unique across providers. */
-    provider: UnitProviderId;
-    uuid: string;
-    unitName: string;
+    unitUuid: string;
     match?: UnitSearchNormalizationMatch;
 }
 

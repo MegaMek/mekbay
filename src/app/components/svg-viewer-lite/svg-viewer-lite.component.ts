@@ -22,11 +22,9 @@ type PointerGesture = {
 
 @Component({
     selector: 'svg-viewer-lite',
-    standalone: true,
-    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './svg-viewer-lite.component.html',
-    styleUrls: ['./svg-viewer-lite.component.css']
+    styleUrl: './svg-viewer-lite.component.css'
 })
 export class SvgViewerLiteComponent {
     logger = inject(LoggerService);

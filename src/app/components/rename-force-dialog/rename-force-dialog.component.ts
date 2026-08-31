@@ -41,7 +41,6 @@ export interface RenameForceDialogResult {
 
 @Component({
     selector: 'rename-force-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [DecimalPipe],
     host: {

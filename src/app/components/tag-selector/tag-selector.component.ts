@@ -21,7 +21,6 @@ export interface TagQuantityChangeEvent {
 @Component({
     selector: 'tag-selector',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     templateUrl: './tag-selector.component.html',
     styleUrl: './tag-selector.component.css'
 })

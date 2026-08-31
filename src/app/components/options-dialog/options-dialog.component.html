@@ -197,9 +197,9 @@
                                 }
                             </button>
                         </div>
-                        @if (!userHasOAuth()) {
-                        <button class="bt-button" (click)="onSetUuid(uuidInput.value)">APPLY</button>
-                        }
+                        <button class="bt-button" type="button" [disabled]="userHasOAuth()"
+                            [title]="userHasOAuth() ? 'User Identifier changes are disabled for OAuth-connected accounts' : 'Apply User Identifier'"
+                            (click)="onSetUuid(uuidInput.value)">APPLY</button>
                     </div>
                     @if (userUuidError) {<div class="error-msg">{{ userUuidError }}</div>}
                     <div class="account-summary-row">
@@ -459,23 +459,6 @@
                             network costs.</p>
                     </div>
                 </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="trackPhaseAndTurn">Track game phase/turn:</label>
-                        <select id="trackPhaseAndTurn" class="bt-select"
-                            [value]="optionsService.options().trackPhaseAndTurn" (change)="onTrackPhaseAndTurn($event)">
-                            <option value="true">Enabled (default)</option>
-                            <option value="false">Disabled</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Tracks game phases and turns, including pending damage, next-phase modifiers, and end-of-turn
-                            cleanup.</p>
-                        <p>When disabled, these mechanics must be tracked manually. <strong>Damage and to-hit modifiers
-                                take effect immediately instead of being deferred to the appropriate phase or
-                                turn.</strong></p>
-                    </div>
-                </div>
                 <div class="option-row">
                     <label for="recordSheetCenterPanelContent">Center panel:</label>
                     <select id="recordSheetCenterPanelContent" class="bt-select"
@@ -531,42 +514,22 @@
                         <option value="disabled">Disabled</option>
                     </select>
                 </div>
-                <div class="option-section-title">Optional rules</div>
-                <div class="option-row">
-                    <label for="CBTOptionalFloatingCritical">Floating criticals:</label>
-                    <select id="CBTOptionalFloatingCritical" class="bt-select"
-                        [value]="optionsService.options().CBTOptionalRules.floatingCriticals"
-                        (change)="onCBTOptionalRuleChange('floatingCriticals', $event)">
-                        <option value="true">Enabled</option>
-                        <option value="false">Disabled (default)</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="CBTOptionalSprinting">Sprinting (Meks only):</label>
-                    <select id="CBTOptionalSprinting" class="bt-select"
-                        [value]="optionsService.options().CBTOptionalRules.sprinting"
-                        (change)="onCBTOptionalRuleChange('sprinting', $event)">
-                        <option value="true">Enabled</option>
-                        <option value="false">Disabled (default)</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="CBTForcedWithdrawal">Forced Withdrawal (Cripple):</label>
-                    <select id="CBTForcedWithdrawal" class="bt-select"
-                        [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"
-                        (change)="onCBTOptionalRuleChange('forcedWithdrawal', $event)">
-                        <option value="true">Enabled (default)</option>
-                        <option value="false">Disabled</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="CBTOptionalExtremeRange">"Extreme" range:</label>
-                    <select id="CBTOptionalExtremeRange" class="bt-select"
-                        [value]="optionsService.options().CBTOptionalRules.extremeRange"
-                        (change)="onCBTOptionalRuleChange('extremeRange', $event)">
-                        <option value="true">Enabled</option>
-                        <option value="false">Disabled (default)</option>
-                    </select>
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="trackPhaseAndTurn">Track game phase/turn:</label>
+                        <select id="trackPhaseAndTurn" class="bt-select"
+                            [value]="optionsService.options().trackPhaseAndTurn" (change)="onTrackPhaseAndTurn($event)">
+                            <option value="true">Enabled (default)</option>
+                            <option value="false">Disabled</option>
+                        </select>
+                    </div>
+                    <div class="description">
+                        <p>Tracks game phases and turns, including pending damage, next-phase modifiers, and end-of-turn
+                            cleanup.</p>
+                        <p>When disabled, these mechanics must be tracked manually. <strong>Damage and to-hit modifiers
+                                take effect immediately instead of being deferred to the appropriate phase or
+                                turn.</strong></p>
+                    </div>
                 </div>
                 <div class="option-section-title">Automations</div>
                 <div class="description automation-description">
@@ -592,9 +555,48 @@
                                 }
                             </div>
                         </div>
-                        <div class="description"><p>{{ automation.description }}</p></div>
+                        <div class="description">
+                            <p>{{ automation.description }}</p>
+                        </div>
                     </div>
                     }
+                </div>
+                <div class="option-section-title">Optional rules</div>
+                <div class="option-row">
+                    <label for="CBTOptionalFloatingCritical">Floating criticals:</label>
+                    <select id="CBTOptionalFloatingCritical" class="bt-select"
+                        [value]="optionsService.options().CBTOptionalRules.floatingCriticals"
+                        (change)="onCBTOptionalRuleChange('floatingCriticals', $event)">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled (default)</option>
+                    </select>
+                </div>
+                <div class="option-row">
+                    <label for="CBTOptionalSprinting">Sprinting (Meks only):</label>
+                    <select id="CBTOptionalSprinting" class="bt-select"
+                        [value]="optionsService.options().CBTOptionalRules.sprinting"
+                        (change)="onCBTOptionalRuleChange('sprinting', $event)">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled (default)</option>
+                    </select>
+                </div>
+                <div class="option-row">
+                    <label for="CBTOptionalExtremeRange">"Extreme" range:</label>
+                    <select id="CBTOptionalExtremeRange" class="bt-select"
+                        [value]="optionsService.options().CBTOptionalRules.extremeRange"
+                        (change)="onCBTOptionalRuleChange('extremeRange', $event)">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled (default)</option>
+                    </select>
+                </div>
+                <div class="option-row">
+                    <label for="CBTForcedWithdrawal">Forced withdrawal (Cripple):</label>
+                    <select id="CBTForcedWithdrawal" class="bt-select"
+                        [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"
+                        (change)="onCBTOptionalRuleChange('forcedWithdrawal', $event)">
+                        <option value="true">Enabled (default)</option>
+                        <option value="false">Disabled</option>
+                    </select>
                 </div>
             </div>
             }
@@ -826,7 +828,7 @@
                 @for (section of topLevelViews; track section.id) {
                 <button type="button" class="mobile-settings-item" role="listitem"
                     (click)="openMobileSection(section.id)">
-                    <span class="mobile-settings-text">
+                    <span class="mobile-settings-copy">
                         <span class="mobile-settings-label">{{ section.title }}</span>
                         <span class="mobile-settings-description">{{ section.description }}</span>
                     </span>

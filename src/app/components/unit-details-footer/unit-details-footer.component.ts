@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameSystem } from '../../models/common.model';
@@ -19,7 +18,7 @@ import {
 @Component({
     selector: 'unit-details-footer',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, CdkMenuModule, SimpleSliderComponent],
+    imports: [CdkMenuModule, SimpleSliderComponent],
     templateUrl: './unit-details-footer.component.html',
     styleUrl: './unit-details-footer.component.scss',
 })

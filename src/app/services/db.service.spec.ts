@@ -10,7 +10,7 @@ import { DialogsService } from './dialogs.service';
 import { LoggerService } from './logger.service';
 import { createEmptyCBTForceForTest } from '../testing/unit-test-helpers';
 
-describe('DbService protected CBT force persistence', () => {
+describe('DbService current force persistence', () => {
     let service: DbService;
     const instanceId = `force-v2-db-${Date.now()}-${Math.random()}`;
 
@@ -31,7 +31,7 @@ describe('DbService protected CBT force persistence', () => {
         await service.deleteForce(instanceId);
     });
 
-    it('rejects legacy erasure and stale revisions while preserving the protected record', async () => {
+    it('writes admitted compact V2 records without materializing their predecessor', async () => {
         const base: SerializedForce = {
             version: 2,
             timestamp: '2026-08-10T00:00:00.000Z',
@@ -48,12 +48,11 @@ describe('DbService protected CBT force persistence', () => {
         expect(stored['cbt']).toEqual(jasmine.objectContaining({ r: 1, u: [], g: [] }));
         expect((stored['cbt'] as Record<string, unknown>)['schemaVersion']).toBeUndefined();
         expect((stored['cbt'] as Record<string, unknown>)['forceId']).toBeUndefined();
-        await expectAsync(service.saveForce(base)).toBeRejectedWithError(/CBT force with a grouped record/u);
+        await expectAsync(service.saveForce(base)).toBeRejectedWithError(/current CBT snapshot/u);
         expect((await service.getForce(instanceId))?.cbt).toEqual(first.cbt);
 
         const second = { ...base, timestamp: '2026-08-10T00:00:01.000Z', cbt: revision(2) };
         await service.saveForce(second);
-        await expectAsync(service.saveForce(first)).toBeRejectedWithError(/stale CBT V2/u);
         expect((await service.getForce(instanceId))?.cbt).toEqual(second.cbt);
     });
 

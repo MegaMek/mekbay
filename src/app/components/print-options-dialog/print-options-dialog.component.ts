@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { GameSystem } from '../../models/common.model';
 import type { PrintAllOptions } from '../../models/print-options.model';
@@ -17,9 +16,7 @@ export interface PrintOptionsDialogData {
 
 @Component({
     selector: 'print-options-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

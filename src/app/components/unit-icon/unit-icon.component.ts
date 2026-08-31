@@ -21,8 +21,6 @@ const DEFAULT_HEIGHT = 72;
 
 @Component({
   selector: 'unit-icon',
-  standalone: true,
-  imports: [],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="icon-container"

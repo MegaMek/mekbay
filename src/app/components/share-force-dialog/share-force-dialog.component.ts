@@ -24,7 +24,6 @@ export interface ShareForceDialogData {
 
 @Component({
     selector: 'share-force-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [ForcePreviewComponent],
     host: {

@@ -53,6 +53,7 @@ import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import type { ForceNameWords } from '../models/force-name-words.model';
 import { getForcePacks } from '../models/forcepacks.model';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
+import type { ParsedASSpecials } from '../utils/as-special-filter.util';
 import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
 import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catalog.service';
@@ -64,6 +65,7 @@ import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.servic
 import {
     UnitSearchIndexService,
     type PreparedUnitSearchIndexes,
+    type UnitSearchDropdownOption,
 } from './unit-search-index.service';
 import {
     UnitRuntimeService,
@@ -772,6 +774,14 @@ export class DataService {
         return this.unitRuntimeService.getUnitByName(name);
     }
 
+    public getUnitsByName(name: string): readonly UnitSummary[] {
+        return this.unitRuntimeService.getUnitsByName(name);
+    }
+
+    public getUnitByUuid(uuid: string): UnitSummary | undefined {
+        return this.unitRuntimeService.getUnitByUuid(uuid);
+    }
+
     public getUnitByIdentity(provider: UnitProviderId, uuid: string): UnitSummary | undefined {
         return this.unitRuntimeService.getUnitByIdentity(provider, uuid);
     }
@@ -958,8 +968,8 @@ export class DataService {
         return this.unitSearchIndexService.getIndexedFilterValues(filterKey);
     }
 
-    public getUnitSearchIdentityKeysByName(unitName: string): readonly string[] {
-        return this.unitSearchIndexService.getUnitIdentityKeysByName(unitName);
+    public getIndexedASSpecials(unitUuid: string): ParsedASSpecials | undefined {
+        return this.unitSearchIndexService.getIndexedASSpecials(unitUuid);
     }
 
     public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
@@ -970,7 +980,14 @@ export class DataService {
         return this.unitSearchIndexService.getSearchWorkerFactionEraSnapshot();
     }
 
-    public getDropdownOptionUniverse(filterKey: string): Array<{ name: string; img?: string }> {
+    public getFactionEraUnitUuids(
+        eraNames: readonly string[],
+        factionNames: readonly string[],
+    ): ReadonlySet<string> {
+        return this.unitSearchIndexService.getFactionEraUnitUuids(eraNames, factionNames);
+    }
+
+    public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {
         return this.unitSearchIndexService.getDropdownOptionUniverse(filterKey);
     }
 
@@ -1802,7 +1819,7 @@ export class DataService {
                 const generation = this.advanceForceAuthorityGeneration(instanceId);
                 const localWrite = this.enqueueLocalForceWrite(
                     instanceId,
-                    () => this.dbService.saveForce(payload.serialized, { allowRevisionOverride: true }),
+                    () => this.dbService.saveForce(payload.serialized),
                 );
                 persistence = this.trackForceLocalPersistenceOperation(
                     instanceId,
@@ -2747,7 +2764,7 @@ export class DataService {
             instanceId,
             async () => {
                 if (!this.isOwnerlessForceOperationCurrent(instanceId, lease, generation)) return;
-                await this.dbService.saveForce(normalized, { allowRevisionOverride: true });
+                await this.dbService.saveForce(normalized);
                 written = this.isOwnerlessForceOperationCurrent(instanceId, lease, generation);
             },
         );

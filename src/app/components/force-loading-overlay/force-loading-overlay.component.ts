@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, inject, type Signal, type WritableSignal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { DIALOG_DATA } from '@angular/cdk/dialog';
 import { LoadingSpinnerComponent } from '../loading-spinner/loading-spinner.component';
 
@@ -37,9 +36,8 @@ export interface ForceLoadingOverlayData {
 
 @Component({
     selector: 'force-loading-overlay',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, LoadingSpinnerComponent],
+    imports: [LoadingSpinnerComponent],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

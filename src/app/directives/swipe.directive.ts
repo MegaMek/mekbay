@@ -32,7 +32,6 @@ export interface SwipeEndEvent {
 
 @Directive({
     selector: '[swipe]',
-    standalone: true,
 })
 export class SwipeDirective {
     private readonly elRef = inject(ElementRef<HTMLElement>);

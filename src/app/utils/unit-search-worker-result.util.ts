@@ -6,7 +6,6 @@ import type { GameSystem } from '../models/common.model';
 import type { UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { SearchTelemetrySnapshot } from '../services/unit-search-filters.model';
-import type { UnitProviderId } from '../services/unit-catalog/unit-catalog.types';
 import type { UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
 
 interface WorkerResultTelemetryContext {
@@ -21,42 +20,41 @@ interface WorkerResultTelemetryContext {
 
 export interface HydratedWorkerSearchResult {
     units: UnitSummary[];
-    normalizationMatchesByUnit: ReadonlyMap<UnitSummary, UnitSearchNormalizationMatch>;
+    normalizationMatchesByUnitUuid: ReadonlyMap<string, UnitSearchNormalizationMatch>;
 }
 
 export function hydrateWorkerSearchResult(
     result: UnitSearchWorkerResultMessage,
-    getUnitByIdentity: (provider: UnitProviderId, uuid: string) => UnitSummary | undefined,
+    getUnitByUuid: (unitUuid: string) => UnitSummary | undefined,
 ): HydratedWorkerSearchResult {
     const units: UnitSummary[] = [];
-    const normalizationMatchesByUnit = new Map<UnitSummary, UnitSearchNormalizationMatch>();
-    const seenIdentities = new Set<string>();
+    const normalizationMatchesByUnitUuid = new Map<string, UnitSearchNormalizationMatch>();
+    const seenUnitUuids = new Set<string>();
 
     for (const entry of result.entries) {
-        const identityKey = `${entry.provider.length}:${entry.provider}${entry.uuid.length}:${entry.uuid}`;
-        if (seenIdentities.has(identityKey)) {
+        if (seenUnitUuids.has(entry.unitUuid)) {
             continue;
         }
-        const unit = getUnitByIdentity(entry.provider, entry.uuid);
-        if (!unit || unit.name !== entry.unitName) {
+        const unit = getUnitByUuid(entry.unitUuid);
+        if (!unit) {
             continue;
         }
 
-        seenIdentities.add(identityKey);
+        seenUnitUuids.add(entry.unitUuid);
         units.push(unit);
         if (entry.match) {
-            normalizationMatchesByUnit.set(unit, entry.match);
+            normalizationMatchesByUnitUuid.set(entry.unitUuid, entry.match);
         }
     }
 
-    return { units, normalizationMatchesByUnit };
+    return { units, normalizationMatchesByUnitUuid };
 }
 
 export function hydrateWorkerResultUnits(
     result: UnitSearchWorkerResultMessage,
-    getUnitByIdentity: (provider: UnitProviderId, uuid: string) => UnitSummary | undefined,
+    getUnitByUuid: (unitUuid: string) => UnitSummary | undefined,
 ): UnitSummary[] {
-    return hydrateWorkerSearchResult(result, getUnitByIdentity).units;
+    return hydrateWorkerSearchResult(result, getUnitByUuid).units;
 }
 
 export function buildWorkerSearchTelemetrySnapshot(

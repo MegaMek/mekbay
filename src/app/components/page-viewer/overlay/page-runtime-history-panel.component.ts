@@ -27,7 +27,6 @@ interface RuntimeHistoryTurnGroup {
 
 @Component({
     selector: 'page-runtime-history-panel',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <section class="runtime-history glass framed-borders has-shadow" aria-label="Runtime history">

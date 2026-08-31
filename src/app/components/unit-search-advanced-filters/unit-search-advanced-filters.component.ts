@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { afterNextRender, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, Injector, input, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
@@ -32,7 +31,6 @@ import {
 @Component({
     selector: 'unit-search-advanced-filters',
     imports: [
-        CommonModule,
         MultiSelectDropdownComponent,
         RangeSliderComponent,
         SemanticGuideComponent,

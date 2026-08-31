@@ -3,15 +3,15 @@
 
 import {
     createMulFactionEraSearchIndex,
-    getMulFactionEraUnitIdentityKeys,
+    getMulFactionEraUnitUuids,
 } from './mul-faction-era-search-index.util';
 
 describe('mul-faction-era-search-index', () => {
     const snapshot = {
-        unitIdentityKeysByMulId: {
-            '1': ['mul|one', 'custom|one'],
-            '2': ['mul|two'],
-            '3': ['mul|three'],
+        unitUuidsByMulId: {
+            '1': ['unit-one', 'unit-one-alternate'],
+            '2': ['unit-two'],
+            '3': ['unit-three'],
         },
         referenceIdsByEraAndFaction: {
             Succession: {
@@ -27,8 +27,8 @@ describe('mul-faction-era-search-index', () => {
     it('expands only requested exact faction-era memberships', () => {
         const index = createMulFactionEraSearchIndex(snapshot);
 
-        expect(Array.from(getMulFactionEraUnitIdentityKeys(index, ['Succession'], ['Lyran'])))
-            .toEqual(['mul|one', 'custom|one', 'mul|two']);
+        expect(Array.from(getMulFactionEraUnitUuids(index, ['Succession'], ['Lyran'])))
+            .toEqual(['unit-one', 'unit-one-alternate', 'unit-two']);
         expect(index.factionEraUnitIds.get('Succession')?.size).toBe(1);
         expect(index.factionEraUnitIds.has('Invasion')).toBeFalse();
     });
@@ -36,17 +36,17 @@ describe('mul-faction-era-search-index', () => {
     it('unions multiple faction-era pairs without duplicate identities', () => {
         const index = createMulFactionEraSearchIndex(snapshot);
 
-        expect(Array.from(getMulFactionEraUnitIdentityKeys(
+        expect(Array.from(getMulFactionEraUnitUuids(
             index,
             ['Succession', 'Invasion'],
             ['Lyran', 'Kurita'],
-        ))).toEqual(['mul|one', 'custom|one', 'mul|two', 'mul|three']);
+        ))).toEqual(['unit-one', 'unit-one-alternate', 'unit-two', 'unit-three']);
     });
 
     it('returns no memberships for an incomplete scope', () => {
         const index = createMulFactionEraSearchIndex(snapshot);
 
-        expect(getMulFactionEraUnitIdentityKeys(index, [], ['Lyran']).size).toBe(0);
-        expect(getMulFactionEraUnitIdentityKeys(index, ['Succession'], []).size).toBe(0);
+        expect(getMulFactionEraUnitUuids(index, [], ['Lyran']).size).toBe(0);
+        expect(getMulFactionEraUnitUuids(index, ['Succession'], []).size).toBe(0);
     });
 });

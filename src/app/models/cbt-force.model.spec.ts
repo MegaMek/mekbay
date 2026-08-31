@@ -31,6 +31,7 @@ import { RUNTIME_HISTORY_MESSAGE } from './runtime/runtime-history';
 import { ReadyMekUnitFactory } from './runtime/ready-unit-factory';
 import { decodeForceFromStorage, encodeForceForStorage } from './runtime/force-storage-codec';
 import { ReadyNonMekUnit } from './runtime/ready-non-mek-unit';
+import type { ReadyClassicUnit } from './runtime/ready-classic-unit';
 import { isSerializedNonMekUnit, type SerializedNonMekUnit } from './runtime/non-mek-unit-persistence';
 import {
     asCommandId,
@@ -778,6 +779,39 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(saved.cbt?.encounter.state.facts
             .filter(fact => fact.kind === 'target').map(fact => fact.target.letter).sort())
             .toEqual(['A', 'B']);
+    });
+
+    it('reuses validated persistence entries and serializes only changed runtimes', async () => {
+        const { force, reload } = await readyCloneForce();
+        const authority = (force as unknown as {
+            readonly authority: { liveUnits(): readonly ReadyClassicUnit[] };
+        }).authority;
+        const [first, second] = authority.liveUnits();
+        const readyPrototype = Object.getPrototypeOf(first) as Pick<ReadyClassicUnit, 'serialize'>;
+        const serialize = spyOn(readyPrototype, 'serialize').and.callThrough();
+        const serializationCount = (unit: ReadyClassicUnit) => serialize.calls.all()
+            .filter(call => call.object === unit).length;
+
+        const unchanged = await force.serializeForPersistence() as SerializedClassicForce;
+        expect(serializationCount(first)).toBe(0);
+        expect(serializationCount(second)).toBe(0);
+
+        const before = mekRuntimeSnapshot(force, first.instanceId);
+        const shutdown = await force.dispatchMekUnitCommand(first.instanceId, {
+            type: 'declare-mek-action',
+            commandId: asCommandId('persistence:incremental:shutdown'),
+            expectedRevision: before.state.stateRevision,
+            action: { schemaVersion: 1, kind: 'shutdown' },
+        });
+        expect(shutdown.accepted).toBeTrue();
+        serialize.calls.reset();
+
+        const changed = await force.serializeForPersistence() as SerializedClassicForce;
+        expect(serializationCount(first)).toBe(1);
+        expect(serializationCount(second)).toBe(0);
+        expect(Number(changed.cbt!.forceRevision)).toBe(Number(unchanged.cbt!.forceRevision) + 1);
+        expect(mekRuntimeSnapshot(await reload(changed), first.instanceId).state.movementPsr.action)
+            .toEqual({ schemaVersion: 1, kind: 'shutdown' });
     });
 
     it('detaches the target registry when cloning a non-owned force', async () => {

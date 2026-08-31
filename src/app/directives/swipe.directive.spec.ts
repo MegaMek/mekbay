@@ -9,7 +9,6 @@ import { TestBed } from '@angular/core/testing';
 import { SwipeDirective } from './swipe.directive';
 
 @Component({
-    standalone: true,
     imports: [SwipeDirective],
     template: `
         <div class="host" swipe [direction]="'horizontal'" [threshold]="1" [successRatio]="0.1">

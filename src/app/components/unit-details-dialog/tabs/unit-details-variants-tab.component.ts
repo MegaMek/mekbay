@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { Component, ChangeDetectionStrategy, input, inject, computed, output } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import type { UnitSummary } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
 import { compareUnitsByName, naturalCompare } from '../../../utils/sort.util';
@@ -36,9 +35,9 @@ export const DEFAULT_VARIANTS_TAB_STATE: VariantsTabState = {
 @Component({
     selector: 'unit-details-variants-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitCardExpandedComponent],
+    imports: [UnitCardExpandedComponent],
     templateUrl: './unit-details-variants-tab.component.html',
-    styleUrls: ['./unit-details-variants-tab.component.css']
+    styleUrl: './unit-details-variants-tab.component.css'
 })
 export class UnitDetailsVariantsTabComponent {
     private dataService = inject(DataService);

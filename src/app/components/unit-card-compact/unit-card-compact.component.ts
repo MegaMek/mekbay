@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
@@ -23,7 +22,7 @@ import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 @Component({
     selector: 'unit-card-compact',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, UnitIconComponent, UnitTagsComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe],
+    imports: [UnitIconComponent, UnitTagsComponent, AdjustedBV, AdjustedPV, FormatNumberPipe, FormatTonsPipe],
     templateUrl: './unit-card-compact.component.html',
     styleUrl: './unit-card-compact.component.css'
 })

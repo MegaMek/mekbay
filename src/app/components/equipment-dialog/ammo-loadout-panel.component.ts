@@ -48,7 +48,6 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
 
 @Component({
     selector: 'ammo-loadout-panel',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     @if (groups().length === 0) {

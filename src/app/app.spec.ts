@@ -31,7 +31,6 @@ import { LobbyService } from './services/lobby.service';
 
 @Component({
   selector: 'unit-search',
-  standalone: true,
   template: '',
 })
 class UnitSearchStubComponent {}

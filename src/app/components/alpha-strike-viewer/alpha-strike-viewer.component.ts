@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, inject, computed, effect, type ElementRef, viewChildren, signal, DestroyRef, viewChild } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, computed, effect, type ElementRef, viewChildren, signal, viewChild } from '@angular/core';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { OptionsService } from '../../services/options.service';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -18,9 +18,9 @@ import { DbService } from '../../services/db.service';
 import { ASInteractionOverlayComponent } from './as-interaction-overlay.component';
 
 export interface CardRenderItem {
-    forceUnit: ASForceUnit;
-    cardIndex: number;
-    trackKey: string;
+    readonly forceUnit: ASForceUnit;
+    readonly cardIndex: number;
+    readonly trackKey: string;
 }
 
 // Layout constants
@@ -67,7 +67,6 @@ export class AlphaStrikeViewerComponent {
     private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private readonly forceDialogs = inject(ForceDialogsService);
     private readonly pilotEditor = inject(ForcePilotEditorService);
-    private readonly destroyRef = inject(DestroyRef);
     private readonly dbService = inject(DbService);
     private readonly canvasService = inject(PageViewerCanvasService);
 
@@ -124,8 +123,20 @@ export class AlphaStrikeViewerComponent {
     // Pinch gesture state
     private readonly pointers = new Map<number, Point>();
     
-    // Cache for CardRenderItems to prevent object recreation
-    private readonly cardRenderItemsCache = new Map<string, CardRenderItem[]>();
+    /** Reactive card rows; invalidates when force membership or a unit projection changes. */
+    private readonly cardRenderItems = computed(() => new Map(
+        (this.force()?.units() ?? []).map(forceUnit => [
+            forceUnit.id,
+            Object.freeze(Array.from(
+                { length: this.getCardCount(forceUnit) },
+                (_, cardIndex) => Object.freeze({
+                    forceUnit,
+                    cardIndex,
+                    trackKey: `${forceUnit.id}-card-${cardIndex}`,
+                }),
+            )),
+        ]),
+    ));
     private pinchState: {
         lastDistance: number;
         accumulatedDelta: number;
@@ -149,10 +160,6 @@ export class AlphaStrikeViewerComponent {
     
     constructor() {
         this.setupEffects();
-        this.destroyRef.onDestroy(() => {
-            this.cardRenderItemsCache.clear();
-            this.pointers.clear();
-        });
     }
     
     /**
@@ -164,30 +171,10 @@ export class AlphaStrikeViewerComponent {
     }
     
     /**
-     * Generate card render items for a unit (handles multi-card units).
-     * Results are cached to prevent object recreation on every change detection cycle
+     * Return the computed render rows for one unit (including multi-card units).
      */
-    getCardRenderItems(forceUnit: ASForceUnit): CardRenderItem[] {
-        const cacheKey = forceUnit.id;
-        const cached = this.cardRenderItemsCache.get(cacheKey);
-        
-        // Return cached if exists
-        if (cached) {
-            return cached;
-        }
-        
-        // Create new items and cache them
-        const items: CardRenderItem[] = [];
-        const cardCount = this.getCardCount(forceUnit);
-        for (let i = 0; i < cardCount; i++) {
-            items.push({
-                forceUnit,
-                cardIndex: i,
-                trackKey: `${forceUnit.id}-card-${i}`
-            });
-        }
-        this.cardRenderItemsCache.set(cacheKey, items);
-        return items;
+    getCardRenderItems(forceUnit: ASForceUnit): readonly CardRenderItem[] {
+        return this.cardRenderItems().get(forceUnit.id) ?? Object.freeze([]);
     }
     
     /**
@@ -224,21 +211,6 @@ export class AlphaStrikeViewerComponent {
     }
 
     private setupEffects(): void {
-        // Clean up stale cardRenderItemsCache entries when force changes
-        effect(() => {
-            const force = this.force();
-            if (!force) {
-                this.cardRenderItemsCache.clear();
-                return;
-            }
-
-            const currentUnitIds = new Set(force.units().map(u => u.id));
-            // Remove stale cache entries
-            this.cardRenderItemsCache.forEach((_, id) => {
-                if (!currentUnitIds.has(id)) this.cardRenderItemsCache.delete(id);
-            });
-        });
-        
         // Scroll to selected unit when selection changes externally
         effect(() => {
             const selectedUnit = this.unit();

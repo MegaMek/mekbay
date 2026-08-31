@@ -22,7 +22,6 @@ export interface AlignmentPickerResult {
 
 @Component({
     selector: 'alignment-picker-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [ForcePreviewComponent],
     host: {

@@ -11,7 +11,7 @@ import { AutoFitTextDirective } from '../../directives/auto-fit-text.directive';
     imports: [AutoFitTextDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './dice-roller.component.html',
-    styleUrls: ['./dice-roller.component.scss']
+    styleUrl: './dice-roller.component.scss'
 })
 export class DiceRollerComponent {
     private endTimer: ReturnType<typeof setTimeout> | null = null;

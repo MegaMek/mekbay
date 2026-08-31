@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
 import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
@@ -62,7 +61,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         })
             .overrideComponent(UnitCardExpandedComponent, {
                 set: {
-                    imports: [CommonModule],
+                    imports: [],
                     template: '<div></div>',
                 },
             })

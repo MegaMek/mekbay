@@ -142,7 +142,7 @@ type ShadowDirection = 'left' | 'right';
     ],
     imports: [ViewerStageComponent, ViewerPageComponent, ViewerShadowPageComponent, HeatDiffMarkerComponent, PageViewerCanvasControlsComponent],
     templateUrl: './page-viewer.component.html',
-    styleUrls: ['./page-viewer.component.scss']
+    styleUrl: './page-viewer.component.scss'
 })
 export class PageViewerComponent implements AfterViewInit {
     private injector = inject(Injector);

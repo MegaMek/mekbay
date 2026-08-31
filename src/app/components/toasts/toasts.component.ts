@@ -8,7 +8,6 @@ import { ToastService } from '../../services/toast.service';
 
 @Component({
     selector: 'app-toasts',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     <div class="toast-container">
@@ -19,7 +18,7 @@ import { ToastService } from '../../services/toast.service';
         }
     </div>
     `,
-    styleUrls: ['./toasts.component.css']
+    styleUrl: './toasts.component.css'
 })
 export class ToastsComponent {
     protected readonly toastService = inject(ToastService);

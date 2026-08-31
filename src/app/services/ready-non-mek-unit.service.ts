@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { Injectable, inject } from '@angular/core';
-import type { UnitProviderId, UnitUuid } from './unit-catalog/unit-catalog.types';
+import type { SourceHash, UnitProviderId, UnitUuid } from './unit-catalog/unit-catalog.types';
 import type { UnitInstanceId } from '../models/runtime/runtime-state';
 import {
     DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID,
@@ -20,7 +20,11 @@ import {
 } from './native-entity.service';
 
 export interface LoadReadyNonMekUnitRequest {
-    readonly identity: { readonly provider: UnitProviderId; readonly uuid: UnitUuid };
+    readonly identity: {
+        readonly provider: UnitProviderId;
+        readonly uuid: UnitUuid;
+        readonly sourceHashAtSave?: SourceHash;
+    };
     readonly instanceId: UnitInstanceId;
     readonly deployment: NonMekUnitDeploymentInput;
     readonly scenario: ScenarioRules;
@@ -57,6 +61,9 @@ export class ReadyNonMekUnitService {
         const identity = Object.freeze({
             provider: request.saved.entity.provider,
             uuid: request.saved.entity.uuid,
+            ...(request.saved.entity.sourceHashAtSave === undefined
+                ? {}
+                : { sourceHashAtSave: request.saved.entity.sourceHashAtSave }),
         });
         const loaded = await this.entities.load(identity);
         if (loaded.entity.entityType === 'Mek') {

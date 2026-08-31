@@ -267,7 +267,6 @@ function variableSizeVirtualScrollStrategyFactory(
 /** Measures rendered rows and feeds their heights into a variable-size strategy. */
 @Directive({
     selector: 'cdk-virtual-scroll-viewport[mbVariableSizeVirtualScroll]',
-    standalone: true,
     providers: [{
         provide: VIRTUAL_SCROLL_STRATEGY,
         useFactory: variableSizeVirtualScrollStrategyFactory,

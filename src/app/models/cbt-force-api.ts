@@ -59,6 +59,7 @@ export type CBTNonMekUnitCommandResult =
         readonly changed: false;
         readonly reason:
             | 'NOT_ADMITTED'
+            | 'AUTOMATION_CANCELLED'
             | 'FORCE_READ_ONLY'
             | 'STALE_REVISION'
             | 'STALE_TARGET_REGISTRY'
@@ -67,11 +68,18 @@ export type CBTNonMekUnitCommandResult =
         readonly currentRevision: StateRevision | null;
     }>;
 
-export type CBTMekUnitCommandResult = CommandReduction | Readonly<{
-    readonly accepted: false;
-    readonly reason: 'NOT_ADMITTED' | 'INVALID_COMMAND';
-    readonly currentRevision: null;
-}>;
+export type CBTMekUnitCommandResult = CommandReduction
+    | Readonly<{
+        readonly accepted: false;
+        readonly reason: 'NOT_ADMITTED' | 'INVALID_COMMAND';
+        readonly currentRevision: null;
+    }>
+    | Readonly<{
+        /** The reducer may have staged boundary facts, but the requested composite action stopped. */
+        readonly accepted: false;
+        readonly reason: 'AUTOMATION_CANCELLED';
+        readonly currentRevision: StateRevision;
+    }>;
 
 export type CBTUnitRepairResult =
     | Readonly<{

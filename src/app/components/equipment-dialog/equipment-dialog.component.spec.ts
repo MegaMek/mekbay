@@ -58,6 +58,7 @@ function createTurnSnapshot(
         },
         heat: { current: 0, heatsinksOff: 0 },
         heatProjection: { kind: 'unsupported', blockers: [] },
+        ruleChecks: [],
         conditions: [],
         ...patch,
     } as unknown as MekTurnPanelSnapshot;

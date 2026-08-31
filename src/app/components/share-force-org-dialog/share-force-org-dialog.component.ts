@@ -15,7 +15,6 @@ export interface ShareForceOrgDialogData {
 @Component({
     selector: 'share-force-org-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     host: {
         class: 'fullscreen-dialog-host glass'
     },

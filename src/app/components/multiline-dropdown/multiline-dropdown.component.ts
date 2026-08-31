@@ -28,7 +28,6 @@ interface MultilineDropdownPointerHoverEvent {
 
 @Component({
     selector: 'multiline-dropdown-panel',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         '[style.font-size]': 'fontSize() || null',
@@ -202,7 +201,6 @@ class MultilineDropdownPanelComponent {
 
 @Component({
     selector: 'multiline-dropdown',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="multiline-dropdown">

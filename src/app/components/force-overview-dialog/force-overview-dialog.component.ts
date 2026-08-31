@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, effect, type DestroyRef, type ElementRef, inject, signal, TemplateRef, untracked, viewChild } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop';
 import type { Force, UnitGroup } from '../../models/force.model';
@@ -102,7 +101,6 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
     selector: 'force-overview-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
         DragDropModule,
         UnitCardExpandedComponent,
         ForcePreviewPanelComponent,
@@ -117,7 +115,7 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
         class: 'fullscreen-dialog-host fullheight tv-fade'
     },
     templateUrl: './force-overview-dialog.component.html',
-    styleUrls: ['./force-overview-dialog.component.scss']
+    styleUrl: './force-overview-dialog.component.scss'
 })
 export class ForceOverviewDialogComponent {
     protected readonly isCBTMekForceMember = isCBTMekForceMember;

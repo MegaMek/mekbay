@@ -19,6 +19,7 @@ import {
 } from '../models/runtime/unit-state-initializer';
 import {
     type UnitProviderId,
+    type SourceHash,
     type UnitUuid,
 } from './unit-catalog/unit-catalog.types';
 import {
@@ -28,7 +29,11 @@ import {
 } from './native-entity.service';
 
 export interface LoadReadyMekRequest {
-    readonly identity: { readonly provider: UnitProviderId; readonly uuid: UnitUuid };
+    readonly identity: {
+        readonly provider: UnitProviderId;
+        readonly uuid: UnitUuid;
+        readonly sourceHashAtSave?: SourceHash;
+    };
     readonly instanceId: UnitInstanceId;
     readonly deployment: DeploymentConfiguration;
     readonly scenario: ScenarioRules;
@@ -80,6 +85,9 @@ export class ReadyMekUnitService {
         const identity = {
             provider: request.saved.entity.provider,
             uuid: request.saved.entity.uuid,
+            ...(request.saved.entity.sourceHashAtSave === undefined
+                ? {}
+                : { sourceHashAtSave: request.saved.entity.sourceHashAtSave }),
         };
         const loaded = requireLoadedMek(await this.entities.load(identity));
         return this.readyFactory({

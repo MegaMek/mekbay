@@ -10,7 +10,6 @@ import { formatForceMembersBvPv } from '../../utils/force-viewer-bv-pv-display.u
 /** Keeps runtime BV/PV updates local instead of invalidating the full force viewer. */
 @Component({
     selector: 'force-member-value',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: '{{ value() }}',
 })

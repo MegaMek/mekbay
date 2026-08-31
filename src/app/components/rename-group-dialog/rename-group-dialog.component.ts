@@ -37,7 +37,6 @@ export interface RenameGroupDialogResult {
 
 @Component({
   selector: 'rename-group-dialog',
-  standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormationInfoComponent],
   host: {

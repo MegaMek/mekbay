@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, inject, input, output, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import type { UnitSummary, UnitComponent } from '../../models/unit-summary.model';
 import { ForceUnit } from '../../models/force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -59,7 +58,6 @@ import { DataService } from '../../services/data.service';
     selector: 'unit-card-expanded',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        CommonModule,
         UnitIconComponent,
         UnitTagsComponent,
         UnitComponentItemComponent,

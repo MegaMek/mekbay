@@ -82,17 +82,11 @@ export class ASForceUnit extends ForceUnit {
         this.abilityLookup = injector.get(AsAbilityLookupService);
     }
 
-    override destroy() {
-        super.destroy();
-    }
-
     public async load() {
         if (this.isLoaded()) return;
-        try {
-            await this.ensureNativeSourceLoaded();
-            this.isLoaded.set(true);
-        } finally {
-        }
+        // Alpha Strike owns only the lightweight catalog projection. Native
+        // Entity/source loading belongs exclusively to the Classic runtime.
+        this.isLoaded.set(true);
     }
 
     override getTagEcmCapabilitySummary(): UnitTagEcmCapabilitySummary {

@@ -27,7 +27,7 @@ const OVERFLOW_OVERLAY_KEY = 'tab-overflow-menu';
 @Component({
     selector: 'base-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    styleUrls: ['./base-dialog.component.scss'],
+    styleUrl: './base-dialog.component.scss',
     template: `
     <div class="modal-flex-center">
       <div class="modal tv-fade" [class.auto-height]="autoHeight()" [class]="modalClasses()">

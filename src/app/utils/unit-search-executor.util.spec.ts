@@ -7,7 +7,8 @@ import type { UnitSummary } from '../models/unit-summary.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { parseSemanticQueryAST } from './semantic-filter-ast.util';
 import { executeUnitSearch } from './unit-search-executor.util';
-import { getUnitSearchIdentityKey } from './unit-search-shared.util';
+import { parseASSpecials } from './as-special-filter.util';
+import { applyFilterStateToUnits } from './unit-filter-kernel.util';
 
 function createUnit(overrides: Pick<UnitSummary, 'name' | 'chassis' | 'model' | 'tons'>): UnitSummary {
     return createEmptyUnit(overrides);
@@ -84,7 +85,7 @@ describe('unit-search-executor', () => {
         });
 
         expect(execution.results).toEqual([unit]);
-        expect(execution.normalizationMatchesByUnitIdentity.size).toBe(0);
+        expect(execution.normalizationMatchesByUnitUuid.size).toBe(0);
     });
 
     it('normalizes Alpha Strike results and excludes units outside the target PV range', () => {
@@ -120,7 +121,7 @@ describe('unit-search-executor', () => {
         });
 
         expect(execution.results.map(unit => unit.name)).toEqual(['Matching']);
-        expect(execution.normalizationMatchesByUnitIdentity.get(getUnitSearchIdentityKey(matching))).toEqual({
+        expect(execution.normalizationMatchesByUnitUuid.get(matching.uuid)).toEqual({
             kind: 'pv',
             adjustedValue: 18,
             skill: 5,
@@ -210,5 +211,99 @@ describe('unit-search-executor', () => {
             .toEqual(['Dual Typed', 'Area Effect Only']);
         expect(executeQuery([dualTyped, areaEffectOnly], 'weaponType&="AI:>=2" weaponType&="AE:>=2"').map(unit => unit.name))
             .toEqual(['Dual Typed']);
+    });
+
+    it('uses the sync pre-parsed specials index for numeric minima', () => {
+        const unit = createEmptyUnit({
+            name: 'Indexed AC',
+            as: { ...createEmptyUnit().as, specials: ['AC1/1/1'] },
+        });
+        const indexedSpecials = parseASSpecials(['TUR(3/3/3,AC1/4/1)']);
+        const execution = executeUnitSearch({
+            units: [unit],
+            parsedQuery: parseSemanticQueryAST('specials="AC*/>=4/*"', GameSystem.ALPHA_STRIKE),
+            searchTokens: [],
+            gameSystem: GameSystem.ALPHA_STRIKE,
+            sortKey: 'name',
+            sortDirection: 'asc',
+            bvPvLimit: 0,
+            forceTotalBvPv: 0,
+            getAdjustedBV: value => value.bv,
+            getAdjustedPV: value => value.as.PV,
+            unitBelongsToEra: () => false,
+            unitBelongsToFaction: () => false,
+            unitBelongsToForcePack: () => false,
+            getAllEraNames: () => [],
+            getAllFactionNames: () => [],
+            getIndexedASSpecials: unitUuid => unitUuid === unit.uuid ? indexedSpecials : undefined,
+        });
+
+        expect(execution.results.map(result => result.name)).toEqual(['Indexed AC']);
+    });
+
+    it('uses specials token postings before sync UI tuple evaluation', () => {
+        const matching = createEmptyUnit({
+            name: 'Matching AC',
+            as: { ...createEmptyUnit().as, specials: ['AC1/4/1'] },
+        });
+        const unrelated = createEmptyUnit({
+            name: 'Unrelated TAG',
+            as: { ...createEmptyUnit().as, specials: ['TAG'] },
+        });
+        const parsedByUnit = new Map([
+            [matching.uuid, parseASSpecials(matching.as.specials)],
+            [unrelated.uuid, parseASSpecials(unrelated.as.specials)],
+        ]);
+        const getIndexedUnitIds = jasmine.createSpy('getIndexedUnitIds')
+            .and.callFake((_filterKey: string, token: string) => token === 'AC' ? new Set([matching.uuid]) : undefined);
+        const getIndexedASSpecials = jasmine.createSpy('getIndexedASSpecials')
+            .and.callFake((unitUuid: string) => parsedByUnit.get(unitUuid as UnitSummary['uuid']));
+
+        const results = applyFilterStateToUnits({
+            units: [matching, unrelated],
+            state: {
+                'as.specials': {
+                    interactedWith: true,
+                    value: {
+                        AC: { name: 'AC', state: 'or', count: 1, minimumValues: [null, 4, null] },
+                    },
+                },
+            },
+            dependencies: {
+                getProperty: (unit, key) => key === 'as.specials' ? unit.as.specials : undefined,
+                getAdjustedBV: unit => unit.bv,
+                getAdjustedPV: unit => unit.as.PV,
+                getUnitIdsForExternalFilters: () => null,
+                getPositiveFactionNames: () => [],
+                unitMatchesAvailabilityFrom: () => false,
+                unitMatchesAvailabilityRarity: () => false,
+                getForcePackLookupSet: () => undefined,
+                getAvailabilityLookupKey: unit => unit.name,
+                getIndexedUnitIds,
+                getIndexedASSpecials,
+            },
+        });
+
+        expect(results).toEqual([matching]);
+        expect(getIndexedUnitIds).toHaveBeenCalledOnceWith('as.specials', 'AC');
+        expect(getIndexedASSpecials).toHaveBeenCalledOnceWith(matching.uuid);
+    });
+
+    it('matches when the selected rulebooks cover one complete bucket', () => {
+        const unitA = createEmptyUnit({ name: 'Unit A', rulesRefs: [['Core'], ['TW', 'IO:AE']] });
+        const unitB = createEmptyUnit({
+            name: 'Unit B',
+            rulesRefs: [['TW', 'Shrap01', 'AAA'], ['TM', 'Shrap01']],
+        });
+        const units = [unitA, unitB];
+
+        expect(executeQuery(units, 'rulesRefs=Core').map(unit => unit.name)).toEqual(['Unit A']);
+        expect(executeQuery(units, 'rulesRefs=TW').map(unit => unit.name)).toEqual([]);
+        expect(executeQuery(units, 'rulesRefs=TW,IO:AE').map(unit => unit.name)).toEqual(['Unit A']);
+        expect(executeQuery(units, 'rulesRefs=TW,Shrap01').map(unit => unit.name)).toEqual([]);
+        expect(executeQuery(units, 'rulesRefs=TW,Shrap01,AAA').map(unit => unit.name)).toEqual(['Unit B']);
+        expect(executeQuery(units, 'rulesRefs=IO:AE').map(unit => unit.name)).toEqual(['Unit A']);
+        expect(executeQuery(units, 'rulesRefs=Shrap01').map(unit => unit.name)).toEqual(['Unit B']);
+        expect(executeQuery(units, 'rulesRefs=AAA').map(unit => unit.name)).toEqual([]);
     });
 });

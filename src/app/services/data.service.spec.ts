@@ -200,6 +200,7 @@ describe('DataService', () => {
     };
     const unitRuntimeServiceMock = {
         getUnitByName: jasmine.createSpy('getUnitByName').and.returnValue(undefined),
+        getUnitByUuid: jasmine.createSpy('getUnitByUuid').and.returnValue(undefined),
         resolvePersistedUnitIdentity: jasmine.createSpy('resolvePersistedUnitIdentity').and.callFake(
             (reference: { unit: string }) => ({
                 kind: 'unresolved' as const,
@@ -366,6 +367,8 @@ describe('DataService', () => {
         userStateServiceMock.uuid.and.returnValue('user-1');
         unitRuntimeServiceMock.getUnitByName.calls.reset();
         unitRuntimeServiceMock.getUnitByName.and.returnValue(undefined);
+        unitRuntimeServiceMock.getUnitByUuid.calls.reset();
+        unitRuntimeServiceMock.getUnitByUuid.and.returnValue(undefined);
         unitRuntimeServiceMock.resolvePersistedUnitIdentity.calls.reset();
         unitRuntimeServiceMock.prepareRuntimeCatalog.calls.reset();
         unitRuntimeServiceMock.prepareRuntimeCatalog.and.returnValue({
@@ -529,8 +532,10 @@ describe('DataService', () => {
 
     it('delegates unit lookup to the runtime service', () => {
         service.getUnitByName('Mad Cat Prime');
+        service.getUnitByUuid('unit-uuid');
 
         expect(unitRuntimeServiceMock.getUnitByName).toHaveBeenCalledOnceWith('Mad Cat Prime');
+        expect(unitRuntimeServiceMock.getUnitByUuid).toHaveBeenCalledOnceWith('unit-uuid');
     });
 
     it('resolves equipment names through the catalog registry', () => {
@@ -769,7 +774,6 @@ describe('DataService', () => {
         expect(dbServiceMock.saveForce).toHaveBeenCalledTimes(1);
         expect(dbServiceMock.saveForce).toHaveBeenCalledWith(
             jasmine.objectContaining({ instanceId: 'force-missing' }),
-            { allowRevisionOverride: true },
         );
     });
 
@@ -803,7 +807,6 @@ describe('DataService', () => {
                 type: GameSystem.CLASSIC,
                 cbt: jasmine.objectContaining({ forceId: cloudRawForce.instanceId }),
             }),
-            { allowRevisionOverride: true },
         );
     });
 
@@ -1340,7 +1343,6 @@ describe('DataService', () => {
             jasmine.objectContaining({
                 name: 'Trusted Remote Name',
             }),
-            { allowRevisionOverride: true },
         );
         expect(stagedForce.markCloudCBTForceV2Saved).toHaveBeenCalledWith(
             jasmine.objectContaining({ name: 'Trusted Remote Name' }),
@@ -1514,7 +1516,7 @@ describe('DataService', () => {
         plan.finalize();
         expect((service as any).activeForceAuthority.get(incoming.instanceId)).toBe(stagedForce);
         await plan.persistence();
-        expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(incoming, { allowRevisionOverride: true });
+        expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(incoming);
     });
 
     it('keeps a finalized remote replacement in the retirement drain until its local write settles', async () => {
@@ -1560,7 +1562,7 @@ describe('DataService', () => {
         await Promise.resolve();
         await Promise.resolve();
 
-        expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(incoming, { allowRevisionOverride: true });
+        expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(incoming);
         expect(drainSettled).toBeFalse();
 
         localWrite.resolve();
@@ -1776,7 +1778,7 @@ describe('DataService', () => {
         await oldSave;
 
         expect(dbServiceMock.saveForce).toHaveBeenCalledTimes(1);
-        expect(dbServiceMock.saveForce).toHaveBeenCalledWith(remoteBytes, { allowRevisionOverride: true });
+        expect(dbServiceMock.saveForce).toHaveBeenCalledWith(remoteBytes);
 
         await service.saveForce(liveForce, true);
         expect(liveForce.serializeForPersistence).toHaveBeenCalledTimes(1);
@@ -2065,7 +2067,7 @@ describe('DataService', () => {
         };
 
         await service.saveSerializedForceToLocalStorage(valid);
-        expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(valid, { allowRevisionOverride: true });
+        expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(valid);
 
         await expectAsync(service.saveSerializedForceToLocalStorage({
             ...base,
@@ -2102,7 +2104,6 @@ describe('DataService', () => {
         expect(inspect).not.toHaveBeenCalled();
         expect(dbServiceMock.saveForce).toHaveBeenCalledWith(
             jasmine.objectContaining({ name: 'Original Raw' }),
-            { allowRevisionOverride: true },
         );
         expect(service.activateForceAuthority(active)).toBeTrue();
     });
@@ -2354,7 +2355,7 @@ describe('DataService', () => {
 
         expect(result).toEqual({ tags: ['Recon'], timestamp: updated.timestamp });
         expect(dbServiceMock.updateForceTags).not.toHaveBeenCalled();
-        expect(dbServiceMock.saveForce).toHaveBeenCalledWith(updated, { allowRevisionOverride: true });
+        expect(dbServiceMock.saveForce).toHaveBeenCalledWith(updated);
     });
 
     it('rejects lightweight tag updates when neither local nor cloud storage can be updated', async () => {

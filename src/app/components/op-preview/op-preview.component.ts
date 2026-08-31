@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, model } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { type CdkDragDrop, DragDropModule, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
 import type { ForceAlignment } from '../../models/force-slot.model';
 import type { GameSystem } from '../../models/common.model';
@@ -37,11 +37,10 @@ interface OpPreviewDisplayForce extends OpPreviewForce {
 
 @Component({
     selector: 'op-preview',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, DragDropModule],
+    imports: [DecimalPipe, DragDropModule],
     templateUrl: './op-preview.component.html',
-    styleUrls: ['./op-preview.component.scss']
+    styleUrl: './op-preview.component.scss'
 })
 export class OpPreviewComponent {
     dataService = inject(DataService);

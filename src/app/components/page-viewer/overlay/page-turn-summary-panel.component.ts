@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { afterNextRender, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, Injector, input, output, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 
 import {
@@ -95,7 +94,7 @@ type NonMekEscalatingFailureEdit = Extract<
 /** Original turn-tracker presentation backed only by the canonical Mek runtime. */
 @Component({
     selector: 'page-turn-summary-panel',
-    imports: [CommonModule, HexSliderComponent, TooltipDirective, CoverLevelPickerComponent],
+    imports: [HexSliderComponent, TooltipDirective, CoverLevelPickerComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './page-turn-summary-panel.component.html',
     styleUrl: './page-turn-summary-panel.component.scss'

@@ -58,7 +58,7 @@ interface EffectiveArcDamage extends ArcDamage {
     selector: 'as-layout-large-vessel-2',
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './layout-large-vessel-2.component.html',
-    styleUrls: ['./layout-large-vessel-2.component.scss'],
+    styleUrl: './layout-large-vessel-2.component.scss',
     imports: [
         UpperCasePipe,
     ],

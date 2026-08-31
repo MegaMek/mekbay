@@ -17,7 +17,6 @@ import { isCaseEquipment } from '../models/case-equipment.model';
  */
 @Pipe({
     name: 'expandedComponents',
-    standalone: true,
     pure: true
 })
 export class ExpandedComponentsPipe implements PipeTransform {

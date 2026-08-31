@@ -13,7 +13,6 @@ export interface CreateLobbyDialogData {
 
 @Component({
     selector: 'create-lobby-dialog',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: { class: 'fullscreen-dialog-host glass' },
     template: `
@@ -121,5 +120,4 @@ export class CreateLobbyDialogComponent {
         this.dialogRef.close(null);
     }
 }
-
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 export interface TooltipLine {
     label?: string;
@@ -24,16 +24,14 @@ export type TooltipContent = string | readonly TooltipLine[];
 
 @Component({
     selector: 'tooltip',
-    standalone: true,
-    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: { class: 'tooltip' },
     template: `
-        <div class="tooltip-content framed-borders has-shadow" [class.error]="type === 'error'">
-            @if (isString) {
-                <div class="tooltip-html" [innerHTML]="htmlContent"></div>
+        <div class="tooltip-content framed-borders has-shadow" [class.error]="type() === 'error'">
+            @if (isString()) {
+                <div class="tooltip-html" [innerHTML]="htmlContent()"></div>
             } @else {
-                @for (line of lines; track $index) {
+                @for (line of lines(); track $index) {
                     @if (line.isBreak) {
                         <hr class="divisor" />
                     } @else {
@@ -52,8 +50,8 @@ export type TooltipContent = string | readonly TooltipLine[];
                 }
             }
         </div>
-        @if (lockProgressDuration > 0) {
-            <div class="tooltip-lock-progress" [style.animation-duration.ms]="lockProgressDuration" aria-hidden="true"></div>
+        @if (lockProgressDuration() > 0) {
+            <div class="tooltip-lock-progress" [style.animation-duration.ms]="lockProgressDuration()" aria-hidden="true"></div>
         }
     `,
     styles: [`
@@ -156,19 +154,18 @@ export type TooltipContent = string | readonly TooltipLine[];
     `]
 })
 export class TooltipComponent {
-    content: TooltipContent = '';
-    type: TooltipType = 'info';
-    lockProgressDuration = 0;
+    readonly content = input<TooltipContent>('');
+    readonly type = input<TooltipType>('info');
+    readonly lockProgressDuration = input(0);
 
-    get htmlContent(): string {
-        return typeof this.content === 'string' ? this.content : '';
-    }
-    
-    get isString(): boolean {
-        return typeof this.content === 'string';
-    }
-    
-    get lines(): readonly TooltipLine[] {
-        return Array.isArray(this.content) ? this.content : [];
-    }
+    readonly htmlContent = computed(() => {
+        const content = this.content();
+        return typeof content === 'string' ? content : '';
+    });
+
+    readonly isString = computed(() => typeof this.content() === 'string');
+    readonly lines = computed<readonly TooltipLine[]>(() => {
+        const content = this.content();
+        return Array.isArray(content) ? content : [];
+    });
 }

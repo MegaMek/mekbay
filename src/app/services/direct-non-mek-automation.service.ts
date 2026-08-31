@@ -11,6 +11,7 @@ import { isCaseEquipment } from '../models/case-equipment.model';
 import { isDroneOperatingSystemEquipment } from '../models/drone-operating-system.model';
 import { AmmoEquipment } from '../models/equipment.model';
 import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
+import type { BaseEntity } from '../models/entity/base-entity';
 import type { ComponentId, CrewPositionId } from '../models/entity/entity-identifiers';
 import { isAeroEntity } from '../models/entity/utils/entity-type-guards';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
@@ -35,9 +36,16 @@ import {
     type UnitInstanceId,
 } from '../models/runtime/runtime-state';
 import { CBTAutomationService } from './cbt-automation.service';
+import { OptionsService } from './options.service';
 
 type AeroSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state'> & Readonly<{
     entity: AeroEntity;
+    index: NonMekRuntimeIndex;
+    state: NonMekUnitRuntimeState;
+}>;
+
+type NonMekSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state'> & Readonly<{
+    entity: BaseEntity;
     index: NonMekRuntimeIndex;
     state: NonMekUnitRuntimeState;
 }>;
@@ -55,6 +63,19 @@ export type DirectNonMekAutomationDispatch = (
 
 export interface PreparedDirectNonMekAutomationCommand {
     readonly command: NonMekUnitCommand;
+    readonly cancelled?: true;
+    readonly heatEffects?: PreparedAeroHeatEffects;
+    readonly phaseBoundary?: PreparedNonMekPhaseBoundary;
+}
+
+export interface DirectNonMekEndTurnAutomationRequest {
+    readonly instanceId: UnitInstanceId;
+    readonly command: Extract<NonMekUnitCommand, { readonly kind: 'end-turn' }>;
+}
+
+export interface PreparedDirectNonMekEndTurnAutomation {
+    readonly instanceId: UnitInstanceId;
+    readonly prepared: PreparedDirectNonMekAutomationCommand;
 }
 
 type AeroHeatCheckKind =
@@ -79,6 +100,31 @@ interface RolledAeroHeatCheck {
     readonly outcome: 'success' | 'failed';
 }
 
+interface StagedAeroHeatEffects {
+    readonly id: string;
+    readonly heat: number;
+    readonly checks: readonly RolledAeroHeatCheck[];
+    readonly hadHeatControlEffect: boolean;
+    readonly ammo: AeroAmmoExplosionCandidate | null;
+}
+
+interface PreparedAeroHeatEffects {
+    readonly staged: StagedAeroHeatEffects;
+    readonly applyEffects: boolean;
+    readonly applyPilotHits: boolean;
+}
+
+interface PreparedNonMekCrewRecovery {
+    readonly eventId: string;
+    readonly positionId: CrewPositionId;
+    readonly recovered: boolean;
+    readonly accepted: boolean;
+}
+
+interface PreparedNonMekPhaseBoundary {
+    readonly recoveries: readonly PreparedNonMekCrewRecovery[];
+}
+
 interface AeroAmmoExplosionCandidate {
     readonly componentId: ComponentId;
     readonly equipment: string;
@@ -94,44 +140,258 @@ interface AeroAmmoExplosionCandidate {
 @Injectable({ providedIn: 'root' })
 export class DirectNonMekAutomationService {
     private readonly automation = inject(CBTAutomationService);
+    private readonly options = inject(OptionsService);
 
     async prepareCommand(
         force: CBTForce,
         instanceId: UnitInstanceId,
         command: NonMekUnitCommand,
     ): Promise<PreparedDirectNonMekAutomationCommand> {
+        if (command.kind === 'end-phase') {
+            const snapshot = this.nonMekSnapshot(force, instanceId);
+            return snapshot
+                ? this.preparePhaseBoundary(snapshot, command)
+                : Object.freeze({ command });
+        }
         if (command.kind !== 'end-turn') return Object.freeze({ command });
-        const snapshot = this.snapshot(force, instanceId);
-        const projection = snapshot === null
-            ? null
-            : projectNonMekEndTurnHeat(
-                snapshot.entity,
-                snapshot.index,
-                snapshot.state,
-                snapshot.ruleset,
+        const batch = await this.prepareEndTurnCommands(force, [{ instanceId, command }]);
+        return batch?.[0]?.prepared ?? Object.freeze({ command, cancelled: true });
+    }
+
+    /** Reviews the complete force-wide non-Mek end-turn plan before mutation. */
+    async prepareEndTurnCommands(
+        force: CBTForce,
+        requests: readonly DirectNonMekEndTurnAutomationRequest[],
+    ): Promise<readonly PreparedDirectNonMekEndTurnAutomation[] | null> {
+        const rows = requests.map(request => {
+            const snapshot = this.snapshot(force, request.instanceId);
+            const projection = snapshot === null
+                ? null
+                : projectNonMekEndTurnHeat(
+                    snapshot.entity,
+                    snapshot.index,
+                    snapshot.state,
+                    snapshot.ruleset,
+                );
+            const automaticHeat = projection?.projected ?? snapshot?.state.heat.current ?? 0;
+            const staged = snapshot
+                ? this.stageAeroHeatEffects(
+                    force,
+                    snapshot,
+                    automaticHeat,
+                    request.command.expectedRevision,
+                )
+                : null;
+            const effects = staged
+                ? this.reviewableAeroEffectDescriptions(staged)
+                : Object.freeze([]);
+            const event: AutomationReviewEvent | null = snapshot && projection
+                ? Object.freeze({
+                    id: `non-mek-heat:${request.instanceId}:${request.command.expectedRevision}`,
+                    subject: this.subject(snapshot),
+                    event: 'Heat and dissipation',
+                    description: `${projection.current} heat → ${projection.projected} heat`,
+                    delta: projection.projected - projection.current,
+                    breakdown: projection.sources,
+                    ...(effects.length === 0 ? {} : { effects }),
+                })
+                : null;
+            return Object.freeze({ request, snapshot, event, staged });
+        });
+        const heatMode = this.options.cbtAutomationMode('heatAndDissipationResolution');
+        const effectsMode = this.options.cbtAutomationMode('heatEffectsCheck');
+        const pilotHitsMode = this.options.cbtAutomationMode('pilotHitsAndConsciousnessCheck');
+
+        if (heatMode === 'ask' && effectsMode === 'ask') {
+            const events = rows.flatMap(row => {
+                const effects = row.staged
+                    ? this.reviewableAeroEffectDescriptions(row.staged)
+                    : Object.freeze([]);
+                if (!row.snapshot || (!row.event && effects.length === 0)) return [];
+                return [Object.freeze({
+                    id: this.combinedHeatEventId(row.request),
+                    subject: this.subject(row.snapshot),
+                    event: pilotHitsMode === 'ask'
+                        ? 'Heat, dissipation, effects, and pilot hits'
+                        : 'Heat, dissipation, and effects',
+                    ...(row.event
+                        ? {
+                            description: row.event.description,
+                            ...(row.event.delta === undefined ? {} : { delta: row.event.delta }),
+                            ...(row.event.breakdown === undefined ? {} : { breakdown: row.event.breakdown }),
+                        }
+                        : { description: `Heat ${row.staged?.heat ?? row.snapshot.state.heat.current}` }),
+                    ...(effects.length === 0 ? {} : { effects }),
+                } satisfies AutomationReviewEvent)];
+            });
+            const accepted = await this.automation.resolve(
+                'heatAndDissipationResolution',
+                events,
+                {
+                    title: 'Review End-Turn Heat',
+                    message: pilotHitsMode === 'ask'
+                        ? 'Choose which units\' heat, dissipation, heat effects, and pilot hits to apply.'
+                        : 'Choose which units\' heat, dissipation, and heat effects to apply.',
+                    allowCancel: true,
+                },
             );
-        if (!snapshot || !projection) {
-            return Object.freeze({ command: { ...command, heatPolicy: 'manual' as const } });
+            if (accepted === null) return null;
+            return Object.freeze(rows.map(row => {
+                const selected = accepted.has(this.combinedHeatEventId(row.request));
+                return this.preparedAeroEndTurn(
+                    row.request,
+                    row.event !== null && selected,
+                    row.staged,
+                    selected,
+                    selected && pilotHitsMode !== 'no',
+                );
+            }));
         }
 
-        const event: AutomationReviewEvent = Object.freeze({
-            id: `non-mek-heat:${instanceId}:${command.expectedRevision}`,
-            subject: this.subject(snapshot),
-            event: 'Resolve Heat and Dissipation',
-            description: `${projection.current} heat → ${projection.projected} heat`,
-            delta: projection.projected - projection.current,
-            breakdown: projection.sources,
-        });
-        const accepted = await this.automation.resolve(
+        const acceptedHeat = await this.automation.resolve(
             'heatAndDissipationResolution',
-            [event],
-            { title: 'Review Heat', message: 'Apply calculated heat and cooling?' },
-        );
-        return Object.freeze({
-            command: {
-                ...command,
-                heatPolicy: accepted?.has(event.id) ? 'automatic' as const : 'manual' as const,
+            rows.flatMap(row => row.event ? [row.event] : []),
+            {
+                title: 'Review Heat and Dissipation',
+                message: 'Choose which heat and dissipation results to apply.',
+                allowCancel: true,
             },
+        );
+        if (acceptedHeat === null) return null;
+        const finalRows = rows.map(row => {
+            const heatAccepted = row.event !== null && acceptedHeat.has(row.event.id);
+            const finalHeat = heatAccepted
+                ? projectNonMekEndTurnHeat(
+                    row.snapshot!.entity,
+                    row.snapshot!.index,
+                    row.snapshot!.state,
+                    row.snapshot!.ruleset,
+                )?.projected ?? row.snapshot?.state.heat.current ?? 0
+                : row.snapshot?.state.heat.pendingOverride
+                    ?? row.snapshot?.state.heat.current
+                    ?? 0;
+            const staged = row.snapshot
+                ? this.stageAeroHeatEffects(
+                    force,
+                    row.snapshot,
+                    finalHeat,
+                    row.request.command.expectedRevision,
+                )
+                : null;
+            return Object.freeze({ ...row, heatAccepted, staged });
+        });
+        const combinesEffectsAndPilotHits = effectsMode === 'ask' && pilotHitsMode === 'ask';
+        const effectEvents = finalRows.flatMap(row => {
+            if (!row.snapshot || !row.staged) return [];
+            const effects = this.reviewableAeroEffectDescriptions(row.staged);
+            if (effects.length === 0) return [];
+            return [Object.freeze({
+                id: row.staged.id,
+                subject: this.subject(row.snapshot),
+                event: combinesEffectsAndPilotHits
+                    ? 'Aerospace Heat Effects and Pilot Hits'
+                    : 'Aerospace Heat Effects',
+                ...(row.heatAccepted && row.event
+                    ? {
+                        description: row.event.description,
+                        ...(row.event.delta === undefined ? {} : { delta: row.event.delta }),
+                        ...(row.event.breakdown === undefined ? {} : { breakdown: row.event.breakdown }),
+                    }
+                    : { description: `Heat ${row.staged.heat}` }),
+                effects,
+            } satisfies AutomationReviewEvent)];
+        });
+        const acceptedEffects = await this.automation.resolve(
+            'heatEffectsCheck',
+            effectEvents,
+            {
+                title: 'Review Aerospace Heat Effects',
+                message: combinesEffectsAndPilotHits
+                    ? 'Choose which units\' heat effects and pilot hits to resolve.'
+                    : 'Choose which units\' heat effects to resolve.',
+                allowCancel: true,
+            },
+        );
+        if (acceptedEffects === null) return null;
+
+        let acceptedPilotHits = new Set<string>();
+        if (combinesEffectsAndPilotHits) {
+            acceptedPilotHits = new Set(finalRows
+                .filter(row => row.staged && acceptedEffects.has(row.staged.id))
+                .map(row => this.pilotHitEventId(row.request)));
+        } else if (pilotHitsMode === 'yes') {
+            acceptedPilotHits = new Set(finalRows
+                .filter(row => row.staged && this.aeroPilotHits(row.staged) > 0
+                    && acceptedEffects.has(row.staged.id))
+                .map(row => this.pilotHitEventId(row.request)));
+        } else if (pilotHitsMode === 'ask') {
+            const pilotEvents = finalRows.flatMap(row => {
+                if (!row.snapshot || !row.staged || !acceptedEffects.has(row.staged.id)) return [];
+                const hits = this.aeroPilotHits(row.staged);
+                if (hits === 0) return [];
+                return [Object.freeze({
+                    id: this.pilotHitEventId(row.request),
+                    subject: this.subject(row.snapshot),
+                    event: 'Pilot hits and consciousness',
+                    description: `Heat ${row.staged.heat}`,
+                    effects: Object.freeze([
+                        `${hits} pilot-hit effect${hits === 1 ? '' : 's'} pending`,
+                    ]),
+                } satisfies AutomationReviewEvent)];
+            });
+            const decision = await this.automation.resolve(
+                'pilotHitsAndConsciousnessCheck',
+                pilotEvents,
+                {
+                    title: 'Review Pilot Hits',
+                    message: 'Choose which units\' pilot-hit effects to apply. Accepted hits continue directly into any required Consciousness Rolls.',
+                    allowCancel: true,
+                },
+            );
+            if (decision === null) return null;
+            acceptedPilotHits = new Set(decision);
+        }
+
+        return Object.freeze(finalRows.map(row => this.preparedAeroEndTurn(
+            row.request,
+            row.heatAccepted,
+            row.staged,
+            row.staged !== null && acceptedEffects.has(row.staged.id),
+            acceptedPilotHits.has(this.pilotHitEventId(row.request)),
+        )));
+    }
+
+    /** Applies the reviewed heat/consequence chain before the turn reset. */
+    async settleBeforeCommand(
+        force: CBTForce,
+        instanceId: UnitInstanceId,
+        prepared: PreparedDirectNonMekAutomationCommand,
+        dispatch: DirectNonMekAutomationDispatch,
+    ): Promise<PreparedDirectNonMekAutomationCommand | null> {
+        if (prepared.command.kind !== 'end-turn') return prepared;
+        const initial = this.snapshot(force, instanceId);
+        if (!initial) return null;
+        const finalHeat = prepared.command.heatPolicy === 'automatic'
+            ? prepared.heatEffects?.staged.heat ?? initial.state.heat.current
+            : initial.state.heat.pendingOverride ?? initial.state.heat.current;
+        const heat = await dispatch(this.command(force, instanceId, {
+            kind: 'set-heat',
+            heat: finalHeat,
+            target: 'committed',
+        }), false);
+        if (!heat.accepted) return null;
+        if (prepared.heatEffects) {
+            await this.applyAeroHeatEffects(force, instanceId, prepared.heatEffects, dispatch);
+        }
+        const settled = this.snapshot(force, instanceId);
+        if (!settled) return null;
+        return Object.freeze({
+            ...prepared,
+            command: Object.freeze({
+                ...prepared.command,
+                expectedRevision: settled.query.stateRevision,
+                heatPolicy: 'manual' as const,
+            }),
         });
     }
 
@@ -141,35 +401,161 @@ export class DirectNonMekAutomationService {
         prepared: PreparedDirectNonMekAutomationCommand,
         result: CBTNonMekUnitCommandResult,
         dispatch: DirectNonMekAutomationDispatch,
-    ): Promise<void> {
-        if (!result.accepted || !result.changed || prepared.command.kind !== 'end-turn') return;
-        await this.resolveAeroHeatEffects(force, instanceId, dispatch);
+    ): Promise<boolean> {
+        if (!result.accepted || !result.changed) return true;
+        if (prepared.command.kind === 'end-phase' && prepared.phaseBoundary) {
+            return this.applyPhaseBoundary(
+                force,
+                instanceId,
+                prepared.phaseBoundary,
+                dispatch,
+            );
+        }
+        return true;
     }
 
-    private async resolveAeroHeatEffects(
+    private async preparePhaseBoundary(
+        snapshot: NonMekSnapshot,
+        command: Extract<NonMekUnitCommand, { readonly kind: 'end-phase' }>,
+    ): Promise<PreparedDirectNonMekAutomationCommand> {
+        if (command.expectedRevision !== snapshot.query.stateRevision) {
+            return Object.freeze({ command });
+        }
+        const rows = [...snapshot.index.crewPositions.values()]
+            .sort((left, right) => left.occurrence - right.occurrence)
+            .flatMap(position => {
+                const state = snapshot.query.crewState(position.id);
+                const familyState = snapshot.state.crew.get(position.id)?.state;
+                const target = mekConsciousnessTarget(state.wounds);
+                if (!state.unconscious || state.ejected || familyState === 'killed'
+                    || target === undefined) return [];
+                const total = twoD6Total(roll2D6());
+                const recovered = succeedsOnTarget(total, target);
+                const eventId = `consciousness:${snapshot.instanceId}:${command.expectedRevision}:${position.id}`;
+                return [Object.freeze({
+                    eventId,
+                    positionId: position.id,
+                    recovered,
+                    event: Object.freeze({
+                        id: eventId,
+                        subject: snapshot.entity.displayName() || String(snapshot.instanceId),
+                        event: 'Consciousness Recovery',
+                        description: `Rolled ${total} against ${target}+.`,
+                        effects: Object.freeze([
+                            recovered ? 'Crew member regains consciousness' : 'Crew member remains unconscious',
+                        ]),
+                    } satisfies AutomationReviewEvent),
+                })];
+            });
+        const accepted = await this.automation.resolve(
+            'pilotHitsAndConsciousnessCheck',
+            rows.map(row => row.event),
+            { title: 'Review Consciousness Recovery', allowCancel: true },
+        );
+        if (accepted === null) return Object.freeze({ command, cancelled: true });
+        return Object.freeze({
+            command,
+            phaseBoundary: Object.freeze({
+                recoveries: Object.freeze(rows.map(row => Object.freeze({
+                    eventId: row.eventId,
+                    positionId: row.positionId,
+                    recovered: row.recovered,
+                    accepted: accepted.has(row.eventId),
+                } satisfies PreparedNonMekCrewRecovery))),
+            }),
+        });
+    }
+
+    private async applyPhaseBoundary(
         force: CBTForce,
         instanceId: UnitInstanceId,
+        prepared: PreparedNonMekPhaseBoundary,
         dispatch: DirectNonMekAutomationDispatch,
-    ): Promise<void> {
-        let snapshot = this.snapshot(force, instanceId);
-        if (!snapshot) return;
+    ): Promise<boolean> {
+        for (const recovery of prepared.recoveries) {
+            if (!recovery.accepted || !recovery.recovered) continue;
+            const snapshot = this.nonMekSnapshot(force, instanceId);
+            const state = snapshot?.query.crewState(recovery.positionId);
+            const familyState = snapshot?.state.crew.get(recovery.positionId)?.state;
+            if (!snapshot || !state || state.ejected || !state.unconscious
+                || familyState === 'killed') continue;
+            const result = await dispatch(this.command(force, instanceId, {
+                kind: 'set-crew-state',
+                positionId: recovery.positionId,
+                wounds: state.wounds,
+                unconscious: false,
+                ejected: false,
+                ...(familyState === undefined ? {} : { state: familyState }),
+            }), false);
+            if (!result.accepted) return false;
+        }
+        return true;
+    }
+
+    private preparedAeroEndTurn(
+        request: DirectNonMekEndTurnAutomationRequest,
+        heatAccepted: boolean,
+        staged: StagedAeroHeatEffects | null,
+        applyEffects: boolean,
+        applyPilotHits: boolean,
+    ): PreparedDirectNonMekEndTurnAutomation {
+        return Object.freeze({
+            instanceId: request.instanceId,
+            prepared: Object.freeze({
+                command: Object.freeze({
+                    ...request.command,
+                    heatPolicy: heatAccepted ? 'automatic' as const : 'manual' as const,
+                }),
+                ...(staged === null ? {} : {
+                    heatEffects: Object.freeze({ staged, applyEffects, applyPilotHits }),
+                }),
+            }),
+        });
+    }
+
+    private combinedHeatEventId(request: DirectNonMekEndTurnAutomationRequest): string {
+        return `end-turn-heat:${request.instanceId}:${request.command.expectedRevision}`;
+    }
+
+    private pilotHitEventId(request: DirectNonMekEndTurnAutomationRequest): string {
+        return `pilot-hits:${request.instanceId}:${request.command.expectedRevision}`;
+    }
+
+    private stageAeroHeatEffects(
+        force: CBTForce,
+        snapshot: AeroSnapshot,
+        heat: number,
+        revision: number,
+    ): StagedAeroHeatEffects {
+        const state: NonMekUnitRuntimeState = heat === snapshot.state.heat.current
+            ? snapshot.state
+            : Object.freeze({
+                ...snapshot.state,
+                heat: Object.freeze({ ...snapshot.state.heat, current: heat }),
+            });
         const projection = projectAeroRuntimeRules(
             snapshot.entity,
             snapshot.index,
-            snapshot.state,
+            state,
             snapshot.ruleset,
         );
-        if (!projection.heat.tracked) return;
-
+        if (!projection.heat.tracked) {
+            return Object.freeze({
+                id: `aero-heat-effects:${snapshot.instanceId}:${revision}`,
+                heat,
+                checks: Object.freeze([]),
+                hadHeatControlEffect: false,
+                ammo: null,
+            });
+        }
         const effects = projection.heat.effects;
         const controller = this.activeController(snapshot);
         const ammo = this.preferredExplosiveAmmo(snapshot);
         const hadHeatControlEffect = snapshot.query.hasCondition('out-of-control')
             && snapshot.query.hasCondition('random-movement');
         const checks: AeroHeatCheck[] = [];
-
         if (snapshot.query.hasCondition('shutdown')) {
-            if (projection.heat.current < 14) {
+            if (heat < 14) {
                 checks.push(Object.freeze({ kind: 'startup', automaticOutcome: 'success' }));
             } else if (controller && effects.shutdownTarget !== undefined
                 && effects.shutdownTarget <= 12) {
@@ -201,7 +587,7 @@ export class DirectNonMekAutomationService {
                         : { kind: 'control-recovery', automaticOutcome: 'failed' },
                 ));
             }
-        } else if (projection.heat.current < 5 && hadHeatControlEffect) {
+        } else if (heat < 5 && hadHeatControlEffect) {
             checks.push(Object.freeze({
                 kind: 'clear-heat-control',
                 automaticOutcome: 'success',
@@ -213,38 +599,56 @@ export class DirectNonMekAutomationService {
                 target: effects.pilotDamageTarget,
             }));
         }
-
-        const revision = snapshot.query.stateRevision;
-        const rolled = checks.map((check, index): RolledAeroHeatCheck => {
-            const total = check.target === undefined ? null : twoD6Total(roll2D6());
-            const outcome = check.automaticOutcome
-                ?? (total !== null && check.target !== undefined
-                    && succeedsOnTarget(total, check.target) ? 'success' : 'failed');
-            return Object.freeze({
-                id: `aero-heat-effect:${instanceId}:${revision}:${index}`,
-                check,
-                total,
-                outcome,
-            });
+        return Object.freeze({
+            id: `aero-heat-effects:${snapshot.instanceId}:${revision}`,
+            heat,
+            checks: Object.freeze(checks.map((check, index): RolledAeroHeatCheck => {
+                const total = check.target === undefined ? null : twoD6Total(roll2D6());
+                const outcome = check.automaticOutcome
+                    ?? (total !== null && check.target !== undefined
+                        && succeedsOnTarget(total, check.target) ? 'success' : 'failed');
+                return Object.freeze({
+                    id: `aero-heat-effect:${snapshot.instanceId}:${revision}:${index}`,
+                    check,
+                    total,
+                    outcome,
+                });
+            })),
+            hadHeatControlEffect,
+            ammo,
         });
-        const events = rolled.map(row => Object.freeze({
-            id: row.id,
-            subject: this.subject(snapshot!),
-            event: aeroHeatCheckLabel(row.check.kind),
-            description: row.total === null
-                ? `Automatic ${row.outcome}.`
-                : `Rolled ${row.total} against ${row.check.target}+ (${row.outcome}).`,
-            effects: Object.freeze(aeroHeatCheckEffects(row.check.kind, row.outcome, ammo)),
-        }));
-        const accepted = await this.automation.resolve(
-            'heatEffectsCheck',
-            events,
-            { title: 'Review Aerospace Heat Effects' },
-        );
-        if (accepted === null) return;
+    }
 
-        for (const row of rolled) {
-            if (!accepted.has(row.id)) continue;
+    private reviewableAeroEffectDescriptions(staged: StagedAeroHeatEffects): readonly string[] {
+        const pilotHitsMode = this.options.cbtAutomationMode('pilotHitsAndConsciousnessCheck');
+        return Object.freeze(staged.checks
+            .filter(row => row.check.kind !== 'pilot-damage' || pilotHitsMode !== 'no')
+            .flatMap(row => [
+                `${aeroHeatCheckLabel(row.check.kind)}: ${row.total === null
+                    ? `automatic ${row.outcome}`
+                    : `rolled ${row.total} against ${row.check.target}+ (${row.outcome})`}`,
+                ...aeroHeatCheckEffects(row.check.kind, row.outcome, staged.ammo),
+            ]));
+    }
+
+    private aeroPilotHits(staged: StagedAeroHeatEffects): number {
+        return staged.checks.reduce((hits, row) => hits + (
+            row.outcome === 'failed'
+            && (row.check.kind === 'pilot-damage'
+                || row.check.kind === 'ammo-explosion' && staged.ammo !== null)
+                ? 1 : 0
+        ), 0);
+    }
+
+    private async applyAeroHeatEffects(
+        force: CBTForce,
+        instanceId: UnitInstanceId,
+        prepared: PreparedAeroHeatEffects,
+        dispatch: DirectNonMekAutomationDispatch,
+    ): Promise<void> {
+        let snapshot = this.snapshot(force, instanceId);
+        if (!snapshot || !prepared.applyEffects) return;
+        for (const row of prepared.staged.checks) {
             switch (row.check.kind) {
                 case 'shutdown':
                     if (row.outcome === 'failed') {
@@ -261,14 +665,20 @@ export class DirectNonMekAutomationService {
                     }
                     break;
                 case 'ammo-explosion':
-                    if (row.outcome === 'failed' && ammo) {
-                        await this.explodeAmmo(force, instanceId, ammo, dispatch, row.id);
+                    if (row.outcome === 'failed' && prepared.staged.ammo) {
+                        await this.explodeAmmo(
+                            force,
+                            instanceId,
+                            prepared.staged.ammo,
+                            dispatch,
+                            prepared.applyPilotHits,
+                        );
                     }
                     break;
                 case 'random-movement':
                     if (row.outcome === 'failed') {
                         await this.setHeatControlConditions(force, instanceId, true, true, dispatch);
-                    } else if (hadHeatControlEffect) {
+                    } else if (prepared.staged.hadHeatControlEffect) {
                         await this.setCondition(force, instanceId, 'random-movement', false, dispatch);
                     }
                     break;
@@ -283,8 +693,8 @@ export class DirectNonMekAutomationService {
                     }
                     break;
                 case 'pilot-damage':
-                    if (row.outcome === 'failed') {
-                        await this.reviewAndApplyPilotHits(force, instanceId, 1, dispatch, row.id);
+                    if (row.outcome === 'failed' && prepared.applyPilotHits) {
+                        await this.applyCrewHits(force, instanceId, 1, dispatch);
                     }
                     break;
             }
@@ -297,7 +707,7 @@ export class DirectNonMekAutomationService {
         instanceId: UnitInstanceId,
         ammo: AeroAmmoExplosionCandidate,
         dispatch: DirectNonMekAutomationDispatch,
-        eventId: string,
+        applyPilotHits: boolean,
     ): Promise<void> {
         let snapshot = this.snapshot(force, instanceId);
         if (!snapshot
@@ -327,57 +737,48 @@ export class DirectNonMekAutomationService {
                 }), false);
             }
         }
-        await this.reviewAndApplyPilotHits(force, instanceId, 1, dispatch, `${eventId}:pilot`);
+        if (applyPilotHits) await this.applyCrewHits(force, instanceId, 1, dispatch);
     }
 
-    private async reviewAndApplyPilotHits(
+    private async applyCrewHits(
         force: CBTForce,
         instanceId: UnitInstanceId,
         hits: number,
         dispatch: DirectNonMekAutomationDispatch,
-        eventId: string,
     ): Promise<void> {
-        const snapshot = this.snapshot(force, instanceId);
-        if (!snapshot || hits <= 0) return;
-        const event: AutomationReviewEvent = Object.freeze({
-            id: eventId,
-            subject: this.subject(snapshot),
-            event: 'Pilot Hits and Consciousness',
-            description: `Apply ${hits} pilot hit${hits === 1 ? '' : 's'} and resolve consciousness.`,
-            delta: hits,
-        });
-        const accepted = await this.automation.resolve(
-            'pilotHitsAndConsciousnessCheck',
-            [event],
-            { title: 'Review Pilot Injury' },
-        );
-        if (!accepted?.has(event.id)) return;
-
-        for (let index = 0; index < hits; index += 1) {
-            const current = this.snapshot(force, instanceId);
-            const pilot = current && this.primaryPilot(current);
-            if (!current || !pilot || pilot.state.wounds >= MAX_MEK_CREW_WOUNDS) return;
-            const wounds = Math.min(MAX_MEK_CREW_WOUNDS, pilot.state.wounds + 1);
-            await dispatch(this.command(force, instanceId, {
-                kind: 'set-crew-state',
-                positionId: pilot.positionId,
-                wounds,
-                unconscious: pilot.state.unconscious,
-                ejected: pilot.state.ejected,
-            }), false);
-            const target = mekConsciousnessTarget(wounds);
-            if (target === undefined || pilot.state.ejected
-                || succeedsOnTarget(twoD6Total(roll2D6()), target)) continue;
-            const refreshed = this.snapshot(force, instanceId);
-            const crew = refreshed?.query.crewState(pilot.positionId);
-            if (!refreshed || !crew || crew.ejected || crew.wounds >= MAX_MEK_CREW_WOUNDS) continue;
-            await dispatch(this.command(force, instanceId, {
-                kind: 'set-crew-state',
-                positionId: pilot.positionId,
-                wounds: crew.wounds,
-                unconscious: true,
-                ejected: false,
-            }), false);
+        const initial = this.snapshot(force, instanceId);
+        if (!initial || hits <= 0) return;
+        const positions = [...initial.index.crewPositions.values()]
+            .sort((left, right) => left.occurrence - right.occurrence);
+        for (const position of positions) {
+            for (let index = 0; index < hits; index += 1) {
+                const current = this.snapshot(force, instanceId);
+                const crew = current?.query.crewState(position.id);
+                const crewState = current?.state.crew.get(position.id)?.state;
+                if (!current || !crew || crew.ejected || crewState === 'killed'
+                    || crew.wounds >= MAX_MEK_CREW_WOUNDS) break;
+                const wounds = Math.min(MAX_MEK_CREW_WOUNDS, crew.wounds + 1);
+                await dispatch(this.command(force, instanceId, {
+                    kind: 'set-crew-state',
+                    positionId: position.id,
+                    wounds,
+                    unconscious: crew.unconscious,
+                    ejected: false,
+                }), false);
+                const target = mekConsciousnessTarget(wounds);
+                if (target === undefined || succeedsOnTarget(twoD6Total(roll2D6()), target)) continue;
+                const refreshed = this.snapshot(force, instanceId);
+                const state = refreshed?.query.crewState(position.id);
+                if (!refreshed || !state || state.ejected
+                    || state.wounds >= MAX_MEK_CREW_WOUNDS) continue;
+                await dispatch(this.command(force, instanceId, {
+                    kind: 'set-crew-state',
+                    positionId: position.id,
+                    wounds: state.wounds,
+                    unconscious: true,
+                    ejected: false,
+                }), false);
+            }
         }
     }
 
@@ -474,7 +875,7 @@ export class DirectNonMekAutomationService {
         instanceId: UnitInstanceId,
         draft: NonMekCommandDraft,
     ): NonMekUnitCommand {
-        const snapshot = this.snapshot(force, instanceId);
+        const snapshot = this.nonMekSnapshot(force, instanceId);
         if (!snapshot) throw new Error(`Non-Mek runtime ${instanceId} is no longer admitted`);
         return { ...draft, expectedRevision: snapshot.query.stateRevision } as NonMekUnitCommand;
     }
@@ -483,6 +884,13 @@ export class DirectNonMekAutomationService {
         const snapshot = force.getUnitSnapshot(instanceId);
         return snapshot && hasNonMekRuntime(snapshot) && isAeroEntity(snapshot.entity)
             ? snapshot as AeroSnapshot
+            : null;
+    }
+
+    private nonMekSnapshot(force: CBTForce, instanceId: UnitInstanceId): NonMekSnapshot | null {
+        const snapshot = force.getUnitSnapshot(instanceId);
+        return snapshot && hasNonMekRuntime(snapshot)
+            ? snapshot as NonMekSnapshot
             : null;
     }
 

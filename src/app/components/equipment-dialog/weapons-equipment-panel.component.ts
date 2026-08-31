@@ -209,7 +209,6 @@ interface EquipmentPanelGroup {
 
 @Component({
     selector: 'weapons-equipment-panel',
-    standalone: true,
     imports: [DragDropModule, MultilineDropdownComponent, TooltipDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './weapons-equipment-panel.component.html',

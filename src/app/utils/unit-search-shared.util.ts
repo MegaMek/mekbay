@@ -5,53 +5,11 @@
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, type SearchTelemetryStage } from '../services/unit-search-filters.model';
-import {
-    asUnitProviderId,
-    MM_DATA_UNIT_PROVIDER_ID,
-    type UnitProviderId,
-} from '../services/unit-catalog/unit-catalog.types';
 
-type SearchIdentityUnit = Pick<UnitSummary, 'uuid'> & { readonly provider?: UnitProviderId };
 type CompactSearchUnit = UnitSummary & {
     readonly _componentNameCounts?: Readonly<Record<string, number>>;
     readonly _searchTags?: readonly string[];
 };
-
-/**
- * Collision-free search/index identity. Unit names remain presentation data and
- * may legitimately be shared by and custom providers.
- *
- * The length-prefixed representation matches the canonical catalog design-key
- * encoding while still admitting legacy/test Units whose UUID predates UUIDv7.
- */
-export function getUnitSearchIdentityKey(unit: SearchIdentityUnit): string {
-    const provider = unit.provider ?? MM_DATA_UNIT_PROVIDER_ID;
-    return `${provider.length}:${provider}${unit.uuid.length}:${unit.uuid}`;
-}
-
-/** Decodes the search identity without imposing the production UUIDv7 ingress contract. */
-export function decodeUnitSearchIdentityKey(key: string): Readonly<{ provider: UnitProviderId; uuid: string }> {
-    let cursor = 0;
-    const readPart = (): string => {
-        const separator = key.indexOf(':', cursor);
-        if (separator <= cursor) throw new Error('Invalid unit search identity key');
-        const lengthText = key.slice(cursor, separator);
-        if (!/^(?:0|[1-9][0-9]*)$/u.test(lengthText)) throw new Error('Invalid unit search identity length');
-        const length = Number(lengthText);
-        const start = separator + 1;
-        const end = start + length;
-        if (!Number.isSafeInteger(length) || end > key.length) throw new Error('Invalid unit search identity bounds');
-        cursor = end;
-        return key.slice(start, end);
-    };
-
-    const provider = asUnitProviderId(readPart());
-    const uuid = readPart();
-    if (cursor !== key.length || getUnitSearchIdentityKey({ provider, uuid: uuid as UnitSummary['uuid'] }) !== key) {
-        throw new Error('Non-canonical unit search identity key');
-    }
-    return { provider, uuid };
-}
 
 export interface UnitComponentData {
     names: Set<string>;

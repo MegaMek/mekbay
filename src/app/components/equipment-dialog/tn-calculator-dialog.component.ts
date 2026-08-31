@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, afterNextRender, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { NgTemplateOutlet } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import {
     INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON,
@@ -183,8 +183,7 @@ export interface TnCalculatorDialogResult {
 
 @Component({
     selector: 'tn-calculator-dialog',
-    standalone: true,
-    imports: [CommonModule, HexSliderComponent, MultilineDropdownComponent, CoverLevelPickerComponent],
+    imports: [NgTemplateOutlet, HexSliderComponent, MultilineDropdownComponent, CoverLevelPickerComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'tn-calculator-host',

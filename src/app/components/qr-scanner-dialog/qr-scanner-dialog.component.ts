@@ -8,7 +8,6 @@ import { ChecksumException, Exception, FormatException, NotFoundException, Resul
 
 @Component({
     selector: 'qr-scanner-inline',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="scanner-inline-shell">

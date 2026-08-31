@@ -9,12 +9,6 @@ import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { ASForce } from './as-force.model';
 import { ASForceUnit } from './as-force-unit.model';
 import type { UnitSummary } from './unit-summary.model';
-import {
-    asSourceHash,
-    asUnitUuid,
-    makeUnitFileName,
-    MM_DATA_UNIT_PROVIDER_ID,
-} from '../services/unit-catalog/unit-catalog.types';
 
 describe('ASForceUnit ability effects', () => {
     let injector: Injector;
@@ -70,46 +64,22 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.getBv()).toBeGreaterThan(30);
     });
 
-    it('retains an exact detached native source with the loaded force unit', async () => {
-        const hash = asSourceHash('A'.repeat(27));
-        const uuid = asUnitUuid('019f91ca-c29f-7aca-a778-abba3d601f35');
-        const file = makeUnitFileName(uuid, 'mtf');
-        const originalBytes = new TextEncoder().encode('native BLK source').buffer;
-        const readNativeUnitSource = jasmine.createSpy('readNativeUnitSource').and.resolveTo({
-            file,
-            hash,
-            format: 'mtf' as const,
-            bytes: originalBytes,
-        });
-        const summary = createTestUnit({
-            uuid,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            origin: 'megamek',
-            hash,
-        });
+    it('loads from UnitSummary without opening a native Classic source', async () => {
+        const readNativeUnitSource = jasmine.createSpy('readNativeUnitSource');
         const force = {
             owned: () => true,
             emitChanged: jasmine.createSpy('emitChanged'),
             groups: () => [],
         } as unknown as ASForce;
         const forceUnit = new ASForceUnit(
-            summary,
+            createTestUnit(),
             force,
             { readNativeUnitSource } as unknown as DataService,            injector,
         );
 
         await forceUnit.load();
-        const first = forceUnit.getNativeSource();
-        expect(readNativeUnitSource).toHaveBeenCalledOnceWith(
-            MM_DATA_UNIT_PROVIDER_ID,
-            summary.uuid,
-        );
-        expect(first).toEqual(jasmine.objectContaining({ file, sourceHash: hash, format: 'mtf' }));
-        expect(new TextDecoder().decode(first!.bytes)).toBe('native BLK source');
-
-        new Uint8Array(first!.bytes)[0] = 0;
-        expect(new TextDecoder().decode(forceUnit.getNativeSource()!.bytes))
-            .toBe('native BLK source');
+        expect(forceUnit.isLoaded()).toBeTrue();
+        expect(readNativeUnitSource).not.toHaveBeenCalled();
     });
 
     it('rejects a direct C3 position write on a read-only unit', () => {

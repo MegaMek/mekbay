@@ -71,7 +71,6 @@ export function shouldCombineReferenceTables(availableWidth: number, requiredWid
 
 @Component({
     selector: 'cluster-table-dialog',
-    standalone: true,
     imports: [DiceRollerComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {

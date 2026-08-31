@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CommonModule } from '@angular/common';
+import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2 } from '@angular/core';
 import { type Portal, PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
@@ -22,11 +22,10 @@ import { ConnectionStatusBadgeComponent } from '../connection-status-badge/conne
  */
 @Component({
     selector: 'sidebar',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule, PortalModule, CdkMenuModule, SidebarFooterComponent, ForceBuilderViewerComponent, SwipeDirective, ConnectionStatusBadgeComponent],
+    imports: [NgTemplateOutlet, PortalModule, CdkMenuModule, SidebarFooterComponent, ForceBuilderViewerComponent, SwipeDirective, ConnectionStatusBadgeComponent],
     templateUrl: './sidebar.component.html',
-    styleUrls: ['./sidebar.component.scss'],
+    styleUrl: './sidebar.component.scss',
 })
 export class SidebarComponent {
     readonly COLLAPSED_WIDTH = 72;

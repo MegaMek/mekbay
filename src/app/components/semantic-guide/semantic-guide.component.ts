@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { GameService } from '../../services/game.service';
 import { ADVANCED_FILTERS, AdvFilterType } from '../../services/unit-search-filters.model';
 import { GameSystem } from '../../models/common.model';
@@ -26,7 +25,6 @@ interface FilterInfo {
 @Component({
     selector: 'semantic-guide',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [CommonModule],
     templateUrl: './semantic-guide.component.html',
     styleUrl: './semantic-guide.component.scss'
 })

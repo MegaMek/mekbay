@@ -39,9 +39,7 @@ export interface ResolvedEffectGroup {
 
 @Component({
     selector: 'formation-info',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     template: `
         @if (formation(); as def) {
         <div class="formation-info">

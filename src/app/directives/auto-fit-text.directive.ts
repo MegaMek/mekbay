@@ -75,7 +75,6 @@ export function calculateTextFit(
 /** Shrinks plain table text when practical, with wrapping as a readable fallback. */
 @Directive({
     selector: '[mbAutoFitText]',
-    standalone: true,
 })
 export class AutoFitTextDirective implements OnDestroy {
     readonly text = input<unknown>('', { alias: 'mbAutoFitText' });

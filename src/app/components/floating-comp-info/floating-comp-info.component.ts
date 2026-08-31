@@ -18,11 +18,9 @@ import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.u
 
 @Component({
     selector: 'floating-comp-info',
-    standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [],
     templateUrl: './floating-comp-info.component.html',
-    styleUrls: ['./floating-comp-info.component.css'],
+    styleUrl: './floating-comp-info.component.css',
     host: {
         '(pointerenter)': 'onPointerEnter()',
         '(pointerleave)': 'onPointerLeave()'

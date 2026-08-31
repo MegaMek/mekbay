@@ -20,7 +20,6 @@ export interface MekCriticalChanceDialogData {
 
 @Component({
     selector: 'mek-critical-chance-dialog',
-    standalone: true,
     imports: [DiceRollerComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `

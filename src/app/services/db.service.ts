@@ -886,63 +886,22 @@ export class DbService {
         });
     }
 
-    public async saveForce(
-        force: SerializedForce,
-        options: { readonly allowRevisionOverride?: boolean } = {},
-    ): Promise<void> {
+    public async saveForce(force: SerializedForce): Promise<void> {
         if (!force.instanceId) {
             throw new Error('Force instance ID is required for saving.');
         }
         if (force.version !== 2) {
             throw new Error('Only V2 force records may be saved.');
         }
+        const stored = encodeForceForStorage(force);
         const db = await this.dbPromise;
         if (!db) return;
         return new Promise<void>((resolve, reject) => {
             const transaction = db.transaction(FORCE_STORE, 'readwrite');
-            const store = transaction.objectStore(FORCE_STORE);
-            const existingRequest = store.get(force.instanceId);
-            let guardError: Error | null = null;
-            existingRequest.onsuccess = () => {
-                const existingStored = existingRequest.result as StoredForceRecord | undefined;
-                if (force.cbt === undefined && existingStored?.['cbt'] !== undefined) {
-                    guardError = new Error('Refusing to overwrite a CBT force with a grouped record');
-                    transaction.abort();
-                    return;
-                }
-                let existing: SerializedForce | undefined;
-                if (existingStored !== undefined) {
-                    try {
-                        existing = decodeForceFromStorage(existingStored);
-                    } catch {
-                        // Intermediate development records are intentionally unsupported.
-                        // A current writer may replace them; production V1 still decodes.
-                    }
-                }
-                if (!options.allowRevisionOverride
-                    && force.cbt !== undefined
-                    && existing?.cbt !== undefined
-                    && JSON.stringify(force.cbt) !== JSON.stringify(existing.cbt)) {
-                    if (force.cbt.forceRevision <= existing.cbt.forceRevision) {
-                        guardError = new Error('Refusing a stale CBT V2 force overwrite');
-                        transaction.abort();
-                        return;
-                    }
-                }
-                try {
-                    store.put(encodeForceForStorage(force), force.instanceId);
-                } catch (error) {
-                    guardError = error instanceof Error ? error : new Error(String(error));
-                    transaction.abort();
-                }
-            };
-            existingRequest.onerror = () => {
-                guardError = existingRequest.error ?? new Error('Unable to inspect existing force data');
-                transaction.abort();
-            };
+            transaction.objectStore(FORCE_STORE).put(stored, force.instanceId);
             transaction.oncomplete = () => resolve();
-            transaction.onerror = () => reject(guardError ?? transaction.error);
-            transaction.onabort = () => reject(guardError ?? transaction.error ?? new Error('Force save was aborted'));
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Force save was aborted'));
         });
     }
 

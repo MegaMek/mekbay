@@ -8,7 +8,6 @@ import type { PageViewerShadowDescriptor } from '../../internal/types';
 
 @Component({
     selector: 'viewer-shadow-page',
-    standalone: true,
     templateUrl: './viewer-shadow-page.component.html',
     styleUrl: './viewer-shadow-page.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush
