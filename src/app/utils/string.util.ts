@@ -7,6 +7,11 @@
  * These are pure functions with no dependencies on Angular services.
  */
 
+/** Stable code-point ordering for persisted and indexed keys. */
+export function compareText(left: string, right: string): number {
+    return left < right ? -1 : left > right ? 1 : 0;
+}
+
 /**
  * Escape special regex characters in a string.
  * @param s The string to escape.

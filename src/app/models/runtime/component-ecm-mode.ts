@@ -23,7 +23,6 @@ import {
     type EquipmentInteractionInput,
     type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 import { effectiveEcmMode, isNovaCewsFlags } from './component-electronic-suite';
 import { electronicFacts } from './component-equipment-power';
@@ -154,8 +153,6 @@ export class ECMHandler extends EquipmentInteractionHandler {
         const current = runtime.query().componentMode(definition.componentId);
         const result = current === choice.value ? null : runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: runtime.revision(),
             componentId: definition.componentId,
             mode: choice.value,
         });

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { jsonValuesEqual } from '../../utils/json-value.util';
+import { compareText } from '../../utils/string.util';
 import {
     asCriticalSlotId,
     asLocationId,
@@ -3655,10 +3656,6 @@ function plainRecord(value: unknown): value is Record<string, unknown> {
 function exactKeys(value: object, allowed: readonly string[]): boolean {
     const keys = Object.keys(value);
     return keys.every(key => allowed.includes(key));
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function sameStrings(left: unknown, right: readonly string[]): boolean {

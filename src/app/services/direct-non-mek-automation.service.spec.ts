@@ -65,7 +65,7 @@ describe('DirectNonMekAutomationService', () => {
 
     it('selects automatic or manual aerospace heat settlement from review', async () => {
         const harness = createHarness();
-        setHeat(harness.runtime, 10);
+        setHeat(harness.runtime, 10, 'pending');
         const automatic = await service.prepareCommand(harness.force, harness.instanceId, {
             kind: 'end-turn',
             expectedRevision: harness.runtime.revision(),
@@ -86,6 +86,17 @@ describe('DirectNonMekAutomationService', () => {
             kind: 'end-turn',
             heatPolicy: 'manual',
         }));
+    });
+
+    it('does not create a heat review event for a pristine heatless aerospace unit', async () => {
+        const harness = createHarness();
+
+        await executeEndTurn(service, harness);
+
+        const heatReview = resolveAutomation.calls.allArgs()
+            .find(args => args[0] === 'heatAndDissipationResolution');
+        expect(heatReview?.[1]).toEqual([]);
+        expect(harness.runtime.turnState().turnCounter).toBe(1);
     });
 
     it('cancels end turn when the heat review is closed', async () => {
@@ -149,15 +160,15 @@ describe('DirectNonMekAutomationService', () => {
             harness.instanceId,
             command,
         );
-        const result = await harness.dispatch(prepared.command);
-        expect(result.accepted).toBeTrue();
-        expect(await service.afterCommand(
+        const settled = await service.settleBeforeCommand(
             harness.force,
             harness.instanceId,
             prepared,
-            result,
             harness.dispatch,
-        )).toBeTrue();
+        );
+        expect(settled).not.toBeNull();
+        const result = await harness.dispatch(settled!.command);
+        expect(result.accepted).toBeTrue();
 
         expect(harness.runtime.query().crewState(pilotId).unconscious).toBeFalse();
         expect(resolveAutomation).toHaveBeenCalledWith(
@@ -194,6 +205,41 @@ describe('DirectNonMekAutomationService', () => {
         expect(prepared.cancelled).toBeTrue();
         expect(harness.runtime.revision()).toBe(revision);
         expect(harness.runtime.query().crewState(pilotId).unconscious).toBeTrue();
+    });
+
+    it('groups End Phase consciousness recoveries across non-Mek units', async () => {
+        const first = createHarness(false, 'phase-first');
+        const second = createHarness(false, 'phase-second');
+        for (const harness of [first, second]) {
+            const positionId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
+            expect(harness.runtime.dispatch({
+                kind: 'set-crew-state',
+                expectedRevision: harness.runtime.revision(),
+                positionId,
+                wounds: 1,
+                unconscious: true,
+                ejected: false,
+            }).accepted).toBeTrue();
+        }
+        const force = {
+            getUnitSnapshot: (instanceId: typeof first.instanceId) => instanceId === first.instanceId
+                ? first.snapshot()
+                : instanceId === second.instanceId ? second.snapshot() : null,
+        } as unknown as CBTForce;
+
+        const prepared = await service.prepareEndPhaseCommands(force, [first, second].map(harness => ({
+            instanceId: harness.instanceId,
+            command: {
+                kind: 'end-phase' as const,
+                expectedRevision: harness.runtime.revision(),
+            },
+        })));
+
+        expect(prepared).toHaveSize(2);
+        const recoveryCalls = resolveAutomation.calls.allArgs()
+            .filter(args => args[0] === 'pilotHitsAndConsciousnessCheck');
+        expect(recoveryCalls).toHaveSize(1);
+        expect(recoveryCalls[0][1]).toHaveSize(2);
     });
 
     it('uses one aerospace review when heat, effects, and pilot hits all ask', async () => {
@@ -310,7 +356,7 @@ describe('DirectNonMekAutomationService', () => {
     });
 });
 
-function createHarness(withAmmo = false) {
+function createHarness(withAmmo = false, suffix = '') {
     const ammo = new AmmoEquipment({
         id: 'Ammo_AC_10_Aero_Automation_Test',
         name: 'AC/10 Ammo',
@@ -332,9 +378,9 @@ function createHarness(withAmmo = false) {
         }));
         addTestEquipmentWithFlags(entity, 'F_CASE', { location: 'Nose' });
     }
-    const instanceId = asUnitInstanceId(withAmmo
+    const instanceId = asUnitInstanceId(`${withAmmo
         ? 'unit:aero-automation-ammo'
-        : 'unit:aero-automation');
+        : 'unit:aero-automation'}${suffix ? `:${suffix}` : ''}`);
     const runtime = new NonMekUnitInstance(
         instanceId,
         baseline(),
@@ -394,12 +440,16 @@ async function executeEndTurn(
     );
 }
 
-function setHeat(runtime: NonMekUnitInstance, heat: number): void {
+function setHeat(
+    runtime: NonMekUnitInstance,
+    heat: number,
+    target: 'committed' | 'pending' = 'committed',
+): void {
     const result = runtime.dispatch({
         kind: 'set-heat',
         expectedRevision: runtime.revision(),
         heat,
-        target: 'committed',
+        target,
     });
     if (!result.accepted) throw new Error('Failed to seed test heat');
 }

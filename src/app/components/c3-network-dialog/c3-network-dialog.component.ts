@@ -346,7 +346,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         }
         const roster = this.data.force.queryCanonicalRoster();
         if (roster.kind !== 'available') return [];
-        return roster.snapshot.structural.groups.map(group => Object.freeze({
+        return roster.snapshot.groups.map(group => Object.freeze({
             id: group.groupId,
             units: () => Object.freeze(group.members.flatMap(instanceId => {
                 const unit = unitsById.get(String(instanceId));

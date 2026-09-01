@@ -3,7 +3,6 @@
 
 import type { PickerChoice } from '../picker/picker.interface';
 import type { CBTUnitCommand, MekUnitQueryPort } from '../../models/runtime/unit-instance';
-import { createCommandId } from '../../models/runtime/runtime-state';
 import type { MekHeatAutomationPolicyV2 } from '../../models/runtime/mek-heat-state-v2';
 import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
 import type { MekRecordSheetInteraction } from './mek-record-sheet-binder';
@@ -91,7 +90,7 @@ export function recordSheetCommand(
     trackPhaseAndTurn: boolean,
     delta?: number,
 ): CBTUnitCommand {
-    const common = { commandId: createCommandId(), expectedRevision: interaction.expectedRevision };
+    const common = { expectedRevision: interaction.expectedRevision };
     const target = trackPhaseAndTurn ? 'pending' as const : 'committed' as const;
     switch (interaction.kind) {
         case 'armor':

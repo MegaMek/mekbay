@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { compareText } from '../../utils/string.util';
+import { isPlainRecord } from '../../utils/json-value.util';
 import type {
     InventoryControlRuntimeTargetId,
 } from '../inventory-control-runtime-state.model';
@@ -368,7 +370,7 @@ export function encodeCBTEncounterStateV2(
             network: serializedEncounterNetwork(network),
         })),
     ];
-    facts.sort((left, right) => compareStrings(left.factId, right.factId));
+    facts.sort((left, right) => compareText(left.factId, right.factId));
     for (let index = 1; index < facts.length; index += 1) {
         if (facts[index - 1].factId === facts[index].factId) throw new Error('Duplicate encounter fact ID');
     }
@@ -457,7 +459,7 @@ function serializedEncounterNetwork(network: EncounterNetwork): SerializedEncoun
         networkType: network.networkType,
         color: network.color,
         endpoints: Object.freeze(network.endpoints.map(endpoint => Object.freeze({ ...endpoint }))
-            .sort((left, right) => compareStrings(endpointKey(left), endpointKey(right)))),
+            .sort((left, right) => compareText(endpointKey(left), endpointKey(right)))),
     });
 }
 
@@ -510,7 +512,7 @@ function freezeTargetRegistrySnapshot(
     return Object.freeze({
         revision: snapshot.revision,
         targets: Object.freeze(snapshot.targets.map(target => freezeTarget(target))
-            .sort((left, right) => compareStrings(left.letter, right.letter) || compareStrings(left.id, right.id))),
+            .sort((left, right) => compareText(left.letter, right.letter) || compareText(left.id, right.id))),
     });
 }
 
@@ -667,19 +669,13 @@ function hasExactKeys(value: object, allowed: readonly string[]): boolean {
     return Object.keys(value).every(key => allowedKeys.has(key));
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
-
 function freezeSnapshot(snapshot: CBTEncounterSnapshot): CBTEncounterSnapshot {
     return Object.freeze({
         revision: snapshot.revision,
         targets: Object.freeze(snapshot.targets.map(target => freezeTarget(target))
-            .sort((left, right) => compareStrings(left.letter, right.letter) || compareStrings(left.id, right.id))),
+            .sort((left, right) => compareText(left.letter, right.letter) || compareText(left.id, right.id))),
         networks: Object.freeze(snapshot.networks.map(freezeNetwork)
-            .sort((left, right) => compareStrings(left.id, right.id))),
+            .sort((left, right) => compareText(left.id, right.id))),
     });
 }
 
@@ -811,8 +807,4 @@ class EncounterInputError extends Error {
     public constructor(public readonly reason: 'invalid-target') {
         super(reason);
     }
-}
-
-function compareStrings(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }

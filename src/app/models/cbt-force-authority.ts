@@ -70,13 +70,10 @@ import {
     MAX_MEK_HEAT_VALUE_V2,
     type MekHeatAutomationPolicyV2,
 } from './runtime/mek-heat-state-v2';
-import type { CBTForceRosterOwnerFact } from './runtime/cbt-force-roster-owner';
 import {
     currentUnitBaseBattleValue,
     pristineUnitBattleValue,
-    type CBTForceBattleValueBreakdown,
 } from './cbt-force-battle-value';
-import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type { CBTUnitSnapshot } from './cbt-unit-snapshot';
 import type { EquipmentRowOrderGroup } from './runtime/equipment-row-order';
 import type { RuntimeCommandCheckpoint } from './runtime/runtime-command-session';
@@ -185,7 +182,7 @@ export class CBTForceAuthority {
     ): Promise<PreparedUnitLoad> {
         const expectedBinding = this.binding;
         const scenario = scenarioRulesFromPersistence(envelope.scenarioRules.values);
-        const entries = envelope.units.filter(entry => entry.kind === 'ready');
+        const entries = envelope.units;
         const restored = await Promise.all(entries.map(entry => {
             if (isSerializedNonMekUnit(entry.unit)) {
                 if (!readyNonMekUnits) throw new Error('A Ready non-Mek service is required for non-Mek members');
@@ -232,9 +229,10 @@ export class CBTForceAuthority {
                 revision: ready.revision(),
             });
         });
-        const hydratedUnits = envelope.units.map(entry => entry.kind === 'ready'
-            ? Object.freeze({ ...entry, unit: serializedUnits.get(entry.instanceId)! })
-            : entry);
+        const hydratedUnits = envelope.units.map(entry => Object.freeze({
+            ...entry,
+            unit: serializedUnits.get(entry.instanceId)!,
+        }));
         const hydratedEnvelope = jsonValuesEqual(hydratedUnits, envelope.units)
             ? envelope
             : await validateSerializedCBTForceV2({ ...envelope, units: hydratedUnits });
@@ -286,7 +284,7 @@ export class CBTForceAuthority {
         const binding = this.binding;
         if (!binding) throw new Error('The force has no installed Classic authority');
         const envelope = binding.envelope;
-        const expected = envelope.units.filter(entry => entry.kind === 'ready');
+        const expected = envelope.units;
         if (expected.length !== binding.units.size
             || expected.some(entry => !binding.units.has(entry.instanceId))) {
             throw new Error('Live unit store coverage changed before persistence');
@@ -310,7 +308,7 @@ export class CBTForceAuthority {
 
     public commit(envelope: SerializedCBTForceV2): void {
         const binding = this.binding;
-        const expected = envelope.units.filter(entry => entry.kind === 'ready');
+        const expected = envelope.units;
         if (!binding) {
             if (expected.length > 0) throw new Error('Cannot install ready entries without their runtimes');
             this.binding = Object.freeze({
@@ -391,7 +389,7 @@ export class CBTForceAuthority {
             existing.map(unit => [unit.instanceId, unit] as const),
         );
         units.set(candidate.instanceId, candidate);
-        const entries = envelope.units.filter(entry => entry.kind === 'ready');
+        const entries = envelope.units;
         if (entries.length !== units.size || entries.some(entry => !units.has(entry.instanceId))) {
             throw new Error('Prepared V2 admission does not exactly cover the next runtime owner set');
         }
@@ -441,7 +439,7 @@ export class CBTForceAuthority {
         for (const instanceId of instanceIds) {
             if (!units.delete(instanceId)) throw new Error(`Ready V2 runtime ${instanceId} is not owned`);
         }
-        const entries = envelope.units.filter(entry => entry.kind === 'ready');
+        const entries = envelope.units;
         if (entries.length !== units.size || entries.some(entry => !units.has(entry.instanceId))) {
             throw new Error('Prepared V2 removal does not exactly cover the next runtime owner set');
         }
@@ -538,7 +536,7 @@ export class CBTForceAuthority {
             }
             units.set(instanceId, replacement);
         }
-        const entries = envelope.units.filter(entry => entry.kind === 'ready');
+        const entries = envelope.units;
         if (entries.length !== units.size || entries.some(entry => !units.has(entry.instanceId))) {
             throw new Error('Prepared V2 repair does not exactly cover the runtime owner set');
         }
@@ -624,6 +622,7 @@ export class CBTForceAuthority {
             sourceRef: unit.getSourceRef(),
             ...(nativeSource === undefined ? {} : { nativeSource }),
             ruleset: this.ruleset(instanceId)!,
+            crewAssignment: unit.getCrewAssignment(),
             state: runtime.state,
             query: runtime.query,
         }) satisfies CBTUnitSnapshot;
@@ -803,31 +802,6 @@ export class CBTForceAuthority {
                 : isReadyNonMekUnit(unit)
                     ? [entityTargetRosterRow(forceInstanceId, unit)]
                     : []));
-    }
-
-    /** Detached current facts for canonical force-roster queries. */
-    public rosterOwnerFacts(
-        adjustedBattleValues: ReadonlyMap<UnitInstanceId, CBTForceBattleValueBreakdown>,
-    ): readonly CBTForceRosterOwnerFact[] {
-        return Object.freeze([...(this.binding?.units.entries() ?? [])].map(([instanceId, unit]) => {
-            const entity = unit.getUnit();
-            const battleValue = adjustedBattleValues.get(instanceId)?.adjusted ?? null;
-            return Object.freeze({
-                instanceId,
-                kind: 'ready' as const,
-                unitLabel: entityUnitLabel(entity, instanceId),
-                availability: 'ready' as const,
-                source: 'runtime' as const,
-                identity: Object.freeze({
-                    provider: unit.getSourceRef().provider,
-                    uuid: asUnitUuid(entity.uuid()),
-                }),
-                battleValue,
-                battleValueBasis: battleValue === null
-                    ? 'unavailable' as const
-                    : 'current-skilled' as const,
-            });
-        }));
     }
 
     public crewProfile(instanceId: UnitInstanceId): CrewProfileSnapshot | null {

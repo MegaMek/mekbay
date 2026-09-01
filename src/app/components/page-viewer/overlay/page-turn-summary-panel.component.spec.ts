@@ -59,9 +59,10 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(fixture.nativeElement.querySelector('.immobile-status')?.textContent.trim())
             .toBe('Unit is immobile');
         expect(Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.move-button'))
-            .map(button => button.textContent?.replace(/\s+/gu, ' ').trim())).toEqual(['', 'Run0+2']);
+            .map(button => button.textContent?.replace(/\s+/gu, ' ').trim())).toEqual(['', 'Run+2']);
         expect(fixture.nativeElement.querySelector('.move-button.selected')?.textContent.replace(/\s+/gu, ' ').trim())
-            .toBe('Run0+2');
+            .toBe('Run+2');
+        expect(fixture.nativeElement.querySelector('.move-allowance')).toBeNull();
         expect(fixture.nativeElement.querySelector('hex-slider')).not.toBeNull();
     });
 
@@ -150,7 +151,6 @@ describe('PageTurnSummaryPanelComponent', () => {
     it('shows the current and all-unit phase/turn scopes only while they are actionable', () => {
         const harness = turnMember(turnSnapshot());
         const fixture = createComponent(harness.member, overlayManager());
-        fixture.componentRef.setInput('embedded', true);
         fixture.detectChanges();
 
         expect(fixture.nativeElement.querySelector('.phase-actions')).toBeNull();
@@ -183,6 +183,23 @@ describe('PageTurnSummaryPanelComponent', () => {
         ]);
         expect([...phaseActions, ...turnActions].every(button =>
             button.querySelector('.turn-action-icon') !== null)).toBeTrue();
+    });
+
+    it('keeps End Turn actionable while a cancelled workflow is resumable', () => {
+        const harness = turnMember(turnSnapshot());
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
+
+        harness.setPendingEndTurn(true);
+        fixture.detectChanges();
+
+        const turnActions = Array.from<HTMLButtonElement>(
+            fixture.nativeElement.querySelectorAll('.turn-actions button'),
+        );
+        expect(turnActions.map(button => button.textContent?.trim())).toEqual([
+            'End Turn',
+            'All Units',
+        ]);
     });
 
     it('dispatches selected and force-wide phase boundaries through the V2 owner', async () => {
@@ -222,7 +239,7 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(harness.member.force.endPhaseForAllUnits).toHaveBeenCalledTimes(1);
     });
 
-    it('moves the Mek PSR modifier breakdown out of the embedded turn tracker', () => {
+    it('keeps the Mek PSR modifier breakdown in the turn-summary overlay', () => {
         const base = turnSnapshot();
         if (base.movement.kind !== 'supported') throw new Error('Turn fixture movement must be supported');
         const withPsrModifier = {
@@ -233,13 +250,8 @@ describe('PageTurnSummaryPanelComponent', () => {
             },
         } as MekTurnPanelSnapshot;
         const fixture = createComponent(turnMember(withPsrModifier).member, overlayManager());
-        fixture.componentRef.setInput('embedded', true);
         fixture.detectChanges();
 
-        expect(fixture.nativeElement.querySelector('.control-roll-section')).toBeNull();
-
-        fixture.componentRef.setInput('embedded', false);
-        fixture.detectChanges();
         expect(fixture.nativeElement.querySelector('.control-roll-section')?.textContent)
             .toContain('Torso-mounted cockpit');
     });
@@ -253,7 +265,7 @@ describe('PageTurnSummaryPanelComponent', () => {
         const labels = Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('.move-button'))
             .map(button => button.textContent?.replace(/\s+/gu, ' ').trim())
             .filter(Boolean);
-        expect(labels).toEqual(['Cruise4+1', 'Flank6+2']);
+        expect(labels).toEqual(['Cruise+1', 'Flank+2']);
         expect(fixture.nativeElement.querySelector('.spotting-button')).not.toBeNull();
         expect(fixture.nativeElement.querySelector('.cover-control')).not.toBeNull();
         expect(fixture.nativeElement.querySelector('[aria-label="Defense"]')).not.toBeNull();
@@ -466,6 +478,7 @@ function entityTurnMember(
         getUnitSnapshot: () => snapshot,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
         hasRuntimeHistoryForUnitTurn: () => false,
+        hasPendingEndTurnForUnit: () => false,
         dispatchNonMekUnitCommand: dispatch,
     };
     member = {
@@ -511,6 +524,7 @@ function battleArmorTurnMember() {
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
         hasRuntimeHistoryForUnitTurn: () => false,
         dispatchNonMekUnitCommand: jasmine.createSpy('dispatchNonMekUnitCommand'),
+        hasPendingEndTurnForUnit: () => false,
     };
     member = {
         kind: 'cbt',
@@ -547,6 +561,7 @@ function aeroTurnMember() {
         getUnitSnapshot: () => snapshot,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
         hasRuntimeHistoryForUnitTurn: () => false,
+        hasPendingEndTurnForUnit: () => false,
         dispatchNonMekUnitCommand: jasmine.createSpy('dispatchNonMekUnitCommand'),
     };
     member = {
@@ -574,6 +589,7 @@ function turnMember(initial: MekTurnPanelSnapshot) {
     const changed = new Subject<void>();
     const entity = new TestBipedMekEntity();
     let current = initial;
+    let pendingEndTurn = false;
     const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
         accepted: true,
         changed: false,
@@ -588,6 +604,7 @@ function turnMember(initial: MekTurnPanelSnapshot) {
         getMekEquipmentInteractions: () => [],
         dispatchMekUnitCommand: dispatch,
         hasRuntimeHistoryForUnitTurn: () => false,
+        hasPendingEndTurnForUnit: () => pendingEndTurn,
         endPhaseForAllUnits: jasmine.createSpy('endPhaseForAllUnits').and.resolveTo({
             accepted: true,
             changed: true,
@@ -612,6 +629,10 @@ function turnMember(initial: MekTurnPanelSnapshot) {
         dispatch,
         set: (snapshot: MekTurnPanelSnapshot) => {
             current = snapshot;
+            changed.next();
+        },
+        setPendingEndTurn: (pending: boolean) => {
+            pendingEndTurn = pending;
             changed.next();
         },
     };

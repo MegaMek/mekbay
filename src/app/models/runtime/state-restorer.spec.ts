@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { DeferredUnitSource, JsonObject, JsonValue, SavedEntityIdentity } from '../persisted-unit-state';
+import type { LegacyUnitSourceV1, JsonObject, JsonValue, SavedEntityIdentity } from '../persisted-unit-state';
 import { asSourceHash, asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { restoreLegacyUnitState, StateRestoreIdentityError } from './state-restorer';
 import {
@@ -168,7 +168,7 @@ function record(
     state: JsonObject,
     inventory: readonly JsonValue[] = [],
     criticals: readonly JsonValue[] = [],
-): DeferredUnitSource {
+): LegacyUnitSourceV1 {
     return {
         payload: {
             state: {

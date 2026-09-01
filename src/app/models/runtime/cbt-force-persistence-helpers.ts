@@ -39,9 +39,7 @@ export async function remapCBTForceCloneEnvelope(
     };
     const units = source.units.map(entry => {
         const instanceId = remapInstanceId(entry.instanceId);
-        return entry.kind === 'ready'
-            ? { ...entry, instanceId, unit: { ...entry.unit, instanceId } }
-            : { ...entry, instanceId };
+        return { ...entry, instanceId, unit: { ...entry.unit, instanceId } };
     });
     const roster = {
         ...source.roster,
@@ -94,7 +92,6 @@ export function pruneRemovedUnitsFromEncounter(
             encounterRevision,
             facts: Object.freeze(facts),
         }),
-        ...(encounter.recovery === undefined ? {} : { recovery: encounter.recovery }),
     });
 }
 

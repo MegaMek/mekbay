@@ -741,9 +741,6 @@ describe('V2 force persistence', () => {
         localRange.encounter.state.facts[1].target.distance = 7;
         await expectCode(validateSerializedCBTForceV2(asForce(localRange)), 'INVALID_SHAPE');
 
-        const dualAuthority = clone(valid);
-        dualAuthority.encounter.recovery.c3Networks = [{ id: 'legacy-index-network' }];
-        await expectCode(validateSerializedCBTForceV2(asForce(dualAuthority)), 'INVALID_SHAPE');
     });
 });
 
@@ -784,14 +781,6 @@ function mixedForce(): SerializedCBTForceV2 {
         encounter: {
             encounterRevision: asStateRevision(0),
             state: { schemaVersion: 2, encounterRevision: asStateRevision(0), facts: [] },
-            recovery: {
-                schemaVersion: 1,
-                c3Networks: [],
-            },
-        },
-        restoration: {
-            schemaVersion: 2,
-            unresolvedEncounter: [],
         },
     };
 }
@@ -888,4 +877,3 @@ function clone<T>(value: T): any {
 function asForce(value: unknown): SerializedCBTForceV2 {
     return value as SerializedCBTForceV2;
 }
-

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { isRecord } from './json-value.util';
+
 /**
  * Type-safe sanitizer with automatic type inference from interfaces
  */
@@ -23,7 +25,7 @@ export class Sanitizer {
     ): T {
         const { strict = false, removeNulls = true } = options;
 
-        if (!this.isPlainObject(input)) {
+        if (!isRecord(input)) {
             if (strict) {
                 throw new SanitizationError('Input must be a plain object');
             }
@@ -96,7 +98,7 @@ export class Sanitizer {
         valueSchema: Schema<T>,
         options: SanitizeOptions = {}
     ): Record<string, T> {
-        if (!this.isPlainObject(input)) return {};
+        if (!isRecord(input)) return {};
 
         const result: Record<string, T> = {};
 
@@ -216,9 +218,6 @@ export class Sanitizer {
         return typeof value === 'boolean' ? value : (rule.default ?? false);
     }
 
-    private static isPlainObject(value: unknown): value is Record<string, unknown> {
-        return typeof value === 'object' && value !== null && !Array.isArray(value);
-    }
 }
 
 // Schema Builder for fluent API

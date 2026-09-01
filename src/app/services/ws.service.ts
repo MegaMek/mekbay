@@ -10,6 +10,7 @@ import type { ServerMessage } from '../models/server-message.model';
 import type { UserStateSnapshot } from '../models/account-auth.model';
 import { APP_VERSION, BUILD_BRANCH, BUILD_COMMIT_NUMBER } from '../build-meta';
 import { uuidv7 } from '../utils/uuid.util';
+import { isRecord } from '../utils/json-value.util';
 import { decodeForceFromStorage } from '../models/runtime/force-storage-codec';
 
 /** Client protocol version - increment when breaking changes are made */
@@ -18,10 +19,6 @@ export const PROTOCOL_VERSION = 2;
 export type ConnectionStatusPhase = 'hidden' | 'offline' | 'online';
 export type ForceUpdateSource = 'live' | 'reconnect';
 export type WsMessage = Readonly<Record<string, unknown>>;
-
-function isRecord(value: unknown): value is WsMessage {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 
 function parseWsMessage(value: unknown): WsMessage | null {
     if (typeof value !== 'string') return null;

@@ -1,0 +1,442 @@
+:host {
+    display: block;
+    width: 100%;
+    min-width: 0;
+}
+
+* { box-sizing: border-box; }
+button { font: inherit; }
+h2, h3 { margin: 0; }
+
+.tactical-tracker {
+    position: relative;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--tactical-line, var(--border-color));
+    border-top: 2px solid var(--tactical-accent, #d2ae39);
+    background:
+        linear-gradient(90deg, color-mix(in srgb, var(--tactical-accent, #d2ae39) 5%, transparent) 1px, transparent 1px) 0 0 / 24px 24px,
+        linear-gradient(color-mix(in srgb, var(--tactical-accent, #d2ae39) 5%, transparent) 1px, transparent 1px) 0 0 / 24px 24px,
+        color-mix(in srgb, var(--tactical-panel, var(--background-color)) 96%, #111);
+    box-shadow: 0 8px 20px #0004;
+}
+
+.tracker-heading {
+    display: flex;
+    min-height: 39px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--tactical-line, var(--border-color));
+    background: linear-gradient(100deg, var(--tactical-panel-strong, var(--background-color)), transparent 72%);
+}
+
+.tracker-kicker,
+.console-index,
+.command-group-label {
+    color: var(--tactical-accent, #d2ae39);
+    font-size: 0.49rem;
+    font-weight: 850;
+    letter-spacing: 0.14em;
+}
+
+.tracker-heading h2 {
+    font-size: 0.79rem;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.tracker-state { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.state-light {
+    display: inline-flex;
+    min-height: 19px;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 5px;
+    border: 1px solid var(--tactical-line, var(--border-color));
+    color: var(--text-color-secondary);
+    font-size: 0.47rem;
+    font-weight: 850;
+    letter-spacing: 0.06em;
+}
+.state-light::before { width: 5px; height: 5px; border-radius: 50%; background: currentColor; content: ''; }
+.state-light.phase { color: var(--tactical-cyan, #70d9df); }
+.state-light.turn { color: var(--tactical-accent, #d2ae39); }
+.state-light.ready { color: #6dcc7a; }
+
+.tracker-layout {
+    display: grid;
+    grid-template-columns: minmax(420px, 1.55fr) minmax(230px, 0.8fr) minmax(138px, 0.42fr);
+    align-items: stretch;
+    min-width: 0;
+}
+
+.movement-console,
+.tactical-readouts,
+.command-rail {
+    min-width: 0;
+    padding: 6px;
+}
+.tactical-readouts,
+.command-rail { border-left: 1px solid var(--tactical-line, var(--border-color)); }
+
+.console-heading {
+    display: flex;
+    min-height: 18px;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 5px;
+}
+.console-index {
+    display: grid;
+    width: 19px;
+    height: 17px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--tactical-accent, #d2ae39) 45%, transparent);
+    letter-spacing: 0;
+}
+.console-heading h3 {
+    color: var(--text-color);
+    font-size: 0.6rem;
+    font-weight: 850;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+.current-order {
+    overflow: hidden;
+    margin-left: auto;
+    color: var(--tactical-cyan, #70d9df);
+    font-size: 0.49rem;
+    font-weight: 850;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.airborne-selector,
+.movement-orders,
+.equipment-order-options,
+.cover-orders { display: flex; min-width: 0; gap: 3px; }
+
+.airborne-selector { margin-bottom: 4px; }
+.airborne-selector button,
+.movement-order,
+.stand-order,
+.attempt-review,
+.spotting-order,
+.equipment-order-options button,
+.cover-orders > button,
+.alert-command,
+.commit-command,
+.scope-command {
+    min-width: 0;
+    border: 1px solid var(--tactical-line, var(--border-color));
+    background: color-mix(in srgb, var(--tactical-panel-strong, var(--background-color)) 90%, #000);
+    color: var(--text-color);
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.airborne-selector button {
+    min-height: 23px;
+    flex: 1 1 0;
+    padding: 1px 6px;
+    color: var(--text-color-secondary);
+    font-size: 0.53rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+.airborne-selector button.active {
+    border-color: var(--tactical-cyan, #70d9df);
+    background: color-mix(in srgb, var(--tactical-cyan, #70d9df) 22%, var(--tactical-panel-strong, #222));
+    color: var(--text-color);
+}
+
+.movement-orders {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+    align-items: stretch;
+}
+.movement-order {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    min-height: 45px;
+    align-content: center;
+    align-items: center;
+    gap: 0 5px;
+    padding: 4px 5px;
+    text-align: left;
+}
+.movement-order.stationary {
+    grid-template-columns: 17px minmax(0, 1fr);
+    grid-template-rows: auto;
+}
+.stationary-icon { width: 15px; height: 15px; color: var(--text-color-secondary); }
+.order-name {
+    overflow: hidden;
+    font-size: 0.62rem;
+    font-weight: 850;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.move-allowance {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 2px;
+    color: var(--tactical-accent, #d2ae39);
+    font-variant-numeric: tabular-nums;
+}
+.move-allowance strong { font-size: 1.08rem; line-height: 1; }
+.move-allowance small,
+.attack-modifier small { font-size: 0.39rem; font-weight: 850; letter-spacing: 0.05em; }
+.attack-modifier {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 2px;
+    color: var(--text-color-secondary);
+    font-size: 0.48rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+.risk-marker {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: grid;
+    width: 11px;
+    height: 11px;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--tactical-danger, #db4d43);
+    color: #fff;
+    font-size: 0.45rem;
+    font-weight: 900;
+}
+.movement-order.active {
+    border-color: var(--tactical-accent, #d2ae39);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--tactical-accent, #d2ae39) 30%, #191919), color-mix(in srgb, var(--tactical-accent, #d2ae39) 10%, #191919));
+    box-shadow: inset 2px 0 0 var(--tactical-accent, #d2ae39);
+}
+.movement-order.danger:not(.active) { border-color: color-mix(in srgb, var(--tactical-danger, #db4d43) 65%, transparent); }
+
+.immobile-callout {
+    display: flex;
+    min-height: 38px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin-bottom: 4px;
+    border: 1px solid color-mix(in srgb, var(--tactical-danger, #db4d43) 68%, transparent);
+    background: color-mix(in srgb, var(--tactical-danger, #db4d43) 14%, transparent);
+    font-size: 0.62rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+.status-mark { display: grid; width: 16px; height: 16px; place-items: center; background: var(--tactical-danger, #db4d43); color: #fff; }
+
+.stand-order,
+.spotting-order {
+    display: flex;
+    width: 100%;
+    min-height: 28px;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    padding: 3px 6px;
+    font-size: 0.55rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+.stand-order small { margin-left: auto; color: var(--text-color-secondary); font-size: 0.45rem; }
+.stand-order.danger { border-color: var(--tactical-danger, #db4d43); }
+.attempt-review {
+    width: 100%;
+    margin-top: 3px;
+    padding: 2px 5px;
+    border-style: dashed;
+    color: var(--text-color-secondary);
+    font-size: 0.49rem;
+}
+.spotting-order strong { margin-left: auto; color: var(--tactical-accent, #d2ae39); font-size: 0.5rem; }
+.spotting-mark { color: var(--tactical-cyan, #70d9df); font-size: 0.9rem; }
+.spotting-order.active { border-color: var(--tactical-cyan, #70d9df); background: color-mix(in srgb, var(--tactical-cyan, #70d9df) 18%, var(--tactical-panel-strong, #222)); }
+
+.distance-control {
+    margin-top: 4px;
+    padding: 4px 6px 3px;
+    border: 1px solid var(--tactical-line, var(--border-color));
+    background: color-mix(in srgb, var(--background-color) 58%, transparent);
+}
+.distance-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1px; font-size: 0.49rem; font-weight: 800; text-transform: uppercase; }
+.distance-label strong { color: var(--tactical-cyan, #70d9df); font-variant-numeric: tabular-nums; }
+.distance-label strong.over { color: var(--tactical-danger, #db4d43); }
+hex-slider { --hex-slider-track-height: 10px; --hex-slider-track-overhang: 12px; display: block; min-width: 0; }
+
+.equipment-order {
+    display: grid;
+    grid-template-columns: minmax(80px, 0.75fr) minmax(0, 1.25fr);
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px dashed var(--tactical-line, var(--border-color));
+}
+.equipment-order-label { overflow-wrap: anywhere; color: var(--text-color-secondary); font-size: 0.5rem; font-weight: 750; }
+.equipment-order.damaged .equipment-order-label { color: var(--tactical-danger, #db4d43); }
+.equipment-order-options { justify-content: flex-end; flex-wrap: wrap; }
+.equipment-order-options button {
+    min-width: 24px;
+    min-height: 22px;
+    padding: 1px 4px;
+    border-color: var(--choice-normal, var(--tactical-line, var(--border-color)));
+    background: var(--choice-normal, var(--tactical-panel-strong, #222));
+    color: var(--choice-normal-text, var(--text-color));
+    font-size: 0.49rem;
+    font-weight: 850;
+}
+.equipment-order-options button.active { border-color: var(--choice-active, var(--tactical-accent, #d2ae39)); background: var(--choice-active, var(--tactical-accent, #d2ae39)); color: var(--choice-active-text, #111); }
+.equipment-order-options button.muted { border-color: var(--choice-muted, var(--tactical-line, #666)); background: var(--choice-muted, #444); color: var(--choice-muted-text, var(--text-color-secondary)); }
+.equipment-order-options button:disabled { border-color: var(--choice-disabled, var(--tactical-line, #555)); background: var(--choice-disabled, #222); color: var(--choice-disabled-text, var(--text-color-secondary)); }
+.equipment-status-order { margin-left: 3px; }
+
+.tactical-readouts { display: flex; flex-direction: column; gap: 4px; }
+.defense-readout,
+.damage-readout {
+    display: flex;
+    min-height: 38px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 6px;
+    border: 1px solid var(--tactical-line, var(--border-color));
+    background: color-mix(in srgb, var(--background-color) 58%, transparent);
+}
+.defense-readout { cursor: help; }
+.defense-readout span,
+.damage-readout span { display: flex; min-width: 0; flex-direction: column; font-size: 0.54rem; font-weight: 750; }
+.defense-readout small,
+.damage-readout small,
+.readout-label small { color: var(--text-color-secondary); font-size: 0.39rem; font-weight: 850; letter-spacing: 0.09em; }
+.defense-readout > strong,
+.damage-readout > strong { color: var(--tactical-cyan, #70d9df); font-size: 1.12rem; font-variant-numeric: tabular-nums; }
+.damage-readout.active { border-color: color-mix(in srgb, var(--tactical-danger, #db4d43) 68%, transparent); }
+.damage-readout.active > strong { color: var(--tactical-danger, #db4d43); }
+
+.cover-readout,
+.heat-readout,
+.control-modifiers {
+    padding: 4px 5px;
+    border: 1px solid var(--tactical-line, var(--border-color));
+    background: color-mix(in srgb, var(--background-color) 58%, transparent);
+}
+.readout-label { display: flex; min-height: 18px; align-items: center; justify-content: space-between; gap: 5px; font-size: 0.53rem; font-weight: 800; text-transform: uppercase; }
+.readout-label strong { color: var(--tactical-cyan, #70d9df); font-size: 0.48rem; }
+.cover-orders { display: grid; grid-template-columns: repeat(4, minmax(34px, 1fr)); margin-top: 2px; }
+.cover-orders > button { display: flex; min-height: 31px; align-items: center; justify-content: center; gap: 3px; padding: 2px 3px; color: var(--text-color-secondary); font-size: 0.47rem; font-weight: 800; }
+.cover-orders > button.active { border-color: var(--tactical-cyan, #70d9df); background: color-mix(in srgb, var(--tactical-cyan, #70d9df) 18%, var(--tactical-panel-strong, #222)); color: var(--text-color); }
+cover-level-picker { min-height: 31px; }
+.cover-glyph { display: block; width: 8px; height: 13px; border-bottom: 7px solid currentColor; }
+.cover-glyph.heavy { width: 13px; border-right: 5px solid transparent; border-left: 5px solid transparent; }
+
+.readout-rows { display: flex; flex-direction: column; gap: 1px; }
+.readout-rows > div { display: flex; align-items: center; justify-content: space-between; gap: 5px; min-height: 18px; font-size: 0.49rem; }
+.readout-rows span { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+.readout-rows span small { margin-left: 3px; color: var(--tactical-accent, #d2ae39); font-size: 0.39rem; }
+.readout-rows strong { color: #ee8c53; font-variant-numeric: tabular-nums; }
+.readout-rows strong small { margin-left: 2px; font-size: 0.42rem; }
+.readout-rows .selected { color: var(--tactical-accent, #d2ae39); }
+.readout-rows .underwater strong { color: #64b5f6; }
+
+.modifier-chips { display: flex; flex-wrap: wrap; gap: 2px; }
+.modifier-chips > span { padding: 2px 4px; border-left: 2px solid var(--tactical-line, #666); background: var(--tactical-panel-strong, #222); font-size: 0.45rem; }
+.modifier-chips > span.danger { border-color: var(--tactical-danger, #db4d43); }
+.modifier-chips > span.bonus { border-color: #54af65; }
+
+.command-rail { display: flex; flex-direction: column; gap: 5px; background: color-mix(in srgb, var(--background-color) 72%, #111); }
+.alert-command {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    min-height: 42px;
+    align-items: center;
+    padding: 3px;
+    border-color: #e0aa32;
+    background: color-mix(in srgb, #e0aa32 18%, var(--tactical-panel-strong, #222));
+    text-align: left;
+}
+.alert-command > span { grid-row: 1 / 3; display: grid; width: 20px; height: 28px; place-items: center; background: #e0aa32; color: #111; font-weight: 900; }
+.alert-command strong { align-self: end; font-size: 0.57rem; text-transform: uppercase; }
+.alert-command small { align-self: start; color: var(--text-color-secondary); font-size: 0.43rem; }
+.alert-command.falling { border-color: var(--tactical-danger, #db4d43); background: color-mix(in srgb, var(--tactical-danger, #db4d43) 22%, var(--tactical-panel-strong, #222)); }
+.alert-command.falling > span { background: var(--tactical-danger, #db4d43); color: #fff; }
+
+.command-group { display: flex; flex-direction: column; gap: 3px; padding-top: 4px; border-top: 1px solid var(--tactical-line, var(--border-color)); }
+.commit-command { display: flex; min-height: 34px; align-items: center; justify-content: center; gap: 5px; padding: 3px 5px; font-size: 0.55rem; font-weight: 850; text-transform: uppercase; }
+.commit-command svg { width: 15px; height: 15px; }
+.commit-command.phase { border-color: color-mix(in srgb, var(--tactical-danger, #db4d43) 65%, transparent); background: color-mix(in srgb, var(--tactical-danger, #db4d43) 22%, var(--tactical-panel-strong, #222)); }
+.commit-command.turn { border-color: var(--tactical-accent, #d2ae39); background: color-mix(in srgb, var(--tactical-accent, #d2ae39) 20%, var(--tactical-panel-strong, #222)); }
+.scope-command { min-height: 24px; padding: 2px 4px; color: var(--text-color-secondary); font-size: 0.47rem; font-weight: 800; text-transform: uppercase; }
+.no-commands { display: grid; min-height: 64px; place-items: center; align-content: center; gap: 3px; color: #6dcc7a; }
+.no-commands > span { font-size: 1.1rem; }
+.no-commands small { color: var(--text-color-secondary); font-size: 0.46rem; text-transform: uppercase; }
+
+button:hover:not(:disabled),
+button:focus-visible {
+    position: relative;
+    z-index: 1;
+    border-color: var(--tactical-accent, #d2ae39);
+    outline: none;
+    filter: brightness(1.12);
+}
+button:disabled { cursor: default; opacity: 0.38; }
+
+@container tactical-view (max-width: 980px) {
+    .tracker-layout { grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.8fr); }
+    .command-rail {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: auto repeat(3, minmax(120px, 1fr));
+        align-items: stretch;
+        border-top: 1px solid var(--tactical-line, var(--border-color));
+        border-left: 0;
+    }
+    .command-rail > .console-heading { align-self: center; margin: 0; }
+    .command-group { padding-top: 0; padding-left: 5px; border-top: 0; border-left: 1px solid var(--tactical-line, var(--border-color)); }
+    .no-commands { min-height: 42px; }
+}
+
+@container tactical-view (max-width: 620px) {
+    .tracker-heading { align-items: flex-start; }
+    .tracker-layout { grid-template-columns: minmax(0, 1fr); }
+    .tactical-readouts,
+    .command-rail { border-top: 1px solid var(--tactical-line, var(--border-color)); border-left: 0; }
+    .movement-orders { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tactical-readouts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tactical-readouts > .console-heading { grid-column: 1 / -1; }
+    .cover-readout,
+    .heat-readout,
+    .control-modifiers { grid-column: 1 / -1; }
+    .command-rail { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .command-rail > .console-heading { grid-column: 1 / -1; }
+    .alert-command,
+    .no-commands { grid-column: 1 / -1; }
+    .command-group { padding-left: 0; border-left: 0; }
+    .command-group + .command-group { padding-left: 5px; border-left: 1px solid var(--tactical-line, var(--border-color)); }
+}
+
+@container tactical-view (max-width: 390px) {
+    .tracker-state { display: none; }
+    .movement-order { min-height: 42px; }
+    .equipment-order { grid-template-columns: minmax(0, 1fr); }
+    .equipment-order-options { justify-content: flex-start; }
+    .tactical-readouts { grid-template-columns: minmax(0, 1fr); }
+    .cover-readout,
+    .heat-readout,
+    .control-modifiers { grid-column: 1; }
+}

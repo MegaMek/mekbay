@@ -74,8 +74,6 @@ export class StealthHandler extends ComponentModeHandler {
         }
         const result = runtime.dispatch({
             type: 'set-stealth-state',
-            commandId: createCommandId(),
-            expectedRevision: runtime.revision(),
             componentId: definition.componentId,
             state: choice.value,
         });

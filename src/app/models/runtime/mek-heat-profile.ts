@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
+import { isRecord } from '../../utils/json-value.util';
 import {
     heatSinkDissipationRate,
     unsupportedMekHeatFlag,
@@ -952,12 +954,4 @@ function compareProviders(left: MekHeatProvider, right: MekHeatProvider): number
 
 function relationKey(sourceId: ComponentId, targetId: ComponentId): string {
     return `${sourceId}\0${targetId}`;
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

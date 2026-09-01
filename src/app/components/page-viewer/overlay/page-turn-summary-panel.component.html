@@ -1,6 +1,5 @@
 <aside
     class="turn-summary glass preventZoomReset framed-borders has-shadow"
-    [class.embedded]="embedded()"
     [class.render-ready]="renderReady()"
     aria-labelledby="turn-summary-title"
     (click)="$event.stopPropagation()"
@@ -53,8 +52,7 @@
                                 <path d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z" fill="currentColor"></path>
                             </svg>
                         } @else {
-                            <span class="move-mode-label">{{ moveMode.label }}</span>
-                            <strong class="move-allowance">{{ moveModeAllowance(mode) }}</strong>
+                            <span>{{ moveMode.label }}</span>
                             @if (moveModeModifierLabel(mode); as modifierLabel) {
                                 <span class="modifier-badge">{{ modifierLabel }}</span>
                             }
@@ -249,7 +247,7 @@
         </div>
     </section>
 
-    @if (psrModifiers().length > 0 && (!embedded() || controlRollShortLabel() !== 'PSR')) {
+    @if (psrModifiers().length > 0) {
         <section class="summary-section control-roll-section">
             <h2 class="section-title">{{ controlRollShortLabel() }} Modifiers</h2>
             <div class="modifier-list">

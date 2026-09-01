@@ -1460,7 +1460,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     protected onForceChanged(_changedUnitIds: readonly string[] | null): void {
     }
 
-    /** Subclasses with typed cross-unit state opt in; V1 C3 stays in recovery evidence. */
+    /** Subclasses with typed cross-unit state opt in. */
     protected getCBTEncounterStateForPersistence(): SerializedCBTEncounterStateV2 | undefined {
         return undefined;
     }
@@ -2183,7 +2183,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
      * against the clone's fresh force/unit/bridge identities.
      */
     public async cloneForPersistence(): Promise<Force> {
-        if (this.getSupportedCBTForceV2Envelope()?.units.some(entry => entry.kind === 'ready')) {
+        if ((this.getSupportedCBTForceV2Envelope()?.units.length ?? 0) > 0) {
             throw new Error('Retained V2 force members cannot be cloned without a complete identity remap');
         }
         const encounter = this.getCBTEncounterStateForPersistence();

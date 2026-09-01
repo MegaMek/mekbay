@@ -1,7 +1,4 @@
-// Copyright (C) 2026 The MegaMek Team
-// SPDX-License-Identifier: GPL-3.0-or-later
 
-import { asCommandId } from '../models/runtime/runtime-state';
 import {
     applyComponentApolloWeaponTypes,
     ApolloHandler,
@@ -59,8 +56,8 @@ describe('ApolloHandler', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('apollo:disable'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            
+            
             componentId: source.id,
             status: 'disabled',
             target: 'committed',
@@ -107,8 +104,8 @@ describe('ApolloHandler', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('apollo:destroy'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            
+            
             componentId: source.id,
             status: 'destroyed',
             target: 'committed',

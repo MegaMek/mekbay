@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
+import { isObjectLiteralRecord } from '../../utils/json-value.util';
 import type { ComponentId, CriticalSlotId } from '../entity/entity-identifiers';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
@@ -154,7 +156,7 @@ export function createPristineMekHeatStateV2(initialHeat = 0): MekHeatStateV2 {
 }
 
 export function canonicalizeMekHeatStateV2(value: MekHeatStateV2): MekHeatStateV2 {
-    if (!isPlainRecord(value)) throw new Error('Heat state must be a plain object');
+    if (!isObjectLiteralRecord(value)) throw new Error('Heat state must be a plain object');
     const keys = Object.keys(value);
     const allowed = new Set(['current', 'previous', 'pendingOverride', 'heatsinksOff']);
     if (keys.some(key => !allowed.has(key))) throw new Error('Heat state contains an unknown field');
@@ -861,13 +863,4 @@ function assertHeatValue(value: number, path: string): void {
         || value < 0 || value > MAX_MEK_HEAT_VALUE_V2) {
         throw new Error(`${path} must be a canonical heat value`);
     }
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value)
-        && Object.getPrototypeOf(value) === Object.prototype;
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }

@@ -3,7 +3,8 @@
 
 import type { EquipmentStatus } from '../equipment-status.model';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
-import { jsonValuesEqual } from '../../utils/json-value.util';
+import { isObjectLiteralRecord, jsonValuesEqual } from '../../utils/json-value.util';
+import { compareText } from '../../utils/string.util';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import {
     asComponentId,
@@ -433,7 +434,7 @@ function restoreAttackerTargeting(
     value: SavedAttackerTargetingState,
     accumulator: RestoreAccumulator,
 ): AttackerTargetingState {
-    if (!isPlainRecord(value)
+    if (!isObjectLiteralRecord(value)
         || !hasExactObjectKeys(value, ['schemaVersion', 'components', 'actions', 'targets'])
         || value.schemaVersion !== 1
         || !Array.isArray(value.components)
@@ -446,7 +447,7 @@ function restoreAttackerTargeting(
     for (let index = 0; index < value.actions.length; index += 1) {
         const row = value.actions[index];
         const path = `$.attackerTargeting.actions[${index}]`;
-        if (!isPlainRecord(row) || typeof row['kind'] !== 'string') {
+        if (!isObjectLiteralRecord(row) || typeof row['kind'] !== 'string') {
             codecFail('INVALID_SERIALIZED_STATE', path, 'invalid targeting action row');
         }
         let target: AttackerActionState['target'];
@@ -490,7 +491,7 @@ function restoreAttackerTargeting(
     for (let index = 0; index < value.components.length; index += 1) {
         const row = value.components[index];
         const path = `$.attackerTargeting.components[${index}]`;
-        if (!isPlainRecord(row)
+        if (!isObjectLiteralRecord(row)
             || !hasExactObjectKeys(row, ['target', 'selection', 'ammo'])) {
             codecFail('INVALID_SERIALIZED_STATE', path, 'invalid targeting component row');
         }
@@ -515,7 +516,7 @@ function restoreAttackerTargeting(
         let ammo: AttackerComponentState['ammo'];
         const ammoValue = row['ammo'];
         if (ammoValue !== undefined) {
-            if (!isPlainRecord(ammoValue)
+            if (!isObjectLiteralRecord(ammoValue)
                 || !hasExactObjectKeys(ammoValue, ['munitionKey', 'preferredSourceTarget'])
                 || typeof ammoValue['munitionKey'] !== 'string') {
                 codecFail('INVALID_SERIALIZED_STATE', `${path}.ammo`, 'invalid targeting ammo row');
@@ -568,7 +569,7 @@ function restoreAttackerTargeting(
     for (let index = 0; index < value.targets.length; index += 1) {
         const row = value.targets[index];
         const path = `$.attackerTargeting.targets[${index}]`;
-        if (!isPlainRecord(row)
+        if (!isObjectLiteralRecord(row)
             || !hasExactObjectKeys(row, [
                 'targetId', 'distance', 'c3Distance', 'useC3', 'calculator', 'manualTnOverride',
             ])) {
@@ -609,13 +610,6 @@ function restoreAttackerTargeting(
 function hasExactObjectKeys(value: object, allowed: readonly string[]): boolean {
     const allowedSet = new Set(allowed);
     return Object.keys(value).every(key => allowedSet.has(key));
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null
-        && typeof value === 'object'
-        && !Array.isArray(value)
-        && Object.getPrototypeOf(value) === Object.prototype;
 }
 
 /** Serializes one exact runtime snapshot without persisting baseline facts or map insertion order. */
@@ -787,6 +781,23 @@ export function serializeCBTUnitStateV2(
         if (typeof value.ejected !== 'boolean' || (value.unconscious && value.ejected)) {
             codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}.ejected`, 'must be boolean and mutually exclusive with unconscious');
         }
+        if (value.recoveryReadyTurn !== undefined
+            && value.recoveryReadyTurn !== null
+            && (!Number.isSafeInteger(value.recoveryReadyTurn)
+                || value.recoveryReadyTurn < 0)) {
+            codecFail(
+                'INVALID_RUNTIME_STATE',
+                `$.state.crew.${positionId}.recoveryReadyTurn`,
+                'must be null or a nonnegative integer',
+            );
+        }
+        if (value.recoveryReadyTurn !== undefined && !value.unconscious) {
+            codecFail(
+                'INVALID_RUNTIME_STATE',
+                `$.state.crew.${positionId}.recoveryReadyTurn`,
+                'requires unconscious crew',
+            );
+        }
         if (wounds === 0 && !value.unconscious && !value.ejected) {
             codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}`, 'sparse crew state must contain a fact');
         }
@@ -795,6 +806,9 @@ export function serializeCBTUnitStateV2(
             wounds,
             unconscious: value.unconscious,
             ...(value.ejected ? { ejected: true as const } : {}),
+            ...(value.recoveryReadyTurn === undefined
+                ? {}
+                : { recoveryReadyTurn: value.recoveryReadyTurn }),
         });
     }
 
@@ -1560,6 +1574,23 @@ export async function restoreSerializedCBTUnitV2(
         if (entry.unconscious && ejected) {
             codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions', 'crew cannot be unconscious and ejected simultaneously');
         }
+        const recoveryReadyTurn = entry.recoveryReadyTurn;
+        if (recoveryReadyTurn !== undefined
+            && recoveryReadyTurn !== null
+            && (!Number.isSafeInteger(recoveryReadyTurn) || recoveryReadyTurn < 0)) {
+            codecFail(
+                'INVALID_SERIALIZED_STATE',
+                '$.crew.positions.recoveryReadyTurn',
+                'must be null or a nonnegative integer',
+            );
+        }
+        if (recoveryReadyTurn !== undefined && !entry.unconscious) {
+            codecFail(
+                'INVALID_SERIALIZED_STATE',
+                '$.crew.positions.recoveryReadyTurn',
+                'requires unconscious crew',
+            );
+        }
         if (requested === 0 && !entry.unconscious && !ejected) {
             codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions', 'sparse crew state must contain a fact');
         }
@@ -1590,6 +1621,7 @@ export async function restoreSerializedCBTUnitV2(
             wounds: effective,
             unconscious: entry.unconscious,
             ejected,
+            ...(recoveryReadyTurn === undefined ? {} : { recoveryReadyTurn }),
         }));
         const rekeyed = target.savedCrewPositionId !== undefined
             && target.savedCrewPositionId !== currentTarget.positionId;
@@ -4982,10 +5014,6 @@ function compareLocationConditionEntry(
     right: SerializedLocationConditionStateEntryV2,
 ): number {
     return compareText(`${left.target}\0${left.condition}`, `${right.target}\0${right.condition}`);
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function requireNonnegativeInteger(value: number, path: string): number {

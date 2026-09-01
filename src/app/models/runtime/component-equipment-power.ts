@@ -23,7 +23,6 @@ import {
     type EquipmentInteractionCommandContext,
     type EquipmentInteractionInput,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 import { isBapEquipment } from '../bap-equipment.model';
 import { isEcmEquipment } from '../ecm-mode.model';
 
@@ -59,13 +58,11 @@ export class EquipmentPowerHandler extends EquipmentInteractionHandler {
         if (!offered || choice.value !== offered.value) return false;
         const result = input.runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: input.runtime.revision(),
             componentId: input.componentId,
             mode: String(choice.value),
         });
         if (!result.accepted) return false;
-        if (!result.idempotent) {
+        if (result.changed) {
             context.toastService.showToast(`${equipment.shortName || equipment.name}: ${offered.label}`, 'info');
         }
         return true;

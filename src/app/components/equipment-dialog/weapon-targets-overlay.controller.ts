@@ -22,7 +22,6 @@ import type {
     AttackerLocalCalculatorInputs,
     AttackerLocalTargetState,
 } from '../../models/runtime/attacker-targeting-state';
-import { createCommandId } from '../../models/runtime/runtime-state';
 import {
     CORE_2026_GAME_RULES,
     TW_GAME_RULES,
@@ -479,7 +478,7 @@ export class WeaponTargetsOverlayController {
         const targeting = member.force.getAttackerTargeting(member.id);
         const current = targeting?.state.targets.get(asEncounterTargetId(request.targetId));
         if (!targeting) {
-            this.reportTargetingRejection('UNIT_NOT_FOUND', 'update target');
+            this.reportTargetingRejection('update target');
             return;
         }
         const next: {
@@ -509,20 +508,17 @@ export class WeaponTargetsOverlayController {
 
         const result = await member.force.dispatchAttackerTargeting(member.id, {
             type: 'edit-attacker-targeting',
-            commandId: createCommandId(),
-            expectedRevision: targeting.stateRevision,
-            expectedRegistryRevision: targeting.registryRevision,
             edit: {
                 kind: 'set-target-facts',
                 targetId: asEncounterTargetId(request.targetId),
                 facts: Object.keys(next).length === 0 ? null : next,
             },
         });
-        if (!result.accepted) this.reportTargetingRejection(result.reason, 'update target');
+        if (!result.accepted) this.reportTargetingRejection('update target');
     }
 
-    private reportTargetingRejection(reason: string, action: string): void {
-        const message = `Could not ${action}: targeting rejected the change (${reason}).`;
+    private reportTargetingRejection(action: string): void {
+        const message = `Could not ${action}: this force is read-only.`;
         this.deps.injector.get(LoggerService).error(message);
         this.deps.injector.get(ToastService).showToast(message, 'error');
     }

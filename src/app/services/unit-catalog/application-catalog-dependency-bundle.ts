@@ -7,6 +7,7 @@ import type { RawMULFactions } from '../../models/mulfactions.model';
 import type { Quirks } from '../../models/quirks.model';
 import type { Sourcebooks } from '../../models/sourcebook.model';
 import type { UnitSpriteManifestEvidence } from '../../utils/unit-sprite-assignment-resolver';
+import { isRecord } from '../../utils/json-value.util';
 
 export const MAX_APPLICATION_CATALOG_DEPENDENCY_BUNDLE_BYTES = 128 * 1024 * 1024;
 export const SUMMARY_DEPENDENCY_NAMES = Object.freeze([
@@ -89,18 +90,14 @@ export function parseApplicationCatalogDependencyBundle(
 export function isApplicationCatalogDependencyBundle(
     value: unknown,
 ): value is ApplicationCatalogDependencyBundle {
-    if (!isPlainObject(value)) return false;
+    if (!isRecord(value)) return false;
     const sprites = value['spriteManifest'];
-    return isPlainObject(value['equipment'])
-        && isPlainObject(value['quirks'])
-        && isPlainObject(value['sourcebooks'])
-        && isPlainObject(value['eras'])
-        && isPlainObject(value['factions'])
-        && isPlainObject(sprites)
+    return isRecord(value['equipment'])
+        && isRecord(value['quirks'])
+        && isRecord(value['sourcebooks'])
+        && isRecord(value['eras'])
+        && isRecord(value['factions'])
+        && isRecord(sprites)
         && typeof sprites['manifestDigest'] === 'string'
         && typeof sprites['manifestText'] === 'string';
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

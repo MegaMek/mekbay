@@ -334,7 +334,7 @@ export function validateCBTEncounterNetworks(
     return validateEncounterNetworks(configured, presentation);
 }
 
-function projectReadyC3Components(unit: ReadyClassicUnit): readonly C3Component[] {
+export function projectReadyC3Components(unit: ReadyClassicUnit): readonly C3Component[] {
     if (!isReadyMekUnit(unit)) {
         return isReadyNonMekUnit(unit)
             ? projectNonMekC3Components(unit.getIndex())

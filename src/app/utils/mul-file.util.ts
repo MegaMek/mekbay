@@ -28,7 +28,6 @@ import type {
     MekRecordSheetLocation,
     MekRecordSheetSnapshot,
 } from '../models/runtime/mek-record-sheet';
-import { createCommandId } from '../models/runtime/runtime-state';
 import type {
     NonMekUnitCommand,
     NonMekUnitRuntimeState,
@@ -103,9 +102,9 @@ interface ParsedMulLocation {
 }
 
 type MulCrewType = 'single' | 'tripod' | 'superheavy_tripod' | 'quadvee' | 'dual' | 'command_console';
-type CommandWithoutEnvelope<T> = T extends unknown ? Omit<T, 'commandId' | 'expectedRevision'> : never;
-type MulUnitCommand = CommandWithoutEnvelope<CBTUnitCommand>;
-type MulEntityCommand = CommandWithoutEnvelope<NonMekUnitCommand>;
+type CommandWithoutRevision<T> = T extends unknown ? Omit<T, 'expectedRevision'> : never;
+type MulUnitCommand = CommandWithoutRevision<CBTUnitCommand>;
+type MulEntityCommand = CommandWithoutRevision<NonMekUnitCommand>;
 type EntityRuntimeSnapshot = CBTUnitSnapshot & Readonly<{
     index: NonMekRuntimeIndex;
     state: NonMekUnitRuntimeState;
@@ -133,7 +132,7 @@ export async function serializeForceToMul(force: CBTForce): Promise<string> {
     const root = doc.documentElement;
     setAttributes(root, { version: `mekbay-${APP_VERSION_STRING}` });
     let index = 0;
-    for (const rosterMember of roster.snapshot.structural.members) {
+    for (const rosterMember of roster.snapshot.members) {
         const member = force.getClassicMember(rosterMember.instanceId);
         if (!member) throw new Error(`MUL export requires ready runtime ${rosterMember.instanceId}`);
         const sheet = force.getMekRecordSheetSnapshot(member.id);
@@ -711,10 +710,8 @@ async function dispatchMek(
     }
     const result = await force.dispatchMekUnitCommand(member.id, {
         ...command,
-        commandId: createCommandId(),
-        expectedRevision: snapshot.state.stateRevision,
     } as CBTUnitCommand);
-    if (!result.accepted) throw new Error(`MUL command ${command.type} was rejected: ${result.reason}`);
+    if (!result.accepted) throw new Error('Cannot import MUL state into a read-only force');
 }
 
 async function dispatchEntity(
@@ -727,9 +724,7 @@ async function dispatchEntity(
         ...command,
         expectedRevision: snapshot.state.stateRevision,
     } as NonMekUnitCommand);
-    if (!result.accepted) {
-        throw new Error(`MUL command ${command.kind} was rejected: ${result.reason}`);
-    }
+    if (!result.accepted) throw new Error('Cannot import MUL state into a read-only force');
 }
 
 function requiredSheet(force: CBTForce, member: CBTMekForceMember): MekRecordSheetSnapshot {

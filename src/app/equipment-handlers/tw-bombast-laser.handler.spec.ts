@@ -21,7 +21,6 @@ import {
     equipmentWeaponToHitModifier,
     projectMekEquipmentComponents,
 } from '../models/runtime/equipment-panel';
-import { asCommandId } from '../models/runtime/runtime-state';
 import { createDirectBombastRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import {
     createHandlerCommandContext,
@@ -86,8 +85,8 @@ describe('TwBombastLaserHandler direct V2 runtime', () => {
 
             const fired = setup.runtime.dispatch({
                 type: 'fire-weapons',
-                commandId: asCommandId(`tw-bombast:fire:${mode}`),
-                expectedRevision: setup.runtime.revision(),
+                
+                
                 selections: [{ weaponId: setup.component.id }],
                 heatPolicy: 'automatic',
             });

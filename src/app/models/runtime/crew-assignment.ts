@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
 import type { CrewPositionId } from '../entity/entity-identifiers';
 
 export const CREW_ASSIGNMENT_SCHEMA_VERSION = 1 as const;
@@ -143,8 +144,4 @@ function boundedSkill(value: unknown, path: string): number {
         throw new Error(`${path} must be an integer from ${MIN_CREW_SKILL} to ${MAX_CREW_SKILL}`);
     }
     return value as number;
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }

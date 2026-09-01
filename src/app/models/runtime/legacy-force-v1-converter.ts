@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
 import { GameSystem } from '../common.model';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
 import { DEFAULT_GUNNERY_SKILL } from '../crew.model';
@@ -9,17 +10,17 @@ import type {
     ASSerializedGroup,
     ASSerializedState,
     ASSerializedUnit,
+    SerializedC3NetworkGroup,
     ConditionData,
     SerializedCondition,
     SerializedForce,
 } from '../force-serialization';
+import { C3_NETWORK_GROUP_SCHEMA } from '../force-serialization';
 import type { ASCustomPilotAbility } from '../pilot-abilities.model';
 import {
     cloneAsJson,
-    extractDeferredUnitRecovery,
-    sanitizeSavedEntityIdentity,
-    type DeferredUnitSource,
-    type ForceRecoveryEvidence,
+    readLegacyUnitStateV1,
+    type LegacyUnitSourceV1,
     type JsonObject,
     type JsonValue,
     type PersistedUnitIdentity,
@@ -52,6 +53,11 @@ import {
 } from './runtime-state';
 import type { ReadyMekUnit } from './ready-unit-factory';
 import type { ReadyNonMekUnit } from './ready-non-mek-unit';
+import {
+    isReadyMekUnit,
+    isReadyNonMekUnit,
+    type ReadyClassicUnit,
+} from './ready-classic-unit';
 import type { SerializedNonMekUnit } from './non-mek-unit-persistence';
 import type {
     NonMekDamageTrack,
@@ -70,7 +76,6 @@ import type {
 import { restoreLegacyUnitState } from './state-restorer';
 import { serializeCBTUnitStateV2 } from './runtime-state-codec-v2';
 import { canonicalizeMekTurnStateV2 } from './mek-turn-state-v2';
-import { buildMekRuntimeIndex } from './mek-runtime-index';
 import {
     createMekHeatContextV2,
     mekHeatSourceSignatureV2,
@@ -78,6 +83,15 @@ import {
 import { createMekMechanicsContextV2 } from './mek-mechanics-context-v2';
 import { CBTUnitInstance } from './unit-instance';
 import { DEFAULT_FORCE_DEPLOYMENT_ID } from './unit-state-initializer';
+import { C3NetworkEditor } from '../c3-network-editor';
+import {
+    projectC3EditorNetworksToEncounter,
+    type C3EncounterPresentationUnit,
+} from '../c3-network-presentation';
+import { projectReadyC3Components } from '../cbt-force-c3';
+import { encodeCBTEncounterStateV2 } from './encounter-runtime';
+import { Sanitizer } from '../../utils/sanitizer.util';
+import { isRecord, jsonValuesEqual } from '../../utils/json-value.util';
 
 const V1_SCENARIO_RULES = Object.freeze({
     schemaVersion: 1 as const,
@@ -87,26 +101,41 @@ const V1_SCENARIO_RULES = Object.freeze({
 const V1_CONVERSION_DEPLOYMENT = Object.freeze({ id: DEFAULT_FORCE_DEPLOYMENT_ID });
 
 export interface PersistedForceV1ConversionOptions {
-    readonly resolveIdentity?: UnitIdentityResolver;
+    readonly resolveIdentity: UnitIdentityResolver;
     readonly materializeUnit?: (request: {
-        readonly source: DeferredUnitSource;
+        readonly source: LegacyUnitSourceV1;
         readonly instanceId: ReturnType<typeof asUnitInstanceId>;
         readonly deployment: typeof V1_CONVERSION_DEPLOYMENT;
         readonly scenario: typeof V1_SCENARIO_RULES.values;
-    }) => Promise<SerializedCBTUnitV2 | SerializedNonMekUnit | undefined>;
+    }) => Promise<ReadyClassicUnit | undefined>;
     readonly onWarning?: (warning: PersistedForceV1ConversionWarning) => void;
 }
 
-export interface PersistedForceV1ConversionWarning {
-    readonly kind: 'unit-skipped' | 'state-reset';
-    readonly unit: string;
-    readonly message: string;
+export type PersistedForceV1ConversionWarning =
+    | Readonly<{
+        kind: 'unit-skipped' | 'state-reset' | 'state-partial';
+        unit: string;
+        message: string;
+    }>
+    | Readonly<{
+        kind: 'force-state-reset';
+        message: string;
+    }>;
+
+type ResolvedLegacyUnitSourceV1 = Readonly<{
+    payload: JsonValue;
+    identity: Extract<PersistedUnitIdentity, { readonly kind: 'resolved' }>;
+}>;
+
+interface ResolvedLegacyClassicUnitV1 {
+    readonly instanceId: ReturnType<typeof asUnitInstanceId>;
+    readonly source: ResolvedLegacyUnitSourceV1;
 }
 
 /** The only force V1 ingress. Runtime construction receives the returned V2 record. */
 export async function convertPersistedForceV1(
     force: SerializedForce,
-    options: PersistedForceV1ConversionOptions = {},
+    options: PersistedForceV1ConversionOptions,
 ): Promise<SerializedForce> {
     if (force.version !== 1) {
         throw new Error('Force V1 conversion requires a version 1 force');
@@ -131,7 +160,6 @@ function convertAlphaStrikeForce(
     const payload = requireObject(cloneAsJson(force), 'Alpha Strike V1 force');
     const rawGroups = payload['groups'];
     if (!Array.isArray(rawGroups)) throw new Error('Alpha Strike V1 force groups must be an array');
-    if (!options.resolveIdentity) throw new Error('Alpha Strike V1 conversion requires the unit catalog');
 
     const groupIds = new Set<string>();
     const unitIds = new Set<string>();
@@ -152,7 +180,7 @@ function convertAlphaStrikeForce(
             }
             unitIds.add(instanceId);
 
-            const identity = options.resolveIdentity!(unit);
+            const identity = options.resolveIdentity(unit);
             if (identity.kind !== 'resolved') {
                 options.onWarning?.({
                     kind: 'unit-skipped',
@@ -289,7 +317,7 @@ function convertAlphaStrikeV1State(value: JsonValue | undefined): ASSerializedSt
 
 /** Converts one pristine V2 Mek baseline plus its V1 payload into a standalone V2 snapshot. */
 export async function convertPersistedMekUnitV1(
-    source: DeferredUnitSource,
+    source: LegacyUnitSourceV1,
     fresh: ReadyMekUnit,
 ): Promise<SerializedCBTUnitV2> {
     const baseline = fresh.serialize();
@@ -334,8 +362,9 @@ export async function convertPersistedMekUnitV1(
 
 /** Converts one pristine non-Mek Entity baseline and its V1 sparse state. */
 export function convertPersistedNonMekUnitV1(
-    source: DeferredUnitSource,
+    source: LegacyUnitSourceV1,
     fresh: ReadyNonMekUnit,
+    onIssue?: (message: string) => void,
 ): SerializedNonMekUnit {
     const baseline = fresh.serialize();
     if (baseline.stateRevision !== 0 || baseline.restoration !== undefined) {
@@ -348,18 +377,17 @@ export function convertPersistedNonMekUnitV1(
     }
 
     const index = fresh.getIndex();
-    const recovery = extractDeferredUnitRecovery(source);
+    const recovery = readLegacyUnitStateV1(source);
     const rawState = isRecord(recovery.rawUnitAndFamilyState)
         ? recovery.rawUnitAndFamilyState
         : {};
-    const warnings: string[] = [];
-    const unresolved: string[] = [];
+    const issues: string[] = [];
     if (source.identity.savedIdentity.sourceHashAtSave
         && source.identity.savedIdentity.sourceHashAtSave !== baseline.entity.sourceHashAtSave) {
-        warnings.push('The native source changed since this V1 unit was saved.');
+        issues.push('The native source changed since this V1 unit was saved.');
     }
 
-    const locations = restoreLegacyEntityLocations(rawState['locations'], index, warnings, unresolved);
+    const locations = restoreLegacyEntityLocations(rawState['locations'], index, issues);
     const componentState = new Map<ComponentId, {
         status?: 'disabled' | 'destroyed';
         mode?: string;
@@ -382,8 +410,7 @@ export function convertPersistedNonMekUnitV1(
             componentState,
             pendingComponentState,
             ammoState,
-            warnings,
-            unresolved,
+            issues,
         );
     }
     for (const raw of recovery.rawCriticalRecords) {
@@ -392,27 +419,25 @@ export function convertPersistedNonMekUnitV1(
             index,
             damageTrackState,
             pendingDamageTrackHits,
-            warnings,
-            unresolved,
+            issues,
         )) continue;
-        restoreLegacyNonMekComponentDamage(raw, index, componentState, pendingComponentState, unresolved);
+        restoreLegacyNonMekComponentDamage(raw, index, componentState, pendingComponentState, issues);
     }
 
-    const conditions = restoreLegacyEntityConditions(rawState['conditions'], unresolved);
-    const crewState = restoreLegacyNonMekCrewState(source, index.crewPositions, unresolved);
+    const conditions = restoreLegacyEntityConditions(rawState['conditions'], issues);
+    const crewState = restoreLegacyNonMekCrewState(source, index.crewPositions, issues);
     const heat = restoreLegacyEntityHeat(
         rawState['heat'],
         fresh.getUnit().tracksHeat(),
         fresh.getUnit().engineHeatSinks(),
-        warnings,
-        unresolved,
+        issues,
     );
-    const turn = restoreLegacyEntityTurn(rawState['turnState'], unresolved);
+    const turn = restoreLegacyEntityTurn(rawState['turnState'], issues);
     const destroyed = rawState['destroyed'] === true;
     if (rawState['destroyed'] !== undefined && typeof rawState['destroyed'] !== 'boolean') {
-        unresolved.push('Malformed V1 destroyed state was retained for recovery.');
+        issues.push('Malformed V1 destroyed state was skipped.');
     }
-    preserveUnsupportedLegacyFamilyState(rawState, unresolved);
+    preserveUnsupportedLegacyFamilyState(rawState, issues);
 
     const pendingCombat = Object.freeze({
         ...(locations.pendingInternal.length === 0
@@ -433,6 +458,7 @@ export function convertPersistedNonMekUnitV1(
                 .map(([damageTrackId, state]) => Object.freeze({ damageTrackId, ...state }))) }),
     });
     const hasPendingCombat = Object.keys(pendingCombat).length > 0;
+    if (issues.length > 0) onIssue?.([...new Set(issues)].join(' '));
     return Object.freeze({
         ...baseline,
         deployment: Object.freeze({
@@ -468,7 +494,7 @@ export function convertPersistedNonMekUnitV1(
 }
 
 function restoreLegacyCrewAssignment(
-    source: DeferredUnitSource,
+    source: LegacyUnitSourceV1,
     topology: CrewTopology,
 ): CrewAssignment {
     const defaults = createDefaultCrewAssignment(topology);
@@ -488,7 +514,7 @@ function restoreLegacyCrewAssignment(
 }
 
 function restoreLegacyCrewRuntime(
-    source: DeferredUnitSource,
+    source: LegacyUnitSourceV1,
     current: ReadonlyMap<CrewPositionId, CrewRuntimeState>,
     topology: CrewTopology,
 ): ReadonlyMap<CrewPositionId, CrewRuntimeState> {
@@ -505,9 +531,9 @@ function restoreLegacyCrewRuntime(
 }
 
 function restoreLegacyNonMekCrewState(
-    source: DeferredUnitSource,
+    source: LegacyUnitSourceV1,
     topology: CrewTopology,
-    unresolved: string[],
+    issues: string[],
 ): readonly Readonly<{
     positionId: CrewPositionId;
     wounds: number;
@@ -523,7 +549,7 @@ function restoreLegacyNonMekCrewState(
             if (!row) return [];
             const rawState = integer(row['state']);
             if (rawState !== null && ![0, 1, 2, 3, 4, 5].includes(rawState)) {
-                unresolved.push(`Unknown V1 crew state ${rawState} at position ${position.occurrence}.`);
+                issues.push(`Unknown V1 crew state ${rawState} at position ${position.occurrence}.`);
             }
             const state = legacyNonMekCrewState(row);
             return state.wounds === 0 && !state.unconscious && !state.ejected
@@ -534,8 +560,8 @@ function restoreLegacyNonMekCrewState(
     return Object.freeze(restored);
 }
 
-function legacyCrewRows(source: DeferredUnitSource): readonly JsonValue[] {
-    const recovery = extractDeferredUnitRecovery(source);
+function legacyCrewRows(source: LegacyUnitSourceV1): readonly JsonValue[] {
+    const recovery = readLegacyUnitStateV1(source);
     const state = isRecord(recovery.rawUnitAndFamilyState)
         ? recovery.rawUnitAndFamilyState
         : {};
@@ -594,12 +620,11 @@ interface LegacyEntityLocationRestore {
 function restoreLegacyEntityLocations(
     raw: JsonValue | undefined,
     index: NonMekRuntimeIndex,
-    warnings: string[],
-    unresolved: string[],
+    issues: string[],
 ): LegacyEntityLocationRestore {
     if (raw === undefined) return Object.freeze({ state: [], pendingInternal: [], pendingArmor: [] });
     if (!isRecord(raw)) {
-        unresolved.push('Malformed V1 location state was retained for recovery.');
+        issues.push('Malformed V1 location state was skipped.');
         return Object.freeze({ state: [], pendingInternal: [], pendingArmor: [] });
     }
 
@@ -611,21 +636,21 @@ function restoreLegacyEntityLocations(
     const pendingArmor = new Map<ArmorFaceId, number>();
     for (const [savedCode, value] of Object.entries(raw)) {
         if (!isRecord(value)) {
-            unresolved.push(`Malformed V1 location ${savedCode} was retained for recovery.`);
+            issues.push(`Malformed V1 location ${savedCode} was skipped.`);
             continue;
         }
         const rear = savedCode.endsWith('-rear');
         const code = rear ? savedCode.slice(0, -'-rear'.length) : savedCode;
         const location = [...index.locations.values()].find(candidate => candidate.code === code);
         if (!location) {
-            unresolved.push(`V1 location ${savedCode} does not exist in the current Entity.`);
+            issues.push(`V1 location ${savedCode} does not exist in the current Entity.`);
             continue;
         }
         const face = location.armorFaceIds
             .map(faceId => index.armorFaces.get(faceId))
             .find(candidate => candidate?.face === (rear ? 'rear' : 'front'));
         if (!face) {
-            unresolved.push(`V1 location ${savedCode} has no current ${rear ? 'rear' : 'front'} armor face.`);
+            issues.push(`V1 location ${savedCode} has no current ${rear ? 'rear' : 'front'} armor face.`);
             continue;
         }
         const current = locations.get(location.id) ?? { internalDamage: 0, armorDamage: new Map() };
@@ -633,12 +658,11 @@ function restoreLegacyEntityLocations(
             value['internal'],
             location.internalPoints,
             `${savedCode} internal damage`,
-            warnings,
-            unresolved,
+            issues,
         );
         if (internal !== undefined) {
             if (current.internalDamage !== 0 && current.internalDamage !== internal) {
-                warnings.push(`Conflicting V1 internal damage at ${savedCode}; the larger value was kept.`);
+                issues.push(`Conflicting V1 internal damage at ${savedCode}; the larger value was kept.`);
             }
             current.internalDamage = Math.max(current.internalDamage, internal);
         }
@@ -646,8 +670,7 @@ function restoreLegacyEntityLocations(
             value['armor'],
             face.maximumPoints,
             `${savedCode} armor damage`,
-            warnings,
-            unresolved,
+            issues,
         );
         if (armor !== undefined) {
             if (armor === 0) current.armorDamage.delete(face.id);
@@ -660,8 +683,7 @@ function restoreLegacyEntityLocations(
             current.internalDamage,
             location.internalPoints,
             `${savedCode} pending internal damage`,
-            warnings,
-            unresolved,
+            issues,
         );
         if (pendingI !== undefined && pendingI !== 0) pendingInternal.set(location.id, pendingI);
         const pendingA = boundedLegacyPendingDamage(
@@ -669,12 +691,11 @@ function restoreLegacyEntityLocations(
             current.armorDamage.get(face.id) ?? 0,
             face.maximumPoints,
             `${savedCode} pending armor damage`,
-            warnings,
-            unresolved,
+            issues,
         );
         if (pendingA !== undefined && pendingA !== 0) pendingArmor.set(face.id, pendingA);
         if (value['conditions'] !== undefined) {
-            unresolved.push(`V1 location conditions at ${savedCode} have no generic family runtime field.`);
+            issues.push(`V1 location conditions at ${savedCode} have no generic family runtime field.`);
         }
     }
 
@@ -708,16 +729,15 @@ function restoreLegacyEntityInventory(
     componentState: Map<ComponentId, { status?: 'disabled' | 'destroyed'; mode?: string; jammed?: true }>,
     pendingComponentState: Map<ComponentId, 'available' | 'disabled' | 'destroyed'>,
     ammoState: Map<ComponentId, { shotsSpent: number; munitionOverride?: string }>,
-    warnings: string[],
-    unresolved: string[],
+    issues: string[],
 ): void {
     if (!isRecord(raw)) {
-        unresolved.push('A malformed V1 inventory row was retained for recovery.');
+        issues.push('A malformed V1 inventory row was skipped.');
         return;
     }
     const component = matchLegacyNonMekComponent(raw, index);
     if (!component) {
-        unresolved.push(`V1 inventory ${legacyRowLabel(raw)} has no unique current component.`);
+        issues.push(`V1 inventory ${legacyRowLabel(raw)} has no unique current component.`);
         return;
     }
     const destroyed = legacyStateMarker(raw['destroyed']);
@@ -738,11 +758,11 @@ function restoreLegacyEntityInventory(
     const munition = boundedLegacyText(raw['ammo'], 256);
     if (consumed !== null || munition !== undefined) {
         if (capacity === undefined) {
-            unresolved.push(`V1 ammunition state for ${legacyRowLabel(raw)} targets a non-ammo component.`);
+            issues.push(`V1 ammunition state for ${legacyRowLabel(raw)} targets a non-ammo component.`);
         } else {
             const shotsSpent = Math.min(consumed ?? 0, capacity);
             if (consumed !== null && shotsSpent !== consumed) {
-                warnings.push(`V1 ammunition use for ${legacyRowLabel(raw)} exceeded current capacity.`);
+                issues.push(`V1 ammunition use for ${legacyRowLabel(raw)} exceeded current capacity.`);
             }
             ammoState.set(component.id, Object.freeze({
                 shotsSpent,
@@ -750,16 +770,16 @@ function restoreLegacyEntityInventory(
             }));
         }
     } else if (raw['consumed'] !== undefined) {
-        unresolved.push(`Malformed V1 ammunition use for ${legacyRowLabel(raw)} was retained for recovery.`);
+        issues.push(`Malformed V1 ammunition use for ${legacyRowLabel(raw)} was skipped.`);
     }
     const savedCapacity = nonnegativeInteger(raw['totalAmmo']);
     if (savedCapacity !== null && capacity !== undefined && savedCapacity !== capacity) {
-        warnings.push(`Ammunition capacity for ${legacyRowLabel(raw)} changed from ${savedCapacity} to ${capacity}.`);
+        issues.push(`Ammunition capacity for ${legacyRowLabel(raw)} changed from ${savedCapacity} to ${capacity}.`);
     }
     const unsupportedStates = states.filter(state => !(isRecord(state)
         && state['name'] === 'disabled' && state['value'] === 'true'));
     if (unsupportedStates.length > 0) {
-        unresolved.push(`V1 equipment modes for ${legacyRowLabel(raw)} have no generic family runtime field.`);
+        issues.push(`V1 equipment modes for ${legacyRowLabel(raw)} have no generic family runtime field.`);
     }
 }
 
@@ -768,10 +788,10 @@ function restoreLegacyNonMekComponentDamage(
     index: NonMekRuntimeIndex,
     componentState: Map<ComponentId, { status?: 'disabled' | 'destroyed'; mode?: string; jammed?: true }>,
     pendingComponentState: Map<ComponentId, 'available' | 'disabled' | 'destroyed'>,
-    unresolved: string[],
+    issues: string[],
 ): void {
     if (!isRecord(raw)) {
-        unresolved.push('A malformed V1 critical row was retained for recovery.');
+        issues.push('A malformed V1 critical row was skipped.');
         return;
     }
     const component = matchLegacyNonMekComponent(raw, index);
@@ -781,7 +801,7 @@ function restoreLegacyNonMekComponentDamage(
         || (integer(raw['pendingHits']) ?? 0) > 0;
     if (!component) {
         if (destroyed || destroying || Object.keys(raw).some(key => !['id', 'name', 'loc', 'slot'].includes(key))) {
-            unresolved.push(`V1 critical ${legacyRowLabel(raw)} has no unique current component.`);
+            issues.push(`V1 critical ${legacyRowLabel(raw)} has no unique current component.`);
         }
         return;
     }
@@ -809,8 +829,7 @@ function restoreLegacyNonMekDamageTrack(
         hitDelta: number;
         hitTimestamps: readonly number[];
     }>>,
-    warnings: string[],
-    unresolved: string[],
+    issues: string[],
 ): boolean {
     if (!isRecord(value)) return false;
     const track = matchLegacyNonMekDamageTrack(value, index);
@@ -819,7 +838,7 @@ function restoreLegacyNonMekDamageTrack(
     const label = legacyRowLabel(value);
     const parsedHits = value['hits'] === undefined ? 0 : nonnegativeInteger(value['hits']);
     if (parsedHits === null) {
-        unresolved.push(`Malformed V1 system damage for ${label} was retained for recovery.`);
+        issues.push(`Malformed V1 system damage for ${label} was skipped.`);
     }
     const requestedHits = parsedHits ?? 0;
     const rowHits = requestedHits > 0
@@ -831,7 +850,7 @@ function restoreLegacyNonMekDamageTrack(
     const availableHits = track.maximumHits - (current?.hits ?? 0);
     const restoredHits = Math.min(rowHits, availableHits);
     if (restoredHits !== rowHits) {
-        warnings.push(`V1 system damage for ${label} exceeded the current track and was clamped.`);
+        issues.push(`V1 system damage for ${label} exceeded the current track and was clamped.`);
     }
     if (restoredHits > 0) {
         const timestamps = legacyDamageTrackTimestamps(
@@ -840,7 +859,7 @@ function restoreLegacyNonMekDamageTrack(
             restoredHits,
             (current?.hitTimestamps.at(-1) ?? -1) + 1,
             `${label} committed hits`,
-            unresolved,
+            issues,
         );
         committed.set(track.id, Object.freeze({
             hits: (current?.hits ?? 0) + restoredHits,
@@ -855,7 +874,7 @@ function restoreLegacyNonMekDamageTrack(
         ? 0
         : integer(value['pendingHits']);
     if (parsedPending === null) {
-        unresolved.push(`Malformed V1 pending system damage for ${label} was retained for recovery.`);
+        issues.push(`Malformed V1 pending system damage for ${label} was skipped.`);
     }
     const rowPending = parsedPending ?? 0;
     const requestedPending = rowPending !== 0
@@ -872,7 +891,7 @@ function restoreLegacyNonMekDamageTrack(
     );
     const restoredPending = nextDelta - currentDelta;
     if (restoredPending !== requestedPending) {
-        warnings.push(`V1 pending system damage for ${label} exceeded the current track and was clamped.`);
+        issues.push(`V1 pending system damage for ${label} exceeded the current track and was clamped.`);
     }
     if (restoredPending !== 0) {
         const timestamps = restoredPending > 0
@@ -885,7 +904,7 @@ function restoreLegacyNonMekDamageTrack(
                     currentPending?.hitTimestamps.at(-1) ?? -1,
                 ) + 1,
                 `${label} pending hits`,
-                unresolved,
+                issues,
             )
             : Object.freeze([]);
         const hitTimestamps = nextDelta > 0
@@ -917,7 +936,7 @@ function legacyDamageTrackTimestamps(
     restoredCount: number,
     fallbackStart: number,
     label: string,
-    unresolved: string[],
+    issues: string[],
 ): readonly number[] {
     if (restoredCount <= 0) return Object.freeze([]);
     if (Array.isArray(value)
@@ -927,7 +946,7 @@ function legacyDamageTrackTimestamps(
         return Object.freeze([...(value as number[])].sort(compareNumbers).slice(0, restoredCount));
     }
     if (value !== undefined) {
-        unresolved.push(`Malformed V1 timestamps for ${label} were replaced with stable recovery order.`);
+        issues.push(`Malformed V1 timestamps for ${label} were replaced with stable ordering.`);
     }
     const maximumFallback = fallbackStart + restoredCount - 1;
     const start = Number.isSafeInteger(fallbackStart)
@@ -966,10 +985,10 @@ function matchLegacyNonMekComponent(
     return candidates.length === 1 ? candidates[0] : null;
 }
 
-function restoreLegacyEntityConditions(raw: JsonValue | undefined, unresolved: string[]): readonly UnitConditionKey[] {
+function restoreLegacyEntityConditions(raw: JsonValue | undefined, issues: string[]): readonly UnitConditionKey[] {
     if (raw === undefined) return Object.freeze([]);
     if (!Array.isArray(raw)) {
-        unresolved.push('Malformed V1 unit conditions were retained for recovery.');
+        issues.push('Malformed V1 unit conditions were skipped.');
         return Object.freeze([]);
     }
     const conditions = new Set<UnitConditionKey>();
@@ -981,11 +1000,11 @@ function restoreLegacyEntityConditions(raw: JsonValue | undefined, unresolved: s
                 ? record['key']
                 : undefined;
         if (!isUnitConditionKey(key)) {
-            unresolved.push('An unknown V1 unit condition was retained for recovery.');
+            issues.push('An unknown V1 unit condition was skipped.');
             continue;
         }
         if (record?.['pending'] === true || record?.['value'] !== undefined) {
-            unresolved.push(`V1 condition details for ${key} have no generic family runtime field.`);
+            issues.push(`V1 condition details for ${key} have no generic family runtime field.`);
             if (record['pending'] === true) continue;
         }
         conditions.add(key);
@@ -995,7 +1014,7 @@ function restoreLegacyEntityConditions(raw: JsonValue | undefined, unresolved: s
 
 function preserveUnsupportedLegacyFamilyState(
     rawState: Readonly<Record<string, JsonValue>>,
-    unresolved: string[],
+    issues: string[],
 ): void {
     const ignored = new Set([
         'modified', 'destroyed', 'conditions', 'crew', 'crits', 'locations', 'inventory', 'heat', 'turnState',
@@ -1004,7 +1023,7 @@ function preserveUnsupportedLegacyFamilyState(
         if (ignored.has(key) || value === undefined || value === null) continue;
         if (Array.isArray(value) && value.length === 0) continue;
         if (isRecord(value) && Object.keys(value).length === 0) continue;
-        unresolved.push(`V1 family field ${key} has no current generic runtime field.`);
+        issues.push(`V1 family field ${key} has no current generic runtime field.`);
     }
 }
 
@@ -1012,12 +1031,11 @@ function restoreLegacyEntityHeat(
     value: JsonValue | undefined,
     tracksHeat: boolean,
     installedHeatSinks: number,
-    warnings: string[],
-    unresolved: string[],
+    issues: string[],
 ): SerializedNonMekUnit['heat'] {
     if (value === undefined || value === null) return undefined;
     if (!isRecord(value)) {
-        unresolved.push('Malformed V1 heat state was retained for recovery.');
+        issues.push('Malformed V1 heat state was skipped.');
         return undefined;
     }
     const current = nonnegativeInteger(value['current']);
@@ -1027,21 +1045,21 @@ function restoreLegacyEntityHeat(
         ? 0
         : nonnegativeInteger(value['heatsinksOff']);
     if (current === null || previous === null || pending === null || off === null) {
-        unresolved.push('Malformed V1 heat state was retained for recovery.');
+        issues.push('Malformed V1 heat state was skipped.');
         return undefined;
     }
     const nonPristine = current !== 0 || previous !== 0 || pending !== undefined || off !== 0;
     if (!tracksHeat) {
-        if (nonPristine) unresolved.push('V1 heat state belongs to an Entity that does not track heat.');
+        if (nonPristine) issues.push('V1 heat state belongs to an Entity that does not track heat.');
         return undefined;
     }
     if (current > 1_000_000 || previous > 1_000_000 || (pending ?? 0) > 1_000_000) {
-        unresolved.push('V1 heat state exceeds the current runtime limit.');
+        issues.push('V1 heat state exceeds the current runtime limit.');
         return undefined;
     }
     const maximumOff = Math.max(0, Math.trunc(installedHeatSinks));
     const heatsinksOff = Math.min(off, maximumOff);
-    if (heatsinksOff !== off) warnings.push('V1 disabled heat sinks exceeded the installed count and were clamped.');
+    if (heatsinksOff !== off) issues.push('V1 disabled heat sinks exceeded the installed count and were clamped.');
     if (current === 0 && previous === 0
         && (pending === undefined || pending === current)
         && heatsinksOff === 0) return undefined;
@@ -1059,11 +1077,11 @@ const LEGACY_NON_MEK_MOVEMENT_MODES = new Set([
 
 function restoreLegacyEntityTurn(
     value: JsonValue | undefined,
-    unresolved: string[],
+    issues: string[],
 ): SerializedNonMekUnit['turn'] {
     if (value === undefined || value === null) return undefined;
     if (!isRecord(value)) {
-        unresolved.push('Malformed V1 turn state was retained for recovery.');
+        issues.push('Malformed V1 turn state was skipped.');
         return undefined;
     }
     const supported = new Set(['turnCounter', 'airborne', 'moveMode', 'moveDistance']);
@@ -1071,17 +1089,17 @@ function restoreLegacyEntityTurn(
         if (supported.has(key) || field === undefined || field === null || field === false || field === 0) continue;
         if (Array.isArray(field) && field.length === 0) continue;
         if (isRecord(field) && Object.keys(field).length === 0) continue;
-        unresolved.push(`V1 turn field ${key} has no current Non-Mek runtime field.`);
+        issues.push(`V1 turn field ${key} has no current Non-Mek runtime field.`);
     }
 
     const turnCounter = value['turnCounter'] === undefined
         ? 0
         : nonnegativeInteger(value['turnCounter']);
-    if (turnCounter === null) unresolved.push('Malformed V1 turn counter was retained for recovery.');
+    if (turnCounter === null) issues.push('Malformed V1 turn counter was skipped.');
 
     const airborne = value['airborne'];
     if (airborne !== undefined && typeof airborne !== 'boolean') {
-        unresolved.push('Malformed V1 airborne state was retained for recovery.');
+        issues.push('Malformed V1 airborne state was skipped.');
     }
 
     const rawMode = value['moveMode'];
@@ -1089,15 +1107,15 @@ function restoreLegacyEntityTurn(
         ? rawMode as NonNullable<NonNullable<SerializedNonMekUnit['turn']>['movement']>['mode']
         : undefined;
     if (rawMode !== undefined && mode === undefined) {
-        unresolved.push('Malformed V1 movement mode was retained for recovery.');
+        issues.push('Malformed V1 movement mode was skipped.');
     }
     const rawDistance = value['moveDistance'];
     const distance = rawDistance === undefined ? undefined : nonnegativeInteger(rawDistance);
     if (rawDistance !== undefined && distance === null) {
-        unresolved.push('Malformed V1 movement distance was retained for recovery.');
+        issues.push('Malformed V1 movement distance was skipped.');
     }
     if ((mode === undefined) !== (distance === undefined || distance === null)) {
-        unresolved.push('Incomplete V1 movement declaration was retained for recovery.');
+        issues.push('Incomplete V1 movement declaration was skipped.');
     }
     const movement = mode !== undefined && distance !== undefined && distance !== null
         ? Object.freeze({ mode, distance, boosterComponentIds: Object.freeze([]) })
@@ -1116,17 +1134,16 @@ function boundedLegacyDamage(
     value: JsonValue | undefined,
     maximum: number,
     label: string,
-    warnings: string[],
-    unresolved: string[],
+    issues: string[],
 ): number | undefined {
     if (value === undefined) return undefined;
     const parsed = nonnegativeInteger(value);
     if (parsed === null) {
-        unresolved.push(`Malformed V1 ${label} was retained for recovery.`);
+        issues.push(`Malformed V1 ${label} was skipped.`);
         return undefined;
     }
     const bounded = Math.min(parsed, maximum);
-    if (bounded !== parsed) warnings.push(`V1 ${label} exceeded current capacity and was clamped.`);
+    if (bounded !== parsed) issues.push(`V1 ${label} exceeded current capacity and was clamped.`);
     return bounded;
 }
 
@@ -1135,17 +1152,16 @@ function boundedLegacyPendingDamage(
     committed: number,
     maximum: number,
     label: string,
-    warnings: string[],
-    unresolved: string[],
+    issues: string[],
 ): number | undefined {
     if (value === undefined) return undefined;
     const parsed = integer(value);
     if (parsed === null) {
-        unresolved.push(`Malformed V1 ${label} was retained for recovery.`);
+        issues.push(`Malformed V1 ${label} was skipped.`);
         return undefined;
     }
     const bounded = Math.max(-committed, Math.min(parsed, maximum - committed));
-    if (bounded !== parsed) warnings.push(`V1 ${label} exceeded current capacity and was clamped.`);
+    if (bounded !== parsed) issues.push(`V1 ${label} exceeded current capacity and was clamped.`);
     return bounded;
 }
 
@@ -1187,10 +1203,6 @@ function nonnegativeInteger(value: JsonValue | undefined): number | null {
     return parsed !== null && parsed >= 0 ? parsed : null;
 }
 
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
-}
-
 function compareNumbers(left: number, right: number): number {
     return left - right;
 }
@@ -1215,7 +1227,7 @@ function convertLegacyMovementHeatAcknowledgement(
     });
     const entity = fresh.getUnit();
     const ruleset = baseline.baselineRefAtSave.ruleset;
-    const index = buildMekRuntimeIndex(entity);
+    const index = fresh.getIndex();
     const projectionRuntime = new CBTUnitInstance(
         baseline.instanceId,
         baseline.baselineRefAtSave,
@@ -1254,6 +1266,9 @@ async function convertClassicForce(
     force: SerializedForce,
     options: PersistedForceV1ConversionOptions,
 ): Promise<SerializedForce> {
+    if (!options.materializeUnit) {
+        throw new Error('Classic V1 conversion requires the unit catalog');
+    }
     const payload = requireObject(cloneAsJson(force), 'Classic V1 force');
     const rawGroups = payload['groups'];
     if (rawGroups !== undefined && !Array.isArray(rawGroups)) {
@@ -1262,12 +1277,7 @@ async function convertClassicForce(
 
     const stateRevision = asStateRevision(0);
     const seenInstanceIds = new Set<string>();
-    const deferredUnits: Array<{
-        readonly kind: 'deferred';
-        readonly instanceId: ReturnType<typeof asUnitInstanceId>;
-        readonly stateRevision: typeof stateRevision;
-        readonly source: DeferredUnitSource;
-    }> = [];
+    const resolvedUnits: ResolvedLegacyClassicUnitV1[] = [];
     const groupIds = new Set<string>();
     const rosterGroups: SerializedCBTForceRosterGroupV1[] = [];
 
@@ -1283,7 +1293,7 @@ async function convertClassicForce(
         const rawMembers = group['units'];
         if (!Array.isArray(rawMembers)) throw new Error(`Classic V1 group ${groupId} requires a units array`);
         let commanderInstanceId: ReturnType<typeof asUnitInstanceId> | undefined;
-        const members = rawMembers.map((rawMember, memberOrder) => {
+        const members = rawMembers.flatMap((rawMember, memberOrder) => {
             const unit = requireObject(rawMember, `Classic V1 unit ${groupOrder}:${memberOrder}`);
             const rawId = unit['id'];
             if (typeof rawId !== 'string') throw new Error(`Classic V1 unit ${groupOrder}:${memberOrder} requires an ID`);
@@ -1292,6 +1302,17 @@ async function convertClassicForce(
                 throw new Error(`Classic V1 force has duplicate unit ID ${instanceId}`);
             }
             seenInstanceIds.add(instanceId);
+
+            const legacyName = stringValue(unit['unit']) ?? String(instanceId);
+            const identity = options.resolveIdentity(unit);
+            if (identity.kind !== 'resolved') {
+                options.onWarning?.({
+                    kind: 'unit-skipped',
+                    unit: legacyName,
+                    message: `Unit "${legacyName}" is not installed and was skipped.`,
+                });
+                return [];
+            }
 
             const commander = sparseTrue(unit, 'commander', `Classic V1 unit ${instanceId}`);
             if (commander) {
@@ -1305,18 +1326,15 @@ async function convertClassicForce(
                 commanderInstanceId = instanceId;
             }
 
-            deferredUnits.push(Object.freeze({
-                kind: 'deferred' as const,
+            resolvedUnits.push(Object.freeze({
                 instanceId,
-                stateRevision,
-                source: buildDeferredSource(unit, options.resolveIdentity),
+                source: buildLegacyUnitSourceV1(unit, identity),
             }));
-            return Object.freeze({
+            return [Object.freeze({
                 instanceId,
-                kind: 'deferred' as const,
                 order: memberOrder,
                 ...(commander ? { commander: true as const } : {}),
-            });
+            })];
         });
 
         const name = optionalMetadata(group, 'name', `Classic V1 group ${groupId}`);
@@ -1341,33 +1359,15 @@ async function convertClassicForce(
     }
 
     const forceId = asForceId(force.instanceId);
-    const encounterRecovery = buildForceRecovery(payload);
-    let cbt = await validateSerializedCBTForceV2({
-        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
+    const cbt = await materializeResolvedUnits(
         forceId,
-        forceRevision: stateRevision,
-        scenarioRules: V1_SCENARIO_RULES,
-        history: emptyRuntimeHistory(),
-        units: Object.freeze(deferredUnits),
-        roster: {
-            schemaVersion: CBT_FORCE_ROSTER_SCHEMA_VERSION,
-            groups: Object.freeze(rosterGroups),
-        },
-        encounter: {
-            encounterRevision: stateRevision,
-            state: {
-                schemaVersion: 2,
-                encounterRevision: stateRevision,
-                facts: [],
-            },
-            ...(encounterRecovery === undefined ? {} : { recovery: encounterRecovery }),
-        },
-    } satisfies SerializedCBTForceV2);
-
-    if (options.materializeUnit) {
-        cbt = await materializeResolvedUnits(cbt, options.materializeUnit);
-    }
+        stateRevision,
+        resolvedUnits,
+        rosterGroups,
+        options.materializeUnit,
+        payload['c3Networks'],
+        options.onWarning,
+    );
 
     return Object.freeze({
         version: 2,
@@ -1388,54 +1388,112 @@ async function convertClassicForce(
 }
 
 async function materializeResolvedUnits(
-    envelope: SerializedCBTForceV2,
+    forceId: ReturnType<typeof asForceId>,
+    stateRevision: ReturnType<typeof asStateRevision>,
+    resolvedUnits: readonly ResolvedLegacyClassicUnitV1[],
+    rosterGroups: readonly SerializedCBTForceRosterGroupV1[],
     materializeUnit: NonNullable<PersistedForceV1ConversionOptions['materializeUnit']>,
+    rawLegacyNetworks: JsonValue | undefined,
+    onWarning?: PersistedForceV1ConversionOptions['onWarning'],
 ): Promise<SerializedCBTForceV2> {
     const materializedIds = new Set<string>();
     const units: SerializedForceUnitEntryV2[] = [];
-    for (const entry of envelope.units) {
-        if (entry.kind !== 'deferred' || entry.source.identity.kind !== 'resolved') {
-            units.push(entry);
+    const presentations: C3EncounterPresentationUnit[] = [];
+    for (const entry of resolvedUnits) {
+        const legacyName = legacyUnitName(entry.source);
+        let ready: ReadyClassicUnit | undefined;
+        try {
+            ready = await materializeUnit({
+                source: entry.source,
+                instanceId: entry.instanceId,
+                deployment: V1_CONVERSION_DEPLOYMENT,
+                scenario: V1_SCENARIO_RULES.values,
+            });
+        } catch (error) {
+            onWarning?.({
+                kind: 'unit-skipped',
+                unit: legacyName,
+                message: `Unit "${legacyName}" could not be loaded and was skipped: ${errorMessage(error)}`,
+            });
             continue;
         }
-        const unit = await materializeUnit({
-            source: entry.source,
-            instanceId: entry.instanceId,
-            deployment: V1_CONVERSION_DEPLOYMENT,
-            scenario: V1_SCENARIO_RULES.values,
-        });
-        if (!unit) {
-            units.push(entry);
+        if (!ready) {
+            onWarning?.({
+                kind: 'unit-skipped',
+                unit: legacyName,
+                message: `Unit "${legacyName}" is not installed and was skipped.`,
+            });
             continue;
         }
         const identity = entry.source.identity.savedIdentity;
-        if (unit.instanceId !== entry.instanceId
-            || unit.entity.provider !== identity.provider
-            || unit.entity.uuid !== identity.uuid) {
+        const readyIdentity = ready.getSourceRef();
+        if (ready.instanceId !== entry.instanceId
+            || readyIdentity.provider !== identity.provider
+            || readyIdentity.uuid !== identity.uuid) {
             throw new Error(`Converted V1 unit ${entry.instanceId} changed identity`);
         }
+
+        let unit: SerializedCBTUnitV2 | SerializedNonMekUnit;
+        try {
+            unit = isReadyMekUnit(ready)
+                ? await convertPersistedMekUnitV1(entry.source, ready)
+                : isReadyNonMekUnit(ready)
+                    ? convertPersistedNonMekUnitV1(entry.source, ready, message => onWarning?.({
+                        kind: 'state-partial',
+                        unit: legacyName,
+                        message: `Unit "${legacyName}" loaded with some legacy state skipped: ${message}`,
+                    }))
+                    : ready.serialize();
+        } catch (error) {
+            onWarning?.({
+                kind: 'state-reset',
+                unit: legacyName,
+                message: `Unit "${legacyName}" loaded without its saved state: ${errorMessage(error)}`,
+            });
+            unit = ready.serialize();
+        }
         materializedIds.add(entry.instanceId);
+        presentations.push(Object.freeze({
+            instanceId: entry.instanceId,
+            c3Components: projectReadyC3Components(ready),
+        }));
         units.push(Object.freeze({
-            kind: 'ready' as const,
             instanceId: entry.instanceId,
             stateRevision: unit.stateRevision,
             unit,
         }));
     }
-    if (materializedIds.size === 0) return envelope;
+
+    const encounterState = convertLegacyC3Networks(
+        rawLegacyNetworks,
+        presentations,
+        stateRevision,
+        onWarning,
+    );
 
     return validateSerializedCBTForceV2({
-        ...envelope,
-        forceRevision: asStateRevision(envelope.forceRevision + 1),
+        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
+        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
+        forceId,
+        forceRevision: stateRevision,
+        scenarioRules: V1_SCENARIO_RULES,
+        history: emptyRuntimeHistory(),
         units: Object.freeze(units),
         roster: Object.freeze({
-            ...envelope.roster,
-            groups: Object.freeze(envelope.roster.groups.map(group => Object.freeze({
+            schemaVersion: CBT_FORCE_ROSTER_SCHEMA_VERSION,
+            groups: Object.freeze(rosterGroups.map(group => Object.freeze({
                 ...group,
-                members: Object.freeze(group.members.map(member => materializedIds.has(member.instanceId)
-                    ? Object.freeze({ ...member, kind: 'ready' as const })
-                    : member)),
+                members: Object.freeze(group.members
+                    .filter(member => materializedIds.has(member.instanceId))
+                    .map((member, order) => Object.freeze({
+                        ...member,
+                        order,
+                    }))),
             }))),
+        }),
+        encounter: Object.freeze({
+            encounterRevision: stateRevision,
+            state: encounterState,
         }),
     });
 }
@@ -1588,54 +1646,59 @@ function convertAlphaStrikeV1Exhausted(
     return [rows[0], rows[1], rows[2]];
 }
 
-function buildDeferredSource(
+function buildLegacyUnitSourceV1(
     unit: JsonObject,
-    resolveIdentity?: UnitIdentityResolver,
-): DeferredUnitSource {
-    const identity = savedIdentityFromPayload(unit)
-        ?? resolveIdentity?.(unit)
-        ?? unresolvedIdentity(unit);
+    identity: Extract<PersistedUnitIdentity, { readonly kind: 'resolved' }>,
+): ResolvedLegacyUnitSourceV1 {
     return Object.freeze({
         payload: cloneAsJson(unit),
         identity,
     });
 }
 
-function savedIdentityFromPayload(unit: JsonObject): PersistedUnitIdentity | undefined {
-    try {
-        const savedIdentity = sanitizeSavedEntityIdentity(unit['entityIdentity']);
-        return savedIdentity ? Object.freeze({ kind: 'resolved' as const, savedIdentity }) : undefined;
-    } catch {
-        return undefined;
+function convertLegacyC3Networks(
+    raw: JsonValue | undefined,
+    units: readonly C3EncounterPresentationUnit[],
+    revision: ReturnType<typeof asStateRevision>,
+    onWarning?: PersistedForceV1ConversionOptions['onWarning'],
+): ReturnType<typeof encodeCBTEncounterStateV2> {
+    if (raw === undefined) {
+        return encodeCBTEncounterStateV2({ revision, targets: [], networks: [] });
     }
+
+    const sanitized = Sanitizer.sanitizeArray<SerializedC3NetworkGroup>(
+        raw,
+        C3_NETWORK_GROUP_SCHEMA,
+    );
+    let changed = !jsonValuesEqual(raw, sanitized);
+    const unitsById = new Map(units.map(unit => [String(unit.instanceId), unit] as const));
+    const cleaned = C3NetworkEditor.clean(structuredClone(sanitized), unitsById);
+    changed ||= !jsonValuesEqual(sanitized, cleaned);
+
+    let networks: ReturnType<typeof projectC3EditorNetworksToEncounter> = [];
+    try {
+        networks = projectC3EditorNetworksToEncounter(cleaned, units);
+    } catch {
+        changed = cleaned.length > 0 || changed;
+    }
+    if (changed) {
+        onWarning?.({
+            kind: 'force-state-reset',
+            message: 'Invalid or unavailable V1 C3 network links were skipped.',
+        });
+    }
+    return encodeCBTEncounterStateV2({ revision, targets: [], networks });
 }
 
-function unresolvedIdentity(unit: JsonObject): PersistedUnitIdentity {
-    const rawChassis = stringValue(unit['chassis']);
-    const rawModel = stringValue(unit['model']);
-    const rawEntityType = stringValue(unit['type']);
-    return Object.freeze({
-        kind: 'unresolved' as const,
-        rawLegacyName: stringValue(unit['unit']) ?? '',
-        ...(rawChassis === undefined ? {} : { rawChassis }),
-        ...(rawModel === undefined ? {} : { rawModel }),
-        ...(rawEntityType === undefined ? {} : { rawEntityType }),
-        candidates: Object.freeze([]),
-        reason: 'not-found' as const,
-    });
+function legacyUnitName(source: LegacyUnitSourceV1): string {
+    const payload = isRecord(source.payload) ? source.payload : undefined;
+    return stringValue(payload?.['unit']) ?? String(
+        source.identity.kind === 'resolved' ? source.identity.savedIdentity.uuid : 'unknown unit',
+    );
 }
 
-function buildForceRecovery(payload: JsonObject): ForceRecoveryEvidence | undefined {
-    const c3Networks = cloneJsonArray(payload['c3Networks']);
-    if (c3Networks.length === 0) return undefined;
-    return Object.freeze({
-        schemaVersion: 1,
-        c3Networks,
-    });
-}
-
-function cloneJsonArray(value: JsonValue | undefined): readonly JsonValue[] {
-    return Array.isArray(value) ? Object.freeze(value.map(cloneAsJson)) : Object.freeze([]);
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
 }
 
 function optionalMetadata(
@@ -1671,10 +1734,6 @@ function readGroupId(group: JsonObject, groupOrder: number): string {
 function requireObject(value: unknown, label: string): JsonObject {
     if (!isRecord(value)) throw new Error(`${label} must be an object`);
     return value as JsonObject;
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, JsonValue>> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function stringValue(value: JsonValue | undefined): string | undefined {

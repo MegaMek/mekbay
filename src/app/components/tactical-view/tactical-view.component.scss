@@ -310,7 +310,7 @@ h1 {
 .status-banner.danger { --state-color: var(--tactical-danger); }
 
 .turn-summary-host { margin-bottom: 6px; }
-page-turn-summary-panel { display: block; width: 100%; }
+tactical-turn-tracker { display: block; width: 100%; }
 
 .tactical-grid {
     display: grid;

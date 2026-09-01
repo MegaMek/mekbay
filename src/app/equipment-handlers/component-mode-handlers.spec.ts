@@ -13,7 +13,6 @@ import {
     hagToHitAdjustments,
 } from '../models/runtime/component-hag-mode';
 import { componentModeDefinition, createComponentModeDefinition } from '../models/runtime/component-mode';
-import { createCommandId } from '../models/runtime/runtime-state';
 import {
     createDirectBapRuntimeFixture,
     createDirectMekRuntimeFixture,
@@ -58,8 +57,8 @@ describe('direct V2 component-mode handlers', () => {
         }));
         expect(fixture.instance.dispatch({
             type: 'end-turn',
-            commandId: createCommandId(),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(fixture.instance.query().componentMode(component.id)).toBe('disabled');
@@ -94,8 +93,8 @@ describe('direct V2 component-mode handlers', () => {
         expect(setup.runtime.query().componentMode(setup.component.id)).toBe('Off');
         expect(setup.runtime.dispatch({
             type: 'end-turn',
-            commandId: createCommandId(),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(setup.runtime.query().componentStealthState(setup.component.id)).toBe('enabled');
@@ -122,8 +121,8 @@ describe('direct V2 component-mode handlers', () => {
         expect(setup.runtime.query().c3DisruptedByStealth()).toBeTrue();
         expect(setup.runtime.dispatch({
             type: 'end-turn',
-            commandId: createCommandId(),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(setup.runtime.query().componentStealthState(setup.component.id)).toBe('disabled');
@@ -174,8 +173,8 @@ describe('direct V2 component-mode handlers', () => {
         for (const componentId of ecmIds) {
             expect(setup.runtime.dispatch({
                 type: 'set-component-mode',
-                commandId: createCommandId(),
-                expectedRevision: setup.runtime.revision(),
+                
+                
                 componentId,
                 mode: ECMMode.OFF,
             }).accepted).toBeTrue();
@@ -186,8 +185,8 @@ describe('direct V2 component-mode handlers', () => {
 
         expect(setup.runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             componentId: ecmIds[0],
             mode: ECMMode.ECM,
         }).accepted).toBeTrue();
@@ -199,16 +198,16 @@ describe('direct V2 component-mode handlers', () => {
         )).toBeTrue();
         expect(setup.runtime.dispatch({
             type: 'end-turn',
-            commandId: createCommandId(),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(setup.runtime.query().componentStealthState(setup.component.id)).toBe('enabled');
 
         expect(setup.runtime.dispatch({
             type: 'set-component-status',
-            commandId: createCommandId(),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             componentId: ecmIds[0],
             status: 'destroyed',
             target: 'pending',
@@ -223,8 +222,8 @@ describe('direct V2 component-mode handlers', () => {
         }
         expect(setup.runtime.dispatch({
             type: 'end-phase',
-            commandId: createCommandId(),
-            expectedRevision: setup.runtime.revision(),
+            
+            
         }).accepted).toBeTrue();
         expect(setup.runtime.query().componentStealthState(setup.component.id)).toBe('disabled');
     });
@@ -292,8 +291,8 @@ describe('direct V2 component-mode handlers', () => {
         expect(componentEcmActive(ECMMode.ECM)).toBeTrue();
         expect(setup.runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             componentId: angelId,
             mode: ECMMode.OFF,
         }).accepted).toBeTrue();
@@ -307,8 +306,8 @@ describe('direct V2 component-mode handlers', () => {
         expect(setup.runtime.query().componentMode(setup.component.id)).not.toBe(ECMMode.OFF);
         expect(setup.runtime.dispatch({
             type: 'end-turn',
-            commandId: createCommandId(),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(setup.runtime.query().componentMode(setup.component.id)).toBe(ECMMode.OFF);

@@ -48,7 +48,6 @@ export function createEmptyCBTForceForTest(
             encounterRevision: stateRevision,
             state: { schemaVersion: 2, encounterRevision: stateRevision, facts: [] },
         },
-        restoration: { schemaVersion: 2, unresolvedEncounter: [] },
     };
 }
 

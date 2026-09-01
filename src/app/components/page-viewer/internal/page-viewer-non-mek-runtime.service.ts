@@ -15,7 +15,10 @@ import type {
 } from '../../../models/runtime/non-mek-record-sheet';
 import type { CrewMemberState } from '../../../models/crew.model';
 import type { ComponentId } from '../../../models/entity/entity-identifiers';
-import type { EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
+import type {
+    EquipmentPanelComponent,
+    EquipmentPanelSnapshot,
+} from '../../../models/runtime/equipment-panel';
 import {
     equipmentPanelRuntimeTarget,
     projectWeaponTargetPresentation,
@@ -24,7 +27,6 @@ import type { AttackerSelection } from '../../../models/runtime/attacker-targeti
 import type { EncounterTargetId } from '../../../models/runtime/encounter-runtime';
 import type { StateRevision } from '../../../models/runtime/runtime-state';
 import { isUnitConditionKey, type UnitConditionKey } from '../../../models/unit-condition.model';
-import { createCommandId } from '../../../models/runtime/runtime-state';
 import type { NonMekUnitCommand } from '../../../models/runtime/non-mek-unit-instance';
 import {
     crewStateDefinitions,
@@ -236,8 +238,8 @@ export class PageViewerNonMekRuntimeService {
             panel = member.force.getEquipmentPanelSnapshot(member.id);
             if (!panel) return;
         }
-        const weapons = interaction.componentIds
-            .map(componentId => panel.components.find(row => row.componentId === componentId))
+        const weapons = [...new Set(interaction.componentIds
+            .map(componentId => equipmentPanelComponentById(panel, componentId)))]
             .filter((row): row is NonNullable<typeof row> & {
                 readonly weapon: NonNullable<NonNullable<typeof row>['weapon']>;
             } => row?.weapon !== undefined);
@@ -252,10 +254,11 @@ export class PageViewerNonMekRuntimeService {
                 ? { kind: 'manual-range', range: interaction.range }
                 : { kind: 'selected' };
         const allSelected = weapons.every(row => sameAttackerSelection(row.weapon.selection, desired));
+        const selection = allSelected ? null : desired;
         await this.setComponentSelections(
             member,
-            weapons.map(row => row.componentId),
-            allSelected ? null : desired,
+            equipmentPanelSelectionComponentIds(panel, interaction.componentIds, selection),
+            selection,
         );
     }
 
@@ -267,19 +270,18 @@ export class PageViewerNonMekRuntimeService {
     ): Promise<boolean> {
         for (const componentId of componentIds) {
             const panel = member.force.getEquipmentPanelSnapshot(member.id) ?? initialPanel;
-            const component = panel.components.find(row => row.componentId === componentId);
+            const component = equipmentPanelComponentById(panel, componentId);
             if (!component || !component.modes.includes(mode)) return false;
             if (component.mode === mode) continue;
             const snapshot = this.snapshot(member);
             if (!snapshot) return false;
             const result = await member.force.dispatchNonMekUnitCommand(member.id, {
                 kind: 'set-component-mode',
-                expectedRevision: snapshot.stateRevision,
                 componentId,
                 mode,
             });
             if (!result.accepted) {
-                this.showRejectedEdit(result.reason);
+                this.showRejectedEdit();
                 return false;
             }
         }
@@ -294,8 +296,10 @@ export class PageViewerNonMekRuntimeService {
     ): void {
         const anchor = event.currentTarget;
         if (!(anchor instanceof Element)) return;
-        const selectedIds = componentIds.map(componentId => panel.components
-            .find(row => row.componentId === componentId)?.weapon?.selection)
+        const selectedIds = componentIds.map(componentId => equipmentPanelComponentById(
+            panel,
+            componentId,
+        )?.weapon?.selection)
             .filter((selection): selection is { readonly kind: 'target'; readonly targetId: EncounterTargetId } =>
                 selection?.kind === 'target')
             .map(selection => selection.targetId);
@@ -304,7 +308,7 @@ export class PageViewerNonMekRuntimeService {
             ? selectedIds[0]
             : null;
         const weapon = componentIds
-            .map(componentId => panel.components.find(row => row.componentId === componentId))
+            .map(componentId => equipmentPanelComponentById(panel, componentId))
             .find(row => row?.weapon !== undefined);
         const targetNumberTexts = weapon === undefined
             ? {}
@@ -348,10 +352,11 @@ export class PageViewerNonMekRuntimeService {
             const resolved = targetId === null
                 ? null
                 : panel.targets.find(row => row.targetId === targetId)?.targetId ?? null;
+            const selection = resolved === null ? null : { kind: 'target' as const, targetId: resolved };
             void this.setComponentSelections(
                 member,
-                componentIds,
-                resolved === null ? null : { kind: 'target', targetId: resolved },
+                equipmentPanelSelectionComponentIds(panel, componentIds, selection),
+                selection,
             );
             this.overlayManager.closeManagedOverlay(ENTITY_WEAPON_TARGET_OVERLAY);
         });
@@ -362,20 +367,18 @@ export class PageViewerNonMekRuntimeService {
         componentIds: readonly ComponentId[],
         selection: AttackerSelection | null,
     ): Promise<void> {
-        for (const componentId of componentIds) {
-            const targeting = member.force.getAttackerTargeting(member.id);
-            if (!targeting) return;
-            const result = await member.force.dispatchAttackerTargeting(member.id, {
-                type: 'edit-attacker-targeting',
-                commandId: createCommandId(),
-                expectedRevision: targeting.stateRevision,
-                expectedRegistryRevision: targeting.registryRevision,
-                edit: { kind: 'set-component-selection', componentId, selection },
-            });
-            if (!result.accepted) {
-                this.showRejectedEdit(result.reason);
-                return;
-            }
+        const uniqueIds = [...new Set(componentIds)];
+        if (uniqueIds.length === 0) return;
+        const targeting = member.force.getAttackerTargeting(member.id);
+        if (!targeting) return;
+        const result = await member.force.dispatchAttackerTargeting(member.id, {
+            type: 'edit-attacker-targeting',
+            edit: uniqueIds.length === 1
+                ? { kind: 'set-component-selection', componentId: uniqueIds[0], selection }
+                : { kind: 'set-component-selections', componentIds: uniqueIds, selection },
+        });
+        if (!result.accepted) {
+            this.showRejectedEdit();
         }
     }
 
@@ -384,11 +387,10 @@ export class PageViewerNonMekRuntimeService {
         if (!snapshot?.heat.tracked) return;
         const result = await member.force.dispatchNonMekUnitCommand(member.id, {
             kind: 'set-heat',
-            expectedRevision: snapshot.stateRevision,
             heat: Math.max(0, Math.trunc(heat)),
             target: this.options.options().trackPhaseAndTurn ? 'pending' : 'committed',
         });
-        if (!result.accepted) this.showRejectedEdit(result.reason);
+        if (!result.accepted) this.showRejectedEdit();
     }
 
     private async applyHeat(member: CBTForceMember): Promise<void> {
@@ -398,7 +400,7 @@ export class PageViewerNonMekRuntimeService {
             kind: 'apply-heat',
             expectedRevision: snapshot.stateRevision,
         });
-        if (!result.accepted) this.showRejectedEdit(result.reason);
+        if (!result.accepted) this.showRejectedEdit();
     }
 
     private async promptHeat(
@@ -435,10 +437,9 @@ export class PageViewerNonMekRuntimeService {
             if (!current?.heat.tracked) return;
             void member.force.dispatchNonMekUnitCommand(member.id, {
                 kind: 'set-heatsinks-off',
-                expectedRevision: current.stateRevision,
                 heatsinksOff: count - value,
             }).then(result => {
-                if (!result.accepted) this.showRejectedEdit(result.reason);
+                if (!result.accepted) this.showRejectedEdit();
             });
         };
         this.closePicker();
@@ -478,11 +479,10 @@ export class PageViewerNonMekRuntimeService {
         if (!snapshot) return;
         const result = await member.force.dispatchNonMekUnitCommand(member.id, {
             kind: 'set-condition',
-            expectedRevision: snapshot.stateRevision,
             condition,
             active,
         });
-        if (!result.accepted) this.showRejectedEdit(result.reason);
+        if (!result.accepted) this.showRejectedEdit();
     }
 
     private openConditionMenu(
@@ -525,14 +525,13 @@ export class PageViewerNonMekRuntimeService {
         if (!snapshot || !position) return;
         const result = await member.force.dispatchNonMekUnitCommand(member.id, {
             kind: 'set-crew-state',
-            expectedRevision: snapshot.stateRevision,
             positionId,
             wounds,
             unconscious: position.state.unconscious,
             ejected: position.state.ejected,
             ...(position.state.state === undefined ? {} : { state: position.state.state }),
         });
-        if (!result.accepted) this.showRejectedEdit(result.reason);
+        if (!result.accepted) this.showRejectedEdit();
     }
 
     private openCrewStateMenu(
@@ -689,12 +688,11 @@ export class PageViewerNonMekRuntimeService {
         if (!current) return;
         const result = await member.force.dispatchNonMekUnitCommand(member.id, {
             kind: 'set-sensor-damage-level',
-            expectedRevision: current.stateRevision,
             level,
             target: pending ? 'pending' : 'committed',
             timestamp: Date.now(),
         });
-        if (!result.accepted) this.showRejectedEdit(result.reason);
+        if (!result.accepted) this.showRejectedEdit();
     }
 
     private async dispatchDamageTrackDelta(
@@ -709,7 +707,6 @@ export class PageViewerNonMekRuntimeService {
         const command: NonMekUnitCommand = delta > 0
             ? {
                 kind: 'damage-track',
-                expectedRevision: snapshot.stateRevision,
                 damageTrackId: track.damageTrackId,
                 amount: delta,
                 target,
@@ -717,7 +714,6 @@ export class PageViewerNonMekRuntimeService {
             }
             : {
                 kind: 'repair-damage-track',
-                expectedRevision: snapshot.stateRevision,
                 damageTrackId: track.damageTrackId,
                 amount: -delta,
                 target,
@@ -730,7 +726,7 @@ export class PageViewerNonMekRuntimeService {
             `[damage-track-task-perf] ${track.label} ${(performance.now() - startedAt).toFixed(1)}ms`,
         ), 0);
         if (!result.accepted) {
-            this.showRejectedEdit(result.reason);
+            this.showRejectedEdit();
             return false;
         }
         return true;
@@ -859,29 +855,24 @@ export class PageViewerNonMekRuntimeService {
         const command: NonMekUnitCommand = interaction.kind === 'armor'
             ? {
                 kind: delta > 0 ? 'damage-armor' : 'repair-armor',
-                expectedRevision: interaction.expectedRevision,
                 faceId: interaction.faceId,
                 amount: Math.abs(delta),
                 target,
             }
             : {
                 kind: delta > 0 ? 'damage-internal' : 'repair-internal',
-                expectedRevision: interaction.expectedRevision,
                 locationId: interaction.locationId,
                 amount: Math.abs(delta),
                 target,
             };
         const result = await member.force.dispatchNonMekUnitCommand(member.id, command);
         if (result.accepted) return true;
-        this.showRejectedEdit(result.reason);
+        this.showRejectedEdit();
         return false;
     }
 
-    private showRejectedEdit(reason: string | undefined): void {
-        this.toast.showToast(
-            `Record-sheet edit rejected: ${(reason ?? 'invalid command').replaceAll('_', ' ').toLowerCase()}`,
-            'error',
-        );
+    private showRejectedEdit(): void {
+        this.toast.showToast('This force is read-only.', 'error');
     }
 
     private showDamageToast(
@@ -962,6 +953,35 @@ export function nonMekDamageTrackPickerRange(
 function sensorDamageLevel(sheetId: string): number | null {
     const match = /^sensor_hit_(\d+)$/u.exec(sheetId);
     return match ? Number(match[1]) : null;
+}
+
+function equipmentPanelComponentById(
+    panel: EquipmentPanelSnapshot,
+    componentId: ComponentId,
+): EquipmentPanelComponent | undefined {
+    return panel.components.find(row => row.componentId === componentId
+        || row.attack?.members.some(member => member.componentId === componentId) === true);
+}
+
+function equipmentPanelSelectionComponentIds(
+    panel: EquipmentPanelSnapshot,
+    componentIds: readonly ComponentId[],
+    selection: AttackerSelection | null,
+): readonly ComponentId[] {
+    const rows = [...new Set(componentIds.flatMap(componentId => {
+        const row = equipmentPanelComponentById(panel, componentId);
+        return row ? [row] : [];
+    }))];
+    return Object.freeze([...new Set(rows.flatMap(row => {
+        if (row.attack === undefined) {
+            return row.weapon?.selectable === true || selection === null
+                ? [row.componentId]
+                : [];
+        }
+        return row.attack.members
+            .filter(member => selection === null || member.selectable)
+            .map(member => member.componentId);
+    }))]);
 }
 
 function sameAttackerSelection(

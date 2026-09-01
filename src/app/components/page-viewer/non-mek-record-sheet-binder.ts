@@ -570,6 +570,16 @@ function interactionTargets(
     hitAreas: readonly SVGElement[],
     pips: readonly SVGElement[],
 ): readonly SVGElement[] {
+    const capitalBlockTargets = hitAreas.filter(element =>
+        element.classList.contains('capital-pip-interaction'));
+    if (capitalBlockTargets.length > 0) {
+        unitLocation?.style.setProperty('cursor', 'default');
+        hitAreas.forEach(element => {
+            element.style.pointerEvents = capitalBlockTargets.includes(element) ? '' : 'none';
+        });
+        pips.forEach(element => { element.style.pointerEvents = 'none'; });
+        return capitalBlockTargets;
+    }
     if (unitLocation) {
         hitAreas.forEach(element => { element.style.pointerEvents = 'none'; });
         pips.forEach(element => { element.style.pointerEvents = 'none'; });
@@ -750,7 +760,8 @@ function renderInventorySelections(
         } => component.weapon !== undefined);
         if (weapons.length === 0) continue;
 
-        const componentIds = Object.freeze(weapons.map(component => component.componentId));
+        const componentIds = Object.freeze([...new Set(weapons.flatMap(component =>
+            equipmentPanelAttackComponentIds(component)))]);
         row.setAttribute('data-mekbay-component-ids', componentIds.join(' '));
         const unavailable = weapons.every(component => component.status !== 'available');
         row.classList.toggle('disabled', unavailable);
@@ -856,7 +867,9 @@ function inventoryRowAssignments(
     snapshot: NonMekRecordSheetSnapshot,
     panel: EquipmentPanelSnapshot,
 ): ReadonlyMap<SVGElement, readonly EquipmentPanelComponent[]> {
-    const panelById = new Map(panel.components.map(component => [component.componentId, component] as const));
+    const panelById = new Map<ComponentId, EquipmentPanelComponent>();
+    panel.components.forEach(component => equipmentPanelAttackComponentIds(component)
+        .forEach(componentId => panelById.set(componentId, component)));
     const assignments = new Map<SVGElement, EquipmentPanelComponent[]>();
     const used = new Set<ComponentId>();
     for (const row of rows) {
@@ -864,13 +877,15 @@ function inventoryRowAssignments(
             .trim()
             .split(/\s+/u)
             .filter(Boolean) as ComponentId[];
-        const components = ids.flatMap(id => {
+        const components = [...new Set(ids.flatMap(id => {
             const component = panelById.get(id);
             return component === undefined ? [] : [component];
-        });
+        }))].filter(component => equipmentPanelAttackComponentIds(component)
+            .some(componentId => !used.has(componentId)));
         if (components.length === 0) continue;
         assignments.set(row, components);
-        components.forEach(component => used.add(component.componentId));
+        components.forEach(component => equipmentPanelAttackComponentIds(component)
+            .forEach(componentId => used.add(componentId)));
     }
 
     for (const component of snapshot.components) {
@@ -884,6 +899,13 @@ function inventoryRowAssignments(
         used.add(component.componentId);
     }
     return assignments;
+}
+
+function equipmentPanelAttackComponentIds(
+    component: EquipmentPanelComponent,
+): readonly ComponentId[] {
+    return component.attack?.members.map(member => member.componentId)
+        ?? Object.freeze([component.componentId]);
 }
 
 function renderInventoryOverlay(

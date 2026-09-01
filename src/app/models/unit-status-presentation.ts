@@ -60,6 +60,7 @@ export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = Ob
     Object.freeze({ key: 'spotting', label: 'SPOTTING', color: '#471fad' }),
     Object.freeze({ key: 'stealth', label: 'STEALTH', color: '#226' }),
     Object.freeze({ key: 'airborne', label: 'AIRBORNE', color: '#1976d2' }),
+    Object.freeze({ key: 'grounded', label: 'GROUNDED', color: '#975300' }),
 ]);
 
 const UNIT_CONDITION_BY_KEY = new Map<UnitConditionKey, UnitConditionDefinition>(

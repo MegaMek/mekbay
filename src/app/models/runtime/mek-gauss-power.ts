@@ -14,7 +14,6 @@ import {
     type EquipmentInteractionInput,
     type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 
 export const GAUSS_POWERED_UP = 'Powered Up';
@@ -151,11 +150,9 @@ export class GaussPowerHandler extends EquipmentInteractionHandler {
         if (choice.value !== next) return false;
         const result = runtime.dispatch({
             type: 'toggle-gauss-power',
-            commandId: createCommandId(),
-            expectedRevision: runtime.revision(),
             componentId: definition.componentId,
         });
-        if (result.accepted && !result.idempotent) {
+        if (result.accepted && result.changed) {
             context.toastService.showToast(`${definition.displayName} is ${next.toLowerCase()}`, 'info');
         }
         return result.accepted;

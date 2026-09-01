@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
 import type { BaseEntity } from '../entity/base-entity';
 import type { EntityStateView } from '../entity/entity-state-view';
 import type { EntityType } from '../entity/types';
@@ -590,7 +591,9 @@ export function projectNonMekDefenseModifierBreakdown(
 }
 
 export function supportsNonMekAirborneSelection(entity: BaseEntity): boolean {
-    return entity.unitType() === 'VTOL' || entity.motiveType() === 'WiGE';
+    return entity.entityType === 'DropShip'
+        || entity.unitType() === 'VTOL'
+        || entity.motiveType() === 'WiGE';
 }
 
 export interface NonMekAttackerTargetingCommand {
@@ -638,6 +641,7 @@ export type NonMekUnitCommand =
     | Readonly<{ readonly kind: 'repair-damage-track'; readonly expectedRevision: StateRevision; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending' }>
     | Readonly<{ readonly kind: 'set-sensor-damage-level'; readonly expectedRevision: StateRevision; readonly level: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }>
     | Readonly<{ readonly kind: 'set-component-status'; readonly expectedRevision: StateRevision; readonly componentId: ComponentId; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending' }>
+    | Readonly<{ readonly kind: 'set-component-statuses'; readonly expectedRevision: StateRevision; readonly componentIds: readonly ComponentId[]; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending' }>
     | Readonly<{ readonly kind: 'set-component-mode'; readonly expectedRevision: StateRevision; readonly componentId: ComponentId; readonly mode: string }>
     | Readonly<{
         readonly kind: 'edit-escalating-failure';
@@ -979,11 +983,16 @@ export class NonMekUnitInstance {
                 state: this.state,
             });
         }
-        if (command.edit.kind === 'set-component-selection'
-            && command.edit.selection !== null
+        const selectedComponentIds = command.edit.kind === 'set-component-selection'
+            ? command.edit.selection === null ? [] : [command.edit.componentId]
+            : command.edit.kind === 'set-component-selections' && command.edit.selection !== null
+                ? command.edit.componentIds
+                : [];
+        if (selectedComponentIds.length > 0
             && (this.destroyed()
-                || this.state.components.get(command.edit.componentId)?.jammed === true
-                || this.componentStatus(command.edit.componentId, 'committed') !== 'available'
+                || selectedComponentIds.some(componentId =>
+                    this.state.components.get(componentId)?.jammed === true
+                    || this.componentStatus(componentId, 'committed') !== 'available')
                 || mobileHpgBlocksWeaponAttacks(buildNonMekMobileHpgFacts(
                     this.entity,
                     this.index,
@@ -1733,6 +1742,44 @@ function reduceNonMekUnitState(
                 ...state,
                 components: setComponentStatus(state.components, command.componentId, command.status),
             };
+            break;
+        }
+        case 'set-component-statuses': {
+            if (!Array.isArray(command.componentIds)
+                || command.componentIds.length === 0
+                || command.componentIds.length > MAX_ATTACKER_TARGETING_COMPONENTS
+                || new Set(command.componentIds).size !== command.componentIds.length
+                || command.componentIds.some(componentId => !index.components.has(componentId))) {
+                throw new Error('Invalid components');
+            }
+            if (command.target === 'pending') {
+                const componentStatus = new Map(state.pendingCombat.componentStatus);
+                let changed = false;
+                for (const componentId of command.componentIds) {
+                    const committedStatus = state.components.get(componentId)?.statusOverride ?? 'available';
+                    const currentStatus = componentStatus.get(componentId) ?? committedStatus;
+                    if (currentStatus === command.status) continue;
+                    changed = true;
+                    if (command.status === committedStatus) componentStatus.delete(componentId);
+                    else componentStatus.set(componentId, command.status);
+                }
+                if (!changed) return null;
+                candidate = {
+                    ...state,
+                    pendingCombat: { ...state.pendingCombat, componentStatus },
+                };
+                break;
+            }
+            let components: ReadonlyMap<ComponentId, ComponentRuntimeState> = state.components;
+            let changed = false;
+            for (const componentId of command.componentIds) {
+                const committedStatus = components.get(componentId)?.statusOverride ?? 'available';
+                if (committedStatus === command.status) continue;
+                changed = true;
+                components = setComponentStatus(components, componentId, command.status);
+            }
+            if (!changed) return null;
+            candidate = { ...state, components };
             break;
         }
         case 'set-component-mode': {
@@ -3004,10 +3051,6 @@ function validateHitTimestamps(
 
 function compareNumbers(left: number, right: number): number {
     return left - right;
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function boundedHeat(value: number): number {

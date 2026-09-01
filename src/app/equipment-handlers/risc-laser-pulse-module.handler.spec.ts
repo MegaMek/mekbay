@@ -1,7 +1,4 @@
-// Copyright (C) 2026 The MegaMek Team
-// SPDX-License-Identifier: GPL-3.0-or-later
 
-import { asCommandId } from '../models/runtime/runtime-state';
 import { componentRiscLaserPulseDefinition } from '../models/runtime/component-risc-laser-pulse';
 import { emptyCBTEncounterSnapshot } from '../models/runtime/encounter-runtime';
 import { projectMekEquipmentPanel } from '../models/runtime/equipment-panel';
@@ -59,8 +56,8 @@ describe('RiscLaserPulseModuleHandler', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            commandId: asCommandId('risc:mode'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            
+            
             componentId: laser.id,
             mode: RISC_LASER_PULSE_MODE,
         }).accepted).toBeTrue();
@@ -75,8 +72,8 @@ describe('RiscLaserPulseModuleHandler', () => {
 
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
-            commandId: asCommandId('risc:fire'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            
+            
             heatPolicy: 'manual',
             selections: [{ weaponId: laser.id }],
         }).accepted).toBeTrue();
@@ -84,8 +81,8 @@ describe('RiscLaserPulseModuleHandler', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('risc:disable'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            
+            
             componentId: module.id,
             status: 'disabled',
             target: 'committed',

@@ -26,7 +26,6 @@ import {
     equipmentPanelRuntimeTarget,
 } from '../../../models/runtime/equipment-panel';
 import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
-import { createCommandId } from '../../../models/runtime/runtime-state';
 import type { CBTUnitCommand } from '../../../models/runtime/unit-instance';
 import type {
     MekCriticalChanceResult,
@@ -215,8 +214,6 @@ export class PageViewerMekInteractionService {
                 : interaction.level;
             await this.dispatchCommand(member, {
                 type: 'set-system-critical-level',
-                commandId: createCommandId(),
-                expectedRevision: snapshot.stateRevision,
                 system: interaction.system,
                 level: desiredLevel,
                 target: this.options.options().trackPhaseAndTurn ? 'pending' : 'committed',
@@ -333,8 +330,6 @@ export class PageViewerMekInteractionService {
         if (!current) return;
         await this.dispatchCommand(member, {
             type: 'damage-internal',
-            commandId: createCommandId(),
-            expectedRevision: current.state.stateRevision,
             locationId: interaction.locationId,
             amount: internalDamage,
             target: pending ? 'pending' : 'committed',
@@ -445,16 +440,12 @@ export class PageViewerMekInteractionService {
                 const command: CBTUnitCommand = value.startsWith('ammo-add:')
                     ? {
                         type: 'configure-ammo-source',
-                        commandId: createCommandId(),
-                        expectedRevision: current.state.stateRevision,
                         componentId,
                         munitionKey,
                         remaining: Math.min(capacity, remaining + 1),
                     }
                     : {
                         type: 'spend-ammo',
-                        commandId: createCommandId(),
-                        expectedRevision: current.state.stateRevision,
                         componentId,
                         amount: 1,
                     };
@@ -638,8 +629,6 @@ export class PageViewerMekInteractionService {
                     : control.counted ? (value > 0 ? 0 : 1) : (value > 0 ? 0 : 1);
             await this.dispatchCommand(member, {
                 type: 'set-location-condition',
-                commandId: createCommandId(),
-                expectedRevision: current.state.stateRevision,
                 locationId: interaction.locationId,
                 condition: conditionKey,
                 value: next,
@@ -706,8 +695,6 @@ export class PageViewerMekInteractionService {
         const plan = unit.query.mekBlowOff(locationId, target);
         const applied = await this.dispatchCommand(member, {
             type: 'apply-mek-blow-off',
-            commandId: createCommandId(),
-            expectedRevision: unit.query.stateRevision,
             locationId,
             target,
         });
@@ -815,8 +802,6 @@ export class PageViewerMekInteractionService {
                     const active = choice === 'unconscious' ? row.state.unconscious : row.state.ejected;
                     void this.dispatchCommand(member, {
                         type: 'set-crew-state',
-                        commandId: createCommandId(),
-                        expectedRevision: current.stateRevision,
                         positionId: interaction.positionId,
                         wounds: row.state.wounds,
                         unconscious: choice === 'unconscious' ? !active : false,
@@ -890,8 +875,6 @@ export class PageViewerMekInteractionService {
                 const snapshot = member.mekRecordSheetSnapshot();
                 if (!snapshot || !await this.dispatchCommand(member, {
                     type: 'set-component-mode',
-                    commandId: createCommandId(),
-                    expectedRevision: snapshot.stateRevision,
                     componentId: row.componentId,
                     mode: interaction.mode,
                 })) return;
@@ -1170,13 +1153,10 @@ export class PageViewerMekInteractionService {
             if (!targeting) return;
             const result = await member.force.dispatchAttackerTargeting(member.id, {
                 type: 'edit-attacker-targeting',
-                commandId: createCommandId(),
-                expectedRevision: targeting.stateRevision,
-                expectedRegistryRevision: targeting.registryRevision,
                 edit: { kind: 'set-component-selection', componentId, selection },
             });
             if (!result.accepted) {
-                this.rejected(`Target selection rejected: ${result.reason}`);
+                this.rejected('This force is read-only.');
                 return;
             }
         }
@@ -1191,12 +1171,9 @@ export class PageViewerMekInteractionService {
         if (!targeting) return;
         const result = await member.force.dispatchAttackerTargeting(member.id, {
             type: 'edit-attacker-targeting',
-            commandId: createCommandId(),
-            expectedRevision: targeting.stateRevision,
-            expectedRegistryRevision: targeting.registryRevision,
             edit: { kind: 'set-action-selection', target, selection },
         });
-        if (!result.accepted) this.rejected(`Target selection rejected: ${result.reason}`);
+        if (!result.accepted) this.rejected('This force is read-only.');
     }
 
     private openReferenceTable(
@@ -1339,7 +1316,7 @@ export class PageViewerMekInteractionService {
     private async dispatchCommand(member: CBTMekForceMember, command: CBTUnitCommand): Promise<boolean> {
         const result = await member.force.dispatchMekUnitCommand(member.id, command);
         if (!result.accepted) {
-            this.rejected(`Record-sheet action rejected: ${result.reason}`);
+            this.rejected('This force is read-only.');
             return false;
         }
         return true;

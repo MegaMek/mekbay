@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
+import { isObjectLiteralRecord } from '../../utils/json-value.util';
 import {
     canonicalizeLegacyMekTurnStateV1,
     type LegacyMekTurnStateParseResultV1,
@@ -183,7 +185,7 @@ function classifyUnresolved(
     turn: LegacyMekTurnStateV1,
     blockers: Set<LegacyMekMovementPsrBlockerV1>,
 ): void {
-    if (!isPlainRecord(value)) return;
+    if (!isObjectLiteralRecord(value)) return;
     if (Object.hasOwn(value, 'moveMode')) blockers.add('LEGACY_INCOHERENT_MOVEMENT');
     if (Object.hasOwn(value, 'moveDistance')) {
         blockers.add('LEGACY_MOVEMENT_DISTANCE_UNREPRESENTABLE');
@@ -220,15 +222,4 @@ function blocked(
         algorithmVersion: MEK_MOVEMENT_PSR_RESTORATION_ALGORITHM_VERSION_V1,
         blockers,
     });
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null
-        && typeof value === 'object'
-        && !Array.isArray(value)
-        && Object.getPrototypeOf(value) === Object.prototype;
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }

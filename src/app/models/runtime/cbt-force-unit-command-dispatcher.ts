@@ -5,11 +5,13 @@
 import type { Injector } from '@angular/core';
 import {
     DirectMekAutomationService,
+    type DirectMekEndPhaseAutomationRequest,
     type DirectMekEndTurnAutomationRequest,
     type PreparedDirectMekAutomationCommand,
 } from '../../services/direct-mek-automation.service';
 import {
     DirectNonMekAutomationService,
+    type DirectNonMekEndPhaseAutomationRequest,
     type DirectNonMekEndTurnAutomationRequest,
     type PreparedDirectNonMekAutomationCommand,
 } from '../../services/direct-non-mek-automation.service';
@@ -44,6 +46,27 @@ type PreparedForcePhaseBoundary =
         readonly prepared: PreparedDirectNonMekAutomationCommand;
     }>;
 
+type PendingEndTurnSettlement =
+    | Readonly<{
+        readonly kind: 'mek';
+        readonly turn: number;
+        readonly revision: number;
+        readonly prepared: PreparedDirectMekAutomationCommand;
+        readonly settled: boolean;
+    }>
+    | Readonly<{
+        readonly kind: 'non-mek';
+        readonly turn: number;
+        readonly revision: number;
+        readonly prepared: PreparedDirectNonMekAutomationCommand;
+        readonly settled: boolean;
+    }>;
+
+type EndTurnPhaseCheckpoint = Readonly<{
+    readonly turn: number;
+    readonly revision: number;
+}>;
+
 function turnCounter(snapshot: CBTUnitSnapshot | null): number | null {
     if (snapshot && hasMekRuntime(snapshot)) return snapshot.state.turn.turnCounter;
     if (snapshot && hasNonMekRuntime(snapshot)) return snapshot.state.turn.turnCounter;
@@ -77,6 +100,14 @@ export interface CBTForceUnitCommandBoundary {
  */
 export class CBTForceUnitCommandDispatcher {
     private boundaryQueue: Promise<void> = Promise.resolve();
+    /**
+     * A cancelled end-turn review must resume after its already-completed phase
+     * boundary. This is workflow state, not a derived-data cache: it lives only
+     * for the current admitted turn and is discarded as soon as that turn ends.
+     */
+    private readonly phaseEndedForTurn = new Map<UnitInstanceId, EndTurnPhaseCheckpoint>();
+    /** Reviewed/partially-applied work retained only until this End Turn completes. */
+    private readonly pendingEndTurnSettlements = new Map<UnitInstanceId, PendingEndTurnSettlement>();
 
     constructor(
         private readonly force: CBTForce,
@@ -240,6 +271,11 @@ export class CBTForceUnitCommandDispatcher {
         });
     }
 
+    hasPendingEndTurn(instanceId: UnitInstanceId): boolean {
+        const snapshot = this.boundary.snapshot(instanceId);
+        return snapshot !== null && this.phaseAlreadyEnded(instanceId, snapshot);
+    }
+
     private enqueueBoundary<T>(operation: () => Promise<T>): Promise<T> {
         const result = this.boundaryQueue.then(operation);
         this.boundaryQueue = result.then(() => undefined, () => undefined);
@@ -256,7 +292,8 @@ export class CBTForceUnitCommandDispatcher {
         if (automation && command.kind === 'end-turn') {
             const initial = this.boundary.snapshot(instanceId);
             if (initial && hasNonMekRuntime(initial)
-                && command.expectedRevision === initial.query.stateRevision) {
+                && command.expectedRevision === initial.query.stateRevision
+                && !this.phaseAlreadyEnded(instanceId, initial)) {
                 const phase = await this.dispatchNonMekWithAutomation(instanceId, {
                     kind: 'end-phase',
                     expectedRevision: initial.query.stateRevision,
@@ -271,23 +308,49 @@ export class CBTForceUnitCommandDispatcher {
                         currentRevision: null,
                     });
                 }
+                this.markPhaseEnded(instanceId, refreshed);
                 effectiveCommand = {
                     ...command,
                     expectedRevision: refreshed.query.stateRevision,
                 };
+            } else if (initial && hasNonMekRuntime(initial)
+                && this.phaseAlreadyEnded(instanceId, initial)) {
+                effectiveCommand = {
+                    ...command,
+                    expectedRevision: initial.query.stateRevision,
+                };
             }
         }
         if (!automation) return this.boundary.dispatchNonMekCore(instanceId, effectiveCommand);
-        const prepared = await automation.prepareCommand(this.force, instanceId, effectiveCommand);
+        const current = this.boundary.snapshot(instanceId);
+        const pending = effectiveCommand.kind === 'end-turn' && current
+            ? this.pendingNonMekSettlement(instanceId, current)
+            : null;
+        const prepared = pending?.prepared
+            ?? await automation.prepareCommand(this.force, instanceId, effectiveCommand);
         if (prepared.cancelled) return this.cancelledNonMek(instanceId);
-        const settled = await automation.settleBeforeCommand(
-            this.force,
-            instanceId,
-            prepared,
-            (generated, generatedAutomate = true) =>
-                this.dispatchNonMekWithAutomation(instanceId, generated, generatedAutomate),
-        );
-        if (settled === null) return this.cancelledNonMek(instanceId);
+        if (effectiveCommand.kind === 'end-turn' && current && pending === null) {
+            this.saveNonMekSettlement(instanceId, current, prepared, false);
+        }
+        const settled = pending?.settled
+            ? prepared
+            : await automation.settleBeforeCommand(
+                this.force,
+                instanceId,
+                prepared,
+                (generated, generatedAutomate = true) =>
+                    this.dispatchNonMekWithAutomation(instanceId, generated, generatedAutomate),
+            );
+        if (settled === null) {
+            this.refreshEndTurnWorkflowRevision(instanceId);
+            return this.cancelledNonMek(instanceId);
+        }
+        if (effectiveCommand.kind === 'end-turn') {
+            const afterSettlement = this.boundary.snapshot(instanceId);
+            if (afterSettlement) {
+                this.saveNonMekSettlement(instanceId, afterSettlement, settled, true);
+            }
+        }
         const result = await this.boundary.dispatchNonMekCore(instanceId, settled.command);
         const completed = await automation.afterCommand(
             this.force,
@@ -297,6 +360,9 @@ export class CBTForceUnitCommandDispatcher {
             (generated, generatedAutomate = true) =>
                 this.dispatchNonMekWithAutomation(instanceId, generated, generatedAutomate),
         );
+        if (completed && result.accepted && effectiveCommand.kind === 'end-turn') {
+            this.clearEndTurnWorkflow(instanceId);
+        }
         return completed ? result : this.cancelledNonMek(instanceId);
     }
 
@@ -310,7 +376,8 @@ export class CBTForceUnitCommandDispatcher {
         if (automation && command.type === 'end-turn') {
             const initial = this.boundary.snapshot(instanceId);
             if (initial && hasMekRuntime(initial)
-                && command.expectedRevision === initial.query.stateRevision) {
+                && command.expectedRevision === initial.query.stateRevision
+                && !this.phaseAlreadyEnded(instanceId, initial)) {
                 const phase = await this.dispatchMekWithAutomation(instanceId, {
                     type: 'end-phase',
                     commandId: createCommandId(),
@@ -325,21 +392,41 @@ export class CBTForceUnitCommandDispatcher {
                         currentRevision: null,
                     });
                 }
+                this.markPhaseEnded(instanceId, refreshed);
                 effectiveCommand = { ...command, expectedRevision: refreshed.query.stateRevision };
+            } else if (initial && hasMekRuntime(initial)
+                && this.phaseAlreadyEnded(instanceId, initial)) {
+                effectiveCommand = { ...command, expectedRevision: initial.query.stateRevision };
             }
         }
         if (!automation) return this.boundary.dispatchMekCore(instanceId, effectiveCommand);
         const before = this.boundary.snapshot(instanceId);
-        const prepared = await automation.prepareCommand(this.force, instanceId, effectiveCommand);
+        const pending = effectiveCommand.type === 'end-turn' && before
+            ? this.pendingMekSettlement(instanceId, before)
+            : null;
+        const prepared = pending?.prepared
+            ?? await automation.prepareCommand(this.force, instanceId, effectiveCommand);
         if (prepared.cancelled) return this.cancelledMek(instanceId);
-        const settled = await automation.settleBeforeCommand(
-            this.force,
-            instanceId,
-            prepared,
-            (generated, generatedAutomate = true) =>
-                this.dispatchMekWithAutomation(instanceId, generated, generatedAutomate),
-        );
-        if (settled === null) return this.cancelledMek(instanceId);
+        if (effectiveCommand.type === 'end-turn' && before && pending === null) {
+            this.saveMekSettlement(instanceId, before, prepared, false);
+        }
+        const settled = pending?.settled
+            ? prepared
+            : await automation.settleBeforeCommand(
+                this.force,
+                instanceId,
+                prepared,
+                (generated, generatedAutomate = true) =>
+                    this.dispatchMekWithAutomation(instanceId, generated, generatedAutomate),
+            );
+        if (settled === null) {
+            this.refreshEndTurnWorkflowRevision(instanceId);
+            return this.cancelledMek(instanceId);
+        }
+        if (effectiveCommand.type === 'end-turn') {
+            const afterSettlement = this.boundary.snapshot(instanceId);
+            if (afterSettlement) this.saveMekSettlement(instanceId, afterSettlement, settled, true);
+        }
         const result = await this.boundary.dispatchMekCore(instanceId, settled.command);
         const completed = await automation.afterCommand(
             this.force,
@@ -350,6 +437,9 @@ export class CBTForceUnitCommandDispatcher {
             (generated, generatedAutomate = true) =>
                 this.dispatchMekWithAutomation(instanceId, generated, generatedAutomate),
         );
+        if (completed && result.accepted && effectiveCommand.type === 'end-turn') {
+            this.clearEndTurnWorkflow(instanceId);
+        }
         return completed ? result : this.cancelledMek(instanceId);
     }
 
@@ -363,48 +453,74 @@ export class CBTForceUnitCommandDispatcher {
         const mekAutomation = this.mekAutomation();
         const nonMekAutomation = this.nonMekAutomation();
         const preparedPhases: PreparedForcePhaseBoundary[] = [];
+        const mekRequests: DirectMekEndPhaseAutomationRequest[] = [];
+        const nonMekRequests: DirectNonMekEndPhaseAutomationRequest[] = [];
+        const snapshots = new Map<UnitInstanceId, CBTUnitSnapshot>();
 
         // Complete every review before committing the first unit. Closing any
         // review therefore leaves the entire force at its current phase.
         for (const instanceId of instanceIds) {
             const snapshot = this.boundary.snapshot(instanceId);
             if (!snapshot) continue;
+            snapshots.set(instanceId, snapshot);
             if (hasMekRuntime(snapshot)) {
-                const command = Object.freeze({
-                    type: 'end-phase' as const,
-                    commandId: createCommandId(),
-                    expectedRevision: snapshot.query.stateRevision,
-                });
-                const prepared: PreparedDirectMekAutomationCommand = mekAutomation
-                    ? await mekAutomation.prepareCommand(this.force, instanceId, command)
-                    : Object.freeze({ command, deferredPilotHits: 0 });
-                if (prepared.cancelled) {
-                    return this.rejectedBoundaryBatch(instanceIds, 'AUTOMATION_CANCELLED');
-                }
-                preparedPhases.push(Object.freeze({
-                    kind: 'mek',
+                mekRequests.push(Object.freeze({
                     instanceId,
-                    before: snapshot,
-                    prepared,
+                    command: Object.freeze({
+                        type: 'end-phase' as const,
+                        commandId: createCommandId(),
+                        expectedRevision: snapshot.query.stateRevision,
+                    }),
                 }));
                 continue;
             }
             if (!hasNonMekRuntime(snapshot)) continue;
-            const command = Object.freeze({
-                kind: 'end-phase' as const,
-                expectedRevision: snapshot.query.stateRevision,
-            });
-            const prepared: PreparedDirectNonMekAutomationCommand = nonMekAutomation
-                ? await nonMekAutomation.prepareCommand(this.force, instanceId, command)
-                : Object.freeze({ command });
-            if (prepared.cancelled) {
-                return this.rejectedBoundaryBatch(instanceIds, 'AUTOMATION_CANCELLED');
-            }
-            preparedPhases.push(Object.freeze({
-                kind: 'non-mek',
+            nonMekRequests.push(Object.freeze({
                 instanceId,
-                before: snapshot,
-                prepared,
+                command: Object.freeze({
+                    kind: 'end-phase' as const,
+                    expectedRevision: snapshot.query.stateRevision,
+                }),
+            }));
+        }
+
+        const preparedMeks = mekRequests.length === 0
+            ? Object.freeze([])
+            : mekAutomation
+                ? await mekAutomation.prepareEndPhaseCommands(this.force, mekRequests)
+                : Object.freeze(mekRequests.map(request => Object.freeze({
+                    instanceId: request.instanceId,
+                    prepared: Object.freeze({ command: request.command, deferredPilotHits: 0 }),
+                })));
+        if (preparedMeks === null) {
+            return this.rejectedBoundaryBatch(instanceIds, 'AUTOMATION_CANCELLED');
+        }
+        const preparedNonMeks = nonMekRequests.length === 0
+            ? Object.freeze([])
+            : nonMekAutomation
+                ? await nonMekAutomation.prepareEndPhaseCommands(this.force, nonMekRequests)
+                : Object.freeze(nonMekRequests.map(request => Object.freeze({
+                    instanceId: request.instanceId,
+                    prepared: Object.freeze({ command: request.command }),
+                })));
+        if (preparedNonMeks === null) {
+            return this.rejectedBoundaryBatch(instanceIds, 'AUTOMATION_CANCELLED');
+        }
+        const mekById = new Map(preparedMeks.map(row => [row.instanceId, row.prepared] as const));
+        const nonMekById = new Map(preparedNonMeks.map(row => [row.instanceId, row.prepared] as const));
+        for (const instanceId of instanceIds) {
+            const before = snapshots.get(instanceId);
+            if (!before) continue;
+            if (hasMekRuntime(before)) {
+                const prepared = mekById.get(instanceId);
+                if (prepared) preparedPhases.push(Object.freeze({
+                    kind: 'mek', instanceId, before, prepared,
+                }));
+                continue;
+            }
+            const prepared = nonMekById.get(instanceId);
+            if (prepared) preparedPhases.push(Object.freeze({
+                kind: 'non-mek', instanceId, before, prepared,
             }));
         }
 
@@ -412,9 +528,31 @@ export class CBTForceUnitCommandDispatcher {
         for (const phase of preparedPhases) {
             const beforeRevision = stateRevision(phase.before);
             if (phase.kind === 'mek') {
+                const settled = mekAutomation
+                    ? await mekAutomation.settleBeforeCommand(
+                        this.force,
+                        phase.instanceId,
+                        phase.prepared,
+                        (generated, generatedAutomate = true) =>
+                            this.dispatchMekWithAutomation(
+                                phase.instanceId,
+                                generated,
+                                generatedAutomate,
+                            ),
+                    )
+                    : phase.prepared;
+                if (settled === null) {
+                    return this.failedBoundaryBatch(
+                        instanceIds,
+                        results,
+                        phase.instanceId,
+                        'AUTOMATION_CANCELLED',
+                        stateRevision(this.boundary.snapshot(phase.instanceId)) !== beforeRevision,
+                    );
+                }
                 const result = await this.boundary.dispatchMekCore(
                     phase.instanceId,
-                    phase.prepared.command,
+                    settled.command,
                 );
                 if (!result.accepted) {
                     return this.failedBoundaryBatch(
@@ -429,7 +567,7 @@ export class CBTForceUnitCommandDispatcher {
                     this.force,
                     phase.instanceId,
                     phase.before,
-                    phase.prepared,
+                    settled,
                     result,
                     (generated, generatedAutomate = true) =>
                         this.dispatchMekWithAutomation(
@@ -457,9 +595,31 @@ export class CBTForceUnitCommandDispatcher {
                 continue;
             }
 
+            const settled = nonMekAutomation
+                ? await nonMekAutomation.settleBeforeCommand(
+                    this.force,
+                    phase.instanceId,
+                    phase.prepared,
+                    (generated, generatedAutomate = true) =>
+                        this.dispatchNonMekWithAutomation(
+                            phase.instanceId,
+                            generated,
+                            generatedAutomate,
+                        ),
+                )
+                : phase.prepared;
+            if (settled === null) {
+                return this.failedBoundaryBatch(
+                    instanceIds,
+                    results,
+                    phase.instanceId,
+                    'AUTOMATION_CANCELLED',
+                    stateRevision(this.boundary.snapshot(phase.instanceId)) !== beforeRevision,
+                );
+            }
             const result = await this.boundary.dispatchNonMekCore(
                 phase.instanceId,
-                phase.prepared.command,
+                settled.command,
             );
             if (!result.accepted) {
                 return this.failedBoundaryBatch(
@@ -473,7 +633,7 @@ export class CBTForceUnitCommandDispatcher {
             const completed = !nonMekAutomation || await nonMekAutomation.afterCommand(
                 this.force,
                 phase.instanceId,
-                phase.prepared,
+                settled,
                 result,
                 (generated, generatedAutomate = true) =>
                     this.dispatchNonMekWithAutomation(
@@ -510,17 +670,49 @@ export class CBTForceUnitCommandDispatcher {
             instanceId,
             stateRevision(this.boundary.snapshot(instanceId)),
         ] as const));
-        const phaseResult = await this.endPhaseForAllWithAutomation(instanceIds);
-        if (!phaseResult.accepted) return phaseResult;
+        const phaseInstanceIds = instanceIds.filter(instanceId => {
+            const snapshot = this.boundary.snapshot(instanceId);
+            return snapshot !== null && !this.phaseAlreadyEnded(instanceId, snapshot);
+        });
+        if (phaseInstanceIds.length > 0) {
+            const phaseResult = await this.endPhaseForAllWithAutomation(phaseInstanceIds);
+            const phaseResultById = new Map(phaseResult.results.map(row => [row.instanceId, row] as const));
+            for (const instanceId of phaseInstanceIds) {
+                if (!phaseResultById.get(instanceId)?.accepted) continue;
+                const snapshot = this.boundary.snapshot(instanceId);
+                if (snapshot) this.markPhaseEnded(instanceId, snapshot);
+            }
+            if (!phaseResult.accepted) {
+                const results = instanceIds.map(instanceId => phaseResultById.get(instanceId)
+                    ?? Object.freeze({
+                        instanceId,
+                        accepted: true,
+                        changed: false,
+                    }));
+                return Object.freeze({
+                    accepted: false,
+                    changed: results.some(result => result.changed),
+                    atomic: false as const,
+                    results: Object.freeze(results),
+                });
+            }
+        }
         const mekAutomation = this.mekAutomation();
         const nonMekAutomation = this.nonMekAutomation();
 
         const mekRequests: DirectMekEndTurnAutomationRequest[] = [];
         const nonMekRequests: DirectNonMekEndTurnAutomationRequest[] = [];
+        const preparedMekById = new Map<UnitInstanceId, PreparedDirectMekAutomationCommand>();
+        const preparedNonMekById = new Map<UnitInstanceId, PreparedDirectNonMekAutomationCommand>();
         for (const instanceId of instanceIds) {
             const snapshot = this.boundary.snapshot(instanceId);
             if (!snapshot) continue;
             if (hasMekRuntime(snapshot)) {
+                const pending = this.pendingMekSettlement(instanceId, snapshot);
+                if (pending) {
+                    preparedMekById.set(instanceId, pending.prepared);
+                    continue;
+                }
                 mekRequests.push(Object.freeze({
                     instanceId,
                     command: Object.freeze({
@@ -531,6 +723,11 @@ export class CBTForceUnitCommandDispatcher {
                     }),
                 }));
             } else {
+                const pending = this.pendingNonMekSettlement(instanceId, snapshot);
+                if (pending) {
+                    preparedNonMekById.set(instanceId, pending.prepared);
+                    continue;
+                }
                 nonMekRequests.push(Object.freeze({
                     instanceId,
                     command: Object.freeze({
@@ -543,7 +740,9 @@ export class CBTForceUnitCommandDispatcher {
 
         // Both reviews complete before the first turn mutation. This preserves
         // origin/next's cancel semantics even for a mixed force.
-        const preparedMeks = mekAutomation
+        const preparedMeks = mekRequests.length === 0
+            ? Object.freeze([])
+            : mekAutomation
             ? await mekAutomation.prepareEndTurnCommands(this.force, mekRequests)
             : Object.freeze(mekRequests.map(request => Object.freeze({
                 instanceId: request.instanceId,
@@ -552,7 +751,15 @@ export class CBTForceUnitCommandDispatcher {
         if (preparedMeks === null) {
             return this.failedEndTurnBatch(instanceIds, initialRevisions);
         }
-        const preparedNonMeks = nonMekAutomation
+        for (const row of preparedMeks) {
+            const snapshot = this.boundary.snapshot(row.instanceId);
+            if (!snapshot) continue;
+            preparedMekById.set(row.instanceId, row.prepared);
+            this.saveMekSettlement(row.instanceId, snapshot, row.prepared, false);
+        }
+        const preparedNonMeks = nonMekRequests.length === 0
+            ? Object.freeze([])
+            : nonMekAutomation
             ? await nonMekAutomation.prepareEndTurnCommands(this.force, nonMekRequests)
             : Object.freeze(nonMekRequests.map(request => Object.freeze({
                 instanceId: request.instanceId,
@@ -561,12 +768,20 @@ export class CBTForceUnitCommandDispatcher {
         if (preparedNonMeks === null) {
             return this.failedEndTurnBatch(instanceIds, initialRevisions);
         }
+        for (const row of preparedNonMeks) {
+            const snapshot = this.boundary.snapshot(row.instanceId);
+            if (!snapshot) continue;
+            preparedNonMekById.set(row.instanceId, row.prepared);
+            this.saveNonMekSettlement(row.instanceId, snapshot, row.prepared, false);
+        }
 
-        const preparedMekById = new Map(preparedMeks.map(row => [row.instanceId, row.prepared] as const));
-        const preparedNonMekById = new Map(preparedNonMeks.map(row => [row.instanceId, row.prepared] as const));
         const settledMekById = new Map<UnitInstanceId, PreparedDirectMekAutomationCommand>();
         for (const [instanceId, prepared] of preparedMekById) {
-            const settled = mekAutomation
+            const snapshot = this.boundary.snapshot(instanceId);
+            const pending = snapshot ? this.pendingMekSettlement(instanceId, snapshot) : null;
+            const settled = pending?.settled
+                ? pending.prepared
+                : mekAutomation
                 ? await mekAutomation.settleBeforeCommand(
                     this.force,
                     instanceId,
@@ -576,13 +791,20 @@ export class CBTForceUnitCommandDispatcher {
                 )
                 : prepared;
             if (settled === null) {
+                this.refreshEndTurnWorkflowRevision(instanceId);
                 return this.failedEndTurnBatch(instanceIds, initialRevisions);
             }
             settledMekById.set(instanceId, settled);
+            const afterSettlement = this.boundary.snapshot(instanceId);
+            if (afterSettlement) this.saveMekSettlement(instanceId, afterSettlement, settled, true);
         }
         const settledNonMekById = new Map<UnitInstanceId, PreparedDirectNonMekAutomationCommand>();
         for (const [instanceId, prepared] of preparedNonMekById) {
-            const settled = nonMekAutomation
+            const snapshot = this.boundary.snapshot(instanceId);
+            const pending = snapshot ? this.pendingNonMekSettlement(instanceId, snapshot) : null;
+            const settled = pending?.settled
+                ? pending.prepared
+                : nonMekAutomation
                 ? await nonMekAutomation.settleBeforeCommand(
                     this.force,
                     instanceId,
@@ -592,9 +814,14 @@ export class CBTForceUnitCommandDispatcher {
                 )
                 : prepared;
             if (settled === null) {
+                this.refreshEndTurnWorkflowRevision(instanceId);
                 return this.failedEndTurnBatch(instanceIds, initialRevisions);
             }
             settledNonMekById.set(instanceId, settled);
+            const afterSettlement = this.boundary.snapshot(instanceId);
+            if (afterSettlement) {
+                this.saveNonMekSettlement(instanceId, afterSettlement, settled, true);
+            }
         }
         const results: CBTForceEndTurnUnitResult[] = [];
         for (const instanceId of instanceIds) {
@@ -635,6 +862,7 @@ export class CBTForceUnitCommandDispatcher {
                         ? { reason: 'AUTOMATION_CANCELLED' }
                         : !result.accepted ? { reason: result.reason } : {}),
                 }));
+                if (completed && result.accepted) this.clearEndTurnWorkflow(instanceId);
                 if (!completed) break;
                 continue;
             }
@@ -663,6 +891,7 @@ export class CBTForceUnitCommandDispatcher {
                     ? { reason: 'AUTOMATION_CANCELLED' }
                     : !result.accepted ? { reason: result.reason } : {}),
             }));
+            if (completed && result.accepted) this.clearEndTurnWorkflow(instanceId);
             if (!completed) break;
         }
         const completedIds = new Set(results.map(result => result.instanceId));
@@ -766,6 +995,113 @@ export class CBTForceUnitCommandDispatcher {
             atomic: false as const,
             results: Object.freeze(results),
         });
+    }
+
+    private phaseAlreadyEnded(
+        instanceId: UnitInstanceId,
+        snapshot: CBTUnitSnapshot,
+    ): boolean {
+        const turn = turnCounter(snapshot);
+        const revision = stateRevision(snapshot);
+        const checkpoint = this.phaseEndedForTurn.get(instanceId);
+        if (turn === null || revision === null
+            || checkpoint?.turn !== turn || checkpoint.revision !== revision) {
+            if (checkpoint !== undefined) this.clearEndTurnWorkflow(instanceId);
+            return false;
+        }
+        return true;
+    }
+
+    private markPhaseEnded(
+        instanceId: UnitInstanceId,
+        snapshotAfterBoundary: CBTUnitSnapshot,
+    ): void {
+        const turn = turnCounter(snapshotAfterBoundary);
+        const revision = stateRevision(snapshotAfterBoundary);
+        if (turn !== null && revision !== null) {
+            this.phaseEndedForTurn.set(instanceId, Object.freeze({ turn, revision }));
+        }
+    }
+
+    private pendingMekSettlement(
+        instanceId: UnitInstanceId,
+        snapshot: CBTUnitSnapshot,
+    ): Extract<PendingEndTurnSettlement, { readonly kind: 'mek' }> | null {
+        const pending = this.pendingSettlement(instanceId, snapshot);
+        return pending?.kind === 'mek' ? pending : null;
+    }
+
+    private pendingNonMekSettlement(
+        instanceId: UnitInstanceId,
+        snapshot: CBTUnitSnapshot,
+    ): Extract<PendingEndTurnSettlement, { readonly kind: 'non-mek' }> | null {
+        const pending = this.pendingSettlement(instanceId, snapshot);
+        return pending?.kind === 'non-mek' ? pending : null;
+    }
+
+    private pendingSettlement(
+        instanceId: UnitInstanceId,
+        snapshot: CBTUnitSnapshot,
+    ): PendingEndTurnSettlement | null {
+        const pending = this.pendingEndTurnSettlements.get(instanceId);
+        const turn = turnCounter(snapshot);
+        const revision = stateRevision(snapshot);
+        if (!pending) return null;
+        if (turn === pending.turn && revision === pending.revision) return pending;
+        this.clearEndTurnWorkflow(instanceId);
+        return null;
+    }
+
+    private saveMekSettlement(
+        instanceId: UnitInstanceId,
+        snapshot: CBTUnitSnapshot,
+        prepared: PreparedDirectMekAutomationCommand,
+        settled: boolean,
+    ): void {
+        const turn = turnCounter(snapshot);
+        const revision = stateRevision(snapshot);
+        if (turn === null || revision === null) return;
+        this.pendingEndTurnSettlements.set(instanceId, Object.freeze({
+            kind: 'mek', turn, revision, prepared, settled,
+        }));
+        this.markPhaseEnded(instanceId, snapshot);
+    }
+
+    private saveNonMekSettlement(
+        instanceId: UnitInstanceId,
+        snapshot: CBTUnitSnapshot,
+        prepared: PreparedDirectNonMekAutomationCommand,
+        settled: boolean,
+    ): void {
+        const turn = turnCounter(snapshot);
+        const revision = stateRevision(snapshot);
+        if (turn === null || revision === null) return;
+        this.pendingEndTurnSettlements.set(instanceId, Object.freeze({
+            kind: 'non-mek', turn, revision, prepared, settled,
+        }));
+        this.markPhaseEnded(instanceId, snapshot);
+    }
+
+    /** Keeps a reviewed plan resumable after its own partial settlement only. */
+    private refreshEndTurnWorkflowRevision(instanceId: UnitInstanceId): void {
+        const snapshot = this.boundary.snapshot(instanceId);
+        const pending = this.pendingEndTurnSettlements.get(instanceId);
+        const turn = turnCounter(snapshot);
+        const revision = stateRevision(snapshot);
+        if (!snapshot || !pending || turn !== pending.turn || revision === null) {
+            this.clearEndTurnWorkflow(instanceId);
+            return;
+        }
+        this.pendingEndTurnSettlements.set(instanceId, Object.freeze({
+            ...pending,
+            revision,
+        }));
+        this.markPhaseEnded(instanceId, snapshot);
+    }
+
+    private clearEndTurnWorkflow(instanceId: UnitInstanceId): void {
+        this.phaseEndedForTurn.delete(instanceId);
+        this.pendingEndTurnSettlements.delete(instanceId);
     }
 
     private mekAutomation(): DirectMekAutomationService | null {

@@ -66,6 +66,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ClassicUnitViewModeService } from '../../services/classic-unit-view-mode.service';
+import { CBTAutomationToastService } from '../../services/cbt-automation-toast.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
 import {
@@ -76,7 +77,6 @@ import { EquipmentDialogRuntimeController } from '../equipment-dialog/equipment-
 import { WeaponTargetsOverlayController } from '../equipment-dialog/weapon-targets-overlay.controller';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import type { TooltipLine } from '../tooltip/tooltip.component';
-import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary-panel.component';
 import { composeMekPsrDisplayModifiers } from '../page-viewer/overlay/page-turn-summary.util';
 import { PageViewerStateService } from '../page-viewer/internal/page-viewer-state.service';
 import { PageViewerMekInteractionService } from '../page-viewer/internal/page-viewer-mek-interaction.service';
@@ -88,6 +88,7 @@ import type { NonMekRecordSheetInteraction } from '../page-viewer/non-mek-record
 import { recordSheetCommand } from '../page-viewer/mek-record-sheet-interaction.util';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
 import type { MekLocation } from '../../models/entity/types';
+import { TacticalTurnTrackerComponent } from './tactical-turn-tracker.component';
 
 interface MekCriticalGroup {
     readonly code: MekLocation;
@@ -141,7 +142,7 @@ const CREW_POSITION_LABELS = Object.freeze(['Pilot', 'Gunner', 'Officer'] as con
         PageViewerMekInteractionService,
         PageViewerNonMekRuntimeService,
     ],
-    imports: [PageTurnSummaryPanelComponent, UnitIconComponent, TooltipDirective],
+    imports: [TacticalTurnTrackerComponent, UnitIconComponent, TooltipDirective],
     templateUrl: './tactical-view.component.html',
     styleUrl: './tactical-view.component.scss',
 })
@@ -159,6 +160,8 @@ export class TacticalViewComponent {
     private readonly overlay = inject(Overlay);
     private readonly overlayManager = inject(OverlayManagerService);
     private readonly unitViewMode = inject(ClassicUnitViewModeService);
+    private readonly automationToasts = inject(CBTAutomationToastService);
+    private readonly automationToastVisibilityOwner = {};
     private readonly mekInteractions = inject(PageViewerMekInteractionService);
     private readonly nonMekInteractions = inject(PageViewerNonMekRuntimeService);
     private readonly targetsOverlay = new WeaponTargetsOverlayController({
@@ -315,6 +318,16 @@ export class TacticalViewComponent {
     });
 
     constructor() {
+        effect(() => {
+            const member = this.member();
+            this.automationToasts.setVisibleUnitIds(
+                this.automationToastVisibilityOwner,
+                member ? [member.id] : [],
+            );
+        });
+        this.destroyRef.onDestroy(() => this.automationToasts.clearVisibleUnitIds(
+            this.automationToastVisibilityOwner,
+        ));
         effect(onCleanup => {
             const member = this.member();
             this.overlayManager.closeManagedOverlay('tactical-targets');

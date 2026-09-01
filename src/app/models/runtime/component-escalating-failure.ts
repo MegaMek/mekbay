@@ -47,8 +47,6 @@ import {
 } from './component-state-change';
 import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
 import {
-    createCommandId,
-    type CommandId,
     type ComponentRuntimeState,
     type EscalatingFailureSequence,
 } from './runtime-state';
@@ -277,12 +275,9 @@ export function selectComponentEscalatingFailureSequence(
     runtime: CBTUnitInstance,
     definition: ComponentEscalatingFailureDefinition,
     index: EscalatingFailureSequenceIndex,
-    commandId: () => CommandId = createCommandId,
 ): ComponentStateChangeResult {
     return componentStateChangeFromReduction(runtime.dispatch({
         type: 'edit-escalating-failure',
-        commandId: commandId(),
-        expectedRevision: runtime.revision(),
         componentId: definition.componentId,
         edit: { kind: 'select-sequence', index },
     }));
@@ -292,12 +287,9 @@ export function setComponentEscalatingFailureStatus(
     runtime: CBTUnitInstance,
     definition: ComponentEscalatingFailureDefinition,
     status: 'available' | 'disabled',
-    commandId: () => CommandId = createCommandId,
 ): ComponentStateChangeResult {
     return componentStateChangeFromReduction(runtime.dispatch({
         type: 'edit-escalating-failure',
-        commandId: commandId(),
-        expectedRevision: runtime.revision(),
         componentId: definition.componentId,
         edit: { kind: 'set-status', status },
     }));

@@ -13,7 +13,6 @@ import {
     type EquipmentInteractionCommandContext,
     type EquipmentInteractionInput,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 
@@ -138,13 +137,11 @@ export class MachineGunArrayHandler extends EquipmentInteractionHandler {
         if (choice.value !== next) return false;
         const result = input.runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: input.runtime.revision(),
             componentId: input.componentId,
             mode: next,
         });
         if (!result.accepted) return false;
-        if (!result.idempotent) {
+        if (result.changed) {
             context.toastService.showToast(
                 `${displayName(input)} is ${stateVerb(next)}`,
                 'info',

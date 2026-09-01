@@ -3,6 +3,7 @@
 
 import type { SavedEntityIdentity } from '../persisted-unit-state';
 import { jsonValuesEqual } from '../../utils/json-value.util';
+import { compareText } from '../../utils/string.util';
 import {
     asSavedTargetRef,
     CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
@@ -298,10 +299,6 @@ function compareIgnoredDecision(
 ): number {
     return compareText(left.recoveryId, right.recoveryId)
         || left.algorithmVersion - right.algorithmVersion;
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function cloneFrozen<T>(value: T): T {

@@ -126,7 +126,7 @@ async function readyCloneForce(): Promise<{
     readonly createTargetForce: () => Promise<CBTForce>;
     readonly reload: (record: SerializedClassicForce) => Promise<CBTForce>;
 }> {
-    const fixture = createDirectMekRuntimeFixture();
+    const fixture = createDirectC3MasterRuntimeFixture();
     const factory = new ReadyMekUnitFactory({
         initializeOptions: {
             initializerRevision: 1,
@@ -157,7 +157,7 @@ async function readyCloneForce(): Promise<{
     if (!damaged.accepted) throw new Error(`Ready clone fixture damage failed: ${damaged.reason}`);
     const firstUnit = first.serialize();
     const secondUnit = second.serialize();
-    const componentId = [...fixture.index.components.keys()][0]!;
+    const componentId = fixture.equipmentComponent('Test C3 Master').id;
     const forceId = asForceId('force:ready-clone');
     const cbt: SerializedCBTForceV2 = {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -223,7 +223,9 @@ async function readyCloneForce(): Promise<{
     const localInjector = {
         get: (token: unknown) => token === ReadyMekUnitService
             ? readyMeks
-            : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
+            : token === ToastService
+                ? jasmine.createSpyObj<ToastService>('ToastService', ['showToast'])
+                : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
     } as unknown as Injector;
     const record: SerializedClassicForce = {
         version: 2,

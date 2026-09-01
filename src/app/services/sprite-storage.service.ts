@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { Injectable, inject, signal } from '@angular/core';
+import { isPlainRecord } from '../utils/json-value.util';
 import { LoggerService } from './logger.service';
 import {
     RepositoryAssetManifestService,
@@ -1164,10 +1165,4 @@ function isPositiveInteger(value: unknown): value is number {
 
 function isNonNegativeInteger(value: unknown): value is number {
     return typeof value === 'number' && Number.isInteger(value) && value >= 0;
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
 }

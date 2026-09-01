@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
 import { UNIT_SUMMARY_VERSION, type UnitSummary } from '../../models/unit-summary.model';
 import {
     asCatalogActivationId,
@@ -89,8 +90,4 @@ export function buildCoreCatalogGeneration(input: {
         ].join(':')),
         summaries: prepareUnitSummaryArray(input.units),
     });
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }

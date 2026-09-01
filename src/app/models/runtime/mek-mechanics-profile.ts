@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
+import { isPlainRecord } from '../../utils/json-value.util';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { c3EquipmentTraits, type C3EquipmentTraits } from '../c3-network.model';
 import { COCKPIT_DATA } from '../entity/components/cockpit-data';
@@ -1072,14 +1074,4 @@ function compareProfileBlockers(
 
 function hasOwn(value: object, key: PropertyKey): boolean {
     return Object.prototype.hasOwnProperty.call(value, key);
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }

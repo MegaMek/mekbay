@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { compareText } from './string.util';
 import type { EntityType } from '../models/entity/types';
 import type { UnitSummary } from '../models/unit-summary.model';
 
@@ -97,7 +98,7 @@ export function parseFluffImageCatalog(
     return path;
   });
 
-  return Object.freeze(paths.sort(compareCodePoints));
+  return Object.freeze(paths.sort(compareText));
 }
 
 export function buildFluffImageIndex(paths: readonly FluffImagePath[]): FluffImageIndex {
@@ -108,7 +109,7 @@ export function buildFluffImageIndex(paths: readonly FluffImagePath[]): FluffIma
     if (exact.has(folded)) throw new Error(`Duplicate/colliding fluff image path: ${path}`);
     exact.set(folded, validated);
   }
-  const canonicalPaths = Object.freeze([...exact.values()].sort(compareCodePoints));
+  const canonicalPaths = Object.freeze([...exact.values()].sort(compareText));
   return Object.freeze({
     paths: canonicalPaths,
     find: (path: string): FluffImagePath | undefined => exact.get(path.toLowerCase()),
@@ -258,10 +259,6 @@ interface NameCandidate {
 
 function sanitizeName(value: string): string {
   return value.replace(/["/]/gu, '');
-}
-
-function compareCodePoints(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function assertNever(value: never): never {

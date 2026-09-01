@@ -29,7 +29,6 @@ import {
     type EquipmentInteractionInput,
     type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 import { hasWeaponTrait } from '../weapon-traits-kernel';
 import { isWeaponEnhancementEquipment } from '../weapon-enhancement.model';
@@ -216,8 +215,6 @@ export class ApolloHandler extends EquipmentInteractionHandler {
         if (componentApolloMode(runtime.query(), definition) === choice.value) return true;
         return runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: runtime.revision(),
             componentId: definition.parent.componentId,
             mode: choice.value,
         }).accepted;

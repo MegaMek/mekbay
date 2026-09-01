@@ -9,7 +9,6 @@ import {
     selectComponentEscalatingFailureSequence,
 } from '../models/runtime/component-escalating-failure';
 import { asComponentId } from '../models/entity/entity-identifiers';
-import { asCommandId } from '../models/runtime/runtime-state';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { CBTRuleset } from '../models/cbt-ruleset.model';
 import {
@@ -80,8 +79,8 @@ describe('MascHandler direct V2 runtime', () => {
         const active = directMascSetup('core-2026');
         expect(selectComponentEscalatingFailureSequence(active.runtime, active.definition, 0).accepted).toBeTrue();
         expect(active.runtime.dispatch({
-            type: 'end-turn', commandId: asCommandId('masc:end-active'),
-            expectedRevision: active.runtime.revision(), policy: 'automatic',
+            type: 'end-turn', 
+            policy: 'automatic',
         }).accepted).toBeTrue();
         expect(componentEscalatingFailureFacts(active.runtime, active.definition))
             .toEqual(jasmine.objectContaining({ sequence: 1, active: false }));
@@ -92,8 +91,8 @@ describe('MascHandler direct V2 runtime', () => {
         expect(componentEscalatingFailureFacts(inactive.runtime, inactive.definition))
             .toEqual(jasmine.objectContaining({ sequence: 1, active: false }));
         expect(inactive.runtime.dispatch({
-            type: 'end-turn', commandId: asCommandId('masc:end-inactive'),
-            expectedRevision: inactive.runtime.revision(), policy: 'automatic',
+            type: 'end-turn', 
+            policy: 'automatic',
         }).accepted).toBeTrue();
         expect(componentEscalatingFailureFacts(inactive.runtime, inactive.definition))
             .toEqual(jasmine.objectContaining({ sequence: 0, active: false }));

@@ -217,8 +217,6 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
         if (runtime.query().componentMode(definition.laser.componentId) === choice.value) return true;
         return runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: runtime.revision(),
             componentId: definition.laser.componentId,
             mode: choice.value,
         }).accepted;

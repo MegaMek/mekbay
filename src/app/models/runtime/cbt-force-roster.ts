@@ -7,8 +7,6 @@ export const CBT_FORCE_ROSTER_SCHEMA_VERSION = 1 as const;
 export const CBT_FORCE_UNASSIGNED_GROUP_ID = 'cbt:unassigned' as const;
 export const MAX_CBT_FORCE_ROSTER_METADATA_LENGTH = 512;
 
-export type CBTForceRosterMemberKind = 'ready' | 'deferred';
-
 export type CBTForceRosterValidationCode = 'ROSTER_COMMANDER_CONFLICT';
 
 /** A roster cannot contain multiple commanders in the same group. */
@@ -25,13 +23,11 @@ export class CBTForceRosterValidationError extends Error {
 
 export interface CBTForceRosterUnitBinding {
     readonly instanceId: UnitInstanceId;
-    readonly kind: CBTForceRosterMemberKind;
     readonly commander?: true;
 }
 
 export interface SerializedCBTForceRosterMemberV1 {
     readonly instanceId: UnitInstanceId;
-    readonly kind: CBTForceRosterMemberKind;
     readonly order: number;
     /** Sparse mutable organizational fact; false is represented by absence. */
     readonly commander?: true;
@@ -57,7 +53,6 @@ export interface SerializedCBTForceRosterV1 {
 
 export interface CBTForceRosterMemberRow {
     readonly instanceId: UnitInstanceId;
-    readonly kind: CBTForceRosterMemberKind;
     readonly groupId: string;
     readonly groupOrder: number;
     readonly memberOrder: number;
@@ -154,7 +149,6 @@ export function queryCBTForceRoster(view: CBTForceRosterEnvelopeView): CBTForceR
     const groups = view.roster.groups.map(group => {
         const members = group.members.map(member => Object.freeze({
             instanceId: member.instanceId,
-            kind: member.kind,
             groupId: group.groupId,
             groupOrder: group.order,
             memberOrder: member.order,
@@ -188,7 +182,6 @@ function freezeMember(
 ): SerializedCBTForceRosterMemberV1 {
     return Object.freeze({
         instanceId: binding.instanceId,
-        kind: binding.kind,
         order,
         ...(binding.commander === undefined ? {} : { commander: binding.commander }),
     });

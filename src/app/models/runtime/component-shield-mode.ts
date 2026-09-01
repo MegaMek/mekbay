@@ -209,8 +209,6 @@ export class ShieldModeHandler extends EquipmentInteractionHandler {
         if (input.runtime.query().componentMode(input.componentId) === choice.value) return true;
         return input.runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: input.runtime.revision(),
             componentId: input.componentId,
             mode: choice.value,
         }).accepted;

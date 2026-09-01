@@ -70,6 +70,53 @@ describe('attacker-local targeting state', () => {
         expect(typeof (state.targets as unknown as { set?: unknown }).set).toBe('undefined');
     });
 
+    it('updates a weapon bay selection and ammunition atomically', () => {
+        let state = apply(createPristineAttackerTargetingState(), command({
+            kind: 'set-component-ammos',
+            updates: [
+                {
+                    componentId: WEAPON_ALPHA,
+                    ammo: { munitionKey: 'Precision', preferredSourceId: SOURCE_ALPHA_PRECISION },
+                },
+                {
+                    componentId: WEAPON_BETA,
+                    ammo: { munitionKey: 'Standard', preferredSourceId: SOURCE_BETA },
+                },
+            ],
+        }));
+        state = apply(state, command({
+            kind: 'set-component-selections',
+            componentIds: [WEAPON_ALPHA, WEAPON_BETA],
+            selection: { kind: 'target', targetId: TARGET_ALPHA },
+        }));
+
+        expect(state.components.get(WEAPON_ALPHA)).toEqual({
+            selection: { kind: 'target', targetId: TARGET_ALPHA },
+            ammo: { munitionKey: 'Precision', preferredSourceId: SOURCE_ALPHA_PRECISION },
+        });
+        expect(state.components.get(WEAPON_BETA)).toEqual({
+            selection: { kind: 'target', targetId: TARGET_ALPHA },
+            ammo: { munitionKey: 'Standard', preferredSourceId: SOURCE_BETA },
+        });
+    });
+
+    it('rejects an invalid member without partially updating the bay', () => {
+        const state = createPristineAttackerTargetingState();
+        const result = reduceAttackerTargetingCommand(state, context(), command({
+            kind: 'set-component-selections',
+            componentIds: [WEAPON_ALPHA, PHYSICAL_COMPONENT],
+            selection: { kind: 'selected' },
+        }));
+
+        expect(result).toEqual(jasmine.objectContaining({
+            accepted: false,
+            changed: false,
+            reason: 'INVALID_COMPONENT',
+            state,
+        }));
+        expect(state.components.size).toBe(0);
+    });
+
     it('round-trips the exact wire state and rejects malformed or duplicate entries', () => {
         const state = apply(createPristineAttackerTargetingState(), command({
             kind: 'set-component-selection',

@@ -19,7 +19,6 @@ import {
     equipmentWeaponToHitModifier,
     projectMekEquipmentComponents,
 } from '../models/runtime/equipment-panel';
-import { asCommandId } from '../models/runtime/runtime-state';
 import { createDirectBombastRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { CBTUnitInstance } from '../models/runtime/unit-instance';
 import {
@@ -104,8 +103,8 @@ describe('BombastLaserHandler direct V2 runtime', () => {
 
         const fired = setup.runtime.dispatch({
             type: 'fire-weapons',
-            commandId: asCommandId('bombast:fire'),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             selections: [{ weaponId: setup.component.id }],
             heatPolicy: 'automatic',
         });
@@ -212,8 +211,8 @@ function canFire(setup: DirectBombastSetup): boolean {
 function endTurn(runtime: CBTUnitInstance, commandId: string): void {
     expect(runtime.dispatch({
         type: 'end-turn',
-        commandId: asCommandId(commandId),
-        expectedRevision: runtime.revision(),
+        
+        
         policy: 'automatic',
     }).accepted).toBeTrue();
 }

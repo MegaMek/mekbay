@@ -240,10 +240,38 @@ const turnSummary = source(join(
     'overlay',
     'page-turn-summary-panel.component.ts',
 ));
+const turnTrackerControls = source(join(
+    app,
+    'components',
+    'page-viewer',
+    'overlay',
+    'turn-tracker-controls.ts',
+));
+const turnSummaryTemplate = source(join(
+    app,
+    'components',
+    'page-viewer',
+    'overlay',
+    'page-turn-summary-panel.component.html',
+));
+const tacticalView = source(join(app, 'components', 'tactical-view', 'tactical-view.component.ts'));
+const tacticalViewTemplate = source(join(app, 'components', 'tactical-view', 'tactical-view.component.html'));
+const tacticalTurnTracker = source(join(
+    app,
+    'components',
+    'tactical-view',
+    'tactical-turn-tracker.component.ts',
+));
+const tacticalTurnTrackerTemplate = source(join(
+    app,
+    'components',
+    'tactical-view',
+    'tactical-turn-tracker.component.html',
+));
 const crewTransfer = source(join(app, 'services', 'force-crew-transfer.service.ts'));
 assert.doesNotMatch(motiveModes, /unit-summary\.model|\bUnitSummary\b/u);
 assert.doesNotMatch(
-    [equipmentRuntimeController, turnSummary].join('\n'),
+    [equipmentRuntimeController, turnTrackerControls].join('\n'),
     /(?:canChangeAirborneGround|getMotiveModeLabel|getMotiveModesByUnit)\([^\n]*\.summary/u,
     'admitted-unit movement choices and labels must use loaded Entity facts',
 );
@@ -252,6 +280,19 @@ assert.doesNotMatch(
     /getEffectivePilotingSkill|\.summary/u,
     'Classic crew transfer must derive fixed skill rules from the loaded Entity',
 );
+assert.doesNotMatch(
+    turnSummaryTemplate,
+    /move-allowance|moveModeAllowance/u,
+    'the record-sheet turn summary must not present Tactical View movement allowances',
+);
+assert.match(tacticalTurnTrackerTemplate, /move-allowance/u);
+assert.match(tacticalTurnTrackerTemplate, /moveModeAllowance\(mode\)/u);
+assert.match(turnTrackerControls, /export abstract class TurnTrackerControls/u);
+assert.match(turnSummary, /PageTurnSummaryPanelComponent extends TurnTrackerControls/u);
+assert.match(tacticalTurnTracker, /TacticalTurnTrackerComponent extends TurnTrackerControls/u);
+assert.doesNotMatch(tacticalView, /PageTurnSummaryPanelComponent/u);
+assert.doesNotMatch(tacticalViewTemplate, /page-turn-summary-panel|\[embedded\]/u);
+assert.match(tacticalViewTemplate, /<tactical-turn-tracker/u);
 
 const commandSession = source(join(app, 'models', 'runtime', 'runtime-command-session.ts'));
 assert.match(commandSession, /interface RuntimeCommandCheckpoint\s*\{\s*readonly units:/u);

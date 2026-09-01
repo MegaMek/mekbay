@@ -10,7 +10,6 @@ import {
     mekGaussPowerDefinition,
 } from '../models/runtime/mek-gauss-power';
 import { projectMekEquipmentPanel } from '../models/runtime/equipment-panel';
-import { asCommandId } from '../models/runtime/runtime-state';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { CBTUnitInstance } from '../models/runtime/unit-instance';
 import {
@@ -48,8 +47,8 @@ describe('direct V2 Gauss power handler', () => {
         expect(setup.weaponSelectable()).toBeFalse();
         expect(setup.runtime.dispatch({
             type: 'fire-weapons',
-            commandId: asCommandId('gauss:fire-powered-down'),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             selections: [{ weaponId: setup.component.id }],
             heatPolicy: 'automatic',
         })).toEqual(jasmine.objectContaining({ accepted: false, reason: 'INVALID_TARGET' }));
@@ -92,8 +91,8 @@ describe('direct V2 Gauss power handler', () => {
         const setup = directGaussSetup();
         expect(setup.runtime.dispatch({
             type: 'set-component-mode',
-            commandId: asCommandId('gauss:hag-flak'),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             componentId: setup.component.id,
             mode: HAG_FLAK_MODE,
         }).accepted).toBeTrue();
@@ -104,8 +103,8 @@ describe('direct V2 Gauss power handler', () => {
 
         expect(setup.runtime.dispatch({
             type: 'set-component-mode',
-            commandId: asCommandId('gauss:hag-standard'),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             componentId: setup.component.id,
             mode: HAG_STANDARD_MODE,
         }).accepted).toBeTrue();
@@ -157,8 +156,8 @@ function directGaussSetup() {
 function endTurn(runtime: CBTUnitInstance, commandId: string): void {
     expect(runtime.dispatch({
         type: 'end-turn',
-        commandId: asCommandId(commandId),
-        expectedRevision: runtime.revision(),
+        
+        
         policy: 'automatic',
     }).accepted).toBeTrue();
 }

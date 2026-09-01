@@ -35,8 +35,6 @@ import {
 import { inspectSerializedCBTForceV2 } from '../models/runtime/force-persistence-boundary';
 import {
     convertPersistedForceV1,
-    convertPersistedMekUnitV1,
-    convertPersistedNonMekUnitV1,
     type PersistedForceV1ConversionWarning,
     type PersistedForceV1ConversionOptions,
 } from '../models/runtime/legacy-force-v1-converter';
@@ -261,39 +259,19 @@ export class ForcePersistenceService {
             );
             if (!summary) return undefined;
             if (summary.entityType === 'Mek') {
-                const ready = await this.injector.get(ReadyMekUnitService).loadReadyMek({
+                return this.injector.get(ReadyMekUnitService).loadReadyMek({
                     identity: identity.savedIdentity,
                     instanceId: request.instanceId,
                     deployment: request.deployment,
                     scenario: request.scenario,
                 });
-                try {
-                    return await convertPersistedMekUnitV1(request.source, ready);
-                } catch (error) {
-                    warn({
-                        kind: 'state-reset',
-                        unit: summary.name,
-                        message: `Unit "${summary.name}" loaded without its saved state: ${error instanceof Error ? error.message : String(error)}`,
-                    });
-                    return ready.serialize();
-                }
             }
-            const ready = await this.injector.get(ReadyNonMekUnitService).loadReadyNonMekUnit({
+            return this.injector.get(ReadyNonMekUnitService).loadReadyNonMekUnit({
                 identity: identity.savedIdentity,
                 instanceId: request.instanceId,
                 deployment: request.deployment,
                 scenario: request.scenario,
             });
-            try {
-                return convertPersistedNonMekUnitV1(request.source, ready);
-            } catch (error) {
-                warn({
-                    kind: 'state-reset',
-                    unit: summary.name,
-                    message: `Unit "${summary.name}" loaded without its saved state: ${error instanceof Error ? error.message : String(error)}`,
-                });
-                return ready.serialize();
-            }
         };
 
         const converted = await convertPersistedForceV1(raw, {

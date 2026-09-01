@@ -5,7 +5,6 @@ import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.
 import { EQUIPMENT_DISABLED_CHOICE_VALUE } from '../models/component-control-choice';
 import { createComponentJamDefinition } from '../models/runtime/component-jam';
 import { rapidFireAutocannonSupportsJamming } from '../models/runtime/component-rapid-fire-autocannon';
-import { asCommandId } from '../models/runtime/runtime-state';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import {
     createHandlerCommandContext,
@@ -82,8 +81,8 @@ describe('direct UAC jamming handler', () => {
         expect(handler.applicableToComponentJam(definition)).toBeFalse();
         expect(runtime.dispatch({
             type: 'set-component-jammed',
-            commandId: asCommandId('core:uac-jam'),
-            expectedRevision: runtime.revision(),
+            
+            
             componentId: component.id,
             jammed: true,
         })).toEqual(jasmine.objectContaining({ accepted: false, reason: 'INVALID_TARGET' }));

@@ -31,8 +31,6 @@ import {
     type MekRuntimeIndex,
 } from './mek-runtime-index';
 import {
-    createCommandId,
-    type CommandId,
     type PpcCapacitorChargeState,
     type PpcCapacitorRuntimeState,
 } from './runtime-state';
@@ -209,12 +207,9 @@ export function setComponentPpcCapacitorCharge(
     runtime: CBTUnitInstance,
     definition: ComponentPpcCapacitorDefinition,
     state: typeof PPC_CAPACITOR_CHARGING_STATE | null,
-    commandId: () => CommandId = createCommandId,
 ): ComponentStateChangeResult {
     return componentStateChangeFromReduction(runtime.dispatch({
         type: 'set-ppc-capacitor-charge',
-        commandId: commandId(),
-        expectedRevision: runtime.revision(),
         capacitorId: definition.capacitor.componentId,
         weaponId: definition.weapon.componentId,
         state,

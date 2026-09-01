@@ -2,72 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    buildCBTForceOwnedRosterSnapshot,
     prepareCBTForceRosterMutationPlan,
     type CBTForceRosterCommand,
 } from './cbt-force-roster-owner';
 import type { SerializedCBTForceRosterV1 } from './cbt-force-roster';
-import {
-    asStateRevision,
-    asUnitInstanceId,
-} from './runtime-state';
+import { asUnitInstanceId } from './runtime-state';
 
-const REVISION = asStateRevision(7);
 const A = asUnitInstanceId('unit:a');
 const B = asUnitInstanceId('unit:b');
 const C = asUnitInstanceId('unit:c');
 
 describe('CBT force canonical roster owner boundary', () => {
-    it('keeps detached current owner facts separate from frozen structural membership', () => {
-        const roster = sourceRoster();
-        const result = buildCBTForceOwnedRosterSnapshot({
-            forceId: 'force:owner',
-            forceRevision: REVISION,
-            roster,
-            readOnly: false,
-            ownerFacts: [
-                owner(A, 'deferred', 'Atlas AS7-D', 1897, 'current-skilled'),
-                owner(B, 'ready', 'Marauder MAD-3R', 1363, 'pristine'),
-                owner(C, 'ready', 'Locust LCT-1V', null, 'unavailable'),
-            ],
-        });
-
-        expect(result.forceRevision).toBe(REVISION);
-        expect(result.rosterRevision).toBe(REVISION);
-        expect(result.structural.groups[0].name).toBe('Alpha');
-        expect(result.structural.members.map(row => row.instanceId)).toEqual([A, B, C]);
-        expect(result.owners.map(row => [row.unitLabel, row.battleValue])).toEqual([
-            ['Atlas AS7-D', 1897],
-            ['Marauder MAD-3R', 1363],
-            ['Locust LCT-1V', null],
-        ]);
-        expect(JSON.stringify(result.structural)).not.toContain('Atlas AS7-D');
-        expect(Object.isFrozen(result)).toBeTrue();
-        expect(Object.isFrozen(result.structural.groups[0].members[0])).toBeTrue();
-        expect(Object.isFrozen(result.owners[0])).toBeTrue();
-    });
-
-    it('rejects duplicate, missing, extra, and mismatched current owners', () => {
-        const base = {
-            forceId: 'force:owner', forceRevision: REVISION, roster: sourceRoster(), readOnly: false,
-        };
-        const a = owner(A, 'deferred', 'A', 1, 'current-skilled');
-        const b = owner(B, 'ready', 'B', 2, 'pristine');
-        const c = owner(C, 'ready', 'C', null, 'unavailable');
-        expect(() => buildCBTForceOwnedRosterSnapshot({ ...base, ownerFacts: [a, a, b, c] }))
-            .toThrowError(/Duplicate current roster owner/u);
-        expect(() => buildCBTForceOwnedRosterSnapshot({ ...base, ownerFacts: [a, b] }))
-            .toThrowError(/has no current owner fact/u);
-        expect(() => buildCBTForceOwnedRosterSnapshot({
-            ...base,
-            ownerFacts: [a, b, c, owner(asUnitInstanceId('unit:extra'), 'ready', 'Extra', 1, 'pristine')],
-        })).toThrowError(/absent from the canonical roster/u);
-        expect(() => buildCBTForceOwnedRosterSnapshot({
-            ...base,
-            ownerFacts: [owner(A, 'ready', 'A', 1, 'pristine'), b, c],
-        })).toThrowError(/disagrees with its current kind/u);
-    });
-
     it('prepares exact create/update/delete group rosters without touching the source', () => {
         const original = sourceRoster();
         const created = ready(command('create-group', {
@@ -164,14 +109,16 @@ describe('CBT force canonical roster owner boundary', () => {
         expectSealRosterInvariants(removed.nextRoster);
     });
 
-    it('rejects plans that violate unassigned-kind or destination commander invariants', () => {
+    it('allows unassigned moves and rejects destination commander conflicts', () => {
         const roster = sourceRoster();
-        expect(reject(command('move-member', {
+        const movedToUnassigned = ready(command('move-member', {
             instanceId: A, targetGroupId: 'cbt:unassigned', atIndex: 1,
-        }), roster)).toBe('INVALID_UNASSIGNED_GROUP_OPERATION');
-        expect(reject(command('delete-group', {
+        }), roster).nextRoster;
+        expect(movedToUnassigned.groups.at(-1)?.members.map(member => member.instanceId)).toEqual([C, A]);
+        const relocatedToUnassigned = ready(command('delete-group', {
             groupId: 'group:alpha', relocateMembersToGroupId: 'cbt:unassigned', atMemberIndex: 0,
-        }), roster)).toBe('INVALID_UNASSIGNED_GROUP_OPERATION');
+        }), roster).nextRoster;
+        expect(relocatedToUnassigned.groups.at(-1)?.members.map(member => member.instanceId)).toEqual([A, C]);
 
         const targetCommander = ready(command('set-commander', {
             instanceId: B, commander: true,
@@ -272,41 +219,23 @@ function sourceRoster(): SerializedCBTForceRosterV1 {
             Object.freeze({
                 groupId: 'group:alpha', order: 0, name: 'Alpha', formationLock: true as const,
                 members: Object.freeze([
-                    Object.freeze({ instanceId: A, kind: 'deferred' as const, order: 0, commander: true as const }),
+                    Object.freeze({ instanceId: A, order: 0, commander: true as const }),
                 ]),
             }),
             Object.freeze({
                 groupId: 'group:beta', order: 1,
                 members: Object.freeze([
-                    Object.freeze({ instanceId: B, kind: 'ready' as const, order: 0 }),
+                    Object.freeze({ instanceId: B, order: 0 }),
                 ]),
             }),
             Object.freeze({
                 groupId: 'cbt:unassigned', order: 2,
                 members: Object.freeze([
-                    Object.freeze({ instanceId: C, kind: 'ready' as const, order: 0 }),
+                    Object.freeze({ instanceId: C, order: 0 }),
                 ]),
             }),
         ]),
     });
-}
-
-function owner(
-    instanceId: ReturnType<typeof asUnitInstanceId>,
-    kind: 'deferred' | 'ready',
-    unitLabel: string,
-    battleValue: number | null,
-    battleValueBasis: 'current-skilled' | 'pristine' | 'unavailable',
-) {
-    return {
-        instanceId,
-        kind,
-        unitLabel,
-        availability: battleValue === null ? 'deferred' as const : 'ready' as const,
-        source: kind === 'deferred' ? 'envelope' as const : 'runtime' as const,
-        battleValue,
-        battleValueBasis,
-    };
 }
 
 function command<K extends CBTForceRosterCommand['kind']>(
@@ -336,10 +265,6 @@ function reject(commandValue: CBTForceRosterCommand, roster: SerializedCBTForceR
 }
 
 function expectSealRosterInvariants(roster: SerializedCBTForceRosterV1): void {
-    const unassigned = roster.groups.find(group => group.groupId === 'cbt:unassigned');
-    expect(unassigned?.members.every(member => member.kind === 'ready') ?? true)
-        .withContext('the reserved unassigned group may contain only ready members')
-        .toBeTrue();
     for (const group of roster.groups) {
         expect(group.members.filter(member => member.commander === true).length)
             .withContext(`group ${group.groupId} may have at most one commander`)

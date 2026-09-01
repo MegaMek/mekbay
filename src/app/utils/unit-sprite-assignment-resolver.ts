@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { UnitProviderId } from '../services/unit-catalog/unit-catalog.types';
+import { isPlainRecord } from './json-value.util';
 import { sha1Base64Url } from './sha1.util';
 
 declare const spriteAssignmentBrand: unique symbol;
@@ -158,12 +159,6 @@ function assignmentMapFromUnknown(
     output[key] = path;
   }
   return output;
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
 }
 
 function freezeAssignmentMap(

@@ -13,7 +13,6 @@ import {
     type EquipmentInteractionCommandContext,
     type EquipmentInteractionInput,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 
 export const HPG_IDLE_MODE = 'idle';
 export const HPG_CHARGING_MODE = 'charging';
@@ -225,13 +224,11 @@ export class MobileHpgHandler extends EquipmentInteractionHandler {
         }
         const result = input.runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: input.runtime.revision(),
             componentId: input.componentId,
             mode: choice.value,
         });
         if (!result.accepted) return false;
-        if (!result.idempotent) {
+        if (result.changed) {
             context.toastService.showToast(
                 `${equipment.shortName || equipment.name}: ${offered.label}`,
                 'info',

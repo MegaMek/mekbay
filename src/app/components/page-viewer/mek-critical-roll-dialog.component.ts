@@ -12,7 +12,6 @@ import type {
     MekCriticalRollPlanV2,
     MekCriticalRollProfileV2,
 } from '../../models/runtime/mek-critical-hit-v2';
-import { createCommandId } from '../../models/runtime/runtime-state';
 import { ToastService } from '../../services/toast.service';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
@@ -166,8 +165,6 @@ export class MekCriticalRollDialogComponent {
         this.applying.set(true);
         const result = await this.data.member.force.dispatchMekUnitCommand(this.data.member.id, {
             type: 'apply-mek-critical-roll',
-            commandId: createCommandId(),
-            expectedRevision: unit.query.stateRevision,
             locationId: this.data.locationId,
             results: event.results,
             target: this.data.target,
@@ -175,7 +172,7 @@ export class MekCriticalRollDialogComponent {
         this.applying.set(false);
         this.refreshProfile();
         if (!result.accepted) {
-            this.toast.showToast(`Critical roll rejected: ${result.reason}`, 'error');
+            this.toast.showToast('This force is read-only.', 'error');
             return;
         }
         this.outcome.set(plan);

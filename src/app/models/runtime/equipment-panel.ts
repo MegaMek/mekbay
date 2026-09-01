@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { asComponentId, type ComponentId, type LocationId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
@@ -220,6 +221,21 @@ export interface EquipmentPanelWeaponDamage {
     readonly byRange: Readonly<Record<InventoryControlRuntimeRangeKey, string>>;
 }
 
+export interface EquipmentPanelAttackMember {
+    readonly componentId: ComponentId;
+    readonly selectable: boolean;
+    readonly selection?: AttackerSelection;
+    readonly ammoSelection?: AttackerAmmoSelection;
+    readonly ammoSources: readonly EquipmentPanelAmmoSource[];
+}
+
+/** Derived combat grouping; canonical installed components remain unchanged. */
+export interface EquipmentPanelAttackGroup {
+    readonly kind: 'weapon-bay';
+    readonly source: 'authored-bay' | 'synthetic-bay';
+    readonly members: readonly EquipmentPanelAttackMember[];
+}
+
 export interface EquipmentPanelComponent {
     readonly componentId: ComponentId;
     readonly label: string;
@@ -232,6 +248,8 @@ export interface EquipmentPanelComponent {
     readonly defaultMode?: string;
     readonly mode?: string;
     readonly jammed: boolean;
+    /** One combat attack backed by several canonical weapon mounts. */
+    readonly attack?: EquipmentPanelAttackGroup;
     /** One resolved Entity-authored bay relationship; never reconstructed by the panel. */
     readonly bay?: ComponentBayRuntimeFacts;
     readonly heatWeakened?: boolean;
@@ -1624,8 +1642,4 @@ function voidSignatureWeaponModifiers(
     return query.voidSignatureActive('preview')
         ? Object.freeze([{ label: 'Void Signature', modifier: 1 }])
         : Object.freeze([]);
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }

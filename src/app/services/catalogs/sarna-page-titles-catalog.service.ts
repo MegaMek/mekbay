@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { Injectable } from '@angular/core';
+import { isRecord } from '../../utils/json-value.util';
 
 import {
     SARNA_PAGE_TITLE_LOOKUP_TYPE_BY_UNIT_TYPE,
@@ -42,10 +43,6 @@ const NON_ALIAS_PARENTHESES = [
     'supportvehicle',
     'warship',
 ] as const;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === 'object' && !Array.isArray(value);
-}
 
 function isWrappedSarnaPageTitlesData(value: unknown): value is SarnaPageTitlesData {
     return isRecord(value) && isRecord(value['titlesByType']);

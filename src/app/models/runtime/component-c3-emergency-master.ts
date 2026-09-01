@@ -24,10 +24,8 @@ import {
 import type { CBTEncounterSnapshot, EncounterNetworkEndpoint } from './encounter-runtime';
 import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
 import {
-    createCommandId,
     type C3EmergencyMasterOperatingTurns,
     type C3EmergencyMasterRuntimeState,
-    type CommandId,
     type UnitInstanceId,
 } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
@@ -182,29 +180,27 @@ export function toggleComponentC3EmergencyMaster(
     runtime: CBTUnitInstance,
     definition: ComponentC3EmergencyMasterDefinition,
     context: ComponentC3EmergencyMasterContext,
-    commandId: () => CommandId = createCommandId,
 ): ComponentStateChangeResult {
     const facts = componentC3EmergencyMasterFacts(runtime, definition, context);
     if (facts.status === 'fried') return unchangedComponentState();
     return dispatchC3EmergencyMaster(runtime, definition, {
         kind: 'toggle-requested',
         turningOn: facts.status !== 'active' && facts.status !== 'standby',
-    }, commandId);
+    });
 }
 
 export function selectComponentC3EmergencyMasterOperatingTurns(
     runtime: CBTUnitInstance,
     definition: ComponentC3EmergencyMasterDefinition,
     turns: C3EmergencyMasterOperatingTurns,
-    commandId: () => CommandId = createCommandId,
 ): ComponentStateChangeResult {
     if (!Number.isSafeInteger(turns) || turns < 1 || turns > C3EM_FRIED_SEQUENCE_VALUE) {
-        return rejectedComponentState();
+        return unchangedComponentState();
     }
     return dispatchC3EmergencyMaster(runtime, definition, {
         kind: 'select-operating-turns',
         turns,
-    }, commandId);
+    });
 }
 
 /** Seeds turn one after the encounter coordinator promotes this endpoint. */
@@ -212,14 +208,13 @@ export function syncComponentC3EmergencyMasterEncounter(
     runtime: CBTUnitInstance,
     definition: ComponentC3EmergencyMasterDefinition,
     context: ComponentC3EmergencyMasterContext,
-    commandId: () => CommandId = createCommandId,
 ): ComponentStateChangeResult {
     const facts = componentC3EmergencyMasterFacts(runtime, definition, context);
     return facts.status === 'active' && facts.operatingTurns === 0
         ? dispatchC3EmergencyMaster(runtime, definition, {
             kind: 'ensure-active-started',
             endpointRole: 'master',
-        }, commandId)
+        })
         : unchangedComponentState();
 }
 
@@ -227,13 +222,12 @@ export function settleComponentC3EmergencyMasterEndTurn(
     runtime: CBTUnitInstance,
     definition: ComponentC3EmergencyMasterDefinition,
     context: ComponentC3EmergencyMasterContext,
-    commandId: () => CommandId = createCommandId,
 ): ComponentStateChangeResult {
     return componentC3EmergencyMasterFacts(runtime, definition, context).status === 'active'
         ? dispatchC3EmergencyMaster(runtime, definition, {
             kind: 'settle-active-end-turn',
             endpointRole: 'master',
-        }, commandId)
+        })
         : unchangedComponentState();
 }
 
@@ -245,12 +239,9 @@ function dispatchC3EmergencyMaster(
         | { readonly kind: 'select-operating-turns'; readonly turns: C3EmergencyMasterOperatingTurns }
         | { readonly kind: 'ensure-active-started'; readonly endpointRole: 'master' }
         | { readonly kind: 'settle-active-end-turn'; readonly endpointRole: 'master' },
-    commandId: () => CommandId,
 ): ComponentStateChangeResult {
     return componentStateChangeFromReduction(runtime.dispatch({
         type: 'edit-c3-emergency-master',
-        commandId: commandId(),
-        expectedRevision: runtime.revision(),
         componentId: definition.componentId,
         edit,
     }));
@@ -270,15 +261,6 @@ function validateRuntimeFacts(
         || (lifecycle.mode === undefined && lifecycle.operatingTurns === undefined)) {
         throw new Error(`Invalid C3 Emergency Master runtime facts for ${componentId}`);
     }
-}
-
-function rejectedComponentState(): ComponentStateChangeResult {
-    return Object.freeze({
-        accepted: false,
-        changed: false,
-        idempotent: false,
-        reason: 'INVALID_TARGET',
-    });
 }
 
 const C3EM_TRACK_LABELS = ['1', '2', '3', '4', '5', '6', '!!'] as const;

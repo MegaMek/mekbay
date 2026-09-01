@@ -10,7 +10,7 @@ import {
 } from '../cbt-ruleset.model';
 import type { SerializedForce } from '../force-serialization';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
-import type { DeferredUnitSource, JsonValue, SavedEntityIdentity } from '../persisted-unit-state';
+import type { JsonValue, SavedEntityIdentity } from '../persisted-unit-state';
 import {
     asSourceHash,
     asUnitProviderId,
@@ -88,6 +88,7 @@ import {
     serializeMekTurnStateV2,
     type SerializedMekTurnStateV2,
 } from './mek-turn-state-v2';
+import type { EndTurnCheckpoint } from './end-turn-checkpoint';
 import {
     ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
     deserializeAttackerTargetingState,
@@ -139,10 +140,8 @@ type CompactForce = Readonly<{
     g: readonly unknown[];
     h?: SerializedCBTForceV2['history'];
     e?: unknown;
-    x?: SerializedCBTForceV2['restoration'];
 }>;
 
-const DEFERRED = 1;
 const MEK = 'm';
 const ENTITY = 'e';
 
@@ -160,9 +159,9 @@ export function encodeForceForStorage(force: SerializedForce): StoredForceRecord
 export function decodeForceFromStorage(value: unknown): SerializedForce {
     const detached = clone(value);
     const root = record(detached, 'force');
-    if (root['version'] === 1) return detached as unknown as SerializedForce;
+    if (root['version'] === 1) return detached as SerializedForce;
     if (root['version'] !== 2) throw new Error('Unsupported force persistence version');
-    if (root['type'] !== GameSystem.CLASSIC) return detached as unknown as SerializedForce;
+    if (root['type'] !== GameSystem.CLASSIC) return detached as SerializedForce;
     const compact = record(root['cbt'], 'force.cbt');
     if ('schemaVersion' in compact || !('r' in compact) || !('u' in compact) || !('g' in compact)) {
         throw new Error('Unsupported intermediate Classic persistence shape');
@@ -208,8 +207,7 @@ function unpackClassicForce(
 function packForce(force: SerializedCBTForceV2): CompactForce {
     const historyEmpty = force.history.u.length === 0 && force.history.t.length === 0;
     const encounterEmpty = force.encounter.encounterRevision === 0
-        && force.encounter.state.facts.length === 0
-        && force.encounter.recovery === undefined;
+        && force.encounter.state.facts.length === 0;
     const ruleset = rulesetFromScenario(force.scenarioRules.values);
     return Object.freeze({
         r: force.forceRevision,
@@ -218,12 +216,11 @@ function packForce(force: SerializedCBTForceV2): CompactForce {
         g: packRoster(force.roster, force.units),
         ...(historyEmpty ? {} : { h: clone(force.history) }),
         ...(encounterEmpty ? {} : { e: packEncounter(force.encounter) }),
-        ...(force.restoration === undefined ? {} : { x: clone(force.restoration) }),
     });
 }
 
 function unpackForce(value: Record<string, unknown>, forceId: string): SerializedCBTForceV2 {
-    exactKeys(value, ['r', 's', 'u', 'g', 'h', 'e', 'x'], 'force.cbt');
+    exactKeys(value, ['r', 's', 'u', 'g', 'h', 'e'], 'force.cbt');
     const revision = asStateRevision(integer(value['r'], 'force.cbt.r'));
     const scenario = clone(value['s']) as JsonValue;
     const ruleset = rulesetFromScenario(scenario);
@@ -243,38 +240,20 @@ function unpackForce(value: Record<string, unknown>, forceId: string): Serialize
         encounter: value['e'] === undefined
             ? emptyEncounter()
             : unpackEncounter(value['e'], 'force.cbt.e'),
-        ...(value['x'] === undefined
-            ? {}
-            : { restoration: clone(value['x']) as SerializedCBTForceV2['restoration'] }),
     };
 }
 
 function packUnitEntry(entry: SerializedForceUnitEntryV2, ruleset: CBTRuleset): unknown {
-    return entry.kind === 'ready'
-        ? packUnit(entry.unit, ruleset)
-        : Object.freeze([DEFERRED, entry.instanceId, entry.stateRevision, clone(entry.source)]);
+    return packUnit(entry.unit, ruleset);
 }
 
 function unpackUnitEntry(value: unknown, ruleset: CBTRuleset, path: string): SerializedForceUnitEntryV2 {
-    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-        const unit = unpackUnit(value, ruleset, path);
-        return {
-            kind: 'ready',
-            instanceId: unit.instanceId,
-            stateRevision: unit.stateRevision,
-            unit,
-        };
-    }
-    const row = array(value, path);
-    if (row[0] === DEFERRED && row.length === 4) {
-        return {
-            kind: 'deferred',
-            instanceId: asUnitInstanceId(text(row[1], `${path}[1]`)),
-            stateRevision: asStateRevision(integer(row[2], `${path}[2]`)),
-            source: clone(row[3]) as DeferredUnitSource,
-        };
-    }
-    throw new Error(`${path} is not a compact force-unit row`);
+    const unit = unpackUnit(value, ruleset, path);
+    return {
+        instanceId: unit.instanceId,
+        stateRevision: unit.stateRevision,
+        unit,
+    };
 }
 
 function packUnit(unit: SerializedCBTUnitV2 | SerializedNonMekUnit, ruleset: CBTRuleset): unknown {
@@ -309,7 +288,13 @@ function packMekUnit(unit: SerializedCBTUnitV2, ruleset: CBTRuleset): unknown {
         s: packRows(unit.slotState, row => tuple(row.target, row.hits, row.destroyedTurn)),
         c: packRows(unit.componentState, packComponentState),
         a: packRows(unit.ammoState, row => tuple(row.target, row.shotsSpent, row.munitionOverride)),
-        w: packRows(unit.crew.positions, row => [row.target, row.wounds, row.unconscious ? 1 : 0, row.ejected ? 1 : 0]),
+        w: packRows(unit.crew.positions, row => tuple(
+            row.target,
+            row.wounds,
+            row.unconscious ? 1 : 0,
+            row.ejected ? 1 : 0,
+            row.recoveryReadyTurn,
+        )),
         h: heatIsPristine ? undefined : packHeat(unit.heat),
         rC: unit.ruleChecks.entries.length === 0 ? undefined : unit.ruleChecks.entries.map(row => [
             row.key, row.token, row.trigger, row.openedRevision, row.status,
@@ -383,6 +368,13 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
                 wounds: rowInteger(row, 1, rowPath),
                 unconscious: rowBit(row, 2, rowPath),
                 ...(rowBit(row, 3, rowPath) ? { ejected: true as const } : {}),
+                ...(row[4] === undefined
+                    ? {}
+                    : {
+                        recoveryReadyTurn: row[4] === null
+                            ? null
+                            : rowInteger(row, 4, rowPath),
+                    }),
             })),
         },
         heat: value['h'] === undefined
@@ -443,6 +435,7 @@ function packNonMekUnit(unit: SerializedNonMekUnit, ruleset: CBTRuleset): unknow
             row.positionId,
             row.wounds,
             packedNonMekCrewState(row),
+            row.recoveryReadyTurn,
         )),
         o: unit.conditions?.length ? unit.conditions : undefined,
         h: packNonMekHeat(unit.heat),
@@ -585,32 +578,63 @@ function packNonMekTurn(value: SerializedNonMekUnit['turn']): unknown {
         value.weaponsHeat ?? (value.cover !== undefined || value.spotting ? 0 : undefined),
         value.cover,
         value.spotting ? 1 : undefined,
+        packEndTurnCheckpoint(value.endTurnCheckpoint),
+        value.controlRecovery === undefined
+            ? undefined
+            : [
+                value.controlRecovery.readyTurn,
+                value.controlRecovery.cause === 'controller-loss' ? 1 : 0,
+            ],
+        value.phaseStateChanged ? 1 : undefined,
     );
 }
 
 function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedNonMekUnit['turn']> {
     const turn = array(value, path);
-    if (turn.length < 1 || turn.length > 6) throw new Error(`${path} is not a compact non-Mek turn`);
+    if (turn.length < 1 || turn.length > 9) throw new Error(`${path} is not a compact non-Mek turn`);
     const turnCounter = rowInteger(turn, 0, path);
-    const airborneCode = turn[1] === undefined ? 0 : rowInteger(turn, 1, path);
+    const airborneCode = optionalInteger(turn[1], `${path}[1]`) ?? 0;
     if (airborneCode !== -1 && airborneCode !== 0 && airborneCode !== 1) {
         throw new Error(`${path}[1] is not a non-Mek airborne state`);
     }
-    const movement = turn[2] === undefined
+    const movement = turn[2] === undefined || turn[2] === null
         ? undefined
         : unpackNonMekMovement(turn[2], `${path}[2]`);
-    const weaponsHeat = turn[3] === undefined ? 0 : rowInteger(turn, 3, path);
+    const weaponsHeat = optionalInteger(turn[3], `${path}[3]`) ?? 0;
     return {
         ...(turnCounter === 0 ? {} : { turnCounter }),
         ...(airborneCode === 0 ? {} : { airborne: airborneCode === 1 }),
         ...(movement === undefined ? {} : { movement }),
         ...(weaponsHeat === 0 ? {} : { weaponsHeat }),
-        ...(turn[4] === undefined ? {} : {
+        ...(turn[4] === undefined || turn[4] === null ? {} : {
             cover: rowInteger(turn, 4, path) as NonNullable<SerializedNonMekUnit['turn']>['cover'],
         }),
-        ...(turn[5] === undefined ? {} : {
+        ...(turn[5] === undefined || turn[5] === null ? {} : {
             spotting: truthyOne(turn[5], `${path}[5]`),
         }),
+        ...(turn[6] === undefined || turn[6] === null ? {} : {
+            endTurnCheckpoint: unpackEndTurnCheckpoint(turn[6], `${path}[6]`),
+        }),
+        ...(turn[7] === undefined || turn[7] === null ? {} : {
+            controlRecovery: unpackNonMekControlRecovery(turn[7], `${path}[7]`),
+        }),
+        ...(turn[8] === undefined || turn[8] === null ? {} : {
+            phaseStateChanged: truthyOne(turn[8], `${path}[8]`),
+        }),
+    };
+}
+
+function unpackNonMekControlRecovery(
+    value: unknown,
+    path: string,
+): NonNullable<NonNullable<SerializedNonMekUnit['turn']>['controlRecovery']> {
+    const recovery = array(value, path);
+    if (recovery.length !== 2) throw new Error(`${path} is not a compact Control recovery`);
+    const cause = rowInteger(recovery, 1, path);
+    if (cause !== 0 && cause !== 1) throw new Error(`${path}[1] is not a Control recovery cause`);
+    return {
+        readyTurn: rowInteger(recovery, 0, path),
+        cause: cause === 0 ? 'heat-random-movement' : 'controller-loss',
     };
 }
 
@@ -651,7 +675,7 @@ function unpackNonMekCrewState(
     row: readonly unknown[],
     path: string,
 ): NonNullable<SerializedNonMekUnit['crewState']>[number] {
-    if (row.length < 2 || row.length > 3) throw new Error(`${path} is not a compact non-Mek crew row`);
+    if (row.length < 2 || row.length > 4) throw new Error(`${path} is not a compact non-Mek crew row`);
     const state = row[2] === undefined ? 0 : rowInteger(row, 2, path);
     if (state < 0 || state > 4) throw new Error(`${path}[2] is not a non-Mek crew state`);
     return {
@@ -661,6 +685,13 @@ function unpackNonMekCrewState(
         ejected: state === 2,
         ...(state === 3 ? { state: 'killed' as const }
             : state === 4 ? { state: 'stunned' as const } : {}),
+        ...(row[3] === undefined
+            ? {}
+            : {
+                recoveryReadyTurn: row[3] === null
+                    ? null
+                    : rowInteger(row, 3, path),
+            }),
     };
 }
 
@@ -1042,6 +1073,21 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
         d: value.heatDissipationConsumed,
         s: value.spotting ? 1 : undefined,
         e: value.equipmentStateChanged ? 1 : undefined,
+        p: packEndTurnCheckpoint(value.endTurnCheckpoint),
+        f: value.pendingFallConsequences === undefined
+            ? undefined
+            : tuple(
+                value.pendingFallConsequences.eventId,
+                value.pendingFallConsequences.totalDamage,
+                value.pendingFallConsequences.hitArcLabel,
+                value.pendingFallConsequences.applyPilotHits ? 1 : 0,
+                value.pendingFallConsequences.forceSeatbeltFailure ? 1 : 0,
+                value.pendingFallConsequences.seatbeltPositionIds,
+                value.pendingFallConsequences.headHits,
+                value.pendingFallConsequences.stage === 'head-hits' ? 0
+                    : value.pendingFallConsequences.stage === 'seatbelts' ? 1 : 2,
+                value.pendingFallConsequences.seatbeltFailures,
+            ),
     });
     return Object.keys(compact).length === 0 ? undefined : compact;
 }
@@ -1049,7 +1095,7 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
 function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
     if (value === undefined) return { schemaVersion: 1 };
     const turn = record(value, path);
-    exactKeys(turn, ['n', 'a', 'c', 'w', 'h', 'd', 's', 'e'], path);
+    exactKeys(turn, ['n', 'a', 'c', 'w', 'h', 'd', 's', 'e', 'p', 'f'], path);
     const expanded = compactObject({
         schemaVersion: 1,
         turnCounter: optionalInteger(turn['n'], `${path}.n`),
@@ -1062,8 +1108,53 @@ function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
         heatDissipationConsumed: optionalInteger(turn['d'], `${path}.d`),
         spotting: turn['s'] === undefined ? undefined : truthyOne(turn['s'], `${path}.s`),
         equipmentStateChanged: turn['e'] === undefined ? undefined : truthyOne(turn['e'], `${path}.e`),
+        endTurnCheckpoint: turn['p'] === undefined
+            ? undefined
+            : unpackEndTurnCheckpoint(turn['p'], `${path}.p`),
+        pendingFallConsequences: turn['f'] === undefined
+            ? undefined
+            : unpackPendingFallConsequences(turn['f'], `${path}.f`),
     });
     return serializeMekTurnStateV2(deserializeMekTurnStateV2(expanded));
+}
+
+function unpackPendingFallConsequences(
+    value: unknown,
+    path: string,
+): NonNullable<SerializedMekTurnStateV2['pendingFallConsequences']> {
+    const row = array(value, path);
+    if (row.length < 8 || row.length > 9) throw new Error(`${path} is not a pending fall cursor`);
+    const stage = rowInteger(row, 7, path);
+    if (stage < 0 || stage > 2) throw new Error(`${path}[7] is not a pending fall stage`);
+    const positions = unpackTextArray(row[5], `${path}[5]`).map(asCrewPositionId);
+    const failures = row[8] === undefined
+        ? undefined
+        : unpackTextArray(row[8], `${path}[8]`).map(asCrewPositionId);
+    return {
+        eventId: rowText(row, 0, path),
+        totalDamage: rowInteger(row, 1, path),
+        hitArcLabel: rowText(row, 2, path),
+        applyPilotHits: rowBit(row, 3, path),
+        forceSeatbeltFailure: rowBit(row, 4, path),
+        seatbeltPositionIds: positions,
+        headHits: rowInteger(row, 6, path),
+        stage: stage === 0 ? 'head-hits' : stage === 1 ? 'seatbelts' : 'crew-hits',
+        ...(failures === undefined ? {} : { seatbeltFailures: failures }),
+    };
+}
+
+function packEndTurnCheckpoint(value: EndTurnCheckpoint | undefined): 1 | 2 | undefined {
+    if (value === undefined) return undefined;
+    if (value === 'phase-ended') return 1;
+    if (value === 'heat-staged') return 2;
+    throw new Error('Cannot compact an invalid End Turn checkpoint');
+}
+
+function unpackEndTurnCheckpoint(value: unknown, path: string): EndTurnCheckpoint {
+    const code = integer(value, path);
+    if (code === 1) return 'phase-ended';
+    if (code === 2) return 'heat-staged';
+    throw new Error(`${path} is not an End Turn checkpoint`);
 }
 
 function packTargeting(value: SavedAttackerTargetingState): unknown {
@@ -1394,7 +1485,6 @@ function unpackRoster(value: unknown, units: readonly SerializedForceUnitEntryV2
                 const instanceId = unit.instanceId;
                 return {
                     instanceId,
-                    kind: unit.kind,
                     order,
                     ...(member[1] === undefined || member[1] === 0
                         ? {}
@@ -1407,12 +1497,12 @@ function unpackRoster(value: unknown, units: readonly SerializedForceUnitEntryV2
 }
 
 function packEncounter(encounter: SerializedForceEncounterEntryV2): unknown {
-    return tuple(encounter.encounterRevision, encounter.state.facts, encounter.recovery);
+    return tuple(encounter.encounterRevision, encounter.state.facts);
 }
 
 function unpackEncounter(value: unknown, path: string): SerializedForceEncounterEntryV2 {
     const row = array(value, path);
-    if (row.length < 2 || row.length > 3) throw new Error(`${path} is not a compact encounter`);
+    if (row.length !== 2) throw new Error(`${path} is not a compact encounter`);
     const revision = asStateRevision(rowInteger(row, 0, path));
     const state: SerializedCBTEncounterStateV2 = {
         schemaVersion: 2,
@@ -1422,7 +1512,6 @@ function unpackEncounter(value: unknown, path: string): SerializedForceEncounter
     return {
         encounterRevision: revision,
         state,
-        ...(row[2] === undefined ? {} : { recovery: clone(row[2]) as NonNullable<SerializedForceEncounterEntryV2['recovery']> }),
     };
 }
 

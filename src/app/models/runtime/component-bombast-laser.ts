@@ -20,10 +20,8 @@ import {
 } from './component-state-change';
 import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
 import {
-    createCommandId,
     type BombastLaserChargeState,
     type BombastLaserRuntimeState,
-    type CommandId,
 } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 import type { PickerChoice } from '../../components/picker/picker.interface';
@@ -100,16 +98,13 @@ export function setComponentBombastLaserMode(
     runtime: CBTUnitInstance,
     definition: ComponentBombastLaserDefinition,
     mode: BombastLaserMode,
-    commandId: () => CommandId = createCommandId,
 ): ComponentStateChangeResult {
     if (!isBombastLaserMode(definition.ruleset, mode)) {
-        return Object.freeze({ accepted: false, changed: false, idempotent: false, reason: 'INVALID_TARGET' });
+        return unchangedComponentState();
     }
     if (componentBombastLaserMode(runtime, definition) === mode) return unchangedComponentState();
     return componentStateChangeFromReduction(runtime.dispatch({
         type: 'set-component-mode',
-        commandId: commandId(),
-        expectedRevision: runtime.revision(),
         componentId: definition.componentId,
         mode,
     }));
@@ -136,15 +131,12 @@ export function setComponentBombastLaserCharge(
     runtime: CBTUnitInstance,
     definition: ComponentBombastLaserDefinition,
     state: typeof BOMBAST_LASER_CHARGING_STATE | null,
-    commandId: () => CommandId = createCommandId,
 ): ComponentStateChangeResult {
     if (definition.ruleset !== 'core-2026') {
-        return Object.freeze({ accepted: false, changed: false, idempotent: false, reason: 'INVALID_TARGET' });
+        return unchangedComponentState();
     }
     return componentStateChangeFromReduction(runtime.dispatch({
         type: 'set-bombast-laser-charge',
-        commandId: commandId(),
-        expectedRevision: runtime.revision(),
         componentId: definition.componentId,
         state,
     }));

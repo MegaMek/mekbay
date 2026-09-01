@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { CBTRuleset } from '../cbt-ruleset.model';
@@ -287,8 +288,4 @@ export function projectMekSpottingModifier(
         query.criticalHits(slot.id) === 0 && query.remainingInternal(slot.locationId) > 0)
         ? 0
         : 1;
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }

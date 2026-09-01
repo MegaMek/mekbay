@@ -173,10 +173,7 @@
         }
 
         <section class="turn-summary-host" aria-label="Turn controls">
-            <page-turn-summary-panel
-                [member]="activeMember"
-                [embedded]="true"
-            />
+            <tactical-turn-tracker [member]="activeMember" />
         </section>
 
         <main class="tactical-grid" [class.mek-grid]="mekSnapshot() !== null" [class.entity-grid]="nonMekSnapshot() !== null">

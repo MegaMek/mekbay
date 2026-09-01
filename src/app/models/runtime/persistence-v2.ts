@@ -26,18 +26,13 @@ import {
 } from '../entity/entity-identifiers';
 import { isCBTRuleset, type CBTRuleset } from '../cbt-ruleset.model';
 import { jsonValuesEqual } from '../../utils/json-value.util';
+import { compareText } from '../../utils/string.util';
 import {
     sanitizeSavedEntityIdentity,
-    type DeferredUnitSource,
-    type ForceRecoveryEvidence,
     type JsonValue,
     type SavedEntityIdentity,
 } from '../persisted-unit-state';
-import {
-    asSourceHash,
-    asUnitProviderId,
-    asUnitUuid,
-} from '../../services/unit-catalog/unit-catalog.types';
+import { asSourceHash } from '../../services/unit-catalog/unit-catalog.types';
 import {
     asStateRevision,
     asUnitInstanceId,
@@ -369,7 +364,7 @@ export function savedTargetReferenceClosureV2(
 }
 
 function compareSavedTargetRefs(left: SavedTargetRef, right: SavedTargetRef): number {
-    return left < right ? -1 : left > right ? 1 : 0;
+    return compareText(left, right);
 }
 
 export interface SerializedDeploymentConfigurationV2 {
@@ -639,19 +634,11 @@ export interface SerializedCBTUnitV2 {
     readonly restoration?: SerializedUnitRestorationMetadataV2;
 }
 
-export type SerializedForceUnitEntryV2 =
-    | {
-        readonly kind: 'ready';
-        readonly instanceId: UnitInstanceId;
-        readonly stateRevision: StateRevision;
-        readonly unit: SerializedCBTUnitV2 | SerializedNonMekUnit;
-    }
-    | {
-        readonly kind: 'deferred';
-        readonly instanceId: UnitInstanceId;
-        readonly stateRevision: StateRevision;
-        readonly source: DeferredUnitSource;
-    };
+export interface SerializedForceUnitEntryV2 {
+    readonly instanceId: UnitInstanceId;
+    readonly stateRevision: StateRevision;
+    readonly unit: SerializedCBTUnitV2 | SerializedNonMekUnit;
+}
 
 export interface SerializedEncounterEndpointV2 {
     readonly instanceId: UnitInstanceId;
@@ -747,18 +734,6 @@ export interface SerializedCBTEncounterStateV2 {
 export interface SerializedForceEncounterEntryV2 {
     readonly encounterRevision: StateRevision;
     readonly state: SerializedCBTEncounterStateV2;
-    /** Raw V1 cross-unit facts retained only for recovery; never live mechanics. */
-    readonly recovery?: ForceRecoveryEvidence;
-}
-
-/** Force-owned recovery rows that could not be attached to the typed encounter. */
-export interface SerializedForceRestorationMetadataV2 {
-    readonly schemaVersion: 2;
-    readonly unresolvedEncounter: readonly {
-        readonly recoveryId: string;
-        readonly fact: SerializedEncounterFactV2;
-        readonly reason: string;
-    }[];
 }
 
 export interface SerializedScenarioRulesV2 {
@@ -776,7 +751,6 @@ export interface SerializedCBTForceV2 {
     readonly units: readonly SerializedForceUnitEntryV2[];
     readonly roster: SerializedCBTForceRosterV1;
     readonly encounter: SerializedForceEncounterEntryV2;
-    readonly restoration?: SerializedForceRestorationMetadataV2;
 }
 
 export type ForceEnvelopeValidationCode =
@@ -786,7 +760,6 @@ export type ForceEnvelopeValidationCode =
     | 'DUPLICATE_ROSTER_MEMBER_ID'
     | 'DANGLING_ROSTER_MEMBER_ID'
     | 'MISSING_ROSTER_MEMBER_ID'
-    | 'ROSTER_KIND_MISMATCH'
     | 'ROSTER_ORDER_MISMATCH'
     | 'ROSTER_COMMANDER_CONFLICT'
     | 'INSTANCE_ID_MISMATCH'
@@ -839,7 +812,7 @@ function validateForceEnvelope(
 ): asserts root is Record<string, unknown> & SerializedCBTForceV2 {
     exactKeys(root, [
         'schemaVersion', 'minimumWriterVersion', 'forceId', 'forceRevision', 'scenarioRules',
-        'history', 'units', 'roster', 'encounter', 'restoration',
+        'history', 'units', 'roster', 'encounter',
     ], '$');
     if (root['schemaVersion'] !== CBT_FORCE_PERSISTENCE_SCHEMA_VERSION
         || root['minimumWriterVersion'] !== CBT_FORCE_MINIMUM_WRITER_VERSION) {
@@ -850,21 +823,20 @@ function validateForceEnvelope(
     validateScenarioRules(root['scenarioRules']);
 
     const units = requireArray(root['units'], '$.units');
-    const instanceKinds = new Map<string, 'ready' | 'deferred'>();
+    const instanceIds = new Set<string>();
     const unitTargets = new Map<string, ReadonlySet<string>>();
     units.forEach((entry, index) => {
         const result = validateUnitEntry(entry, index);
-        if (instanceKinds.has(result.instanceId)) {
+        if (instanceIds.has(result.instanceId)) {
             fail('DUPLICATE_INSTANCE_ID', `$.units[${index}].instanceId`, `duplicate instance ${result.instanceId}`);
         }
-        instanceKinds.set(result.instanceId, result.kind);
+        instanceIds.add(result.instanceId);
         if (result.targets) unitTargets.set(result.instanceId, result.targets);
     });
 
-    validateRoster(root['roster'], instanceKinds);
-    const encounterFacts = validateEncounter(root['encounter'], instanceKinds, unitTargets);
+    validateRoster(root['roster'], instanceIds);
+    validateEncounter(root['encounter'], instanceIds, unitTargets);
     validateRuntimeHistory(root['history']);
-    validateForceRestoration(root['restoration'], encounterFacts);
 }
 
 function validateRuntimeHistory(value: unknown): void {
@@ -921,7 +893,7 @@ function validateRuntimeHistory(value: unknown): void {
 
 function validateRoster(
     value: unknown,
-    instances: ReadonlyMap<string, 'ready' | 'deferred'>,
+    instances: ReadonlySet<string>,
 ): void {
     const roster = requireRecord(value, '$.roster');
     exactKeys(roster, ['schemaVersion', 'groups'], '$.roster');
@@ -969,7 +941,7 @@ function validateRoster(
         members.forEach((rawMember, memberIndex) => {
             const memberPath = `${path}.members[${memberIndex}]`;
             const member = requireRecord(rawMember, memberPath);
-            exactKeys(member, ['instanceId', 'kind', 'order', 'commander'], memberPath);
+            exactKeys(member, ['instanceId', 'order', 'commander'], memberPath);
             const instanceId = validateId(member['instanceId'], `${memberPath}.instanceId`, asUnitInstanceId);
             if (memberIds.has(instanceId)) {
                 fail(
@@ -979,30 +951,11 @@ function validateRoster(
                 );
             }
             memberIds.add(instanceId);
-            const kind = member['kind'];
-            if (kind !== 'ready' && kind !== 'deferred') {
-                fail('INVALID_SHAPE', `${memberPath}.kind`, 'must be ready or deferred');
-            }
-            const ownedKind = instances.get(instanceId);
-            if (!ownedKind) {
+            if (!instances.has(instanceId)) {
                 fail(
                     'DANGLING_ROSTER_MEMBER_ID',
                     `${memberPath}.instanceId`,
                     `roster member ${instanceId} has no force unit entry`,
-                );
-            }
-            if (ownedKind !== kind) {
-                fail(
-                    'ROSTER_KIND_MISMATCH',
-                    `${memberPath}.kind`,
-                    `${instanceId} is ${ownedKind}, not ${kind}`,
-                );
-            }
-            if (groupId === CBT_FORCE_UNASSIGNED_GROUP_ID && kind !== 'ready') {
-                fail(
-                    'ROSTER_KIND_MISMATCH',
-                    `${memberPath}.kind`,
-                    'the unassigned roster group can contain only ready entries',
                 );
             }
             if (requireSafeNonnegative(member['order'], `${memberPath}.order`) !== memberIndex) {
@@ -1032,7 +985,7 @@ function validateRoster(
             fail('INVALID_SHAPE', path, 'must reference another regular roster group');
         }
     });
-    for (const instanceId of instances.keys()) {
+    for (const instanceId of instances) {
         if (!memberIds.has(instanceId)) {
             fail(
                 'MISSING_ROSTER_MEMBER_ID',
@@ -1073,7 +1026,6 @@ function validateScenarioRules(value: unknown): void {
 }
 
 interface ValidatedUnitEntry {
-    readonly kind: 'ready' | 'deferred';
     readonly instanceId: string;
     readonly targets?: ReadonlySet<string>;
     readonly components?: ReadonlySet<string>;
@@ -1085,31 +1037,21 @@ function validateUnitEntry(
 ): ValidatedUnitEntry {
     const path = `$.units[${index}]`;
     const record = requireRecord(value, path);
-    const kind = record['kind'];
-    if (kind !== 'ready' && kind !== 'deferred') {
-        fail('INVALID_SHAPE', `${path}.kind`, 'must discriminate a ready or deferred unit');
-    }
-    exactKeys(record, kind === 'ready'
-        ? ['kind', 'instanceId', 'stateRevision', 'unit']
-        : ['kind', 'instanceId', 'stateRevision', 'source'], path);
+    exactKeys(record, ['instanceId', 'stateRevision', 'unit'], path);
     const instanceId = validateId(record['instanceId'], `${path}.instanceId`, asUnitInstanceId);
     const revision = validateRevision(record['stateRevision'], `${path}.stateRevision`);
-    if (kind === 'ready') {
-        const unit = requireRecord(record['unit'], `${path}.unit`);
-        const family = requireRecord(unit['family'], `${path}.unit.family`);
-        const result = family['kind'] === 'non-mek'
-            ? validateNonMekUnit(unit, `${path}.unit`)
-            : validateV2Unit(unit, `${path}.unit`);
-        if (result.instanceId !== instanceId) {
-            fail('INSTANCE_ID_MISMATCH', `${path}.unit.instanceId`, 'outer and unit instance IDs differ');
-        }
-        if (result.revision !== revision) {
-            fail('REVISION_MISMATCH', `${path}.unit.stateRevision`, 'outer and unit revisions differ');
-        }
-        return { kind, instanceId, targets: result.targets, components: result.components };
+    const unit = requireRecord(record['unit'], `${path}.unit`);
+    const family = requireRecord(unit['family'], `${path}.unit.family`);
+    const result = family['kind'] === 'non-mek'
+        ? validateNonMekUnit(unit, `${path}.unit`)
+        : validateV2Unit(unit, `${path}.unit`);
+    if (result.instanceId !== instanceId) {
+        fail('INSTANCE_ID_MISMATCH', `${path}.unit.instanceId`, 'outer and unit instance IDs differ');
     }
-    validateDeferredSource(record['source'], `${path}.source`);
-    return { kind, instanceId };
+    if (result.revision !== revision) {
+        fail('REVISION_MISMATCH', `${path}.unit.stateRevision`, 'outer and unit revisions differ');
+    }
+    return { instanceId, targets: result.targets, components: result.components };
 }
 
 function validateNonMekUnit(
@@ -2408,69 +2350,26 @@ function validateRecoverableFact(value: unknown, path: string, targetKind: unkno
     }
 }
 
-function validateDeferredSource(value: unknown, path: string): void {
-    const source = requireRecord(value, path);
-    exactKeys(source, ['payload', 'identity'], path);
-    assertJson(source['payload'], `${path}.payload`);
-    validatePersistedUnitIdentity(source['identity'], `${path}.identity`);
-}
-
-function validatePersistedUnitIdentity(value: unknown, path: string): void {
-    const identity = requireRecord(value, path);
-    if (identity['kind'] === 'resolved') {
-        exactKeys(identity, ['kind', 'savedIdentity'], path);
-        validateSavedIdentity(identity['savedIdentity'], `${path}.savedIdentity`);
-        return;
-    }
-    if (identity['kind'] !== 'unresolved') fail('INVALID_SHAPE', `${path}.kind`, 'invalid persisted unit identity');
-    exactKeys(identity, ['kind', 'rawLegacyName', 'rawChassis', 'rawModel', 'rawEntityType', 'candidates', 'reason'], path);
-    requireString(identity, 'rawLegacyName', path);
-    validateOptionalStringFields(identity, path, ['rawChassis', 'rawModel', 'rawEntityType']);
-    if (!['not-found', 'ambiguous', 'catalog-not-ready'].includes(String(identity['reason']))) fail('INVALID_SHAPE', `${path}.reason`, 'invalid resolution reason');
-    requireArray(identity['candidates'], `${path}.candidates`).forEach((candidate, index) => {
-        const row = requireRecord(candidate, `${path}.candidates[${index}]`);
-        exactKeys(row, ['provider', 'uuid'], `${path}.candidates[${index}]`);
-        validateId(row['provider'], `${path}.candidates[${index}].provider`, asUnitProviderId);
-        validateId(row['uuid'], `${path}.candidates[${index}].uuid`, asUnitUuid);
-    });
-}
-
 function validateEncounter(
     value: unknown,
-    instances: ReadonlyMap<string, 'ready' | 'deferred'>,
+    instances: ReadonlySet<string>,
     targets: ReadonlyMap<string, ReadonlySet<string>>,
-): ReadonlySet<string> {
+): void {
     const encounter = requireRecord(value, '$.encounter');
-    exactKeys(encounter, ['encounterRevision', 'state', 'recovery'], '$.encounter');
+    exactKeys(encounter, ['encounterRevision', 'state'], '$.encounter');
     const outerRevision = validateRevision(encounter['encounterRevision'], '$.encounter.encounterRevision');
-    const state = validateEncounterState(encounter['state'], '$.encounter.state', instances, targets);
-    if (state.revision !== outerRevision) {
+    const stateRevision = validateEncounterState(encounter['state'], '$.encounter.state', instances, targets);
+    if (stateRevision !== outerRevision) {
         fail('REVISION_MISMATCH', '$.encounter.state.encounterRevision', 'outer and encounter revisions differ');
     }
-    if (encounter['recovery'] !== undefined) {
-        const recovery = requireRecord(encounter['recovery'], '$.encounter.recovery');
-        exactKeys(recovery, ['schemaVersion', 'c3Networks'], '$.encounter.recovery');
-        if (recovery['schemaVersion'] !== 1) fail('INVALID_SHAPE', '$.encounter.recovery.schemaVersion', 'must be 1');
-        const c3Networks = requireArray(recovery['c3Networks'], '$.encounter.recovery.c3Networks');
-        c3Networks.forEach((network, index) =>
-            assertJson(network, `$.encounter.recovery.c3Networks[${index}]`));
-        if (state.typedNetworkCount > 0 && c3Networks.length > 0) {
-            fail(
-                'INVALID_SHAPE',
-                '$.encounter',
-                'typed C3 networks cannot coexist with legacy component-index C3 authority',
-            );
-        }
-    }
-    return state.factIds;
 }
 
 function validateEncounterState(
     value: unknown,
     path: string,
-    instances: ReadonlyMap<string, 'ready' | 'deferred'>,
+    instances: ReadonlySet<string>,
     targets: ReadonlyMap<string, ReadonlySet<string>>,
-): { readonly revision: number; readonly factIds: Set<string>; readonly typedNetworkCount: number } {
+): number {
     const state = requireRecord(value, path);
     exactKeys(state, ['schemaVersion', 'encounterRevision', 'facts'], path);
     if (state['schemaVersion'] !== 2) fail('INVALID_SHAPE', `${path}.schemaVersion`, 'must be 2');
@@ -2532,7 +2431,7 @@ function validateEncounterState(
     if (networkIds.size > MAX_SERIALIZED_ENCOUNTER_NETWORKS) {
         fail('INVALID_SHAPE', `${path}.facts`, `cannot contain more than ${MAX_SERIALIZED_ENCOUNTER_NETWORKS} networks`);
     }
-    return { revision, factIds, typedNetworkCount: networkIds.size };
+    return revision;
 }
 
 function validateEncounterTargetFact(
@@ -2684,7 +2583,7 @@ function validateEncounterTargetCalculator(value: unknown, path: string): void {
 function validateEncounterNetworkFact(
     value: unknown,
     path: string,
-    instances: ReadonlyMap<string, 'ready' | 'deferred'>,
+    instances: ReadonlySet<string>,
     networkIds: Set<string>,
 ): string {
     const network = requireRecord(value, path);
@@ -2714,8 +2613,8 @@ function validateEncounterNetworkFact(
         const endpoint = requireRecord(raw, endpointPath);
         exactKeys(endpoint, ['instanceId', 'componentId', 'role'], endpointPath);
         const instanceId = validateId(endpoint['instanceId'], `${endpointPath}.instanceId`, asUnitInstanceId);
-        if (instances.get(instanceId) !== 'ready') {
-            fail('ENCOUNTER_ENDPOINT_INVALID', `${endpointPath}.instanceId`, 'typed network endpoints may reference only ready units');
+        if (!instances.has(instanceId)) {
+            fail('ENCOUNTER_ENDPOINT_INVALID', `${endpointPath}.instanceId`, 'network endpoint has no force unit');
         }
         const componentId = validateId(endpoint['componentId'], `${endpointPath}.componentId`, asComponentId);
         const role = endpoint['role'];
@@ -2759,45 +2658,20 @@ function validateEncounterColor(value: unknown, path: string): void {
 function validateEncounterEndpoint(
     value: unknown,
     path: string,
-    instances: ReadonlyMap<string, 'ready' | 'deferred'>,
+    instances: ReadonlySet<string>,
     targets: ReadonlyMap<string, ReadonlySet<string>>,
 ): string {
     const endpoint = requireRecord(value, path);
     exactKeys(endpoint, ['instanceId', 'target'], path);
     const instance = validateId(endpoint['instanceId'], `${path}.instanceId`, asUnitInstanceId);
-    if (instances.get(instance) !== 'ready') {
-        fail('ENCOUNTER_ENDPOINT_INVALID', `${path}.instanceId`, 'typed encounter facts may reference only ready units');
+    if (!instances.has(instance)) {
+        fail('ENCOUNTER_ENDPOINT_INVALID', `${path}.instanceId`, 'encounter endpoint has no force unit');
     }
     let ref = '';
     if (endpoint['target'] !== undefined) {
         ref = validateId(endpoint['target'], `${path}.target`, asSavedTargetRef);
     }
     return `${instance}\0${ref}`;
-}
-
-function validateForceRestoration(
-    value: unknown,
-    factIds: ReadonlySet<string>,
-): void {
-    if (value === undefined) return;
-    const metadata = requireRecord(value, '$.restoration');
-    exactKeys(metadata, ['schemaVersion', 'unresolvedEncounter'], '$.restoration');
-    if (metadata['schemaVersion'] !== 2) fail('INVALID_SHAPE', '$.restoration.schemaVersion', 'must be 2');
-    validateEncounterRecovery(metadata, factIds);
-}
-
-function validateEncounterRecovery(metadata: Record<string, unknown>, factIds: ReadonlySet<string>): void {
-    const recoveryIds = new Set<string>();
-    requireArray(metadata['unresolvedEncounter'], '$.restoration.unresolvedEncounter').forEach((raw, index) => {
-        const path = `$.restoration.unresolvedEncounter[${index}]`;
-        const row = requireRecord(raw, path);
-        exactKeys(row, ['recoveryId', 'fact', 'reason'], path);
-        const id = validateId(row['recoveryId'], `${path}.recoveryId`);
-        if (recoveryIds.has(id)) fail('INVALID_SHAPE', `${path}.recoveryId`, 'duplicate recovery ID');
-        recoveryIds.add(id);
-        assertJson(row['fact'], `${path}.fact`);
-        requireString(row, 'reason', path);
-    });
 }
 
 function validateOptionalStringFields(record: Record<string, unknown>, path: string, keys: readonly string[]): void {

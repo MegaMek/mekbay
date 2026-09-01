@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
+import { isPlainRecord } from '../../utils/json-value.util';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import { asComponentId, type ComponentId } from '../entity/entity-identifiers';
 import { asEncounterTargetId, type EncounterTargetId } from './encounter-runtime';
@@ -142,6 +144,11 @@ export type AttackerTargetingEdit =
         readonly selection: AttackerSelection | null;
     }
     | {
+        readonly kind: 'set-component-selections';
+        readonly componentIds: readonly ComponentId[];
+        readonly selection: AttackerSelection | null;
+    }
+    | {
         readonly kind: 'set-action-selection';
         readonly target: AttackerActionTarget;
         readonly selection: AttackerActionSelection | null;
@@ -150,6 +157,15 @@ export type AttackerTargetingEdit =
         readonly kind: 'set-component-ammo';
         readonly componentId: ComponentId;
         readonly ammo: (AttackerAmmoSelection & { readonly preferredSourceId?: ComponentId | null }) | null;
+    }
+    | {
+        readonly kind: 'set-component-ammos';
+        readonly updates: readonly Readonly<{
+            readonly componentId: ComponentId;
+            readonly ammo: (AttackerAmmoSelection & {
+                readonly preferredSourceId?: ComponentId | null;
+            }) | null;
+        }>[];
     }
     | {
         readonly kind: 'set-target-facts';
@@ -348,6 +364,38 @@ export function planAttackerTargetingCommand(
             });
             break;
         }
+        case 'set-component-selections': {
+            if (!hasExactKeys(command, ['kind', 'expectedRegistryRevision', 'componentIds', 'selection'])
+                || !Array.isArray(command.componentIds)
+                || command.componentIds.length === 0
+                || command.componentIds.length > MAX_ATTACKER_TARGETING_COMPONENTS
+                || command.componentIds.some(componentId => !validId(componentId))
+                || new Set(command.componentIds).size !== command.componentIds.length) {
+                return rejectedPlan(state, 'INVALID_COMMAND');
+            }
+            const componentIds = command.componentIds.map(componentId => asComponentId(componentId));
+            if (componentIds.some(componentId => !validated.context.weapons.has(componentId))) {
+                return rejectedPlan(state, 'INVALID_COMPONENT');
+            }
+            let selection: AttackerSelection | undefined;
+            if (command.selection !== null) {
+                const result = canonicalSelection(command.selection);
+                if (result.reason) return rejectedPlan(state, result.reason);
+                selection = result.selection;
+                if (selection?.kind === 'target'
+                    && !validated.context.targetIds.has(selection.targetId)) {
+                    return rejectedPlan(state, 'INVALID_TARGET');
+                }
+            }
+            for (const componentId of componentIds) {
+                const existing = components.get(componentId);
+                putComponentState(components, componentId, {
+                    ...(selection && { selection }),
+                    ...(existing?.ammo && { ammo: existing.ammo }),
+                });
+            }
+            break;
+        }
         case 'set-component-ammo': {
             if (!hasExactKeys(command, ['kind', 'expectedRegistryRevision', 'componentId', 'ammo'])
                 || !validId(command.componentId)) {
@@ -385,6 +433,66 @@ export function planAttackerTargetingCommand(
                 ...(existing?.selection && { selection: existing.selection }),
                 ...(ammo && { ammo }),
             });
+            break;
+        }
+        case 'set-component-ammos': {
+            if (!hasExactKeys(command, ['kind', 'expectedRegistryRevision', 'updates'])
+                || !Array.isArray(command.updates)
+                || command.updates.length === 0
+                || command.updates.length > MAX_ATTACKER_TARGETING_COMPONENTS) {
+                return rejectedPlan(state, 'INVALID_COMMAND');
+            }
+            const seen = new Set<ComponentId>();
+            const updates: Array<Readonly<{
+                readonly componentId: ComponentId;
+                readonly ammo?: AttackerAmmoSelection;
+            }>> = [];
+            for (const update of command.updates) {
+                if (!isPlainRecord(update)
+                    || !hasExactKeys(update, ['componentId', 'ammo'])
+                    || !validId(update.componentId)) {
+                    return rejectedPlan(state, 'INVALID_COMMAND');
+                }
+                const componentId = asComponentId(update.componentId);
+                if (seen.has(componentId)) return rejectedPlan(state, 'INVALID_COMMAND');
+                seen.add(componentId);
+                const weapon = validated.context.weapons.get(componentId);
+                if (!weapon) return rejectedPlan(state, 'INVALID_COMPONENT');
+                if (update.ammo === null) {
+                    updates.push(Object.freeze({ componentId }));
+                    continue;
+                }
+                if (!isPlainRecord(update.ammo)
+                    || !hasExactKeys(update.ammo, ['munitionKey', 'preferredSourceId'])
+                    || !validCanonicalText(update.ammo.munitionKey)) {
+                    return rejectedPlan(state, 'INVALID_MUNITION');
+                }
+                if (!weapon.compatibleMunitions.has(update.ammo.munitionKey)) {
+                    return rejectedPlan(state, 'INVALID_MUNITION');
+                }
+                const sourceId = update.ammo.preferredSourceId ?? undefined;
+                if (sourceId !== undefined) {
+                    if (!validId(sourceId)) return rejectedPlan(state, 'INVALID_AMMO_SOURCE');
+                    const sourceMunitions = weapon.sources.get(asComponentId(sourceId));
+                    if (!sourceMunitions?.has(update.ammo.munitionKey)) {
+                        return rejectedPlan(state, 'SOURCE_NOT_COMPATIBLE');
+                    }
+                }
+                updates.push(Object.freeze({
+                    componentId,
+                    ammo: Object.freeze({
+                        munitionKey: update.ammo.munitionKey,
+                        ...(sourceId && { preferredSourceId: asComponentId(sourceId) }),
+                    }),
+                }));
+            }
+            for (const update of updates) {
+                const existing = components.get(update.componentId);
+                putComponentState(components, update.componentId, {
+                    ...(existing?.selection && { selection: existing.selection }),
+                    ...(update.ammo && { ammo: update.ammo }),
+                });
+            }
             break;
         }
         case 'set-action-selection': {
@@ -585,9 +693,8 @@ export function deserializeAttackerTargetingState(
             selection: row['selection'],
             ammo: row['ammo'],
         } as AttackerComponentState);
-        if (component === null || components.has(componentId)) {
-            throw new Error('Invalid or duplicate attacker-targeting component');
-        }
+        if (component === null) throw new Error('Invalid attacker-targeting component');
+        if (components.has(componentId)) throw new Error('Duplicate attacker-targeting entry');
         components.set(componentId, component);
     }
 
@@ -1062,19 +1169,7 @@ function isReadonlyMap(value: unknown): value is ReadonlyMap<unknown, unknown> {
         && typeof (value as ReadonlyMap<unknown, unknown>).size === 'number';
 }
 
-function isPlainRecord<T extends object>(value: T): boolean;
-function isPlainRecord(value: unknown): value is Record<string, unknown>;
-function isPlainRecord(value: unknown): boolean {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
-
 function hasExactKeys(value: object, allowed: readonly string[]): boolean {
     const allowedKeys = new Set(allowed);
     return Object.keys(value).every(key => allowedKeys.has(key));
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }

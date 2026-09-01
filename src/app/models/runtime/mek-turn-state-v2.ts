@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
 import { ImmutableIndex } from '../entity/immutable-collections';
 import {
     deserializeUnitCover,
@@ -315,10 +316,6 @@ function requireArray(value: unknown, path: string): readonly unknown[] {
         fail(`must contain at most ${MAX_MEK_TURN_COLLECTION_ENTRIES} entries`, path);
     }
     return value;
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function fail(message: string, path: string): never {

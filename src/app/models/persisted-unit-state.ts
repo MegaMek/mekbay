@@ -12,6 +12,7 @@ import {
     type UnitProviderId,
     type UnitUuid,
 } from '../services/unit-catalog/unit-catalog.types';
+import { isRecord } from '../utils/json-value.util';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
@@ -37,26 +38,19 @@ export type PersistedUnitIdentity =
         readonly reason: 'not-found' | 'ambiguous' | 'catalog-not-ready';
     };
 
-export interface UnitRecoveryEvidence {
+export interface LegacyUnitStateV1 {
     readonly rawCriticalRecords: readonly JsonValue[];
     readonly rawInventoryRecords: readonly JsonValue[];
     readonly rawUnitAndFamilyState: JsonValue;
 }
 
-export interface ForceRecoveryEvidence {
-    readonly schemaVersion: 1;
-    /** V1 C3 component-index networks retained until a typed conversion is available. */
-    readonly c3Networks: readonly JsonValue[];
-}
-
-/** Raw saved state retained until this unit can be materialized as a ready V2 runtime. */
-export interface DeferredUnitSource {
+/** Transient V1 input used only while converting one legacy unit to V2. */
+export interface LegacyUnitSourceV1 {
     readonly payload: JsonValue;
     readonly identity: PersistedUnitIdentity;
 }
 
-/** Derives the V1 conversion views from the one retained raw payload. */
-export function extractDeferredUnitRecovery(source: Pick<DeferredUnitSource, 'payload'>): UnitRecoveryEvidence {
+export function readLegacyUnitStateV1(source: Pick<LegacyUnitSourceV1, 'payload'>): LegacyUnitStateV1 {
     const unit = isRecord(source.payload) ? source.payload : {};
     const state = isRecord(unit['state']) ? unit['state'] : {};
     return Object.freeze({
@@ -80,7 +74,6 @@ export interface DeferredUnitDescriptor {
         readonly code: 'CATALOG_ONLY' | 'NO_RUNTIME_AUTHORITY';
         readonly message: string;
     };
-    readonly sourcePayload?: JsonValue;
 }
 
 export interface UnitDefinitionResolutionWitness {
@@ -150,8 +143,4 @@ function describeDeferredUnit(descriptor: DeferredUnitDescriptor): string {
         return `Unit reference ${identity} cannot be resolved until the catalog is ready; its state was retained`;
     }
     return `Unit reference ${identity} is not installed and was retained as deferred state`;
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

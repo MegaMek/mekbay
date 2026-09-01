@@ -4,6 +4,7 @@
 import { DOCUMENT } from '@angular/common';
 import { Injectable, InjectionToken, inject } from '@angular/core';
 import { sha1Base64Url } from '../../utils/sha1.util';
+import { isRecord } from '../../utils/json-value.util';
 
 export const REPOSITORY_ASSETS_MANIFEST_PATH = 'online-assets/assets-manifest.json' as const;
 export const MAX_REPOSITORY_ASSETS_MANIFEST_BYTES = 8 * 1_024 * 1_024;
@@ -151,7 +152,7 @@ export class RepositoryAssetManifestService implements RepositoryAssetReader {
 }
 
 export function normalizeRepositoryAssetsManifest(value: unknown): RepositoryAssetsManifest {
-    if (!isPlainObject(value) || Object.keys(value).length === 0) {
+    if (!isRecord(value) || Object.keys(value).length === 0) {
         throw new Error('Repository assets manifest must be a non-empty object');
     }
     const output: Record<string, string> = {};
@@ -197,10 +198,6 @@ async function readBoundedBlob(response: Response, maximumBytes: number): Promis
         throw new Error('Repository asset exceeds its byte ceiling');
     }
     return blob;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function raceAbort<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {

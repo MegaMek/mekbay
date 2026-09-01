@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { jsonValuesEqual } from '../../utils/json-value.util';
+import { compareText } from '../../utils/string.util';
 import type { JsonValue } from '../persisted-unit-state';
 import type { MotiveModes } from '../motiveModes.model';
 import {
@@ -382,6 +383,9 @@ export function nonMekCommandHistory(
             return componentModeHistory(instanceId, command.componentId, modeChange?.before, modeChange?.after);
         case 'end-phase':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.PHASE_COMMITTED, instanceId);
+        case 'mark-end-turn-heat-staged':
+        case 'set-control-recovery':
+            return undefined;
         case 'cancel-pending':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.PHASE_DISCARDED, instanceId);
         case 'end-turn':
@@ -459,6 +463,9 @@ export function mekCommandHistory(
             return after.movementPsr.checks.some(check => check.status === 'pending')
                 ? undefined
                 : unitHistory(RUNTIME_HISTORY_MESSAGE.PHASE_COMMITTED, instanceId);
+        case 'mark-end-turn-heat-staged':
+        case 'set-pending-fall-consequences':
+            return undefined;
         case 'cancel-pending':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.PHASE_DISCARDED, instanceId);
         case 'end-turn':
@@ -698,7 +705,7 @@ export function preserveOperationalUnitState<T extends Readonly<{
 }
 
 export function compareUnitInstanceIds(left: UnitInstanceId, right: UnitInstanceId): number {
-    return left < right ? -1 : left > right ? 1 : 0;
+    return compareText(left, right);
 }
 
 export function sameReadyUnitGameplayState(left: ReadyClassicUnit, right: ReadyClassicUnit): boolean {

@@ -16,7 +16,6 @@ import type {
     EquipmentInteractionCommandContext,
     EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 
 export class FlamerHandler extends ComponentModeHandler {
@@ -55,8 +54,6 @@ export class FlamerHandler extends ComponentModeHandler {
         if (runtime.query().componentMode(definition.componentId) === mode) return true;
         return runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: runtime.revision(),
             componentId: definition.componentId,
             mode,
         }).accepted;

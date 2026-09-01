@@ -88,7 +88,11 @@ describe('PageViewerSheetSourceService', () => {
             .toBe('Show record sheet page 2 of 2');
         expect(reverse.querySelector('.record-sheet-page-flip-control')?.getAttribute('aria-label'))
             .toBe('Show record sheet page 1 of 2');
-        expect(front.querySelector('.record-sheet-page-flip-control text')?.textContent).toBe('PAGE 1 / 2');
+        const frontPageFlip = front.querySelector('.record-sheet-page-flip-control');
+        expect(frontPageFlip?.getAttribute('transform')).toBe('translate(572 752)');
+        expect(frontPageFlip?.querySelector('polygon')?.getAttribute('points')).toBe('0,40 40,0 40,40');
+        expect(frontPageFlip?.querySelector('text')?.textContent).toBe('1/2');
+        expect(reverse.querySelector('.record-sheet-page-flip-control text')?.textContent).toBe('2/2');
         expect(unsupportedThirdPage.querySelector('.record-sheet-page-flip-control')).toBeNull();
     });
 

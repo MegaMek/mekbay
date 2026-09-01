@@ -211,29 +211,23 @@ function createCBTForcePreviewGroups(
         formationId: group.formationId,
         units: group.members.map(member => {
             const entry = entries.get(member.instanceId)!;
-            const identity = entry.kind === 'ready'
-                ? entry.unit.entity
-                : entry.source.identity.kind === 'resolved'
-                    ? entry.source.identity.savedIdentity
-                    : undefined;
+            const identity = entry.unit.entity;
             const preview: ForcePreviewUnit = {
-                unit: identity ? resolver.getUnitByIdentity(identity.provider, identity.uuid) : undefined,
-                destroyed: entry.kind === 'ready' && entry.unit.destroyed === true,
+                unit: resolver.getUnitByIdentity(identity.provider, identity.uuid),
+                destroyed: entry.unit.destroyed === true,
                 lockKey: member.instanceId,
             };
             if (member.commander === true) preview.commander = true;
-            if (entry.kind === 'ready') {
-                const positions = entry.unit.deployment.values.crewAssignment.positions;
-                if (positions.length > 0) {
-                    preview.gunnery = Math.min(...positions.map(position => position.gunnery));
-                    preview.piloting = Math.min(...positions.map(position => position.piloting));
-                    preview.crew = positions.map((position, index) => ({
-                        id: index,
-                        name: position.name,
-                        gunnery: position.gunnery,
-                        piloting: position.piloting,
-                    }));
-                }
+            const positions = entry.unit.deployment.values.crewAssignment.positions;
+            if (positions.length > 0) {
+                preview.gunnery = Math.min(...positions.map(position => position.gunnery));
+                preview.piloting = Math.min(...positions.map(position => position.piloting));
+                preview.crew = positions.map((position, index) => ({
+                    id: index,
+                    name: position.name,
+                    gunnery: position.gunnery,
+                    piloting: position.piloting,
+                }));
             }
             return preview;
         }),

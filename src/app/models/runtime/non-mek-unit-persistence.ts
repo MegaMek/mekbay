@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
 import {
     sanitizeSavedEntityIdentity,
     type SavedEntityIdentity,
@@ -580,10 +581,6 @@ function boundedMessage(value: string): string {
         throw new Error('Invalid restoration message');
     }
     return value;
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function requireRecord(value: unknown, label: string): Record<string, unknown> {

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { CrewMemberState } from '../crew.model';
 import type {
@@ -652,8 +653,4 @@ function compareLocation(
     right: { readonly code: string; readonly id: LocationId },
 ): number {
     return compareText(left.code, right.code) || compareText(left.id, right.id);
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }

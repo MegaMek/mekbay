@@ -6,6 +6,7 @@ import type { BaseEntity } from './entity/base-entity';
 import type { MekEntity } from './entity/entities/mek/mek-entity';
 import type { NativeUnitSourceHandle } from './native-unit-source-handle';
 import type { SavedEntityIdentity } from './persisted-unit-state';
+import type { CrewAssignment } from './runtime/crew-assignment';
 import type {
     ClassicUnitQueryPort,
     ClassicUnitRuntimeIndex,
@@ -25,6 +26,7 @@ export interface CBTUnitSnapshot {
     readonly sourceRef: SavedEntityIdentity;
     readonly nativeSource?: NativeUnitSourceHandle;
     readonly ruleset: CBTRuleset;
+    readonly crewAssignment: CrewAssignment;
     readonly state: ClassicUnitRuntimeState;
     readonly query: ClassicUnitQueryPort;
 }

@@ -397,7 +397,7 @@ function forceMembersToRows(force: Force, members: readonly ForceMember[]): Reco
     const cbtForce = force as CBTForce;
     const roster = cbtForce.queryCanonicalRoster();
     if (roster.kind !== 'available') throw new Error(roster.message);
-    const groupNames = new Map(roster.snapshot.structural.groups.map(group => [
+    const groupNames = new Map(roster.snapshot.groups.map(group => [
         group.groupId,
         group.name?.trim() || group.groupId,
     ] as const));

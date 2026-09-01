@@ -126,6 +126,8 @@ describe('bindNonMekRecordSheet', () => {
             interaction => interactions.push(interaction),
         );
         const grid = svg.querySelector<SVGElement>('.capital-pip-grid')!;
+        const region = svg.querySelector<SVGElement>('.unitLocation.armor')!;
+        const backing = svg.querySelector<SVGElement>('.capital-grid-backing')!;
         const targets = [...svg.querySelectorAll<SVGElement>('.capital-pip-interaction')];
         const path = (className: string): string =>
             svg.querySelector(`.${className}`)?.getAttribute('d') ?? '';
@@ -135,6 +137,8 @@ describe('bindNonMekRecordSheet', () => {
         expect(targets.every(target => target.style.fill === 'transparent'
             && target.style.getPropertyPriority('fill') === 'important')).toBeTrue();
         expect(grid.dataset['mekbayEntityBound']).toBeUndefined();
+        expect(region.dataset['mekbayEntityBound']).toBeUndefined();
+        expect(region.style.cursor).toBe('default');
         expect(svg.querySelectorAll('.pip').length).toBe(0);
         expect(path('capital-pip-state-damaged')).not.toBe('');
 
@@ -150,6 +154,8 @@ describe('bindNonMekRecordSheet', () => {
         expect(path('capital-pip-state-fresh-repair')).not.toBe('');
         expect(path('capital-pip-state-pending-repair')).toBe('');
 
+        backing.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions).toEqual([]);
         targets[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions).toEqual([
             jasmine.objectContaining({ kind: 'armor', faceId: FACE_ID, locationId: LOCATION_ID }),
@@ -328,6 +334,61 @@ describe('bindNonMekRecordSheet', () => {
             kind: 'inventory-selection',
             componentIds: [componentId],
             expectedRevision: asStateRevision(4),
+        })]);
+    });
+
+    it('binds a derived weapon bay only once when legacy rows name separate members', () => {
+        const svg = duplicateInventorySheet();
+        const interactions: NonMekRecordSheetInteraction[] = [];
+        const firstId = asComponentId('weapon-1');
+        const secondId = asComponentId('weapon-2');
+        const recordSheet = Object.freeze({
+            ...snapshot(3),
+            components: Object.freeze([firstId, secondId].map(componentId => Object.freeze({
+                componentId,
+                equipmentId: 'weapon',
+                label: 'Large Laser',
+                sheetLocations: Object.freeze(['FR']),
+                status: 'available' as const,
+                previewStatus: 'available' as const,
+            }))),
+        });
+        const equipmentPanel = {
+            stateRevision: asStateRevision(4),
+            targetRegistryRevision: asStateRevision(1),
+            crew: { gunnery: 4, piloting: 5 },
+            targets: [],
+            components: [{
+                componentId: firstId,
+                label: 'Large Laser Bay',
+                locations: [],
+                status: 'available',
+                previewStatus: 'available',
+                modes: [],
+                jammed: false,
+                attack: {
+                    kind: 'weapon-bay',
+                    source: 'synthetic-bay',
+                    members: [firstId, secondId].map(componentId => ({
+                        componentId,
+                        selectable: true,
+                        ammoSources: [],
+                    })),
+                },
+                weapon: { selectable: true, selection: undefined },
+            }],
+        } as unknown as EquipmentPanelSnapshot;
+
+        bindNonMekRecordSheet(svg, recordSheet, interaction => interactions.push(interaction), equipmentPanel);
+        const buttons = svg.querySelectorAll<SVGElement>('.mainButton');
+        buttons[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        buttons[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+        expect(buttons[0]?.getAttribute('data-mekbay-entity-bound')).toBe('1');
+        expect(buttons[1]?.hasAttribute('data-mekbay-entity-bound')).toBeFalse();
+        expect(interactions).toEqual([jasmine.objectContaining({
+            kind: 'inventory-selection',
+            componentIds: [firstId, secondId],
         })]);
     });
 
@@ -635,7 +696,16 @@ function pipOnlySheet(): SVGSVGElement {
 
 function capitalGridSheet(): SVGSVGElement {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.appendChild(CapitalShipPipRenderer.createPips(6_000, 1_000, 500, 'armor', 'FR')!);
+    const region = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    region.setAttribute('class', 'unitLocation armor');
+    region.setAttribute('loc', 'FR');
+    const backing = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    backing.setAttribute('class', 'capital-grid-backing');
+    backing.setAttribute('width', '1000');
+    backing.setAttribute('height', '500');
+    region.appendChild(backing);
+    region.appendChild(CapitalShipPipRenderer.createPips(6_000, 1_000, 500, 'armor', 'FR')!);
+    svg.appendChild(region);
     return optimizeGeneratedSvg(svg);
 }
 
@@ -683,6 +753,19 @@ function inventorySheet(): SVGSVGElement {
             <text class="name">AC/5</text><text class="location">FR</text>
             <rect class="hitMod-rect" display="none"></rect><text class="hitMod-text" display="none"></text>
             <rect class="targetTn-rect" display="none"></rect><text class="targetTn-text" display="none"></text>
+        </g>
+    </svg>`;
+    return host.querySelector('svg') as SVGSVGElement;
+}
+
+function duplicateInventorySheet(): SVGSVGElement {
+    const host = document.createElement('div');
+    host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg">
+        <g class="inventoryEntry" id="generated-aero-inventory-row@0" data-mekbay-component-ids="weapon-1">
+            <rect class="inventoryEntryButton mainButton"></rect>
+        </g>
+        <g class="inventoryEntry" id="generated-aero-inventory-row@1" data-mekbay-component-ids="weapon-2">
+            <rect class="inventoryEntryButton mainButton"></rect>
         </g>
     </svg>`;
     return host.querySelector('svg') as SVGSVGElement;

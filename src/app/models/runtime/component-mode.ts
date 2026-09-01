@@ -17,7 +17,6 @@ import {
     type EquipmentInteractionInput,
     type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 
 export type BinaryComponentMode = 'enabled' | 'disabled';
@@ -178,12 +177,10 @@ export abstract class ToggleHandler extends ComponentModeHandler {
         if (runtime.query().componentMode(definition.componentId) === selectedMode) return true;
         const result = runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: runtime.revision(),
             componentId: definition.componentId,
             mode: selectedMode,
         });
-        if (result.accepted && !result.idempotent) {
+        if (result.accepted && result.changed) {
             context.toastService.showToast(
                 `${definition.displayName} is ${choice.value === 'enabled'
                     ? this.enabledToastVerb

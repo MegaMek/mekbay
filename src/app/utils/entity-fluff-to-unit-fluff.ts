@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { compareText } from './string.util';
 import type { EntityFluff } from '../models/entity/types';
 import type { UnitFluff, UnitFluffSystem } from '../models/unit-fluff.model';
 
@@ -80,5 +81,5 @@ function compareSystemKeys(left: string, right: string): number {
     if (rightOrder === undefined) return -1;
     return leftOrder - rightOrder;
   }
-  return left < right ? -1 : left > right ? 1 : 0;
+  return compareText(left, right);
 }

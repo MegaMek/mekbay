@@ -3,7 +3,6 @@
 
 import { jsonValuesEqual } from '../../utils/json-value.util';
 import type {
-    CBTForceRosterMemberKind,
     CBTForceRosterSnapshot,
     SerializedCBTForceRosterGroupV1,
     SerializedCBTForceRosterMemberV1,
@@ -13,50 +12,21 @@ import {
     CBT_FORCE_ROSTER_SCHEMA_VERSION,
     CBT_FORCE_UNASSIGNED_GROUP_ID,
     MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
-    queryCBTForceRoster,
 } from './cbt-force-roster';
 import {
     asUnitInstanceId,
     type StateRevision,
     type UnitInstanceId,
 } from './runtime-state';
-import type { UnitProviderId, UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import type { SerializedCBTForceV2 } from './persistence-v2';
 
 /** The legacy force model currently enforces this same durable group limit. */
 export const MAX_CBT_FORCE_ROSTER_GROUPS = 50;
 
-/** Detached current owner facts. No crew alias is duplicated into structural roster state. */
-export interface CBTForceRosterOwnerFact {
-    readonly instanceId: UnitInstanceId;
-    readonly kind: CBTForceRosterMemberKind;
-    readonly unitLabel: string;
-    readonly availability: 'ready' | 'deferred';
-    readonly source: 'runtime' | 'envelope';
-    readonly identity?: Readonly<{ provider: UnitProviderId; uuid: UnitUuid }>;
-    readonly battleValue: number | null;
-    readonly battleValueBasis: 'current-skilled' | 'pristine' | 'unavailable';
-}
-
-/**
- * One detached owner query. Structural membership remains visibly separate
- * from labels/BV, which can change without becoming integrity-bound roster data.
- * Roster schema V1 has no independent counter, so its CAS revision is the
- * enclosing integrity-bound force revision.
- */
-export interface CBTForceOwnedRosterSnapshot {
-    readonly forceRevision: StateRevision;
-    readonly rosterRevision: StateRevision;
-    readonly readOnly: boolean;
-    readonly structural: CBTForceRosterSnapshot;
-    readonly owners: readonly CBTForceRosterOwnerFact[];
-}
-
-export type CBTForceOwnedRosterQueryResult =
-    | { readonly kind: 'available'; readonly snapshot: CBTForceOwnedRosterSnapshot }
+export type CBTForceRosterQueryResult =
+    | { readonly kind: 'available'; readonly snapshot: CBTForceRosterSnapshot }
     | {
         readonly kind: 'unavailable';
-        readonly reason: 'NO_CANONICAL_ROSTER' | 'OWNER_TOPOLOGY_DRIFT';
+        readonly reason: 'NO_CANONICAL_ROSTER' | 'RUNTIME_TOPOLOGY_DRIFT';
         readonly message: string;
     };
 
@@ -158,90 +128,6 @@ export type CBTForceRosterCommandResult = CBTForceRosterCommandRejection | {
     readonly changed: true;
     readonly forceRevision: StateRevision;
 };
-
-export function deferredEnvelopeRosterOwnerFact(
-    entry: Extract<SerializedCBTForceV2['units'][number], { readonly kind: 'deferred' }>,
-): CBTForceRosterOwnerFact {
-    const payload = entry.source.payload;
-    const unitLabel = payload !== null && typeof payload === 'object' && !Array.isArray(payload)
-        && typeof payload['unit'] === 'string' && payload['unit'].trim()
-        ? payload['unit'].trim()
-        : entry.source.identity.kind === 'unresolved' && entry.source.identity.rawLegacyName.trim()
-            ? entry.source.identity.rawLegacyName.trim()
-            : String(entry.instanceId);
-    return Object.freeze({
-        instanceId: entry.instanceId,
-        kind: 'deferred',
-        unitLabel,
-        availability: 'deferred',
-        source: 'envelope',
-        ...(entry.source.identity.kind === 'resolved'
-            ? {
-                identity: Object.freeze({
-                    provider: entry.source.identity.savedIdentity.provider,
-                    uuid: entry.source.identity.savedIdentity.uuid,
-                }),
-            }
-            : {}),
-        battleValue: null,
-        battleValueBasis: 'unavailable',
-    });
-}
-
-export function readyEnvelopeRosterOwnerFact(
-    entry: Extract<SerializedCBTForceV2['units'][number], { readonly kind: 'ready' }>,
-): CBTForceRosterOwnerFact {
-    return Object.freeze({
-        instanceId: entry.instanceId,
-        kind: 'ready',
-        unitLabel: `${entry.unit.entity.provider}:${entry.unit.entity.uuid}`,
-        availability: 'deferred',
-        source: 'envelope',
-        identity: Object.freeze({
-            provider: entry.unit.entity.provider,
-            uuid: entry.unit.entity.uuid,
-        }),
-        battleValue: null,
-        battleValueBasis: 'unavailable',
-    });
-}
-
-export function buildCBTForceOwnedRosterSnapshot(input: {
-    readonly forceId: string;
-    readonly forceRevision: StateRevision;
-    readonly roster: SerializedCBTForceRosterV1;
-    readonly ownerFacts: readonly CBTForceRosterOwnerFact[];
-    readonly readOnly: boolean;
-}): CBTForceOwnedRosterSnapshot {
-    const structural = queryCBTForceRoster(input);
-    const factsById = new Map<string, CBTForceRosterOwnerFact>();
-    for (const raw of input.ownerFacts) {
-        const fact = canonicalOwnerFact(raw);
-        if (factsById.has(fact.instanceId)) {
-            throw new Error(`Duplicate current roster owner ${fact.instanceId}`);
-        }
-        factsById.set(fact.instanceId, fact);
-    }
-    const owners = structural.members.map(member => {
-        const fact = factsById.get(member.instanceId);
-        if (!fact) throw new Error(`Canonical roster member ${member.instanceId} has no current owner fact`);
-        if (fact.kind !== member.kind) {
-            throw new Error(`Canonical roster member ${member.instanceId} disagrees with its current kind`);
-        }
-        factsById.delete(member.instanceId);
-        return fact;
-    });
-    if (factsById.size > 0) {
-        throw new Error(`Current owner ${factsById.keys().next().value} is absent from the canonical roster`);
-    }
-    return Object.freeze({
-        forceRevision: input.forceRevision,
-        rosterRevision: input.forceRevision,
-        readOnly: input.readOnly,
-        structural,
-        owners: Object.freeze(owners),
-    });
-}
 
 export interface PrepareCBTForceRosterMutationPlanInput {
     readonly roster: SerializedCBTForceRosterV1;
@@ -386,10 +272,6 @@ function deleteGroup(
         const targetIndex = groups.findIndex(group => group.groupId === command.relocateMembersToGroupId);
         if (targetIndex < 0) return 'UNKNOWN_GROUP';
         const target = groups[targetIndex];
-        if (target.groupId === CBT_FORCE_UNASSIGNED_GROUP_ID
-            && source.members.some(member => member.kind === 'deferred')) {
-            return 'INVALID_UNASSIGNED_GROUP_OPERATION';
-        }
         if (source.members.length > 0
             && [...target.members, ...source.members].filter(member => member.commander === true).length > 1) {
             return 'COMMANDER_CONFLICT';
@@ -424,11 +306,6 @@ function moveMember(
     const target = groups[targetIndex];
     const sameGroup = sourceLocation.groupIndex === targetIndex;
     const movingMember = source.members[sourceLocation.memberIndex];
-    if (!sameGroup
-        && target.groupId === CBT_FORCE_UNASSIGNED_GROUP_ID
-        && movingMember.kind === 'deferred') {
-        return 'INVALID_UNASSIGNED_GROUP_OPERATION';
-    }
     if (!sameGroup
         && movingMember.commander === true
         && target.members.some(member => member.commander === true)) {
@@ -484,7 +361,6 @@ function setCommander(
             : index !== location.memberIndex && current.commander === true;
         members[index] = Object.freeze({
             instanceId: current.instanceId,
-            kind: current.kind,
             order: current.order,
             ...(commander ? { commander: true as const } : {}),
         });
@@ -573,7 +449,7 @@ function validateDetachedCommand(detached: unknown): CBTForceRosterCommand {
 function validateMetadataPatch(value: unknown): void {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid metadata patch');
     const record = value as Record<string, unknown>;
-    noExtraKeys(record, ['name', 'color', 'formationId', 'formationTargetGroupId', 'formationLock']);
+    exactKeys(record, ['name', 'color', 'formationId', 'formationTargetGroupId', 'formationLock']);
     for (const key of ['name', 'color', 'formationId', 'formationTargetGroupId'] as const) {
         const candidate = record[key];
         if (candidate !== undefined && candidate !== null && typeof candidate !== 'string') {
@@ -672,7 +548,6 @@ function validFormationTarget(
 function freezeMembers(members: readonly SerializedCBTForceRosterMemberV1[]): readonly SerializedCBTForceRosterMemberV1[] {
     return Object.freeze(members.map((member, order) => Object.freeze({
         instanceId: member.instanceId,
-        kind: member.kind,
         order,
         ...(member.commander === undefined ? {} : { commander: member.commander }),
     })));
@@ -692,38 +567,6 @@ function findMember(roster: SerializedCBTForceRosterV1, instanceId: UnitInstance
 function removeEmptyUnassigned(groups: SerializedCBTForceRosterGroupV1[]): void {
     const index = groups.findIndex(group => group.groupId === CBT_FORCE_UNASSIGNED_GROUP_ID);
     if (index >= 0 && groups[index].members.length === 0) groups.splice(index, 1);
-}
-
-function canonicalOwnerFact(raw: CBTForceRosterOwnerFact): CBTForceRosterOwnerFact {
-    const instanceId = asUnitInstanceId(String(raw.instanceId));
-    if (raw.kind !== 'ready' && raw.kind !== 'deferred') throw new Error('Invalid owner kind');
-    const unitLabel = raw.unitLabel.trim();
-    if (!unitLabel || unitLabel.includes('\0') || unitLabel.length > MAX_CBT_FORCE_ROSTER_METADATA_LENGTH) {
-        throw new Error(`Invalid current owner label for ${instanceId}`);
-    }
-    if (raw.availability !== 'ready' && raw.availability !== 'deferred') throw new Error('Invalid owner availability');
-    if (!['runtime', 'envelope'].includes(raw.source)) {
-        throw new Error('Invalid owner source');
-    }
-    if (raw.battleValue !== null
-        && (!Number.isSafeInteger(raw.battleValue) || raw.battleValue < 0)) {
-        throw new Error(`Invalid current owner battle value for ${instanceId}`);
-    }
-    if (!['current-skilled', 'pristine', 'unavailable'].includes(raw.battleValueBasis)) {
-        throw new Error('Invalid battle-value basis');
-    }
-    if ((raw.battleValue === null) !== (raw.battleValueBasis === 'unavailable')) {
-        throw new Error(`Current owner ${instanceId} has inconsistent battle-value facts`);
-    }
-    return Object.freeze({
-        instanceId,
-        kind: raw.kind,
-        unitLabel,
-        availability: raw.availability,
-        source: raw.source,
-        battleValue: raw.battleValue,
-        battleValueBasis: raw.battleValueBasis,
-    });
 }
 
 function validateGroupId(value: unknown): string {
@@ -751,11 +594,6 @@ function requireInteger(value: unknown): number {
 }
 
 function exactKeys(record: Record<string, unknown>, allowed: readonly string[]): void {
-    const expected = new Set(allowed);
-    if (Object.keys(record).some(key => !expected.has(key))) throw new Error('Unexpected command field');
-}
-
-function noExtraKeys(record: Record<string, unknown>, allowed: readonly string[]): void {
     const expected = new Set(allowed);
     if (Object.keys(record).some(key => !expected.has(key))) throw new Error('Unexpected command field');
 }

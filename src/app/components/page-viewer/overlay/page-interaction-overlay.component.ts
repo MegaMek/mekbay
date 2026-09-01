@@ -24,8 +24,10 @@ import { ToastService } from '../../../services/toast.service';
 import type { CBTForce } from '../../../models/cbt-force.model';
 import type { PageViewerMember } from '../internal/types';
 import { isCBTMekForceMember } from '../../../models/force-member.model';
-import { createCommandId } from '../../../models/runtime/runtime-state';
-import { hasPendingNonMekChanges } from '../../../models/runtime/non-mek-unit-instance';
+import {
+    hasNonMekAirborneTurnSelection,
+    hasPendingNonMekChanges,
+} from '../../../models/runtime/non-mek-unit-instance';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
 import { PageRuntimeHistoryPanelComponent } from './page-runtime-history-panel.component';
 import { PageViewerStateService } from '../internal/page-viewer-state.service';
@@ -46,6 +48,7 @@ import {
     type UnitNotificationActivation,
 } from '../../unit-notification-badges/unit-notification-badges.component';
 import { ClassicUnitViewModeService } from '../../../services/classic-unit-view-mode.service';
+import { CBTAutomationToastService } from '../../../services/cbt-automation-toast.service';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 const PAGE_RUNTIME_HISTORY_OVERLAY_PREFIX = 'page-viewer-runtime-history';
@@ -79,6 +82,8 @@ export class PageInteractionOverlayComponent {
     private pageViewerState = inject(PageViewerStateService);
     private forceWorkspace = inject(ForceWorkspaceStateService);
     private toastService = inject(ToastService);
+    private readonly automationToasts = inject(CBTAutomationToastService);
+    private readonly automationToastVisibilityOwner = {};
     protected readonly unitViewMode = inject(ClassicUnitViewModeService);
     private targetsOverlay = new WeaponTargetsOverlayController({
         overlay: this.overlay,
@@ -123,8 +128,6 @@ export class PageInteractionOverlayComponent {
         const snapshot = member.force.getUnitSnapshot(member.id);
         return snapshot && hasNonMekRuntime(snapshot) ? snapshot : null;
     });
-    readonly supportsTurnTracker = computed(() => this.turn() !== null || this.entityTurn() !== null);
-    
     /**
      * When 'fixed', the overlay is bound to the container and stays stable during zoom/pan.
      * When 'page', the overlay is bound to the page-wrapper and moves with zoom/pan.
@@ -139,11 +142,12 @@ export class PageInteractionOverlayComponent {
     dirty = computed(() => {
         const turn = this.turn();
         if (turn !== null) return isMekTurnPanelDirty(turn);
-        const entity = this.entityTurn()?.state;
+        const entitySnapshot = this.entityTurn();
+        const entity = entitySnapshot?.state;
         const member = this.member();
-        return entity !== undefined && (
+        return entitySnapshot !== null && entity !== undefined && (
             hasPendingNonMekChanges(entity)
-            || entity.turn.airborne !== null
+            || hasNonMekAirborneTurnSelection(entitySnapshot.entity, entity)
             || entity.turn.movement !== null
             || member?.force.hasRuntimeHistoryForUnitTurn(
                 member.id,
@@ -161,7 +165,7 @@ export class PageInteractionOverlayComponent {
 
     currentPhase = computed(() => {
         const turn = this.turn();
-        return turn ? mekTurnPanelPhase(turn) : this.entityTurn() ? 'T' : '';
+        return turn ? mekTurnPanelPhase(turn) : this.entityTurn() ? 'T' : 'M';
     });
 
     readonly movementIndicator = computed(() => {
@@ -175,6 +179,16 @@ export class PageInteractionOverlayComponent {
     turnTrackerVisible = computed(() => !this.pageViewerState.inventoryDialogOpen());
 
     constructor() {
+        effect(() => {
+            const member = this.member();
+            this.automationToasts.setVisibleUnitIds(
+                this.automationToastVisibilityOwner,
+                member ? [member.id] : [],
+            );
+        });
+        this.destroyRef.onDestroy(() => this.automationToasts.clearVisibleUnitIds(
+            this.automationToastVisibilityOwner,
+        ));
         effect(onCleanup => {
             const member = this.member();
             if (!member) return;
@@ -197,7 +211,7 @@ export class PageInteractionOverlayComponent {
         if (!this.turnTrackerVisible()) return;
 
         const member = this.member();
-        if (!member || !this.supportsTurnTracker()) return;
+        if (!member) return;
         const overlayKey = `turnSummary-${member.id}`;
 
         // Toggle: close if already open
@@ -349,6 +363,7 @@ export class PageInteractionOverlayComponent {
 
     async endPhase(event: MouseEvent) {
         event.stopPropagation();
+        this.closeAllOverlays();
         await this.dispatchTurnBoundary('end-phase');
     }
 
@@ -369,23 +384,16 @@ export class PageInteractionOverlayComponent {
                         policy: this.optionsService.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
                             ? 'automatic'
                             : 'manual',
-                        commandId: createCommandId(),
-                        expectedRevision: snapshot.stateRevision,
                     }
                     : {
                         type,
-                        commandId: createCommandId(),
-                        expectedRevision: snapshot.stateRevision,
                     })
                 : type === 'end-phase'
                     ? await this.dispatchEntityTurnBoundary(member, 'end-phase')
                     : await this.dispatchEntityTurnBoundary(member, 'end-turn');
             if (result === null) return;
             if (!result.accepted) {
-                const message = result.reason === 'PENDING_PILOT_CHECKS'
-                    ? `Resolve pending Piloting Skill Rolls before ending the ${type === 'end-phase' ? 'phase' : 'turn'}.`
-                    : `Turn action rejected: ${result.reason}`;
-                this.toastService.showToast(message, 'error');
+                this.toastService.showToast('This force is read-only.', 'error');
             }
         } catch (error) {
             this.toastService.showToast(
@@ -403,7 +411,6 @@ export class PageInteractionOverlayComponent {
         if (!snapshot || !hasNonMekRuntime(snapshot)) return Promise.resolve(null);
         return member.force.dispatchNonMekUnitCommand(member.id, {
             kind,
-            expectedRevision: snapshot.state.stateRevision,
         });
     }
 

@@ -24,7 +24,6 @@ import {
     type EquipmentInteractionInput,
     type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 
 export interface ComponentHagModeDefinition {
@@ -194,8 +193,6 @@ export class HagHandler extends EquipmentInteractionHandler {
         if (runtime.query().componentMode(definition.componentId) === choice.value) return true;
         return runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: runtime.revision(),
             componentId: definition.componentId,
             mode: choice.value,
         }).accepted;

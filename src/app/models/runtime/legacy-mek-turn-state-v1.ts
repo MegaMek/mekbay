@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
+import { isObjectLiteralRecord, isRecord } from '../../utils/json-value.util';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import {
     deserializeUnitCover,
@@ -605,7 +607,7 @@ function parseLegacyStringRecord(value: unknown, maximumValueLength: number): {
     readonly value: ReadonlyMap<string, string>;
     readonly unresolved?: unknown;
 } {
-    if (!isPlainRecord(value)) return { valid: false, value: new Map(), unresolved: value };
+    if (!isObjectLiteralRecord(value)) return { valid: false, value: new Map(), unresolved: value };
     const rows = Object.entries(value);
     if (rows.length > MAX_MEK_TURN_COLLECTION_ENTRIES) {
         return { valid: false, value: new Map(), unresolved: value };
@@ -634,7 +636,7 @@ function parseLegacyOutcomeRecord(value: unknown): {
     readonly value: ReadonlyMap<string, LegacyMekTurnRuleCheckOutcomeV1>;
     readonly unresolved?: unknown;
 } {
-    if (!isPlainRecord(value)) return { valid: false, value: new Map(), unresolved: value };
+    if (!isObjectLiteralRecord(value)) return { valid: false, value: new Map(), unresolved: value };
     const rows = Object.entries(value);
     if (rows.length > MAX_MEK_TURN_COLLECTION_ENTRIES) {
         return { valid: false, value: new Map(), unresolved: value };
@@ -661,7 +663,7 @@ function parseLegacyPSRChecks(value: unknown): {
     readonly appliedFacts: number;
     readonly unresolved?: unknown;
 } {
-    if (!isPlainRecord(value)) return { appliedFacts: 0, unresolved: value };
+    if (!isObjectLiteralRecord(value)) return { appliedFacts: 0, unresolved: value };
     const raw = value as Record<string, unknown>;
     const unresolved: Record<string, unknown> = Object.fromEntries(Object.entries(raw).filter(([key]) =>
         !['legActuators', 'hipsHit', 'gyroHit', 'gyroDestroyed', 'legsDestroyed', 'shutdown'].includes(key)));
@@ -707,7 +709,7 @@ function parseLegacyPositiveIntegerRecord(value: unknown): {
     readonly value: ImmutableIndex<string, number>;
     readonly unresolved?: unknown;
 } {
-    if (!isPlainRecord(value)) return { valid: false, value: new ImmutableIndex([]), unresolved: value };
+    if (!isObjectLiteralRecord(value)) return { valid: false, value: new ImmutableIndex([]), unresolved: value };
     const rows = Object.entries(value);
     if (rows.length > MAX_MEK_TURN_LOCATION_ENTRIES) {
         return { valid: false, value: new ImmutableIndex([]), unresolved: value };
@@ -888,16 +890,8 @@ function validText(value: string, maximumLength: number): boolean {
 }
 
 function requireRecord(value: unknown, path: string): Record<string, unknown> {
-    if (!isPlainRecord(value)) fail('must be a plain object', path);
+    if (!isObjectLiteralRecord(value)) fail('must be a plain object', path);
     return value as Record<string, unknown>;
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-    return isRecord(value) && Object.getPrototypeOf(value) === Object.prototype;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function exactKeys(record: Record<string, unknown>, keys: readonly string[], path: string): void {
@@ -940,10 +934,6 @@ function isMoveMode(value: unknown): value is LegacyMekTurnMoveModeV1 {
 
 function isOutcome(value: unknown): value is LegacyMekTurnRuleCheckOutcomeV1 {
     return value === 'success' || value === 'failed';
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function fail(message: string, path: string): never {

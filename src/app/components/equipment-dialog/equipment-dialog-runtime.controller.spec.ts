@@ -6,7 +6,7 @@ import { Subject } from 'rxjs';
 import type { CBTForceMember, CBTMekForceMember } from '../../models/force-member.model';
 import type { MekEquipmentInteraction } from '../../models/cbt-force.model';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
-import { TestTankEntity } from '../../models/entity/testing/test-entities';
+import { TestBipedMekEntity, TestTankEntity } from '../../models/entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../../models/entity/testing/test-mounted-equipment';
 import { MiscEquipment, WeaponEquipment, type AmmoEquipment, type Equipment } from '../../models/equipment.model';
 import type { EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
@@ -48,7 +48,9 @@ describe('EquipmentDialogRuntimeController', () => {
             getEquipmentPanelSnapshot: getSnapshot,
             getMekEquipmentInteractions: () => [],
         };
-        const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
+        const member = {
+            kind: 'cbt', id: 'mek-1', force, entity: new TestBipedMekEntity(),
+        } as unknown as CBTMekForceMember;
         const controller = new EquipmentDialogRuntimeController(
             member,
             {
@@ -116,7 +118,9 @@ describe('EquipmentDialogRuntimeController', () => {
             getEquipmentPanelSnapshot: () => panel,
             getMekEquipmentInteractions: getInteractions,
         };
-        const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
+        const member = {
+            kind: 'cbt', id: 'mek-1', force, entity: new TestBipedMekEntity(),
+        } as unknown as CBTMekForceMember;
         const controller = new EquipmentDialogRuntimeController(
             member,
             { options: () => ({}) } as unknown as OptionsService,
@@ -490,6 +494,85 @@ describe('EquipmentDialogRuntimeController', () => {
         controller.dispose();
     });
 
+    it('dispatches a weapon bay target and status as atomic member batches', async () => {
+        const changed = new Subject<void>();
+        const firstId = 'mount:bay-weapon-1' as ComponentId;
+        const secondId = 'mount:bay-weapon-2' as ComponentId;
+        const attack = {
+            kind: 'weapon-bay' as const,
+            source: 'authored-bay' as const,
+            members: [firstId, secondId].map(componentId => ({
+                componentId,
+                selectable: true,
+                ammoSources: [],
+            })),
+        };
+        const row = {
+            componentId: firstId,
+            label: 'AC/10 Bay',
+            locations: [],
+            status: 'available',
+            previewStatus: 'available',
+            modes: [],
+            jammed: false,
+            attack,
+            weapon: {
+                selectable: true,
+                selection: undefined,
+                ammoSelection: undefined,
+                ammoSources: [],
+            },
+        } as unknown as EquipmentPanelComponent;
+        const panel = {
+            ...snapshot('Bay fixture'),
+            components: [row],
+        } as EquipmentPanelSnapshot;
+        const dispatchTargeting = jasmine.createSpy('dispatchAttackerTargeting').and.resolveTo({
+            accepted: true,
+            idempotent: false,
+            currentRevision: 1,
+        });
+        const dispatchUnit = jasmine.createSpy('dispatchNonMekUnitCommand').and.resolveTo({
+            accepted: true,
+            changed: true,
+            state: {},
+        });
+        const force = {
+            changed,
+            getEquipmentPanelSnapshot: () => panel,
+            getUnitSnapshot: () => null,
+            getMekEquipmentInteractions: jasmine.createSpy('getMekEquipmentInteractions'),
+            getAttackerTargeting: () => ({ stateRevision: 0, registryRevision: 0, state: {} }),
+            dispatchAttackerTargeting: dispatchTargeting,
+            dispatchNonMekUnitCommand: dispatchUnit,
+        };
+        const controller = new EquipmentDialogRuntimeController(
+            {
+                kind: 'cbt', id: 'dropship-1', force, entity: new TestTankEntity(),
+            } as unknown as CBTForceMember,
+            { options: () => ({}) } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+        );
+
+        await controller.selectTarget(row, 'range:long');
+        await controller.changeStatus(row);
+
+        expect(dispatchTargeting).toHaveBeenCalledOnceWith('dropship-1', jasmine.objectContaining({
+            edit: {
+                kind: 'set-component-selections',
+                componentIds: [firstId, secondId],
+                selection: { kind: 'manual-range', range: 'long' },
+            },
+        }));
+        expect(dispatchUnit).toHaveBeenCalledOnceWith('dropship-1', jasmine.objectContaining({
+            kind: 'set-component-statuses',
+            componentIds: [firstId, secondId],
+            status: 'destroyed',
+            target: 'committed',
+        }));
+        controller.dispose();
+    });
+
     it('submits and reports the exact prototype-laser heat roll', async () => {
         const changed = new Subject<void>();
         const weaponId = 'mount:prototype-medium-pulse' as ComponentId;
@@ -528,7 +611,9 @@ describe('EquipmentDialogRuntimeController', () => {
             getMekEquipmentInteractions: () => [],
             fireSelectedWeapons: fire,
         };
-        const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
+        const member = {
+            kind: 'cbt', id: 'mek-1', force, entity: new TestBipedMekEntity(),
+        } as unknown as CBTMekForceMember;
         spyOn(Math, 'random').and.returnValue(5 / 6);
         const controller = new EquipmentDialogRuntimeController(
             member,
@@ -565,7 +650,9 @@ describe('EquipmentDialogRuntimeController', () => {
             dispatchEquipmentRowOrder,
             dispatchMekUnitCommand,
         };
-        const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
+        const member = {
+            kind: 'cbt', id: 'mek-1', force, entity: new TestBipedMekEntity(),
+        } as unknown as CBTMekForceMember;
         const controller = new EquipmentDialogRuntimeController(
             member,
             { options: () => ({}) } as unknown as OptionsService,

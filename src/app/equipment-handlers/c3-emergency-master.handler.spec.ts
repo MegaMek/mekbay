@@ -14,7 +14,6 @@ import {
     type EncounterNetworkEndpoint,
 } from '../models/runtime/encounter-runtime';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
-import { asCommandId } from '../models/runtime/runtime-state';
 import {
     createHandlerCommandContext,
     createHandlerQueryContext,
@@ -249,8 +248,8 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
         setup.setRole('master');
         expect(setup.runtime.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('c3em:unavailable'),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             componentId: setup.component.id,
             status: 'destroyed',
             target: 'committed',
@@ -267,8 +266,8 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
 
         expect(setup.runtime.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('c3em:available'),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             componentId: setup.component.id,
             status: 'available',
             target: 'committed',
@@ -363,8 +362,8 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
         const setup = directC3Setup('master');
         expect(setup.runtime.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('c3em:destroyed'),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             componentId: setup.component.id,
             status: 'destroyed',
             target: 'committed',

@@ -57,8 +57,6 @@ export class VibrobladeHandler extends ComponentModeHandler {
         if (runtime.query().componentMode(definition.componentId) === choice.value) return true;
         return runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: runtime.revision(),
             componentId: definition.componentId,
             mode: choice.value,
         }).accepted;

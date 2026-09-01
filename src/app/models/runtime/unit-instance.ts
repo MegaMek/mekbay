@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import type {
     ArmorFaceId,
@@ -122,6 +123,7 @@ import {
     MAX_MEK_TURN_NUMBER,
     mekTurnStatesEqualV2,
     serializeMekTurnStateV2,
+    type MekPendingFallConsequencesV2,
     type MekTurnStateV2,
 } from './mek-turn-state-v2';
 import {
@@ -575,6 +577,8 @@ export type CBTUnitCommand = CommandEnvelope & (
         readonly wounds: number;
         readonly unconscious: boolean;
         readonly ejected: boolean;
+        /** Omitted preserves an existing schedule or queues a new loss for next turn. */
+        readonly recoveryReadyTurn?: number | null;
     }
     | {
         readonly type: 'declare-mek-movement';
@@ -611,8 +615,17 @@ export type CBTUnitCommand = CommandEnvelope & (
         readonly type: 'replace-turn-state';
         readonly turn: MekTurnStateV2;
     }
+    | {
+        readonly type: 'set-pending-fall-consequences';
+        readonly pending: MekPendingFallConsequencesV2 | null;
+    }
     | { readonly type: 'reset-turn-state' }
-    | { readonly type: 'end-phase' }
+    | {
+        readonly type: 'end-phase';
+        /** Set only when End Turn is completing its prerequisite phase. */
+        readonly endTurnBoundary?: true;
+    }
+    | { readonly type: 'mark-end-turn-heat-staged' }
     | { readonly type: 'end-turn'; readonly policy: MekHeatAutomationPolicyV2 }
     | { readonly type: 'commit-pending' }
     | { readonly type: 'cancel-pending' }
@@ -1512,8 +1525,10 @@ function reduceAttackerTargeting(
     runtime: MekUnitQueryPort,
     statusTopology: RuntimeEquipmentStatusTopology,
 ): CommandReduction {
-    if (command.edit.kind === 'set-component-selection'
-        && command.edit.selection !== null
+    const selectingComponents = (command.edit.kind === 'set-component-selection'
+        || command.edit.kind === 'set-component-selections')
+        && command.edit.selection !== null;
+    if (selectingComponents
         && mobileHpgBlocksWeaponAttacks(
             buildMekMobileHpgFacts(unit, state, statusTopology, 'committed'),
         )) return rejected(state, 'INVALID_TARGETING');
@@ -1538,16 +1553,21 @@ function reduceAttackerTargeting(
         );
     }
     if (!planned.changed) return rejected(state, 'NO_CHANGE');
-    if (command.edit.kind === 'set-component-selection'
+    const targetComponentIds = command.edit.kind === 'set-component-selection'
         && command.edit.selection?.kind === 'target'
-        && !mekWeaponTargetSelectionAllowed(
-            unit,
-            index,
-            runtime,
-            registry,
-            planned.state,
-            command.edit.componentId,
-        )) {
+        ? [command.edit.componentId]
+        : command.edit.kind === 'set-component-selections'
+            && command.edit.selection?.kind === 'target'
+            ? command.edit.componentIds
+            : [];
+    if (targetComponentIds.some(componentId => !mekWeaponTargetSelectionAllowed(
+        unit,
+        index,
+        runtime,
+        registry,
+        planned.state,
+        componentId,
+    ))) {
         return rejected(state, 'INVALID_TARGETING');
     }
     const nextTargeting = reconcileMekWeaponTargetPolicies(
@@ -2704,7 +2724,12 @@ function reduce(
                 || command.wounds > MAX_MEK_CREW_WOUNDS
                 || typeof command.unconscious !== 'boolean'
                 || typeof command.ejected !== 'boolean'
-                || (command.unconscious && command.ejected)) {
+                || (command.unconscious && command.ejected)
+                || (command.recoveryReadyTurn !== undefined
+                    && command.recoveryReadyTurn !== null
+                    && (!Number.isSafeInteger(command.recoveryReadyTurn)
+                        || command.recoveryReadyTurn < 0))
+                || (command.recoveryReadyTurn !== undefined && !command.unconscious)) {
                 return rejected(state, 'INVALID_AMOUNT');
             }
             changed = withCrewState(
@@ -2713,6 +2738,7 @@ function reduce(
                 command.wounds,
                 command.unconscious,
                 command.ejected,
+                command.recoveryReadyTurn,
             );
             break;
         }
@@ -2950,13 +2976,48 @@ function reduce(
                 : { ...state, turn, movementPsr };
             break;
         }
+        case 'set-pending-fall-consequences': {
+            const { pendingFallConsequences: _discarded, ...baseTurn } = state.turn;
+            let turn: MekTurnStateV2;
+            try {
+                turn = canonicalizeMekTurnStateV2(command.pending === null
+                    ? baseTurn
+                    : { ...baseTurn, pendingFallConsequences: command.pending });
+            } catch {
+                return rejected(state, 'INVALID_TURN_STATE');
+            }
+            changed = mekTurnStatesEqualV2(state.turn, turn) ? null : { ...state, turn };
+            break;
+        }
         case 'reset-turn-state': {
             const turn = createPristineMekTurnStateV2(state.turn.turnCounter);
             changed = mekTurnStatesEqualV2(state.turn, turn) ? null : { ...state, turn };
             break;
         }
         case 'end-phase':
-            changed = endPhase(unit, entity, index, state, statusTopology);
+            changed = endPhase(
+                unit,
+                entity,
+                index,
+                state,
+                statusTopology,
+                command.endTurnBoundary === true,
+            );
+            break;
+        case 'mark-end-turn-heat-staged':
+            if (state.turn.endTurnCheckpoint === 'heat-staged') {
+                changed = null;
+            } else if (state.turn.endTurnCheckpoint !== 'phase-ended') {
+                return rejected(state, 'INVALID_TURN_STATE');
+            } else {
+                changed = {
+                    ...state,
+                    turn: canonicalizeMekTurnStateV2({
+                        ...state.turn,
+                        endTurnCheckpoint: 'heat-staged',
+                    }),
+                };
+            }
             break;
         case 'end-turn':
             if (mekHeatCapabilityV2(heatContext, entity).kind === 'unsupported') {
@@ -3650,6 +3711,7 @@ function endPhase(
     index: MekRuntimeIndex,
     state: MekUnitRuntimeState,
     statusTopology: RuntimeEquipmentStatusTopology,
+    endTurnBoundary: boolean,
 ): MekUnitRuntimeState | null {
     const committed = commitPending(unit, entity, index, state) ?? state;
     const arraysSettled = settleMachineGunArrays(unit, committed);
@@ -3658,6 +3720,9 @@ function endPhase(
     const phaseTurn = canonicalizeMekTurnStateV2({
         ...stealthSettled.turn,
         equipmentStateChanged: false,
+        ...(endTurnBoundary && stealthSettled.turn.endTurnCheckpoint === undefined
+            ? { endTurnCheckpoint: 'phase-ended' as const }
+            : {}),
     });
     if (stealthSettled === state && mekTurnStatesEqualV2(state.turn, phaseTurn)) return null;
     return { ...stealthSettled, turn: phaseTurn };
@@ -3823,7 +3888,7 @@ function withLocationArmorDamage(
     if (nextDamage === 0) armor.delete(faceId);
     else armor.set(faceId, nextDamage);
     const armorDamage = Object.freeze([...armor]
-        .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+        .sort(([left], [right]) => compareText(left, right))
         .map(([id, damage]) => Object.freeze({ faceId: id, damage })));
     if (current.internalDamage === 0 && armorDamage.length === 0 && current.conditions.size === 0) {
         locations.delete(locationId);
@@ -4876,12 +4941,26 @@ function withCrewState(
     wounds: number,
     unconscious: boolean,
     ejected: boolean,
+    requestedRecoveryReadyTurn?: number | null,
 ): MekUnitRuntimeState | null {
     const current = state.crew.get(positionId) ?? HEALTHY_CREW_STATE;
-    if (current.wounds === wounds && current.unconscious === unconscious && current.ejected === ejected) return null;
+    const recoveryReadyTurn = !unconscious || ejected || wounds >= MAX_MEK_CREW_WOUNDS
+        ? undefined
+        : requestedRecoveryReadyTurn !== undefined
+            ? requestedRecoveryReadyTurn
+            : current.recoveryReadyTurn;
+    if (current.wounds === wounds
+        && current.unconscious === unconscious
+        && current.ejected === ejected
+        && current.recoveryReadyTurn === recoveryReadyTurn) return null;
     const crew = new Map(state.crew);
     if (wounds === 0 && !unconscious && !ejected) crew.delete(positionId);
-    else crew.set(positionId, Object.freeze({ wounds, unconscious, ejected }));
+    else crew.set(positionId, Object.freeze({
+        wounds,
+        unconscious,
+        ejected,
+        ...(recoveryReadyTurn === undefined ? {} : { recoveryReadyTurn }),
+    }));
     return { ...state, crew: new ImmutableIndex(crew) };
 }
 
@@ -5619,9 +5698,19 @@ function validateState(
             || typeof crew.unconscious !== 'boolean'
             || typeof crew.ejected !== 'boolean'
             || (crew.unconscious && crew.ejected)
+            || (crew.recoveryReadyTurn !== undefined
+                && crew.recoveryReadyTurn !== null
+                && (!Number.isSafeInteger(crew.recoveryReadyTurn)
+                    || crew.recoveryReadyTurn < 0))
+            || (crew.recoveryReadyTurn !== undefined && !crew.unconscious)
             || (crew.wounds === 0 && !crew.unconscious && !crew.ejected)) {
             throw new Error(`Invalid sparse crew state for ${id}`);
         }
+    }
+    const pendingFall = state.turn.pendingFallConsequences;
+    if (pendingFall && [...pendingFall.seatbeltPositionIds, ...(pendingFall.seatbeltFailures ?? [])]
+        .some(positionId => !unit.index.crewPositions.has(positionId))) {
+        throw new Error('Pending fall consequences reference an unknown crew position');
     }
     if (state.ruleChecks.size > 1) throw new Error('Invalid Mek rule-check state');
     for (const [key, check] of state.ruleChecks) {
@@ -6011,10 +6100,6 @@ function nonnegativeInteger(value: number): boolean {
 
 function signedNonzeroInteger(value: number): boolean {
     return Number.isSafeInteger(value) && value !== 0;
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function isMekLocationConditionValue(

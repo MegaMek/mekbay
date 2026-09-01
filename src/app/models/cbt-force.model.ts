@@ -115,16 +115,12 @@ import type { CBTOptionalRules } from './options.model';
 import type { MekHeatAutomationPolicyV2 } from './runtime/mek-heat-state-v2';
 import type { TnTargetUnitType } from './target-number-calculator.model';
 import {
-    buildCBTForceOwnedRosterSnapshot,
-    deferredEnvelopeRosterOwnerFact,
     prepareCBTForceRosterMutationPlan,
-    readyEnvelopeRosterOwnerFact,
-    type CBTForceOwnedRosterQueryResult,
+    type CBTForceRosterQueryResult,
     type CBTForceRosterCommand,
     type CBTForceRosterCommandResult,
     type CBTForceRosterGroupMetadataPatch,
     type CBTForceRosterMutationPlanResult,
-    type CBTForceRosterOwnerFact,
 } from './runtime/cbt-force-roster-owner';
 import {
     calculateCBTForceBattleValues,
@@ -148,7 +144,7 @@ import {
     publishC3EmergencyMasterNotices,
 } from './cbt-force-c3';
 import { entityUnitLabel } from './runtime/cbt-unit-label';
-import { CBT_FORCE_UNASSIGNED_GROUP_ID } from './runtime/cbt-force-roster';
+import { CBT_FORCE_UNASSIGNED_GROUP_ID, queryCBTForceRoster } from './runtime/cbt-force-roster';
 import {
     projectMekRecordSheet,
     projectMekUnitStatus,
@@ -338,11 +334,8 @@ export class CBTForce extends Force<never> {
         return this.authority.envelope();
     }
 
-    /**
-     * Canonical structural membership plus detached, current owner facts.
-     * Crew aliases and mutable unit/runtime objects never enter the roster.
-     */
-    public queryCanonicalRoster(): CBTForceOwnedRosterQueryResult {
+    /** Canonical detached roster membership. */
+    public queryCanonicalRoster(): CBTForceRosterQueryResult {
         const envelope = this.getSupportedCBTForceV2Envelope();
         if (!envelope) {
             return Object.freeze({
@@ -352,34 +345,25 @@ export class CBTForce extends Force<never> {
             });
         }
         try {
-            const structuralKinds = new Map(envelope.roster.groups.flatMap(group =>
-                group.members.map(member => [String(member.instanceId), member.kind] as const)));
-            const ownerFacts = new Map<string, CBTForceRosterOwnerFact>(envelope.units.map(entry => [
-                String(entry.instanceId),
-                entry.kind === 'deferred'
-                    ? deferredEnvelopeRosterOwnerFact(entry)
-                    : readyEnvelopeRosterOwnerFact(entry),
-            ] as const));
-            for (const fact of this.authority.rosterOwnerFacts(this.adjustedBattleValues())) {
-                if (structuralKinds.get(String(fact.instanceId)) !== 'ready') {
-                    throw new Error(`Ready owner ${fact.instanceId} is absent from the canonical roster`);
+            const unitIds = new Set(envelope.units.map(entry => entry.instanceId));
+            for (const unit of this.authority.liveUnits()) {
+                if (!unitIds.has(unit.instanceId)) {
+                    throw new Error(`Ready runtime ${unit.instanceId} is absent from the canonical roster`);
                 }
-                ownerFacts.set(String(fact.instanceId), fact);
             }
+            const snapshot = queryCBTForceRoster({
+                forceId: envelope.forceId,
+                forceRevision: envelope.forceRevision,
+                roster: envelope.roster,
+            });
             return Object.freeze({
                 kind: 'available',
-                snapshot: buildCBTForceOwnedRosterSnapshot({
-                    forceId: envelope.forceId,
-                    forceRevision: envelope.forceRevision,
-                    roster: envelope.roster,
-                    ownerFacts: Object.freeze([...ownerFacts.values()]),
-                    readOnly: this.readOnly(),
-                }),
+                snapshot,
             });
         } catch (error) {
             return Object.freeze({
                 kind: 'unavailable',
-                reason: 'OWNER_TOPOLOGY_DRIFT',
+                reason: 'RUNTIME_TOPOLOGY_DRIFT',
                 message: errorMessage(error),
             });
         }
@@ -643,13 +627,11 @@ export class CBTForce extends Force<never> {
                         values: scenarioValues,
                     }),
                     units: current.units.map(entry => {
-                        if (entry.kind === 'deferred') return entry;
                         const ready = replacements.get(entry.instanceId)
                             ?? this.authority.readyUnit(entry.instanceId);
                         if (!ready) throw new Error(`Scenario rebinding lost runtime ${entry.instanceId}`);
                         const unit = ready.serialize();
                         return Object.freeze({
-                            kind: 'ready' as const,
                             instanceId: entry.instanceId,
                             stateRevision: unit.stateRevision,
                             unit,
@@ -685,7 +667,7 @@ export class CBTForce extends Force<never> {
             const context = this.prepareCBTForceV2AuthorityMutation();
             const current = context.previous;
             if (!current) return rejectedUnitRepair('NOT_READY');
-            const readyIds = current.units.flatMap(entry => entry.kind === 'ready' ? [entry.instanceId] : []);
+            const readyIds = current.units.map(entry => entry.instanceId);
             const readyIdSet = new Set(readyIds);
             const instanceIds = capturedIds ?? readyIds;
             if (instanceIds.some(instanceId => !readyIdSet.has(instanceId))) {
@@ -729,7 +711,7 @@ export class CBTForce extends Force<never> {
                     forceRevision: nextForceRevision(current.forceRevision),
                     units: current.units.map(entry => {
                         const unit = repaired.get(entry.instanceId);
-                        return entry.kind === 'ready' && unit
+                        return unit
                             ? { ...entry, stateRevision: unit.stateRevision, unit }
                             : entry;
                     }),
@@ -808,7 +790,7 @@ export class CBTForce extends Force<never> {
             .flatMap(group => group.members)
             .find(member => member.instanceId === instanceId);
         const sourceUnit = this.authority.readyUnit(instanceId);
-        if (sourceRosterMember?.kind !== 'ready' || !sourceUnit) {
+        if (!sourceRosterMember || !sourceUnit) {
             return rejectedUnitTransfer('NOT_READY');
         }
 
@@ -875,8 +857,7 @@ export class CBTForce extends Force<never> {
             }
             targetEnvelope = admitted.envelope;
             const targetEntry = targetEnvelope.units.find(entry => entry.instanceId === instanceId);
-            if (targetEntry?.kind !== 'ready'
-                || !jsonValuesEqual(targetEntry.unit, candidate.serialize())) {
+            if (!targetEntry || !jsonValuesEqual(targetEntry.unit, candidate.serialize())) {
                 return rejectedUnitTransfer('PERSISTENCE_REJECTED');
             }
             sourceUnits = this.authority.prepareRemoval(sourceEnvelope, [instanceId]);
@@ -980,7 +961,7 @@ export class CBTForce extends Force<never> {
             }
             const removedInstanceIds = planned.plan.removedInstanceIds ?? Object.freeze([]);
             const removedReadyIds = removedInstanceIds.filter(instanceId =>
-                current.units.some(entry => entry.instanceId === instanceId && entry.kind === 'ready'));
+                current.units.some(entry => entry.instanceId === instanceId));
             let removal: PreparedUnitRemoval | null = null;
             try {
                 if (removedReadyIds.length > 0) {
@@ -1235,7 +1216,7 @@ export class CBTForce extends Force<never> {
             const canonicalEntry = materialized.envelope.units.find(
                 entry => entry.instanceId === instanceId,
             );
-            if (canonicalEntry?.kind !== 'ready'
+            if (!canonicalEntry
                 || isSerializedNonMekUnit(canonicalEntry.unit) !== isReadyNonMekUnit(candidate)) {
                 return directAdmissionFailure(
                     'PERSISTENCE_REJECTED',
@@ -1411,7 +1392,7 @@ export class CBTForce extends Force<never> {
     public isUnitCommander(instanceId: UnitInstanceId): boolean {
         const roster = this.queryCanonicalRoster();
         return roster.kind === 'available'
-            && roster.snapshot.structural.members.some(member =>
+            && roster.snapshot.members.some(member =>
                 member.instanceId === instanceId && member.commander === true);
     }
 
@@ -1596,13 +1577,11 @@ export class CBTForce extends Force<never> {
             let preparedUnits: PreparedUnitRepair;
             try {
                 const units = current.units.map(entry => {
-                    if (entry.kind === 'deferred') return entry;
                     const ready = replacements.get(entry.instanceId)
                         ?? this.authority.readyUnit(entry.instanceId);
                     if (!ready) throw new Error(`Undo restore lost runtime ${entry.instanceId}`);
                     const unit = ready.serialize();
                     return Object.freeze({
-                        kind: 'ready' as const,
                         instanceId: entry.instanceId,
                         stateRevision: unit.stateRevision,
                         unit,
@@ -2058,6 +2037,10 @@ export class CBTForce extends Force<never> {
         return this.unitCommandDispatcher.endPhaseForAll();
     }
 
+    public hasPendingEndTurnForUnit(instanceId: UnitInstanceId): boolean {
+        return this.unitCommandDispatcher.hasPendingEndTurn(instanceId);
+    }
+
     /** Ends every canonical V2 turn through one owner boundary. */
     public endTurnForAllUnits(): Promise<CBTForceEndTurnAllResult> {
         return this.unitCommandDispatcher.endTurnForAll();
@@ -2138,9 +2121,9 @@ export class CBTForce extends Force<never> {
         envelope: SerializedCBTForceV2,
     ): Promise<PreparedLoadedCBTForceV2Authority> {
         const needsReadyMekRestore = envelope.units.some(entry =>
-            entry.kind === 'ready' && !isSerializedNonMekUnit(entry.unit));
+            !isSerializedNonMekUnit(entry.unit));
         const needsReadyNonMekRestore = envelope.units.some(entry =>
-            entry.kind === 'ready' && isSerializedNonMekUnit(entry.unit));
+            isSerializedNonMekUnit(entry.unit));
         const readyMeks = needsReadyMekRestore
             ? this.injector.get(ReadyMekUnitService, null, { optional: true })
             : undefined;

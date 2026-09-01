@@ -157,16 +157,94 @@ describe('PagePsrWarningPanelComponent', () => {
         expect(fixture.nativeElement.textContent).toContain('Shutdown attempt');
         expect(fixture.nativeElement.querySelector('.psr-resolution-actions')).not.toBeNull();
 
-        component.resolve(component.psrChecks()[0]!, 'success');
+        component.selectOutcome(component.psrChecks()[0]!, 'success');
+        fixture.detectChanges();
+
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(fixture.nativeElement.querySelector('.psr-result')?.textContent.trim()).toBe('success');
+
+        await component.accept();
         await fixture.whenStable();
         fixture.detectChanges();
 
         expect(dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
             type: 'resolve-mek-pilot-check',
             checkId: 'shutdown-check',
-            evidence: { dice: [6, 2] },
+            evidence: { dice: [6, 2], claimedOutcome: 'success' },
         }));
         expect(fixture.nativeElement.querySelector('.psr-result')?.textContent.trim()).toBe('success');
+    });
+
+    it('stages rolled dice and cascades later fall checks until ACCEPT', async () => {
+        const changed = new Subject<void>();
+        const first = pilotCheck('first-fall', 'leg-destroyed', 'First fall check', 7);
+        const second = pilotCheck('second-fall', 'leg-destroyed', 'Second fall check', 8);
+        let current = panelSnapshot({ automaticFalls: [], checks: [first, second] });
+        const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.callFake(async (
+            _instanceId: string,
+            command: { readonly checkId: string; readonly evidence: { readonly dice: readonly [number, number] } },
+        ) => {
+            current = panelSnapshot({
+                automaticFalls: [],
+                checks: current.movementState.checks.map(check => check.checkId === command.checkId
+                    ? {
+                        ...check,
+                        status: command.evidence.dice[0] + command.evidence.dice[1] >= check.targetNumber
+                            ? 'success' as const
+                            : 'failed' as const,
+                        resolution: {
+                            dice: command.evidence.dice,
+                            total: command.evidence.dice[0] + command.evidence.dice[1],
+                        },
+                    }
+                    : check),
+                revision: current.stateRevision + 1,
+            });
+            return { accepted: true, changed: true, revision: current.stateRevision };
+        });
+        const member = {
+            id: 'mek-1',
+            force: {
+                changed,
+                getMekTurnPanelSnapshot: () => current,
+                dispatchMekUnitCommand: dispatch,
+            },
+        } as unknown as CBTMekForceMember;
+        const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
+        TestBed.configureTestingModule({
+            imports: [PagePsrWarningPanelComponent],
+            providers: [
+                { provide: PAGE_TURN_MEMBER, useValue: member },
+                { provide: OptionsService, useValue: { cbtAutomationMode: () => 'no' } },
+                { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
+                { provide: OverlayManagerService, useValue: { closeManagedOverlay } },
+            ],
+        });
+        const fixture = TestBed.createComponent(PagePsrWarningPanelComponent);
+        fixture.detectChanges();
+        const component = fixture.componentInstance;
+
+        component.selectOutcome(first, 'failed', [1, 2]);
+        fixture.detectChanges();
+
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(component.diceFor(first)).toEqual([1, 2]);
+        expect(component.isCascadedFailure(second)).toBeTrue();
+        expect(fixture.nativeElement.textContent).toContain('FAILED — PREVIOUS FALL CHECK FAILED');
+        expect(component.canAccept()).toBeTrue();
+
+        await component.accept();
+
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(dispatch.calls.argsFor(0)[1]).toEqual(jasmine.objectContaining({
+            checkId: 'first-fall',
+            evidence: { dice: [1, 2], claimedOutcome: 'failed' },
+        }));
+        expect(dispatch.calls.argsFor(1)[1]).toEqual(jasmine.objectContaining({
+            checkId: 'second-fall',
+            evidence: jasmine.objectContaining({ claimedOutcome: 'failed' }),
+        }));
+        expect(closeManagedOverlay).toHaveBeenCalledOnceWith('psrWarning-mek-1');
     });
 });
 

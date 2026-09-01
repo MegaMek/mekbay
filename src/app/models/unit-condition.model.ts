@@ -19,6 +19,7 @@ export const UNIT_CONDITION_KEYS = Object.freeze([
     'spotting',
     'stealth',
     'airborne',
+    'grounded',
 ] as const);
 
 export type UnitConditionKey = typeof UNIT_CONDITION_KEYS[number];

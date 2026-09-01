@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareText } from '../../utils/string.util';
 import type {
     ArmorFaceId,
     CrewPositionId,
@@ -476,8 +477,4 @@ function requireSlot(index: MekRuntimeIndex, slotId: CriticalSlotId) {
 
 function isTorsoRole(role: MekMechanicsProfile['locations'][number]['role']): boolean {
     return role === 'center-torso' || role === 'left-torso' || role === 'right-torso';
-}
-
-function compareText(left: string, right: string): number {
-    return left < right ? -1 : left > right ? 1 : 0;
 }

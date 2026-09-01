@@ -16,7 +16,6 @@ import {
 } from '../../../models/runtime/mek-movement-psr-v2';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
 import { selectedWeaponHeat } from '../../../models/runtime/equipment-panel';
-import { createCommandId } from '../../../models/runtime/runtime-state';
 import type { CBTUnitCommand } from '../../../models/runtime/unit-instance';
 import type { OptionsService } from '../../../services/options.service';
 import type { ToastService } from '../../../services/toast.service';
@@ -36,7 +35,7 @@ export interface MekEscalatingFailureControlRow {
 
 type MekTurnCommand = CBTUnitCommand extends infer Command
     ? Command extends CBTUnitCommand
-        ? Omit<Command, 'commandId' | 'expectedRevision'>
+        ? Omit<Command, 'expectedRevision'>
         : never
     : never;
 
@@ -45,7 +44,6 @@ export class MekTurnSummaryRuntimeController {
     public readonly busy = signal(false);
     public readonly member: CBTMekForceMember;
     public readonly snapshot: WritableSignal<MekTurnPanelSnapshot>;
-    public readonly dice = signal<Readonly<Partial<Record<string, readonly [number, number]>>>>({});
     public readonly movementActions: Signal<readonly MekLegalActionProjectionV2[]>;
     public readonly unitActions: Signal<readonly MekLegalActionProjectionV2[]>;
     public readonly pendingChecks: Signal<MekTurnPanelSnapshot['movementState']['checks']>;
@@ -129,7 +127,6 @@ export class MekTurnSummaryRuntimeController {
         const subscription = member.force.changed.subscribe(() => this.refresh());
         destroyRef.onDestroy(() => {
             subscription.unsubscribe();
-            this.dice.set({});
             this.movementDistancePreview.set(null);
         });
     }
@@ -230,6 +227,7 @@ export class MekTurnSummaryRuntimeController {
             turn: {
                 ...turn,
                 airborne,
+                equipmentStateChanged: true,
             },
         });
     }
@@ -313,29 +311,20 @@ export class MekTurnSummaryRuntimeController {
         return this.dispatch({ type: 'adjust-mek-stand-attempts', delta });
     }
 
-    public setDie(checkId: string, index: 0 | 1, raw: string | number): void {
-        const value = Math.max(1, Math.min(6, Number(raw) || 1));
-        this.dice.update(current => {
-            const pair = [...(current[checkId] ?? [1, 1])] as [number, number];
-            pair[index] = value;
-            return Object.freeze({ ...current, [checkId]: Object.freeze(pair) });
-        });
-    }
-
-    public dieValue(checkId: string, index: 0 | 1): number {
-        return this.dice()[checkId]?.[index] ?? 1;
-    }
-
-    public roll(checkId: string): void {
-        this.dice.update(current => Object.freeze({
-            ...current,
-            [checkId]: Object.freeze([randomD6(), randomD6()] as const),
-        }));
-    }
-
-    public async resolveCheck(checkId: string): Promise<void> {
-        const pair = this.dice()[checkId] ?? [1, 1];
-        await this.dispatch({ type: 'resolve-mek-pilot-check', checkId, evidence: { dice: pair } });
+    public resolveCheckOutcome(
+        checkId: string,
+        targetNumber: number,
+        outcome: MekPilotCheckOutcomeV2,
+        rolledDice?: readonly [number, number],
+    ): Promise<boolean> {
+        const dice = rolledDice ?? diceForMekPilotCheckOutcome(targetNumber, outcome);
+        return dice
+            ? this.dispatch({
+                type: 'resolve-mek-pilot-check',
+                checkId,
+                evidence: { dice, claimedOutcome: outcome },
+            })
+            : Promise.resolve(false);
     }
 
     public async setHeat(value: number): Promise<void> {
@@ -368,10 +357,8 @@ export class MekTurnSummaryRuntimeController {
         try {
             const result = await this.member.force.dispatchMekUnitCommand(this.member.id, {
                 ...command,
-                commandId: createCommandId(),
-                expectedRevision: this.snapshot().stateRevision,
             } as CBTUnitCommand);
-            if (!result.accepted) this.toast.showToast(`Turn action rejected: ${result.reason}`, 'error');
+            if (!result.accepted) this.toast.showToast('This force is read-only.', 'error');
             return result.accepted;
         } finally {
             this.busy.set(false);
@@ -406,12 +393,6 @@ export function diceForMekPilotCheckOutcome(
     const first = Math.max(1, Math.min(6, sum - 1));
     const second = sum - first;
     return second >= 1 && second <= 6 ? [first, second] : [sum - 6, 6];
-}
-
-function randomD6(): number {
-    const values = new Uint32Array(1);
-    crypto.getRandomValues(values);
-    return (values[0] % 6) + 1;
 }
 
 /** Origin/next's five-step sliding window, shared by every runtime family. */

@@ -355,9 +355,6 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
     private standardBayInventoryRows(entity: AeroEntity): readonly AeroDataInventoryRow[] {
         interface ProjectedBay {
             row: AeroDataInventoryRow;
-            signature: string;
-            locationCode: string;
-            rear: boolean;
             sortOrder: number;
         }
         const projected: ProjectedBay[] = [];
@@ -368,31 +365,9 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
             const locationCode = entity.componentLocationLabel(
                 weapons[0].getOccupiedLocations()[0] ?? weapons[0].location,
             ).toUpperCase();
-            const rear = weapons[0].rearMounted;
-            const signature = JSON.stringify({
-                nameLines: row.nameLines,
-                heat: row.heat,
-                damageByRange: row.damageByRange,
-            });
-            const opposite = projected.find(candidate =>
-                candidate.signature === signature
-                && candidate.rear === rear
-                && this.areOpposingLargeAeroLocations(candidate.locationCode, locationCode));
-            if (opposite) {
-                opposite.row = {
-                    ...opposite.row,
-                    location: this.combinedLargeAeroLocation(entity, rear),
-                    componentIds: [...opposite.row.componentIds, ...row.componentIds],
-                };
-                opposite.sortOrder = Math.min(opposite.sortOrder, this.largeAeroBaySortOrder(locationCode, rear));
-                continue;
-            }
             projected.push({
                 row,
-                signature,
-                locationCode,
-                rear,
-                sortOrder: this.largeAeroBaySortOrder(locationCode, rear),
+                sortOrder: this.largeAeroBaySortOrder(locationCode, weapons[0].rearMounted),
             });
         }
         return projected
@@ -497,16 +472,6 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
                 : '—') as [string, string, string, string],
             componentIds: bay.mounts.map(mount => mount.mountId),
         };
-    }
-
-    private areOpposingLargeAeroLocations(left: string, right: string): boolean {
-        return (left === 'LS' && right === 'RS') || (left === 'RS' && right === 'LS');
-    }
-
-    private combinedLargeAeroLocation(entity: AeroEntity, rear: boolean): string {
-        if (entity.entityType !== 'DropShip') return 'LS/RS';
-        if (entity.motiveType() === 'Spheroid') return rear ? 'ALS/ARS' : 'FLS/FRS';
-        return 'LW/RW';
     }
 
     private singleLargeAeroLocation(entity: AeroEntity, code: string, rear: boolean): string {
@@ -1105,7 +1070,7 @@ function capitalAeroInventoryRows(
     entity: AeroEntity,
     scale: 'capital' | 'standard',
 ): readonly CapitalAeroInventoryRow[] {
-    const rows = new Map<string, CapitalAeroInventoryRow>();
+    const rows: CapitalAeroInventoryRow[] = [];
     const capitalScale = scale === 'capital';
     for (const bay of entity.equipmentBays()) {
         if (bay.kind !== 'weapon-bay') continue;
@@ -1210,18 +1175,9 @@ function capitalAeroInventoryRows(
             sortOrder: location.sortOrder,
             footnote,
         };
-        const key = JSON.stringify({
-            nameLines: row.nameLines,
-            location: row.location,
-            heat: row.heat,
-            damageByRange: row.damageByRange,
-        });
-        const existing = rows.get(key);
-        rows.set(key, existing
-            ? { ...existing, componentIds: [...existing.componentIds, ...row.componentIds] }
-            : row);
+        rows.push(row);
     }
-    return [...rows.values()].sort((left, right) => left.sortOrder - right.sortOrder);
+    return rows.sort((left, right) => left.sortOrder - right.sortOrder);
 }
 
 function capitalAeroEnhancementBonus(

@@ -23,7 +23,6 @@ import {
     type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ComponentId } from '../entity/entity-identifiers';
@@ -91,8 +90,6 @@ export class UACFiringModeHandler extends ComponentModeHandler {
         if (runtime.query().componentMode(definition.componentId) === mode) return true;
         return runtime.dispatch({
             type: 'set-component-mode',
-            commandId: createCommandId(),
-            expectedRevision: runtime.revision(),
             componentId: definition.componentId,
             mode,
         }).accepted;
@@ -155,12 +152,10 @@ export class UACJammingHandler extends EquipmentInteractionHandler {
         if (runtime.query().componentJammed(definition.componentId) === jammed) return true;
         const result = runtime.dispatch({
             type: 'set-component-jammed',
-            commandId: createCommandId(),
-            expectedRevision: runtime.revision(),
             componentId: definition.componentId,
             jammed,
         });
-        if (result.accepted && !result.idempotent) {
+        if (result.accepted && result.changed) {
             context.toastService.showToast(
                 `${definition.displayName} is ${jammed ? 'jammed' : 'unjammed'}`,
                 jammed ? 'error' : 'info',

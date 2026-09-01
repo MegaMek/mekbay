@@ -12,7 +12,6 @@ import {
     type EquipmentInteractionCommandContext,
     type EquipmentInteractionInput,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 
 export const COOLANT_POD_READY_MODE = 'Ready';
 export const COOLANT_POD_ACTIVE_MODE = 'Active';
@@ -71,8 +70,6 @@ export class CoolantPodHandler extends EquipmentInteractionHandler {
         }
         const result = input.runtime.dispatch({
             type: 'activate-coolant-pod',
-            commandId: createCommandId(),
-            expectedRevision: input.runtime.revision(),
             componentId: input.componentId,
         });
         if (!result.accepted) return false;

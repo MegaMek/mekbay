@@ -1,0 +1,296 @@
+<section class="tactical-tracker" aria-labelledby="tactical-turn-tracker-title" (click)="$event.stopPropagation()">
+    <header class="tracker-heading">
+        <div>
+            <span class="tracker-kicker">TURN CONTROL</span>
+            <h2 id="tactical-turn-tracker-title">Tactical command</h2>
+        </div>
+        <div class="tracker-state" aria-label="Turn state">
+            @if (phaseDirty()) { <span class="state-light phase">PHASE ACTIVE</span> }
+            @if (dirty()) { <span class="state-light turn">TURN ACTIVE</span> }
+            @if (!dirty()) { <span class="state-light ready">READY</span> }
+        </div>
+    </header>
+
+    <div class="tracker-layout">
+        <section class="movement-console" aria-labelledby="tactical-movement-title">
+            <div class="console-heading">
+                <span class="console-index">01</span>
+                <h3 id="tactical-movement-title">Movement</h3>
+                @if (currentMoveMode(); as mode) {
+                    <span class="current-order">{{ mode }}</span>
+                }
+            </div>
+
+            @if (showImmobileStatus()) {
+                <div class="immobile-callout" role="status">
+                    <span class="status-mark" aria-hidden="true">!</span>
+                    <span>Unit is immobile</span>
+                </div>
+            }
+
+            @if (showMovementControls()) {
+                @if (canSwitchAirborneMode()) {
+                    <div class="airborne-selector" role="group" aria-label="Operating altitude">
+                        <button
+                            type="button"
+                            [class.active]="airborne() === false"
+                            [attr.aria-pressed]="airborne() === false"
+                            (click)="setAirborne(false)"
+                        >Grounded</button>
+                        <button
+                            type="button"
+                            [class.active]="airborne() === true"
+                            [attr.aria-pressed]="airborne() === true"
+                            (click)="setAirborne(true)"
+                        >Airborne</button>
+                    </div>
+                }
+
+                @if (canSwitchAirborneMode() === false || airborne() !== null) {
+                    <div class="movement-orders" role="group" aria-label="Movement mode">
+                        @for (moveMode of moveModes(); track moveMode.mode) {
+                            @let mode = moveMode.mode;
+                            <button
+                                type="button"
+                                class="movement-order"
+                                [class.stationary]="mode === 'stationary'"
+                                [class.active]="currentMoveMode() === mode"
+                                [class.danger]="moveMode.psr"
+                                [disabled]="isMoveModeDisabled(mode)"
+                                [attr.aria-label]="mode === 'stationary' ? 'Stationary' : null"
+                                [attr.aria-pressed]="currentMoveMode() === mode"
+                                (click)="selectMove(mode)"
+                            >
+                                @if (mode === 'stationary') {
+                                    <svg class="stationary-icon" viewBox="0 0 64 64" aria-hidden="true">
+                                        <path d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z" fill="currentColor" />
+                                    </svg>
+                                    <span class="order-name">Hold</span>
+                                } @else {
+                                    <span class="order-name">{{ moveMode.label }}</span>
+                                    <span class="move-allowance"><strong>{{ moveModeAllowance(mode) }}</strong><small>MP</small></span>
+                                    @if (moveModeModifierLabel(mode); as modifierLabel) {
+                                        <span class="attack-modifier"><small>ATK</small>{{ modifierLabel }}</span>
+                                    }
+                                }
+                                @if (moveMode.psr) {
+                                    <span class="risk-marker" aria-label="Requires control roll">!</span>
+                                }
+                            </button>
+                        }
+                    </div>
+
+                    @if (prone() && canStandUp()) {
+                        <button type="button" class="stand-order" [class.danger]="standUpRequiresPSR()" (click)="standUp($event)">
+                            <span>Stand up</span>
+                            @if (standUpRequiresPSR()) { <small>{{ controlRollShortLabel() }} required</small> }
+                        </button>
+                    }
+
+                    @if (standAttempts() > 0) {
+                        <button type="button" class="attempt-review" title="Review stand-up attempt details" (click)="reviewStandAttempts($event)">
+                            {{ standAttempts() }} stand attempt{{ standAttempts() === 1 ? '' : 's' }} · {{ standAttemptMovementPointsSpent() }} MP spent
+                        </button>
+                    }
+
+                    @if (currentMoveMode() !== 'stationary' && currentMoveMode() !== null) {
+                        <div class="distance-control">
+                            <div class="distance-label">
+                                <span>Distance</span>
+                                <strong [class.over]="overDistance()">{{ moveDistance() }} / {{ moveMax() }} MP</strong>
+                            </div>
+                            <hex-slider
+                                [min]="0"
+                                [max]="moveCapacity()"
+                                [blockedMin]="moveMin()"
+                                [blockedMax]="moveMax()"
+                                [step]="1"
+                                [value]="moveDistance()"
+                                [ticks]="moveDistanceTicks()"
+                                [label]="moveDistance()"
+                                ariaLabel="Move distance"
+                                [valueAssigned]="hasMoveDistance()"
+                                [danger]="overDistance()"
+                                (valueChange)="setMoveDistance($event, false)"
+                                (valueCommit)="commitMoveDistance($event)"
+                            />
+                        </div>
+                    }
+
+                    @for (trackRow of equipmentTrackControlRows(); track trackRow.componentId) {
+                        <div class="equipment-order" [class.damaged]="trackRow.damaged">
+                            <span class="equipment-order-label">{{ trackRow.label }}</span>
+                            <div class="equipment-order-options">
+                                @for (choice of trackRow.sequenceChoices; track choice.token) {
+                                    <button
+                                        type="button"
+                                        [class.active]="choice.active && choice.selectionTone !== 'muted'"
+                                        [class.muted]="choice.active && choice.selectionTone === 'muted'"
+                                        [style.--choice-normal]="choice.colors?.normal"
+                                        [style.--choice-normal-text]="choice.colors?.normalText"
+                                        [style.--choice-active]="choice.colors?.selected"
+                                        [style.--choice-active-text]="choice.colors?.selectedText"
+                                        [style.--choice-muted]="choice.colors?.mutedSelected"
+                                        [style.--choice-muted-text]="choice.colors?.mutedSelectedText"
+                                        [style.--choice-disabled]="choice.colors?.disabled"
+                                        [style.--choice-disabled-text]="choice.colors?.disabledText"
+                                        [disabled]="choice.disabled && !choice.active"
+                                        [attr.aria-pressed]="choice.active"
+                                        (click)="handleEquipmentTrackChoice(trackRow, choice)"
+                                    >{{ choice.shortLabel || choice.label }}</button>
+                                }
+                                @if (trackRow.statusChoice; as choice) {
+                                    <button
+                                        type="button"
+                                        class="equipment-status-order"
+                                        [class.active]="choice.active && choice.selectionTone !== 'muted'"
+                                        [class.muted]="choice.active && choice.selectionTone === 'muted'"
+                                        [style.--choice-normal]="choice.colors?.normal"
+                                        [style.--choice-normal-text]="choice.colors?.normalText"
+                                        [style.--choice-active]="choice.colors?.selected"
+                                        [style.--choice-active-text]="choice.colors?.selectedText"
+                                        [style.--choice-muted]="choice.colors?.mutedSelected"
+                                        [style.--choice-muted-text]="choice.colors?.mutedSelectedText"
+                                        [style.--choice-disabled]="choice.colors?.disabled"
+                                        [style.--choice-disabled-text]="choice.colors?.disabledText"
+                                        [disabled]="choice.disabled && !choice.active"
+                                        [attr.aria-pressed]="choice.active"
+                                        (click)="handleEquipmentTrackChoice(trackRow, choice)"
+                                    >{{ choice.shortLabel || choice.label }}</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            }
+
+            <button
+                type="button"
+                class="spotting-order"
+                [class.active]="spotting()"
+                [attr.aria-pressed]="spotting()"
+                [disabled]="!canSpot()"
+                (click)="toggleSpotting()"
+            >
+                <span class="spotting-mark" aria-hidden="true">◎</span>
+                <span>Spot target</span>
+                @if (spottingModifierLabel(); as modifierLabel) { <strong>{{ modifierLabel }} ATK</strong> }
+            </button>
+        </section>
+
+        <section class="tactical-readouts" aria-label="Turn readouts">
+            <div class="console-heading">
+                <span class="console-index">02</span>
+                <h3>Position</h3>
+            </div>
+
+            <div class="defense-readout" [tooltip]="defenseTargetModifierTooltip()">
+                <span><small>DEFENSE</small>Movement modifier</span>
+                <strong>{{ getTotalTargetModifierAsDefender() }}</strong>
+            </div>
+
+            <div class="cover-readout">
+                <div class="readout-label">
+                    <span>Cover</span>
+                    @if (coverModifierLabel(); as modifierLabel) { <strong>{{ modifierLabel }} DEF</strong> }
+                </div>
+                <div class="cover-orders" role="group" aria-label="Unit cover">
+                    <button type="button" [class.active]="cover() === 'light'" [attr.aria-pressed]="cover() === 'light'" (click)="selectCover('light')">
+                        <span class="cover-glyph light" aria-hidden="true"></span><span>Light</span>
+                    </button>
+                    <button type="button" [class.active]="cover() === 'heavy'" [attr.aria-pressed]="cover() === 'heavy'" (click)="selectCover('heavy')">
+                        <span class="cover-glyph heavy" aria-hidden="true"></span><span>Heavy</span>
+                    </button>
+                    <cover-level-picker kind="water" [value]="waterDepth()" (valueChange)="selectWaterDepth($event)" />
+                    <cover-level-picker kind="building" [value]="buildingLevel()" (valueChange)="selectBuildingLevel($event)" />
+                </div>
+            </div>
+
+            @if (tracksHeat() && heatRows(); as heatRows) {
+                @if (heatRows.length > 0) {
+                    <div class="heat-readout">
+                        <div class="readout-label"><span>Heat projection</span><small>END TURN</small></div>
+                        <div class="readout-rows">
+                            @for (row of heatRows; track row.id) {
+                                <div [class.selected]="row.selectedOnly" [class.underwater]="row.underwater">
+                                    <span>{{ row.label }}@if (row.selectedValue !== undefined) { <small>selected</small>}</span>
+                                    <strong>{{ row.value > 0 ? '+' : '' }}{{ row.value }}@if (row.selectedValue !== undefined) { <small>({{ row.selectedValue > 0 ? '+' : '' }}{{ row.selectedValue }})</small>}</strong>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+
+            <div class="damage-readout" [class.active]="damageReceived() > 0">
+                <span><small>THIS PHASE</small>Damage received</span>
+                <strong>{{ damageReceived() }}</strong>
+            </div>
+
+            @if (psrModifiers().length > 0 && controlRollShortLabel() !== 'PSR') {
+                <div class="control-modifiers">
+                    <div class="readout-label"><span>{{ controlRollShortLabel() }} modifiers</span></div>
+                    <div class="modifier-chips">
+                        @for (modifier of psrModifiers(); track $index) {
+                            <span [class.danger]="modifier.modifier >= 0" [class.bonus]="modifier.modifier < 0">
+                                {{ modifier.reason }} <strong>{{ modifier.modifier >= 0 ? '+' : '' }}{{ modifier.modifier }}</strong>
+                            </span>
+                        }
+                    </div>
+                </div>
+            }
+        </section>
+
+        <aside class="command-rail" aria-label="Turn commands">
+            <div class="console-heading">
+                <span class="console-index">03</span>
+                <h3>Commit</h3>
+            </div>
+
+            @if (falling() || hasPSRChecks()) {
+                <button type="button" class="alert-command" [class.falling]="falling()" (click)="openPsrWarning($event)">
+                    <span aria-hidden="true">!</span>
+                    @if (falling()) {
+                        <strong>Falling</strong><small>Resolve now</small>
+                    } @else {
+                        <strong>{{ PSRChecksCount() }} {{ controlRollShortLabel() }}</strong><small>Check{{ PSRChecksCount() === 1 ? '' : 's' }} pending</small>
+                    }
+                </button>
+            }
+
+            @if (phaseDirty() || endPhaseForAllButtonVisible()) {
+                <div class="command-group">
+                    <span class="command-group-label">Phase</span>
+                    @if (phaseDirty()) {
+                        <button type="button" class="commit-command phase" (click)="endPhase($event)">
+                            <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 12l5 5L20 6" /></svg>
+                            <span>End phase</span>
+                        </button>
+                    }
+                    @if (endPhaseForAllButtonVisible()) {
+                        <button type="button" class="scope-command" (click)="endPhaseForAll($event)">All units</button>
+                    }
+                </div>
+            }
+
+            @if (dirty() || endTurnForAllButtonVisible()) {
+                <div class="command-group">
+                    <span class="command-group-label">Turn</span>
+                    @if (dirty()) {
+                        <button type="button" class="commit-command turn" (click)="endTurn()">
+                            <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M3 12h13M11 7l5 5-5 5M20 4v16" /></svg>
+                            <span>End turn</span>
+                        </button>
+                    }
+                    @if (endTurnForAllButtonVisible()) {
+                        <button type="button" class="scope-command" (click)="endTurnForAll($event)">{{ dirty() ? 'All units' : 'End turn for all units' }}</button>
+                    }
+                </div>
+            }
+
+            @if (!phaseDirty() && !dirty() && !endPhaseForAllButtonVisible() && !endTurnForAllButtonVisible() && !falling() && !hasPSRChecks()) {
+                <div class="no-commands"><span aria-hidden="true">✓</span><small>No pending commands</small></div>
+            }
+        </aside>
+    </div>
+</section>

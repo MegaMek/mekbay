@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    extractDeferredUnitRecovery,
-    type DeferredUnitSource,
+    readLegacyUnitStateV1,
+    type LegacyUnitSourceV1,
     type JsonObject,
     type JsonValue,
 } from '../persisted-unit-state';
@@ -202,7 +202,7 @@ export class StateRestoreIdentityError extends Error {
  * Equipment-owned facts require a unique compatible target or remain recoverable.
  */
 export async function restoreLegacyUnitState(
-    record: DeferredUnitSource,
+    record: LegacyUnitSourceV1,
     entity: MekEntity,
     initialized: { readonly baselineRef: InstanceBaselineRef; readonly state: MekUnitRuntimeState },
 ): Promise<LegacyStateRestoreResult> {
@@ -215,7 +215,7 @@ export async function restoreLegacyUnitState(
     if (record.identity.kind !== 'resolved') {
         throw new StateRestoreIdentityError('An unresolved legacy design cannot become an operational V2 instance');
     }
-    const sourceState = extractDeferredUnitRecovery(record);
+    const sourceState = readLegacyUnitStateV1(record);
     const saved = record.identity.savedIdentity;
     if (saved.provider !== initialized.baselineRef.entity.provider
         || saved.uuid !== initialized.baselineRef.entity.uuid
@@ -760,7 +760,7 @@ function translateLegacyHeatSourceSignature(
 ): string {
     let parsed: unknown;
     try {
-        parsed = JSON.parse(signature) as unknown;
+        parsed = JSON.parse(signature);
     } catch {
         return signature;
     }

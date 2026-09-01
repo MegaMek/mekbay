@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTRuleset } from '../models/cbt-ruleset.model';
-import { asCommandId } from '../models/runtime/runtime-state';
 import {
     componentEscalatingFailureFacts,
     componentEscalatingFailureDefinition,
@@ -95,8 +94,8 @@ describe('additional escalating-failure handlers with direct V2 runtime', () => 
         expect(setComponentEscalatingFailureStatus(coolant.runtime, coolant.definition, 'disabled').accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'declare-mek-movement',
-            commandId: asCommandId('coolant:move'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            
+            
             declaration: {
                 schemaVersion: 1,
                 mode: 'walk',
@@ -107,8 +106,8 @@ describe('additional escalating-failure handlers with direct V2 runtime', () => 
         const turn = fixture.instance.query().turnState();
         expect(fixture.instance.dispatch({
             type: 'replace-turn-state',
-            commandId: asCommandId('coolant:weapons'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            
+            
             turn: { ...turn, weaponsHeat: 1 },
         }).accepted).toBeTrue();
 
@@ -187,8 +186,8 @@ function endTurn(
 ): boolean {
     return setupValue.runtime.dispatch({
         type: 'end-turn',
-        commandId: asCommandId(commandId),
-        expectedRevision: setupValue.runtime.revision(),
+        
+        
         policy: 'automatic',
     }).accepted;
 }

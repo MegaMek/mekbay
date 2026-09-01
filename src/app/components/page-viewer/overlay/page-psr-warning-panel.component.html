@@ -1,6 +1,6 @@
 <div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
     <div class="header">{{ controlRollFullLabel() }}</div>
-    @if (!allChecksAutomaticFailure()) {
+    @if (showRollDetails()) {
         <div class="psr-target">
             <span>Target roll</span>
             <strong>{{ targetRoll() }}</strong>
@@ -29,7 +29,8 @@
             @for (check of psrChecks(); let i = $index; track check.checkId) {
                     <div class="psr-item" [class.resolved]="!isAutomaticFailure(check) && outcome(check)"
                         [class.failed]="outcome(check) === 'failed'"
-                        [class.automatic-failure]="isAutomaticFailure(check)">
+                        [class.automatic-failure]="isAutomaticFailure(check)"
+                        [class.cascade-failure]="isCascadedFailure(check)">
                         <div class="psr-check-header">
                             <div class="psr-number">{{ automaticFalls().length + i + 1 }}</div>
                             <div class="psr-item-content">
@@ -39,28 +40,41 @@
                                         <span class="psr-location-value">{{ location }}</span>
                                         <span class="psr-subtitle-separator" aria-hidden="true">&nbsp;—&nbsp;</span>
                                     }
-                                    <span>Target {{ check.targetNumber }} · Failure: <span class="psr-failure-value">{{ failureLabel(check) }}</span></span>
+                                    <span>Failure: <span class="psr-failure-value">{{ failureLabel(check) }}</span></span>
                                 </div>
                             </div>
                             @if (!isAutomaticFailure(check) && outcome(check); as result) {
+                                @if (diceFor(check); as dice) {
+                                    <dice-roller class="psr-saved-dice" [diceCount]="2"
+                                        [initialResults]="dice" [showSum]="false" [small]="true" />
+                                }
                                 <div class="psr-result" [class.failed]="result === 'failed'">{{ result }}</div>
                             }
                         </div>
                         @if (isAutomaticFailure(check)) {
                             <div class="psr-automatic-failure">AUTOMATIC FAILURE</div>
-                        } @else if (!outcome(check)) {
-                            <div class="psr-resolution-actions">
+                        } @else if (isCascadedFailure(check)) {
+                            <div class="psr-cascade-failure">FAILED — PREVIOUS FALL CHECK FAILED</div>
+                        } @else if (canEditOutcome(check)) {
+                            <div class="psr-resolution-actions" role="radiogroup"
+                                [attr.aria-label]="'Result for ' + check.reason">
                                 <button type="button" class="random-button" [disabled]="diceRoller()?.isRolling()"
                                     [attr.aria-label]="'Roll 2d6 for ' + check.reason"
                                     [title]="'Roll 2d6 for ' + check.reason" (click)="roll(check)"></button>
-                                <button class="bt-button success" type="button" (click)="resolve(check, 'success')">SUCCESS</button>
-                                <button class="bt-button danger" type="button" (click)="resolve(check, 'failed')">FAILED</button>
+                                <button class="bt-button success" type="button" role="radio"
+                                    [class.selected]="outcome(check) === 'success'"
+                                    [attr.aria-checked]="outcome(check) === 'success'"
+                                    (click)="selectOutcome(check, 'success')">SUCCESS</button>
+                                <button class="bt-button danger" type="button" role="radio"
+                                    [class.selected]="outcome(check) === 'failed'"
+                                    [attr.aria-checked]="outcome(check) === 'failed'"
+                                    (click)="selectOutcome(check, 'failed')">FAILED</button>
                             </div>
                         }
                     </div>
             }
         </div>
-        @if (!allChecksAutomaticFailure()) {
+        @if (showRollDetails()) {
             <div class="roll-details">
                 @if (modifiersList().length > 0) {
                     <div class="roll-details-label">Modifiers</div>
@@ -82,7 +96,9 @@
         }
     </div>
     <div class="actions">
-        <button class="bt-button" type="button" (click)="close()">DISMISS</button>
+        <button class="bt-button primary" type="button"
+            [disabled]="!canAccept() || diceRoller()?.isRolling()" (click)="accept()">ACCEPT</button>
+        <button class="bt-button" type="button" (click)="close()">CLOSE</button>
     </div>
 </div>
 

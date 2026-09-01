@@ -134,7 +134,7 @@ export class ForceWorkspaceCommandsService {
                 ? targetForce.queryCanonicalRoster()
                 : null;
             const firstUnit = roster?.kind === 'available'
-                && roster.snapshot.structural.members.length === 1;
+                && roster.snapshot.members.length === 1;
             if (firstUnit) {
                 this.closeUnitSearchPanelsAfterFirstAdmission();
                 this.layoutService.openMenu();

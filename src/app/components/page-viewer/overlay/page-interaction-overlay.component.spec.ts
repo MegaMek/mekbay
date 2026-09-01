@@ -51,6 +51,7 @@ describe('PageInteractionOverlay turn boundaries', () => {
             member: () => member,
             turn: () => null,
             toastService: { showToast: jasmine.createSpy('showToast') },
+            closeAllOverlays: jasmine.createSpy('closeAllOverlays'),
         });
         const event = { stopPropagation: jasmine.createSpy('stopPropagation') } as unknown as MouseEvent;
 
@@ -107,6 +108,7 @@ function componentForMember(
         turn: () => ({ stateRevision: revision } as MekTurnPanelSnapshot),
         optionsService: { cbtAutomationMode: () => automated ? 'yes' : 'no' },
         toastService: { showToast: jasmine.createSpy('showToast') },
+        closeAllOverlays: jasmine.createSpy('closeAllOverlays'),
     });
     return component;
 }

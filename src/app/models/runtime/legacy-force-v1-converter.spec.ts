@@ -4,7 +4,7 @@
 import { GameSystem } from '../common.model';
 import type { SerializedForce } from '../force-serialization';
 import type { JsonObject, PersistedUnitIdentity } from '../persisted-unit-state';
-import type { DeferredUnitSource } from '../persisted-unit-state';
+import type { LegacyUnitSourceV1 } from '../persisted-unit-state';
 import { asUnitProviderId, asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import {
     TestAeroSpaceFighterEntity,
@@ -15,41 +15,45 @@ import { CORE_2026_RULESET } from '../cbt-ruleset.model';
 import {
     convertPersistedNonMekUnitV1,
     convertPersistedForceV1,
+    type PersistedForceV1ConversionOptions,
+    type PersistedForceV1ConversionWarning,
 } from './legacy-force-v1-converter';
 import { ReadyNonMekUnit } from './ready-non-mek-unit';
 import { asStateRevision, asUnitInstanceId } from './runtime-state';
 import { nonMekDamageTrackId } from '../rules/non-mek-damage-track-rules';
 import { DEFAULT_FORCE_DEPLOYMENT_ID } from './unit-state-initializer';
+import { C3NetworkType } from '../c3-network.model';
+import { MiscEquipment } from '../equipment.model';
 
 const PROVIDER = asUnitProviderId('mm-data');
 const UUID = asUnitUuid('01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
+const CLASSIC_OPTIONS: PersistedForceV1ConversionOptions = {
+    resolveIdentity,
+    materializeUnit: materializeNonMek,
+};
 
 describe('Classic V1 force converter', () => {
     it('treats a missing legacy game-system discriminator as Classic', async () => {
         const source = { ...v1Force() } as unknown as Record<string, unknown>;
         delete source['type'];
 
-        const converted = await convertPersistedForceV1(source as unknown as SerializedForce, { resolveIdentity });
+        const converted = await convertPersistedForceV1(source as unknown as SerializedForce, CLASSIC_OPTIONS);
 
         expect(converted.type).toBe(GameSystem.CLASSIC);
-        expect(converted.cbt?.units.length).toBe(2);
+        expect(converted.cbt?.units.length).toBe(1);
     });
 
-    it('converts each saved unit and roster member directly to one deferred V2 entry', async () => {
+    it('materializes found units, skips missing units, and stores no V1 payload', async () => {
         const source = v1Force();
-        const converted = await convertPersistedForceV1(source, { resolveIdentity });
+        const warnings: PersistedForceV1ConversionWarning[] = [];
+        const converted = await convertPersistedForceV1(source, {
+            ...CLASSIC_OPTIONS,
+            onWarning: warning => warnings.push(warning),
+        });
         const envelope = converted.cbt!;
 
         expect(converted.version).toBe(2);
-        expect(envelope.forceRevision).toBe(asStateRevision(0));
-        expect(envelope.units.map(entry => entry.kind)).toEqual(['deferred', 'deferred']);
-        expect(envelope.units.map(entry => entry.instanceId)).toEqual([
-            asUnitInstanceId('unit:a'), asUnitInstanceId('unit:b'),
-        ]);
-        expect(envelope.units[0].kind === 'deferred' ? envelope.units[0].source.identity.kind : null)
-            .toBe('resolved');
-        expect(envelope.units[1].kind === 'deferred' ? envelope.units[1].source.identity.kind : null)
-            .toBe('unresolved');
+        expect(envelope.units.map(entry => entry.instanceId)).toEqual([asUnitInstanceId('unit:a')]);
         expect(envelope.roster).toEqual({
             schemaVersion: 1,
             groups: [{
@@ -60,8 +64,7 @@ describe('Classic V1 force converter', () => {
                 formationId: 'formation:line',
                 formationLock: true,
                 members: [
-                    { kind: 'deferred', instanceId: asUnitInstanceId('unit:a'), order: 0, commander: true },
-                    { kind: 'deferred', instanceId: asUnitInstanceId('unit:b'), order: 1 },
+                    { instanceId: asUnitInstanceId('unit:a'), order: 0, commander: true },
                 ],
             }],
         });
@@ -70,42 +73,61 @@ describe('Classic V1 force converter', () => {
             encounterRevision: asStateRevision(0),
             facts: [],
         });
-        expect(JSON.stringify(envelope.encounter.recovery?.c3Networks))
-            .toBe('[{"id":"network:one","type":"C3i","color":"#abcdef","peerIds":["unit:a","unit:b"]}]');
+        expect(JSON.stringify(converted)).not.toContain('"payload"');
+        expect(warnings.some(warning => warning.kind === 'unit-skipped' && warning.unit === 'Vehicle B')).toBeTrue();
+        expect(warnings.some(warning => warning.kind === 'force-state-reset')).toBeTrue();
     });
 
-    it('retains unknown unit and family state without a bridge envelope', async () => {
+    it('drops unknown V1 fields and reports the partial conversion', async () => {
         const source = v1Force();
         const rawUnit = source.groups![0].units[0] as unknown as JsonObject;
         rawUnit['futureUnitMember'] = 'retained';
         (rawUnit['state'] as JsonObject)['futureFamilyState'] = { retained: true };
         (rawUnit['state'] as JsonObject)['crits'] = [{ id: 'Laser@LT#3', loc: 'LT', slot: 3 }];
 
-        const converted = await convertPersistedForceV1(source, { resolveIdentity });
+        const warnings: PersistedForceV1ConversionWarning[] = [];
+        const converted = await convertPersistedForceV1(source, {
+            ...CLASSIC_OPTIONS,
+            onWarning: warning => warnings.push(warning),
+        });
         const entry = converted.cbt!.units[0];
-        expect(entry.kind).toBe('deferred');
-        if (entry.kind !== 'deferred') return;
-        expect(String((entry.source.payload as JsonObject)['futureUnitMember'])).toBe('retained');
-        const retainedState = (entry.source.payload as JsonObject)['state'] as JsonObject;
-        expect(JSON.stringify(retainedState))
-            .toContain('"futureFamilyState":{"retained":true}');
-        expect(JSON.stringify(retainedState['crits']))
-            .toBe('[{"id":"Laser@LT#3","loc":"LT","slot":3}]');
-        expect(Object.hasOwn(entry.source, 'recovery')).toBeFalse();
+        expect(JSON.stringify(converted)).not.toContain('futureUnitMember');
+        expect(JSON.stringify(converted)).not.toContain('futureFamilyState');
+        expect(warnings.some(warning => warning.kind === 'state-partial')).toBeTrue();
     });
 
     it('normalizes sparse group metadata and rejects conflicting commanders', async () => {
         const normalized = v1Force();
         normalized.groups![0].name = '  Converted Lance  ';
         normalized.groups![0].formationLock = false;
-        const converted = await convertPersistedForceV1(normalized, { resolveIdentity });
+        const converted = await convertPersistedForceV1(normalized, CLASSIC_OPTIONS);
         expect(converted.cbt!.roster.groups[0].name).toBe('Converted Lance');
         expect(converted.cbt!.roster.groups[0].formationLock).toBeUndefined();
 
         const duplicate = v1Force();
         duplicate.groups![0].units[1].commander = true;
-        await expectAsync(convertPersistedForceV1(duplicate, { resolveIdentity }))
+        await expectAsync(convertPersistedForceV1(duplicate, {
+            ...CLASSIC_OPTIONS,
+            resolveIdentity: resolveAllIdentity,
+        }))
             .toBeRejectedWithError(/at most one commander/u);
+    });
+
+    it('converts valid V1 C3 links to typed encounter facts', async () => {
+        const converted = await convertPersistedForceV1(v1Force(), {
+            resolveIdentity: resolveAllIdentity,
+            materializeUnit: materializeC3NonMek,
+        });
+        const facts = converted.cbt!.encounter.state.facts;
+
+        expect(facts.length).toBe(1);
+        expect(facts[0]).toEqual(jasmine.objectContaining({ kind: 'network' }));
+        if (facts[0].kind !== 'network') return;
+        expect(facts[0].network.networkType).toBe(C3NetworkType.C3I);
+        expect(facts[0].network.endpoints.map(endpoint => endpoint.instanceId)).toEqual([
+            asUnitInstanceId('unit:a'),
+            asUnitInstanceId('unit:b'),
+        ]);
     });
 
     it('carries the current production V1 formation target into the canonical roster', async () => {
@@ -113,7 +135,7 @@ describe('Classic V1 force converter', () => {
         source.groups![0].formationTargetGroupId = 'group:target';
         source.groups!.push({ id: 'group:target', units: [] });
 
-        const converted = await convertPersistedForceV1(source, { resolveIdentity });
+        const converted = await convertPersistedForceV1(source, CLASSIC_OPTIONS);
 
         expect(converted.cbt!.roster.groups.map(group => group.groupId)).toEqual([
             'group:converted', 'group:target',
@@ -124,12 +146,12 @@ describe('Classic V1 force converter', () => {
     it('requires the force-unit UUID to be present and unique', async () => {
         const duplicate = v1Force();
         duplicate.groups![0].units[1].id = 'unit:a';
-        await expectAsync(convertPersistedForceV1(duplicate, { resolveIdentity }))
+        await expectAsync(convertPersistedForceV1(duplicate, CLASSIC_OPTIONS))
             .toBeRejectedWithError(/duplicate unit ID unit:a/u);
 
         const missing = v1Force();
         delete (missing.groups![0].units[0] as Partial<{ id: string }>).id;
-        await expectAsync(convertPersistedForceV1(missing, { resolveIdentity }))
+        await expectAsync(convertPersistedForceV1(missing, CLASSIC_OPTIONS))
             .toBeRejectedWithError(/requires an ID/u);
     });
 
@@ -154,7 +176,7 @@ describe('Classic V1 force converter', () => {
         });
         const location = [...fresh.getIndex().locations.values()]
             .find(candidate => candidate.code === locationCode)!;
-        const source: DeferredUnitSource = {
+        const source: LegacyUnitSourceV1 = {
             payload: {
                 unit: 'Legacy Tank',
                 state: {
@@ -214,6 +236,7 @@ describe('Classic V1 force converter', () => {
             weaponsHeat: 0,
             cover: null,
             spotting: false,
+            phaseStateChanged: false,
         });
         expect(restored.getInstance().remainingArmor(location.armorFaceIds[0])).toBe(3);
 
@@ -250,7 +273,7 @@ describe('Classic V1 force converter', () => {
             scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
             initialStateProfileId: 'pristine-non-mek-v1',
         });
-        const source: DeferredUnitSource = {
+        const source: LegacyUnitSourceV1 = {
             payload: {
                 unit: 'Legacy Aero',
                 state: {
@@ -293,7 +316,7 @@ describe('Classic V1 force converter', () => {
             scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
             initialStateProfileId: 'pristine-non-mek-v1',
         });
-        const source: DeferredUnitSource = {
+        const source: LegacyUnitSourceV1 = {
             payload: {
                 unit: 'Legacy VTOL',
                 state: {
@@ -393,10 +416,64 @@ describe('Alpha Strike V1 force converter', () => {
     });
 
     it('rejects records that are not V1', async () => {
-        await expectAsync(convertPersistedForceV1({ ...v1Force(), version: 2 }))
+        await expectAsync(convertPersistedForceV1({ ...v1Force(), version: 2 }, CLASSIC_OPTIONS))
             .toBeRejectedWithError(/requires a version 1 force/u);
     });
 });
+
+async function materializeNonMek(
+    request: Parameters<NonNullable<PersistedForceV1ConversionOptions['materializeUnit']>>[0],
+): Promise<ReadyNonMekUnit> {
+    if (request.source.identity.kind !== 'resolved') throw new Error('Test identity must be resolved');
+    const entity = new TestTankEntity();
+    entity.uuid.set(request.source.identity.savedIdentity.uuid);
+    entity.setTonnage(20);
+    return ReadyNonMekUnit.create(entity, {
+        instanceId: request.instanceId,
+        identity: request.source.identity.savedIdentity,
+        deployment: request.deployment,
+        scenario: request.scenario,
+        initialStateProfileId: 'pristine-non-mek-v1',
+    });
+}
+
+async function materializeC3NonMek(
+    request: Parameters<NonNullable<PersistedForceV1ConversionOptions['materializeUnit']>>[0],
+): Promise<ReadyNonMekUnit> {
+    if (request.source.identity.kind !== 'resolved') throw new Error('Test identity must be resolved');
+    const c3 = new MiscEquipment({
+        id: 'TestC3i',
+        name: 'C3i Computer',
+        type: 'misc',
+        flags: ['F_C3I'],
+    });
+    const entity = new TestTankEntity();
+    entity.addEquipment({
+        equipmentId: c3.id,
+        equipment: c3,
+        allocation: { kind: 'unallocated' },
+        rearMounted: false,
+        turretMounted: false,
+        omniPodMounted: false,
+        armored: false,
+    });
+    entity.uuid.set(request.source.identity.savedIdentity.uuid);
+    entity.setTonnage(20);
+    return ReadyNonMekUnit.create(entity, {
+        instanceId: request.instanceId,
+        identity: request.source.identity.savedIdentity,
+        deployment: request.deployment,
+        scenario: request.scenario,
+        initialStateProfileId: 'pristine-non-mek-v1',
+    });
+}
+
+function resolveAllIdentity(): PersistedUnitIdentity {
+    return {
+        kind: 'resolved',
+        savedIdentity: { origin: 'megamek', provider: PROVIDER, uuid: UUID },
+    };
+}
 
 function resolveIdentity(rawUnit: Readonly<Record<string, unknown>>): PersistedUnitIdentity {
     return rawUnit['unit'] === 'Mek A'
@@ -441,7 +518,7 @@ function v1Force(): SerializedForce {
         }],
         c3Networks: [{
             id: 'network:one',
-            type: 'C3i' as never,
+            type: C3NetworkType.C3I,
             color: '#abcdef',
             peerIds: ['unit:a', 'unit:b'],
         }],

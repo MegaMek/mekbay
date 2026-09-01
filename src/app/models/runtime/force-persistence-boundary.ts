@@ -173,7 +173,6 @@ export async function prepareDirectUnitAdmission(input: {
                     encounter: Object.freeze({
                         encounterRevision: input.typedEncounterState.encounterRevision,
                         state: input.typedEncounterState,
-                        ...(base.encounter.recovery === undefined ? {} : { recovery: base.encounter.recovery }),
                     }),
                 });
             }
@@ -192,7 +191,6 @@ export async function prepareDirectUnitAdmission(input: {
 
     const member = Object.freeze({
         instanceId: candidate.instanceId,
-        kind: 'ready' as const,
         ...(input.commander === true ? { commander: true as const } : {}),
     });
     let roster;
@@ -211,7 +209,6 @@ export async function prepareDirectUnitAdmission(input: {
 
     try {
         const entry: SerializedForceUnitEntryV2 = Object.freeze({
-            kind: 'ready' as const,
             instanceId: candidate.instanceId,
             stateRevision: candidate.revision,
             unit: candidate.serialized,
@@ -250,7 +247,6 @@ export async function prepareInitialCBTForceV2(input: {
             encounter: Object.freeze({
                 encounterRevision: input.typedEncounterState.encounterRevision,
                 state: input.typedEncounterState,
-                ...(envelope.encounter.recovery === undefined ? {} : { recovery: envelope.encounter.recovery }),
             }),
         });
     }
@@ -295,9 +291,7 @@ function captureReadyUnits(
     previous?: SerializedCBTForceV2,
 ): readonly CapturedReadyUnit[] {
     const ids = new Set<string>();
-    const previousById = new Map(previous?.units.flatMap(entry => entry.kind === 'ready'
-        ? [[entry.instanceId, entry] as const]
-        : []));
+    const previousById = new Map(previous?.units.map(entry => [entry.instanceId, entry] as const));
     return Object.freeze(units.map(ready => {
         const revision = ready.revision();
         const previousEntry = previousById.get(ready.instanceId);
@@ -343,7 +337,7 @@ function materializeReadyEntries(
     readonly changed: boolean;
 }
     | Extract<CBTForcePersistenceResultV2, { readonly kind: 'read-only' }> {
-    const expected = previous.units.filter(entry => entry.kind === 'ready');
+    const expected = previous.units;
     const byId = new Map(captures.map(capture => [capture.instanceId, capture] as const));
     if (expected.length !== byId.size || expected.some(entry => !byId.has(entry.instanceId))) {
         return readOnly('READY_RUNTIME_SET_MISMATCH', 'Ready runtime ownership does not match the persisted unit set');
@@ -352,10 +346,6 @@ function materializeReadyEntries(
     const units: SerializedForceUnitEntryV2[] = [];
     let changed = false;
     for (const entry of previous.units) {
-        if (entry.kind === 'deferred') {
-            units.push(entry);
-            continue;
-        }
         const capture = byId.get(entry.instanceId)!;
         if (capture.serialized.instanceId !== entry.instanceId) {
             return readOnly('READY_RUNTIME_IDENTITY_MISMATCH', `Ready runtime ${entry.instanceId} changed identity`);
@@ -371,7 +361,6 @@ function materializeReadyEntries(
         // deployment metadata at the same combat revision; the enclosing force revision records it.
         changed = true;
         units.push(Object.freeze({
-            kind: 'ready' as const,
             instanceId: capture.instanceId,
             stateRevision: capture.revision,
             unit: capture.serialized,
@@ -411,7 +400,6 @@ function materializeEncounter(
         entry: Object.freeze({
             encounterRevision: next.encounterRevision,
             state: next,
-            ...(previous.recovery === undefined ? {} : { recovery: previous.recovery }),
         }),
         changed: true,
     });

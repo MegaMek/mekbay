@@ -79,6 +79,16 @@ export interface PreparedDirectNonMekEndTurnAutomation {
     readonly prepared: PreparedDirectNonMekAutomationCommand;
 }
 
+export interface DirectNonMekEndPhaseAutomationRequest {
+    readonly instanceId: UnitInstanceId;
+    readonly command: Extract<NonMekUnitCommand, { readonly kind: 'end-phase' }>;
+}
+
+export interface PreparedDirectNonMekEndPhaseAutomation {
+    readonly instanceId: UnitInstanceId;
+    readonly prepared: PreparedDirectNonMekAutomationCommand;
+}
+
 type AeroHeatCheckKind =
     | 'shutdown'
     | 'startup'
@@ -122,6 +132,10 @@ interface PreparedNonMekCrewRecovery {
     readonly accepted: boolean;
 }
 
+interface StagedNonMekCrewRecovery extends Omit<PreparedNonMekCrewRecovery, 'accepted'> {
+    readonly event: AutomationReviewEvent;
+}
+
 interface PreparedNonMekPhaseBoundary {
     readonly recoveries: readonly PreparedNonMekCrewRecovery[];
 }
@@ -149,10 +163,8 @@ export class DirectNonMekAutomationService {
         command: NonMekUnitCommand,
     ): Promise<PreparedDirectNonMekAutomationCommand> {
         if (command.kind === 'end-phase') {
-            const snapshot = this.nonMekSnapshot(force, instanceId);
-            return snapshot
-                ? this.preparePhaseBoundary(snapshot, command)
-                : Object.freeze({ command });
+            const batch = await this.prepareEndPhaseCommands(force, [{ instanceId, command }]);
+            return batch?.[0]?.prepared ?? Object.freeze({ command, cancelled: true });
         }
         if (command.kind !== 'end-turn') return Object.freeze({ command });
         const batch = await this.prepareEndTurnCommands(force, [{ instanceId, command }]);
@@ -186,7 +198,13 @@ export class DirectNonMekAutomationService {
             const effects = staged
                 ? this.reviewableAeroEffectDescriptions(staged)
                 : Object.freeze([]);
-            const event: AutomationReviewEvent | null = snapshot && projection
+            const hasHeatWork = snapshot !== null && projection !== null && (
+                projection.projected !== projection.current
+                || projection.sources.some(source => source.value !== 0)
+                || projection.dissipated > 0
+                || snapshot.state.heat.pendingOverride !== undefined
+            );
+            const event: AutomationReviewEvent | null = snapshot && projection && hasHeatWork
                 ? Object.freeze({
                     id: `non-mek-heat:${request.instanceId}:${request.command.expectedRevision}`,
                     subject: this.subject(snapshot),
@@ -369,6 +387,24 @@ export class DirectNonMekAutomationService {
         prepared: PreparedDirectNonMekAutomationCommand,
         dispatch: DirectNonMekAutomationDispatch,
     ): Promise<PreparedDirectNonMekAutomationCommand | null> {
+        if (prepared.command.kind === 'end-phase' && prepared.phaseBoundary) {
+            if (!await this.applyPhaseBoundary(
+                force,
+                instanceId,
+                prepared.phaseBoundary,
+                dispatch,
+            )) return null;
+            const settled = this.nonMekSnapshot(force, instanceId);
+            if (!settled) return null;
+            return Object.freeze({
+                ...prepared,
+                command: Object.freeze({
+                    ...prepared.command,
+                    expectedRevision: settled.query.stateRevision,
+                }),
+                phaseBoundary: undefined,
+            });
+        }
         if (prepared.command.kind !== 'end-turn') return prepared;
         const initial = this.snapshot(force, instanceId);
         if (!initial) return null;
@@ -382,7 +418,12 @@ export class DirectNonMekAutomationService {
         }), false);
         if (!heat.accepted) return null;
         if (prepared.heatEffects) {
-            await this.applyAeroHeatEffects(force, instanceId, prepared.heatEffects, dispatch);
+            if (!await this.applyAeroHeatEffects(
+                force,
+                instanceId,
+                prepared.heatEffects,
+                dispatch,
+            )) return null;
         }
         const settled = this.snapshot(force, instanceId);
         if (!settled) return null;
@@ -404,25 +445,49 @@ export class DirectNonMekAutomationService {
         dispatch: DirectNonMekAutomationDispatch,
     ): Promise<boolean> {
         if (!result.accepted || !result.changed) return true;
-        if (prepared.command.kind === 'end-phase' && prepared.phaseBoundary) {
-            return this.applyPhaseBoundary(
-                force,
-                instanceId,
-                prepared.phaseBoundary,
-                dispatch,
-            );
-        }
         return true;
     }
 
-    private async preparePhaseBoundary(
+    /** Groups eligible non-Mek recovery rolls at the force phase boundary. */
+    async prepareEndPhaseCommands(
+        force: CBTForce,
+        requests: readonly DirectNonMekEndPhaseAutomationRequest[],
+    ): Promise<readonly PreparedDirectNonMekEndPhaseAutomation[] | null> {
+        const rows = requests.map(request => {
+            const snapshot = this.nonMekSnapshot(force, request.instanceId);
+            const recoveries = snapshot
+                && request.command.expectedRevision === snapshot.query.stateRevision
+                ? this.stageCrewRecoveries(snapshot, request.command)
+                : Object.freeze([]);
+            return Object.freeze({ request, recoveries });
+        });
+        const accepted = await this.automation.resolve(
+            'pilotHitsAndConsciousnessCheck',
+            rows.flatMap(row => row.recoveries.map(recovery => recovery.event)),
+            { title: 'Review Consciousness Recovery', allowCancel: true },
+        );
+        if (accepted === null) return null;
+        return Object.freeze(rows.map(row => Object.freeze({
+            instanceId: row.request.instanceId,
+            prepared: Object.freeze({
+                command: row.request.command,
+                phaseBoundary: Object.freeze({
+                    recoveries: Object.freeze(row.recoveries.map(recovery => Object.freeze({
+                        eventId: recovery.eventId,
+                        positionId: recovery.positionId,
+                        recovered: recovery.recovered,
+                        accepted: accepted.has(recovery.eventId),
+                    } satisfies PreparedNonMekCrewRecovery))),
+                }),
+            }),
+        })));
+    }
+
+    private stageCrewRecoveries(
         snapshot: NonMekSnapshot,
         command: Extract<NonMekUnitCommand, { readonly kind: 'end-phase' }>,
-    ): Promise<PreparedDirectNonMekAutomationCommand> {
-        if (command.expectedRevision !== snapshot.query.stateRevision) {
-            return Object.freeze({ command });
-        }
-        const rows = [...snapshot.index.crewPositions.values()]
+    ): readonly StagedNonMekCrewRecovery[] {
+        return Object.freeze([...snapshot.index.crewPositions.values()]
             .sort((left, right) => left.occurrence - right.occurrence)
             .flatMap(position => {
                 const state = snapshot.query.crewState(position.id);
@@ -446,25 +511,8 @@ export class DirectNonMekAutomationService {
                             recovered ? 'Crew member regains consciousness' : 'Crew member remains unconscious',
                         ]),
                     } satisfies AutomationReviewEvent),
-                })];
-            });
-        const accepted = await this.automation.resolve(
-            'pilotHitsAndConsciousnessCheck',
-            rows.map(row => row.event),
-            { title: 'Review Consciousness Recovery', allowCancel: true },
-        );
-        if (accepted === null) return Object.freeze({ command, cancelled: true });
-        return Object.freeze({
-            command,
-            phaseBoundary: Object.freeze({
-                recoveries: Object.freeze(rows.map(row => Object.freeze({
-                    eventId: row.eventId,
-                    positionId: row.positionId,
-                    recovered: row.recovered,
-                    accepted: accepted.has(row.eventId),
-                } satisfies PreparedNonMekCrewRecovery))),
-            }),
-        });
+                } satisfies StagedNonMekCrewRecovery)];
+            }));
     }
 
     private async applyPhaseBoundary(
@@ -646,61 +694,75 @@ export class DirectNonMekAutomationService {
         instanceId: UnitInstanceId,
         prepared: PreparedAeroHeatEffects,
         dispatch: DirectNonMekAutomationDispatch,
-    ): Promise<void> {
+    ): Promise<boolean> {
         let snapshot = this.snapshot(force, instanceId);
-        if (!snapshot || !prepared.applyEffects) return;
+        if (!snapshot) return false;
+        if (!prepared.applyEffects) return true;
         for (const row of prepared.staged.checks) {
             switch (row.check.kind) {
                 case 'shutdown':
                     if (row.outcome === 'failed') {
-                        await dispatch(this.command(force, instanceId, {
+                        const result = await dispatch(this.command(force, instanceId, {
                             kind: 'set-condition', condition: 'shutdown', active: true,
                         }), false);
+                        if (!result.accepted) return false;
                     }
                     break;
                 case 'startup':
                     if (row.outcome === 'success') {
-                        await dispatch(this.command(force, instanceId, {
+                        const result = await dispatch(this.command(force, instanceId, {
                             kind: 'set-condition', condition: 'shutdown', active: false,
                         }), false);
+                        if (!result.accepted) return false;
                     }
                     break;
                 case 'ammo-explosion':
                     if (row.outcome === 'failed' && prepared.staged.ammo) {
-                        await this.explodeAmmo(
+                        if (!await this.explodeAmmo(
                             force,
                             instanceId,
                             prepared.staged.ammo,
                             dispatch,
                             prepared.applyPilotHits,
-                        );
+                        )) return false;
                     }
                     break;
                 case 'random-movement':
                     if (row.outcome === 'failed') {
-                        await this.setHeatControlConditions(force, instanceId, true, true, dispatch);
+                        if (!await this.setHeatControlConditions(
+                            force, instanceId, true, true, dispatch,
+                        )) return false;
                     } else if (prepared.staged.hadHeatControlEffect) {
-                        await this.setCondition(force, instanceId, 'random-movement', false, dispatch);
+                        if (!await this.setCondition(
+                            force, instanceId, 'random-movement', false, dispatch,
+                        )) return false;
                     }
                     break;
                 case 'clear-heat-control':
                     if (row.outcome === 'success') {
-                        await this.setHeatControlConditions(force, instanceId, false, false, dispatch);
+                        if (!await this.setHeatControlConditions(
+                            force, instanceId, false, false, dispatch,
+                        )) return false;
                     }
                     break;
                 case 'control-recovery':
                     if (row.outcome === 'success') {
-                        await this.setHeatControlConditions(force, instanceId, false, false, dispatch);
+                        if (!await this.setHeatControlConditions(
+                            force, instanceId, false, false, dispatch,
+                        )) return false;
                     }
                     break;
                 case 'pilot-damage':
                     if (row.outcome === 'failed' && prepared.applyPilotHits) {
-                        await this.applyCrewHits(force, instanceId, 1, dispatch);
+                        if (!await this.applyCrewHits(
+                            force, instanceId, 1, dispatch,
+                        )) return false;
                     }
                     break;
             }
             snapshot = this.snapshot(force, instanceId) ?? snapshot;
         }
+        return true;
     }
 
     private async explodeAmmo(
@@ -709,36 +771,41 @@ export class DirectNonMekAutomationService {
         ammo: AeroAmmoExplosionCandidate,
         dispatch: DirectNonMekAutomationDispatch,
         applyPilotHits: boolean,
-    ): Promise<void> {
+    ): Promise<boolean> {
         let snapshot = this.snapshot(force, instanceId);
         if (!snapshot
-            || snapshot.query.componentStatus(ammo.componentId, 'committed') !== 'available') return;
+            || snapshot.query.componentStatus(ammo.componentId, 'committed') !== 'available') {
+            return snapshot !== null;
+        }
         const caseProtected = [...snapshot.index.components.values()].some(component =>
             isCaseEquipment(component.mount.equipment)
             && snapshot!.query.componentStatus(component.id, 'committed') === 'available');
         const siDamage = Math.max(1, Math.floor(ammo.rawDamage / (caseProtected ? 20 : 10)));
 
-        await dispatch(this.command(force, instanceId, {
+        const destroyed = await dispatch(this.command(force, instanceId, {
             kind: 'set-component-status',
             componentId: ammo.componentId,
             status: 'destroyed',
             target: 'committed',
         }), false);
+        if (!destroyed.accepted) return false;
         snapshot = this.snapshot(force, instanceId);
         const si = snapshot && [...snapshot.index.locations.values()]
             .find(location => location.code === 'SI');
         if (snapshot && si) {
             const damage = Math.min(siDamage, snapshot.query.remainingInternal(si.id, 'committed'));
             if (damage > 0) {
-                await dispatch(this.command(force, instanceId, {
+                const damaged = await dispatch(this.command(force, instanceId, {
                     kind: 'damage-internal',
                     locationId: si.id,
                     amount: damage,
                     target: 'committed',
                 }), false);
+                if (!damaged.accepted) return false;
             }
         }
-        if (applyPilotHits) await this.applyCrewHits(force, instanceId, 1, dispatch);
+        if (!applyPilotHits) return true;
+        return this.applyCrewHits(force, instanceId, 1, dispatch);
     }
 
     private async applyCrewHits(
@@ -746,9 +813,10 @@ export class DirectNonMekAutomationService {
         instanceId: UnitInstanceId,
         hits: number,
         dispatch: DirectNonMekAutomationDispatch,
-    ): Promise<void> {
+    ): Promise<boolean> {
         const initial = this.snapshot(force, instanceId);
-        if (!initial || hits <= 0) return;
+        if (!initial) return false;
+        if (hits <= 0) return true;
         const positions = [...initial.index.crewPositions.values()]
             .sort((left, right) => left.occurrence - right.occurrence);
         for (const position of positions) {
@@ -759,28 +827,31 @@ export class DirectNonMekAutomationService {
                 if (!current || !crew || crew.ejected || crewState === 'killed'
                     || crew.wounds >= MAX_MEK_CREW_WOUNDS) break;
                 const wounds = Math.min(MAX_MEK_CREW_WOUNDS, crew.wounds + 1);
-                await dispatch(this.command(force, instanceId, {
+                const wounded = await dispatch(this.command(force, instanceId, {
                     kind: 'set-crew-state',
                     positionId: position.id,
                     wounds,
                     unconscious: crew.unconscious,
                     ejected: false,
                 }), false);
+                if (!wounded.accepted) return false;
                 const target = mekConsciousnessTarget(wounds);
                 if (target === undefined || succeedsOnTarget(twoD6Total(roll2D6()), target)) continue;
                 const refreshed = this.snapshot(force, instanceId);
                 const state = refreshed?.query.crewState(position.id);
                 if (!refreshed || !state || state.ejected
                     || state.wounds >= MAX_MEK_CREW_WOUNDS) continue;
-                await dispatch(this.command(force, instanceId, {
+                const unconscious = await dispatch(this.command(force, instanceId, {
                     kind: 'set-crew-state',
                     positionId: position.id,
                     wounds: state.wounds,
                     unconscious: true,
                     ejected: false,
                 }), false);
+                if (!unconscious.accepted) return false;
             }
         }
+        return true;
     }
 
     private preferredExplosiveAmmo(snapshot: AeroSnapshot): AeroAmmoExplosionCandidate | null {
@@ -852,9 +923,13 @@ export class DirectNonMekAutomationService {
         randomMovement: boolean,
         outOfControl: boolean,
         dispatch: DirectNonMekAutomationDispatch,
-    ): Promise<void> {
-        await this.setCondition(force, instanceId, 'random-movement', randomMovement, dispatch);
-        await this.setCondition(force, instanceId, 'out-of-control', outOfControl, dispatch);
+    ): Promise<boolean> {
+        if (!await this.setCondition(
+            force, instanceId, 'random-movement', randomMovement, dispatch,
+        )) return false;
+        return this.setCondition(
+            force, instanceId, 'out-of-control', outOfControl, dispatch,
+        );
     }
 
     private async setCondition(
@@ -863,12 +938,14 @@ export class DirectNonMekAutomationService {
         condition: UnitConditionKey,
         active: boolean,
         dispatch: DirectNonMekAutomationDispatch,
-    ): Promise<void> {
+    ): Promise<boolean> {
         const snapshot = this.snapshot(force, instanceId);
-        if (!snapshot || snapshot.query.hasCondition(condition) === active) return;
-        await dispatch(this.command(force, instanceId, {
+        if (!snapshot) return false;
+        if (snapshot.query.hasCondition(condition) === active) return true;
+        const result = await dispatch(this.command(force, instanceId, {
             kind: 'set-condition', condition, active,
         }), false);
+        return result.accepted;
     }
 
     private command(

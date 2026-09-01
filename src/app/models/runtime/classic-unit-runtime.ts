@@ -13,6 +13,7 @@ import type { AmmoEquipment } from '../equipment.model';
 import type { UnitConditionKey } from '../unit-condition.model';
 import type { AttackerTargetingState } from './attacker-targeting-state';
 import type { EquipmentRowOrderState } from './equipment-row-order';
+import type { EndTurnCheckpoint } from './end-turn-checkpoint';
 import type {
     AmmoRuntimeState,
     ComponentRuntimeState,
@@ -72,12 +73,19 @@ export interface ClassicCrewRuntimeState {
     readonly wounds: number;
     readonly unconscious: boolean;
     readonly ejected: boolean;
+    /** Earliest turn for an automated recovery roll; null means no queued recovery. */
+    readonly recoveryReadyTurn?: number | null;
+}
+
+/** Boundary facts shared by every Classic family runtime. */
+export interface ClassicTurnRuntimeState {
+    readonly turnCounter: number;
+    readonly endTurnCheckpoint?: EndTurnCheckpoint;
 }
 
 /**
- * Common sparse state owned by every Classic runtime. Heat, turn processing,
- * and family mechanics remain explicit capabilities instead of changing this
- * force-facing contract.
+ * Common sparse state owned by every Classic runtime. Family-specific turn
+ * declarations extend the shared boundary facts on their concrete state.
  */
 export interface ClassicUnitRuntimeState {
     readonly stateRevision: StateRevision;
@@ -86,8 +94,16 @@ export interface ClassicUnitRuntimeState {
     readonly ammo: ReadonlyMap<ComponentId, AmmoRuntimeState>;
     readonly crew: ReadonlyMap<CrewPositionId, ClassicCrewRuntimeState>;
     readonly conditions: ReadonlySet<UnitConditionKey>;
+    readonly turn: ClassicTurnRuntimeState;
     readonly attackerTargeting: AttackerTargetingState;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
+}
+
+export interface ClassicUnitCommandResult<State extends ClassicUnitRuntimeState | null> {
+    /** False only when the owning force is read-only. */
+    readonly accepted: boolean;
+    readonly changed: boolean;
+    readonly state: State;
 }
 
 /**

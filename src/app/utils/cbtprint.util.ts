@@ -503,7 +503,7 @@ export class CBTPrintUtil {
         const roster = force.queryCanonicalRoster();
         if (roster.kind !== 'available') throw new Error(roster.message);
         const memberById = new Map(members.map(member => [String(member.id), member] as const));
-        const groups = roster.snapshot.structural.groups.map(group => Object.freeze({
+        const groups = roster.snapshot.groups.map(group => Object.freeze({
             group,
             members: Object.freeze(group.members.flatMap(row => {
                 const member = memberById.get(String(row.instanceId));

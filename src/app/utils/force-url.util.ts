@@ -126,8 +126,8 @@ function encodeForceGroups(force: Force): string[] {
     if (force instanceof CBTForce) {
         const roster = force.queryCanonicalRoster();
         if (roster.kind !== 'available') return [];
-        return roster.snapshot.structural.groups.flatMap(group => {
-            const rows = roster.snapshot.structural.members.filter(member => member.groupId === group.groupId).flatMap(member => {
+        return roster.snapshot.groups.flatMap(group => {
+            const rows = roster.snapshot.members.filter(member => member.groupId === group.groupId).flatMap(member => {
                 const sheet = force.getMekRecordSheetSnapshot(member.instanceId);
                 if (!sheet) return [];
                 const pilot = sheet.crew[0];

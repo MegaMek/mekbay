@@ -17,7 +17,6 @@ import { OverlayManagerService } from '../../../services/overlay-manager.service
 import { ToastService } from '../../../services/toast.service';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import {
-    diceForMekPilotCheckOutcome,
     MekTurnSummaryRuntimeController,
 } from './mek-turn-summary-runtime.controller';
 import {
@@ -26,6 +25,13 @@ import {
     openTurnSummaryChildOverlay,
     PAGE_TURN_MEMBER,
 } from './page-turn-summary.util';
+
+type PsrOutcomeSource = 'committed' | 'selected' | 'cascade' | 'automatic';
+
+interface PsrOutcomeState {
+    readonly outcome: MekPilotCheckOutcomeV2;
+    readonly source: PsrOutcomeSource;
+}
 
 export function psrRollOutcome(sum: number, target: number): MekPilotCheckOutcomeV2 {
     return sum >= target ? 'success' : 'failed';
@@ -90,6 +96,8 @@ export class PagePsrWarningPanelComponent {
 
     private controller: MekTurnSummaryRuntimeController | null = null;
     private rollingCheck: MekPilotCheckV2 | null = null;
+    private readonly selectedOutcomes = signal<Readonly<Record<string, MekPilotCheckOutcomeV2>>>({});
+    private readonly selectedDice = signal<Readonly<Record<string, readonly [number, number]>>>({});
 
     readonly automaticFalls = computed(() =>
         this.runtime()?.snapshot().movementState.automaticFalls ?? []);
@@ -110,10 +118,45 @@ export class PagePsrWarningPanelComponent {
             : [];
         return composeMekPsrDisplayModifiers(permanent, snapshot?.movementState.checks ?? []);
     });
+    private readonly resolutionStates = computed<ReadonlyMap<string, PsrOutcomeState>>(() => {
+        const states = new Map<string, PsrOutcomeState>();
+        const selected = this.selectedOutcomes();
+        let priorFallFailed = this.automaticFalls().length > 0;
+        for (const check of this.psrChecks()) {
+            if (check.status !== 'pending') {
+                states.set(check.checkId, { outcome: check.status, source: 'committed' });
+                if (check.status === 'failed' && isCascadeFallPilotCheck(check)) priorFallFailed = true;
+                continue;
+            }
+            if (check.targetNumber > 12) {
+                states.set(check.checkId, { outcome: 'failed', source: 'automatic' });
+                if (isCascadeFallPilotCheck(check)) priorFallFailed = true;
+                continue;
+            }
+            if (priorFallFailed && isCascadeFallPilotCheck(check)) {
+                states.set(check.checkId, { outcome: 'failed', source: 'cascade' });
+                continue;
+            }
+            const outcome = selected[check.checkId];
+            if (!outcome) continue;
+            states.set(check.checkId, { outcome, source: 'selected' });
+            if (outcome === 'failed' && isCascadeFallPilotCheck(check)) priorFallFailed = true;
+        }
+        return states;
+    });
     readonly allChecksAutomaticFailure = computed(() => {
         const checks = this.psrChecks();
         return this.automaticFalls().length + checks.length > 0
             && checks.every(check => this.isAutomaticFailure(check));
+    });
+    readonly showRollDetails = computed(() => this.psrChecks().length > 0
+        && !this.allChecksAutomaticFailure());
+    readonly canAccept = computed(() => {
+        const checks = this.psrChecks();
+        const states = this.resolutionStates();
+        return checks.length > 0
+            && checks.every(check => states.has(check.checkId))
+            && [...states.values()].some(state => state.source !== 'committed');
     });
 
     automaticFallReason(fall: MekAutomaticFallV2): string {
@@ -132,7 +175,7 @@ export class PagePsrWarningPanelComponent {
 
     roll(check: MekPilotCheckV2): void {
         const roller = this.diceRoller();
-        if (!roller || roller.isRolling() || this.outcome(check) || this.isAutomaticFailure(check)) return;
+        if (!roller || roller.isRolling() || !this.canEditOutcome(check)) return;
         this.rollingCheck = check;
         this.rolledResult.set(null);
         roller.roll();
@@ -145,33 +188,74 @@ export class PagePsrWarningPanelComponent {
         if (!runtime || !check || event.results.length < 2) return;
         const outcome = psrRollOutcome(event.sum, check.targetNumber);
         this.rolledResult.set(outcome.toUpperCase());
-        runtime.setDie(check.checkId, 0, event.results[0]!);
-        runtime.setDie(check.checkId, 1, event.results[1]!);
-        void runtime.resolveCheck(check.checkId);
+        this.selectOutcome(check, outcome, validPsrDice(event.results));
     }
 
-    resolve(check: MekPilotCheckV2, outcome: MekPilotCheckOutcomeV2): void {
-        const runtime = this.runtime();
-        const dice = diceForMekPilotCheckOutcome(check.targetNumber, outcome);
-        if (!runtime || !dice || check.status !== 'pending') return;
-        runtime.setDie(check.checkId, 0, dice[0]);
-        runtime.setDie(check.checkId, 1, dice[1]);
+    selectOutcome(
+        check: MekPilotCheckV2,
+        outcome: MekPilotCheckOutcomeV2,
+        dice: readonly [number, number] | null = null,
+    ): void {
+        if (!this.canEditOutcome(check)) return;
+        this.selectedOutcomes.update(current => ({ ...current, [check.checkId]: outcome }));
+        this.selectedDice.update(current => {
+            if (dice) return { ...current, [check.checkId]: dice };
+            const { [check.checkId]: _removed, ...remaining } = current;
+            return remaining;
+        });
         this.rolledResult.set(outcome.toUpperCase());
-        void runtime.resolveCheck(check.checkId);
     }
 
     outcome(check: MekPilotCheckV2): MekPilotCheckOutcomeV2 | undefined {
-        return check.status === 'pending' ? undefined : check.status;
+        return this.resolutionStates().get(check.checkId)?.outcome;
+    }
+
+    diceFor(check: MekPilotCheckV2): readonly [number, number] | null {
+        return this.resolutionStates().get(check.checkId)?.source === 'selected'
+            ? this.selectedDice()[check.checkId] ?? null
+            : null;
+    }
+
+    canEditOutcome(check: MekPilotCheckV2): boolean {
+        const source = this.resolutionStates().get(check.checkId)?.source;
+        return source === undefined || source === 'selected';
+    }
+
+    isCascadedFailure(check: MekPilotCheckV2): boolean {
+        return this.resolutionStates().get(check.checkId)?.source === 'cascade';
     }
 
     isAutomaticFailure(check: MekPilotCheckV2): boolean {
-        return check.targetNumber > 12;
+        return check.status === 'pending' && check.targetNumber > 12;
     }
 
     failureLabel(check: MekPilotCheckV2): string {
         if (check.source.triggerKind === 'shutdown') return 'Shutdown';
         if (check.source.triggerKind === 'get-up') return 'Remain prone';
         return 'Fall';
+    }
+
+    async accept(): Promise<void> {
+        const runtime = this.runtime();
+        if (!runtime || !this.canAccept()) return;
+        const states = this.resolutionStates();
+        const resolutions = this.psrChecks().flatMap(check => {
+            const state = states.get(check.checkId);
+            return state && state.source !== 'committed'
+                ? [{ check, outcome: state.outcome, dice: this.diceFor(check) }]
+                : [];
+        });
+        for (const resolution of resolutions) {
+            if (!await runtime.resolveCheckOutcome(
+                resolution.check.checkId,
+                resolution.check.targetNumber,
+                resolution.outcome,
+                resolution.dice ?? undefined,
+            )) return;
+        }
+        this.selectedOutcomes.set({});
+        this.selectedDice.set({});
+        this.close();
     }
 
     private runtime(): MekTurnSummaryRuntimeController | null {
@@ -185,4 +269,16 @@ export class PagePsrWarningPanelComponent {
         }
         return this.controller;
     }
+}
+
+function isCascadeFallPilotCheck(check: MekPilotCheckV2): boolean {
+    return check.source.triggerKind !== 'shutdown'
+        && check.source.triggerKind !== 'get-up';
+}
+
+function validPsrDice(results: readonly number[]): readonly [number, number] | null {
+    return results.length === 2
+        && results.every(value => Number.isInteger(value) && value >= 1 && value <= 6)
+        ? [results[0]!, results[1]!]
+        : null;
 }

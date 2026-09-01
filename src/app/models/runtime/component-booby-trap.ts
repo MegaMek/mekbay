@@ -14,7 +14,6 @@ import {
     type EquipmentInteractionCommandContext,
     type EquipmentInteractionInput,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 
 export const BOOBY_TRAP_ARMED_MODE = 'Armed';
 export const BOOBY_TRAP_DETONATED_MODE = 'Detonated';
@@ -81,8 +80,6 @@ export class BoobyTrapHandler extends EquipmentInteractionHandler {
 
         const result = input.runtime.dispatch({
             type: 'detonate-booby-trap',
-            commandId: createCommandId(),
-            expectedRevision: input.runtime.revision(),
             componentId: input.componentId,
         });
         if (!result.accepted) return false;

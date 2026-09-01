@@ -10,7 +10,6 @@ import {
 } from '../models/runtime/component-ppc-capacitor';
 import { canPerformMekAction } from '../models/runtime/mek-action-availability';
 import { projectMekEquipmentComponents } from '../models/runtime/equipment-panel';
-import { asCommandId } from '../models/runtime/runtime-state';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { CBTUnitInstance } from '../models/runtime/unit-instance';
 import type { WeaponType } from '../models/weapon-types.model';
@@ -83,8 +82,8 @@ describe('PpcCapacitorHandler direct V2 runtime', () => {
 
         const fired = setup.runtime.dispatch({
             type: 'fire-weapons',
-            commandId: asCommandId('ppc:fire'),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             selections: [{ weaponId: setup.weapon.id }],
             heatPolicy: 'automatic',
         });
@@ -116,8 +115,8 @@ describe('PpcCapacitorHandler direct V2 runtime', () => {
         endTurn(setup.runtime, 'ppc:end-before-destroy');
         expect(setup.runtime.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('ppc:destroy-capacitor'),
-            expectedRevision: setup.runtime.revision(),
+            
+            
             componentId: setup.capacitor.id,
             status: 'destroyed',
             target: 'committed',
@@ -200,8 +199,8 @@ function canFire(setup: DirectPpcSetup): boolean {
 function endTurn(runtime: CBTUnitInstance, commandId: string): void {
     expect(runtime.dispatch({
         type: 'end-turn',
-        commandId: asCommandId(commandId),
-        expectedRevision: runtime.revision(),
+        
+        
         policy: 'automatic',
     }).accepted).toBeTrue();
 }
