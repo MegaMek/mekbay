@@ -35,6 +35,42 @@ export const CBT_WEIGHT_CLASSES = [
 
 export type WeightClass = typeof CBT_WEIGHT_CLASSES[number];
 
+/** Engine type names exported by MegaMekLab's SVGMassPrinter. */
+export type UnitEngineType =
+    | 'ICE'
+    | 'Fusion'
+    | 'XL (IS)'
+    | 'XL (Clan)'
+    | 'XXL (IS)'
+    | 'XXL (Clan)'
+    | 'Fuel Cell'
+    | 'Light'
+    | 'Compact'
+    | 'Fission'
+    | 'None'
+    | 'MagLev'
+    | 'Steam'
+    | 'Battery'
+    | 'Solar'
+    | 'External';
+
+const FUSION_UNIT_ENGINE_TYPES: ReadonlySet<UnitEngineType> = new Set([
+    'Fusion',
+    'XL (IS)',
+    'XL (Clan)',
+    'XXL (IS)',
+    'XXL (Clan)',
+    'Light',
+    'Compact',
+]);
+
+/** Whether exported unit metadata describes a fusion-family engine. */
+export function isFusionUnitEngine(
+    engine: UnitEngineType | null | undefined,
+): engine is UnitEngineType {
+    return engine !== null && engine !== undefined && FUSION_UNIT_ENGINE_TYPES.has(engine);
+}
+
 export const CBT_WEIGHT_CLASS_ORDINALS = new Map<WeightClass, number>(
     CBT_WEIGHT_CLASSES.map((weightClass, index) => [weightClass, index] as const)
 );
@@ -72,6 +108,14 @@ export interface UnitComponent {
     bay?: UnitComponent[];
     eq?: Equipment; // linked equipment data
 }
+
+/** Canonical MegaMek material code and technology base at one unit location. */
+export interface UnitMaterialLayoutEntry {
+    readonly type: number;
+    readonly clan: boolean;
+}
+
+export type UnitMaterialLayout = Readonly<Record<string, UnitMaterialLayoutEntry>>;
 
 export interface UnitTagEntry {
     /** Tag display label */
@@ -114,9 +158,9 @@ export interface UnitFluffCatalog {
 }
 
 export interface UnitSummary {
-    uuid: string; // Unique identifier of the unit
-    name: string; // Internal unique name
-    id: number; // MUL id
+    uuid: string; // Stable, unique internal unit identity
+    name: string; // Catalog/URL name; not guaranteed unique
+    id: number; // External MUL id; not guaranteed unique
     chassis: string;
     model: string;
     year: number;
@@ -133,7 +177,7 @@ export interface UnitSummary {
     type: UnitType;
     subtype: UnitSubtype;
     omni: number;
-    engine: string;
+    engine: UnitEngineType | null;
     engineRating: number;
     engineHS: number; // Number of HeatSinks on the engine
     engineHSType: string | null; // Type of HeatSinks on the engine: "Heat Sink", "Double Heat Sink", "Laser Heat Sink", etc...
@@ -145,6 +189,8 @@ export interface UnitSummary {
     role: string;
     armorType: string;
     structureType: string | null;
+    patchworkLayout?: UnitMaterialLayout;
+    hybridLayout?: UnitMaterialLayout;
     armor: number;
     armorPer: number; // Armor %
     internal: number;

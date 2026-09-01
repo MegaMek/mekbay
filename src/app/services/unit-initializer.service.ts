@@ -6,11 +6,12 @@ import { inject, Injectable, Injector } from '@angular/core';
 import { MountedAmmo, MountedEquipment } from '../models/mounted-equipment.model';
 import { type CriticalSlot } from '../models/force-serialization';
 import { DataService } from './data.service';
-import { AmmoEquipment, ArmorEquipment, StructureEquipment, WeaponEquipment, type Equipment } from '../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, isCoolantPodEquipment, StructureEquipment, WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from '../models/battle-armor-location.model';
 import { materializeIntrinsicOneShotAmmoForInventory } from '../utils/ammo-interaction.util';
-
+import { normalizeElectronicSuiteDefaults } from '../utils/ecm-state.util';
+import { reconcileMachineGunArrayLinks } from '../utils/mga-state.util';
 
 export const CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT = new Set<string>();
 
@@ -496,7 +497,11 @@ export class UnitInitializerService {
     private getCriticalOnlyInventoryEntries(unit: CBTForceUnit, existingIds: Set<string>, currentInventory: MountedEquipment[]): MountedEquipment[] {
         const critSlotsById = new Map<string, CriticalSlot[]>();
         for (const critSlot of unit.getCritSlots()) {
-            if (!critSlot.id || existingIds.has(critSlot.id) || !critSlot.eq || critSlot.eq instanceof AmmoEquipment || this.isCriticalOnlyInventoryExcluded(critSlot)) continue;
+            if (!critSlot.id
+                || existingIds.has(critSlot.id)
+                || !critSlot.eq
+                || (critSlot.eq instanceof AmmoEquipment && !isCoolantPodEquipment(critSlot.eq))
+                || this.isCriticalOnlyInventoryExcluded(critSlot)) continue;
             const critSlots = critSlotsById.get(critSlot.id) ?? [];
             critSlots.push(critSlot);
             critSlotsById.set(critSlot.id, critSlots);
@@ -505,7 +510,7 @@ export class UnitInitializerService {
         return Array.from(critSlotsById.entries()).map(([id, critSlots]) => {
             const existingEntry = currentInventory.find(item => item.id === id);
             const equipment = critSlots[0].eq;
-            return new MountedEquipment({
+            const common = {
                 owner: unit,
                 id,
                 name: critSlots[0].name || id.split('@')[0],
@@ -518,7 +523,21 @@ export class UnitInitializerService {
                 destroying: existingEntry?.pendingDestroyed(),
                 critSlots,
                 states: existingEntry?.states ? new Map(existingEntry.states) : new Map<string, string>(),
-            });
+            };
+            if (isCoolantPodEquipment(equipment)) {
+                const originalTotalAmmo = critSlots.reduce((total, slot) =>
+                    total + (slot.totalAmmo
+                        || Number(slot.el?.getAttribute('totalAmmo') ?? 0)
+                        || equipment.getShots(unit.gameRules, unit.getEquipmentRegistry())), 0);
+                return new MountedAmmo({
+                    ...common,
+                    equipment,
+                    totalAmmo: existingEntry?.totalAmmo ?? originalTotalAmmo,
+                    originalTotalAmmo,
+                    consumed: existingEntry?.consumed ?? critSlots.reduce((total, slot) => total + (slot.consumed ?? 0), 0),
+                });
+            }
+            return new MountedEquipment(common);
         });
     }
 
@@ -555,6 +574,8 @@ export class UnitInitializerService {
             materializedInventory,
             this.getDataService().getEquipmentRegistry(),
         ));
+        reconcileMachineGunArrayLinks(materializedInventory);
+        normalizeElectronicSuiteDefaults(materializedInventory);
         unit.setInventory(materializedInventory, true);
     }
 

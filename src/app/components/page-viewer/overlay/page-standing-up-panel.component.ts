@@ -76,12 +76,16 @@ export class PageStandingUpPanelComponent {
     );
     readonly lastOutcome = signal<RuleCheckOutcome | null>(null);
     readonly rolledResult = signal<string | null>(null);
+    private readonly pendingRolledOutcome = signal<RuleCheckOutcome | null>(null);
     readonly rolledResultTone = computed<'default' | 'success' | 'failed'>(() => {
         if (this.rolledResult() === 'SUCCESS') return 'success';
         if (this.rolledResult() === 'FAILED') return 'failed';
         return 'default';
     });
     readonly standingModifier = computed(() => this.unit()?.rules.standingUpPSRModifier ?? 0);
+    readonly rollOverlayCloseHint = computed(() => this.pendingRolledOutcome() === 'failed'
+        ? 'Click to apply the failure and resolve the fall'
+        : 'Click to apply the standing result');
 
     readonly targetRoll = computed(() => {
         const target = this.unit()?.PSRTargetRoll() ?? 0;
@@ -130,14 +134,23 @@ export class PageStandingUpPanelComponent {
         if (!roller || roller.isRolling() || this.lastOutcome() === 'success') return;
         this.lastOutcome.set(null);
         this.rolledResult.set(null);
+        this.pendingRolledOutcome.set(null);
         roller.roll();
     }
 
     onRollFinished(event: { readonly results: number[]; readonly sum: number }): void {
         if (this.reviewOnly) return;
         const result = psrRollOutcome(event.sum, this.targetRoll());
-        this.resolve(result);
-        if (this.lastOutcome() === result) this.rolledResult.set(result.toUpperCase());
+        this.pendingRolledOutcome.set(result);
+        this.rolledResult.set(result.toUpperCase());
+    }
+
+    onRollOverlayClosed(): void {
+        if (this.reviewOnly) return;
+        const outcome = this.pendingRolledOutcome();
+        if (!outcome) return;
+        this.pendingRolledOutcome.set(null);
+        this.resolve(outcome);
     }
 
     resolve(outcome: RuleCheckOutcome): void {
@@ -147,6 +160,7 @@ export class PageStandingUpPanelComponent {
         this.rolledResult.set(null);
         if (unit.turnState().resolveStandAttempt(outcome, { carefulStand: this.carefulStand() })) {
             this.lastOutcome.set(outcome);
+            if (outcome === 'failed') this.close();
         }
     }
 
@@ -158,5 +172,6 @@ export class PageStandingUpPanelComponent {
         if (committedCarefulStand !== undefined) this.carefulStand.set(committedCarefulStand);
         if (this.lastOutcome() !== 'success') this.lastOutcome.set(null);
         this.rolledResult.set(null);
+        this.pendingRolledOutcome.set(null);
     }
 }

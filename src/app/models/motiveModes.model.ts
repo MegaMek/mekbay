@@ -6,7 +6,7 @@ import type { UnitSummary } from "./unit-summary.model";
 
 export type MotiveState = ''
 
-export type MotiveModes = 'stationary' | 'walk' | 'run' | 'jump' | 'UMU' | 'VTOL';
+export type MotiveModes = 'stationary' | 'walk' | 'run' | 'sprint' | 'jump' | 'UMU' | 'VTOL';
 
 export interface MotiveModeOption {
     mode: MotiveModes;
@@ -31,6 +31,8 @@ export function getMotiveModeLabel(mode: MotiveModes, unit: UnitSummary, airborn
             return (isVehicle || airborne) ? 'Cruise' : 'Walk';
         case 'run':
             return (isVehicle || airborne) ? 'Flank' : 'Run';
+        case 'sprint':
+            return 'Sprint';
         case 'jump':
             return 'Jump';
         case 'UMU':
@@ -48,6 +50,8 @@ export function getMotiveModeMaxDistance(mode: MotiveModes, unit: UnitSummary, a
             return Math.max(unit.walk, unit.walk2);
         case 'run':
             return Math.max(unit.run, unit.run2);
+        case 'sprint':
+            return Math.max(unit.walk, unit.walk2) * 2;
         case 'jump':
             return unit.jump;
         case 'UMU':
@@ -81,6 +85,10 @@ function canJump(unit: UnitSummary, airborne: boolean = false): boolean {
     return (unit.jump > 0 && !airborne);
 }
 
+function canSprint(unit: UnitSummary, airborne: boolean = false): boolean {
+    return unit.type === 'Mek' && !airborne;
+}
+
 function canUMU(unit: UnitSummary, airborne: boolean = false): boolean {
     return (unit.umu > 0);
 }
@@ -103,6 +111,9 @@ export function getMotiveModesByUnit(unit: UnitSummary, airborne: boolean = fals
     }
     if (canRun(unit, airborne)) {
         modes.push('run');
+    }
+    if (canSprint(unit, airborne)) {
+        modes.push('sprint');
     }
     if (canJump(unit, airborne)) {
         modes.push('jump');

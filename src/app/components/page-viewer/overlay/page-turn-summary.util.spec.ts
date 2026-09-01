@@ -4,7 +4,30 @@
 
 import { Subject } from 'rxjs';
 import type { ManagedOverlayRef, OverlayManagerService } from '../../../services/overlay-manager.service';
-import { composeTurnSummaryHeatRows, countActionablePsrChecks, displayPsrModifiers, isMoveModeDisabledWhileProne, openTurnSummaryChildOverlay } from './page-turn-summary.util';
+import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne, openTurnSummaryChildOverlay, runWithTurnSummaryCloseBlocked } from './page-turn-summary.util';
+
+describe('runWithTurnSummaryCloseBlocked', () => {
+    it('keeps the summary blocked until a dismissed confirmation settles', async () => {
+        const overlayManager = jasmine.createSpyObj<OverlayManagerService>(
+            'OverlayManagerService',
+            ['blockCloseUntil', 'unblockClose'],
+        );
+        let dismiss!: (confirmed: boolean) => void;
+        const operation = jasmine.createSpy('operation').and.returnValue(new Promise<boolean>(resolve => {
+            dismiss = resolve;
+        }));
+
+        const result = runWithTurnSummaryCloseBlocked(overlayManager, 'unit-1', operation);
+
+        expect(overlayManager.blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+        expect(overlayManager.unblockClose).not.toHaveBeenCalled();
+
+        dismiss(false);
+
+        await expectAsync(result).toBeResolvedTo(false);
+        expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
+    });
+});
 
 describe('openTurnSummaryChildOverlay', () => {
     it('blocks the parent summary until the child overlay closes', () => {
@@ -38,29 +61,13 @@ describe('openTurnSummaryChildOverlay', () => {
         expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
     });
 });
-
 describe('isMoveModeDisabledWhileProne', () => {
-    it('disables only jump while prone without changing its selected state', () => {
+    it('disables jump and sprint while prone', () => {
         expect(isMoveModeDisabledWhileProne('jump', true)).toBeTrue();
         expect(isMoveModeDisabledWhileProne('jump', false)).toBeFalse();
+        expect(isMoveModeDisabledWhileProne('sprint', true)).toBeTrue();
+        expect(isMoveModeDisabledWhileProne('sprint', false)).toBeFalse();
         expect(isMoveModeDisabledWhileProne('run', true)).toBeFalse();
-    });
-});
-
-describe('countActionablePsrChecks', () => {
-    const fallCheck = { failureOutcome: 'Fall' };
-    const crippleCheck = { failureOutcome: 'Crippled' };
-
-    it('shows all checks when the unit is not automatically falling', () => {
-        expect(countActionablePsrChecks([fallCheck, crippleCheck], false)).toBe(2);
-    });
-
-    it('hides the warning when autofall already represents every check', () => {
-        expect(countActionablePsrChecks([fallCheck, fallCheck], true)).toBe(0);
-    });
-
-    it('keeps non-fall checks actionable during autofall', () => {
-        expect(countActionablePsrChecks([fallCheck, crippleCheck], true)).toBe(1);
     });
 });
 
@@ -116,17 +123,18 @@ describe('composeTurnSummaryHeatRows', () => {
         ]);
     });
 
-    it('combines passive equipment heat into one Equipment row', () => {
+    it('keeps compactly grouped equipment sources separate in the detailed turn summary', () => {
         expect(composeTurnSummaryHeatRows(
             [
-                { id: 'equipment:null-signature', label: 'Equipment', value: 10 },
+                { id: 'stealth:null-signature', label: 'Stealth', value: 10, group: 'Equipment' },
                 { id: 'engine', label: 'Engine', value: 5 },
-                { id: 'equipment:chameleon-lps', label: 'Equipment', value: 6 },
+                { id: 'nova-cews', label: 'Nova CEWS', value: 2, group: 'Equipment' },
             ],
             { hasSelection: false, value: 0, entryIds: new Set() }
         )).toEqual([
-            { id: 'equipment', label: 'Equipment', value: 16 },
+            { id: 'stealth:null-signature', label: 'Stealth', value: 10 },
             { id: 'engine', label: 'Engine', value: 5 },
+            { id: 'nova-cews', label: 'Nova CEWS', value: 2 },
         ]);
     });
 

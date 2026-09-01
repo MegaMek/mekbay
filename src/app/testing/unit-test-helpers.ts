@@ -210,6 +210,7 @@ export interface CBTForceUnitTestTurnState {
     heatDissipationBalance(): number;
     effectiveHeatDissipation(): number;
     addFiredHeat(amount: number): void;
+    removeFiredHeat(amount: number): void;
     markEquipmentStateChanged(): void;
 }
 
@@ -287,6 +288,9 @@ export class CBTForceUnitTestHarness {
             effectiveHeatDissipation: () => Math.max(0, heatDissipationBalance()),
             addFiredHeat: (amount: number) => {
                 if (Number.isFinite(amount) && amount > 0) firedHeat += amount;
+            },
+            removeFiredHeat: (amount: number) => {
+                if (Number.isFinite(amount) && amount > 0) firedHeat = Math.max(0, firedHeat - amount);
             },
             markEquipmentStateChanged: () => {},
         };
@@ -436,11 +440,12 @@ export class CBTForceUnitTestHarness {
                 this.unit.getEquipmentInstallationLocationStatus(entry) === 'destroyed'
                 || (!entry.isRepairing() && resolveEquipmentStatus(entry) === 'destroyed'),
             canPerformEquipmentAction: (entry: MountedEquipment, action: EquipmentAction) => {
+                if (action === 'configure-network') {
+                    return options.resolveConfigureNetworkPermission?.(entry) ?? false;
+                }
                 if (resolveEquipmentStatus(entry) !== 'available'
                     || (options.destroyed ?? false)
                     || conditions.has('shutdown')) return false;
-                if (action === 'configure-network'
-                    && !(options.resolveConfigureNetworkPermission?.(entry) ?? false)) return false;
                 return rules.canPerformEquipmentAction(entry, action);
             },
             canEditEquipmentState: (entry: MountedEquipment, edit: EquipmentStateEdit) => {

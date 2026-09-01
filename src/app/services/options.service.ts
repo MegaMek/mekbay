@@ -4,7 +4,7 @@
 
 import { inject, Injectable, signal } from '@angular/core';
 import { DbService } from './db.service';
-import { OPTION_VALUES, type CBTOptionalRules, type ForceBudgetOptimizerLastSkills, type ForceGeneratorOptions, type Options } from '../models/options.model';
+import { CBT_AUTOMATION_KEYS, OPTION_VALUES, type AutomationMode, type CBTAutomationKey, type CBTAutomationOptions, type CBTOptionalRules, type ColorScheme, type ForceBudgetOptimizerLastSkills, type ForceGeneratorOptions, type Options } from '../models/options.model';
 import { PRINT_OPTION_VALUES, type PrintAllOptions } from '../models/print-options.model';
 import { GameSystem, normalizeUnitServerUrl } from '../models/common.model';
 
@@ -42,10 +42,21 @@ const DEFAULT_OPTIONS: Options = {
     recordSheetDoubleTapZoomReset: 'contextual',
     syncZoomBetweenSheets: true,
     trackPhaseAndTurn: true,
-    cbtAutomations: false,
+    cbtAutomationOptions: {
+        pilotSkillCheck: 'no',
+        heatAndDissipationResolution: 'no',
+        heatEffectsCheck: 'no',
+        pilotHitsAndConsciousnessCheck: 'no',
+        internalExplosionsCheck: 'ask',
+        criticalHitChanceCheck: 'no',
+        breachAndFloodCheck: 'no',
+        fallingCheck: 'no',
+    },
     CBTOptionalRules: {
+        floatingCriticals: false,
         forcedWithdrawal: true,
         extremeRange: false,
+        sprinting: false,
     },
     allowMultipleActiveSheets: false,
     CBTRules: 'tw',
@@ -179,9 +190,19 @@ function resolveForceGeneratorOptions(saved: Options | null | undefined): ForceG
 function resolveCBTOptionalRules(saved: Options | null | undefined): CBTOptionalRules {
     const defaults = DEFAULT_OPTIONS.CBTOptionalRules;
     return {
+        floatingCriticals: resolveSavedValue(saved?.CBTOptionalRules?.floatingCriticals, defaults.floatingCriticals),
         forcedWithdrawal: resolveSavedValue(saved?.CBTOptionalRules?.forcedWithdrawal, defaults.forcedWithdrawal),
         extremeRange: resolveSavedValue(saved?.CBTOptionalRules?.extremeRange, defaults.extremeRange),
+        sprinting: resolveSavedValue(saved?.CBTOptionalRules?.sprinting, defaults.sprinting),
     };
+}
+
+function resolveCBTAutomationOptions(saved: Options | null | undefined): CBTAutomationOptions {
+    const defaults = DEFAULT_OPTIONS.cbtAutomationOptions;
+    return Object.fromEntries(CBT_AUTOMATION_KEYS.map(key => [
+        key,
+        resolveSavedValue(saved?.cbtAutomationOptions?.[key], defaults[key], OPTION_VALUES.automationMode),
+    ])) as CBTAutomationOptions;
 }
 
 function resolveLastCanvasState(saved: unknown): Options['lastCanvasState'] {
@@ -229,7 +250,7 @@ export class OptionsService {
         printAllOptions: { ...DEFAULT_OPTIONS.printAllOptions },
         recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
         trackPhaseAndTurn: DEFAULT_OPTIONS.trackPhaseAndTurn,
-        cbtAutomations: DEFAULT_OPTIONS.cbtAutomations,
+        cbtAutomationOptions: { ...DEFAULT_OPTIONS.cbtAutomationOptions },
         CBTOptionalRules: { ...DEFAULT_OPTIONS.CBTOptionalRules },
         CBTRules: DEFAULT_OPTIONS.CBTRules,
         ASUseHex: DEFAULT_OPTIONS.ASUseHex,
@@ -256,6 +277,7 @@ export class OptionsService {
 
     async initOptions() {
         const saved = await this.dbService.getOptions();
+        const cbtAutomationOptions = resolveCBTAutomationOptions(saved);
         this.options.set({
             colorScheme: resolveSavedValue(saved?.colorScheme, DEFAULT_OPTIONS.colorScheme, OPTION_VALUES.colorScheme),
             pickerStyle: resolveSavedValue(saved?.pickerStyle, DEFAULT_OPTIONS.pickerStyle, OPTION_VALUES.pickerStyle),
@@ -272,7 +294,7 @@ export class OptionsService {
             lastCanvasState: resolveLastCanvasState(saved?.lastCanvasState),
             sidebarLipPosition: typeof saved?.sidebarLipPosition === 'string' ? saved.sidebarLipPosition : undefined,
             trackPhaseAndTurn: resolveSavedValue(saved?.trackPhaseAndTurn, DEFAULT_OPTIONS.trackPhaseAndTurn),
-            cbtAutomations: resolveSavedValue(saved?.cbtAutomations, DEFAULT_OPTIONS.cbtAutomations),
+            cbtAutomationOptions,
             CBTOptionalRules: resolveCBTOptionalRules(saved),
             CBTRules: resolveSavedValue(saved?.CBTRules, DEFAULT_OPTIONS.CBTRules, OPTION_VALUES.CBTRules),
             ASUseHex: resolveSavedValue(saved?.ASUseHex, DEFAULT_OPTIONS.ASUseHex),
@@ -299,6 +321,20 @@ export class OptionsService {
         const updated = { ...this.options(), [key]: value };
         this.options.set(updated);
         await this.dbService.saveOptions(updated);
+    }
+
+    async setCbtAutomationMode(key: CBTAutomationKey, value: AutomationMode) {
+        const current = this.options().cbtAutomationOptions;
+        if (current[key] === value) {
+            return;
+        }
+
+        await this.setOption('cbtAutomationOptions', { ...current, [key]: value });
+    }
+
+    /** Returns the configured mode for one CBT automation. */
+    cbtAutomationMode(key: CBTAutomationKey): AutomationMode {
+        return this.options().cbtAutomationOptions[key];
     }
 
     async updateForceGeneratorOptions(

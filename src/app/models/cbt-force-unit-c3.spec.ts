@@ -3,13 +3,14 @@
 // Author: Drake
 
 import { CBTForceUnit } from './cbt-force-unit.model';
-import { C3_FLAGS, C3Network, C3NetworkType } from './c3-network.model';
+import { C3Capabilities, C3_FLAGS, C3Network, C3NetworkType } from './c3-network.model';
 import type { Equipment } from './equipment.model';
 import { MountedEquipment } from './mounted-equipment.model';
 import type { SerializedC3NetworkGroup } from './force-serialization';
 import type { InventoryControlRuntimeTarget } from './inventory-control-runtime-state.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from './rules/game-rules';
 import { UnitTypeRulesBase } from './rules/unit-type-rules';
+import { NOVA_CEWS_OFF_STATE, NOVA_CEWS_STATE_KEY } from '../utils/ecm-state.util';
 
 class C3BadgeRules extends UnitTypeRulesBase {
     override evaluateDestroyed(): void { }
@@ -62,7 +63,10 @@ function c3BadgeUnit(
         shutdown: { value: false, writable: true, configurable: true },
         getUnit: { value: () => ({ comp: [] }), configurable: true },
         getInventory: { value: () => inventory, configurable: true },
-        turnState: { value: () => ({ moveDistance: () => 0 }), configurable: true },
+        turnState: {
+            value: () => ({ moveDistance: () => 0, effectiveMoveMode: () => null }),
+            configurable: true,
+        },
         getCrewMember: { value: () => ({ getState: () => 'healthy' }), configurable: true },
         getEquipmentStatus: {
             value: (entry: MountedEquipment) => unavailable.has(entry.id) ? 'destroyed' : 'available',
@@ -171,10 +175,45 @@ describe('CBTForceUnit C3 targeting resolution', () => {
 
         expect(unit.isEquipmentOperational(unit.getInventory()[0])).toBeTrue();
         expect(unit.isEquipmentOperational(unit.getInventory()[1])).toBeTrue();
-        expect(CBTForceUnit.prototype.canPerformEquipmentAction.call(unit, unit.getInventory()[0], 'configure-network')).toBeFalse();
-        expect(CBTForceUnit.prototype.canPerformEquipmentAction.call(unit, unit.getInventory()[1], 'configure-network')).toBeFalse();
+        expect(CBTForceUnit.prototype.canPerformEquipmentAction.call(unit, unit.getInventory()[0], 'configure-network')).toBeTrue();
+        expect(CBTForceUnit.prototype.canPerformEquipmentAction.call(unit, unit.getInventory()[1], 'configure-network')).toBeTrue();
         expect(unit.isC3ComponentOperational(0)).toBeFalse();
         expect(unit.isC3ComponentOperational(1)).toBeFalse();
+    });
+
+    it('keeps a switched-off Nova CEWS configurable while its endpoint is unavailable', () => {
+        const unit = c3BadgeUnit('nova-unit', [
+            { id: 'nova', flag: C3_FLAGS.NOVA },
+        ], new Set());
+        const nova = unit.getInventory()[0];
+
+        expect(new C3Capabilities(unit).has(C3NetworkType.NOVA)).toBeTrue();
+        expect(unit.isC3ComponentOperational(0)).toBeTrue();
+
+        nova.states.set(NOVA_CEWS_STATE_KEY, NOVA_CEWS_OFF_STATE);
+
+        expect(new C3Capabilities(unit).has(C3NetworkType.NOVA)).toBeTrue();
+        expect(unit.isC3ComponentOperational(0)).toBeFalse();
+        expect(unit.canPerformEquipmentAction(nova, 'configure-network')).toBeTrue();
+    });
+
+    it('keeps every C3 network type configurable regardless unit or component condition', () => {
+        const unavailable = new Set(['master', 'slave', 'c3i', 'naval', 'nova']);
+        const unit = c3BadgeUnit('damaged-c3-unit', [
+            { id: 'master', flag: C3_FLAGS.C3M },
+            { id: 'slave', flag: C3_FLAGS.C3S },
+            { id: 'c3i', flag: C3_FLAGS.C3I },
+            { id: 'naval', flag: C3_FLAGS.NAVAL_C3 },
+            { id: 'nova', flag: C3_FLAGS.NOVA },
+        ], unavailable);
+        Object.defineProperty(unit, 'destroyed', { value: true, configurable: true });
+
+        const components = new C3Capabilities(unit).components;
+        expect(components.length).toBe(5);
+        components.forEach(component => {
+            expect(unit.isC3ComponentOperational(component.index, component)).toBeFalse();
+            expect(unit.canPerformEquipmentAction(component.mount!, 'configure-network')).toBeTrue();
+        });
     });
 
     it('disconnects C3 for active Stealth Armor except Chameleon LPS and Null Signature', () => {
@@ -247,7 +286,7 @@ describe('CBTForceUnit C3 targeting resolution', () => {
         expect(brokenEcmUnit.getCondition('stealth')).toBeFalse();
     });
 
-    it('uses C3 endpoint availability as the configure-network action authority', () => {
+    it('keeps C3 configuration available while runtime effects are suppressed', () => {
         const unit = c3BadgeUnit('stealth-unit', [
             { id: 'c3', flag: C3_FLAGS.C3M },
             { id: 'stealth', flag: 'F_STEALTH' },
@@ -262,7 +301,7 @@ describe('CBTForceUnit C3 targeting resolution', () => {
 
         expect(unit.isEquipmentOperational(c3)).toBeTrue();
         expect(unit.isC3ComponentOperational(0)).toBeFalse();
-        expect(unit.canPerformEquipmentAction(c3, 'configure-network')).toBeFalse();
+        expect(unit.canPerformEquipmentAction(c3, 'configure-network')).toBeTrue();
     });
 
     it('does not disconnect C3 for an unavailable stealth system with stale active state', () => {

@@ -5,9 +5,39 @@
 import { computed, signal, type WritableSignal } from "@angular/core";
 import { canChangeAirborneGround, getMotiveModeMaxDistance, type MotiveModes } from "./motiveModes.model";
 import type { CBTForceUnitState } from "./cbt-force-unit-state.model";
-import type { RuleCheckOutcome, SerializedPSRChecks, SerializedTurnState } from "./force-serialization";
-import { calculateModifierTotal, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from "./rules/unit-type-rules";
+import type {
+    PendingEventInput,
+    RuleCheckOutcome,
+    SerializedEndTurnCheckpoint,
+    SerializedMekCriticalChanceResult,
+    SerializedPendingEvent,
+    SerializedPendingMekCriticalCaseII,
+    SerializedPendingMekCritical,
+    SerializedPendingMekCriticalChance,
+    SerializedPendingMekFloatingCriticalLocation,
+    SerializedPendingMekFall,
+    SerializedPendingUnitCheck,
+    SerializedPSRChecks,
+    SerializedTurnState,
+} from "./force-serialization";
+import { calculateModifierTotal, isFallPSRCheck, PSR_CHECK_KIND, type PSRCheck, type UnitHeatSource, type UnitModifierBreakdownEntry, type UnitModifierTotal } from "./rules/unit-type-rules";
 import { deserializeUnitCover, isUnitBuildingLevel, isUnitWaterDepth, resolveUnitBuildingCoverState, resolveUnitWaterState, serializeUnitCover, type UnitCover } from "./unit-cover.model";
+import {
+    closePilotDamagePhase,
+    closePilotDamageTurn,
+    createPilotDamageGroup,
+    isOpenCombatPilotDamageGroup,
+} from "../utils/pilot-damage-group.util";
+import {
+    isAmmoExplosionCheck,
+    isCascadeUnitCheck,
+    isConsciousnessCheck,
+    pendingUnitCheckOutcome,
+    pendingUnitCheckList,
+    pendingUnitCheckPriority,
+    refreshPendingUnitCheck,
+    type CascadeUnitCheck,
+} from '../utils/unit-check.util';
 
 export type { PSRCheck } from "./rules/unit-type-rules";
 
@@ -49,6 +79,7 @@ export function calculateHeatProjection(current: number, sources: readonly UnitH
 }
 
 export class TurnState {
+    private pilotDamageGroup = createPilotDamageGroup('combat');
     private static readonly HEAT_DISSIPATION_DEFICIT_SOURCE_ID = 'heat-dissipation-deficit';
     unitState: CBTForceUnitState;
     private suppressModified = false;
@@ -56,6 +87,8 @@ export class TurnState {
     private readonly acknowledgedHeatSources = this.modifiedSignal<Record<string, string>>({});
     private readonly heatDissipationConsumed = this.modifiedSignal<number>(0);
     private readonly psrOutcomes = this.modifiedSignal<Record<string, RuleCheckOutcome>>({});
+    private readonly pendingEvents = this.modifiedSignal<readonly SerializedPendingEvent[]>([]);
+    private readonly endTurnCheckpoint = this.modifiedSignal<SerializedEndTurnCheckpoint | undefined>(undefined);
     private readonly equipmentStateChanged = this.modifiedSignal<boolean>(false);
     /** Per-unit turn sequence, retained across phase commits. */
     private turnCounter: number;
@@ -123,6 +156,7 @@ export class TurnState {
             || unconsolidatedLocations
             || unconsolidatedInventory
             || this.equipmentStateChanged()
+            || this.endTurnCheckpoint() !== undefined
             || this.passiveHeatSourceSignature() !== this.passiveHeatSourceBaseline()
             || Object.keys(this.acknowledgedHeatSources()).length > 0
             || this.heatDissipationConsumed() > 0
@@ -155,7 +189,6 @@ export class TurnState {
             return {
                 ...check,
                 id: occurrence === 0 ? baseId : `${baseId}#${occurrence + 1}`,
-                failureOutcome: check.failureOutcome ?? 'Fall',
             };
         });
     });
@@ -201,12 +234,39 @@ export class TurnState {
         return this.unitState.unit.rules.getDefenseModifierBreakdown(this);
     });
 
-    PSRRollsCount = computed<number>(() => {
+    private unresolvedPSRChecks(): readonly PSRCheck[] {
         const outcomes = this.psrOutcomes();
         return this.getPSRChecks().filter(entry =>
             entry.fallCheck !== undefined && entry.id !== undefined && outcomes[entry.id] === undefined
-        ).length;
+        );
+    }
+
+    PSRRollsCount = computed<number>(() => this.unresolvedPSRChecks().length);
+
+    actionablePSRRollsCount = computed<number>(() => {
+        const checks = this.unresolvedPSRChecks()
+            .filter(check => !this.isPSRCheckAutomaticFailure(check));
+        return this.autoFall()
+            ? checks.filter(check => !isFallPSRCheck(check)).length
+            : checks.length;
     });
+
+    automaticPSRFailure = computed<boolean>(() => {
+        const unit = this.unitState.unit;
+        if (unit.rules.getActivePilotCrewId() === null) return true;
+        const checks = this.unresolvedPSRChecks();
+        return checks.length > 0
+            && checks.every(check => this.isPSRCheckAutomaticFailure(check));
+    });
+
+    isPSRCheckAutomaticFailure(check: PSRCheck): boolean {
+        const unit = this.unitState.unit;
+        return unit.rules.getActivePilotCrewId() === null
+            || (unit.getUnit().type === 'Mek'
+                && unit.getCondition('shutdown')
+                && !unit.getCondition('prone')
+                && check.kind !== PSR_CHECK_KIND.SHUTDOWN);
+    }
 
     getPSROutcome(checkId: string): RuleCheckOutcome | undefined {
         return this.psrOutcomes()[checkId];
@@ -215,11 +275,11 @@ export class TurnState {
     resolvePSRCheck(checkId: string, outcome: RuleCheckOutcome): boolean {
         const check = this.getPSRChecks().find(entry => entry.id === checkId);
         if (!check || check.resolution || this.getPSROutcome(checkId)) return false;
-        const resolvedChecks = outcome === 'failed'
+        const resolvedChecks = outcome === 'failed' && isFallPSRCheck(check)
             ? this.getPSRChecks().filter(entry =>
                 !entry.resolution
                 && entry.id !== undefined
-                && entry.failureOutcome === check.failureOutcome
+                && isFallPSRCheck(entry)
                 && this.getPSROutcome(entry.id) === undefined
             )
             : [check];
@@ -227,7 +287,12 @@ export class TurnState {
             ...current,
             ...Object.fromEntries(resolvedChecks.map(entry => [entry.id!, outcome])),
         }));
-        if (outcome === 'failed') this.unitState.unit.setCondition('prone', true);
+        if (outcome === 'failed') {
+            if (isFallPSRCheck(check) && !this.unitState.hasCondition('prone')) {
+                this.unitState.unit.queueFall('psr');
+                this.unitState.unit.setCondition('prone', true);
+            }
+        }
         return true;
     }
 
@@ -240,7 +305,11 @@ export class TurnState {
             this.carefulStand.set(true);
             this.clampMoveDistanceToCurrentModeRange();
         }
-        if (outcome === 'success') this.unitState.unit.setCondition('prone', false);
+        if (outcome === 'success') {
+            this.unitState.unit.setCondition('prone', false);
+        } else {
+            this.unitState.unit.queueFall('stand-attempt');
+        }
         return true;
     }
 
@@ -251,6 +320,26 @@ export class TurnState {
             this.moveMode.set(standingMovementMode);
             if (this.moveDistance() === null) this.moveDistance.set(0);
         }
+        return true;
+    }
+
+    failPendingPSRChecks(): void {
+        const unresolved = this.getPSRChecks().filter(check =>
+            check.resolution || (check.id !== undefined && this.getPSROutcome(check.id) === undefined));
+        for (const check of unresolved) {
+            if (check.resolution) {
+                this.unitState.unit.resolveRuleCheck(check.resolution.key, check.resolution.token, 'failed');
+            } else if (check.id) {
+                this.resolvePSRCheck(check.id, 'failed');
+            }
+        }
+    }
+
+    /** Applies an unavoidable fall before the phase is committed. */
+    resolveAutomaticFall(): boolean {
+        if (!this.autoFall() || this.unitState.hasCondition('prone')) return false;
+        this.unitState.unit.queueFall('psr');
+        this.unitState.unit.setCondition('prone', true);
         return true;
     }
 
@@ -282,12 +371,13 @@ export class TurnState {
 
     private psrCheckBaseId(check: PSRCheck): string {
         return [
-            check.reason.replace(/\d+(?:\.\d+)?/g, '#'),
+            'psr',
+            check.kind,
+            check.movementMode ?? '',
             check.loc ?? '',
             check.legFilter ?? '',
-            check.fallCheck ?? '',
-            check.pilotCheck ?? '',
-            check.ignorePreExistingGyro ? 'ignore-gyro' : '',
+            check.resolution?.key ?? '',
+            check.resolution?.token ?? '',
         ].join('|');
     }
 
@@ -305,7 +395,7 @@ export class TurnState {
     });
 
     private unresolvedHeatSources = computed<UnitHeatSource[]>(() => {
-        if (!(this.unitState.unit.useAutomations?.() ?? true)) return this.committedHeatSources();
+        if (this.unitState.unit.automationMode('heatAndDissipationResolution') === 'no') return this.committedHeatSources();
         const acknowledged = this.acknowledgedHeatSources();
         return this.committedHeatSources().filter(source => acknowledged[source.id] !== this.heatSourceSignature(source));
     });
@@ -438,8 +528,10 @@ export class TurnState {
         const carefulStand = this.carefulStand();
         const cover = this.cover();
         const psrChecks = this.serializePSRChecks();
+        const endTurnCheckpoint = this.endTurnCheckpoint();
 
         if (turnCounter > 0) turnState.turnCounter = turnCounter;
+        if (endTurnCheckpoint !== undefined) turnState.endTurnCheckpoint = endTurnCheckpoint;
         if (airborne === true) turnState.airborne = true;
         if (moveMode !== null) turnState.moveMode = moveMode;
         if (moveDistance !== null) turnState.moveDistance = moveDistance;
@@ -458,9 +550,17 @@ export class TurnState {
             turnState.psrOutcomes = { ...this.psrOutcomes() };
         }
         if (psrChecks) turnState.psrChecks = psrChecks;
+        if (this.pendingEvents().length > 0) {
+            turnState.pendingEvents = this.pendingEvents().map(event => structuredClone(event));
+        }
         if (!this.applyMovePSR()) turnState.applyMovePSR = false;
         if (this.spotting()) turnState.spotting = true;
         if (this.equipmentStateChanged()) turnState.equipmentStateChanged = true;
+
+        if (this.pendingEvents().some(event =>
+            'pilotDamageGroup' in event && event.pilotDamageGroup === this.pilotDamageGroup)) {
+            turnState.pilotDamageGroup = this.pilotDamageGroup;
+        }
 
         return Object.keys(turnState).length > 0 ? turnState : undefined;
     }
@@ -468,6 +568,8 @@ export class TurnState {
     update(data: SerializedTurnState | undefined) {
         this.withSuppressedModified(() => {
             this.turnCounter = data?.turnCounter ?? this.turnCounter;
+            this.pilotDamageGroup = data?.pilotDamageGroup ?? createPilotDamageGroup('combat');
+            this.endTurnCheckpoint.set(data?.endTurnCheckpoint);
             this.airborne.set(data?.airborne ?? null);
             this.moveMode.set(data?.moveMode ?? null);
             this.moveDistance.set(data?.moveDistance ?? null);
@@ -482,9 +584,34 @@ export class TurnState {
             this.heatDissipationConsumed.set(data?.heatDissipationConsumed ?? 0);
             this.psrOutcomes.set({ ...(data?.psrOutcomes ?? {}) });
             this.psrChecks.set(this.deserializePSRChecks(data?.psrChecks));
+            this.pendingEvents.set((data?.pendingEvents ?? []).map(event => structuredClone(event)));
             this.applyMovePSR.set(data?.applyMovePSR ?? true);
             this.spotting.set(data?.spotting ?? false);
             this.equipmentStateChanged.set(data?.equipmentStateChanged ?? false);
+        });
+        this.reconcileRestoredMoveMode();
+    }
+
+    /** Revalidates persisted Sprint state once enough unit state is available. */
+    reconcileRestoredMoveMode(): void {
+        if (this.moveMode() !== 'sprint') return;
+
+        const forceUnit = this.unitState.unit;
+        if (!forceUnit.isLoaded() || !forceUnit.isOptionsInitialized()) return;
+
+        const airborne = this.airborne() === true;
+        const sprintAvailable = forceUnit.getAvailableMotiveModes(airborne)
+            .some(option => option.mode === 'sprint');
+
+        this.withSuppressedModified(() => {
+            if (!sprintAvailable) {
+                this.moveMode.set(null);
+                this.moveDistance.set(null);
+                return;
+            }
+
+            // A valid Sprint and spotting can never coexist, including in restored data.
+            this.spotting.set(false);
         });
     }
 
@@ -492,8 +619,24 @@ export class TurnState {
         return this.turnCounter;
     }
 
-    markEquipmentStateChanged(): void {
+    getEndTurnCheckpoint(): SerializedEndTurnCheckpoint | undefined {
+        return this.endTurnCheckpoint();
+    }
+
+    markEndTurnPhaseEnded(): void {
+        if (this.endTurnCheckpoint() === undefined) this.endTurnCheckpoint.set('phase-ended');
+    }
+
+    markEndTurnHeatStaged(): void {
+        this.endTurnCheckpoint.set('heat-staged');
+    }
+
+    markPhaseStateChanged(): void {
         this.equipmentStateChanged.set(true);
+    }
+
+    markEquipmentStateChanged(): void {
+        this.markPhaseStateChanged();
     }
 
     commitEquipmentStateChanges(): void {
@@ -553,14 +696,543 @@ export class TurnState {
         this.dmgReceived.set(0);
     }
 
+    currentPilotDamageGroup(): string {
+        // Core aggregates all pilot damage in a tracked phase. Total Warfare
+        // resolves Movement damage immediately; without phase tracking there
+        // is no safe aggregation boundary for either ruleset.
+        return !this.unitState.unit.tracksPhaseAndTurn()
+            || (!this.unitState.unit.gameRules.aggregatedEndPhaseConsciousRolls && this.currentPhase() === 'M')
+            ? createPilotDamageGroup('immediate')
+            : this.pilotDamageGroup;
+    }
+
+    completePilotDamagePhase(): void {
+        const completedGroup = this.pilotDamageGroup;
+        this.pendingEvents.update(current => current.map(event =>
+            'pilotDamageGroup' in event && event.pilotDamageGroup === completedGroup
+                ? { ...event, pilotDamageGroup: closePilotDamagePhase(completedGroup) } as SerializedPendingEvent
+                : event));
+        this.pilotDamageGroup = createPilotDamageGroup('combat');
+    }
+
+    completePilotDamageTurn(): void {
+        const current = this.pendingEvents();
+        let changed = false;
+        const next = current.map(event => {
+            if (!('pilotDamageGroup' in event) || typeof event.pilotDamageGroup !== 'string') return event;
+            const pilotDamageGroup = closePilotDamageTurn(event.pilotDamageGroup);
+            if (pilotDamageGroup === event.pilotDamageGroup) return event;
+            changed = true;
+            return { ...event, pilotDamageGroup } as SerializedPendingEvent;
+        });
+        if (changed) this.pendingEvents.set(next);
+    }
+
+    getPendingEvents(): readonly SerializedPendingEvent[] {
+        return this.pendingEvents();
+    }
+
+    private queuePendingEvent(event: SerializedPendingEvent): boolean {
+        if (!event.id || this.pendingEvents().some(candidate => candidate.id === event.id)) return false;
+        this.pendingEvents.update(current => [...current, structuredClone(event)]);
+        return true;
+    }
+
+    private discardPendingEvent(id: string, type: SerializedPendingEvent['type']): boolean {
+        const current = this.pendingEvents();
+        const next = current.filter(event => event.id !== id || event.type !== type);
+        if (next.length === current.length) return false;
+        this.pendingEvents.set(next);
+        return true;
+    }
+
+    getPendingUnitChecks(): readonly SerializedPendingUnitCheck[] {
+        return this.pendingEvents().filter(
+            (event): event is SerializedPendingUnitCheck => event.type === 'unit-check'
+        );
+    }
+
+    getPendingUnitCheck(id: string): SerializedPendingUnitCheck | undefined {
+        const event = this.pendingEvents().find(candidate => candidate.id === id);
+        return event?.type === 'unit-check' ? event : undefined;
+    }
+
+    actionablePendingUnitChecks = computed(() => this.getPendingUnitChecks().filter(pending =>
+        (!('readyTurn' in pending) || pending.readyTurn <= this.turnCounter)
+        && !(this.unitState.unit.gameRules.aggregatedEndPhaseConsciousRolls
+            && isConsciousnessCheck(pending)
+            && isOpenCombatPilotDamageGroup(pending.pilotDamageGroup))));
+
+    /** Includes this phase's consciousness roll while END PHASE is waiting to commit. */
+    phaseEndPendingUnitChecks = computed(() => this.getPendingUnitChecks().filter(pending =>
+        !('readyTurn' in pending) || pending.readyTurn <= this.turnCounter));
+
+    pendingUnitCheckCount = computed(() =>
+        pendingUnitCheckList(this.unitState.unit).length);
+
+    pendingUnitCheckCountAtPhaseEnd = computed(() =>
+        pendingUnitCheckList(this.unitState.unit, true).length);
+
+    queuePendingUnitCheck(pending: PendingEventInput<SerializedPendingUnitCheck>): boolean {
+        return this.queuePendingEvent({ type: 'unit-check', ...pending } as SerializedPendingUnitCheck);
+    }
+
+    setPendingUnitCheckOutcome(id: string, outcome: RuleCheckOutcome, roll?: readonly number[]): boolean {
+        const pending = this.getPendingUnitCheck(id);
+        if (!pending || pending.target === undefined
+            || (roll && (roll.length !== 2
+                || roll.some(die => !Number.isInteger(die) || die < 1 || die > 6)))) return false;
+        const result = roll
+            ? { kind: 'roll' as const, dice: [roll[0], roll[1]] as const }
+            : { kind: 'manual' as const, outcome };
+        this.pendingEvents.update(current => {
+            const updated = current.map(candidate => candidate.id === id
+                && candidate.type === 'unit-check'
+                ? { ...candidate, result } as SerializedPendingUnitCheck
+                : candidate);
+            return isConsciousnessCheck(pending)
+                ? this.withCascadedConsciousnessFailures(updated)
+                : updated;
+        });
+        return true;
+    }
+
+    /** Later rolls for an already-unconscious crew member are automatic failures. */
+    private withCascadedConsciousnessFailures(
+        events: readonly SerializedPendingEvent[],
+    ): SerializedPendingEvent[] {
+        const orderedChecks = events.flatMap((event, index) =>
+            event.type === 'unit-check' && isCascadeUnitCheck(event)
+                ? [{ check: this.withoutCascadedFailure(event), index }]
+                : [])
+            .sort((left, right) =>
+                pendingUnitCheckPriority(this.unitState.unit, left.check)
+                - pendingUnitCheckPriority(this.unitState.unit, right.check)
+                || left.index - right.index);
+        const failedCrew = new Set<number>();
+        const automaticFailures = new Set<string>();
+        for (const { check } of orderedChecks) {
+            if (failedCrew.has(check.crewId)) {
+                automaticFailures.add(check.id);
+                continue;
+            }
+            if (isConsciousnessCheck(check) && pendingUnitCheckOutcome(check) === 'failed') {
+                failedCrew.add(check.crewId);
+            }
+        }
+
+        return events.map(event => {
+            if (event.type !== 'unit-check' || !isCascadeUnitCheck(event)) return event;
+            const explicit = this.withoutCascadedFailure(event);
+            return automaticFailures.has(event.id)
+                ? {
+                    ...explicit,
+                    result: { kind: 'automatic', outcome: 'failed' },
+                } as SerializedPendingUnitCheck
+                : explicit;
+        });
+    }
+
+    private withoutCascadedFailure(
+        pending: CascadeUnitCheck,
+    ): CascadeUnitCheck {
+        // A targeted automatic result is created only by this cascade. Clear
+        // it first so changing an earlier consciousness result is reversible.
+        return pending.target !== undefined && pending.result?.kind === 'automatic'
+            ? this.withoutPendingUnitCheckResult(pending) as typeof pending
+            : pending;
+    }
+
+    private withoutPendingUnitCheckResult(
+        pending: SerializedPendingUnitCheck,
+    ): SerializedPendingUnitCheck {
+        const { result: _result, ...facts } = pending;
+        return facts as SerializedPendingUnitCheck;
+    }
+
+    setPendingUnitCheckSelection(id: string, selectionId: string): boolean {
+        const pending = this.getPendingUnitCheck(id);
+        if (!selectionId || !pending || !isAmmoExplosionCheck(pending)) return false;
+        this.pendingEvents.update(current => current.map(candidate => candidate.id === id
+            && candidate.type === 'unit-check' && isAmmoExplosionCheck(candidate)
+            ? { ...candidate, selectionId }
+            : candidate));
+        return true;
+    }
+
+    discardPendingUnitCheck(id: string): boolean {
+        return this.discardPendingEvent(id, 'unit-check');
+    }
+
+    discardPendingUnitChecks(predicate: (pending: SerializedPendingUnitCheck) => boolean): number {
+        const current = this.pendingEvents();
+        const next = current.filter(event => event.type !== 'unit-check' || !predicate(event));
+        this.pendingEvents.set(next);
+        return current.length - next.length;
+    }
+
+    refreshPendingUnitCheckTargets(): void {
+        this.pendingEvents.update(current => current.flatMap<SerializedPendingEvent>(event => {
+            if (event.type !== 'unit-check'
+                || ('readyTurn' in event && event.readyTurn > this.turnCounter)) return [event];
+            const refreshed = refreshPendingUnitCheck(this.unitState.unit, event);
+            return refreshed ? [refreshed] : [];
+        }));
+    }
+
+    getPendingCriticalChances(): readonly SerializedPendingMekCriticalChance[] {
+        return this.pendingEvents().filter(
+            (event): event is SerializedPendingMekCriticalChance => event.type === 'mek-critical-chance'
+        );
+    }
+
+    getPendingCriticalChance(id: string): SerializedPendingMekCriticalChance | undefined {
+        const event = this.pendingEvents().find(candidate => candidate.id === id);
+        return event?.type === 'mek-critical-chance' ? event : undefined;
+    }
+
+    getNextPendingCriticalEvent(): SerializedPendingMekCriticalChance | SerializedPendingMekCritical | undefined {
+        return this.pendingEvents().find(
+            (event): event is SerializedPendingMekCriticalChance | SerializedPendingMekCritical =>
+                event.type === 'mek-critical-chance' || event.type === 'mek-critical-hit',
+        );
+    }
+
+    pendingCriticalChanceCount = computed<number>(() => this.getPendingCriticalChances().length);
+
+    queuePendingCriticalChance(pending: PendingEventInput<SerializedPendingMekCriticalChance>): boolean {
+        if (!pending.id || !pending.location) return false;
+        return this.queuePendingEvent({
+            type: 'mek-critical-chance',
+            ...pending,
+        } as SerializedPendingMekCriticalChance);
+    }
+
+    setPendingCriticalChanceResult(id: string, result: SerializedMekCriticalChanceResult | undefined): boolean {
+        const currentPending = this.getPendingCriticalChance(id);
+        if (!currentPending || currentPending.result === result) return false;
+        this.pendingEvents.update(current => current.map(event => {
+            if (event.id !== id || event.type !== 'mek-critical-chance') return event;
+            if (result !== undefined) return { ...event, result };
+            const { result: _result, ...withoutResult } = event;
+            return withoutResult;
+        }));
+        return true;
+    }
+
+    setPendingCriticalChanceRoll(id: string, roll: readonly number[] | undefined): boolean {
+        if (roll && (roll.length !== 2
+            || roll.some(die => !Number.isInteger(die) || die < 1 || die > 6))) return false;
+        const pending = this.getPendingCriticalChance(id);
+        if (!pending) return false;
+        const unchanged = roll === undefined
+            ? pending.roll === undefined
+            : pending.roll?.[0] === roll[0] && pending.roll?.[1] === roll[1];
+        if (unchanged) return false;
+        this.pendingEvents.update(current => current.map(event => {
+            if (event.id !== id || event.type !== 'mek-critical-chance') return event;
+            if (roll) return { ...event, roll: [roll[0], roll[1]] as const };
+            const { roll: _roll, ...withoutRoll } = event;
+            return withoutRoll;
+        }));
+        return true;
+    }
+
+    discardPendingCriticalChance(id: string): boolean {
+        return this.discardPendingEvent(id, 'mek-critical-chance');
+    }
+
+    getPendingCriticalHits(): readonly SerializedPendingMekCritical[] {
+        return this.pendingEvents().filter(
+            (event): event is SerializedPendingMekCritical => event.type === 'mek-critical-hit'
+        );
+    }
+
+    getPendingCriticalHit(id: string): SerializedPendingMekCritical | undefined {
+        const event = this.pendingEvents().find(candidate => candidate.id === id);
+        return event?.type === 'mek-critical-hit' ? event : undefined;
+    }
+
+    pendingCriticalHitCount = computed<number>(() => this.getPendingCriticalHits()
+        .reduce((total, pending) => total + pending.remainingHits, 0));
+
+    queuePendingCriticalHits(pending: PendingEventInput<SerializedPendingMekCritical>): boolean {
+        if (!pending.id || !pending.location || !pending.targetLocation
+            || !Number.isInteger(pending.remainingHits) || pending.remainingHits < 1
+            || pending.remainingHits > 4) {
+            return false;
+        }
+        return this.queuePendingEvent({ type: 'mek-critical-hit', ...pending } as SerializedPendingMekCritical);
+    }
+
+    replacePendingCriticalChanceWithHits(
+        pending: Pick<SerializedPendingMekCritical,
+            'id' | 'targetLocation' | 'remainingHits' | 'caseII' | 'floatingLocation'>,
+    ): boolean {
+        const current = this.pendingEvents();
+        const index = current.findIndex(event => event.id === pending.id && event.type === 'mek-critical-chance');
+        if (index < 0 || !pending.targetLocation || !Number.isInteger(pending.remainingHits)
+            || pending.remainingHits < 1 || pending.remainingHits > 4) return false;
+        const chance = current[index] as SerializedPendingMekCriticalChance;
+        const {
+            type: _type,
+            result: _result,
+            roll: _chanceRoll,
+            explosionProtection,
+            hardenedArmorApplies,
+            throughArmorHitArc,
+            ...base
+        } = chance;
+        const next = [...current];
+        next[index] = structuredClone({
+            ...base,
+            type: 'mek-critical-hit',
+            targetLocation: pending.targetLocation,
+            remainingHits: pending.remainingHits,
+            chanceOrigin: {
+                ...(explosionProtection !== undefined ? { explosionProtection } : {}),
+                ...(hardenedArmorApplies !== undefined ? { hardenedArmorApplies } : {}),
+                ...(throughArmorHitArc !== undefined ? { throughArmorHitArc } : {}),
+            },
+            ...(pending.floatingLocation ? { floatingLocation: pending.floatingLocation } : {}),
+            ...(pending.caseII ? { caseII: pending.caseII } : {}),
+        } as SerializedPendingMekCritical);
+        this.pendingEvents.set(next);
+        return true;
+    }
+
+    replacePendingCriticalHitWithChance(id: string): boolean {
+        const current = this.pendingEvents();
+        const index = current.findIndex(event => event.id === id && event.type === 'mek-critical-hit');
+        if (index < 0) return false;
+        const pending = current[index] as SerializedPendingMekCritical;
+        if (pending.chanceOrigin === undefined) return false;
+        const {
+            type: _type,
+            targetLocation: _targetLocation,
+            remainingHits: _remainingHits,
+            chanceOrigin,
+            floatingLocation: _floatingLocation,
+            caseII: _caseII,
+            roll: _roll,
+            ...base
+        } = pending;
+        const next = [...current];
+        next[index] = structuredClone({
+            ...base,
+            type: 'mek-critical-chance',
+            ...chanceOrigin,
+        } as SerializedPendingMekCriticalChance);
+        this.pendingEvents.set(next);
+        return true;
+    }
+
+    setPendingFloatingCriticalLocation(
+        id: string,
+        dice: readonly number[] | null,
+        tripodLegRoll: number | null = null,
+    ): boolean {
+        const pending = this.getPendingCriticalHit(id);
+        const floating = pending?.floatingLocation;
+        if (!pending || !floating) return false;
+        if (dice !== null && (dice.length !== 2
+            || dice.some(die => !Number.isInteger(die) || die < 1 || die > 6))) return false;
+        if (tripodLegRoll !== null
+            && (!Number.isInteger(tripodLegRoll) || tripodLegRoll < 1 || tripodLegRoll > 6)) return false;
+        const next: SerializedPendingMekFloatingCriticalLocation = {
+            hitArc: floating.hitArc,
+            ...(dice !== null ? { hitLocationDice: [dice[0], dice[1]] as const } : {}),
+            ...(tripodLegRoll !== null ? { tripodLegRoll } : {}),
+        };
+        this.pendingEvents.update(current => current.map(event =>
+            event.id === id && event.type === 'mek-critical-hit'
+                ? { ...event, floatingLocation: next }
+                : event));
+        return true;
+    }
+
+    resolvePendingFloatingCriticalLocation(id: string, targetLocation: string): boolean {
+        const normalizedLocation = targetLocation.trim();
+        const pending = this.getPendingCriticalHit(id);
+        if (!normalizedLocation || !pending?.floatingLocation) return false;
+        this.pendingEvents.update(current => current.map(event => {
+            if (event.id !== id || event.type !== 'mek-critical-hit' || !event.floatingLocation) return event;
+            const { floatingLocation: _floatingLocation, ...resolved } = event;
+            return { ...resolved, targetLocation: normalizedLocation };
+        }));
+        return true;
+    }
+
+    setPendingCriticalCaseIICheckResult(
+        id: string,
+        result: Extract<SerializedPendingMekCriticalCaseII, { status: 'pending' }>['result'],
+        roll?: readonly number[],
+    ): boolean {
+        if (roll && (roll.length !== 2
+            || roll.some(die => !Number.isInteger(die) || die < 1 || die > 6))) return false;
+        const pending = this.getPendingCriticalHit(id);
+        if (pending?.caseII?.status !== 'pending') return false;
+        const unchangedRoll = roll === undefined
+            ? pending.caseII.roll === undefined
+            : pending.caseII.roll?.[0] === roll[0] && pending.caseII.roll?.[1] === roll[1];
+        if (pending.caseII.result === result && unchangedRoll) return false;
+        this.pendingEvents.update(current => current.map(candidate => {
+            if (candidate.id !== id || candidate.type !== 'mek-critical-hit') return candidate;
+            return {
+                ...candidate,
+                caseII: {
+                    status: 'pending',
+                    ...(result ? { result } : {}),
+                    ...(roll ? { roll: [roll[0], roll[1]] as const } : {}),
+                },
+            };
+        }));
+        return true;
+    }
+
+    passPendingCriticalCaseIICheck(id: string): boolean {
+        const pending = this.getPendingCriticalHit(id);
+        if (pending?.caseII?.status !== 'pending') return false;
+        this.pendingEvents.update(current => current.map(candidate => {
+            if (candidate.id !== id || candidate.type !== 'mek-critical-hit') return candidate;
+            return { ...candidate, caseII: { status: 'passed' } };
+        }));
+        return true;
+    }
+
+    setPendingCriticalRoll(id: string, roll: readonly number[]): boolean {
+        if (roll.length < 1 || roll.length > 2
+            || roll.some(die => !Number.isInteger(die) || die < 1 || die > 6)) {
+            return false;
+        }
+        const pending = this.getPendingCriticalHit(id);
+        if (!pending || pending.caseII?.status === 'pending' || pending.floatingLocation) return false;
+        this.pendingEvents.update(current => current.map(event => {
+            if (event.id !== id || event.type !== 'mek-critical-hit') return event;
+            return { ...event, roll: [...roll] };
+        }));
+        return true;
+    }
+
+    clearPendingCriticalRoll(id: string): boolean {
+        if (!this.getPendingCriticalHit(id)?.roll) return false;
+        this.pendingEvents.update(current => current.map(event => {
+            if (event.id !== id || event.type !== 'mek-critical-hit' || !event.roll) return event;
+            const { roll: _roll, ...withoutRoll } = event;
+            return withoutRoll;
+        }));
+        return true;
+    }
+
+    resolvePendingCriticalHit(id: string): boolean {
+        if (!this.getPendingCriticalHit(id) || this.getPendingCriticalHit(id)?.floatingLocation) return false;
+        this.pendingEvents.update(current => current.flatMap(event => {
+            if (event.id !== id || event.type !== 'mek-critical-hit') return [event];
+            if (event.remainingHits <= 1) return [];
+            const {
+                roll: _roll,
+                caseII,
+                chanceOrigin: _chanceOrigin,
+                floatingLocation: _floatingLocation,
+                ...facts
+            } = event;
+            return [{
+                ...facts,
+                remainingHits: event.remainingHits - 1,
+                ...(caseII ? { caseII: { status: 'pending' as const } } : {}),
+            }];
+        }));
+        return true;
+    }
+
+    discardPendingCriticalHits(id: string): boolean {
+        return this.discardPendingEvent(id, 'mek-critical-hit');
+    }
+
+    getPendingFalls(): readonly SerializedPendingMekFall[] {
+        return this.pendingEvents().filter(
+            (event): event is SerializedPendingMekFall => event.type === 'mek-fall'
+        );
+    }
+
+    getPendingFall(id?: string): SerializedPendingMekFall | undefined {
+        return id
+            ? this.getPendingFalls().find(event => event.id === id)
+            : this.getPendingFalls()[0];
+    }
+
+    pendingFallCount = computed(() => this.getPendingFalls().length);
+
+    queuePendingFall(pending: PendingEventInput<SerializedPendingMekFall>): boolean {
+        return this.queuePendingEvent({ type: 'mek-fall', ...pending });
+    }
+
+    setPendingFallRolls(
+        id: string,
+        rolls: Pick<SerializedPendingMekFall, 'orientationRoll' | 'damageRolls'>,
+    ): boolean {
+        const pending = this.getPendingFall(id);
+        if (!pending) return false;
+        this.pendingEvents.update(current => current.map(event => {
+            if (event.id !== id || event.type !== 'mek-fall') return event;
+            const {
+                orientationRoll: _orientationRoll,
+                damageRolls: _damageRolls,
+                ...facts
+            } = event;
+            return { ...facts, ...rolls };
+        }));
+        return true;
+    }
+
+    discardPendingFall(id: string): boolean {
+        return this.discardPendingEvent(id, 'mek-fall');
+    }
+
+    replacePendingFallWithUnitChecks(
+        id: string,
+        checks: readonly PendingEventInput<SerializedPendingUnitCheck>[],
+    ): boolean {
+        const current = this.pendingEvents();
+        const index = current.findIndex(event => event.id === id && event.type === 'mek-fall');
+        if (index < 0) return false;
+        const replacements = checks.map(check => ({ type: 'unit-check' as const, ...check } as SerializedPendingUnitCheck));
+        const replacementIds = new Set(replacements.map(check => check.id));
+        if (replacementIds.size !== replacements.length
+            || current.some((event, eventIndex) => eventIndex !== index && replacementIds.has(event.id))) return false;
+        this.pendingEvents.set([
+            ...current.slice(0, index),
+            ...replacements.map(check => structuredClone(check)),
+            ...current.slice(index + 1),
+        ]);
+        return true;
+    }
+
+    preparePendingCriticalWorkAfterPhaseCommit(): void {
+        if (!this.pendingEvents().some(event =>
+            (event.type === 'mek-critical-chance' || event.type === 'mek-critical-hit')
+            && !event.consolidateImmediately)) return;
+        this.pendingEvents.update(current => current.map(event =>
+            event.type === 'mek-critical-chance' || event.type === 'mek-critical-hit'
+                ? { ...event, consolidateImmediately: true }
+                : event));
+    }
+
     addDmgReceived(amount: number) {
-        this.dmgReceived.update((value)=> { return value + amount });
+        this.dmgReceived.update(current => current + amount);
     }
 
     addFiredHeat(amount: number) {
         if (!Number.isFinite(amount) || amount <= 0) return;
         this.invalidateHeatSource('weapons');
         this.weaponsHeat.update((value)=> { return value + amount });
+    }
+
+    /** Moves heat already recorded by the firing workflow to an itemized non-weapon source. */
+    removeFiredHeat(amount: number) {
+        if (!Number.isFinite(amount) || amount <= 0) return;
+        this.invalidateHeatSource('weapons');
+        this.weaponsHeat.update(value => Math.max(0, value - amount));
     }
 
     acknowledgeHeatSources(consumedDissipation = 0): void {

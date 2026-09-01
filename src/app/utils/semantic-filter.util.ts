@@ -8,23 +8,14 @@ import type { CountOperator, MultiStateSelection } from '../components/multi-sel
 import { getAdvancedFilterConfigByKey } from './unit-search-filter-config.util';
 import { isEmbeddedApostrophe, normalizeMultiStateSelection } from './unit-search-shared.util';
 import { formatASDamageValue, isASDamageFilterKey, parseASDamageValue } from './as-damage.util';
+import {
+    formatASSpecialMinimumQuery,
+    isASSpecialNumericQuery,
+    parseASSpecialMinimumQuery,
+} from './as-special-filter.util';
 
 // Cache for semantic key maps
 const semanticKeyMapCache = new Map<GameSystem, Map<string, AdvFilterConfig>>();
-const AS_SPECIALS_EXPLICIT_NUMERIC_SEMANTIC_PATTERN = /(?:>=|<=|!=|>|<|=)\s*-?\d|\[[^\]]+\]/;
-
-function isASSpecialsNumericSemanticValue(value: string): boolean {
-    const normalized = value.replace(/\s+/g, '').toUpperCase();
-    if (AS_SPECIALS_EXPLICIT_NUMERIC_SEMANTIC_PATTERN.test(normalized) || normalized.includes('0*')) {
-        return true;
-    }
-
-    if (normalized.includes('*')) {
-        return false;
-    }
-
-    return /-?\d/.test(normalized);
-}
 
 /*
  * 
@@ -721,7 +712,10 @@ export function tokensToFilterState(
                     }
 
                     for (const val of token.values) {
-                        const isASSpecialsNumericSemantic = conf.key === 'as.specials' && isASSpecialsNumericSemanticValue(val);
+                        const isASSpecialsNumericSemantic = conf.key === 'as.specials' && isASSpecialNumericQuery(val);
+                        const asSpecialMinimum = conf.key === 'as.specials'
+                            ? parseASSpecialMinimumQuery(val)
+                            : null;
                         // Check if this is a wildcard pattern
                         if (val.includes('*') && !isASSpecialsNumericSemantic) {
                             wildcardPatterns.push({ pattern: val, state });
@@ -752,19 +746,40 @@ export function tokensToFilterState(
                             // If no constraint, it means "has at least one" which is the default
                         } else {
                             // Regular value (non-countable)
-                            if (isASSpecialsNumericSemantic) {
+                            if (isASSpecialsNumericSemantic && !asSpecialMinimum) {
                                 semanticOnly = true;
                             }
-                            const normalizedVal = normalizeValue(val);
+                            const normalizedVal = normalizeValue(asSpecialMinimum?.token ?? val);
                             // If already exists, update state with priority: not > and > or
                             if (selection[normalizedVal]) {
+                                if (conf.key === 'as.specials' && asSpecialMinimum) {
+                                    const existingMinimumValues = selection[normalizedVal].minimumValues ?? [];
+                                    const nextMinimumValues = asSpecialMinimum.minimumValues;
+                                    const sameMinimumValues = existingMinimumValues.length === nextMinimumValues.length
+                                        && existingMinimumValues.every((value, index) => value === nextMinimumValues[index]);
+                                    if (selection[normalizedVal].state !== state || !sameMinimumValues) {
+                                        // Flat controls cannot represent multiple independent clauses
+                                        // for one ability without changing their boolean semantics.
+                                        semanticOnly = true;
+                                    }
+                                }
                                 if (state === 'not') {
                                     selection[normalizedVal].state = 'not';
                                 } else if (state === 'and' && selection[normalizedVal].state === 'or') {
                                     selection[normalizedVal].state = 'and';
                                 }
+                                if (asSpecialMinimum) {
+                                    selection[normalizedVal].minimumValues = asSpecialMinimum.minimumValues;
+                                }
                             } else {
-                                selection[normalizedVal] = { name: normalizedVal, state, count: 1 };
+                                selection[normalizedVal] = {
+                                    name: normalizedVal,
+                                    state,
+                                    count: 1,
+                                    ...(asSpecialMinimum && asSpecialMinimum.minimumValues.length > 0
+                                        ? { minimumValues: asSpecialMinimum.minimumValues }
+                                        : {}),
+                                };
                             }
                         }
                     }
@@ -1038,7 +1053,9 @@ export function filterStateToSemanticText(
                 for (const [name, sel] of Object.entries(selection)) {
                     // Format value with quantity constraint if present
                     let formattedValue = name;
-                    if (conf.countable && (sel.count > 1 || sel.countOperator || sel.countMax !== undefined)) {
+                    if (conf.key === 'as.specials') {
+                        formattedValue = formatASSpecialMinimumQuery(name, sel.minimumValues);
+                    } else if (conf.countable && (sel.count > 1 || sel.countOperator || sel.countMax !== undefined)) {
                         formattedValue = formatValueWithQuantity(name, sel.countOperator, sel.count, sel.countMax);
                     }
                     

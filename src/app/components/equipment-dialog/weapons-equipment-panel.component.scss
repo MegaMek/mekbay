@@ -2,7 +2,7 @@
     --weapon-equipment-title-height: 30px;
     --weapon-equipment-content-columns: 24px 28px fit-content(100%) 42px 42px 42px fit-content(200px) repeat(4, 42px) fit-content(420px);
     --weapon-equipment-columns: minmax(0, 1fr) var(--weapon-equipment-content-columns) minmax(0, 1fr);
-    max-width: 1000px;
+    max-width: 1100px;
     width: 100%;
     align-items: center;
 
@@ -203,7 +203,7 @@
     }
 }
 
-.weapon-equipment-row.destroyed-entry .name-cell > span:first-child {
+.weapon-equipment-row.destroyed-entry .equipment-name {
     text-decoration-line: line-through;
 }
 
@@ -215,8 +215,22 @@
     color: var(--text-color-secondary);
 }
 
-.weapon-equipment-row.disabled-entry .name-cell > span:first-child {
+.weapon-equipment-row.disabled-entry .equipment-name {
     text-decoration-line: line-through;
+}
+
+.weapon-equipment-row.mga-array-row {
+    border-top: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--bt-yellow-background) 28%, transparent);
+}
+
+.weapon-equipment-row.mga-member-row {
+    border-left: 3px solid var(--border-color);
+    background: color-mix(in srgb, var(--background-color-light) 55%, transparent);
+}
+
+.weapon-equipment-row.mga-member-controlled .equipment-name {
+    color: var(--text-color-secondary);
 }
 
 .weapon-equipment-row.cdk-drag-preview {
@@ -248,6 +262,7 @@
 .select-cell,
 .select-header {
     display: flex;
+    align-items: center;
     justify-content: center;
 }
 
@@ -509,11 +524,45 @@
     min-width: 100px;
 }
 
-.name-cell > span:first-child {
+.equipment-name {
     min-width: 0;
     overflow-wrap: anywhere;
     white-space: normal;
     text-align: left;
+}
+
+.mga-branch {
+    flex: 0 0 14px;
+    width: 14px;
+    height: 24px;
+    margin-top: -24px;
+    margin-left: 14px;
+    border-bottom: 1px solid var(--text-color-secondary);
+    border-left: 1px solid var(--text-color-secondary);
+}
+
+.weapon-equipment-row.mga-member-row + .weapon-equipment-row.mga-member-row .mga-branch {
+    height: 38px;
+    margin-top: -38px;
+}
+
+.mga-membership-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 16px;
+    padding: 1px 5px;
+    border: 1px solid var(--border-color);
+    background: var(--background-color-light);
+    color: var(--text-color-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.mga-array-summary {
+    border-color: color-mix(in srgb, var(--bt-yellow-strong) 60%, var(--border-color));
+    color: var(--text-color);
 }
 
 .modifier {
@@ -773,6 +822,24 @@
         &:last-child {
             border-bottom: 1px solid var(--border-color);
         }
+    }
+
+    .weapon-equipment-row.mga-member-row {
+        width: calc(100% - 20px);
+        margin-left: 18px;
+    }
+
+    .mga-branch,
+    .weapon-equipment-row.mga-member-row + .weapon-equipment-row.mga-member-row .mga-branch {
+        flex: 0 0 14px;
+        width: 14px;
+        height: 14px;
+        margin-top: -14px;
+        margin-left: 0px;
+    }
+
+    .mga-membership-badge {
+        font-size: 0.7rem;
     }
 
     .drag-cell {

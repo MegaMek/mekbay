@@ -5,6 +5,7 @@
 import type { UnitSummary } from '../models/unit-summary.model';
 import { WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { EquipmentFlag } from '../models/equipment-flags.type';
+import type { MekHitArc } from '../models/force-serialization';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type PhysicalLocationRow } from '../models/rules/game-rules';
 import { clusterHits } from './cluster-hit-table';
 
@@ -21,6 +22,21 @@ export interface HitLocationRow {
     readonly leftSide: string;
     readonly frontRear: string;
     readonly rightSide: string;
+}
+
+export interface HitLocationCellDefinition {
+    readonly tableText: string;
+    readonly tableLabel: string;
+    readonly location: string | null;
+    readonly critical: boolean;
+    readonly tripodLegModifier?: -1 | 0 | 1;
+}
+
+interface HitLocationDefinitionRow {
+    readonly roll: string;
+    readonly leftSide: HitLocationCellDefinition;
+    readonly frontRear: HitLocationCellDefinition;
+    readonly rightSide: HitLocationCellDefinition;
 }
 
 export type PhysicalLocationColumn =
@@ -49,52 +65,79 @@ export const REFERENCE_TABLE_NOTE_FLAGS: Readonly<Record<ReferenceTableNoteId, r
     hag: ['F_HAG'],
 };
 
-const BIPED_ROWS: readonly HitLocationRow[] = [
-    { roll: '2*', leftSide: 'LT(C)', frontRear: 'CT(C)', rightSide: 'RT(C)' },
-    { roll: '3', leftSide: 'LL', frontRear: 'RA', rightSide: 'RL' },
-    { roll: '4', leftSide: 'LA', frontRear: 'RA', rightSide: 'RA' },
-    { roll: '5', leftSide: 'LA', frontRear: 'RL', rightSide: 'RA' },
-    { roll: '6', leftSide: 'LL', frontRear: 'RT', rightSide: 'RL' },
-    { roll: '7', leftSide: 'LT', frontRear: 'CT', rightSide: 'RT' },
-    { roll: '8', leftSide: 'CT', frontRear: 'LT', rightSide: 'CT' },
-    { roll: '9', leftSide: 'RT', frontRear: 'LL', rightSide: 'LT' },
-    { roll: '10', leftSide: 'RA', frontRear: 'LA', rightSide: 'LA' },
-    { roll: '11', leftSide: 'RL', frontRear: 'LA', rightSide: 'LL' },
-    { roll: '12', leftSide: 'HD', frontRear: 'HD', rightSide: 'HD' },
+const HIT_LOCATION_CELLS = {
+    LA: locationCell('LA', 'LA'),
+    RA: locationCell('RA', 'RA'),
+    LL: locationCell('LL', 'LL'),
+    RL: locationCell('RL', 'RL'),
+    LT: locationCell('LT', 'LT'),
+    CT: locationCell('CT', 'CT'),
+    RT: locationCell('RT', 'RT'),
+    HD: locationCell('HD', 'HD'),
+    LEFT_TORSO_CRITICAL: locationCell('LT(C)', 'LT', 'LT', true),
+    CENTER_TORSO_CRITICAL: locationCell('CT(C)', 'CT', 'CT', true),
+    RIGHT_TORSO_CRITICAL: locationCell('RT(C)', 'RT', 'RT', true),
+    LEFT_FRONT_LEG: locationCell('LFL', 'FLL'),
+    RIGHT_FRONT_LEG: locationCell('RFL', 'FRL'),
+    LEFT_REAR_LEG: locationCell('LRL', 'RLL'),
+    RIGHT_REAR_LEG: locationCell('RRL', 'RRL'),
+    TRIPOD_LEFT_LEG: tripodLegCell('Leg (+1)†', 'Leg (+1)', 1),
+    TRIPOD_CENTER_LEG: tripodLegCell('Leg†', 'Leg', 0),
+    TRIPOD_RIGHT_LEG: tripodLegCell('Leg (-1)†', 'Leg (-1)', -1),
+} as const satisfies Readonly<Record<string, HitLocationCellDefinition>>;
+
+const BIPED_DEFINITION_ROWS: readonly HitLocationDefinitionRow[] = [
+    { roll: '2*', leftSide: HIT_LOCATION_CELLS.LEFT_TORSO_CRITICAL, frontRear: HIT_LOCATION_CELLS.CENTER_TORSO_CRITICAL, rightSide: HIT_LOCATION_CELLS.RIGHT_TORSO_CRITICAL },
+    { roll: '3', leftSide: HIT_LOCATION_CELLS.LL, frontRear: HIT_LOCATION_CELLS.RA, rightSide: HIT_LOCATION_CELLS.RL },
+    { roll: '4', leftSide: HIT_LOCATION_CELLS.LA, frontRear: HIT_LOCATION_CELLS.RA, rightSide: HIT_LOCATION_CELLS.RA },
+    { roll: '5', leftSide: HIT_LOCATION_CELLS.LA, frontRear: HIT_LOCATION_CELLS.RL, rightSide: HIT_LOCATION_CELLS.RA },
+    { roll: '6', leftSide: HIT_LOCATION_CELLS.LL, frontRear: HIT_LOCATION_CELLS.RT, rightSide: HIT_LOCATION_CELLS.RL },
+    { roll: '7', leftSide: HIT_LOCATION_CELLS.LT, frontRear: HIT_LOCATION_CELLS.CT, rightSide: HIT_LOCATION_CELLS.RT },
+    { roll: '8', leftSide: HIT_LOCATION_CELLS.CT, frontRear: HIT_LOCATION_CELLS.LT, rightSide: HIT_LOCATION_CELLS.CT },
+    { roll: '9', leftSide: HIT_LOCATION_CELLS.RT, frontRear: HIT_LOCATION_CELLS.LL, rightSide: HIT_LOCATION_CELLS.LT },
+    { roll: '10', leftSide: HIT_LOCATION_CELLS.RA, frontRear: HIT_LOCATION_CELLS.LA, rightSide: HIT_LOCATION_CELLS.LA },
+    { roll: '11', leftSide: HIT_LOCATION_CELLS.RL, frontRear: HIT_LOCATION_CELLS.LA, rightSide: HIT_LOCATION_CELLS.LL },
+    { roll: '12', leftSide: HIT_LOCATION_CELLS.HD, frontRear: HIT_LOCATION_CELLS.HD, rightSide: HIT_LOCATION_CELLS.HD },
 ];
 
-const QUAD_ROWS: readonly HitLocationRow[] = [
-    { roll: '2*', leftSide: 'LT(C)', frontRear: 'CT(C)', rightSide: 'RT(C)' },
-    { roll: '3', leftSide: 'LRL', frontRear: 'RFL', rightSide: 'RRL' },
-    { roll: '4', leftSide: 'LFL', frontRear: 'RFL', rightSide: 'RFL' },
-    { roll: '5', leftSide: 'LFL', frontRear: 'RRL', rightSide: 'RFL' },
-    { roll: '6', leftSide: 'LRL', frontRear: 'RT', rightSide: 'RRL' },
-    { roll: '7', leftSide: 'LT', frontRear: 'CT', rightSide: 'RT' },
-    { roll: '8', leftSide: 'CT', frontRear: 'LT', rightSide: 'CT' },
-    { roll: '9', leftSide: 'RT', frontRear: 'LRL', rightSide: 'LT' },
-    { roll: '10', leftSide: 'RFL', frontRear: 'LFL', rightSide: 'LFL' },
-    { roll: '11', leftSide: 'RRL', frontRear: 'LFL', rightSide: 'LRL' },
-    { roll: '12', leftSide: 'HD', frontRear: 'HD', rightSide: 'HD' },
+const QUAD_DEFINITION_ROWS: readonly HitLocationDefinitionRow[] = [
+    { roll: '2*', leftSide: HIT_LOCATION_CELLS.LEFT_TORSO_CRITICAL, frontRear: HIT_LOCATION_CELLS.CENTER_TORSO_CRITICAL, rightSide: HIT_LOCATION_CELLS.RIGHT_TORSO_CRITICAL },
+    { roll: '3', leftSide: HIT_LOCATION_CELLS.LEFT_REAR_LEG, frontRear: HIT_LOCATION_CELLS.RIGHT_FRONT_LEG, rightSide: HIT_LOCATION_CELLS.RIGHT_REAR_LEG },
+    { roll: '4', leftSide: HIT_LOCATION_CELLS.LEFT_FRONT_LEG, frontRear: HIT_LOCATION_CELLS.RIGHT_FRONT_LEG, rightSide: HIT_LOCATION_CELLS.RIGHT_FRONT_LEG },
+    { roll: '5', leftSide: HIT_LOCATION_CELLS.LEFT_FRONT_LEG, frontRear: HIT_LOCATION_CELLS.RIGHT_REAR_LEG, rightSide: HIT_LOCATION_CELLS.RIGHT_FRONT_LEG },
+    { roll: '6', leftSide: HIT_LOCATION_CELLS.LEFT_REAR_LEG, frontRear: HIT_LOCATION_CELLS.RT, rightSide: HIT_LOCATION_CELLS.RIGHT_REAR_LEG },
+    { roll: '7', leftSide: HIT_LOCATION_CELLS.LT, frontRear: HIT_LOCATION_CELLS.CT, rightSide: HIT_LOCATION_CELLS.RT },
+    { roll: '8', leftSide: HIT_LOCATION_CELLS.CT, frontRear: HIT_LOCATION_CELLS.LT, rightSide: HIT_LOCATION_CELLS.CT },
+    { roll: '9', leftSide: HIT_LOCATION_CELLS.RT, frontRear: HIT_LOCATION_CELLS.LEFT_REAR_LEG, rightSide: HIT_LOCATION_CELLS.LT },
+    { roll: '10', leftSide: HIT_LOCATION_CELLS.RIGHT_FRONT_LEG, frontRear: HIT_LOCATION_CELLS.LEFT_FRONT_LEG, rightSide: HIT_LOCATION_CELLS.LEFT_FRONT_LEG },
+    { roll: '11', leftSide: HIT_LOCATION_CELLS.RIGHT_REAR_LEG, frontRear: HIT_LOCATION_CELLS.LEFT_FRONT_LEG, rightSide: HIT_LOCATION_CELLS.LEFT_REAR_LEG },
+    { roll: '12', leftSide: HIT_LOCATION_CELLS.HD, frontRear: HIT_LOCATION_CELLS.HD, rightSide: HIT_LOCATION_CELLS.HD },
 ];
 
-const TRIPOD_ROWS: readonly HitLocationRow[] = [
-    { roll: '2*', leftSide: 'LT(C)', frontRear: 'CT(C)', rightSide: 'RT(C)' },
-    { roll: '3', leftSide: 'Leg (+1)†', frontRear: 'RA', rightSide: 'Leg (-1)†' },
-    { roll: '4', leftSide: 'LA', frontRear: 'RA', rightSide: 'RA' },
-    { roll: '5', leftSide: 'LA', frontRear: 'Leg†', rightSide: 'RA' },
-    { roll: '6', leftSide: 'Leg (+1)†', frontRear: 'RT', rightSide: 'Leg (-1)†' },
-    { roll: '7', leftSide: 'LT', frontRear: 'CT', rightSide: 'RT' },
-    { roll: '8', leftSide: 'CT', frontRear: 'LT', rightSide: 'CT' },
-    { roll: '9', leftSide: 'RT', frontRear: 'Leg†', rightSide: 'LT' },
-    { roll: '10', leftSide: 'RA', frontRear: 'LA', rightSide: 'LA' },
-    { roll: '11', leftSide: 'Leg (+1)†', frontRear: 'LA', rightSide: 'Leg (-1)†' },
-    { roll: '12', leftSide: 'HD', frontRear: 'HD', rightSide: 'HD' },
+const TRIPOD_DEFINITION_ROWS: readonly HitLocationDefinitionRow[] = [
+    { roll: '2*', leftSide: HIT_LOCATION_CELLS.LEFT_TORSO_CRITICAL, frontRear: HIT_LOCATION_CELLS.CENTER_TORSO_CRITICAL, rightSide: HIT_LOCATION_CELLS.RIGHT_TORSO_CRITICAL },
+    { roll: '3', leftSide: HIT_LOCATION_CELLS.TRIPOD_LEFT_LEG, frontRear: HIT_LOCATION_CELLS.RA, rightSide: HIT_LOCATION_CELLS.TRIPOD_RIGHT_LEG },
+    { roll: '4', leftSide: HIT_LOCATION_CELLS.LA, frontRear: HIT_LOCATION_CELLS.RA, rightSide: HIT_LOCATION_CELLS.RA },
+    { roll: '5', leftSide: HIT_LOCATION_CELLS.LA, frontRear: HIT_LOCATION_CELLS.TRIPOD_CENTER_LEG, rightSide: HIT_LOCATION_CELLS.RA },
+    { roll: '6', leftSide: HIT_LOCATION_CELLS.TRIPOD_LEFT_LEG, frontRear: HIT_LOCATION_CELLS.RT, rightSide: HIT_LOCATION_CELLS.TRIPOD_RIGHT_LEG },
+    { roll: '7', leftSide: HIT_LOCATION_CELLS.LT, frontRear: HIT_LOCATION_CELLS.CT, rightSide: HIT_LOCATION_CELLS.RT },
+    { roll: '8', leftSide: HIT_LOCATION_CELLS.CT, frontRear: HIT_LOCATION_CELLS.LT, rightSide: HIT_LOCATION_CELLS.CT },
+    { roll: '9', leftSide: HIT_LOCATION_CELLS.RT, frontRear: HIT_LOCATION_CELLS.TRIPOD_CENTER_LEG, rightSide: HIT_LOCATION_CELLS.LT },
+    { roll: '10', leftSide: HIT_LOCATION_CELLS.RA, frontRear: HIT_LOCATION_CELLS.LA, rightSide: HIT_LOCATION_CELLS.LA },
+    { roll: '11', leftSide: HIT_LOCATION_CELLS.TRIPOD_LEFT_LEG, frontRear: HIT_LOCATION_CELLS.LA, rightSide: HIT_LOCATION_CELLS.TRIPOD_RIGHT_LEG },
+    { roll: '12', leftSide: HIT_LOCATION_CELLS.HD, frontRear: HIT_LOCATION_CELLS.HD, rightSide: HIT_LOCATION_CELLS.HD },
 ];
+
+const LOCATION_DEFINITION_ROWS: Readonly<Record<MekHitLocationTable, readonly HitLocationDefinitionRow[]>> = {
+    biped: BIPED_DEFINITION_ROWS,
+    quad: QUAD_DEFINITION_ROWS,
+    tripod: TRIPOD_DEFINITION_ROWS,
+};
 
 const LOCATION_ROWS: Readonly<Record<MekHitLocationTable, readonly HitLocationRow[]>> = {
-    biped: BIPED_ROWS,
-    quad: QUAD_ROWS,
-    tripod: TRIPOD_ROWS,
+    biped: displayHitLocationRows(BIPED_DEFINITION_ROWS),
+    quad: displayHitLocationRows(QUAD_DEFINITION_ROWS),
+    tripod: displayHitLocationRows(TRIPOD_DEFINITION_ROWS),
 };
 
 export const PHYSICAL_LOCATION_ROWS: readonly PhysicalLocationRow[] = CORE_2026_GAME_RULES.physicalLocationRows;
@@ -111,6 +154,45 @@ const NOTE_TEXT: Readonly<Record<string, string>> = {
 
 export function hitLocationRows(table: MekHitLocationTable): readonly HitLocationRow[] {
     return LOCATION_ROWS[table];
+}
+
+/** Resolves the exact table text and its rule metadata without parsing display strings. */
+export function hitLocationCellDefinition(
+    table: MekHitLocationTable,
+    roll: number,
+    arc: MekHitArc,
+): HitLocationCellDefinition {
+    const row = LOCATION_DEFINITION_ROWS[table][roll - 2];
+    if (!row) throw new RangeError('Hit-location roll must be an integer from 2 to 12.');
+    if (arc === 'left') return row.leftSide;
+    if (arc === 'right') return row.rightSide;
+    return row.frontRear;
+}
+
+function locationCell(
+    tableText: string,
+    location: string,
+    tableLabel = tableText,
+    critical = false,
+): HitLocationCellDefinition {
+    return { tableText, tableLabel, location, critical };
+}
+
+function tripodLegCell(
+    tableText: string,
+    tableLabel: string,
+    tripodLegModifier: -1 | 0 | 1,
+): HitLocationCellDefinition {
+    return { tableText, tableLabel, location: null, critical: false, tripodLegModifier };
+}
+
+function displayHitLocationRows(rows: readonly HitLocationDefinitionRow[]): readonly HitLocationRow[] {
+    return rows.map(row => ({
+        roll: row.roll,
+        leftSide: row.leftSide.tableText,
+        frontRear: row.frontRear.tableText,
+        rightSide: row.rightSide.tableText,
+    }));
 }
 
 export function referenceTableNotes(

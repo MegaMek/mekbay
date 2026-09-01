@@ -8,7 +8,14 @@ import { InfantryRules } from './infantry-rules';
 import { MekRules, type MekLegDamageState, type MekLegMovementResult } from './mek-rules';
 import { ProtoMekRules } from './protomek-rules';
 import { VehicleRules } from './vehicle-rules';
-import type { ChargeDamage, PSRCheck, UnitHeatSource } from './unit-type-rules';
+import {
+    FALL_PSR_FAILURE,
+    PSR_CHECK_KIND,
+    type ChargeDamage,
+    type PSRCheck,
+    type PSRModifier,
+    type UnitHeatSource,
+} from './unit-type-rules';
 import type { CriticalSlot, SerializedC3NetworkGroup } from '../force-serialization';
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import { C3TaxCalculator } from '../c3-network.model';
@@ -63,6 +70,41 @@ export class TWMekRules extends MekRules {
     protected override get shieldBashPunchBonusEnabled(): boolean { return false; }
     protected override get standaloneShieldDamageEnabled(): boolean { return true; }
 
+    protected override isLegDestroyed(location: string, committed = false): boolean {
+        return committed
+            ? this.unit.isInternalLocCommittedPhysicallyDestroyed(location)
+            : this.unit.isInternalLocPhysicallyDestroyed(location);
+    }
+
+    override evaluateLocationFlooded(location: string, active: boolean): void {
+        for (const leg of this.floodAffectedLegLocations(location)) {
+            if ((active && this.isLegDestroyed(leg)) || this.hasOtherLegFloodSource(leg, location)) continue;
+            this.unit.getCritSlots()
+                .filter(slot => slot.loc === leg
+                    && slot.destroyed === undefined
+                    && slot.destroying === undefined
+                    && this.isLegActuator(slot))
+                .forEach(slot => this.evaluateLegActuatorDamage(slot, active ? 1 : -1));
+        }
+    }
+
+    override evaluateCritSlotHit(crit: CriticalSlot): void {
+        // Flooding already made this actuator nonfunctional; a later critical hit
+        // can still occupy the slot, but must not apply its gameplay effects twice.
+        if (crit.loc
+            && LEG_LOCATIONS.has(crit.loc)
+            && this.isLegFlooded(crit.loc)
+            && this.isLegActuator(crit)) return;
+        super.evaluateCritSlotHit(crit);
+    }
+
+    private isLegActuator(slot: CriticalSlot): boolean {
+        return this.isNamedCrit(slot, 'Hip')
+            || this.isNamedCrit(slot, 'Upper Leg')
+            || this.isNamedCrit(slot, 'Lower Leg')
+            || this.isNamedCrit(slot, 'Foot');
+    }
+
     protected override shieldRetainsMobilityPenalty(entry: MountedEquipment): boolean {
         if (entry.committedDestroyed()) return false;
         const criticals = this.entryCriticalSlots(entry);
@@ -112,27 +154,34 @@ export class TWMekRules extends MekRules {
     protected override getLegActuatorPSRChecks(
         turnState: TurnState,
         movementCheck: PSRCheck | null,
+        includeCurrentHits = true,
     ): PSRCheck[] {
         const checks: PSRCheck[] = [];
         const psr = turnState.getPSRCheckState();
-        psr.legActuators?.forEach((count, loc) => {
-            for (let index = 0; index < count; index++) {
-                checks.push({
-                    fallCheck: 1,
-                    pilotCheck: 1,
-                    loc,
-                    reason: 'Leg actuator hit',
-                });
-            }
-        });
-        psr.hipsHit?.forEach(loc => {
-            checks.push({
-                fallCheck: this.hipPSRModifier,
-                pilotCheck: this.hipPSRModifier,
-                loc,
-                reason: 'Hip hit',
+        if (includeCurrentHits) {
+            psr.legActuators?.forEach((count, loc) => {
+                for (let index = 0; index < count; index++) {
+                    checks.push({
+                        kind: PSR_CHECK_KIND.LEG_ACTUATOR_HIT,
+                        failure: FALL_PSR_FAILURE,
+                        fallCheck: 1,
+                        pilotCheck: 1,
+                        loc,
+                        reason: 'Leg actuator hit',
+                    });
+                }
             });
-        });
+            psr.hipsHit?.forEach(loc => {
+                checks.push({
+                    kind: PSR_CHECK_KIND.HIP_HIT,
+                    failure: FALL_PSR_FAILURE,
+                    fallCheck: this.hipPSRModifier,
+                    pilotCheck: this.hipPSRModifier,
+                    loc,
+                    reason: 'Hip hit',
+                });
+            });
+        }
         if (this.isLegDamageMovementPSRCheck(movementCheck)) {
             checks.push(movementCheck);
         }
@@ -142,12 +191,19 @@ export class TWMekRules extends MekRules {
     protected override getPreExistingLegActuatorPSRModifiers(
         critSlots: readonly CriticalSlot[],
         ignoreLeg: Set<string>,
-    ): { modifier: number; modifiers: PSRCheck[] } {
+    ): { modifier: number; modifiers: PSRModifier[] } {
         let modifier = 0;
-        const modifiers: PSRCheck[] = [];
+        const modifiers: PSRModifier[] = [];
+        const turnState = this.unit.turnState();
+        const currentPSR = turnState.getPSRCheckState();
+        const activeHipHits = new Set(turnState.getPSRChecks()
+            .filter(check => check.kind === PSR_CHECK_KIND.HIP_HIT && check.loc)
+            .map(check => check.loc!));
         const destroyedHips = critSlots.filter(slot => slot.loc
             && LEG_LOCATIONS.has(slot.loc)
-            && slot.destroyed !== undefined
+            && !this.isLegDestroyed(slot.loc, true)
+            && !this.unit.isEquipmentOperational(slot)
+            && !activeHipHits.has(slot.loc)
             && !ignoreLeg.has(slot.loc)
             && this.isNamedCrit(slot, 'Hip'));
         for (const hip of destroyedHips) {
@@ -156,7 +212,8 @@ export class TWMekRules extends MekRules {
         }
         const destroyedActuators = this.effectiveCommittedLegActuators(
             critSlots,
-            this.unit.turnState().getPSRCheckState().hipsHit,
+            currentPSR.hipsHit,
+            currentPSR.legActuators,
         )
             .filter(slot => !ignoreLeg.has(slot.loc!));
         const destroyedActuatorCounts = new Map<string, number>();
@@ -180,6 +237,7 @@ export class TWMekRules extends MekRules {
     private effectiveCommittedLegActuators(
         critSlots: readonly CriticalSlot[],
         currentTurnHipHits: ReadonlySet<string> | undefined = undefined,
+        currentTurnActuatorHits: ReadonlyMap<string, number> | undefined = undefined,
     ): CriticalSlot[] {
         // BMM: a hip replaces same-leg actuator modifiers from earlier turns;
         // actuator hits from the hip's turn or a later turn remain cumulative.
@@ -187,13 +245,17 @@ export class TWMekRules extends MekRules {
         for (const slot of critSlots) {
             if (!slot.loc
                 || !LEG_LOCATIONS.has(slot.loc)
-                || slot.destroyed === undefined
+                || this.isLegDestroyed(slot.loc, true)
+                || this.unit.isEquipmentOperational(slot)
                 || !this.isNamedCrit(slot, 'Hip')) continue;
+            const disabledTurn = slot.destroyed === undefined
+                ? Number.MAX_SAFE_INTEGER
+                : slot.destroyedTurn ?? 0;
             hipDestroyedOnTurnByLeg.set(
                 slot.loc,
                 Math.max(
                     hipDestroyedOnTurnByLeg.get(slot.loc) ?? 0,
-                    slot.destroyedTurn ?? 0,
+                    disabledTurn,
                 ),
             );
         }
@@ -207,13 +269,23 @@ export class TWMekRules extends MekRules {
         return critSlots.filter(slot => {
             if (!slot.loc
                 || !LEG_LOCATIONS.has(slot.loc)
-                || slot.destroyed === undefined
-                || this.unit.isInternalLocCommittedDestroyed(slot.loc)
+                || this.isLegDestroyed(slot.loc, true)
+                || this.unit.isEquipmentOperational(slot)
                 || (!this.isNamedCrit(slot, 'Leg') && !this.isNamedCrit(slot, 'Foot'))) return false;
+            if (slot.destroyed === undefined
+                && currentTurnActuatorHits?.has(slot.loc)
+                && this.isCommittedFloodedLeg(slot.loc)) return false;
             const hipDestroyedOnTurn = hipDestroyedOnTurnByLeg.get(slot.loc);
-            const actuatorDestroyedOnTurn = slot.destroyedTurn ?? 0;
+            const actuatorDestroyedOnTurn = slot.destroyed === undefined
+                ? Number.MAX_SAFE_INTEGER
+                : slot.destroyedTurn ?? 0;
             return hipDestroyedOnTurn === undefined || actuatorDestroyedOnTurn >= hipDestroyedOnTurn;
         });
+    }
+
+    private isCommittedFloodedLeg(location: string): boolean {
+        return this.unit.isInternalLocCommittedDestroyed(location)
+            && !this.isLegDestroyed(location, true);
     }
 
     protected override legActuatorMovementReduction(): number {
@@ -247,7 +319,7 @@ export class TWMekRules extends MekRules {
     }
 
     private sideTorsoDestroyedOrDestroying(): boolean {
-        return MEK_SIDE_TORSO_LOCATIONS.some(loc => this.unit.isInternalLocDestroyed(loc));
+        return MEK_SIDE_TORSO_LOCATIONS.some(loc => this.unit.isInternalLocPhysicallyDestroyed(loc));
     }
 
     private internalStructureCrippledOrCrippling(): boolean {
@@ -281,6 +353,12 @@ export class TWMekRules extends MekRules {
 
     protected override get gyroHitPSRModifier(): number { return 3; }
     protected override get hipPSRModifier(): number { return 2; }
+    protected override get usesArcSpecificQuadKickEffects(): boolean { return false; }
+
+    /** BMM/TW applies the standard hip effects to a quad starting with its first hit. */
+    protected override standardHipEffectHitCount(totalHipHits: number, _isQuadruped: boolean): number {
+        return totalHipHits;
+    }
     protected override get lowerArmFireModifier(): number { return 1; }
     protected override get footHitsCausePSR(): boolean { return true; }
 
@@ -289,10 +367,17 @@ export class TWMekRules extends MekRules {
             const previouslyDestroyedGyroCount = this.unit.getCritSlots()
                 .filter(slot => !this.unit.isEquipmentOperational(slot) && slot.name?.includes('Gyro')).length;
             if (previouslyDestroyedGyroCount + gyroHits === 1) {
-                return { pilotCheck: 1, reason: 'Gyro hit' };
+                return {
+                    kind: PSR_CHECK_KIND.GYRO_HIT,
+                    failure: FALL_PSR_FAILURE,
+                    pilotCheck: 1,
+                    reason: 'Gyro hit',
+                };
             }
         }
         return {
+            kind: PSR_CHECK_KIND.GYRO_HIT,
+            failure: FALL_PSR_FAILURE,
             fallCheck: this.gyroHitPSRModifier,
             pilotCheck: this.gyroHitPSRModifier,
             reason: 'Gyro hit',
@@ -302,6 +387,8 @@ export class TWMekRules extends MekRules {
 
     protected override destroyedGyroPSRCheck(): PSRCheck {
         return {
+            kind: PSR_CHECK_KIND.GYRO_DESTROYED,
+            failure: FALL_PSR_FAILURE,
             fallCheck: 100,
             pilotCheck: 6,
             reason: 'Gyro destroyed',
@@ -309,11 +396,14 @@ export class TWMekRules extends MekRules {
         };
     }
 
-    protected override damagedGyroMovementPSRCheck(moveMode: 'run' | 'jump'): PSRCheck {
+    protected override damagedGyroMovementPSRCheck(moveMode: 'run' | 'sprint' | 'jump'): PSRCheck {
         return {
+            kind: PSR_CHECK_KIND.DAMAGED_GYRO_MOVEMENT,
+            failure: FALL_PSR_FAILURE,
+            movementMode: moveMode,
             fallCheck: 0,
             pilotCheck: 0,
-            reason: `${moveMode === 'jump' ? 'Jumping' : 'Running'} with damaged gyro`,
+            reason: `${moveMode === 'jump' ? 'Jumping' : moveMode === 'sprint' ? 'Sprinting' : 'Running'} with damaged gyro`,
         };
     }
 
@@ -326,7 +416,7 @@ export class TWMekRules extends MekRules {
             .filter(slot => !this.unit.isEquipmentOperational(slot) && slot.name?.includes('Gyro')).length;
     }
 
-    protected override preExistingGyroPSRModifier(destroyedGyroCount: number): PSRCheck | null {
+    protected override preExistingGyroPSRModifier(destroyedGyroCount: number): PSRModifier | null {
         if (destroyedGyroCount === 0) return null;
         if (this.hasHeavyDutyGyro() && destroyedGyroCount === 1) {
             return { pilotCheck: 1, reason: 'Heavy Duty Gyro first damage' };
@@ -349,7 +439,7 @@ export class TWMekRules extends MekRules {
     protected override getPreExistingDestroyedLegPSRModifiers(
         config: MekConfig,
         destroyedLegs: readonly string[],
-    ): PSRCheck[] {
+    ): PSRModifier[] {
         if (config !== 'Quad') return super.getPreExistingDestroyedLegPSRModifiers(config, destroyedLegs);
         if (destroyedLegs.length !== 2) return [];
         return [{
@@ -360,7 +450,7 @@ export class TWMekRules extends MekRules {
     }
 
     protected override destroyedLegMovementPSRModifier(
-        moveMode: 'run' | 'jump',
+        moveMode: 'run' | 'sprint' | 'jump',
         isQuadruped: boolean,
         destroyedLegsCount: number,
     ): number {
@@ -383,7 +473,10 @@ export class TWMekRules extends MekRules {
         return false;
     }
 
-    protected override destroyedLegsApplyHipMovementCheck(_isQuadruped: boolean, _destroyedLegsCount: number): boolean {
+    protected override twoDestroyedQuadLegsApplyHipMovementEffects(
+        _isQuadruped: boolean,
+        _destroyedLegsCount: number,
+    ): boolean {
         return false;
     }
 

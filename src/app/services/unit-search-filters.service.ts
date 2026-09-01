@@ -44,7 +44,12 @@ import { getSnapshotForcePackNames, type AdvOptionsContextSnapshot } from '../ut
 import { buildUnitSearchAdvOptions } from '../utils/unit-search-adv-options-builder.util';
 import type { UnitSearchDropdownValuesDependencies } from '../utils/unit-search-dropdown-values.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from '../utils/unit-filter-kernel.util';
-import { getAdvancedFilterConfigByKey, isFilterAvailableForAvailabilitySource, normalizeUnitSearchPropertyKey } from '../utils/unit-search-filter-config.util';
+import {
+    getAdvancedFilterConfigByKey,
+    getAdvancedFilterConfigBySemanticField,
+    isFilterAvailableForAvailabilitySource,
+    normalizeUnitSearchPropertyKey,
+} from '../utils/unit-search-filter-config.util';
 import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState, resolveInitialUnitSearchViewMode } from '../utils/unit-search-url-filters.util';
 import type { UnitSearchViewMode } from '../models/options.model';
 import { generatePublicTagsParam, mergePublicTagReferences, parsePublicTagsParam } from '../utils/unit-search-public-tags-url.util';
@@ -94,6 +99,7 @@ import {
 } from '../utils/filter-name-resolution.util';
 import { sortAvailableDropdownOptions, sortDropdownOptionObjects } from '../utils/unit-search-dropdown-sort.util';
 import { compareUnitsByName } from '../utils/sort.util';
+import { unitMatchesASSpecialSelections } from '../utils/as-special-filter.util';
 import type { UnitSearchWorkerCorpusSnapshot, UnitSearchWorkerQueryRequest, UnitSearchWorkerResultMessage } from '../utils/unit-search-worker-protocol.util';
 import {
     ADVANCED_FILTERS,
@@ -180,13 +186,13 @@ export class UnitSearchFiltersService {
         contextUnits: UnitSummary[],
         displayNameFn?: (value: string) => string | undefined,
         contextUnitIds?: ReadonlySet<string>,
-    ): { name: string; img?: string; displayName?: string; available?: boolean }[] {
+    ): DropdownOption[] {
         const universe = this.dataService.getDropdownOptionUniverse(conf.key);
         if (universe.length === 0) {
             return [];
         }
 
-        const contextUnitIdSet = contextUnitIds ?? new Set(contextUnits.map(unit => unit.name));
+        const contextUnitIdSet = contextUnitIds ?? new Set(contextUnits.map(unit => unit.uuid));
         const availableOptions = universe.map(option => {
             const indexedIds = this.dataService.getIndexedUnitIds(conf.key, option.name);
             const available = indexedIds ? setHasAny(indexedIds, contextUnitIdSet) : false;
@@ -194,6 +200,7 @@ export class UnitSearchFiltersService {
             return {
                 name: option.name,
                 ...(option.img ? { img: option.img } : {}),
+                ...(option.minimumFieldLabels ? { minimumFieldLabels: option.minimumFieldLabels } : {}),
                 ...(displayNameFn ? { displayName: displayNameFn(option.name) } : {}),
                 available,
             };
@@ -297,7 +304,7 @@ export class UnitSearchFiltersService {
     readonly advOptionsTelemetry = this.advOptionsTelemetryState.asReadonly();
     private readonly workerSearchEnabled = signal(this.canUseSearchWorker());
     private readonly rawWorkerResultUnitsState = signal<UnitSummary[]>([]);
-    private readonly workerNormalizationMatchesState = signal<ReadonlyMap<string, UnitSearchNormalizationMatch>>(new Map());
+    private readonly workerNormalizationMatchesByUnitUuid = signal<ReadonlyMap<string, UnitSearchNormalizationMatch>>(new Map());
     private readonly formationTargetExistingUnitsState = signal<readonly FormationUnitLike[]>([]);
     readonly formationTarget = computed<FormationSearchTarget | null>(() => {
         if (this.hasSemanticFormationTarget()) {
@@ -1978,14 +1985,21 @@ export class UnitSearchFiltersService {
     private buildWorkerSearchRequest(corpusVersion: string): UnitSearchWorkerQueryRequest {
         const gameSystem = this.gameService.currentGameSystem();
         const workerFilterState = this.getWorkerFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
-        const executionQuery = this.isComplexQuery()
-            ? this.searchText().trim()
-            : buildWorkerExecutionQuery({
-                effectiveFilterState: workerFilterState,
-                effectiveTextSearch: this.effectiveTextSearch(),
-                gameSystem,
-                totalRangesCache: this.totalRangesCache,
-            });
+        const workerUiOnlyFilterState = this.getUiOnlyFilterState(workerFilterState, this.semanticFilterKeys());
+        const workerSemanticTokenTexts = getCommittedSemanticTokens(this.semanticParsedAST().tokens)
+            .filter(token => {
+                const conf = getAdvancedFilterConfigBySemanticField(token.field);
+                return !conf || !this.shouldStripFilterFromWorker(conf.key);
+            })
+            .map(token => token.rawText);
+        const executionQuery = buildWorkerExecutionQuery({
+            effectiveFilterState: workerUiOnlyFilterState,
+            effectiveTextSearch: this.effectiveTextSearch(),
+            semanticTokenTexts: workerSemanticTokenTexts,
+            preservedQuery: this.isComplexQuery() ? this.searchText() : undefined,
+            gameSystem,
+            totalRangesCache: this.totalRangesCache,
+        });
 
         this.searchRequestRevision += 1;
 
@@ -2045,20 +2059,20 @@ export class UnitSearchFiltersService {
             return;
         }
 
-        const hydrated = hydrateWorkerSearchResult(result, unitName => this.dataService.getUnitByName(unitName));
+        const hydrated = hydrateWorkerSearchResult(result, unitUuid => this.dataService.getUnitByUuid(unitUuid));
         const normalization = this.activeNormalization();
-        const normalizationMatches = new Map(hydrated.normalizationMatchesByUnitName);
+        const normalizationMatches = new Map(hydrated.normalizationMatchesByUnitUuid);
         const hydratedResults = normalization
             ? hydrated.units.filter(unit => {
-                const workerMatch = normalizationMatches.get(unit.name);
+                const workerMatch = normalizationMatches.get(unit.uuid);
                 const match = workerMatch?.kind === normalization.kind
                     ? workerMatch
                     : this.findNormalizationMatch(unit, normalization);
                 if (!match) {
-                    normalizationMatches.delete(unit.name);
+                    normalizationMatches.delete(unit.uuid);
                     return false;
                 }
-                normalizationMatches.set(unit.name, match);
+                normalizationMatches.set(unit.uuid, match);
                 return true;
             })
             : hydrated.units;
@@ -2073,7 +2087,7 @@ export class UnitSearchFiltersService {
             .reduce((totalMs, stage) => totalMs + stage.durationMs, 0);
 
         this.rawWorkerResultUnitsState.set(hydratedResults);
-        this.workerNormalizationMatchesState.set(normalizationMatches);
+        this.workerNormalizationMatchesByUnitUuid.set(normalizationMatches);
         this.workerResultRevision.set(result.revision);
         this.updateSearchTelemetry(buildWorkerSearchTelemetrySnapshot(result, {
             timestamp: Date.now(),
@@ -2296,13 +2310,13 @@ export class UnitSearchFiltersService {
         const scoreResolver = this.unitAvailabilitySource.getMegaMekAvailabilityScoreResolver(context);
         const scores = new Map<string, number>();
         for (const unit of units) {
-            scores.set(unit.name, scoreResolver(unit));
+            scores.set(unit.uuid, scoreResolver(unit));
         }
 
         const sortResults = () => {
             const sorted = [...units];
             sorted.sort((left, right) => {
-                let comparison = (scores.get(left.name) ?? 0) - (scores.get(right.name) ?? 0);
+                let comparison = (scores.get(left.uuid) ?? 0) - (scores.get(right.uuid) ?? 0);
                 if (comparison === 0) {
                     comparison = compareUnitsByName(left, right);
                 }
@@ -2751,7 +2765,8 @@ export class UnitSearchFiltersService {
         isCountableFilter: boolean,
     ): Set<string> | null {
         const andEntries = Object.entries(selection).filter(([, sel]) => sel.state === 'and');
-        if (andEntries.length === 0) {
+        const notEntries = Object.entries(selection).filter(([, sel]) => sel.state === 'not');
+        if (andEntries.length === 0 && notEntries.length === 0) {
             return null;
         }
 
@@ -2760,17 +2775,17 @@ export class UnitSearchFiltersService {
             sel.count,
         ]));
         const notSet = new Set(
-            Object.entries(selection)
-                .filter(([, sel]) => sel.state === 'not')
-                .map(([name]) => name.toLowerCase()),
+            notEntries.map(([name]) => name.toLowerCase()),
         );
         const availableNames = new Set<string>();
 
         if (!isCountableFilter) {
             const universeNames = this.getIndexedUniverseNames(filterKey);
             if (universeNames.length > 0) {
-                const contextUnitIds = new Set(units.map(unit => unit.name));
-                let constrainedUnitIds: Set<string> | null = null;
+                const contextUnitIds = new Set(units.map(unit => unit.uuid));
+                let constrainedUnitIds: Set<string> | null = andEntries.length === 0
+                    ? new Set(contextUnitIds)
+                    : null;
 
                 for (const [selectedName] of andEntries) {
                     const indexedIds = this.dataService.getIndexedUnitIds(filterKey, selectedName);
@@ -2799,18 +2814,36 @@ export class UnitSearchFiltersService {
                     return availableNames;
                 }
 
-                for (const excludedName of notSet) {
-                    const universeMatch = universeNames.find(name => name.toLowerCase() === excludedName);
-                    if (!universeMatch) {
-                        continue;
-                    }
-                    const excludedIds = this.dataService.getIndexedUnitIds(filterKey, universeMatch);
-                    if (!excludedIds) {
-                        continue;
-                    }
+                if (filterKey === 'as.specials') {
+                    const constrainedSelections = Object.values(selection).filter(selected => (
+                        selected.state === 'and' || selected.state === 'not'
+                    ));
+                    const unitsByUuid = new Map(units.map(unit => [unit.uuid, unit]));
+
                     for (const unitId of Array.from(constrainedUnitIds)) {
-                        if (excludedIds.has(unitId)) {
+                        const unit = unitsByUuid.get(unitId);
+                        if (!unit || !unitMatchesASSpecialSelections(
+                            getProperty(unit, filterKey),
+                            constrainedSelections,
+                            this.dataService.getIndexedASSpecials(unitId),
+                        )) {
                             constrainedUnitIds.delete(unitId);
+                        }
+                    }
+                } else {
+                    for (const excludedName of notSet) {
+                        const universeMatch = universeNames.find(name => name.toLowerCase() === excludedName);
+                        if (!universeMatch) {
+                            continue;
+                        }
+                        const excludedIds = this.dataService.getIndexedUnitIds(filterKey, universeMatch);
+                        if (!excludedIds) {
+                            continue;
+                        }
+                        for (const unitId of Array.from(constrainedUnitIds)) {
+                            if (excludedIds.has(unitId)) {
+                                constrainedUnitIds.delete(unitId);
+                            }
                         }
                     }
                 }
@@ -3015,31 +3048,13 @@ export class UnitSearchFiltersService {
         return this.unitAvailabilitySource.unitBelongsToFaction(unit, faction);
     }
 
-    private getUnitIdsForEraInFactionScope(eraName: string, factionNames: readonly string[]): Set<string> {
-        const era = this.dataService.getEraByName(eraName);
-        if (!era || factionNames.length === 0) {
-            return new Set<string>();
-        }
-
-        const contextEraIds = new Set([era.id]);
-        const unitIds = new Set<string>();
-        for (const factionName of factionNames) {
-            for (const unitId of this.getUnitIdsForFaction(factionName, contextEraIds)) {
-                unitIds.add(unitId);
-            }
-        }
-
-        return unitIds;
-    }
-
     private unitBelongsToEraInScope(unit: UnitSummary, era: Era, scope?: AvailabilityFilterScope): boolean {
         if (scope?.factionNames === undefined) {
             return this.unitAvailabilitySource.unitBelongsToEra(unit, era);
         }
 
         if (!this.unitAvailabilitySource.useMegaMekAvailability()) {
-            return this.getUnitIdsForEraInFactionScope(era.name, scope.factionNames)
-                .has(this.unitAvailabilitySource.getUnitAvailabilityKey(unit));
+            return this.dataService.getFactionEraUnitUuids([era.name], scope.factionNames).has(unit.uuid);
         }
 
         const context = this.buildAvailabilityFilterContext({
@@ -3149,6 +3164,17 @@ export class UnitSearchFiltersService {
             : new Set<string>();
     }
 
+    /** Convert MegaMek's name-keyed availability results at the external boundary. */
+    private getMegaMekUnitUuids(unitNames: ReadonlySet<string>): ReadonlySet<string> {
+        const unitUuids = new Set<string>();
+        for (const unitName of unitNames) {
+            for (const unit of this.dataService.getUnitsByName(unitName)) {
+                unitUuids.add(unit.uuid);
+            }
+        }
+        return unitUuids;
+    }
+
     private getSemanticIndexedUnitIds(
         filterKey: string,
         value: string,
@@ -3156,23 +3182,11 @@ export class UnitSearchFiltersService {
     ): ReadonlySet<string> | undefined {
         if (!this.unitAvailabilitySource.useMegaMekAvailability()) {
             if (filterKey === 'era' && scope?.factionNames !== undefined) {
-                return this.getUnitIdsForEraInFactionScope(value, scope.factionNames);
+                return this.dataService.getFactionEraUnitUuids([value], scope.factionNames);
             }
 
             if (filterKey === 'faction' && scope?.eraNames !== undefined) {
-                const faction = this.dataService.getFactionByName(value);
-                if (!faction) {
-                    return undefined;
-                }
-
-                const contextEraIds = new Set(
-                    scope.eraNames
-                        .map((eraName) => this.dataService.getEraByName(eraName)?.id)
-                        .filter((eraId): eraId is number => eraId !== undefined),
-                );
-                return contextEraIds.size === 0
-                    ? new Set<string>()
-                    : this.unitAvailabilitySource.getFactionUnitIds(faction, contextEraIds);
+                return this.dataService.getFactionEraUnitUuids(scope.eraNames, [value]);
             }
 
             return this.dataService.getIndexedUnitIds(filterKey, value);
@@ -3185,7 +3199,9 @@ export class UnitSearchFiltersService {
             }
 
             if (scope?.factionNames === undefined) {
-                return this.unitAvailabilitySource.getVisibleEraUnitIds(era);
+                return this.getMegaMekUnitUuids(
+                    this.unitAvailabilitySource.getVisibleEraUnitIds(era),
+                );
             }
 
             const context = this.buildAvailabilityFilterContext({
@@ -3194,7 +3210,9 @@ export class UnitSearchFiltersService {
             });
             return context === null
                 ? new Set<string>()
-                : this.unitAvailabilitySource.getMegaMekMembershipUnitIds(context);
+                : this.getMegaMekUnitUuids(
+                    this.unitAvailabilitySource.getMegaMekMembershipUnitIds(context),
+                );
         }
 
         if (filterKey === 'faction') {
@@ -3204,7 +3222,9 @@ export class UnitSearchFiltersService {
             }
 
             if (scope?.eraNames === undefined) {
-                return this.unitAvailabilitySource.getFactionUnitIds(faction);
+                return this.getMegaMekUnitUuids(
+                    this.unitAvailabilitySource.getFactionUnitIds(faction),
+                );
             }
 
             const contextEraIds = new Set(
@@ -3214,7 +3234,9 @@ export class UnitSearchFiltersService {
             );
             return contextEraIds.size === 0
                 ? new Set<string>()
-                : this.unitAvailabilitySource.getFactionUnitIds(faction, contextEraIds);
+                : this.getMegaMekUnitUuids(
+                    this.unitAvailabilitySource.getFactionUnitIds(faction, contextEraIds),
+                );
         }
 
         if (filterKey === 'availabilityFrom') {
@@ -3224,13 +3246,17 @@ export class UnitSearchFiltersService {
             }
 
             if (value === MEGAMEK_AVAILABILITY_UNKNOWN) {
-                return this.unitAvailabilitySource.getMegaMekUnknownUnitIds(context);
+                return this.getMegaMekUnitUuids(
+                    this.unitAvailabilitySource.getMegaMekUnknownUnitIds(context),
+                );
             }
 
-            return this.unitAvailabilitySource.getMegaMekAvailabilityUnitIds({
-                ...context,
-                availabilityFrom: new Set([value as MegaMekAvailabilityFrom]),
-            });
+            return this.getMegaMekUnitUuids(
+                this.unitAvailabilitySource.getMegaMekAvailabilityUnitIds({
+                    ...context,
+                    availabilityFrom: new Set([value as MegaMekAvailabilityFrom]),
+                }),
+            );
         }
 
         if (filterKey === 'availabilityRarity') {
@@ -3239,9 +3265,11 @@ export class UnitSearchFiltersService {
                 return new Set<string>();
             }
 
-            return value === MEGAMEK_AVAILABILITY_UNKNOWN
-                ? this.unitAvailabilitySource.getMegaMekUnknownUnitIds(context)
-                : this.unitAvailabilitySource.getMegaMekRarityUnitIds(value as MegaMekAvailabilityRarity, context);
+            return this.getMegaMekUnitUuids(
+                value === MEGAMEK_AVAILABILITY_UNKNOWN
+                    ? this.unitAvailabilitySource.getMegaMekUnknownUnitIds(context)
+                    : this.unitAvailabilitySource.getMegaMekRarityUnitIds(value as MegaMekAvailabilityRarity, context),
+            );
         }
 
         return this.dataService.getIndexedUnitIds(filterKey, value);
@@ -3425,6 +3453,8 @@ export class UnitSearchFiltersService {
                 return getPositiveDropdownNamesFromFilter(selectedFactionEntries, allFactionNames, wildcardPatterns);
             },
             getAvailabilityLookupKey: unit => this.unitAvailabilitySource.getUnitAvailabilityKey(unit),
+            getIndexedUnitIds: (filterKey, value) => this.dataService.getIndexedUnitIds(filterKey, value),
+            getIndexedASSpecials: unitUuid => this.dataService.getIndexedASSpecials(unitUuid),
             unitMatchesAvailabilityFrom: (unit, availabilityFromName, scope) =>
                 this.unitMatchesAvailabilityFrom(unit, availabilityFromName, scope),
             unitMatchesAvailabilityRarity: (unit, rarityName, scope) =>
@@ -3459,6 +3489,11 @@ export class UnitSearchFiltersService {
         const executionParsedQuery = options.ignoreFormationTarget
             ? stripSemanticFieldsFromParseResult(parsedQuery, FORMATION_TARGET_SEMANTIC_FIELDS)
             : parsedQuery;
+        const uiOnlyFilterState = this.stripFormationTargetFilterState(
+            this.getUiOnlyFilterState(this.getApplicableFilterState(this.filterState()), this.semanticFilterKeys()),
+        );
+        const resolvedUiEras = this.resolveEraNamesFromFilter(uiOnlyFilterState['era']);
+        const uiEraNames = [...new Set([...resolvedUiEras.or, ...resolvedUiEras.and])];
         const megaMekRaritySortScope = this.megaMekRaritySortScope();
         const megaMekRaritySortContext = this.megaMekRaritySortContext();
         const megaMekRaritySortScoreResolver = megaMekRaritySortContext === null
@@ -3469,8 +3504,11 @@ export class UnitSearchFiltersService {
             units: this.units,
             parsedQuery: executionParsedQuery,
             searchTokens: this.searchTokens(),
-            uiOnlyFilterState: this.stripFormationTargetFilterState(this.getUiOnlyFilterState(this.getApplicableFilterState(this.filterState()), this.semanticFilterKeys())),
+            uiOnlyFilterState,
             uiOnlyFilterDependencies: this.getUnitFilterKernelDependencies(),
+            // UI-only filters run after the AST. Pass their era scope into the
+            // AST so exclusive faction matching is evaluated in that era.
+            initialAvailabilityScope: uiEraNames.length > 0 ? { eraNames: uiEraNames } : undefined,
             gameSystem: this.gameService.currentGameSystem(),
             sortKey: this.selectedSort(),
             sortDirection: this.selectedSortDirection(),
@@ -3497,6 +3535,7 @@ export class UnitSearchFiltersService {
             },
             getIndexedUnitIds: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => this.getSemanticIndexedUnitIds(filterKey, value, scope),
             getIndexedFilterValues: (filterKey: string) => this.getSemanticIndexedFilterValues(filterKey),
+            getIndexedASSpecials: (unitUuid: string) => this.dataService.getIndexedASSpecials(unitUuid),
             availabilitySortScope: megaMekRaritySortScope,
             getMegaMekRaritySortScore: megaMekRaritySortScoreResolver
                 ? (unit: UnitSummary) => megaMekRaritySortScoreResolver(unit)
@@ -3958,7 +3997,7 @@ export class UnitSearchFiltersService {
             targetPv: { min: 0, max: DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX },
             skill: { min: 0, max: 8 },
         });
-        this.workerNormalizationMatchesState.set(new Map());
+        this.workerNormalizationMatchesByUnitUuid.set(new Map());
         this.refreshWorkerSearchIfNeeded();
     }
 
@@ -4122,8 +4161,8 @@ export class UnitSearchFiltersService {
         const normalization = this.activeNormalization();
         const normalizedMatch = normalization
             ? !this.workerSearchActive() || !this.isSearchSettled()
-                ? this.uncappedSyncSearch().execution.normalizationMatchesByUnitName.get(unit.name)
-                : this.workerNormalizationMatchesState().get(unit.name)
+                ? this.uncappedSyncSearch().execution.normalizationMatchesByUnitUuid.get(unit.uuid)
+                : this.workerNormalizationMatchesByUnitUuid().get(unit.uuid)
                     ?? this.findNormalizationMatch(unit, normalization)
             : null;
         if (normalizedMatch) {

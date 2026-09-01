@@ -340,6 +340,37 @@ describe('MultiSelectDropdownComponent', () => {
         expect(emittedSelection).toEqual({});
     });
 
+    it('renders contextual minimum fields and emits neutral slot values', () => {
+        const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
+        let emittedSelection: MultiStateSelection | undefined;
+        fixture.componentInstance.selectionChange.subscribe(selection => {
+            emittedSelection = selection as MultiStateSelection;
+        });
+
+        fixture.componentRef.setInput('multistate', true);
+        fixture.componentRef.setInput('options', [{
+            name: 'AC',
+            minimumFieldLabels: ['S', 'M', 'L'],
+        }]);
+        fixture.componentRef.setInput('selected', {
+            AC: { name: 'AC', state: 'or', count: 1 },
+        });
+        fixture.componentInstance.isOpen.set(true);
+        fixture.detectChanges();
+
+        const fields = Array.from(overlayContainerElement.querySelectorAll<HTMLInputElement>('.minimum-field'));
+        expect(fields.map(field => field.placeholder)).toEqual(['S', 'M', 'L']);
+
+        const optionRow = overlayContainerElement.querySelector<HTMLElement>('.option-item');
+        const optionLabel = optionRow?.querySelector('.option-label');
+        const minimumInputs = optionRow?.querySelector('.minimum-inputs');
+        expect(optionRow?.classList.contains('has-minimum-fields')).toBeTrue();
+        expect(optionLabel?.nextElementSibling).toBe(minimumInputs);
+
+        fixture.componentInstance.setMinimumValue('AC', 2, '3', 3);
+        expect(emittedSelection?.['AC'].minimumValues).toEqual([null, null, 3]);
+    });
+
     it('keeps always-visible options in filtered results', () => {
         const fixture = TestBed.createComponent(MultiSelectDropdownComponent);
         fixture.componentRef.setInput('options', [

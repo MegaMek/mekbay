@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { deserializeUnitCover, resolveUnitBuildingCoverState, resolveUnitWaterState, serializeUnitCover } from './unit-cover.model';
+import { deserializeUnitCover, resolveUnitBuildingCoverState, resolveUnitWaterState, serializeUnitCover, unitCoverWaterDepth } from './unit-cover.model';
 
 describe('unit cover', () => {
     it('serializes water depths as 3, 4, and 5', () => {
@@ -30,6 +30,14 @@ describe('unit cover', () => {
         expect(resolveUnitWaterState('underwater-depth-2', 3)).toEqual({ partiallyUnderwater: true, submerged: false });
         expect(resolveUnitWaterState('underwater-depth-2', 2)).toEqual({ partiallyUnderwater: false, submerged: true });
         expect(resolveUnitWaterState('underwater-depth-3', 3)).toEqual({ partiallyUnderwater: false, submerged: true });
+    });
+
+    it('derives numeric water depth from cover', () => {
+        expect(unitCoverWaterDepth(undefined)).toBe(0);
+        expect(unitCoverWaterDepth('heavy')).toBe(0);
+        expect(unitCoverWaterDepth('underwater-depth-1')).toBe(1);
+        expect(unitCoverWaterDepth('underwater-depth-2')).toBe(2);
+        expect(unitCoverWaterDepth('underwater-depth-3')).toBe(3);
     });
 
     it('resolves building cover from unit height and posture', () => {

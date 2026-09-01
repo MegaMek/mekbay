@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { GameSystem } from '../models/common.model';
-import { filterUnitsWithAST, parseSemanticQueryAST, tokenizeForHighlight, type ParseResult } from './semantic-filter-ast.util';
+import { filterUnitsWithAST, getMatchingTextForUnit, parseSemanticQueryAST, tokenizeForHighlight, type ParseResult } from './semantic-filter-ast.util';
 import { filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';
 import { matchesSearch, parseSearchQuery } from './search.util';
 
@@ -298,6 +298,103 @@ describe('semantic filter exclusivity', () => {
 
         expect(filtered).toEqual([units[0]]);
         expect(membershipChecks).toBe(0);
+    });
+
+    it('keeps an explicit empty era scope distinct from global exclusivity', () => {
+        const units = [{ id: 1 }, { id: 2 }];
+        const result = parseSemanticQueryAST('faction=="Clan Coyote"', GameSystem.CLASSIC);
+        const context = {
+            gameSystem: GameSystem.CLASSIC,
+            getProperty: () => undefined,
+            getUnitId,
+            getIndexedFilterValues: (filterKey: string) => filterKey === 'faction'
+                ? ['Clan Coyote', 'Federated Suns']
+                : [],
+            getIndexedUnitIds: (filterKey: string, value: string, scope?: { eraNames?: readonly string[] }) => {
+                if (filterKey !== 'faction') {
+                    return undefined;
+                }
+                if (scope?.eraNames !== undefined) {
+                    return new Set<string>();
+                }
+                return value === 'Clan Coyote' ? new Set(['1']) : new Set(['2']);
+            },
+            getAllFactionNames: () => ['Clan Coyote', 'Federated Suns'],
+        };
+
+        expect(filterUnitsWithAST(units, result.ast, context)).toEqual([units[0]]);
+        expect(filterUnitsWithAST(units, result.ast, context, { eraNames: [] })).toEqual([]);
+
+        const fallbackContext = {
+            gameSystem: GameSystem.CLASSIC,
+            getProperty: () => undefined,
+            getUnitId,
+            unitBelongsToFaction: (
+                unit: { id: number },
+                factionName: string,
+                eraNames?: readonly string[],
+            ) => {
+                const membershipEra = unit.id === 1 && factionName === 'Clan Coyote'
+                    ? 'Clan Invasion'
+                    : unit.id === 2 && factionName === 'Federated Suns'
+                        ? 'Jihad'
+                        : null;
+                return membershipEra !== null
+                    && (eraNames === undefined || eraNames.includes(membershipEra));
+            },
+            unitBelongsToEra: (unit: { id: number }, eraName: string) => (
+                (unit.id === 1 && eraName === 'Clan Invasion')
+                || (unit.id === 2 && eraName === 'Jihad')
+            ),
+            getAllEraNames: () => ['Clan Invasion', 'Jihad'],
+            getAllFactionNames: () => ['Clan Coyote', 'Federated Suns'],
+        };
+
+        expect(filterUnitsWithAST(units, result.ast, fallbackContext)).toEqual([units[0]]);
+        expect(filterUnitsWithAST(units, result.ast, fallbackContext, { eraNames: [] })).toEqual([]);
+
+        const scopedResult = parseSemanticQueryAST(
+            'era="Clan Invasion" faction=="Clan Coyote"',
+            GameSystem.CLASSIC,
+        );
+        expect(filterUnitsWithAST(units, scopedResult.ast, fallbackContext)).toEqual([units[0]]);
+        expect(filterUnitsWithAST(units, scopedResult.ast, fallbackContext, { eraNames: [] })).toEqual([]);
+    });
+
+    it('uses the same era scope when selecting relevance text from a complex query', () => {
+        const unit = {
+            id: 1,
+            factionEras: {
+                'Clan Coyote': ['Clan Invasion'],
+                'Federated Suns': ['Jihad'],
+            },
+        };
+        const result = parseSemanticQueryAST(
+            '(faction=="Clan Coyote" Atlas) OR (faction=="Federated Suns" Zzz)',
+            GameSystem.CLASSIC,
+        );
+        const context = {
+            gameSystem: GameSystem.CLASSIC,
+            getProperty: () => undefined,
+            getUnitId,
+            matchesText: (_unit: typeof unit, text: string) => text === 'Atlas',
+            unitBelongsToFaction: (
+                candidate: typeof unit,
+                factionName: string,
+                eraNames?: readonly string[],
+            ) => {
+                const membershipEras = candidate.factionEras[factionName as keyof typeof candidate.factionEras] ?? [];
+                return eraNames === undefined
+                    ? membershipEras.length > 0
+                    : eraNames.some(eraName => membershipEras.includes(eraName));
+            },
+            getAllFactionNames: () => ['Clan Coyote', 'Federated Suns'],
+        };
+        const scope = { eraNames: ['Clan Invasion'] };
+
+        expect(result.errors).toEqual([]);
+        expect(filterUnitsWithAST([unit], result.ast, context, scope)).toEqual([unit]);
+        expect(getMatchingTextForUnit(result.ast, unit, context, scope)).toEqual(['Atlas']);
     });
 
     it('uses indexed results for wildcard external include filters without per-unit membership scans', () => {

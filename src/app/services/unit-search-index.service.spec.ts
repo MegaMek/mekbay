@@ -11,6 +11,7 @@ function createUnit(overrides: TestUnitOverrides): UnitSummary {
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
+        uuid: unitOverrides.uuid ?? unitOverrides.name ?? 'Unit',
         id: 1,
         name: 'Unit',
         chassis: 'Unit',
@@ -35,6 +36,101 @@ function createUnit(overrides: TestUnitOverrides): UnitSummary {
 }
 
 describe('UnitSearchIndexService', () => {
+    it('uses UUID postings while expanding duplicate MUL ids for era and faction membership', () => {
+        const service = new UnitSearchIndexService();
+        const first = createUnit({ id: 42, uuid: 'uuid-a', name: 'Duplicate Name' });
+        const second = createUnit({ id: 42, uuid: 'uuid-b', name: 'Duplicate Name' });
+        const era = {
+            id: 1,
+            name: 'Test Era',
+            img: '',
+            years: { from: 3000, to: 3100 },
+            units: new Set([42]),
+            factions: new Set<number>(),
+        };
+        const faction = {
+            id: 1,
+            name: 'Test Faction',
+            group: 'Other' as const,
+            img: '',
+            eras: { 1: new Set([42]) },
+        };
+
+        service.rebuildIndexes([first, second], [era], [faction]);
+
+        const expectedUuids = new Set([first.uuid, second.uuid]);
+        expect(service.getIndexedUnitIds('type', 'Mek')).toEqual(expectedUuids);
+        expect(service.getIndexedUnitIds('era', era.name)).toEqual(expectedUuids);
+        expect(service.getIndexedUnitIds('faction', faction.name)).toEqual(expectedUuids);
+        expect(service.getFactionEraUnitUuids([era.name], [faction.name])).toEqual(expectedUuids);
+    });
+
+    it('indexes canonical Alpha Strike special tokens, nested turret abilities, and observed parameter shapes', () => {
+        const service = new UnitSearchIndexService();
+        service.rebuildIndexes([
+            createUnit({
+                name: 'Special Unit',
+                as: {
+                    specials: ['AC2/2/2', 'TAG', 'TSM', 'TUR(3/3/3,IF2,LRM3/3/2)'],
+                },
+            }),
+        ], [], []);
+
+        expect(service.getIndexedFilterValues('as.specials')).toEqual([
+            'AC',
+            'IF',
+            'LRM',
+            'TAG',
+            'TSM',
+            'TUR',
+        ]);
+        expect(service.getIndexedUnitIds('as.specials', 'IF')).toEqual(new Set(['Special Unit']));
+        expect(service.getIndexedUnitIds('as.specials', 'TUR(3/3/3,IF2,LRM3/3/2)')).toBeUndefined();
+        const indexedSpecials = service.getIndexedASSpecials('Special Unit');
+        expect(indexedSpecials?.occurrences.find(occurrence => occurrence.token === 'AC')?.values)
+            .toEqual([
+                { text: '2', rank: 2 },
+                { text: '2', rank: 2 },
+                { text: '2', rank: 2 },
+            ]);
+        expect(indexedSpecials?.occurrences.find(occurrence => occurrence.token === 'IF'))
+            .toEqual(jasmine.objectContaining({
+                token: 'IF',
+                values: [{ text: '2', rank: 2 }],
+                topLevel: false,
+            }));
+        expect(service.getDropdownOptionUniverse('as.specials')).toEqual([
+            { name: 'AC', minimumFieldLabels: ['S', 'M', 'L'] },
+            { name: 'IF', minimumFieldLabels: [''] },
+            { name: 'LRM', minimumFieldLabels: ['S', 'M', 'L'] },
+            { name: 'TAG' },
+            { name: 'TSM' },
+            { name: 'TUR', minimumFieldLabels: ['S', 'M', 'L'] },
+        ]);
+    });
+
+    it('indexes implicit values and digit-bearing artillery tokens with contextual fields', () => {
+        const service = new UnitSearchIndexService();
+        service.rebuildIndexes([
+            createUnit({
+                name: 'Implicit Unit',
+                as: { specials: ['SNARC', 'CNARC', 'ARTCM5-1', 'TAG'] },
+            }),
+        ], [], []);
+
+        expect(service.getIndexedUnitIds('as.specials', 'SNARC')).toEqual(new Set(['Implicit Unit']));
+        expect(service.getIndexedUnitIds('as.specials', 'ARTCM5')).toEqual(new Set(['Implicit Unit']));
+        expect(service.getIndexedASSpecials('Implicit Unit')?.occurrences
+            .find(occurrence => occurrence.token === 'SNARC')?.values)
+            .toEqual([{ text: '1', rank: 1 }]);
+        expect(service.getDropdownOptionUniverse('as.specials')).toEqual([
+            { name: 'ARTCM5', minimumFieldLabels: [''] },
+            { name: 'CNARC', minimumFieldLabels: [''] },
+            { name: 'SNARC', minimumFieldLabels: [''] },
+            { name: 'TAG' },
+        ]);
+    });
+
     it('indexes mixed and nonmixed units as distinct tech-base filter values', () => {
         const service = new UnitSearchIndexService();
 

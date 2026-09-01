@@ -19,6 +19,8 @@ export class DiceRollerComponent {
     private finalResults: number[] | null = null;
     diceCount = input<number>(2);
     diceSides = input<number>(6);
+    /** Completed faces to display when a parent workflow is resumed. */
+    initialResults = input<readonly number[] | null>(null);
     modifier = input<number>(0);
     showSum = input<boolean>(true);
     /** Use small dice instead of large (default) */
@@ -56,14 +58,18 @@ export class DiceRollerComponent {
     private postEndTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor() {
-        let lastDiceCount = 0;
         effect((cleanup) => {
-            if (this.diceCount() === lastDiceCount) {
-                return;
-            }
-            lastDiceCount = this.diceCount();
-            this.resetArrays();
+            const diceCount = Math.max(0, Math.floor(this.diceCount()));
+            const diceSides = Math.max(1, Math.floor(this.diceSides()));
+            const restored = this.validInitialResults(this.initialResults(), diceCount, diceSides);
             this.clearTimers();
+            this.finalResults = null;
+            this.activeDiceCount = diceCount;
+            this.diceResults.set(restored ?? Array(diceCount).fill(null));
+            this.rolled.set(restored !== null);
+            this.isRolling.set(false);
+            this.overlayVisible.set(false);
+            this.canCloseOverlay.set(false);
             cleanup(() => {
                 this.clearTimers();
             });
@@ -145,8 +151,16 @@ export class DiceRollerComponent {
         this.finished.emit({ results, sum: this.diceSum() });
     }
 
-    private resetArrays() {
-        this.diceResults.set(Array(Math.max(0, Math.floor(this.diceCount()))).fill(null));
+    private validInitialResults(
+        results: readonly number[] | null,
+        diceCount: number,
+        diceSides: number,
+    ): number[] | null {
+        return results !== null
+            && results.length === diceCount
+            && results.every(value => Number.isInteger(value) && value >= 1 && value <= diceSides)
+            ? [...results]
+            : null;
     }
 
     private randomFace() {

@@ -4,7 +4,7 @@
 
 import type { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
-import type { UnitHeatSource } from '../models/rules/unit-type-rules';
+import { EQUIPMENT_HEAT_SOURCE_GROUP, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import type { TurnState } from '../models/turn-state.model';
 import type { HandlerQueryContext } from '../services/equipment-interaction-registry.service';
 import { EscalatingFailureHandler } from './escalatingfailure.handler';
@@ -45,6 +45,7 @@ export class RiscViralJammerHandler extends EscalatingFailureHandler {
             id: `risc-viral-jammer:${equipment.id}`,
             label: 'RISC Viral Jammer',
             value: 12,
+            group: EQUIPMENT_HEAT_SOURCE_GROUP,
         }];
     }
 }

@@ -5,7 +5,7 @@
 import type { Signal } from '@angular/core';
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { MountedEquipment } from '../../models/mounted-equipment.model';
-import type { HandlerChoice, HandlerCommandContext, HandlerQueryContext } from '../../services/equipment-interaction-registry.service';
+import type { HandlerChoice, HandlerCommandContext, HandlerQueryContext, InventoryControlFireResult } from '../../services/equipment-interaction-registry.service';
 import type { InventoryControlRules } from '../../utils/inventory-control.util';
 
 export type EquipmentDialogTab = 'weapons' | 'ammo';
@@ -13,7 +13,7 @@ export type EquipmentDialogTab = 'weapons' | 'ammo';
 export interface EquipmentDialogRegistry {
     getChoices(entry: MountedEquipment, context: HandlerQueryContext): HandlerChoice[];
     handleSelection(entry: MountedEquipment, choice: HandlerChoice, context: HandlerCommandContext): boolean | Promise<boolean>;
-    afterInventoryControlFire(entry: MountedEquipment): void | Promise<void>;
+    afterInventoryControlFire(entry: MountedEquipment): Promise<readonly InventoryControlFireResult[]>;
     applyInventoryControlAmmoConsumption?(entry: MountedEquipment, count: number, context: HandlerQueryContext): number;
     inventoryControlRules(context: HandlerQueryContext): InventoryControlRules;
 }

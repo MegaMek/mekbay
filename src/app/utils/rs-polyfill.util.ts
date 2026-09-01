@@ -104,7 +104,7 @@ export class RsPolyfillUtil {
         this.addCrewDamageClasses(unit, svg);
         this.addCrewNamesButtons(svg, forceUnit);
         this.addInventoryLines(svg);
-        this.adjustArmorPips(unit, svg);
+        this.adjustArmorPips(forceUnit, svg);
         this.addPipHitAreas(svg);
         this.addHitMod(svg);
         this.injectFluffImage(unit, svg);
@@ -1336,35 +1336,26 @@ export class RsPolyfillUtil {
         return value.length > 0 && value !== '—';
     }
 
-    private static adjustArmorPips(unit: UnitSummary, svg: SVGSVGElement): void {
-        if (unit.armorType === 'Hardened') {
-            const armorPips = svg.querySelectorAll<SVGElement>('.pip.armor');
-            armorPips.forEach(pip => {
-                pip.classList.add('hardened');
-                const clone = pip.cloneNode(true) as SVGElement;
-                clone.classList.add('half');
-                if (pip.parentNode && pip.nextSibling) {
-                    pip.parentNode.insertBefore(clone, pip.nextSibling);
-                } else if (pip.parentNode) {
-                    pip.parentNode.appendChild(clone);
-                }
-            });
-        }
-        const structureType = svg.getElementById('structureType')?.textContent || '';
-        if (structureType.includes('Reinforced')) {
-            const structurePips = svg.querySelectorAll<SVGElement>('.pip.structure');
-            structurePips.forEach(pip => {
-                pip.classList.add('hardened');
-                const clone = pip.cloneNode(true) as SVGElement;
-                clone.classList.add('half');
-                if (pip.parentNode && pip.nextSibling) {
-                    pip.parentNode.insertBefore(clone, pip.nextSibling);
-                } else if (pip.parentNode) {
-                    pip.parentNode.appendChild(clone);
-                }
-            });
-        }
-    };
+    private static adjustArmorPips(unit: CBTForceUnit, svg: SVGSVGElement): void {
+        this.doubleDamagePips(svg, '.pip.armor', location => unit.getArmorTypeAt(location) === 'HARDENED');
+        this.doubleDamagePips(svg, '.pip.structure', location => unit.getStructureKindAt(location) === 'reinforced');
+    }
+
+    /** Represents materials that take two damage per printed point as two ordered record pips. */
+    private static doubleDamagePips(
+        svg: SVGSVGElement,
+        selector: string,
+        appliesAt: (location: string) => boolean,
+    ): void {
+        svg.querySelectorAll<SVGElement>(selector).forEach(pip => {
+            const location = pip.getAttribute('loc');
+            if (!location || pip.classList.contains('hardened') || !appliesAt(location)) return;
+            pip.classList.add('hardened');
+            const clone = pip.cloneNode(true) as SVGElement;
+            clone.classList.add('half');
+            pip.parentNode?.insertBefore(clone, pip.nextSibling);
+        });
+    }
 
     /**
      * Adds larger transparent hit areas to armor and structure pips.

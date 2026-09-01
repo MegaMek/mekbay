@@ -17,6 +17,17 @@ import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot 
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { WeaponEquipment } from '../models/equipment.model';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
+import {
+    buildASSpecialsByUnitIndex,
+    getASSpecialMinimumFieldLabels,
+    type ParsedASSpecials,
+} from '../utils/as-special-filter.util';
+
+export interface UnitSearchDropdownOption {
+    name: string;
+    img?: string;
+    minimumFieldLabels?: readonly string[];
+}
 
 interface ASUnitTypeMaxStats {
     [asUnitType: string]: MinMaxStatsRange;
@@ -107,7 +118,9 @@ export class UnitSearchIndexService {
     private searchFilterIndex = new Map<string, Map<string, Set<string>>>();
     private componentCountIndex = new Map<string, Map<string, number>>();
     private searchFilterValues = new Map<string, string[]>();
-    private dropdownOptionUniverse = new Map<string, Array<{ name: string; img?: string }>>();
+    private dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
+    private asSpecialFieldCounts = new Map<string, number>();
+    private asSpecialsByUnit = new Map<string, ParsedASSpecials>();
     private factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot = {};
 
     public prepareUnits(units: UnitSummary[]): void {
@@ -282,32 +295,38 @@ export class UnitSearchIndexService {
         this.searchFilterIndex = new Map<string, Map<string, Set<string>>>();
         this.componentCountIndex = new Map<string, Map<string, number>>();
         this.searchFilterValues = new Map<string, string[]>();
+        this.asSpecialFieldCounts = new Map<string, number>();
+        this.asSpecialsByUnit = buildASSpecialsByUnitIndex(
+            units,
+            unit => unit.uuid,
+            unit => unit.as?.specials,
+        );
 
-        const unitNamesByMulId = this.createUnitNamesByMulId(units);
+        const unitUuidsByMulId = this.createUnitUuidsByMulId(units);
 
         for (const unit of units) {
-            this.addSearchIndexValue('type', unit.type, unit.name);
-            this.addSearchIndexValue('subtype', unit.subtype, unit.name);
-            this.addSearchIndexValue('_techBaseDisplay', unit._techBaseDisplay, unit.name);
-            this.addSearchIndexValue('role', unit.role, unit.name);
-            this.addSearchIndexValue('weightClass', unit.weightClass, unit.name);
-            this.addSearchIndexValue('level', String(unit.level), unit.name);
-            this.addSearchIndexValue('c3', unit.c3, unit.name);
-            this.addSearchIndexValue('moveType', unit.moveType, unit.name);
-            this.addSearchIndexValue('as.TP', unit.as?.TP, unit.name);
-            this.addSearchIndexValues('as.specials', unit.as?.specials ?? [], unit.name);
-            this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unit.name);
-            this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unit.name);
-            this.addSearchIndexValues('rulesRefs', unit.rulesRefs?.flat() ?? [], unit.name);
-            this.addSearchIndexValues('componentName', unit.comp.map(component => component.n), unit.name);
+            this.addSearchIndexValue('type', unit.type, unit.uuid);
+            this.addSearchIndexValue('subtype', unit.subtype, unit.uuid);
+            this.addSearchIndexValue('_techBaseDisplay', unit._techBaseDisplay, unit.uuid);
+            this.addSearchIndexValue('role', unit.role, unit.uuid);
+            this.addSearchIndexValue('weightClass', unit.weightClass, unit.uuid);
+            this.addSearchIndexValue('level', String(unit.level), unit.uuid);
+            this.addSearchIndexValue('c3', unit.c3, unit.uuid);
+            this.addSearchIndexValue('moveType', unit.moveType, unit.uuid);
+            this.addSearchIndexValue('as.TP', unit.as?.TP, unit.uuid);
+            this.addASSpecialIndexValues(this.asSpecialsByUnit.get(unit.uuid), unit.uuid);
+            this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unit.uuid);
+            this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unit.uuid);
+            this.addSearchIndexValues('rulesRefs', unit.rulesRefs?.flat() ?? [], unit.uuid);
+            this.addSearchIndexValues('componentName', unit.comp.map(component => component.n), unit.uuid);
             this.addComponentCountValues(unit);
             this.prepareUnitWeaponTypes(unit);
-            this.addSearchIndexValues('weaponType', unit._weaponTypes ?? [], unit.name);
-            this.addSearchIndexValues('features', unit.features ?? [], unit.name);
-            this.addSearchIndexValues('quirks', unit.quirks ?? [], unit.name);
-            this.addSearchIndexValues('_tags', getMergedTags(unit), unit.name);
+            this.addSearchIndexValues('weaponType', unit._weaponTypes ?? [], unit.uuid);
+            this.addSearchIndexValues('features', unit.features ?? [], unit.uuid);
+            this.addSearchIndexValues('quirks', unit.quirks ?? [], unit.uuid);
+            this.addSearchIndexValues('_tags', getMergedTags(unit), unit.uuid);
             for (const filter of BOOLEAN_FILTERS) {
-                this.addSearchIndexValue(filter.key, getBooleanFilterUnitValue(filter, unit[filter.key as keyof UnitSummary]) ? 'yes' : 'no', unit.name);
+                this.addSearchIndexValue(filter.key, getBooleanFilterUnitValue(filter, unit[filter.key as keyof UnitSummary]) ? 'yes' : 'no', unit.uuid);
             }
         }
 
@@ -317,8 +336,8 @@ export class UnitSearchIndexService {
                 : undefined;
             for (const referenceId of era.units as Set<number>) {
                 if (!extinctReferenceIdsForEra?.has(referenceId)) {
-                    for (const unitName of unitNamesByMulId.get(referenceId) ?? []) {
-                        this.addSearchIndexValue('era', era.name, unitName);
+                    for (const unitUuid of unitUuidsByMulId.get(referenceId) ?? []) {
+                        this.addSearchIndexValue('era', era.name, unitUuid);
                     }
                 }
             }
@@ -327,8 +346,8 @@ export class UnitSearchIndexService {
         for (const faction of factions) {
             for (const referenceIds of Object.values(faction.eras) as Set<number>[]) {
                 for (const referenceId of referenceIds) {
-                    for (const unitName of unitNamesByMulId.get(referenceId) ?? []) {
-                        this.addSearchIndexValue('faction', faction.name, unitName);
+                    for (const unitUuid of unitUuidsByMulId.get(referenceId) ?? []) {
+                        this.addSearchIndexValue('faction', faction.name, unitUuid);
                     }
                 }
             }
@@ -339,7 +358,7 @@ export class UnitSearchIndexService {
         }
 
         this.rebuildDropdownOptionUniverse(eras, factions);
-        this.factionEraSnapshot = this.createFactionEraSnapshot(unitNamesByMulId, eras, factions);
+        this.factionEraSnapshot = this.createFactionEraSnapshot(unitUuidsByMulId, eras, factions);
     }
 
     public rebuildTagSearchIndex(units: UnitSummary[]): void {
@@ -355,7 +374,7 @@ export class UnitSearchIndexService {
                     unitIds = new Set<string>();
                     tagIndex.set(tag, unitIds);
                 }
-                unitIds.add(unit.name);
+                unitIds.add(unit.uuid);
             }
         }
 
@@ -380,13 +399,17 @@ export class UnitSearchIndexService {
         return this.searchFilterValues.get(filterKey) ?? [];
     }
 
+    public getIndexedASSpecials(unitUuid: string): ParsedASSpecials | undefined {
+        return this.asSpecialsByUnit.get(unitUuid);
+    }
+
     public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
         const snapshot: UnitSearchWorkerIndexSnapshot = {};
 
         for (const [filterKey, valueMap] of this.searchFilterIndex.entries()) {
             snapshot[filterKey] = {};
-            for (const [value, unitNames] of valueMap.entries()) {
-                snapshot[filterKey][value] = Array.from(unitNames);
+            for (const [value, unitUuids] of valueMap.entries()) {
+                snapshot[filterKey][value] = Array.from(unitUuids);
             }
         }
 
@@ -399,7 +422,24 @@ export class UnitSearchIndexService {
         );
     }
 
-    public getDropdownOptionUniverse(filterKey: string): Array<{ name: string; img?: string }> {
+    public getFactionEraUnitUuids(
+        eraNames: readonly string[],
+        factionNames: readonly string[],
+    ): ReadonlySet<string> {
+        const unitUuids = new Set<string>();
+
+        for (const eraName of eraNames) {
+            for (const factionName of factionNames) {
+                for (const unitUuid of this.factionEraSnapshot[eraName]?.[factionName] ?? []) {
+                    unitUuids.add(unitUuid);
+                }
+            }
+        }
+
+        return unitUuids;
+    }
+
+    public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {
         return this.dropdownOptionUniverse.get(filterKey)?.map(option => ({ ...option })) ?? [];
     }
 
@@ -416,7 +456,7 @@ export class UnitSearchIndexService {
     }
 
     private rebuildDropdownOptionUniverse(eras: Era[], factions: Faction[]): void {
-        this.dropdownOptionUniverse = new Map<string, Array<{ name: string; img?: string }>>();
+        this.dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
         for (const filterKey of [
             'type',
             'subtype',
@@ -437,14 +477,38 @@ export class UnitSearchIndexService {
             'quirks',
             '_tags',
         ]) {
-            this.dropdownOptionUniverse.set(filterKey, this.getIndexedFilterValues(filterKey).map(name => ({ name })));
+            this.dropdownOptionUniverse.set(filterKey, this.getIndexedFilterValues(filterKey).map(name => ({
+                name,
+                ...(filterKey === 'as.specials' && (this.asSpecialFieldCounts.get(name) ?? 0) > 0
+                    ? {
+                        minimumFieldLabels: getASSpecialMinimumFieldLabels(
+                            name,
+                            this.asSpecialFieldCounts.get(name) ?? 0,
+                        ),
+                    }
+                    : {}),
+            })));
         }
 
         this.dropdownOptionUniverse.set('era', eras.map(era => ({ name: era.name, img: era.img })));
         this.dropdownOptionUniverse.set('faction', factions.map(faction => ({ name: faction.name, img: faction.img })));
     }
 
-    private createFactionEraSnapshot(unitNamesByMulId: Map<number, string[]>, eras: Era[], factions: Faction[]): UnitSearchWorkerFactionEraSnapshot {
+    private addASSpecialIndexValues(parsedSpecials: ParsedASSpecials | undefined, unitUuid: string): void {
+        for (const occurrence of parsedSpecials?.occurrences ?? []) {
+            if (!occurrence.token) {
+                continue;
+            }
+
+            this.addSearchIndexValue('as.specials', occurrence.token, unitUuid);
+            const currentFieldCount = this.asSpecialFieldCounts.get(occurrence.token) ?? 0;
+            if (occurrence.values.length > currentFieldCount) {
+                this.asSpecialFieldCounts.set(occurrence.token, occurrence.values.length);
+            }
+        }
+    }
+
+    private createFactionEraSnapshot(unitUuidsByMulId: Map<number, string[]>, eras: Era[], factions: Faction[]): UnitSearchWorkerFactionEraSnapshot {
         const snapshot: UnitSearchWorkerFactionEraSnapshot = {};
         const erasById = new Map<number, Era>(eras.map(era => [era.id, era]));
 
@@ -459,35 +523,35 @@ export class UnitSearchIndexService {
                     continue;
                 }
 
-                const unitNames: string[] = [];
+                const unitUuids: string[] = [];
                 for (const referenceId of referenceIds) {
-                    unitNames.push(...(unitNamesByMulId.get(referenceId) ?? []));
+                    unitUuids.push(...(unitUuidsByMulId.get(referenceId) ?? []));
                 }
 
                 snapshot[era.name] ??= {};
-                snapshot[era.name][faction.name] = unitNames;
+                snapshot[era.name][faction.name] = unitUuids;
             }
         }
 
         return snapshot;
     }
 
-    private createUnitNamesByMulId(units: UnitSummary[]): Map<number, string[]> {
-        const unitNamesByMulId = new Map<number, string[]>();
+    private createUnitUuidsByMulId(units: UnitSummary[]): Map<number, string[]> {
+        const unitUuidsByMulId = new Map<number, string[]>();
 
         for (const unit of units) {
-            const names = unitNamesByMulId.get(unit.id);
-            if (names) {
-                names.push(unit.name);
+            const uuids = unitUuidsByMulId.get(unit.id);
+            if (uuids) {
+                uuids.push(unit.uuid);
             } else {
-                unitNamesByMulId.set(unit.id, [unit.name]);
+                unitUuidsByMulId.set(unit.id, [unit.uuid]);
             }
         }
 
-        return unitNamesByMulId;
+        return unitUuidsByMulId;
     }
 
-    private addSearchIndexValue(filterKey: string, value: string | undefined, unitName: string): void {
+    private addSearchIndexValue(filterKey: string, value: string | undefined, unitUuid: string): void {
         if (!value) {
             return;
         }
@@ -505,12 +569,12 @@ export class UnitSearchIndexService {
             filterIndex.set(normalizedValue, unitIds);
         }
 
-        unitIds.add(unitName);
+        unitIds.add(unitUuid);
     }
 
-    private addSearchIndexValues(filterKey: string, values: Iterable<string>, unitName: string): void {
+    private addSearchIndexValues(filterKey: string, values: Iterable<string>, unitUuid: string): void {
         for (const value of values) {
-            this.addSearchIndexValue(filterKey, value, unitName);
+            this.addSearchIndexValue(filterKey, value, unitUuid);
         }
     }
 
@@ -523,7 +587,7 @@ export class UnitSearchIndexService {
                 this.componentCountIndex.set(normalizedName, unitCounts);
             }
 
-            unitCounts.set(unit.name, (unitCounts.get(unit.name) || 0) + component.q);
+            unitCounts.set(unit.uuid, (unitCounts.get(unit.uuid) || 0) + component.q);
         }
     }
 

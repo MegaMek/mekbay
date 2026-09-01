@@ -39,8 +39,9 @@ import { LoadingSpinnerComponent } from './components/loading-spinner/loading-sp
 import { LobbyService } from './services/lobby.service';
 
 import { GameSystem } from './models/common.model';
-import { Router, RouterOutlet } from '@angular/router';
+import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { UrlService } from './services/url.service';
+import { SeoService } from './services/seo.service';
 
 const ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY = 'mekbayAndroidPwaBackExit';
 const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
@@ -62,6 +63,7 @@ const PENDING_UPDATE_RELOAD_AFTER_NO_FOCUS_MS = 6 * 60 * 60 * 1000; // 6 hours
     OverlayModule,
     PortalModule,
     LoadingSpinnerComponent,
+    RouterLink,
     RouterOutlet
 ],
     templateUrl: './app.html',
@@ -82,6 +84,7 @@ export class App {
     private wsService = inject(WsService);
     private dialogService = inject(DialogsService);
     private toastService = inject(ToastService);
+    private seoService = inject(SeoService);
     protected optionsService = inject(OptionsService);
     public unitSearchFiltersService = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
@@ -130,6 +133,7 @@ export class App {
     protected unitSearchPortalForceBuilder = signal<DomPortal<any> | undefined>(undefined);
 
     constructor() {
+        this.seoService.initialize();
         // if ("virtualKeyboard" in navigator) {
         //     (navigator as any).virtualKeyboard.overlaysContent = true; // Opt out of the automatic handling.
         // }

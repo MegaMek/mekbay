@@ -170,14 +170,10 @@ describe('buildUnitComponentMetadata', () => {
 
     const components = buildUnitComponentMetadata(entity)!;
     expect(components.filter(component => component.id === 'Patchwork Armor')).toHaveSize(1);
-    expect(components.filter(component => component.id === 'Standard Armor')).toHaveSize(1);
-    expect(components.filter(component => component.id === 'IS Reactive')).toHaveSize(1);
+    expect(components.filter(component => component.id === 'Standard Armor')).toHaveSize(0);
+    expect(components.filter(component => component.id === 'IS Reactive')).toHaveSize(0);
     expect(components.find(component => component.id === 'Patchwork Armor')?.n).toBe('Patchwork Armor');
-    expect(components.find(component => component.id === 'Standard Armor')?.n).toBe('Standard Armor');
-    expect(components.find(component => component.id === 'IS Reactive')?.n).toBe('Reactive Armor');
-    expect(components.filter(component => [
-      'Patchwork Armor', 'Standard Armor', 'IS Reactive',
-    ].includes(component.id)).every(component => component.p === -1)).toBeTrue();
+    expect(components.find(component => component.id === 'Patchwork Armor')?.p).toBe(-1);
   });
 
   it('exports intrinsic ammo damage for a special one-shot weapon', () => {
@@ -322,6 +318,23 @@ describe('buildUnitComponentMetadata', () => {
     entity.setUniformStructure(new MountedStructure({ structure: labeled, tonnage: entity.tonnage() }));
     expect(buildUnitComponentMetadata(entity)!.find(component => component.id === 'Endo Steel')?.n)
       .toBe('Endo Steel Structure');
+  });
+
+  it('keeps hybrid Mek structure materials out of component inventory', () => {
+    const entity = new BipedMekEntity();
+    const standard = new StructureEquipment({
+      id: 'Standard', name: 'Standard', type: 'structure', structure: { typeId: 0 },
+    });
+    const composite = new StructureEquipment({
+      id: 'Composite', name: 'Composite', type: 'structure', structure: { typeId: 5 },
+      flags: ['F_COMPOSITE'],
+    });
+    entity.setUniformStructure(new MountedStructure({ structure: standard, tonnage: entity.tonnage() }));
+    entity.setStructureAt('LA', new MountedStructure({ structure: composite, tonnage: entity.tonnage() }));
+
+    const components = buildUnitComponentMetadata(entity)!;
+    expect(components.some(component => component.id === 'Standard')).toBeFalse();
+    expect(components.some(component => component.id === 'Composite')).toBeFalse();
   });
 });
 

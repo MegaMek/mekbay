@@ -39,6 +39,15 @@ import { UACFiringModeHandler } from '../../equipment-handlers/uac-firing-mode.h
 import { EquipmentFlag } from '../../models/equipment-flags.type';
 import { EquipmentRegistry } from '../../models/equipment-lookup';
 import { AmmoMunitionFlag } from '../../models/ammo-munition-flags.type';
+import { NovaCewsHandler } from '../../equipment-handlers/nova-cews.handler';
+import { NOVA_CEWS_OFF_STATE, NOVA_CEWS_STATE_KEY } from '../../utils/ecm-state.util';
+import { CoolantPodHandler } from '../../equipment-handlers/coolant-pod.handler';
+import { ShieldModeHandler } from '../../equipment-handlers/shield-mode.handler';
+import { SHIELD_INACTIVE_MODE, SHIELD_RAISED_MODE } from '../../utils/shield-mode.util';
+import { C3Handler } from '../../equipment-handlers/c3.handler';
+import { MgaActivationHandler } from '../../equipment-handlers/mga-activation.handler';
+import { MGA_ACTIVATION_STATE_KEY, MGA_OFF_STATE } from '../../utils/mga-state.util';
+import { PrototypeLaserHandler } from '../../equipment-handlers/prototype-laser.handler';
 
 function weapon(id: string, ammoType: Extract<AmmoType, 'NA' | 'AC' | 'ATM' | 'MML' | 'MRM' | 'AC_ULTRA' | 'NARC'> = 'NA', rackSize = 0, ranges: number[] = [1, 2, 3, 4], toHitModifier = 0, heat = 0): WeaponEquipment {
     const flags: EquipmentFlag[] = ammoType === 'MRM'
@@ -135,6 +144,7 @@ interface CreateComponentOptions {
     equipmentStatusesAtLocation?: ReadonlyMap<MountedEquipment, ReadonlyMap<string, EquipmentStatus>>;
     applyUnitDisplayEffects?: (entry: MountedEquipment, display: InventoryControlDisplayData) => InventoryControlDisplayData;
     resolveEquipmentActionPermission?: (entry: MountedEquipment, action: EquipmentAction) => boolean;
+    resolveConfigureNetworkPermission?: (entry: MountedEquipment) => boolean;
     hasIndependentInventoryControlAction?: (entry: MountedEquipment) => boolean;
 }
 
@@ -171,6 +181,7 @@ function createComponent(
     };
     const dialogsService = {
         createDialog: jasmine.createSpy('createDialog').and.returnValue({ closed: { subscribe: jasmine.createSpy('subscribe') } }),
+        requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml').and.resolveTo(),
         showError: jasmine.createSpy('showError').and.resolveTo()
     };
@@ -201,6 +212,7 @@ function createComponent(
         hasDirectInventory: options.hasDirectInventory,
         applyInventoryControlDisplayEffects: options.applyUnitDisplayEffects,
         resolveEquipmentActionPermission: options.resolveEquipmentActionPermission,
+        resolveConfigureNetworkPermission: options.resolveConfigureNetworkPermission,
         hasIndependentInventoryControlAction: options.hasIndependentInventoryControlAction,
     });
     const unit = unitHarness.unit;
@@ -249,7 +261,311 @@ function createComponent(
     };
 }
 
+function machineGunArrayEntries(state?: string) {
+    const arrayType = new WeaponEquipment({
+        id: 'ISMGA',
+        name: 'Machine Gun Array',
+        type: 'weapon',
+        flags: ['F_MGA'],
+        weapon: { ammoType: 'MG', rackSize: 2, damage: 2, ranges: [1, 2, 3, 4] },
+    });
+    const gunType = new WeaponEquipment({
+        id: 'ISMachineGun',
+        name: 'Machine Gun',
+        type: 'weapon',
+        flags: ['F_MG'],
+        weapon: { ammoType: 'MG', rackSize: 2, damage: 2, ranges: [1, 2, 3, 4] },
+    });
+    const ammoType = new AmmoEquipment({
+        id: 'ISMG Ammo',
+        name: 'MG Ammo',
+        shortName: 'MG Ammo',
+        type: 'ammo',
+        ammo: { type: 'MG', rackSize: 2, shots: 100 },
+    });
+    const array = entry({
+        id: 'mga',
+        equipment: arrayType,
+        locations: new Set(['LT']),
+        states: state ? new Map([[MGA_ACTIVATION_STATE_KEY, state]]) : undefined,
+    });
+    const members = Array.from({ length: 3 }, (_, index) => entry({
+        id: `mg-${index + 1}`,
+        equipment: gunType,
+        locations: new Set(['LT']),
+    }));
+    const ammoBin = entry({
+        id: 'mg-ammo',
+        equipment: ammoType,
+        locations: new Set(['LT']),
+        totalAmmo: 100,
+        consumed: 9,
+    });
+    array.setLinkedEquipment(members);
+    return {
+        array,
+        members,
+        ammoBin,
+        // Deliberately flat and out of hierarchy order: presentation must regroup the bay.
+        entries: [members[0], array, members[1], members[2], ammoBin],
+    };
+}
+
 describe('WeaponsEquipmentPanelComponent', () => {
+    it('renders an active MGA as one selectable controller with nested controlled guns', async () => {
+        const { entries } = machineGunArrayEntries();
+        const { component, fixture, unit, dialogsService } = createComponent(entries, {}, [], new Map(), {
+            handlers: [new MgaActivationHandler()],
+        });
+        const ranged = component.groups().find(group => group.id === 'ranged')!;
+        const arrayRow = ranged.rows.find(row => row.id === 'mga')!;
+        const renderedRows = Array.from(
+            fixture.nativeElement.querySelectorAll('.weapon-equipment-row'),
+        ) as HTMLElement[];
+
+        expect(ranged.rows.map(row => row.id)).toEqual(['mga', 'mg-1', 'mg-2', 'mg-3']);
+        expect(renderedRows[0].classList).toContain('mga-array-row');
+        expect(renderedRows.slice(1).every(row => row.classList.contains('mga-member-controlled'))).toBeTrue();
+        expect(renderedRows.slice(1).every(row => !!row.querySelector('.select-cell .mga-branch'))).toBeTrue();
+        expect(renderedRows.slice(1).every(row => !row.querySelector('.name-cell .mga-branch'))).toBeTrue();
+        expect(renderedRows.slice(1).map(row => row.querySelector('.mga-membership-badge')?.textContent?.trim()))
+            .toEqual(['Linked', 'Linked', 'Linked']);
+        expect(renderedRows.flatMap(row => Array.from(row.querySelectorAll('.select-cell input, .select-cell button')))).toHaveSize(1);
+        expect(fixture.nativeElement.querySelectorAll('.ammo-cell')).toHaveSize(1);
+        expect(fixture.nativeElement.querySelector('.mga-array-summary')?.textContent?.trim())
+            .toBe('3 guns · 3 ammo/attack · Cluster +2');
+        expect(arrayRow.display.damage).toBe('2/Sht [AI,DB]');
+
+        unit.createInventoryControlTarget();
+        unit.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelectorAll('.weapon-equipment-row .target-selector')).toHaveSize(1);
+
+        component.toggleSelected(arrayRow);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(unit.getInventory().find(candidate => candidate.id === 'mg-ammo')?.consumed).toBe(12);
+        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
+            jasmine.stringMatching(/3 ammo from MG Ammo/),
+            'Weapons Fired',
+        );
+    });
+
+    it('does not advertise the Core MGA cluster bonus under Total Warfare rules', () => {
+        const { entries } = machineGunArrayEntries();
+        const { component } = createComponent(entries, {}, [], new Map(), {
+            handlers: [new MgaActivationHandler()],
+            gameRules: TW_GAME_RULES,
+        });
+        const arrayRow = component.groups().find(group => group.id === 'ranged')!.rows
+            .find(row => row.id === 'mga')!;
+
+        expect(component.machineGunArraySummary(arrayRow))
+            .toBe('3 guns · 3 ammo/attack · Cluster roll');
+    });
+
+    it('shows the same MGA hierarchy but restores individual gun controls while the array is off', async () => {
+        const { entries } = machineGunArrayEntries(MGA_OFF_STATE);
+        const { component, fixture, unit } = createComponent(entries, {}, [], new Map(), {
+            handlers: [new MgaActivationHandler()],
+        });
+        const ranged = component.groups().find(group => group.id === 'ranged')!;
+        const arrayRow = ranged.rows.find(row => row.id === 'mga')!;
+        const firstMember = ranged.rows.find(row => row.id === 'mg-1')!;
+        const renderedRows = Array.from(
+            fixture.nativeElement.querySelectorAll('.weapon-equipment-row'),
+        ) as HTMLElement[];
+
+        expect(component.isSelectable(arrayRow)).toBeFalse();
+        expect(ranged.rows.slice(1).every(row => component.isSelectable(row))).toBeTrue();
+        expect(renderedRows.slice(1).every(row => !row.classList.contains('mga-member-controlled'))).toBeTrue();
+        expect(renderedRows.slice(1).every(row => !row.querySelector('.mga-branch'))).toBeTrue();
+        expect(renderedRows.slice(1).map(row => row.querySelector('.mga-membership-badge')?.textContent?.trim()))
+            .toEqual(['Unlinked', 'Unlinked', 'Unlinked']);
+        expect(fixture.nativeElement.querySelectorAll('.weapon-equipment-row .select-cell input')).toHaveSize(3);
+        expect(fixture.nativeElement.querySelectorAll('.ammo-cell')).toHaveSize(3);
+        expect(component.handlerChoices(arrayRow)[0].label).toBe('Array unlinked');
+        expect(fixture.nativeElement.querySelector('.mga-array-summary')?.textContent?.trim())
+            .toBe('3 guns · Individual fire');
+
+        component.toggleSelected(firstMember);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(unit.getInventory().find(candidate => candidate.id === 'mg-ammo')?.consumed).toBe(10);
+    });
+
+    it('reduces an active MGA to its working guns and consumes only their rounds', async () => {
+        const { entries, members } = machineGunArrayEntries();
+        members[1].setCommittedDestroyed(true);
+        const { component, fixture, unit } = createComponent(entries, {}, [], new Map(), {
+            handlers: [new MgaActivationHandler()],
+        });
+        const arrayRow = component.groups().find(group => group.id === 'ranged')!.rows
+            .find(row => row.id === 'mga')!;
+
+        expect(fixture.nativeElement.querySelector('.mga-array-summary')?.textContent?.trim())
+            .toBe('2/3 guns · 2 ammo/attack · Cluster +2');
+        expect(arrayRow.display.damage).toBe('2/Sht [AI,DB]');
+
+        component.toggleSelected(arrayRow);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(unit.getInventory().find(candidate => candidate.id === 'mg-ammo')?.consumed).toBe(11);
+    });
+
+    it('blocks an MGA attack atomically when its shared bin lacks one round per working gun', async () => {
+        const { entries, ammoBin } = machineGunArrayEntries();
+        ammoBin.totalAmmo = 10;
+        ammoBin.consumed = 8;
+        const { component, unit, dialogsService } = createComponent(entries, {}, [], new Map(), {
+            handlers: [new MgaActivationHandler()],
+        });
+        const arrayRow = component.groups().find(group => group.id === 'ranged')!.rows
+            .find(row => row.id === 'mga')!;
+
+        component.toggleSelected(arrayRow);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(unit.getInventory().find(candidate => candidate.id === 'mg-ammo')?.consumed).toBe(8);
+        expect(dialogsService.showError).toHaveBeenCalledWith(
+            'MG Ammo (2/10) does not have enough ammo for the selected weapons.',
+            'Not Enough Ammo',
+        );
+        expect(dialogsService.showNoticeHtml).not.toHaveBeenCalled();
+    });
+
+    for (const status of ['destroyed', 'disabled'] as const) {
+        it(`keeps C3 Configure clickable for an owned ${status} endpoint`, async () => {
+            const c3 = entry({
+                id: 'c3-master',
+                equipment: misc('C3 Master', ['F_C3M', 'ANY_C3']),
+            });
+            const handler = new C3Handler();
+            const selection = spyOn(handler, 'handleSelection').and.resolveTo(true);
+            const { component, fixture } = createComponent(
+                [c3],
+                {},
+                [],
+                new Map([[c3, status]]),
+                {
+                    handlers: [handler],
+                    resolveConfigureNetworkPermission: () => true,
+                },
+            );
+            const row = component.groups().find(group => group.id === 'equipment')!.rows[0];
+            const choice = component.handlerChoices(row)[0];
+
+            expect(choice).toEqual(jasmine.objectContaining({
+                label: 'Configure',
+                disabled: false,
+            }));
+            expect((fixture.nativeElement.querySelector('.control-button') as HTMLButtonElement).disabled).toBeFalse();
+
+            await component.handleChoice(row, choice);
+
+            expect(selection).toHaveBeenCalledOnceWith(c3, choice, jasmine.any(Object));
+        });
+    }
+
+    it('opens C3 Configure from a read-only panel without enabling other edits', async () => {
+        const c3 = entry({
+            id: 'c3-master',
+            equipment: misc('C3 Master', ['F_C3M', 'ANY_C3']),
+        });
+        const handler = new C3Handler();
+        const selection = spyOn(handler, 'handleSelection').and.resolveTo(true);
+        const { component, fixture } = createComponent(
+            [c3],
+            {},
+            [],
+            undefined,
+            {
+                handlers: [handler],
+                readOnly: true,
+                resolveConfigureNetworkPermission: () => true,
+            },
+        );
+        const row = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        const choice = component.handlerChoices(row)[0];
+
+        expect(component.handlerChoiceDisabled(choice)).toBeFalse();
+        expect((fixture.nativeElement.querySelector('.control-button') as HTMLButtonElement).disabled).toBeFalse();
+
+        await component.handleChoice(row, choice);
+
+        expect(selection).toHaveBeenCalledOnceWith(c3, choice, jasmine.any(Object));
+    });
+
+    it('shows a Coolant Pod as Equipment with a direct use action', async () => {
+        const coolantPod = new AmmoEquipment({
+            id: 'Coolant Pod',
+            name: 'Coolant Pod',
+            type: 'ammo',
+            ammo: { type: 'COOLANT_POD', shots: 1 },
+        });
+        const mounted = entry({
+            id: coolantPod.id,
+            equipment: coolantPod,
+            totalAmmo: 1,
+            consumed: 0,
+            locations: new Set(['LA']),
+        });
+        const { component } = createComponent(
+            [mounted],
+            { [coolantPod.internalName]: coolantPod },
+            [],
+            undefined,
+            { handlers: [new CoolantPodHandler()] },
+        );
+
+        const equipmentGroup = component.groups().find(group => group.id === 'equipment');
+        expect(equipmentGroup?.rows.length).toBe(1);
+        const row = equipmentGroup!.rows[0];
+        expect(row.display).toEqual(jasmine.objectContaining({
+            name: 'Coolant Pod',
+            location: 'LA',
+            heat: '—',
+        }));
+        expect(row.tracksAmmo).toBeFalse();
+        const choice = component.handlerChoices(row)[0];
+        expect(choice.label).toBe('Use Coolant Pod');
+
+        await component.handleChoice(row, choice);
+
+        const updatedRow = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        expect(component.handlerChoices(updatedRow)[0]).toEqual(jasmine.objectContaining({
+            label: 'Coolant Pod Expended',
+            disabled: true,
+        }));
+    });
+
+    it('renders Core shield state as a Lowered/Raised mode selector', async () => {
+        const shield = entry({
+            id: 'Shield (Medium)',
+            equipment: misc('Shield (Medium)', ['F_SHIELD', 'S_SHIELD_MEDIUM']),
+            locations: new Set(['LA']),
+        });
+        const { component } = createComponent(
+            [shield],
+            {},
+            [],
+            undefined,
+            { handlers: [new ShieldModeHandler()] },
+        );
+        let row = component.groups().find(group => group.id === 'physical')!.rows[0];
+        let choice = component.modeChoice(row)!;
+
+        expect(choice.value).toBe(SHIELD_INACTIVE_MODE);
+        expect(choice.choices?.map(option => option.label)).toEqual(['Lowered', 'Raised']);
+        expect(component.modeText(row, choice)).toBe('Lowered');
+
+        await component.selectHandlerDropdown(row, choice, SHIELD_RAISED_MODE);
+
+        row = component.groups().find(group => group.id === 'physical')!.rows[0];
+        choice = component.modeChoice(row)!;
+        expect(component.modeText(row, choice)).toBe('Raised');
+    });
+
     it('shows base Gunnery and Piloting in section headings', () => {
         const laser = entry({ id: 'laser', equipment: weapon('Medium Laser') });
         const charge = entry({ id: 'Charge', intrinsicPhysicalAttack: true });
@@ -455,6 +771,52 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(row?.display.location).toBe('*');
     });
 
+    it('shows a wildcard location for equipment spanning more than three locations', () => {
+        const nullSignature = entry({
+            id: 'null-signature',
+            equipment: misc('Null Signature System', ['F_NULL_SIG']),
+            locations: new Set(['CT', 'RT', 'LT', 'RA', 'LA', 'RL', 'LL']),
+        });
+        const { component, fixture } = createComponent([nullSignature]);
+
+        const row = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        const locationCell = fixture.nativeElement.querySelector('.location-cell') as HTMLElement;
+
+        expect(row.display.location).toBe('*');
+        expect(locationCell.textContent?.trim()).toBe('*');
+    });
+
+    it('shows active Nova CEWS heat in the Equipment row', () => {
+        const nova = entry({
+            id: 'nova',
+            equipment: misc('Nova CEWS', ['F_NOVA']),
+            locations: new Set(['CT']),
+            el: svgEntry(`
+                <g>
+                    <g class="name"><text>Nova CEWS</text></g>
+                    <text class="heat">—</text>
+                </g>
+            `),
+        });
+        const { component, fixture } = createComponent([nova], {}, [], new Map(), {
+            handlers: [new NovaCewsHandler()],
+        });
+
+        const row = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        expect(row.firingHeat).toBe(2);
+        expect(row.display.heat).toBe('2');
+        expect((fixture.nativeElement.querySelector('.heat-cell') as HTMLElement).textContent?.trim()).toBe('2');
+
+        nova.setState(NOVA_CEWS_STATE_KEY, NOVA_CEWS_OFF_STATE);
+        nova.owner.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        const offRow = component.groups().find(group => group.id === 'equipment')!.rows[0];
+        expect(offRow.firingHeat).toBeNull();
+        expect(offRow.display.heat).toBe('—');
+        expect((fixture.nativeElement.querySelector('.heat-cell') as HTMLElement).textContent?.trim()).toBe('—');
+    });
+
     it('excludes ammo in functionally destroyed locations from weapon ammo summaries', () => {
         const ac2 = weapon('AC/2', 'AC', 2);
         const ac2Ammo = ammo('AC/2 Ammo', 'AC', 2);
@@ -525,23 +887,23 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect(component.rowEffectivelyDestroyed(row)).toBeTrue();
     });
 
-    it('toggles BAP state and updates the next toggle label', async () => {
+    it('queues BAP power changes for the End Phase', async () => {
         const probe = entry({ id: 'probe', equipment: misc('Bloodhound Active Probe', ['F_BAP']), el: svgEntry('<g><g class="name"><text>Probe</text></g></g>') });
         const { component, toastService } = createComponent([probe], {}, [], undefined, { handlers: [new BAPHandler()] });
 
         let row = component.groups().find(group => group.id === 'equipment')!.rows[0];
         let choice = component.handlerChoices(row)[0];
-        expect(choice.label).toBe('Active Probe is OFF');
-        expect(choice.value).toBe('enabled');
+        expect(choice.label).toBe('Active Probe is ON');
+        expect(choice.value).toBe('disabling');
 
         await component.handleChoice(row, choice);
         row = component.groups().find(group => group.id === 'equipment')!.rows[0];
         choice = component.handlerChoices(row)[0];
 
-        expect(probe.states?.get('state')).toBe('enabled');
-        expect(choice.label).toBe('Active Probe is ON');
-        expect(choice.value).toBe('disabled');
-        expect(toastService.showToast).toHaveBeenCalledWith('Bloodhound Active Probe is enabled', 'info');
+        expect(probe.states?.get('powerState')).toBe('disabling');
+        expect(choice.label).toBe('Turning Active Probe off…');
+        expect(choice.value).toBe('enabled');
+        expect(toastService.showToast).toHaveBeenCalledWith('Bloodhound Active Probe is disabling', 'info');
     });
 
     it('splits Battle Armor trooper weapons and locks ammo to the same trooper', () => {
@@ -2644,6 +3006,63 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         expect(turnState.addFiredHeat).toHaveBeenCalledOnceWith(4);
         expect(turnState.heatSources()).toContain(jasmine.objectContaining({ id: 'weapons', value: 10 }));
+    });
+
+    it('commits and reports the exact random heat rolled by a prototype laser', async () => {
+        const prototype = entry({
+            id: 'prototype-medium-pulse-laser',
+            equipment: weapon('ISMediumPulseLaserPrototype', 'NA', 0, [1, 2, 3, 4], 0, 4),
+            el: svgEntry('<g><g class="name"><text>Prototype Medium Pulse Laser</text></g><text class="heat">4*</text></g>')
+        });
+        spyOn(Math, 'random').and.returnValue(5 / 6);
+        const { component, dialogsService, heat, turnState } = createComponent(
+            [prototype],
+            {},
+            [],
+            new Map(),
+            {
+                handlers: [new PrototypeLaserHandler()],
+                heatDissipation: 3,
+                heatNext: 10,
+            },
+        );
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect((turnState.addFiredHeat as jasmine.Spy).calls.allArgs()).toEqual([[4], [6]]);
+        expect(turnState.heatSources()).toContain(jasmine.objectContaining({ id: 'weapons', value: 10 }));
+        expect(heat.next).toBe(17);
+        expect(dialogsService.showNoticeHtml).toHaveBeenCalledWith(
+            jasmine.stringMatching(/Heat Projection: \+10[\s\S]*ISMediumPulseLaserPrototype: \+6 heat \(1D6 roll: 6\)/),
+            'Weapons Fired',
+        );
+    });
+
+    it('applies dissipation to random prototype-laser heat before updating a manual heat target', async () => {
+        const prototype = entry({
+            id: 'prototype-medium-pulse-laser',
+            equipment: weapon('ISMediumPulseLaserPrototype', 'NA', 0, [1, 2, 3, 4], 0, 4),
+        });
+        spyOn(Math, 'random').and.returnValue(5 / 6);
+        const { component, heat } = createComponent(
+            [prototype],
+            {},
+            [],
+            new Map(),
+            {
+                handlers: [new PrototypeLaserHandler()],
+                heatDissipation: 20,
+                heatNext: 0,
+            },
+        );
+        const row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+
+        component.toggleSelected(row);
+        await component.consumeSelectedHeatAndAmmo();
+
+        expect(heat.next).toBe(0);
     });
 
     it('uses only the remaining dissipation after heat was applied this turn', () => {

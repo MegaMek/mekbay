@@ -480,6 +480,21 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         expect(component.nodeRuntimeStatuses().get('master')).toEqual(['OFFLINE']);
     });
 
+    it('uses endpoint operation rather than configuration permission for OFFLINE', async () => {
+        const { component } = await createComponent();
+        const master = c3Unit('master', [C3_FLAGS.NOVA]);
+        spyOn(master.unit, 'canPerformEquipmentAction').and.returnValue(true);
+        master.actionUnavailableComponents.set(new Set([0]));
+        component.nodes.set([node(master, 0, 0)]);
+        component.networks.set([{
+            id: 'network', type: C3NetworkType.NOVA, color: '#7B1FA2',
+            peerIds: ['master'],
+        }]);
+
+        expect(component.nodeRuntimeStatuses().get('master')).toEqual(['OFFLINE']);
+        expect(master.unit.canPerformEquipmentAction(master.unit.getInventory()[0], 'configure-network')).toBeTrue();
+    });
+
     it('does not show OFFLINE for a local endpoint when only its remote endpoint is unavailable', async () => {
         const { component } = await createComponent();
         const master = c3Unit('master', [C3_FLAGS.C3M]);

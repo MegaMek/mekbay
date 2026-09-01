@@ -4,11 +4,11 @@
 
 import { computed } from '@angular/core';
 import type { CBTForceUnit, EquipmentAction } from '../cbt-force-unit.model';
-import type { CrewStateControlDefinition, CrewStateDefinition, UnitConditionControl, UnitRuleModifier } from './unit-type-rules';
+import type { CrewStateControlDefinition, CrewStateDefinition, PSRModifier, UnitConditionControl, UnitRuleModifier } from './unit-type-rules';
 import type { EquipmentStatus, EquipmentStatusFacts, UnitSystemStatusFacts } from '../equipment-status.model';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
 import { crewStateDefinitions, sortPSRModifiers, unitConditionControls, UnitTypeRulesBase } from './unit-type-rules';
-import type { PSRCheck, TurnState } from '../turn-state.model';
+import type { TurnState } from '../turn-state.model';
 import type { MountedEquipment } from '../mounted-equipment.model';
 import type { CriticalSlot } from '../force-serialization';
 import { WeaponEquipment } from '../equipment.model';
@@ -131,7 +131,7 @@ export class VehicleRules extends UnitTypeRulesBase {
     protected override buildRuleModifiers(): UnitRuleModifier[] {
         const status = this.systemsStatus();
         const modifiers: UnitRuleModifier[] = [];
-        if (this.unit.getUnit().armorType === 'Hardened') {
+        if (this.unit.hasArmorType('HARDENED')) {
             modifiers.push({ label: 'Mounts Hardened Armor', values: { psr: 1 } });
         }
         if (status.commanderHit) {
@@ -255,7 +255,7 @@ export class VehicleRules extends UnitTypeRulesBase {
         }
     }
 
-    override readonly PSRModifiers = computed<{ modifier: number; modifiers: PSRCheck[] }>(() => {
+    override readonly PSRModifiers = computed<{ modifier: number; modifiers: PSRModifier[] }>(() => {
         const projected = this.psrModifiers();
         return {
             modifier: projected.reduce((total, modifier) => total + modifier.modifier, 0),
@@ -263,7 +263,7 @@ export class VehicleRules extends UnitTypeRulesBase {
         };
     });
 
-    override readonly PSRTargetRoll = computed<number>(() => this.unit.pilotingSkill() + this.PSRModifiers().modifier);
+    override readonly PSRTargetRoll = computed<number>(() => this.getBasePilotingSkill() + this.PSRModifiers().modifier);
 
     override getUnitSystemStatusFacts(): UnitSystemStatusFacts {
         return {

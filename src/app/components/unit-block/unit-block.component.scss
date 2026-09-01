@@ -25,13 +25,15 @@
     pointer-events: none;
     width: 80px;
     max-height: 105px;
+    min-height: 64px;
     min-width: 80px;
     background: #0003;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     overflow: hidden;
-    padding: 2px;
+    padding: 1px;
     box-sizing: border-box;
     border: 1px solid var(--border-color);
     flex-grow: 1;
@@ -43,6 +45,20 @@
         align-items: center;
         position: relative;
         z-index: 2;
+
+        .compact-notification-row {
+            width: 100%;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .unit-chassis {
+            text-shadow: 
+                -0.7px 0 0 black, 
+                0.7px 0 0 black, 
+                0 -0.7px 0 black, 
+                0 0.7px 0 black;
+        }
     }
 
     &.destroyed {
@@ -117,8 +133,8 @@
 
     .pilot-info-list {
         position: absolute;
-        top: 0px;
-        right: -1px;
+        top: 2px;
+        right: 0px;
         display: flex;
         flex-direction: column;
         align-items: flex-end;
@@ -147,6 +163,17 @@
         .group-commander-icon {
             width: 16px;
         }
+    }
+
+    .dirty-state {
+        border-width: 0 0 32px 32px;
+    }
+
+    .move-badge {
+        width: 26px;
+        height: 26px;
+        padding: 0 2px 1px 0;
+        font-size: 10px;
     }
 }
 
@@ -198,6 +225,21 @@
     .unit-alias,
     .chassis {
         font-weight: bold;
+    }
+
+    .unit-name-line {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 4px;
+        line-height: 1.2;
+
+        .unit-alias,
+        .chassis {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
     }
 
     .unit-role {
@@ -442,26 +484,61 @@
     right: 0;
     z-index: 1;
     border-style: solid;
-    border-width: 0 0 30px 30px;
-    border-color: transparent transparent #666 transparent;
+    border-width: 0 0 40px 40px;
+    border-color: transparent transparent #a00 transparent;
+}
 
-    &.move {
-        border-color: transparent transparent var(--phase-move) transparent;
+.move-badge {
+    position: absolute;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    box-sizing: border-box;
+    width: 34px;
+    height: 34px;
+    bottom: 0;
+    right: 0;
+    z-index: 3;
+    padding: 0 3px 2px 0;
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+    color: var(--move-on-dark);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    pointer-events: none;
+
+    &::before {
+        position: absolute;
+        inset: 0;
+        content: '';
+        background: linear-gradient(
+            135deg,
+            transparent 50%,
+            var(--border-color) 50%,
+            var(--border-color) calc(50% + 1px),
+            transparent calc(50% + 1px)
+        );
     }
 
-    &.ranged {
-        border-color: transparent transparent var(--phase-ranged) transparent;
+    &.stationary {
+        background-color: var(--move-stationary);
     }
 
-    &.physical {
-        border-color: transparent transparent var(--phase-physical) transparent;
+    &.walk {
+        background-color: var(--move-walk);
+        color: var(--move-on-light);
     }
 
-    &.heat {
-        border-color: transparent transparent var(--phase-heat) transparent;
+    &.run {
+        background-color: var(--move-run);
     }
 
-    &.pending-effects {
-        border-color: transparent transparent var(--phase-pending-effects) transparent;
+    &.jump {
+        background-color: var(--move-jump);
+    }
+
+    &.sprint {
+        background-color: var(--move-sprint);
+        color: var(--move-on-light);
     }
 }

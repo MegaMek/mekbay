@@ -155,7 +155,7 @@ describe('UnitSearchComponent card virtualization', () => {
     };
 
     const dataServiceStub = {
-        getUnitByName: jasmine.createSpy('getUnitByName').and.returnValue(undefined),
+        getUnitByUuid: jasmine.createSpy('getUnitByUuid').and.returnValue(undefined),
     };
 
     const taggingServiceStub = {
@@ -218,8 +218,8 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.setBvNormalizationSettings.calls.reset();
         forceBuilderServiceStub.addUnit.calls.reset();
         forceBuilderServiceStub.addUnit.and.resolveTo(true);
-        dataServiceStub.getUnitByName.calls.reset();
-        dataServiceStub.getUnitByName.and.returnValue(undefined);
+        dataServiceStub.getUnitByUuid.calls.reset();
+        dataServiceStub.getUnitByUuid.and.returnValue(undefined);
         filtersServiceStub.setSearchText.and.callFake((text: string) => {
             filtersServiceStub.searchText.set(text);
             return text;
@@ -274,7 +274,7 @@ describe('UnitSearchComponent card virtualization', () => {
                                 style="height: 640px;">
                                 <div class="card-view-row"
                                     *cdkVirtualFor="let row of cardViewRows(); let rowIndex = index; trackBy: trackCardRow">
-                                    @for (unit of row; let columnIndex = $index; track unit.name) {
+                                    @for (unit of row; let columnIndex = $index; track unit.uuid) {
                                     <div class="card-view-cell" [class.active]="activeIndex() === getCardUnitIndex(rowIndex, columnIndex)">
                                         {{ unit.name }}
                                     </div>
@@ -286,7 +286,7 @@ describe('UnitSearchComponent card virtualization', () => {
                             <div class="inline-panel-unit">{{ inlinePanelUnit()?.name }}</div>
                             }
                             @if (expandedView()) {
-                            @for (unit of displayedUnits(); track unit.name) {
+                            @for (unit of displayedUnits(); track unit.uuid) {
                             <unit-card-expanded class="click-result"
                                 longPress
                                 [unit]="unit"
@@ -379,39 +379,44 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(calculateDataTableMinWidth(columns)).toBe(2180);
     });
 
-    it('provides stable unit keys for variable-height measurements across result objects', () => {
+    it('provides stable UUID keys for variable-height measurements across result reordering', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
-        filteredUnitsSignal.set([createUnit('Short'), createUnit('Tall')]);
+        const short = createUnit('Short');
+        const tall = createUnit('Tall');
+        filteredUnitsSignal.set([short, tall]);
         fixture.detectChanges();
 
-        expect(component.displayedUnitKeys()).toEqual(['Short', 'Tall']);
+        expect(component.displayedUnitKeys()).toEqual([short.uuid, tall.uuid]);
 
-        filteredUnitsSignal.set([createUnit('Tall'), createUnit('Short')]);
+        filteredUnitsSignal.set([tall, short]);
         fixture.detectChanges();
 
-        expect(component.displayedUnitKeys()).toEqual(['Tall', 'Short']);
+        expect(component.displayedUnitKeys()).toEqual([tall.uuid, short.uuid]);
     });
 
     it('removes selected units that are no longer displayed', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
-        filteredUnitsSignal.set([createUnit('Visible'), createUnit('Removed')]);
+        const visible = createUnit('Visible');
+        const removed = createUnit('Removed');
+        filteredUnitsSignal.set([visible, removed]);
         fixture.detectChanges();
-        component.selectedUnits.set(new Set(['Visible', 'Removed']));
+        component.selectedUnits.set(new Set([visible.uuid, removed.uuid]));
 
-        filteredUnitsSignal.set([createUnit('Visible')]);
+        filteredUnitsSignal.set([visible]);
         fixture.detectChanges();
 
-        expect([...component.selectedUnits()]).toEqual(['Visible']);
+        expect([...component.selectedUnits()]).toEqual([visible.uuid]);
     });
 
     it('clears selection when no selected units remain displayed', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
-        filteredUnitsSignal.set([createUnit('Removed')]);
+        const removed = createUnit('Removed');
+        filteredUnitsSignal.set([removed]);
         fixture.detectChanges();
-        component.selectedUnits.set(new Set(['Removed']));
+        component.selectedUnits.set(new Set([removed.uuid]));
 
         filteredUnitsSignal.set([]);
         fixture.detectChanges();
@@ -428,7 +433,7 @@ describe('UnitSearchComponent card virtualization', () => {
         fixture.detectChanges();
 
         component.multiSelectUnit(unit);
-        expect(component.selectedUnits().has(unit.name)).toBeTrue();
+        expect(component.selectedUnits().has(unit.uuid)).toBeTrue();
 
         filtersServiceStub.classicBvNormalizationSettings.update(settings => ({
             ...settings,
@@ -439,15 +444,15 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.selectedUnits().size).toBe(0);
     });
 
-    it('adds every selected displayed unit with the active pilot skills', async () => {
+    it('adds every UUID-selected unit when display names collide', async () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
-        const first = createUnit('First');
-        const second = createUnit('Second');
+        const first = createUnit('Duplicate Name');
+        const second = createUnit('Duplicate Name');
         filteredUnitsSignal.set([first, second]);
-        dataServiceStub.getUnitByName.and.callFake((name: string) => name === first.name ? first : second);
+        dataServiceStub.getUnitByUuid.and.callFake((uuid: string) => uuid === first.uuid ? first : second);
         fixture.detectChanges();
-        component.selectedUnits.set(new Set([first.name, second.name]));
+        component.selectedUnits.set(new Set([first.uuid, second.uuid]));
 
         await component.addSelectedUnits();
 
@@ -465,29 +470,29 @@ describe('UnitSearchComponent card virtualization', () => {
         const first = createUnit('First');
         const second = createUnit('Second');
         filteredUnitsSignal.set([first, second]);
-        dataServiceStub.getUnitByName.and.callFake((name: string) => name === first.name ? first : second);
+        dataServiceStub.getUnitByUuid.and.callFake((uuid: string) => uuid === first.uuid ? first : second);
         forceBuilderServiceStub.addUnit.and.resolveTo(false);
         fixture.detectChanges();
-        component.selectedUnits.set(new Set([first.name, second.name]));
+        component.selectedUnits.set(new Set([first.uuid, second.uuid]));
 
         await component.addSelectedUnits();
 
         expect(forceBuilderServiceStub.addUnit).toHaveBeenCalledOnceWith(first, 4, 5);
-        expect(dataServiceStub.getUnitByName).toHaveBeenCalledOnceWith(first.name);
+        expect(dataServiceStub.getUnitByUuid).toHaveBeenCalledOnceWith(first.uuid);
         expect(component.selectedUnits().size).toBe(0);
     });
 
-    it('skips a selected name when its unit data is unavailable', async () => {
+    it('skips a selected UUID when its unit data is unavailable', async () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const missing = createUnit('Missing');
         filteredUnitsSignal.set([missing]);
         fixture.detectChanges();
-        component.selectedUnits.set(new Set([missing.name]));
+        component.selectedUnits.set(new Set([missing.uuid]));
 
         await component.addSelectedUnits();
 
-        expect(dataServiceStub.getUnitByName).toHaveBeenCalledOnceWith(missing.name);
+        expect(dataServiceStub.getUnitByUuid).toHaveBeenCalledOnceWith(missing.uuid);
         expect(forceBuilderServiceStub.addUnit).not.toHaveBeenCalled();
         expect(component.selectedUnits().size).toBe(0);
     });
@@ -903,6 +908,30 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.activeVariantGroupFilter()).toBeNull();
         expect(component.viewMode()).toBe('chassis');
         expect(scrollToVariantsGroup).toHaveBeenCalledOnceWith('Nova|BM|O');
+    });
+
+    it('preserves selected units outside a variant group while drilling down and clearing it', () => {
+        filtersServiceStub.viewMode.set('chassis');
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        const atlas = createUnit('Atlas AS7-D', { chassis: 'Atlas', as: { TP: 'BM' } });
+        const nova = createUnit('Nova Prime', { chassis: 'Nova', omni: 1, as: { TP: 'BM' } });
+
+        filteredUnitsSignal.set([atlas, nova]);
+        fixture.detectChanges();
+        component.selectedUnits.set(new Set([atlas.uuid, nova.uuid]));
+
+        const atlasGroup = component.groupedUnits().find(group => group.chassis === 'Atlas');
+        expect(atlasGroup).toBeDefined();
+        component.onCompactGroupClick(atlasGroup!);
+        fixture.detectChanges();
+
+        expect([...component.selectedUnits()]).toEqual([atlas.uuid, nova.uuid]);
+
+        component.clearVariantGroupFilter();
+        fixture.detectChanges();
+
+        expect([...component.selectedUnits()]).toEqual([atlas.uuid, nova.uuid]);
     });
 
     it('navigates search results with global up and down shortcuts', () => {

@@ -11,7 +11,6 @@ import { AmmoEquipment, type Equipment, formatEquipmentRulesRefs, WeaponEquipmen
 import { TechDate, TechAdvancementDates, techDateYear, formatTechDate } from '../../models/entity';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { CBTGameRulesService } from '../../services/cbt-game-rules.service';
-import { resolveDefaultWeaponDamageText } from '../../utils/inventory-control-damage.util';
 import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.util';
 
 

@@ -56,6 +56,7 @@ describe('DataService', () => {
     };
     const unitRuntimeServiceMock = {
         getUnitByName: jasmine.createSpy('getUnitByName').and.returnValue(undefined),
+        getUnitByUuid: jasmine.createSpy('getUnitByUuid').and.returnValue(undefined),
         applyTagDataToUnits: jasmine.createSpy('applyTagDataToUnits'),
         applyPublicTagsToUnits: jasmine.createSpy('applyPublicTagsToUnits'),
         loadUnitTags: jasmine.createSpy('loadUnitTags').and.resolveTo(undefined),
@@ -153,6 +154,8 @@ describe('DataService', () => {
         userStateServiceMock.uuid.and.returnValue('user-1');
         unitRuntimeServiceMock.getUnitByName.calls.reset();
         unitRuntimeServiceMock.getUnitByName.and.returnValue(undefined);
+        unitRuntimeServiceMock.getUnitByUuid.calls.reset();
+        unitRuntimeServiceMock.getUnitByUuid.and.returnValue(undefined);
         unitRuntimeServiceMock.applyTagDataToUnits.calls.reset();
         unitRuntimeServiceMock.applyPublicTagsToUnits.calls.reset();
         unitRuntimeServiceMock.loadUnitTags.calls.reset();
@@ -280,8 +283,10 @@ describe('DataService', () => {
 
     it('delegates unit lookup to the runtime service', () => {
         service.getUnitByName('Mad Cat Prime');
+        service.getUnitByUuid('unit-uuid');
 
         expect(unitRuntimeServiceMock.getUnitByName).toHaveBeenCalledOnceWith('Mad Cat Prime');
+        expect(unitRuntimeServiceMock.getUnitByUuid).toHaveBeenCalledOnceWith('unit-uuid');
     });
 
     it('resolves equipment names through the catalog registry', () => {

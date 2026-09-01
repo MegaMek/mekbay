@@ -11,6 +11,7 @@ import type { CriticalSlot } from '../models/force-serialization';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules } from '../models/rules/game-rules';
 import type { WeaponType } from '../models/weapon-types.model';
+import type { ArmorType } from '../models/entity/types';
 import {
     BOMBAST_LASER_CHARGED_STATE,
     BOMBAST_LASER_CHARGE_STATE_KEY,
@@ -29,6 +30,7 @@ import {
     isGaussPoweredDown,
 } from './gauss-power-state.util';
 import type { InventoryControlRules } from './inventory-control.util';
+import type { MekStructureKind } from './mek-structure-damage.util';
 import {
     createHandlerQueryContext,
     EquipmentInteractionRegistry,
@@ -38,24 +40,42 @@ import {
 import {
     applyMekBlowOff,
     applyMekCriticalRoll,
+    applyMekCriticalSlotHit,
     canApplyMekCriticalHitToSlot,
     getMekExplosionProtection,
+    getRollableMekCriticalSlots,
     hasRollableMekCriticalSlot,
+    mekCriticalChanceCanBlowOff,
     mekCriticalChanceModifiers,
     mekCriticalRollDiceCount,
+    mekCriticalRollForSlot,
     mekCriticalRollLocation,
     mekCriticalSlotIndexForRoll,
     randomValidMekCriticalRoll,
+    previewMekCriticalRoll,
+    previewMekCriticalSlotHit,
     resolveMekCriticalChance,
 } from './mek-critical-hit.util';
 
 describe('Mek critical-hit workflow', () => {
     it('resolves the standard critical chance table including location blow-off', () => {
-        expect(resolveMekCriticalChance(7, true)).toEqual({ kind: 'none' });
-        expect(resolveMekCriticalChance(8, true)).toEqual({ kind: 'critical-hits', count: 1 });
-        expect(resolveMekCriticalChance(10, true)).toEqual({ kind: 'critical-hits', count: 2 });
-        expect(resolveMekCriticalChance(12, true)).toEqual({ kind: 'blown-off' });
-        expect(resolveMekCriticalChance(12, false)).toEqual({ kind: 'critical-hits', count: 3 });
+        expect(resolveMekCriticalChance(7, true, false)).toEqual({ kind: 'none' });
+        expect(resolveMekCriticalChance(8, true, false)).toEqual({ kind: 'critical-hits', count: 1 });
+        expect(resolveMekCriticalChance(10, true, false)).toEqual({ kind: 'critical-hits', count: 2 });
+        expect(resolveMekCriticalChance(12, true, false)).toEqual({ kind: 'blown-off' });
+        expect(resolveMekCriticalChance(12, false, false)).toEqual({ kind: 'critical-hits', count: 3 });
+        expect(resolveMekCriticalChance(13, false, true)).toEqual({ kind: 'critical-hits', count: 3 });
+        expect(resolveMekCriticalChance(14, false, true)).toEqual({ kind: 'critical-hits', count: 4 });
+        expect(resolveMekCriticalChance(14, true, true)).toEqual({ kind: 'blown-off' });
+    });
+
+    it('allows blow-off results only for a head or limb location', () => {
+        for (const location of ['HD', 'LA', 'RA', 'LL', 'RL', 'CL', 'FLL', 'FRL', 'RLL', 'RRL']) {
+            expect(mekCriticalChanceCanBlowOff(location)).withContext(location).toBeTrue();
+        }
+        for (const location of ['CT', 'LT', 'RT', 'UNKNOWN']) {
+            expect(mekCriticalChanceCanBlowOff(location)).withContext(location).toBeFalse();
+        }
     });
 
     it('uses one die for head and legs and the two-die critical-slot chart elsewhere', () => {
@@ -63,12 +83,33 @@ describe('Mek critical-hit workflow', () => {
         expect(mekCriticalRollDiceCount('LL')).toBe(1);
         expect(mekCriticalRollDiceCount('LA')).toBe(2);
         expect(mekCriticalSlotIndexForRoll('LL', [6])).toBe(5);
+        expect(mekCriticalSlotIndexForRoll('LA', [1, 1])).toBe(0);
         expect(mekCriticalSlotIndexForRoll('LA', [3, 6])).toBe(5);
         expect(mekCriticalSlotIndexForRoll('LA', [4, 1])).toBe(6);
         expect(mekCriticalSlotIndexForRoll('LT', [6, 6])).toBe(11);
+        expect(mekCriticalRollForSlot('LL', 5)).toEqual([6]);
+        expect(mekCriticalRollForSlot('LT', 0)).toEqual([1, 1]);
+        expect(mekCriticalRollForSlot('LT', 8)).toEqual([4, 3]);
     });
 
-    it('selects valid slots uniformly and returns matching section and slot dice', () => {
+    it('treats torso and arm dice as section and position selectors, never as a sum', () => {
+        for (const sectionDie of [1, 2, 3]) {
+            for (let positionDie = 1; positionDie <= 6; positionDie++) {
+                expect(mekCriticalSlotIndexForRoll('LT', [sectionDie, positionDie]))
+                    .withContext(`upper section: ${sectionDie}/${positionDie}`)
+                    .toBe(positionDie - 1);
+            }
+        }
+        for (const sectionDie of [4, 5, 6]) {
+            for (let positionDie = 1; positionDie <= 6; positionDie++) {
+                expect(mekCriticalSlotIndexForRoll('LT', [sectionDie, positionDie]))
+                    .withContext(`lower section: ${sectionDie}/${positionDie}`)
+                    .toBe(positionDie + 5);
+            }
+        }
+    });
+
+    it('selects the table section before choosing a valid position within it', () => {
         const slots: CriticalSlot[] = [
             { id: 'first-id', name: 'First', loc: 'LT', slot: 1 },
             { id: 'second-id', name: 'Second', loc: 'LT', slot: 8 },
@@ -77,8 +118,33 @@ describe('Mek critical-hit workflow', () => {
         const firstRandom = randomSequence(0, 0.999);
         const secondRandom = randomSequence(0.999, 0);
 
-        expect(randomValidMekCriticalRoll(unit, 'LT', firstRandom)).toEqual([3, 2]);
-        expect(randomValidMekCriticalRoll(unit, 'LT', secondRandom)).toEqual([4, 3]);
+        expect(randomValidMekCriticalRoll(unit, 'LT', firstRandom)).toEqual([1, 2]);
+        expect(randomValidMekCriticalRoll(unit, 'LT', secondRandom)).toEqual([6, 3]);
+    });
+
+    it('keeps a 50/50 section chance when six valid slots oppose one valid slot', () => {
+        const slots: CriticalSlot[] = Array.from({ length: 7 }, (_, slot) => ({
+            id: `slot-${slot}`,
+            name: `Slot ${slot + 1}`,
+            loc: 'LT',
+            slot,
+        }));
+        const { unit } = criticalUnit(CORE_2026_GAME_RULES, slots);
+
+        expect(randomValidMekCriticalRoll(unit, 'LT', randomSequence(0.499999, 0.999999)))
+            .toEqual([3, 6]);
+        expect(randomValidMekCriticalRoll(unit, 'LT', randomSequence(0.5, 0)))
+            .toEqual([4, 1]);
+    });
+
+    it('uses the only section that still contains a valid slot', () => {
+        const slots: CriticalSlot[] = [
+            { id: 'lower-only', name: 'Lower only', loc: 'LT', slot: 6 },
+        ];
+        const { unit } = criticalUnit(CORE_2026_GAME_RULES, slots);
+
+        expect(randomValidMekCriticalRoll(unit, 'LT', randomSequence(0, 0))).toEqual([4, 1]);
+        expect(randomValidMekCriticalRoll(unit, 'LT', randomSequence(0.999999, 0))).toEqual([6, 1]);
     });
 
     it('excludes unavailable slots while keeping component armor that absorbed one hit rollable', () => {
@@ -95,6 +161,10 @@ describe('Mek critical-hit workflow', () => {
         const { unit } = criticalUnit(CORE_2026_GAME_RULES, slots);
 
         expect(hasRollableMekCriticalSlot(unit, 'LL')).toBeTrue();
+        expect(getRollableMekCriticalSlots(unit, 'LL').map(slot => slot.id))
+            .toEqual(['partial', 'valid-id']);
+        expect(previewMekCriticalRoll(unit, 'LL', [5])).toBeNull();
+        expect(applyMekCriticalRoll(unit, 'LL', [5], true)).toBeNull();
         expect(randomValidMekCriticalRoll(unit, 'LL', () => 0)).toEqual([1]);
         expect(randomValidMekCriticalRoll(unit, 'LL', () => 0.999)).toEqual([6]);
         slots[5].hits = 1;
@@ -128,7 +198,7 @@ describe('Mek critical-hit workflow', () => {
         }
     });
 
-    it('does not empties an exploding ammo bin and applies the Core damage cap with transfer', () => {
+    it('preserves an exploding ammo bin count and applies the Core damage cap with transfer', () => {
         const fixture = explodingAmmoUnit(CORE_2026_GAME_RULES);
 
         const outcome = applyMekCriticalRoll(fixture.unit, 'LT', [1, 1], true);
@@ -144,8 +214,170 @@ describe('Mek critical-hit workflow', () => {
         expect(fixture.pilotHits()).toBe(1);
     });
 
+    it('reports the total crew hits applied by an internal explosion', () => {
+        const fixture = explodingAmmoUnit(CORE_2026_GAME_RULES);
+        const applyCrewHits = spyOn(fixture.unit, 'applyInternalExplosionCrewHits').and.returnValue(3);
+
+        const outcome = applyMekCriticalRoll(fixture.unit, 'LT', [1, 1], true);
+
+        expect(applyCrewHits).toHaveBeenCalledOnceWith(1, undefined);
+        expect(outcome?.explosion?.pilotHits).toBe(3);
+    });
+
+    it('previews explosion damage and CASE transfer without mutating the unit', () => {
+        const fixture = explodingAmmoUnit(CORE_2026_GAME_RULES);
+
+        const preview = previewMekCriticalRoll(fixture.unit, 'LT', [1, 1]);
+
+        expect(preview?.explosion).toEqual(jasmine.objectContaining({
+            timing: 'immediate',
+            equipment: 'AC/10 Ammo',
+            rawDamage: 100,
+            pilotHits: 1,
+            locations: [
+                { location: 'LT', internalDamage: 12, armorDamage: 0, armorRear: true, protection: 'none' },
+                { location: 'CT', internalDamage: 8, armorDamage: 12, armorRear: true, protection: 'none' },
+            ],
+        }));
+        expect(fixture.slot.hits).toBe(0);
+        expect(fixture.slot.consumed).toBe(0);
+        expect(fixture.internalHits.size).toBe(0);
+        expect(fixture.armorHits.size).toBe(0);
+        expect(fixture.pilotHits()).toBe(0);
+    });
+
+    it('includes a linked automatic critical in the explosion preview', () => {
+        const fixture = riscPulseModuleUnit();
+
+        const preview = previewMekCriticalRoll(fixture.unit, 'LT', [1, 2]);
+
+        expect(preview?.explosion?.automaticCriticalEquipment).toBe('Medium Laser');
+        expect(fixture.moduleSlot.hits ?? 0).toBe(0);
+        expect(fixture.laserSlot.hits ?? 0).toBe(0);
+
+        const outcome = applyMekCriticalRoll(fixture.unit, 'LT', [1, 2], true);
+
+        expect(outcome?.explosion?.automaticCritical).toEqual(jasmine.objectContaining({
+            equipment: 'Medium Laser',
+            location: 'LT',
+            slotNumber: 1,
+        }));
+        expect(fixture.moduleSlot.hits).toBe(1);
+        expect(fixture.laserSlot.hits).toBe(1);
+    });
+
+    it('applies a rejected ammo critical without consuming ammo or resolving its explosion', () => {
+        const fixture = explodingAmmoUnit(CORE_2026_GAME_RULES);
+
+        const outcome = applyMekCriticalRoll(
+            fixture.unit,
+            'LT',
+            [1, 1],
+            true,
+            { applyExplosion: false },
+        );
+
+        expect(outcome?.applied).toBeTrue();
+        expect(outcome?.explosion).toBeUndefined();
+        expect(fixture.slot.hits).toBe(1);
+        expect(fixture.slot.consumed).toBe(0);
+        expect(fixture.internalHits.size).toBe(0);
+        expect(fixture.armorHits.size).toBe(0);
+        expect(fixture.pilotHits()).toBe(0);
+    });
+
+    it('uses the same explosion path for a manually selected critical slot', () => {
+        const fixture = explodingAmmoUnit(CORE_2026_GAME_RULES);
+
+        const outcome = applyMekCriticalSlotHit(fixture.unit, fixture.slot, true);
+
+        expect(outcome?.explosion?.rawDamage).toBe(100);
+        expect(fixture.slot.consumed).toBe(0);
+        expect(fixture.internalHits.get('LT')).toBe(12);
+        expect(fixture.internalHits.get('CT')).toBe(8);
+        expect(fixture.armorHits.get('CT-rear')).toBe(12);
+        expect(fixture.pilotHits()).toBe(1);
+    });
+
+    it('detects explosive slots but preserves the normal roll for a destroyed location', () => {
+        const explosive = explodingAmmoUnit(CORE_2026_GAME_RULES);
+        explosive.slot.destroying = Date.now();
+        const inertSlot: CriticalSlot = {
+            id: 'heat-sink@LT',
+            name: 'Heat Sink',
+            loc: 'LT',
+            slot: 1,
+            destroying: Date.now(),
+            eq: new MiscEquipment({ id: 'HeatSink', name: 'Heat Sink', type: 'misc' }),
+        };
+        explosive.slots.push(inertSlot);
+
+        expect(hasRollableMekCriticalSlot(explosive.unit, 'LT', { transfer: false })).toBeFalse();
+        expect(hasRollableMekCriticalSlot(explosive.unit, 'LT', {
+            transfer: false,
+            explosiveSlotsOnly: true,
+        })).toBeTrue();
+        expect(randomValidMekCriticalRoll(
+            explosive.unit,
+            'LT',
+            () => 0,
+            { transfer: false, explosiveSlotsOnly: true },
+        )).toEqual([1, 1]);
+        expect(previewMekCriticalSlotHit(
+            explosive.unit,
+            explosive.slot,
+            { explosiveSlotsOnly: true },
+        )?.explosion?.rawDamage).toBe(100);
+        expect(randomValidMekCriticalRoll(
+            explosive.unit,
+            'LT',
+            randomSequence(0, 0.2),
+            { transfer: false, explosiveSlotsOnly: true },
+        )).toEqual([1, 2]);
+        expect(previewMekCriticalRoll(
+            explosive.unit,
+            'LT',
+            [1, 2],
+            { transfer: false, explosiveSlotsOnly: true },
+        )).toEqual({
+            applied: false,
+            slotNumber: 2,
+            equipment: 'Heat Sink',
+            armoredAbsorption: false,
+            reason: 'non-explosive',
+        });
+        expect(applyMekCriticalRoll(
+            explosive.unit,
+            'LT',
+            [1, 2],
+            true,
+            { transfer: false, explosiveSlotsOnly: true },
+        )).toEqual({
+            applied: false,
+            slotNumber: 2,
+            equipment: 'Heat Sink',
+            armoredAbsorption: false,
+            reason: 'non-explosive',
+        });
+        expect(inertSlot.hits ?? 0).toBe(0);
+
+        const onlyInertSlot: CriticalSlot = {
+            id: 'heat-sink@LT',
+            name: 'Heat Sink',
+            loc: 'LT',
+            slot: 0,
+            destroying: Date.now(),
+            eq: new MiscEquipment({ id: 'HeatSink', name: 'Heat Sink', type: 'misc' }),
+        };
+        const inert = criticalUnit(CORE_2026_GAME_RULES, [onlyInertSlot]);
+        expect(hasRollableMekCriticalSlot(inert.unit, 'LT', {
+            transfer: false,
+            explosiveSlotsOnly: true,
+        })).toBeFalse();
+    });
+
     it('marks two composite structure pips per point of explosion damage after the Core cap', () => {
-        const { unit, internalHits, armorHits } = explodingAmmoUnit(CORE_2026_GAME_RULES, 'Composite');
+        const { unit, internalHits, armorHits } = explodingAmmoUnit(CORE_2026_GAME_RULES, 'composite');
 
         const outcome = applyMekCriticalRoll(unit, 'LT', [1, 1], true);
 
@@ -153,6 +385,24 @@ describe('Mek critical-hit workflow', () => {
         expect(internalHits.get('LT')).toBe(12);
         expect(internalHits.get('CT')).toBe(28);
         expect(armorHits.get('CT-rear')).toBe(12);
+    });
+
+    it('shares the final odd Core composite pip across an un-CASED explosion transfer', () => {
+        const fixture = explodingAmmoUnit(CORE_2026_GAME_RULES, 'composite');
+        fixture.internalHits.set('LT', 1);
+
+        const outcome = applyMekCriticalRoll(fixture.unit, 'LT', [1, 1], true);
+
+        expect(outcome?.explosion?.locations.map(location => ({
+            location: location.location,
+            internalDamage: location.internalDamage,
+            sharedCompositePip: location.sharedCompositePip,
+        }))).toEqual([
+            { location: 'LT', internalDamage: 11, sharedCompositePip: undefined },
+            { location: 'CT', internalDamage: 29, sharedCompositePip: true },
+        ]);
+        expect(fixture.internalHits.get('LT')).toBe(12);
+        expect(fixture.internalHits.get('CT')).toBe(29);
     });
 
     it('uses TW damage and transfers all uncased explosion overflow', () => {
@@ -172,7 +422,7 @@ describe('Mek critical-hit workflow', () => {
             TW_GAME_RULES,
             ['F_GAUSS'],
             'Gauss Rifle',
-            'Composite',
+            'composite',
         );
 
         const outcome = applyMekCriticalRoll(unit, 'LT', [1, 1], true);
@@ -180,6 +430,56 @@ describe('Mek critical-hit workflow', () => {
         expect(outcome?.explosion?.rawDamage).toBe(15);
         expect(internalHits.get('LT')).toBe(12);
         expect(internalHits.get('CT')).toBe(18);
+    });
+
+    it('resolves TW CASE II against printed Hardened Armor points', () => {
+        const fixture = explodingWeaponUnit(TW_GAME_RULES);
+        fixture.unit.getCritSlots().forEach(slot => { slot.loc = 'LA'; });
+        const caseII = new MiscEquipment({
+            id: 'ISCASEII',
+            name: 'CASE II',
+            type: 'misc',
+            flags: ['F_CASE_II'],
+        });
+        fixture.unit.getCritSlots().push({
+            id: 'caseii@LA',
+            name: caseII.name,
+            loc: 'LA',
+            slot: 5,
+            eq: caseII,
+        });
+        const getArmorPoints = fixture.unit.getArmorPoints;
+        spyOn(fixture.unit, 'getArmorTypeAt').and.callFake(location =>
+            location === 'LA' ? 'HARDENED' : 'STANDARD');
+        spyOn(fixture.unit, 'getArmorPoints').and.callFake((location, rear) =>
+            location === 'LA' && !rear ? 18 : getArmorPoints(location, rear));
+
+        const outcome = applyMekCriticalRoll(fixture.unit, 'LA', [1, 1], true);
+
+        expect(outcome?.explosion?.locations[0]).toEqual(jasmine.objectContaining({
+            location: 'LA',
+            internalDamage: 1,
+            armorDamage: 10,
+            protection: 'case-ii',
+        }));
+        expect(fixture.armorHits.get('LA')).toBe(10);
+    });
+
+    it('drops the odd composite remainder instead of transferring fractional explosion damage', () => {
+        const fixture = explodingWeaponUnit(TW_GAME_RULES, ['F_GAUSS'], 'Gauss Rifle', 'composite');
+        fixture.internalHits.set('LT', 1);
+
+        const outcome = applyMekCriticalRoll(fixture.unit, 'LT', [1, 1], true);
+
+        expect(outcome?.explosion?.locations.map(location => ({
+            location: location.location,
+            internalDamage: location.internalDamage,
+        }))).toEqual([
+            { location: 'LT', internalDamage: 11 },
+            { location: 'CT', internalDamage: 18 },
+        ]);
+        expect(fixture.internalHits.get('LT')).toBe(12);
+        expect(fixture.internalHits.get('CT')).toBe(18);
     });
 
     it('lets a legal armored component absorb one hit and take the next critical', () => {
@@ -285,10 +585,10 @@ describe('Mek critical-hit workflow', () => {
             CORE_2026_GAME_RULES,
             [],
             [],
-            'Reinforced',
+            'reinforced',
             undefined,
             {},
-            { armorType: 'Hardened' },
+            { armorType: 'HARDENED' },
         );
         expect(mekCriticalChanceModifiers(core.unit, 'LT')).toEqual([
             { label: 'Reinforced structure', value: -1 },
@@ -304,15 +604,58 @@ describe('Mek critical-hit workflow', () => {
             TW_GAME_RULES,
             [],
             [],
-            'Reinforced',
+            'reinforced',
             undefined,
             {},
-            { armorType: 'Standard', features: ['Primitive Cockpit'] },
+            { armorType: 'HARDENED', subtype: 'Industrial Mek' },
         );
         expect(mekCriticalChanceModifiers(tw.unit, 'LT')).toEqual([
             { label: 'Reinforced structure', value: -1 },
-            { label: 'Primitive Mek', value: 2 },
+            { label: 'IndustrialMech', value: 2 },
+            {
+                label: 'Hardened armor in damaged facing',
+                value: -2,
+                optional: true,
+                enabled: true,
+            },
         ]);
+        expect(mekCriticalChanceModifiers(tw.unit, 'LT', { hardenedArmorApplies: true })).toContain(
+            { label: 'Hardened armor in damaged facing', value: -2 },
+        );
+        expect(mekCriticalChanceModifiers(tw.unit, 'LT', { hardenedArmorApplies: false })
+            .some(modifier => modifier.label.includes('Hardened'))).toBeFalse();
+
+        const primitiveIndustrial = criticalUnit(
+            TW_GAME_RULES,
+            [],
+            [],
+            null,
+            undefined,
+            {},
+            {
+                subtype: 'Industrial Mek',
+                features: ['Primitive Industrial Cockpit'],
+            },
+        );
+        expect(mekCriticalChanceModifiers(primitiveIndustrial.unit, 'LT')).toEqual([
+            { label: 'IndustrialMech', value: 2 },
+            { label: 'Primitive/RetroTech Mek', value: 2 },
+        ]);
+    });
+
+    it('applies the Core CASE II modifier only to explosion-triggered critical chances', () => {
+        const core = criticalUnit(CORE_2026_GAME_RULES, []);
+        const tw = criticalUnit(TW_GAME_RULES, []);
+
+        expect(mekCriticalChanceModifiers(core.unit, 'LT')).toEqual([]);
+        expect(mekCriticalChanceModifiers(core.unit, 'LT', {
+            explosionProtection: 'case-ii',
+        })).toEqual([
+            { label: 'CASE II internal explosion', value: -1 },
+        ]);
+        expect(mekCriticalChanceModifiers(tw.unit, 'LT', {
+            explosionProtection: 'case-ii',
+        })).toEqual([]);
     });
 
     it('uses ruleset-specific damage for an intrinsically explosive weapon', () => {
@@ -389,7 +732,9 @@ describe('Mek critical-hit workflow', () => {
         it(`delays a charged PPC/capacitor explosion under ${rules.id} rules`, () => {
             const ppc = chargedPpcUnit(rules);
 
-            const outcome = applyMekCriticalRoll(ppc.unit, 'LT', roll, false);
+            const outcome = applyMekCriticalRoll(ppc.unit, 'LT', roll, false, {
+                pilotDamageGroup: 'phase-closed:combat:weapon-phase',
+            });
 
             expect(outcome?.pendingExplosion).toEqual({
                 equipment: 'Light PPC + PPC Capacitor',
@@ -401,10 +746,30 @@ describe('Mek critical-hit workflow', () => {
             ppc.handler.beforeEquipmentStateCommit(ppc.weapon);
 
             expect(ppc.internalHits.get('LT')).toBe(expectedDamage);
+            expect(ppc.pilotDamageGroups).toEqual(['phase-closed:combat:weapon-phase']);
             expect(ppc.slots.every(slot => slot.destroying !== undefined)).toBeTrue();
             expect(ppc.capacitor.states.has(PPC_CAPACITOR_STATE_KEY)).toBeFalse();
         });
     }
+
+    it('does not queue a delayed component explosion when automation rejects it', () => {
+        const ppc = chargedPpcUnit(CORE_2026_GAME_RULES);
+
+        const outcome = applyMekCriticalRoll(
+            ppc.unit,
+            'LT',
+            [1, 1],
+            false,
+            { applyExplosion: false },
+        );
+        ppc.handler.beforeEquipmentStateCommit(ppc.weapon);
+
+        expect(outcome?.pendingExplosion).toBeUndefined();
+        expect(outcome?.explosion).toBeUndefined();
+        expect(ppc.internalHits.size).toBe(0);
+        expect(ppc.slots[0].destroying).toBeDefined();
+        expect(ppc.slots.slice(1).every(slot => slot.destroying === undefined)).toBeTrue();
+    });
 
     it('cancels a pending PPC/capacitor explosion when the PPC fires in that phase', () => {
         const ppc = chargedPpcUnit(CORE_2026_GAME_RULES);
@@ -519,11 +884,40 @@ describe('Mek critical-hit workflow', () => {
         caseIISlot.destroyed = 1;
         expect(getMekExplosionProtection(unit, 'LT')).toBe('case');
         caseSlot.destroying = 1;
+        expect(getMekExplosionProtection(unit, 'LT')).toBe('case');
+        caseSlot.destroyed = 1;
         expect(getMekExplosionProtection(unit, 'LT')).toBe('none');
+    });
+
+    it('tags internal damage from an explosion with the protection that resolved it', () => {
+        const caseIIEquipment = new MiscEquipment({
+            id: 'ISCASEII',
+            name: 'CASE II',
+            type: 'misc',
+            flags: ['F_CASE_II'],
+        });
+        const fixture = explodingWeaponUnit(CORE_2026_GAME_RULES);
+        fixture.unit.getCritSlots().push({
+            id: 'caseii@LT',
+            name: 'CASE II',
+            loc: 'LT',
+            slot: 5,
+            eq: caseIIEquipment,
+        });
+        const addInternalHits = spyOn(fixture.unit, 'addInternalHits').and.callThrough();
+
+        applyMekCriticalRoll(fixture.unit, 'LT', [1, 1], true);
+
+        expect(addInternalHits).toHaveBeenCalledOnceWith(
+            'LT',
+            1,
+            true,
+            { explosionProtection: 'case-ii', armorDamagedBySameHit: true },
+        );
     });
 });
 
-function explodingAmmoUnit(gameRules: CBTGameRules, structureType: string | null = null) {
+function explodingAmmoUnit(gameRules: CBTGameRules, structureKind: MekStructureKind | null = null) {
     const ammo = new AmmoEquipment({
         id: 'TestAC10Ammo',
         name: 'AC/10 Ammo',
@@ -542,18 +936,69 @@ function explodingAmmoUnit(gameRules: CBTGameRules, structureType: string | null
         eq: ammo,
     };
     const slots = [slot];
-    return { ...criticalUnit(gameRules, slots, [], structureType), slot };
+    return { ...criticalUnit(gameRules, slots, [], structureKind), slot, slots };
+}
+
+function riscPulseModuleUnit() {
+    const laserEquipment = new WeaponEquipment({
+        id: 'MediumLaser',
+        name: 'Medium Laser',
+        type: 'weapon',
+        flags: ['F_ENERGY', 'F_LASER'],
+        weapon: { damage: 5 },
+    });
+    const moduleEquipment = new MiscEquipment({
+        id: 'RISCLaserPulseModule',
+        name: 'RISC Laser Pulse Module',
+        type: 'misc',
+        flags: ['F_WEAPON_ENHANCEMENT', 'F_RISC_LASER_PULSE_MODULE'],
+        stats: { explosive: true },
+    });
+    const laserSlot: CriticalSlot = {
+        id: 'laser@LT',
+        name: laserEquipment.name,
+        loc: 'LT',
+        slot: 0,
+        eq: laserEquipment,
+    };
+    const moduleSlot: CriticalSlot = {
+        id: 'module@LT',
+        name: moduleEquipment.name,
+        loc: 'LT',
+        slot: 1,
+        eq: moduleEquipment,
+    };
+    const laser = new MountedWeapon({
+        owner: null as unknown as CBTForceUnit,
+        id: 'laser',
+        name: laserEquipment.name,
+        equipment: laserEquipment,
+        critSlots: [laserSlot],
+    });
+    const module = new MountedEquipment({
+        owner: null as unknown as CBTForceUnit,
+        id: 'module',
+        name: moduleEquipment.name,
+        equipment: moduleEquipment,
+        critSlots: [moduleSlot],
+        parent: laser,
+    });
+    const fixture = criticalUnit(TW_GAME_RULES, [laserSlot, moduleSlot], [laser, module]);
+    laser.owner = fixture.unit;
+    module.owner = fixture.unit;
+    return { ...fixture, laserSlot, moduleSlot };
 }
 
 function explodingWeaponUnit(
     gameRules: CBTGameRules,
     flags: EquipmentFlag[] = ['F_GAUSS'],
     name = 'Gauss Rifle',
-    structureType: string | null = null,
+    structureKind: MekStructureKind | null = null,
 ): {
     readonly unit: CBTForceUnit;
     readonly entry: MountedEquipment;
     readonly internalHits: Map<string, number>;
+    readonly armorHits: Map<string, number>;
 } {
     const weapon = new WeaponEquipment({
         id: 'TestGauss',
@@ -579,7 +1024,7 @@ function explodingWeaponUnit(
         critSlots: slots,
         states: new Map(),
     });
-    const harness = criticalUnit(gameRules, slots, [entry], structureType);
+    const harness = criticalUnit(gameRules, slots, [entry], structureKind);
     entry.owner = harness.unit;
     return { ...harness, entry };
 }
@@ -800,16 +1245,21 @@ function criticalUnit(
     gameRules: CBTGameRules,
     slots: CriticalSlot[],
     inventory: MountedEquipment[] = [],
-    structureType: string | null = null,
+    structureKind: MekStructureKind | null = null,
     effectiveWeaponTypes?: (entry: MountedWeapon) => ReadonlySet<WeaponType>,
     inventoryControlRules: InventoryControlRules = {},
-    unitData: { readonly armorType?: string; readonly features?: readonly string[] } = {},
+    unitData: {
+        readonly armorType?: ArmorType;
+        readonly features?: readonly string[];
+        readonly subtype?: 'BattleMek' | 'Industrial Mek' | 'Quad Industrial Mek';
+    } = {},
     handlers: readonly EquipmentInteractionHandler[] = [],
 ): {
     readonly unit: CBTForceUnit;
     readonly internalHits: Map<string, number>;
     readonly armorHits: Map<string, number>;
     readonly pilotHits: () => number;
+    readonly pilotDamageGroups: readonly string[];
 } {
     const internalPoints = new Map<string, number>([
         ['LA', 10], ['LL', 15], ['LT', 12], ['CT', 31],
@@ -821,6 +1271,7 @@ function criticalUnit(
     const internalHits = new Map<string, number>();
     const armorHits = new Map<string, number>();
     let crewHits = 0;
+    const pilotDamageGroups: string[] = [];
     const interactionRegistry = new EquipmentInteractionRegistry();
     for (const handler of handlers) interactionRegistry.register(handler);
     const handlerQueryContext = createHandlerQueryContext(EMPTY_EQUIPMENT_REGISTRY);
@@ -858,14 +1309,22 @@ function criticalUnit(
             slots.find(candidate => candidate.loc === snapshot.loc && candidate.slot === snapshot.slot) ?? null,
         getUnit: () => ({
             comp: [],
-            structureType,
-            armorType: unitData.armorType ?? 'Standard',
+            structureType: structureKind,
+            armorType: unitData.armorType ?? 'STANDARD',
             features: unitData.features ?? [],
+            subtype: unitData.subtype ?? 'BattleMek',
         }),
+        getStructureKindAt: () => structureKind ?? 'standard',
+        getArmorTypeAt: () => unitData.armorType ?? 'STANDARD',
         getCrewMember: () => ({
             getHits: () => crewHits,
             setHits: (hits: number) => { crewHits = hits; },
         }),
+        applyInternalExplosionCrewHits: (hits: number, group?: string) => {
+            crewHits += hits;
+            if (group) pilotDamageGroups.push(group);
+            return hits;
+        },
         setLocationCondition: () => undefined,
         applyHitToCritSlot: (critical: CriticalSlot) => {
             critical.hits = (critical.hits ?? 0) + 1;
@@ -888,5 +1347,6 @@ function criticalUnit(
         internalHits,
         armorHits,
         pilotHits: () => crewHits,
+        pilotDamageGroups,
     };
 }

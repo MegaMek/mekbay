@@ -10,12 +10,14 @@ export type UnitSearchWorkerCorpusVersion = string;
 
 export interface UnitSearchWorkerIndexSnapshot {
     [filterKey: string]: {
+        /** Unit UUIDs. */
         [value: string]: string[];
     };
 }
 
 export interface UnitSearchWorkerFactionEraSnapshot {
     [eraName: string]: {
+        /** Unit UUIDs. */
         [factionName: string]: string[];
     };
 }
@@ -43,7 +45,7 @@ export interface UnitSearchWorkerQueryRequest {
 }
 
 export interface UnitSearchWorkerResultEntry {
-    unitName: string;
+    unitUuid: string;
     match?: UnitSearchNormalizationMatch;
 }
 

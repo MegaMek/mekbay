@@ -26,13 +26,16 @@ import { createHandlerCommandContext, createHandlerQueryContext } from '../servi
 import type { DialogsService } from '../services/dialogs.service';
 import type { ToastService } from '../services/toast.service';
 import { createTestEquipmentOwner } from '../testing/unit-test-helpers';
+import { ECM_PENDING_MODE_STATE_KEY } from '../utils/ecm-state.util';
 import { StealthHandler } from './stealth.handler';
 import { ECMHandler } from './ecm.handler';
+import type { MotiveModes } from '../models/motiveModes.model';
 
 interface StealthFixture {
     readonly owner: MountedEquipment['owner'];
     readonly markEquipmentStateChanged: jasmine.Spy;
     readonly moveDistance: WritableSignal<number | null>;
+    readonly moveMode: WritableSignal<MotiveModes | null>;
     add(id: string, equipment: Equipment, states?: Map<string, string>): MountedEquipment;
 }
 
@@ -40,12 +43,16 @@ function fixture(): StealthFixture {
     const { owner } = createTestEquipmentOwner();
     const markEquipmentStateChanged = jasmine.createSpy('markEquipmentStateChanged');
     const moveDistance = signal<number | null>(0);
-    Object.assign(owner, { turnState: () => ({ markEquipmentStateChanged, moveDistance }) });
+    const moveMode = signal<MotiveModes | null>('stationary');
+    Object.assign(owner, {
+        turnState: () => ({ markEquipmentStateChanged, moveDistance, effectiveMoveMode: moveMode }),
+    });
     spyOn(owner, 'setInventoryEntry').and.callThrough();
     return {
         owner,
         markEquipmentStateChanged,
         moveDistance,
+        moveMode,
         add: (id, equipment, states = new Map()) => {
             const entry = new MountedEquipment({ owner, id, name: equipment.name, equipment, states });
             owner.setInventoryEntry(entry);
@@ -80,7 +87,9 @@ function misc(id: string, flag: EquipmentFlag): MiscEquipment {
         id,
         name: id,
         type: 'misc',
-        modes: flag === 'F_CHAMELEON_SHIELD' || flag === 'F_NULL_SIG' ? ['Off', 'On'] : undefined,
+        modes: flag === 'F_CHAMELEON_SHIELD' || flag === 'F_NULL_SIG' || flag === 'F_VOID_SIG'
+            ? ['Off', 'On']
+            : undefined,
         flags: [flag],
     });
 }
@@ -160,7 +169,7 @@ describe('StealthHandler', () => {
         }
     });
 
-    it('switches stealth at end turn and contributes 10 Equipment heat only while effective', () => {
+    it('switches stealth at end turn and contributes 10 grouped heat only while effective', () => {
         const test = fixture();
         const stealth = test.add('stealth', stealthArmor());
         const ecm = test.add('ecm', misc('ECM', 'F_ECM'));
@@ -172,9 +181,10 @@ describe('StealthHandler', () => {
         handler.onEndTurn(stealth);
         expect(stealth.states.get(STEALTH_STATE_KEY)).toBe(STEALTH_ENABLED_STATE);
         expect(handler.getInventoryHeatSources(stealth, {} as TurnState, queryContext)).toEqual([{
-            id: 'equipment:stealth',
-            label: 'Equipment',
+            id: 'stealth:stealth',
+            label: 'Stealth',
             value: 10,
+            group: 'Equipment',
         }]);
         expect(isC3DisruptingStealthActive(stealth)).toBeTrue();
         expect(new ECMHandler().isActive(ecm)).toBeFalse();
@@ -221,6 +231,40 @@ describe('StealthHandler', () => {
         expect(stealth.states.get(STEALTH_STATE_KEY)).toBe(STEALTH_DISABLED_STATE);
     });
 
+    it('forces active stealth off when its ECM is queued to leave its supporting mode', () => {
+        const test = fixture();
+        const stealth = test.add('stealth', stealthArmor(), new Map([
+            [STEALTH_STATE_KEY, STEALTH_ENABLED_STATE],
+        ]));
+        const ecm = test.add('ecm', misc('ECM', 'F_ECM'));
+        ecm.states.set(ECM_PENDING_MODE_STATE_KEY, ECMMode.OFF);
+
+        expect(hasFunctionalEcmForStealth(stealth)).toBeTrue();
+        expect(hasFunctionalEcmForStealth(stealth, true)).toBeFalse();
+
+        handler.beforeEquipmentStateCommit(stealth);
+
+        expect(stealth.states.get(STEALTH_STATE_KEY)).toBe(STEALTH_DISABLED_STATE);
+    });
+
+    it('keeps active stealth through a queued handoff to another ECM suite', () => {
+        const test = fixture();
+        const stealth = test.add('stealth', stealthArmor(), new Map([
+            [STEALTH_STATE_KEY, STEALTH_ENABLED_STATE],
+        ]));
+        const currentEcm = test.add('current-ecm', misc('Current ECM', 'F_ECM'));
+        const nextEcm = test.add('next-ecm', misc('Next ECM', 'F_ECM'));
+        currentEcm.states.set(ECM_PENDING_MODE_STATE_KEY, ECMMode.OFF);
+        nextEcm.states.set('ecm_mode', ECMMode.OFF);
+        nextEcm.states.set(ECM_PENDING_MODE_STATE_KEY, ECMMode.ECM);
+
+        expect(hasFunctionalEcmForStealth(stealth, true)).toBeTrue();
+
+        handler.beforeEquipmentStateCommit(stealth);
+
+        expect(stealth.states.get(STEALTH_STATE_KEY)).toBe(STEALTH_ENABLED_STATE);
+    });
+
     it('activates Chameleon without ECM, contributes 6 heat, and leaves C3 available', () => {
         const test = fixture();
         const chameleon = test.add('chameleon', misc('Chameleon LPS', 'F_CHAMELEON_SHIELD'));
@@ -229,9 +273,10 @@ describe('StealthHandler', () => {
         handler.onEndTurn(chameleon);
 
         expect(handler.getInventoryHeatSources(chameleon, {} as TurnState, queryContext)).toEqual([{
-            id: 'equipment:chameleon',
-            label: 'Equipment',
+            id: 'stealth:chameleon',
+            label: 'Stealth',
             value: 6,
+            group: 'Equipment',
         }]);
         expect(isC3DisruptingStealthActive(chameleon)).toBeFalse();
     });
@@ -244,11 +289,67 @@ describe('StealthHandler', () => {
         handler.onEndTurn(nullSignature);
 
         expect(handler.getInventoryHeatSources(nullSignature, {} as TurnState, queryContext)).toEqual([{
-            id: 'equipment:null-signature',
-            label: 'Equipment',
+            id: 'stealth:null-signature',
+            label: 'Stealth',
             value: 10,
+            group: 'Equipment',
         }]);
         expect(isC3DisruptingStealthActive(nullSignature)).toBeFalse();
+    });
+
+    it('activates Void Signature at end turn, consumes its ECM, and contributes grouped heat', () => {
+        const test = fixture();
+        const voidSignature = test.add('void-signature', misc('Void Signature System', 'F_VOID_SIG'));
+        const ecm = test.add('ecm', misc('ECM', 'F_ECM'));
+
+        handler.handleSelection(voidSignature, handler.getChoices(voidSignature, queryContext)[0], commandContext);
+        expect(voidSignature.states.get(STEALTH_STATE_KEY)).toBe(STEALTH_ENABLING_STATE);
+        expect(handler.getInventoryHeatSources(voidSignature, {} as TurnState, queryContext)).toEqual([]);
+
+        handler.onEndTurn(voidSignature);
+
+        expect(handler.getInventoryHeatSources(voidSignature, {} as TurnState, queryContext)).toEqual([{
+            id: 'stealth:void-signature',
+            label: 'Void Signature',
+            value: 10,
+            group: 'Equipment',
+        }]);
+        expect(isC3DisruptingStealthActive(voidSignature)).toBeTrue();
+        expect(new ECMHandler().isActive(ecm)).toBeFalse();
+    });
+
+    it('requires ECM for Void Signature and applies its movement-based protection', () => {
+        const test = fixture();
+        const voidSignature = test.add('void-signature', misc('Void Signature System', 'F_VOID_SIG'));
+
+        expect(handler.getChoices(voidSignature, queryContext)[0].disabled).toBeTrue();
+
+        test.add('ecm', misc('ECM', 'F_ECM'));
+        handler.handleSelection(voidSignature, handler.getChoices(voidSignature, queryContext)[0], commandContext);
+        handler.onEndTurn(voidSignature);
+
+        for (const [distance, modifier] of [[0, 3], [1, 2], [3, 1], [6, 0]] as const) {
+            test.moveDistance.set(distance);
+            expect(getActiveStealthTnModifiers(test.owner)).withContext(`${distance} hexes`).toEqual({
+                short: modifier,
+                medium: modifier,
+                long: modifier,
+                conventionalInfantry: {
+                    short: Math.max(0, modifier - 1),
+                    medium: Math.max(0, modifier - 1),
+                    long: Math.max(0, modifier - 1),
+                },
+            });
+        }
+
+        test.moveMode.set('walk');
+        test.moveDistance.set(0);
+        expect(getActiveStealthTnModifiers(test.owner)).toEqual({
+            short: 2,
+            medium: 2,
+            long: 2,
+            conventionalInfantry: { short: 1, medium: 1, long: 1 },
+        });
     });
 
     it('uses the Total Warfare Battle Armor stealth range profiles', () => {

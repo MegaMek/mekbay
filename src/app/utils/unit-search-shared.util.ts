@@ -209,13 +209,22 @@ export function normalizeMultiStateSelection(value: unknown): MultiStateSelectio
             continue;
         }
 
+        const minimumValues = Array.isArray(option.minimumValues)
+            ? option.minimumValues.map(value => (
+                typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+            ))
+            : undefined;
+        const optionWithoutMinimumValues = { ...option };
+        delete optionWithoutMinimumValues.minimumValues;
+
         selection[name] = {
-            ...option,
+            ...optionWithoutMinimumValues,
             name,
             state: isMultiState(option.state) ? option.state : false,
             count: typeof option.count === 'number' && Number.isFinite(option.count) && option.count > 0
                 ? option.count
                 : 1,
+            ...(minimumValues?.some(value => value !== null) ? { minimumValues } : {}),
         };
     }
 

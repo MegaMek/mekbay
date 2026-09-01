@@ -137,7 +137,13 @@ export interface SemanticDisplayItem {
 export type DropdownFilterOptions = {
     type: 'dropdown';
     label: string;
-    options: { name: string, img?: string, displayName?: string, available?: boolean }[];
+    options: {
+        name: string;
+        img?: string;
+        displayName?: string;
+        available?: boolean;
+        minimumFieldLabels?: readonly string[];
+    }[];
     value: string[] | MultiStateSelection;
     interacted: boolean;
     semanticOnly?: boolean;  // True if this filter has semantic-only constraints (values not in options)
@@ -484,6 +490,7 @@ export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
     { key: '_maxRange', semanticKey: 'range', label: 'Range', curve: 0, game: GameSystem.CLASSIC },
     { key: 'walk', semanticKey: 'walk', label: 'Walk MP', curve: 0.9, game: GameSystem.CLASSIC },
     { key: 'run', semanticKey: 'run', label: 'Run MP', curve: 0.9, game: GameSystem.CLASSIC },
+    { key: 'run2', semanticKey: 'runMax', label: 'Run MP (max w/mod)', curve: 0.9, game: GameSystem.CLASSIC },
     { key: 'jump', semanticKey: 'jump', label: 'Jump MP', curve: 0.9, game: GameSystem.CLASSIC },
     { key: 'umu', semanticKey: 'umu', label: 'UMU MP', curve: 0.9, game: GameSystem.CLASSIC },
     { key: 'year', semanticKey: 'year', label: 'Intro Year', curve: 1 },

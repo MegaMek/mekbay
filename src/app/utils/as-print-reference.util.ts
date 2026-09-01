@@ -325,6 +325,8 @@ export function getASPrintRulesReferenceStyles(): string {
             font-size: 10pt;
             text-transform: uppercase;
             letter-spacing: 0.02em;
+            break-after: avoid;
+            page-break-after: avoid;
         }
 
         .as-reference-formation,

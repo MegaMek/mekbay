@@ -34,7 +34,7 @@
     -webkit-tap-highlight-color: transparent;
     --semantic-color: #17a2b8;
     --semantic-color-highlight: #8fe7ed;
-    
+
     --primary-focus-color: rgb(174, 174, 253);
     --primary-focus-color-highlight: rgb(192, 192, 255);
     // --primary-focus-color: rgb(154, 154, 255);
@@ -51,11 +51,15 @@
     --undamaged-night-highlight-color: #300;
     --damaged-highlight-color: rgb(255, 105, 105);
 
-    --phase-move: #666;
-    --phase-ranged: #9191ff;
-    --phase-physical: #cfcc00;
-    --phase-heat: #dd7d00;
-    --phase-pending-effects: #d00;
+    --move-unassigned: #666;
+    --move-stationary: #005563;
+    --move-walk: #eee;
+    --move-run: #333;
+    --move-jump: #c00;
+    --move-sprint: #e6e600;
+    --move-on-dark: #fff;
+    --move-on-light: #111;
+
     --hot-color: #f00;
     --cold-color: #0081FF;
 
@@ -660,28 +664,41 @@ hr {
         --btn-text-color: #000;
     }
 
-    &.success:not(.selected) {
-        --btn-text-color: #7dcc80;
-        --btn-border-color: #7dcc80;
+    &.success {
+        &.selected {
+            background-color: #0f0;
+        }
 
-        &:hover {
-            background-color: #030;
-            --btn-text-color: #54ef59;
-            --btn-border-color: #54ef59;
+        &:not(.selected) {
+            --btn-text-color: #7dcc80;
+            --btn-border-color: #7dcc80;
+            &:hover {
+                background-color: #030;
+                --btn-text-color: #54ef59;
+                --btn-border-color: #54ef59;
+            }
         }
 
     }
 
-    &.danger:not(.selected) {
-        --btn-text-color: #d00;
-        --btn-border-color: #a00;
+    &.danger {
+        &.selected {
+            background-color: #f00;
+            color: #fff;
+        }
 
-        &:hover {
-            background-color: #300;
-            --btn-text-color: red;
-            --btn-border-color: red;
+        &:not(.selected) {
+            --btn-text-color: #d00;
+            --btn-border-color: #a00;
+
+            &:hover {
+                background-color: #300;
+                --btn-text-color: red;
+                --btn-border-color: red;
+            }
         }
     }
+
 
     &.warning {
         --btn-text-color: rgb(222, 144, 0);
@@ -694,14 +711,28 @@ hr {
         }
     }
 
-    &.primary {
-        --btn-text-color: #ddddff;
-        --btn-border-color: #9a9aff; // rgb(58, 58, 255);
+    &.muted {
+        &.selected {
+            background-color: #666;
+            color: #fff;
+        }
+    }
 
-        &:hover {
-            background-color: #003;
-            --btn-text-color: #fff;
-            --btn-border-color: #c6c6ff; // rgb(81, 81, 255);
+    &.primary {
+        &.selected {
+            background-color: #9a9aff;
+            color: #fff;
+        }
+
+        &:not(.selected) {
+            --btn-text-color: #ddddff;
+            --btn-border-color: #9a9aff; // rgb(58, 58, 255);
+
+            &:hover {
+                background-color: #003;
+                --btn-text-color: #fff;
+                --btn-border-color: #c6c6ff; // rgb(81, 81, 255);
+            }
         }
     }
 
@@ -713,12 +744,6 @@ hr {
         --btn-text-color: var(--bt-yellow);
         --btn-border-color: var(--bt-yellow);
         background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
-    }
-
-    &[disabled],
-    &.disabled {
-        cursor: not-allowed;
-        --btn-text-color: #444;
     }
 
     &.square {
@@ -751,6 +776,13 @@ hr {
     &.borderless {
         border: none;
         background: none;
+    }
+
+    &[disabled],
+    &.disabled {
+        cursor: not-allowed !important;
+        --btn-text-color: #444 !important;
+        --btn-border-color: #444 !important;
     }
 }
 
@@ -904,22 +936,6 @@ hr {
         width: 100%;
     }
 
-    .random-button {
-        flex: 0 0 32px;
-        width: 32px;
-        height: 32px;
-        border: none;
-        background: transparent url('/images/random.svg') center / 24px 24px no-repeat;
-        cursor: pointer;
-        opacity: 0.8;
-        transition: opacity 0.2s ease-in-out;
-
-        &:hover,
-        &:focus-visible {
-            opacity: 1;
-        }
-    }
-
     .field-input {
         width: 100%;
         flex: 1 1 auto;
@@ -958,6 +974,43 @@ hr {
     select.field-input {
         cursor: pointer;
         text-overflow: ellipsis;
+    }
+}
+
+.random-button,
+.form-fields .random-button {
+    flex: 0 0 32px;
+    width: 24px;
+    height: 32px;
+    border: none;
+    background: transparent url('/images/random.svg') center / 24px 24px no-repeat;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s ease-in-out;
+
+    &.large {
+        flex: 0 0 36px;
+        width: 36px;
+        height: 36px;
+        background-size: 32px 32px;
+
+    }
+
+    &.huge {
+        flex: 0 0 64px;
+        width: 64px;
+        height: 64px;
+        background-size: 50px 50px;
+    }
+
+    &:hover,
+    &:focus-visible {
+        opacity: 1;
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.35;
     }
 }
 

@@ -1,18 +1,9 @@
-.dice-roller-root {
-    &.small .dice-row {
-        gap: 4px;
-    }
-
-    &:not(.small) .dice-row {
-        gap: clamp(4px, 2vw, 12px);
-    }
-}
-
 .dice-row {
     display: flex;
     align-items: center;
     flex-wrap: nowrap;
     white-space: nowrap;
+    gap: 4px;
 }
 
 .dice-row > * {
@@ -39,20 +30,31 @@
     }
 }
 
-.sum.large {
-    font-size: clamp(24px, 7vw, 32px);
-    font-weight: bold;
-    color: #fff;
-    white-space: nowrap;
+.sum {
+    display: flex;
+    align-items: center;
+    gap: 4px;
 
     .value {
         font-size: 1.4em;
     }
+
+    &.large {
+        font-size: clamp(24px, 7vw, 32px);
+        font-weight: bold;
+        color: #fff;
+        white-space: nowrap;
+
+        .value {
+            font-size: 1.5em;
+        }
+    }
 }
+
 
 .plus-sign {
     .dice-roller-root:not(.small) & {
-        font-size: clamp(20px, 6vw, 24px);
+        font-size: clamp(24px, 7vw, 32px);
         font-weight: bold;
         color: #fff;
     }

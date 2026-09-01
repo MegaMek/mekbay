@@ -8,6 +8,8 @@ import { Overlay } from '@angular/cdk/overlay';
 import { Subject } from 'rxjs';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../../models/rules/game-rules';
 import { DataService } from '../../../services/data.service';
+import { CBTEndTurnService } from '../../../services/cbt-end-turn.service';
+import { CBTPhaseResolutionService } from '../../../services/cbt-phase-resolution.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { EquipmentInteractionRegistryService } from '../../../services/equipment-interaction-registry.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
@@ -15,23 +17,31 @@ import { ToastService } from '../../../services/toast.service';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { STANDING_UP_REVIEW_ONLY } from './page-standing-up-panel.component';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
+import type { MotiveModeOption, MotiveModes } from '../../../models/motiveModes.model';
 
 describe('PageTurnSummaryPanelComponent', () => {
     it('distinguishes an Immobile unit from one with only Stationary available', () => {
         const immobile = signal(false);
         const rulesId = signal<'core2026' | 'tw'>('core2026');
-        const moveMode = signal<'stationary' | 'walk' | 'run' | 'jump' | 'UMU' | 'VTOL' | null>(null);
+        const moveMode = signal<MotiveModes | null>(null);
+        const availableMotiveModes = signal<MotiveModeOption[]>([
+            { mode: 'stationary', label: 'Stationary', psr: false },
+        ]);
+        const markPhaseStateChanged = jasmine.createSpy('markPhaseStateChanged');
         const turnState = {
             airborne: signal<boolean | null>(false),
             moveMode,
             moveDistance: signal<number | null>(5),
             carefulStand: signal(false),
+            applyMovePSR: signal(true),
+            markPhaseStateChanged,
         };
         const unit = {
             get gameRules() {
                 return rulesId() === 'tw' ? TW_GAME_RULES : CORE_2026_GAME_RULES;
             },
             getCondition: (condition: string) => condition === 'immobile' && immobile(),
+            canTakeActiveActions: () => true,
             getUnit: () => ({
                 type: 'Mek',
                 subtype: 'BattleMek',
@@ -43,7 +53,7 @@ describe('PageTurnSummaryPanelComponent', () => {
                 getAttackMovementModifier: () => 0,
                 getCommittedDamageMovementModePSRCheck: () => null,
             },
-            getAvailableMotiveModes: () => [{ mode: 'stationary', label: 'Stationary', psr: false }],
+            getAvailableMotiveModes: () => availableMotiveModes(),
             turnState: () => turnState,
         };
 
@@ -63,6 +73,7 @@ describe('PageTurnSummaryPanelComponent', () => {
         const component = fixture.componentInstance;
         Object.assign(component, {
             dirty: () => false,
+            phaseDirty: () => false,
             damageReceived: () => 0,
             hasPSRChecks: () => false,
             falling: () => false,
@@ -97,10 +108,18 @@ describe('PageTurnSummaryPanelComponent', () => {
 
         expect(component.immobile()).toBeFalse();
         expect(component.onlyStationaryMoveMode()).toBeTrue();
+
+        component.selectMove('stationary');
+
+        expect(moveMode()).toBe('stationary');
+        expect(markPhaseStateChanged).toHaveBeenCalledTimes(1);
+        moveMode.set(null);
+
         fixture.detectChanges();
 
         expect(fixture.nativeElement.querySelectorAll('.move-button').length).toBe(1);
         expect(fixture.nativeElement.querySelector('.move-button.stationary-only')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.move-mode-row.crowded')).toBeNull();
         expect(fixture.nativeElement.querySelector('.immobile-status')).toBeNull();
 
         immobile.set(true);
@@ -131,6 +150,65 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(fixture.nativeElement.querySelector('.move-button.selected')?.textContent.trim()).toBe('Run');
         expect(fixture.nativeElement.querySelector('hex-slider')).not.toBeNull();
         expect(fixture.nativeElement.querySelector('.hex.danger')?.textContent.trim()).toBe('5');
+
+        availableMotiveModes.set([
+            { mode: 'stationary', label: 'Stationary' },
+            { mode: 'walk', label: 'Walk' },
+            { mode: 'run', label: 'Run' },
+            { mode: 'sprint', label: 'Sprint' },
+            { mode: 'jump', label: 'Jump' },
+        ]);
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.move-mode-row.crowded')).not.toBeNull();
+        expect(fixture.nativeElement.querySelectorAll('.move-mode-row .move-button').length).toBe(5);
+    });
+
+    it('clears attacks and spotting when Sprint is selected', () => {
+        const moveMode = signal<MotiveModes | null>(null);
+        const spotting = signal(true);
+        const clearInventoryControlSelection = jasmine.createSpy('clearInventoryControlSelection');
+        const markPhaseStateChanged = jasmine.createSpy('markPhaseStateChanged');
+        const turnState = {
+            moveMode,
+            effectiveMoveMode: () => moveMode(),
+            moveDistance: signal<number | null>(null),
+            minDistanceCurrentMoveMode: () => 0,
+            carefulStand: signal(false),
+            spotting,
+            applyMovePSR: signal(true),
+            markPhaseStateChanged,
+        };
+        const unit = {
+            canTakeActiveActions: () => true,
+            clearInventoryControlSelection,
+            turnState: () => turnState,
+        };
+
+        TestBed.configureTestingModule({
+            imports: [PageTurnSummaryPanelComponent],
+            providers: [
+                { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit), force: signal(null) } },
+                { provide: OverlayManagerService, useValue: { closeManagedOverlay: () => undefined } },
+                { provide: Overlay, useValue: {} },
+                { provide: EquipmentInteractionRegistryService, useValue: { getRegistry: () => ({}) } },
+                { provide: ToastService, useValue: {} },
+                { provide: DialogsService, useValue: {} },
+                { provide: DataService, useValue: {} },
+            ],
+        });
+        const component = TestBed.createComponent(PageTurnSummaryPanelComponent).componentInstance;
+        Object.assign(component, { prone: () => false });
+
+        expect(component.canSpot()).toBeTrue();
+
+        component.selectMove('sprint');
+
+        expect(moveMode()).toBe('sprint');
+        expect(spotting()).toBeFalse();
+        expect(component.canSpot()).toBeFalse();
+        expect(clearInventoryControlSelection).toHaveBeenCalledTimes(1);
+        expect(markPhaseStateChanged).toHaveBeenCalledTimes(1);
     });
 
     it('reports spent stand-attempt MP and reopens the standing dialog without changing the attempt', () => {
@@ -186,5 +264,119 @@ describe('PageTurnSummaryPanelComponent', () => {
 
         expect(overlayManager.unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-1');
         expect(overlayManager.closeManagedOverlay).not.toHaveBeenCalledWith('turnSummary-unit-1');
+    });
+
+    it('shows phase actions for dirty phase state and resolves the selected scope', async () => {
+        const currentDirty = signal(false);
+        const otherDirty = signal(false);
+        const currentUnit = {
+            id: 'unit-a',
+            turnState: () => ({
+                dirty: currentDirty,
+                dirtyPhase: currentDirty,
+            }),
+        };
+        const otherUnit = {
+            id: 'unit-b',
+            turnState: () => ({
+                dirty: otherDirty,
+                dirtyPhase: otherDirty,
+            }),
+        };
+        const force = { units: () => [currentUnit, otherUnit] };
+        const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
+        const resolvePhase = jasmine.createSpy('endPhase').and.resolveTo(true);
+        const requestConfirmation = jasmine.createSpy('requestConfirmation').and.resolveTo(true);
+
+        TestBed.configureTestingModule({
+            imports: [PageTurnSummaryPanelComponent],
+            providers: [
+                {
+                    provide: PageInteractionOverlayComponent,
+                    useValue: { unit: signal(currentUnit), force: signal(force) },
+                },
+                { provide: OverlayManagerService, useValue: { closeManagedOverlay } },
+                { provide: Overlay, useValue: {} },
+                { provide: EquipmentInteractionRegistryService, useValue: { getRegistry: () => ({}) } },
+                { provide: ToastService, useValue: {} },
+                { provide: DialogsService, useValue: { requestConfirmation } },
+                { provide: DataService, useValue: {} },
+                { provide: CBTEndTurnService, useValue: {} },
+                { provide: CBTPhaseResolutionService, useValue: { endPhase: resolvePhase } },
+            ],
+        });
+        const fixture = TestBed.createComponent(PageTurnSummaryPanelComponent);
+        const component = fixture.componentInstance;
+        Object.assign(component, {
+            dirty: () => false,
+            damageReceived: () => 0,
+            hasPSRChecks: () => false,
+            falling: () => false,
+            PSRChecksCount: () => 0,
+            controlRollShortLabel: () => 'PSR',
+            showImmobileStatus: () => false,
+            showMovementControls: () => true,
+            canSwitchAirborneMode: () => false,
+            airborne: () => false,
+            moveModes: () => [],
+            onlyStationaryMoveMode: () => false,
+            currentMoveMode: () => null,
+            prone: () => false,
+            canStandUp: () => false,
+            standAttempts: () => 0,
+            standUpRequiresPSR: () => false,
+            equipmentTrackControlRows: () => [],
+            spotting: () => false,
+            canSpot: () => false,
+            spottingModifierLabel: () => null,
+            defenseTargetModifierTooltip: () => null,
+            getTotalTargetModifierAsDefender: () => '+0',
+            cover: () => undefined,
+            waterDepth: () => '',
+            buildingLevel: () => '',
+            coverModifierLabel: () => null,
+            tracksHeat: () => false,
+            heatRows: () => [],
+            psrModifiers: () => [],
+        });
+
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.phase-actions')).toBeNull();
+
+        currentDirty.set(true);
+        fixture.detectChanges();
+        const phaseButtons = fixture.nativeElement.querySelectorAll('.phase-actions button');
+        expect(phaseButtons.length).toBe(2);
+        expect(phaseButtons[0].textContent.trim().toLowerCase()).toBe('end phase');
+        expect(phaseButtons[1].textContent.trim().toLowerCase()).toBe('all units');
+
+        const currentEvent = jasmine.createSpyObj<MouseEvent>('event', ['stopPropagation']);
+        await component.endPhase(currentEvent);
+
+        expect(currentEvent.stopPropagation).toHaveBeenCalledTimes(1);
+        expect(closeManagedOverlay).toHaveBeenCalledWith('turnSummary-unit-a');
+        expect(resolvePhase).toHaveBeenCalledOnceWith(currentUnit);
+
+        resolvePhase.calls.reset();
+        closeManagedOverlay.calls.reset();
+        currentDirty.set(false);
+        otherDirty.set(true);
+        fixture.detectChanges();
+
+        const remainingPhaseButtons = fixture.nativeElement.querySelectorAll('.phase-actions button');
+        expect(remainingPhaseButtons.length).toBe(1);
+        expect(remainingPhaseButtons[0].textContent.trim().toLowerCase()).toBe('all units');
+
+        const allEvent = jasmine.createSpyObj<MouseEvent>('event', ['stopPropagation']);
+        await component.endPhaseForAll(allEvent);
+
+        expect(allEvent.stopPropagation).toHaveBeenCalledTimes(1);
+        expect(requestConfirmation).toHaveBeenCalledOnceWith(
+            'Are you sure you want to end the phase for all units?',
+            'End Phase',
+            'info'
+        );
+        expect(closeManagedOverlay).toHaveBeenCalledWith('turnSummary-unit-a');
+        expect(resolvePhase).toHaveBeenCalledOnceWith([currentUnit, otherUnit]);
     });
 });

@@ -53,6 +53,14 @@ export interface CriticalDelayedExplosionHandling {
     readonly explosion: CriticalDelayedExplosion | null;
 }
 
+/** Additional state produced by an inventory-control firing hook. */
+export interface InventoryControlFireResult {
+    /** Heat generated in addition to the firing heat already shown for the entry. */
+    readonly additionalHeat?: number;
+    /** Plain-text explanation shown alongside the additional heat. */
+    readonly detail?: string;
+}
+
 /** Returns the original set when no change is needed. */
 export function setEffectiveWeaponType(
     types: ReadonlySet<WeaponType>,
@@ -97,6 +105,7 @@ export type HandlerNotifications = Pick<HandlerToastService, 'showToast'>;
 
 export interface HandlerDialogsService {
     createDialog: DialogsService['createDialog'];
+    requestConfirmation: DialogsService['requestConfirmation'];
     showError: DialogsService['showError'];
     showNoticeHtml: DialogsService['showNoticeHtml'];
 }
@@ -173,12 +182,17 @@ export abstract class EquipmentInteractionHandler {
     /**
      * Hook called after a mounted equipment entry is fired/consumed from the weapons panel.
      */
-    afterInventoryControlFire?(equipment: MountedEquipment): void | Promise<void>;
+    afterInventoryControlFire?(
+        equipment: MountedEquipment,
+    ): InventoryControlFireResult | void | Promise<InventoryControlFireResult | void>;
 
     /**
      * Hook called immediately before pending equipment and critical-slot damage is committed.
      */
     beforeEquipmentStateCommit?(equipment: MountedEquipment): void;
+
+    /** Hook called when the owning unit ends a phase. */
+    onEndPhase?(equipment: MountedEquipment): void;
 
     /** Declares a rules/state-specific Mek explosion that this handler owns through phase end. */
     getCriticalDelayedExplosion?(
@@ -432,15 +446,24 @@ export class EquipmentInteractionRegistry {
             : equipment.owner.canPerformEquipmentAction(equipment, choice.action ?? 'change-mode');
     }
 
-    async afterInventoryControlFire(equipment: MountedEquipment): Promise<void> {
+    async afterInventoryControlFire(equipment: MountedEquipment): Promise<InventoryControlFireResult[]> {
+        const results: InventoryControlFireResult[] = [];
         for (const handler of this.getHandlers(equipment)) {
-            await handler.afterInventoryControlFire?.(equipment);
+            const result = await handler.afterInventoryControlFire?.(equipment);
+            if (result) results.push(result);
         }
+        return results;
     }
 
     beforeEquipmentStateCommit(equipment: MountedEquipment): void {
         for (const handler of this.getHandlers(equipment)) {
             handler.beforeEquipmentStateCommit?.(equipment);
+        }
+    }
+
+    onEndPhase(equipment: MountedEquipment): void {
+        for (const handler of this.getHandlers(equipment)) {
+            handler.onEndPhase?.(equipment);
         }
     }
 
@@ -567,11 +590,19 @@ export class EquipmentInteractionRegistry {
     }
 
     getInventoryControlHeatEffect(equipment: MountedEquipment, context: HandlerQueryContext): InventoryControlHeatEffect | null {
-        for (const handler of this.getHandlers(equipment)) {
+        const handlers = this.getHandlers(equipment);
+        for (const handler of handlers) {
             const effect = handler.getInventoryControlHeatEffect?.(equipment, context);
             if (effect) return effect;
         }
-        return null;
+        const passiveHeat = handlers
+            .flatMap(handler => handler.getInventoryHeatSources?.(
+                equipment,
+                equipment.owner.turnState(),
+                context,
+            ) ?? [])
+            .reduce((total, source) => total + (Number.isFinite(source.value) ? Math.max(0, source.value) : 0), 0);
+        return passiveHeat > 0 ? { value: passiveHeat, weakened: false } : null;
     }
 
     matchesInventoryAmmo(equipment: MountedEquipment, ammo: AmmoEquipment, mode: string | null, context: HandlerQueryContext): boolean | null {

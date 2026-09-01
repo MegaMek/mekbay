@@ -19,6 +19,7 @@ import { EquipmentFlag } from '../equipment-flags.type';
 import { combineEquipmentStatuses, type EquipmentStatus, type EquipmentStatusFacts } from '../equipment-status.model';
 import { ENTRY_DISABLED_STATE_KEY, ENTRY_DISABLED_STATE_VALUE } from './unit-type-rules';
 import { createHandlerQueryContext } from '../../services/equipment-interaction-registry.service';
+import type { ArmorType } from '../entity/types';
 
 const mascHandler = new MascHandler();
 
@@ -86,6 +87,7 @@ function createRulesHarness(options: {
     moveDistance?: number;
     selectedAmmo?: AmmoEquipment | null;
     gunnery?: number;
+    armorType?: ArmorType;
 } = {}): VehicleRules {
     const baseUnit = createEmptyUnit({
         type: options.type ?? 'Tank',
@@ -147,6 +149,7 @@ function createRulesHarness(options: {
             .flatMap(entry => entry.equipment ? [[entry.equipment.internalName, entry.equipment]] : []))),
         getInventoryControlSelectedAmmo: () => options.selectedAmmo ?? null,
         getEffectiveWeaponTypes: (entry: MountedWeapon) => new Set(entry.getWeaponTypes(options.selectedAmmo ?? null)),
+        hasArmorType: (type: ArmorType) => options.armorType === type,
         getUnit: () => baseUnit,
         getCondition: (state: string) => {
             if (state === 'shutdown') return options.shutdown ?? false;
@@ -194,6 +197,11 @@ describe('VehicleRules', () => {
         expect(rules.getAttackMovementModifier('walk')).toBe(1);
         expect(rules.getAttackMovementModifier('run')).toBe(2);
         expect(rules.getAttackMovementModifier('jump')).toBe(3);
+    });
+
+    it('applies the Hardened Armor control-roll modifier through the typed armor query', () => {
+        expect(createRulesHarness({ armorType: 'HARDENED' }).PSRModifiers())
+            .toEqual(jasmine.objectContaining({ modifier: 1 }));
     });
 
     it('applies a mounted targeting computer to eligible direct-fire weapons', () => {

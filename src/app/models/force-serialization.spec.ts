@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { AS_SERIALIZED_GROUP_SCHEMA, CBT_SERIALIZED_GROUP_SCHEMA, CBT_SERIALIZED_STATE_SCHEMA, C3_NETWORK_GROUP_SCHEMA, CRIT_SLOT_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
+import { AS_SERIALIZED_GROUP_SCHEMA, CBT_SERIALIZED_GROUP_SCHEMA, CBT_SERIALIZED_STATE_SCHEMA, C3_NETWORK_GROUP_SCHEMA, CRIT_SLOT_SCHEMA, FORCE_TAG_MAX_COUNT, HEAT_SCHEMA, LOCATION_SCHEMA, sanitizeForceTagLabels, sanitizeForceTags, TURN_STATE_SCHEMA } from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { C3NetworkType } from './c3-network.model';
 
@@ -124,6 +124,24 @@ describe('heat state sanitization', () => {
             .toEqual({ id: 'crit' });
     });
 
+    it('preserves Sprint as a canonical turn movement mode', () => {
+        expect(Sanitizer.sanitize({ moveMode: 'sprint' }, TURN_STATE_SCHEMA))
+            .toEqual({ moveMode: 'sprint' });
+        expect(Sanitizer.sanitize({ moveMode: 'dash' }, TURN_STATE_SCHEMA))
+            .toEqual({});
+    });
+
+    it('accepts only resumable end-turn checkpoints', () => {
+        expect(Sanitizer.sanitize({ endTurnCheckpoint: 'phase-ended' }, TURN_STATE_SCHEMA))
+            .toEqual({ endTurnCheckpoint: 'phase-ended' });
+        expect(Sanitizer.sanitize({ endTurnCheckpoint: 'heat-staged' }, TURN_STATE_SCHEMA))
+            .toEqual({ endTurnCheckpoint: 'heat-staged' });
+        expect(Sanitizer.sanitize({ endTurnCheckpoint: 'complete' }, TURN_STATE_SCHEMA))
+            .toEqual({});
+        expect(Sanitizer.sanitize({ endTurnCheckpoint: true }, TURN_STATE_SCHEMA))
+            .toEqual({});
+    });
+
     it('sanitizes consumed heat dissipation as a non-negative finite number', () => {
         expect(Sanitizer.sanitize({ heatDissipationConsumed: '6' }, TURN_STATE_SCHEMA)).toEqual({
             heatDissipationConsumed: 6,
@@ -176,6 +194,259 @@ describe('heat state sanitization', () => {
             },
         }, TURN_STATE_SCHEMA)).toEqual({
             psrOutcomes: { first: 'success', second: 'failed' },
+        });
+    });
+
+    it('sanitizes one ordered pending-event queue with strict kind-specific payloads', () => {
+        expect(Sanitizer.sanitize({
+            pendingEvents: [
+                {
+                    type: 'unit-check',
+                    id: ' check:1 ',
+                    kind: 'consciousness',
+                    pilotDamageGroup: ' P ',
+                    crewId: 2,
+                    target: 7,
+                    result: { kind: 'roll', dice: [3, 2] },
+                    description: 'not persisted',
+                },
+                {
+                    type: 'unit-check',
+                    id: 'check:2',
+                    kind: 'heat-life-support',
+                    result: { kind: 'automatic', outcome: 'failed' },
+                    hits: 2,
+                },
+                {
+                    type: 'unit-check',
+                    id: 'check:restart',
+                    kind: 'shutdown-recovery',
+                    target: 6,
+                    result: { kind: 'roll', dice: [3, 4] },
+                },
+                {
+                    type: 'mek-fall',
+                    id: 'fall:1',
+                    source: 'stand-attempt',
+                    levelsFallen: 1,
+                    orientationRoll: 4,
+                    damageRolls: [
+                        { hitLocationDice: [5, 2] },
+                        {},
+                    ],
+                },
+                {
+                    type: 'mek-critical-chance',
+                    id: 'chance:1',
+                    location: ' CT ',
+                    consolidateImmediately: true,
+                    explosionProtection: 'case-ii',
+                    hardenedArmorApplies: false,
+                    throughArmorHitArc: 'rear',
+                    roll: [5, 5],
+                    result: 2,
+                    pilotDamageGroup: ' turn-closed:immediate:end-turn:heat ',
+                },
+                {
+                    type: 'mek-critical-hit',
+                    id: 'critical:1',
+                    location: ' LT ',
+                    targetLocation: ' CT ',
+                    remainingHits: 2,
+                    locationDestroyed: true,
+                    chanceOrigin: {
+                        explosionProtection: 'case',
+                        hardenedArmorApplies: true,
+                    },
+                    caseII: { status: 'passed' },
+                    roll: [3, 4],
+                },
+                {
+                    type: 'unit-check',
+                    id: 'check:3',
+                    kind: 'seatbelt',
+                    crewId: 0,
+                    target: 5,
+                },
+                {
+                    type: 'mek-critical-hit',
+                    id: 'critical:floating',
+                    location: 'RT',
+                    targetLocation: 'RT',
+                    remainingHits: 1,
+                    chanceOrigin: { throughArmorHitArc: 'right' },
+                    floatingLocation: {
+                        hitArc: 'right',
+                        hitLocationDice: [4, 5],
+                    },
+                },
+                { type: 'unit-check', id: 'check:1', kind: 'heat-shutdown', target: 5 },
+                { type: 'unknown', id: 'unknown:1' },
+            ],
+        }, TURN_STATE_SCHEMA)).toEqual({
+            pendingEvents: [
+                {
+                    type: 'unit-check',
+                    id: 'check:1',
+                    kind: 'consciousness',
+                    pilotDamageGroup: 'P',
+                    crewId: 2,
+                    target: 7,
+                    result: { kind: 'roll', dice: [3, 2] },
+                },
+                {
+                    type: 'unit-check',
+                    id: 'check:2',
+                    kind: 'heat-life-support',
+                    result: { kind: 'automatic', outcome: 'failed' },
+                    hits: 2,
+                },
+                {
+                    type: 'unit-check',
+                    id: 'check:restart',
+                    kind: 'shutdown-recovery',
+                    target: 6,
+                    result: { kind: 'roll', dice: [3, 4] },
+                },
+                {
+                    type: 'mek-fall',
+                    id: 'fall:1',
+                    source: 'stand-attempt',
+                    levelsFallen: 1,
+                    orientationRoll: 4,
+                    damageRolls: [
+                        { hitLocationDice: [5, 2] },
+                        {},
+                    ],
+                },
+                {
+                    type: 'mek-critical-chance',
+                    id: 'chance:1',
+                    location: 'CT',
+                    consolidateImmediately: true,
+                    explosionProtection: 'case-ii',
+                    hardenedArmorApplies: false,
+                    throughArmorHitArc: 'rear',
+                    roll: [5, 5],
+                    result: 2,
+                    pilotDamageGroup: 'turn-closed:immediate:end-turn:heat',
+                },
+                {
+                    type: 'mek-critical-hit',
+                    id: 'critical:1',
+                    location: 'LT',
+                    targetLocation: 'CT',
+                    remainingHits: 2,
+                    locationDestroyed: true,
+                    chanceOrigin: {
+                        explosionProtection: 'case',
+                        hardenedArmorApplies: true,
+                    },
+                    caseII: { status: 'passed' },
+                    roll: [3, 4],
+                },
+                {
+                    type: 'unit-check',
+                    id: 'check:3',
+                    kind: 'seatbelt',
+                    crewId: 0,
+                    target: 5,
+                },
+                {
+                    type: 'mek-critical-hit',
+                    id: 'critical:floating',
+                    location: 'RT',
+                    targetLocation: 'RT',
+                    remainingHits: 1,
+                    chanceOrigin: { throughArmorHitArc: 'right' },
+                    floatingLocation: {
+                        hitArc: 'right',
+                        hitLocationDice: [4, 5],
+                    },
+                },
+            ],
+        });
+    });
+
+    it('rejects malformed events atomically and ignores removed split-array APIs', () => {
+        expect(Sanitizer.sanitize({
+            pendingEvents: [
+                { type: 'unit-check', id: 'bad:1', kind: 'seatbelt', target: 5 },
+                { type: 'unit-check', id: 'bad:2', kind: 'heat-shutdown', result: { kind: 'manual', outcome: 'failed' } },
+                { type: 'mek-critical-hit', id: 'bad:3', location: 'CT', targetLocation: 'CT', remainingHits: 0 },
+                {
+                    type: 'mek-critical-hit',
+                    id: 'bad:origin',
+                    location: 'CT',
+                    targetLocation: 'CT',
+                    remainingHits: 1,
+                    chanceOrigin: { hardenedArmorApplies: 'yes' },
+                },
+                {
+                    type: 'mek-critical-hit',
+                    id: 'bad:floating',
+                    location: 'RT',
+                    targetLocation: 'RT',
+                    remainingHits: 1,
+                    floatingLocation: { hitArc: 'right', hitLocationDice: [6, 7] },
+                },
+                { type: 'mek-critical-chance', id: 'bad:4', location: 'CT', result: 5 },
+                { type: 'mek-fall', id: 'bad:5', source: 'manual', levelsFallen: 0 },
+                {
+                    type: 'mek-fall', id: 'bad:roll', source: 'psr', levelsFallen: 0,
+                    orientationRoll: 7,
+                },
+            ],
+            pendingUnitChecks: [{ id: 'legacy:1' }],
+            pendingCriticals: [{ id: 'legacy:2' }],
+            pendingCriticalChances: [{ id: 'legacy:3' }],
+        }, TURN_STATE_SCHEMA)).toEqual({});
+    });
+
+    it('retains only an open typed combat pilot-damage group', () => {
+        expect(Sanitizer.sanitize({ pilotDamageGroup: ' combat:test ' }, TURN_STATE_SCHEMA))
+            .toEqual({ pilotDamageGroup: 'combat:test' });
+        expect(Sanitizer.sanitize({ pilotDamageGroup: 'phase-closed:combat:test' }, TURN_STATE_SCHEMA))
+            .toEqual({});
+        expect(Sanitizer.sanitize({ pilotDamageGroup: 'heat:test' }, TURN_STATE_SCHEMA))
+            .toEqual({});
+    });
+
+    it('preserves an empty critical-chance origin because its presence is the undo marker', () => {
+        expect(Sanitizer.sanitize({
+            pendingEvents: [{
+                type: 'mek-critical-hit',
+                id: 'critical:undo',
+                location: 'CT',
+                targetLocation: 'CT',
+                remainingHits: 1,
+                chanceOrigin: {},
+            }],
+        }, TURN_STATE_SCHEMA)).toEqual({
+            pendingEvents: [{
+                type: 'mek-critical-hit',
+                id: 'critical:undo',
+                location: 'CT',
+                targetLocation: 'CT',
+                remainingHits: 1,
+                chanceOrigin: {},
+            }],
+        });
+    });
+});
+
+describe('location damage serialization', () => {
+    it('preserves committed and pending material damage in the existing location counters', () => {
+        expect(Sanitizer.sanitize({
+            armor: 2,
+            pendingArmor: 1,
+            internal: 1,
+            pendingInternal: 2,
+        }, LOCATION_SCHEMA)).toEqual({
+            armor: 2,
+            pendingArmor: 1,
+            internal: 1,
+            pendingInternal: 2,
         });
     });
 });

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import type { DropdownOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { GameSystem } from '../models/common.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { WildcardPattern } from './semantic-filter.util';
@@ -32,7 +32,7 @@ interface BuildUnitSearchAdvOptionsRequest {
         contextUnits: UnitSummary[],
         displayNameFn?: (value: string) => string | undefined,
         contextUnitIds?: ReadonlySet<string>,
-    ) => { name: string; img?: string; displayName?: string; available?: boolean }[];
+    ) => DropdownOption[];
     buildForcePackDropdownOptions: (
         snapshot: AdvOptionsContextSnapshot,
         contextUnits: UnitSummary[],
@@ -41,7 +41,7 @@ interface BuildUnitSearchAdvOptionsRequest {
         conf: AdvFilterConfig,
         contextUnits: UnitSummary[],
         state: FilterState,
-    ) => { name: string; img?: string; displayName?: string; available?: boolean }[] | null;
+    ) => DropdownOption[] | null;
     getIndexedUniverseNames: (filterKey: string) => string[];
     getSortedIndexedUniverseNames: (conf: AdvFilterConfig) => string[];
     collectIndexedAvailabilityNames: (
@@ -304,7 +304,7 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
         }
 
         const contextDerivationMs = getNowMs() - contextDerivationStartedAt;
-        let availableOptions: { name: string; img?: string; displayName?: string; available?: boolean }[] = [];
+        let availableOptions: DropdownOption[] = [];
 
         if (conf.type === AdvFilterType.BOOLEAN) {
             const value = normalizeTriStateBooleanFilterValue(
@@ -384,10 +384,11 @@ export function buildUnitSearchAdvOptions(request: BuildUnitSearchAdvOptionsRequ
                 const optionsWithAvailability = sortedNames.map(name => {
                     const normalizedName = isCountableFilter ? name.toLowerCase() : name;
                     const metadata = indexedOptionMetadata?.get(name);
-                    const option: { name: string; img?: string; displayName?: string; available: boolean; count?: number } = {
+                    const option: DropdownOption = {
                         name,
                         ...(metadata?.img ? { img: metadata.img } : {}),
                         ...(metadata?.displayName ? { displayName: metadata.displayName } : {}),
+                        ...(metadata?.minimumFieldLabels ? { minimumFieldLabels: metadata.minimumFieldLabels } : {}),
                         available: availableNameSet.has(normalizedName) || availableNameSet.has(name),
                     };
 

@@ -1,0 +1,121 @@
+<div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
+    <div class="header">Falling Damage</div>
+    <div class="body falling-body">
+        <div class="fall-context">
+            <div>
+                <strong>{{ data.unit.getNotificationDisplayName() }}</strong>
+                <span>{{ sourceMessage }}</span>
+            </div>
+            <div class="fall-totals">
+                <span>Fall Damage</span>
+                <strong>{{ totalDamage }}</strong>
+            </div>
+        </div>
+        @if (armorNote) {
+            <p class="fall-armor-note">{{ armorNote }}</p>
+        }
+
+        <button type="button" class="bt-button primary fall-roll-all"
+            aria-label="Roll orientation and all hit locations"
+            title="Roll orientation and all hit locations"
+            (click)="rollAllResults()">
+            <span class="fall-roll-icon" aria-hidden="true"></span>
+            <span>ROLL ALL RESULTS</span>
+        </button>
+
+        <section class="fall-step">
+            <div class="step-heading">
+                <button type="button" class="random-button orientation-roll-button"
+                    aria-label="Roll orientation"
+                    title="Roll orientation"
+                    (click)="rollOrientation()"></button>
+                <div><strong>Orientation</strong><span>Determine facing and the damage arc.</span></div>
+            </div>
+            <div class="roll-picker">
+                <div class="d6-buttons" role="radiogroup" aria-label="Fall orientation roll">
+                    @for (roll of d6Rolls; track roll) {
+                        <button type="button" class="bt-button roll-face"
+                            [class.selected]="orientationRoll() === roll"
+                            [attr.aria-pressed]="orientationRoll() === roll"
+                            (click)="setOrientationRoll(roll)">{{ roll }}</button>
+                    }
+                </div>
+            </div>
+            @if (orientation(); as result) {
+                <div class="orientation-result">
+                    <div><strong>{{ result.facingInstruction }}</strong><span>{{ result.hitArcLabel }} damage</span></div>
+                    <p>{{ result.rulesExplanation }}</p>
+                </div>
+            }
+        </section>
+
+        <section class="fall-step">
+            <div class="step-heading">
+                <button type="button" class="random-button locations-roll-button"
+                    aria-label="Roll all hit locations"
+                    [disabled]="orientationRoll() === null"
+                    [title]="orientationRoll() === null ? 'Choose or roll orientation first' : 'Roll all hit locations'"
+                    (click)="rollHitLocations()"></button>
+                <div><strong>Hit locations</strong><span>Resolve each damage group separately.</span></div>
+            </div>
+            <div class="damage-groups">
+                @for (row of groupRows(); track row.index) {
+                    <article class="damage-group" [class.resolved]="row.result?.location">
+                        <div class="damage-group-summary">
+                            <div class="damage-group-heading">
+                                <span>{{ row.damage }} damage</span>
+                            </div>
+                            @if (row.result?.locationLabel) {
+                                <div class="damage-location">
+                                    <div class="damage-location-primary">
+                                        <strong>{{ row.result!.locationLabel }}</strong>
+                                        @if (row.result!.rear) { <span>Rear arc</span> }
+                                        @if (row.result!.adjustedTripodLegRoll !== undefined) {
+                                            <span>Adjusted leg roll {{ row.result!.adjustedTripodLegRoll }}</span>
+                                        }
+                                    </div>
+                                    @if (row.result!.critical) {
+                                        <span class="through-armor-critical">Through-armor critical!</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="location-roll">
+                            <div class="two-d6-buttons" role="radiogroup"
+                                [attr.aria-label]="'Damage group ' + (row.index + 1) + ' hit-location roll'">
+                                <span class="roll-grid-label" aria-hidden="true">2D6</span>
+                                @for (roll of twoD6Rolls; track roll) {
+                                    <button type="button" class="bt-button roll-face"
+                                        [class.selected]="row.hitLocationRoll === roll"
+                                        [attr.aria-pressed]="row.hitLocationRoll === roll"
+                                        (click)="setHitLocationRoll(row.index, roll)">{{ roll }}</button>
+                                }
+                            </div>
+                        </div>
+
+                        @if (row.result?.location === null && row.result.tripodLegModifier !== undefined) {
+                            <div class="tripod-roll">
+                                <span class="tripod-roll-label">Tripod leg ({{ signed(row.result!.tripodLegModifier!) }})</span>
+                                <div class="d6-buttons" role="radiogroup"
+                                    [attr.aria-label]="'Damage group ' + (row.index + 1) + ' tripod leg roll'">
+                                    @for (roll of d6Rolls; track roll) {
+                                        <button type="button" class="bt-button roll-face"
+                                            [class.selected]="row.tripodLegRoll === roll"
+                                            [attr.aria-pressed]="row.tripodLegRoll === roll"
+                                            (click)="setTripodLegRoll(row.index, roll)">{{ roll }}</button>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                    </article>
+                }
+            </div>
+        </section>
+    </div>
+    <div class="actions falling-actions">
+        <button type="button" class="bt-button primary" [disabled]="!allResolved()" (click)="apply()">ACCEPT</button>
+        <button type="button" class="bt-button" (click)="ignore()">SKIP</button>
+        <button type="button" class="bt-button" (click)="close()">CLOSE</button>
+    </div>
+</div>

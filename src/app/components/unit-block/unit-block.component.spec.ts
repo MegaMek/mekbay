@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { provideZonelessChangeDetection } from '@angular/core';
+import { Overlay } from '@angular/cdk/overlay';
+import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { CrewMemberState } from '../../models/crew-member.model';
 import type { CrewStateDefinition } from '../../models/rules/unit-type-rules';
 import { VEHICLE_CREW_STATE_DISPLAYS } from '../../models/rules/vehicle-rules';
 import { OptionsService } from '../../services/options.service';
+import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { UnitBlockComponent } from './unit-block.component';
 
 describe('UnitBlockComponent', () => {
@@ -17,11 +19,49 @@ describe('UnitBlockComponent', () => {
             imports: [UnitBlockComponent],
             providers: [
                 provideZonelessChangeDetection(),
-                { provide: OptionsService, useValue: { options: () => ({}) } },
+                {
+                    provide: OptionsService,
+                    useValue: { options: () => ({ trackPhaseAndTurn: true, unitDisplayName: 'chassisModel' }) },
+                },
+                { provide: Overlay, useValue: {} },
+                {
+                    provide: SpriteStorageService,
+                    useValue: { loading: signal(false) },
+                },
             ],
-        }).overrideComponent(UnitBlockComponent, {
-            set: { template: '' },
         });
+    });
+
+    it('tracks phase-dirty state independently from assigned movement', () => {
+        const dirtyPhase = signal(false);
+        const moveMode = signal<'walk' | null>(null);
+        const defenderModifier = signal(4);
+        const forceUnit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
+        Object.assign(forceUnit, {
+            turnState: () => ({
+                dirtyPhase,
+                moveMode,
+                getTotalTargetModifierAsDefender: () => ({ modifier: defenderModifier() }),
+            }),
+        });
+
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', forceUnit);
+
+        expect(fixture.componentInstance.dirty()).toBeFalse();
+        expect(fixture.componentInstance.movementIndicator()).toBeNull();
+
+        moveMode.set('walk');
+        expect(fixture.componentInstance.dirty()).toBeFalse();
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'walk', letter: 'W4' });
+
+        defenderModifier.set(2);
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'walk', letter: 'W2' });
+
+        dirtyPhase.set(true);
+        moveMode.set(null);
+        expect(fixture.componentInstance.dirty()).toBeTrue();
+        expect(fixture.componentInstance.movementIndicator()).toBeNull();
     });
 
     it('includes crew state and one aggregated NARC badge alongside unit conditions', () => {
@@ -53,4 +93,5 @@ describe('UnitBlockComponent', () => {
             { key: 'location-narc', label: 'NARC', color: '#f00' },
         ]);
     });
+
 });

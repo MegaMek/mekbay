@@ -532,29 +532,53 @@
                     </div>
                 </div>
                 <div class="option-section-title">Automations</div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="cbtAutomations">Automations:</label>
-                        <select id="cbtAutomations" class="bt-select" [value]="optionsService.options().cbtAutomations"
-                            (change)="onCbtAutomationsChange($event)">
-                            <option value="true">Enabled</option>
-                            <option value="false">Disabled (default)</option>
-                        </select>
+                <div class="description automation-description">
+                    <p><strong>Yes</strong> automatically rolls and applies the result, <strong>Ask</strong> opens the
+                        review and roll controls, and <strong>No</strong> leaves it for manual tracking.</p>
+                </div>
+                <div class="automation-options">
+                    @for (automation of cbtAutomationOptions; track automation.key) {
+                    <div class="option-col automation-option">
+                        <div class="option-row">
+                            <span class="automation-option-label" [id]="'automation-label-' + automation.key">
+                                {{ automation.label }}:
+                            </span>
+                            <div class="automation-mode-switch" role="radiogroup"
+                                [attr.aria-labelledby]="'automation-label-' + automation.key">
+                                @for (mode of cbtAutomationModes; track mode.value) {
+                                <button type="button" class="automation-mode-choice"
+                                    role="radio"
+                                    [class.selected]="optionsService.cbtAutomationMode(automation.key) === mode.value"
+                                    [attr.aria-checked]="optionsService.cbtAutomationMode(automation.key) === mode.value"
+                                    (click)="onCbtAutomationModeChange(automation.key, mode.value)">
+                                    {{ mode.label }}
+                                </button>
+                                }
+                            </div>
+                        </div>
+                        <div class="description">
+                            <p>{{ automation.description }}</p>
+                        </div>
                     </div>
-                    <div class="description">
-                        <p>Shows the calculated heat projection and applies it automatically when the turn ends.</p>
-                        <p><strong>APPLY HEAT</strong> appears only after selecting a heat value and sets the current heat
-                            directly as a manual correction. When disabled, heat must be entered and applied manually.</p>
-                    </div>
+                    }
                 </div>
                 <div class="option-section-title">Optional rules</div>
                 <div class="option-row">
-                    <label for="CBTForcedWithdrawal">Forced Withdrawal (Cripple):</label>
-                    <select id="CBTForcedWithdrawal" class="bt-select"
-                        [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"
-                        (change)="onCBTOptionalRuleChange('forcedWithdrawal', $event)">
-                        <option value="true">Enabled (default)</option>
-                        <option value="false">Disabled</option>
+                    <label for="CBTOptionalFloatingCritical">Floating criticals:</label>
+                    <select id="CBTOptionalFloatingCritical" class="bt-select"
+                        [value]="optionsService.options().CBTOptionalRules.floatingCriticals"
+                        (change)="onCBTOptionalRuleChange('floatingCriticals', $event)">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled (default)</option>
+                    </select>
+                </div>
+                <div class="option-row">
+                    <label for="CBTOptionalSprinting">Sprinting (Meks only):</label>
+                    <select id="CBTOptionalSprinting" class="bt-select"
+                        [value]="optionsService.options().CBTOptionalRules.sprinting"
+                        (change)="onCBTOptionalRuleChange('sprinting', $event)">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled (default)</option>
                     </select>
                 </div>
                 <div class="option-row">
@@ -564,6 +588,15 @@
                         (change)="onCBTOptionalRuleChange('extremeRange', $event)">
                         <option value="true">Enabled</option>
                         <option value="false">Disabled (default)</option>
+                    </select>
+                </div>
+                <div class="option-row">
+                    <label for="CBTForcedWithdrawal">Forced withdrawal (Cripple):</label>
+                    <select id="CBTForcedWithdrawal" class="bt-select"
+                        [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"
+                        (change)="onCBTOptionalRuleChange('forcedWithdrawal', $event)">
+                        <option value="true">Enabled (default)</option>
+                        <option value="false">Disabled</option>
                     </select>
                 </div>
             </div>

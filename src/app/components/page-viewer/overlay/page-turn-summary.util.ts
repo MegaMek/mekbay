@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { PSRCheck, UnitHeatSource } from '../../../models/rules/unit-type-rules';
+import type { PSRModifier, UnitHeatSource } from '../../../models/rules/unit-type-rules';
 import type { SelectedInventoryWeaponHeat } from '../../../utils/inventory-control-heat.util';
 import type { MotiveModes } from '../../../models/motiveModes.model';
 import type { ManagedOverlayRef, OverlayManagerService } from '../../../services/overlay-manager.service';
@@ -17,6 +17,21 @@ export interface TurnSummaryHeatRow {
 }
 
 export const TURN_SUMMARY_UNDERWATER_HEAT_SOURCE_ID = 'underwater-dissipation';
+
+/** Prevents a modal interaction from being mistaken for a click outside the turn summary. */
+export async function runWithTurnSummaryCloseBlocked<T>(
+    overlayManager: OverlayManagerService,
+    unitId: string,
+    operation: () => Promise<T>,
+): Promise<T> {
+    const parentOverlayKey = `turnSummary-${unitId}`;
+    overlayManager.blockCloseUntil(parentOverlayKey);
+    try {
+        return await operation();
+    } finally {
+        overlayManager.unblockClose(parentOverlayKey);
+    }
+}
 
 /** Keeps the summary's capture-phase outside-click handler dormant while a modal child is open. */
 export function openTurnSummaryChildOverlay<T>(
@@ -43,6 +58,7 @@ export function composeTurnSummaryHeatRows(
 ): TurnSummaryHeatRow[] {
     const rows: TurnSummaryHeatRow[] = [];
     for (const source of sources) {
+        if (source.value === 0) continue; //We skip entries with 0 heat
         const rowIndex = rows.findIndex(row => row.label === source.label);
         if (rowIndex >= 0) {
             const row = rows[rowIndex];
@@ -78,9 +94,9 @@ export function composeTurnSummaryHeatRows(
     return result;
 }
 
-export function displayPsrModifiers(modifiers: readonly PSRCheck[]): Array<PSRCheck & { pilotCheck: number }> {
+export function displayPsrModifiers(modifiers: readonly PSRModifier[]): Array<PSRModifier & { pilotCheck: number }> {
     return modifiers
-        .filter((modifier): modifier is PSRCheck & { pilotCheck: number } =>
+        .filter((modifier): modifier is PSRModifier & { pilotCheck: number } =>
             modifier.pilotCheck !== undefined && modifier.pilotCheck !== 0
         )
         .map(modifier => ({
@@ -89,16 +105,9 @@ export function displayPsrModifiers(modifiers: readonly PSRCheck[]): Array<PSRCh
         }));
 }
 
-export function countActionablePsrChecks(
-    checks: readonly Pick<PSRCheck, 'failureOutcome'>[],
-    autoFall: boolean
-): number {
-    return autoFall ? checks.filter(check => check.failureOutcome !== 'Fall').length : checks.length;
-}
-
 export function isMoveModeDisabledWhileProne(
     mode: MotiveModes,
     prone: boolean,
 ): boolean {
-    return mode === 'jump' && prone;
+    return (mode === 'jump' || mode === 'sprint') && prone;
 }

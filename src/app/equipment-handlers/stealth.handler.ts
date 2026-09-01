@@ -5,7 +5,7 @@
 import type { PickerChoice } from '../components/picker/picker.interface';
 import type { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MountedEquipment } from '../models/mounted-equipment.model';
-import type { UnitHeatSource } from '../models/rules/unit-type-rules';
+import { EQUIPMENT_HEAT_SOURCE_GROUP, type UnitHeatSource } from '../models/rules/unit-type-rules';
 import {
     hasFunctionalEcmForStealth,
     isChameleonShieldActive,
@@ -16,6 +16,8 @@ import {
     isStealthEquipmentFunctioning,
     isStealthSystemEquipment,
     isSwitchableStealthEquipment,
+    isVoidSignatureEquipment,
+    isVoidSignatureFunctioning,
     STEALTH_DISABLED_STATE,
     STEALTH_DISABLING_STATE,
     STEALTH_ENABLED_STATE,
@@ -48,7 +50,7 @@ export class StealthHandler extends ToggleHandler {
     override getChoices(equipment: MountedEquipment, context: HandlerQueryContext): PickerChoice[] {
         if (!isSwitchableStealthEquipment(equipment)) return [];
         const choices = super.getChoices(equipment, context);
-        if (isStealthEquipment(equipment)
+        if (this.needsFunctionalEcm(equipment)
             && choices[0]?.value === STEALTH_ENABLING_STATE
             && !hasFunctionalEcmForStealth(equipment)) {
             choices[0] = { ...choices[0], disabled: true };
@@ -62,10 +64,15 @@ export class StealthHandler extends ToggleHandler {
         context: HandlerCommandContext,
     ): boolean {
         if (!isSwitchableStealthEquipment(equipment)) return true;
-        if (isStealthEquipment(equipment)
+        if (this.needsFunctionalEcm(equipment)
             && choice.value === STEALTH_ENABLING_STATE
             && !hasFunctionalEcmForStealth(equipment)) {
-            context.toastService.showToast('Stealth armor requires a functional ECM suite', 'error');
+            context.toastService.showToast(
+                isVoidSignatureEquipment(equipment)
+                    ? 'Void Signature System requires a functional ECM suite'
+                    : 'Stealth armor requires a functional ECM suite',
+                'error',
+            );
             return true;
         }
         return super.handleSelection(equipment, choice, context);
@@ -81,16 +88,19 @@ export class StealthHandler extends ToggleHandler {
             ? (isChameleonShieldActive(equipment) ? 6 : 0)
             : isNullSignatureEquipment(equipment)
                 ? (isNullSignatureActive(equipment) ? 10 : 0)
+                : isVoidSignatureEquipment(equipment)
+                    ? (isVoidSignatureFunctioning(equipment) ? 10 : 0)
                 : (isStealthEquipmentFunctioning(equipment) ? 10 : 0);
         return heat > 0 ? [{
-            id: `equipment:${equipment.id}`,
-            label: 'Equipment',
+            id: `stealth:${equipment.id}`,
+            label: isVoidSignatureEquipment(equipment) ? 'Void Signature' : 'Stealth',
             value: heat,
+            group: EQUIPMENT_HEAT_SOURCE_GROUP,
         }] : [];
     }
 
     override beforeEquipmentStateCommit(equipment: MountedEquipment): void {
-        this.forceOffWithoutEcm(equipment);
+        this.forceOffWithoutEcm(equipment, true);
     }
 
     override onEndTurn(equipment: MountedEquipment): void {
@@ -98,14 +108,18 @@ export class StealthHandler extends ToggleHandler {
         super.onEndTurn(equipment);
     }
 
-    private forceOffWithoutEcm(equipment: MountedEquipment): boolean {
-        if (!isStealthEquipment(equipment)
+    private forceOffWithoutEcm(equipment: MountedEquipment, next = false): boolean {
+        if (!this.needsFunctionalEcm(equipment)
             || !isSwitchableStealthEquipment(equipment)
-            || hasFunctionalEcmForStealth(equipment)) return false;
+            || hasFunctionalEcmForStealth(equipment, next)) return false;
         if (this.getToggleState(equipment) !== STEALTH_DISABLED_STATE
             && equipment.setState(STEALTH_STATE_KEY, STEALTH_DISABLED_STATE)) {
             equipment.owner.setInventoryEntry(equipment);
         }
         return true;
+    }
+
+    private needsFunctionalEcm(equipment: MountedEquipment): boolean {
+        return isStealthEquipment(equipment) || isVoidSignatureEquipment(equipment);
     }
 }

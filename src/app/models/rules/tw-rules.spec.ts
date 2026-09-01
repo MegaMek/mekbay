@@ -15,6 +15,7 @@ import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { OptionsService } from '../../services/options.service';
 import { TWMekRules } from './tw-rules';
 import { MEK_LOCATIONS } from '../entity/types';
+import { FALL_PSR_FAILURE, PSR_CHECK_KIND } from './unit-type-rules';
 
 class TestCBTForce extends CBTForce {
     override emitChanged(): void {
@@ -109,6 +110,25 @@ describe('TWMekRules', () => {
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(4);
     });
 
+    it('ignores TW fall checks while prone but retains the TW hip modifier', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('hip', 'Hip', 'LL'),
+        ]);
+        const turnState = forceUnit.turnState();
+        forceUnit.setCondition('prone', true);
+        turnState.addDmgReceived(20);
+        turnState.setPSRCheckState({ hipsHit: new Set(['LL']) });
+
+        expect(turnState.getPSRChecks()).toEqual([]);
+        expect(turnState.PSRRollsCount()).toBe(0);
+        expect(forceUnit.rules.PSRModifiers()).toEqual(jasmine.objectContaining({
+            modifier: 2,
+            modifiers: jasmine.arrayContaining([
+                jasmine.objectContaining({ pilotCheck: 2, loc: 'LL', reason: 'Hip Destroyed' }),
+            ]),
+        }));
+    });
+
     it('records foot, upper-leg, lower-leg, and hip hits as separate TW triggers', () => {
         const forceUnit = createTWForceUnit([
             { ...legActuatorCrit('foot', 'Foot', 'LL', false), destroying: 1 },
@@ -128,6 +148,69 @@ describe('TWMekRules', () => {
             'Hip hit',
         ]);
         expect(turnState.PSRRollsCount()).toBe(4);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(5);
+    });
+
+    it('forces a single TW gyro or leg-system PSR to fail while the pilot is unconscious', () => {
+        const cases: readonly { label: string; critical: CriticalSlot }[] = [
+            { label: 'gyro', critical: { id: 'gyro', name: 'Gyro', loc: 'CT', slot: 0 } },
+            { label: 'hip', critical: legActuatorCrit('hip', 'Hip', 'LL', false) },
+            { label: 'upper leg', critical: legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false) },
+            { label: 'lower leg', critical: legActuatorCrit('lower-leg', 'Lower Leg Actuator', 'LL', false) },
+            { label: 'foot', critical: legActuatorCrit('foot', 'Foot Actuator', 'LL', false) },
+        ];
+
+        for (const { label, critical } of cases) {
+            const forceUnit = createTWForceUnit([critical]);
+            forceUnit.setCrewState(0, 'unconscious');
+            hitCrit(forceUnit, critical.loc!, critical.slot!);
+
+            const turnState = forceUnit.turnState();
+            const checks = turnState.getPSRChecks();
+            expect(turnState.autoFall()).withContext(label).toBeFalse();
+            expect(checks.length).withContext(label).toBe(1);
+            expect(checks[0].failure).withContext(label).toEqual(FALL_PSR_FAILURE);
+            expect(turnState.isPSRCheckAutomaticFailure(checks[0])).withContext(label).toBeTrue();
+            expect(turnState.actionablePSRRollsCount()).withContext(label).toBe(0);
+        }
+    });
+
+    it('applies a flooded TW leg as four actuator losses, not a destroyed leg', () => {
+        const forceUnit = createTWForceUnit([
+            legActuatorCrit('hip', 'Hip', 'LL', false),
+            legActuatorCrit('upper-leg', 'Upper Leg Actuator', 'LL', false),
+            legActuatorCrit('lower-leg', 'Lower Leg Actuator', 'LL', false),
+            legActuatorCrit('foot', 'Foot', 'LL', false),
+            { id: 'weapon', name: 'Medium Laser', loc: 'LL', slot: 4 },
+        ]);
+        const turnState = forceUnit.turnState();
+
+        forceUnit.setLocationCondition('LL', 'flooded', true);
+
+        expect(turnState.getPSRCheckState().legsDestroyed).toBeUndefined();
+        expect(turnState.autoFall()).toBeFalse();
+        expect(turnState.getPSRChecks().map(check => check.reason)).toEqual([
+            'Leg actuator hit',
+            'Leg actuator hit',
+            'Leg actuator hit',
+            'Hip hit',
+        ]);
+        expect(forceUnit.rules.PSRModifiers().modifier).toBe(5);
+
+        forceUnit.endPhase();
+
+        const rules = forceUnit.rules as TWMekRules;
+        expect(forceUnit.getCondition('prone')).toBeFalse();
+        expect(forceUnit.isInternalLocCommittedPhysicallyDestroyed('LL')).toBeFalse();
+        expect(rules.systemsStatus()).toEqual(jasmine.objectContaining({
+            destroyedLegsCount: 0,
+            destroyedHipsCount: 1,
+            destroyedLegActuatorsCount: 2,
+            destroyedFeetCount: 1,
+        }));
+        expect(rules.movementState()).toEqual(jasmine.objectContaining({ walk: 0, run: 0 }));
+        expect(forceUnit.getCritSlots().every(slot => !forceUnit.isEquipmentOperational(slot))).toBeTrue();
+        expect(forceUnit.getCritSlots().every(slot => slot.destroyed === undefined)).toBeTrue();
         expect(forceUnit.rules.PSRModifiers().modifier).toBe(5);
     });
 
@@ -364,7 +447,7 @@ describe('TWMekRules', () => {
         expect(turnState.getPSRChecks()).toEqual([jasmine.objectContaining({
             fallCheck: 0,
             pilotCheck: 0,
-            kind: 'damaged-leg-actuator-movement',
+            kind: PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT,
             reason: 'Jumping with damaged leg actuator',
         })]);
         expect(turnState.PSRRollsCount()).toBe(1);
@@ -384,14 +467,16 @@ describe('TWMekRules', () => {
         turnState.moveMode.set('jump');
         turnState.moveDistance.set(1);
         spyOn(forceUnit.rules, 'getCommittedDamageMovementModePSRCheck').and.returnValue({
+            kind: PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT,
+            failure: FALL_PSR_FAILURE,
+            movementMode: 'jump',
             fallCheck: 0,
             pilotCheck: 0,
-            kind: 'damaged-leg-actuator-movement',
             reason: 'Localized movement check label',
         });
 
         expect(turnState.getPSRChecks()).toEqual([jasmine.objectContaining({
-            kind: 'damaged-leg-actuator-movement',
+            kind: PSR_CHECK_KIND.DAMAGED_LEG_ACTUATOR_MOVEMENT,
             reason: 'Localized movement check label',
         })]);
     });

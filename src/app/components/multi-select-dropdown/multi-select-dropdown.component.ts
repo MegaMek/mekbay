@@ -20,6 +20,8 @@ export interface DropdownOption {
     alwaysVisible?: boolean;
     exclusive?: boolean;
     stateCycle?: readonly ('or' | 'and' | 'not')[];
+    /** Contextual minimum-value inputs shown when this option is selected. */
+    minimumFieldLabels?: readonly string[];
 }
 
 export type MultiState = false | 'or' | 'and' | 'not';
@@ -40,6 +42,8 @@ export interface MultiStateOption {
     countIncludeRanges?: [number, number][];
     /** Exclude ranges for quantity (merged from multiple constraints) */
     countExcludeRanges?: [number, number][];
+    /** Per-slot inclusive minima. A null entry leaves that slot unconstrained. */
+    minimumValues?: (number | null)[];
 }
 
 export interface MultiStateSelection {
@@ -163,10 +167,27 @@ export class MultiSelectDropdownComponent {
             const sel = (this.selected() as MultiStateSelection) || {};
             return Object.entries(sel)
                 .filter(([_, selection]) => selection.state !== false)
-                .map(([name, selection]) => ({ name, state: selection.state, count: selection.count }));
+                .map(([name, selection]) => ({
+                    name,
+                    state: selection.state,
+                    count: selection.count,
+                    minimumValues: selection.minimumValues,
+                }));
         }
-        return (this.selected() as readonly string[] || []).map((name: string) => ({ name, state: 'or' as MultiState, count: 1 }));
+        return (this.selected() as readonly string[] || []).map((name: string) => ({
+            name,
+            state: 'or' as MultiState,
+            count: 1,
+            minimumValues: undefined,
+        }));
     });
+
+    formatMinimumSummary(values: readonly (number | null)[] | undefined): string {
+        if (!values?.some(value => value !== null && value !== undefined)) {
+            return '';
+        }
+        return values.map(value => value === null || value === undefined ? '–' : `≥${value}`).join('/');
+    }
 
     /** When more than 5 pills, compress into summary pills grouped by state */
     private static readonly COMPRESS_THRESHOLD = 5;
@@ -996,7 +1017,13 @@ export class MultiSelectDropdownComponent {
                     }
                 }
                 const count = nextState === 'not' ? 1 : current.count;
-                currentSelection[optionName] = { name: optionName, state: nextState, count };
+                currentSelection[optionName] = {
+                    ...current,
+                    name: optionName,
+                    state: nextState,
+                    count,
+                    ...(nextState === 'not' ? { minimumValues: undefined } : {}),
+                };
             }
             this.selectionChange.emit(currentSelection);
         } else {
@@ -1146,6 +1173,7 @@ export class MultiSelectDropdownComponent {
         
         if (current && (current.state === 'and' || current.state === 'or')) {
             currentSelection[optionName] = { 
+                ...current,
                 name: optionName,
                 state: current.state, 
                 count: Math.max(1, count) 
@@ -1153,6 +1181,52 @@ export class MultiSelectDropdownComponent {
             this.selectionChange.emit(currentSelection);
         }
         this.restoreScrollPosition(restoreState);
+    }
+
+    getMinimumValue(optionName: string, index: number): number | '' {
+        if (!this.multistate()) {
+            return '';
+        }
+        const selection = this.selected() as MultiStateSelection;
+        return selection[optionName]?.minimumValues?.[index] ?? '';
+    }
+
+    setMinimumValue(optionName: string, index: number, rawValue: string, fieldCount: number): void {
+        if (!this.multistate()) {
+            return;
+        }
+
+        const selection = this.selected() as MultiStateSelection;
+        const current = selection[optionName];
+        if (!current || (current.state !== 'and' && current.state !== 'or')) {
+            return;
+        }
+
+        const parsedValue = rawValue.trim() === '' ? null : Number(rawValue);
+        if (parsedValue !== null && (!Number.isFinite(parsedValue) || parsedValue < 0)) {
+            return;
+        }
+
+        const minimumValues: (number | null)[] = Array<number | null>(fieldCount)
+            .fill(null)
+            .map((_, fieldIndex) => current.minimumValues?.[fieldIndex] ?? null);
+        minimumValues[index] = parsedValue;
+
+        const currentSelection: MultiStateSelection = { ...selection };
+        currentSelection[optionName] = {
+            ...current,
+            minimumValues: minimumValues.some(value => value !== null) ? minimumValues : undefined,
+        };
+        this.selectionChange.emit(currentSelection);
+    }
+
+    onMinimumInput(optionName: string, index: number, fieldCount: number, event: Event): void {
+        this.setMinimumValue(optionName, index, (event.target as HTMLInputElement).value, fieldCount);
+    }
+
+    onMinimumWheel(event: WheelEvent): void {
+        event.preventDefault();
+        event.stopPropagation();
     }
 
     trackOptionName = (_index: number, option: DropdownOption) => option.name;

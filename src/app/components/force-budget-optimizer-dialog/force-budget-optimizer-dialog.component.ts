@@ -12,7 +12,7 @@ import type { Force } from '../../models/force.model';
 import type { ForceUnit } from '../../models/force-unit.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
-import { getEffectivePilotingSkill } from '../../utils/cbt-common.util';
+import { getEffectivePilotingSkill, getFixedPilotingSkill } from '../../utils/cbt-common.util';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { OptionsService } from '../../services/options.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
@@ -276,11 +276,12 @@ export class ForceBudgetOptimizerDialogComponent {
         const [minGunnery, maxGunnery] = this.gunnerySkillRange();
         const [minPiloting, maxPiloting] = this.pilotingSkillRange();
         const maxDelta = this.maxPilotSkillDelta();
+        const fixedPiloting = getFixedPilotingSkill(unit);
 
         for (let gunnery = minGunnery; gunnery <= maxGunnery; gunnery += 1) {
             for (let requestedPiloting = minPiloting; requestedPiloting <= maxPiloting; requestedPiloting += 1) {
                 const piloting = getEffectivePilotingSkill(unit, requestedPiloting);
-                if (Math.abs(gunnery - piloting) > maxDelta) {
+                if (fixedPiloting === null && Math.abs(gunnery - piloting) > maxDelta) {
                     continue;
                 }
                 const cost = Math.max(0, BVCalculatorUtil.calculateAdjustedBV(unit, preSkillBv, gunnery, piloting));

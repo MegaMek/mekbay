@@ -42,10 +42,27 @@ export class UnitSvgMekService extends UnitSvgService {
     }
 
     private updateLifeSupportPilotDamageWarning(heat: HeatProfile): void {
-        const warning = this.unit.svg()?.getElementById('lifeSupportPilotDamageWarning');
-        if (!warning) return;
+        const svg = this.unit.svg();
+        if (!svg) return;
 
         const heatHits = this.mekRules.heatLifeSupportPilotHits(heat.next ?? heat.current);
+        const builtInWarning = svg.getElementById('heatLifeSupportWarning');
+        if (builtInWarning) {
+            if (heatHits === 0) {
+                builtInWarning.setAttribute('display', 'none');
+                builtInWarning.removeAttribute('aria-label');
+                builtInWarning.removeAttribute('data-pilot-hits');
+                return;
+            }
+            builtInWarning.setAttribute('aria-label', `${heatHits} Life Support heat pilot hit${heatHits === 1 ? '' : 's'}`);
+            builtInWarning.setAttribute('data-pilot-hits', heatHits.toString());
+            builtInWarning.removeAttribute('display');
+            return;
+        }
+
+        const warning = svg.getElementById('lifeSupportPilotDamageWarning');
+        if (!warning) return;
+
         const oxygenHits = this.mekRules.submergedLifeSupportPilotHits();
         const iconKinds: ('heat' | 'oxygen')[] = [];
         for (let i = 0; i < heatHits; i++) iconKinds.push('heat');
@@ -262,6 +279,7 @@ export class UnitSvgMekService extends UnitSvgService {
                 }
 
                 this.renderInventoryEntryState(entry);
+                this.renderKickArcHitModifier(entry);
         });
         this.renderInventoryControlSelection();
     }
@@ -349,6 +367,19 @@ export class UnitSvgMekService extends UnitSvgService {
         );
         if (!resolved) return;
         this.renderRulesAdjustedDamage(entry, damageEl, resolved.weakened, originalText);
+    }
+
+    private renderKickArcHitModifier(entry: MountedEquipment): void {
+        const display = this.mekRules.resolveKickArcHitDisplay(entry);
+        if (!display || !entry.el) return;
+        const hitModRect = entry.el.querySelector(':scope > .hitMod-rect');
+        const hitModText = entry.el.querySelector(':scope > .hitMod-text');
+        if (!hitModRect || !hitModText) return;
+
+        hitModRect.setAttribute('display', 'block');
+        hitModText.setAttribute('display', 'block');
+        hitModText.textContent = display.text;
+        entry.el.classList.toggle('weakenedHitMod', display.weakened);
     }
 
     /** Render rules-specific shield damage without applying physical-weapon or TSM modifiers. */

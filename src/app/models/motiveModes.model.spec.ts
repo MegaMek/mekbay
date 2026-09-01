@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { getMotiveModeLabel, getMotiveModesByUnit } from './motiveModes.model';
+import { getMotiveModeLabel, getMotiveModeMaxDistance, getMotiveModesByUnit } from './motiveModes.model';
 import type { UnitSummary } from './unit-summary.model';
 
 function createUnit(overrides: Partial<UnitSummary> = {}): UnitSummary {
@@ -20,6 +20,16 @@ function createUnit(overrides: Partial<UnitSummary> = {}): UnitSummary {
 }
 
 describe('motiveModes', () => {
+    it('places Sprint after Run for grounded Meks', () => {
+        const unit = createUnit();
+
+        expect(getMotiveModesByUnit(unit, false)).toEqual([
+            'stationary', 'walk', 'run', 'sprint', 'jump',
+        ]);
+        expect(getMotiveModeLabel('sprint', unit)).toBe('Sprint');
+        expect(getMotiveModeMaxDistance('sprint', unit)).toBe(10);
+    });
+
     it('maps Aero movement to stationary and thrust modes', () => {
         const unit = createUnit({ type: 'Aero', subtype: 'Spheroid DropShip', moveType: 'Spheroid', jump: 5, umu: 2 });
 
@@ -35,6 +45,7 @@ describe('motiveModes', () => {
         expect(getMotiveModesByUnit(unit, true)).not.toContain('stationary');
         expect(getMotiveModesByUnit(unit, true)).toContain('walk');
         expect(getMotiveModesByUnit(unit, true)).toContain('run');
+        expect(getMotiveModesByUnit(unit, true)).not.toContain('sprint');
     });
 
     it('keeps stationary for grounded LAMs and non-LAM airborne units', () => {

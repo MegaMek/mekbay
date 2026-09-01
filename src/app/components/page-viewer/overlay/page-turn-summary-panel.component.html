@@ -31,7 +31,7 @@
         }
 
         @if (canSwitchAirborneMode() === false || airborne() !== null) {
-            <div class="summary-row">
+            <div class="summary-row move-mode-row" [class.crowded]="moveModes().length > 4">
                 @for (moveMode of moveModes(); track moveMode.mode) {
                     @let mode = moveMode.mode;
                     <button
@@ -159,6 +159,7 @@
                 class="bt-button spotting-button"
                 [class.selected]="spotting()"
                 [attr.aria-pressed]="spotting()"
+                [disabled]="!canSpot()"
                 (click)="toggleSpotting()"
             >
                 <span>Spotting</span>
@@ -217,28 +218,30 @@
         </div>
     </section>
 
-    @if (tracksHeat()) {
-        <section class="summary-section">
-            <h2 class="section-title">Heat</h2>
-            <div class="modifier-list">
-                @for (row of heatRows(); track row.id) {
-                    <div class="summary-row">
-                        <span [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
-                            {{ row.label }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> (Selected)</span>}:
-                        </span>
-                        <span class="modifier heat" [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
-                            {{ (row.value > 0 ? '+' : '') + row.value }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> ({{ (row.selectedValue > 0 ? '+' : '') + row.selectedValue }})</span>}
-                        </span>
-                    </div>
-                }
-            </div>
-        </section>
+    @if (tracksHeat() && heatRows(); as heatRows) {
+        @if (heatRows.length > 0) {
+            <section class="summary-section">
+                <h2 class="section-title">Heat</h2>
+                <div class="modifier-list">
+                    @for (row of heatRows; track row.id) {
+                        <div class="summary-row">
+                            <span [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
+                                {{ row.label }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> (Selected)</span>}:
+                            </span>
+                            <span class="modifier heat" [class.selected-weapon-heat]="row.selectedOnly" [class.underwater-heat]="row.underwater">
+                                {{ (row.value > 0 ? '+' : '') + row.value }}@if (row.selectedValue !== undefined) {<span class="selected-weapon-heat"> ({{ (row.selectedValue > 0 ? '+' : '') + row.selectedValue }})</span>}
+                            </span>
+                        </div>
+                    }
+                </div>
+            </section>
+        }
     }
 
     <section class="summary-section">
         <h2 class="section-title">Other</h2>
         <div class="summary-row">
-            <span>Damage received:</span>
+            <span>Damage received this phase:</span>
             <span class="modifier warning important">{{ damageReceived() }}</span>
         </div>
     </section>
@@ -275,11 +278,43 @@
                 }
             </button>
         }
-        @if (dirty()) {
-            <button type="button" class="bt-button" (click)="endTurn()">End Turn</button>
+        @if (phaseDirty() || endPhaseForAllButtonVisible()) {
+            <div class="phase-actions">
+                @if (phaseDirty()) {
+                    <button type="button" class="phase-button end-phase-action" (click)="endPhase($event)">
+                        <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                            <path d="M4 12l5 5L20 6" />
+                        </svg>
+                        <span>End Phase</span>
+                    </button>
+                }
+                @if (endPhaseForAllButtonVisible()) {
+                    <button type="button" class="phase-button end-phase-action" (click)="endPhaseForAll($event)">
+                        <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                            <path d="M3 6l2 2 4-4M3 13l2 2 4-4M3 20l2 2 4-4M12 6h9M12 13h9M12 20h9" />
+                        </svg>
+                        <span>All Units</span>
+                    </button>
+                }
+            </div>
         }
-        @if (endTurnForAllButtonVisible()) {
-            <button type="button" class="bt-button large-action" (click)="endTurnForAll($event)">End Turn for All Units</button>
-        }
+        <div class="turn-actions">
+            @if (dirty()) {
+                <button type="button" class="bt-button turn-action end-turn-action large-action" (click)="endTurn()">
+                    <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M3 12h13M11 7l5 5-5 5M20 4v16" />
+                    </svg>
+                    <span>End Turn</span>
+                </button>
+            }
+            @if (endTurnForAllButtonVisible()) {
+                <button type="button" class="bt-button turn-action all-units-action large-action" (click)="endTurnForAll($event)">
+                    <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M3 6h11M10 3l4 3-4 3M3 12h11M10 9l4 3-4 3M3 18h11M10 15l4 3-4 3M20 3v18" />
+                    </svg>
+                    <span>{{ (dirty()) ? "All Units" : "End Turn for All Units" }}</span>
+                </button>
+            }
+        </div>
     </footer>
 </aside>

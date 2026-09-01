@@ -214,7 +214,7 @@ describe('CBTForceUnitTestHarness', () => {
         expect(resolveEquipmentActionPermission).not.toHaveBeenCalled();
     });
 
-    it('requires an explicitly operational C3 component before configuring its network', () => {
+    it('does not require an explicitly operational C3 component before configuring its network', () => {
         const resolveConfigureNetworkPermission = jasmine.createSpy('resolveConfigureNetworkPermission')
             .and.returnValue(true);
         const harness = createCBTForceUnitTestHarness({ resolveConfigureNetworkPermission });
@@ -225,8 +225,8 @@ describe('CBTForceUnitTestHarness', () => {
 
         harness.setEquipmentStatus(mounted, 'destroyed');
 
-        expect(harness.unit.canPerformEquipmentAction(mounted, 'configure-network')).toBeFalse();
-        expect(resolveConfigureNetworkPermission).toHaveBeenCalledTimes(1);
+        expect(harness.unit.canPerformEquipmentAction(mounted, 'configure-network')).toBeTrue();
+        expect(resolveConfigureNetworkPermission).toHaveBeenCalledTimes(2);
     });
 
     it('resolves lifecycle state through canonical unit helpers', () => {

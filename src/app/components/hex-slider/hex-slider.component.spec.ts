@@ -87,7 +87,7 @@ describe('HexSliderComponent', () => {
         const slider = fixture.nativeElement.querySelector('.hex-slider') as HTMLDivElement;
 
         expect(component.effectiveMaxValue()).toBe(6);
-        expect(component.blockedMaxPercent()).toBe(40);
+        expect(component.blockedMaxPercent()).toBe(35);
         expect(slider.getAttribute('aria-valuemax')).toBe('6');
         expect(fixture.nativeElement.querySelector('.blocked-max-track')).not.toBeNull();
 
@@ -96,6 +96,16 @@ describe('HexSliderComponent', () => {
 
         expect(valueChanges).toEqual([6]);
         expect(valueCommits).toEqual([6]);
+    });
+
+    it('keeps the maximum usable tick on the usable track', () => {
+        fixture.componentRef.setInput('max', 3);
+        fixture.componentRef.setInput('blockedMax', 1);
+        fixture.detectChanges();
+        const blockedTrack = fixture.nativeElement.querySelector('.blocked-max-track') as HTMLDivElement;
+
+        expect(component.blockedMaxPercent()).toBe(50);
+        expect(blockedTrack.style.width).toBe('50%');
     });
 
     it('uses tick label overrides without replacing other generated tick labels', () => {

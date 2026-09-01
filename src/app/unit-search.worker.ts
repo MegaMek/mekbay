@@ -29,14 +29,16 @@ import type {
     UnitSearchWorkerResultMessage,
 } from './utils/unit-search-worker-protocol.util';
 import { getUnitVariantGroupKey } from './utils/unit-variant.util';
+import { buildASSpecialsByUnitIndex, type ParsedASSpecials } from './utils/as-special-filter.util';
 
 interface WorkerCorpusRuntime {
     corpusVersion: string;
     units: UnitSummary[];
-    allUnitNames: ReadonlySet<string>;
-    indexedUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
+    allUnitUuids: ReadonlySet<string>;
+    indexedUnitUuids: Map<string, Map<string, ReadonlySet<string>>>;
     indexedFilterValues: Map<string, string[]>;
-    factionEraUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
+    indexedASSpecials: Map<string, ParsedASSpecials>;
+    factionEraUnitUuids: Map<string, Map<string, ReadonlySet<string>>>;
     forcePackToLookupKey: Map<string, Set<string>>;
 }
 
@@ -51,13 +53,13 @@ function getUnitNameKey(name: string): string {
     return name.toLowerCase();
 }
 
-function buildIndexedUnitIds(indexes: UnitSearchWorkerIndexSnapshot): Map<string, Map<string, ReadonlySet<string>>> {
+function buildIndexedUnitUuids(indexes: UnitSearchWorkerIndexSnapshot): Map<string, Map<string, ReadonlySet<string>>> {
     const result = new Map<string, Map<string, ReadonlySet<string>>>();
 
     for (const [filterKey, valueMap] of Object.entries(indexes)) {
         const filterIndex = new Map<string, ReadonlySet<string>>();
-        for (const [value, unitNames] of Object.entries(valueMap)) {
-            filterIndex.set(value, new Set(unitNames));
+        for (const [value, unitUuids] of Object.entries(valueMap)) {
+            filterIndex.set(value, new Set(unitUuids));
         }
         result.set(filterKey, filterIndex);
     }
@@ -75,13 +77,13 @@ function buildIndexedFilterValues(indexes: UnitSearchWorkerIndexSnapshot): Map<s
     return result;
 }
 
-function buildFactionEraUnitIds(factionEraIndex: UnitSearchWorkerFactionEraSnapshot): Map<string, Map<string, ReadonlySet<string>>> {
+function buildFactionEraUnitUuids(factionEraIndex: UnitSearchWorkerFactionEraSnapshot): Map<string, Map<string, ReadonlySet<string>>> {
     const result = new Map<string, Map<string, ReadonlySet<string>>>();
 
     for (const [eraName, factionMap] of Object.entries(factionEraIndex)) {
         const eraIndex = new Map<string, ReadonlySet<string>>();
-        for (const [factionName, unitNames] of Object.entries(factionMap)) {
-            eraIndex.set(factionName, new Set(unitNames));
+        for (const [factionName, unitUuids] of Object.entries(factionMap)) {
+            eraIndex.set(factionName, new Set(unitUuids));
         }
         result.set(eraName, eraIndex);
     }
@@ -89,13 +91,13 @@ function buildFactionEraUnitIds(factionEraIndex: UnitSearchWorkerFactionEraSnaps
     return result;
 }
 
-function addUnitNames(target: Set<string>, source: ReadonlySet<string> | undefined): void {
+function addUnitUuids(target: Set<string>, source: ReadonlySet<string> | undefined): void {
     if (!source || source.size === 0) {
         return;
     }
 
-    for (const unitName of source) {
-        target.add(unitName);
+    for (const unitUuid of source) {
+        target.add(unitUuid);
     }
 }
 
@@ -128,10 +130,15 @@ function hydrateCorpus(snapshot: UnitSearchWorkerCorpusSnapshot): WorkerCorpusRu
     return {
         corpusVersion: snapshot.corpusVersion,
         units: snapshot.units,
-        allUnitNames: new Set(snapshot.units.map((unit) => unit.name)),
-        indexedUnitIds: buildIndexedUnitIds(snapshot.indexes),
+        allUnitUuids: new Set(snapshot.units.map((unit) => unit.uuid)),
+        indexedUnitUuids: buildIndexedUnitUuids(snapshot.indexes),
         indexedFilterValues: buildIndexedFilterValues(snapshot.indexes),
-        factionEraUnitIds: buildFactionEraUnitIds(snapshot.factionEraIndex),
+        indexedASSpecials: buildASSpecialsByUnitIndex(
+            snapshot.units,
+            unit => unit.uuid,
+            unit => unit.as?.specials,
+        ),
+        factionEraUnitUuids: buildFactionEraUnitUuids(snapshot.factionEraIndex),
         forcePackToLookupKey: buildForcePackIndex(snapshot.units),
     };
 }
@@ -146,68 +153,68 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
     const parsedQuery = parseSemanticQueryAST(request.executionQuery, request.gameSystem);
     const parseDurationMs = getNowMs() - parseStartedAt;
 
-    const getFactionEraUnitNames = (eraName: string, factionNames: readonly string[]): ReadonlySet<string> => {
-        const unitNames = new Set<string>();
+    const getFactionEraUnitUuids = (eraName: string, factionNames: readonly string[]): ReadonlySet<string> => {
+        const unitUuids = new Set<string>();
         if (factionNames.length === 0) {
-            return unitNames;
+            return unitUuids;
         }
 
-        const eraFactionUnitIds = runtime.factionEraUnitIds.get(eraName);
+        const eraFactionUnitUuids = runtime.factionEraUnitUuids.get(eraName);
         for (const factionName of factionNames) {
-            addUnitNames(unitNames, eraFactionUnitIds?.get(factionName));
+            addUnitUuids(unitUuids, eraFactionUnitUuids?.get(factionName));
         }
 
-        return unitNames;
+        return unitUuids;
     };
 
-    const getMembershipUnitNames = (scope?: AvailabilityFilterScope): ReadonlySet<string> => {
-        const unitNames = new Set<string>();
+    const getMembershipUnitUuids = (scope?: AvailabilityFilterScope): ReadonlySet<string> => {
+        const unitUuids = new Set<string>();
 
         if (scope?.eraNames !== undefined && scope.factionNames !== undefined) {
             for (const eraName of scope.eraNames) {
-                addUnitNames(unitNames, getFactionEraUnitNames(eraName, scope.factionNames));
+                addUnitUuids(unitUuids, getFactionEraUnitUuids(eraName, scope.factionNames));
             }
 
-            return unitNames;
+            return unitUuids;
         }
 
         if (scope?.eraNames !== undefined) {
             for (const eraName of scope.eraNames) {
-                addUnitNames(unitNames, runtime.indexedUnitIds.get('era')?.get(eraName));
+                addUnitUuids(unitUuids, runtime.indexedUnitUuids.get('era')?.get(eraName));
             }
 
-            return unitNames;
+            return unitUuids;
         }
 
         if (scope?.factionNames !== undefined) {
             for (const factionName of scope.factionNames) {
-                addUnitNames(unitNames, runtime.indexedUnitIds.get('faction')?.get(factionName));
+                addUnitUuids(unitUuids, runtime.indexedUnitUuids.get('faction')?.get(factionName));
             }
 
-            return unitNames;
+            return unitUuids;
         }
 
-        addUnitNames(unitNames, runtime.allUnitNames);
+        addUnitUuids(unitUuids, runtime.allUnitUuids);
 
-        return unitNames;
+        return unitUuids;
     };
 
-    const getScopedEraUnitNames = (
+    const getScopedEraUnitUuids = (
         eraName: string,
         scope?: AvailabilityFilterScope,
     ): ReadonlySet<string> => {
-        return getMembershipUnitNames(
+        return getMembershipUnitUuids(
             scope?.factionNames === undefined
                 ? { eraNames: [eraName] }
                 : { eraNames: [eraName], factionNames: scope.factionNames },
         );
     };
 
-    const getScopedFactionUnitNames = (
+    const getScopedFactionUnitUuids = (
         factionName: string,
         eraNames?: readonly string[],
     ): ReadonlySet<string> => {
-        return getMembershipUnitNames(
+        return getMembershipUnitUuids(
             eraNames === undefined
                 ? { factionNames: [factionName] }
                 : { eraNames: [...eraNames], factionNames: [factionName] },
@@ -228,14 +235,14 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         scope?: AvailabilityFilterScope,
     ): ReadonlySet<string> | undefined => {
         if (filterKey === 'era') {
-            return getScopedEraUnitNames(value, scope);
+            return getScopedEraUnitUuids(value, scope);
         }
 
         if (filterKey === 'faction') {
-            return getScopedFactionUnitNames(value, scope?.eraNames);
+            return getScopedFactionUnitUuids(value, scope?.eraNames);
         }
 
-        return runtime.indexedUnitIds.get(filterKey)?.get(value);
+        return runtime.indexedUnitUuids.get(filterKey)?.get(value);
     };
 
     const getIndexedFilterValues = (filterKey: string): readonly string[] => {
@@ -271,14 +278,15 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
             }
             return adjustPointValueForSkill(unit.as.PV, request.pilotGunnerySkill);
         },
-        unitBelongsToEra: (unit: UnitSummary, eraName: string, scope?: AvailabilityFilterScope) => getScopedEraUnitNames(eraName, scope).has(unit.name),
-        unitBelongsToFaction: (unit: UnitSummary, factionName: string, eraNames?: readonly string[]) => getScopedFactionUnitNames(factionName, eraNames).has(unit.name),
+        unitBelongsToEra: (unit: UnitSummary, eraName: string, scope?: AvailabilityFilterScope) => getScopedEraUnitUuids(eraName, scope).has(unit.uuid),
+        unitBelongsToFaction: (unit: UnitSummary, factionName: string, eraNames?: readonly string[]) => getScopedFactionUnitUuids(factionName, eraNames).has(unit.uuid),
         unitBelongsToForcePack: (unit: UnitSummary, packName: string) => runtime.forcePackToLookupKey.get(packName)?.has(getUnitVariantGroupKey(unit)) ?? false,
         getAllEraNames: getEraFilterValues,
         getAllFactionNames: getFactionFilterValues,
         getDisplayName: (filterKey: string, value: string) => workerDisplayNameFns.get(filterKey)?.(value),
         getIndexedUnitIds,
         getIndexedFilterValues,
+        getIndexedASSpecials: unitUuid => runtime.indexedASSpecials.get(unitUuid),
     });
 
     const parseStage: SearchTelemetryStage = {
@@ -293,8 +301,8 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         corpusVersion: runtime.corpusVersion,
         telemetryQuery: request.telemetryQuery,
         entries: execution.results.map(unit => {
-            const match = execution.normalizationMatchesByUnitName.get(unit.name);
-            return match ? { unitName: unit.name, match } : { unitName: unit.name };
+            const match = execution.normalizationMatchesByUnitUuid.get(unit.uuid);
+            return match ? { unitUuid: unit.uuid, match } : { unitUuid: unit.uuid };
         }),
         stages: [parseStage, ...execution.telemetryStages],
         totalMs: parseDurationMs + execution.totalMs,
