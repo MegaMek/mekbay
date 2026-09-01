@@ -200,6 +200,20 @@ export class TacticalViewComponent {
         return member ? this.forceMembers().findIndex(candidate => candidate.id === member.id) : -1;
     });
     protected readonly canNavigate = computed(() => this.forceMembers().length > 1);
+    protected readonly previousNavigationUnit = computed<CBTForceMember | null>(() => {
+        const members = this.forceMembers();
+        const index = this.unitIndex();
+        return members.length > 1 && index >= 0
+            ? members[(index - 1 + members.length) % members.length] ?? null
+            : null;
+    });
+    protected readonly nextNavigationUnit = computed<CBTForceMember | null>(() => {
+        const members = this.forceMembers();
+        const index = this.unitIndex();
+        return members.length > 1 && index >= 0
+            ? members[(index + 1) % members.length] ?? null
+            : null;
+    });
     protected readonly pendingDamage = computed(() => this.options.options().trackPhaseAndTurn);
     protected readonly equipmentRuntime = signal<EquipmentDialogRuntimeController | null>(null);
     protected readonly conditionMenuExpanded = signal(false);

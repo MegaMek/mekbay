@@ -39,10 +39,14 @@ p {
     min-height: 0;
 }
 
+.tactical-shell {
+    position: relative;
+}
+
 .tactical-scroll {
     overflow: auto;
     overscroll-behavior: contain;
-    padding: max(0px, var(--safe-area-inset-top)) max(0px, var(--safe-area-inset-right)) calc(0px + var(--safe-area-inset-bottom)) max(0px, var(--safe-area-inset-left));
+    padding: max(0px, var(--safe-area-inset-top)) max(0px, var(--safe-area-inset-right)) calc(64px + var(--safe-area-inset-bottom)) max(0px, var(--safe-area-inset-left));
     scrollbar-gutter: stable;
 }
 
@@ -227,26 +231,9 @@ h1 {
     user-select: none;
 }
 
-.unit-navigation,
 .compact-stepper {
     display: inline-flex;
     align-items: center;
-}
-
-.unit-navigation {
-    gap: 3px;
-    align-self: start;
-}
-
-.nav-button {
-    width: 28px;
-    height: 28px;
-    padding: 0;
-}
-
-.nav-button svg {
-    width: 15px;
-    height: 15px;
 }
 
 .unit-position {
@@ -255,6 +242,95 @@ h1 {
     font-size: 0.61rem;
     font-weight: 800;
     text-align: center;
+}
+
+.tactical-navigation-toolbar {
+    position: absolute;
+    z-index: 40;
+    bottom: 0;
+    left: 50%;
+    display: grid;
+    width: min(100%, 1760px);
+    min-height: 56px;
+    grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    padding: 6px max(8px, var(--safe-area-inset-right)) calc(6px + var(--safe-area-inset-bottom)) max(8px, var(--safe-area-inset-left));
+    border-top: 1px solid var(--tactical-line);
+    box-shadow: 0 -6px 18px #0005;
+    transform: translateX(-50%);
+}
+
+.tactical-footer-nav {
+    display: flex;
+    min-width: 0;
+    max-width: 100%;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: gray;
+    font: inherit;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.tactical-footer-nav-left {
+    justify-self: start;
+    text-align: left;
+}
+
+.tactical-footer-nav-right {
+    justify-self: end;
+    text-align: right;
+}
+
+.tactical-footer-nav:hover:not(:disabled) {
+    color: var(--text-color);
+}
+
+.tactical-footer-nav.hidden {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.nav-arrow-symbol {
+    flex: 0 0 auto;
+    font-size: 2rem;
+    line-height: 1;
+}
+
+.nav-unit-name {
+    min-width: 0;
+    max-width: 20ch;
+    overflow: hidden;
+    color: var(--text-color-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.nav-unit-model,
+.nav-unit-chassis {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nav-unit-model {
+    color: var(--text-color-tertiary);
+    font-size: 0.78rem;
+}
+
+.tactical-footer-nav:hover:not(:disabled) .nav-unit-name {
+    color: var(--text-color);
+}
+
+.tactical-footer-nav:hover:not(:disabled) .nav-unit-model {
+    color: var(--text-color-secondary);
 }
 
 .command-strip {
@@ -1201,11 +1277,6 @@ tactical-turn-tracker {
         transform: scale(0.72);
     }
 
-    .nav-button {
-        width: 25px;
-        height: 25px;
-    }
-
     .unit-position {
         min-width: 29px;
     }
@@ -1298,5 +1369,21 @@ tactical-turn-tracker {
 @media print {
     :host {
         display: none !important;
+    }
+}
+
+@container tactical-view (max-width: 760px) {
+    .nav-unit-name {
+        display: none;
+    }
+}
+
+@container tactical-view (max-width: 600px) {
+    .tactical-navigation-toolbar {
+        gap: 4px;
+    }
+
+    .tactical-footer-nav {
+        padding-inline: 2px;
     }
 }

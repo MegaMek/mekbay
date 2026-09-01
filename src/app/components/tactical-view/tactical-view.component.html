@@ -34,21 +34,6 @@
                 <span>Targets</span><strong class="toolbar-count">{{ targets().length }}</strong>
             </button>
             }
-            <nav class="unit-navigation" aria-label="Force unit navigation">
-                <button type="button" class="bt-button nav-button" [disabled]="!canNavigate()" (click)="previousUnit()"
-                    aria-label="Previous unit" title="Previous unit">
-                    <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
-                        <path d="m15 5-7 7 7 7" />
-                    </svg>
-                </button>
-                <span class="unit-position">{{ unitIndex() + 1 }} / {{ forceMembers().length }}</span>
-                <button type="button" class="bt-button nav-button" [disabled]="!canNavigate()" (click)="nextUnit()"
-                    aria-label="Next unit" title="Next unit">
-                    <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
-                        <path d="m9 5 7 7-7 7" />
-                    </svg>
-                </button>
-            </nav>
         </nav>
 
         <header class="unit-hero">
@@ -550,6 +535,29 @@
             }
         </main>
     </div>
+    <nav class="tactical-navigation-toolbar glass" aria-label="Force unit navigation">
+        <button type="button" class="tactical-footer-nav tactical-footer-nav-left"
+            [class.hidden]="!canNavigate()" [disabled]="!canNavigate()" (click)="previousUnit()"
+            [attr.aria-label]="previousNavigationUnit() ? 'Previous Unit: ' + previousNavigationUnit()!.entity.displayName() : 'Previous Unit'"
+            [title]="previousNavigationUnit()?.entity?.displayName() ?? ''">
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10094;</span>
+            <span class="nav-unit-name">
+                <span class="nav-unit-model">{{ previousNavigationUnit()?.entity?.model() }}</span>
+                <span class="nav-unit-chassis">{{ previousNavigationUnit()?.entity?.chassis() }}</span>
+            </span>
+        </button>
+        <span class="unit-position" aria-label="Unit position">{{ unitIndex() + 1 }} / {{ forceMembers().length }}</span>
+        <button type="button" class="tactical-footer-nav tactical-footer-nav-right"
+            [class.hidden]="!canNavigate()" [disabled]="!canNavigate()" (click)="nextUnit()"
+            [attr.aria-label]="nextNavigationUnit() ? 'Next Unit: ' + nextNavigationUnit()!.entity.displayName() : 'Next Unit'"
+            [title]="nextNavigationUnit()?.entity?.displayName() ?? ''">
+            <span class="nav-unit-name">
+                <span class="nav-unit-model">{{ nextNavigationUnit()?.entity?.model() }}</span>
+                <span class="nav-unit-chassis">{{ nextNavigationUnit()?.entity?.chassis() }}</span>
+            </span>
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10095;</span>
+        </button>
+    </nav>
 </div>
 } @else {
 <div class="tactical-empty">Select a Classic BattleTech unit to open Tactical View.</div>
