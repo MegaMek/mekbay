@@ -232,6 +232,7 @@ async function readyCloneForce(): Promise<{
 async function readyEntityForce(options: Readonly<{
     readonly supportsAirborne?: boolean;
     readonly entity?: BaseEntity;
+    readonly restoreWarning?: string;
 }> = {}): Promise<{
     readonly force: CBTForce;
     readonly instanceId: string;
@@ -294,8 +295,13 @@ async function readyEntityForce(options: Readonly<{
         ['restore', 'create'],
     );
     cbtUnits.restore.and.callFake(
-        (saved: SerializedCBTUnitV2 | SerializedNonMekUnit) => {
+        (
+            saved: SerializedCBTUnitV2 | SerializedNonMekUnit,
+            _scenario: Parameters<CBTUnitService['restore']>[1],
+            onRestoreWarning?: Parameters<CBTUnitService['restore']>[2],
+        ) => {
             if (!isSerializedNonMekUnit(saved)) throw new Error('Expected a non-Mek fixture');
+            if (options.restoreWarning !== undefined) onRestoreWarning?.(options.restoreWarning);
             return Promise.resolve(CBTNonMekUnit.restore(saved, entity, identity));
         },
     );
@@ -652,6 +658,16 @@ function updateTarget(
 }
 
 describe('CBTForce V2 encounter persistence', () => {
+    it('shows transient unit restoration warnings after loading succeeds', async () => {
+        const warning = 'Unit "Vedette": The source file changed.';
+        const { dialogs } = await readyEntityForce({ restoreWarning: warning });
+
+        expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
+            `• ${warning}`,
+            'Save Loaded with Warnings',
+        );
+    });
+
     it('loads V2 best effort and drops unsupported unit state without preserving its shape', async () => {
         const { force, instanceId, reload, dialogs } = await readyEntityForce();
         const unsupported = structuredClone(await force.serializeForPersistence()) as SerializedCBTForce;

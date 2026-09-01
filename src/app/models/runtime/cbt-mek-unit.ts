@@ -23,6 +23,7 @@ import {
     buildSavedBlueprintReferenceTableV2,
     restoreSerializedCBTUnitV2,
     serializeCBTUnitStateV2,
+    type V2StateRestoreWarning,
 } from './runtime-state-codec-v2';
 import { MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION } from './unit-state-initializer';
 import { createDefaultCrewAssignment, type CrewAssignment } from './crew-assignment';
@@ -34,6 +35,7 @@ import {
 import type { ScenarioRules } from './unit-state-initializer';
 import { createMekMechanicsContextV2, type MekMechanicsContextV2 } from './mek-mechanics-context-v2';
 import { cloneNativeUnitSourceHandle, type NativeUnitSourceHandle } from '../native-unit-source-handle';
+import type { SourceHashCanary } from '../source-hash-canary';
 import { captureCBTUnitRuntime, type CBTUnitRuntimeReadModel } from './cbt-unit-runtime';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import type {
@@ -48,6 +50,12 @@ export interface CreateCBTMekUnitRequest {
     readonly uuid: UnitUuid;
     readonly instanceId: string;
     readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
+}
+
+/** One-load diagnostics forwarded to the force UI and never persisted with the unit. */
+export interface RestoreCBTMekUnitDiagnostics {
+    readonly currentSourceHashCanary?: SourceHashCanary;
+    readonly onWarning?: (warning: V2StateRestoreWarning) => void;
 }
 
 /** Only this ready wrapper exposes the full entity and operational instance. */
@@ -465,7 +473,7 @@ export class CBTMekUnit implements CBTUnit {
     /**
      * Restores one validated persisted V2 snapshot into the same authoritative
      * ready-runtime wrapper used for fresh and legacy-restored Meks. The
-     * tolerant V2 restorer owns baseline drift; no legacy projection is used.
+     * tolerant V2 restorer reports translation warnings; no legacy projection is used.
      */
     public static async restoreFromEntity(
         saved: SerializedCBTUnitV2,
@@ -473,6 +481,7 @@ export class CBTMekUnit implements CBTUnit {
         uuid: UnitUuid,
         options: InitializeUnitStateOptions,
         nativeSource?: NativeUnitSourceHandle,
+        diagnostics: RestoreCBTMekUnitDiagnostics = {},
     ): Promise<CBTMekUnit> {
         saved = captureValue(saved);
         uuid = captureValue(uuid);
@@ -501,14 +510,20 @@ export class CBTMekUnit implements CBTUnit {
         });
         // The native Entity owns topology. Storage carries only stable target IDs;
         // rebuild the transient lookup table from the exact loaded source.
-        const restored = await restoreSerializedCBTUnitV2({
-            ...saved,
-            blueprintReferences: buildSavedBlueprintReferenceTableV2(
-                entity,
-                runtimeIndex,
-                initialized.baselineRef.ruleset,
-            ),
-        }, entity, runtimeIndex, initialized);
+        const restored = await restoreSerializedCBTUnitV2(
+            {
+                ...saved,
+                blueprintReferences: buildSavedBlueprintReferenceTableV2(
+                    entity,
+                    runtimeIndex,
+                    initialized.baselineRef.ruleset,
+                ),
+            },
+            entity,
+            runtimeIndex,
+            initialized,
+            diagnostics.currentSourceHashCanary ?? nativeSource?.sourceHashCanary,
+        );
         const instance = new CBTUnitInstance(
             saved.instanceId,
             restored.baselineRef,
@@ -534,13 +549,15 @@ export class CBTMekUnit implements CBTUnit {
             schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
             values: initialized.deployment,
         });
-        return new CBTMekUnit(
+        const unit = new CBTMekUnit(
             entity,
             uuid,
             instance,
             deployment,
             nativeSource,
         );
+        for (const warning of restored.warnings) diagnostics.onWarning?.(warning);
+        return unit;
     }
 
 }

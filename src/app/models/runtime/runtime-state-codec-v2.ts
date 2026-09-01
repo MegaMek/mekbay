@@ -150,8 +150,8 @@ export class V2StateCodecError extends Error {
 }
 
 export type V2StateRestoreWarningCode =
-    | 'ENTITY_BASELINE_CHANGED'
-    | 'INITIAL_BASELINE_CHANGED'
+    | 'SOURCE_REVISION_CHANGED'
+    | 'RULESET_CHANGED'
     | 'SLOT_OCCUPANT_MISMATCH'
     | 'TARGET_REKEYED'
     | 'DAMAGE_CLAMPED'
@@ -1067,14 +1067,15 @@ function restoreSavedMekRuleChecks(
 }
 
 /**
- * Restores explicit saved deviations over the current initialized baseline. Provider + UUID is the
- * compatibility gate; source, entity, and initializer drift are diagnostics rather than refusal.
+ * Restores explicit saved deviations over the current initialized baseline. UUID is the
+ * compatibility gate; source-revision and ruleset drift are diagnostics rather than refusal.
  */
 export async function restoreSerializedCBTUnitV2(
     savedInput: SerializedCBTUnitV2,
     entity: MekEntity,
     index: MekRuntimeIndex,
     initialized: { readonly baselineRef: InstanceBaselineRef; readonly state: MekUnitRuntimeState },
+    currentSourceHashCanary?: SourceHashCanary,
 ): Promise<RestoreSerializedCBTUnitV2Result> {
     // The initializer projection is caller-owned too. Capture its structural baseline and clone
     // every runtime collection before restoration work yields; keep entity by reference.
@@ -1127,27 +1128,22 @@ export async function restoreSerializedCBTUnitV2(
     };
     const restoredMovement = restoreSavedMekMovementPsr(saved, accumulator);
 
-    if (saved.baselineRefAtSave.ruleset !== initialized.baselineRef.ruleset) {
+    if (saved.sourceHashCanary !== undefined
+        && currentSourceHashCanary !== undefined
+        && saved.sourceHashCanary !== currentSourceHashCanary) {
         warn(accumulator, {
-            code: 'ENTITY_BASELINE_CHANGED',
-            message: 'The saved state was translated to the current entity baseline.',
+            code: 'SOURCE_REVISION_CHANGED',
+            message: 'The source file has changed since this unit state was saved.',
+            saved: { sourceHashCanary: saved.sourceHashCanary },
+            current: { sourceHashCanary: currentSourceHashCanary },
         });
     }
-    if (saved.baselineRefAtSave.initialStateProfile.initializerRevision
-            !== initialized.baselineRef.initialStateProfile.initializerRevision
-        || saved.baselineRefAtSave.initialStateProfile.profileId
-            !== initialized.baselineRef.initialStateProfile.profileId) {
+    if (saved.baselineRefAtSave.ruleset !== initialized.baselineRef.ruleset) {
         warn(accumulator, {
-            code: 'INITIAL_BASELINE_CHANGED',
-            message: 'Omitted sparse facts adopt the current initializer defaults.',
-            saved: {
-                initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
-                profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
-            },
-            current: {
-                initializerRevision: initialized.baselineRef.initialStateProfile.initializerRevision,
-                profileId: initialized.baselineRef.initialStateProfile.profileId,
-            },
+            code: 'RULESET_CHANGED',
+            message: `The unit state was translated from ruleset ${saved.baselineRefAtSave.ruleset} to ${initialized.baselineRef.ruleset}.`,
+            saved: { ruleset: saved.baselineRefAtSave.ruleset },
+            current: { ruleset: initialized.baselineRef.ruleset },
         });
     }
 

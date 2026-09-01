@@ -5,6 +5,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { TestTankEntity } from '../models/entity/testing/test-entities';
+import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { ScenarioRules } from '../models/runtime/unit-state-initializer';
 import { asSourceHashCanary } from '../models/source-hash-canary';
 import { NativeEntityService } from './native-entity.service';
@@ -15,7 +16,7 @@ import {
     makeUnitFileName,
 } from './unit-catalog/unit-catalog.types';
 
-describe('CBTUnitService source hash canary', () => {
+describe('CBTUnitService restore warnings', () => {
     it('restores by UUID, warns without blocking, and adopts the current canary', async () => {
         const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
         const entity = new TestTankEntity();
@@ -57,7 +58,58 @@ describe('CBTUnitService source hash canary', () => {
         const restored = await service.restore(saved, scenario, warn);
 
         expect(restored.instanceId).toBe(saved.instanceId);
-        expect(warn).toHaveBeenCalledOnceWith('Vedette Medium Tank');
+        expect(warn).toHaveBeenCalledOnceWith(
+            'Unit "Vedette Medium Tank": The source file has changed since this unit state was saved.',
+        );
         expect(restored.serialize().sourceHashCanary).toBe(asSourceHashCanary('BBBB'));
+    });
+
+    it('surfaces every Mek codec warning without blocking restoration', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        let currentHash = asSourceHash('AAAAAAAAAAAAAAAAAAAAAAAAAAA');
+        const entities = jasmine.createSpyObj<NativeEntityService>('NativeEntityService', ['load']);
+        entities.load.and.callFake(async () => ({
+            entity: fixture.entity,
+            source: {
+                uuid: fixture.identity,
+                format: 'mtf' as const,
+                sourceHash: currentHash,
+                file: makeUnitFileName(fixture.identity, 'mtf'),
+                bytes: new ArrayBuffer(0),
+            },
+        }));
+        TestBed.configureTestingModule({
+            providers: [
+                provideZonelessChangeDetection(),
+                CBTUnitService,
+                { provide: NativeEntityService, useValue: entities },
+            ],
+        });
+        const service = TestBed.inject(CBTUnitService);
+        const savedScenario: ScenarioRules = { id: 'megamek', ruleset: 'core-2026' };
+        const created = await service.create({
+            uuid: fixture.identity,
+            instanceId: 'unit:mek-restore-warnings',
+            deployment: { id: 'default' },
+            scenario: savedScenario,
+        });
+        const saved = created.serialize();
+        currentHash = asSourceHash(`${'B'.repeat(26)}A`);
+        const warn = jasmine.createSpy('warn');
+
+        const restored = await service.restore(
+            saved,
+            { id: 'megamek', ruleset: 'total-warfare' },
+            warn,
+        );
+
+        const unitName = fixture.entity.displayName();
+        expect(restored.instanceId).toBe(saved.instanceId);
+        expect(warn.calls.allArgs()).toEqual([
+            [`Unit "${unitName}": The source file has changed since this unit state was saved.`],
+            [`Unit "${unitName}": The unit state was translated from ruleset core-2026 to total-warfare.`],
+        ]);
+        expect(restored.serialize().sourceHashCanary).toBe(asSourceHashCanary('BBBB'));
+        expect(restored.serialize().baselineRefAtSave.ruleset).toBe('total-warfare');
     });
 });

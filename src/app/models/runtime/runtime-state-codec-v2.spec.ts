@@ -14,6 +14,7 @@ import {
     createDirectModularArmorRuntimeFixture,
     createDirectShieldRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
+import { asSourceHashCanary } from '../source-hash-canary';
 
 describe('direct Mek V2 state codec', () => {
     it('persists only an explicit destruction override, not derived destruction', () => {
@@ -65,6 +66,40 @@ describe('direct Mek V2 state codec', () => {
         expect(restored.state.ammo.size).toBe(1);
         expect(restored.unresolved).toEqual([]);
         expect(replay.snapshot().locations.size).toBe(0);
+    });
+
+    it('reports source revision and ruleset changes with precise warning codes', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const saved = {
+            ...serialize(fixture),
+            sourceHashCanary: asSourceHashCanary('AAAA'),
+        };
+        const initialized = {
+            ...fixture.initialized,
+            baselineRef: Object.freeze({
+                ...fixture.initialized.baselineRef,
+                ruleset: 'total-warfare' as const,
+            }),
+        };
+
+        const restored = await restoreSerializedCBTUnitV2(
+            saved,
+            fixture.entity,
+            fixture.index,
+            initialized,
+            asSourceHashCanary('BBBB'),
+        );
+
+        expect(restored.warnings).toContain(jasmine.objectContaining({
+            code: 'SOURCE_REVISION_CHANGED',
+            saved: { sourceHashCanary: 'AAAA' },
+            current: { sourceHashCanary: 'BBBB' },
+        }));
+        expect(restored.warnings).toContain(jasmine.objectContaining({
+            code: 'RULESET_CHANGED',
+            saved: { ruleset: 'core-2026' },
+            current: { ruleset: 'total-warfare' },
+        }));
     });
 
     it('round-trips pending and committed crew death distinctly', async () => {

@@ -18,7 +18,7 @@ import {
     type ScenarioRules,
 } from '../models/runtime/unit-state-initializer';
 import type { UnitUuid } from './unit-catalog/unit-catalog.types';
-import { sourceHashCanaryChanged } from '../models/source-hash-canary';
+import { sourceHashCanary, sourceHashCanaryChanged } from '../models/source-hash-canary';
 import {
     NativeEntityService,
     nativeSourceHandleForLoadedEntity,
@@ -71,18 +71,21 @@ export class CBTUnitService {
     public async restore(
         saved: SerializedCBTUnitV2 | SerializedNonMekUnit,
         scenario: ScenarioRules,
-        onSourceHashChanged?: (unitName: string) => void,
+        onRestoreWarning?: (warning: string) => void,
     ): Promise<CBTUnit> {
         const loaded = await this.entities.load(saved.entity);
         const uuid = loaded.source.uuid;
         const nativeSource = nativeSourceHandleForLoadedEntity(loaded);
-        if (sourceHashCanaryChanged(saved.sourceHashCanary, loaded.source.sourceHash)) {
-            onSourceHashChanged?.(loaded.entity.displayName());
-        }
+        const warn = (message: string): void => {
+            onRestoreWarning?.(`Unit "${loaded.entity.displayName()}": ${message}`);
+        };
         let unit: CBTUnit;
         if (isSerializedNonMekUnit(saved)) {
             if (loaded.entity instanceof MekEntity) {
                 throw new Error('A persisted non-Mek runtime resolved to a Mek entity');
+            }
+            if (sourceHashCanaryChanged(saved.sourceHashCanary, loaded.source.sourceHash)) {
+                warn('The source file has changed since this unit state was saved.');
             }
             unit = CBTNonMekUnit.restore(saved, loaded.entity, uuid, nativeSource);
         } else {
@@ -90,11 +93,14 @@ export class CBTUnitService {
                 throw new Error('A persisted Mek runtime resolved to a non-Mek entity');
             }
             unit = await CBTMekUnit.restoreFromEntity(saved, loaded.entity, uuid, {
-                    initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
-                    profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
-                    deployment: saved.deployment.values,
-                    scenario,
-            }, nativeSource);
+                initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
+                profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
+                deployment: saved.deployment.values,
+                scenario,
+            }, nativeSource, {
+                currentSourceHashCanary: sourceHashCanary(loaded.source.sourceHash),
+                onWarning: warning => warn(warning.message),
+            });
         }
         return unit;
     }

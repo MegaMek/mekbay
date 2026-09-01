@@ -128,8 +128,8 @@ export class CBTUnitStore {
             try {
                 return {
                     entry,
-                    unit: await cbtUnits.restore(entry.unit, scenario, unitName => {
-                        warnings.add(`Unit "${unitName}" source file has changed since this force was last used.`);
+                    unit: await cbtUnits.restore(entry.unit, scenario, warning => {
+                        warnings.add(warning);
                     }),
                 };
             } catch {
