@@ -20,6 +20,13 @@ interface ClassicSkillPrioritiesTestApi {
 
 interface ForceBudgetOptimizerDialogTestApi {
     targetBudget(): number;
+    createCBTOptions(forceUnit: {
+        getUnit(): UnitSummary;
+        getBaseBv(): number;
+        tagBV(): number;
+        c3Tax(): number;
+        externalStoresBv(): number;
+    }): Array<{ gunnery?: number; piloting?: number }>;
     getCBTSkillPriorities(unit: UnitSummary): ClassicSkillPrioritiesTestApi;
     getCBTSmartScore(priorities: ClassicSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
     getPhysicalDamagePerTurn(unit: UnitSummary): number;
@@ -34,7 +41,7 @@ interface OptimizationStateTestApi {
 }
 
 describe('ForceBudgetOptimizerDialogComponent', () => {
-    async function createComponent(forceTotal = 0, bvPvLimit = 0): Promise<ForceBudgetOptimizerDialogTestApi> {
+    async function createComponent(forceTotal = 0, bvPvLimit = 0, maxDelta = 8): Promise<ForceBudgetOptimizerDialogTestApi> {
         const force = {
             gameSystem: GameSystem.CLASSIC,
             totalBv: jasmine.createSpy('totalBv').and.returnValue(forceTotal),
@@ -48,7 +55,7 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
                     gunnery: { min: 2, max: 6 },
                     piloting: { min: 2, max: 6 },
                     skill: { min: 2, max: 6 },
-                    maxDelta: 8,
+                    maxDelta,
                 },
             }),
             setOption: jasmine.createSpy('setOption').and.resolveTo(undefined),
@@ -142,6 +149,26 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
         expect(priorities.gunnery).toBe(31);
         expect(priorities.piloting).toBe(1);
         expect(gunneryFocusedScore).toBeGreaterThan(pilotingFocusedScore);
+    });
+
+    it('ignores max delta for fixed-Piloting units', async () => {
+        const component = await createComponent(0, 0, 0);
+        const infantry = createUnit({
+            type: 'Infantry',
+            subtype: 'Conventional Infantry',
+            canAntiMech: false,
+            bv: 100,
+        });
+
+        const options = component.createCBTOptions({
+            getUnit: () => infantry,
+            getBaseBv: () => 100,
+            tagBV: () => 0,
+            c3Tax: () => 0,
+            externalStoresBv: () => 0,
+        });
+
+        expect(options.some(option => option.gunnery === 2 && option.piloting === 8)).toBeTrue();
     });
 
     it('selects the nearest result without exceeding the target budget', async () => {
