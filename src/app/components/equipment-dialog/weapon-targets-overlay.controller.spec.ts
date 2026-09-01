@@ -141,7 +141,6 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
 
         expect(harness.dispatch).toHaveBeenCalledOnceWith({
             kind: 'update-target',
-            expectedRevision: asStateRevision(4),
             targetId: asEncounterTargetId('A'),
             patch: {
                 unitType: 'vehicle',
@@ -150,9 +149,6 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
         }, 'user');
         expect(harness.dispatchTargeting).toHaveBeenCalledOnceWith(harness.member.id, {
             type: 'edit-attacker-targeting',
-            commandId: jasmine.any(String),
-            expectedRevision: asStateRevision(2),
-            expectedRegistryRevision: asStateRevision(4),
             edit: {
                 kind: 'set-target-facts',
                 targetId: asEncounterTargetId('A'),
@@ -196,15 +192,11 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
 
         expect(harness.dispatch).toHaveBeenCalledOnceWith({
             kind: 'update-target',
-            expectedRevision: asStateRevision(7),
             targetId: opfor.id,
             patch: { color: '#abcdef' },
         }, 'user');
         expect(harness.dispatchTargeting).toHaveBeenCalledOnceWith(harness.member.id, {
             type: 'edit-attacker-targeting',
-            commandId: jasmine.any(String),
-            expectedRevision: asStateRevision(2),
-            expectedRegistryRevision: asStateRevision(4),
             edit: {
                 kind: 'set-target-facts',
                 targetId: opfor.id,
@@ -237,12 +229,11 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
         }));
     });
 
-    it('surfaces a stale shared update and does not apply its local half', async () => {
+    it('surfaces a refused shared update and does not apply its local half', async () => {
         const harness = createHarness();
         harness.dispatch.and.returnValue({
             accepted: false,
             changed: false,
-            reason: 'STALE_REVISION',
             snapshot: harness.snapshot,
         });
 
@@ -258,11 +249,14 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
             patch: { name: 'Changed' },
         } satisfies TargetRegistryCommand);
         expect(harness.dispatchTargeting).not.toHaveBeenCalled();
-        expect(harness.logger.error).toHaveBeenCalledWith(jasmine.stringContaining('STALE_REVISION'));
-        expect(harness.toast.showToast).toHaveBeenCalledWith(jasmine.stringContaining('STALE_REVISION'), 'error');
+        expect(harness.logger.error).toHaveBeenCalledWith('Could not update target: the target is read-only.');
+        expect(harness.toast.showToast).toHaveBeenCalledWith(
+            'Could not update target: the target is read-only.',
+            'error',
+        );
     });
 
-    it('captures a detached revision for create and delete commands', () => {
+    it('creates and deletes against the force-owned registry', () => {
         const harness = createHarness();
         const emptySnapshot = { revision: asStateRevision(8), targets: [] as EncounterTarget[] };
         const populatedSnapshot = { revision: asStateRevision(9), targets: [harness.target] };
@@ -273,11 +267,9 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
 
         expect(harness.dispatch.calls.argsFor(0)[0]).toEqual(jasmine.objectContaining({
             kind: 'create-target',
-            expectedRevision: asStateRevision(8),
         }));
         expect(harness.dispatch.calls.argsFor(1)[0]).toEqual({
             kind: 'delete-target',
-            expectedRevision: asStateRevision(9),
             targetId: asEncounterTargetId('A'),
         });
     });
@@ -302,7 +294,6 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
         expect(source).toBe('user');
         expect(createCommand).toEqual(jasmine.objectContaining({
             kind: 'create-target',
-            expectedRevision: asStateRevision(10),
             target: jasmine.objectContaining({
                 letter: 'L',
                 name: 'Target L',
@@ -321,8 +312,13 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
         harness.controller.createTarget(harness.options);
 
         expect(harness.dispatch).not.toHaveBeenCalled();
-        expect(harness.logger.error).toHaveBeenCalledWith(jasmine.stringContaining('EXCEEDS_CAPACITY'));
-        expect(harness.toast.showToast).toHaveBeenCalledWith(jasmine.stringContaining('EXCEEDS_CAPACITY'), 'error');
+        expect(harness.logger.error).toHaveBeenCalledWith(
+            'Could not add target: the target registry is full.',
+        );
+        expect(harness.toast.showToast).toHaveBeenCalledWith(
+            'Could not add target: the target registry is full.',
+            'error',
+        );
     });
 
     it('routes CLEAR directly through one typed atomic registry reset', () => {
@@ -333,7 +329,6 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
         expect(harness.opforService.setEnabled).not.toHaveBeenCalled();
         expect(harness.dispatch).toHaveBeenCalledOnceWith({
             kind: 'reset-targets',
-            expectedRevision: asStateRevision(4),
         }, 'registry-reset');
         expect(harness.force.inventoryControlOpforEnabled()).toBeFalse();
     });
@@ -418,9 +413,6 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
 
         expect(dispatchTargeting).toHaveBeenCalledOnceWith(instanceId, {
             type: 'edit-attacker-targeting',
-            commandId: jasmine.any(String),
-            expectedRevision: asStateRevision(12),
-            expectedRegistryRevision: asStateRevision(4),
             edit: {
                 kind: 'set-target-facts',
                 targetId: asEncounterTargetId('A'),

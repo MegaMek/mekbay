@@ -160,6 +160,7 @@ describe('PageTurnSummaryPanelComponent', () => {
         harness.set({
             ...dirty,
             hasPendingCombat: true,
+            hasPendingPhaseChanges: true,
             movementState: {
                 ...dirty.movementState,
                 damageThisPhase: 1,
@@ -207,6 +208,7 @@ describe('PageTurnSummaryPanelComponent', () => {
         const harness = turnMember({
             ...base,
             hasPendingCombat: true,
+            hasPendingPhaseChanges: true,
             movementState: { ...base.movementState, damageThisPhase: 1 },
         } as MekTurnPanelSnapshot);
         const manager = overlayManager();
@@ -219,7 +221,6 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(event.stopPropagation).toHaveBeenCalledTimes(1);
         expect(harness.dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
             type: 'end-phase',
-            expectedRevision: 1,
         }));
         expect(manager.closeManagedOverlay).toHaveBeenCalledWith('turnSummary-mek-1');
 
@@ -273,7 +274,6 @@ describe('PageTurnSummaryPanelComponent', () => {
         fixture.componentInstance.toggleSpotting();
         expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', {
             kind: 'set-spotting',
-            expectedRevision: 0,
             spotting: true,
         });
         harness.dispatch.calls.reset();
@@ -281,7 +281,6 @@ describe('PageTurnSummaryPanelComponent', () => {
         fixture.componentInstance.selectCover('heavy');
         expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', {
             kind: 'set-cover',
-            expectedRevision: 0,
             cover: 'heavy',
         });
         harness.dispatch.calls.reset();
@@ -290,7 +289,6 @@ describe('PageTurnSummaryPanelComponent', () => {
 
         expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', {
             kind: 'set-movement',
-            expectedRevision: 0,
             movement: { mode: 'walk', distance: 0, boosterComponentIds: [] },
         });
     });
@@ -312,7 +310,6 @@ describe('PageTurnSummaryPanelComponent', () => {
 
         expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', {
             kind: 'edit-escalating-failure',
-            expectedRevision: 0,
             componentId: harness.boosterComponentId,
             edit: { kind: 'select-sequence', index: 0 },
         });
@@ -465,6 +462,7 @@ function entityTurnMember(
         sourceRef: {},
         ruleset: 'core-2026',
         state: { ...pristine, damageTracks },
+        query: { hasPendingPhaseChanges: () => false },
     };
     const dispatch = jasmine.createSpy('dispatchNonMekUnitCommand').and.resolveTo({
         accepted: true,
@@ -515,6 +513,7 @@ function battleArmorTurnMember() {
         sourceRef: {},
         ruleset: 'core-2026' as const,
         state,
+        query: { hasPendingPhaseChanges: () => false },
     };
     let member!: CBTForceMember;
     const force = {
@@ -553,6 +552,7 @@ function aeroTurnMember() {
             heat: { current: 8, previous: 0, pendingOverride: 19, heatsinksOff: 2 },
             turn: { ...pristine.turn, weaponsHeat: 7 },
         },
+        query: { hasPendingPhaseChanges: () => false },
     };
     let member!: CBTForceMember;
     const force = {
@@ -701,5 +701,7 @@ function turnSnapshot(options: {
         heat: createPristineMekHeatStateV2(),
         heatProjection: { kind: 'unsupported', blockers: ['fixture'] },
         conditions: attempts > 0 ? ['prone'] : [],
+        hasPendingCombat: false,
+        hasPendingPhaseChanges: false,
     } as unknown as MekTurnPanelSnapshot;
 }

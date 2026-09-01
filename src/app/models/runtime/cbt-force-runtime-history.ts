@@ -38,7 +38,8 @@ import type {
     NonMekUnitRuntimeState,
 } from './non-mek-unit-instance';
 import type { CBTUnitCommand } from './unit-instance';
-import type { CrewProfileSnapshot } from './crew-profile';
+import type { CrewAssignment } from './crew-assignment';
+import { isCrewDeathCommitted } from './classic-unit-runtime';
 import { serializeUnitCover } from '../unit-cover.model';
 import type { EquipmentRowOrderState } from './equipment-row-order';
 import {
@@ -109,11 +110,11 @@ function componentHistoryTarget(componentId: ComponentId): string {
 }
 
 function crewStateCode(state: CrewRuntimeState | NonMekCrewRuntimeState): number {
-    if (state.wounds >= MAX_MEK_CREW_WOUNDS) return 3;
-    if ('state' in state && state.state === 'killed') return 4;
-    if ('state' in state && state.state === 'stunned') return 5;
-    if (state.ejected) return 2;
-    return state.unconscious ? 1 : 0;
+    return (state.unconscious ? 1 : 0)
+        | (state.ejected ? 2 : 0)
+        | (isCrewDeathCommitted(state) ? 4 : 0)
+        | ('killed' in state && state.killed ? 8 : 0)
+        | ('stunned' in state && state.stunned ? 16 : 0);
 }
 
 function crewRuntimeHistory(
@@ -203,8 +204,8 @@ function mekLocationConditionHistory(
 export function crewProfileHistory(
     instanceId: UnitInstanceId,
     unit: ReadyClassicUnit,
-    before: CrewProfileSnapshot,
-    after: CrewProfileSnapshot,
+    before: CrewAssignment,
+    after: CrewAssignment,
 ): readonly RuntimeHistoryEventInput[] {
     const beforeById = new Map(before.positions.map(position => [position.positionId, position] as const));
     const events: RuntimeHistoryEventInput[] = [];

@@ -384,14 +384,14 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
             setup.runtimeContext,
             { value: C3EM_TOGGLE_CHOICE_VALUE } as never,
             setup.commandContext,
-        )).toBeFalse();
+        )).toBeTrue();
         expect(setup.handler.handleComponentC3EmergencyMasterSelection(
             setup.runtime,
             setup.definition,
             setup.runtimeContext,
             { value: 3 } as never,
             setup.commandContext,
-        )).toBeFalse();
+        )).toBeTrue();
         expect(setup.runtime.revision()).toBe(revision);
     });
 });

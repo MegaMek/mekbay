@@ -90,25 +90,23 @@ export function recordSheetCommand(
     trackPhaseAndTurn: boolean,
     delta?: number,
 ): CBTUnitCommand {
-    const common = { expectedRevision: interaction.expectedRevision };
     const target = trackPhaseAndTurn ? 'pending' as const : 'committed' as const;
     switch (interaction.kind) {
         case 'armor':
             return (delta ?? (interaction.button === 'primary' ? 1 : -1)) > 0
-                ? { ...common, type: 'damage-armor', faceId: interaction.faceId, amount: Math.abs(delta ?? 1), target }
-                : { ...common, type: 'repair-armor', faceId: interaction.faceId, amount: Math.abs(delta ?? -1), target };
+                ? { type: 'damage-armor', faceId: interaction.faceId, amount: Math.abs(delta ?? 1), target }
+                : { type: 'repair-armor', faceId: interaction.faceId, amount: Math.abs(delta ?? -1), target };
         case 'internal':
             return (delta ?? (interaction.button === 'primary' ? 1 : -1)) > 0
-                ? { ...common, type: 'damage-internal', locationId: interaction.locationId, amount: Math.abs(delta ?? 1), target }
-                : { ...common, type: 'repair-internal', locationId: interaction.locationId, amount: Math.abs(delta ?? -1), target };
+                ? { type: 'damage-internal', locationId: interaction.locationId, amount: Math.abs(delta ?? 1), target }
+                : { type: 'repair-internal', locationId: interaction.locationId, amount: Math.abs(delta ?? -1), target };
         case 'critical':
             return (delta ?? (interaction.button === 'primary' ? 1 : -1)) > 0
-                ? { ...common, type: 'hit-critical', slotId: interaction.slotId, hits: Math.abs(delta ?? 1), target }
-                : { ...common, type: 'repair-critical', slotId: interaction.slotId, hits: Math.abs(delta ?? -1), target };
+                ? { type: 'hit-critical', slotId: interaction.slotId, hits: Math.abs(delta ?? 1), target }
+                : { type: 'repair-critical', slotId: interaction.slotId, hits: Math.abs(delta ?? -1), target };
         case 'shield':
             return (delta ?? (interaction.button === 'primary' ? 1 : -1)) > 0
                 ? {
-                    ...common,
                     type: 'damage-shield',
                     componentId: interaction.componentId,
                     track: interaction.track,
@@ -116,7 +114,6 @@ export function recordSheetCommand(
                     target,
                 }
                 : {
-                    ...common,
                     type: 'repair-shield',
                     componentId: interaction.componentId,
                     track: interaction.track,
@@ -126,13 +123,12 @@ export function recordSheetCommand(
         case 'system-critical': {
             const change = delta ?? 1;
             return change > 0
-                ? { ...common, type: 'hit-critical', slotId: interaction.slotId, hits: Math.abs(change), target }
-                : { ...common, type: 'repair-critical', slotId: interaction.slotId, hits: Math.abs(change), target };
+                ? { type: 'hit-critical', slotId: interaction.slotId, hits: Math.abs(change), target }
+                : { type: 'repair-critical', slotId: interaction.slotId, hits: Math.abs(change), target };
         }
         case 'crew-wounds': {
             const state = source.query.crewState(interaction.positionId);
             return {
-                ...common,
                 type: 'set-crew-state',
                 positionId: interaction.positionId,
                 wounds: interaction.wounds,
@@ -142,17 +138,16 @@ export function recordSheetCommand(
         }
         case 'heat':
             return trackPhaseAndTurn
-                ? { ...common, type: 'set-pending-heat', heat: interaction.heat }
-                : { ...common, type: 'set-heat', heat: interaction.heat };
+                ? { type: 'set-pending-heat', heat: interaction.heat }
+                : { type: 'set-heat', heat: interaction.heat };
         case 'heat-sinks-off':
-            return { ...common, type: 'set-heatsinks-off', heatsinksOff: Math.max(0, Math.min(source.heatSinkCount, Math.trunc(delta ?? 0))) };
+            return { type: 'set-heatsinks-off', heatsinksOff: Math.max(0, Math.min(source.heatSinkCount, Math.trunc(delta ?? 0))) };
         case 'apply-heat':
-            return { ...common, type: 'apply-heat', policy: source.heatPolicy };
+            return { type: 'apply-heat', policy: source.heatPolicy };
         case 'condition':
-            return { ...common, type: 'set-condition', condition: interaction.condition, active: !source.query.hasCondition(interaction.condition) };
+            return { type: 'set-condition', condition: interaction.condition, active: !source.query.hasCondition(interaction.condition) };
         case 'shutdown':
             return {
-                ...common,
                 type: 'set-mek-shutdown-state',
                 shutdown: !source.query.hasCondition('shutdown'),
             };

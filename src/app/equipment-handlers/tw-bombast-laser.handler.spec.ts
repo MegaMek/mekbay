@@ -59,7 +59,7 @@ describe('TwBombastLaserHandler direct V2 runtime', () => {
         expect(setup.handler.applicableToComponentBombastLaser(setup.definition)).toBeTrue();
         expect(setComponentBombastLaserCharge(
             setup.runtime, setup.definition, BOMBAST_LASER_CHARGING_STATE,
-        ).accepted).toBeFalse();
+        )).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(componentBombastLaserLifecycle(setup.runtime, setup.definition))
             .toEqual({ chargeState: null, fired: false });
     });

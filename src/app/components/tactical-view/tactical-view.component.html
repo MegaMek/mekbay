@@ -39,6 +39,32 @@
                     <span>BV {{ entity.currentBattleValue }}</span>
                     }
                 </div>
+                @if (passiveConditionStatuses().length > 0 || visibleConditionControls().length > 0) {
+                <div class="hero-condition-controls" role="group" aria-label="Unit conditions">
+                    @for (status of passiveConditionStatuses(); track status.key) {
+                    <span class="state-chip active condition-status-chip" [style.--state-color]="status.color">{{ status.label }}</span>
+                    }
+                    @if (passiveConditionStatuses().length > 0 && visibleConditionControls().length > 0) {
+                    <span class="condition-status-separator" aria-hidden="true">|</span>
+                    }
+                    @for (control of visibleConditionControls(); track control.key) {
+                    <button type="button" class="state-chip" [class.active]="unitConditionActive(control.key)" [style.--state-color]="control.color"
+                        [disabled]="readOnly()" (click)="toggleUnitCondition(control.key)">{{ control.label }}</button>
+                    }
+                    @if (hasExpandableConditionMenu()) {
+                    <button type="button" class="state-chip condition-menu-toggle" [attr.aria-expanded]="conditionMenuExpanded()"
+                        [attr.aria-label]="conditionMenuExpanded() ? 'Hide additional conditions' : 'Show additional conditions'"
+                        [attr.title]="conditionMenuExpanded() ? 'Hide additional conditions' : 'Show additional conditions'"
+                        (click)="toggleConditionMenu()">
+                        @if (conditionMenuExpanded()) {
+                        <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" /></svg>
+                        } @else {
+                        <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" /></svg>
+                        }
+                    </button>
+                    }
+                </div>
+                }
             </div>
             <nav class="unit-navigation" aria-label="Force unit navigation">
                 <button type="button" class="nav-button" [disabled]="!canNavigate()" (click)="previousUnit()" aria-label="Previous unit" title="Previous unit">
@@ -52,17 +78,7 @@
         </header>
 
         @if (mekSnapshot(); as mek) {
-        <section class="command-strip" [class.crew-only]="mekConditionControls().length === 0" aria-label="Unit status and crew">
-            @if (mekConditionControls().length > 0) {
-            <div class="unit-capabilities">
-                <div class="condition-controls">
-                    @for (control of mekConditionControls(); track control.key) {
-                    <button type="button" class="state-chip" [class.active]="mek.conditions.includes(control.key)" [style.--state-color]="control.color"
-                        (click)="toggleMekCondition(control.key)">{{ control.label }}</button>
-                    }
-                </div>
-            </div>
-            }
+        <section class="command-strip" aria-label="Crew">
             <div class="crew-scroll" aria-label="Crew">
                 <div class="crew-track">
                     @for (crew of mek.crew; track crew.positionId; let crewIndex = $index) {
@@ -106,25 +122,8 @@
                 </div>
             </div>
         </section>
-        @if (mek.conditions.length > 0 || mek.destroyed || mek.crippled) {
-        <div class="status-banner-list" aria-label="Current unit conditions">
-            @if (mek.destroyed) { <span class="status-banner danger">DESTROYED</span> }
-            @if (mek.crippled) { <span class="status-banner danger">CRIPPLED</span> }
-            @for (condition of mek.conditions; track condition) { <span class="status-banner" [style.--state-color]="conditionColor(condition)">{{ conditionLabel(condition) }}</span> }
-        </div>
-        }
         } @else if (nonMekSnapshot(); as entity) {
-        <section class="command-strip" [class.crew-only]="nonMekConditionControls().length === 0" aria-label="Unit status and crew">
-            @if (nonMekConditionControls().length > 0) {
-            <div class="unit-capabilities">
-                <div class="condition-controls">
-                    @for (control of nonMekConditionControls(); track control.key) {
-                    <button type="button" class="state-chip" [class.active]="entity.conditions.includes(control.key)" [style.--state-color]="control.color"
-                        (click)="toggleNonMekCondition(control.key)">{{ control.label }}</button>
-                    }
-                </div>
-            </div>
-            }
+        <section class="command-strip" aria-label="Crew">
             <div class="crew-scroll" aria-label="Crew">
                 <div class="crew-track">
                     @for (crew of entity.crew; track crew.positionId; let crewIndex = $index) {
@@ -164,12 +163,6 @@
                 </div>
             </div>
         </section>
-        @if (entity.conditions.length > 0 || entity.destroyed) {
-        <div class="status-banner-list">
-            @if (entity.destroyed) { <span class="status-banner danger">DESTROYED</span> }
-            @for (condition of entity.conditions; track condition) { <span class="status-banner" [style.--state-color]="conditionColor(condition)">{{ conditionLabel(condition) }}</span> }
-        </div>
-        }
         }
 
         <section class="turn-summary-host" aria-label="Turn controls">
@@ -263,7 +256,7 @@
             </section>
 
             @if (mekSnapshot(); as mek) {
-            <section class="tactical-panel armor-panel">
+            <section class="tactical-panel armor-panel" [tacticalArmorLayout]="mek">
                 <div class="panel-heading"><div><span class="panel-kicker">{{ mek.construction.armor }} · {{ mek.construction.structure }}</span><h2>Armor + Internal</h2></div></div>
                 <div class="location-list">
                     @for (location of orderedMekLocations(); track location.locationId) {
@@ -302,6 +295,7 @@
                                     @if (location.maximumInternal > damagePipThreshold) {
                                     <strong class="large-track-value" aria-hidden="true">{{ internal }}/{{ location.maximumInternal }}</strong>
                                     } @else {
+                                    <strong class="track-value">{{ damageTrackValue(internal, location.maximumInternal) }}</strong>
                                     <span class="pip-matrix" [tacticalPipMatrix]="location.maximumInternal" aria-hidden="true">
                                         @for (group of pipGroups(location.maximumInternal); track $index) {
                                         <span class="pip-group">
@@ -309,7 +303,6 @@
                                         </span>
                                         }
                                     </span>
-                                    <strong class="track-value">{{ damageTrackValue(internal, location.maximumInternal) }}</strong>
                                     }
                                 </button>
                                 }
@@ -360,7 +353,7 @@
                 <div class="heat-scale" aria-hidden="true">@for (level of pips(30); track level) { <span [class.active]="level <= mekHeat(mek)" [class.hot]="level > 14" [class.critical]="level > 24"></span> }</div>
             </section>
             } @else if (nonMekSnapshot(); as entity) {
-            <section class="tactical-panel armor-panel">
+            <section class="tactical-panel armor-panel" [tacticalArmorLayout]="entity">
                 <div class="panel-heading"><div><span class="panel-kicker">{{ entity.armorType }} · {{ entity.structureType }}</span><h2>Armor + Structure</h2></div></div>
                 <div class="location-list">
                     @for (location of entity.locations; track location.locationId) {
@@ -398,6 +391,7 @@
                                     @if (location.maximumInternal > damagePipThreshold) {
                                     <strong class="large-track-value" aria-hidden="true">{{ internal }}/{{ location.maximumInternal }}</strong>
                                     } @else {
+                                    <strong class="track-value">{{ damageTrackValue(internal, location.maximumInternal) }}</strong>
                                     <span class="pip-matrix" [tacticalPipMatrix]="location.maximumInternal"
                                         [tacticalPipMatrixSingleLine]="activeMember.entity.entityType === 'BattleArmor'"
                                         aria-hidden="true">
@@ -407,7 +401,6 @@
                                         </span>
                                         }
                                     </span>
-                                    <strong class="track-value">{{ damageTrackValue(internal, location.maximumInternal) }}</strong>
                                     }
                                 </button>
                                 }

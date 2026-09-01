@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { BaseEntity } from '../base-entity';
-import { AmmoEquipment, WeaponEquipment } from '../../equipment.model';
+import { AmmoEquipment, ammoMatchesWeapon, WeaponEquipment } from '../../equipment.model';
 import {
   MountedEngine,
   MountedArmor,
@@ -18,6 +18,7 @@ import { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import {
   ArmorType,
   EntityMountedEquipment,
+  type EntityMountedWeapon,
   EntityQuirk,
   EntityTechBase,
   EntityWeaponQuirk,
@@ -45,6 +46,11 @@ import { parseEquipmentLine, type EquipmentLineProfile } from './equipment-resol
 import { parseTransporterLines } from './transporter-codec';
 import { ParseContext } from './parse-context';
 import { parseBlkEntityFluff } from './entity-fluff-parser';
+import {
+  standardWeaponBayDamage,
+  weaponBayDamageLimit,
+  weaponBayGroupingKey,
+} from '../utils/weapon-bay-grouping';
 
 /**
  * Common BLK parsing - reads universal blocks that apply to all unit types.
@@ -242,11 +248,19 @@ export function parseBlkEquipment(
     || opts?.equipmentLineProfile === 'dropship';
   for (const [blkTag, locCode] of equipTags) {
     if (!bb.exists(blkTag)) continue;
-    let currentBay: EntityMountedEquipment[] = [];
+    interface ParsedWeaponBay {
+      readonly key: string;
+      readonly mounts: EntityMountedEquipment[];
+      readonly weapons: EntityMountedWeapon[];
+      damage: number;
+    }
+    const weaponBays: ParsedWeaponBay[] = [];
+    const pendingAmmo: EntityMountedEquipment[] = [];
+    let currentBay: ParsedWeaponBay | null = null;
     const finishBay = (): void => {
-      if (currentBay.length === 0) return;
-      entity.addEquipmentBay('weapon-bay', { mounts: currentBay });
-      currentBay = [];
+      if (currentBay === null) return;
+      weaponBays.push(currentBay);
+      currentBay = null;
     };
     const lines = bb.getDataAsString(blkTag);
     for (const raw of lines) {
@@ -276,15 +290,50 @@ export function parseBlkEquipment(
       });
       if (createsWeaponBays) {
         if (resolved instanceof WeaponEquipment) {
-          if (parsed.isNewBay) finishBay();
-          currentBay.push(mount);
-        } else if (resolved instanceof AmmoEquipment && currentBay.length > 0) {
-          currentBay.push(mount);
+          const weapon = mount as EntityMountedWeapon;
+          const key = weaponBayGroupingKey(weapon);
+          const damage = standardWeaponBayDamage(weapon);
+          if (parsed.isNewBay
+            || currentBay === null
+            || currentBay.key !== key
+            || currentBay.damage + damage > weaponBayDamageLimit(weapon)) {
+            finishBay();
+            currentBay = { key, mounts: [], weapons: [], damage: 0 };
+          }
+          currentBay.mounts.push(weapon);
+          currentBay.weapons.push(weapon);
+          currentBay.damage += damage;
+          for (let index = 0; index < pendingAmmo.length;) {
+            if (ammoFitsParsedBay(pendingAmmo[index], currentBay)) {
+              currentBay.mounts.push(pendingAmmo[index]);
+              pendingAmmo.splice(index, 1);
+            } else {
+              index++;
+            }
+          }
+        } else if (resolved instanceof AmmoEquipment) {
+          const bays = currentBay === null ? weaponBays : [...weaponBays, currentBay];
+          const compatibleBay = [...bays].reverse().find(bay => ammoFitsParsedBay(mount, bay));
+          if (compatibleBay) compatibleBay.mounts.push(mount);
+          else pendingAmmo.push(mount);
         }
       }
     }
-    if (createsWeaponBays) finishBay();
+    if (createsWeaponBays) {
+      finishBay();
+      for (const bay of weaponBays) entity.addEquipmentBay('weapon-bay', { mounts: bay.mounts });
+    }
   }
+}
+
+function ammoFitsParsedBay(ammo: EntityMountedEquipment, bay: {
+  readonly weapons: readonly EntityMountedWeapon[];
+}): boolean {
+  const ammoEquipment = ammo.equipment;
+  if (!(ammoEquipment instanceof AmmoEquipment)) return false;
+  return bay.weapons.some(weapon =>
+    weapon.rearMounted === ammo.rearMounted
+    && ammoMatchesWeapon(weapon.equipment, ammoEquipment));
 }
 
 /**

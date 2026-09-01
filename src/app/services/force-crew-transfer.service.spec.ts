@@ -8,7 +8,7 @@ import { ASForceUnit } from '../models/as-force-unit.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import { asCrewPositionId } from '../models/entity/entity-identifiers';
 import { CBTForceMember } from '../models/force-member.model';
-import type { CrewProfileSnapshot } from '../models/runtime/crew-profile';
+import type { CrewAssignment } from '../models/runtime/crew-assignment';
 import { asUnitInstanceId } from '../models/runtime/runtime-state';
 import { createEmptyUnit, createTestMekEntity } from '../testing/unit-test-helpers';
 import { AsAbilityLookupService } from './as-ability-lookup.service';
@@ -35,10 +35,7 @@ describe('ForceCrewTransferService cross-system conversion', () => {
             ['getUnitCrewProfile', 'replaceUnitCrewProfile'],
         );
         force.getUnitCrewProfile.and.returnValue(profile);
-        force.replaceUnitCrewProfile.and.resolveTo({
-            accepted: true,
-            snapshot: profile,
-        });
+        force.replaceUnitCrewProfile.and.resolveTo(profile);
         const target = new CBTForceMember(
             asUnitInstanceId('cbt-target'),
             force,
@@ -52,14 +49,11 @@ describe('ForceCrewTransferService cross-system conversion', () => {
             GameSystem.CLASSIC,
         );
 
-        expect(force.replaceUnitCrewProfile).toHaveBeenCalledOnceWith(target.id, {
-            expectedRevision: profile.revision,
-            positions: [
-                { ...profile.positions[0], name: 'Morgan Kell', gunnery: 2 },
-                { ...profile.positions[1], gunnery: 2 },
-                { ...profile.positions[2], gunnery: 2 },
-            ],
-        });
+        expect(force.replaceUnitCrewProfile).toHaveBeenCalledOnceWith(target.id, [
+            { ...profile.positions[0], name: 'Morgan Kell', gunnery: 2 },
+            { ...profile.positions[1], gunnery: 2 },
+            { ...profile.positions[2], gunnery: 2 },
+        ]);
     });
 
     it('maps the first CBT crew name and gunnery to AS without copying piloting', async () => {
@@ -112,9 +106,9 @@ function crewProfile(
         gunnery: number;
         piloting: number;
     }>[],
-): CrewProfileSnapshot {
+): CrewAssignment {
     return {
-        revision: 7,
+        schemaVersion: 1,
         positions: positions.map((position, index) => ({
             positionId: asCrewPositionId(`crew-${index}`),
             role: '',

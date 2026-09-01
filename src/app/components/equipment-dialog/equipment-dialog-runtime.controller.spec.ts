@@ -216,7 +216,6 @@ describe('EquipmentDialogRuntimeController', () => {
             componentId: component.componentId,
             status: 'destroyed',
             target: 'pending',
-            expectedRevision: panel.stateRevision,
         }));
 
         await controller.configureAmmo(component, 'Ammo_AC_10', 7);
@@ -225,7 +224,6 @@ describe('EquipmentDialogRuntimeController', () => {
             componentId: component.componentId,
             munitionKey: 'Ammo_AC_10',
             remaining: 7,
-            expectedRevision: panel.stateRevision,
         }));
 
         await controller.changeMode(component, 'Rapid');
@@ -233,7 +231,6 @@ describe('EquipmentDialogRuntimeController', () => {
             kind: 'set-component-mode',
             componentId: component.componentId,
             mode: 'Rapid',
-            expectedRevision: panel.stateRevision,
         }));
         expect(force.getMekEquipmentInteractions).not.toHaveBeenCalled();
         controller.dispose();
@@ -300,7 +297,6 @@ describe('EquipmentDialogRuntimeController', () => {
             kind: 'edit-escalating-failure',
             componentId,
             edit: { kind: 'select-sequence', index: 0 },
-            expectedRevision: panel.stateRevision,
         });
         expect(force.getMekEquipmentInteractions).not.toHaveBeenCalled();
         controller.dispose();
@@ -368,7 +364,6 @@ describe('EquipmentDialogRuntimeController', () => {
         expect(dispatch).toHaveBeenCalledOnceWith('tank-1', jasmine.objectContaining({
             kind: 'detonate-booby-trap',
             componentId: component.componentId,
-            expectedRevision: panel.stateRevision,
         }));
         expect(dialogs.showNoticeHtml).toHaveBeenCalledOnceWith(
             jasmine.stringContaining('Resolve the Booby Trap blast'),
@@ -488,8 +483,6 @@ describe('EquipmentDialogRuntimeController', () => {
         ]);
         expect(fire).toHaveBeenCalledOnceWith('tank-1', jasmine.objectContaining({
             type: 'fire-selected-weapons',
-            expectedRevision: panel.stateRevision,
-            expectedRegistryRevision: panel.targetRegistryRevision,
         }));
         controller.dispose();
     });
@@ -662,7 +655,6 @@ describe('EquipmentDialogRuntimeController', () => {
         await controller.reorderEquipmentRows('ranged', [2, 0, 1]);
 
         expect(dispatchEquipmentRowOrder).toHaveBeenCalledOnceWith('mek-1', {
-            expectedRevision: panel.stateRevision,
             group: 'ranged',
             permutation: [2, 0, 1],
         });

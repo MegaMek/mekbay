@@ -73,13 +73,22 @@ export interface ClassicCrewRuntimeState {
     readonly wounds: number;
     readonly unconscious: boolean;
     readonly ejected: boolean;
+    /** Sparse committed death. Six wounds without this flag remain pending until phase end. */
+    readonly dead?: true;
     /** Earliest turn for an automated recovery roll; null means no queued recovery. */
     readonly recoveryReadyTurn?: number | null;
+}
+
+/** A sixth wound is fatal, but origin/next commits that death only at phase end. */
+export function isCrewDeathCommitted(state: ClassicCrewRuntimeState): boolean {
+    return state.dead === true;
 }
 
 /** Boundary facts shared by every Classic family runtime. */
 export interface ClassicTurnRuntimeState {
     readonly turnCounter: number;
+    /** A committed phase-scoped edit exists and has not crossed End Phase yet. */
+    readonly phaseStateChanged: boolean;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
 }
 
@@ -113,6 +122,8 @@ export interface ClassicUnitCommandResult<State extends ClassicUnitRuntimeState 
  */
 export interface ClassicUnitQueryPort {
     readonly stateRevision: StateRevision;
+    /** One authoritative dirty check for the current phase. */
+    hasPendingPhaseChanges(): boolean;
     hasPendingCombat(): boolean;
     destroyed(): boolean;
     currentBaseBattleValue(): number | null;

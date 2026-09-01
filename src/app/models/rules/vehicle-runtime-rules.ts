@@ -14,7 +14,6 @@ import type { ToHitModifierBreakdownEntry } from './game-rules';
 import type { NonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
 import { projectNonMekComponentStatuses } from '../runtime/non-mek-component-status';
 import type {
-    NonMekCrewState,
     NonMekUnitRuntimeState,
 } from '../runtime/non-mek-unit-instance';
 import type { CrewMemberState } from '../crew.model';
@@ -25,6 +24,7 @@ import {
     calculateChargeDamage,
     type ChargeDamageProjection,
 } from './charge-damage';
+import { isCrewDeathCommitted } from '../runtime/classic-unit-runtime';
 
 export interface VehicleMotiveHit {
     readonly level: number;
@@ -69,7 +69,7 @@ export interface VehicleRuntimeRulesProjection {
     readonly destroyed: boolean;
     readonly computedConditions: readonly UnitConditionKey[];
     readonly conditionControlKeys: readonly UnitConditionKey[];
-    readonly crewStateControlKeys: readonly NonMekCrewState[];
+    readonly crewStateControlKeys: readonly CrewMemberState[];
     readonly crewStateDisplayKeys: readonly CrewMemberState[];
     readonly systems: VehicleRuntimeSystems;
     readonly movement: VehicleRuntimeMovement;
@@ -105,10 +105,10 @@ export function projectVehicleRuntimeRules(
     const rawCommanderHit = hasDamage('commander_hit');
     const crewKilled = [...index.crewPositions.keys()].some(positionId => {
         const crew = state.crew.get(positionId);
-        return crew?.state === 'killed' || (crew?.wounds ?? 0) >= 6;
+        return crew?.killed === true || (crew !== undefined && isCrewDeathCommitted(crew));
     });
     const crewStunned = [...index.crewPositions.keys()].some(positionId =>
-        state.crew.get(positionId)?.state === 'stunned');
+        state.crew.get(positionId)?.stunned === true);
     const motiveHits = Object.freeze(activeDamageTracks.flatMap(track => {
         if (track.motiveLevel === undefined) return [];
         return (state.damageTracks.get(track.id)?.hitTimestamps ?? [])
@@ -205,7 +205,7 @@ export function projectVehicleRuntimeRules(
 
     const crewStateControlKeys = Object.freeze(hasDroneOperatingSystem
         ? []
-        : ['killed', 'stunned'] as NonMekCrewState[]);
+        : ['killed', 'stunned'] as const);
     return Object.freeze({
         destroyed,
         computedConditions: Object.freeze([...computedConditions]),

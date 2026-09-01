@@ -43,7 +43,10 @@ import type {
     NonMekRecordSheetLocation,
     NonMekRecordSheetSnapshot,
 } from '../../models/runtime/non-mek-record-sheet';
-import type { NonMekUnitCommand } from '../../models/runtime/non-mek-unit-instance';
+import {
+    hasNonMekCrewState,
+    type NonMekUnitCommand,
+} from '../../models/runtime/non-mek-unit-instance';
 import type { CBTUnitCommand } from '../../models/runtime/unit-instance';
 import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
 import { MAX_MEK_CREW_WOUNDS } from '../../models/runtime/runtime-state';
@@ -55,6 +58,7 @@ import {
     crewStateDefinitions,
     getUnitConditionDefinition,
     unitConditionControls,
+    type UnitConditionControl,
 } from '../../models/unit-status-presentation';
 import type { CrewMemberState } from '../../models/crew.model';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
@@ -88,6 +92,7 @@ import type { NonMekRecordSheetInteraction } from '../page-viewer/non-mek-record
 import { recordSheetCommand } from '../page-viewer/mek-record-sheet-interaction.util';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
 import type { MekLocation } from '../../models/entity/types';
+import { TacticalArmorLayoutDirective } from './tactical-armor-layout.directive';
 import { TacticalPipMatrixDirective } from './tactical-pip-matrix.directive';
 import { TacticalTurnTrackerComponent } from './tactical-turn-tracker.component';
 
@@ -120,6 +125,12 @@ interface TacticalInventoryGroup {
     readonly rows: readonly TacticalInventoryRow[];
 }
 
+interface TacticalConditionStatus {
+    readonly key: string;
+    readonly label: string;
+    readonly color: string;
+}
+
 const TACTICAL_DAMAGE_PIP_THRESHOLD = 100;
 
 const CREW_WOUND_STEPS = Object.freeze([
@@ -143,7 +154,7 @@ const CREW_POSITION_LABELS = Object.freeze(['Pilot', 'Gunner', 'Officer'] as con
         PageViewerMekInteractionService,
         PageViewerNonMekRuntimeService,
     ],
-    imports: [TacticalPipMatrixDirective, TacticalTurnTrackerComponent, UnitIconComponent, TooltipDirective],
+    imports: [TacticalArmorLayoutDirective, TacticalPipMatrixDirective, TacticalTurnTrackerComponent, UnitIconComponent, TooltipDirective],
     templateUrl: './tactical-view.component.html',
     styleUrl: './tactical-view.component.scss',
 })
@@ -191,6 +202,7 @@ export class TacticalViewComponent {
     protected readonly canNavigate = computed(() => this.forceMembers().length > 1);
     protected readonly pendingDamage = computed(() => this.options.options().trackPhaseAndTurn);
     protected readonly equipmentRuntime = signal<EquipmentDialogRuntimeController | null>(null);
+    protected readonly conditionMenuExpanded = signal(false);
 
     protected readonly mekSnapshot = computed<MekRecordSheetSnapshot | null>(() => {
         this.equipmentRuntime()?.snapshot();
@@ -232,6 +244,54 @@ export class TacticalViewComponent {
     });
     protected readonly mekConditionControls = computed(() =>
         this.mekSnapshot() && !this.readOnly() ? MEK_UNIT_CONDITION_CONTROLS : []);
+    protected readonly activeConditionControls = computed<readonly UnitConditionControl[]>(() =>
+        this.mekSnapshot() ? this.mekConditionControls() : this.nonMekConditionControls());
+    protected readonly primaryConditionControls = computed(() => Object.freeze(
+        this.activeConditionControls().filter(control => control.placement === 'button'),
+    ));
+    protected readonly menuConditionControls = computed(() => Object.freeze(
+        this.activeConditionControls().filter(control => control.placement === 'menu'),
+    ));
+    protected readonly hasExpandableConditionMenu = computed(() =>
+        this.primaryConditionControls().length > 0 && this.menuConditionControls().length > 0);
+    protected readonly visibleConditionControls = computed<readonly UnitConditionControl[]>(() => {
+        const primary = this.primaryConditionControls();
+        const menu = this.menuConditionControls();
+        if (primary.length === 0) return menu;
+        if (menu.length === 0) return primary;
+        if (this.conditionMenuExpanded()) return Object.freeze([...primary, ...menu]);
+        return Object.freeze([
+            ...primary,
+            ...menu.filter(control => this.unitConditionActive(control.key)),
+        ]);
+    });
+    protected readonly passiveConditionStatuses = computed<readonly TacticalConditionStatus[]>(() => {
+        const mek = this.mekSnapshot();
+        const snapshot = mek ?? this.nonMekSnapshot();
+        if (!snapshot) return Object.freeze([]);
+
+        const statuses: TacticalConditionStatus[] = [];
+        const added = new Set<string>();
+        const add = (status: TacticalConditionStatus): void => {
+            if (added.has(status.key)) return;
+            added.add(status.key);
+            statuses.push(Object.freeze(status));
+        };
+
+        if (snapshot.destroyed) add({ key: 'destroyed', label: 'DESTROYED', color: '#db4d43' });
+        if (mek?.crippled) {
+            const crippled = getUnitConditionDefinition('crippled');
+            add({ key: crippled.key, label: crippled.label, color: crippled.color });
+        }
+
+        const controllable = new Set(this.activeConditionControls().map(control => control.key));
+        for (const key of snapshot.conditions) {
+            if (controllable.has(key)) continue;
+            const condition = getUnitConditionDefinition(key);
+            add({ key: condition.key, label: condition.label, color: condition.color });
+        }
+        return Object.freeze(statuses);
+    });
     protected readonly nonMekCrewStateControls = computed(() => {
         const snapshot = this.nonMekSnapshot();
         return snapshot ? crewStateDefinitions(snapshot.crewStateControlKeys) : [];
@@ -321,6 +381,7 @@ export class TacticalViewComponent {
     constructor() {
         effect(() => {
             const member = this.member();
+            this.conditionMenuExpanded.set(false);
             this.automationToasts.setVisibleUnitIds(
                 this.automationToastVisibilityOwner,
                 member ? [member.id] : [],
@@ -363,6 +424,24 @@ export class TacticalViewComponent {
 
     protected nextUnit(): void {
         this.forceCommands.selectNextUnit();
+    }
+
+    protected toggleConditionMenu(): void {
+        if (!this.hasExpandableConditionMenu()) return;
+        this.conditionMenuExpanded.update(expanded => !expanded);
+    }
+
+    protected unitConditionActive(key: UnitConditionKey): boolean {
+        const snapshot = this.mekSnapshot() ?? this.nonMekSnapshot();
+        return snapshot?.conditions.includes(key) ?? false;
+    }
+
+    protected toggleUnitCondition(key: UnitConditionKey): void {
+        if (this.mekSnapshot()) {
+            void this.toggleMekCondition(key);
+            return;
+        }
+        void this.toggleNonMekCondition(key);
     }
 
     protected showSheetView(): void {
@@ -449,14 +528,6 @@ export class TacticalViewComponent {
 
     protected percentage(remaining: number, maximum: number): number {
         return maximum <= 0 ? 0 : Math.max(0, Math.min(100, remaining / maximum * 100));
-    }
-
-    protected conditionLabel(key: UnitConditionKey): string {
-        return getUnitConditionDefinition(key).label;
-    }
-
-    protected conditionColor(key: UnitConditionKey): string {
-        return getUnitConditionDefinition(key).color;
     }
 
     protected formatStatus(status: string): string {
@@ -906,7 +977,8 @@ export class TacticalViewComponent {
             wounds: current.state.wounds === boundedWounds ? boundedWounds - 1 : boundedWounds,
             unconscious: current.state.unconscious,
             ejected: current.state.ejected,
-            ...(current.state.state === undefined ? {} : { state: current.state.state }),
+            killed: current.state.killed === true,
+            stunned: current.state.stunned === true,
         });
     }
 
@@ -921,14 +993,15 @@ export class TacticalViewComponent {
         const snapshot = this.nonMekSnapshot();
         const current = snapshot?.crew.find(candidate => candidate.positionId === position.positionId);
         if (!snapshot || !current) return;
-        const next = current.effectiveState === selected ? null : selected;
+        const active = hasNonMekCrewState(current.state, selected);
         await this.sendNonMekCommand({
             kind: 'set-crew-state',
             positionId: current.positionId,
             wounds: current.state.wounds,
-            unconscious: next === 'unconscious',
-            ejected: next === 'ejected',
-            ...(next === 'killed' || next === 'stunned' ? { state: next } : {}),
+            unconscious: selected === 'unconscious' ? !active : current.state.unconscious,
+            ejected: selected === 'ejected' ? !active : current.state.ejected,
+            killed: selected === 'killed' ? !active : current.state.killed === true,
+            stunned: selected === 'stunned' ? !active : current.state.stunned === true,
         });
     }
 

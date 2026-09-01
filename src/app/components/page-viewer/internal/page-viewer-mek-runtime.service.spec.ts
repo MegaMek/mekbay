@@ -46,7 +46,7 @@ describe('page-viewer published Mek runtime commands', () => {
             kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', button: 'primary', expectedRevision: revision,
         } as unknown as MekRecordSheetInteraction;
         expect(recordSheetCommand(interaction, source, true)).toEqual(jasmine.objectContaining({
-            type: 'damage-armor', faceId: 'face-ct', amount: 1, target: 'pending', expectedRevision: revision,
+            type: 'damage-armor', faceId: 'face-ct', amount: 1, target: 'pending',
         }));
         expect(recordSheetCommand({ ...interaction, button: 'secondary' } as MekRecordSheetInteraction, source, false))
             .toEqual(jasmine.objectContaining({ type: 'repair-armor', faceId: 'face-ct', amount: 1, target: 'committed' }));

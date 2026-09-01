@@ -77,7 +77,7 @@ describe('direct spot-welder runtime', () => {
         expect(fixture.instance.query().turnState().weaponsHeat).toBe(5);
     });
 
-    it('rejects a selected welder that is no longer operational without adding heat', () => {
+    it('ignores a selected welder that is no longer operational without adding heat', () => {
         const fixture = createDirectSpotWelderRuntimeFixture();
         const welder = fixture.equipmentComponent('Test Spot Welder');
         const target = Object.freeze({ kind: 'component' as const, componentId: welder.id });
@@ -142,5 +142,5 @@ function fire(fixture: DirectMekRuntimeFixture, commandId: string): boolean {
         
         
         heatPolicy: 'automatic',
-    }, registry, false, false).accepted;
+    }, registry, false, false).changed;
 }

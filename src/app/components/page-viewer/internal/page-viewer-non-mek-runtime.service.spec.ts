@@ -3,7 +3,6 @@
 
 import { asCrewPositionId } from '../../../models/entity/entity-identifiers';
 import type { NonMekRecordSheetCrewPosition } from '../../../models/runtime/non-mek-record-sheet';
-import { asStateRevision } from '../../../models/runtime/runtime-state';
 import { nonMekCrewStateCommand } from './page-viewer-non-mek-runtime.service';
 
 describe('PageViewerNonMekRuntimeService crew state command', () => {
@@ -12,7 +11,6 @@ describe('PageViewerNonMekRuntimeService crew state command', () => {
             position('healthy'),
             ['unconscious'],
             'unconscious',
-            asStateRevision(3),
         )).toEqual({
             kind: 'set-crew-state',
             
@@ -20,13 +18,14 @@ describe('PageViewerNonMekRuntimeService crew state command', () => {
             wounds: 0,
             unconscious: true,
             ejected: false,
+            killed: false,
+            stunned: false,
         });
 
         expect(nonMekCrewStateCommand(
             position('unconscious'),
             ['unconscious'],
             'unconscious',
-            asStateRevision(4),
         )).toEqual(jasmine.objectContaining({
             unconscious: false,
             ejected: false,
@@ -38,13 +37,11 @@ describe('PageViewerNonMekRuntimeService crew state command', () => {
             position('healthy'),
             ['killed', 'stunned'],
             'killed',
-            asStateRevision(1),
-        )).toEqual(jasmine.objectContaining({ state: 'killed' }));
+        )).toEqual(jasmine.objectContaining({ killed: true, stunned: false }));
         expect(nonMekCrewStateCommand(
             position('dead'),
             ['unconscious'],
             'dead',
-            asStateRevision(1),
         )).toBeNull();
     });
 });
@@ -63,6 +60,8 @@ function position(effectiveState: NonMekRecordSheetCrewPosition['effectiveState'
             wounds: effectiveState === 'dead' ? 6 : 0,
             unconscious: effectiveState === 'unconscious',
             ejected: false,
+            ...(effectiveState === 'killed' ? { killed: true as const } : {}),
+            ...(effectiveState === 'stunned' ? { stunned: true as const } : {}),
         }),
         effectiveState,
     });

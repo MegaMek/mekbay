@@ -54,7 +54,7 @@ describe('MUL file utilities', () => {
             gameSystem: GameSystem.CLASSIC,
             queryCanonicalRoster: () => ({
                 kind: 'available',
-                snapshot: { structural: { members: [{ instanceId, commander: true }] } },
+                snapshot: { members: [{ instanceId, commander: true }] },
             }),
             getClassicMember: (id: unknown) => id === instanceId ? member : null,
             getMekRecordSheetSnapshot: (id: unknown) => id === instanceId ? snapshot : null,
@@ -131,7 +131,7 @@ describe('MUL file utilities', () => {
             gameSystem: GameSystem.CLASSIC,
             queryCanonicalRoster: () => ({
                 kind: 'available',
-                snapshot: { structural: { members: [{ instanceId, commander: false }] } },
+                snapshot: { members: [{ instanceId, commander: false }] },
             }),
             getClassicMember: (id: unknown) => id === instanceId ? member : null,
             getMekRecordSheetSnapshot: () => null,

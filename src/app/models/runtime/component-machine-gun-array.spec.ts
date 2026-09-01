@@ -112,7 +112,7 @@ describe('direct machine-gun-array runtime', () => {
         )).toBeTrue();
         expect(fixture.instance.snapshot().components.get(controllerId)?.mode).toBe(MGA_UNLINKING_MODE);
         expect(fixture.instance.query().componentMode(controllerId)).toBe(MGA_LINKED_MODE);
-        expect(fixture.instance.query().turnState().equipmentStateChanged).toBeTrue();
+        expect(fixture.instance.query().turnState().phaseStateChanged).toBeTrue();
 
         expect(choice().choice).toEqual(jasmine.objectContaining({
             label: 'Unlinks at End Phase…',
@@ -209,7 +209,7 @@ describe('direct machine-gun-array runtime', () => {
                 ammoSourceId: ammo.id,
                 expectedMunitionKey: munitionKey,
             }],
-        })).toEqual(jasmine.objectContaining({ accepted: false }));
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(fixture.instance.revision()).toBe(beforeRevision);
         expect(fixture.instance.query().remainingAmmo(ammo.id)).toBe(2);
 

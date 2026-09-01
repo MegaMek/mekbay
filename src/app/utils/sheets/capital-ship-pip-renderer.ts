@@ -120,12 +120,12 @@ export class CapitalShipPipRenderer {
             blockHeight /= ratio;
         }
 
-        const startX = (containerWidth - (blockWidth * columns - ARMOR_PIP_SIZE)) / 2;
+        const startX = (containerWidth - (blockWidth * columns - pipWidth)) / 2;
         const leftOver = count % PIPS_PER_ARMOR_BLOCK;
         let actualHeight = blockHeight * rows;
         if (leftOver > 0 && (columns === 1 || blockCount % columns === 1)) {
-            const missingRows = MAX_PIP_ROWS - Math.floor(leftOver / PIPS_PER_ROW) - 1;
-            actualHeight -= ARMOR_PIP_SIZE * missingRows;
+            const missingRows = MAX_PIP_ROWS - Math.ceil(leftOver / PIPS_PER_ROW);
+            actualHeight -= pipHeight * missingRows;
         }
         const startY = (containerHeight - actualHeight) / 2;
 
@@ -149,7 +149,7 @@ export class CapitalShipPipRenderer {
                 remainingBlocks--;
                 x += blockWidth;
             }
-            y += blockWidth;
+            y += blockHeight;
             x = startX;
             if (remainingBlocks > 0 && remainingBlocks < columns) {
                 x += blockWidth / 2;

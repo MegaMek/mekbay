@@ -50,7 +50,7 @@ describe('direct Mobile HPG lifecycle', () => {
                 distance: 1,
                 boosterComponentIds: [],
             },
-        }).accepted).toBeFalse();
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
 
         expect(endTurn(fixture)).toBeTrue();
         expect(fixture.instance.query().componentMode(hpg.id)).toBe(HPG_COOLDOWN_3_MODE);

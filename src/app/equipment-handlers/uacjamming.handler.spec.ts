@@ -64,7 +64,7 @@ describe('direct UAC jamming handler', () => {
         expect(toast.showToast).toHaveBeenCalledWith('Test AC is unjammed', 'info');
     });
 
-    it('rejects Ultra AC jamming under Core rules', () => {
+    it('ignores Ultra AC jamming under Core rules', () => {
         const fixture = createDirectMekRuntimeFixture(CORE_2026_RULESET);
         const component = fixture.equipmentComponent('Test AC');
         const equipment = component.mount.equipment;
@@ -85,6 +85,6 @@ describe('direct UAC jamming handler', () => {
             
             componentId: component.id,
             jammed: true,
-        })).toEqual(jasmine.objectContaining({ accepted: false, reason: 'INVALID_TARGET' }));
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
     });
 });

@@ -371,11 +371,8 @@ export class ForceBudgetOptimizerDialogComponent {
                 gunnery: choice.gunnery!,
                 piloting: choice.piloting!,
             } : position);
-            const applied = await choice.member.force.replaceUnitCrewProfile(choice.member.id, {
-                expectedRevision: before.revision,
-                positions,
-            });
-            if (!applied?.accepted) return null;
+            const applied = await choice.member.force.replaceUnitCrewProfile(choice.member.id, positions);
+            if (!applied) return null;
             return {
                 detail: `${choice.member.entity.displayName()} (${currentGunnery}/${currentPiloting}→${choice.gunnery}/${choice.piloting})`,
             };

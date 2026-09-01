@@ -65,18 +65,6 @@ import {
     ESCALATING_FAILURE_HANDLER_ID,
 } from '../../models/runtime/component-escalating-failure';
 
-type MekEquipmentCommand = CBTUnitCommand extends infer Command
-    ? Command extends CBTUnitCommand
-        ? Omit<Command, 'expectedRevision'>
-        : never
-    : never;
-
-type EntityEquipmentCommand = NonMekUnitCommand extends infer Command
-    ? Command extends NonMekUnitCommand
-        ? Omit<Command, 'expectedRevision'>
-        : never
-    : never;
-
 type EntityEscalatingFailureEdit = Extract<
     NonMekUnitCommand,
     { readonly kind: 'edit-escalating-failure' }
@@ -691,7 +679,7 @@ export class EquipmentDialogRuntimeController {
             : { kind: 'set-component-ammos', updates });
     }
 
-    private async dispatchMekUnit(command: MekEquipmentCommand): Promise<boolean> {
+    private async dispatchMekUnit(command: CBTUnitCommand): Promise<boolean> {
         if (this.busy()) return false;
         this.busy.set(true);
         try {
@@ -706,7 +694,7 @@ export class EquipmentDialogRuntimeController {
         }
     }
 
-    private async dispatchEntityUnit(command: EntityEquipmentCommand): Promise<boolean> {
+    private async dispatchEntityUnit(command: NonMekUnitCommand): Promise<boolean> {
         if (this.busy()) return false;
         this.busy.set(true);
         try {

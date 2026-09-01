@@ -710,18 +710,53 @@ function renderHeat(
 function renderComponents(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot): void {
     const rows = [...svg.querySelectorAll<SVGElement>('.inventoryEntry[id]')];
     rows.forEach(row => row.classList.remove('disabled', 'disabledInventory', 'pending'));
-    const used = new Set<SVGElement>();
-    for (const component of snapshot.components) {
-        const row = rows.find(candidate => !used.has(candidate)
-            && inventoryEquipmentId(candidate) === component.equipmentId
-            && component.sheetLocations.includes(inventoryLocation(candidate)));
-        if (!row) continue;
-        used.add(row);
-        const disabled = component.status !== 'available';
-        row.classList.toggle('disabled', disabled);
-        row.classList.toggle('disabledInventory', disabled);
-        row.classList.toggle('pending', component.previewStatus !== component.status);
+    const componentsById = new Map(snapshot.components.map(component => [component.componentId, component]));
+    const assigned = new Set<ComponentId>();
+    const legacyRows = new Map<string, SVGElement[]>();
+    for (const row of rows) {
+        const components = inventoryComponentIds(row).flatMap(componentId => {
+            const component = componentsById.get(componentId);
+            return component === undefined ? [] : [component];
+        });
+        if (components.length > 0) {
+            components.forEach(component => assigned.add(component.componentId));
+            renderInventoryComponentStatus(row, components);
+        } else {
+            const key = inventoryRowKey(inventoryEquipmentId(row), inventoryLocation(row));
+            const matches = legacyRows.get(key);
+            if (matches) matches.push(row);
+            else legacyRows.set(key, [row]);
+        }
     }
+
+    const legacyOffsets = new Map<string, number>();
+    for (const component of snapshot.components) {
+        if (assigned.has(component.componentId)) continue;
+        let row: SVGElement | undefined;
+        for (const location of component.sheetLocations) {
+            const key = inventoryRowKey(component.equipmentId, location);
+            const matches = legacyRows.get(key);
+            const offset = legacyOffsets.get(key) ?? 0;
+            row = matches?.[offset];
+            if (row) {
+                legacyOffsets.set(key, offset + 1);
+                break;
+            }
+        }
+        if (!row) continue;
+        renderInventoryComponentStatus(row, [component]);
+    }
+}
+
+function renderInventoryComponentStatus(
+    row: SVGElement,
+    components: readonly NonMekRecordSheetSnapshot['components'][number][],
+): void {
+    const disabled = components.every(component => component.status !== 'available');
+    row.classList.toggle('disabled', disabled);
+    row.classList.toggle('disabledInventory', disabled);
+    row.classList.toggle('pending', components.some(component =>
+        component.previewStatus !== component.status));
 }
 
 const INVENTORY_RANGE_BUTTONS = Object.freeze([
@@ -873,10 +908,7 @@ function inventoryRowAssignments(
     const assignments = new Map<SVGElement, EquipmentPanelComponent[]>();
     const used = new Set<ComponentId>();
     for (const row of rows) {
-        const ids = (row.getAttribute('data-mekbay-component-ids') ?? '')
-            .trim()
-            .split(/\s+/u)
-            .filter(Boolean) as ComponentId[];
+        const ids = inventoryComponentIds(row);
         const components = [...new Set(ids.flatMap(id => {
             const component = panelById.get(id);
             return component === undefined ? [] : [component];
@@ -888,15 +920,32 @@ function inventoryRowAssignments(
             .forEach(componentId => used.add(componentId)));
     }
 
+    const legacyRows = new Map<string, SVGElement[]>();
+    for (const row of rows) {
+        if (assignments.has(row)) continue;
+        const key = inventoryRowKey(inventoryEquipmentId(row), inventoryLocation(row));
+        const matches = legacyRows.get(key);
+        if (matches) matches.push(row);
+        else legacyRows.set(key, [row]);
+    }
+    const legacyOffsets = new Map<string, number>();
     for (const component of snapshot.components) {
         if (used.has(component.componentId)) continue;
-        const row = rows.find(candidate => !assignments.has(candidate)
-            && inventoryEquipmentId(candidate) === component.equipmentId
-            && component.sheetLocations.includes(inventoryLocation(candidate)));
+        let row: SVGElement | undefined;
+        for (const location of component.sheetLocations) {
+            const key = inventoryRowKey(component.equipmentId, location);
+            const matches = legacyRows.get(key);
+            const offset = legacyOffsets.get(key) ?? 0;
+            row = matches?.[offset];
+            if (row) {
+                legacyOffsets.set(key, offset + 1);
+                break;
+            }
+        }
         const panelComponent = panelById.get(component.componentId);
         if (!row || !panelComponent) continue;
         assignments.set(row, [panelComponent]);
-        used.add(component.componentId);
+        equipmentPanelAttackComponentIds(panelComponent).forEach(componentId => used.add(componentId));
     }
     return assignments;
 }
@@ -934,6 +983,17 @@ function sameInventorySelection(
 
 function inventoryEquipmentId(row: SVGElement): string {
     return (row.id.split('@', 1)[0] ?? '').trim();
+}
+
+function inventoryComponentIds(row: SVGElement): readonly ComponentId[] {
+    return (row.getAttribute('data-mekbay-component-ids') ?? '')
+        .trim()
+        .split(/\s+/u)
+        .filter(Boolean) as ComponentId[];
+}
+
+function inventoryRowKey(equipmentId: string, location: string): string {
+    return `${equipmentId}\u0000${location}`;
 }
 
 function inventoryLocation(row: SVGElement): string {

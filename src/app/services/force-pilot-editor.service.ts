@@ -85,19 +85,9 @@ export class ForcePilotEditorService {
         }] : []);
         if (crewProfilesEqual(snapshot.positions, positions)) return;
 
-        const applied = await force.replaceUnitCrewProfile(instanceId, {
-            expectedRevision: snapshot.revision,
-            positions,
-        });
-        if (applied?.accepted) return;
-        const message = applied?.reason === 'COMBAT_STARTED'
-            ? 'Crew deployment cannot be changed after combat has started.'
-            : applied?.reason === 'INVALID_PROFILE'
-                ? 'The crew profile is invalid and was not saved.'
-                : applied?.reason === 'REDEPLOY_FAILED'
-                    ? 'The unit could not be rebuilt; its previous crew profile was kept.'
-                    : 'The crew profile changed before it could be saved.';
-        this.toast.showToast(message, 'error');
+        const applied = await force.replaceUnitCrewProfile(instanceId, positions);
+        if (applied) return;
+        this.toast.showToast('The crew profile could not be saved.', 'error');
     }
 
     private async editAlphaStrikePilot(unit: ASForceUnit): Promise<void> {

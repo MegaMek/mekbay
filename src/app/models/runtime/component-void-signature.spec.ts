@@ -43,7 +43,7 @@ describe('direct Void Signature runtime', () => {
             
             componentId: voidSignature.id,
             state: 'enabling',
-        })).toEqual(jasmine.objectContaining({ accepted: false }));
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(fixture.instance.revision()).toBe(revision);
     });
 

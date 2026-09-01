@@ -50,7 +50,10 @@ describe('ProtoMek runtime rules', () => {
             wounds: 6,
             unconscious: false,
             ejected: false,
+            killed: false,
+            stunned: false,
         }).accepted).toBeTrue();
+        dead.runtime.dispatch({ kind: 'end-phase' });
         expect(project(dead.runtime).computedConditions).toEqual(['abandoned', 'immobile', 'crippled']);
 
         const ejected = harness();
@@ -62,6 +65,8 @@ describe('ProtoMek runtime rules', () => {
             wounds: 0,
             unconscious: false,
             ejected: true,
+            killed: false,
+            stunned: false,
         });
         expect(project(ejected.runtime).computedConditions).toEqual(['immobile']);
 
@@ -74,6 +79,8 @@ describe('ProtoMek runtime rules', () => {
             wounds: 4,
             unconscious: false,
             ejected: false,
+            killed: false,
+            stunned: false,
         });
         expect(project(crippled.runtime).computedConditions).toEqual(['crippled']);
     });

@@ -198,7 +198,6 @@ describe('MekTurnSummaryRuntimeController', () => {
 
         expect(dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
             type: 'declare-mek-movement',
-            expectedRevision: 2,
             declaration: jasmine.objectContaining({
                 mode: 'run',
                 boosterComponentIds: ['component:masc', 'component:supercharger'],
@@ -256,7 +255,6 @@ describe('MekTurnSummaryRuntimeController', () => {
 
         expect(dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
             type: 'clear-mek-movement',
-            expectedRevision: 9,
         }));
     });
 

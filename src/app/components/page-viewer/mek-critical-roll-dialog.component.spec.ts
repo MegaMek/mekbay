@@ -107,14 +107,13 @@ describe('MekCriticalRollDialogComponent', () => {
         expect(roll).toHaveBeenCalledOnceWith([1, 1]);
     });
 
-    it('dispatches the atomic revisioned V2 critical command', async () => {
+    it('dispatches the atomic V2 critical command', async () => {
         await fixture.componentInstance.onFinished({ results: [1, 1] });
 
         expect(force.dispatchMekUnitCommand).toHaveBeenCalledOnceWith(
             UNIT_ID,
             jasmine.objectContaining({
                 type: 'apply-mek-critical-roll',
-                expectedRevision: 7,
                 locationId: LOCATION_ID,
                 results: [1, 1],
                 target: 'pending',

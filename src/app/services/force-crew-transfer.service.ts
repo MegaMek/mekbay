@@ -11,7 +11,7 @@ import {
     type CBTForceMember,
     type ForceMember,
 } from '../models/force-member.model';
-import type { CrewProfilePosition } from '../models/runtime/crew-profile';
+import type { CrewAssignmentPosition } from '../models/runtime/crew-assignment';
 import { effectiveEntityPilotingSkill } from '../models/entity/utils/battle-value/skill-facts';
 
 /** Copies crew facts between the only two live force-member owners. */
@@ -102,15 +102,15 @@ export class ForceCrewTransferService {
 
     private async replaceCrew(
         target: CBTForceMember,
-        update: (position: CrewProfilePosition, index: number) => CrewProfilePosition,
+        update: (position: CrewAssignmentPosition, index: number) => CrewAssignmentPosition,
     ): Promise<void> {
         const before = target.force.getUnitCrewProfile(target.id);
         if (!before) throw new Error(`Missing crew profile for ${target.id}`);
-        const result = await target.force.replaceUnitCrewProfile(target.id, {
-            expectedRevision: before.revision,
-            positions: before.positions.map(update),
-        });
-        if (!result?.accepted) throw new Error(`Could not update crew profile for ${target.id}`);
+        const result = await target.force.replaceUnitCrewProfile(
+            target.id,
+            before.positions.map(update),
+        );
+        if (!result) throw new Error(`Could not update crew profile for ${target.id}`);
     }
 
     private entity(member: CBTForceMember) {

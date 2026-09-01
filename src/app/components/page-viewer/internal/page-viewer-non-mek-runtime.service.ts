@@ -25,9 +25,11 @@ import {
 } from '../../../models/runtime/equipment-panel';
 import type { AttackerSelection } from '../../../models/runtime/attacker-targeting-state';
 import type { EncounterTargetId } from '../../../models/runtime/encounter-runtime';
-import type { StateRevision } from '../../../models/runtime/runtime-state';
 import { isUnitConditionKey, type UnitConditionKey } from '../../../models/unit-condition.model';
-import type { NonMekUnitCommand } from '../../../models/runtime/non-mek-unit-instance';
+import {
+    hasNonMekCrewState,
+    type NonMekUnitCommand,
+} from '../../../models/runtime/non-mek-unit-instance';
 import {
     crewStateDefinitions,
     unitConditionControls,
@@ -528,7 +530,8 @@ export class PageViewerNonMekRuntimeService {
             wounds,
             unconscious: position.state.unconscious,
             ejected: position.state.ejected,
-            ...(position.state.state === undefined ? {} : { state: position.state.state }),
+            killed: position.state.killed === true,
+            stunned: position.state.stunned === true,
         });
         if (!result.accepted) this.showRejectedEdit();
     }
@@ -553,7 +556,7 @@ export class PageViewerNonMekRuntimeService {
             key: control.key,
             label: control.label,
             color: control.color,
-            active: position.effectiveState === control.key,
+            active: hasNonMekCrewState(position.state, control.key),
         })));
         outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(selected => {
             const current = this.snapshot(member);
@@ -563,7 +566,6 @@ export class PageViewerNonMekRuntimeService {
                     currentPosition,
                     current.crewStateControlKeys,
                     selected,
-                    current.stateRevision,
                 )
                 : null;
             if (command) void member.force.dispatchNonMekUnitCommand(member.id, command);
@@ -919,22 +921,21 @@ export function nonMekCrewStateCommand(
     position: NonMekRecordSheetCrewPosition,
     controls: readonly CrewMemberState[],
     selected: string,
-    expectedRevision: StateRevision,
 ): NonMekUnitCommand | null {
     const control = controls.find(key => key === selected);
     if (control !== 'unconscious'
         && control !== 'ejected'
         && control !== 'killed'
         && control !== 'stunned') return null;
-    const next = position.effectiveState === control ? null : control;
+    const active = hasNonMekCrewState(position.state, control);
     return Object.freeze({
         kind: 'set-crew-state',
-        expectedRevision,
         positionId: position.positionId,
         wounds: position.state.wounds,
-        unconscious: next === 'unconscious',
-        ejected: next === 'ejected',
-        ...(next === 'killed' || next === 'stunned' ? { state: next } : {}),
+        unconscious: control === 'unconscious' ? !active : position.state.unconscious,
+        ejected: control === 'ejected' ? !active : position.state.ejected,
+        killed: control === 'killed' ? !active : position.state.killed === true,
+        stunned: control === 'stunned' ? !active : position.state.stunned === true,
     });
 }
 

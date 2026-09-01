@@ -1419,7 +1419,7 @@ describe('ForceBuilderService production V2 unit selection', () => {
         spyOn(force, 'queryCanonicalRoster').and.returnValue({
             kind: 'available',
             snapshot: {
-                structural: { members: [{ instanceId }] },
+                members: [{ instanceId }],
             },
         } as never);
 

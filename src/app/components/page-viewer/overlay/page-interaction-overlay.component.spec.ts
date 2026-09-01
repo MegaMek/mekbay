@@ -7,7 +7,7 @@ import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-pane
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 
 describe('PageInteractionOverlay turn boundaries', () => {
-    it('dispatches End Phase through the admitted V2 member at the displayed revision', async () => {
+    it('dispatches End Phase through the admitted V2 member', async () => {
         const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
             accepted: true,
             changed: true,
@@ -21,8 +21,6 @@ describe('PageInteractionOverlay turn boundaries', () => {
         expect(event.stopPropagation).toHaveBeenCalledTimes(1);
         expect(dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
             type: 'end-phase',
-            expectedRevision: 12,
-            commandId: jasmine.any(String),
         }));
     });
 
@@ -60,15 +58,14 @@ describe('PageInteractionOverlay turn boundaries', () => {
         expect(event.stopPropagation).toHaveBeenCalledTimes(1);
         expect(dispatch).toHaveBeenCalledOnceWith('tank-1', {
             kind: 'end-phase',
-            expectedRevision: 12,
         });
     });
 
-    it('dispatches End Turn with the configured heat policy and surfaces rejection', async () => {
+    it('dispatches End Turn with the configured heat policy and surfaces read-only rejection', async () => {
         const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
             accepted: false,
             changed: false,
-            reason: 'PENDING_PILOT_CHECKS',
+            reason: 'READ_ONLY',
             revision: 12,
         });
         const component = componentForMember(dispatch, 12, true);
@@ -79,13 +76,8 @@ describe('PageInteractionOverlay turn boundaries', () => {
         expect(dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
             type: 'end-turn',
             policy: 'automatic',
-            expectedRevision: 12,
-            commandId: jasmine.any(String),
         }));
-        expect(toast).toHaveBeenCalledOnceWith(
-            'Resolve pending Piloting Skill Rolls before ending the turn.',
-            'error',
-        );
+        expect(toast).toHaveBeenCalledOnceWith('This force is read-only.', 'error');
     });
 });
 

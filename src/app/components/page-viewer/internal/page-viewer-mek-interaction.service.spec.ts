@@ -101,10 +101,10 @@ describe('PageViewerMekInteractionService', () => {
             getMekEquipmentInteractions: jasmine.createSpy().and.returnValue([]),
             dispatchMekEquipmentChoice: jasmine.createSpy().and.resolveTo({ accepted: true, changed: true }),
             getUnitCrewProfile: jasmine.createSpy().and.returnValue({
-                revision: 4,
+                schemaVersion: 1,
                 positions: [{ positionId: 'crew-0', name: 'Morgan', role: 'Pilot', gunnery: 3, piloting: 4 }],
             }),
-            replaceUnitCrewProfile: jasmine.createSpy().and.resolveTo({ accepted: true }),
+            replaceUnitCrewProfile: jasmine.createSpy().and.resolveTo({ schemaVersion: 1, positions: [] }),
             getAttackerTargeting: jasmine.createSpy().and.returnValue({
                 instanceId: 'unit-1', stateRevision: 1, registryRevision: 2,
                 state: { schemaVersion: 1, components: new Map(), actions: new Map(), targets: new Map() },
@@ -174,10 +174,10 @@ describe('PageViewerMekInteractionService', () => {
 
         const commands = force.dispatchMekUnitCommand.calls.allArgs().map((args: any[]) => args[1]);
         expect(commands[0]).toEqual(jasmine.objectContaining({
-            type: 'damage-armor', faceId: 'face-ct', amount: 3, expectedRevision: 1, target: 'pending',
+            type: 'damage-armor', faceId: 'face-ct', amount: 3, target: 'pending',
         }));
         expect(commands[1]).toEqual(jasmine.objectContaining({
-            type: 'damage-internal', locationId: 'loc-ct', amount: 2, expectedRevision: 2, target: 'pending',
+            type: 'damage-internal', locationId: 'loc-ct', amount: 2, target: 'pending',
             hardenedArmorApplies: false,
             armorDamagedBySameHit: true,
         }));
@@ -260,7 +260,6 @@ describe('PageViewerMekInteractionService', () => {
             type: 'set-condition',
             condition: 'ecm-shielded',
             active: true,
-            expectedRevision: 1,
         }));
     });
 
@@ -274,7 +273,6 @@ describe('PageViewerMekInteractionService', () => {
 
         expect(force.dispatchMekUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'apply-mek-blow-off',
-            expectedRevision: 1,
             locationId: 'loc-ct',
             target: 'pending',
         }));
@@ -318,7 +316,7 @@ describe('PageViewerMekInteractionService', () => {
 
         expect(choiceConfig).toBeNull();
         expect(force.dispatchMekUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
-            type: 'hit-critical', slotId: 'slot-ct-0', hits: 1, target: 'pending', expectedRevision: 1,
+            type: 'hit-critical', slotId: 'slot-ct-0', hits: 1, target: 'pending',
         }));
     });
 
@@ -391,7 +389,7 @@ describe('PageViewerMekInteractionService', () => {
 
         expect(force.dispatchMekUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'set-system-critical-level', system: 'Sensors', level: 2,
-            target: 'pending', expectedRevision: 1,
+            target: 'pending',
         }));
     });
 
@@ -425,7 +423,7 @@ describe('PageViewerMekInteractionService', () => {
         numericConfig!.onPick({ value: -2 });
         await settleAsyncHandlers();
         expect(force.dispatchMekUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
-            type: 'set-heatsinks-off', heatsinksOff: 5, expectedRevision: 1,
+            type: 'set-heatsinks-off', heatsinksOff: 5,
         }));
     });
 
@@ -437,7 +435,6 @@ describe('PageViewerMekInteractionService', () => {
 
         expect(force.dispatchMekUnitCommand.calls.argsFor(0)[1]).toEqual(jasmine.objectContaining({
             type: 'set-mek-shutdown-state',
-            expectedRevision: 1,
             shutdown: true,
         }));
 
@@ -452,7 +449,6 @@ describe('PageViewerMekInteractionService', () => {
 
         expect(force.dispatchMekUnitCommand.calls.argsFor(1)[1]).toEqual(jasmine.objectContaining({
             type: 'set-mek-shutdown-state',
-            expectedRevision: 2,
             shutdown: false,
         }));
     });
@@ -465,13 +461,12 @@ describe('PageViewerMekInteractionService', () => {
         expect(choiceConfig).toEqual(jasmine.objectContaining({ selected: 3, suggestedStyle: 'radial', targetType: 'skill' }));
         choiceConfig!.onPick({ label: '2', value: 2 });
         await settleAsyncHandlers();
-        expect(force.replaceUnitCrewProfile).toHaveBeenCalledWith('unit-1', {
-            expectedRevision: 4,
-            positions: [{ positionId: 'crew-0', name: 'Morgan', role: 'Pilot', gunnery: 2, piloting: 4 }],
-        });
+        expect(force.replaceUnitCrewProfile).toHaveBeenCalledWith('unit-1', [
+            { positionId: 'crew-0', name: 'Morgan', role: 'Pilot', gunnery: 2, piloting: 4 },
+        ]);
     });
 
-    it('routes an inventory range button to the revisioned attacker-targeting owner', async () => {
+    it('routes an inventory range button to the attacker-targeting owner', async () => {
         service.handle(member, {
             kind: 'inventory-selection', componentIds: ['weapon-1'], range: 'medium', expectedRevision: 1,
         } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
@@ -479,8 +474,6 @@ describe('PageViewerMekInteractionService', () => {
 
         expect(force.dispatchAttackerTargeting).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'edit-attacker-targeting',
-            expectedRevision: 1,
-            expectedRegistryRevision: 2,
             edit: { kind: 'set-component-selection', componentId: 'weapon-1', selection: { kind: 'manual-range', range: 'medium' } },
         }));
     });
@@ -504,8 +497,6 @@ describe('PageViewerMekInteractionService', () => {
 
         expect(force.dispatchAttackerTargeting).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'edit-attacker-targeting',
-            expectedRevision: 1,
-            expectedRegistryRevision: 2,
             edit: {
                 kind: 'set-action-selection',
                 target: { kind: 'intrinsic', actionId: 'Kick' },

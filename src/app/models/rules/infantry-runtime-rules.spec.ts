@@ -111,7 +111,7 @@ describe('Infantry runtime rules', () => {
             kind: 'set-movement',
             
             movement: { mode: 'jump', distance: 0, boosterComponentIds: [] },
-        }).accepted).toBeFalse();
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(runtime.dispatch({
             kind: 'set-movement',
             

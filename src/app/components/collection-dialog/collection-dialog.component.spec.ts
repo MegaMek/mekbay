@@ -39,7 +39,7 @@ describe('CollectionDialogComponent', () => {
                 { provide: TagsService, useValue: { version: signal(0) } },
                 { provide: TaggingService, useValue: {} },
                 { provide: ToastService, useValue: {} },
-                { provide: UserStateService, useValue: {} },
+                { provide: UserStateService, useValue: { uuid: signal('') } },
             ],
         }).compileComponents();
     });

@@ -9,7 +9,6 @@ import {
     asEncounterTargetId,
     type EncounterTarget,
     type TargetRegistryCommand,
-    type TargetRegistryRejectionReason,
 } from '../models/runtime/encounter-runtime';
 import { InventoryControlOpforService } from './inventory-control-opfor.service';
 
@@ -18,15 +17,14 @@ describe('InventoryControlOpforService', () => {
         const service = Object.create(InventoryControlOpforService.prototype) as InventoryControlOpforService;
         let targets: EncounterTarget[] = [];
         let revision = asStateRevision(0);
-        let rejection: TargetRegistryRejectionReason | 'FORCE_READ_ONLY' | null = null;
+        let rejectNext = false;
         const enabled = signal(true);
         const dispatch = jasmine.createSpy('dispatchInventoryControlTargetRegistry').and.callFake(
             (command: TargetRegistryCommand, authority: 'user' | 'opfor-sync' | 'registry-reset') => {
                 const snapshot = { revision, targets: [...targets] };
-                if (rejection) {
-                    const reason = rejection;
-                    rejection = null;
-                    return { accepted: false as const, changed: false as const, reason, snapshot };
+                if (rejectNext) {
+                    rejectNext = false;
+                    return { accepted: false as const, changed: false as const, snapshot };
                 }
                 const nextTargets = command.kind === 'replace-targets' && authority === 'opfor-sync'
                     ? [
@@ -42,13 +40,11 @@ describe('InventoryControlOpforService', () => {
                 if (JSON.stringify(targets) === JSON.stringify(nextTargets)) {
                     return { accepted: true as const, changed: false as const, snapshot };
                 }
-                const previousRevision = revision;
                 revision = asStateRevision(Number(revision) + 1);
                 targets = [...nextTargets];
                 return {
                     accepted: true as const,
                     changed: true as const,
-                    previousRevision,
                     snapshot: { revision, targets: [...targets] },
                 };
             },
@@ -71,8 +67,7 @@ describe('InventoryControlOpforService', () => {
             dispatch,
             targets: () => targets,
             setTargets: (nextTargets: EncounterTarget[]) => targets = [...nextTargets],
-            setRevision: (nextRevision: number) => revision = asStateRevision(nextRevision),
-            rejectNext: (reason: TargetRegistryRejectionReason | 'FORCE_READ_ONLY') => rejection = reason,
+            rejectNext: () => { rejectNext = true; },
             logger: (service as any).logger,
             toastService: (service as any).toastService,
         };
@@ -226,7 +221,7 @@ describe('InventoryControlOpforService', () => {
         expect((service as any).opposingCBTTargetRoster(source)).toEqual([]);
     });
 
-    it('imports roster rows through authorized explicit-revision dispatch only', () => {
+    it('imports roster rows through the authorized OPFOR dispatch', () => {
         const harness = createOpforHarness();
         const enemy = rosterRow('enemy-1', 'Atlas AS7-D');
 
@@ -240,7 +235,9 @@ describe('InventoryControlOpforService', () => {
             unitType: 'mek-biped',
         }));
         expect(imported as unknown as Record<string, unknown>).not.toEqual(jasmine.objectContaining({ distance: jasmine.anything() }));
-        expect(harness.dispatch.calls.mostRecent().args[0].expectedRevision).toBe(asStateRevision(0));
+        expect(harness.dispatch.calls.mostRecent().args[0]).toEqual(jasmine.objectContaining({
+            kind: 'replace-targets',
+        }));
         expect(harness.dispatch.calls.mostRecent().args[1]).toBe('opfor-sync');
 
         harness.setTargets([{ ...imported, color: '#abcdef' }]);
@@ -363,7 +360,7 @@ describe('InventoryControlOpforService', () => {
         expect(harness.targets()).toEqual([]);
     });
 
-    it('surfaces and logs a stale OPFOR rejection without enabling the toggle', () => {
+    it('surfaces a read-only force rejection without enabling the toggle', () => {
         const harness = createOpforHarness();
         const enemy = createAlignedCBTForce([rosterRow('enemy-1', 'Atlas')]);
         configureLoadedForces(harness.service, [
@@ -372,16 +369,14 @@ describe('InventoryControlOpforService', () => {
         ]);
         (harness.service.isAvailable as jasmine.Spy).and.callThrough();
         harness.enabled.set(false);
-        harness.setRevision(7);
-        harness.rejectNext('STALE_REVISION');
+        harness.rejectNext();
 
         expect(harness.service.setEnabled(harness.force, true)).toBeFalse();
 
-        expect(harness.dispatch.calls.mostRecent().args[0].expectedRevision).toBe(asStateRevision(7));
         expect(harness.enabled()).toBeFalse();
         expect(harness.targets()).toEqual([]);
-        expect(harness.logger.error).toHaveBeenCalledWith(jasmine.stringContaining('STALE_REVISION'));
-        expect(harness.toastService.showToast).toHaveBeenCalledWith(jasmine.stringContaining('STALE_REVISION'), 'error');
+        expect(harness.logger.error).toHaveBeenCalledWith(jasmine.stringContaining('read-only'));
+        expect(harness.toastService.showToast).toHaveBeenCalledWith(jasmine.stringContaining('read-only'), 'error');
     });
 
 });

@@ -53,7 +53,6 @@ import type { MekMovementModeV2 } from '../../../models/runtime/mek-movement-psr
 import {
     hasNonMekAirborneTurnSelection,
     hasPendingNonMekChanges,
-    hasPendingNonMekPhaseChanges,
     nonMekAttackMovementModifier,
     projectNonMekControlRoll,
     projectNonMekDefenseModifierBreakdown,
@@ -191,7 +190,7 @@ export abstract class TurnTrackerControls {
         if (runtime) return isMekTurnPanelDirtyPhase(runtime.snapshot());
         const snapshot = this.entitySnapshot();
         return snapshot !== null
-            && hasPendingNonMekPhaseChanges(snapshot.state);
+            && snapshot.query.hasPendingPhaseChanges();
     });
     readonly endPhaseForAllButtonVisible = computed(() => {
         this.forceRuntimeVersion();
@@ -209,7 +208,7 @@ export abstract class TurnTrackerControls {
             const snapshot = candidate.force.getUnitSnapshot(candidate.id);
             return snapshot !== null
                 && hasNonMekRuntime(snapshot)
-                && hasPendingNonMekPhaseChanges(snapshot.state);
+                && snapshot.query.hasPendingPhaseChanges();
         });
     });
     readonly endTurnForAllButtonVisible = computed(() => {

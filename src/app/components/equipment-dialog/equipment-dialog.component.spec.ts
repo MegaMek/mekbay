@@ -49,7 +49,7 @@ function createTurnSnapshot(
             acknowledgedHeatSources: new Set(),
             heatDissipationConsumed: 0,
             spotting: false,
-            equipmentStateChanged: false,
+            phaseStateChanged: false,
         },
         cover: {
             partiallyUnderwater: false,

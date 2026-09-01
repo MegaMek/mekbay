@@ -51,7 +51,7 @@ describe('direct V2 Gauss power handler', () => {
             
             selections: [{ weaponId: setup.component.id }],
             heatPolicy: 'automatic',
-        })).toEqual(jasmine.objectContaining({ accepted: false, reason: 'INVALID_TARGET' }));
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
     });
 
     it('remains powered down while powering up and becomes selectable after end turn', () => {

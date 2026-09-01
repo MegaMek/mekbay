@@ -804,8 +804,8 @@ export class PageViewerMekInteractionService {
                         type: 'set-crew-state',
                         positionId: interaction.positionId,
                         wounds: row.state.wounds,
-                        unconscious: choice === 'unconscious' ? !active : false,
-                        ejected: choice === 'ejected' ? !active : false,
+                        unconscious: choice === 'unconscious' ? !active : row.state.unconscious,
+                        ejected: choice === 'ejected' ? !active : row.state.ejected,
                     });
                 }
             }
@@ -825,11 +825,8 @@ export class PageViewerMekInteractionService {
         const positions = profile.positions.map(position => position.positionId === positionId
             ? { ...position, [field]: value }
             : position);
-        const result = await member.force.replaceUnitCrewProfile(member.id, {
-            expectedRevision: profile.revision,
-            positions,
-        });
-        if (!result || !result.accepted) this.rejected(`Crew update rejected${result ? `: ${result.reason}` : ''}`);
+        const result = await member.force.replaceUnitCrewProfile(member.id, positions);
+        if (!result) this.rejected('The crew profile could not be saved.');
     }
 
     private async swapCrewPositions(member: CBTMekForceMember, occurrence: number): Promise<void> {
@@ -851,11 +848,8 @@ export class PageViewerMekInteractionService {
                 positionId: position.positionId,
             };
         });
-        const result = await member.force.replaceUnitCrewProfile(member.id, {
-            expectedRevision: profile.revision,
-            positions,
-        });
-        if (!result || !result.accepted) this.rejected(`Crew swap rejected${result ? `: ${result.reason}` : ''}`);
+        const result = await member.force.replaceUnitCrewProfile(member.id, positions);
+        if (!result) this.rejected('The crew profile could not be saved.');
     }
 
     private async selectInventory(

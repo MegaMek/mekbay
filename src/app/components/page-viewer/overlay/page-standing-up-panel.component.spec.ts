@@ -70,8 +70,6 @@ describe('PageStandingUpPanelComponent', () => {
             type: 'resolve-mek-stand-attempt',
             carefulStand: true,
             evidence: { dice: [1, 1], claimedOutcome: 'failed' },
-            expectedRevision: 4,
-            commandId: jasmine.any(String),
         }));
         expect(component.lastOutcome()).toBe('failed');
         expect(component.attempts()).toBe(1);

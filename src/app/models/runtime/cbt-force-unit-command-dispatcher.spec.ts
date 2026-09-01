@@ -8,7 +8,7 @@ import type { CBTUnitSnapshot } from '../cbt-unit-snapshot';
 import { DirectMekAutomationService } from '../../services/direct-mek-automation.service';
 import { DirectNonMekAutomationService } from '../../services/direct-non-mek-automation.service';
 import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
-import { asCommandId, asUnitInstanceId } from './runtime-state';
+import { asUnitInstanceId } from './runtime-state';
 import type { CBTUnitCommand } from './unit-instance';
 import {
     CBTForceUnitCommandDispatcher,
@@ -16,6 +16,32 @@ import {
 } from './cbt-force-unit-command-dispatcher';
 
 describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
+    it('does not mistake an ordinary completed phase for the End Turn prerequisite', async () => {
+        const harness = createHarness({
+            prepareCommand: async (_force, _instanceId, command) => Object.freeze({
+                command,
+                deferredPilotHits: 0,
+            }),
+            afterCommand: async () => true,
+        });
+
+        expect((await harness.dispatcher.dispatchMek(harness.instanceId, {
+            type: 'end-phase',
+
+
+        })).accepted).toBeTrue();
+        expect(harness.dispatcher.hasPendingEndTurn(harness.instanceId)).toBeFalse();
+
+        expect((await harness.dispatcher.dispatchMek(harness.instanceId, {
+            type: 'end-turn',
+
+
+            policy: 'automatic',
+        })).accepted).toBeTrue();
+        expect(harness.dispatchMekCore.calls.allArgs().map(([, command]) => command.type))
+            .toEqual(['end-phase', 'end-phase', 'mark-end-turn-heat-staged', 'end-turn']);
+    });
+
     it('does not dispatch an end turn whose heat review was cancelled', async () => {
         const harness = createHarness({
             prepareCommand: async (_force, _instanceId, command) => Object.freeze({
@@ -27,18 +53,18 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
         });
         const command: CBTUnitCommand = {
             type: 'end-turn',
-            commandId: asCommandId('dispatcher:cancelled:heat'),
-            expectedRevision: harness.fixture.instance.query().stateRevision,
+
+
             policy: 'automatic',
         };
 
         const result = await harness.dispatcher.dispatchMek(harness.instanceId, command);
 
-        expect(result.accepted).toBeFalse();
-        if (result.accepted) return;
-        expect(result.reason).toBe('AUTOMATION_CANCELLED');
-        expect(result.currentRevision).toBe(harness.fixture.instance.query().stateRevision);
-        expect(Number(result.currentRevision)).toBe(Number(command.expectedRevision) + 1);
+        expect(result).toEqual(jasmine.objectContaining({
+            accepted: true,
+            changed: false,
+            state: harness.fixture.instance.snapshot(),
+        }));
         expect(harness.dispatchMekCore).toHaveBeenCalledTimes(1);
         expect(harness.dispatchMekCore.calls.mostRecent().args[1].type).toBe('end-phase');
     });
@@ -58,28 +84,28 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
 
         const first = await harness.dispatcher.dispatchMek(harness.instanceId, {
             type: 'end-turn',
-            commandId: asCommandId('dispatcher:resume:first'),
-            expectedRevision: harness.fixture.instance.query().stateRevision,
+
+
             policy: 'automatic',
         });
-        expect(first.accepted).toBeFalse();
+        expect(first).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(harness.dispatcher.hasPendingEndTurn(harness.instanceId)).toBeTrue();
 
         const second = await harness.dispatcher.dispatchMek(harness.instanceId, {
             type: 'end-turn',
-            commandId: asCommandId('dispatcher:resume:second'),
-            expectedRevision: harness.fixture.instance.query().stateRevision,
+
+
             policy: 'automatic',
         });
 
         expect(second.accepted).toBeTrue();
         expect(harness.dispatcher.hasPendingEndTurn(harness.instanceId)).toBeFalse();
         expect(harness.dispatchMekCore.calls.allArgs().map(([, command]) => command.type))
-            .toEqual(['end-phase', 'end-turn']);
+            .toEqual(['end-phase', 'mark-end-turn-heat-staged', 'end-turn']);
         expect(harness.fixture.instance.query().turnState().turnCounter).toBe(1);
     });
 
-    it('invalidates a cancelled boundary when unrelated runtime state changes', async () => {
+    it('persists the completed phase boundary when the dispatcher is reconstructed', async () => {
         let endTurnReviews = 0;
         const harness = createHarness({
             prepareCommand: async (_force, _instanceId, command) => Object.freeze({
@@ -94,27 +120,96 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
 
         expect((await harness.dispatcher.dispatchMek(harness.instanceId, {
             type: 'end-turn',
-            commandId: asCommandId('dispatcher:invalidate:first'),
-            expectedRevision: harness.fixture.instance.query().stateRevision,
-            policy: 'automatic',
-        })).accepted).toBeFalse();
 
+
+            policy: 'automatic',
+        }))).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+
+        const restoredDispatcher = harness.createDispatcher();
+        expect(restoredDispatcher.hasPendingEndTurn(harness.instanceId)).toBeTrue();
+        expect((await restoredDispatcher.dispatchMek(harness.instanceId, {
+            type: 'end-turn',
+
+
+            policy: 'automatic',
+        })).accepted).toBeTrue();
+
+        expect(harness.dispatchMekCore.calls.allArgs().map(([, command]) => command.type))
+            .toEqual(['end-phase', 'mark-end-turn-heat-staged', 'end-turn']);
+    });
+
+    it('commits a restored heat-staged turn without reviewing or settling heat again', async () => {
+        const prepareCommand = jasmine.createSpy('prepareCommand');
+        const settleBeforeCommand = jasmine.createSpy('settleBeforeCommand');
+        const harness = createHarness({
+            prepareCommand,
+            settleBeforeCommand,
+            afterCommand: async () => true,
+        });
         expect(harness.fixture.instance.dispatch({
-            type: 'set-heat',
-            commandId: asCommandId('dispatcher:invalidate:intervening'),
-            expectedRevision: harness.fixture.instance.query().stateRevision,
-            heat: 1,
+            type: 'end-phase',
+
+
+            endTurnBoundary: true,
         }).accepted).toBeTrue();
-        expect(harness.dispatcher.hasPendingEndTurn(harness.instanceId)).toBeFalse();
+        expect(harness.fixture.instance.dispatch({
+            type: 'mark-end-turn-heat-staged',
+
+
+        }).accepted).toBeTrue();
+
+        const restoredDispatcher = harness.createDispatcher();
+        expect((await restoredDispatcher.dispatchMek(harness.instanceId, {
+            type: 'end-turn',
+
+
+            policy: 'automatic',
+        })).accepted).toBeTrue();
+
+        expect(prepareCommand).not.toHaveBeenCalled();
+        expect(settleBeforeCommand).not.toHaveBeenCalled();
+        expect(harness.dispatchMekCore.calls.allArgs().map(([, command]) => command.type))
+            .toEqual(['end-turn']);
+        const endTurn = harness.dispatchMekCore.calls.mostRecent().args[1];
+        expect(endTurn.type === 'end-turn' ? endTurn.policy : null).toBe('manual');
+    });
+
+    it('keeps the phase checkpoint while invalidating a reviewed plan after unrelated runtime changes', async () => {
+        let endTurnReviews = 0;
+        const harness = createHarness({
+            prepareCommand: async (_force, _instanceId, command) => Object.freeze({
+                command,
+                deferredPilotHits: 0,
+                ...(command.type === 'end-turn' && ++endTurnReviews === 1
+                    ? { cancelled: true as const }
+                    : {}),
+            }),
+            afterCommand: async () => true,
+        });
 
         expect((await harness.dispatcher.dispatchMek(harness.instanceId, {
             type: 'end-turn',
-            commandId: asCommandId('dispatcher:invalidate:retry'),
-            expectedRevision: harness.fixture.instance.query().stateRevision,
+
+
+            policy: 'automatic',
+        }))).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+
+        expect(harness.fixture.instance.dispatch({
+            type: 'set-heat',
+
+
+            heat: 1,
+        }).accepted).toBeTrue();
+        expect(harness.dispatcher.hasPendingEndTurn(harness.instanceId)).toBeTrue();
+
+        expect((await harness.dispatcher.dispatchMek(harness.instanceId, {
+            type: 'end-turn',
+
+
             policy: 'automatic',
         })).accepted).toBeTrue();
         expect(harness.dispatchMekCore.calls.allArgs().map(([, command]) => command.type))
-            .toEqual(['end-phase', 'end-phase', 'end-turn']);
+            .toEqual(['end-phase', 'mark-end-turn-heat-staged', 'end-turn']);
     });
 
     it('resumes a cancelled consequence from the reviewed plan without reviewing heat twice', async () => {
@@ -132,13 +227,7 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
                     mutateRuntime();
                     return null;
                 }
-                return Object.freeze({
-                    ...prepared,
-                    command: Object.freeze({
-                        ...prepared.command,
-                        expectedRevision: mutateRuntime(),
-                    }),
-                });
+                return prepared;
             });
         const harness = createHarness({
             prepareCommand,
@@ -149,30 +238,31 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
             if (settlementAttempts === 1) {
                 expect(harness.fixture.instance.dispatch({
                     type: 'set-heat',
-                    commandId: asCommandId('dispatcher:consequence:partial'),
-                    expectedRevision: harness.fixture.instance.query().stateRevision,
+
+
                     heat: 1,
                 }).accepted).toBeTrue();
             }
             return harness.fixture.instance.query().stateRevision;
         };
 
-        const endTurn = (id: string) => harness.dispatcher.dispatchMek(harness.instanceId, {
+        const endTurn = () => harness.dispatcher.dispatchMek(harness.instanceId, {
             type: 'end-turn',
-            commandId: asCommandId(id),
-            expectedRevision: harness.fixture.instance.query().stateRevision,
+
+
             policy: 'automatic',
         });
 
-        expect((await endTurn('dispatcher:consequence:first')).accepted).toBeFalse();
-        expect((await endTurn('dispatcher:consequence:retry')).accepted).toBeTrue();
+        expect(await endTurn())
+            .toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+        expect((await endTurn()).accepted).toBeTrue();
 
         expect(prepareCommand.calls.allArgs().map(([, , command]) => command.type))
             .toEqual(['end-phase', 'end-turn']);
         expect(settleBeforeCommand.calls.allArgs().map(([, , prepared]) => prepared.command.type))
             .toEqual(['end-phase', 'end-turn', 'end-turn']);
         expect(harness.dispatchMekCore.calls.allArgs().map(([, command]) => command.type))
-            .toEqual(['end-phase', 'end-turn']);
+            .toEqual(['end-phase', 'mark-end-turn-heat-staged', 'end-turn']);
     });
 
     it('does not commit a phase whose preflight review closes', async () => {
@@ -186,17 +276,17 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
         });
         const command: CBTUnitCommand = {
             type: 'end-phase',
-            commandId: asCommandId('dispatcher:cancelled:phase'),
-            expectedRevision: harness.fixture.instance.query().stateRevision,
+
+
         };
 
         const result = await harness.dispatcher.dispatchMek(harness.instanceId, command);
 
-        expect(result.accepted).toBeFalse();
-        if (result.accepted) return;
-        expect(result.reason).toBe('AUTOMATION_CANCELLED');
-        expect(result.currentRevision).toBe(harness.fixture.instance.query().stateRevision);
-        expect(result.currentRevision).toBe(command.expectedRevision);
+        expect(result).toEqual(jasmine.objectContaining({
+            accepted: true,
+            changed: false,
+            state: harness.fixture.instance.snapshot(),
+        }));
         expect(harness.dispatchMekCore).not.toHaveBeenCalled();
     });
 
@@ -306,7 +396,11 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
             harness.dispatcher.hasPendingEndTurn(instanceId))).toBeFalse();
         expect(prepareEndTurnCommands).toHaveBeenCalledTimes(2);
         expect(harness.dispatchMekCore.calls.allArgs().map(([, command]) => command.type))
-            .toEqual(['end-phase', 'end-phase', 'end-turn', 'end-turn']);
+            .toEqual([
+                'end-phase', 'end-phase',
+                'mark-end-turn-heat-staged', 'mark-end-turn-heat-staged',
+                'end-turn', 'end-turn',
+            ]);
         expect(harness.ids.map(instanceId =>
             harness.fixtures.get(instanceId)!.instance.query().turnState().turnCounter))
             .toEqual([1, 1]);
@@ -346,7 +440,11 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
             .filter(([, instanceId, prepared]) => prepared.command.type === 'end-turn'
                 && instanceId === ids[1])).toHaveSize(2);
         expect(harness.dispatchMekCore.calls.allArgs().map(([, command]) => command.type))
-            .toEqual(['end-phase', 'end-phase', 'end-turn', 'end-turn']);
+            .toEqual([
+                'end-phase', 'end-phase',
+                'mark-end-turn-heat-staged', 'mark-end-turn-heat-staged',
+                'end-turn', 'end-turn',
+            ]);
     });
 
     it('reviews every force phase before mutating the first unit', async () => {
@@ -426,7 +524,11 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
         expect(duplicateResult.changed).toBeFalse();
         expect(prepareEndTurnCommands).toHaveBeenCalledTimes(1);
         expect(harness.dispatchMekCore.calls.allArgs().map(([, command]) => command.type))
-            .toEqual(['end-phase', 'end-phase', 'end-turn', 'end-turn']);
+            .toEqual([
+                'end-phase', 'end-phase',
+                'mark-end-turn-heat-staged', 'mark-end-turn-heat-staged',
+                'end-turn', 'end-turn',
+            ]);
         expect(harness.ids.map(instanceId =>
             harness.fixtures.get(instanceId)!.instance.query().turnState().turnCounter))
             .toEqual([1, 1]);
@@ -482,6 +584,7 @@ function createBatchHarness(
             index: fixture.index,
             sourceRef: fixture.identity,
             ruleset: 'core-2026' as const,
+            crewAssignment: fixture.instance.query().crewAssignment(),
             state: fixture.instance.snapshot(),
             query: fixture.instance.query(),
         }) : null;
@@ -522,6 +625,7 @@ function createHarness(
         index: fixture.index,
         sourceRef: fixture.identity,
         ruleset: 'core-2026',
+        crewAssignment: fixture.instance.query().crewAssignment(),
         state: fixture.instance.snapshot(),
         query: fixture.instance.query(),
     });
@@ -549,6 +653,7 @@ function createHarness(
             : token === DirectNonMekAutomationService ? null : null,
     } as unknown as Injector;
     const force = { getUnitSnapshot: snapshot } as unknown as CBTForce;
-    const dispatcher = new CBTForceUnitCommandDispatcher(force, injector, boundary);
-    return { dispatcher, fixture, instanceId, dispatchMekCore };
+    const createDispatcher = () => new CBTForceUnitCommandDispatcher(force, injector, boundary);
+    const dispatcher = createDispatcher();
+    return { dispatcher, createDispatcher, fixture, instanceId, dispatchMekCore };
 }

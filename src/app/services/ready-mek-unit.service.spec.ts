@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { ReadyMekUnitFactory } from '../models/runtime/ready-unit-factory';
-import { asCommandId, asStateRevision, asUnitInstanceId } from '../models/runtime/runtime-state';
+import { asStateRevision, asUnitInstanceId } from '../models/runtime/runtime-state';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 
 describe('ReadyMekUnitFactory direct entity boundary', () => {
@@ -20,8 +20,8 @@ describe('ReadyMekUnitFactory direct entity boundary', () => {
         expect(ready.getInstance().query().heatCapability().kind).toBe('supported');
         expect(ready.getInstance().query().mekDestruction().kind).toBe('supported');
         expect(ready.getInstance().dispatch({
-            type: 'damage-armor', commandId: asCommandId('ready:damage'),
-            expectedRevision: asStateRevision(0), faceId: face.id, amount: 1, target: 'committed',
+            type: 'damage-armor',
+            faceId: face.id, amount: 1, target: 'committed',
         }).accepted).toBeTrue();
 
         const saved = ready.serialize();

@@ -8,13 +8,15 @@ import {
     type TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
 import {
+    CBT_FORCE_MINIMUM_WRITER_VERSION,
+    CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
+    CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
     validateSerializedCBTForceV2,
     type SerializedCBTForceV2,
     type SerializedCBTUnitV2,
 } from './runtime/persistence-v2';
 import {
     asUnitInstanceId,
-    createCommandId,
     type MekUnitRuntimeState,
     type StateRevision,
     type UnitInstanceId,
@@ -30,6 +32,7 @@ import {
 } from './runtime/ready-classic-unit';
 import { ReadyNonMekUnit } from './runtime/ready-non-mek-unit';
 import {
+    NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
     isSerializedNonMekUnit,
     type SerializedNonMekUnit,
 } from './runtime/non-mek-unit-persistence';
@@ -39,11 +42,11 @@ import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { scenarioRuleset } from './runtime/unit-state-initializer';
 import type { CBTRuleset } from './cbt-ruleset.model';
 import {
-    createCrewProfileSnapshot,
-    prepareCrewProfileReplacement,
-    type CrewProfileSnapshot,
-    type ReplaceCrewProfileCommand,
-} from './runtime/crew-profile';
+    canonicalizeCrewAssignment,
+    CREW_ASSIGNMENT_SCHEMA_VERSION,
+    type CrewAssignment,
+    type CrewAssignmentPosition,
+} from './runtime/crew-assignment';
 import type { ComponentId } from './entity/entity-identifiers';
 import type { MekEntity } from './entity/entities/mek/mek-entity';
 import type {
@@ -53,12 +56,9 @@ import type {
     CBTUnitAttackerTargetingCommand,
     CBTUnitCommand,
     CBTUnitSelectedWeaponFireCommand,
-    CommandReduction,
-    UnitDomainEvent,
 } from './runtime/unit-instance';
 import { evaluateMekRuntimeCapability } from './runtime/mek-runtime-capability';
 import { readyUnitMatchesEntity } from './runtime/cbt-ready-unit-validation';
-import type { CrewAssignment } from './runtime/crew-assignment';
 import { canPerformMekAction } from './runtime/mek-action-availability';
 import type {
     EquipmentInteractionRegistry,
@@ -92,7 +92,6 @@ import type {
     C3State,
     EquipmentRowOrderCommandResult,
     InventoryControlTargetRosterRow,
-    MekCrewProfileCommandResult,
     MekEquipmentChoiceDispatchResult,
     MekEquipmentChoiceToken,
     MekEquipmentInteraction,
@@ -120,7 +119,6 @@ import {
 interface CBTForceAuthorityState {
     readonly envelope: SerializedCBTForceV2;
     readonly units: ReadonlyMap<UnitInstanceId, ReadyClassicUnit>;
-    readonly crewProfileRevisions: ReadonlyMap<UnitInstanceId, number>;
     readonly scenario: ScenarioRules;
 }
 
@@ -149,21 +147,13 @@ export interface PreparedUnitLoad {
     readonly envelope: SerializedCBTForceV2;
     readonly nextBinding: CBTForceAuthorityState | null;
     readonly readyWitnesses: readonly ReadyUnitPersistenceWitness[];
+    readonly ignoredUnitIds: readonly UnitInstanceId[];
 }
 
 export interface CBTForceAuthorityFence {
     readonly expectedBinding: CBTForceAuthorityState | null;
     readonly units: ReadonlyMap<UnitInstanceId, ReadyClassicUnit>;
     readonly runtimeRevisions: ReadonlyMap<UnitInstanceId, StateRevision>;
-}
-
-export interface PreparedTargetingReconciliation {
-    readonly expectedBinding: CBTForceAuthorityState | null;
-    readonly rows: readonly Readonly<{
-        readonly instanceId: UnitInstanceId;
-        readonly unit: ReadyClassicUnit;
-        readonly plan: ReadyTargetingReconciliation;
-    }>[];
 }
 
 /** Owns ready Entity + sparse-runtime units behind the Classic force boundary. */
@@ -183,18 +173,64 @@ export class CBTForceAuthority {
         const expectedBinding = this.binding;
         const scenario = scenarioRulesFromPersistence(envelope.scenarioRules.values);
         const entries = envelope.units;
-        const restored = await Promise.all(entries.map(entry => {
-            if (isSerializedNonMekUnit(entry.unit)) {
-                if (!readyNonMekUnits) throw new Error('A Ready non-Mek service is required for non-Mek members');
-                return readyNonMekUnits.restoreReadyNonMekUnit({ saved: entry.unit });
+        const ignoredUnitIds = new Set<UnitInstanceId>();
+        const restored = await Promise.all(entries.map(async entry => {
+            try {
+                if (isSerializedNonMekUnit(entry.unit)) {
+                    if (!readyNonMekUnits) throw new Error('A Ready non-Mek service is required for non-Mek members');
+                    return await readyNonMekUnits.restoreReadyNonMekUnit({ saved: entry.unit });
+                }
+                if (!readyMeks) throw new Error('A Ready Mek service is required for Mek members');
+                return await readyMeks.restoreReadyMekV2({
+                    saved: entry.unit,
+                    deployment: deploymentFromPersistence(entry.unit.deployment.values),
+                    scenario,
+                    initialStateProfileId: entry.unit.baselineRefAtSave.initialStateProfile.profileId,
+                });
+            } catch {
+                ignoredUnitIds.add(entry.instanceId);
+                if (isSerializedNonMekUnit(entry.unit)) {
+                    if (!readyNonMekUnits) throw new Error('A Ready non-Mek service is required for non-Mek members');
+                    try {
+                        return await readyNonMekUnits.restoreReadyNonMekUnit({
+                            saved: Object.freeze({
+                                ...entry.unit,
+                                schemaVersion: NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
+                            }),
+                        });
+                    } catch {
+                        // The unit identity is still usable; only its runtime payload is discarded.
+                    }
+                    return readyNonMekUnits.loadReadyNonMekUnit({
+                        identity: entry.unit.entity,
+                        instanceId: entry.instanceId,
+                        deployment: entry.unit.deployment.values,
+                        scenario,
+                        initialStateProfileId: entry.unit.baselineRefAtSave.initialStateProfile.profileId,
+                    });
+                }
+                if (!readyMeks) throw new Error('A Ready Mek service is required for Mek members');
+                try {
+                    return await readyMeks.restoreReadyMekV2({
+                        saved: Object.freeze({
+                            ...entry.unit,
+                            schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
+                        }),
+                        deployment: deploymentFromPersistence(entry.unit.deployment.values),
+                        scenario,
+                        initialStateProfileId: entry.unit.baselineRefAtSave.initialStateProfile.profileId,
+                    });
+                } catch {
+                    // The unit identity is still usable; only its runtime payload is discarded.
+                }
+                return readyMeks.loadReadyMek({
+                    identity: entry.unit.entity,
+                    instanceId: entry.instanceId,
+                    deployment: deploymentFromPersistence(entry.unit.deployment.values),
+                    scenario,
+                    initialStateProfileId: entry.unit.baselineRefAtSave.initialStateProfile.profileId,
+                });
             }
-            if (!readyMeks) throw new Error('A Ready Mek service is required for Mek members');
-            return readyMeks.restoreReadyMekV2({
-                saved: entry.unit,
-                deployment: deploymentFromPersistence(entry.unit.deployment.values),
-                scenario,
-                initialStateProfileId: entry.unit.baselineRefAtSave.initialStateProfile.profileId,
-            });
         }));
         const units = new Map<UnitInstanceId, ReadyClassicUnit>();
         restored.forEach(ready => {
@@ -211,8 +247,7 @@ export class CBTForceAuthority {
             const serialized = ready.serialize();
             if (ready.instanceId !== entry.instanceId
                 || serialized.instanceId !== entry.instanceId
-                || ready.revision() !== entry.stateRevision
-                || serialized.stateRevision !== entry.stateRevision) {
+                || serialized.stateRevision !== ready.revision()) {
                 throw new Error(`Restored V2 runtime ${entry.instanceId} disagrees with its persisted revision`);
             }
             const sourceRef = ready.getSourceRef();
@@ -223,6 +258,9 @@ export class CBTForceAuthority {
                 || ready.getUnit() !== entity) {
                 throw new Error(`Restored V2 runtime ${entry.instanceId} disagrees with its persisted native source`);
             }
+            if (entry.stateRevision !== ready.revision()) {
+                ignoredUnitIds.add(entry.instanceId);
+            }
             serializedUnits.set(entry.instanceId, serialized);
             return Object.freeze({
                 unit: ready,
@@ -231,11 +269,15 @@ export class CBTForceAuthority {
         });
         const hydratedUnits = envelope.units.map(entry => Object.freeze({
             ...entry,
+            stateRevision: serializedUnits.get(entry.instanceId)!.stateRevision,
             unit: serializedUnits.get(entry.instanceId)!,
         }));
-        const hydratedEnvelope = jsonValuesEqual(hydratedUnits, envelope.units)
-            ? envelope
-            : await validateSerializedCBTForceV2({ ...envelope, units: hydratedUnits });
+        const hydratedEnvelope = await validateSerializedCBTForceV2({
+            ...envelope,
+            schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
+            minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
+            units: hydratedUnits,
+        });
         const encounter = decodeCBTEncounterStateV2(hydratedEnvelope.encounter.state).snapshot;
         if (!validateCBTEncounterNetworks(encounter.networks, units)) {
             throw new Error('Restored C3 network facts are not canonical for the restored units');
@@ -243,7 +285,6 @@ export class CBTForceAuthority {
         const nextBinding: CBTForceAuthorityState = Object.freeze({
             envelope: hydratedEnvelope,
             units,
-            crewProfileRevisions: new Map([...units.keys()].map(instanceId => [instanceId, 0] as const)),
             scenario,
         });
         return Object.freeze({
@@ -251,6 +292,7 @@ export class CBTForceAuthority {
             envelope: hydratedEnvelope,
             nextBinding,
             readyWitnesses: Object.freeze(readyWitnesses),
+            ignoredUnitIds: Object.freeze([...ignoredUnitIds]),
         });
     }
 
@@ -314,7 +356,6 @@ export class CBTForceAuthority {
             this.binding = Object.freeze({
                 envelope,
                 units: new Map(),
-                crewProfileRevisions: new Map(),
                 scenario: scenarioRulesFromPersistence(envelope.scenarioRules.values),
             });
             return;
@@ -401,15 +442,9 @@ export class CBTForceAuthority {
             }
         }
 
-        const previousCrewRevisions = expectedBinding?.crewProfileRevisions
-            ?? new Map<UnitInstanceId, number>();
         const nextBinding: CBTForceAuthorityState = Object.freeze({
             envelope,
             units,
-            crewProfileRevisions: new Map([...units.keys()].map(instanceId => [
-                instanceId,
-                previousCrewRevisions.get(instanceId) ?? 0,
-            ] as const)),
             scenario: scenarioRulesFromPersistence(envelope.scenarioRules.values),
         });
         return Object.freeze({ expectedBinding, nextBinding });
@@ -447,10 +482,6 @@ export class CBTForceAuthority {
             ...expectedBinding,
             envelope,
             units,
-            crewProfileRevisions: new Map([...units.keys()].map(id => [
-                id,
-                expectedBinding.crewProfileRevisions.get(id) ?? 0,
-            ] as const)),
         });
         return Object.freeze({ expectedBinding, nextBinding });
     }
@@ -636,10 +667,9 @@ export class CBTForceAuthority {
         const unit = this.readyNonMekUnit(instanceId);
         if (!unit) {
             return Object.freeze({
-                accepted: false,
+                accepted: true,
                 changed: false,
-                reason: 'NOT_ADMITTED',
-                currentRevision: null,
+                state: null,
             });
         }
         const runtime = unit.getInstance();
@@ -647,24 +677,10 @@ export class CBTForceAuthority {
             return Object.freeze({
                 accepted: false,
                 changed: false,
-                reason: 'FORCE_READ_ONLY',
-                currentRevision: runtime.revision(),
+                state: runtime.snapshot(),
             });
         }
-        const result = runtime.dispatch(command);
-        if (result.accepted) {
-            return Object.freeze({
-                accepted: true,
-                changed: result.changed,
-                state: result.state,
-            });
-        }
-        return Object.freeze({
-            accepted: false,
-            changed: false,
-            reason: result.reason ?? 'INVALID_COMMAND',
-            currentRevision: runtime.revision(),
-        });
+        return runtime.dispatch(command);
     }
 
     public dispatchMekUnitCommand(
@@ -674,14 +690,14 @@ export class CBTForceAuthority {
     ): CBTMekUnitCommandResult {
         const unit = this.readyMekUnit(instanceId);
         if (!unit) {
-            return Object.freeze({ accepted: false, reason: 'NOT_ADMITTED', currentRevision: null });
+            return Object.freeze({ accepted: true, changed: false, state: null });
         }
         const runtime = unit.getInstance();
         if (forceReadOnly) {
             return Object.freeze({
                 accepted: false,
-                reason: 'FORCE_READ_ONLY',
-                currentRevision: runtime.revision(),
+                changed: false,
+                state: runtime.snapshot(),
             });
         }
         return runtime.dispatch(command);
@@ -712,15 +728,15 @@ export class CBTForceAuthority {
         const binding = this.binding;
         const unit = binding?.units.get(instanceId);
         if (!binding || !unit) {
-            return Object.freeze({ accepted: false, reason: 'UNIT_NOT_FOUND', currentRevision: null });
+            return Object.freeze({ accepted: true, changed: false, state: null });
         }
         if (command.edit.kind === 'set-target-facts'
             && command.edit.facts?.useC3 === true
             && !this.c3.hasOperationalEndpoint(instanceId, unit, networks)) {
             return Object.freeze({
-                accepted: false,
-                reason: 'C3_UNAVAILABLE',
-                currentRevision: unit.revision(),
+                accepted: true,
+                changed: false,
+                state: unit.captureRuntime().state,
             });
         }
         return unit.dispatchAttackerTargeting(command, registry, forceReadOnly);
@@ -728,7 +744,6 @@ export class CBTForceAuthority {
 
     public dispatchEquipmentRowOrder(
         instanceId: UnitInstanceId,
-        expectedRevision: StateRevision,
         group: EquipmentRowOrderGroup,
         permutation: readonly number[],
         rowCount: number,
@@ -736,10 +751,9 @@ export class CBTForceAuthority {
     ): EquipmentRowOrderCommandResult {
         const unit = this.binding?.units.get(instanceId);
         if (!unit) {
-            return Object.freeze({ accepted: false, reason: 'UNIT_NOT_FOUND', currentRevision: null });
+            return Object.freeze({ accepted: true, changed: false, state: null });
         }
         return unit.setEquipmentRowOrder(
-            expectedRevision,
             group,
             permutation,
             rowCount,
@@ -757,7 +771,12 @@ export class CBTForceAuthority {
         const binding = this.binding;
         const unit = this.readyUnit(instanceId);
         if (!binding || !unit) {
-            return Object.freeze({ accepted: false, reason: 'UNIT_NOT_FOUND', currentRevision: null });
+            return Object.freeze({
+                accepted: true,
+                changed: false,
+                state: null,
+                prototypeHeat: Object.freeze([]),
+            });
         }
         const c3Available = this.c3.hasOperationalEndpoint(instanceId, unit, networks);
         return unit.dispatchSelectedWeaponFire(command, registry, forceReadOnly, c3Available);
@@ -765,34 +784,20 @@ export class CBTForceAuthority {
 
     public prepareTargetingReconciliation(
         registry: TargetRegistrySnapshot,
-    ): PreparedTargetingReconciliation {
-        const expectedBinding = this.binding;
-        const rows: Array<PreparedTargetingReconciliation['rows'][number]> = [];
-        for (const [instanceId, unit] of expectedBinding?.units ?? []) {
+    ): readonly ReadyTargetingReconciliation[] {
+        const plans: ReadyTargetingReconciliation[] = [];
+        for (const unit of this.binding?.units.values() ?? []) {
             const plan = unit.planTargetingReconciliation(registry);
-            if (plan !== null) rows.push(Object.freeze({ instanceId, unit, plan }));
+            if (plan !== null) plans.push(plan);
         }
-        return Object.freeze({
-            expectedBinding,
-            rows: Object.freeze(rows),
-        });
+        return Object.freeze(plans);
     }
 
-    /** Prevalidated, synchronous install paired with the encounter registry commit. */
+    /** Installs plans prepared immediately before the synchronous registry commit. */
     public installTargetingReconciliation(
-        prepared: PreparedTargetingReconciliation,
+        prepared: readonly ReadyTargetingReconciliation[],
     ): void {
-        if (this.binding !== prepared.expectedBinding
-            || prepared.rows.some(row => this.binding?.units.get(row.instanceId) !== row.unit
-                || row.unit.revision() !== row.plan.expectedRevision)) {
-            throw new Error('Targeting owner changed before registry reconciliation');
-        }
-        for (const row of prepared.rows) {
-            const committed = row.plan.commit();
-            if (!committed) {
-                throw new Error('Targeting revision changed during registry reconciliation');
-            }
-        }
+        for (const plan of prepared) plan.install();
     }
 
     public targetRoster(forceInstanceId: string): readonly InventoryControlTargetRosterRow[] {
@@ -804,64 +809,47 @@ export class CBTForceAuthority {
                     : []));
     }
 
-    public crewProfile(instanceId: UnitInstanceId): CrewProfileSnapshot | null {
-        const binding = this.binding;
-        const unit = binding?.units.get(instanceId);
-        return binding && unit ? this.crewProfileSnapshot(binding, instanceId, unit) : null;
+    public crewProfile(instanceId: UnitInstanceId): CrewAssignment | null {
+        return this.binding?.units.get(instanceId)?.getCrewAssignment() ?? null;
     }
 
     public async replaceCrewProfile(
         instanceId: UnitInstanceId,
-        command: ReplaceCrewProfileCommand,
+        positions: readonly CrewAssignmentPosition[],
         readyMeks: ReadyMekUnitService,
         isReadOnly: () => boolean,
         isOwnerCurrent: () => boolean,
         publishChanged: () => void,
-    ): Promise<MekCrewProfileCommandResult | null> {
-        const result = await this.replaceCrewProfileNow(
-            instanceId,
-            command,
-            readyMeks,
-            isReadOnly,
-            isOwnerCurrent,
-        );
-        if (result?.accepted) publishChanged();
-        return result;
-    }
-
-    private async replaceCrewProfileNow(
-        instanceId: UnitInstanceId,
-        command: ReplaceCrewProfileCommand,
-        readyMeks: ReadyMekUnitService,
-        isReadOnly: () => boolean,
-        isOwnerCurrent: () => boolean,
-    ): Promise<MekCrewProfileCommandResult | null> {
+    ): Promise<CrewAssignment | null> {
         if (isReadOnly() || !isOwnerCurrent()) return null;
         const binding = this.binding;
         const current = binding?.units.get(instanceId);
         if (!binding || !current) return null;
 
-        const revision = binding.crewProfileRevisions.get(instanceId) ?? 0;
         const runtimeRevision = current.revision();
-        const prepared = prepareCrewProfileReplacement(
-            current.getIndex().crewPositions,
-            current.getCrewAssignment(),
-            runtimeRevision,
-            revision,
-            command,
-        );
-        if (!prepared.accepted) return prepared;
+        if (runtimeRevision !== 0) return null;
+
+        let assignment: CrewAssignment;
+        try {
+            assignment = canonicalizeCrewAssignment(current.getIndex().crewPositions, {
+                schemaVersion: CREW_ASSIGNMENT_SCHEMA_VERSION,
+                positions,
+            });
+        } catch {
+            return null;
+        }
+        if (jsonValuesEqual(assignment, current.getCrewAssignment())) return current.getCrewAssignment();
 
         let replacement: ReadyClassicUnit;
         try {
             if (isReadyMekUnit(current)) {
                 replacement = await readyMeks.redeployReadyMekV2({
                     current,
-                    crewAssignment: prepared.assignment,
+                    crewAssignment: assignment,
                     scenario: binding.scenario,
                 });
             } else if (isReadyNonMekUnit(current)) {
-                replacement = ReadyNonMekUnit.redeploy(current, prepared.assignment);
+                replacement = ReadyNonMekUnit.redeploy(current, assignment);
             } else {
                 throw new Error(`Unknown Classic runtime family ${instanceId}`);
             }
@@ -875,56 +863,26 @@ export class CBTForceAuthority {
                 throw new Error('Redeployed Ready unit changed owner identity or native source');
             }
         } catch {
-            const ownerChanged = isReadOnly()
-                || !isOwnerCurrent()
-                || this.binding !== binding
-                || binding.units.get(instanceId) !== current
-                || (binding.crewProfileRevisions.get(instanceId) ?? 0) !== revision
-                || current.revision() !== runtimeRevision;
-            if (ownerChanged) {
-                const latest = this.crewProfile(instanceId);
-                return latest === null ? null : Object.freeze({
-                    accepted: false,
-                    reason: 'REVISION_CONFLICT' as const,
-                    snapshot: latest,
-                });
-            }
-            return Object.freeze({
-                accepted: false,
-                reason: 'REDEPLOY_FAILED',
-                snapshot: this.crewProfileSnapshot(binding, instanceId, current),
-            });
+            return null;
         }
 
-        // A concurrent save/reload/replacement wins. The completed candidate is
-        // discarded without altering the newly installed owner.
+        // An owner replacement during the asynchronous Mek rebuild wins.
         if (isReadOnly()
             || !isOwnerCurrent()
             || this.binding !== binding
             || binding.units.get(instanceId) !== current
-            || (binding.crewProfileRevisions.get(instanceId) ?? 0) !== revision
             || current.revision() !== runtimeRevision) {
-            const latest = this.crewProfile(instanceId);
-            return latest === null ? null : Object.freeze({
-                accepted: false,
-                reason: 'REVISION_CONFLICT',
-                snapshot: latest,
-            });
+            return null;
         }
 
         const units = new Map(binding.units);
         units.set(instanceId, replacement);
-        const crewProfileRevisions = new Map(binding.crewProfileRevisions);
-        crewProfileRevisions.set(instanceId, prepared.snapshot.revision);
         this.binding = Object.freeze({
             ...binding,
             units,
-            crewProfileRevisions,
         });
-        return Object.freeze({
-            accepted: true,
-            snapshot: this.crewProfileSnapshot(this.binding, instanceId, replacement),
-        });
+        publishChanged();
+        return replacement.getCrewAssignment();
     }
 
     public equipmentInteractions(
@@ -1162,7 +1120,7 @@ export class CBTForceAuthority {
                 ? this.c3.reconcileEmergencyMasters(configuredEncounter.networks)
                 : emptyC3EmergencyMasterMutation();
             publishC3EmergencyMasterNotices(c3.notices, commandContext.toastService);
-            const changed = handlerChanged || c3.changed;
+            const changed = handlerChanged || c3.changedUnitIds.length > 0;
             // The revision is the mutation authority. A handler may mutate and then
             // fail in a notification side effect; the force must still publish that
             // state change exactly once.
@@ -1277,9 +1235,9 @@ export class CBTForceAuthority {
                     ? unit.endTurn(selectedPolicy)
                     : isReadyNonMekUnit(unit)
                         ? unit.endTurn()
-                        : Object.freeze({ accepted: false, reason: 'Unsupported Classic unit family' });
+                        : null;
+                if (reduction === null) throw new Error('Unsupported Classic unit family');
                 accepted = reduction.accepted;
-                reason = reduction.reason;
             } catch (error) {
                 reason = error instanceof Error ? error.message : 'Retained V2 end-turn failed';
             }
@@ -1287,7 +1245,7 @@ export class CBTForceAuthority {
                 ? this.c3.settleEmergencyMasterEndTurn(c3Plans.get(instanceId) ?? null)
                 : emptyC3EmergencyMasterMutation();
             publishC3EmergencyMasterNotices(c3.notices, toast);
-            const changed = unit.revision() !== before || c3.changed;
+            const changed = unit.revision() !== before || c3.changedUnitIds.length > 0;
             v2Changed = v2Changed || changed;
             results.push(Object.freeze({
                 instanceId,
@@ -1298,10 +1256,10 @@ export class CBTForceAuthority {
         }
         const reconciled = this.c3.reconcileEmergencyMasters(configuredNetworks);
         publishC3EmergencyMasterNotices(reconciled.notices, toast);
-        if (reconciled.changed) {
+        if (reconciled.changedUnitIds.length > 0) {
             for (let index = 0; index < results.length; index += 1) {
                 const row = results[index]!;
-                if (!reconciled.eventsByUnit.has(asUnitInstanceId(row.instanceId))) continue;
+                if (!reconciled.changedUnitIds.includes(asUnitInstanceId(row.instanceId))) continue;
                 results[index] = Object.freeze({ ...row, changed: true });
             }
             v2Changed = true;
@@ -1313,16 +1271,6 @@ export class CBTForceAuthority {
         );
     }
 
-    private crewProfileSnapshot(
-        binding: CBTForceAuthorityState,
-        instanceId: UnitInstanceId,
-        unit: ReadyClassicUnit,
-    ): CrewProfileSnapshot {
-        return createCrewProfileSnapshot(
-            unit.getCrewAssignment(),
-            binding.crewProfileRevisions.get(instanceId) ?? 0,
-        );
-    }
 }
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {

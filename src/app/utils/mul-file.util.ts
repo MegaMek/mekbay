@@ -102,9 +102,6 @@ interface ParsedMulLocation {
 }
 
 type MulCrewType = 'single' | 'tripod' | 'superheavy_tripod' | 'quadvee' | 'dual' | 'command_console';
-type CommandWithoutRevision<T> = T extends unknown ? Omit<T, 'expectedRevision'> : never;
-type MulUnitCommand = CommandWithoutRevision<CBTUnitCommand>;
-type MulEntityCommand = CommandWithoutRevision<NonMekUnitCommand>;
 type EntityRuntimeSnapshot = CBTUnitSnapshot & Readonly<{
     index: NonMekRuntimeIndex;
     state: NonMekUnitRuntimeState;
@@ -488,11 +485,8 @@ async function applyMulCrew(
             piloting: effectiveEntityPilotingSkill(entity, value.pilotingSkill),
         } : position;
     });
-    const replaced = await force.replaceUnitCrewProfile(member.id, {
-        expectedRevision: current.revision,
-        positions,
-    });
-    if (!replaced?.accepted) throw new Error('Crew profile changed while the MUL crew was applied');
+    const replaced = await force.replaceUnitCrewProfile(member.id, positions);
+    if (!replaced) throw new Error('The MUL crew could not be applied');
     if (isCBTMekForceMember(member)) {
         const sheet = requiredSheet(force, member);
         for (const position of sheet.crew) {
@@ -518,6 +512,8 @@ async function applyMulCrew(
             wounds: Math.max(0, Math.min(6, value.hits)),
             unconscious: false,
             ejected: value.ejected,
+            killed: false,
+            stunned: false,
         });
     }
 }
@@ -702,7 +698,7 @@ async function applyRemainingInternal(
 async function dispatchMek(
     force: CBTForce,
     member: CBTMekForceMember,
-    command: MulUnitCommand,
+    command: CBTUnitCommand,
 ): Promise<void> {
     const snapshot = force.getUnitSnapshot(member.id);
     if (!snapshot || !hasMekRuntime(snapshot)) {
@@ -717,12 +713,11 @@ async function dispatchMek(
 async function dispatchEntity(
     force: CBTForce,
     member: CBTForceMember,
-    command: MulEntityCommand,
+    command: NonMekUnitCommand,
 ): Promise<void> {
     const snapshot = requiredEntitySnapshot(force, member);
     const result = await force.dispatchNonMekUnitCommand(member.id, {
         ...command,
-        expectedRevision: snapshot.state.stateRevision,
     } as NonMekUnitCommand);
     if (!result.accepted) throw new Error('Cannot import MUL state into a read-only force');
 }

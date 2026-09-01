@@ -94,8 +94,7 @@ describe('ForceWorkspaceCommandsService first-unit work bounds', () => {
             queryCanonicalRoster: () => ({
                 kind: 'available',
                 snapshot: {
-                    structural: { members: [{ instanceId: 'first-unit' }] },
-                    owners: [],
+                    members: [{ instanceId: 'first-unit' }],
                 },
             }),
         } as unknown as Force;

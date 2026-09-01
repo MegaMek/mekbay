@@ -38,7 +38,6 @@ h1, h2, h3, p { margin: 0; }
 .tactical-toolbar,
 .unit-hero,
 .command-strip,
-.status-banner-list,
 .turn-summary-host,
 .tactical-grid {
     width: min(100%, 1760px);
@@ -158,6 +157,17 @@ h1 {
     font-weight: 700;
     text-transform: uppercase;
 }
+.hero-condition-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 5px;
+}
+.condition-menu-toggle { width: 24px; padding: 0; }
+.condition-menu-toggle svg { width: 13px; height: 13px; }
+.state-chip.condition-status-chip { display: inline-flex; align-items: center; cursor: default; }
+.condition-status-separator { color: var(--text-color-secondary); font-size: 0.72rem; font-weight: 800; user-select: none; }
 
 .unit-navigation,
 .compact-stepper { display: inline-flex; align-items: center; }
@@ -173,20 +183,12 @@ h1 {
 }
 
 .command-strip {
-    display: grid;
-    grid-template-columns: fit-content(50%) minmax(0, 1fr);
-    align-items: stretch;
-    gap: 5px;
     margin-bottom: 5px;
 }
-.command-strip.crew-only { grid-template-columns: minmax(0, 1fr); }
-.unit-capabilities,
 .crew-card {
     border: 1px solid var(--tactical-line);
     background: var(--tactical-panel);
 }
-.unit-capabilities { display: flex; flex-flow: column wrap; justify-content: center; gap: 4px; padding: 4px 6px; }
-.condition-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .state-chip {
     min-height: 22px;
     padding: 1px 5px;
@@ -210,7 +212,7 @@ h1 {
     scrollbar-width: thin;
     scroll-snap-type: x proximity;
 }
-.crew-track { display: flex; width: 100%; min-width: 0; height: 100%; align-items: stretch; gap: 5px; }
+.crew-track { display: flex; width: 100%; min-width: 0; align-items: flex-start; gap: 5px; }
 .crew-card {
     display: flex;
     width: max-content;
@@ -299,16 +301,6 @@ h1 {
 .wound-button:disabled { opacity: 1; cursor: default; }
 .compact-stepper button { width: 22px; height: 22px; padding: 0; font-weight: 800; }
 .compact-stepper strong { min-width: 23px; font-size: 0.6rem; text-align: center; }
-
-.status-banner-list { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; }
-.status-banner {
-    padding: 3px 6px;
-    border-left: 2px solid var(--state-color, var(--tactical-accent));
-    background: color-mix(in srgb, var(--state-color, var(--tactical-accent)) 18%, var(--tactical-panel));
-    font-size: 0.56rem;
-    font-weight: 800;
-}
-.status-banner.danger { --state-color: var(--tactical-danger); }
 
 .turn-summary-host { margin-bottom: 6px; }
 tactical-turn-tracker { display: block; width: 100%; }
@@ -437,14 +429,14 @@ tactical-turn-tracker { display: block; width: 100%; }
 .location-tracks {
     display: flex;
     min-width: 0;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 2px 5px;
     padding: 2px 3px;
-    container: location-tracks / inline-size;
 }
 .damage-strip {
     display: inline-flex;
+    flex: 1 1 auto;
     align-items: center;
     gap: 4px;
     min-width: 0;
@@ -458,11 +450,18 @@ tactical-turn-tracker { display: block; width: 100%; }
     container: damage-strip / inline-size;
     overflow: hidden;
 }
-.armor-strip { flex: 1 1 270px; }
 .internal-strip {
-    flex: 1 1 210px;
     border-left-color: color-mix(in srgb, var(--tactical-cyan) 48%, var(--tactical-line));
 }
+.armor-panel.damage-tracks-wrapped .location-tracks {
+    flex-direction: column;
+    align-items: stretch;
+}
+.armor-panel.damage-tracks-wrapped .damage-strip {
+    width: 100%;
+    flex: 0 0 auto;
+}
+.armor-panel.damage-tracks-wrapped .internal-strip { border-left-color: transparent; }
 .track-value {
     min-width: 31px;
     flex: 0 0 31px;
@@ -537,11 +536,6 @@ tactical-turn-tracker { display: block; width: 100%; }
 .damage-pip.damaged { border-color: color-mix(in srgb, var(--tactical-danger) 86%, #fff); background: var(--tactical-danger); }
 .structure-pip { border-radius: 1px; border-color: color-mix(in srgb, var(--tactical-cyan) 58%, transparent); }
 .structure-pip.damaged { border-color: color-mix(in srgb, var(--tactical-danger) 86%, #fff); }
-
-/* When armor and internal wrap onto separate lines, lead both tracks with the count. */
-@container location-tracks (max-width: 485px) {
-    .internal-strip .track-value { order: -1; }
-}
 
 /* Critical anatomy stays in three columns, including narrow/mobile layouts. */
 .critical-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
@@ -640,8 +634,6 @@ tactical-turn-tracker { display: block; width: 100%; }
     .unit-icon { margin: -6px; transform: scale(0.72); }
     .nav-button { width: 25px; height: 25px; }
     .unit-position { min-width: 29px; }
-    .command-strip { grid-template-columns: minmax(0, 1fr); gap: 3px; }
-    .unit-capabilities { padding: 3px 4px; }
     .crew-card { min-height: 0; }
     .inventory-head { display: none; }
     .inventory-row { grid-template-columns: minmax(0, 1fr) 34px 48px 25px; gap: 3px; min-height: 28px; padding-inline: 4px; }

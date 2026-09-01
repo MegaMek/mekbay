@@ -33,12 +33,6 @@ export interface MekEscalatingFailureControlRow {
     readonly statusChoice?: MekEquipmentChoice;
 }
 
-type MekTurnCommand = CBTUnitCommand extends infer Command
-    ? Command extends CBTUnitCommand
-        ? Omit<Command, 'expectedRevision'>
-        : never
-    : never;
-
 /** Typed runtime adapter for the established turn-summary presentation. */
 export class MekTurnSummaryRuntimeController {
     public readonly busy = signal(false);
@@ -227,7 +221,7 @@ export class MekTurnSummaryRuntimeController {
             turn: {
                 ...turn,
                 airborne,
-                equipmentStateChanged: true,
+                phaseStateChanged: true,
             },
         });
     }
@@ -351,7 +345,7 @@ export class MekTurnSummaryRuntimeController {
         return this.dispatch(type === 'end-turn' ? { type, policy: this.heatPolicy() } : { type });
     }
 
-    private async dispatch(command: MekTurnCommand): Promise<boolean> {
+    private async dispatch(command: CBTUnitCommand): Promise<boolean> {
         if (this.busy()) return false;
         this.busy.set(true);
         try {

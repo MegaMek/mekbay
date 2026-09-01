@@ -118,14 +118,14 @@ describe('direct electronic-suite lifecycle', () => {
         expect(activeProbeEffectivelyPowered(facts(fixture), second)).toBeTrue();
     });
 
-    it('rejects an Angel-only mode on ordinary ECM without changing revision', () => {
+    it('ignores an Angel-only mode on ordinary ECM without changing revision', () => {
         const fixture = createDirectElectronicSuiteRuntimeFixture();
         const ordinary = component(fixture, 'Test ECM');
         const revision = fixture.instance.revision();
 
         const result = setMode(fixture, ordinary, ECMMode.ECM_ECCM);
 
-        expect(result.accepted).toBeFalse();
+        expect(result).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(fixture.instance.revision()).toBe(revision);
     });
 });

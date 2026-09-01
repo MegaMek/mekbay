@@ -29,7 +29,7 @@ describe('direct Booby Trap runtime', () => {
             
             componentId: trap.id,
             mode: BOOBY_TRAP_DETONATED_MODE,
-        })).toEqual(jasmine.objectContaining({ accepted: false }));
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(fixture.instance.revision()).toBe(revision);
 
         const interaction = interactionFixture(fixture, false);
@@ -52,6 +52,7 @@ describe('direct Booby Trap runtime', () => {
         expect(await interaction.select()).toBeTrue();
 
         expect(fixture.instance.query().componentMode(trap.id)).toBe(BOOBY_TRAP_DETONATED_MODE);
+        expect(fixture.instance.snapshot().explicitlyDestroyed).toBeFalse();
         expect(fixture.instance.snapshot().destroyed).toBeTrue();
         expect(fixture.instance.query().destroyed()).toBeTrue();
         expect(interaction.dialogs.showNoticeHtml).toHaveBeenCalledOnceWith(

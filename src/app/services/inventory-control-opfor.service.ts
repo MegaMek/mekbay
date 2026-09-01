@@ -136,10 +136,9 @@ export class InventoryControlOpforService {
         if (targetsEqual(currentOpforTargets, opforTargets)) return null;
         const result = force.dispatchInventoryControlTargetRegistry({
             kind: 'replace-targets',
-            expectedRevision: snapshot.revision,
             targets: opforTargets,
         }, 'opfor-sync');
-        if (!result.accepted) this.reportRejection(result.reason, surfaceError);
+        if (!result.accepted) this.reportRejection(surfaceError);
         return result;
     }
 
@@ -150,11 +149,8 @@ export class InventoryControlOpforService {
         }
     }
 
-    private reportRejection(
-        reason: Extract<CBTForceTargetRegistryDispatchResult, { readonly accepted: false }>['reason'],
-        surfaceError: boolean,
-    ): void {
-        const message = `OPFOR synchronization was rejected (${String(reason)}).`;
+    private reportRejection(surfaceError: boolean): void {
+        const message = 'OPFOR synchronization was rejected because the force is read-only.';
         this.logger.error(`Target registry: ${message}`);
         if (surfaceError) this.toastService.showToast(message, 'error');
     }

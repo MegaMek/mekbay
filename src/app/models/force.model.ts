@@ -26,7 +26,6 @@ import { uuidv7 } from '../utils/uuid.util';
 import { jsonValuesEqual } from '../utils/json-value.util';
 import { C3Network } from './c3-network.model';
 import {
-    inspectSerializedCBTForceV2,
     prepareInitialCBTForceV2,
     type PreparedCBTForcePersistenceV2,
 } from './runtime/force-persistence-boundary';
@@ -77,6 +76,8 @@ export interface PreparedLoadedCBTForceV2Authority {
     readonly canInstall: () => boolean;
     /** Synchronous, prevalidated pointer install. It must not call user code. */
     readonly install: () => void;
+    /** Optional notice emitted only after the prepared owner was installed. */
+    readonly afterInstall?: () => void | Promise<void>;
 }
 
 const forceOwnerRetirementTokenBrand: unique symbol = Symbol('ForceOwnerRetirementToken');
@@ -1226,7 +1227,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         const submittedGeneration = this.forceOwnerGeneration;
         const submittedV2State = this.getSupportedCBTForceV2Envelope();
         const submittedForceId = this.instanceId();
-        const result = await inspectSerializedCBTForceV2(data);
+        const result = data.cbt ?? null;
         const ownerIsCurrent = (): boolean => this.isForceOwnerGenerationCurrent(submittedGeneration)
             && this.isForceOwnerMutationIntentCurrent(submittedIntentEpoch)
             && this.getSupportedCBTForceV2Envelope() === submittedV2State
@@ -1253,6 +1254,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
         this.reconcileCBTForceV2Projection();
         this.advanceForceOwnerGeneration();
+        await preparedAuthority.afterInstall?.();
         return true;
     }
 

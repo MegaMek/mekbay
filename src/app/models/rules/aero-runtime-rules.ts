@@ -5,7 +5,6 @@ import type { CrewMemberState } from '../crew.model';
 import type { AeroEntity } from '../entity/entities/aero/aero-entity';
 import type { NonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
 import type {
-    NonMekCrewState,
     NonMekUnitRuntimeState,
 } from '../runtime/non-mek-unit-instance';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
@@ -27,7 +26,7 @@ export interface AeroRuntimeRulesProjection {
     readonly destroyed: boolean;
     readonly computedConditions: readonly UnitConditionKey[];
     readonly conditionControlKeys: readonly UnitConditionKey[];
-    readonly crewStateControlKeys: readonly NonMekCrewState[];
+    readonly crewStateControlKeys: readonly CrewMemberState[];
     readonly crewStateDisplayKeys: readonly CrewMemberState[];
     readonly heat: Readonly<{
         readonly tracked: boolean;
