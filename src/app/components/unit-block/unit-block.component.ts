@@ -40,6 +40,7 @@ import {
 import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
 import { hasMekRuntime, hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
 import { UnitNotificationBadgesComponent } from '../unit-notification-badges/unit-notification-badges.component';
+import { projectRuntimeUnitNotifications } from '../unit-notification-badges/unit-notification-runtime.util';
 import { projectCBTUnitTagEcmCapabilitySummary } from '../../models/runtime/cbt-unit-capability-projection';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
 
@@ -190,8 +191,25 @@ export class UnitBlockComponent {
             : null;
     });
 
-    readonly notificationSnapshot = computed(() =>
-        this.optionsService.options().trackPhaseAndTurn ? this.mekTurnSnapshot() : null);
+    readonly notificationSnapshot = computed(() => {
+        this.runtimeRevision();
+        if (!this.optionsService.options().trackPhaseAndTurn) return null;
+        const member = this.forceUnit();
+        return isCBTForceMember(member)
+            ? projectRuntimeUnitNotifications(
+                member.force.getUnitSnapshot(member.id),
+                {
+                    pilotHitsAndConsciousnessCheck: this.optionsService.cbtAutomationMode(
+                        'pilotHitsAndConsciousnessCheck',
+                    ),
+                    heatAndDissipationResolution: this.optionsService.cbtAutomationMode(
+                        'heatAndDissipationResolution',
+                    ),
+                    heatEffectsCheck: this.optionsService.cbtAutomationMode('heatEffectsCheck'),
+                },
+            )
+            : null;
+    });
 
     dirty = computed<boolean>(() => {
         if (!this.optionsService.options().trackPhaseAndTurn) {

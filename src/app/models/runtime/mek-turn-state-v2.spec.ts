@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { asCrewPositionId } from '../entity/entity-identifiers';
+import { asCrewPositionId, asLocationId } from '../entity/entity-identifiers';
 import {
     MAX_MEK_TURN_COLLECTION_ENTRIES,
     MekTurnStateValidationError,
@@ -78,6 +78,44 @@ describe('Mek V2 turn state', () => {
         }).endTurnCheckpoint).toBe('heat-staged');
     });
 
+    it('round-trips the exact ordered critical cursor without rerolling it', () => {
+        const locationId = asLocationId('mek:location:CT');
+        const state = canonicalizeMekTurnStateV2({
+            ...createPristineMekTurnStateV2(),
+            pendingCriticalEvents: [{
+                type: 'critical-chance',
+                eventId: 'critical:unit:7:ct',
+                locationId,
+                target: 'pending',
+                roll: [1, 1],
+                modifier: -3,
+                total: -1,
+                result: 'none',
+                breakdown: [{ label: 'Reinforced structure', value: -1 }],
+                effects: ['No critical hits'],
+                caseIIDiscards: [],
+            }, {
+                type: 'critical-hit',
+                eventId: 'critical:unit:8:ct',
+                locationId,
+                target: 'committed',
+                locationDestroyed: true,
+                remainingHits: 2,
+                caseIIDiscards: [false, true],
+                roll: [4, 2],
+            }],
+        });
+
+        const serialized = serializeMekTurnStateV2(state);
+        const restored = deserializeMekTurnStateV2(JSON.parse(JSON.stringify(serialized)));
+
+        expect(restored.pendingCriticalEvents).toEqual(state.pendingCriticalEvents);
+        expect(Object.isFrozen(restored.pendingCriticalEvents)).toBeTrue();
+        expect(Object.isFrozen(restored.pendingCriticalEvents?.[0])).toBeTrue();
+        expect(Object.isFrozen(restored.pendingCriticalEvents?.[0]?.caseIIDiscards)).toBeTrue();
+        expect(Object.isFrozen(restored.pendingCriticalEvents?.[1]?.roll)).toBeTrue();
+    });
+
     it('round-trips sparse production cover without adding a parallel UI state', () => {
         const state = canonicalizeMekTurnStateV2({
             ...createPristineMekTurnStateV2(),
@@ -114,6 +152,17 @@ describe('Mek V2 turn state', () => {
                 seatbeltFailures: ['crew:0'],
             },
         })).toThrowError(MekTurnStateValidationError, /only valid at the crew-hits stage/);
+        expect(() => deserializeMekTurnStateV2({
+            schemaVersion: 1,
+            pendingCriticalEvents: [{
+                type: 'critical-hit',
+                eventId: 'critical:invalid',
+                locationId: 'mek:location:CT',
+                target: 'committed',
+                remainingHits: 2,
+                caseIIDiscards: [false],
+            }],
+        })).toThrowError(MekTurnStateValidationError, /one CASE II result per remaining hit/);
         expect(() => deserializeMekTurnStateV2({
             schemaVersion: 1,
             acknowledgedHeatSources: [

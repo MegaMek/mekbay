@@ -9,7 +9,7 @@ import { CBTUnitService } from '../services/cbt-unit.service';
 import { ToastService } from '../services/toast.service';
 import { DialogsService } from '../services/dialogs.service';
 import { ForceDialogsService } from '../services/force-dialogs.service';
-import { EquipmentInteractionRegistryService } from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
 import { C3Handler } from './runtime/component-c3-configuration';
 import { C3EmergencyMasterHandler } from './runtime/component-c3-emergency-master';
 import { GameSystem } from './common.model';
@@ -587,9 +587,9 @@ async function readyC3Force(owned = true): Promise<{
         'DialogsService',
         ['createDialog', 'showError', 'showNoticeHtml'],
     );
-    const equipmentInteractions = new EquipmentInteractionRegistryService();
-    equipmentInteractions.getRegistry().register(new C3Handler());
-    equipmentInteractions.getRegistry().register(new C3EmergencyMasterHandler());
+    const equipmentInteractions = new EquipmentInteractionRegistry();
+    equipmentInteractions.register(new C3Handler());
+    equipmentInteractions.register(new C3EmergencyMasterHandler());
     let notifyC3DialogOpened!: () => void;
     const c3DialogOpened = new Promise<void>(resolve => { notifyC3DialogOpened = resolve; });
     const forceDialogs = jasmine.createSpyObj<ForceDialogsService>('ForceDialogsService', ['openC3Network']);
@@ -601,7 +601,7 @@ async function readyC3Force(owned = true): Promise<{
                 ? toast
                 : token === DialogsService
                     ? dialogs
-                    : token === EquipmentInteractionRegistryService
+                    : token === EquipmentInteractionRegistry
                         ? equipmentInteractions
                         : token === ForceDialogsService
                             ? forceDialogs
@@ -1557,9 +1557,8 @@ describe('CBTForce V2 encounter persistence', () => {
             forceDialogs,
             c3DialogOpened,
         } = await readyC3Force();
-        const interaction = force.getMekEquipmentInteractions()
-            .find(row => row.instanceId === emergencyId
-                && row.componentId === emergencyComponentId);
+        const interaction = force.getEquipmentInteractions(emergencyId)
+            .find(row => row.componentId === emergencyComponentId);
         const choice = interaction?.choices.find(candidate =>
             candidate.interactionKind === 'c3-configuration');
         if (!choice) throw new Error('C3 Configure choice is missing');
@@ -1567,12 +1566,12 @@ describe('CBTForce V2 encounter persistence', () => {
         const beforeHistory = force.getRuntimeHistory();
 
         expect(choice).toEqual(jasmine.objectContaining({
-            handlerId: 'c3-handler',
             label: 'Configure',
             disabled: false,
             displayType: 'button',
         }));
-        expect(await force.dispatchMekEquipmentChoice(choice.token)).toEqual({
+        expect(choice.command.handlerId).toBe('c3-handler');
+        expect(await force.dispatchEquipmentChoice(choice.command)).toEqual({
             accepted: true,
             changed: false,
         });
@@ -1592,16 +1591,15 @@ describe('CBTForce V2 encounter persistence', () => {
             c3DialogOpened,
         } = await readyC3Force(false);
         expect(force.readOnly()).toBeTrue();
-        const interaction = force.getMekEquipmentInteractions()
-            .find(row => row.instanceId === emergencyId
-                && row.componentId === emergencyComponentId);
+        const interaction = force.getEquipmentInteractions(emergencyId)
+            .find(row => row.componentId === emergencyComponentId);
         const choice = interaction?.choices.find(candidate =>
             candidate.interactionKind === 'c3-configuration');
         if (!choice) throw new Error('Read-only C3 Configure choice is missing');
         const beforeRevision = mekRuntimeSnapshot(force, emergencyId).state.stateRevision;
 
         expect(choice.disabled).toBeFalse();
-        expect(await force.dispatchMekEquipmentChoice(choice.token)).toEqual({
+        expect(await force.dispatchEquipmentChoice(choice.command)).toEqual({
             accepted: true,
             changed: false,
         });

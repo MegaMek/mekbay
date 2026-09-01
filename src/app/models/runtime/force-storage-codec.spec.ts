@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { GameSystem } from '../common.model';
-import type { SerializedCBTForce } from '../force-serialization';
+import type { ASSerializedForce, SerializedCBTForce } from '../force-serialization';
 import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -38,6 +38,78 @@ import {
 } from './unit-state-initializer';
 
 describe('compact force storage codec', () => {
+    it('round-trips lossless Alpha Strike state through projection-friendly short keys', () => {
+        const firstId = '019f6767-0dcb-7bb8-992f-aef08202f5e4';
+        const secondId = '~legacy-unit-id';
+        const force: ASSerializedForce = {
+            version: 2,
+            timestamp: '2026-09-01T12:00:00.000Z',
+            instanceId: '019f6767-0dcb-7bb8-992f-aef08202f5e7',
+            type: GameSystem.AS,
+            name: 'Compact AS',
+            note: 'Lossless mutable facts',
+            tags: ['Test'],
+            factionId: 5,
+            eraId: 3150,
+            pv: 84,
+            owned: false,
+            groups: [{
+                id: '019f6767-0dcb-7bb8-992f-aef08202f5e6',
+                name: 'Lance',
+                color: '#123456',
+                formationId: 'battle-lance',
+                formationLock: true,
+                formationTargetGroupId: '~legacy-target',
+                units: [{
+                    id: firstId,
+                    uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2'),
+                    alias: 'Lead',
+                    updatedTs: 42,
+                    skill: 3,
+                    abilities: ['Melee Master', { name: 'Custom', cost: 2, summary: 'Summary' }],
+                    formationAbilities: ['LEAD'],
+                    commander: true,
+                    state: {
+                        modified: true,
+                        destroyed: true,
+                        conditions: ['shutdown', { key: 'tagged', value: 2, pending: true }],
+                        c3Position: { x: 12, y: -4 },
+                        heat: [2, 1],
+                        armor: [4, 2],
+                        internal: [3, 1],
+                        crits: [['engine', 11]],
+                        pCrits: [['weapons', -12]],
+                        consumed: { BOMB4: [2, 1] },
+                        exhausted: [['OVL'], ['TSEMP'], ['ENE']],
+                    },
+                }, {
+                    id: secondId,
+                    uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e3'),
+                }],
+            }],
+            c3Networks: [{
+                id: '019f6767-0dcb-7bb8-992f-aef08202f5e5',
+                type: 'c3i',
+                color: '#abcdef',
+                peerIds: [firstId, secondId],
+            }],
+        };
+
+        const stored = encodeForceForStorage(force);
+        expect(stored['timestamp']).toBe(Date.parse(force.timestamp));
+        expect(stored['groups']).toBeUndefined();
+        expect(stored['c3Networks']).toBeUndefined();
+        const compact = stored['a'] as Record<string, unknown>;
+        const group = (compact['g'] as Record<string, unknown>[])[0]!;
+        const unit = (group['u'] as Record<string, unknown>[])[0]!;
+        expect(unit['u']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
+        expect((unit['x'] as Record<string, unknown>)['d']).toBe(1);
+        expect(byteLength(stored)).toBeLessThan(byteLength(force) * 0.75);
+
+        const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
+        expect(decoded).toEqual(force);
+    });
+
     it('restores sparse state while rebuilding omitted Entity references at load', async () => {
         const force = damagedForce();
         const stored = encodeForceForStorage(force);
@@ -93,6 +165,59 @@ describe('compact force storage codec', () => {
         expect(byteLength(stored)).toBeLessThan(byteLength(force) * 0.55);
     });
 
+    it('persists an ordered critical continuation cursor through compact storage', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const locationId = [...fixture.index.locations.keys()][0]!;
+        const turn = fixture.instance.query().turnState();
+        expect(fixture.instance.dispatch({
+            type: 'replace-turn-state',
+            turn: {
+                ...turn,
+                pendingCriticalEvents: [{
+                    type: 'critical-chance',
+                    eventId: 'critical:compact-storage',
+                    locationId,
+                    target: 'committed',
+                    roll: [3, 4],
+                    modifier: 1,
+                    total: 8,
+                    result: 1,
+                    breakdown: [{ label: 'IndustrialMech', value: 1 }],
+                    effects: ['1 critical hit'],
+                    caseIIDiscards: [false],
+                }],
+            },
+        }).accepted).toBeTrue();
+        const unit = new CBTMekUnit(
+            fixture.entity,
+            fixture.identity,
+            fixture.instance,
+            { schemaVersion: 2, values: fixture.initialized.deployment },
+        ).serialize();
+        const force = forceWithUnit(unit, 'force:critical-storage', 'Critical storage');
+
+        const stored = encodeForceForStorage(force);
+        const compactUnit = ((stored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
+        expect((compactUnit['t'] as Record<string, unknown>)['q']).toBeDefined();
+        const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
+        const decodedUnit = decoded.cbt!.units[0]!.unit as SerializedCBTUnitV2;
+
+        expect(decodedUnit.turn.pendingCriticalEvents).toEqual(unit.turn.pendingCriticalEvents);
+        const restored = await CBTMekUnit.restoreFromEntity(
+            decodedUnit,
+            fixture.entity,
+            fixture.identity,
+            {
+                initializerRevision: 1,
+                profileId: 'pristine',
+                deployment: { id: 'default' },
+                scenario: { id: 'megamek', ruleset: 'core-2026' },
+            },
+        );
+        expect(restored.serialize().turn.pendingCriticalEvents)
+            .toEqual(unit.turn.pendingCriticalEvents);
+    });
+
     it('stores committed and pending Modular Armor damage in compact component rows', () => {
         const fixture = createDirectModularArmorRuntimeFixture();
         const panel = [...fixture.index.components.values()].find(component =>
@@ -137,7 +262,10 @@ describe('compact force storage codec', () => {
 
     it('round-trips current compact history through the IndexedDB record', () => {
         const source = damagedForce();
-        const instanceId = source.cbt!.units[0]!.instanceId;
+        const instanceId = '019f6767-0dcb-7bb8-992f-aef08202f5e4';
+        const groupId = '019f6767-0dcb-7bb8-992f-aef08202f5e5';
+        const originalEntry = source.cbt!.units[0]!;
+        const unit = { ...originalEntry.unit, instanceId };
         const history = {
             u: [instanceId],
             t: [{
@@ -153,12 +281,58 @@ describe('compact force storage codec', () => {
         } as const;
         const force: SerializedCBTForce = {
             ...source,
-            cbt: { ...source.cbt!, history },
+            cbt: {
+                ...source.cbt!,
+                history,
+                units: [{ ...originalEntry, instanceId, unit }],
+                roster: {
+                    ...source.cbt!.roster,
+                    groups: [{
+                        ...source.cbt!.roster.groups[0]!,
+                        groupId,
+                        members: [{ instanceId, order: 0 }],
+                    }],
+                },
+            },
         };
 
         const stored = encodeForceForStorage(force);
-        expect((stored['cbt'] as Record<string, unknown>)['h']).toEqual(history);
-        expect(decodeForceFromStorage(JSON.parse(JSON.stringify(stored))).cbt!.history).toEqual(history);
+        const compact = stored['cbt'] as Record<string, unknown>;
+        const compactUnit = (compact['u'] as Record<string, unknown>[])[0]!;
+        const compactHistory = compact['h'] as { u: string[] };
+        const compactGroup = (compact['g'] as unknown[][])[0]!;
+        expect(stored['timestamp']).toBe(Date.parse(force.timestamp));
+        expect(compactUnit['k']).toBeUndefined();
+        expect(compactUnit['i']).toMatch(/^~[A-Za-z0-9_-]{22}$/u);
+        expect(compactUnit['e']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
+        expect(compactHistory.u[0]).toMatch(/^~[A-Za-z0-9_-]{22}$/u);
+        expect(compactGroup[0]).toMatch(/^~[A-Za-z0-9_-]{22}$/u);
+
+        const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
+        expect(decoded.cbt!.history).toEqual(history);
+        expect(decoded.cbt!.roster.groups[0]!.groupId).toBe(groupId);
+        expect(decoded.cbt!.units[0]!.instanceId).toBe(instanceId);
+        expect(decoded.cbt!.units[0]!.unit.entity.uuid).toBe(originalEntry.unit.entity.uuid);
+        expect(decoded.cbt!.units[0]!.unit.entity.sourceHashAtSave).toBeUndefined();
+    });
+
+    it('loads the previous compact CBT identity wrapper without retaining its hash', () => {
+        const force = damagedForce();
+        const stored = structuredClone(encodeForceForStorage(force)) as Record<string, unknown>;
+        const compact = stored['cbt'] as Record<string, unknown>;
+        const compactUnit = (compact['u'] as Record<string, unknown>[])[0]!;
+        const savedIdentity = force.cbt!.units[0]!.unit.entity;
+        stored['timestamp'] = force.timestamp;
+        compactUnit['k'] = 'm';
+        compactUnit['e'] = {
+            u: String(savedIdentity.uuid),
+            h: savedIdentity.sourceHashAtSave,
+        };
+
+        const decoded = decodeForceFromStorage(stored);
+        expect(decoded.timestamp).toBe(force.timestamp);
+        expect(decoded.cbt!.units[0]!.unit.entity.uuid).toBe(savedIdentity.uuid);
+        expect(decoded.cbt!.units[0]!.unit.entity.sourceHashAtSave).toBeUndefined();
     });
 
     it('stores production defaults implicitly and roster membership by unit index', async () => {
@@ -176,14 +350,12 @@ describe('compact force storage codec', () => {
         const stored = encodeForceForStorage(force);
         const compact = stored['cbt'] as Record<string, unknown>;
         const unit = (compact['u'] as Record<string, unknown>[])[0]!;
-        const identity = unit['e'] as Record<string, unknown>;
 
         expect(unit['b']).toBeUndefined();
         expect(unit['d']).toBeUndefined();
         expect(unit['r']).toBeUndefined();
-        expect(identity['p']).toBeUndefined();
-        expect(identity['o']).toBeUndefined();
-        expect(identity['f']).toBeUndefined();
+        expect(unit['k']).toBeUndefined();
+        expect(unit['e']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
         expect(((compact['g'] as unknown[][])[0]![1] as unknown[][])[0]).toEqual([0]);
         expect(byteLength(stored)).toBeLessThan(400);
 

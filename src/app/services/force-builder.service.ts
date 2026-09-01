@@ -24,7 +24,7 @@ import { InventoryControlOpforService } from './inventory-control-opfor.service'
 import { ForceUrlStateService } from './force-url-state.service';
 import { ForceDialogsService } from './force-dialogs.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
-import { ForceUnitLoadingService } from './force-unit-loading.service';
+import { ASForceUnitLoadingService } from './as-force-unit-loading.service';
 import { ForceSlotLifecycleService } from './force-slot-lifecycle.service';
 import { OptionsService } from './options.service';
 
@@ -41,7 +41,7 @@ export class ForceBuilderService {
     private readonly forceUrl = inject(ForceUrlStateService);
     private readonly forceDialogs = inject(ForceDialogsService);
     private readonly workspace = inject(ForceWorkspaceStateService);
-    private readonly unitLoading = inject(ForceUnitLoadingService);
+    private readonly unitLoading = inject(ASForceUnitLoadingService);
     private readonly slotLifecycle = inject(ForceSlotLifecycleService);
     private readonly options = inject(OptionsService);
 

@@ -20,9 +20,9 @@ import {
     isCBTMekForceMember,
 } from '../../models/force-member.model';
 import type {
-    MekEquipmentChoice,
-    MekEquipmentInteraction,
-} from '../../models/cbt-force.model';
+    CBTEquipmentChoice,
+    CBTEquipmentInteraction,
+} from '../../models/cbt-force.types';
 import type {
     EquipmentPanelComponent,
     EquipmentPanelTarget,
@@ -107,7 +107,7 @@ interface TacticalInventoryRow {
     readonly id: string;
     readonly component?: EquipmentPanelComponent;
     readonly physical?: MekPhysicalAttackRow;
-    readonly interaction?: MekEquipmentInteraction;
+    readonly interaction?: CBTEquipmentInteraction;
     readonly label: string;
     readonly location: string;
     readonly damage: string;
@@ -627,14 +627,14 @@ export class TacticalViewComponent {
 
     protected async chooseEquipmentInteraction(
         row: TacticalInventoryRow,
-        choice: MekEquipmentChoice,
+        choice: CBTEquipmentChoice,
     ): Promise<void> {
         const runtime = this.equipmentRuntime();
         if (!runtime || !row.interaction || choice.disabled) return;
-        await runtime.chooseInteraction(row.interaction, choice.token);
+        await runtime.chooseInteraction(row.interaction, choice.command);
     }
 
-    protected choiceBackground(choice: MekEquipmentChoice): string | null {
+    protected choiceBackground(choice: CBTEquipmentChoice): string | null {
         if (choice.disabled) return choice.colors?.disabled ?? null;
         if (!choice.active) return choice.colors?.normal ?? null;
         return choice.selectionTone === 'muted'
@@ -642,7 +642,7 @@ export class TacticalViewComponent {
             : choice.colors?.selected ?? null;
     }
 
-    protected choiceTextColor(choice: MekEquipmentChoice): string | null {
+    protected choiceTextColor(choice: CBTEquipmentChoice): string | null {
         if (choice.disabled) return choice.colors?.disabledText ?? null;
         if (!choice.active) return choice.colors?.normalText ?? null;
         return choice.selectionTone === 'muted'

@@ -27,6 +27,7 @@ describe('UnitBlockComponent capability badges', () => {
                 provideZonelessChangeDetection(),
                 { provide: OptionsService, useValue: {
                     options: signal({ trackPhaseAndTurn: true }),
+                    cbtAutomationMode: () => 'ask',
                 } },
             ],
         }).compileComponents();

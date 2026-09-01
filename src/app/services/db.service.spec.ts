@@ -45,6 +45,7 @@ describe('DbService current force persistence', () => {
 
         await service.saveForce(first);
         const stored = await rawStoredForce(instanceId);
+        expect(stored['timestamp']).toBe(Date.parse(first.timestamp));
         expect(stored['cbt']).toEqual(jasmine.objectContaining({ r: 1, u: [], g: [] }));
         expect((stored['cbt'] as Record<string, unknown>)['schemaVersion']).toBeUndefined();
         expect((stored['cbt'] as Record<string, unknown>)['forceId']).toBeUndefined();

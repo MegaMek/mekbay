@@ -96,6 +96,10 @@ export interface PreparedDirectNonMekEndPhaseAutomation {
     readonly prepared: PreparedDirectNonMekAutomationCommand;
 }
 
+export interface DirectNonMekAutomationReviewOptions {
+    readonly interactive?: boolean;
+}
+
 type AeroHeatCheckKind =
     | 'shutdown'
     | 'startup'
@@ -238,6 +242,7 @@ export class DirectNonMekAutomationService {
     async prepareEndTurnCommands(
         force: CBTForce,
         requests: readonly DirectNonMekEndTurnAutomationRequest[],
+        review: DirectNonMekAutomationReviewOptions = {},
     ): Promise<readonly PreparedDirectNonMekEndTurnAutomation[] | null> {
         const rows = requests.map(request => {
             const snapshot = this.snapshot(force, request.instanceId);
@@ -325,6 +330,7 @@ export class DirectNonMekAutomationService {
                         ? 'Choose which units\' heat, dissipation, heat effects, and pilot hits to apply.'
                         : 'Choose which units\' heat, dissipation, and heat effects to apply.',
                     allowCancel: true,
+                    interactive: review.interactive,
                 },
             );
             if (accepted === null) return null;
@@ -348,6 +354,7 @@ export class DirectNonMekAutomationService {
                 title: 'Review Heat and Dissipation',
                 message: 'Choose which heat and dissipation results to apply.',
                 allowCancel: true,
+                interactive: review.interactive,
             },
         );
         if (acceptedHeat === null) return null;
@@ -401,6 +408,7 @@ export class DirectNonMekAutomationService {
                     ? 'Choose which units\' heat effects and pilot hits to resolve.'
                     : 'Choose which units\' heat effects to resolve.',
                 allowCancel: true,
+                interactive: review.interactive,
             },
         );
         if (acceptedEffects === null) return null;
@@ -441,6 +449,7 @@ export class DirectNonMekAutomationService {
                     title: 'Review Pilot Hits',
                     message: 'Choose which units\' pilot-hit effects to apply. Accepted hits continue directly into any required Consciousness Rolls.',
                     allowCancel: true,
+                    interactive: review.interactive,
                 },
             );
             if (decision === null) return null;
@@ -558,6 +567,7 @@ export class DirectNonMekAutomationService {
     async prepareEndPhaseCommands(
         force: CBTForce,
         requests: readonly DirectNonMekEndPhaseAutomationRequest[],
+        review: DirectNonMekAutomationReviewOptions = {},
     ): Promise<readonly PreparedDirectNonMekEndPhaseAutomation[] | null> {
         const rows = requests.map(request => {
             const snapshot = this.nonMekSnapshot(force, request.instanceId);
@@ -582,7 +592,7 @@ export class DirectNonMekAutomationService {
         const resolutions = await this.automationChecks.resolve(
             'pilotHitsAndConsciousnessCheck',
             candidates,
-            { title: 'Recover Consciousness' },
+            { title: 'Recover Consciousness', interactive: review.interactive },
         );
         if (resolutions === null) return null;
         const resolutionById = new Map(resolutions.map(result => [result.id, result]));
@@ -630,7 +640,7 @@ export class DirectNonMekAutomationService {
             const resolved = await this.automationChecks.resolve(
                 key,
                 group.map(candidate => candidate.check),
-                { title: 'Resolve Pending Checks' },
+                { title: 'Resolve Pending Checks', interactive: review.interactive },
             );
             if (resolved === null) return null;
             controlResolutions.push(...resolved);

@@ -18,12 +18,10 @@ import {
     createDirectMekRuntimeFixture,
 } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { WeaponType } from '../models/weapon-types.model';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 import { ECMHandler } from '../models/runtime/component-ecm-mode';
 import { HAG_FLAK_MODE, HAG_STANDARD_MODE, HagHandler } from '../models/runtime/component-hag-mode';
 import { StealthHandler } from '../models/runtime/component-stealth';
@@ -339,21 +337,18 @@ function directModeSetup(
 ) {
     const component = fixture.equipmentComponent(equipmentId);
     const runtime = fixture.instance;
-    const toast: HandlerToastService = {
+    const toast: EquipmentInteractionNotifications = {
         showToast: jasmine.createSpy('showToast'),
-        toasts: () => [],
     };
     const dialogs = {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
-    } as HandlerDialogsService;
+    } as EquipmentInteractionDialogsService;
     return {
         fixture,
         component,
         runtime,
-        queryContext: createHandlerQueryContext(fixture.equipment),
-        commandContext: createHandlerCommandContext(fixture.equipment, toast, dialogs),
+        queryContext: {},
+        commandContext: { toastService: toast, dialogsService: dialogs },
     };
 }
 

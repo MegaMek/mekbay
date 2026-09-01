@@ -1,92 +1,40 @@
 <!-- Factions Tab Content -->
 <div class="tab-content">
-    <ng-template #megaMekAvailability let-badges="badges">
-        @if (badges.length > 0) {
-            <span class="faction-megamek-availability">
-                <span class="faction-megamek-availability-badges">
-                    @for (badge of badges; let isLastBadge = $last; track badge.source) {
-                        <span
-                            class="faction-megamek-availability-badge"
-                            role="img"
-                            [attr.aria-label]="badge.label"
-                            [style.color]="badge.color"
-                        >
-                            @if (badge.source === 'Requisition') {
-                                <svg class="faction-megamek-availability-icon" viewBox="0 0 36 36" aria-hidden="true">
-                                    <path [attr.d]="megaMekRequisitionIconPath" fill="currentColor" />
-                                </svg>
-                            } @else {
-                                <svg class="faction-megamek-availability-icon" viewBox="0 0 256 256" aria-hidden="true">
-                                    <path [attr.d]="megaMekSalvageIconPath" fill="currentColor" />
-                                </svg>
-                            }
-                        </span>
-                        @if (!isLastBadge) {
-                            <span class="faction-megamek-availability-separator"></span>
-                        }
-                    }
-                </span>
-            </span>
-        }
-    </ng-template>
-
-    <div class="faction-availability-list allow-select">
-        @if (factionAvailability().length === 0) {
-            <div class="no-factions">No faction availability information for this unit.</div>
-        } @else {
-            @for (era of factionAvailability(); let i = $index; let isLastEra = $last; track i) {
-                <div class="era-name">
-                    @if (era.eraImg) {
-                        <img [src]="era.eraImg" class="era-icon" alt="{{era.eraName}}" title="{{era.eraName}}" />
-                    }
-                    <div class="era-name-content">
-                        <strong>{{ era.eraName }}</strong>
-                        <div class="era-years">
-                            @if (era.eraYearTo) {
-                                ({{ era.eraYearFrom ?? '?' }}–{{ era.eraYearTo }})
-                            } @else {
-                                ({{ era.eraYearFrom ?? '?' }}+)
-                            }
-                        </div>
-                    </div>
-                </div>
-                <div class="faction-list">
-                    @for (faction of era.factions; let isLast = $last; track faction.name) {
-                        @if (faction.isCatchAll) {
-                            @let catchAllExpanded = isCatchAllExpanded(i, faction.name) && !!faction.collapsedFactions?.length;
-                            <span class="faction-item catch-all-faction" [tooltip]="faction.megaMekTooltip">
-                                <span class="parent-faction" (click)="toggleCatchAll(i, faction.name)">
-                                    @if (faction.nameParts.hasMultipleWords) {
-                                        <span class="parent-faction-label faction-name-head">@if (faction.img) {<img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" /> }{{ faction.nameParts.head }}</span><span class="parent-faction-label faction-name-middle">{{ faction.nameParts.middle }}</span><span class="faction-name-tail"><span class="parent-faction-label">{{ faction.nameParts.tail }}</span><ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"></ng-container>@if (!catchAllExpanded) { {{ !isLast ? ',' : '' }} }</span>
-                                    } @else {
-                                        <span class="faction-name-tail"><span class="parent-faction-label">@if (faction.img) {
-                                            <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" />
-                                        }{{ faction.nameParts.tail }}</span><ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"></ng-container>@if (!catchAllExpanded) { {{ !isLast ? ',' : '' }} }</span>
-                                    }
-                                </span>
-                                @if (catchAllExpanded) {
-                                    <span class="collapsed-factions"> (@for (cf of faction.collapsedFactions; let cfLast = $last; track cf.name) {<span class="collapsed-faction-item" [tooltip]="cf.megaMekTooltip">@if (cf.nameParts.hasMultipleWords) {<span class="faction-name-head">@if (cf.img) {<img [src]="cf.img" class="faction-icon" alt="{{cf.name}}" title="{{cf.name}}" /> }{{ cf.nameParts.head }}</span><span class="faction-name-middle">{{ cf.nameParts.middle }}</span><span class="faction-name-tail">{{ cf.nameParts.tail }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: cf.megaMekAvailability }"></ng-container>{{ !cfLast ? ',&nbsp; ' : '' }}</span>} @else {<span class="faction-name-tail">@if (cf.img) {<img [src]="cf.img" class="faction-icon" alt="{{cf.name}}" title="{{cf.name}}" />}{{ cf.nameParts.tail }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: cf.megaMekAvailability }"></ng-container>{{ !cfLast ? ',&nbsp; ' : '' }}</span>}</span>}){{ !isLast ? ',' : '' }}</span>
-                                }
-                            </span>
-                        } @else {
-                            <span class="faction-item" [tooltip]="faction.megaMekTooltip">
-                                @if (faction.nameParts.hasMultipleWords) {
-                                    <span class="faction-name-head">@if (faction.img) {<img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" /> }{{ faction.nameParts.head }}</span><span class="faction-name-middle">{{ faction.nameParts.middle }}</span><span class="faction-name-tail">{{ faction.nameParts.tail }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"></ng-container>{{ !isLast ? ',&nbsp;' : '' }}</span>
-                                } @else {
-                                    <span class="faction-name-tail">@if (faction.img) {
-                                        <img [src]="faction.img" class="faction-icon" alt="{{faction.name}}" />
-                                    }{{ faction.nameParts.tail }}<ng-container [ngTemplateOutlet]="megaMekAvailability" [ngTemplateOutletContext]="{ badges: faction.megaMekAvailability }"></ng-container>{{ !isLast ? ',&nbsp;' : '' }}</span>
-                                }
-                            </span>
-                        }
-                    }
-                </div>
-                @if (!isLastEra) {
-                    <hr class="divider" />
-                }
-            }
-        }
+    <div class="view-switch-toolbar">
+        <div class="view-switch" role="group" aria-label="Faction availability view">
+            <button
+                type="button"
+                class="view-switch-button"
+                [class.active]="selectedView() === 'list'"
+                [attr.aria-pressed]="selectedView() === 'list'"
+                (click)="selectView('list')"
+            >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M2.5 3.5h2v2h-2zm4 0h7v2h-7zm-4 4h2v2h-2zm4 0h7v2h-7zm-4 4h2v2h-2zm4 0h7v2h-7z" fill="currentColor" />
+                </svg>
+                <span>List</span>
+            </button>
+            <button
+                type="button"
+                class="view-switch-button"
+                [class.active]="selectedView() === 'grid'"
+                [attr.aria-pressed]="selectedView() === 'grid'"
+                (click)="selectView('grid')"
+            >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M2 2h12v12H2zm1.5 1.5v3h3v-3zm4.5 0v3h4.5v-3zm-4.5 4.5v4.5h3V8zM8 8v4.5h4.5V8z" fill="currentColor" fill-rule="evenodd" />
+                </svg>
+                <span>Grid</span>
+            </button>
+        </div>
     </div>
+
+    @if (selectedView() === 'list') {
+        <unit-details-factions-tab-list [availability]="factionAvailability()" />
+    } @else {
+        <unit-details-factions-tab-grid [availability]="factionAvailability()" />
+    }
+
     @if (megaMekAvailabilitySourceSelected()) {
         <div class="availability-source-disclaimer">Availability source: MegaMek's RAT.</div>
     }

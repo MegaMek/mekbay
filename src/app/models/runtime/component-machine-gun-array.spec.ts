@@ -1,13 +1,11 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    EquipmentInteractionRegistry,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../../services/equipment-interaction-registry.service';
+import { EquipmentInteractionRegistry } from '../../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from './equipment-interaction';
 import { emptyCBTEncounterSnapshot } from './encounter-runtime';
 import { projectMekEquipmentPanel } from './equipment-panel';
 import {
@@ -80,13 +78,12 @@ describe('direct machine-gun-array runtime', () => {
         const registry = new EquipmentInteractionRegistry();
         registry.register(new MachineGunArrayHandler());
         const owner = { instanceId: fixture.instance.id, encounter: emptyCBTEncounterSnapshot };
-        const queryContext = createHandlerQueryContext(fixture.equipment);
-        const commandContext = createHandlerCommandContext(
-            fixture.equipment,
-            toastService(),
-            dialogsService(),
-        );
-        const choice = () => registry.getV2EquipmentInteractionChoices(
+        const queryContext = {};
+        const commandContext = {
+            toastService: toastService(),
+            dialogsService: dialogsService(),
+        };
+        const choice = () => registry.choices(
             fixture.instance,
             fixture.entity,
             fixture.index,
@@ -100,7 +97,7 @@ describe('direct machine-gun-array runtime', () => {
             value: MGA_UNLINKING_MODE,
             active: true,
         }));
-        expect(await registry.handleV2EquipmentInteractionChoice(
+        expect(await registry.select(
             fixture.instance,
             fixture.entity,
             fixture.index,
@@ -119,7 +116,7 @@ describe('direct machine-gun-array runtime', () => {
             value: MGA_LINKED_MODE,
             active: true,
         }));
-        expect(await registry.handleV2EquipmentInteractionChoice(
+        expect(await registry.select(
             fixture.instance,
             fixture.entity,
             fixture.index,
@@ -131,7 +128,7 @@ describe('direct machine-gun-array runtime', () => {
         )).toBeTrue();
         expect(fixture.instance.snapshot().components.get(controllerId)?.mode).toBeUndefined();
 
-        expect(await registry.handleV2EquipmentInteractionChoice(
+        expect(await registry.select(
             fixture.instance,
             fixture.entity,
             fixture.index,
@@ -150,7 +147,7 @@ describe('direct machine-gun-array runtime', () => {
         expect(fixture.instance.query().componentMode(controllerId)).toBe(MGA_OFF_MODE);
 
         expect(choice().choice.value).toBe(MGA_LINKING_MODE);
-        expect(await registry.handleV2EquipmentInteractionChoice(
+        expect(await registry.select(
             fixture.instance,
             fixture.entity,
             fixture.index,
@@ -244,17 +241,14 @@ function machineGunArrayBay(fixture: ReturnType<typeof createDirectMachineGunArr
     return bay;
 }
 
-function toastService(): HandlerToastService {
+function toastService(): EquipmentInteractionNotifications {
     return {
         showToast: jasmine.createSpy('showToast'),
-        toasts: () => [],
     };
 }
 
-function dialogsService(): HandlerDialogsService {
+function dialogsService(): EquipmentInteractionDialogsService {
     return {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
     };
 }

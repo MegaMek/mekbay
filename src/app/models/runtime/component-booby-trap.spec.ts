@@ -1,13 +1,11 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    EquipmentInteractionRegistry,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../../services/equipment-interaction-registry.service';
+import { EquipmentInteractionRegistry } from '../../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from './equipment-interaction';
 import {
     BOOBY_TRAP_ARMED_MODE,
     BOOBY_TRAP_DETONATED_MODE,
@@ -74,15 +72,11 @@ function interactionFixture(
     const registry = new EquipmentInteractionRegistry();
     registry.register(new BoobyTrapHandler());
     const owner = { instanceId: fixture.instance.id, encounter: emptyCBTEncounterSnapshot };
-    const queryContext = createHandlerQueryContext(fixture.equipment);
+    const queryContext = {};
     const dialogs = dialogsService(confirmed);
-    const commandContext = createHandlerCommandContext(
-        fixture.equipment,
-        toastService(),
-        dialogs,
-    );
+    const commandContext = { toastService: toastService(), dialogsService: dialogs };
     const trap = fixture.equipmentComponent('Test Booby Trap');
-    const choice = () => registry.getV2EquipmentInteractionChoices(
+    const choice = () => registry.choices(
         fixture.instance,
         fixture.entity,
         fixture.index,
@@ -93,7 +87,7 @@ function interactionFixture(
     return {
         dialogs,
         choice,
-        select: () => registry.handleV2EquipmentInteractionChoice(
+        select: () => registry.select(
             fixture.instance,
             fixture.entity,
             fixture.index,
@@ -106,19 +100,16 @@ function interactionFixture(
     };
 }
 
-function toastService(): HandlerToastService {
+function toastService(): EquipmentInteractionNotifications {
     return {
         showToast: jasmine.createSpy('showToast'),
-        toasts: () => [],
     };
 }
 
-function dialogsService(confirmed: boolean): HandlerDialogsService & {
+function dialogsService(confirmed: boolean): EquipmentInteractionDialogsService & {
     readonly showNoticeHtml: jasmine.Spy;
 } {
     return {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(confirmed),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml').and.resolveTo(),
     };

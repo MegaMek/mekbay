@@ -12,12 +12,10 @@ import {
 import { projectMekEquipmentPanel } from '../models/runtime/equipment-panel';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { CBTUnitInstance } from '../models/runtime/unit-instance';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 import { HAG_FLAK_MODE, HAG_STANDARD_MODE } from '../models/runtime/component-hag-mode';
 import { GaussPowerHandler } from '../models/runtime/mek-gauss-power';
 
@@ -119,17 +117,14 @@ function directGaussSetup() {
     const runtime = fixture.instance;
     const definition = mekGaussPowerDefinition(fixture.index, component.id);
     const handler = new GaussPowerHandler();
-    const toast: HandlerToastService = {
+    const toast: EquipmentInteractionNotifications = {
         showToast: jasmine.createSpy('showToast'),
-        toasts: () => [],
     };
     const dialogs = {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
-    } as HandlerDialogsService;
-    const queryContext = createHandlerQueryContext(fixture.equipment);
-    const commandContext = createHandlerCommandContext(fixture.equipment, toast, dialogs);
+    } as EquipmentInteractionDialogsService;
+    const queryContext = {};
+    const commandContext = { toastService: toast, dialogsService: dialogs };
     const choices = () => handler.getComponentGaussPowerChoices(runtime, definition, queryContext);
     return {
         fixture,

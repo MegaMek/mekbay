@@ -44,12 +44,14 @@ import {
     MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
     type SerializedCBTForceRosterGroupV1,
 } from './cbt-force-roster';
-import { freezeRuntimeState, type MekUnitRuntimeState, type CrewRuntimeState } from './runtime-state';
+import { freezeRuntimeState, type MekUnitRuntimeState } from './runtime-state';
+import type { CBTCrewRuntimeState } from './cbt-unit-runtime';
 import type { CBTMekUnit } from './cbt-mek-unit';
 import type { CBTNonMekUnit } from './cbt-non-mek-unit';
 import { isCBTMekUnit, isCBTNonMekUnit, type CBTUnit } from './cbt-unit';
 import type { SerializedNonMekUnit } from './non-mek-unit-persistence';
-import type { NonMekDamageTrack, NonMekRuntimeComponent, NonMekRuntimeIndex } from './non-mek-runtime-index';
+import type { NonMekRuntimeComponent, NonMekRuntimeIndex } from './non-mek-runtime-index';
+import type { NonMekDamageTrackDefinition } from '../rules/non-mek-damage-track-rules';
 import type { CrewAssignment, CrewTopology } from './crew-assignment';
 import { createDefaultCrewAssignment } from './crew-assignment';
 import type {
@@ -497,9 +499,9 @@ function restoreLegacyCrewAssignment(
 
 function restoreLegacyCrewRuntime(
     source: LegacyUnitSourceV1,
-    current: ReadonlyMap<CrewPositionId, CrewRuntimeState>,
+    current: ReadonlyMap<CrewPositionId, CBTCrewRuntimeState>,
     topology: CrewTopology,
-): ReadonlyMap<CrewPositionId, CrewRuntimeState> {
+): ReadonlyMap<CrewPositionId, CBTCrewRuntimeState> {
     const crew = new Map(current);
     const rows = legacyCrewRows(source);
     for (const position of [...topology.values()].sort((left, right) => left.occurrence - right.occurrence)) {
@@ -911,7 +913,7 @@ function restoreLegacyNonMekDamageTrack(
 function matchLegacyNonMekDamageTrack(
     raw: Readonly<Record<string, JsonValue>>,
     index: NonMekRuntimeIndex,
-): NonMekDamageTrack | null {
+): NonMekDamageTrackDefinition | null {
     if (typeof raw['id'] !== 'string') return null;
     const id = raw['id'];
     const matches = [...index.damageTracks.values()].filter(track =>

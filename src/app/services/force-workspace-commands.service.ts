@@ -37,7 +37,6 @@ import { ForceCrewTransferService } from './force-crew-transfer.service';
 import { ForceFormationService } from './force-formation.service';
 import {
     ForceUnitAdmissionService,
-    type ForceUnitAdmission as ForceBuilderUnitAdmission,
 } from './force-unit-admission.service';
 import { GameService } from './game.service';
 import { LayoutService } from './layout.service';
@@ -68,7 +67,7 @@ export class ForceWorkspaceCommandsService {
         pilotingSkill?: number,
         group?: UnitGroup,
         gameSystemOverride?: GameSystem,
-    ): Promise<ForceBuilderUnitAdmission | null> {
+    ): Promise<ForceMember | null> {
         const requestedGameSystem = gameSystemOverride
             ?? this.workspace.smartCurrentForce()?.gameSystem
             ?? this.injector.get(GameService).currentGameSystem();
@@ -99,7 +98,7 @@ export class ForceWorkspaceCommandsService {
         pilotingSkill?: number,
         group?: UnitGroup,
         gameSystemOverride?: GameSystem,
-    ): Promise<ForceBuilderUnitAdmission | null> {
+    ): Promise<ForceMember | null> {
         let targetForce = this.workspace.smartCurrentForce();
         if (!targetForce) {
             targetForce = await this.builder.createNewForce('', gameSystemOverride);
@@ -111,7 +110,7 @@ export class ForceWorkspaceCommandsService {
         const targetGroup = group ?? (targetForce === selectedUnit?.force && !isCBTForceMember(selectedUnit)
             ? selectedUnit.getGroup() ?? undefined
             : undefined);
-        let admission: ForceBuilderUnitAdmission;
+        let admission: ForceMember;
         try {
             admission = await this.unitAdmission.admit({
                 force: targetForce,

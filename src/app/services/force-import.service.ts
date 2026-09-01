@@ -37,7 +37,7 @@ import { DataService } from './data.service';
 import { ForcePersistenceService } from './force-persistence.service';
 import { ForceBuilderService } from './force-builder.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
-import { ForceUnitLoadingService } from './force-unit-loading.service';
+import { ASForceUnitLoadingService } from './as-force-unit-loading.service';
 import { ForceCrewTransferService } from './force-crew-transfer.service';
 import { ForceFormationService } from './force-formation.service';
 import { ForceOperationService } from './force-operation.service';
@@ -52,7 +52,7 @@ import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 export class ForceImportService {
     private readonly builder = inject(ForceBuilderService);
     private readonly workspace = inject(ForceWorkspaceStateService);
-    private readonly unitLoading = inject(ForceUnitLoadingService);
+    private readonly unitLoading = inject(ASForceUnitLoadingService);
     private readonly dataService = inject(DataService);
     private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly dialogs = inject(DialogsService);
@@ -72,27 +72,17 @@ export class ForceImportService {
         { activate = true }: { activate?: boolean } = {},
     ): Promise<boolean> {
         if (mode === 'insert') {
-            const targetForce = this.workspace.smartCurrentForce();
-            if (!targetForce || targetForce.readOnly()) {
-                this.toast.showToast('No editable force to insert into.', 'error');
-                return false;
-            }
-            const sourceForce = await this.forcePersistence.getForce(entry.instanceId, false);
-            if (!sourceForce) {
-                this.toast.showToast('Failed to load force.', 'error');
-                return false;
-            }
+            const targetForce = this.getEditableInsertTarget();
+            if (!targetForce) return false;
+            const sourceForce = await this.resolveForceSource(entry);
+            if (!sourceForce) return false;
             return this.insertForceInto(sourceForce, targetForce);
         }
 
-        const requestedForce = await this.forcePersistence.getForce(entry.instanceId, false);
-        if (!requestedForce) {
-            this.toast.showToast('Failed to load force.', 'error');
-            return false;
-        }
-        return mode === 'add'
-            ? this.builder.addForce(requestedForce, alignment, { activate })
-            : this.builder.loadForce(requestedForce);
+        const requestedForce = await this.resolveForceSource(entry);
+        return requestedForce
+            ? this.applyForceToWorkspace(requestedForce, mode, alignment, activate)
+            : false;
     }
 
     async createGeneratedForce(entry: LoadForceEntry): Promise<Force | null> {
@@ -176,20 +166,11 @@ export class ForceImportService {
         }
 
         if (mode === 'insert') {
-            const targetForce = this.workspace.smartCurrentForce();
-            if (!targetForce || targetForce.readOnly()) {
-                this.toast.showToast('No editable force to insert into.', 'error');
-                return;
-            }
-            if (result instanceof Force) {
-                await this.insertForceInto(result, targetForce);
-            } else if (result instanceof LoadForceEntry) {
-                const forceToInsert = await this.forcePersistence.getForce(result.instanceId, false);
-                if (!forceToInsert) {
-                    this.toast.showToast('Failed to load force.', 'error');
-                    return;
-                }
-                await this.insertForceInto(forceToInsert, targetForce);
+            const targetForce = this.getEditableInsertTarget();
+            if (!targetForce) return;
+            if (result instanceof Force || result instanceof LoadForceEntry) {
+                const forceToInsert = await this.resolveForceSource(result);
+                if (forceToInsert) await this.insertForceInto(forceToInsert, targetForce);
             } else {
                 const pack = result as ResolvedPack;
                 if (pack.units?.length) await this.insertPackInto(pack, targetForce);
@@ -199,19 +180,15 @@ export class ForceImportService {
 
         const isAdd = mode === 'add';
         const addAlignment: ForceAlignment = alignment ?? 'friendly';
-        if (result instanceof Force) {
-            if (isAdd) await this.builder.addForce(result, addAlignment);
-            else await this.builder.loadForce(result);
-            return;
-        }
-        if (result instanceof LoadForceEntry) {
-            const requestedForce = await this.forcePersistence.getForce(result.instanceId, false);
-            if (!requestedForce) {
-                this.toast.showToast('Failed to load force.', 'error');
-                return;
+        if (result instanceof Force || result instanceof LoadForceEntry) {
+            const requestedForce = await this.resolveForceSource(result);
+            if (requestedForce) {
+                await this.applyForceToWorkspace(
+                    requestedForce,
+                    isAdd ? 'add' : 'load',
+                    addAlignment,
+                );
             }
-            if (isAdd) await this.builder.addForce(requestedForce, addAlignment);
-            else await this.builder.loadForce(requestedForce);
             return;
         }
 
@@ -244,6 +221,32 @@ export class ForceImportService {
         }
         await this.unitLoading.load([newForce]);
         this.workspace.selectUnit(newForce.members()[0] ?? null);
+    }
+
+    private getEditableInsertTarget(): Force | null {
+        const targetForce = this.workspace.smartCurrentForce();
+        if (targetForce && !targetForce.readOnly()) return targetForce;
+        this.toast.showToast('No editable force to insert into.', 'error');
+        return null;
+    }
+
+    private async resolveForceSource(source: Force | LoadForceEntry): Promise<Force | null> {
+        if (source instanceof Force) return source;
+        const force = await this.forcePersistence.getForce(source.instanceId, false);
+        if (!force) this.toast.showToast('Failed to load force.', 'error');
+        return force;
+    }
+
+    private applyForceToWorkspace(
+        force: Force,
+        mode: 'load' | 'add',
+        alignment: ForceAlignment,
+        activate?: boolean,
+    ): Promise<boolean> {
+        if (mode === 'load') return this.builder.loadForce(force);
+        return activate === undefined
+            ? this.builder.addForce(force, alignment)
+            : this.builder.addForce(force, alignment, { activate });
     }
 
     async showForcePackDialog(): Promise<void> {

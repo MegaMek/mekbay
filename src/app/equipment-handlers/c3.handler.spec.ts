@@ -3,13 +3,11 @@
 
 import { emptyCBTEncounterSnapshot } from '../models/runtime/encounter-runtime';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    EquipmentInteractionRegistry,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 import {
     C3_CONFIGURATION_CHOICE,
     C3_HANDLER_ID,
@@ -29,7 +27,7 @@ describe('C3Handler direct V2 navigation', () => {
         expect(handler.applicableToComponentC3Configuration(c3Equipment.flags)).toBeTrue();
         expect(handler.applicableToComponentC3Configuration(ordinaryEquipment.flags)).toBeFalse();
         expect(handler.getComponentC3ConfigurationChoices(
-            createHandlerQueryContext(fixture.equipment),
+            {},
         )).toEqual([jasmine.objectContaining({
             label: 'Configure',
             value: C3_CONFIGURATION_CHOICE,
@@ -45,19 +43,18 @@ describe('C3Handler direct V2 navigation', () => {
         const registry = new EquipmentInteractionRegistry();
         const handler = new C3Handler();
         registry.register(handler);
-        const queryContext = createHandlerQueryContext(fixture.equipment);
+        const queryContext = {};
         const configure = jasmine.createSpy('configureC3Network');
-        const commandContext = createHandlerCommandContext(
-            fixture.equipment,
-            toastService(),
-            dialogsService(),
-            configure,
-        );
+        const commandContext = {
+            toastService: toastService(),
+            dialogsService: dialogsService(),
+            configureC3Network: configure,
+        };
         const owner = {
             instanceId: fixture.instance.id,
             encounter: emptyCBTEncounterSnapshot,
         };
-        const choice = registry.getV2EquipmentInteractionChoices(
+        const choice = registry.choices(
             fixture.instance,
             fixture.entity,
             fixture.index,
@@ -70,7 +67,7 @@ describe('C3Handler direct V2 navigation', () => {
         const revision = fixture.instance.revision();
 
         expect(choice.handler.id).toBe(C3_HANDLER_ID);
-        expect(await registry.handleV2EquipmentInteractionChoice(
+        expect(await registry.select(
             fixture.instance,
             fixture.entity,
             fixture.index,
@@ -85,14 +82,12 @@ describe('C3Handler direct V2 navigation', () => {
     });
 });
 
-function toastService(): HandlerToastService {
-    return { showToast: jasmine.createSpy('showToast'), toasts: () => [] };
+function toastService(): EquipmentInteractionNotifications {
+    return { showToast: jasmine.createSpy('showToast') };
 }
 
-function dialogsService(): HandlerDialogsService {
+function dialogsService(): EquipmentInteractionDialogsService {
     return {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
     };
 }

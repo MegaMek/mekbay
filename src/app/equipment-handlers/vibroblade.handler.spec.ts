@@ -3,12 +3,10 @@
 
 import { componentModeDefinition } from '../models/runtime/component-mode';
 import { createDirectVibrobladeRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 import {
     VibrobladeHandler,
 } from '../models/runtime/component-vibroblade';
@@ -26,21 +24,18 @@ describe('direct Vibroblade handler', () => {
             fixture.instance.ruleset(),
         );
         const handler = new VibrobladeHandler();
-        const toast: HandlerToastService = {
+        const toast: EquipmentInteractionNotifications = {
             showToast: jasmine.createSpy('showToast'),
-            toasts: () => [],
         };
         const dialogs = {
-            createDialog: jasmine.createSpy('createDialog'),
-            showError: jasmine.createSpy('showError'),
             showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
-        } as HandlerDialogsService;
+        } as EquipmentInteractionDialogsService;
 
         expect(handler.applicableToComponent(definition)).toBeTrue();
         expect(handler.getComponentModeChoices(
             runtime,
             definition,
-            createHandlerQueryContext(fixture.equipment),
+            {},
         )).toEqual([{
             label: 'Mode',
             value: VIBROBLADE_OFF_MODE,
@@ -55,7 +50,7 @@ describe('direct Vibroblade handler', () => {
             runtime,
             definition,
             { label: VIBROBLADE_ON_MODE, value: VIBROBLADE_ON_MODE },
-            createHandlerCommandContext(fixture.equipment, toast, dialogs),
+            { toastService: toast, dialogsService: dialogs },
         )).toBeTrue();
         expect(runtime.query().componentMode(component.id)).toBe(VIBROBLADE_ON_MODE);
     });

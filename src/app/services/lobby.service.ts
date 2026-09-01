@@ -77,12 +77,18 @@ export class LobbyService {
             void this.clearLobby('You were removed from the lobby.');
         });
         const unregisterResume = this.wsService.registerMessageHandler('lobbyResumeResult', msg => {
+            const failureMessage = typeof msg['message'] === 'string'
+                ? msg['message']
+                : 'The lobby is no longer available.';
             if (msg['resumed'] !== true && this.state()) {
                 this.invalidateRestore();
                 this.lobbyStateKnown.set(true);
-                void this.clearLobby('The lobby is no longer available.');
+                void this.clearLobby(failureMessage);
             } else if (msg['resumed'] !== true) {
                 this.lobbyStateKnown.set(true);
+                if (msg['code'] === 'lobby_force_revision_mismatch') {
+                    this.toastService.showToast(failureMessage, 'error');
+                }
             } else if (this.state()) {
                 this.lobbyStateKnown.set(true);
             }

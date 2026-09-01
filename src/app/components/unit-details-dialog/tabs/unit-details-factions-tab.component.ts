@@ -2,43 +2,42 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, input, inject, computed, signal } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
-import { TooltipDirective } from '../../../directives/tooltip.directive';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+
 import type { TooltipLine } from '../../tooltip/tooltip.component';
 import type { Era } from '../../../models/eras.model';
 import type { Faction } from '../../../models/factions.model';
-import { MULFACTION_EXTINCT } from '../../../models/mulfactions.model';
 import {
     getMegaMekAvailabilityRarityForScore,
     getMegaMekAvailabilityValueForSource,
     isMegaMekAvailabilityValueAvailable,
-    MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS,
     MEGAMEK_AVAILABILITY_FROM_OPTIONS,
-    MEGAMEK_PRODUCTION_ICON_PATH,
-    type MegaMekAvailabilityFrom,
-    MEGAMEK_AVAILABILITY_RARITY_OPTIONS,
-    MEGAMEK_SALVAGE_ICON_PATH,
+    MEGAMEK_AVAILABILITY_NOT_AVAILABLE,
+    MEGAMEK_AVAILABILITY_RARITY_ICON_COLORS,
     type MegaMekWeightedAvailabilityRecord,
     type MegaMekWeightedAvailabilityValue,
-    MEGAMEK_AVAILABILITY_NOT_AVAILABLE,
 } from '../../../models/megamek/availability.model';
+import { MULFACTION_EXTINCT } from '../../../models/mulfactions.model';
 import type { UnitSummary } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';
+import { UnitDetailsFactionsTabGridComponent } from './unit-details-factions-tab-grid.component';
+import { UnitDetailsFactionsTabListComponent } from './unit-details-factions-tab-list.component';
+import {
+    CATCH_ALL_FACTIONS,
+    PREFIX_CATCH_ALL,
+    PREFIX_CATCH_ALL_PREFIX,
+    isCatchAllFaction,
+    type FactionAvailability,
+    type FactionAvailabilityItem,
+    type FactionMegaMekAvailability,
+    type FactionNameWrapParts,
+} from './unit-details-factions-tab.models';
 
-const CATCH_ALL_FACTIONS: Record<string, string> = {
-    'Inner Sphere General': 'Inner Sphere',
-    'IS Clan General': 'IS Clan',
-    'HW Clan General': 'HW Clan',
-    'Periphery General': 'Periphery',
-};
+type FactionAvailabilityView = 'list' | 'grid';
 
-const PREFIX_CATCH_ALL = 'Star League General';
-const PREFIX_CATCH_ALL_PREFIX = 'Star League';
-
-function isCatchAllFaction(name: string): boolean {
-    return CATCH_ALL_FACTIONS[name] !== undefined || name === PREFIX_CATCH_ALL;
+interface FactionAvailabilityCandidate extends FactionAvailabilityItem {
+    group: string;
 }
 
 function splitFactionName(name: string): FactionNameWrapParts {
@@ -59,91 +58,38 @@ function splitFactionName(name: string): FactionNameWrapParts {
         };
 }
 
-interface FactionMegaMekAvailability {
-    source: MegaMekAvailabilityFrom;
-    rarity: typeof MEGAMEK_AVAILABILITY_RARITY_OPTIONS[number];
-    color: string;
-    label: string;
-}
-
-interface FactionNameWrapParts {
-    head: string;
-    middle: string;
-    tail: string;
-    hasMultipleWords: boolean;
-}
-
-interface FactionAvailabilityItem {
-    name: string;
-    nameParts: FactionNameWrapParts;
-    img: string;
-    megaMekAvailability: FactionMegaMekAvailability[];
-    megaMekTooltip: TooltipLine[] | null;
-    isCatchAll?: boolean;
-    collapsedFactions?: FactionAvailabilityItem[];
-}
-
-interface FactionAvailabilityCandidate extends FactionAvailabilityItem {
-    group: string;
-}
-
-export interface FactionAvailability {
-    eraName: string;
-    eraImg?: string;
-    eraYearFrom?: number;
-    eraYearTo?: number;
-    factions: FactionAvailabilityItem[];
-}
-
 @Component({
     selector: 'unit-details-factions-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NgTemplateOutlet, TooltipDirective],
+    imports: [UnitDetailsFactionsTabGridComponent, UnitDetailsFactionsTabListComponent],
     templateUrl: './unit-details-factions-tab.component.html',
-    styleUrl: './unit-details-factions-tab.component.css'
+    styleUrl: './unit-details-factions-tab.component.css',
 })
 export class UnitDetailsFactionTabComponent {
-    private dataService = inject(DataService);
-    private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
+    private readonly dataService = inject(DataService);
+    private readonly unitAvailabilitySource = inject(UnitAvailabilitySourceService);
 
-    readonly megaMekRequisitionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
-    readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
-    readonly megaMekAvailabilitySourceSelected = computed(() => this.unitAvailabilitySource.useMegaMekAvailability());
+    readonly unit = input.required<UnitSummary>();
+    readonly selectedView = signal<FactionAvailabilityView>('grid');
+    readonly megaMekAvailabilitySourceSelected = computed(() => (
+        this.unitAvailabilitySource.useMegaMekAvailability()
+    ));
 
-    unit = input.required<UnitSummary>();
-
-    factionAvailability = computed<FactionAvailability[]>(() => {
-        const u = this.unit();
-        if (!u) return [];
-
+    readonly factionAvailability = computed<FactionAvailability[]>(() => {
+        const unit = this.unit();
         const allEras = this.dataService.getEras();
         const allFactions = this.dataService.getFactions();
         const megaMekAvailabilityByEraFaction = this.buildMegaMekAvailabilityByEraFaction(
-            this.dataService.getMegaMekAvailabilityRecordForUnit(u),
+            this.dataService.getMegaMekAvailabilityRecordForUnit(unit),
         );
 
         return this.unitAvailabilitySource.useMegaMekAvailability()
-            ? this.buildMegaMekFactionAvailability(u, allEras, allFactions, megaMekAvailabilityByEraFaction)
-            : this.buildMulFactionAvailability(u, allEras, allFactions, megaMekAvailabilityByEraFaction);
+            ? this.buildMegaMekFactionAvailability(unit, allEras, allFactions, megaMekAvailabilityByEraFaction)
+            : this.buildMulFactionAvailability(unit, allEras, allFactions, megaMekAvailabilityByEraFaction);
     });
 
-    expandedCatchAlls = signal(new Set<string>());
-
-    toggleCatchAll(eraIndex: number, factionName: string): void {
-        const key = `${eraIndex}:${factionName}`;
-        this.expandedCatchAlls.update(set => {
-            const next = new Set(set);
-            if (next.has(key)) {
-                next.delete(key);
-            } else {
-                next.add(key);
-            }
-            return next;
-        });
-    }
-
-    isCatchAllExpanded(eraIndex: number, factionName: string): boolean {
-        return this.expandedCatchAlls().has(`${eraIndex}:${factionName}`);
+    selectView(view: FactionAvailabilityView): void {
+        this.selectedView.set(view);
     }
 
     private buildMulFactionAvailability(
@@ -285,16 +231,30 @@ export class UnitDetailsFactionTabComponent {
     }
 
     private createFactionAvailabilityCandidate(
-        faction: Pick<Faction, 'name' | 'img' | 'group'>,
+        faction: Pick<Faction, 'id' | 'name' | 'img' | 'group'>,
         megaMekAvailability: readonly FactionMegaMekAvailability[],
     ): FactionAvailabilityCandidate {
         return {
+            id: faction.id,
             name: faction.name,
             nameParts: splitFactionName(faction.name),
             img: faction.img,
             group: faction.group,
             megaMekAvailability: [...megaMekAvailability],
             megaMekTooltip: null,
+        };
+    }
+
+    private createFactionAvailabilityItem(
+        faction: FactionAvailabilityCandidate,
+    ): FactionAvailabilityItem {
+        return {
+            id: faction.id,
+            name: faction.name,
+            nameParts: faction.nameParts,
+            img: faction.img,
+            megaMekAvailability: faction.megaMekAvailability,
+            megaMekTooltip: this.buildFactionMegaMekTooltip(faction),
         };
     }
 
@@ -325,7 +285,9 @@ export class UnitDetailsFactionTabComponent {
             }
 
             availability.push({
+                eraId: era.id,
                 eraName: era.name,
+                eraIcon: era.icon ?? era.img,
                 eraImg: era.img,
                 eraYearFrom: era.years.from,
                 eraYearTo: !era.years.to || era.years.to >= 9999 ? undefined : era.years.to,
@@ -338,69 +300,37 @@ export class UnitDetailsFactionTabComponent {
 
     private buildEraFactionItems(
         matchingFactions: readonly FactionAvailabilityCandidate[],
-    ): FactionAvailability['factions'] {
+    ): FactionAvailabilityItem[] {
         const activeCatchAllGroups = new Set<string>();
         let hasPrefixCatchAll = false;
 
         for (const faction of matchingFactions) {
-            if (CATCH_ALL_FACTIONS[faction.name]) {
-                activeCatchAllGroups.add(CATCH_ALL_FACTIONS[faction.name]);
+            const catchAllGroup = CATCH_ALL_FACTIONS[faction.name];
+            if (catchAllGroup) {
+                activeCatchAllGroups.add(catchAllGroup);
             }
             if (faction.name === PREFIX_CATCH_ALL) {
                 hasPrefixCatchAll = true;
             }
         }
 
-        const factions: FactionAvailability['factions'] = [];
+        const factions: FactionAvailabilityItem[] = [];
         const collapsedByGroup = new Map<string, FactionAvailabilityItem[]>();
         const prefixCollapsed: FactionAvailabilityItem[] = [];
 
         for (const faction of matchingFactions) {
-            const megaMekTooltip = this.buildFactionMegaMekTooltip(faction);
+            const item = this.createFactionAvailabilityItem(faction);
             if (isCatchAllFaction(faction.name)) {
-                factions.push({
-                    name: faction.name,
-                    nameParts: faction.nameParts,
-                    img: faction.img,
-                    megaMekAvailability: faction.megaMekAvailability,
-                    megaMekTooltip,
-                    isCatchAll: true,
-                });
+                item.isCatchAll = true;
+                factions.push(item);
             } else if (hasPrefixCatchAll && faction.name.startsWith(PREFIX_CATCH_ALL_PREFIX)) {
-                prefixCollapsed.push({
-                    name: faction.name,
-                    nameParts: faction.nameParts,
-                    img: faction.img,
-                    megaMekAvailability: faction.megaMekAvailability,
-                    megaMekTooltip,
-                });
+                prefixCollapsed.push(item);
             } else if (activeCatchAllGroups.has(faction.group)) {
-                const groupItems = collapsedByGroup.get(faction.group);
-                if (groupItems) {
-                    groupItems.push({
-                        name: faction.name,
-                        nameParts: faction.nameParts,
-                        img: faction.img,
-                        megaMekAvailability: faction.megaMekAvailability,
-                        megaMekTooltip,
-                    });
-                } else {
-                    collapsedByGroup.set(faction.group, [{
-                        name: faction.name,
-                        nameParts: faction.nameParts,
-                        img: faction.img,
-                        megaMekAvailability: faction.megaMekAvailability,
-                        megaMekTooltip,
-                    }]);
-                }
+                const groupItems = collapsedByGroup.get(faction.group) ?? [];
+                groupItems.push(item);
+                collapsedByGroup.set(faction.group, groupItems);
             } else {
-                factions.push({
-                    name: faction.name,
-                    nameParts: faction.nameParts,
-                    img: faction.img,
-                    megaMekAvailability: faction.megaMekAvailability,
-                    megaMekTooltip,
-                });
+                factions.push(item);
             }
         }
 

@@ -5,6 +5,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Subject, of } from 'rxjs';
 
 import { CBTForceMember, type CBTMekForceMember } from '../../../models/force-member.model';
+import type { CBTEquipmentChoiceCommand } from '../../../models/cbt-force.types';
+import type { ComponentId } from '../../../models/entity/entity-identifiers';
 import { TestBipedMekEntity } from '../../../models/entity/testing/test-entities';
 import type { EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
 import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
@@ -98,8 +100,8 @@ describe('PageViewerMekInteractionService', () => {
                 panel = { ...panel, stateRevision: revision } as EquipmentPanelSnapshot;
                 return { accepted: true, idempotent: false, currentRevision: revision };
             }),
-            getMekEquipmentInteractions: jasmine.createSpy().and.returnValue([]),
-            dispatchMekEquipmentChoice: jasmine.createSpy().and.resolveTo({ accepted: true, changed: true }),
+            getEquipmentInteractions: jasmine.createSpy().and.returnValue([]),
+            dispatchEquipmentChoice: jasmine.createSpy().and.resolveTo({ accepted: true, changed: true }),
             getUnitCrewProfile: jasmine.createSpy().and.returnValue({
                 schemaVersion: 1,
                 positions: [{ positionId: 'crew-0', name: 'Morgan', role: 'Pilot', gunnery: 3, piloting: 4 }],
@@ -184,10 +186,23 @@ describe('PageViewerMekInteractionService', () => {
         expect(commands[1].hitArc).toBeUndefined();
     });
 
-    it('uses the original critical choice picker and dispatches opaque equipment-handler choices', async () => {
-        force.getMekEquipmentInteractions.and.returnValue([{
-            instanceId: 'unit-1', componentId: 'ammo-1', componentLabel: 'Ammo', stateRevision: 1,
-            choices: [{ token: 'opaque-token', handlerId: 'handler', label: 'Special mode', active: false, disabled: false }],
+    it('uses the original critical choice picker and dispatches typed equipment choices', async () => {
+        const command: CBTEquipmentChoiceCommand = {
+            instanceId: 'unit-1',
+            entityUuid: 'entity-1',
+            componentId: 'ammo-1' as ComponentId,
+            handlerId: 'special-handler',
+            value: 'special',
+        };
+        force.getEquipmentInteractions.and.returnValue([{
+            componentId: 'ammo-1', componentLabel: 'Ammo',
+            choices: [{
+                command,
+                interactionKind: 'inventory-mode',
+                label: 'Special mode',
+                active: false,
+                disabled: false,
+            }],
         }]);
         service.handle(member, {
             kind: 'critical', slotId: 'slot-ct-0', componentIds: ['ammo-1'], button: 'primary', expectedRevision: 1,
@@ -201,7 +216,7 @@ describe('PageViewerMekInteractionService', () => {
         const handler = choiceConfig!.values.find(choice => choice.label === 'Special mode')!;
         choiceConfig!.onPick(handler);
         await settleAsyncHandlers();
-        expect(force.dispatchMekEquipmentChoice).toHaveBeenCalledWith('opaque-token');
+        expect(force.dispatchEquipmentChoice).toHaveBeenCalledWith(command);
     });
 
     it('ports the production location critical actions to the direct V2 dialogs', () => {
@@ -278,16 +293,27 @@ describe('PageViewerMekInteractionService', () => {
         }));
     });
 
-    it('restores handler-authored dropdowns, colors, tones, and option tokens on the sheet', async () => {
-        force.getMekEquipmentInteractions.and.returnValue([{
-            instanceId: 'unit-1', componentId: 'ammo-1', componentLabel: 'Ammo', stateRevision: 1,
+    it('restores handler-authored dropdowns, colors, tones, and typed commands on the sheet', async () => {
+        const standardCommand: CBTEquipmentChoiceCommand = {
+            instanceId: 'unit-1',
+            entityUuid: 'entity-1',
+            componentId: 'ammo-1' as ComponentId,
+            handlerId: 'ecm-handler',
+            value: 'standard',
+        };
+        const eccmCommand: CBTEquipmentChoiceCommand = {
+            ...standardCommand,
+            value: 'eccm',
+        };
+        force.getEquipmentInteractions.and.returnValue([{
+            componentId: 'ammo-1', componentLabel: 'Ammo',
             choices: [{
-                token: 'standard-token', handlerId: 'ecm-handler', groupLabel: 'ECM Mode',
+                command: standardCommand, interactionKind: 'ecm-mode', groupLabel: 'ECM Mode',
                 label: 'Standard', shortLabel: 'STD', active: true, disabled: false,
                 displayType: 'dropdown', selectionTone: 'muted', keepOpen: true,
                 colors: { selected: '#123456', selectedText: '#ffffff' },
             }, {
-                token: 'eccm-token', handlerId: 'ecm-handler', groupLabel: 'ECM Mode',
+                command: eccmCommand, interactionKind: 'ecm-mode', groupLabel: 'ECM Mode',
                 label: 'ECCM', active: false, disabled: false, displayType: 'dropdown',
                 selectionTone: 'muted', keepOpen: true,
                 colors: { selected: '#123456', selectedText: '#ffffff' },
@@ -305,7 +331,7 @@ describe('PageViewerMekInteractionService', () => {
         expect(dropdown.choices?.map(choice => choice.label)).toEqual(['STD', 'ECCM']);
         choiceConfig!.onPick({ ...dropdown, value: dropdown.choices![1].value, label: 'ECCM' });
         await settleAsyncHandlers();
-        expect(force.dispatchMekEquipmentChoice).toHaveBeenCalledWith('eccm-token');
+        expect(force.dispatchEquipmentChoice).toHaveBeenCalledWith(eccmCommand);
     });
 
     it('keeps authored system-hit controls as direct toggles instead of opening the slot picker', async () => {

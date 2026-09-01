@@ -18,6 +18,8 @@ import { OptionsService } from './options.service';
 export interface AutomationCheckOptions {
     readonly title: string;
     readonly initiallyFailedGroups?: ReadonlySet<string>;
+    /** Badge-driven resume keeps disabled checks disabled, but opens configured automatic checks. */
+    readonly interactive?: boolean;
 }
 
 interface PendingAutomationCheckBatch {
@@ -50,7 +52,9 @@ export class CBTAutomationCheckService {
         if (checks.length === 0) return Object.freeze([]);
         const initiallyFailedGroups = options.initiallyFailedGroups ?? new Set<string>();
         const sessionId = automationCheckSessionId(key, checks);
-        switch (this.options.cbtAutomationMode(key)) {
+        const configured = this.options.cbtAutomationMode(key);
+        const mode = options.interactive && configured === 'yes' ? 'ask' : configured;
+        switch (mode) {
             case 'no':
                 this.pendingSelections.delete(sessionId);
                 return Object.freeze([]);

@@ -9,6 +9,7 @@ import { CBTForce } from '../models/cbt-force.model';
 import {
     hasNonMekRuntime,
     hasMekRuntime,
+    type CBTNonMekUnitSnapshot,
     type CBTUnitSnapshot,
 } from '../models/cbt-unit-snapshot';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
@@ -30,9 +31,7 @@ import type {
 } from '../models/runtime/mek-record-sheet';
 import type {
     NonMekUnitCommand,
-    NonMekUnitRuntimeState,
 } from '../models/runtime/non-mek-unit-instance';
-import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
 import type { CBTUnitCommand } from '../models/runtime/unit-instance';
 import { effectiveEntityPilotingSkill } from '../models/entity/utils/battle-value/skill-facts';
 import { uuidv7 } from './uuid.util';
@@ -102,11 +101,6 @@ interface ParsedMulLocation {
 }
 
 type MulCrewType = 'single' | 'tripod' | 'superheavy_tripod' | 'quadvee' | 'dual' | 'command_console';
-type EntityRuntimeSnapshot = CBTUnitSnapshot & Readonly<{
-    index: NonMekRuntimeIndex;
-    state: NonMekUnitRuntimeState;
-}>;
-
 export function sanitizeMulFilename(name: string | null | undefined): string {
     return (name || 'mekbay-force')
         .trim()
@@ -257,7 +251,7 @@ function createMekEntityElement(
 function createEntityRuntimeElement(
     doc: XMLDocument,
     member: CBTForceMember,
-    snapshot: EntityRuntimeSnapshot,
+    snapshot: CBTNonMekUnitSnapshot,
     commander: boolean,
     index: number,
 ): Element {
@@ -293,7 +287,7 @@ function createEntityRuntimeElement(
 function createEntityRuntimeCrewElement(
     doc: XMLDocument,
     member: CBTForceMember,
-    snapshot: EntityRuntimeSnapshot,
+    snapshot: CBTNonMekUnitSnapshot,
 ): Element {
     const assignment = member.force.getUnitCrewAssignment(member.id);
     if (!assignment) throw new Error(`Missing crew assignment for ${member.id}`);
@@ -326,7 +320,7 @@ function createEntityRuntimeCrewElement(
 
 function createNonMekRuntimeLocationElements(
     doc: XMLDocument,
-    snapshot: EntityRuntimeSnapshot,
+    snapshot: CBTNonMekUnitSnapshot,
 ): Element[] {
     const destroyed = snapshot.query.destroyed();
     return [...snapshot.index.locations.values()].flatMap((location, index) => {
@@ -731,7 +725,7 @@ function requiredSheet(force: CBTForce, member: CBTMekForceMember): MekRecordShe
 function requiredEntitySnapshot(
     force: CBTForce,
     member: CBTForceMember,
-): EntityRuntimeSnapshot {
+): CBTNonMekUnitSnapshot {
     const snapshot = force.getUnitSnapshot(member.id);
     if (!snapshot || !hasNonMekRuntime(snapshot)) {
         throw new Error(`Missing canonical Entity runtime ${member.id}`);

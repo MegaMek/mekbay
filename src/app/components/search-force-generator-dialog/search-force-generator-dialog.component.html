@@ -55,7 +55,7 @@
                         <label class="field-label">Game System</label>
                         <div class="gameSystemSelector" [class.loading]="!this.dataService.isDataReady()">
                             <div class="battletech-logo" [class.inactive]="isAlphaStrike()"
-                                (click)="setGameSystem(GameSystem.CLASSIC)">
+                                (click)="setGameSystem(GameSystem.CBT)">
                                 <svg fill="#fff" version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 100">
                                     <g>
                                         <path class="logo-text"
@@ -69,9 +69,9 @@
                             <mode-switch class="game-system-switch" variant="game-system" [showLabels]="false"
                                 [selectedRight]="isAlphaStrike()" [disabled]="!this.dataService.isDataReady()"
                                 ariaLabel="Game system" switchAriaLabel="Toggle game system"
-                                (selectedRightChange)="setGameSystem($event ? GameSystem.ALPHA_STRIKE : GameSystem.CLASSIC)"></mode-switch>
+                                (selectedRightChange)="setGameSystem($event ? GameSystem.AS : GameSystem.CBT)"></mode-switch>
                             <div class="as-logo" [class.inactive]="!isAlphaStrike()"
-                                (click)="setGameSystem(GameSystem.ALPHA_STRIKE)">
+                                (click)="setGameSystem(GameSystem.AS)">
                                 <svg viewBox="0 0 88 14" xmlns="http://www.w3.org/2000/svg">
                                     <g>
                                         <path style="fill:none;stroke:#fff200;stroke-width:0.8;stroke-miterlimit:3.226"
@@ -375,7 +375,7 @@
                                                 [title]="advPanelFilterGameSystemToggleTitle()"
                                                 [attr.aria-label]="advPanelFilterGameSystemToggleTitle()"
                                                 (click)="toggleAdvPanelFilterGameSystem()">
-                                                @if (otherAdvPanelFilterGameSystem() === GameSystem.CLASSIC) {
+                                                @if (otherAdvPanelFilterGameSystem() === GameSystem.CBT) {
                                                 <svg width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
                                                     <g transform="translate(-.02)">
                                                         <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">

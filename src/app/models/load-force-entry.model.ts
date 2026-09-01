@@ -71,6 +71,7 @@ export interface LoadForceGroup extends Omit<ForcePreviewGroup, 'force'> {
 }
 
 export class LoadForceEntry implements ForcePreviewEntry {
+    persistenceVersion: 1 | 2;
     instanceId: string;
     timestamp: string;
     type: GameSystem;
@@ -89,6 +90,7 @@ export class LoadForceEntry implements ForcePreviewEntry {
     _searchText?: string; // for internal searching use only, not persisted
 
     constructor(data: Partial<LoadForceEntry>) {
+        this.persistenceVersion = data.persistenceVersion ?? 2;
         this.instanceId = data.instanceId ?? '';
         this.timestamp = data.timestamp ?? '';
         this.type = data.type ?? GameSystem.CBT;

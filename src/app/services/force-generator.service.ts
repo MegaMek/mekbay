@@ -2998,6 +2998,7 @@ export class ForceGeneratorService implements OnDestroy {
         })();
 
         const previewEntry: ForcePreviewEntry = {
+            persistenceVersion: 2,
             instanceId: '',
             timestamp: '',
             type: preview.gameSystem,

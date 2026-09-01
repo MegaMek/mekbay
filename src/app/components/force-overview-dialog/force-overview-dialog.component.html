@@ -212,7 +212,7 @@
                         @if (isAlphaStrike()) {
                         <div class="as-td as-td-mv" [innerHTML]="formatASMovement(row.vm.unit)"></div>
                         } @else {
-                        <div class="as-td cbt-td-mv">{{ formatClassicMovement(row.vm.unit) }}</div>
+                        <div class="as-td cbt-td-mv">{{ formatCBTMovement(row.vm.unit) }}</div>
                         }
                     }
                 </ng-template>

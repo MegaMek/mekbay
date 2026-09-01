@@ -14,12 +14,10 @@ import {
     createDirectMekRuntimeFixture,
     type DirectMekRuntimeFixture,
 } from '../models/runtime/testing/direct-mek-runtime-fixture';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 import { UACFiringModeHandler } from '../models/runtime/component-rapid-fire-autocannon';
 
 describe('direct weapon mode handlers', () => {
@@ -89,22 +87,19 @@ function handlerSetup(fixture: DirectMekRuntimeFixture, equipmentId: string) {
         component.id,
         fixture.instance.ruleset(),
     );
-    const toast: HandlerToastService = {
+    const toast: EquipmentInteractionNotifications = {
         showToast: jasmine.createSpy('showToast'),
-        toasts: () => [],
     };
     const dialogs = {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
-    } as HandlerDialogsService;
+    } as EquipmentInteractionDialogsService;
     return {
         fixture,
         component,
         runtime,
         definition,
-        queryContext: createHandlerQueryContext(fixture.equipment),
-        commandContext: createHandlerCommandContext(fixture.equipment, toast, dialogs),
+        queryContext: {},
+        commandContext: { toastService: toast, dialogsService: dialogs },
         row: () => projectMekEquipmentPanel(
             fixture.entity,
             fixture.index,

@@ -4,7 +4,6 @@
 
 import type {
     CBTForceTargetRegistryAuthority,
-    CBTForceTargetRegistryDispatchResult,
 } from './cbt-force.types';
 import type {
     TargetRegistryCommand,
@@ -20,7 +19,7 @@ export function authorizeCBTForceTargetRegistryCommand(
     current: TargetRegistrySnapshot,
     command: TargetRegistryCommand,
     authority: CBTForceTargetRegistryAuthority,
-): TargetRegistryCommand | CBTForceTargetRegistryDispatchResult {
+): TargetRegistryCommand | TargetRegistryCommandResult {
     const manualTargets = current.targets.filter(target => target.source !== 'opfor');
     const opforTargets = current.targets.filter(target => target.source === 'opfor');
     if (authority === 'registry-reset') {

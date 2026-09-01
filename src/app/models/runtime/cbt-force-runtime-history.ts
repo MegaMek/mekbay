@@ -9,7 +9,6 @@ import { createSavedTargetRef, parseSavedTargetRef, type SerializedCBTUnitV2 } f
 import {
     MAX_MEK_CREW_WOUNDS,
     type MekUnitRuntimeState,
-    type CrewRuntimeState,
     type MekLocationConditionKey,
 } from './runtime-state';
 import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit } from './cbt-unit';
@@ -26,7 +25,7 @@ import { getMekLocationLabel } from '../entity/types/mek';
 import type { NonMekCrewRuntimeState, NonMekUnitCommand, NonMekUnitRuntimeState } from './non-mek-unit-instance';
 import type { CBTUnitCommand } from './unit-instance';
 import type { CrewAssignment } from './crew-assignment';
-import { isCrewDeathCommitted } from './cbt-unit-runtime';
+import { isCrewDeathCommitted, type CBTCrewRuntimeState } from './cbt-unit-runtime';
 import { serializeUnitCover } from '../unit-cover.model';
 import type { EquipmentRowOrderState } from './equipment-row-order';
 import {
@@ -93,7 +92,7 @@ function componentHistoryTarget(componentId: ComponentId): string {
     return createSavedTargetRef('component', componentId);
 }
 
-function crewStateCode(state: CrewRuntimeState | NonMekCrewRuntimeState): number {
+function crewStateCode(state: CBTCrewRuntimeState | NonMekCrewRuntimeState): number {
     return (state.unconscious ? 1 : 0)
         | (state.ejected ? 2 : 0)
         | (isCrewDeathCommitted(state) ? 4 : 0)
@@ -105,8 +104,8 @@ function crewRuntimeHistory(
     instanceId: string,
     unit: CBTUnit,
     positionId: CrewPositionId,
-    before: CrewRuntimeState | NonMekCrewRuntimeState,
-    after: CrewRuntimeState | NonMekCrewRuntimeState,
+    before: CBTCrewRuntimeState | NonMekCrewRuntimeState,
+    after: CBTCrewRuntimeState | NonMekCrewRuntimeState,
 ): RuntimeHistoryEventInput {
     const occurrence = unit.getIndex().crewPositions.get(positionId)?.occurrence ?? 0;
     return unitHistory(

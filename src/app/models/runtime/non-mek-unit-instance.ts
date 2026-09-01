@@ -44,7 +44,8 @@ import { projectProtoMekRuntimeRules, type ProtoMekRuntimeRulesProjection } from
 import { projectInfantryRuntimeRules, type InfantryRuntimeRulesProjection } from '../rules/infantry-runtime-rules';
 import { projectAeroRuntimeRules, type AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
 import { type AmmoRuntimeState, type ComponentRuntimeState, type InstanceBaselineRef } from './runtime-state';
-import { buildNonMekRuntimeIndex, type NonMekDamageTrack, type NonMekRuntimeIndex } from './non-mek-runtime-index';
+import { buildNonMekRuntimeIndex, type NonMekRuntimeIndex } from './non-mek-runtime-index';
+import type { NonMekDamageTrackDefinition } from '../rules/non-mek-damage-track-rules';
 import { projectNonMekComponentStatuses, type NonMekComponentStatuses } from './non-mek-component-status';
 import { entityAmmoLoadout, entityAmmoLoadouts, weaponAcceptsAmmo } from './mek-ammo';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
@@ -79,7 +80,7 @@ import {
     settleEscalatingFailureComponentState,
     type ComponentEscalatingFailureDefinition,
 } from './component-escalating-failure';
-import type { EquipmentInteractionChoice } from './equipment-interaction';
+import type { EquipmentChoiceSurface, EquipmentInteractionChoice } from './equipment-interaction';
 import { bombastLaserEquipmentModes, bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import { inventoryEquipmentModes } from './component-inventory-mode';
 import { isJumpJetEquipment, isUmuEquipment } from '../jump-equipment.model';
@@ -129,7 +130,6 @@ import {
 import {
     isCrewDeathCommitted,
     type CBTCrewRuntimeState,
-    type CBTLocationRuntimeState,
     type CBTUnitCommandResult,
     type CBTUnitQueryPort,
     type CBTUnitRuntimeState,
@@ -248,7 +248,6 @@ export function hasNonMekCrewState(
     }
 }
 
-export type NonMekLocationRuntimeState = CBTLocationRuntimeState;
 
 export interface NonMekDamageTrackRuntimeState {
     readonly hits: number;
@@ -313,20 +312,12 @@ export interface NonMekTurnRuntimeState {
 
 /** Sparse state shared by non-Mek entity families. Family mechanics extend this state directly. */
 export interface NonMekUnitRuntimeState extends CBTUnitRuntimeState {
-    readonly stateRevision: number;
     /** Explicit user/import override; use query.destroyed() for effective destruction. */
     readonly explicitlyDestroyed: boolean;
-    readonly locations: ReadonlyMap<LocationId, NonMekLocationRuntimeState>;
-    readonly components: ReadonlyMap<ComponentId, ComponentRuntimeState>;
     readonly damageTracks: ReadonlyMap<SystemDamageTrackId, NonMekDamageTrackRuntimeState>;
-    readonly ammo: ReadonlyMap<ComponentId, AmmoRuntimeState>;
     readonly crew: ReadonlyMap<CrewPositionId, NonMekCrewRuntimeState>;
-    readonly conditions: ReadonlySet<UnitConditionKey>;
     readonly heat: NonMekHeatRuntimeState;
     readonly turn: NonMekTurnRuntimeState;
-    readonly attackerTargeting: AttackerTargetingState;
-    /** Optional presentation-only permutations; BaseEntity component topology remains canonical. */
-    readonly equipmentRowOrder?: EquipmentRowOrderState;
     readonly pendingCombat: NonMekPendingCombatState;
 }
 
@@ -519,7 +510,7 @@ export function projectNonMekEscalatingFailureInteractions(
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
-    choiceSurface?: 'critical' | 'inventory' | 'turn-summary',
+    choiceSurface?: EquipmentChoiceSurface,
 ): readonly NonMekEscalatingFailureInteraction[] {
     const interactions = [...index.components.values()].flatMap(component => {
         const definition = nonMekEscalatingFailureDefinition(component.id, component.mount.equipment, ruleset);
@@ -2728,7 +2719,7 @@ function setSensorDamageLevel(
 ): NonMekUnitRuntimeState {
     const sensors = [...index.damageTracks.values()]
         .map(track => ({ track, level: sensorDamageLevel(track.sheetId) }))
-        .filter((entry): entry is { track: NonMekDamageTrack; level: number } => entry.level !== null)
+        .filter((entry): entry is { track: NonMekDamageTrackDefinition; level: number } => entry.level !== null)
         .sort((left, right) => left.level - right.level);
     const maximumLevel = sensors.at(-1)?.level ?? 0;
     if (!Number.isSafeInteger(level) || level < 0 || level > maximumLevel) {

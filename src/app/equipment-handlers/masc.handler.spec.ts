@@ -11,12 +11,11 @@ import {
 import { asComponentId } from '../models/entity/entity-identifiers';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { CBTRuleset } from '../models/cbt-ruleset.model';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+    EquipmentInteractionQueryContext,
+} from '../models/runtime/equipment-interaction';
 import {
     ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
     MascHandler,
@@ -151,19 +150,17 @@ function directMascSetup(ruleset: CBTRuleset) {
         runtime,
         definition,
         handler: new MascHandler(),
-        queryContext: createHandlerQueryContext(fixture.equipment, 'inventory'),
-        commandContext: createHandlerCommandContext(fixture.equipment, toast, dialogsService()),
+        queryContext: { choiceSurface: 'inventory' } satisfies EquipmentInteractionQueryContext,
+        commandContext: { toastService: toast, dialogsService: dialogsService() },
     };
 }
 
-function toastService(): HandlerToastService {
-    return { showToast: jasmine.createSpy('showToast'), toasts: () => [] };
+function toastService(): EquipmentInteractionNotifications {
+    return { showToast: jasmine.createSpy('showToast') };
 }
 
-function dialogsService(): HandlerDialogsService {
+function dialogsService(): EquipmentInteractionDialogsService {
     return {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
     };
 }

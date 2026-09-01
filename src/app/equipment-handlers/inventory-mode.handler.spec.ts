@@ -3,12 +3,10 @@
 
 import { componentInventoryModeDefinition } from '../models/runtime/component-inventory-mode';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 import { InventoryModeHandler } from '../models/runtime/component-inventory-mode';
 
 describe('InventoryModeHandler direct V2 runtime', () => {
@@ -77,29 +75,28 @@ function directModeSetup(equipmentId: 'Test MML' | 'Test ATM') {
         candidate.kind === 'equipment' && candidate.mount.equipmentId === equipmentId);
     if (!component || component.kind !== 'equipment') throw new Error(`Missing ${equipmentId} fixture component`);
     const runtime = fixture.instance;
+    const definition = componentInventoryModeDefinition(fixture.index, component.id);
+    if (definition === null) throw new Error(`${equipmentId} is not an inventory-mode weapon`);
     return {
         fixture,
         component,
         runtime,
-        definition: componentInventoryModeDefinition(fixture.index, component.id),
+        definition,
         handler: new InventoryModeHandler(),
-        queryContext: createHandlerQueryContext(fixture.equipment),
-        commandContext: createHandlerCommandContext(
-            fixture.equipment,
-            toastService(),
-            dialogsService(),
-        ),
+        queryContext: {},
+        commandContext: {
+            toastService: toastService(),
+            dialogsService: dialogsService(),
+        },
     };
 }
 
-function toastService(): HandlerToastService {
-    return { showToast: jasmine.createSpy('showToast'), toasts: () => [] };
+function toastService(): EquipmentInteractionNotifications {
+    return { showToast: jasmine.createSpy('showToast') };
 }
 
-function dialogsService(): HandlerDialogsService {
+function dialogsService(): EquipmentInteractionDialogsService {
     return {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
     };
 }

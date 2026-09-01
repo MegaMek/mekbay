@@ -26,7 +26,7 @@ interface LoadingOwnerCapture {
 
 /** Loads one captured workspace generation and owns its retry overlay. */
 @Injectable({ providedIn: 'root' })
-export class ForceUnitLoadingService {
+export class ASForceUnitLoadingService {
     private readonly dialogs = inject(DialogsService);
     private readonly workspace = inject(ForceWorkspaceStateService);
 

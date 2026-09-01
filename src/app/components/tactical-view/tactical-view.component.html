@@ -233,7 +233,7 @@
                                 <div class="nested-control handler-control">
                                     <span class="nested-label">CONTROLS</span>
                                     <div class="handler-options">
-                                        @for (choice of interaction.choices; track choice.token) {
+                                        @for (choice of interaction.choices; track choice.command) {
                                         @if (choice.displayType === 'label') {
                                         <span class="handler-label">{{ choice.label }}</span>
                                         } @else {

@@ -1188,15 +1188,20 @@ export class WeaponsEquipmentPanelComponent {
     async selectHandlerDropdown(row: EquipmentPanelRow, choice: EquipmentDialogChoice, value: string): Promise<void> {
         const option = choice.choices?.find(candidate => String(candidate.value) === value);
         if (!option) return;
-        await this.handleChoice(row, { ...choice, value: option.value, label: option.label, disabled: option.disabled });
+        await this.handleChoice(row, {
+            ...choice,
+            value: option.value,
+            label: option.label,
+            command: option.command,
+            disabled: option.disabled,
+        });
     }
 
     async handleChoice(row: EquipmentPanelRow, choice: EquipmentDialogChoice): Promise<void> {
         if (this.readOnly() || choice.disabled) return;
         const interaction = row.component ? this.runtime().interaction(row.component) : undefined;
-        const selected = interaction?.choices.find(candidate => candidate.token === choice.value);
-        if (interaction && selected) {
-            await this.runtime().chooseInteraction(interaction, selected.token);
+        if (interaction && choice.command) {
+            await this.runtime().chooseInteraction(interaction, choice.command);
         }
     }
 
@@ -1207,19 +1212,19 @@ export class WeaponsEquipmentPanelComponent {
         const emittedDropdowns = new Set<string>();
         for (const choice of choices) {
             if (choice.displayType === 'dropdown') {
-                const groupKey = `${choice.handlerId}\0${choice.groupLabel ?? choice.label}`;
+                const groupKey = `${choice.command.handlerId}\0${choice.groupLabel ?? choice.label}`;
                 if (emittedDropdowns.has(groupKey)) continue;
                 emittedDropdowns.add(groupKey);
                 const options = choices.filter(candidate => candidate.displayType === 'dropdown'
-                    && candidate.handlerId === choice.handlerId
+                    && candidate.command.handlerId === choice.command.handlerId
                     && (candidate.groupLabel ?? candidate.label) === (choice.groupLabel ?? choice.label));
                 const selected = options.find(candidate => candidate.active) ?? options[0];
                 if (!selected) continue;
                 result.push({
-                    handlerId: choice.handlerId,
+                    command: selected.command,
                     interactionKind: choice.interactionKind,
                     label: choice.groupLabel ?? choice.label,
-                    value: selected.token,
+                    value: selected.command.value,
                     active: options.some(candidate => candidate.active),
                     disabled: options.every(candidate => candidate.disabled),
                     displayType: 'dropdown',
@@ -1230,18 +1235,19 @@ export class WeaponsEquipmentPanelComponent {
                     ...(choice.failureTarget === undefined ? {} : { failureTarget: choice.failureTarget }),
                     choices: options.map(option => ({
                         label: option.shortLabel ?? option.label,
-                        value: option.token,
+                        value: option.command.value,
+                        command: option.command,
                         disabled: option.disabled,
                     })),
                 });
                 continue;
             }
             result.push({
-                handlerId: choice.handlerId,
+                command: choice.command,
                 interactionKind: choice.interactionKind,
                 label: choice.label,
                 ...(choice.shortLabel === undefined ? {} : { shortLabel: choice.shortLabel }),
-                value: choice.token,
+                value: choice.command.value,
                 active: choice.active,
                 disabled: choice.disabled,
                 ...(choice.selectionTone === undefined ? {} : { selectionTone: choice.selectionTone }),
@@ -1256,7 +1262,7 @@ export class WeaponsEquipmentPanelComponent {
     }
 
     private isModeChoice(choice: EquipmentDialogChoice): boolean {
-        return choice.handlerId === INVENTORY_MODE_HANDLER_ID
+        return choice.command?.handlerId === INVENTORY_MODE_HANDLER_ID
             || (choice.label === INVENTORY_MODE_CHOICE_LABEL && choice.displayType === 'dropdown');
     }
 

@@ -3,7 +3,12 @@
 
 import { compareText } from '../../utils/string.util';
 import { ImmutableIndex } from '../entity/immutable-collections';
-import { asCrewPositionId, type CrewPositionId } from '../entity/entity-identifiers';
+import {
+    asCrewPositionId,
+    asLocationId,
+    type CrewPositionId,
+    type LocationId,
+} from '../entity/entity-identifiers';
 import {
     deserializeUnitCover,
     isUnitCover,
@@ -32,6 +37,43 @@ export interface MekPendingFallConsequencesV2 {
     readonly seatbeltFailures?: readonly CrewPositionId[];
 }
 
+export type MekPendingCriticalChanceResultV2 = 'none' | 'blown-off' | 1 | 2 | 3 | 4;
+
+export interface MekPendingCriticalBreakdownV2 {
+    readonly label: string;
+    readonly value: number;
+}
+
+interface MekPendingCriticalEventBaseV2 {
+    readonly eventId: string;
+    readonly locationId: LocationId;
+    readonly target: 'committed' | 'pending';
+    readonly locationDestroyed?: true;
+}
+
+/** Exact already-rolled chance retained while its review is closed. */
+export interface MekPendingCriticalChanceV2 extends MekPendingCriticalEventBaseV2 {
+    readonly type: 'critical-chance';
+    readonly roll: readonly [number, number];
+    readonly modifier: number;
+    readonly total: number;
+    readonly result: MekPendingCriticalChanceResultV2;
+    readonly breakdown: readonly MekPendingCriticalBreakdownV2[];
+    readonly effects: readonly string[];
+    /** One entry per resulting hit; true means its Total Warfare CASE II check discarded it. */
+    readonly caseIIDiscards: readonly boolean[];
+}
+
+/** Exact unresolved slot stage retained while a follow-up review is closed. */
+export interface MekPendingCriticalHitV2 extends MekPendingCriticalEventBaseV2 {
+    readonly type: 'critical-hit';
+    readonly remainingHits: number;
+    readonly caseIIDiscards: readonly boolean[];
+    readonly roll?: readonly number[];
+}
+
+export type MekPendingCriticalEventV2 = MekPendingCriticalChanceV2 | MekPendingCriticalHitV2;
+
 /**
  * Unit-owned facts whose lifetime is one CBT turn. Movement, phase damage, and
  * pilot checks are deliberately absent: `MekMovementPsrStateV2` owns them.
@@ -48,6 +90,7 @@ export interface MekTurnStateV2 {
     readonly phaseStateChanged: boolean;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
     readonly pendingFallConsequences?: MekPendingFallConsequencesV2;
+    readonly pendingCriticalEvents?: readonly MekPendingCriticalEventV2[];
 }
 
 /** Canonical sparse wire form. Map entries are unique and ascending by key. */
@@ -66,6 +109,7 @@ export interface SerializedMekTurnStateV2 {
     readonly phaseStateChanged?: true;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
     readonly pendingFallConsequences?: MekPendingFallConsequencesV2;
+    readonly pendingCriticalEvents?: readonly MekPendingCriticalEventV2[];
 }
 
 export class MekTurnStateValidationError extends Error {
@@ -86,10 +130,13 @@ const TURN_KEYS = Object.freeze([
     'phaseStateChanged',
     'endTurnCheckpoint',
     'pendingFallConsequences',
+    'pendingCriticalEvents',
 ] as const);
 
 const REQUIRED_TURN_KEYS = TURN_KEYS.filter(key =>
-    key !== 'endTurnCheckpoint' && key !== 'pendingFallConsequences');
+    key !== 'endTurnCheckpoint'
+    && key !== 'pendingFallConsequences'
+    && key !== 'pendingCriticalEvents');
 
 const PRISTINE_MEK_TURN_STATE = freezeMekTurnState({
     turnCounter: 0,
@@ -144,6 +191,14 @@ export function canonicalizeMekTurnStateV2(value: MekTurnStateV2): MekTurnStateV
                     '$.pendingFallConsequences',
                 ),
             }),
+        ...(record['pendingCriticalEvents'] === undefined
+            ? {}
+            : {
+                pendingCriticalEvents: canonicalPendingCriticalEvents(
+                    record['pendingCriticalEvents'],
+                    '$.pendingCriticalEvents',
+                ),
+            }),
     });
 }
 
@@ -170,6 +225,9 @@ export function serializeMekTurnStateV2(value: MekTurnStateV2): SerializedMekTur
         ...(turn.pendingFallConsequences === undefined
             ? {}
             : { pendingFallConsequences: turn.pendingFallConsequences }),
+        ...(turn.pendingCriticalEvents === undefined
+            ? {}
+            : { pendingCriticalEvents: turn.pendingCriticalEvents }),
     });
 }
 
@@ -210,6 +268,14 @@ export function deserializeMekTurnStateV2(value: unknown): MekTurnStateV2 {
                     '$.pendingFallConsequences',
                 ),
             }),
+        ...(record['pendingCriticalEvents'] === undefined
+            ? {}
+            : {
+                pendingCriticalEvents: canonicalPendingCriticalEvents(
+                    record['pendingCriticalEvents'],
+                    '$.pendingCriticalEvents',
+                ),
+            }),
     });
 }
 
@@ -237,6 +303,12 @@ function freezeMekTurnState(value: MekTurnStateV2): MekTurnStateV2 {
                             ]),
                         }),
                 }),
+            }),
+        ...(value.pendingCriticalEvents === undefined
+            ? {}
+            : {
+                pendingCriticalEvents: Object.freeze(value.pendingCriticalEvents.map(event =>
+                    freezePendingCriticalEvent(event))),
             }),
     });
 }
@@ -280,6 +352,158 @@ function canonicalPendingFallConsequences(
         stage,
         ...(failures === undefined ? {} : { seatbeltFailures: failures }),
     });
+}
+
+function canonicalPendingCriticalEvents(
+    value: unknown,
+    path: string,
+): readonly MekPendingCriticalEventV2[] {
+    const rows = requireArray(value, path);
+    if (rows.length === 0) fail('sparse collection must not be empty', path);
+    const seen = new Set<string>();
+    return Object.freeze(rows.map((row, index) => {
+        const event = canonicalPendingCriticalEvent(row, `${path}[${index}]`);
+        if (seen.has(event.eventId)) fail('must contain unique event ids', `${path}[${index}].eventId`);
+        seen.add(event.eventId);
+        return event;
+    }));
+}
+
+function canonicalPendingCriticalEvent(
+    value: unknown,
+    path: string,
+): MekPendingCriticalEventV2 {
+    const record = requireRecord(value, path);
+    const type = record['type'];
+    if (type !== 'critical-chance' && type !== 'critical-hit') {
+        fail('must be a pending critical event', `${path}.type`);
+    }
+    const baseKeys = ['type', 'eventId', 'locationId', 'target', 'locationDestroyed'] as const;
+    const rawTarget = record['target'];
+    if (rawTarget !== 'committed' && rawTarget !== 'pending') {
+        fail('must be committed or pending', `${path}.target`);
+    }
+    const target: 'committed' | 'pending' = rawTarget;
+    if (record['locationDestroyed'] !== undefined && record['locationDestroyed'] !== true) {
+        fail('canonical sparse value must be true', `${path}.locationDestroyed`);
+    }
+    const base = {
+        eventId: canonicalText(record['eventId'], `${path}.eventId`, MAX_MEK_TURN_SIGNATURE_LENGTH),
+        locationId: asLocationId(canonicalText(
+            record['locationId'],
+            `${path}.locationId`,
+            MAX_MEK_TURN_TEXT_LENGTH,
+        )),
+        target,
+        ...(record['locationDestroyed'] === true ? { locationDestroyed: true as const } : {}),
+    };
+    if (type === 'critical-hit') {
+        exactKeys(record, [...baseKeys, 'remainingHits', 'caseIIDiscards', 'roll'], path);
+        requireKeys(record, [...baseKeys.filter(key => key !== 'locationDestroyed'),
+            'remainingHits', 'caseIIDiscards'], path);
+        const remainingHits = canonicalInteger(record['remainingHits'], `${path}.remainingHits`, 1, 4);
+        const caseIIDiscards = canonicalBooleanArray(record['caseIIDiscards'], `${path}.caseIIDiscards`);
+        if (caseIIDiscards.length !== remainingHits) {
+            fail('must contain one CASE II result per remaining hit', `${path}.caseIIDiscards`);
+        }
+        return Object.freeze({
+            type,
+            ...base,
+            remainingHits,
+            caseIIDiscards,
+            ...(record['roll'] === undefined
+                ? {}
+                : { roll: canonicalDice(record['roll'], `${path}.roll`, 1, 2) }),
+        });
+    }
+    exactKeys(record, [
+        ...baseKeys, 'roll', 'modifier', 'total', 'result', 'breakdown', 'effects',
+        'caseIIDiscards',
+    ], path);
+    requireKeys(record, [
+        ...baseKeys.filter(key => key !== 'locationDestroyed'),
+        'roll', 'modifier', 'total', 'result', 'breakdown', 'effects', 'caseIIDiscards',
+    ], path);
+    const result = canonicalCriticalChanceResult(record['result'], `${path}.result`);
+    const caseIIDiscards = canonicalBooleanArray(record['caseIIDiscards'], `${path}.caseIIDiscards`);
+    const expectedHits = typeof result === 'number' ? result : 0;
+    if (caseIIDiscards.length !== expectedHits) {
+        fail('must contain one CASE II result per critical hit', `${path}.caseIIDiscards`);
+    }
+    const breakdown = requireArray(record['breakdown'], `${path}.breakdown`).map((row, index) => {
+        const itemPath = `${path}.breakdown[${index}]`;
+        const item = requireRecord(row, itemPath);
+        exactKeys(item, ['label', 'value'], itemPath);
+        requireKeys(item, ['label', 'value'], itemPath);
+        return Object.freeze({
+            label: canonicalText(item['label'], `${itemPath}.label`, MAX_MEK_TURN_TEXT_LENGTH),
+            value: canonicalInteger(item['value'], `${itemPath}.value`, -100, 100),
+        });
+    });
+    const effects = requireArray(record['effects'], `${path}.effects`).map((row, index) =>
+        canonicalText(row, `${path}.effects[${index}]`, MAX_MEK_TURN_SIGNATURE_LENGTH));
+    return Object.freeze({
+        type,
+        ...base,
+        roll: canonicalDice(record['roll'], `${path}.roll`, 2, 2) as readonly [number, number],
+        modifier: canonicalInteger(record['modifier'], `${path}.modifier`, -100, 100),
+        total: canonicalInteger(record['total'], `${path}.total`, -100, 100),
+        result,
+        breakdown: Object.freeze(breakdown),
+        effects: Object.freeze(effects),
+        caseIIDiscards,
+    });
+}
+
+function freezePendingCriticalEvent(event: MekPendingCriticalEventV2): MekPendingCriticalEventV2 {
+    return event.type === 'critical-chance'
+        ? Object.freeze({
+            ...event,
+            roll: Object.freeze([event.roll[0], event.roll[1]] as const),
+            breakdown: Object.freeze(event.breakdown.map(row => Object.freeze({ ...row }))),
+            effects: Object.freeze([...event.effects]),
+            caseIIDiscards: Object.freeze([...event.caseIIDiscards]),
+        })
+        : Object.freeze({
+            ...event,
+            caseIIDiscards: Object.freeze([...event.caseIIDiscards]),
+            ...(event.roll === undefined ? {} : { roll: Object.freeze([...event.roll]) }),
+        });
+}
+
+function canonicalCriticalChanceResult(
+    value: unknown,
+    path: string,
+): MekPendingCriticalChanceResultV2 {
+    if (value === 'none' || value === 'blown-off'
+        || value === 1 || value === 2 || value === 3 || value === 4) return value;
+    fail('must be a critical chance result', path);
+}
+
+function canonicalBooleanArray(value: unknown, path: string): readonly boolean[] {
+    return Object.freeze(requireArray(value, path).map((row, index) =>
+        requiredBoolean(row, `${path}[${index}]`)));
+}
+
+function canonicalDice(
+    value: unknown,
+    path: string,
+    minimumLength: number,
+    maximumLength: number,
+): readonly number[] {
+    const dice = requireArray(value, path);
+    if (dice.length < minimumLength || dice.length > maximumLength) {
+        fail(`must contain ${minimumLength === maximumLength ? minimumLength : `${minimumLength}-${maximumLength}`} dice`, path);
+    }
+    return Object.freeze(dice.map((die, index) =>
+        canonicalInteger(die, `${path}[${index}]`, 1, 6)));
+}
+
+function canonicalInteger(value: unknown, path: string, minimum: number, maximum: number): number {
+    if (!Number.isSafeInteger(value) || (value as number) < minimum || (value as number) > maximum) {
+        fail(`must be an integer from ${minimum} to ${maximum}`, path);
+    }
+    return value as number;
 }
 
 function canonicalCrewPositionIds(value: unknown, path: string): readonly CrewPositionId[] {

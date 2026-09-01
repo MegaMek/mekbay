@@ -23,8 +23,10 @@ import {
     isCBTMekForceMember,
     type CBTForceMember,
 } from '../../../models/force-member.model';
-import type { CBTForceEndTurnAllResult } from '../../../models/cbt-force.types';
-import type { MekEquipmentChoice } from '../../../models/cbt-force.model';
+import type {
+    CBTEquipmentChoice,
+    CBTForceEndTurnAllResult,
+} from '../../../models/cbt-force.types';
 import {
     isUnitBuildingLevel,
     isUnitWaterDepth,
@@ -42,8 +44,6 @@ import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
 import { toggleStandingUpOverlay } from './page-standing-up-panel.component';
 import {
     MekTurnSummaryRuntimeController,
-    visibleEscalatingFailureSteps,
-    type MekEscalatingFailureControlRow,
 } from './mek-turn-summary-runtime.controller';
 import {
     isMekTurnPanelDirty,
@@ -57,10 +57,8 @@ import {
     projectNonMekControlRoll,
     projectNonMekDefenseModifierBreakdown,
     projectNonMekEndTurnHeat,
-    projectNonMekEscalatingFailureInteractions,
     projectNonMekMovementCapabilities,
     type NonMekMovementDeclaration,
-    type NonMekUnitCommand,
 } from '../../../models/runtime/non-mek-unit-instance';
 import { canSwitchNonMekAirGroundState } from '../../../models/runtime/non-mek-airborne-state';
 import {
@@ -70,31 +68,37 @@ import {
 } from './page-turn-summary.util';
 import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
 import { selectedWeaponHeat } from '../../../models/runtime/equipment-panel';
-import type { EquipmentInteractionChoice } from '../../../models/runtime/equipment-interaction';
-import { ESCALATING_FAILURE_DISABLED_CHOICE_VALUE } from '../../../models/runtime/component-escalating-failure';
 import type { ComponentId } from '../../../models/entity/entity-identifiers';
 
-interface NonMekEquipmentTrackChoice extends Omit<EquipmentInteractionChoice, 'active' | 'disabled'> {
-    readonly token: string;
-    readonly active: boolean;
-    readonly disabled: boolean;
-}
+const MAX_VISIBLE_FAILURE_STEPS = 5;
 
-interface NonMekEquipmentTrackControlRow {
+interface EquipmentTrackControlRow {
     readonly componentId: ComponentId;
     readonly label: string;
     readonly damaged: boolean;
     readonly active: boolean;
-    readonly sequenceChoices: readonly NonMekEquipmentTrackChoice[];
-    readonly statusChoice?: NonMekEquipmentTrackChoice;
+    readonly sequenceChoices: readonly CBTEquipmentChoice[];
+    readonly statusChoice?: CBTEquipmentChoice;
 }
 
-type EquipmentTrackControlRow = MekEscalatingFailureControlRow | NonMekEquipmentTrackControlRow;
-type EquipmentTrackChoice = MekEquipmentChoice | NonMekEquipmentTrackChoice;
-type NonMekEscalatingFailureEdit = Extract<
-    NonMekUnitCommand,
-    { readonly kind: 'edit-escalating-failure' }
->['edit'];
+function visibleEscalatingFailureSteps(choices: readonly CBTEquipmentChoice[]): CBTEquipmentChoice[] {
+    if (choices.length <= MAX_VISIBLE_FAILURE_STEPS) return [...choices];
+    const selectedIndex = choices.findIndex(choice =>
+        choice.active && choice.selectionTone !== 'muted');
+    const nextIndex = choices.findIndex(choice => !choice.disabled && !choice.active);
+    const lastActiveIndex = choices.reduce(
+        (last, choice, index) => choice.active ? index : last,
+        -1,
+    );
+    const focusIndex = selectedIndex >= 0
+        ? selectedIndex
+        : nextIndex >= 0 ? nextIndex : Math.max(0, lastActiveIndex);
+    const start = Math.max(0, Math.min(
+        focusIndex - Math.floor(MAX_VISIBLE_FAILURE_STEPS / 2),
+        choices.length - MAX_VISIBLE_FAILURE_STEPS,
+    ));
+    return choices.slice(start, start + MAX_VISIBLE_FAILURE_STEPS);
+}
 
 @Directive()
 export abstract class TurnTrackerControls {
@@ -534,23 +538,17 @@ export abstract class TurnTrackerControls {
             && this.entitySnapshot()?.state.turn.movement?.mode !== 'sprint';
     });
     readonly equipmentTrackControlRows = computed<readonly EquipmentTrackControlRow[]>(() => {
-        const runtime = this.runtime();
-        if (runtime) return runtime.equipmentTrackControlRows();
-        const snapshot = this.entitySnapshot();
-        if (!snapshot) return Object.freeze([]);
-        return Object.freeze(projectNonMekEscalatingFailureInteractions(
-            snapshot.entity,
-            snapshot.index,
-            snapshot.state,
-            snapshot.ruleset,
-            'turn-summary',
-        ).map(interaction => {
-            const choices = interaction.choices.map((choice, choiceIndex) => Object.freeze({
-                ...choice,
-                token: `${interaction.componentId}\u0000${choiceIndex}`,
-                active: choice.active ?? false,
-                disabled: choice.disabled ?? false,
-            } satisfies NonMekEquipmentTrackChoice));
+        this.forceRuntimeVersion();
+        const member = this.member();
+        if (!member) return Object.freeze([]);
+        const statuses = new Map(
+            (member.force.getEquipmentPanelSnapshot(member.id)?.components ?? [])
+                .map(component => [component.componentId, component.status] as const),
+        );
+        return Object.freeze(member.force.getEquipmentInteractions(member.id, 'turn-summary')
+            .map(interaction => {
+            const choices = interaction.choices.filter(choice =>
+                choice.interactionKind === 'escalating-failure');
             const sequenceChoices = choices.filter(choice => choice.failureTarget !== undefined);
             const statusChoice = choices.find(choice => choice.failureTarget === undefined);
             const active = sequenceChoices.some(choice =>
@@ -558,11 +556,11 @@ export abstract class TurnTrackerControls {
             return Object.freeze({
                 componentId: interaction.componentId,
                 label: interaction.componentLabel,
-                damaged: interaction.status === 'destroyed',
+                damaged: statuses.get(interaction.componentId) === 'destroyed',
                 active,
                 sequenceChoices: Object.freeze(visibleEscalatingFailureSteps(sequenceChoices)),
                 ...(statusChoice === undefined ? {} : { statusChoice }),
-            } satisfies NonMekEquipmentTrackControlRow);
+            } satisfies EquipmentTrackControlRow);
         }).filter(row => (!row.damaged || row.active) && row.sequenceChoices.length > 0));
     });
 
@@ -690,30 +688,18 @@ export abstract class TurnTrackerControls {
         if (isUnitBuildingLevel(value)) this.selectCover(value);
     }
 
-    handleEquipmentTrackChoice(
-        row: EquipmentTrackControlRow,
-        choice: EquipmentTrackChoice,
-    ): void {
+    handleEquipmentTrackChoice(choice: CBTEquipmentChoice): void {
         const runtime = this.runtime();
         if (runtime) {
-            if (!('value' in choice)) void runtime.selectEquipmentTrackChoice(choice);
+            void runtime.selectEquipmentTrackChoice(choice);
             return;
         }
-        if (choice.disabled || !('value' in choice)) return;
-        const edit: NonMekEscalatingFailureEdit = choice.value
-            === ESCALATING_FAILURE_DISABLED_CHOICE_VALUE
-            ? Object.freeze({
-                kind: 'set-status',
-                status: choice.active ? 'available' : 'disabled',
-            })
-            : Object.freeze({
-                kind: 'select-sequence',
-                index: Number(choice.value),
-            });
-        void this.dispatchEntity({
-            kind: 'edit-escalating-failure',
-            componentId: row.componentId as ComponentId,
-            edit,
+        const member = this.member();
+        if (!member || choice.disabled) return;
+        void member.force.dispatchEquipmentChoice(choice.command).then(result => {
+            if (!result.accepted) {
+                this.toastService.showToast(`Equipment action rejected: ${result.reason}`, 'error');
+            }
         });
     }
 
@@ -851,10 +837,6 @@ export abstract class TurnTrackerControls {
             readonly kind: 'end-phase';
         }> | Readonly<{
             readonly kind: 'end-turn';
-        }> | Readonly<{
-            readonly kind: 'edit-escalating-failure';
-            readonly componentId: ComponentId;
-            readonly edit: NonMekEscalatingFailureEdit;
         }>,
     ): Promise<boolean> {
         const member = this.member();

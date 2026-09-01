@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
-import { EQUIPMENT_DISABLED_CHOICE_VALUE } from '../models/component-control-choice';
-import { createComponentJamDefinition } from '../models/runtime/component-jam';
-import { rapidFireAutocannonSupportsJamming } from '../models/runtime/component-rapid-fire-autocannon';
-import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+    type ComponentJamDefinition,
+    rapidFireAutocannonSupportsJamming,
+    UAC_JAMMED_CHOICE_VALUE,
+} from '../models/runtime/component-rapid-fire-autocannon';
+import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 import { UACJammingHandler } from '../models/runtime/component-rapid-fire-autocannon';
 
 describe('direct UAC jamming handler', () => {
@@ -22,30 +22,26 @@ describe('direct UAC jamming handler', () => {
         if (!equipment) throw new Error('Test AC equipment is missing');
         const runtime = fixture.instance;
         const handler = new UACJammingHandler();
-        const definition = createComponentJamDefinition({
+        const definition: ComponentJamDefinition = Object.freeze({
             componentId: component.id,
             displayName: equipment.name,
-            flags: equipment.flags,
             supportsJamming: rapidFireAutocannonSupportsJamming(fixture.index, component.id, TOTAL_WARFARE_RULESET),
         });
-        const toast: HandlerToastService = {
+        const toast: EquipmentInteractionNotifications = {
             showToast: jasmine.createSpy('showToast'),
-            toasts: () => [],
         };
         const dialogs = {
-            createDialog: jasmine.createSpy('createDialog'),
-            showError: jasmine.createSpy('showError'),
             showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
-        } as HandlerDialogsService;
-        const queryContext = createHandlerQueryContext(fixture.equipment);
-        const commandContext = createHandlerCommandContext(fixture.equipment, toast, dialogs);
+        } as EquipmentInteractionDialogsService;
+        const queryContext = {};
+        const commandContext = { toastService: toast, dialogsService: dialogs };
 
         expect(handler.applicableToComponentJam(definition)).toBeTrue();
         const jam = handler.getComponentJamChoices(runtime, definition, queryContext)[0]!;
         expect(jam).toEqual(jasmine.objectContaining({
             label: 'Jam',
             shortLabel: 'Jam',
-            value: EQUIPMENT_DISABLED_CHOICE_VALUE,
+            value: UAC_JAMMED_CHOICE_VALUE,
             active: false,
         }));
         expect(handler.handleComponentJamSelection(runtime, definition, jam, commandContext)).toBeTrue();
@@ -71,10 +67,9 @@ describe('direct UAC jamming handler', () => {
         if (!equipment) throw new Error('Test AC equipment is missing');
         const runtime = fixture.instance;
         const handler = new UACJammingHandler();
-        const definition = createComponentJamDefinition({
+        const definition: ComponentJamDefinition = Object.freeze({
             componentId: component.id,
             displayName: equipment.name,
-            flags: equipment.flags,
             supportsJamming: rapidFireAutocannonSupportsJamming(fixture.index, component.id, CORE_2026_RULESET),
         });
 

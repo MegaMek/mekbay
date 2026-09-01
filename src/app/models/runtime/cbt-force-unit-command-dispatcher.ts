@@ -258,10 +258,161 @@ export class CBTForceUnitCommandDispatcher {
         return snapshot !== null && this.phaseAlreadyEnded(snapshot);
     }
 
+    /**
+     * Origin/next badge semantics: drain the currently advertised automation
+     * work, but do not commit the phase or reset the turn itself.
+     */
+    resolvePendingAutomation(instanceId: string): Promise<boolean> {
+        return this.enqueueBoundary(async () => {
+            if (this.boundary.readOnly()) return false;
+            const snapshot = this.boundary.snapshot(instanceId);
+            if (!snapshot) return false;
+            return this.phaseAlreadyEnded(snapshot)
+                ? this.resolvePendingEndTurnAutomation(instanceId, snapshot)
+                : this.resolvePendingPhaseAutomation(instanceId, snapshot);
+        });
+    }
+
     private enqueueBoundary<T>(operation: () => Promise<T>): Promise<T> {
         const result = this.boundaryQueue.then(operation);
         this.boundaryQueue = result.then(() => undefined, () => undefined);
         return result;
+    }
+
+    private async resolvePendingPhaseAutomation(
+        instanceId: string,
+        snapshot: CBTUnitSnapshot,
+    ): Promise<boolean> {
+        if (hasMekRuntime(snapshot)) {
+            const automation = this.mekAutomation();
+            if (!automation) return false;
+            if (!await automation.resumePendingAutomation(
+                this.force,
+                instanceId,
+                (generated, generatedAutomate = true) =>
+                    this.dispatchMekWithAutomation(instanceId, generated, generatedAutomate),
+                true,
+            )) return false;
+            const rows = await automation.prepareEndPhaseCommands(
+                this.force,
+                [Object.freeze({
+                    instanceId,
+                    command: Object.freeze({ type: 'end-phase' as const }),
+                })],
+                { interactive: true },
+            );
+            const prepared = rows?.[0]?.prepared;
+            if (!prepared) return false;
+            return await automation.settleBeforeCommand(
+                this.force,
+                instanceId,
+                prepared,
+                (generated, generatedAutomate = true) =>
+                    this.dispatchMekWithAutomation(instanceId, generated, generatedAutomate),
+            ) !== null;
+        }
+        if (!hasNonMekRuntime(snapshot)) return false;
+        const automation = this.nonMekAutomation();
+        if (!automation) return false;
+        const rows = await automation.prepareEndPhaseCommands(
+            this.force,
+            [Object.freeze({
+                instanceId,
+                command: Object.freeze({ kind: 'end-phase' as const }),
+            })],
+            { interactive: true },
+        );
+        const prepared = rows?.[0]?.prepared;
+        if (!prepared) return false;
+        return await automation.settleBeforeCommand(
+            this.force,
+            instanceId,
+            prepared,
+            (generated, generatedAutomate = true) =>
+                this.dispatchNonMekWithAutomation(instanceId, generated, generatedAutomate),
+        ) !== null;
+    }
+
+    private async resolvePendingEndTurnAutomation(
+        instanceId: string,
+        snapshot: CBTUnitSnapshot,
+    ): Promise<boolean> {
+        if (hasMekRuntime(snapshot)) {
+            if (this.endTurnHeatAlreadyStaged(snapshot)) return true;
+            const automation = this.mekAutomation();
+            if (!automation) return false;
+            if (!await automation.resumePendingAutomation(
+                this.force,
+                instanceId,
+                (generated, generatedAutomate = true) =>
+                    this.dispatchMekWithAutomation(instanceId, generated, generatedAutomate),
+                true,
+            )) return false;
+            const pending = this.pendingMekSettlement(instanceId, snapshot);
+            const prepared = pending?.prepared ?? (await automation.prepareEndTurnCommands(
+                this.force,
+                [Object.freeze({
+                    instanceId,
+                    command: Object.freeze({
+                        type: 'end-turn' as const,
+                        policy: this.boundary.heatPolicy(),
+                    }),
+                })],
+                { interactive: true },
+            ))?.[0]?.prepared;
+            if (!prepared) return false;
+            if (!pending) this.saveMekSettlement(instanceId, snapshot, prepared, false);
+            const settled = pending?.settled
+                ? prepared
+                : await automation.settleBeforeCommand(
+                    this.force,
+                    instanceId,
+                    prepared,
+                    (generated, generatedAutomate = true) =>
+                        this.dispatchMekWithAutomation(instanceId, generated, generatedAutomate),
+                );
+            if (!settled) {
+                this.refreshEndTurnWorkflowRevision(instanceId);
+                return false;
+            }
+            const staged = await this.markMekEndTurnHeatStaged(instanceId, settled);
+            if (!staged) return false;
+            const current = this.boundary.snapshot(instanceId);
+            if (current) this.saveMekSettlement(instanceId, current, staged, true);
+            return true;
+        }
+        if (!hasNonMekRuntime(snapshot) || this.endTurnHeatAlreadyStaged(snapshot)) return true;
+        const automation = this.nonMekAutomation();
+        if (!automation) return false;
+        const pending = this.pendingNonMekSettlement(instanceId, snapshot);
+        const prepared = pending?.prepared ?? (await automation.prepareEndTurnCommands(
+            this.force,
+            [Object.freeze({
+                instanceId,
+                command: Object.freeze({ kind: 'end-turn' as const }),
+            })],
+            { interactive: true },
+        ))?.[0]?.prepared;
+        if (!prepared) return false;
+        if (!pending) this.saveNonMekSettlement(instanceId, snapshot, prepared, false);
+        const settled = pending?.settled
+            ? prepared
+            : await automation.settleBeforeCommand(
+                this.force,
+                instanceId,
+                prepared,
+                (generated, generatedAutomate = true) =>
+                    this.dispatchNonMekWithAutomation(instanceId, generated, generatedAutomate),
+            );
+        if (!settled) {
+            this.refreshEndTurnWorkflowRevision(instanceId);
+            return false;
+        }
+        const staged = await this.markNonMekEndTurnHeatStaged(instanceId, settled);
+        if (!staged) return false;
+        const current = this.boundary.snapshot(instanceId);
+        if (current) this.saveNonMekSettlement(instanceId, current, staged, true);
+        return true;
     }
 
     private async dispatchNonMekWithAutomation(

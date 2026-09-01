@@ -601,7 +601,7 @@ function turnMember(initial: MekTurnPanelSnapshot) {
         members: () => [member],
         getMekTurnPanelSnapshot: () => current,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
-        getMekEquipmentInteractions: () => [],
+        getEquipmentInteractions: () => [],
         dispatchMekUnitCommand: dispatch,
         hasRuntimeHistoryForUnitTurn: () => false,
         hasPendingEndTurnForUnit: () => pendingEndTurn,

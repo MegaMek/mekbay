@@ -8,7 +8,7 @@ import { type ConnectedPosition, type Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Subscription } from 'rxjs';
-import type { CBTForce, CBTForceTargetRegistryDispatchResult } from '../../models/cbt-force.model';
+import type { CBTForce } from '../../models/cbt-force.model';
 import { isCBTMekForceMember, type CBTForceMember } from '../../models/force-member.model';
 import {
     INVENTORY_CONTROL_TARGET_COLORS,
@@ -36,6 +36,7 @@ import {
     createEncounterTargetId,
     reclaimableTargetRegistryOpfor,
     type EncounterTarget,
+    type TargetRegistryCommandResult,
     type TargetRegistryTargetPatch,
 } from '../../models/runtime/encounter-runtime';
 import type { OverlayManagerService } from '../../services/overlay-manager.service';
@@ -362,7 +363,7 @@ export class WeaponTargetsOverlayController {
         if (accepted) force.inventoryControlOpforEnabled.set(false);
     }
 
-    private handleTargetRegistryResult(result: CBTForceTargetRegistryDispatchResult, action: string): boolean {
+    private handleTargetRegistryResult(result: TargetRegistryCommandResult, action: string): boolean {
         if (result.accepted) return true;
         const message = `Could not ${action}: the target is read-only.`;
         this.deps.injector.get(LoggerService).error(message);

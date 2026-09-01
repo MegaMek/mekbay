@@ -4,16 +4,13 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import { TooltipDirective } from '../../directives/tooltip.directive';
-import type { MekTurnPanelSnapshot } from '../../models/runtime/mek-turn-panel';
 import type { TooltipLine } from '../tooltip/tooltip.component';
-import { actionableMekPilotChecks } from '../page-viewer/overlay/page-turn-summary.util';
+import type {
+    RuntimeUnitNotificationKind,
+    RuntimeUnitNotificationSnapshot,
+} from './unit-notification-runtime.util';
 
-export type UnitNotificationKind =
-    | 'fall'
-    | 'psr'
-    | 'critical-chance'
-    | 'critical-hit'
-    | 'unit-check';
+export type UnitNotificationKind = RuntimeUnitNotificationKind;
 
 export interface UnitNotificationActivation {
     readonly kind: UnitNotificationKind;
@@ -28,40 +25,36 @@ export interface RuntimePendingNotificationSummary {
 
 /** Direct Entity/runtime equivalent of origin/next's actionable unit badges. */
 export function projectRuntimePendingNotification(
-    snapshot: MekTurnPanelSnapshot | null | undefined,
+    snapshot: RuntimeUnitNotificationSnapshot | null | undefined,
 ): RuntimePendingNotificationSummary | null {
     if (!snapshot) return null;
-    const checks = actionableMekPilotChecks(
-        snapshot.movementState.checks,
-        snapshot.movementState.automaticFalls.length > 0,
-    ).filter(check => check.status === 'pending');
-    const ruleChecks = snapshot.ruleChecks.filter(row => row.check.status === 'pending');
-    if (checks.length === 0 && ruleChecks.length === 0) return null;
+    const events = snapshot.pendingEvents.filter(event => event.count > 0);
+    const count = events.reduce((total, event) => total + event.count, 0);
+    if (count === 0) return null;
+    const critical = events.find(event =>
+        event.kind === 'critical-chance' || event.kind === 'critical-hit');
+    const kind: UnitNotificationKind = events.some(event => event.kind === 'fall')
+        ? 'fall'
+        : events.some(event => event.kind === 'unit-check')
+            ? 'unit-check'
+            : critical?.kind ?? 'psr';
+    const ordered = [
+        ...events.filter(event => event.kind === 'fall'),
+        ...events.filter(event => event.kind === 'unit-check'),
+        ...events.filter(event => event.kind === 'critical-chance' || event.kind === 'critical-hit'),
+        ...events.filter(event => event.kind === 'psr'),
+    ];
     return Object.freeze({
-        kind: 'psr',
-        count: checks.length + ruleChecks.length,
-        tooltip: Object.freeze([
-            ...ruleChecks.map(row => Object.freeze({
-                label: row.reason,
-                value: row.targetNumber === null ? 'Pending' : `Target ${row.targetNumber}+`,
-            })),
-            ...checks.map(check => Object.freeze({
-                label: check.reason,
-                value: `Target ${check.targetNumber}+`,
-            })),
-        ]),
+        kind,
+        count,
+        tooltip: Object.freeze(ordered.flatMap(event => event.tooltip)),
     });
 }
 
 export function projectRuntimeFallTooltip(
-    snapshot: MekTurnPanelSnapshot | null | undefined,
+    snapshot: RuntimeUnitNotificationSnapshot | null | undefined,
 ): readonly TooltipLine[] | null {
-    const falls = snapshot?.movementState.automaticFalls ?? [];
-    if (falls.length === 0) return null;
-    return Object.freeze(falls.map(fall => Object.freeze({
-        label: 'Automatic fall',
-        value: fall.triggerKind === 'gyro-destroyed' ? 'Gyro destroyed' : 'Leg destroyed',
-    })));
+    return snapshot?.automaticFallTooltip ?? null;
 }
 
 @Component({
@@ -78,14 +71,16 @@ export function projectRuntimeFallTooltip(
     },
 })
 export class UnitNotificationBadgesComponent {
-    readonly snapshot = input<MekTurnPanelSnapshot | null>(null);
+    readonly snapshot = input<RuntimeUnitNotificationSnapshot | null>(null);
     readonly display = input<'inline' | 'overlay'>('inline');
     readonly interactive = input(false);
     readonly activated = output<UnitNotificationActivation>();
 
     readonly fallTooltip = computed(() => projectRuntimeFallTooltip(this.snapshot()));
-    readonly hasAutoFall = computed(() => this.fallTooltip() !== null);
     readonly pendingNotification = computed(() => projectRuntimePendingNotification(this.snapshot()));
+    readonly hasPendingFalls = computed(() =>
+        this.snapshot()?.pendingEvents.some(event => event.kind === 'fall' && event.count > 0) === true);
+    readonly hasAutoFall = computed(() => !this.hasPendingFalls() && this.fallTooltip() !== null);
     readonly hasNotifications = computed(() =>
         this.hasAutoFall() || this.pendingNotification() !== null);
 

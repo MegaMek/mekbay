@@ -18,7 +18,7 @@ import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
 import { UnitRuntimeService } from './unit-runtime.service';
 import { UserStateService } from './userState.service';
-import { WsService } from './ws.service';
+import { FORCE_PERSISTENCE_REVISION, WsService } from './ws.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
@@ -710,6 +710,44 @@ describe('DataService', () => {
         expect(unitSearchIndexServiceMock.commitPreparedCatalogIndexes).toHaveBeenCalledTimes(1);
     });
 
+    it('collects bounded compact cloud-list pages before returning entries', async () => {
+        wsServiceMock.sendAndWaitForResponse.and.callFake(async (payload: Record<string, unknown>) => {
+            if (payload['afterInstanceId'] === undefined) {
+                return {
+                    data: [[
+                        2, 'force-page-1', Date.parse('2026-04-01T00:00:00Z'),
+                        1, 'Page One', [],
+                    ]],
+                    nextCursor: 'force-page-1',
+                };
+            }
+            return {
+                data: [[
+                    2, 'force-page-2', Date.parse('2026-04-02T00:00:00Z'),
+                    0, 'Page Two', [],
+                ]],
+            };
+        });
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
+
+        const entries = await forcePersistence.listForces();
+
+        expect(entries.map(entry => entry.instanceId)).toEqual(['force-page-2', 'force-page-1']);
+        expect(wsServiceMock.sendAndWaitForResponse.calls.allArgs()).toEqual([
+            [{
+                action: 'listForces',
+                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
+                uuid: 'user-1',
+            }],
+            [{
+                action: 'listForces',
+                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
+                uuid: 'user-1',
+                afterInstanceId: 'force-page-1',
+            }],
+        ]);
+    });
+
     it('merges local force entries with lightweight cloud bulk entries', async () => {
         const atlas = createUnit('Atlas');
         unitRuntimeServiceMock.getUnitByName.and.callFake((name: string) => name === 'Atlas' ? atlas : undefined);
@@ -769,6 +807,7 @@ describe('DataService', () => {
 
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'getForcesBulk',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             instanceIds: ['force-1', 'force-2'],
         });
         expect(entries.map((entry) => entry.instanceId)).toEqual(['force-1', 'force-2']);
@@ -821,12 +860,14 @@ describe('DataService', () => {
         expect(cached).toBe(1);
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'getForce',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             uuid: 'user-1',
             instanceId: 'force-missing',
             ownedOnly: false,
         });
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'getForce',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             uuid: 'user-1',
             instanceId: 'force-unknown',
             ownedOnly: false,
@@ -848,7 +889,11 @@ describe('DataService', () => {
             cbt: createEmptyCBTForceForTest('force-cloud-owned'),
         };
         dbServiceMock.getForce.and.resolveTo(null);
-        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: encodeForceForStorage(cloudRawForce) });
+        const { owned: _owned, ...storedCloudForce } = cloudRawForce;
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({
+            data: encodeForceForStorage(storedCloudForce as SerializedForce),
+            owned: true,
+        });
         spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
 
         const force = await forcePersistence.getForce('force-cloud-owned', true);
@@ -856,6 +901,7 @@ describe('DataService', () => {
         expect(force?.name).toBe('Owned Cloud Force');
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'getForce',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             uuid: 'user-1',
             instanceId: 'force-cloud-owned',
             ownedOnly: true,
@@ -886,7 +932,8 @@ describe('DataService', () => {
         expect(force).not.toBeNull();
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith(jasmine.objectContaining({
             action: 'saveForce',
-            data: local,
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
+            data: encodeForceForStorage(local),
         }));
         expect(forcePersistence.activateForceAuthority(force!)).toBeTrue();
         expect((forcePersistence as any).currentForceAuthorityGeneration(local.instanceId)).toBe(1);
@@ -907,6 +954,60 @@ describe('DataService', () => {
         spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
 
         expect((await forcePersistence.getForce(local.instanceId, false))?.name).toBe('Local Branch');
+        expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
+    });
+
+    it('ranks raw snapshots before materializing only the preferred copy', async () => {
+        const local = createSerializedForceForTest({
+            instanceId: 'force-preferred-materialization',
+            timestamp: '2026-04-04T00:00:00Z',
+            name: 'Older Local',
+        });
+        const cloud = createSerializedForceForTest({
+            instanceId: local.instanceId,
+            timestamp: '2026-04-05T00:00:00Z',
+            name: 'Newer Cloud',
+        });
+        dbServiceMock.getForce.and.resolveTo(local);
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: encodeForceForStorage(cloud) });
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
+        const materialize = spyOn<any>(forcePersistence, 'loadPersistedForce').and.callThrough();
+
+        const loaded = await forcePersistence.getForce(local.instanceId);
+
+        expect(loaded?.name).toBe('Newer Cloud');
+        expect(materialize).toHaveBeenCalledOnceWith(jasmine.objectContaining({ name: 'Newer Cloud' }));
+    });
+
+    it('materializes the lower-ranked snapshot only when the preferred copy is unreadable', async () => {
+        const local = createSerializedForceForTest({
+            instanceId: 'force-materialization-fallback',
+            timestamp: '2026-04-04T00:00:00Z',
+            name: 'Readable Local',
+        });
+        const cloud = createSerializedForceForTest({
+            instanceId: local.instanceId,
+            timestamp: '2026-04-05T00:00:00Z',
+            name: 'Unreadable Cloud',
+        });
+        dbServiceMock.getForce.and.resolveTo(local);
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: encodeForceForStorage(cloud) });
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
+        const loadPersistedForce = (forcePersistence as any).loadPersistedForce.bind(forcePersistence);
+        const materialize = spyOn<any>(forcePersistence, 'loadPersistedForce').and.callFake(
+            (raw: SerializedForce) => raw.name === cloud.name
+                ? Promise.reject(new Error('Unreadable preferred snapshot'))
+                : loadPersistedForce(raw),
+        );
+
+        const loaded = await forcePersistence.getForce(local.instanceId);
+
+        expect(loaded?.name).toBe('Readable Local');
+        expect(materialize.calls.allArgs().map(args => (args[0] as SerializedForce).name)).toEqual([
+            'Unreadable Cloud',
+            'Readable Local',
+        ]);
+        expect(loggerServiceMock.error).toHaveBeenCalledWith('Unreadable preferred snapshot');
         expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
     });
 
@@ -971,7 +1072,10 @@ describe('DataService', () => {
     });
 
     it('loads a current Alpha Strike cloud save without a second storage-parser pass', async () => {
-        const atlas = createUnit('Atlas');
+        const atlas = createEmptyUnit({
+            name: 'Atlas',
+            uuid: '019f6767-0dcb-7bb8-992f-aef08202f5e2',
+        });
         unitRuntimeServiceMock.getUnitByUuid.and.returnValue(atlas);
         const current = createSerializedForceForTest({
             instanceId: 'force-current-as',
@@ -1052,6 +1156,7 @@ describe('DataService', () => {
         expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'getForce',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             instanceId: 'remote-force',
             ownedOnly: false,
         });
@@ -1089,6 +1194,7 @@ describe('DataService', () => {
 
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledOnceWith({
             action: 'saveForce',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             uuid: 'user-1',
             data: encodeForceForStorage(serializedForce),
             savedForceCount: 1,
@@ -1301,11 +1407,12 @@ describe('DataService', () => {
         expect(force.serializeForPersistence).toHaveBeenCalledTimes(1);
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'saveForce',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             uuid: 'user-1',
             data: encodeForceForStorage(serializedForce),
             cbtPersistence: {
                 writerVersion: 2,
-                expectedIntegrityDigest: 'revision:17',
+                expectedRevision: 17,
             },
             savedForceCount: 1,
         });
@@ -1406,7 +1513,7 @@ describe('DataService', () => {
         await Promise.all([firstSave, secondSave]);
 
         const secondRequest = wsServiceMock.sendAndWaitForResponse.calls.argsFor(1)[0];
-        expect(secondRequest.cbtPersistence.expectedIntegrityDigest).toBe(`revision:${firstRevision}`);
+        expect(secondRequest.cbtPersistence.expectedRevision).toBe(firstRevision);
         expect(expectedRevision).toBe(secondRevision);
     });
 
@@ -1937,7 +2044,7 @@ describe('DataService', () => {
             data: encodeForceForStorage(post),
             cbtPersistence: {
                 writerVersion: 2,
-                expectedIntegrityDigest: `revision:${remoteRevision}`,
+                expectedRevision: remoteRevision,
             },
         }));
         expect(replacement.getExpectedCloudCBTForceV2Revision()).toBe(postRevision);
@@ -2168,7 +2275,7 @@ describe('DataService', () => {
             action: 'forceTagsUpdated',
             instanceId: 'force-1',
             tags: ['Recon', 'Fire Support'],
-            timestamp: '2026-04-02T00:00:00Z',
+            timestamp: Date.parse('2026-04-02T00:00:00.000Z'),
         });
         spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
 
@@ -2176,11 +2283,12 @@ describe('DataService', () => {
 
         expect(result).toEqual({
             tags: ['Recon', 'Fire Support'],
-            timestamp: '2026-04-02T00:00:00Z',
+            timestamp: '2026-04-02T00:00:00.000Z',
         });
         expect(dbServiceMock.updateForceTags).toHaveBeenCalledWith('force-1', ['Recon', 'Fire Support']);
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'setForceTags',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             uuid: 'user-1',
             instanceId: 'force-1',
             tags: ['Recon', 'Fire Support'],

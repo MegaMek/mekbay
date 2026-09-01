@@ -2,18 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { DestroyRef, effect, inject, Injectable, Injector, type EffectRef, type Signal, untracked } from '@angular/core';
-import {
-    CBTForce,
-    type CBTForceTargetRegistryDispatchResult,
-    type InventoryControlTargetRosterRow,
-} from '../models/cbt-force.model';
+import { CBTForce } from '../models/cbt-force.model';
+import type { InventoryControlTargetRosterRow } from '../models/cbt-force.types';
 import type { ForceSlot } from '../models/force-slot.model';
 import {
     INVENTORY_CONTROL_TARGET_COLORS,
     INVENTORY_CONTROL_TARGET_MAX_COUNT,
     getInventoryControlTargetLetter,
 } from '../models/inventory-control-runtime-state.model';
-import type { EncounterTarget } from '../models/runtime/encounter-runtime';
+import type { EncounterTarget, TargetRegistryCommandResult } from '../models/runtime/encounter-runtime';
 import { LoggerService } from './logger.service';
 import { ToastService } from './toast.service';
 
@@ -103,7 +100,7 @@ export class InventoryControlOpforService {
         enemyRoster: readonly InventoryControlTargetRosterRow[],
         enabled = force.inventoryControlOpforEnabled(),
         surfaceError = false,
-    ): CBTForceTargetRegistryDispatchResult | null {
+    ): TargetRegistryCommandResult | null {
         const snapshot = force.queryInventoryControlTargetRegistry();
         const currentTargets = snapshot.targets;
         const manualTargets = currentTargets.filter(target => target.source !== 'opfor');

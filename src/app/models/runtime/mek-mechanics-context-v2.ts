@@ -16,8 +16,7 @@ import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { ComponentId, CrewPositionId } from '../entity/entity-identifiers';
 import type { MekRuntimeIndex } from './mek-runtime-index';
-import { type CrewRuntimeState } from './runtime-state';
-import { isCrewDeathCommitted } from './cbt-unit-runtime';
+import { isCrewDeathCommitted, type CBTCrewRuntimeState } from './cbt-unit-runtime';
 import type { CrewAssignment } from './crew-assignment';
 import type { C3NetworkType, C3Role } from '../c3-network.model';
 import {
@@ -313,7 +312,7 @@ export interface MekMovementRuntimeContextInputV2 {
     readonly currentHeat: number;
     readonly airborne: boolean;
     readonly crewAssignment: CrewAssignment;
-    crewState(positionId: CrewPositionId): CrewRuntimeState;
+    crewState(positionId: CrewPositionId): CBTCrewRuntimeState;
     readonly conditions: ReadonlySet<'shutdown' | 'prone' | 'disconnected'>;
     readonly destruction: MekDestructionFactsV2;
     componentAvailable(componentId: ComponentId): boolean;

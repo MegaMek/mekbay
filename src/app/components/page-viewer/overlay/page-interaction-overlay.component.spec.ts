@@ -7,6 +7,30 @@ import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-pane
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 
 describe('PageInteractionOverlay turn boundaries', () => {
+    it('resumes a notification chain without committing a phase or turn', async () => {
+        const resume = jasmine.createSpy('resolvePendingUnitAutomation').and.resolveTo(true);
+        const member = {
+            id: 'mek-1',
+            force: { resolvePendingUnitAutomation: resume },
+        } as unknown as CBTMekForceMember;
+        const component: PageInteractionOverlayComponent = Object.create(
+            PageInteractionOverlayComponent.prototype,
+        );
+        const closeAllOverlays = jasmine.createSpy('closeAllOverlays');
+        Object.assign(component as unknown as Record<string, unknown>, {
+            member: () => member,
+            turnTrackerVisible: () => true,
+            closeAllOverlays,
+        });
+        const event = { stopPropagation: jasmine.createSpy('stopPropagation') } as unknown as Event;
+
+        await component.openNotification({ kind: 'psr', event });
+
+        expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+        expect(closeAllOverlays).toHaveBeenCalledTimes(1);
+        expect(resume).toHaveBeenCalledOnceWith('mek-1');
+    });
+
     it('dispatches End Phase through the admitted V2 member', async () => {
         const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
             accepted: true,

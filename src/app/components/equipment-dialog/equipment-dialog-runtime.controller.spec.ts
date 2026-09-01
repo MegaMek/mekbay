@@ -4,10 +4,12 @@
 import { Subject } from 'rxjs';
 
 import type { CBTForceMember, CBTMekForceMember } from '../../models/force-member.model';
-import type { MekEquipmentInteraction } from '../../models/cbt-force.model';
+import type {
+    CBTEquipmentChoiceCommand,
+    CBTEquipmentInteraction,
+} from '../../models/cbt-force.types';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
 import { TestBipedMekEntity, TestTankEntity } from '../../models/entity/testing/test-entities';
-import { addTestEquipmentWithFlags } from '../../models/entity/testing/test-mounted-equipment';
 import { MiscEquipment, WeaponEquipment, type AmmoEquipment, type Equipment } from '../../models/equipment.model';
 import type { EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
 import type { EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
@@ -19,8 +21,6 @@ import {
     BOOBY_TRAP_ARMED_MODE,
     BOOBY_TRAP_DETONATED_MODE,
 } from '../../models/runtime/component-booby-trap';
-import { buildNonMekRuntimeIndex, componentIdForMount } from '../../models/runtime/non-mek-runtime-index';
-import { createPristineNonMekUnitState } from '../../models/runtime/non-mek-unit-instance';
 
 function snapshot(displayName: string): EquipmentPanelSnapshot {
     return {
@@ -46,7 +46,7 @@ describe('EquipmentDialogRuntimeController', () => {
         const force = {
             changed,
             getEquipmentPanelSnapshot: getSnapshot,
-            getMekEquipmentInteractions: () => [],
+            getEquipmentInteractions: () => [],
         };
         const member = {
             kind: 'cbt', id: 'mek-1', force, entity: new TestBipedMekEntity(),
@@ -104,19 +104,17 @@ describe('EquipmentDialogRuntimeController', () => {
             ],
         } as EquipmentPanelSnapshot;
         const interactions = [{
-            instanceId: 'mek-1',
-            unitLabel: 'Inventory filtering',
             componentId: 'mount:ecm' as ComponentId,
             componentLabel: 'mount:ecm',
             stateRevision: 0,
             choices: [],
-        }] as unknown as readonly MekEquipmentInteraction[];
-        const getInteractions = jasmine.createSpy('getMekEquipmentInteractions')
+        }] as unknown as readonly CBTEquipmentInteraction[];
+        const getInteractions = jasmine.createSpy('getEquipmentInteractions')
             .and.returnValue(interactions);
         const force = {
             changed,
             getEquipmentPanelSnapshot: () => panel,
-            getMekEquipmentInteractions: getInteractions,
+            getEquipmentInteractions: getInteractions,
         };
         const member = {
             kind: 'cbt', id: 'mek-1', force, entity: new TestBipedMekEntity(),
@@ -129,7 +127,7 @@ describe('EquipmentDialogRuntimeController', () => {
 
         expect(controller.equipment().map(candidate => candidate.componentId))
             .toEqual(['mount:ecm' as ComponentId]);
-        expect(getInteractions).toHaveBeenCalledWith('inventory');
+        expect(getInteractions).toHaveBeenCalledWith('mek-1', 'inventory');
         const charge = {
             effect: {
                 kind: 'damage', damage: 16, maximumDamage: 56, baseDamage: 14,
@@ -190,7 +188,7 @@ describe('EquipmentDialogRuntimeController', () => {
             changed,
             getEquipmentPanelSnapshot: () => panel,
             getUnitSnapshot: () => null,
-            getMekEquipmentInteractions: jasmine.createSpy('getMekEquipmentInteractions'),
+            getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
             dispatchNonMekUnitCommand: dispatch,
         };
         const member = {
@@ -232,53 +230,43 @@ describe('EquipmentDialogRuntimeController', () => {
             componentId: component.componentId,
             mode: 'Rapid',
         }));
-        expect(force.getMekEquipmentInteractions).not.toHaveBeenCalled();
         controller.dispose();
     });
 
-    it('projects and dispatches non-Mek escalating-equipment controls through Entity runtime', async () => {
+    it('uses the force-owned interaction projection and typed command for non-Mek equipment', async () => {
         const changed = new Subject<void>();
         const entity = new TestTankEntity();
-        const mount = addTestEquipmentWithFlags(
-            entity,
-            ['F_MASC', 'S_SUPERCHARGER'],
-            { location: entity.locationOrder[0] },
-        );
-        const componentId = componentIdForMount(mount);
-        const state = createPristineNonMekUnitState(entity);
-        const unitSnapshot = {
+        const componentId = 'mount:supercharger' as ComponentId;
+        const command: CBTEquipmentChoiceCommand = {
             instanceId: 'tank-1',
-            entity,
-            index: buildNonMekRuntimeIndex(entity),
-            state,
-            ruleset: 'core-2026',
-            sourceRef: {},
+            entityUuid: entity.uuid(),
+            componentId,
+            handlerId: 'escalating-failure-handler',
+            value: 0,
         };
-        const panel = {
-            ...snapshot('Test Supercharger Tank'),
-            components: [{
-                componentId,
-                label: 'Test F_MASC:S_SUPERCHARGER',
-                equipment: mount.equipment,
-                locations: [],
-                status: 'available',
-                previewStatus: 'available',
-                modes: [],
-                mode: undefined,
-                jammed: false,
+        const projected: CBTEquipmentInteraction = {
+            componentId,
+            componentLabel: 'Test Supercharger',
+            choices: [{
+                command,
+                interactionKind: 'escalating-failure',
+                label: '3+',
+                shortLabel: '3+',
+                failureTarget: 3,
+                active: false,
+                disabled: false,
             }],
-        } as EquipmentPanelSnapshot;
-        const dispatch = jasmine.createSpy('dispatchNonMekUnitCommand').and.resolveTo({
+        };
+        const getInteractions = jasmine.createSpy('getEquipmentInteractions').and.returnValue([projected]);
+        const dispatch = jasmine.createSpy('dispatchEquipmentChoice').and.resolveTo({
             accepted: true,
             changed: true,
-            state,
         });
         const force = {
             changed,
-            getEquipmentPanelSnapshot: () => panel,
-            getUnitSnapshot: () => unitSnapshot,
-            getMekEquipmentInteractions: jasmine.createSpy('getMekEquipmentInteractions'),
-            dispatchNonMekUnitCommand: dispatch,
+            getEquipmentPanelSnapshot: () => snapshot('Test Supercharger Tank'),
+            getEquipmentInteractions: getInteractions,
+            dispatchEquipmentChoice: dispatch,
         };
         const controller = new EquipmentDialogRuntimeController(
             { kind: 'cbt', id: 'tank-1', force, entity } as unknown as CBTForceMember,
@@ -287,18 +275,11 @@ describe('EquipmentDialogRuntimeController', () => {
         );
 
         const interaction = controller.interactions()[0]!;
-        expect(interaction.componentLabel).toBe('Test F_MASC:S_SUPERCHARGER');
-        expect(interaction.choices.map(choice => choice.shortLabel)).toEqual([
-            '3+', '5+', '7+', '10+', '11+', 'Operational',
-        ]);
-        await controller.chooseInteraction(interaction, interaction.choices[0]!.token);
+        expect(interaction.componentLabel).toBe('Test Supercharger');
+        await controller.chooseInteraction(interaction, interaction.choices[0]!.command);
 
-        expect(dispatch).toHaveBeenCalledOnceWith('tank-1', {
-            kind: 'edit-escalating-failure',
-            componentId,
-            edit: { kind: 'select-sequence', index: 0 },
-        });
-        expect(force.getMekEquipmentInteractions).not.toHaveBeenCalled();
+        expect(getInteractions).toHaveBeenCalledWith('tank-1', 'inventory');
+        expect(dispatch).toHaveBeenCalledOnceWith(command);
         controller.dispose();
     });
 
@@ -335,7 +316,7 @@ describe('EquipmentDialogRuntimeController', () => {
             changed,
             getEquipmentPanelSnapshot: () => panel,
             getUnitSnapshot: () => null,
-            getMekEquipmentInteractions: jasmine.createSpy('getMekEquipmentInteractions'),
+            getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
             dispatchNonMekUnitCommand: dispatch,
         };
         const member = {
@@ -436,7 +417,7 @@ describe('EquipmentDialogRuntimeController', () => {
             changed,
             getEquipmentPanelSnapshot: () => panel,
             getUnitSnapshot: () => null,
-            getMekEquipmentInteractions: jasmine.createSpy('getMekEquipmentInteractions'),
+            getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
             getAttackerTargeting: () => ({ stateRevision: 0, registryRevision: 0, state: {} }),
             dispatchAttackerTargeting: dispatchTargeting,
             fireSelectedWeapons: fire,
@@ -534,7 +515,7 @@ describe('EquipmentDialogRuntimeController', () => {
             changed,
             getEquipmentPanelSnapshot: () => panel,
             getUnitSnapshot: () => null,
-            getMekEquipmentInteractions: jasmine.createSpy('getMekEquipmentInteractions'),
+            getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
             getAttackerTargeting: () => ({ stateRevision: 0, registryRevision: 0, state: {} }),
             dispatchAttackerTargeting: dispatchTargeting,
             dispatchNonMekUnitCommand: dispatchUnit,
@@ -601,7 +582,7 @@ describe('EquipmentDialogRuntimeController', () => {
         const force = {
             changed,
             getEquipmentPanelSnapshot: () => panel,
-            getMekEquipmentInteractions: () => [],
+            getEquipmentInteractions: () => [],
             fireSelectedWeapons: fire,
         };
         const member = {
@@ -639,7 +620,7 @@ describe('EquipmentDialogRuntimeController', () => {
         const force = {
             changed,
             getEquipmentPanelSnapshot: () => panel,
-            getMekEquipmentInteractions: () => [],
+            getEquipmentInteractions: () => [],
             dispatchEquipmentRowOrder,
             dispatchMekUnitCommand,
         };

@@ -39,6 +39,11 @@
     touch-action: pan-y;
 }
 
+:host ::ng-deep .modal.activetab-factions .dialog-body,
+:host ::ng-deep .modal.activetab-factions .swipe-panel {
+    touch-action: pan-x pan-y;
+}
+
 /* Hide scrollbars during swiping and animation */
 .swipe-container.swiping .swipe-panel,
 .swipe-container.animating .swipe-panel {

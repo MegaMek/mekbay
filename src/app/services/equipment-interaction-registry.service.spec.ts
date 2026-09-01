@@ -6,14 +6,12 @@ import { UACJammingHandler } from '../models/runtime/component-rapid-fire-autoca
 import { emptyCBTEncounterSnapshot } from '../models/runtime/encounter-runtime';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import { TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
-import {
-    EquipmentInteractionRegistry,
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-    type V2EquipmentInteractionChoiceBinding,
-} from './equipment-interaction-registry.service';
+import { EquipmentInteractionRegistry } from './equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionChoiceBinding,
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 
 describe('EquipmentInteractionRegistry direct V2 boundary', () => {
     it('enumerates and applies real handler choices against one parsed entity runtime', async () => {
@@ -22,20 +20,19 @@ describe('EquipmentInteractionRegistry direct V2 boundary', () => {
         const registry = new EquipmentInteractionRegistry();
         registry.register(new InventoryModeHandler());
         registry.register(new UACJammingHandler());
-        const queryContext = createHandlerQueryContext(fixture.equipment);
-        const commandContext = createHandlerCommandContext(
-            fixture.equipment,
-            toastService(),
-            dialogsService(),
-        );
+        const queryContext = {};
+        const commandContext = {
+            toastService: toastService(),
+            dialogsService: dialogsService(),
+        };
         const owner = {
             instanceId: fixture.instance.id,
             encounter: emptyCBTEncounterSnapshot,
         };
-        const choices = registry.getV2EquipmentInteractionChoices(
+        const choices = registry.choices(
             runtime, fixture.entity, fixture.index, fixture.instance.ruleset(), owner, queryContext,
         );
-        const forEquipment = (kind: V2EquipmentInteractionChoiceBinding['kind'], equipmentId: string) =>
+        const forEquipment = (kind: EquipmentInteractionChoiceBinding['kind'], equipmentId: string) =>
             choices.find(choice => {
                 const component = fixture.index.components.get(choice.componentId);
                 return choice.kind === kind
@@ -44,7 +41,7 @@ describe('EquipmentInteractionRegistry direct V2 boundary', () => {
             })!;
 
         const jam = forEquipment('jam', 'Test AC');
-        expect(await registry.handleV2EquipmentInteractionChoice(
+        expect(await registry.select(
             runtime, fixture.entity, fixture.index, fixture.instance.ruleset(), owner,
             jam, queryContext, commandContext,
         )).toBeTrue();
@@ -53,11 +50,11 @@ describe('EquipmentInteractionRegistry direct V2 boundary', () => {
         const inventory = forEquipment('inventory-mode', 'Test MML');
         const alternative = inventory.choice.choices?.find(option => option.value !== inventory.choice.value);
         if (!alternative) throw new Error('MML fixture needs an alternate inventory mode');
-        const selection: V2EquipmentInteractionChoiceBinding = {
+        const selection: EquipmentInteractionChoiceBinding = {
             ...inventory,
-            choice: { ...alternative, _handler: inventory.handler },
+            choice: alternative,
         };
-        expect(await registry.handleV2EquipmentInteractionChoice(
+        expect(await registry.select(
             runtime, fixture.entity, fixture.index, fixture.instance.ruleset(), owner,
             selection, queryContext, commandContext,
         )).toBeTrue();
@@ -67,22 +64,18 @@ describe('EquipmentInteractionRegistry direct V2 boundary', () => {
     it('rejects duplicate handler IDs', () => {
         const registry = new EquipmentInteractionRegistry();
         registry.register(new UACJammingHandler());
-        spyOn(console, 'error');
         expect(() => registry.register(new UACJammingHandler())).toThrowError(/already registered/u);
     });
 });
 
-function toastService(): HandlerToastService {
+function toastService(): EquipmentInteractionNotifications {
     return {
         showToast: jasmine.createSpy('showToast'),
-        toasts: () => [],
     };
 }
 
-function dialogsService(): HandlerDialogsService {
+function dialogsService(): EquipmentInteractionDialogsService {
     return {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
     };
 }

@@ -20,7 +20,7 @@ import { ForceUrlStateService } from './force-url-state.service';
 import { ForceDialogsService } from './force-dialogs.service';
 import { ForceRemoteSyncService } from './force-remote-sync.service';
 import { ForceSlotLifecycleService } from './force-slot-lifecycle.service';
-import { ForceUnitLoadingService } from './force-unit-loading.service';
+import { ASForceUnitLoadingService } from './as-force-unit-loading.service';
 import { ForceFormationService } from './force-formation.service';
 import { ForceUnitAdmissionService } from './force-unit-admission.service';
 import { CBTForce } from '../models/cbt-force.model';
@@ -1313,7 +1313,7 @@ describe('ForceBuilderService remote force updates', () => {
     }
 
     function createOverlayHarness(forces: Force[]) {
-        const service = Object.create(ForceUnitLoadingService.prototype) as any;
+        const service = Object.create(ASForceUnitLoadingService.prototype) as any;
         const slots = signal(forces.map(force => ({ force, alignment: 'friendly', changeSub: null })));
         const dialogRef = { close: jasmine.createSpy('close') };
         service.workspace = {
@@ -1390,6 +1390,33 @@ describe('ForceImportService load dialog', () => {
         expect(service.forcePersistence.getForce).not.toHaveBeenCalled();
         expect(service.builder.loadForce).toHaveBeenCalledOnceWith(sourceForce);
         expect(sourceForce.instanceId()).toBeNull();
+    });
+
+    it('resolves a saved entry once before adding the loaded force', async () => {
+        const service = Object.create(ForceImportService.prototype) as any;
+        const entry = new LoadForceEntry({ instanceId: 'saved-force' });
+        const loadedForce = Object.create(Force.prototype) as Force;
+
+        service.dialogs = {
+            createDialog: jasmine.createSpy('createDialog').and.returnValue({
+                closed: of({
+                    result: entry,
+                    mode: 'add',
+                    alignment: 'enemy',
+                }),
+            }),
+        };
+        service.forcePersistence = {
+            getForce: jasmine.createSpy('getForce').and.resolveTo(loadedForce),
+        };
+        service.builder = {
+            addForce: jasmine.createSpy('addForce').and.resolveTo(true),
+        };
+
+        await service.showLoadForceDialog();
+
+        expect(service.forcePersistence.getForce).toHaveBeenCalledOnceWith('saved-force', false);
+        expect(service.builder.addForce).toHaveBeenCalledOnceWith(loadedForce, 'enemy');
     });
 });
 

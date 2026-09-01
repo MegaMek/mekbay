@@ -27,28 +27,35 @@ export interface CBTUnitSnapshot {
     readonly query: CBTUnitQueryPort;
 }
 
+export type CBTMekUnitSnapshot = Readonly<
+    Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state' | 'query'> & {
+        entity: MekEntity;
+        index: MekRuntimeIndex;
+        state: MekUnitRuntimeState;
+        query: MekUnitQueryPort;
+    }
+>;
+
+export type CBTNonMekUnitSnapshot = Readonly<
+    Omit<CBTUnitSnapshot, 'index' | 'state'> & {
+        index: NonMekRuntimeIndex;
+        state: NonMekUnitRuntimeState;
+    }
+>;
+
 /**
  * Narrows the Mek mechanics capability. Critical slots and critical-hit state
  * exist only behind this guard; the top-level BaseEntity snapshot stays unified.
  */
 export function hasMekRuntime(
     snapshot: CBTUnitSnapshot,
-): snapshot is CBTUnitSnapshot & Readonly<{
-    entity: MekEntity;
-    index: MekRuntimeIndex;
-    state: MekUnitRuntimeState;
-    query: MekUnitQueryPort;
-}> {
+): snapshot is CBTMekUnitSnapshot {
     return snapshot.entity.entityType === 'Mek';
 }
 
 /** Narrows non-Mek mechanics without defining a parallel snapshot interface. */
 export function hasNonMekRuntime(
     snapshot: CBTUnitSnapshot,
-): snapshot is CBTUnitSnapshot & Readonly<{
-    index: NonMekRuntimeIndex;
-    state: NonMekUnitRuntimeState;
-    query: CBTUnitQueryPort;
-}> {
+): snapshot is CBTNonMekUnitSnapshot {
     return snapshot.entity.entityType !== 'Mek';
 }

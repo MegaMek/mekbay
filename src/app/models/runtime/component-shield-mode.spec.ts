@@ -1,10 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import {
-    createHandlerQueryContext,
-    EquipmentInteractionRegistry,
-} from '../../services/equipment-interaction-registry.service';
+import { EquipmentInteractionRegistry } from '../../services/equipment-interaction-registry.service';
 import { emptyCBTEncounterSnapshot } from './encounter-runtime';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { projectMekEquipmentPanel } from './equipment-panel';
@@ -137,13 +134,13 @@ describe('direct shield modes', () => {
 function interactionOptions(fixture: DirectMekRuntimeFixture, componentId: string) {
     const registry = new EquipmentInteractionRegistry();
     registry.register(new ShieldModeHandler());
-    return registry.getV2EquipmentInteractionChoices(
+    return registry.choices(
         fixture.instance,
         fixture.entity,
         fixture.index,
         fixture.instance.ruleset(),
         { instanceId: fixture.instance.id, encounter: emptyCBTEncounterSnapshot },
-        createHandlerQueryContext(fixture.equipment),
+        {},
     ).find(choice => choice.componentId === componentId)?.choice.choices;
 }
 

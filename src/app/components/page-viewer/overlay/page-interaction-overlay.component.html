@@ -14,7 +14,7 @@
 <div class="container">
     <div class="top-right-controls">
         <unit-notification-badges
-            [snapshot]="turn()"
+            [snapshot]="notificationSnapshot()"
             display="overlay"
             [interactive]="true"
             (activated)="openNotification($event)" />

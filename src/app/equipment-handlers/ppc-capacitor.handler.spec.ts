@@ -13,12 +13,10 @@ import { projectMekEquipmentComponents } from '../models/runtime/equipment-panel
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { CBTUnitInstance } from '../models/runtime/unit-instance';
 import type { WeaponType } from '../models/weapon-types.model';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 import {
     PPC_CAPACITOR_CHARGED_STATE,
     PPC_CAPACITOR_CHARGING_STATE,
@@ -161,8 +159,8 @@ function directPpcSetup() {
         definition,
         handler: new PpcCapacitorHandler(),
         toast,
-        queryContext: createHandlerQueryContext(fixture.equipment),
-        commandContext: createHandlerCommandContext(fixture.equipment, toast, dialogsService()),
+        queryContext: {},
+        commandContext: { toastService: toast, dialogsService: dialogsService() },
     };
 }
 
@@ -205,14 +203,12 @@ function endTurn(runtime: CBTUnitInstance, commandId: string): void {
     }).accepted).toBeTrue();
 }
 
-function toastService(): HandlerToastService & { showToast: jasmine.Spy } {
-    return { showToast: jasmine.createSpy('showToast'), toasts: () => [] };
+function toastService(): EquipmentInteractionNotifications & { showToast: jasmine.Spy } {
+    return { showToast: jasmine.createSpy('showToast') };
 }
 
-function dialogsService(): HandlerDialogsService {
+function dialogsService(): EquipmentInteractionDialogsService {
     return {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
     };
 }

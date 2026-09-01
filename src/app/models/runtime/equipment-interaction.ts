@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { PickerChoice } from '../../components/picker/picker.interface';
-import type { Toast, ToastService } from '../../services/toast.service';
+import type { ToastService } from '../../services/toast.service';
 import type { DialogsService } from '../../services/dialogs.service';
 import type { EquipmentFlag } from '../equipment-flags.type';
-import type { EquipmentRegistry } from '../equipment-lookup';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { CBTRuleset } from '../cbt-ruleset.model';
@@ -13,37 +12,28 @@ import type { CBTEncounterSnapshot } from './encounter-runtime';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import type { CBTUnitInstance } from './unit-instance';
 
+export type EquipmentChoiceSurface = 'critical' | 'inventory' | 'turn-summary';
+
 export interface EquipmentInteractionQueryContext {
-    readonly equipmentCatalog: EquipmentRegistry;
-    readonly choiceSurface?: 'critical' | 'inventory' | 'turn-summary';
+    readonly choiceSurface?: EquipmentChoiceSurface;
 }
 
 export interface EquipmentInteractionCommandContext {
-    readonly equipmentCatalog: EquipmentRegistry;
-    readonly toastService: EquipmentInteractionToastService;
+    readonly toastService: EquipmentInteractionNotifications;
     readonly dialogsService: EquipmentInteractionDialogsService;
     /** Force-owned navigation; it does not mutate unit runtime or history. */
     readonly configureC3Network?: () => void;
 }
 
-export interface EquipmentInteractionToastService {
-    showToast: ToastService['showToast'];
-    toasts(): readonly Toast[];
-}
-
-export type EquipmentInteractionNotifications = Pick<EquipmentInteractionToastService, 'showToast'>;
+export type EquipmentInteractionNotifications = Pick<ToastService, 'showToast'>;
 
 export interface EquipmentInteractionDialogsService {
-    createDialog: DialogsService['createDialog'];
-    showError: DialogsService['showError'];
     showNoticeHtml: DialogsService['showNoticeHtml'];
     /** Optional on lightweight surfaces; confirmation-required actions fail closed without it. */
     requestConfirmation?: DialogsService['requestConfirmation'];
 }
 
 export interface EquipmentInteractionChoice extends PickerChoice {
-    /** Internal owner. It is never persisted or exposed by the force API. */
-    _handler?: EquipmentInteractionHandler;
     /** Concrete operational permission; ordinary mode choices default to `change-mode`. */
     action?: 'fire' | 'physical-attack' | 'activate' | 'change-mode' | 'provide-passive-effect' | 'configure-network';
     /** Recovery/state edit uses explicit edit permission instead of operational gating. */
@@ -79,11 +69,33 @@ export interface EquipmentInteractionInput {
 }
 
 export type EquipmentInteractionScope = 'component' | 'link';
-export type EquipmentInteractionKind = string;
+export type EquipmentInteractionKind =
+    | 'apollo'
+    | 'booby-trap'
+    | 'bombast-laser'
+    | 'c3-configuration'
+    | 'c3-emergency-master'
+    | 'component-mode'
+    | 'coolant-pod'
+    | 'ecm-mode'
+    | 'equipment-power'
+    | 'escalating-failure'
+    | 'gauss-power'
+    | 'hag-mode'
+    | 'inventory-mode'
+    | 'jam'
+    | 'machine-gun-array'
+    | 'mobile-hpg'
+    | 'ppc-capacitor'
+    | 'risc-laser-pulse'
+    | 'shield-mode';
+
+/** Stable registry identity; labels and arbitrary strings are not handler IDs. */
+export type EquipmentInteractionHandlerId = `${string}-handler`;
 
 /** One uniform extension point for every mutable equipment feature. */
 export abstract class EquipmentInteractionHandler {
-    abstract readonly id: string;
+    abstract readonly id: EquipmentInteractionHandlerId;
     abstract readonly kind: EquipmentInteractionKind;
     abstract readonly scope: EquipmentInteractionScope;
     readonly flags: readonly EquipmentFlag[] = [];
@@ -98,12 +110,11 @@ export abstract class EquipmentInteractionHandler {
     ): boolean | Promise<boolean>;
 }
 
-/** Internal owner binding. Public force DTOs expose only an opaque command token. */
-export interface V2EquipmentInteractionChoiceBinding {
+/** Internal owner binding. Public force DTOs expose only typed detached data. */
+export interface EquipmentInteractionChoiceBinding {
     readonly kind: EquipmentInteractionKind;
     readonly componentId: ComponentId;
     readonly relatedComponentId?: ComponentId;
-    readonly actionComponentId: ComponentId;
     readonly handler: EquipmentInteractionHandler;
     readonly choice: EquipmentInteractionChoice;
 }

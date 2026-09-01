@@ -481,8 +481,8 @@
                         <mode-switch leftLabel="Sheet" rightLabel="Tactical"
                             ariaLabel="Default Classic BattleTech unit view"
                             switchAriaLabel="Switch default Classic BattleTech unit view"
-                            [selectedRight]="optionsService.options().classicUnitViewMode === 'tactical'"
-                            (selectedRightChange)="onClassicUnitViewModeChange($event)"></mode-switch>
+                            [selectedRight]="optionsService.options().cbtUnitViewMode === 'tactical'"
+                            (selectedRightChange)="onCBTUnitViewModeChange($event)"></mode-switch>
                     </div>
                     <div class="description">
                         <p>Chooses which view opens by default. Switching views from either toolbar also updates this preference.</p>

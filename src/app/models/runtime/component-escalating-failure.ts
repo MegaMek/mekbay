@@ -48,7 +48,6 @@ import {
 import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
 import {
     type ComponentRuntimeState,
-    type EscalatingFailureSequence,
 } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 import type { PickerChoice } from '../../components/picker/picker.interface';
@@ -56,6 +55,7 @@ import {
     EquipmentInteractionHandler,
     type EquipmentInteractionChoice,
     type EquipmentInteractionCommandContext,
+    type EquipmentInteractionHandlerId,
     type EquipmentInteractionInput,
     type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
@@ -68,7 +68,6 @@ export const BLUE_SHIELD_HANDLER_ID = 'blue-shield-handler';
 export const RISC_EMERGENCY_COOLANT_SYSTEM_HANDLER_ID = 'risc-emergency-coolant-system-handler';
 export const RISC_VIRAL_JAMMER_HANDLER_ID = 'risc-viral-jammer-handler';
 
-export type EscalatingFailureSequenceIndex = number;
 export type ComponentEscalatingFailureKind =
     | 'masc'
     | 'radical-heat-sink'
@@ -95,7 +94,7 @@ export interface ComponentEscalatingFailureDefinition {
 }
 
 export interface ComponentEscalatingFailureFacts {
-    readonly sequence: 0 | EscalatingFailureSequence;
+    readonly sequence: number;
     readonly active: boolean;
     readonly status: EquipmentStatus;
     readonly airborne: boolean | null;
@@ -274,7 +273,7 @@ export function escalatingFailureMovementMultiplierBonus(
 export function selectComponentEscalatingFailureSequence(
     runtime: CBTUnitInstance,
     definition: ComponentEscalatingFailureDefinition,
-    index: EscalatingFailureSequenceIndex,
+    index: number,
 ): ComponentStateChangeResult {
     return componentStateChangeFromReduction(runtime.dispatch({
         type: 'edit-escalating-failure',
@@ -432,7 +431,7 @@ function setEscalatingFailureComponentState(
         ...remaining,
         ...(sequence === 0 ? {} : {
             escalatingFailure: Object.freeze({
-                sequence: sequence as EscalatingFailureSequence,
+                sequence,
                 ...(active ? { active } : {}),
             }),
         }),
@@ -457,7 +456,7 @@ function replaceEscalatingFailureComponent(
 
 /** Shared lifecycle interaction; concrete equipment classes select one owned profile. */
 export class EscalatingFailureHandler extends EquipmentInteractionHandler {
-    readonly id: string = ESCALATING_FAILURE_HANDLER_ID;
+    readonly id: EquipmentInteractionHandlerId = ESCALATING_FAILURE_HANDLER_ID;
     readonly kind = 'escalating-failure';
     readonly scope = 'component' as const;
     override readonly priority = 10;
@@ -603,6 +602,6 @@ export class RiscViralJammerHandler extends EscalatingFailureHandler {
     }
 }
 
-function isEscalatingFailureSequenceIndex(value: unknown): value is EscalatingFailureSequenceIndex {
+function isEscalatingFailureSequenceIndex(value: unknown): value is number {
     return Number.isSafeInteger(value) && Number(value) >= 0;
 }

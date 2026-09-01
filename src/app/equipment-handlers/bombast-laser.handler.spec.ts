@@ -21,12 +21,10 @@ import {
 } from '../models/runtime/equipment-panel';
 import { createDirectBombastRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { CBTUnitInstance } from '../models/runtime/unit-instance';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 import { BombastLaserHandler } from '../models/runtime/component-bombast-laser';
 
 describe('BombastLaserHandler direct V2 runtime', () => {
@@ -161,13 +159,10 @@ function directBombastSetup() {
     );
     const toast = {
         showToast: jasmine.createSpy('showToast'),
-        toasts: () => [],
-    } as HandlerToastService & { showToast: jasmine.Spy };
+    } as EquipmentInteractionNotifications & { showToast: jasmine.Spy };
     const dialogs = {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
-    } as HandlerDialogsService;
+    } as EquipmentInteractionDialogsService;
     return {
         fixture,
         component,
@@ -175,8 +170,8 @@ function directBombastSetup() {
         definition,
         handler: new BombastLaserHandler(),
         toast,
-        queryContext: createHandlerQueryContext(fixture.equipment),
-        commandContext: createHandlerCommandContext(fixture.equipment, toast, dialogs),
+        queryContext: {},
+        commandContext: { toastService: toast, dialogsService: dialogs },
     };
 }
 

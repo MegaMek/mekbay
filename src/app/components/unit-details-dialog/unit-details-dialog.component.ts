@@ -582,6 +582,9 @@ export class UnitDetailsDialogComponent {
     }
 
     public shouldBlockSwipe = (): boolean => {
+        // The faction matrix owns horizontal gestures for column scrolling.
+        if (this.activeTab() === 'Factions') return true;
+
         // Don't block if already swiping - only block before swipe starts
         if (this.isSwiping()) return false;
 

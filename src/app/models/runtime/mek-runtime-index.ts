@@ -41,7 +41,6 @@ export interface MekIndexedLocation extends CBTRuntimeLocation {
     readonly structure: MountedStructure;
 }
 
-export type MekIndexedArmorFace = CBTRuntimeArmorFace;
 
 export interface MekIndexedEquipment extends CBTRuntimeComponent {
     readonly kind: 'equipment';
@@ -68,7 +67,6 @@ export interface MekIndexedCriticalSlot {
     readonly armored: boolean;
 }
 
-export type MekIndexedCrewPosition = CBTRuntimeCrewPosition;
 
 export interface MekIndexedBay {
     readonly kind: 'weapon-bay' | 'machine-gun-array';
@@ -90,10 +88,10 @@ export interface MekIndexedRelationships {
  */
 export interface MekRuntimeIndex extends CBTUnitRuntimeIndex {
     readonly locations: ReadonlyMap<LocationId, MekIndexedLocation>;
-    readonly armorFaces: ReadonlyMap<ArmorFaceId, MekIndexedArmorFace>;
+    readonly armorFaces: ReadonlyMap<ArmorFaceId, CBTRuntimeArmorFace>;
     readonly components: ReadonlyMap<ComponentId, MekIndexedComponent>;
     readonly slots: ReadonlyMap<CriticalSlotId, MekIndexedCriticalSlot>;
-    readonly crewPositions: ReadonlyMap<CrewPositionId, MekIndexedCrewPosition>;
+    readonly crewPositions: ReadonlyMap<CrewPositionId, CBTRuntimeCrewPosition>;
     readonly intrinsicActions: readonly IntrinsicWeapon[];
     readonly relationships: MekIndexedRelationships;
 }
@@ -133,7 +131,7 @@ export function componentLocationIds(
 export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
     const locationIdByCode = new Map<MekLocation, LocationId>();
     const locations = new Map<LocationId, MekIndexedLocation>();
-    const armorFaces = new Map<ArmorFaceId, MekIndexedArmorFace>();
+    const armorFaces = new Map<ArmorFaceId, CBTRuntimeArmorFace>();
 
     for (const code of entity.locationOrder) {
         const id = mekLocationId(code);
@@ -247,7 +245,7 @@ export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
         memberIds: Object.freeze(bay.mounts.map(componentIdForMount)),
     }));
 
-    const crewPositions = new Map<CrewPositionId, MekIndexedCrewPosition>();
+    const crewPositions = new Map<CrewPositionId, CBTRuntimeCrewPosition>();
     for (let occurrence = 0; occurrence < crewPositionCountForMekCockpit(entity.cockpitType()); occurrence += 1) {
         const id = asCrewPositionId(`crew:${occurrence}`);
         crewPositions.set(id, Object.freeze({ id, occurrence }));

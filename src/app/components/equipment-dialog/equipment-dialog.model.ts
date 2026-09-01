@@ -3,42 +3,40 @@
 // Author: Drake
 
 import type { CBTForceMember } from '../../models/force-member.model';
-import type { MekEquipmentChoice } from '../../models/cbt-force.model';
+import type { CBTEquipmentChoiceCommand } from '../../models/cbt-force.types';
+import type { EquipmentInteractionKind } from '../../models/runtime/equipment-interaction';
+import type {
+    PickerChoiceColors,
+    PickerChoiceSelectionTone,
+    PickerDisplayType,
+    PickerTooltipType,
+    PickerValue,
+} from '../picker/picker.interface';
 
 export type EquipmentDialogTab = 'weapons' | 'ammo';
 
 export interface EquipmentDialogDropdownChoice {
     readonly label: string;
-    readonly value: string | number;
+    readonly value: PickerValue;
+    readonly command?: CBTEquipmentChoiceCommand;
     readonly disabled?: boolean;
-}
-
-export interface EquipmentDialogChoiceColors {
-    readonly normal?: string;
-    readonly normalText?: string;
-    readonly selected?: string;
-    readonly selectedText?: string;
-    readonly mutedSelected?: string;
-    readonly mutedSelectedText?: string;
-    readonly disabled?: string;
-    readonly disabledText?: string;
 }
 
 /** Detached presentation choice projected from one runtime interaction. */
 export interface EquipmentDialogChoice {
-    readonly handlerId?: string;
-    readonly interactionKind?: MekEquipmentChoice['interactionKind'];
+    readonly command?: CBTEquipmentChoiceCommand;
+    readonly interactionKind?: EquipmentInteractionKind;
     readonly label: string;
     readonly shortLabel?: string;
-    readonly value: string | number;
+    readonly value: PickerValue;
     readonly disabled?: boolean;
     readonly active?: boolean;
-    readonly selectionTone?: 'selected' | 'muted';
-    readonly colors?: EquipmentDialogChoiceColors;
+    readonly selectionTone?: PickerChoiceSelectionTone;
+    readonly colors?: Readonly<PickerChoiceColors>;
     readonly keepOpen?: boolean;
-    readonly displayType?: 'button' | 'dropdown' | 'label' | 'state-button' | 'toggle';
+    readonly displayType?: PickerDisplayType;
     readonly choices?: readonly EquipmentDialogDropdownChoice[];
-    readonly tooltipType?: 'info' | 'success' | 'error';
+    readonly tooltipType?: PickerTooltipType;
     readonly failureTarget?: number;
 }
 

@@ -39,6 +39,18 @@ describe('CBTAutomationService', () => {
         expect(await service.resolve('breachAndFloodCheck', events)).toBeNull();
     });
 
+    it('opens configured automatic reviews when resumed from a pending badge', async () => {
+        review.and.resolveTo(new Set(['one']));
+
+        const result = await service.resolve('heatEffectsCheck', events, {
+            title: 'Review Pending Effects',
+            interactive: true,
+        });
+
+        expect(review).toHaveBeenCalledTimes(1);
+        expect([...(result ?? [])]).toEqual(['one']);
+    });
+
     it('coalesces concurrent compatible family reviews and returns only each caller\'s ids', async () => {
         mode = 'ask';
         review.and.callFake(async (combined: readonly AutomationReviewEvent[]) =>

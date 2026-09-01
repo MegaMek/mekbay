@@ -1,0 +1,157 @@
+@let matrix = availabilityMatrix();
+
+<ng-template #megaMekAvailability let-badges="badges">
+    @if (badges.length > 0) {
+        <span class="faction-megamek-availability-badges">
+            @for (badge of badges; track badge.source) {
+                <span
+                    class="faction-megamek-availability-badge"
+                    role="img"
+                    [attr.aria-label]="badge.label"
+                    [style.color]="badge.color"
+                >
+                    @if (badge.source === 'Requisition') {
+                        <svg class="faction-megamek-availability-icon" viewBox="0 0 36 36" aria-hidden="true">
+                            <path [attr.d]="megaMekRequisitionIconPath" fill="currentColor" />
+                        </svg>
+                    } @else {
+                        <svg class="faction-megamek-availability-icon" viewBox="0 0 256 256" aria-hidden="true">
+                            <path [attr.d]="megaMekSalvageIconPath" fill="currentColor" />
+                        </svg>
+                    }
+                </span>
+            }
+        </span>
+    }
+</ng-template>
+
+<ng-template #factionRow let-row="row" let-isSubrow="isSubrow">
+    @let rowExpanded = row.isCatchAll && row.subrows.length > 0 && isCatchAllExpanded(row.id);
+    <tr
+        class="faction-row"
+        [class.catch-all-row]="row.isCatchAll"
+        [class.subrow]="isSubrow"
+        [class.expanded]="rowExpanded"
+    >
+        <th class="faction-row-heading" scope="row">
+            @if (row.isCatchAll && row.subrows.length > 0) {
+                <button
+                    type="button"
+                    class="faction-identity catch-all-toggle"
+                    [attr.aria-expanded]="rowExpanded"
+                    [attr.aria-label]="(rowExpanded ? 'Collapse ' : 'Expand ') + row.name"
+                    (click)="toggleCatchAll(row.id)"
+                >
+                    <svg class="disclosure-icon" viewBox="0 0 16 16" aria-hidden="true">
+                        <path d="M5 3.5 10 8l-5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
+                    </svg>
+                    @if (row.img) {
+                        <img [src]="row.img" class="faction-logo row-faction-logo" alt="" aria-hidden="true" />
+                    } @else {
+                        <span class="faction-logo-placeholder row-faction-logo" aria-hidden="true">{{ row.name.charAt(0) }}</span>
+                    }
+                    <span class="faction-name">{{ row.name }}</span>
+                    <span class="subrow-count" aria-hidden="true">{{ row.subrows.length }}</span>
+                </button>
+            } @else {
+                <span class="faction-identity">
+                    <span class="disclosure-spacer" aria-hidden="true"></span>
+                    @if (row.img) {
+                        <img [src]="row.img" class="faction-logo row-faction-logo" alt="" aria-hidden="true" />
+                    } @else {
+                        <span class="faction-logo-placeholder row-faction-logo" aria-hidden="true">{{ row.name.charAt(0) }}</span>
+                    }
+                    <span class="faction-name">{{ row.name }}</span>
+                </span>
+            }
+        </th>
+
+        @for (cell of row.cells; let cellIndex = $index; track cellIndex) {
+            <td class="availability-cell">
+                @if (cell; as availabilityCell) {
+                    <div class="availability-cell-content" [tooltip]="availabilityCell.megaMekTooltip">
+                        <span class="visually-hidden">{{ row.name }} is available in {{ matrix.eras[cellIndex].eraName }}.</span>
+                        @if (availabilityCell.img) {
+                            <img
+                                [src]="availabilityCell.img"
+                                class="faction-logo cell-faction-logo"
+                                alt=""
+                                aria-hidden="true"
+                            />
+                        } @else {
+                            <span class="faction-logo-placeholder cell-faction-logo" aria-hidden="true">{{ row.name.charAt(0) }}</span>
+                        }
+                        <ng-container
+                            [ngTemplateOutlet]="megaMekAvailability"
+                            [ngTemplateOutletContext]="{ badges: availabilityCell.megaMekAvailability }"
+                        ></ng-container>
+                    </div>
+                } @else if (row.subrowAvailabilityCounts[cellIndex] > 0) {
+                    <button
+                        type="button"
+                        class="group-cell-summary"
+                        [attr.aria-expanded]="rowExpanded"
+                        [attr.aria-label]="(rowExpanded ? 'Collapse ' : 'Expand ') + row.name + ': ' + row.subrowAvailabilityCounts[cellIndex] + ' grouped factions available in ' + matrix.eras[cellIndex].eraName"
+                        (click)="toggleCatchAll(row.id)"
+                    >
+                        @if (row.img) {
+                            <img [src]="row.img" class="faction-logo group-cell-logo" alt="" aria-hidden="true" />
+                        } @else {
+                            <span class="faction-logo-placeholder group-cell-logo" aria-hidden="true">{{ row.name.charAt(0) }}</span>
+                        }
+                        <span class="group-cell-count" aria-hidden="true">{{ row.subrowAvailabilityCounts[cellIndex] }}</span>
+                    </button>
+                } @else {
+                    <span class="empty-cell" aria-hidden="true">—</span>
+                    <span class="visually-hidden">{{ row.name }} is not listed in {{ matrix.eras[cellIndex].eraName }}.</span>
+                }
+            </td>
+        }
+    </tr>
+</ng-template>
+
+<div class="faction-availability-matrix-scroll allow-select">
+    @if (matrix.rows.length === 0) {
+        <div class="no-factions">No faction availability information for this unit.</div>
+    } @else {
+        <table class="faction-availability-matrix">
+            <caption class="visually-hidden">Faction availability by era</caption>
+            <thead>
+                <tr>
+                    <th class="faction-column-heading" scope="col">Faction</th>
+                    @for (era of matrix.eras; track era.eraId) {
+                        <th class="era-column-heading" scope="col" [attr.title]="era.eraName">
+                            @if (era.eraIcon) {
+                                <img [src]="era.eraIcon" class="era-icon" alt="" aria-hidden="true" />
+                            }
+                            <span class="era-name">{{ era.eraName }}</span>
+                            <span class="era-years">
+                                @if (era.eraYearTo) {
+                                    {{ era.eraYearFrom ?? '?' }}–{{ era.eraYearTo }}
+                                } @else {
+                                    {{ era.eraYearFrom ?? '?' }}+
+                                }
+                            </span>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @for (row of matrix.rows; track row.id) {
+                    <ng-container
+                        [ngTemplateOutlet]="factionRow"
+                        [ngTemplateOutletContext]="{ row, isSubrow: false }"
+                    ></ng-container>
+                    @if (row.isCatchAll && row.subrows.length > 0 && isCatchAllExpanded(row.id)) {
+                        @for (subrow of row.subrows; track subrow.id) {
+                            <ng-container
+                                [ngTemplateOutlet]="factionRow"
+                                [ngTemplateOutletContext]="{ row: subrow, isSubrow: true }"
+                            ></ng-container>
+                        }
+                    }
+                }
+            </tbody>
+        </table>
+    }
+</div>

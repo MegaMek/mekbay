@@ -12,7 +12,6 @@ import {
     createDirectVoidSignatureRuntimeFixture,
     type DirectMekRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
-import { createHandlerQueryContext } from '../../services/equipment-interaction-registry.service';
 
 describe('direct Void Signature runtime', () => {
     it('disables activation without ECM in both the handler and command boundary', () => {
@@ -28,7 +27,7 @@ describe('direct Void Signature runtime', () => {
         const choices = new StealthHandler().getComponentModeChoices(
             fixture.instance,
             definition,
-            createHandlerQueryContext(fixture.equipment),
+            {},
         );
 
         expect(choices).toEqual([jasmine.objectContaining({

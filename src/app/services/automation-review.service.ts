@@ -16,6 +16,8 @@ export interface AutomationReviewOptions {
     readonly title?: string;
     readonly message?: string;
     readonly allowCancel?: boolean;
+    /** Badge-driven resume keeps disabled work disabled, but opens configured automatic work. */
+    readonly interactive?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })

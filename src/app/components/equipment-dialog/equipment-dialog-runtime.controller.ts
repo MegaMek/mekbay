@@ -9,10 +9,9 @@ import {
     type CBTForceMember,
 } from '../../models/force-member.model';
 import type {
-    MekEquipmentChoice,
-    MekEquipmentChoiceToken,
-    MekEquipmentInteraction,
-} from '../../models/cbt-force.model';
+    CBTEquipmentChoice,
+    CBTEquipmentInteraction,
+} from '../../models/cbt-force.types';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
 import type {
     EquipmentPanelComponent,
@@ -26,10 +25,7 @@ import type {
     AttackerSelection,
 } from '../../models/runtime/attacker-targeting-state';
 import type { CBTUnitCommand } from '../../models/runtime/unit-instance';
-import {
-    projectNonMekEscalatingFailureInteractions,
-    type NonMekUnitCommand,
-} from '../../models/runtime/non-mek-unit-instance';
+import type { NonMekUnitCommand } from '../../models/runtime/non-mek-unit-instance';
 import { canSwitchNonMekAirGroundState } from '../../models/runtime/non-mek-airborne-state';
 import type { OptionsService } from '../../services/options.service';
 import type { ToastService } from '../../services/toast.service';
@@ -60,15 +56,6 @@ import {
     BOOBY_TRAP_DETONATED_MODE,
     isBoobyTrapDetonated,
 } from '../../models/runtime/component-booby-trap';
-import {
-    ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
-    ESCALATING_FAILURE_HANDLER_ID,
-} from '../../models/runtime/component-escalating-failure';
-
-type EntityEscalatingFailureEdit = Extract<
-    NonMekUnitCommand,
-    { readonly kind: 'edit-escalating-failure' }
->['edit'];
 
 /**
  * Runtime adapter for the established equipment-dialog panels. It owns no
@@ -82,16 +69,12 @@ export class EquipmentDialogRuntimeController {
     public readonly weapons: Signal<readonly EquipmentPanelComponent[]>;
     public readonly equipment: Signal<readonly EquipmentPanelComponent[]>;
     public readonly ammo: Signal<readonly EquipmentPanelComponent[]>;
-    public readonly interactions: WritableSignal<readonly MekEquipmentInteraction[]>;
+    public readonly interactions: WritableSignal<readonly CBTEquipmentInteraction[]>;
 
     private readonly options: OptionsService;
     private readonly toast: ToastService;
     private readonly dialogs?: Pick<DialogsService, 'requestConfirmation' | 'showNoticeHtml'>;
     private readonly forceChanges: Subscription;
-    private readonly entityInteractionBindings = new Map<MekEquipmentChoiceToken, Readonly<{
-        componentId: ComponentId;
-        edit: EntityEscalatingFailureEdit;
-    }>>();
 
     public hasSelections(): boolean {
         return this.weapons().some(row => row.weapon?.selection !== undefined)
@@ -225,31 +208,22 @@ export class EquipmentDialogRuntimeController {
             : '';
     }
 
-    public interaction(row: EquipmentPanelComponent): MekEquipmentInteraction | undefined {
+    public interaction(row: EquipmentPanelComponent): CBTEquipmentInteraction | undefined {
         return this.interactions().find(candidate => candidate.componentId === row.componentId);
     }
 
     public async chooseInteraction(
-        interaction: MekEquipmentInteraction,
-        token: MekEquipmentInteraction['choices'][number]['token'],
+        interaction: CBTEquipmentInteraction,
+        command: CBTEquipmentChoice['command'],
     ): Promise<void> {
         if (this.busy()) return;
-        if (!isCBTMekForceMember(this.member)) {
-            const binding = this.entityInteractionBindings.get(token);
-            if (!binding || binding.componentId !== interaction.componentId) {
-                this.reject('CHOICE_UNAVAILABLE');
-                return;
-            }
-            await this.dispatchEntityUnit({
-                kind: 'edit-escalating-failure',
-                componentId: binding.componentId,
-                edit: binding.edit,
-            });
+        if (command.componentId !== interaction.componentId) {
+            this.reject('CHOICE_UNAVAILABLE');
             return;
         }
         this.busy.set(true);
         try {
-            const result = await this.member.force.dispatchMekEquipmentChoice(token);
+            const result = await this.member.force.dispatchEquipmentChoice(command);
             if (!result.accepted) this.rejectCommand();
         } finally {
             this.busy.set(false);
@@ -715,65 +689,8 @@ export class EquipmentDialogRuntimeController {
         return snapshot;
     }
 
-    private interactionRows(): readonly MekEquipmentInteraction[] {
-        this.entityInteractionBindings.clear();
-        if (isCBTMekForceMember(this.member)) {
-            return this.member.force.getMekEquipmentInteractions('inventory')
-                .filter(row => row.instanceId === this.member.id);
-        }
-        // A few lightweight presentation hosts deliberately omit the Entity;
-        // without it there is no direct-runtime interaction to project.
-        if (!this.member.entity) return Object.freeze([]);
-        const snapshot = this.entityRuntime();
-        if (!snapshot) return Object.freeze([]);
-        return Object.freeze(projectNonMekEscalatingFailureInteractions(
-            snapshot.entity,
-            snapshot.index,
-            snapshot.state,
-            snapshot.ruleset,
-            'inventory',
-        ).map(interaction => Object.freeze({
-            instanceId: snapshot.instanceId,
-            unitLabel: this.snapshot().displayName,
-            componentId: interaction.componentId,
-            componentLabel: interaction.componentLabel,
-            stateRevision: snapshot.state.stateRevision,
-            choices: Object.freeze(interaction.choices.map((choice, choiceIndex) => {
-                const token = JSON.stringify([
-                    'non-mek-escalating-failure',
-                    snapshot.instanceId,
-                    snapshot.state.stateRevision,
-                    interaction.componentId,
-                    choiceIndex,
-                ]) as MekEquipmentChoiceToken;
-                const edit: EntityEscalatingFailureEdit = choice.value
-                    === ESCALATING_FAILURE_DISABLED_CHOICE_VALUE
-                    ? Object.freeze({
-                        kind: 'set-status',
-                        status: interaction.status === 'disabled' ? 'available' : 'disabled',
-                    })
-                    : Object.freeze({ kind: 'select-sequence', index: Number(choice.value) });
-                this.entityInteractionBindings.set(token, Object.freeze({
-                    componentId: interaction.componentId,
-                    edit,
-                }));
-                return Object.freeze({
-                    token,
-                    handlerId: ESCALATING_FAILURE_HANDLER_ID,
-                    interactionKind: 'escalating-failure',
-                    label: choice.label,
-                    ...(choice.shortLabel === undefined ? {} : { shortLabel: choice.shortLabel }),
-                    active: choice.active ?? false,
-                    disabled: choice.disabled ?? false,
-                    ...(choice.selectionTone === undefined ? {} : { selectionTone: choice.selectionTone }),
-                    ...(choice.colors === undefined ? {} : { colors: choice.colors }),
-                    ...(choice.keepOpen === undefined ? {} : { keepOpen: choice.keepOpen }),
-                    ...(choice.displayType === undefined ? {} : { displayType: choice.displayType }),
-                    ...(choice.tooltipType === undefined ? {} : { tooltipType: choice.tooltipType }),
-                    ...(choice.failureTarget === undefined ? {} : { failureTarget: choice.failureTarget }),
-                } satisfies MekEquipmentChoice);
-            })),
-        })));
+    private interactionRows(): readonly CBTEquipmentInteraction[] {
+        return this.member.force.getEquipmentInteractions(this.member.id, 'inventory');
     }
 
     private reject(reason: string): void {

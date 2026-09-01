@@ -92,10 +92,14 @@ export class NativeEntityService {
             );
         }
         const prepared = await this.prepareRepository();
-        const sourceHash = captured.sourceHashAtSave
-            ?? prepared.generation.manifest.manifest.units[captured.uuid]?.hash;
+        // The UUID is the persisted source of truth. A saved hash describes an
+        // obsolete catalog snapshot and must never reject a unit after mm-data
+        // legitimately updates it. Use only the current generation hash to
+        // verify/cache the source that is installed now.
+        const sourceHash = prepared.generation.manifest.manifest.units[captured.uuid]?.hash;
         return prepared.repository.load({
-            ...captured,
+            provider: captured.provider,
+            uuid: captured.uuid,
             ...(sourceHash === undefined ? {} : { sourceHash }),
         });
     }

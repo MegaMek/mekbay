@@ -14,13 +14,10 @@ import {
     type EncounterNetworkEndpoint,
 } from '../models/runtime/encounter-runtime';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerNotifications,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 import {
     C3EM_TOGGLE_CHOICE_VALUE,
     C3EmergencyMasterHandler,
@@ -439,20 +436,18 @@ function directC3Setup(initialRole: C3EndpointRole | null) {
         toast,
         notifications: {
             showToast: jasmine.createSpy('showToast'),
-        } as HandlerNotifications & { showToast: jasmine.Spy },
-        queryContext: createHandlerQueryContext(fixture.equipment),
-        commandContext: createHandlerCommandContext(fixture.equipment, toast, dialogsService()),
+        } as EquipmentInteractionNotifications & { showToast: jasmine.Spy },
+        queryContext: {},
+        commandContext: { toastService: toast, dialogsService: dialogsService() },
     };
 }
 
-function toastService(): HandlerToastService & { showToast: jasmine.Spy } {
-    return { showToast: jasmine.createSpy('showToast'), toasts: () => [] };
+function toastService(): EquipmentInteractionNotifications & { showToast: jasmine.Spy } {
+    return { showToast: jasmine.createSpy('showToast') };
 }
 
-function dialogsService(): HandlerDialogsService {
+function dialogsService(): EquipmentInteractionDialogsService {
     return {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
     };
 }

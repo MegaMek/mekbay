@@ -27,26 +27,22 @@ import type {
     CBTUnitRuntimeIndex,
 } from './cbt-unit-runtime';
 
-export type NonMekRuntimeLocation = CBTRuntimeLocation;
 
-export type NonMekRuntimeArmorFace = CBTRuntimeArmorFace;
 
 export interface NonMekRuntimeComponent extends CBTRuntimeComponent {
     readonly kind: 'equipment';
     readonly mount: EntityMountedEquipment;
 }
 
-export type NonMekRuntimeCrewPosition = CBTRuntimeCrewPosition;
 
-export type NonMekDamageTrack = NonMekDamageTrackDefinition;
 
 /** Disposable lookups over the canonical entity; no blueprint facts are copied. */
 export interface NonMekRuntimeIndex extends CBTUnitRuntimeIndex {
-    readonly locations: ReadonlyMap<LocationId, NonMekRuntimeLocation>;
-    readonly armorFaces: ReadonlyMap<ArmorFaceId, NonMekRuntimeArmorFace>;
+    readonly locations: ReadonlyMap<LocationId, CBTRuntimeLocation>;
+    readonly armorFaces: ReadonlyMap<ArmorFaceId, CBTRuntimeArmorFace>;
     readonly components: ReadonlyMap<ComponentId, NonMekRuntimeComponent>;
-    readonly damageTracks: ReadonlyMap<SystemDamageTrackId, NonMekDamageTrack>;
-    readonly crewPositions: ReadonlyMap<CrewPositionId, NonMekRuntimeCrewPosition>;
+    readonly damageTracks: ReadonlyMap<SystemDamageTrackId, NonMekDamageTrackDefinition>;
+    readonly crewPositions: ReadonlyMap<CrewPositionId, CBTRuntimeCrewPosition>;
 }
 
 export function componentIdForMount(mount: EntityMountedEquipment): ComponentId {
@@ -54,8 +50,8 @@ export function componentIdForMount(mount: EntityMountedEquipment): ComponentId 
 }
 
 export function buildNonMekRuntimeIndex(entity: BaseEntity): NonMekRuntimeIndex {
-    const locations = new Map<LocationId, NonMekRuntimeLocation>();
-    const armorFaces = new Map<ArmorFaceId, NonMekRuntimeArmorFace>();
+    const locations = new Map<LocationId, CBTRuntimeLocation>();
+    const armorFaces = new Map<ArmorFaceId, CBTRuntimeArmorFace>();
     for (const damageLocation of entity.damageLocations()) {
         const code = damageLocation.code;
         const id = asLocationId(`location:${code}`);
@@ -97,13 +93,13 @@ export function buildNonMekRuntimeIndex(entity: BaseEntity): NonMekRuntimeIndex 
         components.set(id, Object.freeze({ kind: 'equipment', id, mount }));
     }
 
-    const damageTracks = new Map<SystemDamageTrackId, NonMekDamageTrack>();
+    const damageTracks = new Map<SystemDamageTrackId, NonMekDamageTrackDefinition>();
     for (const track of nonMekDamageTrackDefinitions(entity)) {
         if (damageTracks.has(track.id)) throw new Error(`Duplicate non-Mek damage-track ID ${track.id}`);
         damageTracks.set(track.id, track);
     }
 
-    const crewPositions = new Map<CrewPositionId, NonMekRuntimeCrewPosition>();
+    const crewPositions = new Map<CrewPositionId, CBTRuntimeCrewPosition>();
     for (let occurrence = 0; occurrence < entity.crewSlotCount(); occurrence += 1) {
         const id = asCrewPositionId(`crew:${occurrence}`);
         crewPositions.set(id, Object.freeze({ id, occurrence }));

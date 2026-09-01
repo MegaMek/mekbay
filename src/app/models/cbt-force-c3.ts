@@ -19,7 +19,6 @@ import {
     syncComponentC3EmergencyMasterEncounter,
     type ComponentC3EmergencyMasterDefinition,
 } from './runtime/component-c3-emergency-master';
-import { projectOperationalC3Networks } from './runtime/c3-operational-network';
 import type { EncounterNetwork } from './runtime/encounter-runtime';
 import { c3EndpointKey, projectEffectiveMekC3Networks } from './runtime/mek-c3-runtime';
 import { equipmentForComponent } from './runtime/mek-runtime-index';
@@ -289,6 +288,26 @@ export function validateCBTEncounterNetworks(
         c3Components: projectEncounterC3Components(instanceId, projectReadyC3Components(unit), configured),
     }));
     return validateEncounterNetworks(configured, presentation);
+}
+
+/** A standard graph needs a master and member; peer graphs need two live units. */
+function projectOperationalC3Networks(
+    networks: readonly EncounterNetwork[],
+    isEndpointOperational: (instanceId: string, componentId: ComponentId) => boolean,
+): readonly EncounterNetwork[] {
+    return Object.freeze(networks.flatMap(network => {
+        const endpoints = network.endpoints.filter(endpoint =>
+            isEndpointOperational(endpoint.instanceId, endpoint.componentId));
+        const distinctUnits = new Set(endpoints.map(endpoint => endpoint.instanceId));
+        const usable = network.networkType === 'c3'
+            ? endpoints.filter(endpoint => endpoint.role === 'master').length === 1
+                && endpoints.some(endpoint => endpoint.role === 'member')
+                && distinctUnits.size >= 2
+            : distinctUnits.size >= 2;
+        return usable
+            ? [Object.freeze({ ...network, endpoints: Object.freeze(endpoints) })]
+            : [];
+    }));
 }
 
 export function projectReadyC3Components(unit: CBTUnit): readonly C3Component[] {

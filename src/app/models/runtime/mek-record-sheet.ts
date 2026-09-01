@@ -21,11 +21,10 @@ import type { MekMovementPsrProjectionResultV2, MekMovementPsrStateV2 } from './
 import {
     MEK_LOCATION_CONDITION_KEYS,
     type MekUnitRuntimeState,
-    type CrewRuntimeState,
     type MekLocationConditionKey,
 } from './runtime-state';
 import type { MekUnitQueryPort } from './unit-instance';
-import { isCrewDeathCommitted } from './cbt-unit-runtime';
+import { isCrewDeathCommitted, type CBTCrewRuntimeState } from './cbt-unit-runtime';
 import {
     projectMekEquipmentComponents,
     type EquipmentPanelComponent,
@@ -130,7 +129,7 @@ export interface MekRecordSheetCrewPosition {
     readonly role: string;
     readonly gunnery: number;
     readonly piloting: number;
-    readonly state: CrewRuntimeState;
+    readonly state: CBTCrewRuntimeState;
     /** Rule-derived display state, including lethal wounds and cockpit loss. */
     readonly effectiveState: Extract<CrewMemberState, 'healthy' | 'ejected' | 'unconscious' | 'dead'>;
 }
@@ -566,7 +565,7 @@ function projectMekUnitStatusFromDestruction(
 function effectiveMekCrewState(
     entity: MekEntity,
     occurrence: number,
-    state: CrewRuntimeState,
+    state: CBTCrewRuntimeState,
     mainCockpitUnavailable: boolean,
     commandConsoleUnavailable: boolean,
 ): MekRecordSheetCrewPosition['effectiveState'] {

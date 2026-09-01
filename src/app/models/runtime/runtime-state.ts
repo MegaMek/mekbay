@@ -12,7 +12,6 @@ import type { SavedEntityIdentity } from '../persisted-unit-state';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import type { EquipmentStatus } from '../equipment-status.model';
-import type { UnitConditionKey } from '../unit-condition.model';
 import {
     canonicalizeMekTurnStateV2,
     createPristineMekTurnStateV2,
@@ -36,12 +35,10 @@ import { uuidv4 } from '../../utils/uuid.util';
 import {
     createPristineAttackerTargetingState,
     freezeAttackerTargetingState,
-    type AttackerTargetingState,
 } from './attacker-targeting-state';
 import type { SparseMekGaussPowerState } from './mek-gauss-power';
 import {
     freezeEquipmentRowOrder,
-    type EquipmentRowOrderState,
 } from './equipment-row-order';
 import type {
     CBTCrewRuntimeState,
@@ -90,11 +87,9 @@ export interface CriticalSlotRuntimeState {
     readonly destroyedTurn?: number;
 }
 
-export type EscalatingFailureSequence = number;
-
 /** Sparse component-local lifecycle state. Absence means sequence zero and inactive. */
 export interface EscalatingFailureRuntimeState {
-    readonly sequence: EscalatingFailureSequence;
+    readonly sequence: number;
     readonly active?: true;
 }
 
@@ -167,8 +162,6 @@ export interface AmmoRuntimeState {
     readonly munitionOverride?: string;
 }
 
-export type CrewRuntimeState = CBTCrewRuntimeState;
-
 export interface PendingCombatOverlay {
     readonly locationInternalDamage: ReadonlyMap<LocationId, number>;
     readonly armorDamage: ReadonlyMap<ArmorFaceId, number>;
@@ -190,27 +183,17 @@ export interface PendingCombatOverlay {
 }
 
 export interface MekUnitRuntimeState extends CBTUnitRuntimeState {
-    readonly stateRevision: number;
     /** Explicit source/import override; absent mechanical damage remains independently derivable. */
     readonly explicitlyDestroyed: boolean;
     /** Reconciled effective value used by hot runtime projections; never persistence authority. */
     readonly destroyed: boolean;
     readonly locations: ReadonlyMap<LocationId, LocationRuntimeState>;
     readonly slots: ReadonlyMap<CriticalSlotId, CriticalSlotRuntimeState>;
-    readonly components: ReadonlyMap<ComponentId, ComponentRuntimeState>;
-    readonly ammo: ReadonlyMap<ComponentId, AmmoRuntimeState>;
-    /** Sparse deviations from the healthy/conscious crew baseline. */
-    readonly crew: ReadonlyMap<CrewPositionId, CrewRuntimeState>;
     readonly heat: MekHeatStateV2;
-    readonly conditions: ReadonlySet<UnitConditionKey>;
     /** Persistent typed outcomes; required even when empty in runtime schema V4. */
     readonly ruleChecks: MekRuleChecksV2;
     /** Sole typed owner of Mek movement declarations, phase damage, and pilot checks. */
     readonly movementPsr: MekMovementPsrStateV2;
-    /** Sole unit-local owner of weapon selection, ammo preference, and attacker-relative target facts. */
-    readonly attackerTargeting: AttackerTargetingState;
-    /** Optional presentation-only permutations; Entity component topology remains canonical. */
-    readonly equipmentRowOrder?: EquipmentRowOrderState;
     readonly turn: MekTurnStateV2;
     readonly pendingCombat: PendingCombatOverlay;
 }
@@ -243,7 +226,7 @@ export function createPristineMekState(): MekUnitRuntimeState {
         slots: new ImmutableIndex<CriticalSlotId, CriticalSlotRuntimeState>([]),
         components: new ImmutableIndex<ComponentId, ComponentRuntimeState>([]),
         ammo: new ImmutableIndex<ComponentId, AmmoRuntimeState>([]),
-        crew: new ImmutableIndex<CrewPositionId, CrewRuntimeState>([]),
+        crew: new ImmutableIndex<CrewPositionId, CBTCrewRuntimeState>([]),
         heat: createPristineMekHeatStateV2(),
         conditions: new ImmutableSet([]),
         ruleChecks: new ImmutableIndex([]),

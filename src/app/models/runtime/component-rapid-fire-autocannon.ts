@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { PickerChoice } from '../../components/picker/picker.interface';
-import { EQUIPMENT_DISABLED_CHOICE_VALUE } from '../component-control-choice';
 import { WeaponEquipment } from '../equipment.model';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import { weaponTraitFlag } from '../weapon-traits-kernel';
@@ -11,10 +10,6 @@ import {
     ComponentModeHandler,
     type ComponentModeDefinition,
 } from './component-mode';
-import {
-    createComponentJamDefinition,
-    type ComponentJamDefinition,
-} from './component-jam';
 import {
     EquipmentInteractionHandler,
     type EquipmentInteractionChoice,
@@ -27,6 +22,15 @@ import type { CBTUnitInstance } from './unit-instance';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { rapidFireAutocannonComponentModes } from '../rapid-fire-autocannon-mode.model';
+
+export const UAC_JAMMED_CHOICE_VALUE = 'true';
+const UAC_UNJAMMED_CHOICE_VALUE = 'false';
+
+export interface ComponentJamDefinition {
+    readonly componentId: ComponentId;
+    readonly displayName: string;
+    readonly supportsJamming: boolean;
+}
 
 export function rapidFireAutocannonSupportsJamming(
     index: MekRuntimeIndex,
@@ -133,7 +137,7 @@ export class UACJammingHandler extends EquipmentInteractionHandler {
         return [{
             label: jammed ? 'Jammed' : 'Jam',
             shortLabel: jammed ? 'Unjam' : 'Jam',
-            value: jammed ? 'false' : EQUIPMENT_DISABLED_CHOICE_VALUE,
+            value: jammed ? UAC_UNJAMMED_CHOICE_VALUE : UAC_JAMMED_CHOICE_VALUE,
             stateEdit: jammed ? 'enable' : 'disable',
             displayType: 'toggle',
             active: jammed,
@@ -147,7 +151,7 @@ export class UACJammingHandler extends EquipmentInteractionHandler {
         choice: PickerChoice,
         context: EquipmentInteractionCommandContext,
     ): boolean {
-        const jammed = choice.value === EQUIPMENT_DISABLED_CHOICE_VALUE;
+        const jammed = choice.value === UAC_JAMMED_CHOICE_VALUE;
         if (!definition.supportsJamming) return false;
         if (runtime.query().componentJammed(definition.componentId) === jammed) return true;
         const result = runtime.dispatch({
@@ -167,10 +171,9 @@ export class UACJammingHandler extends EquipmentInteractionHandler {
     private definition(input: EquipmentInteractionInput): ComponentJamDefinition {
         const equipment = equipmentForComponent(input.index, input.componentId);
         if (!equipment) throw new Error(`Component ${input.componentId} has no equipment`);
-        return createComponentJamDefinition({
+        return Object.freeze({
             componentId: input.componentId,
             displayName: equipment.shortName || equipment.name,
-            flags: equipment.flags,
             supportsJamming: rapidFireAutocannonSupportsJamming(
                 input.index,
                 input.componentId,

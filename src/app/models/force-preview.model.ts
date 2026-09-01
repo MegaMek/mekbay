@@ -46,6 +46,7 @@ export interface ForcePreviewGroup {
 }
 
 export interface ForcePreviewEntry {
+    persistenceVersion: 1 | 2;
     instanceId: string;
     timestamp: string;
     type: GameSystem;
@@ -85,6 +86,7 @@ function resolveSerializedUnitId(id: string | undefined): string {
 function createForcePreviewGroups(
     rawGroups: readonly RemoteLoadForceGroup[] | undefined,
     getUnitByName: (name: string) => UnitSummary | undefined,
+    getUnitByUuid?: (uuid: string) => UnitSummary | undefined,
 ): ForcePreviewGroup[] {
     if (!Array.isArray(rawGroups)) {
         return [];
@@ -93,12 +95,14 @@ function createForcePreviewGroups(
     return rawGroups.map((group) => ({
         name: group.name,
         formationId: group.formationId,
-        units: (group.units ?? []).map((unit: RemoteLoadForceUnit) => createForcePreviewUnit(unit, getUnitByName)),
+        units: (group.units ?? []).map((unit: RemoteLoadForceUnit) =>
+            createForcePreviewUnit(unit, getUnitByName, getUnitByUuid)),
     }));
 }
 
 function createForcePreviewEntryData(data: Partial<ForcePreviewEntry>): ForcePreviewEntry {
     const previewEntry: ForcePreviewEntry = {
+        persistenceVersion: data.persistenceVersion ?? 2,
         instanceId: data.instanceId ?? '',
         timestamp: data.timestamp ?? '',
         type: data.type ?? GameSystem.CBT,
@@ -132,9 +136,12 @@ export function isForcePreviewEntry(value: unknown): value is ForcePreviewEntry 
 export function createForcePreviewUnit(
     raw: RemoteLoadForceUnit,
     getUnitByName: (name: string) => UnitSummary | undefined,
+    getUnitByUuid?: (uuid: string) => UnitSummary | undefined,
 ): ForcePreviewUnit {
     const previewUnit: ForcePreviewUnit = {
-        unit: getUnitByName(raw.unit),
+        unit: raw.uuid !== undefined
+            ? getUnitByUuid?.(raw.uuid)
+            : raw.unit === undefined ? undefined : getUnitByName(raw.unit),
         destroyed: raw.state?.destroyed ?? false,
         lockKey: uuidv7(),
     };
@@ -240,6 +247,7 @@ export function createForcePreviewEntry(
     options: { cloud?: boolean; local?: boolean } = {},
 ): ForcePreviewEntry {
     return createForcePreviewEntryData({
+        persistenceVersion: raw.version ?? 1,
         cloud: options.cloud ?? false,
         local: options.local ?? false,
         owned: raw.owned ?? true,
@@ -253,7 +261,11 @@ export function createForcePreviewEntry(
         bv: raw.bv,
         pv: raw.pv,
         timestamp: raw.timestamp,
-        groups: createForcePreviewGroups(raw.groups, (name) => resolver.getUnitByName(name)),
+        groups: createForcePreviewGroups(
+            raw.groups,
+            (name) => resolver.getUnitByName(name),
+            (uuid) => resolver.getUnitByUuid(uuid),
+        ),
     });
 }
 
@@ -266,6 +278,7 @@ export function createForcePreviewEntryFromSerializedForce(
         throw new Error('Force preview requires normalized current persistence');
     }
     return createForcePreviewEntryData({
+        persistenceVersion: 2,
         cloud: options.cloud ?? false,
         local: options.local ?? false,
         owned: raw.owned ?? true,
@@ -317,6 +330,7 @@ export function createForcePreviewEntryFromForce(
         sum + forceMemberAdjustedValue(member, 'damaged'), 0);
 
     return createForcePreviewEntryData({
+        persistenceVersion: 2,
         cloud: options.cloud ?? false,
         local: options.local ?? false,
         owned: force.owned(),

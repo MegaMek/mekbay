@@ -53,7 +53,13 @@ import { resolveMekUnitWaterState } from '../models/runtime/mek-targeting-rules'
 import { MAX_MEK_CREW_WOUNDS, type MekUnitRuntimeState } from '../models/runtime/runtime-state';
 import { uuidv4 } from '../utils/uuid.util';
 import { selectedManualEndTurnHeat } from '../models/runtime/end-turn-heat-selection';
-import type { MekPendingFallConsequencesV2 } from '../models/runtime/mek-turn-state-v2';
+import type {
+    MekPendingCriticalChanceResultV2,
+    MekPendingCriticalChanceV2,
+    MekPendingCriticalEventV2,
+    MekPendingCriticalHitV2,
+    MekPendingFallConsequencesV2,
+} from '../models/runtime/mek-turn-state-v2';
 import type { CBTUnitCommand, MekHitArcV2, MekUnitQueryPort } from '../models/runtime/unit-instance';
 import { isModularArmorEquipment } from '../models/modular-armor.model';
 import type { MekHitLocationTable } from '../utils/record-sheet-reference-table';
@@ -112,6 +118,10 @@ export interface PreparedDirectMekEndPhaseAutomation {
 export interface PreparedDirectMekEndTurnAutomation {
     readonly instanceId: string;
     readonly prepared: PreparedDirectMekAutomationCommand;
+}
+
+export interface DirectMekAutomationReviewOptions {
+    readonly interactive?: boolean;
 }
 
 interface DirectCriticalChanceContext {
@@ -269,6 +279,7 @@ export class DirectMekAutomationService {
     private readonly crewHitAutomation = inject(CBTCrewHitAutomationService);
     private readonly fallingAutomation = inject(MekFallingAutomationService);
     private readonly options = inject(OptionsService);
+    private readonly resolvingCriticalEvents = new WeakMap<CBTForce, Set<string>>();
 
     async prepareCommand(
         force: CBTForce,
@@ -380,6 +391,7 @@ export class DirectMekAutomationService {
     async prepareEndTurnCommands(
         force: CBTForce,
         requests: readonly DirectMekEndTurnAutomationRequest[],
+        review: DirectMekAutomationReviewOptions = {},
     ): Promise<readonly PreparedDirectMekEndTurnAutomation[] | null> {
         const rows = requests.map(request => {
             const snapshot = this.snapshot(force, request.instanceId);
@@ -462,6 +474,7 @@ export class DirectMekAutomationService {
                         ? 'Choose which units\' heat, dissipation, heat effects, and pilot hits to apply.'
                         : 'Choose which units\' heat, dissipation, and heat effects to apply.',
                     allowCancel: true,
+                    interactive: review.interactive,
                 },
             );
             if (accepted === null) return null;
@@ -485,6 +498,7 @@ export class DirectMekAutomationService {
                 title: 'Review Heat and Dissipation',
                 message: 'Choose which heat and dissipation results to apply.',
                 allowCancel: true,
+                interactive: review.interactive,
             },
         );
         if (acceptedHeat === null) return null;
@@ -533,6 +547,7 @@ export class DirectMekAutomationService {
                     ? 'Choose which units\' heat effects and pilot hits to resolve.'
                     : 'Choose which units\' heat effects to resolve.',
                 allowCancel: true,
+                interactive: review.interactive,
             },
         );
         if (acceptedEffects === null) return null;
@@ -566,6 +581,7 @@ export class DirectMekAutomationService {
                     title: 'Review Pilot Hits',
                     message: 'Choose which units\' pilot-hit effects to apply. Accepted hits continue directly into any required Consciousness Rolls.',
                     allowCancel: true,
+                    interactive: review.interactive,
                 },
             );
             if (decision === null) return null;
@@ -595,6 +611,9 @@ export class DirectMekAutomationService {
             dispatch,
         );
         if (resumedFall === false) return null;
+        if (!await this.resumePendingCriticalEvents(force, instanceId, dispatch, false)) {
+            return null;
+        }
         if (prepared.command.type === 'end-phase' && prepared.phaseBoundary) {
             if (!await this.applyPhaseBoundary(
                 force,
@@ -737,6 +756,7 @@ export class DirectMekAutomationService {
     async prepareEndPhaseCommands(
         force: CBTForce,
         requests: readonly DirectMekEndPhaseAutomationRequest[],
+        review: DirectMekAutomationReviewOptions = {},
     ): Promise<readonly PreparedDirectMekEndPhaseAutomation[] | null> {
         const rows = requests.map(request => {
             const snapshot = this.snapshot(force, request.instanceId);
@@ -763,7 +783,7 @@ export class DirectMekAutomationService {
         const recoveryResults = await this.automationChecks.resolve(
             'pilotHitsAndConsciousnessCheck',
             recoveryCandidates,
-            { title: 'Recover Consciousness' },
+            { title: 'Recover Consciousness', interactive: review.interactive },
         );
         if (recoveryResults === null) return null;
         const recoveryById = new Map(recoveryResults.map(result => [result.id, result]));
@@ -817,7 +837,11 @@ export class DirectMekAutomationService {
         const checkResults = await this.automationChecks.resolve(
             'pilotSkillCheck',
             checkCandidates,
-            { title: 'Piloting Skill Rolls', initiallyFailedGroups },
+            {
+                title: 'Piloting Skill Rolls',
+                initiallyFailedGroups,
+                interactive: review.interactive,
+            },
         );
         if (checkResults === null) return null;
         const checkById = new Map(checkResults.map(result => [result.id, result]));
@@ -1179,14 +1203,19 @@ export class DirectMekAutomationService {
                 return Object.freeze({ dice: checkDice, total: checkTotal, discarded: checkTotal >= 8 });
             })
             : [];
-        const event: AutomationReviewEvent = Object.freeze({
-            id: `critical:${instanceId}:${snapshot.query.stateRevision}:${locationId}`,
-            subject: this.subject(snapshot),
-            event: 'Critical Hit Chance',
-            description: `Rolled ${twoD6Total(dice)}${modifier === 0 ? '' : ` ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)}`} = ${total}.`,
+        const pending: MekPendingCriticalChanceV2 = Object.freeze({
+            type: 'critical-chance',
+            eventId: `critical:${instanceId}:${snapshot.query.stateRevision}:${locationId}`,
+            locationId,
+            target,
+            ...(context.locationDestroyed ? { locationDestroyed: true as const } : {}),
+            roll: dice,
+            modifier,
+            total,
+            result: criticalChanceResult(outcome),
             breakdown: Object.freeze(modifiers
                 .filter(row => !row.optional || row.enabled)
-                .map((row, index) => Object.freeze({ id: String(index), label: row.label, value: row.value }))),
+                .map(row => Object.freeze({ label: row.label, value: row.value }))),
             effects: Object.freeze([
                 floatingDescription,
                 context.locationDestroyed
@@ -1196,41 +1225,236 @@ export class DirectMekAutomationService {
                 ...caseIIChecks.map((check, index) =>
                     `CASE II check ${index + 1}: ${check.total} vs 8+ — ${check.discarded ? 'critical discarded' : 'critical applies'}`),
             ].filter((row): row is string => row !== undefined)),
+            caseIIDiscards: Object.freeze(outcome.kind === 'critical-hits'
+                ? Array.from(
+                    { length: outcome.count },
+                    (_, index) => caseIIChecks[index]?.discarded ?? false,
+                )
+                : []),
+        });
+        if (!await this.appendPendingCriticalEvent(force, instanceId, pending, dispatch)) return;
+        await this.resumePendingCriticalEvents(force, instanceId, dispatch, false);
+    }
+
+    /** Resumes the ordered durable critical chain advertised by the unit badge. */
+    async resumePendingAutomation(
+        force: CBTForce,
+        instanceId: string,
+        dispatch: DirectMekAutomationDispatch,
+        interactive = true,
+    ): Promise<boolean> {
+        return this.resumePendingCriticalEvents(force, instanceId, dispatch, interactive);
+    }
+
+    private async resumePendingCriticalEvents(
+        force: CBTForce,
+        instanceId: string,
+        dispatch: DirectMekAutomationDispatch,
+        interactive: boolean,
+    ): Promise<boolean> {
+        let active = this.resolvingCriticalEvents.get(force);
+        if (!active) {
+            active = new Set<string>();
+            this.resolvingCriticalEvents.set(force, active);
+        }
+        if (active.has(instanceId)) return true;
+        active.add(instanceId);
+        try {
+            while (true) {
+                const pending = this.snapshot(force, instanceId)
+                    ?.state.turn.pendingCriticalEvents?.[0];
+                if (!pending) return true;
+                const advanced = pending.type === 'critical-chance'
+                    ? await this.resumePendingCriticalChance(
+                        force, instanceId, pending, dispatch, interactive,
+                    )
+                    : await this.resumePendingCriticalHit(force, instanceId, pending, dispatch);
+                if (!advanced) return false;
+            }
+        } finally {
+            active.delete(instanceId);
+            if (active.size === 0) this.resolvingCriticalEvents.delete(force);
+        }
+    }
+
+    private async resumePendingCriticalChance(
+        force: CBTForce,
+        instanceId: string,
+        pending: MekPendingCriticalChanceV2,
+        dispatch: DirectMekAutomationDispatch,
+        interactive: boolean,
+    ): Promise<boolean> {
+        const snapshot = this.snapshot(force, instanceId);
+        if (!snapshot) return false;
+        const event: AutomationReviewEvent = Object.freeze({
+            id: pending.eventId,
+            subject: this.subject(snapshot),
+            event: 'Critical Hit Chance',
+            description: `Rolled ${twoD6Total(pending.roll)}`
+                + `${pending.modifier === 0 ? '' : ` ${pending.modifier > 0 ? '+' : '−'} ${Math.abs(pending.modifier)}`}`
+                + ` = ${pending.total}.`,
+            breakdown: Object.freeze(pending.breakdown.map((row, index) => Object.freeze({
+                id: String(index), label: row.label, value: row.value,
+            }))),
+            effects: pending.effects,
         });
         const accepted = await this.automation.resolve(
             'criticalHitChanceCheck',
             [event],
-            { title: 'Review Critical Hit Chance' },
+            { title: 'Review Critical Hit Chance', interactive },
         );
-        if (!accepted?.has(event.id) || outcome.kind === 'none') return;
-        if (outcome.kind === 'blown-off') {
-            await dispatch({
-                type: 'apply-mek-blow-off', locationId, target,
+        if (accepted === null) return false;
+        if (!accepted.has(event.id) || pending.result === 'none') {
+            return this.discardPendingCriticalEvent(force, instanceId, pending.eventId, dispatch);
+        }
+        if (pending.result === 'blown-off') {
+            const result = await dispatch({
+                type: 'apply-mek-blow-off',
+                locationId: pending.locationId,
+                target: pending.target,
             }, false);
-            return;
+            return result.accepted
+                && this.discardPendingCriticalEvent(force, instanceId, pending.eventId, dispatch);
         }
-        for (let hit = 0; hit < outcome.count; hit += 1) {
-            if (caseIIChecks[hit]?.discarded) continue;
-            snapshot = this.snapshot(force, instanceId);
-            if (!snapshot) return;
-            const rollProfile = snapshot.query.mekCriticalRollProfile(locationId, target);
-            if (rollProfile.validRolls.length === 0) return;
-            const results = context.locationDestroyed
-                ? Object.freeze(Array.from(
-                    { length: rollProfile.diceCount },
-                    () => randomD6(),
-                ))
+        const hit: MekPendingCriticalHitV2 = Object.freeze({
+            type: 'critical-hit',
+            eventId: pending.eventId,
+            locationId: pending.locationId,
+            target: pending.target,
+            ...(pending.locationDestroyed ? { locationDestroyed: true as const } : {}),
+            remainingHits: pending.result,
+            caseIIDiscards: pending.caseIIDiscards,
+        });
+        return this.replacePendingCriticalEvent(force, instanceId, hit, dispatch);
+    }
+
+    private async resumePendingCriticalHit(
+        force: CBTForce,
+        instanceId: string,
+        pending: MekPendingCriticalHitV2,
+        dispatch: DirectMekAutomationDispatch,
+    ): Promise<boolean> {
+        if (pending.caseIIDiscards[0]) {
+            return this.consumePendingCriticalHit(force, instanceId, pending, dispatch);
+        }
+        let snapshot = this.snapshot(force, instanceId);
+        if (!snapshot) return false;
+        const rollProfile = snapshot.query.mekCriticalRollProfile(pending.locationId, pending.target);
+        if (rollProfile.validRolls.length === 0) {
+            return this.consumePendingCriticalHit(force, instanceId, pending, dispatch);
+        }
+        let results = pending.roll;
+        if (!results) {
+            results = pending.locationDestroyed
+                ? Object.freeze(Array.from({ length: rollProfile.diceCount }, () => randomD6()))
                 : rollProfile.validRolls[randomIndex(rollProfile.validRolls.length)]!;
-            if (context.locationDestroyed) {
-                const plan = snapshot.query.mekCriticalRoll(locationId, results, target);
-                // In a destroyed location a roll against an empty, inert, or otherwise
-                // non-explosive slot consumes this critical without applying damage.
-                if (plan.kind !== 'applied' || (!plan.explosion && !plan.pendingExplosion)) continue;
-            }
-            await dispatch({
-                type: 'apply-mek-critical-roll', locationId, results, target,
-            }, true);
+            if (!await this.replacePendingCriticalEvent(
+                force,
+                instanceId,
+                Object.freeze({ ...pending, roll: Object.freeze([...results]) }),
+                dispatch,
+            )) return false;
+            snapshot = this.snapshot(force, instanceId);
+            if (!snapshot) return false;
         }
+        if (pending.locationDestroyed) {
+            const plan = snapshot.query.mekCriticalRoll(pending.locationId, results, pending.target);
+            if (plan.kind !== 'applied' || (!plan.explosion && !plan.pendingExplosion)) {
+                return this.consumePendingCriticalHit(force, instanceId, {
+                    ...pending,
+                    roll: results,
+                }, dispatch);
+            }
+        }
+        const result = await dispatch({
+            type: 'apply-mek-critical-roll',
+            locationId: pending.locationId,
+            results,
+            target: pending.target,
+        }, true);
+        if (!result.accepted || !result.changed) return false;
+        return this.consumePendingCriticalHit(force, instanceId, {
+            ...pending,
+            roll: results,
+        }, dispatch);
+    }
+
+    private async appendPendingCriticalEvent(
+        force: CBTForce,
+        instanceId: string,
+        event: MekPendingCriticalEventV2,
+        dispatch: DirectMekAutomationDispatch,
+    ): Promise<boolean> {
+        const current = this.snapshot(force, instanceId)?.state.turn.pendingCriticalEvents ?? [];
+        if (current.some(candidate => candidate.eventId === event.eventId)) return true;
+        return this.replacePendingCriticalEvents(force, instanceId, [...current, event], dispatch);
+    }
+
+    private async replacePendingCriticalEvent(
+        force: CBTForce,
+        instanceId: string,
+        event: MekPendingCriticalEventV2,
+        dispatch: DirectMekAutomationDispatch,
+    ): Promise<boolean> {
+        const current = this.snapshot(force, instanceId)?.state.turn.pendingCriticalEvents ?? [];
+        const index = current.findIndex(candidate => candidate.eventId === event.eventId);
+        if (index < 0) return false;
+        const next = [...current];
+        next[index] = event;
+        return this.replacePendingCriticalEvents(force, instanceId, next, dispatch);
+    }
+
+    private async consumePendingCriticalHit(
+        force: CBTForce,
+        instanceId: string,
+        pending: MekPendingCriticalHitV2,
+        dispatch: DirectMekAutomationDispatch,
+    ): Promise<boolean> {
+        if (pending.remainingHits <= 1) {
+            return this.discardPendingCriticalEvent(force, instanceId, pending.eventId, dispatch);
+        }
+        return this.replacePendingCriticalEvent(force, instanceId, Object.freeze({
+            ...pending,
+            remainingHits: pending.remainingHits - 1,
+            caseIIDiscards: Object.freeze(pending.caseIIDiscards.slice(1)),
+            roll: undefined,
+        }), dispatch);
+    }
+
+    private async discardPendingCriticalEvent(
+        force: CBTForce,
+        instanceId: string,
+        eventId: string,
+        dispatch: DirectMekAutomationDispatch,
+    ): Promise<boolean> {
+        const current = this.snapshot(force, instanceId)?.state.turn.pendingCriticalEvents ?? [];
+        return this.replacePendingCriticalEvents(
+            force,
+            instanceId,
+            current.filter(event => event.eventId !== eventId),
+            dispatch,
+        );
+    }
+
+    private async replacePendingCriticalEvents(
+        force: CBTForce,
+        instanceId: string,
+        events: readonly MekPendingCriticalEventV2[],
+        dispatch: DirectMekAutomationDispatch,
+    ): Promise<boolean> {
+        const snapshot = this.snapshot(force, instanceId);
+        if (!snapshot) return false;
+        const { pendingCriticalEvents: _discarded, ...baseTurn } = snapshot.state.turn;
+        const result = await dispatch({
+            type: 'replace-turn-state',
+            turn: events.length === 0
+                ? baseTurn
+                : Object.freeze({
+                    ...baseTurn,
+                    pendingCriticalEvents: Object.freeze(events),
+                }),
+        }, false);
+        return result.accepted;
     }
 
     private async resolveBreachOrFlood(
@@ -2547,6 +2771,12 @@ function describeCriticalChance(result: MekCriticalChanceResult): string {
     if (result.kind === 'none') return 'No critical hit';
     if (result.kind === 'blown-off') return 'Location blown off';
     return `${result.count} critical hit${result.count === 1 ? '' : 's'}`;
+}
+
+function criticalChanceResult(result: MekCriticalChanceResult): MekPendingCriticalChanceResultV2 {
+    if (result.kind === 'none') return 'none';
+    if (result.kind === 'blown-off') return 'blown-off';
+    return result.count;
 }
 
 function mekLifeSupportHits(staged: StagedMekHeatEffects): number {

@@ -9,7 +9,7 @@ import {
     type SerializedOrganization,
 } from '../models/organization.model';
 import { DbService } from './db.service';
-import { WsService, type WsMessage } from './ws.service';
+import { FORCE_PERSISTENCE_REVISION, WsService, type WsMessage } from './ws.service';
 
 type WsDataResponse<T> = WsMessage & { readonly data?: T };
 type RemoteOrganizationEntry = Readonly<Pick<
@@ -100,6 +100,7 @@ export class OrganizationStorageService {
             if (ws) {
                 const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<LoadedOrganization | null>>({
                     action: 'getOrganization',
+                    forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                     organizationId,
                 });
                 cloudOrg = response?.data ?? null;
@@ -153,6 +154,7 @@ export class OrganizationStorageService {
 
         const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<RemoteOrganizationEntry[]>>({
             action: 'listOrganizations',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
         });
         return (response?.data ?? []).map(raw => new LoadOrganizationEntry({
             organizationId: raw.organizationId,
@@ -171,6 +173,7 @@ export class OrganizationStorageService {
         if (!ws) return;
         this.wsService.send({
             action: 'saveOrganization',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             data: org,
         });
     }
@@ -181,6 +184,7 @@ export class OrganizationStorageService {
             if (!ws) return;
             const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<LoadedOrganization | null>>({
                 action: 'getOrganization',
+                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                 organizationId,
             });
             if (response?.data) {
@@ -191,4 +195,3 @@ export class OrganizationStorageService {
             // Silently fail — will retry on next list
         }
     }}
-

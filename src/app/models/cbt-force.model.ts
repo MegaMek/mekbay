@@ -25,6 +25,7 @@ import {
     type EncounterNetwork,
     type EncounterTargetId,
     type TargetRegistryCommand,
+    type TargetRegistryCommandResult,
     type TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
 import {
@@ -58,13 +59,8 @@ import { evaluateCBTMekRuntimeCapability } from './runtime/cbt-unit-validation';
 import { type CrewAssignment, type CrewAssignmentPosition } from './runtime/crew-assignment';
 import type { UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { uuidv7 } from '../utils/uuid.util';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    EquipmentInteractionRegistryService,
-    type HandlerQueryContext,
-    type V2EquipmentInteractionKind,
-} from '../services/equipment-interaction-registry.service';
+import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
+import type { EquipmentInteractionQueryContext } from './runtime/equipment-interaction';
 import { ToastService } from '../services/toast.service';
 import { DialogsService } from '../services/dialogs.service';
 import { OptionsService } from '../services/options.service';
@@ -76,6 +72,7 @@ import {
     type CBTForceRosterQueryResult,
     type CBTForceRosterCommand,
     type CBTForceRosterCommandResult,
+    type CBTForceRosterCommandRejection,
     type CBTForceRosterGroupMetadataPatch,
     type CBTForceRosterMutationPlanResult,
 } from './runtime/cbt-force-roster-owner';
@@ -120,12 +117,6 @@ import { CBTForceRuntimeJournal, type CapturedRuntimeCommandMutation } from './r
 import { projectMekTurnPanel, type MekTurnPanelSnapshot } from './runtime/mek-turn-panel';
 import { CBTForceMemberRegistry } from './runtime/cbt-force-member-registry';
 import { CBTForceMekMutationImpact } from './runtime/cbt-force-mek-mutation-impact';
-import {
-    rejectedRosterCommand,
-    rejectedRuntimeUndoCommand,
-    rejectedUnitRepair,
-    rejectedUnitTransfer,
-} from './runtime/cbt-force-command-rejections';
 import { CBTForceUnitCommandDispatcher } from './runtime/cbt-force-unit-command-dispatcher';
 import {
     nextForceRevision,
@@ -142,21 +133,18 @@ import type {
     CBTDirectUnitAdmissionResult,
     CBTForceEndTurnAllResult,
     CBTForceTargetRegistryAuthority,
-    CBTForceTargetRegistryDispatchResult,
     CBTMekUnitCommandResult,
     CBTNonMekUnitCommandResult,
     CBTUnitRepairResult,
     CBTUnitTransferResult,
     C3State,
-    EquipmentRowOrderCommandResult,
     InventoryControlTargetRosterRow,
-    MekEquipmentChoiceDispatchResult,
-    MekEquipmentChoiceToken,
-    MekEquipmentInteraction,
+    CBTEquipmentChoiceCommand,
+    CBTEquipmentChoiceDispatchResult,
+    CBTEquipmentInteraction,
     RuntimeUndoCommandResult,
     SelectedWeaponFireCommandResult,
 } from './cbt-force.types';
-export type * from './cbt-force.types';
 
 
 type PreparedCBTForcePersistenceWithFence = PreparedCBTForcePersistenceV2 & Readonly<{
@@ -708,7 +696,7 @@ export class CBTForce extends Force<never> {
             const targeting = candidate.planTargetingReconciliation(
                 target.queryInventoryControlTargetRegistry(),
             );
-            targeting?.install();
+            targeting?.();
         } catch {
             return rejectedUnitTransfer('PERSISTENCE_REJECTED');
         }
@@ -1595,7 +1583,7 @@ export class CBTForce extends Force<never> {
             readonly group: EquipmentRowOrderGroup;
             readonly permutation: readonly number[];
         }>,
-    ): Promise<EquipmentRowOrderCommandResult> {
+    ): Promise<AttackerTargetingCommandResult> {
         const capturedInstanceId = instanceId;
         const captured = Object.freeze({
             group: command.group,
@@ -1662,40 +1650,44 @@ export class CBTForce extends Force<never> {
         });
     }
 
-    /** Detached Mek equipment rows; no runtime, facade or handler escapes. */
-    public getMekEquipmentInteractions(
-        choiceSurface?: HandlerQueryContext['choiceSurface'],
-    ): readonly MekEquipmentInteraction[] {
-        const registry = this.injector.get(EquipmentInteractionRegistryService).getRegistry();
+    /** Detached equipment rows; no runtime, facade or handler escapes. */
+    public getEquipmentInteractions(
+        instanceId: string,
+        choiceSurface?: EquipmentInteractionQueryContext['choiceSurface'],
+    ): readonly CBTEquipmentInteraction[] {
+        const registry = this.injector.get(EquipmentInteractionRegistry);
         return this.unitStore.equipmentInteractions(
+            instanceId,
             registry,
-            createHandlerQueryContext(this.dataService.getEquipmentRegistry(), choiceSurface),
+            choiceSurface === undefined ? {} : { choiceSurface },
             () => this.encounterRuntime.snapshot(),
             this.readOnly(),
         );
     }
 
-    public async dispatchMekEquipmentChoice(
-        token: MekEquipmentChoiceToken,
-    ): Promise<MekEquipmentChoiceDispatchResult> {
-        const capturedToken = token;
+    public async dispatchEquipmentChoice(
+        command: CBTEquipmentChoiceCommand,
+    ): Promise<CBTEquipmentChoiceDispatchResult> {
+        const capturedCommand = Object.freeze({ ...command });
         return this.enqueueCBTMutation(async () => {
-            const selectedId = this.unitStore.equipmentChoiceInstanceId(capturedToken);
-            const mutationScope = selectedId === null ? Object.freeze([]) : this.c3RuntimeMutationScope(selectedId);
+            const selectedId = capturedCommand.instanceId;
+            const selectedUnit = this.unitStore.cbtUnit(selectedId);
+            const mutationScope = selectedUnit && isCBTMekUnit(selectedUnit)
+                ? this.c3RuntimeMutationScope(selectedId)
+                : Object.freeze([selectedId]);
             const capture = this.captureRuntimeCommandMutation(mutationScope);
             const beforeModes = captureMekComponentModes(this.unitStore, mutationScope);
             const executionGeneration = this.captureForceOwnerGeneration();
-            const registry = this.injector.get(EquipmentInteractionRegistryService).getRegistry();
-            const queryContext = createHandlerQueryContext(this.dataService.getEquipmentRegistry());
+            const registry = this.injector.get(EquipmentInteractionRegistry);
+            const queryContext: EquipmentInteractionQueryContext = {};
             return this.unitStore.dispatchEquipmentChoice(
-                capturedToken,
+                capturedCommand,
                 registry,
                 queryContext,
-                createHandlerCommandContext(
-                    this.dataService.getEquipmentRegistry(),
-                    this.injector.get(ToastService),
-                    this.injector.get(DialogsService),
-                    () => {
+                {
+                    toastService: this.injector.get(ToastService),
+                    dialogsService: this.injector.get(DialogsService),
+                    configureC3Network: () => {
                         void import('../services/force-dialogs.service').then(({ ForceDialogsService }) =>
                             this.injector.get(ForceDialogsService).openC3Network(this, this.readOnly()))
                             .catch(() => this.injector.get(ToastService).showToast(
@@ -1703,7 +1695,7 @@ export class CBTForce extends Force<never> {
                                 'error',
                             ));
                     },
-                ),
+                },
                 () => this.encounterRuntime.snapshot(),
                 () => this.readOnly(),
                 () => this.isForceOwnerGenerationCurrent(executionGeneration),
@@ -1729,6 +1721,11 @@ export class CBTForce extends Force<never> {
 
     public hasPendingEndTurnForUnit(instanceId: string): boolean {
         return this.unitCommandDispatcher.hasPendingEndTurn(instanceId);
+    }
+
+    /** Resolves badge-advertised work without committing the phase or resetting the turn. */
+    public resolvePendingUnitAutomation(instanceId: string): Promise<boolean> {
+        return this.unitCommandDispatcher.resolvePendingAutomation(instanceId);
     }
 
     /** Ends every canonical V2 turn through one owner boundary. */
@@ -1974,7 +1971,7 @@ export class CBTForce extends Force<never> {
     public dispatchInventoryControlTargetRegistry(
         command: TargetRegistryCommand,
         authority: CBTForceTargetRegistryAuthority = 'user',
-    ): CBTForceTargetRegistryDispatchResult {
+    ): TargetRegistryCommandResult {
         const current = this.queryInventoryControlTargetRegistry();
         if (this.readOnly()) return readOnlyTargetRegistry(current);
 
@@ -2098,6 +2095,30 @@ function directAdmissionFailure(
     message: string,
 ): Extract<CBTDirectUnitAdmissionResult, { readonly kind: 'failed' }> {
     return Object.freeze({ kind: 'failed', reason, message });
+}
+
+function rejectedRosterCommand(
+    reason: CBTForceRosterCommandRejection['reason'],
+): CBTForceRosterCommandRejection {
+    return Object.freeze({ accepted: false, changed: false, reason });
+}
+
+function rejectedUnitRepair(
+    reason: Extract<CBTUnitRepairResult, { readonly accepted: false }>['reason'],
+): Extract<CBTUnitRepairResult, { readonly accepted: false }> {
+    return Object.freeze({ accepted: false, changed: false, reason });
+}
+
+function rejectedUnitTransfer(
+    reason: Extract<CBTUnitTransferResult, { readonly accepted: false }>['reason'],
+): Extract<CBTUnitTransferResult, { readonly accepted: false }> {
+    return Object.freeze({ accepted: false, changed: false, reason });
+}
+
+function rejectedRuntimeUndoCommand(
+    reason: NonNullable<RuntimeUndoCommandResult['reason']>,
+): RuntimeUndoCommandResult {
+    return Object.freeze({ accepted: false, changed: false, reason });
 }
 
 function errorMessage(error: unknown): string {

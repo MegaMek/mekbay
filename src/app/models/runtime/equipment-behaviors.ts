@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { EquipmentInteractionRegistryService } from '../../services/equipment-interaction-registry.service';
+import type { EquipmentInteractionRegistry } from '../../services/equipment-interaction-registry.service';
 import { ApolloHandler } from './component-apollo';
 import { EquipmentPowerHandler } from './component-equipment-power';
 import { MobileHpgHandler } from './component-mobile-hpg';
@@ -29,11 +29,12 @@ import { RiscLaserPulseModuleHandler } from './component-risc-laser-pulse';
 import { StealthHandler } from './component-stealth';
 import { VibrobladeHandler } from './component-vibroblade';
 import { GaussPowerHandler } from './mek-gauss-power';
-import type { EquipmentInteractionHandler } from './equipment-interaction';
 
 /** The only composition root. Feature behavior remains in each equipment-owned module. */
-export function createEquipmentInteractionHandlers(): readonly EquipmentInteractionHandler[] {
-    return Object.freeze([
+export function registerAllEquipmentBehaviors(
+    registry: EquipmentInteractionRegistry,
+): void {
+    for (const behavior of [
         new BoobyTrapHandler(),
         new ECMHandler(),
         new EquipmentPowerHandler(),
@@ -61,12 +62,5 @@ export function createEquipmentInteractionHandlers(): readonly EquipmentInteract
         new FlamerHandler(),
         new UACFiringModeHandler(),
         new UACJammingHandler(),
-    ]);
-}
-
-export function registerAllEquipmentBehaviors(
-    registryService: EquipmentInteractionRegistryService,
-): void {
-    const registry = registryService.getRegistry();
-    for (const behavior of createEquipmentInteractionHandlers()) registry.register(behavior);
+    ]) registry.register(behavior);
 }

@@ -65,12 +65,10 @@ export function createComponentInventoryModeDefinition(input: {
 export function componentInventoryModeDefinition(
     index: MekRuntimeIndex,
     componentId: ComponentId,
-): ComponentInventoryModeDefinition {
+): ComponentInventoryModeDefinition | null {
     const component = index.components.get(componentId);
     const weapon = component?.kind === 'equipment' ? component.mount.equipment : undefined;
-    if (!(weapon instanceof WeaponEquipment)) {
-        throw new Error(`Component ${componentId} is not an inventory-mode weapon`);
-    }
+    if (!(weapon instanceof WeaponEquipment) || expectedInventoryModes(weapon.ammoType) === null) return null;
     return createComponentInventoryModeDefinition({
         componentId,
         displayName: weapon.shortName || weapon.name,
@@ -109,7 +107,7 @@ export class InventoryModeHandler extends EquipmentInteractionHandler {
 
     override choices(input: EquipmentInteractionInput): readonly PickerChoice[] {
         const definition = componentInventoryModeDefinition(input.index, input.componentId);
-        return this.applicableToComponentInventoryMode(definition)
+        return definition !== null && this.applicableToComponentInventoryMode(definition)
             ? this.getComponentInventoryModeChoices(input.runtime, definition, input.context)
             : [];
     }
@@ -120,7 +118,7 @@ export class InventoryModeHandler extends EquipmentInteractionHandler {
         context: EquipmentInteractionCommandContext,
     ): boolean {
         const definition = componentInventoryModeDefinition(input.index, input.componentId);
-        return this.applicableToComponentInventoryMode(definition)
+        return definition !== null && this.applicableToComponentInventoryMode(definition)
             && this.handleComponentInventoryModeSelection(input.runtime, definition, choice, context);
     }
 

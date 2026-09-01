@@ -47,6 +47,7 @@ import {
     UnitNotificationBadgesComponent,
     type UnitNotificationActivation,
 } from '../../unit-notification-badges/unit-notification-badges.component';
+import { projectRuntimeUnitNotifications } from '../../unit-notification-badges/unit-notification-runtime.util';
 import { CBTUnitViewModeService } from '../../../services/cbt-unit-view-mode.service';
 import { CBTAutomationToastService } from '../../../services/cbt-automation-toast.service';
 
@@ -120,6 +121,25 @@ export class PageInteractionOverlayComponent {
                 ? 'automatic'
                 : 'manual',
         ) : null;
+    });
+    readonly notificationSnapshot = computed(() => {
+        this.runtimeVersion();
+        if (!this.optionsService.options().trackPhaseAndTurn) return null;
+        const member = this.member();
+        return member
+            ? projectRuntimeUnitNotifications(
+                member.force.getUnitSnapshot(member.id),
+                {
+                    pilotHitsAndConsciousnessCheck: this.optionsService.cbtAutomationMode(
+                        'pilotHitsAndConsciousnessCheck',
+                    ),
+                    heatAndDissipationResolution: this.optionsService.cbtAutomationMode(
+                        'heatAndDissipationResolution',
+                    ),
+                    heatEffectsCheck: this.optionsService.cbtAutomationMode('heatEffectsCheck'),
+                },
+            )
+            : null;
     });
     private readonly entityTurn = computed(() => {
         this.runtimeVersion();
@@ -253,8 +273,13 @@ export class PageInteractionOverlayComponent {
         );
     }
 
-    openNotification({ event }: UnitNotificationActivation): void {
-        this.openPsrWarning(event);
+    async openNotification({ event }: UnitNotificationActivation): Promise<void> {
+        event.stopPropagation();
+        if (!this.turnTrackerVisible()) return;
+        const member = this.member();
+        if (!member) return;
+        this.closeAllOverlays();
+        await member.force.resolvePendingUnitAutomation(member.id);
     }
 
     toggleUnitView(event: Event): void {

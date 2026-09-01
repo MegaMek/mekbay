@@ -8,10 +8,10 @@ import { firstValueFrom, takeUntil } from 'rxjs';
 
 import type { CBTMekForceMember } from '../../../models/force-member.model';
 import type {
-    MekEquipmentChoice,
-    MekEquipmentChoiceToken,
-    MekEquipmentInteraction,
-} from '../../../models/cbt-force.model';
+    CBTEquipmentChoice,
+    CBTEquipmentChoiceCommand,
+    CBTEquipmentInteraction,
+} from '../../../models/cbt-force.types';
 import type { ComponentId, LocationId } from '../../../models/entity/entity-identifiers';
 import { getMekLocationLabel, MEK_TORSO_LOCATIONS } from '../../../models/entity/types';
 import { gameRulesFor } from '../../../models/rules/game-rules';
@@ -345,7 +345,7 @@ export class PageViewerMekInteractionService {
     ): void {
         const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
         if (!snapshot) return;
-        const handlers = new Map<string, Parameters<typeof member.force.dispatchMekEquipmentChoice>[0]>();
+        const handlers = new Map<string, CBTEquipmentChoiceCommand>();
         const values = this.criticalChoices(member, interaction, snapshot, handlers);
         if (values.length === 0) return;
         const ammo = snapshot.criticalSlots
@@ -372,7 +372,7 @@ export class PageViewerMekInteractionService {
         member: CBTMekForceMember,
         interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'critical' }>,
         snapshot: MekRecordSheetSnapshot,
-        handlers: Map<string, Parameters<typeof member.force.dispatchMekEquipmentChoice>[0]>,
+        handlers: Map<string, CBTEquipmentChoiceCommand>,
     ): PickerChoice[] {
         const slot = snapshot.criticalSlots.find(candidate => candidate.slotId === interaction.slotId);
         if (!slot) return [];
@@ -398,8 +398,8 @@ export class PageViewerMekInteractionService {
             });
             values.push({ label: 'Set Ammo', value: 'open-ammo' });
         }
-        for (const handler of member.force.getMekEquipmentInteractions()) {
-            if (handler.instanceId !== member.id || !interaction.componentIds.includes(handler.componentId)) continue;
+        for (const handler of member.force.getEquipmentInteractions(member.id)) {
+            if (!interaction.componentIds.includes(handler.componentId)) continue;
             this.appendEquipmentPickerChoices(handler, values, handlers, 'handler');
         }
         return values;
@@ -409,7 +409,7 @@ export class PageViewerMekInteractionService {
         member: CBTMekForceMember,
         interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'critical' }>,
         choice: PickerChoice,
-        handlers: Map<string, Parameters<typeof member.force.dispatchMekEquipmentChoice>[0]>,
+        handlers: Map<string, CBTEquipmentChoiceCommand>,
     ): Promise<void> {
         if (!choice.keepOpen) this.closePicker();
         const value = String(choice.value);
@@ -452,9 +452,9 @@ export class PageViewerMekInteractionService {
                 await this.dispatchCommand(member, command);
             }
         } else {
-            const token = handlers.get(value);
-            if (token) {
-                const result = await member.force.dispatchMekEquipmentChoice(token);
+            const command = handlers.get(value);
+            if (command) {
+                const result = await member.force.dispatchEquipmentChoice(command);
                 if (!result.accepted) this.rejected(`Equipment action rejected: ${result.reason}`);
             }
         }
@@ -1030,8 +1030,8 @@ export class PageViewerMekInteractionService {
     }
 
     private openEquipmentChoices(member: CBTMekForceMember, componentIds: readonly ComponentId[], event: Event): void {
-        const tokenByValue = new Map<string, MekEquipmentChoiceToken>();
-        const values = this.equipmentPickerChoices(member, componentIds, tokenByValue);
+        const commandByValue = new Map<string, CBTEquipmentChoiceCommand>();
+        const values = this.equipmentPickerChoices(member, componentIds, commandByValue);
         if (values.length === 0) return;
         this.openChoicePicker(member.id, event, {
             values,
@@ -1041,14 +1041,14 @@ export class PageViewerMekInteractionService {
             style: 'linear',
             onPick: choice => {
                 if (!choice.keepOpen) this.closePicker();
-                const token = tokenByValue.get(String(choice.value));
-                if (token) void member.force.dispatchMekEquipmentChoice(token).then(result => {
+                const command = commandByValue.get(String(choice.value));
+                if (command) void member.force.dispatchEquipmentChoice(command).then(result => {
                     if (!result.accepted) this.rejected(`Equipment action rejected: ${result.reason}`);
                     if (choice.keepOpen && this.picker?.unitId === member.id
                         && isChoicePickerInstance(this.picker.instance)) {
-                        tokenByValue.clear();
+                        commandByValue.clear();
                         this.picker.instance.component.values.set(
-                            this.equipmentPickerChoices(member, componentIds, tokenByValue),
+                            this.equipmentPickerChoices(member, componentIds, commandByValue),
                         );
                     }
                 });
@@ -1059,36 +1059,35 @@ export class PageViewerMekInteractionService {
     private equipmentPickerChoices(
         member: CBTMekForceMember,
         componentIds: readonly ComponentId[],
-        tokenByValue: Map<string, MekEquipmentChoiceToken>,
+        commandByValue: Map<string, CBTEquipmentChoiceCommand>,
     ): PickerChoice[] {
         const values: PickerChoice[] = [];
-        for (const interaction of member.force.getMekEquipmentInteractions()) {
-            if (interaction.instanceId !== member.id || !componentIds.includes(interaction.componentId)) continue;
-            this.appendEquipmentPickerChoices(interaction, values, tokenByValue, 'equipment');
+        for (const interaction of member.force.getEquipmentInteractions(member.id)) {
+            if (!componentIds.includes(interaction.componentId)) continue;
+            this.appendEquipmentPickerChoices(interaction, values, commandByValue, 'equipment');
         }
         return values;
     }
 
-    /** Reconstructs the original picker vocabulary from opaque command tokens. */
     private appendEquipmentPickerChoices(
-        interaction: MekEquipmentInteraction,
+        interaction: CBTEquipmentInteraction,
         values: PickerChoice[],
-        tokenByValue: Map<string, MekEquipmentChoiceToken>,
+        commandByValue: Map<string, CBTEquipmentChoiceCommand>,
         prefix: string,
     ): void {
         const emittedDropdowns = new Set<string>();
         for (const choice of interaction.choices) {
             if (choice.displayType === 'dropdown') {
                 const groupLabel = choice.groupLabel ?? choice.label;
-                const groupKey = `${choice.handlerId}\0${groupLabel}`;
+                const groupKey = `${choice.command.handlerId}\0${groupLabel}`;
                 if (emittedDropdowns.has(groupKey)) continue;
                 emittedDropdowns.add(groupKey);
                 const options = interaction.choices.filter(candidate => candidate.displayType === 'dropdown'
-                    && candidate.handlerId === choice.handlerId
+                    && candidate.command.handlerId === choice.command.handlerId
                     && (candidate.groupLabel ?? candidate.label) === groupLabel);
                 const selected = options.find(candidate => candidate.active) ?? options[0];
                 if (!selected) continue;
-                const selectedValue = this.registerEquipmentPickerToken(prefix, selected, tokenByValue);
+                const selectedValue = this.registerEquipmentPickerCommand(prefix, selected, commandByValue);
                 values.push({
                     label: groupLabel,
                     value: selectedValue,
@@ -1103,7 +1102,7 @@ export class PageViewerMekInteractionService {
                         label: option.shortLabel ?? option.label,
                         value: option === selected
                             ? selectedValue
-                            : this.registerEquipmentPickerToken(prefix, option, tokenByValue),
+                            : this.registerEquipmentPickerCommand(prefix, option, commandByValue),
                         disabled: option.disabled,
                     })),
                 });
@@ -1112,7 +1111,7 @@ export class PageViewerMekInteractionService {
             values.push({
                 label: choice.label,
                 ...(choice.shortLabel === undefined ? {} : { shortLabel: choice.shortLabel }),
-                value: this.registerEquipmentPickerToken(prefix, choice, tokenByValue),
+                value: this.registerEquipmentPickerCommand(prefix, choice, commandByValue),
                 active: choice.active,
                 disabled: choice.disabled,
                 ...(choice.selectionTone === undefined ? {} : { selectionTone: choice.selectionTone }),
@@ -1124,13 +1123,13 @@ export class PageViewerMekInteractionService {
         }
     }
 
-    private registerEquipmentPickerToken(
+    private registerEquipmentPickerCommand(
         prefix: string,
-        choice: MekEquipmentChoice,
-        tokenByValue: Map<string, MekEquipmentChoiceToken>,
+        choice: CBTEquipmentChoice,
+        commandByValue: Map<string, CBTEquipmentChoiceCommand>,
     ): string {
-        const key = `${prefix}:${tokenByValue.size}`;
-        tokenByValue.set(key, choice.token);
+        const key = `${prefix}:${commandByValue.size}`;
+        commandByValue.set(key, choice.command);
         return key;
     }
 

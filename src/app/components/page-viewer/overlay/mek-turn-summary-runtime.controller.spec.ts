@@ -5,6 +5,8 @@ import type { DestroyRef } from '@angular/core';
 import { Subject } from 'rxjs';
 
 import type { CBTMekForceMember } from '../../../models/force-member.model';
+import type { CBTEquipmentChoice } from '../../../models/cbt-force.types';
+import type { ComponentId } from '../../../models/entity/entity-identifiers';
 import { createPristineMekHeatStateV2 } from '../../../models/runtime/mek-heat-state-v2';
 import { createPristineMekMovementPsrStateV2 } from '../../../models/runtime/mek-movement-psr-v2';
 import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
@@ -258,54 +260,36 @@ describe('MekTurnSummaryRuntimeController', () => {
         }));
     });
 
-    it('projects turn-summary failure controls and dispatches cover/equipment changes through V2', async () => {
+    it('dispatches cover and typed equipment choices through the CBT force', async () => {
         const changed = new Subject<void>();
         let current = snapshot(7);
         const dispatchUnit = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
             accepted: true, changed: true, revision: 8,
         });
-        const dispatchEquipment = jasmine.createSpy('dispatchMekEquipmentChoice').and.resolveTo({
+        const dispatchEquipment = jasmine.createSpy('dispatchEquipmentChoice').and.resolveTo({
             accepted: true, changed: true,
         });
-        const sequenceToken = 'sequence-token' as never;
-        const statusToken = 'status-token' as never;
+        const command = {
+            instanceId: 'mek-1',
+            entityUuid: 'entity-1',
+            componentId: 'component:masc' as ComponentId,
+            handlerId: 'masc-handler',
+            value: 0,
+        } as const;
+        const choice: CBTEquipmentChoice = {
+            command,
+            interactionKind: 'escalating-failure',
+            label: '3+',
+            shortLabel: '3+',
+            failureTarget: 3,
+            active: true,
+            disabled: false,
+        };
         const force = {
             changed,
             getMekTurnPanelSnapshot: () => current,
-            getEquipmentPanelSnapshot: () => ({
-                components: [{ componentId: 'component:masc', status: 'available' }],
-            }),
-            getMekEquipmentInteractions: (surface: string) => {
-                expect(surface).toBe('turn-summary');
-                return [{
-                    instanceId: 'mek-1',
-                    componentId: 'component:masc',
-                    componentLabel: 'MASC',
-                    choices: [
-                        {
-                            token: sequenceToken,
-                            handlerId: 'masc-handler',
-                            interactionKind: 'escalating-failure',
-                            label: '3+',
-                            shortLabel: '3+',
-                            failureTarget: 3,
-                            active: true,
-                            disabled: false,
-                        },
-                        {
-                            token: statusToken,
-                            handlerId: 'masc-handler',
-                            interactionKind: 'escalating-failure',
-                            label: '✖',
-                            shortLabel: '✖',
-                            active: false,
-                            disabled: false,
-                        },
-                    ],
-                }];
-            },
             dispatchMekUnitCommand: dispatchUnit,
-            dispatchMekEquipmentChoice: dispatchEquipment,
+            dispatchEquipmentChoice: dispatchEquipment,
         };
         const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
         const controller = new MekTurnSummaryRuntimeController(
@@ -315,11 +299,6 @@ describe('MekTurnSummaryRuntimeController', () => {
             { onDestroy: () => () => undefined } as unknown as DestroyRef,
         );
 
-        const rows = controller.equipmentTrackControlRows();
-        expect(rows.length).toBe(1);
-        expect(rows[0]).toEqual(jasmine.objectContaining({ label: 'MASC', active: true }));
-        expect(rows[0]?.statusChoice?.token).toBe(statusToken);
-
         await controller.selectCover('heavy');
         expect(dispatchUnit).toHaveBeenCalledWith('mek-1', jasmine.objectContaining({
             type: 'replace-turn-state',
@@ -327,8 +306,8 @@ describe('MekTurnSummaryRuntimeController', () => {
         }));
 
         current = { ...current, stateRevision: 8 } as MekTurnPanelSnapshot;
-        await controller.selectEquipmentTrackChoice(rows[0]!.sequenceChoices[0]!);
-        expect(dispatchEquipment).toHaveBeenCalledOnceWith(sequenceToken);
+        await controller.selectEquipmentTrackChoice(choice);
+        expect(dispatchEquipment).toHaveBeenCalledOnceWith(command);
     });
 
     it('does not dispatch spotting when the Entity runtime has no active controller', async () => {

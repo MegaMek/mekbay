@@ -48,7 +48,6 @@ import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model
 import { isRamPlateEquipment, isSpikesEquipment } from '../physical-augmentation.model';
 
 export const PUBLISHED_MEK_MECHANICS_PROFILE_SCHEMA_VERSION = 2 as const;
-export type MekRulesFlavor = CBTRuleset;
 
 export type MekLocationRole =
     | 'head'
@@ -201,7 +200,7 @@ export interface MekMechanicsMovement {
  */
 export interface MekMechanicsProfile {
     readonly schemaVersion: typeof PUBLISHED_MEK_MECHANICS_PROFILE_SCHEMA_VERSION;
-    readonly rulesFlavor: MekRulesFlavor;
+    readonly rulesFlavor: CBTRuleset;
     readonly form: 'biped' | 'quad' | 'tripod' | 'lam' | 'quadvee';
     readonly configuration: 'biped' | 'quad' | 'tripod' | 'lam' | 'quadvee';
     readonly declaredMassTons: number;

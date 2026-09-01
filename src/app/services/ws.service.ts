@@ -15,6 +15,8 @@ import { decodeForceFromStorage } from '../models/runtime/force-storage-codec';
 
 /** Client protocol version - increment when breaking changes are made */
 export const PROTOCOL_VERSION = 2;
+/** Highest stored-force revision this client can decode. Independent of websocket protocol version. */
+export const FORCE_PERSISTENCE_REVISION = 2;
 
 export type ConnectionStatusPhase = 'hidden' | 'offline' | 'online';
 export type ForceUpdateSource = 'live' | 'reconnect';
@@ -376,6 +378,7 @@ export class WsService {
                 sessionId: this.wsSessionId,
                 uuid,
                 version: PROTOCOL_VERSION,
+                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                 appVersion: APP_VERSION,
                 buildBranch: BUILD_BRANCH,
                 buildCommitNumber: BUILD_COMMIT_NUMBER,
@@ -743,6 +746,7 @@ export class WsService {
         subscription.socket = socket;
         this.send({
             action: 'subscribeToForceUpdates',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             instanceId,
         });
     }
@@ -784,6 +788,7 @@ export class WsService {
         try {
             const response = await this.sendAndWaitForResponse({
                 action: 'getForce',
+                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                 instanceId,
             });
 

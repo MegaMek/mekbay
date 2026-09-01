@@ -35,7 +35,9 @@ export class CBTAutomationService {
         options: AutomationReviewOptions = {},
     ): Promise<ReadonlySet<string> | null> {
         if (events.length === 0) return new Set<string>();
-        switch (this.options.cbtAutomationMode(key)) {
+        const configured = this.options.cbtAutomationMode(key);
+        const mode = options.interactive && configured === 'yes' ? 'ask' : configured;
+        switch (mode) {
             case 'yes': return new Set(events.map(event => event.id));
             case 'no': return new Set<string>();
             case 'ask': return this.enqueueReview(key, events, options);
@@ -101,5 +103,6 @@ function automationReviewBatchKey(
         options.title ?? '',
         options.message ?? '',
         options.allowCancel ?? false,
+        options.interactive ?? false,
     ]);
 }

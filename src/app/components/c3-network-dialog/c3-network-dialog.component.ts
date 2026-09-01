@@ -109,7 +109,7 @@ interface BorderSegment {
     dashoffset: number;
 }
 
-type SidebarMemberRole = 'master' | 'slave' | 'peer' | 'sub-master';
+type SidebarMemberRole = C3Role | 'sub-master';
 
 interface SidebarNetworkVm {
     network: SerializedC3NetworkGroup;

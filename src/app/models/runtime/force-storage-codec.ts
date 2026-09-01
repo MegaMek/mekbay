@@ -8,14 +8,18 @@ import {
     isCBTRuleset,
     type CBTRuleset,
 } from '../cbt-ruleset.model';
-import type { SerializedForce } from '../force-serialization';
+import type {
+    ASSerializedForce,
+    ASSerializedGroup,
+    ASSerializedState,
+    ASSerializedUnit,
+    SerializedC3NetworkGroup,
+    SerializedCondition,
+    SerializedForce,
+} from '../force-serialization';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import type { JsonValue, SavedEntityIdentity } from '../persisted-unit-state';
-import {
-    asSourceHash,
-    asUnitProviderId,
-    asUnitUuid,
-} from '../../services/unit-catalog/unit-catalog.types';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import {
     asArmorFaceId,
     asComponentId,
@@ -123,12 +127,7 @@ export function isCompactStoredForce(value: unknown): boolean {
         && 'r' in compact && 'u' in compact && 'g' in compact;
 }
 
-type CompactIdentity = Readonly<{
-    o?: 0 | 1;
-    p?: string;
-    u: string;
-    h?: string;
-}>;
+type CompactIdentity = string;
 
 type CompactCrewPosition = readonly unknown[];
 type CompactDeployment = readonly unknown[];
@@ -143,20 +142,86 @@ type CompactForce = Readonly<{
     e?: unknown;
 }>;
 
+type CompactASForce = Readonly<{
+    v: 1;
+    g: readonly CompactASGroup[];
+    n?: readonly CompactASNetwork[];
+}>;
+
+type CompactASGroup = Readonly<{
+    i: string;
+    n?: string;
+    c?: string;
+    f?: string;
+    l?: 1;
+    t?: string;
+    u: readonly CompactASUnit[];
+}>;
+
+type CompactASUnit = Readonly<{
+    i: string;
+    u: string;
+    a?: string;
+    t?: number;
+    s?: number;
+    b?: ASSerializedUnit['abilities'];
+    f?: string[];
+    c?: 1;
+    x?: Readonly<Record<string, unknown>>;
+}>;
+
+type CompactASNetwork = Readonly<{
+    i: string;
+    y: string;
+    c: string;
+    p?: readonly string[];
+    m?: string;
+    x?: number;
+    r?: readonly string[];
+}>;
+
 const MEK = 'm';
 const ENTITY = 'e';
 const COMPACT_FORCE_FORMAT_VERSION = 2;
+const COMPACT_AS_FORMAT_VERSION = 1;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+const COMPACT_UUID_PATTERN = /^[A-Za-z0-9_-]{22}$/u;
 
 export function encodeForceForStorage(force: SerializedForce): StoredForceRecord {
     const detached = clone(force);
     if (force.version === 1) return Object.freeze({ ...detached });
     if (force.version !== 2) throw new Error('Unsupported force persistence version');
-    if (force.type !== GameSystem.CBT) return Object.freeze({ ...detached });
+    if (force.type === GameSystem.AS) {
+        if (!Array.isArray(force.groups)) {
+            throw new Error('Current Alpha Strike persistence requires force groups');
+        }
+        const {
+            timestamp: _timestamp,
+            groups: _groups,
+            c3Networks: _networks,
+            ...current
+        } = detached;
+        return Object.freeze({
+            ...current,
+            timestamp: packTimestamp(force.timestamp),
+            a: packASForce(force.groups as ASSerializedGroup[], force.c3Networks),
+        });
+    }
+    if (force.type !== GameSystem.CBT) throw new Error('Unsupported force game system');
     if (force.cbt === undefined) {
         throw new Error('Current CBT persistence requires a current CBT snapshot');
     }
-    const { groups: _legacyGroups, c3Networks: _legacyNetworks, ...current } = detached;
-    return Object.freeze({ ...current, cbt: packForce(force.cbt) });
+    const {
+        timestamp: _timestamp,
+        groups: _legacyGroups,
+        c3Networks: _legacyNetworks,
+        ...current
+    } = detached;
+    return Object.freeze({
+        ...current,
+        timestamp: packTimestamp(force.timestamp),
+        cbt: packForce(force.cbt),
+    });
 }
 
 export function decodeForceFromStorage(value: unknown): SerializedForce {
@@ -164,6 +229,10 @@ export function decodeForceFromStorage(value: unknown): SerializedForce {
     const root = record(detached, 'force');
     if (root['version'] === 1) return detached as SerializedForce;
     if (root['version'] !== 2) throw new Error('Unsupported force persistence version');
+    if (root['type'] === GameSystem.AS) {
+        if (root['a'] === undefined) return detached as SerializedForce;
+        return unpackASForce(root, record(root['a'], 'force.a'));
+    }
     if (root['type'] !== GameSystem.CBT) return detached as SerializedForce;
     const compact = record(root['cbt'], 'force.cbt');
     if ('schemaVersion' in compact) return detached as SerializedForce;
@@ -173,6 +242,344 @@ export function decodeForceFromStorage(value: unknown): SerializedForce {
     }
     const instanceId = text(root['instanceId'], 'force.instanceId');
     return unpackCBTForce(root, instanceId, unpackForce(compact, instanceId));
+}
+
+function packASForce(
+    groups: readonly ASSerializedGroup[],
+    networks: readonly SerializedC3NetworkGroup[] | undefined,
+): CompactASForce {
+    return Object.freeze({
+        v: COMPACT_AS_FORMAT_VERSION,
+        g: Object.freeze(groups.map(packASGroup)),
+        ...(networks === undefined || networks.length === 0
+            ? {}
+            : { n: Object.freeze(networks.map(packASNetwork)) }),
+    });
+}
+
+function packASGroup(group: ASSerializedGroup): CompactASGroup {
+    return compactObject({
+        i: packOpaqueId(group.id),
+        n: group.name,
+        c: group.color,
+        f: group.formationId,
+        l: group.formationLock ? 1 : undefined,
+        t: group.formationTargetGroupId === undefined
+            ? undefined
+            : packOpaqueId(group.formationTargetGroupId),
+        u: Object.freeze(group.units.map(packASUnit)),
+    }) as CompactASGroup;
+}
+
+function packASUnit(unit: ASSerializedUnit): CompactASUnit {
+    return compactObject({
+        i: packOpaqueId(unit.id),
+        u: packUuid(unit.uuid),
+        a: unit.alias,
+        t: unit.updatedTs,
+        s: unit.skill,
+        b: unit.abilities === undefined ? undefined : clone(unit.abilities),
+        f: unit.formationAbilities === undefined ? undefined : [...unit.formationAbilities],
+        c: unit.commander ? 1 : undefined,
+        x: packASState(unit.state),
+    }) as CompactASUnit;
+}
+
+function packASState(state: ASSerializedState | undefined): Readonly<Record<string, unknown>> | undefined {
+    if (state === undefined) return undefined;
+    const packed = compactObject({
+        m: state.modified ? 1 : undefined,
+        d: state.destroyed ? 1 : undefined,
+        c: state.conditions === undefined ? undefined : state.conditions.map(packASCondition),
+        p: state.c3Position === undefined ? undefined : [state.c3Position.x, state.c3Position.y],
+        h: state.heat,
+        a: state.armor,
+        i: state.internal,
+        r: state.crits,
+        q: state.pCrits,
+        u: state.consumed,
+        e: state.exhausted,
+    });
+    return Object.keys(packed).length === 0 ? undefined : packed;
+}
+
+function packASCondition(condition: SerializedCondition): unknown {
+    if (typeof condition === 'string') return condition;
+    return tuple(
+        condition.key,
+        condition.value === undefined && condition.pending ? null : condition.value,
+        condition.pending ? 1 : undefined,
+    );
+}
+
+function packASNetwork(network: SerializedC3NetworkGroup): CompactASNetwork {
+    return compactObject({
+        i: packOpaqueId(network.id),
+        y: network.type,
+        c: network.color,
+        p: network.peerIds?.map(packOpaqueId),
+        m: network.masterId === undefined ? undefined : packOpaqueId(network.masterId),
+        x: network.masterCompIndex,
+        r: network.members?.map(packNetworkMember),
+    }) as CompactASNetwork;
+}
+
+function unpackASForce(root: Record<string, unknown>, compact: Record<string, unknown>): ASSerializedForce {
+    exactKeys(root, [
+        'version', 'timestamp', 'instanceId', 'type', 'name', 'note', 'tags',
+        'factionId', 'factionLock', 'eraId', 'eraLock', 'bv', 'pv', 'owned', 'a',
+    ], 'force');
+    exactKeys(compact, ['v', 'g', 'n'], 'force.a');
+    if (compact['v'] !== COMPACT_AS_FORMAT_VERSION) {
+        throw new Error('Unsupported compact Alpha Strike persistence format');
+    }
+    const groups = array(compact['g'], 'force.a.g').map((value, index) =>
+        unpackASGroup(value, `force.a.g[${index}]`));
+    const networks = compact['n'] === undefined
+        ? undefined
+        : array(compact['n'], 'force.a.n').map((value, index) =>
+            unpackASNetwork(value, `force.a.n[${index}]`));
+    return {
+        version: 2,
+        timestamp: unpackTimestamp(root['timestamp'], 'force.timestamp'),
+        instanceId: text(root['instanceId'], 'force.instanceId'),
+        type: GameSystem.AS,
+        name: text(root['name'], 'force.name'),
+        ...(root['note'] === undefined ? {} : { note: text(root['note'], 'force.note') }),
+        ...(root['tags'] === undefined ? {} : { tags: unpackTextArray(root['tags'], 'force.tags') }),
+        ...(root['factionId'] === undefined ? {} : {
+            factionId: integer(root['factionId'], 'force.factionId'),
+        }),
+        ...(root['factionLock'] === undefined ? {} : {
+            factionLock: booleanValue(root['factionLock'], 'force.factionLock'),
+        }),
+        ...(root['eraId'] === undefined ? {} : { eraId: integer(root['eraId'], 'force.eraId') }),
+        ...(root['eraLock'] === undefined ? {} : {
+            eraLock: booleanValue(root['eraLock'], 'force.eraLock'),
+        }),
+        ...(root['bv'] === undefined ? {} : { bv: finiteNumber(root['bv'], 'force.bv') }),
+        ...(root['pv'] === undefined ? {} : { pv: finiteNumber(root['pv'], 'force.pv') }),
+        ...(root['owned'] === undefined ? {} : { owned: booleanValue(root['owned'], 'force.owned') }),
+        groups,
+        ...(networks === undefined ? {} : { c3Networks: networks }),
+    };
+}
+
+function unpackASGroup(value: unknown, path: string): ASSerializedGroup {
+    const group = record(value, path);
+    exactKeys(group, ['i', 'n', 'c', 'f', 'l', 't', 'u'], path);
+    return {
+        id: unpackOpaqueId(text(group['i'], `${path}.i`), `${path}.i`),
+        ...(group['n'] === undefined ? {} : { name: text(group['n'], `${path}.n`) }),
+        ...(group['c'] === undefined ? {} : { color: text(group['c'], `${path}.c`) }),
+        ...(group['f'] === undefined ? {} : { formationId: text(group['f'], `${path}.f`) }),
+        ...(group['l'] === undefined ? {} : { formationLock: truthyOne(group['l'], `${path}.l`) }),
+        ...(group['t'] === undefined ? {} : {
+            formationTargetGroupId: unpackOpaqueId(text(group['t'], `${path}.t`), `${path}.t`),
+        }),
+        units: array(group['u'], `${path}.u`).map((unit, index) =>
+            unpackASUnit(unit, `${path}.u[${index}]`)),
+    };
+}
+
+function unpackASUnit(value: unknown, path: string): ASSerializedUnit {
+    const unit = record(value, path);
+    exactKeys(unit, ['i', 'u', 'a', 't', 's', 'b', 'f', 'c', 'x'], path);
+    return {
+        id: unpackOpaqueId(text(unit['i'], `${path}.i`), `${path}.i`),
+        uuid: unpackUuid(text(unit['u'], `${path}.u`), `${path}.u`),
+        ...(unit['a'] === undefined ? {} : { alias: text(unit['a'], `${path}.a`) }),
+        ...(unit['t'] === undefined ? {} : { updatedTs: finiteNumber(unit['t'], `${path}.t`) }),
+        ...(unit['s'] === undefined ? {} : { skill: finiteNumber(unit['s'], `${path}.s`) }),
+        ...(unit['b'] === undefined ? {} : {
+            abilities: clone(array(unit['b'], `${path}.b`)) as ASSerializedUnit['abilities'],
+        }),
+        ...(unit['f'] === undefined ? {} : {
+            formationAbilities: unpackTextArray(unit['f'], `${path}.f`),
+        }),
+        ...(unit['c'] === undefined ? {} : { commander: truthyOne(unit['c'], `${path}.c`) }),
+        ...(unit['x'] === undefined ? {} : { state: unpackASState(unit['x'], `${path}.x`) }),
+    };
+}
+
+function unpackASState(value: unknown, path: string): ASSerializedState {
+    const state = record(value, path);
+    exactKeys(state, ['m', 'd', 'c', 'p', 'h', 'a', 'i', 'r', 'q', 'u', 'e'], path);
+    return {
+        ...(state['m'] === undefined ? {} : { modified: truthyOne(state['m'], `${path}.m`) }),
+        ...(state['d'] === undefined ? {} : { destroyed: truthyOne(state['d'], `${path}.d`) }),
+        ...(state['c'] === undefined ? {} : {
+            conditions: array(state['c'], `${path}.c`).map((condition, index) =>
+                unpackASCondition(condition, `${path}.c[${index}]`)),
+        }),
+        ...(state['p'] === undefined ? {} : {
+            c3Position: unpackASPosition(state['p'], `${path}.p`),
+        }),
+        ...(state['h'] === undefined ? {} : { heat: unpackASPair(state['h'], `${path}.h`) }),
+        ...(state['a'] === undefined ? {} : { armor: unpackASPair(state['a'], `${path}.a`) }),
+        ...(state['i'] === undefined ? {} : { internal: unpackASPair(state['i'], `${path}.i`) }),
+        ...(state['r'] === undefined ? {} : { crits: unpackASCriticalRows(state['r'], `${path}.r`) }),
+        ...(state['q'] === undefined ? {} : { pCrits: unpackASCriticalRows(state['q'], `${path}.q`) }),
+        ...(state['u'] === undefined ? {} : { consumed: unpackASConsumed(state['u'], `${path}.u`) }),
+        ...(state['e'] === undefined ? {} : { exhausted: unpackASExhausted(state['e'], `${path}.e`) }),
+    };
+}
+
+function unpackASCondition(value: unknown, path: string): SerializedCondition {
+    if (typeof value === 'string') {
+        if (!isUnitConditionKey(value)) throw new Error(`${path} is not a unit condition`);
+        return value;
+    }
+    const row = array(value, path);
+    if (row.length < 1 || row.length > 3) throw new Error(`${path} is not a compact condition`);
+    const key = text(row[0], `${path}[0]`);
+    if (!isUnitConditionKey(key)) throw new Error(`${path}[0] is not a unit condition`);
+    const counted = row[1] === undefined || row[1] === null
+        ? undefined
+        : finiteNumber(row[1], `${path}[1]`);
+    return {
+        key,
+        ...(counted === undefined ? {} : { value: counted }),
+        ...(row[2] === undefined ? {} : { pending: truthyOne(row[2], `${path}[2]`) }),
+    };
+}
+
+function unpackASPosition(value: unknown, path: string): { x: number; y: number } {
+    const row = array(value, path);
+    if (row.length !== 2) throw new Error(`${path} is not an Alpha Strike position`);
+    return { x: finiteNumber(row[0], `${path}[0]`), y: finiteNumber(row[1], `${path}[1]`) };
+}
+
+function unpackASPair(value: unknown, path: string): [number, number] {
+    const row = array(value, path);
+    if (row.length !== 2) throw new Error(`${path} is not an Alpha Strike value pair`);
+    return [finiteNumber(row[0], `${path}[0]`), finiteNumber(row[1], `${path}[1]`)];
+}
+
+function unpackASCriticalRows(value: unknown, path: string): [string, number][] {
+    return array(value, path).map((entry, index) => {
+        const rowPath = `${path}[${index}]`;
+        const row = array(entry, rowPath);
+        if (row.length !== 2) throw new Error(`${rowPath} is not an Alpha Strike critical row`);
+        return [text(row[0], `${rowPath}[0]`), finiteNumber(row[1], `${rowPath}[1]`)];
+    });
+}
+
+function unpackASConsumed(value: unknown, path: string): Record<string, [number, number]> {
+    const source = record(value, path);
+    return Object.fromEntries(Object.entries(source).map(([key, pair]) => [
+        key,
+        unpackASPair(pair, `${path}.${key}`),
+    ]));
+}
+
+function unpackASExhausted(value: unknown, path: string): [string[], string[], string[]] {
+    const row = array(value, path);
+    if (row.length !== 3) throw new Error(`${path} is not an Alpha Strike exhausted-ability row`);
+    return [
+        unpackTextArray(row[0], `${path}[0]`),
+        unpackTextArray(row[1], `${path}[1]`),
+        unpackTextArray(row[2], `${path}[2]`),
+    ];
+}
+
+function unpackASNetwork(value: unknown, path: string): SerializedC3NetworkGroup {
+    const network = record(value, path);
+    exactKeys(network, ['i', 'y', 'c', 'p', 'm', 'x', 'r'], path);
+    return {
+        id: unpackOpaqueId(text(network['i'], `${path}.i`), `${path}.i`),
+        type: text(network['y'], `${path}.y`) as SerializedC3NetworkGroup['type'],
+        color: text(network['c'], `${path}.c`),
+        ...(network['p'] === undefined ? {} : {
+            peerIds: unpackTextArray(network['p'], `${path}.p`).map((id, index) =>
+                unpackOpaqueId(id, `${path}.p[${index}]`)),
+        }),
+        ...(network['m'] === undefined ? {} : {
+            masterId: unpackOpaqueId(text(network['m'], `${path}.m`), `${path}.m`),
+        }),
+        ...(network['x'] === undefined ? {} : {
+            masterCompIndex: integer(network['x'], `${path}.x`),
+        }),
+        ...(network['r'] === undefined ? {} : {
+            members: unpackTextArray(network['r'], `${path}.r`).map((member, index) =>
+                unpackNetworkMember(member, `${path}.r[${index}]`)),
+        }),
+    };
+}
+
+function packTimestamp(value: string): number | string {
+    const parsed = Date.parse(value);
+    if (!Number.isSafeInteger(parsed)) throw new Error('Force timestamp is invalid');
+    // All production writers use canonical ISO timestamps. Preserve unusual legacy
+    // strings losslessly while compacting canonical V2 timestamps to epoch millis.
+    return new Date(parsed).toISOString() === value ? parsed : value;
+}
+
+function unpackTimestamp(value: unknown, path: string): string {
+    if (typeof value === 'string') return value;
+    const parsed = integer(value, path);
+    const date = new Date(parsed);
+    if (!Number.isFinite(date.getTime())) throw new Error(`${path} is not a valid timestamp`);
+    return date.toISOString();
+}
+
+function packUuid(value: string): string {
+    if (!UUID_PATTERN.test(value)) throw new Error('Unit UUID is invalid');
+    const hex = value.replaceAll('-', '').toLowerCase();
+    let bytes = '';
+    for (let index = 0; index < hex.length; index += 2) {
+        bytes += String.fromCharCode(Number.parseInt(hex.slice(index, index + 2), 16));
+    }
+    return btoa(bytes).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
+}
+
+function unpackUuid(value: string, path: string) {
+    if (!COMPACT_UUID_PATTERN.test(value)) throw new Error(`${path} is not a compact UUID`);
+    let bytes: string;
+    try {
+        bytes = atob(value.replaceAll('-', '+').replaceAll('_', '/') + '==');
+    } catch {
+        throw new Error(`${path} is not a compact UUID`);
+    }
+    if (bytes.length !== 16) throw new Error(`${path} is not a compact UUID`);
+    const hex = Array.from(bytes, byte => byte.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+    return asUnitUuid([
+        hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16),
+        hex.slice(16, 20), hex.slice(20),
+    ].join('-'));
+}
+
+function unpackStoredUuid(value: string, path: string) {
+    if (COMPACT_UUID_PATTERN.test(value)) return unpackUuid(value, path);
+    if (UUID_PATTERN.test(value)) return asUnitUuid(value);
+    throw new Error(`${path} is not a stored UUID`);
+}
+
+function packOpaqueId(value: string): string {
+    if (UUID_PATTERN.test(value)) return `~${packUuid(value)}`;
+    return value.startsWith('~') ? `~${value}` : value;
+}
+
+function unpackOpaqueId(value: string, path: string): string {
+    if (!value.startsWith('~')) return value;
+    if (value.startsWith('~~')) return value.slice(1);
+    return COMPACT_UUID_PATTERN.test(value.slice(1))
+        ? unpackUuid(value.slice(1), path)
+        : value;
+}
+
+function packNetworkMember(value: string): string {
+    const matched = value.match(/^([0-9a-f-]{36}):(\d+)$/iu);
+    return matched && UUID_PATTERN.test(matched[1]!)
+        ? `${packOpaqueId(matched[1]!)}:${matched[2]}`
+        : packOpaqueId(value);
+}
+
+function unpackNetworkMember(value: string, path: string): string {
+    const matched = value.match(/^(~[A-Za-z0-9_-]{22}):(\d+)$/u);
+    return matched
+        ? `${unpackOpaqueId(matched[1]!, path)}:${matched[2]}`
+        : unpackOpaqueId(value, path);
 }
 
 function unpackCBTForce(
@@ -186,7 +593,7 @@ function unpackCBTForce(
     ], 'force');
     return {
         version: 2,
-        timestamp: text(root['timestamp'], 'force.timestamp'),
+        timestamp: unpackTimestamp(root['timestamp'], 'force.timestamp'),
         instanceId,
         type: GameSystem.CBT,
         name: text(root['name'], 'force.name'),
@@ -220,7 +627,7 @@ function packForce(force: SerializedCBTForceV2): CompactForce {
         s: clone(force.scenarioRules.values),
         u: Object.freeze(force.units.map(entry => packUnitEntry(entry, ruleset))),
         g: packRoster(force.roster, force.units),
-        ...(historyEmpty ? {} : { h: clone(force.history) }),
+        ...(historyEmpty ? {} : { h: packHistory(force.history) }),
         ...(encounterEmpty ? {} : { e: packEncounter(force.encounter) }),
     });
 }
@@ -243,12 +650,29 @@ function unpackForce(value: Record<string, unknown>, forceId: string): Serialize
         scenarioRules: { schemaVersion: 1, values: scenario },
         history: value['h'] === undefined
             ? { u: [], t: [] }
-            : clone(value['h']) as SerializedCBTForceV2['history'],
+            : unpackHistory(value['h'], 'force.cbt.h'),
         units,
         roster: unpackRoster(value['g'], units),
         encounter: value['e'] === undefined
             ? emptyEncounter()
             : unpackEncounter(value['e'], 'force.cbt.e'),
+    };
+}
+
+function packHistory(history: SerializedCBTForceV2['history']): SerializedCBTForceV2['history'] {
+    return Object.freeze({
+        u: Object.freeze(history.u.map(packOpaqueId)),
+        t: clone(history.t),
+    });
+}
+
+function unpackHistory(value: unknown, path: string): SerializedCBTForceV2['history'] {
+    const history = record(value, path);
+    exactKeys(history, ['u', 't'], path);
+    return {
+        u: array(history['u'], `${path}.u`).map((raw, index) =>
+            unpackOpaqueId(text(raw, `${path}.u[${index}]`), `${path}.u[${index}]`)),
+        t: clone(array(history['t'], `${path}.t`)) as SerializedCBTForceV2['history']['t'],
     };
 }
 
@@ -271,7 +695,7 @@ function packUnit(unit: SerializedCBTUnitV2 | SerializedNonMekUnit, ruleset: CBT
 
 function unpackUnit(value: unknown, ruleset: CBTRuleset, path: string): SerializedCBTUnitV2 | SerializedNonMekUnit {
     const compact = record(value, path);
-    return compact['k'] === MEK
+    return compact['k'] === undefined || compact['k'] === MEK
         ? unpackMekUnit(compact, ruleset, path)
         : compact['k'] === ENTITY
             ? unpackNonMekUnit(compact, ruleset, path)
@@ -286,8 +710,7 @@ function packMekUnit(unit: SerializedCBTUnitV2, ruleset: CBTRuleset): unknown {
         && unit.heat.pendingOverride === undefined
         && unit.heat.heatsinksOff === undefined;
     return compactObject({
-        k: MEK,
-        i: unit.instanceId,
+        i: packOpaqueId(unit.instanceId),
         e: packIdentity(unit.entity, 'mtf'),
         d: packDeployment(unit.deployment.values),
         r: unit.stateRevision === 0 ? undefined : unit.stateRevision,
@@ -330,7 +753,7 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
     const pristineHeat = deployment.values.initialHeat ?? 0;
     return {
         schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
-        instanceId: text(value['i'], `${path}.i`),
+        instanceId: unpackOpaqueId(text(value['i'], `${path}.i`), `${path}.i`),
         entity,
         baselineRefAtSave: baseline,
         // BaseEntity topology is rebuilt after the exact native source is loaded.
@@ -427,7 +850,7 @@ function packNonMekUnit(unit: SerializedNonMekUnit, ruleset: CBTRuleset): unknow
     return compactObject({
         k: ENTITY,
         t: unit.family.entityType,
-        i: unit.instanceId,
+        i: packOpaqueId(unit.instanceId),
         e: packIdentity(unit.entity, 'blk'),
         d: packDeployment(unit.deployment.values),
         r: unit.stateRevision === 0 ? undefined : unit.stateRevision,
@@ -472,7 +895,7 @@ function unpackNonMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, p
     const deployment = unpackNonMekDeployment(value['d'], `${path}.d`);
     return {
         schemaVersion: NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
-        instanceId: text(value['i'], `${path}.i`),
+        instanceId: unpackOpaqueId(text(value['i'], `${path}.i`), `${path}.i`),
         entity,
         baselineRefAtSave: baseline,
         deployment,
@@ -733,33 +1156,24 @@ function packIdentity(identity: SavedEntityIdentity, sourceFormat: 'mtf' | 'blk'
     if (identity.sourceFormat !== undefined && identity.sourceFormat !== sourceFormat) {
         throw new Error(`A ${sourceFormat.toUpperCase()} unit cannot save a ${identity.sourceFormat.toUpperCase()} source`);
     }
-    const provider = String(identity.provider);
-    const inferredOrigin = provider === MM_DATA_UNIT_PROVIDER_ID ? 'megamek' : 'user';
-    return compactObject({
-        o: identity.origin === inferredOrigin ? undefined : identity.origin === 'megamek' ? 0 : 1,
-        p: provider === MM_DATA_UNIT_PROVIDER_ID ? undefined : provider,
-        u: identity.uuid,
-        h: identity.sourceHashAtSave,
-    }) as CompactIdentity;
+    return packUuid(String(identity.uuid));
 }
 
 function unpackIdentity(value: unknown, sourceFormat: 'mtf' | 'blk', path: string): SavedEntityIdentity {
-    const identity = record(value, path);
-    exactKeys(identity, ['o', 'p', 'u', 'h'], path);
-    const provider = identity['p'] === undefined
-        ? MM_DATA_UNIT_PROVIDER_ID
-        : asUnitProviderId(text(identity['p'], `${path}.p`));
-    const inferredOrigin = provider === MM_DATA_UNIT_PROVIDER_ID ? 'megamek' : 'user';
-    const origin = identity['o'] === undefined
-        ? inferredOrigin
-        : identity['o'] === 0 ? 'megamek' : identity['o'] === 1 ? 'user' : fail(`${path}.o is invalid`);
+    // Current storage uses only the globally stable catalog UUID. Accept the old
+    // object wrapper for one-way compatibility, but deliberately discard its
+    // persisted provider/origin/hash metadata.
+    const uuid = typeof value === 'string'
+        ? unpackStoredUuid(value, path)
+        : (() => {
+            const legacy = record(value, path);
+            exactKeys(legacy, ['o', 'p', 'u', 'h'], path);
+            return unpackStoredUuid(text(legacy['u'], `${path}.u`), `${path}.u`);
+        })();
     return {
-        origin,
-        provider,
-        uuid: asUnitUuid(text(identity['u'], `${path}.u`)),
-        ...(identity['h'] === undefined ? {} : {
-            sourceHashAtSave: asSourceHash(text(identity['h'], `${path}.h`)),
-        }),
+        origin: 'megamek',
+        provider: MM_DATA_UNIT_PROVIDER_ID,
+        uuid,
         sourceFormat,
     };
 }
@@ -1122,6 +1536,9 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
                     : value.pendingFallConsequences.stage === 'seatbelts' ? 1 : 2,
                 value.pendingFallConsequences.seatbeltFailures,
             ),
+        q: value.pendingCriticalEvents === undefined
+            ? undefined
+            : clone(value.pendingCriticalEvents),
     });
     return Object.keys(compact).length === 0 ? undefined : compact;
 }
@@ -1129,7 +1546,7 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
 function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
     if (value === undefined) return { schemaVersion: 1 };
     const turn = record(value, path);
-    exactKeys(turn, ['n', 'a', 'c', 'w', 'h', 'd', 's', 'e', 'p', 'f'], path);
+    exactKeys(turn, ['n', 'a', 'c', 'w', 'h', 'd', 's', 'e', 'p', 'f', 'q'], path);
     const expanded = compactObject({
         schemaVersion: 1,
         turnCounter: optionalInteger(turn['n'], `${path}.n`),
@@ -1148,6 +1565,9 @@ function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
         pendingFallConsequences: turn['f'] === undefined
             ? undefined
             : unpackPendingFallConsequences(turn['f'], `${path}.f`),
+        pendingCriticalEvents: turn['q'] === undefined
+            ? undefined
+            : clone(turn['q']) as SerializedMekTurnStateV2['pendingCriticalEvents'],
     });
     return serializeMekTurnStateV2(deserializeMekTurnStateV2(expanded));
 }
@@ -1475,7 +1895,7 @@ function packRoster(
             l: group.formationLock ? 1 : undefined,
         });
         return tuple(
-            group.groupId,
+            packOpaqueId(group.groupId),
             group.members.map(member => {
                 const index = unitIndex.get(member.instanceId);
                 if (index === undefined) throw new Error(`Roster member ${member.instanceId} has no force unit`);
@@ -1488,8 +1908,10 @@ function packRoster(
 
 function unpackRoster(value: unknown, units: readonly SerializedForceUnitEntryV2[]): SerializedCBTForceRosterV1 {
     const packedGroups = array(value, 'force.cbt.g');
-    const groupIds = packedGroups.map((raw, index) =>
-        rowText(array(raw, `force.cbt.g[${index}]`), 0, `force.cbt.g[${index}]`));
+    const groupIds = packedGroups.map((raw, index) => {
+        const path = `force.cbt.g[${index}]`;
+        return unpackOpaqueId(rowText(array(raw, path), 0, path), `${path}[0]`);
+    });
     return {
         schemaVersion: CBT_FORCE_ROSTER_SCHEMA_VERSION,
         groups: unpackRows(packedGroups, 'force.cbt.g', (row, path, groupOrder) => {
@@ -1503,7 +1925,7 @@ function unpackRoster(value: unknown, units: readonly SerializedForceUnitEntryV2
                 throw new Error(`${path}[2].t has no force group`);
             }
             return {
-            groupId: rowText(row, 0, path),
+            groupId: groupIds[groupOrder]!,
             order: groupOrder,
             ...(metadata['n'] === undefined ? {} : { name: text(metadata['n'], `${path}[2].n`) }),
             ...(metadata['c'] === undefined ? {} : { color: text(metadata['c'], `${path}[2].c`) }),

@@ -328,7 +328,7 @@
             </ng-template>
 
             <ng-template #tableBvCell let-unit>
-                <div class="as-td cbt-td-bv">{{ formatClassicBv(unit, gunnery, piloting) }}</div>
+                <div class="as-td cbt-td-bv">{{ formatCBTBv(unit, gunnery, piloting) }}</div>
             </ng-template>
 
             <ng-template #tableTypeCell let-unit>
@@ -344,7 +344,7 @@
             </ng-template>
 
             <ng-template #tableClassicMovementCell let-unit>
-                <div class="as-td cbt-td-mv">{{ formatClassicMovement(unit) }}</div>
+                <div class="as-td cbt-td-mv">{{ formatCBTMovement(unit) }}</div>
             </ng-template>
 
             <ng-template #tableSpecialsCell let-unit>
@@ -554,7 +554,7 @@
                 [title]="advPanelFilterGameSystemToggleTitle()"
                 [attr.aria-label]="advPanelFilterGameSystemToggleTitle()"
                 (click)="toggleAdvPanelFilterGameSystem()">
-                @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CLASSIC) {
+                @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CBT) {
                 <svg width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
                     <g transform="translate(-.02)">
                         <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
@@ -750,7 +750,7 @@
             [title]="advPanelFilterGameSystemToggleTitle()"
             [attr.aria-label]="advPanelFilterGameSystemToggleTitle()"
             (click)="toggleAdvPanelFilterGameSystem()">
-            @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CLASSIC) {
+            @if (otherAdvPanelFilterGameSystem() === gameSystemEnum.CBT) {
             <svg width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
                 <g transform="translate(-.02)">
                     <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">

@@ -121,7 +121,7 @@
                         <div class="equipment-order" [class.damaged]="trackRow.damaged">
                             <span class="equipment-order-label">{{ trackRow.label }}</span>
                             <div class="equipment-order-options">
-                                @for (choice of trackRow.sequenceChoices; track choice.token) {
+                                @for (choice of trackRow.sequenceChoices; track choice.command) {
                                     <button
                                         type="button"
                                         [class.active]="choice.active && choice.selectionTone !== 'muted'"
@@ -136,7 +136,7 @@
                                         [style.--choice-disabled-text]="choice.colors?.disabledText"
                                         [disabled]="choice.disabled && !choice.active"
                                         [attr.aria-pressed]="choice.active"
-                                        (click)="handleEquipmentTrackChoice(trackRow, choice)"
+                                        (click)="handleEquipmentTrackChoice(choice)"
                                     >{{ choice.shortLabel || choice.label }}</button>
                                 }
                                 @if (trackRow.statusChoice; as choice) {
@@ -155,7 +155,7 @@
                                         [style.--choice-disabled-text]="choice.colors?.disabledText"
                                         [disabled]="choice.disabled && !choice.active"
                                         [attr.aria-pressed]="choice.active"
-                                        (click)="handleEquipmentTrackChoice(trackRow, choice)"
+                                        (click)="handleEquipmentTrackChoice(choice)"
                                     >{{ choice.shortLabel || choice.label }}</button>
                                 }
                             </div>

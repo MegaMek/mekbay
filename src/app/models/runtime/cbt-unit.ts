@@ -20,9 +20,7 @@ import type { EquipmentRowOrderGroup } from './equipment-row-order';
 import type { CBTUnitAttackerTargetingCommand, CBTUnitSelectedWeaponFireCommand } from './unit-instance';
 import type { PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
 
-export interface CBTTargetingReconciliation {
-    install(): void;
-}
+export type CBTTargetingReconciliation = () => void;
 
 export type CBTUnitDispatchResult = CBTUnitCommandResult<CBTUnitRuntimeState>;
 export type CBTSelectedWeaponFireResult = Readonly<

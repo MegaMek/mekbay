@@ -24,16 +24,16 @@
                     <span class="filter-count">{{ getHangarGameTypeCount('all') }}</span>
                 </button>
                 <button class="filter-btn"
-                    [class.active]="hangarTagFilter() === hangarClassicFilter"
-                    (click)="toggleHangarTagFilter(hangarClassicFilter)">
+                    [class.active]="hangarTagFilter() === hangarCBTFilter"
+                    (click)="toggleHangarTagFilter(hangarCBTFilter)">
                     <span class="filter-label">Battletech</span>
-                    <span class="filter-count">{{ getHangarGameTypeCount(GameSystem.CLASSIC) }}</span>
+                    <span class="filter-count">{{ getHangarGameTypeCount(GameSystem.CBT) }}</span>
                 </button>
                 <button class="filter-btn"
                     [class.active]="hangarTagFilter() === hangarAlphaStrikeFilter"
                     (click)="toggleHangarTagFilter(hangarAlphaStrikeFilter)">
                     <span class="filter-label">Alpha Strike</span>
-                    <span class="filter-count">{{ getHangarGameTypeCount(GameSystem.ALPHA_STRIKE) }}</span>
+                    <span class="filter-count">{{ getHangarGameTypeCount(GameSystem.AS) }}</span>
                 </button>
                 @if (getHangarTagCount(hangarUnfiledFilter) > 0) {
                     <button type="button"
@@ -243,11 +243,11 @@
                     [class.active]="gameTypeFilter() === 'all'" 
                     (click)="onGameTypeFilter('all')">All</button>
                 <button class="filter-btn" 
-                    [class.active]="gameTypeFilter() === GameSystem.CLASSIC" 
-                    (click)="onGameTypeFilter(GameSystem.CLASSIC)">Battletech</button>
+                    [class.active]="gameTypeFilter() === GameSystem.CBT" 
+                    (click)="onGameTypeFilter(GameSystem.CBT)">Battletech</button>
                 <button class="filter-btn" 
-                    [class.active]="gameTypeFilter() === GameSystem.ALPHA_STRIKE" 
-                    (click)="onGameTypeFilter(GameSystem.ALPHA_STRIKE)">Alpha Strike</button>
+                    [class.active]="gameTypeFilter() === GameSystem.AS" 
+                    (click)="onGameTypeFilter(GameSystem.AS)">Alpha Strike</button>
             </div>
             @if (operationsLoading()) {
                 <loading-spinner class="loading-spinner" message="Loading operations..." ariaLabel="Loading operations"></loading-spinner>

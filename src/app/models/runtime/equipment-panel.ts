@@ -246,10 +246,8 @@ export interface EquipmentPanelTarget {
     readonly local?: AttackerLocalTargetState;
 }
 
-export type WeaponRangePresentation = InventoryTargetRangeSelection;
-
 export interface WeaponTargetPresentation {
-    readonly rangeSelection: WeaponRangePresentation | null;
+    readonly rangeSelection: InventoryTargetRangeSelection | null;
     readonly targetNumberText: string;
     readonly outOfRange: boolean;
     readonly weaponToHitModifier: number;

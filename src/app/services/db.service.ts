@@ -952,10 +952,10 @@ export class DbService {
                     forces.push(cursor.value);
                     cursor.continue();
                 } else {
-                    // If not using index, sort manually
-                    if (!store.indexNames.contains('timestamp')) {
-                        forces.sort((left, right) => forceTimestamp(right).localeCompare(forceTimestamp(left)));
-                    }
+                    // Old records use ISO strings while current compact V2 uses
+                    // epoch numbers. IndexedDB orders those as different key
+                    // types, so normalize before comparing during the transition.
+                    forces.sort((left, right) => forceTimestamp(right) - forceTimestamp(left));
                     const entries: SerializedForce[] = [];
                     for (const raw of forces) {
                         try {
@@ -1187,8 +1187,11 @@ export class DbService {
 
 }
 
-function forceTimestamp(value: unknown): string {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return '';
+function forceTimestamp(value: unknown): number {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return 0;
     const timestamp = (value as Record<string, unknown>)['timestamp'];
-    return typeof timestamp === 'string' ? timestamp : '';
+    if (typeof timestamp === 'number' && Number.isFinite(timestamp)) return timestamp;
+    if (typeof timestamp !== 'string') return 0;
+    const parsed = Date.parse(timestamp);
+    return Number.isFinite(parsed) ? parsed : 0;
 }

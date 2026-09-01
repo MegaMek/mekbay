@@ -439,15 +439,15 @@
                     <span class="filter-label">All</span>
                     <span class="filter-count">{{ getSidebarFilterCount(sidebarAllFilter) }}</span>
                 </button>
-                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.CLASSIC"
-                    (click)="toggleSidebarFilter(GameSystem.CLASSIC)">
+                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.CBT"
+                    (click)="toggleSidebarFilter(GameSystem.CBT)">
                     <span class="filter-label">BattleTech</span>
-                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.CLASSIC) }}</span>
+                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.CBT) }}</span>
                 </button>
-                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.ALPHA_STRIKE"
-                    (click)="toggleSidebarFilter(GameSystem.ALPHA_STRIKE)">
+                <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.AS"
+                    (click)="toggleSidebarFilter(GameSystem.AS)">
                     <span class="filter-label">Alpha Strike</span>
-                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.ALPHA_STRIKE) }}</span>
+                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.AS) }}</span>
                 </button>
             </div>
             <div class="sidebar-tag-bar">

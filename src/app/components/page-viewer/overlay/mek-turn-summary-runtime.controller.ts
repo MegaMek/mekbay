@@ -4,7 +4,7 @@
 import { DestroyRef, computed, signal, type Signal, type WritableSignal } from '@angular/core';
 
 import type { CBTMekForceMember } from '../../../models/force-member.model';
-import type { MekEquipmentChoice } from '../../../models/cbt-force.model';
+import type { CBTEquipmentChoice } from '../../../models/cbt-force.types';
 import type { UnitCover } from '../../../models/unit-cover.model';
 import {
     MEK_ACTION_DECLARATION_SCHEMA_VERSION,
@@ -22,16 +22,6 @@ import type { ToastService } from '../../../services/toast.service';
 import { actionableMekPilotChecks } from './page-turn-summary.util';
 
 const MOVEMENT_MODES = new Set<MekMovementModeV2>(['stationary', 'walk', 'run', 'sprint', 'jump', 'UMU']);
-const MAX_VISIBLE_FAILURE_STEPS = 5;
-
-export interface MekEscalatingFailureControlRow {
-    readonly componentId: string;
-    readonly label: string;
-    readonly damaged: boolean;
-    readonly active: boolean;
-    readonly sequenceChoices: readonly MekEquipmentChoice[];
-    readonly statusChoice?: MekEquipmentChoice;
-}
 
 /** Typed runtime adapter for the established turn-summary presentation. */
 export class MekTurnSummaryRuntimeController {
@@ -44,7 +34,6 @@ export class MekTurnSummaryRuntimeController {
     public readonly currentMovement: Signal<MekTurnPanelSnapshot['movementState']['movement']>;
     public readonly movementDistance: Signal<number>;
     public readonly currentAction: Signal<MekTurnPanelSnapshot['movementState']['action']>;
-    public readonly equipmentTrackControlRows: Signal<readonly MekEscalatingFailureControlRow[]>;
 
     private readonly options: OptionsService;
     private readonly toast: ToastService;
@@ -91,33 +80,6 @@ export class MekTurnSummaryRuntimeController {
             return current && preview?.mode === current.mode ? preview.value : current?.distance ?? 0;
         });
         this.currentAction = computed(() => this.snapshot().movementState.action);
-        this.equipmentTrackControlRows = computed(() => {
-            this.snapshot();
-            const statuses = new Map(
-                (this.member.force.getEquipmentPanelSnapshot(this.member.id)?.components ?? [])
-                    .map(component => [component.componentId, component.status] as const),
-            );
-            return Object.freeze(this.member.force.getMekEquipmentInteractions('turn-summary')
-                .filter(row => row.instanceId === this.member.id)
-                .map(row => {
-                    const choices = row.choices.filter(choice =>
-                        choice.interactionKind === 'escalating-failure');
-                    const statusChoice = choices.find(choice => choice.failureTarget === undefined);
-                    const allSequenceChoices = choices.filter(choice => choice.failureTarget !== undefined);
-                    const active = allSequenceChoices.some(choice =>
-                        choice.active && choice.selectionTone !== 'muted');
-                    const result: MekEscalatingFailureControlRow = Object.freeze({
-                        componentId: row.componentId,
-                        label: row.componentLabel,
-                        damaged: statuses.get(row.componentId) === 'destroyed',
-                        active,
-                        sequenceChoices: Object.freeze(visibleEscalatingFailureSteps(allSequenceChoices)),
-                        ...(statusChoice === undefined ? {} : { statusChoice }),
-                    });
-                    return result;
-                })
-                .filter(row => (!row.damaged || row.active) && row.sequenceChoices.length > 0));
-        });
         const subscription = member.force.changed.subscribe(() => this.refresh());
         destroyRef.onDestroy(() => {
             subscription.unsubscribe();
@@ -247,11 +209,11 @@ export class MekTurnSummaryRuntimeController {
         });
     }
 
-    public async selectEquipmentTrackChoice(choice: MekEquipmentChoice): Promise<void> {
+    public async selectEquipmentTrackChoice(choice: CBTEquipmentChoice): Promise<void> {
         if (this.busy() || choice.disabled) return;
         this.busy.set(true);
         try {
-            const result = await this.member.force.dispatchMekEquipmentChoice(choice.token);
+            const result = await this.member.force.dispatchEquipmentChoice(choice.command);
             if (!result.accepted) this.toast.showToast(`Equipment action rejected: ${result.reason}`, 'error');
         } finally {
             this.busy.set(false);
@@ -387,28 +349,4 @@ export function diceForMekPilotCheckOutcome(
     const first = Math.max(1, Math.min(6, sum - 1));
     const second = sum - first;
     return second >= 1 && second <= 6 ? [first, second] : [sum - 6, 6];
-}
-
-/** Origin/next's five-step sliding window, shared by every runtime family. */
-export function visibleEscalatingFailureSteps<Choice extends Readonly<{
-    active: boolean;
-    disabled: boolean;
-    selectionTone?: 'selected' | 'muted';
-}>>(choices: readonly Choice[]): Choice[] {
-    if (choices.length <= MAX_VISIBLE_FAILURE_STEPS) return [...choices];
-    const selectedIndex = choices.findIndex(choice =>
-        choice.active && choice.selectionTone !== 'muted');
-    const nextIndex = choices.findIndex(choice => !choice.disabled && !choice.active);
-    const lastActiveIndex = choices.reduce(
-        (lastIndex, choice, index) => choice.active ? index : lastIndex,
-        -1,
-    );
-    const focusIndex = selectedIndex >= 0
-        ? selectedIndex
-        : nextIndex >= 0 ? nextIndex : Math.max(0, lastActiveIndex);
-    const start = Math.max(0, Math.min(
-        focusIndex - Math.floor(MAX_VISIBLE_FAILURE_STEPS / 2),
-        choices.length - MAX_VISIBLE_FAILURE_STEPS,
-    ));
-    return choices.slice(start, start + MAX_VISIBLE_FAILURE_STEPS);
 }

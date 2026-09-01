@@ -94,7 +94,7 @@ function createMembers(definitions: readonly MemberFixture[]): CBTMekForceMember
                 heat: { current: 0, pending: null, sinksOff: 0 },
             };
         },
-        getMekEquipmentInteractions: () => [],
+        getEquipmentInteractions: () => [],
         getAttackerTargeting: () => ({ stateRevision: 1, registryRevision: 1, state: {} }),
         getMekTurnPanelSnapshot: (id: string) => byId.get(id)?.turnSnapshot ?? createTurnSnapshot(),
         getC3State: () => 'none',
@@ -172,7 +172,7 @@ function createTankMember(): CBTForceMember {
             targets: [],
             heat: { current: 0, pending: null, sinksOff: 0 },
         }),
-        getMekEquipmentInteractions: () => [],
+        getEquipmentInteractions: () => [],
         getAttackerTargeting: () => ({ stateRevision: 1, registryRevision: 1, state: {} }),
         getUnitSnapshot: () => null,
         getC3State: () => 'none',

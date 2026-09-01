@@ -3,7 +3,8 @@
 
 import { signal } from '@angular/core';
 import type { Force } from '../models/force.model';
-import { CBTForce, type InventoryControlTargetRosterRow } from '../models/cbt-force.model';
+import { CBTForce } from '../models/cbt-force.model';
+import type { InventoryControlTargetRosterRow } from '../models/cbt-force.types';
 import {
     asEncounterTargetId,
     type EncounterTarget,

@@ -57,8 +57,6 @@ import {
     type MekUnitRuntimeState,
     type ComponentRuntimeState,
     type CriticalSlotRuntimeState,
-    type CrewRuntimeState,
-    type EscalatingFailureSequence,
     type InstanceBaselineRef,
     type LocationRuntimeState,
     type MekLocationConditionKey,
@@ -69,6 +67,7 @@ import {
     MAX_MEK_CREW_WOUNDS,
     MAX_MEK_LOCATION_CONDITION_VALUE,
 } from './runtime-state';
+import type { CBTCrewRuntimeState } from './cbt-unit-runtime';
 import { ppcCapacitorWeaponId } from './component-ppc-capacitor';
 import { componentEscalatingFailureProfile } from './component-escalating-failure';
 import { isCoreBombastLaserComponent } from './component-bombast-laser';
@@ -3123,7 +3122,7 @@ function retryPriorUnresolved(
     slots: Map<CriticalSlotId, CriticalSlotRuntimeState>,
     components: Map<ComponentId, ComponentRuntimeState>,
     ammo: Map<ComponentId, AmmoRuntimeState>,
-    crew: Map<CrewPositionId, CrewRuntimeState>,
+    crew: Map<CrewPositionId, CBTCrewRuntimeState>,
     pendingLocation: Map<LocationId, number>,
     pendingArmor: Map<ArmorFaceId, number>,
     pendingSlots: Map<CriticalSlotId, number>,

@@ -7,7 +7,7 @@ import { LoadOperationEntry, type OperationForceInfo, type SerializedOperation }
 import { uuidv7 } from '../utils/uuid.util';
 import { DbService } from './db.service';
 import { LoggerService } from './logger.service';
-import { WsService, type WsMessage } from './ws.service';
+import { FORCE_PERSISTENCE_REVISION, WsService, type WsMessage } from './ws.service';
 
 type WsDataResponse<T> = WsMessage & { readonly data?: T };
 type RemoteOperationEntry = Readonly<Pick<
@@ -379,6 +379,7 @@ export class OperationStorageService {
 
         const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<RemoteOperationEntry[]>>({
             action: 'listOperations',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
         });
         return (response?.data ?? []).map(raw => new LoadOperationEntry({
             operationId: raw.operationId,
@@ -397,6 +398,7 @@ export class OperationStorageService {
 
         const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<RemoteOperationEntry | null>>({
             action: 'getOperation',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             operationId,
         });
         const raw = response?.data;
@@ -416,6 +418,7 @@ export class OperationStorageService {
         if (!ws) return;
         this.wsService.send({
             action: 'saveOperation',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             data: op,
         });
     }
@@ -437,6 +440,7 @@ export class OperationStorageService {
                 const chunk = instanceIds.slice(i, i + OperationStorageService.FORCE_INFO_CHUNK_SIZE);
                 const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<RemoteForceInfo[]>>({
                     action: 'getForceInfoBulk',
+                    forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                     instanceIds: chunk,
                 });
                 for (const entry of response?.data ?? []) {
@@ -463,4 +467,3 @@ export class OperationStorageService {
     }
 
 }
-

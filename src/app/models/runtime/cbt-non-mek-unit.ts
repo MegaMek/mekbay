@@ -98,9 +98,9 @@ export class CBTNonMekUnit implements CBTUnit {
         registry: TargetRegistrySnapshot,
     ): CBTTargetingReconciliation | null {
         const plan = this.runtime.planAttackerTargetingReconciliation(registry);
-        return plan === null ? null : Object.freeze({
-            install: () => this.runtime.installAttackerTargetingReconciliation(plan),
-        });
+        return plan === null
+            ? null
+            : () => this.runtime.installAttackerTargetingReconciliation(plan);
     }
 
     public setEquipmentRowOrder(

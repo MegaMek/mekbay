@@ -325,7 +325,7 @@
         [class.hidden]="layoutService.isMobile() && !sidebarOpen()" [class.animate]="sidebarAnimated()">
         <div class="sidebar-header">
             <h3>Networks</h3>
-            @if (isClassicGame()) {
+            @if (isCBTGame()) {
             <button class="bt-button bv-toggle square-small" type="button" (click)="showBvDetails.set(!showBvDetails())"
                 [class.active]="showBvDetails()" [attr.aria-pressed]="showBvDetails()"
                 aria-label="Toggle BV details" title="Toggle BV details">

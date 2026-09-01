@@ -286,6 +286,46 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
         expect(harness.dispatchMekCore).not.toHaveBeenCalled();
     });
 
+    it('resumes badge work interactively without committing the phase', async () => {
+        const prepareEndPhaseCommands = jasmine.createSpy('prepareEndPhaseCommands')
+            .and.callFake(async (_force: CBTForce, requests: readonly Readonly<{
+                instanceId: string;
+                command: Extract<CBTUnitCommand, { readonly type: 'end-phase' }>;
+            }>[]) => Object.freeze(requests.map(request =>
+                Object.freeze({
+                    instanceId: request.instanceId,
+                    prepared: Object.freeze({
+                        command: request.command,
+                        deferredPilotHits: 0,
+                    }),
+                }))));
+        const settleBeforeCommand = jasmine.createSpy('settleBeforeCommand')
+            .and.callFake(async (_force, _instanceId, prepared) => prepared);
+        const harness = createHarness({
+            prepareCommand: async (_force, _instanceId, command) => Object.freeze({
+                command,
+                deferredPilotHits: 0,
+            }),
+            prepareEndPhaseCommands,
+            settleBeforeCommand,
+            afterCommand: async () => true,
+        });
+
+        expect(await harness.dispatcher.resolvePendingAutomation(harness.instanceId)).toBeTrue();
+
+        expect(prepareEndPhaseCommands).toHaveBeenCalledWith(
+            jasmine.anything(),
+            [jasmine.objectContaining({
+                instanceId: harness.instanceId,
+                command: { type: 'end-phase' },
+            })],
+            { interactive: true },
+        );
+        expect(settleBeforeCommand).toHaveBeenCalledTimes(1);
+        expect(harness.dispatchMekCore).not.toHaveBeenCalled();
+        expect(harness.fixture.instance.query().turnState().endTurnCheckpoint).toBeUndefined();
+    });
+
     it('ends the phase for every unit without entering end-turn heat work', async () => {
         const prepareCommand = jasmine.createSpy('prepareCommand')
             .and.callFake(async (_force, _instanceId, command) => Object.freeze({
@@ -542,6 +582,7 @@ function createBatchHarness(
         & Partial<Pick<DirectMekAutomationService, 'settleBeforeCommand'>>,
 ) {
     const completeAutomation = {
+        resumePendingAutomation: async () => true,
         prepareEndPhaseCommands: async (
             force: CBTForce,
             requests: readonly {
@@ -611,7 +652,8 @@ function createBatchHarness(
 
 function createHarness(
     automation: Pick<DirectMekAutomationService, 'prepareCommand' | 'afterCommand'>
-        & Partial<Pick<DirectMekAutomationService, 'settleBeforeCommand'>>,
+        & Partial<Pick<DirectMekAutomationService,
+            'settleBeforeCommand' | 'prepareEndPhaseCommands' | 'prepareEndTurnCommands'>>,
 ) {
     const instanceId = 'unit:dispatcher:automation';
     const fixture = createDirectMekRuntimeFixture('core-2026', instanceId);
@@ -639,6 +681,7 @@ function createHarness(
     const injector = {
         get: (token: unknown) => token === DirectMekAutomationService
             ? {
+                resumePendingAutomation: async () => true,
                 settleBeforeCommand: async (
                     _force: CBTForce,
                     _instanceId: typeof instanceId,

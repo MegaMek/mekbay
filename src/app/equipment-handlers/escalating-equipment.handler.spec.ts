@@ -12,12 +12,11 @@ import {
     createDirectEscalatingFailureRuntimeFixture,
     type DirectMekRuntimeFixture,
 } from '../models/runtime/testing/direct-mek-runtime-fixture';
-import {
-    createHandlerCommandContext,
-    createHandlerQueryContext,
-    type HandlerDialogsService,
-    type HandlerToastService,
-} from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionDialogsService,
+    EquipmentInteractionNotifications,
+    EquipmentInteractionQueryContext,
+} from '../models/runtime/equipment-interaction';
 import {
     BlueShieldHandler,
     EscalatingFailureHandler,
@@ -171,12 +170,11 @@ function setup(
         definition,
         handler,
         runtime,
-        queryContext: createHandlerQueryContext(fixture.equipment, 'turn-summary'),
-        commandContext: createHandlerCommandContext(
-            fixture.equipment,
-            toastService(),
-            dialogsService(),
-        ),
+        queryContext: { choiceSurface: 'turn-summary' } satisfies EquipmentInteractionQueryContext,
+        commandContext: {
+            toastService: toastService(),
+            dialogsService: dialogsService(),
+        },
     };
 }
 
@@ -192,14 +190,12 @@ function endTurn(
     }).accepted;
 }
 
-function toastService(): HandlerToastService {
-    return { showToast: jasmine.createSpy('showToast'), toasts: () => [] };
+function toastService(): EquipmentInteractionNotifications {
+    return { showToast: jasmine.createSpy('showToast') };
 }
 
-function dialogsService(): HandlerDialogsService {
+function dialogsService(): EquipmentInteractionDialogsService {
     return {
-        createDialog: jasmine.createSpy('createDialog'),
-        showError: jasmine.createSpy('showError'),
         showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
     };
 }

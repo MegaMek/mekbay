@@ -2,12 +2,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { ComponentId } from './entity/entity-identifiers';
+import type {
+    PickerChoiceColors,
+    PickerChoiceSelectionTone,
+    PickerDisplayType,
+    PickerTooltipType,
+    PickerValue,
+} from '../components/picker/picker.interface';
 import type { TnTargetUnitType } from './target-number-calculator.model';
 import type { UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
-import type { V2EquipmentInteractionKind } from '../services/equipment-interaction-registry.service';
+import type {
+    EquipmentInteractionHandlerId,
+    EquipmentInteractionKind,
+} from './runtime/equipment-interaction';
 import type {
     EncounterTargetId,
-    TargetRegistryCommandResult,
     TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
 import type { SerializedEncounterTargetCalculatorV2 } from './runtime/persistence-v2';
@@ -21,7 +30,6 @@ import type { RuntimeCommandEntry } from './runtime/runtime-command-session';
 
 export type CBTForceTargetRegistryAuthority = 'user' | 'opfor-sync' | 'registry-reset';
 
-export type CBTForceTargetRegistryDispatchResult = TargetRegistryCommandResult;
 
 /** Detached target-ready projection; no runtime owner escapes. */
 export interface InventoryControlTargetRosterRow {
@@ -114,7 +122,6 @@ export type C3State = 'none' | 'operational' | 'degraded';
 
 export type AttackerTargetingCommandResult = CBTUnitCommandResult<CBTUnitRuntimeState | null>;
 
-export type EquipmentRowOrderCommandResult = AttackerTargetingCommandResult;
 
 export type SelectedWeaponFireCommandResult =
     Readonly<AttackerTargetingCommandResult & {
@@ -128,56 +135,47 @@ export type RuntimeUndoCommandResult = Readonly<{
     readonly entry?: RuntimeCommandEntry;
 }>;
 
-declare const MEK_EQUIPMENT_CHOICE_TOKEN: unique symbol;
-export type MekEquipmentChoiceToken = string & { readonly [MEK_EQUIPMENT_CHOICE_TOKEN]: true };
+/** Minimal transient identity needed to re-resolve one currently available choice. */
+export interface CBTEquipmentChoiceCommand {
+    readonly instanceId: string;
+    readonly entityUuid: string;
+    readonly componentId: ComponentId;
+    readonly relatedComponentId?: ComponentId;
+    readonly handlerId: EquipmentInteractionHandlerId;
+    readonly value: PickerValue;
+}
 
 /** Detached choice metadata. Registered handlers and runtime ports never escape. */
-export interface MekEquipmentChoice {
-    readonly token: MekEquipmentChoiceToken;
-    readonly handlerId: string;
-    readonly interactionKind: V2EquipmentInteractionKind;
+export interface CBTEquipmentChoice {
+    readonly command: CBTEquipmentChoiceCommand;
+    readonly interactionKind: EquipmentInteractionKind;
     readonly label: string;
     readonly groupLabel?: string;
     readonly shortLabel?: string;
     readonly active: boolean;
     readonly disabled: boolean;
-    readonly selectionTone?: 'selected' | 'muted';
-    readonly colors?: Readonly<{
-        readonly normal?: string;
-        readonly normalText?: string;
-        readonly selected?: string;
-        readonly selectedText?: string;
-        readonly mutedSelected?: string;
-        readonly mutedSelectedText?: string;
-        readonly disabled?: string;
-        readonly disabledText?: string;
-    }>;
+    readonly selectionTone?: PickerChoiceSelectionTone;
+    readonly colors?: Readonly<PickerChoiceColors>;
     readonly keepOpen?: boolean;
-    readonly displayType?: 'button' | 'dropdown' | 'label' | 'state-button' | 'toggle';
-    readonly tooltipType?: 'info' | 'success' | 'error';
+    readonly displayType?: PickerDisplayType;
+    readonly tooltipType?: PickerTooltipType;
     readonly failureTarget?: number;
 }
 
-export interface MekEquipmentInteraction {
-    readonly instanceId: string;
-    readonly unitLabel: string;
+export interface CBTEquipmentInteraction {
     readonly componentId: ComponentId;
-    readonly relatedComponentId?: ComponentId;
     readonly componentLabel: string;
-    readonly stateRevision: number;
-    readonly choices: readonly MekEquipmentChoice[];
+    readonly choices: readonly CBTEquipmentChoice[];
 }
 
-export type MekEquipmentChoiceDispatchResult =
+export type CBTEquipmentChoiceDispatchResult =
     | { readonly accepted: true; readonly changed: boolean }
     | {
         readonly accepted: false;
         readonly changed: false;
         readonly reason:
-            | 'UNKNOWN_TOKEN'
             | 'READ_ONLY'
             | 'OWNER_CHANGED'
-            | 'STALE_REVISION'
             | 'ENTITY_MISMATCH'
             | 'NOT_ADMITTED'
             | 'CHOICE_UNAVAILABLE'

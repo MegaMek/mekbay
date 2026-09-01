@@ -4,6 +4,7 @@
 
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 
 import type { Era } from '../../../models/eras.model';
 import type { Faction } from '../../../models/factions.model';
@@ -13,6 +14,8 @@ import type { UnitSummary } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
 import { createEmptyUnit } from '../../../testing/unit-test-helpers';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';
+import { UnitDetailsFactionsTabGridComponent } from './unit-details-factions-tab-grid.component';
+import { UnitDetailsFactionsTabListComponent } from './unit-details-factions-tab-list.component';
 import { UnitDetailsFactionTabComponent } from './unit-details-factions-tab.component';
 
 const TEST_ICON_SRC = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
@@ -122,20 +125,22 @@ describe('UnitDetailsFactionTabComponent', () => {
 
         const element = fixture.nativeElement as HTMLElement;
         const disclaimer = element.querySelector('.availability-source-disclaimer');
-        const factionItems = Array.from(element.querySelectorAll('.faction-item'));
+        const factionRows = Array.from(element.querySelectorAll('.faction-row'));
         const availabilityBadges = Array.from(element.querySelectorAll('.faction-megamek-availability-badge'));
         const badgeLabels = availabilityBadges.map((badge) => badge.getAttribute('aria-label'));
-        const draconisCombineItem = factionItems.find((item) => item.textContent?.includes('Draconis Combine'));
-        const mercenariesItem = factionItems.find((item) => item.textContent?.includes('Mercenaries'));
-        const extinctItem = factionItems.find((item) => item.textContent?.includes('Extinct'));
+        const draconisCombineRow = factionRows.find((row) => row.textContent?.includes('Draconis Combine'));
+        const mercenariesRow = factionRows.find((row) => row.textContent?.includes('Mercenaries'));
+        const extinctRow = factionRows.find((row) => row.textContent?.includes('Extinct'));
 
         expect(disclaimer).toBeNull();
-        expect(factionItems.length).toBe(2);
-        expect(draconisCombineItem).toBeTruthy();
-        expect(mercenariesItem).toBeUndefined();
-        expect(extinctItem).toBeTruthy();
-        expect(draconisCombineItem?.querySelectorAll('.faction-megamek-availability-badge').length).toBe(2);
-        expect(extinctItem?.querySelectorAll('.faction-megamek-availability-badge').length).toBe(0);
+        expect(factionRows.length).toBe(2);
+        expect(draconisCombineRow).toBeTruthy();
+        expect(mercenariesRow).toBeUndefined();
+        expect(extinctRow).toBeTruthy();
+        expect(draconisCombineRow?.querySelectorAll('.faction-megamek-availability-badge').length).toBe(2);
+        expect(extinctRow?.querySelectorAll('.faction-megamek-availability-badge').length).toBe(0);
+        expect(draconisCombineRow?.querySelector('.faction-row-heading .faction-logo')).toBeTruthy();
+        expect(draconisCombineRow?.querySelector('.availability-cell .cell-faction-logo')).toBeTruthy();
         expect(badgeLabels).toEqual(['Requisition: Common', 'Salvage: Rare']);
         expect(dataServiceMock.getMegaMekAvailabilityRecordForUnit).toHaveBeenCalledWith(unit);
         expect(unitAvailabilitySourceMock.useMegaMekAvailability).toHaveBeenCalled();
@@ -162,35 +167,25 @@ describe('UnitDetailsFactionTabComponent', () => {
         expect(viewModel[0].factions.find((faction) => faction.name === 'Extinct')?.megaMekTooltip).toBeNull();
     });
 
-    it('splits multiword faction labels into head, middle, and tail wrap groups', () => {
+    it('renders eras as columns and sorts logo-backed faction rows alphabetically', () => {
         const originalFactionCount = factions.length;
-        factions.push(
-            {
-                id: 77,
-                name: 'Clan Sea Fox',
-                group: 'Clan',
-                img: TEST_ICON_SRC,
-                eras: {
-                    3050: new Set([1]),
-                },
-            } as unknown as Faction,
-            {
-                id: 99,
-                name: 'Inner Sphere General',
-                group: 'Inner Sphere',
-                img: TEST_ICON_SRC,
-                eras: {
-                    3050: new Set([1]),
-                },
-            } as unknown as Faction,
-        );
+        const originalEraIcon = eras[0].icon;
+        eras[0].icon = TEST_ICON_SRC;
+        factions.push({
+            id: 77,
+            name: 'Clan Sea Fox',
+            group: 'Clan',
+            img: TEST_ICON_SRC,
+            eras: {
+                3050: new Set([1]),
+            },
+        } as unknown as Faction);
         megaMekAvailabilityRecord = {
             n: unit.name,
             e: {
                 '3050': {
                     '7': [7, 3],
                     '77': [6, 0],
-                    '99': [5, 0],
                 },
             },
         };
@@ -201,33 +196,32 @@ describe('UnitDetailsFactionTabComponent', () => {
             fixture.detectChanges();
 
             const element = fixture.nativeElement as HTMLElement;
-            const clanSeaFoxItem = Array.from(element.querySelectorAll('.faction-item'))
-                .find((item) => item.textContent?.includes('Clan Sea Fox'));
-            const catchAllLabel = Array.from(element.querySelectorAll('.parent-faction'))
-                .find((item) => item.textContent?.includes('Inner Sphere General'));
+            const eraHeaders = Array.from(element.querySelectorAll('.era-column-heading'));
+            const factionHeadings = Array.from(element.querySelectorAll('.faction-row-heading'));
+            const grid = fixture.debugElement.query(By.directive(UnitDetailsFactionsTabGridComponent))
+                .componentInstance as UnitDetailsFactionsTabGridComponent;
+            const matrix = grid.availabilityMatrix();
+            const clanSeaFoxRow = matrix.rows.find((row) => row.name === 'Clan Sea Fox');
 
-            expect(clanSeaFoxItem).toBeTruthy();
-            expect(clanSeaFoxItem?.querySelector('.faction-name-head')?.textContent?.trim()).toBe('Clan');
-            expect(clanSeaFoxItem?.querySelector('.faction-name-middle')?.textContent).toBe(' Sea ');
-            expect(clanSeaFoxItem?.querySelector('.faction-name-tail')?.textContent?.trim().startsWith('Fox')).toBeTrue();
-            expect(clanSeaFoxItem?.querySelector('.faction-name-head .faction-icon')).toBeTruthy();
-
-            const clanSeaFox = fixture.componentInstance.factionAvailability()[0].factions
-                .find((faction) => faction.name === 'Clan Sea Fox');
-            expect(clanSeaFox?.nameParts).toEqual({
-                head: 'Clan',
-                middle: ' Sea ',
-                tail: 'Fox',
-                hasMultipleWords: true,
-            });
-
-            expect(catchAllLabel).toBeTruthy();
-            expect(catchAllLabel?.querySelector('.faction-name-head')?.textContent?.trim()).toBe('Inner');
-            expect(catchAllLabel?.querySelector('.faction-name-middle')?.textContent).toBe(' Sphere ');
-            expect(catchAllLabel?.querySelector('.faction-name-tail')?.textContent?.trim().startsWith('General')).toBeTrue();
-            expect(catchAllLabel?.querySelector('.faction-name-head .faction-icon')).toBeTruthy();
+            expect(eraHeaders.length).toBe(1);
+            expect(eraHeaders[0].textContent).toContain('Clan Invasion');
+            expect(eraHeaders[0].querySelector('.era-icon')).toBeTruthy();
+            expect(getComputedStyle(eraHeaders[0]).width).toBe('70px');
+            expect(matrix.rows.map((row) => row.name)).toEqual([
+                'Clan Sea Fox',
+                'Draconis Combine',
+                'Extinct',
+            ]);
+            expect(factionHeadings.map((heading) => heading.querySelector('.faction-name')?.textContent?.trim())).toEqual([
+                'Clan Sea Fox',
+                'Draconis Combine',
+                'Extinct',
+            ]);
+            expect(clanSeaFoxRow?.cells[0]).not.toBeNull();
+            expect(factionHeadings[0].querySelector('.faction-logo')).toBeTruthy();
         } finally {
             factions.length = originalFactionCount;
+            eras[0].icon = originalEraIcon;
         }
     });
 
@@ -300,6 +294,48 @@ describe('UnitDetailsFactionTabComponent', () => {
             ]);
             expect(ilClan?.factions.map((faction) => faction.name)).toEqual(['Faction X', 'Faction Y']);
             expect(ilClan?.factions.some((faction) => faction.isCatchAll)).toBeFalse();
+
+            const grid = fixture.debugElement.query(By.directive(UnitDetailsFactionsTabGridComponent))
+                .componentInstance as UnitDetailsFactionsTabGridComponent;
+            const matrix = grid.availabilityMatrix();
+            expect(matrix.rows.map((row) => row.name)).toEqual(['Inner Sphere General']);
+            expect(matrix.rows[0].subrows.map((row) => row.name)).toEqual(['Faction X', 'Faction Y']);
+            expect(matrix.rows[0].cells[0]).not.toBeNull();
+            expect(matrix.rows[0].cells[1]).toBeNull();
+            expect(matrix.rows[0].subrows[0].cells.every((cell) => cell !== null)).toBeTrue();
+            expect(matrix.rows[0].subrowAvailabilityCounts).toEqual([2, 2]);
+
+            const element = fixture.nativeElement as HTMLElement;
+            const toggle = element.querySelector<HTMLButtonElement>('.catch-all-toggle');
+            const groupSummary = element.querySelector<HTMLButtonElement>('.group-cell-summary');
+            expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+            expect(groupSummary?.querySelector('.group-cell-count')?.textContent?.trim()).toBe('2');
+            expect(groupSummary?.getAttribute('aria-label')).toContain('2 grouped factions available in ilClan');
+            expect(element.querySelectorAll('.faction-row').length).toBe(1);
+
+            groupSummary?.click();
+            fixture.detectChanges();
+
+            expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+            expect(element.querySelectorAll('.faction-row').length).toBe(3);
+            expect(Array.from(element.querySelectorAll('.faction-row.subrow .faction-name'))
+                .map((name) => name.textContent?.trim())).toEqual(['Faction X', 'Faction Y']);
+
+            const listButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.view-switch-button'))
+                .find((button) => button.textContent?.trim() === 'List');
+            listButton?.click();
+            fixture.detectChanges();
+
+            const listCatchAll = element.querySelector<HTMLElement>('.catch-all-faction .parent-faction');
+            expect(element.querySelectorAll('.collapsed-faction-item').length).toBe(0);
+
+            listCatchAll?.click();
+            fixture.detectChanges();
+
+            const collapsedItems = Array.from(element.querySelectorAll('.collapsed-faction-item'));
+            expect(collapsedItems.length).toBe(2);
+            expect(collapsedItems[0].textContent).toContain('Faction X');
+            expect(collapsedItems[1].textContent).toContain('Faction Y');
         } finally {
             factions.splice(0, factions.length, ...originalFactions);
         }
@@ -339,5 +375,39 @@ describe('UnitDetailsFactionTabComponent', () => {
         expect(viewModel[1].factions[0].megaMekTooltip).toBeNull();
         expect(unitAvailabilitySourceMock.getFactionEraUnitIds).not.toHaveBeenCalled();
         expect(unitAvailabilitySourceMock.getUnitAvailabilityKey).not.toHaveBeenCalled();
+    });
+
+    it('switches between the grid and restored list layouts', () => {
+        const fixture = TestBed.createComponent(UnitDetailsFactionTabComponent);
+        fixture.componentRef.setInput('unit', unit);
+        fixture.detectChanges();
+
+        const element = fixture.nativeElement as HTMLElement;
+        const listButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.view-switch-button'))
+            .find((button) => button.textContent?.trim() === 'List');
+        const gridButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.view-switch-button'))
+            .find((button) => button.textContent?.trim() === 'Grid');
+
+        expect(gridButton?.getAttribute('aria-pressed')).toBe('true');
+        expect(listButton?.getAttribute('aria-pressed')).toBe('false');
+        expect(fixture.debugElement.query(By.directive(UnitDetailsFactionsTabGridComponent))).toBeTruthy();
+        expect(fixture.debugElement.query(By.directive(UnitDetailsFactionsTabListComponent))).toBeNull();
+
+        listButton?.click();
+        fixture.detectChanges();
+
+        expect(listButton?.getAttribute('aria-pressed')).toBe('true');
+        expect(gridButton?.getAttribute('aria-pressed')).toBe('false');
+        expect(fixture.debugElement.query(By.directive(UnitDetailsFactionsTabGridComponent))).toBeNull();
+        expect(fixture.debugElement.query(By.directive(UnitDetailsFactionsTabListComponent))).toBeTruthy();
+        expect(element.querySelector('.faction-availability-list')).toBeTruthy();
+        expect(element.querySelector('.era-name')?.textContent).toContain('Clan Invasion');
+        expect(element.querySelector('.faction-list')?.textContent).toContain('Draconis Combine');
+
+        gridButton?.click();
+        fixture.detectChanges();
+
+        expect(fixture.debugElement.query(By.directive(UnitDetailsFactionsTabGridComponent))).toBeTruthy();
+        expect(element.querySelector('.faction-availability-matrix')).toBeTruthy();
     });
 });

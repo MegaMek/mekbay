@@ -27,10 +27,8 @@ import {
     type C3EmergencyMasterOperatingTurns,
     type C3EmergencyMasterRuntimeState,
     type ComponentRuntimeState,
-    type CrewRuntimeState,
     type CriticalSlotRuntimeState,
     type EscalatingFailureRuntimeState,
-    type EscalatingFailureSequence,
     type InstanceBaselineRef,
     type LocationRuntimeState,
     type MekLocationConditionKey,
@@ -309,7 +307,6 @@ import {
     type RuntimeStatePerspective,
 } from './cbt-unit-runtime';
 
-export type StatePerspective = RuntimeStatePerspective;
 export type MekHitArcV2 = 'front' | 'rear' | 'left' | 'right';
 
 interface MekRuntimeSource {
@@ -605,7 +602,7 @@ export interface MekUnitQueryPort extends CBTUnitQueryPort {
     /** Current immutable physical-attack effects; availability remains a separate pure query. */
     mekPhysicalAttacks(): MekPhysicalAttackProjectionResultV2;
     /** Current derived shield tracks from entity topology plus sparse runtime facts. */
-    mekShields(perspective?: StatePerspective): MekShieldProjectionResultV2;
+    mekShields(perspective?: RuntimeStatePerspective): MekShieldProjectionResultV2;
     /** Current entity + sparse-runtime attack modifier breakdowns. */
     mekCombatModifiers(): MekCombatModifierProjectionResult;
     mekCriticalChance(
@@ -628,26 +625,26 @@ export interface MekUnitQueryPort extends CBTUnitQueryPort {
     mekDestruction(): MekDestructionProjectionResultV2;
     mekRuleCheck(key: MekRuleCheckKeyV2): MekRuleCheckStateV2 | undefined;
     /** Effective location availability, including inherited torso loss or flooding. */
-    locationStatus(locationId: LocationId, perspective?: StatePerspective): EquipmentStatus;
-    criticalHits(slotId: CriticalSlotId, perspective?: StatePerspective): number;
+    locationStatus(locationId: LocationId, perspective?: RuntimeStatePerspective): EquipmentStatus;
+    criticalHits(slotId: CriticalSlotId, perspective?: RuntimeStatePerspective): number;
     componentStatusAtLocation(
         componentId: ComponentId,
         locationId: LocationId,
-        perspective?: StatePerspective,
+        perspective?: RuntimeStatePerspective,
     ): EquipmentStatus;
     locationCondition(
         locationId: LocationId,
         condition: MekLocationConditionKey,
-        perspective?: StatePerspective,
+        perspective?: RuntimeStatePerspective,
     ): number;
     componentStealthState(componentId: ComponentId): StealthState;
-    functionalEcmForStealth(perspective?: StatePerspective): boolean;
+    functionalEcmForStealth(perspective?: RuntimeStatePerspective): boolean;
     stealthTnModifiers(
         targetMoveDistance?: number,
-        perspective?: StatePerspective,
+        perspective?: RuntimeStatePerspective,
     ): TnStealthModifiers | undefined;
-    c3DisruptedByStealth(perspective?: StatePerspective): boolean;
-    voidSignatureActive(perspective?: StatePerspective): boolean;
+    c3DisruptedByStealth(perspective?: RuntimeStatePerspective): boolean;
+    voidSignatureActive(perspective?: RuntimeStatePerspective): boolean;
     componentGaussPower(componentId: ComponentId): MekGaussPowerState;
     componentJammed(componentId: ComponentId): boolean;
     componentEscalatingFailure(componentId: ComponentId): EscalatingFailureRuntimeState | undefined;
@@ -657,10 +654,10 @@ export interface MekUnitQueryPort extends CBTUnitQueryPort {
     shieldDamage(
         componentId: ComponentId,
         track: MekShieldTrack,
-        perspective?: StatePerspective,
+        perspective?: RuntimeStatePerspective,
     ): number;
-    modularArmorDamage(componentId: ComponentId, perspective?: StatePerspective): number;
-    modularArmorRemaining(componentId: ComponentId, perspective?: StatePerspective): number;
+    modularArmorDamage(componentId: ComponentId, perspective?: RuntimeStatePerspective): number;
+    modularArmorRemaining(componentId: ComponentId, perspective?: RuntimeStatePerspective): number;
     ammoLoadout(componentId: ComponentId): AmmoLoadout;
     ammoCapacity(componentId: ComponentId): number;
     heatState(): MekHeatStateV2;
@@ -778,7 +775,7 @@ export class CBTUnitInstance {
         const statusTopology = this.#statusTopology;
         let committedStatus: RuntimeEquipmentStatusKernel | undefined;
         let previewStatus: RuntimeEquipmentStatusKernel | undefined;
-        const createStatusKernel = (perspective: StatePerspective): RuntimeEquipmentStatusKernel =>
+        const createStatusKernel = (perspective: RuntimeStatePerspective): RuntimeEquipmentStatusKernel =>
             new RuntimeEquipmentStatusKernel(
                 statusTopology,
                 statusState(unit, state, perspective),
@@ -787,7 +784,7 @@ export class CBTUnitInstance {
         // One query captures one immutable state revision. Build each perspective's
         // shared rules context once instead of rebuilding and revalidating it for
         // every component, slot, and location lookup in the same projection.
-        const statusKernel = (perspective: StatePerspective): RuntimeEquipmentStatusKernel => {
+        const statusKernel = (perspective: RuntimeStatePerspective): RuntimeEquipmentStatusKernel => {
             if (perspective === 'committed') {
                 return committedStatus ??= createStatusKernel(perspective);
             }
@@ -931,7 +928,7 @@ export class CBTUnitInstance {
                 this.#mechanicsContext,
                 projectionContext(),
             ),
-            mekShields: (perspective: StatePerspective = 'committed') => projectRuntimeMekShields(
+            mekShields: (perspective: RuntimeStatePerspective = 'committed') => projectRuntimeMekShields(
                 unit,
                 state,
                 statusTopology,
@@ -993,25 +990,25 @@ export class CBTUnitInstance {
                 const check = state.ruleChecks.get(key);
                 return check === undefined ? undefined : Object.freeze({ ...check });
             },
-            remainingArmor: (faceId: ArmorFaceId, perspective: StatePerspective = 'committed') => {
+            remainingArmor: (faceId: ArmorFaceId, perspective: RuntimeStatePerspective = 'committed') => {
                 const face = unit.index.armorFaces.get(faceId);
                 if (!face) throw new Error(`Unknown armor face ${faceId}`);
                 return Math.max(0, face.maximumPoints - armorDamage(state, faceId, perspective));
             },
-            remainingInternal: (locationId: LocationId, perspective: StatePerspective = 'committed') => {
+            remainingInternal: (locationId: LocationId, perspective: RuntimeStatePerspective = 'committed') => {
                 const location = unit.index.locations.get(locationId);
                 if (!location) throw new Error(`Unknown location ${locationId}`);
                 return Math.max(0, location.internalPoints - internalDamage(state, locationId, perspective));
             },
-            locationStatus: (locationId: LocationId, perspective: StatePerspective = 'committed') => {
+            locationStatus: (locationId: LocationId, perspective: RuntimeStatePerspective = 'committed') => {
                 if (!unit.index.locations.has(locationId)) throw new Error(`Unknown location ${locationId}`);
                 return runtimeLocationStatus(unit, state, locationId, perspective);
             },
-            criticalHits: (slotId: CriticalSlotId, perspective: StatePerspective = 'committed') => {
+            criticalHits: (slotId: CriticalSlotId, perspective: RuntimeStatePerspective = 'committed') => {
                 if (!unit.index.slots.has(slotId)) throw new Error(`Unknown critical slot ${slotId}`);
                 return criticalHits(state, slotId, perspective);
             },
-            componentStatus: (componentId: ComponentId, perspective: StatePerspective = 'committed') => {
+            componentStatus: (componentId: ComponentId, perspective: RuntimeStatePerspective = 'committed') => {
                 const kernel = statusKernel(perspective);
                 const status = kernel.component(componentId).status;
                 return shieldAwareComponentStatus(
@@ -1028,7 +1025,7 @@ export class CBTUnitInstance {
             componentStatusAtLocation: (
                 componentId: ComponentId,
                 locationId: LocationId,
-                perspective: StatePerspective = 'committed',
+                perspective: RuntimeStatePerspective = 'committed',
             ) => requireComponent(unit, componentId, () => {
                 if (!componentLocationIds(unit.index, componentId).includes(locationId)) {
                     throw new Error(`Component ${componentId} is not installed at ${locationId}`);
@@ -1049,7 +1046,7 @@ export class CBTUnitInstance {
             locationCondition: (
                 locationId: LocationId,
                 condition: MekLocationConditionKey,
-                perspective: StatePerspective = 'committed',
+                perspective: RuntimeStatePerspective = 'committed',
             ) => {
                 if (!unit.index.locations.has(locationId)) throw new Error(`Unknown location ${locationId}`);
                 if (!isMekLocationConditionKey(condition)) throw new Error(`Unknown location condition ${condition}`);
@@ -1061,7 +1058,7 @@ export class CBTUnitInstance {
             componentStealthState: (componentId: ComponentId) => {
                 return componentStealthState(unit, state, componentId);
             },
-            functionalEcmForStealth: (perspective: StatePerspective = 'preview') => {
+            functionalEcmForStealth: (perspective: RuntimeStatePerspective = 'preview') => {
                 return hasFunctionalEcmForStealth(buildMekStealthFacts(
                     unit,
                     state,
@@ -1071,19 +1068,19 @@ export class CBTUnitInstance {
             },
             stealthTnModifiers: (
                 targetMoveDistance = 0,
-                perspective: StatePerspective = 'preview',
+                perspective: RuntimeStatePerspective = 'preview',
             ) => getActiveStealthTnModifiers(
                 buildMekStealthFacts(unit, state, statusTopology, perspective),
                 targetMoveDistance,
                 state.destroyed || state.conditions.has('shutdown'),
             ),
-            c3DisruptedByStealth: (perspective: StatePerspective = 'preview') => (
+            c3DisruptedByStealth: (perspective: RuntimeStatePerspective = 'preview') => (
                 unitHasActiveC3DisruptingStealth(
                     buildMekStealthFacts(unit, state, statusTopology, perspective),
                     state.destroyed || state.conditions.has('shutdown'),
                 )
             ),
-            voidSignatureActive: (perspective: StatePerspective = 'preview') => (
+            voidSignatureActive: (perspective: RuntimeStatePerspective = 'preview') => (
                 unitHasActiveVoidSignature(
                     buildMekStealthFacts(unit, state, statusTopology, perspective),
                     state.destroyed || state.conditions.has('shutdown'),
@@ -1119,21 +1116,21 @@ export class CBTUnitInstance {
             shieldDamage: (
                 componentId: ComponentId,
                 track: MekShieldTrack,
-                perspective: StatePerspective = 'committed',
+                perspective: RuntimeStatePerspective = 'committed',
             ) => {
                 requireShieldProfile(unit, componentId);
                 return shieldDamage(state, componentId, track, perspective);
             },
             modularArmorDamage: (
                 componentId: ComponentId,
-                perspective: StatePerspective = 'committed',
+                perspective: RuntimeStatePerspective = 'committed',
             ) => {
                 requireModularArmor(unit, componentId);
                 return modularArmorDamage(state, componentId, perspective);
             },
             modularArmorRemaining: (
                 componentId: ComponentId,
-                perspective: StatePerspective = 'committed',
+                perspective: RuntimeStatePerspective = 'committed',
             ) => modularArmorRemaining(unit, state, componentId, perspective),
             ammoLoadout: (componentId: ComponentId) => requireAmmoLoadout(
                 unit,
@@ -3040,17 +3037,17 @@ function mekDamageStateView(
     state: MekUnitRuntimeState,
 ): MekDamageStateViewV2 {
     return Object.freeze({
-        remainingInternal: (locationId: LocationId, perspective: StatePerspective) => {
+        remainingInternal: (locationId: LocationId, perspective: RuntimeStatePerspective) => {
             const location = unit.index.locations.get(locationId);
             if (!location) throw new Error(`Unknown location ${locationId}`);
             return Math.max(0, location.internalPoints - internalDamage(state, locationId, perspective));
         },
-        remainingArmor: (faceId: ArmorFaceId, perspective: StatePerspective) => {
+        remainingArmor: (faceId: ArmorFaceId, perspective: RuntimeStatePerspective) => {
             const face = unit.index.armorFaces.get(faceId);
             if (!face) throw new Error(`Unknown armor face ${faceId}`);
             return Math.max(0, face.maximumPoints - armorDamage(state, faceId, perspective));
         },
-        criticalHits: (slotId: CriticalSlotId, perspective: StatePerspective) => {
+        criticalHits: (slotId: CriticalSlotId, perspective: RuntimeStatePerspective) => {
             if (!unit.index.slots.has(slotId)) throw new Error(`Unknown critical slot ${slotId}`);
             return criticalHits(state, slotId, perspective);
         },
@@ -3066,7 +3063,7 @@ function mekDamageStateView(
         locationCondition: (
             locationId: LocationId,
             condition: 'blown-off' | 'flooded',
-            perspective: StatePerspective,
+            perspective: RuntimeStatePerspective,
         ) => {
             if (!unit.index.locations.has(locationId)) throw new Error(`Unknown location ${locationId}`);
             return locationConditionValue(state, locationId, condition, perspective);
@@ -3292,7 +3289,7 @@ function projectRuntimeMekShields(
     state: MekUnitRuntimeState,
     statusTopology: RuntimeEquipmentStatusTopology,
     mechanicsContext: MekMechanicsContextV2,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
     sharedStatus?: RuntimeEquipmentStatusKernel,
 ): MekShieldProjectionResultV2 {
     const committed = statusState(unit, state, perspective);
@@ -3323,7 +3320,7 @@ function shieldAwareComponentStatus(
     statusTopology: RuntimeEquipmentStatusTopology,
     mechanicsContext: MekMechanicsContextV2,
     componentId: ComponentId,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
     status: EquipmentStatus,
     sharedStatus?: RuntimeEquipmentStatusKernel,
 ): EquipmentStatus {
@@ -3546,7 +3543,7 @@ function buildMekStealthFacts(
     unit: MekRuntimeSource,
     state: MekUnitRuntimeState,
     statusTopology: RuntimeEquipmentStatusTopology,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
 ): readonly StealthEquipmentFacts[] {
     const status = new RuntimeEquipmentStatusKernel(
         statusTopology,
@@ -3800,30 +3797,30 @@ function criticalRuntimeView(
 ): MekCriticalRuntimeViewV2 {
     let committedStatus: RuntimeEquipmentStatusKernel | undefined;
     let previewStatus: RuntimeEquipmentStatusKernel | undefined;
-    const createStatus = (perspective: StatePerspective) => new RuntimeEquipmentStatusKernel(
+    const createStatus = (perspective: RuntimeStatePerspective) => new RuntimeEquipmentStatusKernel(
         statusTopology,
         statusState(unit, state, perspective),
         { rules: unit.ruleset, family: 'mek' },
     );
-    const status = (perspective: StatePerspective) => perspective === 'committed'
+    const status = (perspective: RuntimeStatePerspective) => perspective === 'committed'
         ? committedStatus ??= createStatus(perspective)
         : previewStatus ??= createStatus(perspective);
     return Object.freeze({
-        remainingArmor: (faceId: ArmorFaceId, perspective: StatePerspective) => {
+        remainingArmor: (faceId: ArmorFaceId, perspective: RuntimeStatePerspective) => {
             const face = unit.index.armorFaces.get(faceId);
             if (!face) throw new Error(`Unknown armor face ${faceId}`);
             return Math.max(0, face.maximumPoints - armorDamage(state, faceId, perspective));
         },
-        remainingInternal: (locationId: LocationId, perspective: StatePerspective) => {
+        remainingInternal: (locationId: LocationId, perspective: RuntimeStatePerspective) => {
             const location = unit.index.locations.get(locationId);
             if (!location) throw new Error(`Unknown location ${locationId}`);
             return Math.max(0, location.internalPoints - internalDamage(state, locationId, perspective));
         },
-        criticalHits: (slotId: CriticalSlotId, perspective: StatePerspective) => {
+        criticalHits: (slotId: CriticalSlotId, perspective: RuntimeStatePerspective) => {
             if (!unit.index.slots.has(slotId)) throw new Error(`Unknown critical slot ${slotId}`);
             return criticalHits(state, slotId, perspective);
         },
-        componentStatus: (componentId: ComponentId, perspective: StatePerspective) => {
+        componentStatus: (componentId: ComponentId, perspective: RuntimeStatePerspective) => {
             if (!unit.index.components.has(componentId)) throw new Error(`Unknown component ${componentId}`);
             return status(perspective).component(componentId).status;
         },
@@ -4118,7 +4115,7 @@ function buildMekMobileHpgFacts(
     unit: MekRuntimeSource,
     state: MekUnitRuntimeState,
     statusTopology: RuntimeEquipmentStatusTopology,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
 ): readonly MobileHpgComponentFact[] {
     const status = new RuntimeEquipmentStatusKernel(
         statusTopology,
@@ -4198,7 +4195,7 @@ function buildMekElectronicFacts(
     unit: MekRuntimeSource,
     state: MekUnitRuntimeState,
     statusTopology: RuntimeEquipmentStatusTopology,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
 ): readonly ElectronicComponentFact[] {
     const status = new RuntimeEquipmentStatusKernel(
         statusTopology,
@@ -4748,7 +4745,7 @@ function withAmmoConfiguration(
     return { ...state, ammo: new ImmutableIndex(ammo) };
 }
 
-const HEALTHY_CREW_STATE: CrewRuntimeState = Object.freeze({ wounds: 0, unconscious: false, ejected: false });
+const HEALTHY_CREW_STATE: CBTCrewRuntimeState = Object.freeze({ wounds: 0, unconscious: false, ejected: false });
 
 function withCrewState(
     state: MekUnitRuntimeState,
@@ -4913,7 +4910,7 @@ function applyPendingMekCriticalExplosions(
     return next === state ? null : next;
 }
 
-function armorDamage(state: MekUnitRuntimeState, faceId: ArmorFaceId, perspective: StatePerspective): number {
+function armorDamage(state: MekUnitRuntimeState, faceId: ArmorFaceId, perspective: RuntimeStatePerspective): number {
     const committed = [...state.locations.values()].flatMap(location => location.armorDamage)
         .find(item => item.faceId === faceId)?.damage ?? 0;
     return committed + (perspective === 'preview' ? state.pendingCombat.armorDamage.get(faceId) ?? 0 : 0);
@@ -4922,7 +4919,7 @@ function armorDamage(state: MekUnitRuntimeState, faceId: ArmorFaceId, perspectiv
 function modularArmorDamage(
     state: MekUnitRuntimeState,
     componentId: ComponentId,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
 ): number {
     const committed = state.components.get(componentId)?.modularArmorDamage ?? 0;
     return committed + (perspective === 'preview'
@@ -4934,7 +4931,7 @@ function modularArmorRemaining(
     unit: MekRuntimeSource,
     state: MekUnitRuntimeState,
     componentId: ComponentId,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
 ): number {
     requireModularArmor(unit, componentId);
     if (componentRuntimeStatus(unit, state, componentId, 'committed') !== 'available') return 0;
@@ -5091,12 +5088,12 @@ function withModularArmorDamage(
     return { ...state, components: new ImmutableIndex(components) };
 }
 
-function internalDamage(state: MekUnitRuntimeState, locationId: LocationId, perspective: StatePerspective): number {
+function internalDamage(state: MekUnitRuntimeState, locationId: LocationId, perspective: RuntimeStatePerspective): number {
     return (state.locations.get(locationId)?.internalDamage ?? 0)
         + (perspective === 'preview' ? state.pendingCombat.locationInternalDamage.get(locationId) ?? 0 : 0);
 }
 
-function criticalHits(state: MekUnitRuntimeState, slotId: CriticalSlotId, perspective: StatePerspective): number {
+function criticalHits(state: MekUnitRuntimeState, slotId: CriticalSlotId, perspective: RuntimeStatePerspective): number {
     return (state.slots.get(slotId)?.hits ?? 0)
         + (perspective === 'preview' ? state.pendingCombat.criticalHits.get(slotId) ?? 0 : 0);
 }
@@ -5105,7 +5102,7 @@ function shieldDamage(
     state: MekUnitRuntimeState,
     componentId: ComponentId,
     track: MekShieldTrack,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
 ): number {
     const field = track === 'absorption' ? 'absorptionDamage' : 'capacityDamage';
     const committed = state.components.get(componentId)?.shieldDamage?.[field] ?? 0;
@@ -5174,7 +5171,7 @@ function locationConditionValue(
     state: MekUnitRuntimeState,
     locationId: LocationId,
     condition: MekLocationConditionKey,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
 ): number {
     if (perspective === 'preview') {
         const pending = state.pendingCombat.locationConditions.get(locationId);
@@ -5187,7 +5184,7 @@ function componentRuntimeStatus(
     unit: MekRuntimeSource,
     state: MekUnitRuntimeState,
     componentId: ComponentId,
-    perspective: StatePerspective = 'committed',
+    perspective: RuntimeStatePerspective = 'committed',
 ): EquipmentStatus {
     return new RuntimeEquipmentStatusKernel(
         buildStatusTopology(unit),
@@ -5199,7 +5196,7 @@ function componentRuntimeStatus(
 function statusState(
     unit: MekRuntimeSource,
     state: MekUnitRuntimeState,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
 ): RuntimeEquipmentCommittedState {
     const components = new Map<ComponentId, EquipmentStatus>();
     for (const [id, value] of state.components) components.set(id, value.statusOverride ?? 'available');
@@ -5233,7 +5230,7 @@ function runtimeLocationStatus(
     unit: MekRuntimeSource,
     state: MekUnitRuntimeState,
     locationId: LocationId,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
 ): EquipmentStatus {
     if (isRuntimeLocationPhysicallyDestroyed(unit, state, locationId, perspective)) return 'destroyed';
     if (locationConditionValue(state, locationId, 'flooded', perspective) > 0) return 'disabled';
@@ -5245,7 +5242,7 @@ function isRuntimeLocationPhysicallyDestroyed(
     unit: MekRuntimeSource,
     state: MekUnitRuntimeState,
     locationId: LocationId,
-    perspective: StatePerspective,
+    perspective: RuntimeStatePerspective,
 ): boolean {
     return isMekLocationPhysicallyDestroyedFromView(unit.index, locationId, {
         internalDamage: id => internalDamage(state, id, perspective),
@@ -5969,7 +5966,7 @@ function escalatingFailureDefinition(
 function isEscalatingFailureSequence(
     value: unknown,
     maximum: number,
-): value is EscalatingFailureSequence {
+): value is number {
     return Number.isSafeInteger(value) && Number(value) >= 1 && Number(value) <= maximum;
 }
 

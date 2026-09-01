@@ -28,6 +28,10 @@ import {
     type RemoteLoadForceEntry,
 } from '../models/load-force-entry.model';
 import {
+    decodeRemoteLoadForceEntry,
+    type RemoteLoadForceWireEntry,
+} from '../models/remote-load-force-entry.model';
+import {
     decodeForceFromStorage,
     encodeForceForStorage,
     type StoredForceRecord,
@@ -47,15 +51,19 @@ import { LoggerService } from './logger.service';
 import { UserStateService } from './userState.service';
 import { UnitRuntimeService } from './unit-runtime.service';
 import { CBTUnitService } from './cbt-unit.service';
-import { WsService, type WsMessage } from './ws.service';
+import {
+    FORCE_PERSISTENCE_REVISION,
+    WsService,
+    type WsMessage,
+} from './ws.service';
 
-type WsDataResponse<T> = WsMessage & { readonly data?: T };
+type WsDataResponse<T> = WsMessage & { readonly data?: T; readonly owned?: boolean };
 type ForceSaveResponse = WsMessage & {
     readonly action?: string;
     readonly code?: string;
     readonly message?: string;
 };
-type ForceTagsUpdateResponse = ForceSaveResponse & { readonly timestamp?: string };
+type ForceTagsUpdateResponse = ForceSaveResponse & { readonly timestamp?: string | number };
 
 export interface ForceTagsUpdateResult {
     tags: string[];
@@ -110,11 +118,6 @@ interface OwnerlessForceOperationLease {
     readonly ready: Promise<void>;
     readonly release: () => void;
     readonly completion: Promise<void>;
-}
-
-/** The existing server wire calls this a digest, but its value is the V2 force revision. */
-function cloudForceRevisionToken(revision: number | null): string | null {
-    return revision === null ? null : `revision:${revision}`;
 }
 
 function hasInvalidDurableForceIds(force: Force): boolean {
@@ -635,37 +638,37 @@ export class ForcePersistenceService {
         } finally {
             if (showLoading) this.isCloudForceLoading.set(false);
         }
-        let local: Force | null = null;
-        let cloud: Force | null = null;
-        let result: Force | null = null;
-        let resultHasDurableLocalIdentity = false;
-        if (localRaw) {
-            try {
-                local = await this.loadPersistedForce(localRaw);
-            } catch (error) { 
-                this.logger.error(error instanceof Error ? error.message : String(error));
-            }
-        }
-        if (cloudRaw) {
-            try {
-                cloud = await this.loadPersistedForce(cloudRaw);
-            } catch (error) { 
-                this.logger.error(error instanceof Error ? error.message : String(error));
-            }
+        const cloudIsPreferred = localRaw !== null
+            && cloudRaw !== null
+            && this.preferCloudForce(localRaw, cloudRaw);
+        const candidates: { source: 'local' | 'cloud'; raw: SerializedForce }[] = [];
+        if (localRaw && cloudRaw) {
+            candidates.push(
+                cloudIsPreferred
+                    ? { source: 'cloud', raw: cloudRaw }
+                    : { source: 'local', raw: localRaw },
+                cloudIsPreferred
+                    ? { source: 'local', raw: localRaw }
+                    : { source: 'cloud', raw: cloudRaw },
+            );
+        } else if (localRaw) {
+            candidates.push({ source: 'local', raw: localRaw });
+        } else if (cloudRaw) {
+            candidates.push({ source: 'cloud', raw: cloudRaw });
         }
 
-        let cloudIsNewer = false;
-        if (local && cloud) {
-            cloudIsNewer = this.preferCloudForce(localRaw!, cloudRaw!);
-            result = cloudIsNewer ? cloud : local;
-            resultHasDurableLocalIdentity = result === local;
-        } else if (!triedCloud && local) {
-            result = local;
-            resultHasDurableLocalIdentity = true;
-        } else {
-            result = cloud || local || null;
-            resultHasDurableLocalIdentity = result === local && local !== null;
+        let result: Force | null = null;
+        let resultSource: 'local' | 'cloud' | null = null;
+        for (const candidate of candidates) {
+            try {
+                result = await this.loadPersistedForce(candidate.raw);
+                resultSource = candidate.source;
+                break;
+            } catch (error) {
+                this.logger.error(error instanceof Error ? error.message : String(error));
+            }
         }
+        let resultHasDurableLocalIdentity = resultSource === 'local';
 
         if (result?.gameSystem === GameSystem.CBT) {
             if (!triedCloud) {
@@ -678,33 +681,38 @@ export class ForcePersistenceService {
         }
 
         // If we reached cloud but the force only exists locally, push it up
-        if (triedCloud && local && localRaw && cloudRaw === null && detachedAuthorityIsCurrent()) {
-            this.logger.info(`Force "${local.name}" exists locally but not in cloud: pushing to cloud.`);
-            local.setExpectedCloudCBTForceV2Revision(null);
-            if (!local.readOnly() && ownerlessLease) {
+        if (triedCloud
+            && resultSource === 'local'
+            && result
+            && localRaw
+            && cloudRaw === null
+            && detachedAuthorityIsCurrent()) {
+            this.logger.info(`Force "${result.name}" exists locally but not in cloud: pushing to cloud.`);
+            result.setExpectedCloudCBTForceV2Revision(null);
+            if (!result.readOnly() && ownerlessLease) {
                 try {
                     await this.pushOwnerlessForceToCloud(
-                        local,
+                        result,
                         localRaw,
                         ownerlessLease,
                         authorityGeneration,
                     );
                 } catch (error) {
-                    this.logger.error(`Failed to save force ${local.instanceId()} to cloud: ${error}`);
+                    this.logger.error(`Failed to save force ${result.instanceId()} to cloud: ${error}`);
                 }
             }
         } else 
         if (triedCloud
-            && (cloudIsNewer || !local)
-            && cloud
+            && resultSource === 'cloud'
+            && result
             && cloudRaw !== null
-            && cloud.owned()
+            && result.owned()
             && !skipLocal
             && detachedAuthorityIsCurrent()) {
-            if (!local) {
-                this.logger.info(`Force "${cloud.name}" exists in cloud but not locally: saving local copy.`);
+            if (!localRaw) {
+                this.logger.info(`Force "${result.name}" exists in cloud but not locally: saving local copy.`);
             } else {
-                this.logger.info(`Force "${cloud.name}" exists in cloud and is newer: updating local copy.`);
+                this.logger.info(`Force "${result.name}" is using the cloud copy: updating local copy.`);
             }
             resultHasDurableLocalIdentity = ownerlessLease !== null
                 && await this.saveSerializedForceToLocalStorageUnderLease(
@@ -1277,13 +1285,14 @@ export class ForcePersistenceService {
         if (!this.isOwnerlessForceOperationCurrent(instanceId, lease, generation)) return false;
         const response = await this.wsService.sendAndWaitForResponse<ForceSaveResponse>({
             action: 'saveForce',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             uuid: this.userStateService.uuid(),
             data: encodeForceForStorage(detached),
             ...(detached.cbt === undefined ? {} : {
                 cbtPersistence: {
                     writerVersion: 2,
                     ...(expectedCloudRevision === undefined ? {} : {
-                        expectedIntegrityDigest: cloudForceRevisionToken(expectedCloudRevision),
+                        expectedRevision: expectedCloudRevision,
                     }),
                 },
             }),
@@ -1472,11 +1481,12 @@ export class ForcePersistenceService {
 
         for (let i = 0; i < orderedIds.length; i += ForcePersistenceService.FORCE_BULK_CHUNK_SIZE) {
             const chunk = orderedIds.slice(i, i + ForcePersistenceService.FORCE_BULK_CHUNK_SIZE);
-            const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<RemoteLoadForceEntry[]>>({
+            const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<RemoteLoadForceWireEntry[]>>({
                 action: 'getForcesBulk',
+                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                 instanceIds: chunk,
             });
-            result.push(...(response?.data ?? []));
+            result.push(...(response?.data ?? []).map(decodeRemoteLoadForceEntry));
         }
 
         return result;
@@ -1493,6 +1503,7 @@ export class ForcePersistenceService {
         for (const instanceId of orderedIds) {
             const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<StoredForceRecord | null>>({
                 action: 'getForce',
+                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                 uuid,
                 instanceId,
                 ownedOnly: false,
@@ -1500,6 +1511,7 @@ export class ForcePersistenceService {
             const raw = response?.data;
             if (raw != null) {
                 const decoded = decodeForceFromStorage(raw);
+                if (response?.owned !== undefined) decoded.owned = response.owned;
                 if (decoded.instanceId) result.push(decoded);
             }
         }
@@ -1550,6 +1562,7 @@ export class ForcePersistenceService {
                 const uuid = this.userStateService.uuid();
                 const payload = {
                     action: 'delForce',
+                    forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                     uuid,
                     instanceId
                 };
@@ -1590,20 +1603,28 @@ export class ForcePersistenceService {
         if (!ws) return [];
         const forces: LoadForceEntry[] = [];
         const uuid = this.userStateService.uuid();
-        const payload = {
-            action: 'listForces',
-            uuid,
-        };
-        const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<RemoteLoadForceEntry[]>>(payload);
-        if (response?.data) {
-            for (const raw of response.data) {
+        let afterInstanceId: string | undefined;
+        do {
+            const response = await this.wsService.sendAndWaitForResponse<
+                WsDataResponse<RemoteLoadForceWireEntry[]> & { readonly nextCursor?: string }
+            >({
+                action: 'listForces',
+                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
+                uuid,
+                ...(afterInstanceId === undefined ? {} : { afterInstanceId }),
+            });
+            for (const wire of response?.data ?? []) {
                 try {
+                    const raw = decodeRemoteLoadForceEntry(wire);
                     forces.push(createLoadForceEntry(raw, this.dataService, { cloud: true }));
                 } catch (error) {
-                    this.logger.error('Failed to deserialize force: ' + error + ' ' + raw);
+                    this.logger.error('Failed to deserialize force: ' + error + ' ' + wire);
                 }
             }
-        }
+            const nextCursor = response?.nextCursor;
+            if (typeof nextCursor !== 'string' || nextCursor === afterInstanceId) break;
+            afterInstanceId = nextCursor;
+        } while (true);
         return forces;
     }
 
@@ -1769,6 +1790,7 @@ export class ForcePersistenceService {
             const uuid = this.userStateService.uuid();
             const response = await this.wsService.sendAndWaitForResponse<ForceTagsUpdateResponse>({
                 action: 'setForceTags',
+                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                 uuid,
                 instanceId,
                 tags,
@@ -1794,7 +1816,9 @@ export class ForcePersistenceService {
             return response.action === 'forceTagsUpdated'
                 ? {
                     updated: true,
-                    timestamp: response.timestamp ?? null,
+                    timestamp: typeof response.timestamp === 'number'
+                        ? new Date(response.timestamp).toISOString()
+                        : response.timestamp ?? null,
                 }
                 : failed;
         } catch (err) {
@@ -1918,13 +1942,14 @@ export class ForcePersistenceService {
         try {
             response = await this.wsService.sendAndWaitForResponse<ForceSaveResponse>({
                 action: 'saveForce',
+                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                 uuid,
                 data: encodeForceForStorage(serialized),
                 ...(serialized.cbt === undefined ? {} : {
                     cbtPersistence: {
                         writerVersion: 2,
                         ...(expectedCloudRevision === undefined ? {} : {
-                            expectedIntegrityDigest: cloudForceRevisionToken(expectedCloudRevision),
+                            expectedRevision: expectedCloudRevision,
                         }),
                     },
                 }),
@@ -2021,6 +2046,7 @@ export class ForcePersistenceService {
                         const uuid = this.userStateService.uuid();
                         const payload = {
                             action: 'saveForce',
+                            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                             uuid,
                             data: encodeForceForStorage(entry.serialized),
                             ...(entry.serialized.cbt === undefined ? {} : {
@@ -2029,9 +2055,7 @@ export class ForcePersistenceService {
                                     ...(entry.expectedCloudRevision === undefined
                                         ? {}
                                         : {
-                                            expectedIntegrityDigest: cloudForceRevisionToken(
-                                                entry.expectedCloudRevision,
-                                            ),
+                                            expectedRevision: entry.expectedCloudRevision,
                                         }),
                                 },
                             }),
@@ -2062,15 +2086,17 @@ export class ForcePersistenceService {
         if (!ws) return null;
         const payload = {
             action: 'getForce',
+            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
             ...(includeOwnership ? { uuid: this.userStateService.uuid() } : {}),
             instanceId,
             ownedOnly,
         };
         const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<StoredForceRecord>>(payload);
         const data = response?.data;
-        return data === undefined || data === null
-            ? null
-            : decodeForceFromStorage(data);
+        if (data === undefined || data === null) return null;
+        const decoded = decodeForceFromStorage(data);
+        if (response?.owned !== undefined) decoded.owned = response.owned;
+        return decoded;
     }
 
     /* ----------------------------------------------------------
