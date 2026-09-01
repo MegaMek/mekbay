@@ -29,7 +29,6 @@ import {
     type EquipmentInteractionInput,
     type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 
 export interface MekRiscLaserPulseLink {

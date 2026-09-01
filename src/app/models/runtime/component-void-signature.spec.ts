@@ -8,7 +8,6 @@ import { mekTargetRosterRow } from './cbt-force-target-roster';
 import { emptyCBTEncounterSnapshot } from './encounter-runtime';
 import { projectMekEquipmentPanel } from './equipment-panel';
 import { ReadyMekUnit } from './ready-unit-factory';
-import { asCommandId } from './runtime-state';
 import {
     createDirectVoidSignatureRuntimeFixture,
     type DirectMekRuntimeFixture,
@@ -40,8 +39,8 @@ describe('direct Void Signature runtime', () => {
         const revision = fixture.instance.revision();
         expect(fixture.instance.dispatch({
             type: 'set-stealth-state',
-            commandId: asCommandId('void:reject-without-ecm'),
-            expectedRevision: revision,
+            
+            
             componentId: voidSignature.id,
             state: 'enabling',
         })).toEqual(jasmine.objectContaining({ accepted: false }));
@@ -77,8 +76,8 @@ describe('direct Void Signature runtime', () => {
         }
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('void:settle-ecm-loss'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
         }).accepted).toBeTrue();
         expect(fixture.instance.query().componentStealthState(voidSignature.id)).toBe('disabled');
     });
@@ -97,8 +96,8 @@ describe('direct Void Signature runtime', () => {
         });
         expect(fixture.instance.dispatch({
             type: 'declare-mek-movement',
-            commandId: asCommandId('void:zero-distance-walk'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             declaration: {
                 schemaVersion: 1,
                 mode: 'walk',
@@ -145,16 +144,16 @@ function activateVoidSignature(fixture: DirectMekRuntimeFixture) {
     const component = fixture.equipmentComponent('Test Void Signature');
     expect(fixture.instance.dispatch({
         type: 'set-stealth-state',
-        commandId: asCommandId('void:enable'),
-        expectedRevision: fixture.instance.revision(),
+        
+        
         componentId: component.id,
         state: 'enabling',
     }).accepted).toBeTrue();
     expect(fixture.instance.query().componentStealthState(component.id)).toBe('enabling');
     expect(fixture.instance.dispatch({
         type: 'end-turn',
-        commandId: asCommandId('void:end-turn'),
-        expectedRevision: fixture.instance.revision(),
+        
+        
         policy: 'automatic',
     }).accepted).toBeTrue();
     return component;
@@ -165,8 +164,8 @@ function disableEcm(fixture: DirectMekRuntimeFixture): void {
         const component = fixture.equipmentComponent(equipmentId);
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            commandId: asCommandId(`void:disable:${equipmentId}`),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             componentId: component.id,
             mode: ECMMode.OFF,
         }).accepted).toBeTrue();

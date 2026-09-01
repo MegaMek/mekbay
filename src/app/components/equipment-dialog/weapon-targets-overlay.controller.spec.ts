@@ -253,7 +253,7 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
 
         expect(harness.dispatch.calls.mostRecent().args[0]).toEqual({
             kind: 'update-target',
-            expectedRevision: asStateRevision(4),
+            
             targetId: asEncounterTargetId('A'),
             patch: { name: 'Changed' },
         } satisfies TargetRegistryCommand);

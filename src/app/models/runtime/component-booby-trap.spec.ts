@@ -14,7 +14,6 @@ import {
     BoobyTrapHandler,
 } from './component-booby-trap';
 import { emptyCBTEncounterSnapshot } from './encounter-runtime';
-import { asCommandId } from './runtime-state';
 import { createDirectBoobyTrapRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 
 describe('direct Booby Trap runtime', () => {
@@ -26,8 +25,8 @@ describe('direct Booby Trap runtime', () => {
         expect(fixture.instance.query().componentMode(trap.id)).toBe(BOOBY_TRAP_ARMED_MODE);
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            commandId: asCommandId('booby-trap:invalid-mode'),
-            expectedRevision: revision,
+            
+            
             componentId: trap.id,
             mode: BOOBY_TRAP_DETONATED_MODE,
         })).toEqual(jasmine.objectContaining({ accepted: false }));

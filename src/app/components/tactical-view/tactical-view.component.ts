@@ -46,7 +46,7 @@ import type {
 import type { NonMekUnitCommand } from '../../models/runtime/non-mek-unit-instance';
 import type { CBTUnitCommand } from '../../models/runtime/unit-instance';
 import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
-import { createCommandId, MAX_MEK_CREW_WOUNDS } from '../../models/runtime/runtime-state';
+import { MAX_MEK_CREW_WOUNDS } from '../../models/runtime/runtime-state';
 import {
     MEK_CREW_STATE_CONTROLS,
     MEK_UNIT_CONDITION_CONTROLS,
@@ -88,6 +88,7 @@ import type { NonMekRecordSheetInteraction } from '../page-viewer/non-mek-record
 import { recordSheetCommand } from '../page-viewer/mek-record-sheet-interaction.util';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
 import type { MekLocation } from '../../models/entity/types';
+import { TacticalPipMatrixDirective } from './tactical-pip-matrix.directive';
 import { TacticalTurnTrackerComponent } from './tactical-turn-tracker.component';
 
 interface MekCriticalGroup {
@@ -142,7 +143,7 @@ const CREW_POSITION_LABELS = Object.freeze(['Pilot', 'Gunner', 'Officer'] as con
         PageViewerMekInteractionService,
         PageViewerNonMekRuntimeService,
     ],
-    imports: [TacticalTurnTrackerComponent, UnitIconComponent, TooltipDirective],
+    imports: [TacticalPipMatrixDirective, TacticalTurnTrackerComponent, UnitIconComponent, TooltipDirective],
     templateUrl: './tactical-view.component.html',
     styleUrl: './tactical-view.component.scss',
 })
@@ -764,8 +765,6 @@ export class TacticalViewComponent {
         if (!current) return;
         await this.sendMekCommand({
             type: 'set-crew-state',
-            commandId: createCommandId(),
-            expectedRevision: snapshot.stateRevision,
             positionId: current.positionId,
             wounds: current.state.wounds,
             unconscious: state === 'unconscious' ? !current.state.unconscious : current.state.unconscious,
@@ -783,15 +782,11 @@ export class TacticalViewComponent {
         await this.sendMekCommand(deltaRemaining < 0
             ? {
                 type: 'spend-ammo',
-                commandId: createCommandId(),
-                expectedRevision: snapshot.stateRevision,
                 componentId: current.componentId,
                 amount: 1,
             }
             : {
                 type: 'configure-ammo-source',
-                commandId: createCommandId(),
-                expectedRevision: snapshot.stateRevision,
                 componentId: current.componentId,
                 munitionKey: current.ammo.munitionKey,
                 remaining: Math.min(current.ammo.capacity, current.ammo.remaining + 1),
@@ -803,7 +798,6 @@ export class TacticalViewComponent {
         if (!snapshot) return;
         await this.sendNonMekCommand({
             kind: 'set-condition',
-            expectedRevision: snapshot.stateRevision,
             condition: key,
             active: !snapshot.conditions.includes(key),
         });
@@ -815,14 +809,12 @@ export class TacticalViewComponent {
         await this.sendNonMekCommand(delta > 0
             ? {
                 kind: 'damage-armor',
-                expectedRevision: snapshot.stateRevision,
                 faceId: face.faceId,
                 amount: delta,
                 target: this.damageTarget(),
             }
             : {
                 kind: 'repair-armor',
-                expectedRevision: snapshot.stateRevision,
                 faceId: face.faceId,
                 amount: Math.abs(delta),
                 target: this.damageTarget(),
@@ -835,14 +827,12 @@ export class TacticalViewComponent {
         await this.sendNonMekCommand(delta > 0
             ? {
                 kind: 'damage-internal',
-                expectedRevision: snapshot.stateRevision,
                 locationId: location.locationId,
                 amount: delta,
                 target: this.damageTarget(),
             }
             : {
                 kind: 'repair-internal',
-                expectedRevision: snapshot.stateRevision,
                 locationId: location.locationId,
                 amount: Math.abs(delta),
                 target: this.damageTarget(),
@@ -855,7 +845,6 @@ export class TacticalViewComponent {
         await this.sendNonMekCommand(delta > 0
             ? {
                 kind: 'damage-track',
-                expectedRevision: snapshot.stateRevision,
                 damageTrackId: track.damageTrackId,
                 amount: delta,
                 target: this.damageTarget(),
@@ -863,7 +852,6 @@ export class TacticalViewComponent {
             }
             : {
                 kind: 'repair-damage-track',
-                expectedRevision: snapshot.stateRevision,
                 damageTrackId: track.damageTrackId,
                 amount: Math.abs(delta),
                 target: this.damageTarget(),
@@ -875,7 +863,6 @@ export class TacticalViewComponent {
         if (!snapshot?.heat.tracked) return;
         await this.sendNonMekCommand({
             kind: 'set-heat',
-            expectedRevision: snapshot.stateRevision,
             heat: Math.max(0, this.nonMekHeat(snapshot) + delta),
             target: this.damageTarget(),
         });
@@ -888,7 +875,6 @@ export class TacticalViewComponent {
         const remaining = Math.max(0, Math.min(current.ammo.capacity, current.ammo.remaining + deltaRemaining));
         await this.sendNonMekCommand({
             kind: 'set-ammo-spent',
-            expectedRevision: snapshot.stateRevision,
             componentId: current.componentId,
             shotsSpent: current.ammo.capacity - remaining,
         });
@@ -900,7 +886,6 @@ export class TacticalViewComponent {
         if (!snapshot || !current) return;
         await this.sendNonMekCommand({
             kind: 'set-component-status',
-            expectedRevision: snapshot.stateRevision,
             componentId: current.componentId,
             status: current.previewStatus === 'available' ? 'destroyed' : 'available',
             target: this.damageTarget(),
@@ -917,7 +902,6 @@ export class TacticalViewComponent {
         const boundedWounds = Math.max(1, Math.min(CREW_WOUND_STEPS.length, wounds));
         await this.sendNonMekCommand({
             kind: 'set-crew-state',
-            expectedRevision: snapshot.stateRevision,
             positionId: current.positionId,
             wounds: current.state.wounds === boundedWounds ? boundedWounds - 1 : boundedWounds,
             unconscious: current.state.unconscious,
@@ -940,7 +924,6 @@ export class TacticalViewComponent {
         const next = current.effectiveState === selected ? null : selected;
         await this.sendNonMekCommand({
             kind: 'set-crew-state',
-            expectedRevision: snapshot.stateRevision,
             positionId: current.positionId,
             wounds: current.state.wounds,
             unconscious: next === 'unconscious',
@@ -1037,14 +1020,14 @@ export class TacticalViewComponent {
         const member = this.member();
         if (!isCBTMekForceMember(member) || this.readOnly()) return;
         const result = await member.force.dispatchMekUnitCommand(member.id, command);
-        if (!result.accepted) this.showRejectedEdit(result.reason);
+        if (!result.accepted) this.showRejectedEdit('This force is read-only.');
     }
 
     private async sendNonMekCommand(command: NonMekUnitCommand): Promise<void> {
         const member = this.member();
         if (!member || isCBTMekForceMember(member) || this.readOnly()) return;
         const result = await member.force.dispatchNonMekUnitCommand(member.id, command);
-        if (!result.accepted) this.showRejectedEdit(result.reason);
+        if (!result.accepted) this.showRejectedEdit('This force is read-only.');
     }
 
     private showRejectedEdit(reason: unknown): void {

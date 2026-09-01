@@ -398,7 +398,6 @@ export class PageViewerNonMekRuntimeService {
         if (!snapshot?.heat.tracked || snapshot.heat.pending === null) return;
         const result = await member.force.dispatchNonMekUnitCommand(member.id, {
             kind: 'apply-heat',
-            expectedRevision: snapshot.stateRevision,
         });
         if (!result.accepted) this.showRejectedEdit();
     }

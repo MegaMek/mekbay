@@ -32,12 +32,12 @@ describe('CBT force target roster', () => {
         const runtime = ready.getInstance();
         expect(runtime.dispatch({
             kind: 'set-movement',
-            expectedRevision: runtime.revision(),
+            
             movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
             kind: 'set-cover',
-            expectedRevision: runtime.revision(),
+            
             cover: 'building-1',
         }).accepted).toBeTrue();
 

@@ -174,7 +174,7 @@ h1 {
 
 .command-strip {
     display: grid;
-    grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.25fr);
+    grid-template-columns: fit-content(50%) minmax(0, 1fr);
     align-items: stretch;
     gap: 5px;
     margin-bottom: 5px;
@@ -185,7 +185,7 @@ h1 {
     border: 1px solid var(--tactical-line);
     background: var(--tactical-panel);
 }
-.unit-capabilities { display: flex; flex-flow: column wrap; gap: 4px; padding: 4px 6px; }
+.unit-capabilities { display: flex; flex-flow: column wrap; justify-content: center; gap: 4px; padding: 4px 6px; }
 .condition-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .state-chip {
     min-height: 22px;
@@ -210,14 +210,17 @@ h1 {
     scrollbar-width: thin;
     scroll-snap-type: x proximity;
 }
-.crew-track { display: flex; min-width: max-content; height: 100%; gap: 5px; }
+.crew-track { display: flex; width: 100%; min-width: 0; height: 100%; align-items: stretch; gap: 5px; }
 .crew-card {
     display: flex;
-    width: clamp(580px, 65vw, 920px);
+    width: max-content;
+    min-width: 0;
+    max-width: 100%;
     min-height: 44px;
     flex: 0 0 auto;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-start;
     gap: 5px 8px;
     padding: 5px 6px;
     scroll-snap-align: start;
@@ -226,7 +229,7 @@ h1 {
     display: inline-flex;
     min-width: 0;
     max-width: 240px;
-    flex: 1 1 80px;
+    flex: 0 1 auto;
     align-items: center;
     justify-content: flex-start;
     padding: 0;
@@ -247,7 +250,6 @@ h1 {
     flex: 0 0 auto;
     align-items: center;
     gap: 5px 10px;
-    margin-left: auto;
     white-space: nowrap;
 }
 .skill-item { display: inline-flex; align-items: center; gap: 3px; color: var(--text-color-secondary); font-size: 0.55rem; font-weight: 700; }
@@ -274,9 +276,8 @@ h1 {
     flex: 0 0 auto;
     align-items: center;
     gap: 4px;
-    margin-left: auto;
 }
-.crew-wounds { display: flex; min-width: 0; flex: 0 0 auto; align-items: center; gap: 5px; margin-left: auto; }
+.crew-wounds { display: flex; min-width: 0; flex: 0 0 auto; align-items: center; gap: 5px; }
 .crew-wounds-label { color: var(--text-color-secondary); font-size: 0.5rem; font-weight: 800; text-transform: uppercase; }
 .wound-track { display: inline-flex; min-width: 0; align-items: stretch; gap: 0; }
 .wound-button {
@@ -496,14 +497,17 @@ tactical-turn-tracker { display: block; width: 100%; }
 .numeric-damage-strip.internal-strip .large-track-value { color: color-mix(in srgb, var(--tactical-cyan) 78%, var(--text-color)); }
 .pip-matrix {
     --pip-size: 9px;
+    --pip-group-width: 49px;
+    --pip-column-gap: 10px;
+    --pip-rows: 2;
     display: grid;
     width: max-content;
     max-width: 100%;
     flex: 0 1 auto;
-    grid-template-rows: repeat(2, var(--pip-size));
+    grid-template-rows: repeat(var(--pip-rows), var(--pip-size));
     grid-auto-flow: column;
-    grid-auto-columns: 49px;
-    column-gap: 10px;
+    grid-auto-columns: var(--pip-group-width);
+    column-gap: var(--pip-column-gap);
     row-gap: 2px;
     align-items: center;
     background: repeating-linear-gradient(
@@ -520,10 +524,7 @@ tactical-turn-tracker { display: block; width: 100%; }
     align-items: center;
     gap: 1px;
 }
-.pip-matrix.single-capacity { grid-template-rows: var(--pip-size); align-self: start; }
-.pip-matrix.low-capacity { grid-template-rows: repeat(2, var(--pip-size)); }
-.pip-matrix.medium-capacity { grid-template-rows: repeat(3, var(--pip-size)); }
-.pip-matrix.high-capacity { grid-template-rows: repeat(5, var(--pip-size)); }
+.pip-matrix.single-line { --pip-rows: 1; align-self: start; }
 .damage-pip {
     display: block;
     width: 9px;
@@ -536,36 +537,6 @@ tactical-turn-tracker { display: block; width: 100%; }
 .damage-pip.damaged { border-color: color-mix(in srgb, var(--tactical-danger) 86%, #fff); background: var(--tactical-danger); }
 .structure-pip { border-radius: 1px; border-color: color-mix(in srgb, var(--tactical-cyan) 58%, transparent); }
 .structure-pip.damaged { border-color: color-mix(in srgb, var(--tactical-danger) 86%, #fff); }
-
-/* Each item in the matrix is a five-pip group. Narrow tracks stack more groups
-   in each visual column, preserving left-to-right, top-to-bottom damage order. */
-@container damage-strip (min-width: 335px) {
-    .pip-matrix.medium-capacity { grid-template-rows: repeat(2, var(--pip-size)); }
-}
-
-@container damage-strip (min-width: 455px) {
-    .pip-matrix.high-capacity { grid-template-rows: repeat(3, var(--pip-size)); }
-}
-
-@container damage-strip (min-width: 630px) {
-    .pip-matrix.high-capacity { grid-template-rows: repeat(2, var(--pip-size)); }
-}
-
-@container damage-strip (max-width: 320px) {
-    .pip-matrix.low-capacity { grid-template-rows: repeat(3, var(--pip-size)); }
-    .pip-matrix.medium-capacity { grid-template-rows: repeat(5, var(--pip-size)); }
-    .pip-matrix.high-capacity { grid-template-rows: repeat(7, var(--pip-size)); }
-}
-
-@container damage-strip (max-width: 261px) {
-    .pip-matrix.high-capacity { grid-template-rows: repeat(10, var(--pip-size)); }
-}
-
-@container damage-strip (max-width: 202px) {
-    .pip-matrix.low-capacity { grid-template-rows: repeat(5, var(--pip-size)); }
-    .pip-matrix.medium-capacity { grid-template-rows: repeat(10, var(--pip-size)); }
-    .pip-matrix.high-capacity { grid-template-rows: repeat(20, var(--pip-size)); }
-}
 
 /* When armor and internal wrap onto separate lines, lead both tracks with the count. */
 @container location-tracks (max-width: 485px) {
@@ -671,7 +642,7 @@ tactical-turn-tracker { display: block; width: 100%; }
     .unit-position { min-width: 29px; }
     .command-strip { grid-template-columns: minmax(0, 1fr); gap: 3px; }
     .unit-capabilities { padding: 3px 4px; }
-    .crew-card { width: min(680px, 96vw); min-height: 0; }
+    .crew-card { min-height: 0; }
     .inventory-head { display: none; }
     .inventory-row { grid-template-columns: minmax(0, 1fr) 34px 48px 25px; gap: 3px; min-height: 28px; padding-inline: 4px; }
     .inventory-row .equipment-stat { display: none; }

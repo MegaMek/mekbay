@@ -18,7 +18,6 @@ import {
     type EquipmentInteractionCommandContext,
     type EquipmentInteractionInput,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 
 export const SHIELD_INACTIVE_MODE = 'None';
 export const SHIELD_ACTIVE_MODE = 'Active';

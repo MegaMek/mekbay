@@ -284,12 +284,7 @@
                                     <strong class="large-track-value" aria-hidden="true">{{ remaining }}/{{ face.maximum }}</strong>
                                     } @else {
                                     <strong class="track-value">{{ damageTrackValue(remaining, face.maximum) }}</strong>
-                                    <span class="pip-matrix"
-                                        [class.single-capacity]="face.maximum <= 5"
-                                        [class.low-capacity]="face.maximum > 5 && face.maximum <= 25"
-                                        [class.medium-capacity]="face.maximum > 25 && face.maximum <= 50"
-                                        [class.high-capacity]="face.maximum > 50"
-                                        aria-hidden="true">
+                                    <span class="pip-matrix" [tacticalPipMatrix]="face.maximum" aria-hidden="true">
                                         @for (group of pipGroups(face.maximum); track $index) {
                                         <span class="pip-group">
                                             @for (pip of group; track pip) { <span class="damage-pip" [class.damaged]="pip <= face.maximum - remaining"></span> }
@@ -307,12 +302,7 @@
                                     @if (location.maximumInternal > damagePipThreshold) {
                                     <strong class="large-track-value" aria-hidden="true">{{ internal }}/{{ location.maximumInternal }}</strong>
                                     } @else {
-                                    <span class="pip-matrix"
-                                        [class.single-capacity]="location.maximumInternal <= 5"
-                                        [class.low-capacity]="location.maximumInternal > 5 && location.maximumInternal <= 25"
-                                        [class.medium-capacity]="location.maximumInternal > 25 && location.maximumInternal <= 50"
-                                        [class.high-capacity]="location.maximumInternal > 50"
-                                        aria-hidden="true">
+                                    <span class="pip-matrix" [tacticalPipMatrix]="location.maximumInternal" aria-hidden="true">
                                         @for (group of pipGroups(location.maximumInternal); track $index) {
                                         <span class="pip-group">
                                             @for (pip of group; track pip) { <span class="damage-pip structure-pip" [class.damaged]="pip <= location.maximumInternal - internal"></span> }
@@ -388,11 +378,8 @@
                                     <strong class="large-track-value" aria-hidden="true">{{ remaining }}/{{ face.maximum }}</strong>
                                     } @else {
                                     <strong class="track-value">{{ damageTrackValue(remaining, face.maximum) }}</strong>
-                                    <span class="pip-matrix"
-                                        [class.single-capacity]="face.maximum <= 5"
-                                        [class.low-capacity]="face.maximum > 5 && face.maximum <= 25"
-                                        [class.medium-capacity]="face.maximum > 25 && face.maximum <= 50"
-                                        [class.high-capacity]="face.maximum > 50"
+                                    <span class="pip-matrix" [tacticalPipMatrix]="face.maximum"
+                                        [tacticalPipMatrixSingleLine]="activeMember.entity.entityType === 'BattleArmor'"
                                         aria-hidden="true">
                                         @for (group of pipGroups(face.maximum); track $index) {
                                         <span class="pip-group">
@@ -411,11 +398,8 @@
                                     @if (location.maximumInternal > damagePipThreshold) {
                                     <strong class="large-track-value" aria-hidden="true">{{ internal }}/{{ location.maximumInternal }}</strong>
                                     } @else {
-                                    <span class="pip-matrix"
-                                        [class.single-capacity]="location.maximumInternal <= 5"
-                                        [class.low-capacity]="location.maximumInternal > 5 && location.maximumInternal <= 25"
-                                        [class.medium-capacity]="location.maximumInternal > 25 && location.maximumInternal <= 50"
-                                        [class.high-capacity]="location.maximumInternal > 50"
+                                    <span class="pip-matrix" [tacticalPipMatrix]="location.maximumInternal"
+                                        [tacticalPipMatrixSingleLine]="activeMember.entity.entityType === 'BattleArmor'"
                                         aria-hidden="true">
                                         @for (group of pipGroups(location.maximumInternal); track $index) {
                                         <span class="pip-group">

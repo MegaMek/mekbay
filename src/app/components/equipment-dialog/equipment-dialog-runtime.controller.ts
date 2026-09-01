@@ -21,12 +21,16 @@ import type {
 } from '../../models/runtime/equipment-panel';
 import { selectedWeaponHeat } from '../../models/runtime/equipment-panel';
 import type { EncounterTargetId } from '../../models/runtime/encounter-runtime';
-import { createCommandId } from '../../models/runtime/runtime-state';
+import type {
+    AttackerAmmoSelection,
+    AttackerSelection,
+} from '../../models/runtime/attacker-targeting-state';
 import type { CBTUnitCommand } from '../../models/runtime/unit-instance';
 import {
     projectNonMekEscalatingFailureInteractions,
     type NonMekUnitCommand,
 } from '../../models/runtime/non-mek-unit-instance';
+import { canSwitchNonMekAirGroundState } from '../../models/runtime/non-mek-airborne-state';
 import type { OptionsService } from '../../services/options.service';
 import type { ToastService } from '../../services/toast.service';
 import type { DialogsService } from '../../services/dialogs.service';
@@ -63,7 +67,7 @@ import {
 
 type MekEquipmentCommand = CBTUnitCommand extends infer Command
     ? Command extends CBTUnitCommand
-        ? Omit<Command, 'commandId' | 'expectedRevision'>
+        ? Omit<Command, 'expectedRevision'>
         : never
     : never;
 
@@ -258,7 +262,7 @@ export class EquipmentDialogRuntimeController {
         this.busy.set(true);
         try {
             const result = await this.member.force.dispatchMekEquipmentChoice(token);
-            if (!result.accepted) this.reject(result.reason);
+            if (!result.accepted) this.rejectCommand();
         } finally {
             this.busy.set(false);
             this.refresh();
@@ -267,20 +271,32 @@ export class EquipmentDialogRuntimeController {
 
     public async selectTarget(row: EquipmentPanelComponent, value: string): Promise<void> {
         if (!row.weapon || this.busy()) return;
-        if (value !== '' && row.weapon.ammoSources.length > 0 && row.weapon.ammoSelection === undefined) {
-            const source = row.weapon.ammoSources.find(candidate =>
-                candidate.status === 'available' && candidate.remaining > 0)
-                ?? row.weapon.ammoSources.find(candidate => candidate.status === 'available');
-            if (source) {
-                await this.dispatchTargeting({
-                    kind: 'set-component-ammo',
-                    componentId: row.componentId,
-                    ammo: {
+        const allMembers = attackMembers(row);
+        const members = value === '' ? allMembers : allMembers.filter(member => member.selectable);
+        if (members.length === 0) return;
+        if (value !== '') {
+            const reservations = new Map<ComponentId, number>();
+            const updates = members.flatMap(member => {
+                if (member.ammoSources.length === 0 || member.ammoSelection !== undefined) return [];
+                const available = member.ammoSources
+                    .filter(candidate => candidate.status === 'available')
+                    .sort((left, right) =>
+                        (right.remaining - (reservations.get(right.componentId) ?? 0))
+                        - (left.remaining - (reservations.get(left.componentId) ?? 0)));
+                const source = available.find(candidate =>
+                    candidate.remaining > (reservations.get(candidate.componentId) ?? 0))
+                    ?? available[0];
+                if (!source) return [];
+                reservations.set(source.componentId, (reservations.get(source.componentId) ?? 0) + 1);
+                return [Object.freeze({
+                    componentId: member.componentId,
+                    ammo: Object.freeze({
                         preferredSourceId: source.componentId,
                         munitionKey: source.munitionKey,
-                    },
-                });
-            }
+                    }),
+                })];
+            });
+            if (updates.length > 0) await this.dispatchAmmoUpdates(updates);
         }
         const selection = value === ''
             ? null
@@ -289,11 +305,10 @@ export class EquipmentDialogRuntimeController {
                 : value.startsWith('range:')
                     ? { kind: 'manual-range' as const, range: value.slice(6) as 'short' | 'medium' | 'long' | 'extreme' }
                     : { kind: 'target' as const, targetId: value as EncounterTargetId };
-        await this.dispatchTargeting({
-            kind: 'set-component-selection',
-            componentId: row.componentId,
+        await this.dispatchComponentSelections(
+            members.map(member => member.componentId),
             selection,
-        });
+        );
     }
 
     public async selectPhysicalTarget(row: MekPhysicalAttackRow, value: string): Promise<void> {
@@ -314,17 +329,39 @@ export class EquipmentDialogRuntimeController {
     public async selectWeaponAmmo(row: EquipmentPanelComponent, value: string): Promise<void> {
         if (!row.weapon || this.busy()) return;
         const separator = value.indexOf('\u0000');
-        const ammo = separator < 0 || value === ''
-            ? null
-            : {
-                preferredSourceId: value.slice(0, separator) as ComponentId,
-                munitionKey: value.slice(separator + 1),
-            };
-        await this.dispatchTargeting({
-            kind: 'set-component-ammo',
-            componentId: row.componentId,
-            ammo,
-        });
+        const preferredSourceId = separator < 0 ? null : value.slice(0, separator) as ComponentId;
+        const munitionKey = separator < 0 ? null : value.slice(separator + 1);
+        if (row.attack === undefined) {
+            await this.dispatchTargeting({
+                kind: 'set-component-ammo',
+                componentId: row.componentId,
+                ammo: preferredSourceId === null || munitionKey === null || value === ''
+                    ? null
+                    : { preferredSourceId, munitionKey },
+            });
+            return;
+        }
+        const updates: Array<Readonly<{
+            readonly componentId: ComponentId;
+            readonly ammo: AttackerAmmoSelection | null;
+        }>> = [];
+        for (const member of attackMembers(row)) {
+            if (munitionKey === null || value === '') {
+                updates.push(Object.freeze({ componentId: member.componentId, ammo: null }));
+                continue;
+            }
+            const source = member.ammoSources.find(candidate =>
+                candidate.componentId === preferredSourceId
+                && candidate.loadouts.some(loadout => loadout.munitionKey === munitionKey))
+                ?? member.ammoSources.find(candidate =>
+                    candidate.loadouts.some(loadout => loadout.munitionKey === munitionKey));
+            if (!source) continue;
+            updates.push(Object.freeze({
+                componentId: member.componentId,
+                ammo: Object.freeze({ preferredSourceId: source.componentId, munitionKey }),
+            }));
+        }
+        if (updates.length > 0) await this.dispatchAmmoUpdates(updates);
     }
 
     public async selectAmmoLoadout(row: EquipmentPanelComponent, munitionKey: string): Promise<void> {
@@ -347,10 +384,17 @@ export class EquipmentDialogRuntimeController {
                 status,
                 target,
             });
-        } else {
+        } else if (row.attack === undefined) {
             await this.dispatchEntityUnit({
                 kind: 'set-component-status',
                 componentId: row.componentId,
+                status,
+                target,
+            });
+        } else {
+            await this.dispatchEntityUnit({
+                kind: 'set-component-statuses',
+                componentIds: row.attack.members.map(member => member.componentId),
                 status,
                 target,
             });
@@ -415,15 +459,12 @@ export class EquipmentDialogRuntimeController {
             const prototypeHeatRolls = this.prototypeHeatRolls(current);
             const result = await this.member.force.fireSelectedWeapons(this.member.id, {
                 type: 'fire-selected-weapons',
-                commandId: createCommandId(),
-                expectedRevision: current.stateRevision,
-                expectedRegistryRevision: current.targetRegistryRevision,
                 heatPolicy: this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
                     ? 'automatic'
                     : 'manual',
                 ...(prototypeHeatRolls.length === 0 ? {} : { prototypeHeatRolls }),
             });
-            if (!result.accepted) this.reject(result.reason);
+            if (!result.accepted) this.rejectCommand();
             else this.reportPrototypeHeat(current, result.prototypeHeat ?? Object.freeze([]));
         } finally {
             this.busy.set(false);
@@ -457,12 +498,19 @@ export class EquipmentDialogRuntimeController {
     public async resetSelections(): Promise<void> {
         if (this.busy()) return;
         const selected = this.weapons().filter(row => row.weapon?.selection !== undefined);
-        for (const row of selected) {
-            await this.dispatchTargeting({
-                kind: 'set-component-selection',
-                componentId: row.componentId,
-                selection: null,
-            });
+        if (!isCBTMekForceMember(this.member) && selected.length > 0) {
+            await this.dispatchComponentSelections(
+                selected.flatMap(row => attackMembers(row).map(member => member.componentId)),
+                null,
+            );
+        } else {
+            for (const row of selected) {
+                await this.dispatchTargeting({
+                    kind: 'set-component-selection',
+                    componentId: row.componentId,
+                    selection: null,
+                });
+            }
         }
         if (isCBTMekForceMember(this.member)) {
             for (const row of this.snapshot().physicalAttacks.filter(attack => attack.selection !== undefined)) {
@@ -484,11 +532,10 @@ export class EquipmentDialogRuntimeController {
         this.busy.set(true);
         try {
             const result = await this.member.force.dispatchEquipmentRowOrder(this.member.id, {
-                expectedRevision: this.snapshot().stateRevision,
                 group,
                 permutation,
             });
-            if (!result.accepted) this.reject(result.reason);
+            if (!result.accepted) this.rejectCommand();
         } finally {
             this.busy.set(false);
             this.refresh();
@@ -565,7 +612,10 @@ export class EquipmentDialogRuntimeController {
         const entity = this.member.force.getUnitSnapshot(this.member.id)?.entity;
         if (!entity) return false;
         const facts = motiveModeFactsForEntity(entity);
-        const airborneStates = canChangeAirborneGround(facts)
+        const canSelectAirborne = entity.entityType === 'Mek'
+            ? canChangeAirborneGround(facts)
+            : canSwitchNonMekAirGroundState(entity);
+        const airborneStates = canSelectAirborne
             ? [false, true]
             : [airborne];
         return airborneStates.some(isAirborne => getMotiveModesByUnit(facts, isAirborne)
@@ -609,16 +659,36 @@ export class EquipmentDialogRuntimeController {
         try {
             const result = await this.member.force.dispatchAttackerTargeting(this.member.id, {
                 type: 'edit-attacker-targeting',
-                commandId: createCommandId(),
-                expectedRevision: current.stateRevision,
-                expectedRegistryRevision: current.targetRegistryRevision,
                 edit,
             });
-            if (!result.accepted) this.reject(result.reason);
+            if (!result.accepted) this.rejectCommand();
         } finally {
             this.busy.set(false);
             this.refresh();
         }
+    }
+
+    private async dispatchComponentSelections(
+        componentIds: readonly ComponentId[],
+        selection: AttackerSelection | null,
+    ): Promise<void> {
+        const uniqueIds = [...new Set(componentIds)];
+        if (uniqueIds.length === 0) return;
+        await this.dispatchTargeting(uniqueIds.length === 1
+            ? { kind: 'set-component-selection', componentId: uniqueIds[0], selection }
+            : { kind: 'set-component-selections', componentIds: uniqueIds, selection });
+    }
+
+    private async dispatchAmmoUpdates(
+        updates: readonly Readonly<{
+            readonly componentId: ComponentId;
+            readonly ammo: AttackerAmmoSelection | null;
+        }>[],
+    ): Promise<void> {
+        if (updates.length === 0) return;
+        await this.dispatchTargeting(updates.length === 1
+            ? { kind: 'set-component-ammo', ...updates[0] }
+            : { kind: 'set-component-ammos', updates });
     }
 
     private async dispatchMekUnit(command: MekEquipmentCommand): Promise<boolean> {
@@ -627,10 +697,8 @@ export class EquipmentDialogRuntimeController {
         try {
             const result = await this.member.force.dispatchMekUnitCommand(this.member.id, {
                 ...command,
-                commandId: createCommandId(),
-                expectedRevision: this.snapshot().stateRevision,
             } as CBTUnitCommand);
-            if (!result.accepted) this.reject(result.reason);
+            if (!result.accepted) this.rejectCommand();
             return result.accepted;
         } finally {
             this.busy.set(false);
@@ -644,9 +712,8 @@ export class EquipmentDialogRuntimeController {
         try {
             const result = await this.member.force.dispatchNonMekUnitCommand(this.member.id, {
                 ...command,
-                expectedRevision: this.snapshot().stateRevision,
             } as NonMekUnitCommand);
-            if (!result.accepted) this.reject(result.reason);
+            if (!result.accepted) this.rejectCommand();
             return result.accepted;
         } finally {
             this.busy.set(false);
@@ -724,4 +791,25 @@ export class EquipmentDialogRuntimeController {
     private reject(reason: string): void {
         this.toast.showToast(`Equipment action rejected: ${reason}`, 'error');
     }
+
+    private rejectCommand(): void {
+        this.toast.showToast('This force is read-only.', 'error');
+    }
+}
+
+function attackMembers(row: EquipmentPanelComponent): readonly Readonly<{
+    readonly componentId: ComponentId;
+    readonly selectable: boolean;
+    readonly selection?: AttackerSelection;
+    readonly ammoSelection?: NonNullable<EquipmentPanelComponent['weapon']>['ammoSelection'];
+    readonly ammoSources: NonNullable<EquipmentPanelComponent['weapon']>['ammoSources'];
+}>[] {
+    if (row.attack) return row.attack.members;
+    return Object.freeze([Object.freeze({
+        componentId: row.componentId,
+        selectable: row.weapon?.selectable === true,
+        ...(row.weapon?.selection === undefined ? {} : { selection: row.weapon.selection }),
+        ...(row.weapon?.ammoSelection === undefined ? {} : { ammoSelection: row.weapon.ammoSelection }),
+        ammoSources: row.weapon?.ammoSources ?? Object.freeze([]),
+    })]);
 }

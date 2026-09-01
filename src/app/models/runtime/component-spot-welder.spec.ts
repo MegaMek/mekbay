@@ -7,7 +7,6 @@ import {
     projectMekEquipmentPanel,
     selectedWeaponHeat,
 } from './equipment-panel';
-import { asCommandId } from './runtime-state';
 import {
     createDirectSpotWelderRuntimeFixture,
     type DirectMekRuntimeFixture,
@@ -21,8 +20,8 @@ describe('direct spot-welder runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-heat',
-            commandId: asCommandId('spot-welder:set-heat'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             heat: 20,
         }).accepted).toBeTrue();
         let row = physicalRow(fixture, target);
@@ -47,8 +46,8 @@ describe('direct spot-welder runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'end-turn',
-            commandId: asCommandId('spot-welder:end-turn'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(fixture.instance.query().heatState().current).toBe(14);
@@ -63,9 +62,9 @@ describe('direct spot-welder runtime', () => {
         expect(select(fixture, target, 'spot-welder:mixed:physical')).toBeTrue();
         expect(fixture.instance.dispatchAttackerTargeting({
             type: 'edit-attacker-targeting',
-            commandId: asCommandId('spot-welder:mixed:laser'),
-            expectedRevision: fixture.instance.revision(),
-            expectedRegistryRevision: emptyCBTEncounterSnapshot().revision,
+            
+            
+            
             edit: {
                 kind: 'set-component-selection',
                 componentId: laser.id,
@@ -85,8 +84,8 @@ describe('direct spot-welder runtime', () => {
         expect(select(fixture, target, 'spot-welder:destroyed:select')).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('spot-welder:destroyed:set'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             componentId: welder.id,
             status: 'destroyed',
             target: 'committed',
@@ -128,9 +127,9 @@ function select(
     const registry = emptyCBTEncounterSnapshot();
     return fixture.instance.dispatchAttackerTargeting({
         type: 'edit-attacker-targeting',
-        commandId: asCommandId(commandId),
-        expectedRevision: fixture.instance.revision(),
-        expectedRegistryRevision: registry.revision,
+        
+        
+        
         edit: { kind: 'set-action-selection', target, selection: { kind: 'selected' } },
     }, registry, false).accepted;
 }
@@ -139,9 +138,9 @@ function fire(fixture: DirectMekRuntimeFixture, commandId: string): boolean {
     const registry = emptyCBTEncounterSnapshot();
     return fixture.instance.dispatchSelectedWeaponFire({
         type: 'fire-selected-weapons',
-        commandId: asCommandId(commandId),
-        expectedRevision: fixture.instance.revision(),
-        expectedRegistryRevision: registry.revision,
+        
+        
+        
         heatPolicy: 'automatic',
     }, registry, false, false).accepted;
 }

@@ -17,7 +17,6 @@ import {
     MGA_OFF_MODE,
     MGA_UNLINKING_MODE,
 } from './component-machine-gun-array';
-import { asCommandId } from './runtime-state';
 import { createDirectMachineGunArrayRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 
 describe('direct machine-gun-array runtime', () => {
@@ -40,15 +39,15 @@ describe('direct machine-gun-array runtime', () => {
         const topologyBefore = fixture.entity.equipmentBays()[0];
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            commandId: asCommandId('mga:runtime-only-unlink'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             componentId: indexedBay.controllerId!,
             mode: MGA_UNLINKING_MODE,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('mga:runtime-only-settle'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
         }).accepted).toBeTrue();
 
         expect(fixture.entity.equipmentBays()[0]).toBe(topologyBefore);
@@ -144,8 +143,8 @@ describe('direct machine-gun-array runtime', () => {
         )).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('mga:end-phase-off'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
         }).accepted).toBeTrue();
         expect(fixture.instance.snapshot().components.get(controllerId)?.mode).toBe(MGA_OFF_MODE);
         expect(fixture.instance.query().componentMode(controllerId)).toBe(MGA_OFF_MODE);
@@ -164,8 +163,8 @@ describe('direct machine-gun-array runtime', () => {
         expect(fixture.instance.query().componentMode(controllerId)).toBe(MGA_OFF_MODE);
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('mga:end-phase-linked'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
         }).accepted).toBeTrue();
         expect(fixture.instance.query().componentMode(controllerId)).toBe(MGA_LINKED_MODE);
         expect(fixture.instance.snapshot().components.get(controllerId)?.mode).toBeUndefined();
@@ -180,8 +179,8 @@ describe('direct machine-gun-array runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
-            commandId: asCommandId('mga:fire-linked'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             heatPolicy: 'manual',
             selections: [{
                 weaponId: controllerId,
@@ -193,8 +192,8 @@ describe('direct machine-gun-array runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'configure-ammo-source',
-            commandId: asCommandId('mga:two-rounds'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             componentId: ammo.id,
             munitionKey,
             remaining: 2,
@@ -202,8 +201,8 @@ describe('direct machine-gun-array runtime', () => {
         const beforeRevision = fixture.instance.revision();
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
-            commandId: asCommandId('mga:atomic-reject'),
-            expectedRevision: beforeRevision,
+            
+            
             heatPolicy: 'manual',
             selections: [{
                 weaponId: controllerId,
@@ -216,15 +215,15 @@ describe('direct machine-gun-array runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            commandId: asCommandId('mga:schedule-off'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             componentId: controllerId,
             mode: MGA_UNLINKING_MODE,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('mga:settle-off'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
         }).accepted).toBeTrue();
         const panel = projectMekEquipmentPanel(
             fixture.entity,

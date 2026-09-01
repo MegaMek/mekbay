@@ -19,7 +19,6 @@ import type {
     EquipmentInteractionCommandContext,
     EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 
 /** End-turn signature-system lifecycle and interaction owner. */

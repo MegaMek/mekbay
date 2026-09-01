@@ -27,7 +27,7 @@ describe('Infantry runtime rules', () => {
 
         runtime.dispatch({
             kind: 'set-internal-damage',
-            expectedRevision: runtime.revision(),
+            
             locationId: troopLocation.id,
             damage: 7,
         });
@@ -49,7 +49,7 @@ describe('Infantry runtime rules', () => {
 
         runtime.dispatch({
             kind: 'set-internal-damage',
-            expectedRevision: runtime.revision(),
+            
             locationId: troopLocation.id,
             damage: troopLocation.internalPoints,
         });
@@ -77,13 +77,13 @@ describe('Infantry runtime rules', () => {
             const face = runtime.getIndex().armorFaces.get(location.armorFaceIds[0]!)!;
             runtime.dispatch({
                 kind: 'set-armor-damage',
-                expectedRevision: runtime.revision(),
+                
                 faceId: face.id,
                 damage: face.maximumPoints,
             });
             runtime.dispatch({
                 kind: 'set-internal-damage',
-                expectedRevision: runtime.revision(),
+                
                 locationId: location.id,
                 damage: location.internalPoints,
             });
@@ -109,12 +109,12 @@ describe('Infantry runtime rules', () => {
         expect(capabilities.maximum.jump).toBe(3);
         expect(runtime.dispatch({
             kind: 'set-movement',
-            expectedRevision: runtime.revision(),
+            
             movement: { mode: 'jump', distance: 0, boosterComponentIds: [] },
         }).accepted).toBeFalse();
         expect(runtime.dispatch({
             kind: 'set-movement',
-            expectedRevision: runtime.revision(),
+            
             movement: { mode: 'jump', distance: 1, boosterComponentIds: [] },
         }).accepted).toBeTrue();
     });

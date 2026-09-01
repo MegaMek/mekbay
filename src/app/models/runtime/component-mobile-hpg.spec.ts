@@ -14,7 +14,6 @@ import {
 } from './component-mobile-hpg';
 import { canPerformMekAction } from './mek-action-availability';
 import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from './mek-movement-psr-v2';
-import { createCommandId } from './runtime-state';
 import { createDirectMobileHpgRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 
 describe('direct Mobile HPG lifecycle', () => {
@@ -43,8 +42,8 @@ describe('direct Mobile HPG lifecycle', () => {
 
         expect(fixture.instance.dispatch({
             type: 'declare-mek-movement',
-            commandId: createCommandId(),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             declaration: {
                 schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'walk',
@@ -104,8 +103,8 @@ type Fixture = ReturnType<typeof createDirectMobileHpgRuntimeFixture>;
 function setMode(fixture: Fixture, componentId: ComponentId, mode: string): boolean {
     return fixture.instance.dispatch({
         type: 'set-component-mode',
-        commandId: createCommandId(),
-        expectedRevision: fixture.instance.revision(),
+        
+        
         componentId,
         mode,
     }).accepted;
@@ -114,8 +113,8 @@ function setMode(fixture: Fixture, componentId: ComponentId, mode: string): bool
 function endTurn(fixture: Fixture): boolean {
     return fixture.instance.dispatch({
         type: 'end-turn',
-        commandId: createCommandId(),
-        expectedRevision: fixture.instance.revision(),
+        
+        
         policy: 'automatic',
     }).accepted;
 }

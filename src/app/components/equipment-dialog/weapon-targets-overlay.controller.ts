@@ -277,12 +277,13 @@ export class WeaponTargetsOverlayController {
             }
         }
         if (!target) {
-            this.reportTargetRegistryRejection('EXCEEDS_CAPACITY', 'add target');
+            const message = 'Could not add target: the target registry is full.';
+            this.deps.injector.get(LoggerService).error(message);
+            this.deps.injector.get(ToastService).showToast(message, 'error');
             return;
         }
         this.handleTargetRegistryResult(force.dispatchInventoryControlTargetRegistry({
             kind: 'create-target',
-            expectedRevision: snapshot.revision,
             target,
         }, 'user'), 'add target');
     }
@@ -326,7 +327,6 @@ export class WeaponTargetsOverlayController {
         if (Object.keys(registryPatch).length > 0) {
             const accepted = this.handleTargetRegistryResult(force.dispatchInventoryControlTargetRegistry({
                 kind: 'update-target',
-                expectedRevision: snapshot.revision,
                 targetId: asEncounterTargetId(request.targetId),
                 patch: registryPatch,
             }, 'user'), 'update target');
@@ -347,10 +347,8 @@ export class WeaponTargetsOverlayController {
     private deleteTarget(options: WeaponTargetsOverlayOpenOptions, targetId: string): void {
         if (this.readOnly(options)) return;
         const force = this.force(options);
-        const snapshot = force.queryInventoryControlTargetRegistry();
         this.handleTargetRegistryResult(force.dispatchInventoryControlTargetRegistry({
             kind: 'delete-target',
-            expectedRevision: snapshot.revision,
             targetId: asEncounterTargetId(targetId),
         }, 'user'), 'delete target');
     }
@@ -358,27 +356,18 @@ export class WeaponTargetsOverlayController {
     private resetTargets(options: WeaponTargetsOverlayOpenOptions): void {
         if (this.readOnly(options)) return;
         const force = this.force(options);
-        const snapshot = force.queryInventoryControlTargetRegistry();
         const accepted = this.handleTargetRegistryResult(force.dispatchInventoryControlTargetRegistry({
             kind: 'reset-targets',
-            expectedRevision: snapshot.revision,
         }, 'registry-reset'), 'reset targets');
         if (accepted) force.inventoryControlOpforEnabled.set(false);
     }
 
     private handleTargetRegistryResult(result: CBTForceTargetRegistryDispatchResult, action: string): boolean {
         if (result.accepted) return true;
-        this.reportTargetRegistryRejection(result.reason, action);
-        return false;
-    }
-
-    private reportTargetRegistryRejection(
-        reason: Extract<CBTForceTargetRegistryDispatchResult, { readonly accepted: false }>['reason'],
-        action: string,
-    ): void {
-        const message = `Could not ${action}: target registry rejected the change (${reason}).`;
+        const message = `Could not ${action}: the target is read-only.`;
         this.deps.injector.get(LoggerService).error(message);
         this.deps.injector.get(ToastService).showToast(message, 'error');
+        return false;
     }
 
     private force(options: WeaponTargetsOverlayOpenOptions): CBTForce {

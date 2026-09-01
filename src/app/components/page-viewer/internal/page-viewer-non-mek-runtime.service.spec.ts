@@ -15,7 +15,7 @@ describe('PageViewerNonMekRuntimeService crew state command', () => {
             asStateRevision(3),
         )).toEqual({
             kind: 'set-crew-state',
-            expectedRevision: asStateRevision(3),
+            
             positionId: CREW_ID,
             wounds: 0,
             unconscious: true,

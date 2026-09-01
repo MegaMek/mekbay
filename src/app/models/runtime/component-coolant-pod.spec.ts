@@ -6,7 +6,6 @@ import {
     COOLANT_POD_ACTIVE_MODE,
     COOLANT_POD_READY_MODE,
 } from './component-coolant-pod';
-import { asCommandId } from './runtime-state';
 import {
     createDirectCoolantPodRuntimeFixture,
     type DirectMekRuntimeFixture,
@@ -19,14 +18,14 @@ describe('direct coolant-pod runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-heatsinks-off',
-            commandId: asCommandId('coolant:turn-off-sinks'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             heatsinksOff: 3,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'set-heat',
-            commandId: asCommandId('coolant:set-heat'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             heat: 20,
         }).accepted).toBeTrue();
         expect(heatCapacity(fixture)).toBe(7);
@@ -44,8 +43,8 @@ describe('direct coolant-pod runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'end-turn',
-            commandId: asCommandId('coolant:end-turn'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(fixture.instance.query().heatState().current).toBe(6);
@@ -65,8 +64,8 @@ describe('direct coolant-pod runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('coolant:destroyed:set'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             componentId: pod!,
             status: 'destroyed',
             target: 'committed',
@@ -81,8 +80,8 @@ describe('direct coolant-pod runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'edit-escalating-failure',
-            commandId: asCommandId('coolant:radical:activate'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             componentId: radical.id,
             edit: { kind: 'select-sequence', index: 0 },
         }).accepted).toBeTrue();
@@ -109,8 +108,8 @@ function activate(
 ): boolean {
     return fixture.instance.dispatch({
         type: 'activate-coolant-pod',
-        commandId: asCommandId(commandId),
-        expectedRevision: fixture.instance.revision(),
+        
+        
         componentId,
     }).accepted;
 }

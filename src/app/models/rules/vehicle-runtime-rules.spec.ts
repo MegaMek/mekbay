@@ -81,7 +81,7 @@ describe('projectVehicleRuntimeRules', () => {
         const core = instance(coreEntity, 'unit:vehicle-core-charge');
         expect(core.dispatch({
             kind: 'set-movement',
-            expectedRevision: core.revision(),
+            
             movement: { mode: 'walk', distance: 5, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(project(core).chargeDamage).toEqual(jasmine.objectContaining({
@@ -95,7 +95,7 @@ describe('projectVehicleRuntimeRules', () => {
         const tw = instance(twEntity, 'unit:vehicle-tw-charge', TOTAL_WARFARE_RULESET);
         expect(tw.dispatch({
             kind: 'set-movement',
-            expectedRevision: tw.revision(),
+            
             movement: { mode: 'walk', distance: 5, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(project(tw).chargeDamage).toEqual(jasmine.objectContaining({
@@ -117,7 +117,7 @@ describe('projectVehicleRuntimeRules', () => {
         hit(runtime, 'stabilizer_hit_front', 10);
         expect(runtime.dispatch({
             kind: 'set-movement',
-            expectedRevision: runtime.revision(),
+            
             movement: { mode: 'run', distance: 5, boosterComponentIds: [] },
         }).accepted).toBeTrue();
 
@@ -183,7 +183,7 @@ describe('projectVehicleRuntimeRules', () => {
         hit(runtime, 'engine_hit_1', 10);
         expect(runtime.dispatch({
             kind: 'set-sensor-damage-level',
-            expectedRevision: runtime.revision(),
+            
             level: 4,
             target: 'committed',
             timestamp: 20,
@@ -241,7 +241,7 @@ describe('projectVehicleRuntimeRules', () => {
         const runtime = instance(entity, 'unit:vehicle-drone');
         expect(runtime.dispatch({
             kind: 'set-component-status',
-            expectedRevision: runtime.revision(),
+            
             componentId: componentIdForMount(drone),
             status: 'destroyed',
             target: 'committed',
@@ -284,7 +284,7 @@ describe('projectVehicleRuntimeRules', () => {
             .find(location => location.code === 'Front')!;
         expect(runtime.dispatch({
             kind: 'set-internal-damage',
-            expectedRevision: runtime.revision(),
+            
             locationId: front.id,
             damage: front.internalPoints,
         }).accepted).toBeTrue();
@@ -339,7 +339,7 @@ function hit(
 ): void {
     const result = runtime.dispatch({
         kind: 'damage-track',
-        expectedRevision: runtime.revision(),
+        
         damageTrackId: nonMekDamageTrackId(sheetId),
         amount,
         target,
@@ -353,7 +353,7 @@ function setCrewState(runtime: NonMekUnitInstance, state: 'killed' | 'stunned'):
     const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
     const result = runtime.dispatch({
         kind: 'set-crew-state',
-        expectedRevision: runtime.revision(),
+        
         positionId,
         wounds: 0,
         unconscious: false,

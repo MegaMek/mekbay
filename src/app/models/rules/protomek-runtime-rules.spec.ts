@@ -33,7 +33,7 @@ describe('ProtoMek runtime rules', () => {
         for (const [mode, distance, modifier] of expected) {
             expect(runtime.dispatch({
                 kind: 'set-movement',
-                expectedRevision: runtime.revision(),
+                
                 movement: { mode, distance, boosterComponentIds: [] },
             }).accepted).toBeTrue();
             expect(project(runtime).attackMovementModifier).toBe(modifier);
@@ -45,7 +45,7 @@ describe('ProtoMek runtime rules', () => {
         const deadCrew = [...dead.runtime.getIndex().crewPositions.keys()][0]!;
         expect(dead.runtime.dispatch({
             kind: 'set-crew-state',
-            expectedRevision: dead.runtime.revision(),
+            
             positionId: deadCrew,
             wounds: 6,
             unconscious: false,
@@ -57,7 +57,7 @@ describe('ProtoMek runtime rules', () => {
         const ejectedCrew = [...ejected.runtime.getIndex().crewPositions.keys()][0]!;
         ejected.runtime.dispatch({
             kind: 'set-crew-state',
-            expectedRevision: ejected.runtime.revision(),
+            
             positionId: ejectedCrew,
             wounds: 0,
             unconscious: false,
@@ -69,7 +69,7 @@ describe('ProtoMek runtime rules', () => {
         const crippledCrew = [...crippled.runtime.getIndex().crewPositions.keys()][0]!;
         crippled.runtime.dispatch({
             kind: 'set-crew-state',
-            expectedRevision: crippled.runtime.revision(),
+            
             positionId: crippledCrew,
             wounds: 4,
             unconscious: false,
@@ -85,7 +85,7 @@ describe('ProtoMek runtime rules', () => {
                 .find(row => row.code === code)!;
             limbs.runtime.dispatch({
                 kind: 'set-internal-damage',
-                expectedRevision: limbs.runtime.revision(),
+                
                 locationId: location.id,
                 damage: location.internalPoints,
             });
@@ -97,7 +97,7 @@ describe('ProtoMek runtime rules', () => {
             .find(row => row.code === 'Torso')!;
         torso.runtime.dispatch({
             kind: 'set-internal-damage',
-            expectedRevision: torso.runtime.revision(),
+            
             locationId: torsoLocation.id,
             damage: torsoLocation.internalPoints,
         });
@@ -106,7 +106,7 @@ describe('ProtoMek runtime rules', () => {
         const critical = harness();
         critical.runtime.dispatch({
             kind: 'damage-track',
-            expectedRevision: critical.runtime.revision(),
+            
             damageTrackId: nonMekDamageTrackId('torso_hit_3'),
             amount: 1,
             target: 'committed',

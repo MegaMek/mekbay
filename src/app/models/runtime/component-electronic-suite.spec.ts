@@ -12,7 +12,6 @@ import {
     isPowerControlledEquipment,
     type ElectronicComponentFact,
 } from './component-electronic-suite';
-import { createCommandId } from './runtime-state';
 import { createDirectElectronicSuiteRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 
 describe('direct electronic-suite lifecycle', () => {
@@ -176,8 +175,8 @@ function novaHeatSource(fixture: Fixture, componentId: ComponentId) {
 function setMode(fixture: Fixture, componentId: ComponentId, mode: string) {
     return fixture.instance.dispatch({
         type: 'set-component-mode',
-        commandId: createCommandId(),
-        expectedRevision: fixture.instance.revision(),
+        
+        
         componentId,
         mode,
     });
@@ -186,8 +185,8 @@ function setMode(fixture: Fixture, componentId: ComponentId, mode: string) {
 function endTurn(fixture: Fixture) {
     return fixture.instance.dispatch({
         type: 'end-turn',
-        commandId: createCommandId(),
-        expectedRevision: fixture.instance.revision(),
+        
+        
         policy: 'automatic',
     });
 }

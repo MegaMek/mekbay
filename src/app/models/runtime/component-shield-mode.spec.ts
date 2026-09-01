@@ -14,7 +14,6 @@ import {
     SHIELD_INACTIVE_MODE,
     SHIELD_PASSIVE_MODE,
 } from './component-shield-mode';
-import { asCommandId } from './runtime-state';
 import {
     createDirectDualShieldRuntimeFixture,
     createDirectShieldRuntimeFixture,
@@ -51,8 +50,8 @@ describe('direct shield modes', () => {
 
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('core-shield:end-phase'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
         }).accepted).toBeTrue();
         expect(fixture.instance.query().componentMode(shield.id)).toBe(SHIELD_INACTIVE_MODE);
         expect(equipmentPanel(fixture).components
@@ -90,8 +89,8 @@ describe('direct shield modes', () => {
         expect(weaponRow(fixture, leftTorsoRear.id).weapon?.selectable).toBeFalse();
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('tw-shield:end-phase'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
         }).accepted).toBeTrue();
         expect(fixture.instance.query().componentMode(shield.id)).toBe(SHIELD_ACTIVE_MODE);
     });
@@ -123,8 +122,8 @@ describe('direct shield modes', () => {
         const maximum = projection.shields.find(row => row.componentId === shield.id)!.maximumCapacity;
         expect(fixture.instance.dispatch({
             type: 'damage-shield',
-            commandId: asCommandId('broken-shield:capacity'),
-            expectedRevision: fixture.instance.revision(),
+            
+            
             componentId: shield.id,
             track: 'capacity',
             amount: maximum,
@@ -156,8 +155,8 @@ function setMode(
 ): boolean {
     return fixture.instance.dispatch({
         type: 'set-component-mode',
-        commandId: asCommandId(commandId),
-        expectedRevision: fixture.instance.revision(),
+        
+        
         componentId,
         mode,
     }).accepted;

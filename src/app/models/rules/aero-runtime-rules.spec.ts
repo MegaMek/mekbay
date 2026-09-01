@@ -41,7 +41,7 @@ describe('Aero runtime rules', () => {
         const runtime = fighter('unit:aero-heat');
         expect(runtime.dispatch({
             kind: 'set-heat',
-            expectedRevision: runtime.revision(),
+            
             heat: 24,
             target: 'pending',
         }).accepted).toBeTrue();
@@ -55,12 +55,12 @@ describe('Aero runtime rules', () => {
 
         expect(runtime.dispatch({
             kind: 'set-heatsinks-off',
-            expectedRevision: runtime.revision(),
+            
             heatsinksOff: 2,
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
             kind: 'end-phase',
-            expectedRevision: runtime.revision(),
+            
         }).accepted).toBeTrue();
 
         const projection = runtime.aeroRules()!;
@@ -84,7 +84,7 @@ describe('Aero runtime rules', () => {
         const si = [...bySi.getIndex().locations.values()].find(location => location.code === 'SI')!;
         bySi.dispatch({
             kind: 'set-internal-damage',
-            expectedRevision: bySi.revision(),
+            
             locationId: si.id,
             damage: si.internalPoints,
         });
@@ -94,7 +94,7 @@ describe('Aero runtime rules', () => {
             const runtime = fighter(`unit:aero-${sheetId}`);
             runtime.dispatch({
                 kind: 'damage-track',
-                expectedRevision: runtime.revision(),
+                
                 damageTrackId: nonMekDamageTrackId(sheetId),
                 amount: 1,
                 target: 'committed',
@@ -124,7 +124,7 @@ describe('Aero runtime rules', () => {
                 .find(location => location.code === 'SI')!;
             expect(runtime.dispatch({
                 kind: 'set-internal-damage',
-                expectedRevision: runtime.revision(),
+                
                 locationId: si.id,
                 damage: si.internalPoints,
             }).accepted).withContext(entity.entityType).toBeTrue();

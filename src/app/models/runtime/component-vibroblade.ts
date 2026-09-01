@@ -17,7 +17,6 @@ import type {
     EquipmentInteractionCommandContext,
     EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import { createCommandId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 
 export class VibrobladeHandler extends ComponentModeHandler {

@@ -337,6 +337,44 @@ describe('bindNonMekRecordSheet', () => {
         })]);
     });
 
+    it('aggregates generated bay-row status directly from its stable component IDs', () => {
+        const svg = groupedInventorySheet();
+        const firstId = asComponentId('weapon-1');
+        const secondId = asComponentId('weapon-2');
+        const component = (
+            componentId: typeof firstId,
+            status: 'available' | 'destroyed',
+            previewStatus: 'available' | 'destroyed',
+        ) => Object.freeze({
+            componentId,
+            equipmentId: 'weapon',
+            label: 'Large Laser',
+            sheetLocations: Object.freeze(['FR']),
+            status,
+            previewStatus,
+        });
+        const recordSheet = (bothDestroyed: boolean) => Object.freeze({
+            ...snapshot(3),
+            components: Object.freeze([
+                component(firstId, 'destroyed', 'destroyed'),
+                component(
+                    secondId,
+                    bothDestroyed ? 'destroyed' : 'available',
+                    bothDestroyed ? 'destroyed' : 'destroyed',
+                ),
+            ]),
+        });
+        const binding = bindNonMekRecordSheet(svg, recordSheet(false));
+        const row = svg.querySelector<SVGElement>('.inventoryEntry')!;
+
+        expect(row.classList.contains('disabledInventory')).toBeFalse();
+        expect(row.classList.contains('pending')).toBeTrue();
+
+        binding.render(recordSheet(true));
+        expect(row.classList.contains('disabledInventory')).toBeTrue();
+        expect(row.classList.contains('pending')).toBeFalse();
+    });
+
     it('binds a derived weapon bay only once when legacy rows name separate members', () => {
         const svg = duplicateInventorySheet();
         const interactions: NonMekRecordSheetInteraction[] = [];
@@ -766,6 +804,16 @@ function duplicateInventorySheet(): SVGSVGElement {
         </g>
         <g class="inventoryEntry" id="generated-aero-inventory-row@1" data-mekbay-component-ids="weapon-2">
             <rect class="inventoryEntryButton mainButton"></rect>
+        </g>
+    </svg>`;
+    return host.querySelector('svg') as SVGSVGElement;
+}
+
+function groupedInventorySheet(): SVGSVGElement {
+    const host = document.createElement('div');
+    host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg">
+        <g class="inventoryEntry" id="weapon@0" data-mekbay-component-ids="weapon-1 weapon-2">
+            <text class="location">FR</text>
         </g>
     </svg>`;
     return host.querySelector('svg') as SVGSVGElement;
