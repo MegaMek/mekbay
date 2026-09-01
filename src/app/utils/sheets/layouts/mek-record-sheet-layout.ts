@@ -2393,7 +2393,7 @@ async function drawCanonicalMekCriticalContents(
                 maxWidth: x(locationLayout.rightEdge - locationLayout.headingX - 4),
             },
         );
-        appendGeneratedMekCriticalHeadingControls(
+        const headingControl = appendGeneratedMekCriticalHeadingControls(
             criticalGroup,
             heading,
             location,
@@ -2409,7 +2409,7 @@ async function drawCanonicalMekCriticalContents(
             const caseX = locationLayout.headingX
                 + (MEK_CRITICAL_CASE_HEADING_OFFSETS[location] ?? 2);
             addText(
-                criticalGroup,
+                headingControl,
                 `(${caseLabel})`,
                 x(caseX),
                 y(locationLayout.headingY - 0.875),

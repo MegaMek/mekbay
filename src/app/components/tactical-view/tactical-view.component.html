@@ -2,79 +2,106 @@
 <div class="tactical-shell" [class.read-only]="readOnly()">
     <div class="tactical-scroll">
         <nav class="tactical-toolbar glass" aria-label="Tactical view tools">
-            <button type="button" class="toolbar-button view-button" (click)="showSheetView()">
+            <button type="button" class="toolbar-icon-button" [disabled]="!canUndo()" (click)="undoRuntimeCommand()"
+                aria-label="Undo" title="Undo">
+                <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M9 7 4 12l5 5" />
+                    <path d="M4 12h9a7 7 0 0 1 7 7" />
+                </svg>
+            </button>
+            <button type="button" class="toolbar-icon-button" [disabled]="!canRedo()" (click)="redoRuntimeCommand()"
+                aria-label="Redo" title="Redo">
+                <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="m15 7 5 5-5 5" />
+                    <path d="M20 12h-9a7 7 0 0 0-7 7" />
+                </svg>
+            </button>
+            <span class="toolbar-spacer"></span>
+            <button type="button" class="bt-button toolbar-button view-button" (click)="showSheetView()">
                 <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                    <path d="M6 3h9l3 3v15H6z" /><path d="M15 3v4h4M9 11h6M9 15h6M9 18h4" />
+                    <path d="M6 3h9l3 3v15H6z" />
+                    <path d="M15 3v4h4M9 11h6M9 15h6M9 18h4" />
                 </svg>
                 <span>Sheet View</span>
             </button>
             @if (supportsTargeting()) {
-            <button type="button" class="toolbar-button" (click)="openTargets($event)">
+            <button type="button" class="bt-button toolbar-button" (click)="openTargets($event)">
                 <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2" /><path d="M12 1v5M12 18v5M1 12h5M18 12h5" />
+                    <circle cx="12" cy="12" r="7" />
+                    <circle cx="12" cy="12" r="2" />
+                    <path d="M12 1v5M12 18v5M1 12h5M18 12h5" />
                 </svg>
                 <span>Targets</span><strong class="toolbar-count">{{ targets().length }}</strong>
             </button>
             }
-            <span class="toolbar-spacer"></span>
-            <button type="button" class="toolbar-icon-button" [disabled]="!canUndo()" (click)="undoRuntimeCommand()" aria-label="Undo" title="Undo">
-                <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 7 4 12l5 5" /><path d="M4 12h9a7 7 0 0 1 7 7" /></svg>
-            </button>
-            <button type="button" class="toolbar-icon-button" [disabled]="!canRedo()" (click)="redoRuntimeCommand()" aria-label="Redo" title="Redo">
-                <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m15 7 5 5-5 5" /><path d="M20 12h-9a7 7 0 0 0-7 7" /></svg>
-            </button>
+            <nav class="unit-navigation" aria-label="Force unit navigation">
+                <button type="button" class="bt-button nav-button" [disabled]="!canNavigate()" (click)="previousUnit()"
+                    aria-label="Previous unit" title="Previous unit">
+                    <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path d="m15 5-7 7 7 7" />
+                    </svg>
+                </button>
+                <span class="unit-position">{{ unitIndex() + 1 }} / {{ forceMembers().length }}</span>
+                <button type="button" class="bt-button nav-button" [disabled]="!canNavigate()" (click)="nextUnit()"
+                    aria-label="Next unit" title="Next unit">
+                    <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path d="m9 5 7 7-7 7" />
+                    </svg>
+                </button>
+            </nav>
         </nav>
 
         <header class="unit-hero">
             <unit-icon class="unit-icon" [unit]="activeMember.entity" [size]="44" />
             <div class="unit-title-block">
-                <div class="eyebrow">TACTICAL VIEW</div>
                 <h1>{{ activeMember.entity.displayName() }}</h1>
                 <div class="unit-meta">
                     @if (mekSnapshot(); as mek) {
-                    <span>{{ mek.identity.massTons }} T</span><span>{{ mek.identity.techBase }}</span><span>{{ mek.identity.form }}</span>
+                    <span>{{ mek.identity.massTons }} T</span><span>{{ mek.identity.techBase }}</span><span>{{
+                        mek.identity.form }}</span>
                     <span>BV {{ mek.battleValue.adjusted ?? mek.battleValue.current ?? '—' }}</span>
                     } @else if (nonMekSnapshot(); as entity) {
-                    <span>{{ entity.tonnage }} T</span><span>{{ entity.techBase }}</span><span>{{ entity.subtype || entity.unitType }}</span>
+                    <span>{{ entity.tonnage }} T</span><span>{{ entity.techBase }}</span><span>{{ entity.subtype ||
+                        entity.unitType }}</span>
                     <span>BV {{ entity.currentBattleValue }}</span>
                     }
                 </div>
                 @if (passiveConditionStatuses().length > 0 || visibleConditionControls().length > 0) {
                 <div class="hero-condition-controls" role="group" aria-label="Unit conditions">
                     @for (status of passiveConditionStatuses(); track status.key) {
-                    <span class="state-chip active condition-status-chip" [style.--state-color]="status.color">{{ status.label }}</span>
+                    <span class="state-chip active condition-status-chip" [style.--state-color]="status.color">{{
+                        status.label }}</span>
                     }
                     @if (passiveConditionStatuses().length > 0 && visibleConditionControls().length > 0) {
                     <span class="condition-status-separator" aria-hidden="true">|</span>
                     }
                     @for (control of visibleConditionControls(); track control.key) {
-                    <button type="button" class="state-chip" [class.active]="unitConditionActive(control.key)" [style.--state-color]="control.color"
-                        [disabled]="readOnly()" (click)="toggleUnitCondition(control.key)">{{ control.label }}</button>
+                    <button type="button" class="state-chip" [class.active]="unitConditionActive(control.key)"
+                        [style.--state-color]="control.color" [disabled]="readOnly()"
+                        (click)="toggleUnitCondition(control.key)">{{ control.label }}</button>
                     }
                     @if (hasExpandableConditionMenu()) {
-                    <button type="button" class="state-chip condition-menu-toggle" [attr.aria-expanded]="conditionMenuExpanded()"
+                    <button type="button" class="state-chip condition-menu-toggle"
+                        [attr.aria-expanded]="conditionMenuExpanded()"
                         [attr.aria-label]="conditionMenuExpanded() ? 'Hide additional conditions' : 'Show additional conditions'"
                         [attr.title]="conditionMenuExpanded() ? 'Hide additional conditions' : 'Show additional conditions'"
                         (click)="toggleConditionMenu()">
                         @if (conditionMenuExpanded()) {
-                        <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" /></svg>
+                        <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"
+                            viewBox="0 0 24 24">
+                            <path d="m15 5-7 7 7 7" />
+                        </svg>
                         } @else {
-                        <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" /></svg>
+                        <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"
+                            viewBox="0 0 24 24">
+                            <path d="m9 5 7 7-7 7" />
+                        </svg>
                         }
                     </button>
                     }
                 </div>
                 }
             </div>
-            <nav class="unit-navigation" aria-label="Force unit navigation">
-                <button type="button" class="nav-button" [disabled]="!canNavigate()" (click)="previousUnit()" aria-label="Previous unit" title="Previous unit">
-                    <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7" /></svg>
-                </button>
-                <span class="unit-position">{{ unitIndex() + 1 }} / {{ forceMembers().length }}</span>
-                <button type="button" class="nav-button" [disabled]="!canNavigate()" (click)="nextUnit()" aria-label="Next unit" title="Next unit">
-                    <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" /></svg>
-                </button>
-            </nav>
         </header>
 
         @if (mekSnapshot(); as mek) {
@@ -92,19 +119,24 @@
                         <div class="skills">
                             <span class="skill-item"><span>Gunnery:</span><strong>{{ crew.gunnery }}</strong></span>
                             <span class="skill-item"><span>Piloting:</span><strong>{{ crew.piloting }}</strong>
-                                <button type="button" class="psr-modifier" [class.danger]="mekPsrModifierTotal() > 0" [class.bonus]="mekPsrModifierTotal() < 0"
-                                    [tooltip]="mekPsrModifierTooltip()" [tooltipDelay]="0"
+                                @if (mekPsrModifierTotal() != 0) {
+                                <button type="button" class="psr-modifier" [class.danger]="mekPsrModifierTotal() > 0"
+                                    [class.bonus]="mekPsrModifierTotal() < 0" [tooltip]="mekPsrModifierTooltip()"
+                                    [tooltipDelay]="0"
                                     [attr.aria-label]="'PSR modifier ' + formatModifier(mekPsrModifierTotal()) + '. Show full breakdown'">
                                     {{ formatModifier(mekPsrModifierTotal()) }} <small>PSR</small>
                                 </button>
+                                }
                             </span>
                         </div>
                         <div class="crew-wounds">
                             <span class="crew-wounds-label">Wounds:</span>
-                            <div class="wound-track" role="group" [attr.aria-label]="'Wounds for ' + (crew.name || crewPositionLabel(crewIndex))">
+                            <div class="wound-track" role="group"
+                                [attr.aria-label]="'Wounds for ' + (crew.name || crewPositionLabel(crewIndex))">
                                 @for (wound of crewWoundSteps; track wound.wounds) {
-                                <button type="button" class="wound-button" [class.active]="wound.wounds <= crew.state.wounds"
-                                    [disabled]="readOnly()" [attr.aria-pressed]="wound.wounds <= crew.state.wounds"
+                                <button type="button" class="wound-button"
+                                    [class.active]="wound.wounds <= crew.state.wounds" [disabled]="readOnly()"
+                                    [attr.aria-pressed]="wound.wounds <= crew.state.wounds"
                                     [attr.aria-label]="'Wound ' + wound.wounds + ', consciousness check ' + wound.label"
                                     [attr.title]="'Wound ' + wound.wounds + ': consciousness check ' + wound.label"
                                     (click)="setMekCrewWounds(crew, wound.wounds)">{{ wound.label }}</button>
@@ -113,8 +145,10 @@
                         </div>
                         <div class="crew-state-controls">
                             @for (control of mekCrewStateControls; track control.key) {
-                            <button type="button" class="state-chip" [class.active]="crew.effectiveState === control.key" [style.--state-color]="control.color"
-                                [disabled]="readOnly()" (click)="toggleMekCrewState(crew, control.key)">{{ control.label }}</button>
+                            <button type="button" class="state-chip"
+                                [class.active]="crew.effectiveState === control.key"
+                                [style.--state-color]="control.color" [disabled]="readOnly()"
+                                (click)="toggleMekCrewState(crew, control.key)">{{ control.label }}</button>
                             }
                         </div>
                     </article>
@@ -140,10 +174,12 @@
                         </div>
                         <div class="crew-wounds">
                             <span class="crew-wounds-label">Wounds:</span>
-                            <div class="wound-track" role="group" [attr.aria-label]="'Wounds for ' + (crew.name || crewPositionLabel(crewIndex))">
+                            <div class="wound-track" role="group"
+                                [attr.aria-label]="'Wounds for ' + (crew.name || crewPositionLabel(crewIndex))">
                                 @for (wound of crewWoundSteps; track wound.wounds) {
-                                <button type="button" class="wound-button" [class.active]="wound.wounds <= crew.state.wounds"
-                                    [disabled]="readOnly()" [attr.aria-pressed]="wound.wounds <= crew.state.wounds"
+                                <button type="button" class="wound-button"
+                                    [class.active]="wound.wounds <= crew.state.wounds" [disabled]="readOnly()"
+                                    [attr.aria-pressed]="wound.wounds <= crew.state.wounds"
                                     [attr.aria-label]="'Wound ' + wound.wounds + ', consciousness check ' + wound.label"
                                     [attr.title]="'Wound ' + wound.wounds + ': consciousness check ' + wound.label"
                                     (click)="setNonMekCrewWounds(crew, wound.wounds)">{{ wound.label }}</button>
@@ -153,8 +189,10 @@
                         @if (nonMekCrewStateControls().length > 0) {
                         <div class="crew-state-controls">
                             @for (control of nonMekCrewStateControls(); track control.key) {
-                            <button type="button" class="state-chip" [class.active]="crew.effectiveState === control.key" [style.--state-color]="control.color"
-                                [disabled]="readOnly()" (click)="toggleNonMekCrewState(crew, control.key)">{{ control.label }}</button>
+                            <button type="button" class="state-chip"
+                                [class.active]="crew.effectiveState === control.key"
+                                [style.--state-color]="control.color" [disabled]="readOnly()"
+                                (click)="toggleNonMekCrewState(crew, control.key)">{{ control.label }}</button>
                             }
                         </div>
                         }
@@ -169,10 +207,11 @@
             <tactical-turn-tracker [member]="activeMember" />
         </section>
 
-        <main class="tactical-grid" [class.mek-grid]="mekSnapshot() !== null" [class.entity-grid]="nonMekSnapshot() !== null">
+        <main class="tactical-grid" [class.mek-grid]="mekSnapshot() !== null"
+            [class.entity-grid]="nonMekSnapshot() !== null">
             <section class="tactical-panel inventory-panel">
                 <div class="panel-heading">
-                    <div><span class="panel-kicker">LOADOUT</span><h2>Inventory</h2></div>
+                    <h2>Inventory</h2>
                     <div class="panel-heading-actions">
                         @if (inventoryDetailRowIds().length > 0) {
                         <button type="button" class="expand-all-button" (click)="toggleAllInventoryRows()">
@@ -186,9 +225,12 @@
                 <section class="inventory-group">
                     <header class="inventory-group-heading">
                         <h3>{{ group.title }}</h3>
-                        @if (group.skill; as skill) { <span>{{ skill.label }} <strong>{{ skill.value }}</strong></span> }
+                        @if (group.skill; as skill) { <span>{{ skill.label }} <strong>{{ skill.value }}</strong></span>
+                        }
                     </header>
-                    <div class="inventory-head" aria-hidden="true"><span>NAME</span><span>LOC</span><span>DMG</span><span>HT</span><span>RANGE</span><span>STATE</span><span>CTRL</span></div>
+                    <div class="inventory-head" aria-hidden="true">
+                        <span>NAME</span><span>LOC</span><span>DMG</span><span>HT</span><span>RANGE</span><span>STATE</span><span>CTRL</span>
+                    </div>
                     <div class="inventory-list">
                         @for (row of group.rows; track row.id) {
                         <div class="inventory-entry" [class.expanded]="inventoryRowExpanded(row)">
@@ -196,35 +238,47 @@
                                 <div class="equipment-name">
                                     <strong>{{ row.label }}</strong>
                                     @if (row.mode) { <small>{{ row.mode }}</small> }
-                                    @if (row.ammo; as ammo) { <small class="ammo-summary">AMMO {{ ammo.remaining }}/{{ ammo.capacity }}</small> }
+                                    @if (row.ammo; as ammo) { <small class="ammo-summary">AMMO {{ ammo.remaining }}/{{
+                                        ammo.capacity }}</small> }
                                 </div>
-                                <span class="equipment-location">{{ row.location }}</span><span class="equipment-stat damage-stat">{{ row.damage }}</span>
-                                <span class="equipment-stat heat-stat-cell">{{ row.heat }}</span><span class="equipment-stat range-stat">{{ row.range }}</span>
-                                <span class="equipment-status" [class.available]="row.status === 'available'">{{ formatStatus(row.status) }}</span>
+                                <span class="equipment-location">{{ row.location }}</span><span
+                                    class="equipment-stat damage-stat">{{ row.damage }}</span>
+                                <span class="equipment-stat heat-stat-cell">{{ row.heat }}</span><span
+                                    class="equipment-stat range-stat">{{ row.range }}</span>
                                 <div class="equipment-actions">
                                     @if (rowHasNestedControls(row)) {
-                                    <button type="button" class="row-expand-button" (click)="toggleInventoryRow(row)" [attr.aria-expanded]="inventoryRowExpanded(row)"
+                                    <button type="button" class="row-expand-button" (click)="toggleInventoryRow(row)"
+                                        [attr.aria-expanded]="inventoryRowExpanded(row)"
                                         [attr.aria-label]="(inventoryRowExpanded(row) ? 'Collapse controls for ' : 'Expand controls for ') + row.label">
-                                        <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5" /></svg>
+                                        <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"
+                                            viewBox="0 0 24 24">
+                                            <path d="m7 10 5 5 5-5" />
+                                        </svg>
                                     </button>
                                     }
                                 </div>
                             </article>
                             @if (inventoryRowExpanded(row)) {
                             <div class="inventory-nested-row">
-                                @if (supportsTargeting() && (row.component?.weapon?.selectable === true || (row.physical?.available === true && row.physical.selectable === true))) {
+                                @if (supportsTargeting() && (row.component?.weapon?.selectable === true ||
+                                (row.physical?.available === true && row.physical.selectable === true))) {
                                 <div class="nested-control target-control">
                                     <span class="nested-label">TARGET</span>
                                     <div class="target-options">
-                                        <button type="button" class="target-chip clear-target" [class.active]="inventoryTargetSelection(row) === ''" [disabled]="readOnly()"
-                                            (click)="selectInventoryTarget(row, '')">—</button>
+                                        <button type="button" class="target-chip clear-target"
+                                            [class.active]="inventoryTargetSelection(row) === ''"
+                                            [disabled]="readOnly()" (click)="selectInventoryTarget(row, '')">—</button>
                                         @for (target of targets(); track target.targetId) {
-                                        <button type="button" class="target-chip" [class.active]="inventoryTargetSelection(row) === target.targetId"
-                                            [style.--target-color]="target.color" [disabled]="readOnly()" [title]="target.name"
-                                            (click)="selectInventoryTarget(row, target.targetId)">{{ target.letter }}</button>
+                                        <button type="button" class="target-chip"
+                                            [class.active]="inventoryTargetSelection(row) === target.targetId"
+                                            [style.--target-color]="target.color" [disabled]="readOnly()"
+                                            [title]="target.name"
+                                            (click)="selectInventoryTarget(row, target.targetId)">{{ target.letter
+                                            }}</button>
                                         }
                                         @if (targets().length === 0) {
-                                        <button type="button" class="nested-link" (click)="openTargets($event)">Add target</button>
+                                        <button type="button" class="nested-link" (click)="openTargets($event)">Add
+                                            target</button>
                                         }
                                     </div>
                                 </div>
@@ -237,9 +291,13 @@
                                         @if (choice.displayType === 'label') {
                                         <span class="handler-label">{{ choice.label }}</span>
                                         } @else {
-                                        <button type="button" class="handler-button" [class.active]="choice.active" [disabled]="choice.disabled || readOnly()"
-                                            [style.background]="choiceBackground(choice)" [style.color]="choiceTextColor(choice)" (click)="chooseEquipmentInteraction(row, choice)">
-                                            @if (choice.groupLabel) { <small>{{ choice.groupLabel }}</small> }<span>{{ choice.shortLabel || choice.label }}</span>
+                                        <button type="button" class="handler-button" [class.active]="choice.active"
+                                            [disabled]="choice.disabled || readOnly()"
+                                            [style.background]="choiceBackground(choice)"
+                                            [style.color]="choiceTextColor(choice)"
+                                            (click)="chooseEquipmentInteraction(row, choice)">
+                                            @if (choice.groupLabel) { <small>{{ choice.groupLabel }}</small> }<span>{{
+                                                choice.shortLabel || choice.label }}</span>
                                         </button>
                                         }
                                         }
@@ -257,30 +315,38 @@
 
             @if (mekSnapshot(); as mek) {
             <section class="tactical-panel armor-panel" [tacticalArmorLayout]="mek">
-                <div class="panel-heading"><div><span class="panel-kicker">{{ mek.construction.armor }} · {{ mek.construction.structure }}</span><h2>Armor + Internal</h2></div></div>
+                <div class="panel-heading">
+                    <h2>Armor + Internal</h2>
+                    <span class="panel-kicker">{{ mek.construction.armor }} · {{ mek.construction.structure }}</span>
+                </div>
                 <div class="location-list">
                     @for (location of orderedMekLocations(); track location.locationId) {
-                    <section class="location-block" [class.destroyed]="location.previewStructurallyDestroyed || location.previewDetached">
+                    <section class="location-block"
+                        [class.destroyed]="location.previewStructurallyDestroyed || location.previewDetached">
                         @for (face of location.armor; track face.faceId) {
                         @let remaining = mekArmorRemaining(face);
                         <div class="location-line">
                             <div class="location-name">
                                 <strong>{{ $first ? location.code : '(R)' }}</strong>
-                                @if ($first && location.previewDetached) { <span>OFF</span> } @else if ($first && location.previewStructurallyDestroyed) { <span>DEST</span> }
+                                @if ($first && location.previewDetached) { <span>OFF</span> } @else if ($first &&
+                                location.previewStructurallyDestroyed) { <span>DEST</span> }
                             </div>
                             <div class="location-tracks">
-                                <button type="button" class="damage-strip armor-strip" [class.numeric-damage-strip]="face.maximum > damagePipThreshold"
+                                <button type="button" class="damage-strip armor-strip"
+                                    [class.numeric-damage-strip]="face.maximum > damagePipThreshold"
                                     [disabled]="readOnly()" (click)="openMekArmorPicker(face, $event)"
                                     [attr.aria-label]="(face.face === 'rear' ? 'Rear armor' : 'Armor') + ' ' + remaining + ' of ' + face.maximum"
                                     [attr.title]="(face.face === 'rear' ? 'Rear armor' : 'Armor') + ': ' + remaining + ' / ' + face.maximum">
                                     @if (face.maximum > damagePipThreshold) {
-                                    <strong class="large-track-value" aria-hidden="true">{{ remaining }}/{{ face.maximum }}</strong>
+                                    <strong class="large-track-value" aria-hidden="true">{{ remaining }}/{{ face.maximum
+                                        }}</strong>
                                     } @else {
                                     <strong class="track-value">{{ damageTrackValue(remaining, face.maximum) }}</strong>
                                     <span class="pip-matrix" [tacticalPipMatrix]="face.maximum" aria-hidden="true">
                                         @for (group of pipGroups(face.maximum); track $index) {
                                         <span class="pip-group">
-                                            @for (pip of group; track pip) { <span class="damage-pip" [class.damaged]="pip <= face.maximum - remaining"></span> }
+                                            @for (pip of group; track pip) { <span class="damage-pip"
+                                                [class.damaged]="pip <= face.maximum - remaining"></span> }
                                         </span>
                                         }
                                     </span>
@@ -288,18 +354,23 @@
                                 </button>
                                 @if ($first) {
                                 @let internal = mekInternalRemaining(location);
-                                <button type="button" class="damage-strip internal-strip" [class.numeric-damage-strip]="location.maximumInternal > damagePipThreshold"
+                                <button type="button" class="damage-strip internal-strip"
+                                    [class.numeric-damage-strip]="location.maximumInternal > damagePipThreshold"
                                     [disabled]="readOnly()" (click)="openMekInternalPicker(location, $event)"
                                     [attr.aria-label]="'Internal structure ' + internal + ' of ' + location.maximumInternal"
                                     [attr.title]="'Internal structure: ' + internal + ' / ' + location.maximumInternal">
                                     @if (location.maximumInternal > damagePipThreshold) {
-                                    <strong class="large-track-value" aria-hidden="true">{{ internal }}/{{ location.maximumInternal }}</strong>
+                                    <strong class="large-track-value" aria-hidden="true">{{ internal }}/{{
+                                        location.maximumInternal }}</strong>
                                     } @else {
-                                    <strong class="track-value">{{ damageTrackValue(internal, location.maximumInternal) }}</strong>
-                                    <span class="pip-matrix" [tacticalPipMatrix]="location.maximumInternal" aria-hidden="true">
+                                    <strong class="track-value">{{ damageTrackValue(internal, location.maximumInternal)
+                                        }}</strong>
+                                    <span class="pip-matrix" [tacticalPipMatrix]="location.maximumInternal"
+                                        aria-hidden="true">
                                         @for (group of pipGroups(location.maximumInternal); track $index) {
                                         <span class="pip-group">
-                                            @for (pip of group; track pip) { <span class="damage-pip structure-pip" [class.damaged]="pip <= location.maximumInternal - internal"></span> }
+                                            @for (pip of group; track pip) { <span class="damage-pip structure-pip"
+                                                [class.damaged]="pip <= location.maximumInternal - internal"></span> }
                                         </span>
                                         }
                                     </span>
@@ -315,60 +386,81 @@
             </section>
 
             <section class="tactical-panel critical-panel">
-                <div class="panel-heading"><div><span class="panel-kicker">SYSTEMS</span><h2>Critical Hit Table</h2></div></div>
+                <div class="panel-heading">
+                    <h2>Critical Hit Table</h2>
+                </div>
                 <div class="critical-columns">
                     @for (group of mekCriticalCells(); track $index) {
-                        @if (group) {
-                        <section class="critical-cell critical-group">
-                            <h3>{{ group.code }}</h3>
-                            @for (slot of group.slots; track slot.slotId) {
-                            @let hits = mekCriticalHits(slot);
-                            <button type="button" class="critical-row" [class.hit]="hits > 0" [class.destroyed]="criticalDestroyed(slot)"
-                                [class.unhittable]="!slot.hittable" [disabled]="readOnly() || !slot.hittable" (click)="activateMekCritical(slot, $event)"
-                                [attr.aria-label]="criticalLabel(slot) + ', ' + hits + ' of ' + slot.hitCapacity + ' critical hits'">
-                                <span class="slot-number">{{ slot.slotIndex + 1 }}</span>
-                                @if (slot.armored) { <span class="critical-pip armor-critical-pip" [class.hit]="criticalArmorHit(slot)" title="Armored slot"></span> }
-                                <span class="critical-name">{{ criticalLabel(slot) }}</span>
-                                @for (pip of criticalIntermediatePips(slot); track pip) {
-                                <span class="critical-pip extra-critical-pip" [class.hit]="criticalIntermediateHit(slot, pip)" title="Additional hit required"></span>
-                                }
-                            </button>
+                    @if (group) {
+                    <section class="critical-cell critical-group">
+                        <h3>{{ group.code }}</h3>
+                        @for (slot of group.slots; track slot.slotId) {
+                        @let hits = mekCriticalHits(slot);
+                        <button type="button" class="critical-row" [class.hit]="hits > 0"
+                            [class.destroyed]="criticalDestroyed(slot)" [class.unhittable]="!slot.hittable"
+                            [disabled]="readOnly() || !slot.hittable" (click)="activateMekCritical(slot, $event)"
+                            [attr.aria-label]="criticalLabel(slot) + ', ' + hits + ' of ' + slot.hitCapacity + ' critical hits'">
+                            <span class="slot-number">{{ slot.slotIndex + 1 }}</span>
+                            @if (slot.armored) { <span class="critical-pip armor-critical-pip"
+                                [class.hit]="criticalArmorHit(slot)" title="Armored slot"></span> }
+                            <span class="critical-name">{{ criticalLabel(slot) }}</span>
+                            @for (pip of criticalIntermediatePips(slot); track pip) {
+                            <span class="critical-pip extra-critical-pip"
+                                [class.hit]="criticalIntermediateHit(slot, pip)" title="Additional hit required"></span>
                             }
-                        </section>
-                        } @else {
-                        <div class="critical-cell critical-spacer" aria-hidden="true"></div>
+                        </button>
                         }
+                    </section>
+                    } @else {
+                    <div class="critical-cell critical-spacer" aria-hidden="true"></div>
+                    }
                     }
                 </div>
             </section>
 
             <section class="tactical-panel heat-panel">
-                <div class="panel-heading"><div><span class="panel-kicker">THERMAL</span><h2>Heat</h2></div></div>
+                <div class="panel-heading">
+                    <h2>Heat</h2>
+                </div>
                 <div class="heat-readout">
                     <div class="heat-value"><span>LEVEL</span><strong>{{ mekHeat(mek) }}</strong></div>
-                    <div class="heat-stepper compact-stepper"><button type="button" [disabled]="readOnly() || mekHeat(mek) <= 0" (click)="adjustMekHeat(-1)">−</button><button type="button" [disabled]="readOnly()" (click)="adjustMekHeat(1)">+</button></div>
-                    <div class="heat-stat"><span>COOLING</span><strong>{{ mek.heatSinks.count - mek.heat.heatsinksOff }}</strong></div>
-                    @if (mek.heatProjection.kind === 'supported') { <div class="heat-stat"><span>PROJECTED</span><strong>{{ mek.heatProjection.projection.projected }}</strong></div> }
+                    <div class="heat-stepper compact-stepper"><button type="button"
+                            [disabled]="readOnly() || mekHeat(mek) <= 0" (click)="adjustMekHeat(-1)">−</button><button
+                            type="button" [disabled]="readOnly()" (click)="adjustMekHeat(1)">+</button></div>
+                    <div class="heat-stat"><span>COOLING</span><strong>{{ mek.heatSinks.count - mek.heat.heatsinksOff
+                            }}</strong></div>
+                    @if (mek.heatProjection.kind === 'supported') { <div class="heat-stat">
+                        <span>PROJECTED</span><strong>{{ mek.heatProjection.projection.projected }}</strong></div> }
                 </div>
-                <div class="heat-scale" aria-hidden="true">@for (level of pips(30); track level) { <span [class.active]="level <= mekHeat(mek)" [class.hot]="level > 14" [class.critical]="level > 24"></span> }</div>
+                <div class="heat-scale" aria-hidden="true">@for (level of pips(30); track level) { <span
+                        [class.active]="level <= mekHeat(mek)" [class.hot]="level > 14"
+                        [class.critical]="level > 24"></span> }</div>
             </section>
             } @else if (nonMekSnapshot(); as entity) {
             <section class="tactical-panel armor-panel" [tacticalArmorLayout]="entity">
-                <div class="panel-heading"><div><span class="panel-kicker">{{ entity.armorType }} · {{ entity.structureType }}</span><h2>Armor + Structure</h2></div></div>
+                <div class="panel-heading">
+                    <h2>Armor + Structure</h2>
+                    <span class="panel-kicker">{{ entity.armorType }} · {{ entity.structureType }}</span>
+                </div>
                 <div class="location-list">
                     @for (location of entity.locations; track location.locationId) {
-                    <section class="location-block" [class.destroyed]="nonMekInternalRemaining(location) <= 0 && location.maximumInternal > 0">
+                    <section class="location-block"
+                        [class.destroyed]="nonMekInternalRemaining(location) <= 0 && location.maximumInternal > 0">
                         @for (face of location.armor; track face.faceId) {
                         @let remaining = nonMekArmorRemaining(face);
                         <div class="location-line">
-                            <div class="location-name"><strong>{{ $first ? (location.sheetCode || location.code) : '(R)' }}</strong></div>
+                            <div class="location-name"><strong>{{ $first ? (location.sheetCode || location.code) : '(R)'
+                                    }}</strong></div>
                             <div class="location-tracks">
-                                <button type="button" class="damage-strip armor-strip" [class.numeric-damage-strip]="face.maximum > damagePipThreshold" [disabled]="readOnly()"
+                                <button type="button" class="damage-strip armor-strip"
+                                    [class.numeric-damage-strip]="face.maximum > damagePipThreshold"
+                                    [disabled]="readOnly()"
                                     (click)="openNonMekDamagePicker({ kind: 'armor', faceId: face.faceId, locationId: face.locationId }, $event)"
                                     [attr.aria-label]="(face.face === 'rear' ? 'Rear armor' : 'Armor') + ' ' + remaining + ' of ' + face.maximum"
                                     [attr.title]="(face.face === 'rear' ? 'Rear armor' : 'Armor') + ': ' + remaining + ' / ' + face.maximum">
                                     @if (face.maximum > damagePipThreshold) {
-                                    <strong class="large-track-value" aria-hidden="true">{{ remaining }}/{{ face.maximum }}</strong>
+                                    <strong class="large-track-value" aria-hidden="true">{{ remaining }}/{{ face.maximum
+                                        }}</strong>
                                     } @else {
                                     <strong class="track-value">{{ damageTrackValue(remaining, face.maximum) }}</strong>
                                     <span class="pip-matrix" [tacticalPipMatrix]="face.maximum"
@@ -376,7 +468,8 @@
                                         aria-hidden="true">
                                         @for (group of pipGroups(face.maximum); track $index) {
                                         <span class="pip-group">
-                                            @for (pip of group; track pip) { <span class="damage-pip" [class.damaged]="pip <= face.maximum - remaining"></span> }
+                                            @for (pip of group; track pip) { <span class="damage-pip"
+                                                [class.damaged]="pip <= face.maximum - remaining"></span> }
                                         </span>
                                         }
                                     </span>
@@ -384,20 +477,25 @@
                                 </button>
                                 @if ($first && location.maximumInternal > 0) {
                                 @let internal = nonMekInternalRemaining(location);
-                                <button type="button" class="damage-strip internal-strip" [class.numeric-damage-strip]="location.maximumInternal > damagePipThreshold" [disabled]="readOnly()"
+                                <button type="button" class="damage-strip internal-strip"
+                                    [class.numeric-damage-strip]="location.maximumInternal > damagePipThreshold"
+                                    [disabled]="readOnly()"
                                     (click)="openNonMekDamagePicker({ kind: 'internal', locationId: location.locationId }, $event)"
                                     [attr.aria-label]="'Internal structure ' + internal + ' of ' + location.maximumInternal"
                                     [attr.title]="'Internal structure: ' + internal + ' / ' + location.maximumInternal">
                                     @if (location.maximumInternal > damagePipThreshold) {
-                                    <strong class="large-track-value" aria-hidden="true">{{ internal }}/{{ location.maximumInternal }}</strong>
+                                    <strong class="large-track-value" aria-hidden="true">{{ internal }}/{{
+                                        location.maximumInternal }}</strong>
                                     } @else {
-                                    <strong class="track-value">{{ damageTrackValue(internal, location.maximumInternal) }}</strong>
+                                    <strong class="track-value">{{ damageTrackValue(internal, location.maximumInternal)
+                                        }}</strong>
                                     <span class="pip-matrix" [tacticalPipMatrix]="location.maximumInternal"
                                         [tacticalPipMatrixSingleLine]="activeMember.entity.entityType === 'BattleArmor'"
                                         aria-hidden="true">
                                         @for (group of pipGroups(location.maximumInternal); track $index) {
                                         <span class="pip-group">
-                                            @for (pip of group; track pip) { <span class="damage-pip structure-pip" [class.damaged]="pip <= location.maximumInternal - internal"></span> }
+                                            @for (pip of group; track pip) { <span class="damage-pip structure-pip"
+                                                [class.damaged]="pip <= location.maximumInternal - internal"></span> }
                                         </span>
                                         }
                                     </span>
@@ -413,13 +511,18 @@
             </section>
             @if (entity.damageTracks.length > 0) {
             <section class="tactical-panel critical-panel damage-panel">
-                <div class="panel-heading"><div><span class="panel-kicker">SYSTEMS</span><h2>Damage Tracks</h2></div></div>
+                <div class="panel-heading">
+                    <h2>Damage Tracks</h2>
+                </div>
                 <div class="damage-track-list">
                     @for (track of entity.damageTracks; track track.damageTrackId) {
                     @let hits = nonMekTrackHits(track);
-                    <button type="button" class="entity-damage-track" [class.hit]="hits > 0" [disabled]="readOnly()" (click)="openNonMekTrackPicker(track, $event)">
+                    <button type="button" class="entity-damage-track" [class.hit]="hits > 0" [disabled]="readOnly()"
+                        (click)="openNonMekTrackPicker(track, $event)">
                         <span class="critical-name">{{ track.label }}</span>
-                        <span class="damage-track-pips" aria-hidden="true">@for (pip of pips(track.maximumHits); track pip) { <span class="critical-pip extra-critical-pip" [class.hit]="pip <= hits"></span> }</span>
+                        <span class="damage-track-pips" aria-hidden="true">@for (pip of pips(track.maximumHits); track
+                            pip) { <span class="critical-pip extra-critical-pip" [class.hit]="pip <= hits"></span>
+                            }</span>
                         <strong>{{ hits }}/{{ track.maximumHits }}</strong>
                     </button>
                     }
@@ -428,12 +531,20 @@
             }
             @if (entity.heat.tracked) {
             <section class="tactical-panel heat-panel">
-                <div class="panel-heading"><div><span class="panel-kicker">THERMAL</span><h2>Heat</h2></div></div>
-                <div class="heat-readout"><div class="heat-value"><span>LEVEL</span><strong>{{ nonMekHeat(entity) }}</strong></div>
-                    <div class="heat-stepper compact-stepper"><button type="button" [disabled]="readOnly() || nonMekHeat(entity) <= 0" (click)="adjustNonMekHeat(-1)">−</button><button type="button" [disabled]="readOnly()" (click)="adjustNonMekHeat(1)">+</button></div>
+                <div class="panel-heading">
+                        <h2>Heat</h2>
+                </div>
+                <div class="heat-readout">
+                    <div class="heat-value"><span>LEVEL</span><strong>{{ nonMekHeat(entity) }}</strong></div>
+                    <div class="heat-stepper compact-stepper"><button type="button"
+                            [disabled]="readOnly() || nonMekHeat(entity) <= 0"
+                            (click)="adjustNonMekHeat(-1)">−</button><button type="button" [disabled]="readOnly()"
+                            (click)="adjustNonMekHeat(1)">+</button></div>
                     <div class="heat-stat"><span>COOLING</span><strong>{{ entity.heat.dissipation }}</strong></div>
                 </div>
-                <div class="heat-scale" aria-hidden="true">@for (level of pips(30); track level) { <span [class.active]="level <= nonMekHeat(entity)" [class.hot]="level > 14" [class.critical]="level > 24"></span> }</div>
+                <div class="heat-scale" aria-hidden="true">@for (level of pips(30); track level) { <span
+                        [class.active]="level <= nonMekHeat(entity)" [class.hot]="level > 14"
+                        [class.critical]="level > 24"></span> }</div>
             </section>
             }
             }

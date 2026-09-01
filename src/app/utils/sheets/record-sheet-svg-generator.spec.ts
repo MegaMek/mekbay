@@ -563,6 +563,7 @@ describe('RecordSheetSvgGenerator', () => {
 
     it('matches the MegaMekLab Mek location, cluster, and physical reference grids', async () => {
         const entity = new TestBipedMekEntity();
+        addTestEquipmentWithFlags(entity, 'F_CASE', { location: 'LA' });
         addTestEquipment(entity, new WeaponEquipment({
             id: 'Test LRM 20',
             name: 'LRM 20',
@@ -593,7 +594,13 @@ describe('RecordSheetSvgGenerator', () => {
             '.reference-table-row[data-mekbay-reference-roll="1"] .reference-table-cell',
         )).map(node => node.textContent)).toEqual(['1', 'LT', 'LA', 'RT', 'LL', 'RL', 'RL']);
         expect(punchKick.querySelectorAll('.tableshading').length).toBe(3);
-        expect(svg.querySelector('.critGroup[loc="LA"] > .critical-location-heading')).not.toBeNull();
+        const locationControl = svg.querySelector(
+            '.critGroup[loc="LA"] > .locationConditionControl',
+        );
+        expect(locationControl?.querySelector(':scope > .critical-location-heading')).not.toBeNull();
+        expect(locationControl?.querySelector(':scope > .critical-case-label')?.textContent).toBe('(CASE)');
+        expect(svg.querySelector('.critGroup[loc="LA"] > .critical-location-heading')).toBeNull();
+        expect(svg.querySelector('.critGroup[loc="LA"] > .critical-case-label')).toBeNull();
         expect(svg.querySelector('.critSlot[loc="LA"][slot="0"]')).not.toBeNull();
         expect(svg.querySelectorAll('.critical-roll-range').length).toBe(10);
         expect(svg.querySelectorAll('.mek-system-damage .systemHitPip').length).toBe(8);

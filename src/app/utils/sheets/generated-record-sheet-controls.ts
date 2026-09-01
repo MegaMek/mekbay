@@ -489,7 +489,7 @@ export function appendGeneratedMekCriticalHeadingControls(
     heading: SVGTextElement,
     location: string,
     box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
-): void {
+): SVGGElement {
     heading.classList.add('locationConditionText');
     heading.setAttribute('loc', location);
     const control = svgElement('g');
@@ -524,4 +524,6 @@ export function appendGeneratedMekCriticalHeadingControls(
     });
     narc.insertBefore(background, label);
     control.appendChild(narc);
+    control.appendChild(heading);
+    return control;
 }

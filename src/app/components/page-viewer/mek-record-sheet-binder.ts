@@ -407,6 +407,7 @@ export function bindMekRecordSheet(
             element.classList.toggle('damaged', committedWholeSlotHit);
             element.classList.toggle('pending', previewWholeSlotHit !== committedWholeSlotHit);
             element.classList.toggle('willDamage', !committedWholeSlotHit && previewWholeSlotHit);
+            element.classList.toggle('willRepair', committedWholeSlotHit && !previewWholeSlotHit);
             element.classList.toggle('armored', slot.armored);
             element.classList.toggle('disabled', slot.components.some(component => component.status !== 'available'));
             element.querySelectorAll<SVGElement>('.armoredLocPip').forEach(pip => {
@@ -2289,7 +2290,7 @@ function resetUnitDataLayout(
     svg.querySelectorAll<SVGElement>(manifest.selectors.criticalSlot).forEach(element => {
         const generatedEmptySlot = element.dataset['mekbayEmptySlot'] === '1';
         element.style.display = generatedEmptySlot ? '' : 'none';
-        element.classList.remove('damaged', 'pending', 'armored', 'disabled');
+        element.classList.remove('damaged', 'pending', 'willDamage', 'willRepair', 'armored', 'disabled');
         element.classList.remove('interactive');
         element.removeAttribute('tabindex');
         element.removeAttribute('hittable');

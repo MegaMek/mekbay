@@ -778,6 +778,29 @@ describe('Mek record-sheet binder', () => {
         expect(element.classList).toContain('damaged');
     });
 
+    it('keeps a pending whole-slot repair damaged and marks its repair direction', () => {
+        const svg = sheet();
+        svg.classList.add('mekbay-sheet');
+        document.body.appendChild(svg);
+        const base = snapshot();
+        const slot = base.criticalSlots[0]!;
+        try {
+            bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, {
+                ...base,
+                criticalSlots: [{ ...slot, hitCapacity: 1, committedHits: 1, previewHits: 0 }],
+            });
+            const element = svg.querySelector<SVGElement>('.critSlot')!;
+
+            expect(element.classList).toContain('damaged');
+            expect(element.classList).toContain('pending');
+            expect(element.classList).toContain('willRepair');
+            expect(element.classList).not.toContain('willDamage');
+            expect(getComputedStyle(element.querySelector('text')!).fill).toBe('rgb(3, 169, 244)');
+        } finally {
+            svg.remove();
+        }
+    });
+
     it('uses direct authored system-hit controls and preserves the heat-drag overlay protocol', () => {
         const svg = sheet();
         const engine = document.createElementNS('http://www.w3.org/2000/svg', 'rect');

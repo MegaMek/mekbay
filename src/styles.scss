@@ -1865,6 +1865,10 @@ hr.divider {
         text-decoration: line-through;
     }
 
+    .critSlot.damaged.willRepair text {
+        fill: var(--pip-pending-repair-color) !important;
+    }
+
     .critLoc:not(.counterGroup) {
         &.damaged {
             fill: var(--damage-color) !important;
