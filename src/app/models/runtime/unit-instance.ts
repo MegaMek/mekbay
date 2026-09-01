@@ -276,7 +276,11 @@ import {
 import type { MekPhysicalAttackProjectionResultV2 } from './mek-physical-attack-v2';
 import type { MekCombatModifierProjectionResult } from './mek-combat-modifiers';
 import { isModularArmorEquipment, MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
-import { mekCriticalSlotDirectHitThreshold, mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
+import {
+    mekCriticalSlotDirectHitThreshold,
+    mekCriticalSlotHittable,
+    mekCriticalSlotMaximumHits,
+} from './mek-critical-slot-rules';
 import {
     projectMekBlowOffV2,
     projectMekCriticalChanceV2,
@@ -1793,7 +1797,7 @@ function reduce(
             if (!isStateMutationTarget(command.target)) return unchanged(state);
             if (!positiveInteger(command.hits)) return unchanged(state);
             const slot = unit.index.slots.get(command.slotId);
-            if (!slot) return unchanged(state);
+            if (!slot || !mekCriticalSlotHittable(unit.index, slot)) return unchanged(state);
             const capacity = mekCriticalSlotMaximumHits(unit.index, unit.ruleset, slot);
             if (criticalHits(state, command.slotId, 'preview') + command.hits > capacity
                 || (command.target === 'committed'

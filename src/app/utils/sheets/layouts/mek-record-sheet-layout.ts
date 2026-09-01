@@ -2438,7 +2438,6 @@ async function drawCanonicalMekCriticalContents(
             slotGroup.setAttribute('class', 'critSlot');
             slotGroup.setAttribute('loc', location);
             slotGroup.setAttribute('slot', String(slotIndex));
-            slotGroup.setAttribute('hittable', '1');
             if (!slot || slot.type === 'empty') slotGroup.setAttribute('data-mekbay-empty-slot', '1');
             setInventoryComponentIds(
                 slotGroup,
@@ -2448,19 +2447,22 @@ async function drawCanonicalMekCriticalContents(
                 'transform',
                 `translate(${formatNumber(x(locationLayout.textX))} ${formatNumber(y(slotTop))})`,
             );
-            slotGroup.appendChild(transparentRect(
-                x(locationLayout.numberX - locationLayout.textX - 2),
-                1,
-                x(locationLayout.rightEdge - locationLayout.numberX - 4),
-                y(locationLayout.step),
-                'critSlot-bg-rect',
-            ));
-            const printableSlot = slot?.type === 'system'
-                || slot?.type === 'equipment' && slot.mounts.some(mount => mount.equipment?.hittable);
+            const hittable = slot?.type === 'system'
+                || slot?.type === 'equipment' && slot.mounts.some(mount => mount.equipment?.hittable === true);
+            if (hittable) {
+                slotGroup.setAttribute('hittable', '1');
+                slotGroup.appendChild(transparentRect(
+                    x(locationLayout.numberX - locationLayout.textX - 2),
+                    1,
+                    x(locationLayout.rightEdge - locationLayout.numberX - 4),
+                    y(locationLayout.step),
+                    'critSlot-bg-rect',
+                ));
+            }
             addText(slotGroup, criticalSlotLabel(slot, entity), 0, y(locationLayout.step), {
                 size: font(7),
-                weight: printableSlot ? 700 : undefined,
-                fill: printableSlot ? undefined : '#3f3f3f',
+                weight: hittable ? 700 : undefined,
+                fill: hittable ? undefined : '#3f3f3f',
                 maxWidth: x(locationLayout.rightEdge - locationLayout.textX - 5),
             });
             if (slot?.armored) {
@@ -2854,7 +2856,7 @@ function appendMekHeatControls(group: SVGGElement, box: Box): void {
                 Math.max(0, box.width - 42),
                 35,
                 38,
-                Math.max(12, box.height - 42),
+                Math.max(12, box.height - 72),
                 'changeActiveHeatsinksCountButton screen-only',
             ),
             heatSinks.firstChild,

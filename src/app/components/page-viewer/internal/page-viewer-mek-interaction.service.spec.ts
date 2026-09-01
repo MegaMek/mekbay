@@ -220,6 +220,26 @@ describe('PageViewerMekInteractionService', () => {
         expect(force.dispatchEquipmentChoice).toHaveBeenCalledWith(command);
     });
 
+    it('ignores an unhittable critical interaction even if stale SVG emits it', () => {
+        const slot = currentSnapshot.criticalSlots[0]!;
+        currentSnapshot = {
+            ...currentSnapshot,
+            criticalSlots: currentSnapshot.criticalSlots.map(slot => ({ ...slot, hittable: false })),
+        };
+
+        service.handle(member, {
+            kind: 'critical',
+            slotId: slot.slotId,
+            componentIds: slot.components.map(component => component.componentId),
+            button: 'primary',
+            expectedRevision: 1,
+        }, anchoredMouseEvent());
+
+        expect(choiceConfig).toBeNull();
+        expect(force.getEquipmentInteractions).not.toHaveBeenCalled();
+        expect(force.dispatchMekUnitCommand).not.toHaveBeenCalled();
+    });
+
     it('ports the production location critical actions to the direct V2 dialogs', () => {
         dialogs.createDialog.and.returnValues(
             { closed: of({ kind: 'critical-hits', count: 2 }) } as any,
@@ -581,7 +601,7 @@ function recordSheetSnapshot(stateRevision: number): MekRecordSheetSnapshot {
         }],
         criticalSlots: [{
             slotId: 'slot-ct-0', locationId: 'loc-ct', locationCode: 'CT', slotIndex: 0,
-            armored: false, hitCapacity: 1, committedHits: 0, previewHits: 0,
+            hittable: true, armored: false, hitCapacity: 1, committedHits: 0, previewHits: 0,
             components: [{
                 componentId: 'ammo-1', label: 'AC/20 Ammo', status: 'available',
                 ammo: { munitionKey: 'standard', displayName: 'AC/20 Ammo', capacity: 5, remaining: 3 },

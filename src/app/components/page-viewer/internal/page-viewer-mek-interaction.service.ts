@@ -375,7 +375,7 @@ export class PageViewerMekInteractionService {
         handlers: Map<string, CBTEquipmentChoiceCommand>,
     ): PickerChoice[] {
         const slot = snapshot.criticalSlots.find(candidate => candidate.slotId === interaction.slotId);
-        if (!slot) return [];
+        if (!slot?.hittable) return [];
         const pending = this.options.options().trackPhaseAndTurn;
         const hits = pending ? slot.previewHits : slot.committedHits;
         const capacity = slot.hitCapacity;

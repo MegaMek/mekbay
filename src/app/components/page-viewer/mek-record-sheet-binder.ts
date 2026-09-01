@@ -391,6 +391,14 @@ export function bindMekRecordSheet(
             element.removeAttribute('totalAmmo');
             element.setAttribute('data-mekbay-slot-id', slot.slotId);
             writeComponentIds(element, slot.components.map(component => component.componentId));
+            if (slot.hittable) {
+                element.setAttribute('hittable', '1');
+            } else {
+                element.removeAttribute('hittable');
+                element.classList.remove('interactive');
+                element.removeAttribute('tabindex');
+                element.querySelectorAll(':scope > .critSlot-bg-rect').forEach(background => background.remove());
+            }
             const armoredHitCapacity = slot.armored ? 1 : 0;
             const extraHit = slot.hitCapacity - armoredHitCapacity > 1;
             const pipHitCapacity = armoredHitCapacity + (extraHit ? 1 : 0);
@@ -420,13 +428,15 @@ export function bindMekRecordSheet(
                 );
                 if (committedWholeSlotHit) pip.classList.remove('fresh');
             });
-            bindButton(element, button => Object.freeze({
-                kind: 'critical',
-                slotId: slot.slotId,
-                componentIds: Object.freeze(slot.components.map(component => component.componentId)),
-                button,
-                expectedRevision: current.stateRevision,
-            }));
+            if (slot.hittable) {
+                bindButton(element, button => Object.freeze({
+                    kind: 'critical',
+                    slotId: slot.slotId,
+                    componentIds: Object.freeze(slot.components.map(component => component.componentId)),
+                    button,
+                    expectedRevision: current.stateRevision,
+                }));
+            }
         }
         renderSystemDamage(svg, snapshot, bindButton, () => current.stateRevision);
 
@@ -2280,6 +2290,9 @@ function resetUnitDataLayout(
         const generatedEmptySlot = element.dataset['mekbayEmptySlot'] === '1';
         element.style.display = generatedEmptySlot ? '' : 'none';
         element.classList.remove('damaged', 'pending', 'armored', 'disabled');
+        element.classList.remove('interactive');
+        element.removeAttribute('tabindex');
+        element.removeAttribute('hittable');
         element.removeAttribute('uid');
         element.removeAttribute('totalAmmo');
         element.removeAttribute('data-mekbay-slot-id');

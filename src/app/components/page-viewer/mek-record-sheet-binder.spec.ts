@@ -419,6 +419,31 @@ describe('Mek record-sheet binder', () => {
         expect(interactions.length).toBe(9);
     });
 
+    it('does not bind or retain a hit target for an unhittable critical slot', () => {
+        const svg = sheet();
+        const critical = svg.querySelector<SVGElement>('.critSlot')!;
+        critical.insertAdjacentHTML('afterbegin', '<rect class="critSlot-bg-rect"></rect>');
+        const base = snapshot();
+        const interactions: MekRecordSheetInteraction[] = [];
+
+        bindMekRecordSheet(
+            svg,
+            MM_DATA_MEK_SHEET_BINDING_MANIFEST,
+            {
+                ...base,
+                criticalSlots: [{ ...base.criticalSlots[0]!, hittable: false }],
+            },
+            interaction => interactions.push(interaction),
+        );
+
+        expect(critical.classList).not.toContain('interactive');
+        expect(critical.hasAttribute('tabindex')).toBeFalse();
+        expect(critical.hasAttribute('hittable')).toBeFalse();
+        expect(critical.querySelector(':scope > .critSlot-bg-rect')).toBeNull();
+        critical.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions).toEqual([]);
+    });
+
     it('renders and binds shield DA/DC tracks from the runtime projection', () => {
         const svg = sheet();
         const interactions: MekRecordSheetInteraction[] = [];
@@ -1452,6 +1477,7 @@ function snapshot(): MekRecordSheetSnapshot {
             locationId: 'location-ct',
             locationCode: 'CT',
             slotIndex: 0,
+            hittable: true,
             armored: false,
             hitCapacity: 1,
             committedHits: 0,

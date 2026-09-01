@@ -443,9 +443,17 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.querySelectorAll('#heatScale .heat.no-autocolor').length).toBe(31);
         expect(svg.querySelector('#heatScale .heat')?.tagName.toLowerCase()).toBe('rect');
         expect(svg.querySelectorAll('.critSlot[loc][slot]').length).toBe(66);
-        expect(svg.querySelectorAll('.critSlot[hittable="1"] > .critSlot-bg-rect').length).toBe(66);
+        const hittableSlots = svg.querySelectorAll('.critSlot[hittable="1"]');
+        expect(hittableSlots.length).toBeGreaterThan(0);
+        expect(hittableSlots.length).toBeLessThan(66);
+        expect(svg.querySelectorAll('.critSlot[hittable="1"] > .critSlot-bg-rect').length)
+            .toBe(hittableSlots.length);
+        expect(svg.querySelectorAll('.critSlot:not([hittable]) > .critSlot-bg-rect').length).toBe(0);
         expect(svg.querySelectorAll('.critSlot > .extraHitPip[display="none"]').length).toBe(66);
-        expect(svg.querySelector('[data-mekbay-empty-slot="1"] text')?.textContent).toBe('Roll Again');
+        const emptySlot = svg.querySelector('[data-mekbay-empty-slot="1"]');
+        expect(emptySlot?.querySelector('text')?.textContent).toBe('Roll Again');
+        expect(emptySlot?.hasAttribute('hittable')).toBeFalse();
+        expect(emptySlot?.querySelector(':scope > .critSlot-bg-rect')).toBeNull();
         expect(svg.querySelectorAll('.inventoryEntry').length).toBeGreaterThan(0);
         expect(svg.querySelectorAll('.inventoryEntry[display="none"]').length).toBe(0);
         expect(svg.querySelectorAll('.crewHit').length).toBe(6);

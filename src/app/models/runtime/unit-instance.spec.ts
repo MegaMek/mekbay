@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
+    createDirectExplosionRuntimeFixture,
     createDirectMekRuntimeFixture,
     createDirectModularArmorRuntimeFixture,
     createDirectPrototypeLaserRuntimeFixture,
@@ -127,6 +128,29 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         }).accepted).toBeTrue();
         expect(instance.query().remainingArmor(face.id, 'committed')).toBe(face.maximumPoints - 1);
         expect(instance.snapshot().pendingCombat.armorDamage.size).toBe(0);
+    });
+
+    it('ignores direct critical-hit commands for unhittable slots', () => {
+        const { instance, index } = createDirectExplosionRuntimeFixture(
+            'core-2026',
+            { protection: 'case' },
+        );
+        const unhittableSlot = [...index.slots.values()].find(slot =>
+            slot.componentIds.length > 0
+            && slot.componentIds.every(componentId => {
+                const component = index.components.get(componentId);
+                return component?.kind === 'equipment' && component.mount.equipment?.hittable === false;
+            }))!;
+        const revision = instance.query().stateRevision;
+
+        expect(instance.dispatch({
+            type: 'hit-critical',
+            slotId: unhittableSlot.id,
+            hits: 1,
+            target: 'committed',
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+        expect(instance.query().stateRevision).toBe(revision);
+        expect(instance.query().criticalHits(unhittableSlot.id)).toBe(0);
     });
 
     it('commits pending damage before requiring its newly-created Piloting Skill Roll', () => {

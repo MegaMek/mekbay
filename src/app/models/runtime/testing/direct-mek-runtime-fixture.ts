@@ -874,11 +874,11 @@ function directMekEquipmentRegistry() {
     });
     const caseEquipment = new MiscEquipment({
         id: 'Test CASE', name: 'CASE', type: 'misc',
-        flags: ['F_CASE'], stats: { criticalSlots: 1 },
+        flags: ['F_CASE'], stats: { criticalSlots: 1, hittable: false },
     });
     const caseIIEquipment = new MiscEquipment({
         id: 'Test CASE II', name: 'CASE II', type: 'misc',
-        flags: ['F_CASE_II'], stats: { criticalSlots: 1 },
+        flags: ['F_CASE_II'], stats: { criticalSlots: 1, hittable: false },
     });
     return createTestEquipmentRegistry({
         [compositeStructure.id]: compositeStructure,
