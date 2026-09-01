@@ -65,8 +65,6 @@ import {
     UNIT_STATE_INITIALIZER_REVISION,
 } from './unit-state-initializer';
 import {
-    asStateRevision,
-    asUnitInstanceId,
     isBombastLaserChargeState,
     isC3EmergencyMasterModeOverride,
     isC3EmergencyMasterOperatingTurns,
@@ -107,7 +105,7 @@ import {
 } from './mek-destruction-state-v2';
 
 /**
- * The sole current Classic storage wire. The domain snapshot deliberately keeps
+ * The sole current CBT storage wire. The domain snapshot deliberately keeps
  * descriptive names; IndexedDB and cloud transport do not repeat them hundreds
  * of times. Production V1 records pass through unchanged for the one-way loader.
  */
@@ -116,7 +114,7 @@ export type StoredForceRecord = Readonly<Record<string, unknown>>;
 export function isCompactStoredForce(value: unknown): boolean {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
     const root = value as Record<string, unknown>;
-    if (root['version'] !== 2 || root['type'] !== GameSystem.CLASSIC) return false;
+    if (root['version'] !== 2 || root['type'] !== GameSystem.CBT) return false;
     const cbt = root['cbt'];
     if (cbt === null || typeof cbt !== 'object' || Array.isArray(cbt)) return false;
     const compact = cbt as Record<string, unknown>;
@@ -153,9 +151,9 @@ export function encodeForceForStorage(force: SerializedForce): StoredForceRecord
     const detached = clone(force);
     if (force.version === 1) return Object.freeze({ ...detached });
     if (force.version !== 2) throw new Error('Unsupported force persistence version');
-    if (force.type !== GameSystem.CLASSIC) return Object.freeze({ ...detached });
+    if (force.type !== GameSystem.CBT) return Object.freeze({ ...detached });
     if (force.cbt === undefined) {
-        throw new Error('Current Classic persistence requires a current CBT snapshot');
+        throw new Error('Current CBT persistence requires a current CBT snapshot');
     }
     const { groups: _legacyGroups, c3Networks: _legacyNetworks, ...current } = detached;
     return Object.freeze({ ...current, cbt: packForce(force.cbt) });
@@ -166,18 +164,18 @@ export function decodeForceFromStorage(value: unknown): SerializedForce {
     const root = record(detached, 'force');
     if (root['version'] === 1) return detached as SerializedForce;
     if (root['version'] !== 2) throw new Error('Unsupported force persistence version');
-    if (root['type'] !== GameSystem.CLASSIC) return detached as SerializedForce;
+    if (root['type'] !== GameSystem.CBT) return detached as SerializedForce;
     const compact = record(root['cbt'], 'force.cbt');
     if ('schemaVersion' in compact) return detached as SerializedForce;
     if (compact['v'] !== COMPACT_FORCE_FORMAT_VERSION
         || !('r' in compact) || !('u' in compact) || !('g' in compact)) {
-        throw new Error('Unsupported compact Classic persistence shape');
+        throw new Error('Unsupported compact CBT persistence shape');
     }
     const instanceId = text(root['instanceId'], 'force.instanceId');
-    return unpackClassicForce(root, instanceId, unpackForce(compact, instanceId));
+    return unpackCBTForce(root, instanceId, unpackForce(compact, instanceId));
 }
 
-function unpackClassicForce(
+function unpackCBTForce(
     root: Record<string, unknown>,
     instanceId: string,
     cbt: SerializedCBTForceV2,
@@ -190,7 +188,7 @@ function unpackClassicForce(
         version: 2,
         timestamp: text(root['timestamp'], 'force.timestamp'),
         instanceId,
-        type: GameSystem.CLASSIC,
+        type: GameSystem.CBT,
         name: text(root['name'], 'force.name'),
         ...(root['note'] === undefined ? {} : { note: text(root['note'], 'force.note') }),
         ...(root['tags'] === undefined ? {} : { tags: unpackTextArray(root['tags'], 'force.tags') }),
@@ -230,9 +228,9 @@ function packForce(force: SerializedCBTForceV2): CompactForce {
 function unpackForce(value: Record<string, unknown>, forceId: string): SerializedCBTForceV2 {
     exactKeys(value, ['v', 'r', 's', 'u', 'g', 'h', 'e'], 'force.cbt');
     if (value['v'] !== COMPACT_FORCE_FORMAT_VERSION) {
-        throw new Error('Unsupported compact Classic persistence format');
+        throw new Error('Unsupported compact CBT persistence format');
     }
-    const revision = asStateRevision(integer(value['r'], 'force.cbt.r'));
+    const revision = integer(value['r'], 'force.cbt.r');
     const scenario = clone(value['s']) as JsonValue;
     const ruleset = rulesetFromScenario(scenario);
     const units = array(value['u'], 'force.cbt.u').map((entry, index) =>
@@ -332,14 +330,14 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
     const pristineHeat = deployment.values.initialHeat ?? 0;
     return {
         schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
-        instanceId: asUnitInstanceId(text(value['i'], `${path}.i`)),
+        instanceId: text(value['i'], `${path}.i`),
         entity,
         baselineRefAtSave: baseline,
         // BaseEntity topology is rebuilt after the exact native source is loaded.
         // The storage wire never carries a copied blueprint reference catalog.
         blueprintReferences: { schemaVersion: 1, targets: {} },
         deployment,
-        stateRevision: asStateRevision(value['r'] === undefined ? 0 : integer(value['r'], `${path}.r`)),
+        stateRevision: value['r'] === undefined ? 0 : integer(value['r'], `${path}.r`),
         ...(value['x'] === undefined ? {} : { destroyed: truthyOne(value['x'], `${path}.x`) }),
         ...(value['l'] === undefined ? {} : {
             locationState: unpackRows(value['l'], `${path}.l`, (row, rowPath) => ({
@@ -404,7 +402,7 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
                 key: unpackMekRuleCheckKey(row[0], `${rowPath}[0]`),
                 token: asMekRuleCheckTokenV2(rowText(row, 1, rowPath)),
                 trigger: asSavedTargetRef(rowText(row, 2, rowPath)),
-                openedRevision: asStateRevision(rowInteger(row, 3, rowPath)),
+                openedRevision: rowInteger(row, 3, rowPath),
                 status: unpackMekRuleCheckStatus(row[4], `${rowPath}[4]`),
             })),
         },
@@ -474,12 +472,12 @@ function unpackNonMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, p
     const deployment = unpackNonMekDeployment(value['d'], `${path}.d`);
     return {
         schemaVersion: NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
-        instanceId: asUnitInstanceId(text(value['i'], `${path}.i`)),
+        instanceId: text(value['i'], `${path}.i`),
         entity,
         baselineRefAtSave: baseline,
         deployment,
         family: { kind: 'non-mek', entityType: unpackNonMekEntityType(value['t'], `${path}.t`) },
-        stateRevision: asStateRevision(value['r'] === undefined ? 0 : integer(value['r'], `${path}.r`)),
+        stateRevision: value['r'] === undefined ? 0 : integer(value['r'], `${path}.r`),
         ...(value['x'] === undefined ? {} : { destroyed: truthyOne(value['x'], `${path}.x`) }),
         ...(value['l'] === undefined ? {} : {
             locationState: unpackRows(value['l'], `${path}.l`, (row, rowPath) => ({
@@ -1539,7 +1537,7 @@ function packEncounter(encounter: SerializedForceEncounterEntryV2): unknown {
 function unpackEncounter(value: unknown, path: string): SerializedForceEncounterEntryV2 {
     const row = array(value, path);
     if (row.length !== 2) throw new Error(`${path} is not a compact encounter`);
-    const revision = asStateRevision(rowInteger(row, 0, path));
+    const revision = rowInteger(row, 0, path);
     const state: SerializedCBTEncounterStateV2 = {
         schemaVersion: 2,
         encounterRevision: revision,
@@ -1552,17 +1550,17 @@ function unpackEncounter(value: unknown, path: string): SerializedForceEncounter
 }
 
 function emptyEncounter(): SerializedForceEncounterEntryV2 {
-    const revision = asStateRevision(0);
+    const revision = 0;
     return { encounterRevision: revision, state: { schemaVersion: 2, encounterRevision: revision, facts: [] } };
 }
 
 function rulesetFromScenario(value: JsonValue): CBTRuleset {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-        throw new Error('Classic scenario rules must be an object');
+        throw new Error('CBT scenario rules must be an object');
     }
     const ruleset = value['ruleset'];
     if (ruleset === undefined) return CORE_2026_RULESET;
-    if (!isCBTRuleset(ruleset)) throw new Error(`Unsupported Classic ruleset ${String(ruleset)}`);
+    if (!isCBTRuleset(ruleset)) throw new Error(`Unsupported CBT ruleset ${String(ruleset)}`);
     return ruleset;
 }
 

@@ -50,7 +50,7 @@ function createRequest(revision: number, version: string): UnitSearchWorkerQuery
         corpusVersion: version,
         executionQuery: '',
         telemetryQuery: '',
-        gameSystem: GameSystem.CLASSIC,
+        gameSystem: GameSystem.CBT,
         sortKey: '',
         sortDirection: 'asc',
         bvPvLimit: 0,

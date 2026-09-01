@@ -39,44 +39,14 @@ import {
     isProtoMekEntity,
     isVehicleEntity,
 } from '../entity/utils/entity-type-guards';
-import {
-    projectVehicleRuntimeRules,
-    type VehicleRuntimeRulesProjection,
-} from '../rules/vehicle-runtime-rules';
-import {
-    projectProtoMekRuntimeRules,
-    type ProtoMekRuntimeRulesProjection,
-} from '../rules/protomek-runtime-rules';
-import {
-    projectInfantryRuntimeRules,
-    type InfantryRuntimeRulesProjection,
-} from '../rules/infantry-runtime-rules';
-import {
-    projectAeroRuntimeRules,
-    type AeroRuntimeRulesProjection,
-} from '../rules/aero-runtime-rules';
-import {
-    asStateRevision,
-    type AmmoRuntimeState,
-    type ComponentRuntimeState,
-    type InstanceBaselineRef,
-    type StateRevision,
-    type UnitInstanceId,
-} from './runtime-state';
-import {
-    buildNonMekRuntimeIndex,
-    type NonMekDamageTrack,
-    type NonMekRuntimeIndex,
-} from './non-mek-runtime-index';
-import {
-    projectNonMekComponentStatuses,
-    type NonMekComponentStatuses,
-} from './non-mek-component-status';
-import {
-    entityAmmoLoadout,
-    entityAmmoLoadouts,
-    weaponAcceptsAmmo,
-} from './mek-ammo';
+import { projectVehicleRuntimeRules, type VehicleRuntimeRulesProjection } from '../rules/vehicle-runtime-rules';
+import { projectProtoMekRuntimeRules, type ProtoMekRuntimeRulesProjection } from '../rules/protomek-runtime-rules';
+import { projectInfantryRuntimeRules, type InfantryRuntimeRulesProjection } from '../rules/infantry-runtime-rules';
+import { projectAeroRuntimeRules, type AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
+import { type AmmoRuntimeState, type ComponentRuntimeState, type InstanceBaselineRef } from './runtime-state';
+import { buildNonMekRuntimeIndex, type NonMekDamageTrack, type NonMekRuntimeIndex } from './non-mek-runtime-index';
+import { projectNonMekComponentStatuses, type NonMekComponentStatuses } from './non-mek-component-status';
+import { entityAmmoLoadout, entityAmmoLoadouts, weaponAcceptsAmmo } from './mek-ammo';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import {
     createPristineAttackerTargetingState,
@@ -110,10 +80,7 @@ import {
     type ComponentEscalatingFailureDefinition,
 } from './component-escalating-failure';
 import type { EquipmentInteractionChoice } from './equipment-interaction';
-import {
-    bombastLaserEquipmentModes,
-    bombastLaserEquipmentProfile,
-} from '../bombast-laser-mode.model';
+import { bombastLaserEquipmentModes, bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import { inventoryEquipmentModes } from './component-inventory-mode';
 import { isJumpJetEquipment, isUmuEquipment } from '../jump-equipment.model';
 import {
@@ -161,13 +128,13 @@ import {
 } from '../prototype-laser-heat.model';
 import {
     isCrewDeathCommitted,
-    type ClassicCrewRuntimeState,
-    type ClassicLocationRuntimeState,
-    type ClassicUnitCommandResult,
-    type ClassicUnitQueryPort,
-    type ClassicUnitRuntimeState,
+    type CBTCrewRuntimeState,
+    type CBTLocationRuntimeState,
+    type CBTUnitCommandResult,
+    type CBTUnitQueryPort,
+    type CBTUnitRuntimeState,
     type RuntimeStatePerspective,
-} from './classic-unit-runtime';
+} from './cbt-unit-runtime';
 import type { EndTurnCheckpoint } from './end-turn-checkpoint';
 
 export type NonMekEntityType = Exclude<EntityType, 'Mek'>;
@@ -245,7 +212,7 @@ export function effectiveNonMekComponentMode(
 }
 
 /** Non-Mek-only conditions remain independent so terminal states only hide, never erase, others. */
-export interface NonMekCrewRuntimeState extends ClassicCrewRuntimeState {
+export interface NonMekCrewRuntimeState extends CBTCrewRuntimeState {
     readonly killed?: true;
     readonly stunned?: true;
 }
@@ -281,7 +248,7 @@ export function hasNonMekCrewState(
     }
 }
 
-export type NonMekLocationRuntimeState = ClassicLocationRuntimeState;
+export type NonMekLocationRuntimeState = CBTLocationRuntimeState;
 
 export interface NonMekDamageTrackRuntimeState {
     readonly hits: number;
@@ -345,8 +312,8 @@ export interface NonMekTurnRuntimeState {
 }
 
 /** Sparse state shared by non-Mek entity families. Family mechanics extend this state directly. */
-export interface NonMekUnitRuntimeState extends ClassicUnitRuntimeState {
-    readonly stateRevision: StateRevision;
+export interface NonMekUnitRuntimeState extends CBTUnitRuntimeState {
+    readonly stateRevision: number;
     /** Explicit user/import override; use query.destroyed() for effective destruction. */
     readonly explicitlyDestroyed: boolean;
     readonly locations: ReadonlyMap<LocationId, NonMekLocationRuntimeState>;
@@ -639,7 +606,7 @@ export interface NonMekAttackerTargetingReconciliationPlan {
 }
 
 export type NonMekSelectedWeaponFireResult = Readonly<
-    ClassicUnitCommandResult<NonMekUnitRuntimeState>
+    CBTUnitCommandResult<NonMekUnitRuntimeState>
     & { readonly prototypeHeat: readonly PrototypeLaserHeatResult[] }
 >;
 
@@ -701,12 +668,12 @@ export type NonMekUnitCommand =
         readonly heatPolicy?: 'automatic' | 'manual';
     }>;
 
-export type NonMekUnitCommandResult = ClassicUnitCommandResult<NonMekUnitRuntimeState>;
+export type NonMekUnitCommandResult = CBTUnitCommandResult<NonMekUnitRuntimeState>;
 
 export function createPristineNonMekUnitState(entity: BaseEntity): NonMekUnitRuntimeState {
     if (entity.entityType === 'Mek') throw new Error('Meks require CBTUnitInstance');
     return freezeNonMekUnitState({
-        stateRevision: asStateRevision(0),
+        stateRevision: 0,
         explicitlyDestroyed: false,
         locations: new Map(),
         components: new Map(),
@@ -810,7 +777,7 @@ export class NonMekUnitInstance {
     private readonly index: NonMekRuntimeIndex;
 
     public constructor(
-        public readonly id: UnitInstanceId,
+        public readonly id: string,
         public readonly baselineRef: InstanceBaselineRef,
         private readonly entity: BaseEntity,
         public readonly ruleset: CBTRuleset,
@@ -837,7 +804,7 @@ export class NonMekUnitInstance {
         return entity === this.entity;
     }
 
-    public revision(): StateRevision {
+    public revision(): number {
         return this.state.stateRevision;
     }
 
@@ -846,7 +813,7 @@ export class NonMekUnitInstance {
     }
 
     /** Immutable, state-captured reads shared with the force-level snapshot. */
-    public query(): ClassicUnitQueryPort {
+    public query(): CBTUnitQueryPort {
         return createNonMekUnitQuery(this.entity, this.index, this.state, this.ruleset);
     }
 
@@ -1303,7 +1270,7 @@ function createNonMekUnitQuery(
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
-): ClassicUnitQueryPort {
+): CBTUnitQueryPort {
     let runtimeProjection: ProjectedNonMekRuntime | undefined;
     const projection = (): ProjectedNonMekRuntime =>
         runtimeProjection ??= projectNonMekRuntime(entity, index, state, ruleset);
@@ -1595,7 +1562,7 @@ function reduceNonMekUnitState(
     ruleset: CBTRuleset,
     command: NonMekUnitCommand,
 ): NonMekUnitRuntimeState | null {
-    let candidate: Omit<NonMekUnitRuntimeState, 'stateRevision'> & { stateRevision: StateRevision } = state;
+    let candidate: Omit<NonMekUnitRuntimeState, 'stateRevision'> & { stateRevision: number } = state;
     switch (command.kind) {
         case 'set-destroyed':
             if (!command.destroyed && hasDetonatedNonMekBoobyTrap(index, state)) {
@@ -2899,7 +2866,7 @@ function validateState(
     entity: BaseEntity,
     ruleset: CBTRuleset,
 ): NonMekUnitRuntimeState {
-    asStateRevision(state.stateRevision);
+    state.stateRevision;
     if (typeof state.explicitlyDestroyed !== 'boolean') {
         throw new Error('Invalid explicit destroyed state');
     }
@@ -3043,7 +3010,7 @@ function validateState(
             ruleset,
             state,
             Object.freeze({
-                revision: asStateRevision(0),
+                revision: 0,
                 targets: Object.freeze([...targetIds].map((id, position) => Object.freeze({
                     id,
                     letter: String(position + 1),
@@ -3176,9 +3143,9 @@ function boundedHeatsinksOff(value: number, installed: number): number {
     return value;
 }
 
-function nextRevision(revision: StateRevision): StateRevision {
+function nextRevision(revision: number): number {
     if (revision >= Number.MAX_SAFE_INTEGER) throw new Error('Unit revision is exhausted');
-    return asStateRevision(revision + 1);
+    return revision + 1;
 }
 
 function emptyPendingCombat(): NonMekPendingCombatState {

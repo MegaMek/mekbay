@@ -62,8 +62,8 @@ function sameTier(id: string, label: string): FormationConstraint {
         kind: 'same-value',
         label,
         factByGameSystem: {
-            [GameSystem.ALPHA_STRIKE]: 'asSize',
-            [GameSystem.CLASSIC]: 'cbtWeightClass',
+            [GameSystem.AS]: 'asSize',
+            [GameSystem.CBT]: 'cbtWeightClass',
         },
     };
 }
@@ -74,8 +74,8 @@ function sameChassis(id: string, label: string): FormationConstraint {
         kind: 'same-value',
         label,
         factByGameSystem: {
-            [GameSystem.ALPHA_STRIKE]: 'chassis',
-            [GameSystem.CLASSIC]: 'chassis',
+            [GameSystem.AS]: 'chassis',
+            [GameSystem.CBT]: 'chassis',
         },
     };
 }
@@ -143,7 +143,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinitionSource[] = [
     //   75% medium-range ≥ 3. At least 1 Juggernaut or 2 Snipers.
     // Requirements (CBT): At least 3 heavy+. No light. All armor ≥ 135.
     //   75% can deal 25 dmg at 7 hexes. Must contain at least 1 Juggernaut or 2 Snipers.
-    // Bonus: Choose Demoralizer or Multi-Tasker; Classic grants it to up to 2
+    // Bonus: Choose Demoralizer or Multi-Tasker; CBT grants it to up to 2
     //   units per turn, while Alpha Strike grants it to half (round down).
     //
     {
@@ -265,7 +265,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinitionSource[] = [
     //
     // Requirements: 50% heavy+. 3+ Brawler/Sniper/Skirmisher.
     //   Vehicle formations need 2 matched pairs of heavy units.
-    // Bonus: Classic grants a fixed 6-point Lucky pool; Alpha Strike uses the
+    // Bonus: CBT grants a fixed 6-point Lucky pool; Alpha Strike uses the
     //   number of units at setup + 2. Both cap each unit at 4 rerolls.
     //
     {
@@ -432,7 +432,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinitionSource[] = [
 
     // ─── Command Lance ───────────────────────────────────────────────────
     //
-    // Bonus: Classic grants one SPA each to 2 non-commanders; Alpha Strike
+    // Bonus: CBT grants one SPA each to 2 non-commanders; Alpha Strike
     //   grants one SPA each to half the formation (round up). The commander
     //   also gets Tactical Genius.
     //
@@ -526,7 +526,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinitionSource[] = [
     // ─── Fire Lance ──────────────────────────────────────────────────────
     //
     // 75% Missile Boat or Sniper roles.
-    // Bonus: Classic grants Sniper to up to 2 units per turn; Alpha Strike
+    // Bonus: CBT grants Sniper to up to 2 units per turn; Alpha Strike
     //   grants it to up to half (round down).
     //
     {
@@ -744,7 +744,7 @@ export const FORMATION_RUNTIME_DEFINITIONS: FormationTypeDefinitionSource[] = [
 
     // ─── Recon Lance ─────────────────────────────────────────────────────
     //
-    // Bonus: Classic chooses Eagle's Eyes or Maneuvering Ace for up to 3 and
+    // Bonus: CBT chooses Eagle's Eyes or Maneuvering Ace for up to 3 and
     //   grants Forward Observer to all. Alpha Strike chooses one of all three
     //   SPAs and grants the chosen ability to the entire formation.
     //
@@ -1353,17 +1353,17 @@ const FORMATION_RUNTIME_DEFINITION_SOURCE_BY_ID = new Map(
 );
 
 const FORMATION_RUNTIME_DEFINITIONS_BY_GAME_SYSTEM: Readonly<Record<GameSystem, readonly FormationTypeDefinition[]>> = {
-    [GameSystem.CLASSIC]: FORMATION_RUNTIME_DEFINITIONS.map((definition) => (
-        resolveFormationTypeDefinition(definition, GameSystem.CLASSIC)
+    [GameSystem.CBT]: FORMATION_RUNTIME_DEFINITIONS.map((definition) => (
+        resolveFormationTypeDefinition(definition, GameSystem.CBT)
     )),
-    [GameSystem.ALPHA_STRIKE]: FORMATION_RUNTIME_DEFINITIONS.map((definition) => (
-        resolveFormationTypeDefinition(definition, GameSystem.ALPHA_STRIKE)
+    [GameSystem.AS]: FORMATION_RUNTIME_DEFINITIONS.map((definition) => (
+        resolveFormationTypeDefinition(definition, GameSystem.AS)
     )),
 };
 
 const FORMATION_RUNTIME_DEFINITION_BY_GAME_SYSTEM_AND_ID: Readonly<Record<GameSystem, ReadonlyMap<string, FormationTypeDefinition>>> = {
-    [GameSystem.CLASSIC]: new Map(FORMATION_RUNTIME_DEFINITIONS_BY_GAME_SYSTEM[GameSystem.CLASSIC].map((definition) => [definition.id, definition])),
-    [GameSystem.ALPHA_STRIKE]: new Map(FORMATION_RUNTIME_DEFINITIONS_BY_GAME_SYSTEM[GameSystem.ALPHA_STRIKE].map((definition) => [definition.id, definition])),
+    [GameSystem.CBT]: new Map(FORMATION_RUNTIME_DEFINITIONS_BY_GAME_SYSTEM[GameSystem.CBT].map((definition) => [definition.id, definition])),
+    [GameSystem.AS]: new Map(FORMATION_RUNTIME_DEFINITIONS_BY_GAME_SYSTEM[GameSystem.AS].map((definition) => [definition.id, definition])),
 };
 
 export function getFormationDefinitionSource(id: string): FormationTypeDefinitionSource | null {
@@ -1492,6 +1492,6 @@ export function getFormationBlueprint(id: string, gameSystem: GameSystem): Forma
     if (!blueprint) return null;
     return {
         id: blueprint.id,
-        constraints: gameSystem === GameSystem.CLASSIC ? blueprint.classic : blueprint.alphaStrike,
+        constraints: gameSystem === GameSystem.CBT ? blueprint.classic : blueprint.alphaStrike,
     };
 }

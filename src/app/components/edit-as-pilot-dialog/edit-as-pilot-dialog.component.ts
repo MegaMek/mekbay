@@ -344,7 +344,7 @@ export class EditASPilotDialogComponent {
         const standardAbility = this.getAbilityById(ability);
         if (!standardAbility) return null;
         
-        const details = getAbilityDetails(standardAbility, GameSystem.ALPHA_STRIKE);
+        const details = getAbilityDetails(standardAbility, GameSystem.AS);
         const unitTypeCode = this.data.unitTypeCode;
         const unitTypeInvalid = !!(unitTypeCode && details.unitTypeFilter?.length && !details.unitTypeFilter.includes(unitTypeCode));
         return {
@@ -416,7 +416,7 @@ export class EditASPilotDialogComponent {
     }
 
     private buildPilotAbilityDropdownOption(ability: PilotAbility): AbilityDropdownOption {
-        const details = getAbilityDetails(ability, GameSystem.ALPHA_STRIKE);
+        const details = getAbilityDetails(ability, GameSystem.AS);
         const unitTypeCode = this.data.unitTypeCode;
         const unitTypeRestricted = !!(unitTypeCode && details.unitTypeFilter?.length && !details.unitTypeFilter.includes(unitTypeCode));
 

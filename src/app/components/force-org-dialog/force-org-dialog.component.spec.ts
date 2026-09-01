@@ -108,7 +108,7 @@ describe('ForceOrgDialogComponent', () => {
             force: {
                 instanceId,
                 groups: [],
-                type: GameSystem.CLASSIC,
+                type: GameSystem.CBT,
             },
             x: signal(x),
             y: signal(y),
@@ -150,7 +150,7 @@ describe('ForceOrgDialogComponent', () => {
         return new LoadForceEntry({
             instanceId,
             name: `Force ${instanceId}`,
-            type: overrides.type ?? GameSystem.CLASSIC,
+            type: overrides.type ?? GameSystem.CBT,
             bv: overrides.bv,
             pv: overrides.pv,
             groups: [{

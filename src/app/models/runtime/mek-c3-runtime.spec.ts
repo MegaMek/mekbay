@@ -1,17 +1,10 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import {
-    componentC3EmergencyMasterDefinition,
-    componentC3EmergencyMasterFacts,
-} from './component-c3-emergency-master';
+import { componentC3EmergencyMasterDefinition, componentC3EmergencyMasterFacts } from './component-c3-emergency-master';
 import type { ComponentId } from '../entity/entity-identifiers';
-import {
-    asEncounterNetworkId,
-    type EncounterNetwork,
-} from './encounter-runtime';
+import { asEncounterNetworkId, type EncounterNetwork } from './encounter-runtime';
 import { projectEffectiveMekC3Networks } from './mek-c3-runtime';
-import { type UnitInstanceId } from './runtime-state';
 import {
     createDirectC3MasterRuntimeFixture,
     createDirectMekRuntimeFixture,
@@ -149,9 +142,9 @@ describe('effective Mek C3 runtime', () => {
 });
 
 function network(
-    masterId: UnitInstanceId,
+    masterId: string,
     masterComponentId: ComponentId,
-    memberId: UnitInstanceId,
+    memberId: string,
     memberComponentId: ComponentId,
 ): EncounterNetwork {
     return Object.freeze({

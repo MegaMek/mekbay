@@ -46,9 +46,9 @@ export class ForceCrewTransferService {
         targetSystem: GameSystem,
     ): Promise<void> {
         if (sourceSystem === targetSystem) return this.transferSameSystem(source, target, sourceSystem);
-        if (sourceSystem === GameSystem.ALPHA_STRIKE) {
+        if (sourceSystem === GameSystem.AS) {
             if (!(source instanceof ASForceUnit) || !isCBTForceMember(target)) {
-                throw new Error('Alpha Strike to CBT transfer requires canonical AS and Classic members');
+                throw new Error('Alpha Strike to CBT transfer requires canonical AS and CBT members');
             }
             const name = source.alias();
             const gunnery = source.getPilotSkill();
@@ -62,7 +62,7 @@ export class ForceCrewTransferService {
             return;
         }
         if (!isCBTForceMember(source) || !(target instanceof ASForceUnit)) {
-            throw new Error('CBT to Alpha Strike transfer requires canonical Classic and AS members');
+            throw new Error('CBT to Alpha Strike transfer requires canonical CBT and AS members');
         }
         const crew = source.force.getUnitCrewProfile(source.id)?.positions[0];
         if (crew?.name) target.setPilotName(crew.name);
@@ -71,7 +71,7 @@ export class ForceCrewTransferService {
     }
 
     async transferSameSystem(source: ForceMember, target: ForceMember, system: GameSystem): Promise<void> {
-        if (system === GameSystem.ALPHA_STRIKE) {
+        if (system === GameSystem.AS) {
             if (!(source instanceof ASForceUnit) || !(target instanceof ASForceUnit)) {
                 throw new Error('Alpha Strike crew transfer requires Alpha Strike members');
             }
@@ -85,7 +85,7 @@ export class ForceCrewTransferService {
             return;
         }
         if (!isCBTForceMember(source) || !isCBTForceMember(target)) {
-            throw new Error('CBT crew transfer requires canonical Classic members');
+            throw new Error('CBT crew transfer requires canonical CBT members');
         }
         const sourceCrew = source.force.getUnitCrewProfile(source.id);
         if (!sourceCrew) throw new Error(`Missing crew profile for ${source.id}`);

@@ -398,7 +398,7 @@ export class FormationInfoComponent {
     private readonly optionsService = inject(OptionsService);
     formation = input<FormationTypeDefinition | null>(null);
     /** Game system of the owning force: determines which ability summaries to display. */
-    gameSystem = input<GameSystem>(GameSystem.ALPHA_STRIKE);
+    gameSystem = input<GameSystem>(GameSystem.AS);
     /** Optional unit count in the group: used to compute concrete numbers for distribution labels. */
     unitCount = input<number | undefined>(undefined);
     /** Whether the formation is valid for the current group composition. undefined = unknown / not checked. */

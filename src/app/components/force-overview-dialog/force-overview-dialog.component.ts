@@ -54,7 +54,7 @@ import { GameSystem } from '../../models/common.model';
 import { LongPressDirective } from '../../directives/long-press.directive';
 import {
     buildUnitDataTableColumns,
-    formatClassicUnitMovement,
+    formatCBTUnitMovement,
     formatUnitDataTableSortSlotValue,
     getUnitDataTableSortSlotHeader,
     isUnitDataTableSortActive,
@@ -235,7 +235,7 @@ export class ForceOverviewDialogComponent {
             this.data.force,
             this.data.force.members(),
             {},
-            member => this.resolveClassicCatalogSummary(member),
+            member => this.resolveCBTCatalogSummary(member),
         );
     });
 
@@ -246,7 +246,7 @@ export class ForceOverviewDialogComponent {
     readonly hoveredRadarUnit = computed(() => this.hoveredPreviewUnit()?.unit ?? null);
 
     /** Whether this is an Alpha Strike force */
-    isAlphaStrike = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE);
+    isAlphaStrike = computed(() => this.gameSystem() === GameSystem.AS);
 
     /** Whether table mode is active */
     readonly isTableMode = computed(() => this.viewMode() === 'table');
@@ -736,7 +736,7 @@ export class ForceOverviewDialogComponent {
     async onPilotClick(member: ForceMember): Promise<void> {
         if (member.force.readOnly()) return;
         if (isCBTForceMember(member)) {
-            await this.pilotEditor.editClassicMember(member.force, member.id);
+            await this.pilotEditor.editCBTMember(member.force, member.id);
             return;
         }
         if (member instanceof ASForceUnit) await this.pilotEditor.editAlphaStrikeUnit(member);
@@ -856,7 +856,7 @@ export class ForceOverviewDialogComponent {
     }
 
     expandedMemberUnit(member: ForceMember): UnitSummary | ForceUnit {
-        return isCBTForceMember(member) ? this.resolveClassicCatalogSummary(member) : member;
+        return isCBTForceMember(member) ? this.resolveCBTCatalogSummary(member) : member;
     }
 
     memberAlias(member: ForceMember): string | null {
@@ -889,7 +889,7 @@ export class ForceOverviewDialogComponent {
             return;
         }
 
-        const summary = this.resolveClassicCatalogSummary(member);
+        const summary = this.resolveCBTCatalogSummary(member);
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: [summary],
@@ -904,11 +904,11 @@ export class ForceOverviewDialogComponent {
 
     private memberCatalogSummary(member: ForceMember): UnitSummary {
         return isCBTForceMember(member)
-            ? this.resolveClassicCatalogSummary(member)
+            ? this.resolveCBTCatalogSummary(member)
             : member.getSummary();
     }
 
-    private resolveClassicCatalogSummary(member: CBTForceMember): UnitSummary {
+    private resolveCBTCatalogSummary(member: CBTForceMember): UnitSummary {
         const identity = member.force.getUnitSourceIdentity(member.id);
         const summary = identity
             ? this.dataService.getUnitByIdentity(identity.provider, identity.uuid)
@@ -1190,8 +1190,8 @@ export class ForceOverviewDialogComponent {
         ));
     }
 
-    formatClassicMovement(unit: UnitSummary): string {
-        return formatClassicUnitMovement(unit);
+    formatCBTMovement(unit: UnitSummary): string {
+        return formatCBTUnitMovement(unit);
     }
 
     /** Format movement value for Alpha Strike table view */

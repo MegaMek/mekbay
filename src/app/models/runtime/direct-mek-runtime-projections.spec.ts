@@ -25,7 +25,6 @@ import {
     projectMekSpottingModifier,
     projectMekTurnPanel,
 } from './mek-turn-panel';
-import { asStateRevision } from './runtime-state';
 import {
     createDirectAesRuntimeFixture,
     createDirectBoosterRuntimeFixture,
@@ -988,7 +987,7 @@ describe('direct Mek entity/runtime projections', () => {
             readiness: 'ready', family: 'mek', v2Coverage: 'whole-unit',
         });
         expect(panel.entityUuid).toBe(fixture.entity.uuid());
-        expect(panel.stateRevision).toBe(asStateRevision(0));
+        expect(panel.stateRevision).toBe(0);
         expect(panel.movement.kind).toBe('supported');
         expect(panel.heatProjection.kind).toBe('supported');
         const leftLeg = [...fixture.index.locations.values()].find(location => location.code === 'LL')!;
@@ -1457,7 +1456,7 @@ describe('direct Mek entity/runtime projections', () => {
         const laser = fixture.equipmentComponent('ISMediumLaser');
         const targetId = asEncounterTargetId('target:indirect');
         const registry: TargetRegistrySnapshot = Object.freeze({
-            revision: asStateRevision(0),
+            revision: 0,
             targets: Object.freeze([Object.freeze({
                 id: targetId,
                 letter: 'A',
@@ -1549,7 +1548,7 @@ describe('direct Mek entity/runtime projections', () => {
         const ordinaryLauncher = ordinary.equipmentComponent('Test Artemis Launcher');
         const targetId = asEncounterTargetId('target:artemis-indirect');
         const registry: TargetRegistrySnapshot = Object.freeze({
-            revision: asStateRevision(0),
+            revision: 0,
             targets: Object.freeze([Object.freeze({
                 id: targetId,
                 letter: 'A',
@@ -1610,7 +1609,7 @@ describe('direct Mek entity/runtime projections', () => {
         const ammo = fixture.equipmentComponent('Test Artemis Ammo');
         const targetId = asEncounterTargetId('target:tagged');
         const registry: TargetRegistrySnapshot = Object.freeze({
-            revision: asStateRevision(0),
+            revision: 0,
             targets: Object.freeze([Object.freeze({
                 id: targetId,
                 letter: 'A',

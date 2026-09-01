@@ -44,10 +44,10 @@ import {
             <span class="force-preview-name">{{ f.displayName() }}</span>
         </div>
         <span class="force-preview-info">
-            <span class="game-type-badge" [class.as]="f.gameSystem === GameSystem.ALPHA_STRIKE">
-                {{ f.gameSystem === GameSystem.ALPHA_STRIKE ? 'AS' : 'CBT' }}
+            <span class="game-type-badge" [class.as]="f.gameSystem === GameSystem.AS">
+                {{ f.gameSystem === GameSystem.AS ? 'AS' : 'CBT' }}
             </span>
-            @if (f.gameSystem === GameSystem.ALPHA_STRIKE) {
+            @if (f.gameSystem === GameSystem.AS) {
                 <span class="force-bv">PV: {{ displayedBvPv() }}</span>
             } @else {
                 <span class="force-bv">BV: {{ displayedBvPv() }}</span>

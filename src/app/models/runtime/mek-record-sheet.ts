@@ -16,24 +16,16 @@ import type { EntityTechBase, MekLocation } from '../entity/types';
 import { MiscEquipment } from '../equipment.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { UnitConditionKey } from '../unit-condition.model';
-import type {
-    MekHeatAutomationPolicyV2,
-    MekHeatProjectionResultV2,
-    MekHeatStateV2,
-} from './mek-heat-state-v2';
-import type {
-    MekMovementPsrProjectionResultV2,
-    MekMovementPsrStateV2,
-} from './mek-movement-psr-v2';
+import type { MekHeatAutomationPolicyV2, MekHeatProjectionResultV2, MekHeatStateV2 } from './mek-heat-state-v2';
+import type { MekMovementPsrProjectionResultV2, MekMovementPsrStateV2 } from './mek-movement-psr-v2';
 import {
     MEK_LOCATION_CONDITION_KEYS,
     type MekUnitRuntimeState,
     type CrewRuntimeState,
     type MekLocationConditionKey,
-    type StateRevision,
 } from './runtime-state';
 import type { MekUnitQueryPort } from './unit-instance';
-import { isCrewDeathCommitted } from './classic-unit-runtime';
+import { isCrewDeathCommitted } from './cbt-unit-runtime';
 import {
     projectMekEquipmentComponents,
     type EquipmentPanelComponent,
@@ -45,19 +37,10 @@ import {
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import { mekAmmoLoadouts } from './mek-ammo';
-import {
-    mekCriticalSlotHittable,
-    mekCriticalSlotMaximumHits,
-} from './mek-critical-slot-rules';
+import { mekCriticalSlotHittable, mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
 import { mekLocationParentId } from './mek-location-state-kernel';
-import {
-    projectMekLifeSupportPilotDamage,
-    type MekLifeSupportPilotDamage,
-} from './mek-life-support';
-import {
-    isModularArmorEquipment,
-    MODULAR_ARMOR_POINTS_PER_MOUNT,
-} from '../modular-armor.model';
+import { projectMekLifeSupportPilotDamage, type MekLifeSupportPilotDamage } from './mek-life-support';
+import { isModularArmorEquipment, MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
 
 export interface MekRecordSheetArmorFace {
     readonly faceId: ArmorFaceId;
@@ -154,7 +137,7 @@ export interface MekRecordSheetCrewPosition {
 
 /** Lightweight status facts for force cards and other non-sheet presentation. */
 export interface MekUnitStatusSnapshot {
-    readonly stateRevision: StateRevision;
+    readonly stateRevision: number;
     readonly conditions: readonly UnitConditionKey[];
     readonly crew: readonly Readonly<{
         readonly positionId: CrewPositionId;
@@ -170,7 +153,7 @@ export interface MekUnitStatusSnapshot {
 export interface MekRecordSheetSnapshot {
     readonly entityUuid: string;
     readonly ruleset: CBTRuleset;
-    readonly stateRevision: StateRevision;
+    readonly stateRevision: number;
     readonly identity: Readonly<{
         baseChassis: string;
         model: string;

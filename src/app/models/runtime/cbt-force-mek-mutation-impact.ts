@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTUnitCommand } from './unit-instance';
-import type { UnitInstanceId } from './runtime-state';
 
 type DependencyRefresh = readonly [
     baseBattleValueChangedUnitIds: readonly string[] | null,
@@ -15,10 +14,10 @@ export class CBTForceMekMutationImpact {
     private active: DependencyRefresh | undefined;
 
     public publish(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitCommand,
-        changedUnitIds: readonly UnitInstanceId[],
-        emit: (changedUnitIds: readonly UnitInstanceId[]) => void,
+        changedUnitIds: readonly string[],
+        emit: (changedUnitIds: readonly string[]) => void,
     ): void {
         const previous = this.active;
         const baseChanged = commandMayChangeBaseBattleValue(command);

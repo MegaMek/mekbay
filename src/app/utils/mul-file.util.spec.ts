@@ -5,7 +5,6 @@ import { GameSystem } from '../models/common.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import { CBTForceMember } from '../models/force-member.model';
 import { asArmorFaceId, asComponentId, asCrewPositionId, asCriticalSlotId, asLocationId } from '../models/entity/entity-identifiers';
-import { asStateRevision, asUnitInstanceId } from '../models/runtime/runtime-state';
 import type { MekRecordSheetSnapshot } from '../models/runtime/mek-record-sheet';
 import { createTestMekEntity, createTestTankEntity } from '../testing/unit-test-helpers';
 import { sanitizeMulFilename, serializeForceToMul } from './mul-file.util';
@@ -17,10 +16,10 @@ describe('MUL file utilities', () => {
     });
 
     it('serializes only canonical roster members from Entity + runtime record-sheet snapshots', async () => {
-        const instanceId = asUnitInstanceId('unit:mul-v2');
+        const instanceId = 'unit:mul-v2';
         const locationId = asLocationId('location:ct');
         const snapshot = {
-            stateRevision: asStateRevision(4),
+            stateRevision: 4,
             identity: {
                 baseChassis: 'Atlas', model: 'AS7-D', techBase: 'Inner Sphere',
                 displayName: 'Atlas AS7-D', motiveType: 'Biped', cockpit: 'Standard',
@@ -51,12 +50,12 @@ describe('MUL file utilities', () => {
         } as unknown as MekRecordSheetSnapshot;
         let member!: CBTForceMember;
         const force = {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             queryCanonicalRoster: () => ({
                 kind: 'available',
                 snapshot: { members: [{ instanceId, commander: true }] },
             }),
-            getClassicMember: (id: unknown) => id === instanceId ? member : null,
+            getCBTMember: (id: unknown) => id === instanceId ? member : null,
             getMekRecordSheetSnapshot: (id: unknown) => id === instanceId ? snapshot : null,
             getUnitSnapshot: (id: unknown) => id === instanceId ? {
                 entity: {
@@ -87,7 +86,7 @@ describe('MUL file utilities', () => {
     });
 
     it('serializes a non-Mek from its Entity and sparse runtime instead of skipping it', async () => {
-        const instanceId = asUnitInstanceId('unit:mul-tank');
+        const instanceId = 'unit:mul-tank';
         const locationId = asLocationId('location:FRONT');
         const faceId = asArmorFaceId('armor:location:FRONT:front');
         const positionId = asCrewPositionId('crew:0');
@@ -128,12 +127,12 @@ describe('MUL file utilities', () => {
         };
         let member!: CBTForceMember;
         const force = {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             queryCanonicalRoster: () => ({
                 kind: 'available',
                 snapshot: { members: [{ instanceId, commander: false }] },
             }),
-            getClassicMember: (id: unknown) => id === instanceId ? member : null,
+            getCBTMember: (id: unknown) => id === instanceId ? member : null,
             getMekRecordSheetSnapshot: () => null,
             getUnitSnapshot: (id: unknown) => id === instanceId ? entitySnapshot : null,
             getUnitCrewAssignment: () => ({
@@ -165,7 +164,7 @@ describe('MUL file utilities', () => {
 
     it('fails closed when canonical roster authority is unavailable', async () => {
         const force = {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             queryCanonicalRoster: () => ({ kind: 'unavailable', message: 'No canonical roster' }),
         } as unknown as CBTForce;
         await expectAsync(serializeForceToMul(force)).toBeRejectedWithError(/No canonical roster/u);

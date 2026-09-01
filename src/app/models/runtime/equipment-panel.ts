@@ -26,13 +26,10 @@ import { attackerActionSelection } from './attacker-targeting-state';
 import { mekWeaponAmmoMatches } from './mek-weapon-fire-v2';
 import type { EncounterTargetId, TargetRegistrySnapshot } from './encounter-runtime';
 import type { TnTargetNumberCalculatorState, TnTargetUnitType } from '../target-number-calculator.model';
-import type { StateRevision } from './runtime-state';
 import type { MekUnitQueryPort } from './unit-instance';
 import type { WeaponType } from '../weapon-types.model';
 import type { UnitType } from '../entity/types';
-import {
-    canPerformMekAction,
-} from './mek-action-availability';
+import { canPerformMekAction } from './mek-action-availability';
 import type { MekPhysicalAttackEffectV2 } from './mek-physical-attack-v2';
 import type {
     InventoryControlRuntimeTarget,
@@ -49,29 +46,14 @@ import {
     type TnRangeBracket,
     type TnTargetModifierBreakdownEntry,
 } from '../target-number-calculator.model';
-import {
-    componentLocationIds,
-    equipmentForComponent,
-    type MekRuntimeIndex,
-} from './mek-runtime-index';
-import {
-    mekAmmoDefaultMunitionKey,
-    mekAmmoLoadouts,
-    mekIntrinsicMagazine,
-    type AmmoLoadout,
-} from './mek-ammo';
+import { componentLocationIds, equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
+import { mekAmmoDefaultMunitionKey, mekAmmoLoadouts, mekIntrinsicMagazine, type AmmoLoadout } from './mek-ammo';
 import { mekComponentModes } from './mek-component-rules';
-import {
-    mekRiscLaserPulseActive,
-    mekRiscLaserPulseLink,
-} from './component-risc-laser-pulse';
+import { mekRiscLaserPulseActive, mekRiscLaserPulseLink } from './component-risc-laser-pulse';
 import { RISC_LASER_PULSE_HEAT_BONUS } from '../risc-laser-mode.model';
 import { prototypeLaserMaximumExtraHeat } from '../prototype-laser-heat.model';
 import { rapidFireAutocannonShotCount } from './component-rapid-fire-autocannon';
-import {
-    mekLaserInsulatorAdjustedHeat,
-    mekLaserInsulatorWeakened,
-} from './component-laser-insulator';
+import { mekLaserInsulatorAdjustedHeat, mekLaserInsulatorWeakened } from './component-laser-insulator';
 import { applyFlamerWeaponTypes, flamerDisplayLabel } from '../flamer-mode.model';
 import { bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import { BOMBAST_LASER_CHARGED_STATE } from './component-bombast-laser';
@@ -102,16 +84,10 @@ import {
     type InventoryTargetRangeSelection,
 } from '../../utils/inventory-target-number.util';
 import { projectMekSpottingModifier } from './mek-turn-panel';
-import {
-    applyHagEquipmentWeaponTypes,
-    hagEquipmentToHitAdjustments,
-} from './component-hag-mode';
+import { applyHagEquipmentWeaponTypes, hagEquipmentToHitAdjustments } from './component-hag-mode';
 import type { MekCombatModifierProjectionResult } from './mek-combat-modifiers';
 import { applyGaussPowerWeaponTypes } from './mek-gauss-power';
-import {
-    applyComponentApolloWeaponTypes,
-    componentApolloToHitAdjustment,
-} from './component-apollo';
+import { applyComponentApolloWeaponTypes, componentApolloToHitAdjustment } from './component-apollo';
 import {
     PPC_CAPACITOR_HEAT_BONUS,
     ppcCapacitorChargedForWeapon,
@@ -119,10 +95,7 @@ import {
     ppcCapacitorWeaponTypes,
 } from './component-ppc-capacitor';
 import type { EquipmentRowOrderState } from './equipment-row-order';
-import {
-    AEROSPACE_RANGE_BRACKETS,
-    type AerospaceRangeLimits,
-} from '../../utils/aerospace-range.util';
+import { AEROSPACE_RANGE_BRACKETS, type AerospaceRangeLimits } from '../../utils/aerospace-range.util';
 import type { UnitModifierBreakdownEntry } from '../combat-modifier';
 import {
     inventoryControlDamageRange,
@@ -137,10 +110,7 @@ import {
     isWeaponEnhancementEquipment,
 } from '../entity/utils/equipment-link-rules';
 import { isTargetingComputerEquipment } from '../entity/utils/targeting-computer';
-import {
-    resolveComponentBayRuntime,
-    type ComponentBayRuntimeFacts,
-} from './component-bay-runtime';
+import { resolveComponentBayRuntime, type ComponentBayRuntimeFacts } from './component-bay-runtime';
 import { shieldWeaponToHitAdjustment } from './component-shield-mode';
 
 export interface EquipmentPanelLocation {
@@ -960,8 +930,8 @@ function physicalAttackHitResolution(
 export interface EquipmentPanelSnapshot {
     readonly entityUuid: string;
     readonly ruleset: CBTRuleset;
-    readonly stateRevision: StateRevision;
-    readonly targetRegistryRevision: StateRevision;
+    readonly stateRevision: number;
+    readonly targetRegistryRevision: number;
     readonly displayName: string;
     readonly unitType: UnitType;
     readonly tracksHeat: boolean;

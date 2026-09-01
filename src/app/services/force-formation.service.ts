@@ -105,7 +105,7 @@ export class ForceFormationService {
     }
 
     reconcileASFormationAssignments(group: UnitGroup | null | undefined): void {
-        if (!group || group.force.gameSystem !== GameSystem.ALPHA_STRIKE) return;
+        if (!group || group.force.gameSystem !== GameSystem.AS) return;
         FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group as UnitGroup<ASForceUnit>);
     }
 

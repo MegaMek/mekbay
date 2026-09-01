@@ -14,10 +14,7 @@ import {
     asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
 import { NonMekUnitInstance } from '../runtime/non-mek-unit-instance';
-import {
-    asUnitInstanceId,
-    type InstanceBaselineRef,
-} from '../runtime/runtime-state';
+import { type InstanceBaselineRef } from '../runtime/runtime-state';
 import { projectProtoMekRuntimeRules } from './protomek-runtime-rules';
 
 describe('ProtoMek runtime rules', () => {
@@ -145,7 +142,7 @@ function harness(ruleset: CBTRuleset = CORE_2026_RULESET): Readonly<{
     entity.originalWalkMP.set(6);
     addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'Torso' });
     const runtime = new NonMekUnitInstance(
-        asUnitInstanceId(`unit:proto:${ruleset}`),
+        `unit:proto:${ruleset}`,
         baseline(ruleset),
         entity,
         ruleset,

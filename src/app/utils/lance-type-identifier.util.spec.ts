@@ -48,7 +48,7 @@ function createUnit(
     });
 }
 
-function createForceUnit(unit: UnitSummary, gameSystem = GameSystem.ALPHA_STRIKE): ForceUnit {
+function createForceUnit(unit: UnitSummary, gameSystem = GameSystem.AS): ForceUnit {
     const force = {
         faction: () => createFaction('Mercenary', 'Mercenary'),
         era: () => null,
@@ -96,7 +96,7 @@ function createTestGroup(
         faction: () => faction,
         era: () => null,
         techBase: () => (faction.group.includes('Clan') ? 'Clan' : 'Inner Sphere'),
-        gameSystem: GameSystem.ALPHA_STRIKE,
+        gameSystem: GameSystem.AS,
     };
 
     const forceUnits = units.map((unit) => ({
@@ -122,7 +122,7 @@ function createTestGroup(
 }
 
 function realFormation(id: string): FormationTypeDefinition {
-    const definition = LanceTypeIdentifierUtil.getDefinitionById(id, GameSystem.ALPHA_STRIKE);
+    const definition = LanceTypeIdentifierUtil.getDefinitionById(id, GameSystem.AS);
     expect(definition).not.toBeNull();
     return definition!;
 }
@@ -307,7 +307,7 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
 
 describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
     it('uses direct formation members when the legacy group graph is empty', () => {
-        const definition = LanceTypeIdentifierUtil.getDefinitionById('medium-battle-lance', GameSystem.CLASSIC);
+        const definition = LanceTypeIdentifierUtil.getDefinitionById('medium-battle-lance', GameSystem.CBT);
         const units = [1, 2, 3].map(index => createForceUnit(createUnit(
             index,
             `Medium-${index}`,
@@ -315,7 +315,7 @@ describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
             'BattleMek',
             'BM',
             { weightClass: 'Medium' },
-        ), GameSystem.CLASSIC));
+        ), GameSystem.CBT));
         const group = {
             force: units[0].force,
             units: () => [],
@@ -329,32 +329,32 @@ describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
     });
 
     it('matches medium battle lance for classic medium meks without requiring vehicles', () => {
-        const definition = LanceTypeIdentifierUtil.getDefinitionById('medium-battle-lance', GameSystem.CLASSIC);
+        const definition = LanceTypeIdentifierUtil.getDefinitionById('medium-battle-lance', GameSystem.CBT);
 
         expect(definition).not.toBeNull();
 
         const units: ForceUnit[] = [
-            createForceUnit(createUnit(1, 'Medium-1', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
-            createForceUnit(createUnit(2, 'Medium-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
-            createForceUnit(createUnit(3, 'Medium-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit(1, 'Medium-1', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CBT),
+            createForceUnit(createUnit(2, 'Medium-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CBT),
+            createForceUnit(createUnit(3, 'Medium-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CBT),
         ];
 
-        expect(LanceTypeIdentifierUtil.isValid(definition!, units, GameSystem.CLASSIC)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(definition!, units, GameSystem.CBT)).toBeTrue();
     });
 
     it('matches light battle lance for classic light meks using the real CBT light class', () => {
-        const definition = LanceTypeIdentifierUtil.getDefinitionById('light-battle-lance', GameSystem.CLASSIC);
+        const definition = LanceTypeIdentifierUtil.getDefinitionById('light-battle-lance', GameSystem.CBT);
 
         expect(definition).not.toBeNull();
 
         const units: ForceUnit[] = [
-            createForceUnit(createUnit(11, 'Light-Scout', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light', role: 'Scout' }), GameSystem.CLASSIC),
-            createForceUnit(createUnit(12, 'Light-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
-            createForceUnit(createUnit(13, 'Light-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
-            createForceUnit(createUnit(14, 'Light-4', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit(11, 'Light-Scout', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light', role: 'Scout' }), GameSystem.CBT),
+            createForceUnit(createUnit(12, 'Light-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CBT),
+            createForceUnit(createUnit(13, 'Light-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CBT),
+            createForceUnit(createUnit(14, 'Light-4', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CBT),
         ];
 
-        expect(LanceTypeIdentifierUtil.isValid(definition!, units, GameSystem.CLASSIC)).toBeTrue();
+        expect(LanceTypeIdentifierUtil.isValid(definition!, units, GameSystem.CBT)).toBeTrue();
     });
 });
 
@@ -390,7 +390,7 @@ describe('LanceTypeIdentifierUtil formation priority weights', () => {
         expect(LanceTypeIdentifierUtil.getFormationPriorityWeight(battleFormation, 'Wolf\'s Dragoons')).toBe(1);
         expect(LanceTypeIdentifierUtil.getFormationPriorityWeight(parentFormation, 'Wolf\'s Dragoons')).toBe(3);
         expect(LanceTypeIdentifierUtil.getFormationPriorityWeight(exclusiveFormation, 'Wolf\'s Dragoons')).toBe(5);
-        expect(LanceTypeIdentifierUtil.getBestMatch([], 'Inner Sphere', 'Wolf\'s Dragoons', GameSystem.ALPHA_STRIKE))
+        expect(LanceTypeIdentifierUtil.getBestMatch([], 'Inner Sphere', 'Wolf\'s Dragoons', GameSystem.AS))
             .toEqual(jasmine.objectContaining({ definition: exclusiveFormation }));
     });
 });

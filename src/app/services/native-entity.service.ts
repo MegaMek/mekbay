@@ -64,7 +64,7 @@ export class CoreCatalogNativeEntitySourceRepository implements NativeEntitySour
     }
 }
 
-/** One catalog-backed native Entity loading boundary for every Classic family. */
+/** One catalog-backed native Entity loading boundary for every CBT family. */
 @Injectable({ providedIn: 'root' })
 export class NativeEntityService {
     private readonly coreCatalog = inject(CoreUnitCatalogService);

@@ -962,7 +962,7 @@ export class ForcePreviewPanelComponent {
         if (!loadForceUnit.unit) {
             return '';
         }
-        if (this.force().type == GameSystem.ALPHA_STRIKE) {
+        if (this.force().type == GameSystem.AS) {
             const adjustedPV = adjustPointValueForSkill(loadForceUnit.unit.as.PV, loadForceUnit.skill ?? DEFAULT_GUNNERY_SKILL);
             return `PV: ${adjustedPV}`;
         }

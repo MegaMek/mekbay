@@ -25,7 +25,7 @@ import { isCBTRuleset } from '../models/cbt-ruleset.model';
 const DEFAULT_OPTIONS: Options = {
     canvasInput: 'all',
     unitDisplayName: 'both',
-    gameSystem: GameSystem.CLASSIC,
+    gameSystem: GameSystem.CBT,
     availabilitySource: 'mul',
     forceViewerBVPVDisplay: 'adjusted',
     forceViewerBVPVDisplayDamage: 'damaged',
@@ -55,7 +55,7 @@ const DEFAULT_OPTIONS: Options = {
     recordSheetDoubleTapZoomReset: 'contextual',
     syncZoomBetweenSheets: true,
     trackPhaseAndTurn: true,
-    classicUnitViewMode: 'sheet',
+    cbtUnitViewMode: 'sheet',
     cbtAutomationOptions: {
         pilotSkillCheck: 'no',
         heatAndDissipationResolution: 'no',
@@ -283,7 +283,7 @@ export class OptionsService {
         printAllOptions: { ...DEFAULT_OPTIONS.printAllOptions },
         recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
         trackPhaseAndTurn: DEFAULT_OPTIONS.trackPhaseAndTurn,
-        classicUnitViewMode: DEFAULT_OPTIONS.classicUnitViewMode,
+        cbtUnitViewMode: DEFAULT_OPTIONS.cbtUnitViewMode,
         cbtAutomationOptions: { ...DEFAULT_OPTIONS.cbtAutomationOptions },
         CBTOptionalRules: { ...DEFAULT_OPTIONS.CBTOptionalRules },
         CBTRules: DEFAULT_OPTIONS.CBTRules,
@@ -331,10 +331,10 @@ export class OptionsService {
             lastCanvasState: saved?.lastCanvasState,
             sidebarLipPosition: saved?.sidebarLipPosition,
             trackPhaseAndTurn: saved?.trackPhaseAndTurn ?? DEFAULT_OPTIONS.trackPhaseAndTurn,
-            classicUnitViewMode: resolveSavedValue(
-                saved?.classicUnitViewMode,
-                DEFAULT_OPTIONS.classicUnitViewMode,
-                OPTION_VALUES.classicUnitViewMode,
+            cbtUnitViewMode: resolveSavedValue(
+                saved?.cbtUnitViewMode,
+                DEFAULT_OPTIONS.cbtUnitViewMode,
+                OPTION_VALUES.cbtUnitViewMode,
             ),
             cbtAutomationOptions: resolveCBTAutomationOptions(saved),
             CBTOptionalRules: resolveCBTOptionalRules(saved),

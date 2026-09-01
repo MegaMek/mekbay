@@ -4,23 +4,16 @@
 
 import { compareText } from '../../utils/string.util';
 import { isPlainRecord } from '../../utils/json-value.util';
-import type {
-    InventoryControlRuntimeTargetId,
-} from '../inventory-control-runtime-state.model';
+import type { InventoryControlRuntimeTargetId } from '../inventory-control-runtime-state.model';
 import {
     INVENTORY_CONTROL_TARGET_COLORS,
     INVENTORY_CONTROL_TARGET_MAX_COUNT,
 } from '../inventory-control-runtime-state.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { asComponentId } from '../entity/entity-identifiers';
+import { isC3NetworkRole, isC3NetworkType, type C3NetworkRole, type C3NetworkType } from '../c3-network.model';
 import type { TnTargetUnitType } from '../target-number-calculator.model';
 import { uuidv4 } from '../../utils/uuid.util';
-import {
-    asStateRevision,
-    asUnitInstanceId,
-    type StateRevision,
-    type UnitInstanceId,
-} from './runtime-state';
 import {
     encounterNetworkFactId,
     encounterTargetFactId,
@@ -33,7 +26,6 @@ import {
 
 export type EncounterNetworkId = string & { readonly __encounterNetworkId: unique symbol };
 export type EncounterTargetId = InventoryControlRuntimeTargetId & { readonly __encounterTargetId: unique symbol };
-export type EncounterNetworkType = 'c3' | 'c3i' | 'naval' | 'nova';
 
 export interface EncounterTarget {
     readonly id: EncounterTargetId;
@@ -47,27 +39,27 @@ export interface EncounterTarget {
 }
 
 export interface EncounterNetworkEndpoint {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly componentId: ComponentId;
-    readonly role: 'master' | 'member' | 'peer';
+    readonly role: C3NetworkRole;
 }
 
 export interface EncounterNetwork {
     readonly id: EncounterNetworkId;
-    readonly networkType: EncounterNetworkType;
+    readonly networkType: C3NetworkType;
     readonly color: string;
     readonly endpoints: readonly EncounterNetworkEndpoint[];
 }
 
 export interface CBTEncounterSnapshot {
-    readonly revision: StateRevision;
+    readonly revision: number;
     readonly targets: readonly EncounterTarget[];
     readonly networks: readonly EncounterNetwork[];
 }
 
 /** Detached force-shared target query. It never contains attacker-local target state. */
 export interface TargetRegistrySnapshot {
-    readonly revision: StateRevision;
+    readonly revision: number;
     readonly targets: readonly EncounterTarget[];
 }
 
@@ -237,7 +229,7 @@ export class CBTEncounterRuntime {
             throw new Error('Encounter revision exhausted');
         }
         this.#snapshot = freezeSnapshot({
-            revision: asStateRevision(Number(this.#snapshot.revision) + 1),
+            revision: Number(this.#snapshot.revision) + 1,
             targets: this.#snapshot.targets,
             networks,
         });
@@ -251,7 +243,7 @@ export class CBTEncounterRuntime {
 }
 
 export function emptyCBTEncounterSnapshot(): CBTEncounterSnapshot {
-    return freezeSnapshot({ revision: asStateRevision(0), targets: [], networks: [] });
+    return freezeSnapshot({ revision: 0, targets: [], networks: [] });
 }
 
 export function asEncounterNetworkId(value: string): EncounterNetworkId {
@@ -299,7 +291,7 @@ export function decodeCBTEncounterStateV2(
     }
     return Object.freeze({
         snapshot: freezeSnapshot({
-            revision: asStateRevision(state.encounterRevision),
+            revision: state.encounterRevision,
             targets,
             networks,
         }),
@@ -428,17 +420,21 @@ function endpointKey(endpoint: EncounterNetworkEndpoint): string {
 function encounterNetworkFromSerialized(network: SerializedEncounterNetworkV2): EncounterNetwork {
     const record = requirePlainRecord(network, 'encounter network');
     exactOperationKeys(record, ['id', 'networkType', 'color', 'endpoints']);
+    const networkType = requireText(record['networkType']);
+    if (!isC3NetworkType(networkType)) throw new Error('Unknown C3 network type');
     return freezeNetwork({
         id: asEncounterNetworkId(requireText(record['id'])),
-        networkType: requireText(record['networkType']) as EncounterNetworkType,
+        networkType,
         color: requireText(record['color']),
         endpoints: requireList(record['endpoints']).map(raw => {
             const endpoint = requirePlainRecord(raw, 'encounter network endpoint');
             exactOperationKeys(endpoint, ['instanceId', 'componentId', 'role']);
+            const role = requireText(endpoint['role']);
+            if (!isC3NetworkRole(role)) throw new Error('Unknown C3 network role');
             return Object.freeze({
-                instanceId: asUnitInstanceId(requireText(endpoint['instanceId'])),
+                instanceId: requireText(endpoint['instanceId']),
                 componentId: asComponentId(requireText(endpoint['componentId'])),
-                role: requireText(endpoint['role']) as EncounterNetworkEndpoint['role'],
+                role,
             });
         }),
     });
@@ -490,7 +486,7 @@ function changedTargetRegistry(
         accepted: true,
         changed: true,
         snapshot: freezeTargetRegistrySnapshot({
-            revision: asStateRevision(Number(previous.revision) + 1),
+            revision: Number(previous.revision) + 1,
             targets,
         }),
     });
@@ -515,7 +511,7 @@ function canonicalTargetList(targets: readonly EncounterTarget[]): readonly Enco
     if (canonical.some(target => !validTargetOrigin(target))) {
         return null;
     }
-    return freezeTargetRegistrySnapshot({ revision: asStateRevision(0), targets: canonical }).targets;
+    return freezeTargetRegistrySnapshot({ revision: 0, targets: canonical }).targets;
 }
 
 function tryFreezeTarget(target: EncounterTarget, validateOrigin = true): EncounterTarget | null {

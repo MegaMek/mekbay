@@ -5,12 +5,8 @@
 import { computed, signal, type Injector } from '@angular/core';
 import type { DataService } from '../services/data.service';
 import type { UnitSummary } from './unit-summary.model';
-import {
-    forceMemberAdjustedValue,
-    type CBTForceMember,
-    type ForceMember,
-} from './force-member.model';
-import type { SerializedClassicForce, SerializedForce } from './force-serialization';
+import { forceMemberAdjustedValue, type CBTForceMember, type ForceMember } from './force-member.model';
+import type { SerializedCBTForce, SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
 import type { UnitConditionKey } from './unit-condition.model';
 import {
@@ -18,10 +14,10 @@ import {
     MAX_UNITS,
     resolveSerializedFormation,
     UnitGroup,
-    type CBTForceV2AuthorityMutationContext,
+    type CBTForceMutation,
     type ForceOwnerRevisionFence,
     type ForceGroupPatch,
-    type PreparedLoadedCBTForceV2Authority,
+    type RestoredCBTForce,
 } from './force.model';
 import {
     CBTEncounterRuntime,
@@ -37,24 +33,10 @@ import {
     type SerializedCBTForceV2,
     type SerializedForceEncounterEntryV2,
 } from './runtime/persistence-v2';
-import {
-    asStateRevision,
-    asUnitInstanceId,
-    createUnitInstanceId,
-    type StateRevision,
-    type UnitInstanceId,
-} from './runtime/runtime-state';
-import { ReadyMekUnitService } from '../services/ready-mek-unit.service';
-import { ReadyNonMekUnitService } from '../services/ready-non-mek-unit.service';
-import { NativeEntityService } from '../services/native-entity.service';
-import { ReadyMekUnitFactory } from './runtime/ready-unit-factory';
-import {
-    isReadyNonMekUnit,
-    isReadyMekUnit,
-    type ReadyClassicUnit,
-    type ReadyTargetingReconciliation,
-} from './runtime/ready-classic-unit';
-import { isSerializedNonMekUnit } from './runtime/non-mek-unit-persistence';
+import { createUnitInstanceId } from './runtime/runtime-state';
+import { CBTUnitService } from '../services/cbt-unit.service';
+import { CBTMekUnit } from './runtime/cbt-mek-unit';
+import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit, type CBTTargetingReconciliation } from './runtime/cbt-unit';
 import { jsonValuesEqual } from '../utils/json-value.util';
 import type { JsonValue, SavedEntityIdentity } from './persisted-unit-state';
 import {
@@ -62,43 +44,19 @@ import {
     prepareDirectUnitAdmission,
     type PreparedCBTForcePersistenceV2,
 } from './runtime/force-persistence-boundary';
-import {
-    scenarioRuleset,
-    type DeploymentConfiguration,
-    type ScenarioRules,
-} from './runtime/unit-state-initializer';
+import { scenarioRuleset, type DeploymentConfiguration, type ScenarioRules } from './runtime/unit-state-initializer';
 import type { ComponentId } from './entity/entity-identifiers';
-import type { MekEntity } from './entity/entities/mek/mek-entity';
-import type { BaseEntity } from './entity/base-entity';
-import { effectiveEntityPilotingSkill } from './entity/utils/battle-value/skill-facts';
-import { buildNonMekRuntimeIndex } from './runtime/non-mek-runtime-index';
-import type {
-    NonMekUnitCommand,
-    NonMekUnitRuntimeState,
-} from './runtime/non-mek-unit-instance';
+import type { NonMekUnitCommand, NonMekUnitRuntimeState } from './runtime/non-mek-unit-instance';
 import type {
     CBTUnitAttackerTargetingCommand,
     CBTUnitCommand,
     CBTUnitSelectedWeaponFireCommand,
 } from './runtime/unit-instance';
 import type { AttackerTargetingState } from './runtime/attacker-targeting-state';
-import {
-    evaluateMekRuntimeCapability,
-    type MekRuntimeCapabilityDecision,
-} from './runtime/mek-runtime-capability';
-import {
-    evaluateReadyMekRuntimeCapability,
-    readyUnitMatchesEntity,
-} from './runtime/cbt-ready-unit-validation';
-import {
-    createDefaultCrewAssignment,
-    type CrewAssignment,
-    type CrewAssignmentPosition,
-} from './runtime/crew-assignment';
-import type {
-    UnitProviderId,
-    UnitUuid,
-} from '../services/unit-catalog/unit-catalog.types';
+import type { MekRuntimeCapabilityDecision } from './runtime/mek-runtime-capability';
+import { evaluateCBTMekRuntimeCapability } from './runtime/cbt-unit-validation';
+import { type CrewAssignment, type CrewAssignmentPosition } from './runtime/crew-assignment';
+import type { UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { uuidv7 } from '../utils/uuid.util';
 import {
     createHandlerCommandContext,
@@ -121,25 +79,10 @@ import {
     type CBTForceRosterGroupMetadataPatch,
     type CBTForceRosterMutationPlanResult,
 } from './runtime/cbt-force-roster-owner';
-import {
-    calculateCBTForceBattleValues,
-    type CBTForceBattleValueBreakdown,
-} from './cbt-force-battle-value';
-import {
-    hasNonMekRuntime,
-    hasMekRuntime,
-    type CBTUnitSnapshot,
-} from './cbt-unit-snapshot';
-import {
-    CBTForceAuthority,
-    type CBTForceAuthorityFence,
-    type PreparedUnitAdmission,
-    type PreparedUnitRemoval,
-    type PreparedUnitRepair,
-} from './cbt-force-authority';
-import {
-    publishC3EmergencyMasterNotices,
-} from './cbt-force-c3';
+import { calculateCBTForceBattleValues, type CBTForceBattleValueBreakdown } from './cbt-force-battle-value';
+import { hasNonMekRuntime, hasMekRuntime, type CBTUnitSnapshot } from './cbt-unit-snapshot';
+import { CBTUnitStore, type CBTUnitStoreSnapshot } from './cbt-unit-store';
+import { publishC3EmergencyMasterNotices } from './cbt-force-c3';
 import { entityUnitLabel } from './runtime/cbt-unit-label';
 import { CBT_FORCE_UNASSIGNED_GROUP_ID, queryCBTForceRoster } from './runtime/cbt-force-roster';
 import {
@@ -148,14 +91,8 @@ import {
     type MekRecordSheetSnapshot,
     type MekUnitStatusSnapshot,
 } from './runtime/mek-record-sheet';
-import {
-    projectNonMekRecordSheet,
-    type NonMekRecordSheetSnapshot,
-} from './runtime/non-mek-record-sheet';
-import {
-    projectMekEquipmentPanel,
-    type EquipmentPanelSnapshot,
-} from './runtime/equipment-panel';
+import { projectNonMekRecordSheet, type NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
+import { projectMekEquipmentPanel, type EquipmentPanelSnapshot } from './runtime/equipment-panel';
 import { projectNonMekEquipmentPanel } from './runtime/non-mek-equipment-panel';
 import type { EquipmentRowOrderGroup } from './runtime/equipment-row-order';
 import {
@@ -179,14 +116,8 @@ import {
     unitHistory,
     type RuntimeHistoryInput,
 } from './runtime/cbt-force-runtime-history';
-import {
-    CBTForceRuntimeJournal,
-    type CapturedRuntimeCommandMutation,
-} from './runtime/cbt-force-runtime-journal';
-import {
-    projectMekTurnPanel,
-    type MekTurnPanelSnapshot,
-} from './runtime/mek-turn-panel';
+import { CBTForceRuntimeJournal, type CapturedRuntimeCommandMutation } from './runtime/cbt-force-runtime-journal';
+import { projectMekTurnPanel, type MekTurnPanelSnapshot } from './runtime/mek-turn-panel';
 import { CBTForceMemberRegistry } from './runtime/cbt-force-member-registry';
 import { CBTForceMekMutationImpact } from './runtime/cbt-force-mek-mutation-impact';
 import {
@@ -201,9 +132,7 @@ import {
     pruneRemovedUnitsFromEncounter,
     remapCBTForceCloneEnvelope,
 } from './runtime/cbt-force-persistence-helpers';
-import {
-    authorizeCBTForceTargetRegistryCommand,
-} from './cbt-force-target-registry';
+import { authorizeCBTForceTargetRegistryCommand } from './cbt-force-target-registry';
 import { readOnlyTargetRegistry } from './runtime/encounter-runtime';
 
 import type {
@@ -226,24 +155,24 @@ import type {
     MekEquipmentInteraction,
     RuntimeUndoCommandResult,
     SelectedWeaponFireCommandResult,
-} from './cbt-force-api';
-export type * from './cbt-force-api';
+} from './cbt-force.types';
+export type * from './cbt-force.types';
 
 
 type PreparedCBTForcePersistenceWithFence = PreparedCBTForcePersistenceV2 & Readonly<{
-    authorityFence: CBTForceAuthorityFence;
+    unitStoreSnapshot: CBTUnitStoreSnapshot;
 }>;
 
-function withAuthorityFence(
+function withUnitStoreSnapshot(
     prepared: PreparedCBTForcePersistenceV2,
-    authorityFence: CBTForceAuthorityFence,
+    unitStoreSnapshot: CBTUnitStoreSnapshot,
 ): PreparedCBTForcePersistenceWithFence {
-    return Object.freeze({ ...prepared, authorityFence });
+    return Object.freeze({ ...prepared, unitStoreSnapshot });
 }
 
 
 export class CBTForce extends Force<never> {
-    override gameSystem: GameSystem = GameSystem.CLASSIC;
+    override gameSystem: GameSystem = GameSystem.CBT;
     public override hasEmptyGroups = computed(() => {
         this.groups();
         return this.getSupportedCBTForceV2Envelope()?.roster.groups.some(
@@ -251,7 +180,7 @@ export class CBTForce extends Force<never> {
         ) ?? false;
     });
     public override totalBv = computed(() => {
-        return this.getClassicMembers().reduce(
+        return this.getCBTMembers().reduce(
             (total, member) => total + forceMemberAdjustedValue(member, 'damaged'),
             0,
         );
@@ -261,12 +190,12 @@ export class CBTForce extends Force<never> {
     /** Reactive invalidation token for force-owned target queries. */
     readonly targetRegistryVersion = this.targetRegistryVersionState.asReadonly();
     readonly inventoryControlOpforEnabled = signal(false);
-    private readonly authority = new CBTForceAuthority();
+    private readonly unitStore = new CBTUnitStore();
     private readonly memberRegistry = new CBTForceMemberRegistry(
         this,
-        instanceId => this.authority.readyUnit(instanceId),
+        instanceId => this.unitStore.cbtUnit(instanceId),
     );
-    private readonly runtimeJournal = new CBTForceRuntimeJournal(this.authority);
+    private readonly runtimeJournal = new CBTForceRuntimeJournal(this.unitStore);
     private readonly mekMutationImpact = new CBTForceMekMutationImpact();
     private readonly unitCommandDispatcher: CBTForceUnitCommandDispatcher;
     private readonly adjustedBattleValues = computed(() => {
@@ -287,11 +216,11 @@ export class CBTForce extends Force<never> {
     private calculateAdjustedBattleValues(
         networks: readonly EncounterNetwork[],
         damageMode: 'damaged' | 'pristine',
-    ): ReadonlyMap<UnitInstanceId, CBTForceBattleValueBreakdown> {
-        const scenario = this.authority.scenarioRules();
-        if (!scenario) return new Map<UnitInstanceId, CBTForceBattleValueBreakdown>();
-        const units = this.getClassicMembers().flatMap(member => {
-            const unit = this.authority.readyUnit(member.id);
+    ): ReadonlyMap<string, CBTForceBattleValueBreakdown> {
+        const scenario = this.unitStore.scenarioRules();
+        if (!scenario) return new Map<string, CBTForceBattleValueBreakdown>();
+        const units = this.getCBTMembers().flatMap(member => {
+            const unit = this.unitStore.cbtUnit(member.id);
             return unit
                 ? [{
                     unit,
@@ -306,7 +235,7 @@ export class CBTForce extends Force<never> {
             scenario,
             networks,
             isC3EndpointIntact: (instanceId, componentId) =>
-                this.authority.c3.isEndpointIntact(instanceId, componentId),
+                this.unitStore.c3.isEndpointIntact(instanceId, componentId),
         });
     }
     constructor(name: string,
@@ -315,7 +244,7 @@ export class CBTForce extends Force<never> {
         super(name, dataService, injector);
         this.unitCommandDispatcher = new CBTForceUnitCommandDispatcher(this, injector, {
             readOnly: () => this.readOnly(),
-            instanceIds: () => this.authority.instanceIds(),
+            instanceIds: () => this.unitStore.instanceIds(),
             snapshot: instanceId => this.getUnitSnapshot(instanceId),
             heatPolicy: () => this.currentHeatPolicy(),
             dispatchMekCore: (instanceId, command) =>
@@ -327,7 +256,7 @@ export class CBTForce extends Force<never> {
     }
 
     protected override getSupportedCBTForceV2Envelope(): SerializedCBTForceV2 | null {
-        return this.authority.envelope();
+        return this.unitStore.envelope();
     }
 
     /** Canonical detached roster membership. */
@@ -342,7 +271,7 @@ export class CBTForce extends Force<never> {
         }
         try {
             const unitIds = new Set(envelope.units.map(entry => entry.instanceId));
-            for (const unit of this.authority.liveUnits()) {
+            for (const unit of this.unitStore.liveUnits()) {
                 if (!unitIds.has(unit.instanceId)) {
                     throw new Error(`Ready runtime ${unit.instanceId} is absent from the canonical roster`);
                 }
@@ -374,7 +303,7 @@ export class CBTForce extends Force<never> {
         this.memberRegistry.refresh(
             this.getSupportedCBTForceV2Envelope(),
             this.encounterRuntime.snapshot().networks,
-            this.authority.scenarioRules(),
+            this.unitStore.scenarioRules(),
             changedUnitIds,
             baseBattleValueChangedUnitIds,
             runtimeForceInputsChanged,
@@ -383,25 +312,25 @@ export class CBTForce extends Force<never> {
     }
 
     /** One force-owned presentation handle for each currently resolvable roster member. */
-    public getClassicMembers(): readonly CBTForceMember[] {
+    public getCBTMembers(): readonly CBTForceMember[] {
         return this.memberRegistry.members();
     }
 
     protected override projectMembers(): ForceMember[] {
         this.groups();
-        return [...this.getClassicMembers()];
+        return [...this.getCBTMembers()];
     }
 
     protected override projectMembersInGroup(group: UnitGroup): ForceMember[] {
         if (group.force !== this || !this.groups().includes(group as UnitGroup<never>)) return [];
-        return this.getClassicMembers().filter(member => member.rosterGroupId === group.id);
+        return this.getCBTMembers().filter(member => member.rosterGroupId === group.id);
     }
 
-    public getClassicMember(instanceId: UnitInstanceId): CBTForceMember | null {
+    public getCBTMember(instanceId: string): CBTForceMember | null {
         return this.memberRegistry.member(instanceId);
     }
 
-    public getRosterGroupId(instanceId: UnitInstanceId): string | null {
+    public getRosterGroupId(instanceId: string): string | null {
         const envelope = this.getSupportedCBTForceV2Envelope();
         if (!envelope) return null;
         for (const group of envelope.roster.groups) {
@@ -412,14 +341,14 @@ export class CBTForce extends Force<never> {
 
     public override getFormationUnitsForGroup(group: UnitGroup): readonly CBTForceMember[] {
         if (group.force !== this || !this.groups().includes(group as UnitGroup<never>)) return Object.freeze([]);
-        return Object.freeze(this.getClassicMembers().filter(member => member.rosterGroupId === group.id));
+        return Object.freeze(this.getCBTMembers().filter(member => member.rosterGroupId === group.id));
     }
 
     /** Creates a real roster group; the returned UnitGroup is only its UI handle. */
     public override async addGroup(name?: string): Promise<UnitGroup<never>> {
         if (!this.getSupportedCBTForceV2Envelope()) await this.serializeForPersistence();
         const envelope = this.getSupportedCBTForceV2Envelope();
-        if (!envelope) throw new Error('The canonical Classic force owner could not be initialized');
+        if (!envelope) throw new Error('The canonical CBT force owner could not be initialized');
         const groupId = uuidv7();
         const result = await this.dispatchCanonicalRosterCommand({
             kind: 'create-group',
@@ -429,9 +358,9 @@ export class CBTForce extends Force<never> {
             ).length,
             ...(name?.trim() ? { metadata: { name } } : {}),
         });
-        if (!result.accepted) throw new Error(`Classic roster group creation failed: ${result.reason}`);
+        if (!result.accepted) throw new Error(`CBT roster group creation failed: ${result.reason}`);
         const group = this.groups().find(candidate => candidate.id === groupId);
-        if (!group) throw new Error(`Created Classic roster group ${groupId} has no UI projection`);
+        if (!group) throw new Error(`Created CBT roster group ${groupId} has no UI projection`);
         return group;
     }
 
@@ -516,7 +445,7 @@ export class CBTForce extends Force<never> {
     }
 
     public moveMember(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         targetGroupId: string,
         atIndex: number,
     ): Promise<CBTForceRosterCommandResult> {
@@ -528,11 +457,11 @@ export class CBTForce extends Force<never> {
         });
     }
 
-    public removeClassicMember(instanceId: UnitInstanceId): Promise<CBTForceRosterCommandResult> {
+    public removeCBTMember(instanceId: string): Promise<CBTForceRosterCommandResult> {
         return this.dispatchCanonicalRosterCommand({ kind: 'remove-member', instanceId });
     }
 
-    public repairMember(instanceId: UnitInstanceId): Promise<CBTUnitRepairResult> {
+    public repairMember(instanceId: string): Promise<CBTUnitRepairResult> {
         return this.repairMembers([instanceId]);
     }
 
@@ -552,9 +481,9 @@ export class CBTForce extends Force<never> {
             forcedWithdrawal: rules.forcedWithdrawal,
             sprinting: rules.sprinting,
         });
-        return this.enqueueCBTForceV2AuthorityMutation(async () => {
+        return this.enqueueCBTMutation(async () => {
             if (this.readOnly()) return false;
-            const context = this.prepareCBTForceV2AuthorityMutation();
+            const context = this.beginCBTForceMutation();
             const current = context.previous;
             if (!current) return false;
 
@@ -573,13 +502,11 @@ export class CBTForce extends Force<never> {
             });
             if (jsonValuesEqual(current.scenarioRules.values, scenarioValues)) return false;
 
-            let fence: CBTForceAuthorityFence;
-            let replacements: ReadonlyMap<UnitInstanceId, ReadyClassicUnit>;
+            let replacements: ReadonlyMap<string, CBTUnit>;
             try {
-                fence = this.authority.captureFence();
-                const rows = await Promise.all([...fence.units].flatMap(([instanceId, unit]) =>
-                    isReadyMekUnit(unit)
-                        ? [ReadyMekUnitFactory.cloneForOwner(unit, scenario).then(candidate => {
+                const rows = await Promise.all(this.unitStore.liveUnits().flatMap(unit =>
+                    isCBTMekUnit(unit)
+                        ? [CBTMekUnit.cloneForOwner(unit, scenario).then(candidate => {
                             const movement = candidate.getInstance().query().mekMovementPsr();
                             if (movement.kind === 'unsupported') {
                                 throw new Error('Scenario rebinding made Mek movement unsupported');
@@ -599,17 +526,15 @@ export class CBTForce extends Force<never> {
                                     if (!cleared.accepted) throw new Error('Restored Sprint spotting could not be cleared');
                                 }
                             }
-                            return [instanceId, candidate] as const;
+                            return [unit.instanceId, candidate] as const;
                         })]
                         : []));
                 replacements = new Map(rows);
             } catch {
                 return false;
             }
-            if (!this.authority.isFenceCurrent(fence)) return false;
 
             let envelope: SerializedCBTForceV2;
-            let preparedUnits: PreparedUnitRepair;
             try {
                 envelope = await validateSerializedCBTForceV2({
                     ...current,
@@ -620,7 +545,7 @@ export class CBTForce extends Force<never> {
                     }),
                     units: current.units.map(entry => {
                         const ready = replacements.get(entry.instanceId)
-                            ?? this.authority.readyUnit(entry.instanceId);
+                            ?? this.unitStore.cbtUnit(entry.instanceId);
                         if (!ready) throw new Error(`Scenario rebinding lost runtime ${entry.instanceId}`);
                         const unit = ready.serialize();
                         return Object.freeze({
@@ -630,33 +555,30 @@ export class CBTForce extends Force<never> {
                         });
                     }),
                 });
-                preparedUnits = this.authority.prepareRepair(envelope, replacements, fence);
             } catch {
                 return false;
             }
 
             const prepared: PreparedCBTForcePersistenceV2 = Object.freeze({ envelope, reused: false });
-            const committed = this.commitCBTForceV2AuthorityMutation(
+            this.commitCBTForceMutation(
                 context,
                 prepared,
-                () => this.authority.installRepair(preparedUnits),
-                () => this.authority.rollbackRepair(preparedUnits),
+                () => this.unitStore.replace(envelope, replacements),
             );
-            if (committed.kind === 'rejected') return false;
             this.emitChangedFromReservedIntent(Object.freeze([...replacements.keys()]));
             return true;
         });
     }
 
     private repairMembers(
-        requestedInstanceIds: readonly UnitInstanceId[] | null,
+        requestedInstanceIds: readonly string[] | null,
     ): Promise<CBTUnitRepairResult> {
         const capturedIds = requestedInstanceIds === null
             ? null
             : Object.freeze([...requestedInstanceIds]);
-        return this.enqueueCBTForceV2AuthorityMutation(async () => {
+        return this.enqueueCBTMutation(async () => {
             if (this.readOnly()) return rejectedUnitRepair('READ_ONLY');
-            const context = this.prepareCBTForceV2AuthorityMutation();
+            const context = this.beginCBTForceMutation();
             const current = context.previous;
             if (!current) return rejectedUnitRepair('NOT_READY');
             const readyIds = current.units.map(entry => entry.instanceId);
@@ -673,15 +595,12 @@ export class CBTForce extends Force<never> {
                 });
             }
 
-            let fence: CBTForceAuthorityFence;
-            let replacements: ReadonlyMap<UnitInstanceId, ReadyClassicUnit>;
+            let replacements: ReadonlyMap<string, CBTUnit>;
             try {
-                fence = this.authority.captureFence();
-                replacements = await this.authority.buildRepairCandidates(instanceIds);
+                replacements = await this.unitStore.buildRepairCandidates(instanceIds);
             } catch {
                 return rejectedUnitRepair('REPAIR_FAILED');
             }
-            if (!this.authority.isFenceCurrent(fence)) return rejectedUnitRepair('FORCE_CHANGED');
             if (replacements.size === 0) {
                 return Object.freeze({
                     accepted: true as const,
@@ -692,7 +611,6 @@ export class CBTForce extends Force<never> {
             const capture = this.captureRuntimeCommandMutation(instanceIds);
 
             let envelope: SerializedCBTForceV2;
-            let preparedUnits: PreparedUnitRepair;
             try {
                 const repaired = new Map([...replacements].map(([instanceId, unit]) => [
                     instanceId,
@@ -708,23 +626,16 @@ export class CBTForce extends Force<never> {
                             : entry;
                     }),
                 });
-                preparedUnits = this.authority.prepareRepair(envelope, replacements, fence);
             } catch {
                 return rejectedUnitRepair('PERSISTENCE_REJECTED');
             }
 
             const prepared: PreparedCBTForcePersistenceV2 = Object.freeze({ envelope, reused: false });
-            const committed = this.commitCBTForceV2AuthorityMutation(
+            this.commitCBTForceMutation(
                 context,
                 prepared,
-                () => this.authority.installRepair(preparedUnits),
-                () => this.authority.rollbackRepair(preparedUnits),
+                () => this.unitStore.replace(envelope, replacements),
             );
-            if (committed.kind === 'rejected') {
-                return rejectedUnitRepair(
-                    committed.reason === 'install-failed' ? 'PERSISTENCE_REJECTED' : 'FORCE_CHANGED',
-                );
-            }
             const changedUnitIds = this.recordRuntimeCommandMutation(capture, instanceIds.length === 1
                 ? unitHistory(RUNTIME_HISTORY_MESSAGE.UNIT_REPAIRED, instanceIds[0]!)
                 : forceHistory(RUNTIME_HISTORY_MESSAGE.FORCE_ACTION, 'repair-units'));
@@ -740,7 +651,7 @@ export class CBTForce extends Force<never> {
     /** Moves one ready runtime between two force owners in one paired commit. */
     public transferMemberTo(
         target: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         targetGroupId: string,
         atIndex: number,
     ): Promise<CBTUnitTransferResult> {
@@ -752,19 +663,19 @@ export class CBTForce extends Force<never> {
 
         const run = () => this.transferMemberToNow(target, instanceId, targetGroupId, atIndex);
         return sourceId < targetId
-            ? this.enqueueCBTForceV2AuthorityMutation(() => target.enqueueCBTForceV2AuthorityMutation(run))
-            : target.enqueueCBTForceV2AuthorityMutation(() => this.enqueueCBTForceV2AuthorityMutation(run));
+            ? this.enqueueCBTMutation(() => target.enqueueCBTMutation(run))
+            : target.enqueueCBTMutation(() => this.enqueueCBTMutation(run));
     }
 
     private async transferMemberToNow(
         target: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         targetGroupId: string,
         atIndex: number,
     ): Promise<CBTUnitTransferResult> {
         if (this.readOnly() || target.readOnly()) return rejectedUnitTransfer('READ_ONLY');
-        const sourceContext = this.prepareCBTForceV2AuthorityMutation();
-        const targetContext = target.prepareCBTForceV2AuthorityMutation();
+        const sourceContext = this.beginCBTForceMutation();
+        const targetContext = target.beginCBTForceMutation();
         const source = sourceContext.previous;
         const destination = targetContext.previous;
         if (!source || !destination) return rejectedUnitTransfer('NOT_READY');
@@ -781,19 +692,15 @@ export class CBTForce extends Force<never> {
         const sourceRosterMember = source.roster.groups
             .flatMap(group => group.members)
             .find(member => member.instanceId === instanceId);
-        const sourceUnit = this.authority.readyUnit(instanceId);
+        const sourceUnit = this.unitStore.cbtUnit(instanceId);
         if (!sourceRosterMember || !sourceUnit) {
             return rejectedUnitTransfer('NOT_READY');
         }
 
-        let sourceFence: CBTForceAuthorityFence;
-        let targetFence: CBTForceAuthorityFence;
-        let candidate: ReadyClassicUnit;
+        let candidate: CBTUnit;
         try {
-            sourceFence = this.authority.captureFence();
-            targetFence = target.authority.captureFence();
-            candidate = isReadyMekUnit(sourceUnit)
-                ? await ReadyMekUnitFactory.cloneForOwner(
+            candidate = isCBTMekUnit(sourceUnit)
+                ? await CBTMekUnit.cloneForOwner(
                     sourceUnit,
                     scenarioRulesFromPersistence(destination.scenarioRules.values),
                 )
@@ -805,19 +712,13 @@ export class CBTForce extends Force<never> {
         } catch {
             return rejectedUnitTransfer('PERSISTENCE_REJECTED');
         }
-        if (!this.authority.isFenceCurrent(sourceFence)
-            || !target.authority.isFenceCurrent(targetFence)) {
-            return rejectedUnitTransfer('FORCE_CHANGED');
-        }
 
         const removal = this.prepareCanonicalRosterMutation({ kind: 'remove-member', instanceId });
         if (removal?.kind !== 'ready') return rejectedUnitTransfer('FORCE_CHANGED');
         let sourceEnvelope: SerializedCBTForceV2;
         let targetEnvelope: SerializedCBTForceV2;
-        let sourceUnits: PreparedUnitRemoval;
-        let targetUnits: PreparedUnitAdmission;
         try {
-            const removed = new Set<UnitInstanceId>(removal.plan.removedInstanceIds ?? [instanceId]);
+            const removed = new Set<string>(removal.plan.removedInstanceIds ?? [instanceId]);
             sourceEnvelope = await validateSerializedCBTForceV2({
                 ...source,
                 forceRevision: nextForceRevision(source.forceRevision),
@@ -828,7 +729,7 @@ export class CBTForce extends Force<never> {
             const admitted = await prepareDirectUnitAdmission({
                 forceId: destination.forceId,
                 previous: destination,
-                liveUnits: target.authority.liveUnits(),
+                liveUnits: target.unitStore.liveUnits(),
                 candidate,
                 scenarioRules: destination.scenarioRules.values,
                 ...(targetContext.typedEncounterState === undefined
@@ -850,32 +751,23 @@ export class CBTForce extends Force<never> {
             if (!targetEntry || !jsonValuesEqual(targetEntry.unit, candidate.serialize())) {
                 return rejectedUnitTransfer('PERSISTENCE_REJECTED');
             }
-            sourceUnits = this.authority.prepareRemoval(sourceEnvelope, [instanceId]);
-            targetUnits = target.authority.prepareAdmission(targetEnvelope, candidate);
         } catch {
             return rejectedUnitTransfer('PERSISTENCE_REJECTED');
         }
 
-        const committed = this.commitPairedCBTForceV2AuthorityMutations(
+        this.commitPairedCBTForceMutations(
             target,
             {
-                context: sourceContext,
+                mutation: sourceContext,
                 prepared: Object.freeze({ envelope: sourceEnvelope, reused: false }),
-                installAuthority: () => this.authority.installRemoval(sourceUnits),
-                rollbackAuthority: () => this.authority.rollbackRemoval(sourceUnits),
+                install: () => this.unitStore.remove(sourceEnvelope, [instanceId]),
             },
             {
-                context: targetContext,
+                mutation: targetContext,
                 prepared: Object.freeze({ envelope: targetEnvelope, reused: false }),
-                installAuthority: () => target.authority.installAdmission(targetUnits),
-                rollbackAuthority: () => target.authority.rollbackAdmission(targetUnits),
+                install: () => target.unitStore.add(targetEnvelope, candidate),
             },
         );
-        if (committed.kind === 'rejected') {
-            return rejectedUnitTransfer(
-                committed.reason === 'install-failed' ? 'PERSISTENCE_REJECTED' : 'FORCE_CHANGED',
-            );
-        }
         this.runtimeJournal.prune(new Set(removal.plan.removedInstanceIds ?? [instanceId]));
         this.reconcileCBTForceV2Projection();
         target.reconcileCBTForceV2Projection();
@@ -906,21 +798,14 @@ export class CBTForce extends Force<never> {
         } catch {
             return Promise.resolve(rejectedRosterCommand('INVALID_COMMAND'));
         }
-        return this.enqueueCBTForceV2AuthorityMutation(async () => {
+        return this.enqueueCBTMutation(async () => {
             if (this.readOnly()) return rejectedRosterCommand('READ_ONLY');
-            const context = this.prepareCBTForceV2AuthorityMutation();
+            const context = this.beginCBTForceMutation();
             const current = context.previous;
             if (!current) return rejectedRosterCommand('NO_CANONICAL_ROSTER');
             const planned = this.prepareCanonicalRosterMutation(captured!);
             if (planned === null) return rejectedRosterCommand('NO_CANONICAL_ROSTER');
             if (planned.kind === 'rejected') return rejectedRosterCommand(planned.reason);
-
-            let unitFence: CBTForceAuthorityFence;
-            try {
-                unitFence = this.authority.captureFence();
-            } catch {
-                return rejectedRosterCommand('FORCE_CHANGED');
-            }
 
             let envelope: SerializedCBTForceV2;
             try {
@@ -946,36 +831,17 @@ export class CBTForce extends Force<never> {
                 return rejectedRosterCommand('PERSISTENCE_REJECTED');
             }
 
-            if (!this.authority.isFenceCurrent(unitFence)) {
-                return rejectedRosterCommand('FORCE_CHANGED');
-            }
             const removedInstanceIds = planned.plan.removedInstanceIds ?? Object.freeze([]);
             const removedReadyIds = removedInstanceIds.filter(instanceId =>
                 current.units.some(entry => entry.instanceId === instanceId));
-            let removal: PreparedUnitRemoval | null = null;
-            try {
-                if (removedReadyIds.length > 0) {
-                    removal = this.authority.prepareRemoval(envelope, removedReadyIds);
-                }
-            } catch {
-                return rejectedRosterCommand('FORCE_CHANGED');
-            }
             const prepared: PreparedCBTForcePersistenceV2 = Object.freeze({ envelope, reused: false });
-            const committed = this.commitCBTForceV2AuthorityMutation(
+            this.commitCBTForceMutation(
                 context,
                 prepared,
-                removal
-                    ? () => this.authority.installRemoval(removal!)
-                    : () => this.authority.commit(envelope),
-                removal
-                    ? () => this.authority.rollbackRemoval(removal!)
-                    : () => this.authority.commit(current),
+                removedReadyIds.length > 0
+                    ? () => this.unitStore.remove(envelope, removedReadyIds)
+                    : () => this.unitStore.commit(envelope),
             );
-            if (committed.kind === 'rejected') {
-                return rejectedRosterCommand(
-                    committed.reason === 'install-failed' ? 'PERSISTENCE_REJECTED' : 'FORCE_CHANGED',
-                );
-            }
             if (removedInstanceIds.length > 0) {
                 this.runtimeJournal.prune(new Set(removedInstanceIds));
             }
@@ -1009,7 +875,7 @@ export class CBTForce extends Force<never> {
         let requestedScenario: ScenarioRules | undefined;
         let crewSkills: CBTDirectUnitAdmissionRequest['crewSkills'];
         let initialStateProfileId: string | undefined;
-        let instanceId: UnitInstanceId;
+        let instanceId: string;
         let targetRosterGroupId: string | undefined;
         let targetRosterMemberIndex: number | undefined;
         let commander = false;
@@ -1031,7 +897,7 @@ export class CBTForce extends Force<never> {
             initialStateProfileId = request.initialStateProfileId;
             instanceId = request.instanceId === undefined
                 ? createUnitInstanceId()
-                : asUnitInstanceId(request.instanceId);
+                : request.instanceId;
             targetRosterGroupId = request.targetRosterGroupId?.trim() || undefined;
             targetRosterMemberIndex = request.targetRosterMemberIndex;
             if (targetRosterMemberIndex !== undefined
@@ -1049,7 +915,7 @@ export class CBTForce extends Force<never> {
             );
         }
 
-        return this.enqueueCBTForceV2AuthorityMutation(async () => {
+        return this.enqueueCBTMutation(async () => {
             if (this.readOnly()) {
                 return directAdmissionFailure('READ_ONLY', 'The force is read-only');
             }
@@ -1060,65 +926,17 @@ export class CBTForce extends Force<never> {
                 );
             }
 
-            let context: CBTForceV2AuthorityMutationContext;
-            let unitFence: CBTForceAuthorityFence;
-            try {
-                // Capture every owner authority before catalog/runtime awaits;
-                // Concurrent force, encounter, or runtime edits win.
-                context = this.prepareCBTForceV2AuthorityMutation();
-                unitFence = this.authority.captureFence();
-            } catch (error) {
-                return directAdmissionFailure('READ_ONLY', errorMessage(error));
-            }
-            let durableMemberCount: number;
-            try {
-                durableMemberCount = this.durableOwnedUnitCount(context);
-            } catch (error) {
-                return directAdmissionFailure('PERSISTENCE_REJECTED', errorMessage(error));
-            }
-            if (durableMemberCount >= MAX_UNITS) {
+            const installed = this.unitStore.envelope();
+            if ((installed?.units.length ?? 0) >= MAX_UNITS) {
                 return directAdmissionFailure(
                     'FORCE_FULL',
                     `Cannot add more than ${MAX_UNITS} units to a single force`,
                 );
             }
-
-            const nativeEntities = this.injector.get(NativeEntityService);
-            const readyMeks = this.injector.get(ReadyMekUnitService);
-            const readyNonMekUnits = this.injector.get(ReadyNonMekUnitService);
-            let entity: BaseEntity;
-            try {
-                entity = (await nativeEntities.load(identity)).entity;
-            } catch (error) {
-                return directAdmissionFailure(
-                    'CANDIDATE_PREPARATION_FAILED',
-                    `The current native Entity source could not be resolved: ${errorMessage(error)}`,
-                );
-            }
-            if (entity.entityType === 'Mek') {
-                const decision = evaluateMekRuntimeCapability(entity as MekEntity);
-                if (decision.readiness === 'deferred') {
-                    return Object.freeze({ kind: 'deferred' as const, decision });
-                }
-            }
-            if (crewSkills) {
-                const defaults = createDefaultCrewAssignment(buildNonMekRuntimeIndex(entity).crewPositions);
-                deployment = Object.freeze({
-                    ...deployment,
-                    crewAssignment: Object.freeze({
-                        schemaVersion: 1 as const,
-                        positions: Object.freeze(defaults.positions.map(position => Object.freeze({
-                            ...position,
-                            gunnery: crewSkills!.gunnery,
-                            piloting: effectiveEntityPilotingSkill(entity, crewSkills!.piloting),
-                        }))),
-                    }),
-                });
-            }
             let scenario: ScenarioRules;
             try {
-                scenario = context.previous
-                    ? scenarioRulesFromPersistence(context.previous.scenarioRules.values)
+                scenario = installed
+                    ? scenarioRulesFromPersistence(installed.scenarioRules.values)
                     : requestedScenario
                         ?? (() => { throw new Error('Scenario rules are required for the first V2 force member'); })();
             } catch (error) {
@@ -1131,41 +949,24 @@ export class CBTForce extends Force<never> {
                     ? {}
                     : { options: structuredClone(scenario.options) }),
             });
-            let candidate: ReadyClassicUnit;
+            let candidate: CBTUnit;
             try {
-                candidate = entity.entityType === 'Mek'
-                    ? await readyMeks.loadReadyMek({
-                        identity,
-                        instanceId,
-                        deployment,
-                        scenario,
-                        ...(initialStateProfileId === undefined
-                            ? {}
-                            : { initialStateProfileId }),
-                    })
-                    : await readyNonMekUnits.loadReadyNonMekUnit({
-                        identity,
-                        instanceId,
-                        deployment,
-                        scenario,
-                        ...(initialStateProfileId === undefined
-                            ? {}
-                            : { initialStateProfileId }),
-                    });
-                if (!readyUnitMatchesEntity(candidate, entity)) {
-                    return directAdmissionFailure(
-                        'SOURCE_MISMATCH',
-                        'The ready candidate does not match the exact native source that was admitted',
-                    );
-                }
-                if (isReadyMekUnit(candidate)) {
-                    const decision = evaluateReadyMekRuntimeCapability(candidate);
+                candidate = await this.injector.get(CBTUnitService).create({
+                    identity,
+                    instanceId,
+                    deployment,
+                    scenario,
+                    ...(crewSkills === undefined ? {} : { crewSkills }),
+                    ...(initialStateProfileId === undefined
+                        ? {}
+                        : { initialStateProfileId }),
+                });
+                if (isCBTMekUnit(candidate)) {
+                    const decision = evaluateCBTMekRuntimeCapability(candidate);
                     if (decision.readiness === 'deferred') {
                         return Object.freeze({ kind: 'deferred' as const, decision });
                     }
                 }
-                // Force the strict unit codec while the candidate is still off-owner.
-                candidate.serialize();
             } catch (error) {
                 return directAdmissionFailure(
                     'CANDIDATE_PREPARATION_FAILED',
@@ -1173,10 +974,17 @@ export class CBTForce extends Force<never> {
                 );
             }
 
-            let liveUnits: readonly ReadyClassicUnit[];
+            let context: CBTForceMutation;
+            try {
+                context = this.beginCBTForceMutation();
+            } catch (error) {
+                return directAdmissionFailure('READ_ONLY', errorMessage(error));
+            }
+
+            let liveUnits: readonly CBTUnit[];
             try {
                 liveUnits = context.previous
-                    ? this.authority.liveUnits()
+                    ? this.unitStore.liveUnits()
                     : Object.freeze([]);
             } catch (error) {
                 return directAdmissionFailure('FORCE_CHANGED', errorMessage(error));
@@ -1203,200 +1011,116 @@ export class CBTForce extends Force<never> {
                 );
             }
 
-            const canonicalEntry = materialized.envelope.units.find(
-                entry => entry.instanceId === instanceId,
-            );
-            if (!canonicalEntry
-                || isSerializedNonMekUnit(canonicalEntry.unit) !== isReadyNonMekUnit(candidate)) {
-                return directAdmissionFailure(
-                    'PERSISTENCE_REJECTED',
-                    'The prepared current envelope does not contain the admitted unit family',
-                );
-            }
             try {
-                candidate = isSerializedNonMekUnit(canonicalEntry.unit)
-                    ? await readyNonMekUnits.restoreReadyNonMekUnit({ saved: canonicalEntry.unit })
-                    : await readyMeks.restoreReadyMekV2({
-                        saved: canonicalEntry.unit,
-                        deployment,
-                        scenario,
-                        ...(initialStateProfileId === undefined
-                            ? {}
-                            : { initialStateProfileId }),
-                    });
-                if (!readyUnitMatchesEntity(candidate, entity)) {
+                const durableMemberCount = this.durableOwnedUnitCount(context);
+                if (durableMemberCount >= MAX_UNITS) {
                     return directAdmissionFailure(
-                        'SOURCE_MISMATCH',
-                        'The canonical candidate does not match the admitted native source',
+                        'FORCE_FULL',
+                        `Cannot add more than ${MAX_UNITS} units to a single force`,
                     );
                 }
-                if (isReadyMekUnit(candidate)) {
-                    const decision = evaluateReadyMekRuntimeCapability(candidate);
-                    if (decision.readiness === 'deferred') {
-                        return Object.freeze({ kind: 'deferred' as const, decision });
-                    }
-                }
-            } catch (error) {
-                return directAdmissionFailure(
-                    'CANDIDATE_PREPARATION_FAILED',
-                    `The canonical V2 candidate could not be restored: ${errorMessage(error)}`,
-                );
-            }
-
-            let latestEntity: BaseEntity;
-            try {
-                latestEntity = (await nativeEntities.load(identity)).entity;
-            } catch (error) {
-                return directAdmissionFailure(
-                    'SOURCE_MISMATCH',
-                    `The admitted native source is no longer current: ${errorMessage(error)}`,
-                );
-            }
-            if (!readyUnitMatchesEntity(candidate, latestEntity)) {
-                return directAdmissionFailure(
-                    'SOURCE_MISMATCH',
-                    'The native Entity source changed while direct admission was prepared',
-                );
-            }
-            if (isReadyMekUnit(candidate)) {
-                const decision = evaluateReadyMekRuntimeCapability(candidate);
-                if (decision.readiness === 'deferred') {
-                    return Object.freeze({ kind: 'deferred' as const, decision });
-                }
-            }
-            if (!this.authority.isFenceCurrent(unitFence)) {
-                return directAdmissionFailure(
-                    'FORCE_CHANGED',
-                    'A retained V2 runtime changed while direct admission was prepared',
-                );
-            }
-
-            let preparedUnits: PreparedUnitAdmission;
-            try {
-                preparedUnits = this.authority.prepareAdmission(
-                    materialized.envelope,
-                    candidate,
-                );
-            } catch (error) {
-                return directAdmissionFailure('FORCE_CHANGED', errorMessage(error));
-            }
-            try {
-                durableMemberCount = this.durableOwnedUnitCount(context);
             } catch (error) {
                 return directAdmissionFailure('PERSISTENCE_REJECTED', errorMessage(error));
             }
             if (this.readOnly()
-                || durableMemberCount >= MAX_UNITS
-                || this.hasOwnedInstanceId(instanceId)
-                || !this.authority.isFenceCurrent(unitFence)
-                || !readyUnitMatchesEntity(candidate, latestEntity)
-                || !this.authority.canInstallAdmission(preparedUnits)) {
+                || this.hasOwnedInstanceId(instanceId)) {
                 return directAdmissionFailure(
                     'FORCE_CHANGED',
                     'The force changed while direct V2 admission was prepared',
                 );
             }
-            const committed = this.commitCBTForceV2AuthorityMutation(
+            this.commitCBTForceMutation(
                 context,
                 materialized,
-                () => this.authority.installAdmission(preparedUnits),
-                () => this.authority.rollbackAdmission(preparedUnits),
+                () => this.unitStore.add(materialized.envelope, candidate),
             );
-            if (committed.kind === 'rejected') {
-                return directAdmissionFailure(
-                    committed.reason === 'install-failed' ? 'PERSISTENCE_REJECTED' : 'FORCE_CHANGED',
-                    committed.reason === 'install-failed'
-                        ? 'Direct V2 ownership installation failed and was rolled back'
-                        : 'The force changed before direct V2 ownership could be installed',
-                );
-            }
             this.emitChangedFromReservedIntent();
             return Object.freeze({ kind: 'admitted' as const, instanceId });
         });
     }
 
-    private durableOwnedUnitCount(context: CBTForceV2AuthorityMutationContext): number {
+    private durableOwnedUnitCount(context: CBTForceMutation): number {
         return context.previous?.units.length ?? 0;
     }
 
-    private hasOwnedInstanceId(instanceId: UnitInstanceId): boolean {
-        return this.authority.instanceIds().some(id => id === instanceId)
+    private hasOwnedInstanceId(instanceId: string): boolean {
+        return this.unitStore.instanceIds().some(id => id === instanceId)
             || this.cbtForceV2MemberInstanceIds().some(id => id === instanceId);
     }
 
     protected override getCBTEncounterStateForPersistence(): SerializedCBTEncounterStateV2 {
-        if (!this.authority.c3.validateConfiguredNetworks(this.encounterRuntime.snapshot().networks)) {
+        if (!this.unitStore.c3.validateConfiguredNetworks(this.encounterRuntime.snapshot().networks)) {
             throw new Error('Cannot persist non-canonical C3 network facts');
         }
         return this.encounterRuntime.serializedState();
     }
 
     /** Read-only evidence; no runtime object or mutation API escapes this owner. */
-    public getRuntimeInstanceIds(): readonly UnitInstanceId[] {
-        return this.authority.instanceIds();
+    public getRuntimeInstanceIds(): readonly string[] {
+        return this.unitStore.instanceIds();
     }
 
-    public getUnitDestroyed(instanceId: UnitInstanceId): boolean | null {
-        return this.authority.unitDestroyed(instanceId);
+    public getUnitDestroyed(instanceId: string): boolean | null {
+        return this.unitStore.unitDestroyed(instanceId);
     }
 
-    public getUnitCrewAssignment(instanceId: UnitInstanceId): CrewAssignment | null {
-        return this.authority.unitCrewAssignment(instanceId);
+    public getUnitCrewAssignment(instanceId: string): CrewAssignment | null {
+        return this.unitStore.unitCrewAssignment(instanceId);
     }
 
-    public getUnitConditions(instanceId: UnitInstanceId): readonly UnitConditionKey[] | null {
-        return this.authority.unitConditions(instanceId);
+    public getUnitConditions(instanceId: string): readonly UnitConditionKey[] | null {
+        return this.unitStore.unitConditions(instanceId);
     }
 
-    public getUnitAdjustedBattleValue(instanceId: UnitInstanceId): number | null {
+    public getUnitAdjustedBattleValue(instanceId: string): number | null {
         return this.adjustedBattleValues().get(instanceId)?.adjusted ?? null;
     }
 
-    public getUnitPristineAdjustedBattleValue(instanceId: UnitInstanceId): number | null {
+    public getUnitPristineAdjustedBattleValue(instanceId: string): number | null {
         return this.pristineAdjustedBattleValues().get(instanceId)?.adjusted ?? null;
     }
 
     /** Canonical formula projected against a prospective C3 graph; no state is retained. */
     public previewAdjustedBattleValues(
         networks: readonly EncounterNetwork[],
-    ): ReadonlyMap<UnitInstanceId, CBTForceBattleValueBreakdown> {
+    ): ReadonlyMap<string, CBTForceBattleValueBreakdown> {
         return this.calculateAdjustedBattleValues(networks, 'damaged');
     }
 
-    public getUnitCurrentBaseBattleValue(instanceId: UnitInstanceId): number | null {
-        return this.authority.unitCurrentBaseBattleValue(instanceId);
+    public getUnitCurrentBaseBattleValue(instanceId: string): number | null {
+        return this.unitStore.unitCurrentBaseBattleValue(instanceId);
     }
 
-    public getUnitTagBattleValue(instanceId: UnitInstanceId): number | null {
+    public getUnitTagBattleValue(instanceId: string): number | null {
         return this.adjustedBattleValues().get(instanceId)?.tag ?? null;
     }
 
-    public getUnitC3BattleValue(instanceId: UnitInstanceId): number | null {
+    public getUnitC3BattleValue(instanceId: string): number | null {
         return this.adjustedBattleValues().get(instanceId)?.c3 ?? null;
     }
 
-    public getUnitPristineBattleValue(instanceId: UnitInstanceId): number | null {
-        return this.authority.unitPristineBattleValue(instanceId);
+    public getUnitPristineBattleValue(instanceId: string): number | null {
+        return this.unitStore.unitPristineBattleValue(instanceId);
     }
 
-    public isUnitCommander(instanceId: UnitInstanceId): boolean {
+    public isUnitCommander(instanceId: string): boolean {
         const roster = this.queryCanonicalRoster();
         return roster.kind === 'available'
             && roster.snapshot.members.some(member =>
                 member.instanceId === instanceId && member.commander === true);
     }
 
-    public getUnitSnapshot(instanceId: UnitInstanceId): CBTUnitSnapshot | null {
-        return this.authority.unitSnapshot(instanceId);
+    public getUnitSnapshot(instanceId: string): CBTUnitSnapshot | null {
+        return this.unitStore.unitSnapshot(instanceId);
     }
 
     /** Stable source identity for catalog-only presentation lookups. */
-    public getUnitSourceIdentity(instanceId: UnitInstanceId): SavedEntityIdentity | null {
-        return this.authority.readyUnit(instanceId)?.getSourceRef() ?? null;
+    public getUnitSourceIdentity(instanceId: string): SavedEntityIdentity | null {
+        return this.unitStore.cbtUnit(instanceId)?.getSourceRef() ?? null;
     }
 
     /** Total entity + runtime record-sheet projection; no SVG participates. */
-    public getMekRecordSheetSnapshot(instanceId: UnitInstanceId): MekRecordSheetSnapshot | null {
+    public getMekRecordSheetSnapshot(instanceId: string): MekRecordSheetSnapshot | null {
         const unit = this.getUnitSnapshot(instanceId);
         if (!unit || !hasMekRuntime(unit)) return null;
         const registry = this.queryInventoryControlTargetRegistry();
@@ -1421,7 +1145,7 @@ export class CBTForce extends Force<never> {
     }
 
     /** Small Entity + runtime projection for force-card condition badges. */
-    public getMekUnitStatusSnapshot(instanceId: UnitInstanceId): MekUnitStatusSnapshot | null {
+    public getMekUnitStatusSnapshot(instanceId: string): MekUnitStatusSnapshot | null {
         const unit = this.getUnitSnapshot(instanceId);
         return unit && hasMekRuntime(unit)
             ? projectMekUnitStatus(unit.entity, unit.index, unit.state, unit.query)
@@ -1429,7 +1153,7 @@ export class CBTForce extends Force<never> {
     }
 
     /** Total non-Mek Entity + sparse-runtime record-sheet projection; no SVG participates. */
-    public getNonMekRecordSheetSnapshot(instanceId: UnitInstanceId): NonMekRecordSheetSnapshot | null {
+    public getNonMekRecordSheetSnapshot(instanceId: string): NonMekRecordSheetSnapshot | null {
         const unit = this.getUnitSnapshot(instanceId);
         if (!unit || !hasNonMekRuntime(unit)) return null;
         const adjustedBattleValue = this.getUnitAdjustedBattleValue(instanceId);
@@ -1452,7 +1176,7 @@ export class CBTForce extends Force<never> {
 
     /** Entity + runtime equipment projection; no summary, SVG, mount, or runtime owner escapes. */
     public getEquipmentPanelSnapshot(
-        instanceId: UnitInstanceId,
+        instanceId: string,
     ): EquipmentPanelSnapshot | null {
         const registry = this.queryInventoryControlTargetRegistry();
         const unit = this.getUnitSnapshot(instanceId);
@@ -1481,7 +1205,7 @@ export class CBTForce extends Force<never> {
 
     /** Entity + runtime turn projection; the legacy TurnState and sheet DOM are not inputs. */
     public getMekTurnPanelSnapshot(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         heatPolicy: MekHeatAutomationPolicyV2,
     ): MekTurnPanelSnapshot | null {
         const unit = this.getUnitSnapshot(instanceId);
@@ -1502,13 +1226,13 @@ export class CBTForce extends Force<never> {
         return this.runtimeJournal.history();
     }
 
-    public hasRuntimeHistoryForUnitTurn(instanceId: UnitInstanceId, turn: number): boolean {
+    public hasRuntimeHistoryForUnitTurn(instanceId: string, turn: number): boolean {
         return this.getRuntimeHistory().some(row => row.event.turn === turn
             && runtimeHistoryMessageUnitId(row.event.message) === instanceId);
     }
 
     public runtimeHistoryUnitLabel(instanceId: string): string {
-        const unit = this.authority.readyUnit(asUnitInstanceId(instanceId));
+        const unit = this.unitStore.cbtUnit(instanceId);
         return unit ? entityUnitLabel(unit.getUnit(), unit.instanceId) : instanceId;
     }
 
@@ -1517,17 +1241,17 @@ export class CBTForce extends Force<never> {
         kind: RuntimeHistoryTargetKind,
         targetId: string,
     ): string {
-        const unit = this.authority.readyUnit(asUnitInstanceId(instanceId));
+        const unit = this.unitStore.cbtUnit(instanceId);
         return unit ? historyTargetLabel(unit, kind, targetId) : targetId;
     }
 
     public runtimeHistoryCrewLabel(instanceId: string, occurrence: number): string {
-        const unit = this.authority.readyUnit(asUnitInstanceId(instanceId));
+        const unit = this.unitStore.cbtUnit(instanceId);
         return unit ? historyCrewLabel(unit, occurrence) : `Crew ${occurrence + 1}`;
     }
 
     public runtimeHistoryAmmoLabel(instanceId: string, munitionKey: string): string {
-        const unit = this.authority.readyUnit(asUnitInstanceId(instanceId));
+        const unit = this.unitStore.cbtUnit(instanceId);
         return unit?.getUnit().getEquipmentRegistry().findEquipment(munitionKey)?.name ?? munitionKey;
     }
 
@@ -1542,33 +1266,27 @@ export class CBTForce extends Force<never> {
     private restoreRuntimeCommand(
         direction: 'undo' | 'redo',
     ): Promise<RuntimeUndoCommandResult> {
-        return this.enqueueCBTForceV2AuthorityMutation(async () => {
+        return this.enqueueCBTMutation(async () => {
             if (this.readOnly()) return rejectedRuntimeUndoCommand('READ_ONLY');
-            const context = this.prepareCBTForceV2AuthorityMutation();
+            const context = this.beginCBTForceMutation();
             const current = context.previous;
             if (!current) return rejectedRuntimeUndoCommand('EMPTY');
             const move = this.runtimeJournal.prepare(direction);
             if (!move) return rejectedRuntimeUndoCommand('EMPTY');
             const checkpoint = this.runtimeJournal.preserveCurrentOperationalState(move.checkpoint);
 
-            let fence: CBTForceAuthorityFence;
-            let replacements: ReadonlyMap<UnitInstanceId, ReadyClassicUnit>;
+            let replacements: ReadonlyMap<string, CBTUnit>;
             try {
-                fence = this.authority.captureFence();
-                replacements = await this.authority.buildRuntimeCommandCandidates(checkpoint);
+                replacements = await this.unitStore.buildRuntimeCommandCandidates(checkpoint);
             } catch {
                 return rejectedRuntimeUndoCommand('RESTORE_FAILED');
             }
-            if (!this.authority.isFenceCurrent(fence)) {
-                return rejectedRuntimeUndoCommand('FORCE_CHANGED');
-            }
 
             let envelope: SerializedCBTForceV2;
-            let preparedUnits: PreparedUnitRepair;
             try {
                 const units = current.units.map(entry => {
                     const ready = replacements.get(entry.instanceId)
-                        ?? this.authority.readyUnit(entry.instanceId);
+                        ?? this.unitStore.cbtUnit(entry.instanceId);
                     if (!ready) throw new Error(`Undo restore lost runtime ${entry.instanceId}`);
                     const unit = ready.serialize();
                     return Object.freeze({
@@ -1593,23 +1311,16 @@ export class CBTForce extends Force<never> {
                             }),
                         }),
                 });
-                preparedUnits = this.authority.prepareRepair(envelope, replacements, fence);
             } catch {
                 return rejectedRuntimeUndoCommand('RESTORE_FAILED');
             }
 
             const prepared: PreparedCBTForcePersistenceV2 = Object.freeze({ envelope, reused: false });
-            const committed = this.commitCBTForceV2AuthorityMutation(
+            this.commitCBTForceMutation(
                 context,
                 prepared,
-                () => this.authority.installRepair(preparedUnits),
-                () => this.authority.rollbackRepair(preparedUnits),
+                () => this.unitStore.replace(envelope, replacements),
             );
-            if (committed.kind === 'rejected') {
-                return rejectedRuntimeUndoCommand(
-                    committed.reason === 'stale' ? 'FORCE_CHANGED' : 'RESTORE_FAILED',
-                );
-            }
             this.runtimeJournal.commit(move);
             this.emitChangedFromReservedIntent(Object.freeze([...replacements.keys()]));
             return Object.freeze({
@@ -1621,16 +1332,16 @@ export class CBTForce extends Force<never> {
     }
 
     private captureRuntimeCommandMutation(
-        instanceIds: readonly UnitInstanceId[],
+        instanceIds: readonly string[],
     ): CapturedRuntimeCommandMutation {
         return this.runtimeJournal.capture(instanceIds);
     }
 
     /** Primary runtime plus the only peers C3 reconciliation is allowed to mutate. */
     private c3RuntimeMutationScope(
-        instanceId: UnitInstanceId,
-        emergencyMasterUnitIds = this.authority.c3.emergencyMasterUnitIds(),
-    ): readonly UnitInstanceId[] {
+        instanceId: string,
+        emergencyMasterUnitIds = this.unitStore.c3.emergencyMasterUnitIds(),
+    ): readonly string[] {
         return Object.freeze([
             ...new Set([instanceId, ...emergencyMasterUnitIds]),
         ]);
@@ -1640,24 +1351,24 @@ export class CBTForce extends Force<never> {
         captured: CapturedRuntimeCommandMutation,
         history: RuntimeHistoryInput,
         boundary?: 'phase',
-    ): readonly UnitInstanceId[] {
+    ): readonly string[] {
         return this.runtimeJournal.record(captured, history, boundary);
     }
 
     public dispatchNonMekUnitCommand(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: NonMekUnitCommand,
     ): Promise<CBTNonMekUnitCommandResult> {
         return this.unitCommandDispatcher.dispatchNonMek(instanceId, command);
     }
 
     private dispatchNonMekUnitCommandCore(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: NonMekUnitCommand,
     ): Promise<CBTNonMekUnitCommandResult> {
         const captured = Object.freeze({ ...command }) as NonMekUnitCommand;
-        return this.enqueueCBTForceV2AuthorityMutation(() => {
-            const ready = this.authority.readyNonMekUnit(instanceId);
+        return this.enqueueCBTMutation(() => {
+            const ready = this.unitStore.nonMekUnit(instanceId);
             const beforeState = ready?.getInstance().snapshot();
             const beforeMode = captured.kind === 'set-component-mode'
                 ? ready?.getInstance().componentMode(captured.componentId)
@@ -1665,7 +1376,7 @@ export class CBTForce extends Force<never> {
             const capture = ready === null
                 ? null
                 : this.captureRuntimeCommandMutation([instanceId]);
-            const result = this.authority.dispatchNonMekUnitCommand(
+            const result = this.unitStore.dispatchNonMekUnitCommand(
                 instanceId,
                 captured,
                 this.readOnly(),
@@ -1701,23 +1412,23 @@ export class CBTForce extends Force<never> {
     }
 
     public dispatchMekUnitCommand(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitCommand,
     ): Promise<CBTMekUnitCommandResult> {
         return this.unitCommandDispatcher.dispatchMek(instanceId, command);
     }
 
     private dispatchMekUnitCommandCore(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitCommand,
     ): Promise<CBTMekUnitCommandResult> {
-        return this.enqueueCBTForceV2AuthorityMutation(() => {
-            const ready = this.authority.readyMekUnit(instanceId);
+        return this.enqueueCBTMutation(() => {
+            const ready = this.unitStore.mekUnit(instanceId);
             const beforeState = ready?.getInstance().snapshot();
             const beforeMode = command.type === 'set-component-mode'
                 ? ready?.getInstance().query().componentMode(command.componentId)
                 : undefined;
-            const emergencyMasterUnitIds = this.authority.c3.emergencyMasterUnitIds();
+            const emergencyMasterUnitIds = this.unitStore.c3.emergencyMasterUnitIds();
             const capture = ready === null
                 ? null
                 : this.captureRuntimeCommandMutation(
@@ -1725,16 +1436,16 @@ export class CBTForce extends Force<never> {
                 );
             const configuredNetworks = this.encounterRuntime.snapshot().networks;
             const c3EndTurn = command.type === 'end-turn'
-                ? this.authority.c3.planEmergencyMasterEndTurn(instanceId, configuredNetworks)
+                ? this.unitStore.c3.planEmergencyMasterEndTurn(instanceId, configuredNetworks)
                 : null;
-            const reduction = this.authority.dispatchMekUnitCommand(
+            const reduction = this.unitStore.dispatchMekUnitCommand(
                 instanceId,
                 command,
                 this.readOnly(),
             );
             if (!reduction.accepted) return reduction;
-            const settled = this.authority.c3.settleEmergencyMasterEndTurn(c3EndTurn);
-            const reconciled = this.authority.c3.reconcileEmergencyMasters(
+            const settled = this.unitStore.c3.settleEmergencyMasterEndTurn(c3EndTurn);
+            const reconciled = this.unitStore.c3.reconcileEmergencyMasters(
                 configuredNetworks,
                 emergencyMasterUnitIds,
             );
@@ -1773,7 +1484,7 @@ export class CBTForce extends Force<never> {
                     changed => this.emitChangedFromReservedIntent(changed),
                 );
             }
-            const runtime = this.authority.readyMekUnit(instanceId)?.getInstance();
+            const runtime = this.unitStore.mekUnit(instanceId)?.getInstance();
             return runtime
                 ? Object.freeze({ ...reduction, changed, state: runtime.snapshot() })
                 : reduction;
@@ -1781,23 +1492,23 @@ export class CBTForce extends Force<never> {
     }
 
     protected override captureWholeOwnerSubclassAuthorityFence(): unknown {
-        return this.authority.captureWholeOwnerFence();
+        return this.unitStore.snapshot();
     }
 
     protected override isWholeOwnerSubclassAuthorityFenceCurrent(fence: unknown): boolean {
         return fence !== null
             && typeof fence === 'object'
-            && this.authority.isFenceCurrent(
-                fence as CBTForceAuthorityFence,
+            && this.unitStore.isSnapshotCurrent(
+                fence as CBTUnitStoreSnapshot,
             );
     }
 
-    public getUnitCrewProfile(instanceId: UnitInstanceId): CrewAssignment | null {
-        return this.authority.crewProfile(instanceId);
+    public getUnitCrewProfile(instanceId: string): CrewAssignment | null {
+        return this.unitStore.crewProfile(instanceId);
     }
 
     public async replaceUnitCrewProfile(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         positions: readonly CrewAssignmentPosition[],
     ): Promise<CrewAssignment | null> {
         let capturedPositions: readonly CrewAssignmentPosition[];
@@ -1807,23 +1518,22 @@ export class CBTForce extends Force<never> {
             return null;
         }
         const capturedInstanceId = instanceId;
-        return this.enqueueCBTForceV2AuthorityMutation(async () => {
+        return this.enqueueCBTMutation(async () => {
             if (this.readOnly()) return null;
-            const ready = this.authority.readyUnit(capturedInstanceId);
-            const beforeProfile = this.authority.crewProfile(capturedInstanceId);
+            const ready = this.unitStore.cbtUnit(capturedInstanceId);
+            const beforeProfile = this.unitStore.crewProfile(capturedInstanceId);
             const capture = ready === null
                 ? null
                 : this.captureRuntimeCommandMutation([capturedInstanceId]);
             const executionGeneration = this.captureForceOwnerGeneration();
-            return this.authority.replaceCrewProfile(
+            return this.unitStore.replaceCrewProfile(
                 capturedInstanceId,
                 capturedPositions,
-                this.injector.get(ReadyMekUnitService),
                 () => this.readOnly(),
                 () => this.isForceOwnerGenerationCurrent(executionGeneration),
                 () => {
-                    const afterReady = this.authority.readyUnit(capturedInstanceId);
-                    const afterProfile = this.authority.crewProfile(capturedInstanceId);
+                    const afterReady = this.unitStore.cbtUnit(capturedInstanceId);
+                    const afterProfile = this.unitStore.crewProfile(capturedInstanceId);
                     if (capture === null || afterReady === null || beforeProfile === null || afterProfile === null) {
                         throw new Error('Accepted crew command has no captured state');
                     }
@@ -1839,31 +1549,31 @@ export class CBTForce extends Force<never> {
     }
 
     public getAttackerTargeting(
-        instanceId: UnitInstanceId,
+        instanceId: string,
     ): AttackerTargetingSnapshot | null {
-        return this.authority.attackerTargetingSnapshot(
+        return this.unitStore.attackerTargetingSnapshot(
             instanceId,
             this.queryInventoryControlTargetRegistry(),
         );
     }
 
-    public getC3State(instanceId: UnitInstanceId): C3State {
+    public getC3State(instanceId: string): C3State {
         this.memberRegistry.dependOnOperationalC3Inputs();
-        return this.authority.c3.state(instanceId, this.encounterRuntime.snapshot().networks);
+        return this.unitStore.c3.state(instanceId, this.encounterRuntime.snapshot().networks);
     }
 
-    public isC3EndpointOperational(instanceId: UnitInstanceId, componentId: ComponentId): boolean {
-        return this.authority.c3.isEndpointOperational(instanceId, componentId);
+    public isC3EndpointOperational(instanceId: string, componentId: ComponentId): boolean {
+        return this.unitStore.c3.isEndpointOperational(instanceId, componentId);
     }
 
     public async dispatchAttackerTargeting(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitAttackerTargetingCommand,
     ): Promise<AttackerTargetingCommandResult> {
         const capturedCommand = structuredClone(command);
         const capturedInstanceId = instanceId;
-        return this.enqueueCBTForceV2AuthorityMutation(() => {
-            const result = this.authority.dispatchAttackerTargeting(
+        return this.enqueueCBTMutation(() => {
+            const result = this.unitStore.dispatchAttackerTargeting(
                 capturedInstanceId,
                 capturedCommand,
                 this.queryInventoryControlTargetRegistry(),
@@ -1880,7 +1590,7 @@ export class CBTForce extends Force<never> {
 
     /** Presentation-only row order; intentionally excluded from gameplay undo/history. */
     public async dispatchEquipmentRowOrder(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: Readonly<{
             readonly group: EquipmentRowOrderGroup;
             readonly permutation: readonly number[];
@@ -1891,7 +1601,7 @@ export class CBTForce extends Force<never> {
             group: command.group,
             permutation: Object.freeze([...command.permutation]),
         });
-        return this.enqueueCBTForceV2AuthorityMutation(() => {
+        return this.enqueueCBTMutation(() => {
             const snapshot = this.getEquipmentPanelSnapshot(capturedInstanceId);
             if (!snapshot) {
                 return Object.freeze({
@@ -1903,7 +1613,7 @@ export class CBTForce extends Force<never> {
             const rowCount = captured.group === 'ranged'
                 ? snapshot.components.filter(row => row.weapon !== undefined).length
                 : snapshot.physicalAttacks.length;
-            const result = this.authority.dispatchEquipmentRowOrder(
+            const result = this.unitStore.dispatchEquipmentRowOrder(
                 capturedInstanceId,
                 captured.group,
                 captured.permutation,
@@ -1919,20 +1629,20 @@ export class CBTForce extends Force<never> {
     }
 
     public async fireSelectedWeapons(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitSelectedWeaponFireCommand,
     ): Promise<SelectedWeaponFireCommandResult> {
         const capturedCommand = structuredClone(command);
         const capturedInstanceId = instanceId;
-        return this.enqueueCBTForceV2AuthorityMutation(() => {
-            const ready = this.authority.readyUnit(capturedInstanceId);
+        return this.enqueueCBTMutation(() => {
+            const ready = this.unitStore.cbtUnit(capturedInstanceId);
             const capture = ready === null
                 ? null
                 : this.captureRuntimeCommandMutation([capturedInstanceId]);
             const history = ready === null
                 ? Object.freeze([])
                 : selectedWeaponFireHistory(capturedInstanceId, ready);
-            const result = this.authority.dispatchSelectedWeaponFire(
+            const result = this.unitStore.dispatchSelectedWeaponFire(
                 capturedInstanceId,
                 capturedCommand,
                 this.queryInventoryControlTargetRegistry(),
@@ -1957,7 +1667,7 @@ export class CBTForce extends Force<never> {
         choiceSurface?: HandlerQueryContext['choiceSurface'],
     ): readonly MekEquipmentInteraction[] {
         const registry = this.injector.get(EquipmentInteractionRegistryService).getRegistry();
-        return this.authority.equipmentInteractions(
+        return this.unitStore.equipmentInteractions(
             registry,
             createHandlerQueryContext(this.dataService.getEquipmentRegistry(), choiceSurface),
             () => this.encounterRuntime.snapshot(),
@@ -1969,15 +1679,15 @@ export class CBTForce extends Force<never> {
         token: MekEquipmentChoiceToken,
     ): Promise<MekEquipmentChoiceDispatchResult> {
         const capturedToken = token;
-        return this.enqueueCBTForceV2AuthorityMutation(async () => {
-            const selectedId = this.authority.equipmentChoiceInstanceId(capturedToken);
+        return this.enqueueCBTMutation(async () => {
+            const selectedId = this.unitStore.equipmentChoiceInstanceId(capturedToken);
             const mutationScope = selectedId === null ? Object.freeze([]) : this.c3RuntimeMutationScope(selectedId);
             const capture = this.captureRuntimeCommandMutation(mutationScope);
-            const beforeModes = captureMekComponentModes(this.authority, mutationScope);
+            const beforeModes = captureMekComponentModes(this.unitStore, mutationScope);
             const executionGeneration = this.captureForceOwnerGeneration();
             const registry = this.injector.get(EquipmentInteractionRegistryService).getRegistry();
             const queryContext = createHandlerQueryContext(this.dataService.getEquipmentRegistry());
-            return this.authority.dispatchEquipmentChoice(
+            return this.unitStore.dispatchEquipmentChoice(
                 capturedToken,
                 registry,
                 queryContext,
@@ -1998,7 +1708,7 @@ export class CBTForce extends Force<never> {
                 () => this.readOnly(),
                 () => this.isForceOwnerGenerationCurrent(executionGeneration),
                 () => {
-                    const modeChanges = changedComponentModeHistory(this.authority, beforeModes);
+                    const modeChanges = changedComponentModeHistory(this.unitStore, beforeModes);
                     const changedUnitIds = this.recordRuntimeCommandMutation(
                         capture,
                         modeChanges.length === 0
@@ -2017,7 +1727,7 @@ export class CBTForce extends Force<never> {
         return this.unitCommandDispatcher.endPhaseForAll();
     }
 
-    public hasPendingEndTurnForUnit(instanceId: UnitInstanceId): boolean {
+    public hasPendingEndTurnForUnit(instanceId: string): boolean {
         return this.unitCommandDispatcher.hasPendingEndTurn(instanceId);
     }
 
@@ -2027,11 +1737,11 @@ export class CBTForce extends Force<never> {
     }
 
     private endTurnForAllUnitsCore(): Promise<CBTForceEndTurnAllResult> {
-        return this.enqueueCBTForceV2AuthorityMutation(() => {
+        return this.enqueueCBTMutation(() => {
             const capture = this.captureRuntimeCommandMutation(
-                this.authority.instanceIds(),
+                this.unitStore.instanceIds(),
             );
-            return this.authority.endTurnForAll(
+            return this.unitStore.endTurnForAll(
                 () => this.readOnly(),
                 () => this.currentHeatPolicy(),
                 this.encounterRuntime.snapshot().networks,
@@ -2097,41 +1807,26 @@ export class CBTForce extends Force<never> {
         );
     }
 
-    protected override async prepareLoadedCBTForceV2Authority(
+    protected override async restoreCBTForce(
         envelope: SerializedCBTForceV2,
-    ): Promise<PreparedLoadedCBTForceV2Authority> {
-        const needsReadyMekRestore = envelope.units.some(entry =>
-            !isSerializedNonMekUnit(entry.unit));
-        const needsReadyNonMekRestore = envelope.units.some(entry =>
-            isSerializedNonMekUnit(entry.unit));
-        const readyMeks = needsReadyMekRestore
-            ? this.injector.get(ReadyMekUnitService, null, { optional: true })
-            : undefined;
-        const readyNonMekUnits = needsReadyNonMekRestore
-            ? this.injector.get(ReadyNonMekUnitService, null, { optional: true })
-            : undefined;
-        const prepared = await this.authority.prepareLoad(
+    ): Promise<RestoredCBTForce> {
+        const restored = await this.unitStore.restore(
             envelope,
-            readyMeks ?? undefined,
-            readyNonMekUnits ?? undefined,
+            this.injector.get(CBTUnitService),
         );
-        if (!this.authority.isPreparedLoadCurrent(prepared)) {
-            throw new Error('Restored V2 runtime changed before load installation');
-        }
         return Object.freeze({
-            ...(prepared.envelope === envelope
+            ...(restored.envelope === envelope
                 ? {}
-                : { replacement: prepared.envelope }),
-            canInstall: () => this.authority.isPreparedLoadCurrent(prepared),
+                : { replacement: restored.envelope }),
             install: () => {
-                this.authority.installLoad(prepared);
+                this.unitStore.install(restored);
                 this.resetRuntimeCommandSession();
             },
-            ...(prepared.ignoredUnitIds.length === 0
+            ...(restored.warnings.length === 0
                 ? {}
                 : {
                     afterInstall: () => this.injector.get(DialogsService).showNotice(
-                        'Some V2 unit data could not be loaded and was ignored.',
+                        restored.warnings.map(warning => `• ${warning}`).join('\n'),
                         'Save Loaded with Warnings',
                     ),
                 }),
@@ -2140,15 +1835,15 @@ export class CBTForce extends Force<never> {
 
     protected override clearLoadedCBTForceV2Authority(): boolean {
         const encounter = this.encounterRuntime.serializedState();
-        const changed = this.authority.instanceIds().length > 0
+        const changed = this.unitStore.instanceIds().length > 0
             || encounter.encounterRevision !== 0
             || encounter.facts.length > 0
             || this.inventoryControlOpforEnabled();
-        this.authority.clear();
+        this.unitStore.clear();
         this.runtimeJournal.reset();
         this.encounterRuntime.restoreSerialized(Object.freeze({
             schemaVersion: 2,
-            encounterRevision: asStateRevision(0),
+            encounterRevision: 0,
             facts: Object.freeze([]),
         }));
         this.inventoryControlOpforEnabled.set(false);
@@ -2166,17 +1861,17 @@ export class CBTForce extends Force<never> {
         readonly typedEncounterState?: SerializedCBTEncounterStateV2;
     }): Promise<PreparedCBTForcePersistenceV2> {
         const previous = input.previous;
-        let persistenceFence: CBTForceAuthorityFence;
+        let persistenceFence: CBTUnitStoreSnapshot;
         try {
-            const installed = this.authority.envelope();
-            persistenceFence = this.authority.captureFence();
+            const installed = this.unitStore.envelope();
+            persistenceFence = this.unitStore.snapshot();
             if (installed !== (previous ?? null)) {
                 // The caller deliberately rechecks its owner pointer after this
                 // asynchronous seam. Return a harmless stale candidate so that
                 // it can retry with the newer runtime owner.
                 const staleEnvelope = installed ?? previous;
-                if (!staleEnvelope) throw new Error('The Classic authority disappeared during persistence');
-                return withAuthorityFence(
+                if (!staleEnvelope) throw new Error('The CBT authority disappeared during persistence');
+                return withUnitStoreSnapshot(
                     Object.freeze({ envelope: staleEnvelope, reused: true }),
                     persistenceFence,
                 );
@@ -2186,9 +1881,9 @@ export class CBTForce extends Force<never> {
         }
         if (!previous) {
             const prepared = await super.prepareCBTForcePersistenceV2(input);
-            return withAuthorityFence(prepared, persistenceFence);
+            return withUnitStoreSnapshot(prepared, persistenceFence);
         }
-        const liveUnits = this.authority.liveUnits();
+        const liveUnits = this.unitStore.liveUnits();
         const prepared = await prepareCurrentCBTForcePersistenceV2({
             previous,
             liveUnits,
@@ -2199,20 +1894,20 @@ export class CBTForce extends Force<never> {
         if (prepared.kind === 'read-only') {
             throw new Error(`CBT persistence remains read-only: ${prepared.code}: ${prepared.error}`);
         }
-        return withAuthorityFence(prepared, persistenceFence);
+        return withUnitStoreSnapshot(prepared, persistenceFence);
     }
 
     protected override isPreparedCBTForcePersistenceCurrent(
         prepared: PreparedCBTForcePersistenceV2,
     ): boolean {
-        const fence = (prepared as Partial<PreparedCBTForcePersistenceWithFence>).authorityFence;
-        return fence !== undefined && this.authority.isFenceCurrent(fence);
+        const fence = (prepared as Partial<PreparedCBTForcePersistenceWithFence>).unitStoreSnapshot;
+        return fence !== undefined && this.unitStore.isSnapshotCurrent(fence);
     }
 
     protected override commitPreparedCBTForcePersistenceV2(
         prepared: PreparedCBTForcePersistenceV2,
     ): void {
-        this.authority.commit(prepared.envelope);
+        this.unitStore.commit(prepared.envelope);
     }
 
     protected override restoreCBTEncounterPersistence(entry: SerializedForceEncounterEntryV2): void {
@@ -2239,25 +1934,25 @@ export class CBTForce extends Force<never> {
         const detached = structuredClone(networks);
         const current = this.encounterRuntime.snapshot();
         if (jsonValuesEqual(current.networks, detached)
-            || !this.authority.c3.validateConfiguredNetworks(detached)) return false;
-        const affectedUnitIds = new Set<UnitInstanceId>();
+            || !this.unitStore.c3.validateConfiguredNetworks(detached)) return false;
+        const affectedUnitIds = new Set<string>();
         for (const network of [...current.networks, ...detached]) {
             for (const endpoint of network.endpoints) affectedUnitIds.add(endpoint.instanceId);
         }
-        const c3UnitIds = this.authority.c3.emergencyMasterUnitIds();
+        const c3UnitIds = this.unitStore.c3.emergencyMasterUnitIds();
         const c3Revisions = new Map(c3UnitIds.map(instanceId => [
             instanceId,
-            this.authority.readyUnit(instanceId)?.revision() ?? null,
+            this.unitStore.cbtUnit(instanceId)?.revision() ?? null,
         ] as const));
         this.reserveForceOwnerMutationIntent();
         this.encounterRuntime.replaceNetworks(detached);
-        const c3 = this.authority.c3.reconcileEmergencyMasters(
+        const c3 = this.unitStore.c3.reconcileEmergencyMasters(
             this.encounterRuntime.snapshot().networks,
             c3UnitIds,
         );
         publishC3EmergencyMasterNotices(c3.notices, this.injector.get(ToastService));
         for (const instanceId of c3UnitIds) {
-            if (this.authority.readyUnit(instanceId)?.revision() !== c3Revisions.get(instanceId)) {
+            if (this.unitStore.cbtUnit(instanceId)?.revision() !== c3Revisions.get(instanceId)) {
                 affectedUnitIds.add(instanceId);
             }
         }
@@ -2287,11 +1982,11 @@ export class CBTForce extends Force<never> {
         if ('accepted' in authorized) return authorized;
         const planned = reduceTargetRegistry(current, authorized);
         if (!planned.accepted || !planned.changed) return planned;
-        const targetingReconciliation = this.authority.prepareTargetingReconciliation(planned.snapshot);
+        const targetingReconciliation = this.unitStore.prepareTargetingReconciliation(planned.snapshot);
         this.reserveForceOwnerMutationIntent();
         const result = this.encounterRuntime.dispatchTargetRegistry(authorized);
         if (result.accepted && result.changed) {
-            this.authority.installTargetingReconciliation(targetingReconciliation);
+            this.unitStore.installTargetingReconciliation(targetingReconciliation);
             this.targetRegistryVersionState.update(version => version + 1);
             this.emitChangedFromReservedIntent(Object.freeze([]));
         }
@@ -2304,7 +1999,7 @@ export class CBTForce extends Force<never> {
         if (!forceInstanceId) {
             throw new Error('A stable force instance ID is required to query the opponent target roster');
         }
-        const mekRows = this.authority.targetRoster(forceInstanceId);
+        const mekRows = this.unitStore.targetRoster(forceInstanceId);
         const instanceIds = new Set<string>();
         const rows = [...mekRows];
         for (const row of rows) {
@@ -2323,8 +2018,8 @@ export class CBTForce extends Force<never> {
     protected override buildCBTForcePersistenceRecord(
         metadata: SerializedForce,
         cbt: SerializedCBTForceV2,
-    ): SerializedClassicForce {
-        const history = this.authority.envelope()?.forceId === cbt.forceId
+    ): SerializedCBTForce {
+        const history = this.unitStore.envelope()?.forceId === cbt.forceId
             ? this.runtimeJournal.serialize(cbt.history)
             : cbt.history;
         return super.buildCBTForcePersistenceRecord(
@@ -2335,7 +2030,7 @@ export class CBTForce extends Force<never> {
 
     public override serialize(): SerializedForce {
         const envelope = this.getSupportedCBTForceV2Envelope();
-        if (!envelope) throw new Error('Use serializeForPersistence() to initialize a new Classic V2 force');
+        if (!envelope) throw new Error('Use serializeForPersistence() to initialize a new CBT V2 force');
         return this.buildCBTForcePersistenceRecord(
             this.buildCBTForceMetadataRecord(
                 this.instanceId() ?? uuidv7(),
@@ -2350,7 +2045,7 @@ export class CBTForce extends Force<never> {
         let serialized: SerializedForce;
         if (this.readOnly()) {
             const previous = this.getSupportedCBTForceV2Envelope();
-            if (!previous) throw new Error('Classic force clone requires a validated V2 envelope');
+            if (!previous) throw new Error('CBT force clone requires a validated V2 envelope');
             const prepared = await this.prepareCBTForcePersistenceV2({
                 forceId: previous.forceId,
                 previous,
@@ -2360,7 +2055,7 @@ export class CBTForce extends Force<never> {
         } else {
             serialized = await this.serializeForPersistence();
         }
-        if (!serialized.cbt) throw new Error('Classic force clone requires a validated V2 envelope');
+        if (!serialized.cbt) throw new Error('CBT force clone requires a validated V2 envelope');
 
         const cbt = await remapCBTForceCloneEnvelope(serialized.cbt);
         const record = this.buildCBTForcePersistenceRecord(
@@ -2370,26 +2065,29 @@ export class CBTForce extends Force<never> {
             }),
             cbt,
         );
-        const cloned = CBTForce.deserializeV2(record, this.dataService, this.injector);
-        if (!await cloned.loadCBTForceV2Persistence(record)) {
-            throw new Error('Cloned Classic V2 authority could not be installed');
+        const cloned = await CBTForce.deserialize(record, this.dataService, this.injector);
+        if (!cloned.hasCBTForceV2()) {
+            throw new Error('Cloned CBT V2 authority could not be installed');
         }
         return cloned;
     }
 
-    public static deserializeV2(
-        data: SerializedClassicForce,
+    public static async deserialize(
+        data: SerializedCBTForce,
         dataService: DataService,
         injector: Injector,
-    ): CBTForce {
+    ): Promise<CBTForce> {
         const force = new CBTForce(data.name, dataService, injector);
         force.populateFromCBTForceV2(data);
+        if (!await force.loadCBTForceV2Persistence(data)) {
+            throw new Error('CBT force changed while it was loading');
+        }
         return force;
     }
 
-    protected override deserializeFrom(serialized: SerializedForce): CBTForce {
-        return CBTForce.deserializeV2(
-            serialized as SerializedClassicForce,
+    protected override deserializeFrom(serialized: SerializedForce): Promise<CBTForce> {
+        return CBTForce.deserialize(
+            serialized as SerializedCBTForce,
             this.dataService, this.injector
         );
     }

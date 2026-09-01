@@ -3,18 +3,17 @@
 
 import { calculateCBTForceBattleValues } from './cbt-force-battle-value';
 import { adjustEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
-import type { ReadyClassicUnit } from './runtime/ready-classic-unit';
-import { asUnitInstanceId } from './runtime/runtime-state';
+import type { CBTUnit } from './runtime/cbt-unit';
 import { createDirectMekRuntimeFixture } from './runtime/testing/direct-mek-runtime-fixture';
 import type { UnitSummary } from './unit-summary.model';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 
-describe('Classic force battle value authority', () => {
+describe('CBT force battle value authority', () => {
   it('uses Entity family facts when a presentation summary disagrees', () => {
     const fixture = createDirectMekRuntimeFixture();
     const positionId = [...fixture.index.crewPositions.keys()][0]!;
     const base = fixture.instance.query().currentBaseBattleValue()!;
-    const instanceId = asUnitInstanceId('unit:bv-entity-authority');
+    const instanceId = 'unit:bv-entity-authority';
     const unit = {
       instanceId,
       getUnit: () => fixture.entity,
@@ -23,7 +22,7 @@ describe('Classic force battle value authority', () => {
         schemaVersion: 1,
         positions: [{ positionId, name: '', role: '', gunnery: 4, piloting: 2 }],
       }),
-    } as unknown as ReadyClassicUnit;
+    } as unknown as CBTUnit;
     const lyingSummary = {
       type: 'ProtoMek',
       subtype: 'ProtoMek',

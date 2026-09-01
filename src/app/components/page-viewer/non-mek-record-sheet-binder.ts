@@ -21,7 +21,6 @@ import {
     projectWeaponTargetPresentation,
 } from '../../models/runtime/equipment-panel';
 import type { AttackerSelection } from '../../models/runtime/attacker-targeting-state';
-import type { StateRevision } from '../../models/runtime/runtime-state';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
 import type { EntityTechBase } from '../../models/entity/types';
 import {
@@ -41,59 +40,59 @@ export type NonMekRecordSheetInteraction = Readonly<{
     readonly kind: 'armor';
     readonly faceId: ArmorFaceId;
     readonly locationId: LocationId;
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'internal';
     readonly locationId: LocationId;
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'soldier';
     readonly locationId: LocationId;
     readonly soldierNumber: number;
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'damage-track';
     readonly damageTrackId: SystemDamageTrackId;
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'condition';
     readonly condition: UnitConditionKey;
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'condition-menu';
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'crew-wounds';
     readonly positionId: CrewPositionId;
     readonly wounds: number;
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'crew-state-menu';
     readonly positionId: CrewPositionId;
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'crew-profile';
     readonly positionId: CrewPositionId;
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'heat';
     readonly heat: number;
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'heat-overflow';
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'apply-heat';
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'heat-sinks-off';
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'inventory-selection';
     readonly componentIds: readonly ComponentId[];
     readonly mode?: string;
     readonly range?: 'short' | 'medium' | 'long' | 'extreme';
-    readonly expectedRevision: StateRevision;
+    readonly expectedRevision: number;
 }>;
 
 export interface NonMekRecordSheetBinding {
@@ -327,7 +326,7 @@ function renderDamageTracks(
         element: SVGElement,
         interaction: () => NonMekRecordSheetInteraction,
     ) => void,
-    revision: () => StateRevision,
+    revision: () => number,
 ): void {
     for (const track of damageTracks) {
         const element = damageTrackElement(svg, track.sheetId);
@@ -415,7 +414,7 @@ function renderSoldierLocation(
         element: SVGElement,
         interaction: () => NonMekRecordSheetInteraction,
     ) => void,
-    revision: () => StateRevision,
+    revision: () => number,
     markChanges: boolean,
 ): void {
     const soldiers: SVGElement[] = [];
@@ -463,7 +462,7 @@ function renderCombinedLocation(
         element: SVGElement,
         interaction: () => NonMekRecordSheetInteraction,
     ) => void,
-    revision: () => StateRevision,
+    revision: () => number,
     markChanges: boolean,
 ): void {
     const face = location.armor.find(candidate => candidate.face === 'front');
@@ -527,7 +526,7 @@ function renderArmorFace(
         element: SVGElement,
         interaction: () => NonMekRecordSheetInteraction,
     ) => void,
-    revision: () => StateRevision,
+    revision: () => number,
     markChanges: boolean,
 ): void {
     const code = attributeValue(sheetCode);

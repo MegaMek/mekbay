@@ -21,7 +21,6 @@ import {
     type RuntimeEquipmentStatusTopology,
 } from './equipment-status-kernel';
 import {
-    asStateRevision,
     type MekUnitRuntimeState,
     type AmmoRuntimeState,
     type BombastLaserRuntimeState,
@@ -38,8 +37,6 @@ import {
     type MekShieldDamageRuntimeState,
     type PendingCombatOverlay,
     type PpcCapacitorRuntimeState,
-    type StateRevision,
-    type UnitInstanceId,
     freezeRuntimeState,
     isMekLocationConditionKey,
     MAX_MEK_CREW_WOUNDS,
@@ -50,10 +47,7 @@ import {
     physicalEquipmentOperatingHeatFromFlags,
     resolveShieldProfileFromFlags,
 } from '../entity/utils/physical-weapon-kernel';
-import {
-    isShieldEquipment,
-    isSpotWelderEquipment,
-} from '../entity/utils/physical-weapon';
+import { isShieldEquipment, isSpotWelderEquipment } from '../entity/utils/physical-weapon';
 import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
 import {
     GAUSS_POWERED_UP,
@@ -100,11 +94,7 @@ import {
 } from './component-mobile-hpg';
 import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
 import { isBoobyTrapEquipment } from '../aerospace-support-equipment.model';
-import {
-    BOOBY_TRAP_ARMED_MODE,
-    BOOBY_TRAP_DETONATED_MODE,
-    isBoobyTrapDetonated,
-} from './component-booby-trap';
+import { BOOBY_TRAP_ARMED_MODE, BOOBY_TRAP_DETONATED_MODE, isBoobyTrapDetonated } from './component-booby-trap';
 import {
     electronicClaims,
     effectiveEcmMode,
@@ -124,11 +114,7 @@ import {
     type MekPendingFallConsequencesV2,
     type MekTurnStateV2,
 } from './mek-turn-state-v2';
-import {
-    canonicalizeCrewAssignment,
-    createDefaultCrewAssignment,
-    type CrewAssignment,
-} from './crew-assignment';
+import { canonicalizeCrewAssignment, createDefaultCrewAssignment, type CrewAssignment } from './crew-assignment';
 import {
     isMekLocationPhysicallyDestroyed,
     isMekLocationPhysicallyDestroyedFromView,
@@ -141,10 +127,7 @@ import {
     type MekWeaponFireSelectionV2,
 } from './mek-weapon-fire-v2';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
-import type {
-    PrototypeLaserHeatResult,
-    PrototypeLaserHeatRoll,
-} from '../prototype-laser-heat.model';
+import type { PrototypeLaserHeatResult, PrototypeLaserHeatRoll } from '../prototype-laser-heat.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import {
@@ -186,16 +169,9 @@ import {
     nextMachineGunArrayState,
     settledMachineGunArrayState,
 } from './component-machine-gun-array';
-import {
-    SHIELD_ACTIVE_MODE,
-    SHIELD_INACTIVE_MODE,
-} from './component-shield-mode';
+import { SHIELD_ACTIVE_MODE, SHIELD_INACTIVE_MODE } from './component-shield-mode';
 import { canPerformMekAction } from './mek-action-availability';
-import {
-    COOLANT_POD_ACTIVE_MODE,
-    COOLANT_POD_READY_MODE,
-    isCoolantPodEquipment,
-} from './component-coolant-pod';
+import { COOLANT_POD_ACTIVE_MODE, COOLANT_POD_READY_MODE, isCoolantPodEquipment } from './component-coolant-pod';
 import { rapidFireAutocannonSupportsJamming } from './component-rapid-fire-autocannon';
 import { getVibrobladeProfileFromFlags } from '../rules/vibroblade-rules';
 import { VIBROBLADE_ON_MODE } from '../vibroblade-mode.model';
@@ -301,14 +277,8 @@ import {
 } from './mek-mechanics-context-v2';
 import type { MekPhysicalAttackProjectionResultV2 } from './mek-physical-attack-v2';
 import type { MekCombatModifierProjectionResult } from './mek-combat-modifiers';
-import {
-    isModularArmorEquipment,
-    MODULAR_ARMOR_POINTS_PER_MOUNT,
-} from '../modular-armor.model';
-import {
-    mekCriticalSlotDirectHitThreshold,
-    mekCriticalSlotMaximumHits,
-} from './mek-critical-slot-rules';
+import { isModularArmorEquipment, MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
+import { mekCriticalSlotDirectHitThreshold, mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
 import {
     projectMekBlowOffV2,
     projectMekCriticalChanceV2,
@@ -333,11 +303,11 @@ import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { MekSystemType } from '../entity/types';
 import {
     isCrewDeathCommitted,
-    type ClassicCrewRuntimeState,
-    type ClassicUnitCommandResult,
-    type ClassicUnitQueryPort,
+    type CBTCrewRuntimeState,
+    type CBTUnitCommandResult,
+    type CBTUnitQueryPort,
     type RuntimeStatePerspective,
-} from './classic-unit-runtime';
+} from './cbt-unit-runtime';
 
 export type StatePerspective = RuntimeStatePerspective;
 export type MekHitArcV2 = 'front' | 'rear' | 'left' | 'right';
@@ -621,13 +591,13 @@ export type CBTUnitCommand = (
 );
 
 export type MekUnitCommandResult = Readonly<
-    ClassicUnitCommandResult<MekUnitRuntimeState>
+    CBTUnitCommandResult<MekUnitRuntimeState>
     & { readonly prototypeHeat?: readonly PrototypeLaserHeatResult[] }
 >;
 
-export type MekEquipmentRowOrderResult = ClassicUnitCommandResult<MekUnitRuntimeState>;
+export type MekEquipmentRowOrderResult = CBTUnitCommandResult<MekUnitRuntimeState>;
 
-export interface MekUnitQueryPort extends ClassicUnitQueryPort {
+export interface MekUnitQueryPort extends CBTUnitQueryPort {
     /** Preview forced-withdrawal fact; unsupported contexts throw instead of guessing. */
     crippled(): boolean;
     /** Current committed BV, excluding force/C3 and crew-skill adjustments. */
@@ -736,7 +706,7 @@ export class CBTUnitInstance {
     #state: MekUnitRuntimeState;
 
     public constructor(
-        public readonly id: UnitInstanceId,
+        public readonly id: string,
         public readonly baselineRef: InstanceBaselineRef,
         public readonly unit: MekEntity,
         runtimeIndex: MekRuntimeIndex,
@@ -779,7 +749,7 @@ export class CBTUnitInstance {
         return this.#source.ruleset;
     }
 
-    public revision(): StateRevision {
+    public revision(): number {
         return this.#state.stateRevision;
     }
 
@@ -1367,7 +1337,7 @@ export class CBTUnitInstance {
         const { equipmentRowOrder: _currentOrder, ...current } = this.#state;
         this.#state = freezeRuntimeState({
             ...current,
-            stateRevision: asStateRevision(this.#state.stateRevision + 1),
+            stateRevision: this.#state.stateRevision + 1,
             ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         });
         return Object.freeze({
@@ -1381,7 +1351,7 @@ export class CBTUnitInstance {
     public installAttackerTargetingReconciliation(
         plan: CBTUnitAttackerTargetingReconciliationPlan,
     ): void {
-        const nextRevision = asStateRevision(this.#state.stateRevision + 1);
+        const nextRevision = this.#state.stateRevision + 1;
         this.#state = freezeRuntimeState({
             ...this.#state,
             stateRevision: nextRevision,
@@ -1450,7 +1420,7 @@ function reduceAttackerTargeting(
     const nextTargeting = reconcileMekWeaponTargetPolicies(
         unit, index, runtime, registry, planned.state,
     );
-    const nextRevision = asStateRevision(state.stateRevision + 1);
+    const nextRevision = state.stateRevision + 1;
     const nextState = freezeRuntimeState({
         ...state,
         stateRevision: nextRevision,
@@ -1594,7 +1564,7 @@ function reduceSelectedWeaponFire(
     }
 
     if (fired === undefined) {
-        const revision = asStateRevision(state.stateRevision + 1);
+        const revision = state.stateRevision + 1;
         return Object.freeze({
             accepted: true,
             changed: true,
@@ -1746,7 +1716,7 @@ function reduce(
 ): MekUnitCommandResult {
     const entity = unit.entity;
     const ruleset = unit.ruleset;
-    const nextRevision = asStateRevision(state.stateRevision + 1);
+    const nextRevision = state.stateRevision + 1;
     let changed: MekUnitRuntimeState | null = null;
     let prototypeHeat: readonly PrototypeLaserHeatResult[] | undefined;
     switch (command.type) {
@@ -2959,7 +2929,7 @@ function reconcileMovementAfterCommand(
     statusTopology: RuntimeEquipmentStatusTopology,
     crewAssignment: CrewAssignment,
     mechanicsContext: MekMechanicsContextV2,
-    nextRevision: StateRevision,
+    nextRevision: number,
 ): MekUnitRuntimeState | null {
     const mutations = committedMekDamageMutations(unit, before, candidate, statusTopology);
     let changed = candidate;
@@ -4817,7 +4787,7 @@ function withCrewState(
 }
 
 function commitCrewDeaths(state: MekUnitRuntimeState): MekUnitRuntimeState {
-    let crew: Map<CrewPositionId, ClassicCrewRuntimeState> | undefined;
+    let crew: Map<CrewPositionId, CBTCrewRuntimeState> | undefined;
     for (const [positionId, current] of state.crew) {
         if (current.wounds < MAX_MEK_CREW_WOUNDS || current.dead === true) continue;
         crew ??= new Map(state.crew);
@@ -5364,7 +5334,7 @@ function validateState(
     const entity = unit.entity;
     const index = unit.index;
     const ruleset = unit.ruleset;
-    asStateRevision(state.stateRevision);
+    state.stateRevision;
     if (typeof state.explicitlyDestroyed !== 'boolean'
         || typeof state.destroyed !== 'boolean') throw new Error('Invalid runtime destroyed state');
     try {

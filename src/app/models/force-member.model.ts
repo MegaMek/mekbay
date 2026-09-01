@@ -5,7 +5,6 @@ import { computed, signal } from '@angular/core';
 import type { CBTForce } from './cbt-force.model';
 import type { ASForceUnit } from './as-force-unit.model';
 import type { BaseEntity } from './entity/base-entity';
-import type { UnitInstanceId } from './runtime/runtime-state';
 import type { UnitSummary } from './unit-summary.model';
 import type { UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type { ForceViewerBVPVDisplayDamage } from './options.model';
@@ -13,10 +12,10 @@ import type { NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
 
 const MAX_RECORD_SHEET_PAGES = 2;
 
-/** A direct Classic member. Its force owns the entity, rules, and sparse runtime. */
+/** A direct CBT member. Its force owns the entity, rules, and sparse runtime. */
 export class CBTForceMember {
     readonly kind: 'cbt';
-    readonly id: UnitInstanceId;
+    readonly id: string;
     readonly force: CBTForce;
     readonly entity: BaseEntity;
     #recordSheets: readonly SVGSVGElement[] = [];
@@ -129,7 +128,7 @@ export class CBTForceMember {
     }
 
     public constructor(
-        id: UnitInstanceId,
+        id: string,
         force: CBTForce,
         entity: BaseEntity,
     ) {
@@ -160,7 +159,7 @@ export class CBTForceMember {
 
     public get rosterGroupId(): string {
         const groupId = this.force.getRosterGroupId(this.id);
-        if (groupId === null) throw new Error(`Classic force member ${this.id} is no longer owned`);
+        if (groupId === null) throw new Error(`CBT force member ${this.id} is no longer owned`);
         return groupId;
     }
 
@@ -193,14 +192,14 @@ export function alphaStrikeMemberSummary(value: ASForceUnit): UnitSummary {
     return value.getSummary();
 }
 
-/** Entity for loaded Classic members; lightweight catalog projection for Alpha Strike. */
+/** Entity for loaded CBT members; lightweight catalog projection for Alpha Strike. */
 export function forceMemberPresentationUnit(value: ForceMember): ForceMemberPresentationUnit {
     return isCBTForceMember(value) ? value.entity : value.getSummary();
 }
 
 /**
  * Explicit catalog boundary for search-derived metadata and cross-system admission.
- * Classic members never retain the returned projection.
+ * CBT members never retain the returned projection.
  */
 export function resolveForceMemberCatalogSummary(
     value: ForceMember,
@@ -249,7 +248,7 @@ export function forceMemberAdjustedValue(
         : value.adjustedBattleValue() ?? value.entity.battleValue();
 }
 
-/** Pre-skill BV/PV under the selected Classic damage policy. */
+/** Pre-skill BV/PV under the selected CBT damage policy. */
 export function forceMemberBaseValue(
     value: ForceMember,
     damageMode: ForceViewerBVPVDisplayDamage,

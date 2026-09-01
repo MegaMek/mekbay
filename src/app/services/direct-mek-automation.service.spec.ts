@@ -6,7 +6,6 @@ import { TestBed } from '@angular/core/testing';
 import { resolveAutomaticFallingDamage } from '../components/falling-damage-dialog/falling-damage-dialog.component';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
-import { asUnitInstanceId } from '../models/runtime/runtime-state';
 import type { CBTUnitCommand } from '../models/runtime/unit-instance';
 import {
     createDirectExplosionRuntimeFixture,
@@ -15,15 +14,9 @@ import {
     type DirectMekRuntimeFixture,
 } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import { CBTAutomationService } from './cbt-automation.service';
-import {
-    CBTAutomationCheckService,
-    resolveAutomationChecksAutomatically,
-} from './cbt-automation-check.service';
+import { CBTAutomationCheckService, resolveAutomationChecksAutomatically } from './cbt-automation-check.service';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
-import {
-    DirectMekAutomationService,
-    type DirectMekAutomationDispatch,
-} from './direct-mek-automation.service';
+import { DirectMekAutomationService, type DirectMekAutomationDispatch } from './direct-mek-automation.service';
 import { OptionsService } from './options.service';
 import { MekFallingAutomationService } from './mek-falling-automation.service';
 
@@ -497,7 +490,7 @@ describe('DirectMekAutomationService', () => {
     });
 
     it('uses the heat check as the only explosion gate and resumes a closed crew check', async () => {
-        const instanceId = asUnitInstanceId('unit:automation:heat-ammo-cancel');
+        const instanceId = 'unit:automation:heat-ammo-cancel';
         const harness = createHarnessForFixture(
             createDirectExplosionRuntimeFixture('core-2026', {}, instanceId),
             'core-2026',
@@ -595,8 +588,8 @@ describe('DirectMekAutomationService', () => {
     });
 
     it('reviews every Mek in one end-turn heat batch before committing any turn', async () => {
-        const leftId = asUnitInstanceId('unit:automation:batch:left');
-        const rightId = asUnitInstanceId('unit:automation:batch:right');
+        const leftId = 'unit:automation:batch:left';
+        const rightId = 'unit:automation:batch:right';
         const left = createHarnessForFixture(
             createDirectMekRuntimeFixture('core-2026', leftId),
             'core-2026',
@@ -634,9 +627,9 @@ describe('DirectMekAutomationService', () => {
     });
 
     it('groups End Phase consciousness recoveries for every Mek in one review', async () => {
-        const leftId = asUnitInstanceId('unit:automation:phase:left');
-        const rightId = asUnitInstanceId('unit:automation:phase:right');
-        const psrId = asUnitInstanceId('unit:automation:phase:psr');
+        const leftId = 'unit:automation:phase:left';
+        const rightId = 'unit:automation:phase:right';
+        const psrId = 'unit:automation:phase:psr';
         const left = createHarnessForFixture(
             createDirectMekRuntimeFixture('core-2026', leftId),
             'core-2026',
@@ -899,7 +892,7 @@ describe('DirectMekAutomationService', () => {
     });
 
     it('uses a healthy alternate Mek crew member for heat shutdown checks', async () => {
-        const instanceId = asUnitInstanceId('unit:automation:alternate-pilot');
+        const instanceId = 'unit:automation:alternate-pilot';
         const harness = createHarnessForFixture(
             createDirectTripodRuntimeFixture('total-warfare', instanceId),
             'total-warfare',
@@ -1140,7 +1133,7 @@ describe('DirectMekAutomationService', () => {
     });
 
     it('carries Total Warfare CASE II into each secondary explosion critical check', async () => {
-        const instanceId = asUnitInstanceId('unit:automation:case-ii');
+        const instanceId = 'unit:automation:case-ii';
         const fixture = createDirectExplosionRuntimeFixture(
             'total-warfare',
             { protection: 'case-ii' },
@@ -1485,7 +1478,7 @@ describe('DirectMekAutomationService', () => {
     });
 
     it('consumes a destroyed-location critical that rolls a non-explosive slot', async () => {
-        const instanceId = asUnitInstanceId('unit:automation:destroyed-explosive-location');
+        const instanceId = 'unit:automation:destroyed-explosive-location';
         const fixture = createDirectExplosionRuntimeFixture('core-2026', {}, instanceId);
         const harness = createHarnessForFixture(fixture, 'core-2026', instanceId);
         const location = [...fixture.index.locations.values()]
@@ -1539,7 +1532,7 @@ describe('DirectMekAutomationService', () => {
 });
 
 function createHarness(ruleset: 'core-2026' | 'total-warfare' = 'core-2026') {
-    const instanceId = asUnitInstanceId(`unit:automation:${ruleset}`);
+    const instanceId = `unit:automation:${ruleset}`;
     const fixture = createDirectMekRuntimeFixture(ruleset, instanceId);
     return createHarnessForFixture(fixture, ruleset, instanceId);
 }
@@ -1547,7 +1540,7 @@ function createHarness(ruleset: 'core-2026' | 'total-warfare' = 'core-2026') {
 function createHarnessForFixture(
     fixture: DirectMekRuntimeFixture,
     ruleset: 'core-2026' | 'total-warfare',
-    instanceId: ReturnType<typeof asUnitInstanceId>,
+    instanceId: string,
 ) {
     const snapshot = (): CBTUnitSnapshot => Object.freeze({
         instanceId,

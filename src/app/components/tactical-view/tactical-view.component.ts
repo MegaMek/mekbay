@@ -69,7 +69,7 @@ import { ToastService } from '../../services/toast.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { ClassicUnitViewModeService } from '../../services/classic-unit-view-mode.service';
+import { CBTUnitViewModeService } from '../../services/cbt-unit-view-mode.service';
 import { CBTAutomationToastService } from '../../services/cbt-automation-toast.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
@@ -171,7 +171,7 @@ export class TacticalViewComponent {
     private readonly injector = inject(Injector);
     private readonly overlay = inject(Overlay);
     private readonly overlayManager = inject(OverlayManagerService);
-    private readonly unitViewMode = inject(ClassicUnitViewModeService);
+    private readonly unitViewMode = inject(CBTUnitViewModeService);
     private readonly automationToasts = inject(CBTAutomationToastService);
     private readonly automationToastVisibilityOwner = {};
     private readonly mekInteractions = inject(PageViewerMekInteractionService);
@@ -523,7 +523,7 @@ export class TacticalViewComponent {
     protected editCrew(): void {
         const member = this.member();
         if (!member || this.readOnly()) return;
-        void this.pilotEditor.editClassicMember(member.force, member.id);
+        void this.pilotEditor.editCBTMember(member.force, member.id);
     }
 
     protected percentage(remaining: number, maximum: number): number {

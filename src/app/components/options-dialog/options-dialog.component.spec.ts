@@ -70,7 +70,7 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplay', 'both');
     });
 
-    it('persists the selected Classic force viewer damage policy', () => {
+    it('persists the selected CBT force viewer damage policy', () => {
         const setOption = jasmine.createSpy('setOption');
         const component = configureComponent({ options: () => ({}), setOption });
         const select = document.createElement('select');
@@ -82,13 +82,13 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplayDamage', 'pristine');
     });
 
-    it('persists the selected Classic unit view', () => {
+    it('persists the selected CBT unit view', () => {
         const setOption = jasmine.createSpy('setOption');
         const component = configureComponent({ options: () => ({}), setOption });
 
-        component.onClassicUnitViewModeChange(true);
+        component.onCBTUnitViewModeChange(true);
 
-        expect(setOption).toHaveBeenCalledOnceWith('classicUnitViewMode', 'tactical');
+        expect(setOption).toHaveBeenCalledOnceWith('cbtUnitViewMode', 'tactical');
     });
 
     it('persists each CBT automation mode independently', () => {

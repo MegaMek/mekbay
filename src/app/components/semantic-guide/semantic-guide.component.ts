@@ -74,13 +74,13 @@ export class SemanticGuideComponent {
     }
 
     /** Filters available for Classic BattleTech */
-    cbtFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.CLASSIC));
+    cbtFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.CBT));
     cbtBooleanFilters = computed(() => this.cbtFilters().filter(f => f.type === 'boolean'));
     cbtDropdownFilters = computed(() => this.cbtFilters().filter(f => f.type === 'dropdown'));
     cbtRangeFilters = computed(() => this.cbtFilters().filter(f => f.type === 'range'));
 
     /** Filters available for Alpha Strike */
-    asFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.ALPHA_STRIKE));
+    asFilters = computed<FilterInfo[]>(() => this.getFiltersForSystem(GameSystem.AS));
     asBooleanFilters = computed(() => this.asFilters().filter(f => f.type === 'boolean'));
     asDropdownFilters = computed(() => this.asFilters().filter(f => f.type === 'dropdown'));
     asRangeFilters = computed(() => {

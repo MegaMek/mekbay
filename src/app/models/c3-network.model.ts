@@ -9,30 +9,46 @@ import type { SerializedC3NetworkGroup } from './force-serialization';
 import { C3_EMERGENCY_MASTER_FLAG } from './c3-emergency-master.model';
 import type { Equipment } from './equipment.model';
 
-/**
- * C3 Network Types based on equipment flags
- */
-export enum C3NetworkType {
-    /** Standard C3 Network (Master/Slave) */
-    C3 = 'c3',
-    /** C3i Network */
-    C3I = 'c3i',
-    /** Naval C3 */
-    NAVAL = 'naval',
-    /** Nova CEWS */
-    NOVA = 'nova'
+export const C3NetworkType = Object.freeze({
+    C3: 'c3',
+    C3I: 'c3i',
+    NAVAL: 'naval',
+    NOVA: 'nova',
+} as const);
+export type C3NetworkType = typeof C3NetworkType[keyof typeof C3NetworkType];
+
+export const C3Role = Object.freeze({
+    MASTER: 'master',
+    SLAVE: 'slave',
+    PEER: 'peer',
+} as const);
+export type C3Role = typeof C3Role[keyof typeof C3Role];
+
+/** Role stored by a configured force network; a member may be a slave or sub-master. */
+export const C3NetworkRole = Object.freeze({
+    MASTER: 'master',
+    MEMBER: 'member',
+    PEER: 'peer',
+} as const);
+export type C3NetworkRole = typeof C3NetworkRole[keyof typeof C3NetworkRole];
+
+export function isC3NetworkType(value: unknown): value is C3NetworkType {
+    return value === C3NetworkType.C3
+        || value === C3NetworkType.C3I
+        || value === C3NetworkType.NAVAL
+        || value === C3NetworkType.NOVA;
 }
 
-/**
- * C3 Equipment Role
- */
-export enum C3Role {
-    /** C3 Master - can have slaves connected */
-    MASTER = 'master',
-    /** C3 Slave - connects to a master */
-    SLAVE = 'slave',
-    /** C3i/Nova/Naval - any unit can be master or slave */
-    PEER = 'peer'
+export function isC3Role(value: unknown): value is C3Role {
+    return value === C3Role.MASTER
+        || value === C3Role.SLAVE
+        || value === C3Role.PEER;
+}
+
+export function isC3NetworkRole(value: unknown): value is C3NetworkRole {
+    return value === C3NetworkRole.MASTER
+        || value === C3NetworkRole.MEMBER
+        || value === C3NetworkRole.PEER;
 }
 
 export function c3NetworkTypeName(type: C3NetworkType): string {
@@ -226,8 +242,8 @@ export function unsupportedMekC3HeatFlag(
 }
 
 export interface C3EquipmentTraits {
-    readonly networkTypes: readonly ('c3' | 'c3i' | 'naval' | 'nova')[];
-    readonly ordinaryRoles: readonly ('master' | 'slave' | 'peer')[];
+    readonly networkTypes: readonly C3NetworkType[];
+    readonly ordinaryRoles: readonly C3Role[];
     readonly emergencyMaster: boolean;
     readonly boosted: boolean;
     readonly contradictoryEmergencyRole: boolean;
@@ -244,7 +260,7 @@ export function c3EquipmentTraits(flags: ReadonlySet<string>): C3EquipmentTraits
         ...(flags.has(C3_FLAGS.NOVA) ? ['nova' as const] : []),
     ]);
     const emergencyMaster = flags.has(C3_FLAGS.C3EM);
-    const ordinaryRoles: readonly ('master' | 'slave' | 'peer')[] = Object.freeze(
+    const ordinaryRoles: readonly C3Role[] = Object.freeze(
         networkTypes.length === 1 && networkTypes[0] !== 'c3'
         ? ['peer' as const]
         : [

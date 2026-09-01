@@ -142,7 +142,7 @@ export class UnitDetailsDialogComponent {
     });
 
     isAlphaStrike = computed<boolean>(() => {
-        return this.currentGameSystem() === GameSystem.ALPHA_STRIKE;
+        return this.currentGameSystem() === GameSystem.AS;
     });
     readonly searchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const currentUnit = this.unitList()[this.unitIndex()];
@@ -225,10 +225,10 @@ export class UnitDetailsDialogComponent {
         const list = isSignal(input) ? input() : input;
         const item = list[this.data.unitIndex];
         if (item instanceof ASForceUnit) {
-            return item.force.gameSystem === GameSystem.ALPHA_STRIKE;
+            return item.force.gameSystem === GameSystem.AS;
         }
         if (this.data.gameSystem) {
-            return this.data.gameSystem === GameSystem.ALPHA_STRIKE;
+            return this.data.gameSystem === GameSystem.AS;
         }
         return this.gameService.isAlphaStrike();
     }
@@ -367,8 +367,8 @@ export class UnitDetailsDialogComponent {
         const tab = this.activeTab();
         const gameSystem = this.gameService.currentGameSystem();
         const isMismatch =
-            (tab === 'Sheet' && gameSystem === GameSystem.ALPHA_STRIKE) ||
-            (tab === 'Card' && gameSystem === GameSystem.CLASSIC);
+            (tab === 'Sheet' && gameSystem === GameSystem.AS) ||
+            (tab === 'Card' && gameSystem === GameSystem.CBT);
         if (!isMismatch) return undefined;
 
         const ref = this.dialogsService.createDialog<GameSystem | undefined>(ConfirmDialogComponent, {
@@ -376,8 +376,8 @@ export class UnitDetailsDialogComponent {
                 title: 'Game System',
                 message: 'Which game system should the new force use?',
                 buttons: [
-                    { label: 'Classic BattleTech', value: GameSystem.CLASSIC },
-                    { label: 'Alpha Strike', value: GameSystem.ALPHA_STRIKE },
+                    { label: 'Classic BattleTech', value: GameSystem.CBT },
+                    { label: 'Alpha Strike', value: GameSystem.AS },
                 ]
             }
         });

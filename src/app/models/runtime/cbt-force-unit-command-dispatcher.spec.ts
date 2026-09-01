@@ -8,12 +8,8 @@ import type { CBTUnitSnapshot } from '../cbt-unit-snapshot';
 import { DirectMekAutomationService } from '../../services/direct-mek-automation.service';
 import { DirectNonMekAutomationService } from '../../services/direct-non-mek-automation.service';
 import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
-import { asUnitInstanceId } from './runtime-state';
 import type { CBTUnitCommand } from './unit-instance';
-import {
-    CBTForceUnitCommandDispatcher,
-    type CBTForceUnitCommandBoundary,
-} from './cbt-force-unit-command-dispatcher';
+import { CBTForceUnitCommandDispatcher, type CBTForceUnitCommandBoundary } from './cbt-force-unit-command-dispatcher';
 
 describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
     it('does not mistake an ordinary completed phase for the End Turn prerequisite', async () => {
@@ -535,10 +531,10 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
     });
 });
 
-const ids = [
-    asUnitInstanceId('unit:dispatcher:batch:left'),
-    asUnitInstanceId('unit:dispatcher:batch:right'),
-] as const;
+const ids: readonly string[] = [
+    'unit:dispatcher:batch:left',
+    'unit:dispatcher:batch:right',
+];
 
 function createBatchHarness(
     automation: Pick<DirectMekAutomationService,
@@ -617,7 +613,7 @@ function createHarness(
     automation: Pick<DirectMekAutomationService, 'prepareCommand' | 'afterCommand'>
         & Partial<Pick<DirectMekAutomationService, 'settleBeforeCommand'>>,
 ) {
-    const instanceId = asUnitInstanceId('unit:dispatcher:automation');
+    const instanceId = 'unit:dispatcher:automation';
     const fixture = createDirectMekRuntimeFixture('core-2026', instanceId);
     const snapshot = (): CBTUnitSnapshot => Object.freeze({
         instanceId,

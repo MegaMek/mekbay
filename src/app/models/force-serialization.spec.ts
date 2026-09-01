@@ -57,7 +57,7 @@ describe('Alpha Strike formation-target serialization', () => {
             version: 2,
             timestamp: '2026-01-01T00:00:00.000Z',
             instanceId: 'force',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'Force',
             groups: [{ id: 'support', formationTargetGroupId: 'target', units: [] }],
         };

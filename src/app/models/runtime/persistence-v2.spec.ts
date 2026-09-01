@@ -4,10 +4,6 @@
 import { asSourceHash, asUnitProviderId, asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asComponentId } from '../entity/entity-identifiers';
 import {
-    asStateRevision,
-    asUnitInstanceId,
-} from './runtime-state';
-import {
     ForceEnvelopeValidationError,
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -26,10 +22,7 @@ import {
     type SerializedCBTForceV2,
 } from './persistence-v2';
 import { MAX_MEK_TURN_COLLECTION_ENTRIES } from './mek-turn-state-v2';
-import {
-    MAX_MEK_HEATSINKS_OFF_V2,
-    MAX_MEK_HEAT_VALUE_V2,
-} from './mek-heat-state-v2';
+import { MAX_MEK_HEATSINKS_OFF_V2, MAX_MEK_HEAT_VALUE_V2 } from './mek-heat-state-v2';
 import { prepareCBTForceRosterMutationPlan } from './cbt-force-roster-owner';
 import { isSerializedNonMekUnit } from './non-mek-unit-persistence';
 
@@ -52,9 +45,9 @@ describe('V2 force persistence', () => {
         const restored = await validateSerializedCBTForceV2(JSON.parse(JSON.stringify(sealed)));
 
         expect(restored.units.map(entry => entry.instanceId)).toEqual([
-            asUnitInstanceId('unit:mek'),
-            asUnitInstanceId('unit:vehicle'),
-            asUnitInstanceId('unit:other'),
+            'unit:mek',
+            'unit:vehicle',
+            'unit:other',
         ]);
         const mek = restored.units[0];
         expect(!isSerializedNonMekUnit(mek.unit)
@@ -70,13 +63,13 @@ describe('V2 force persistence', () => {
             formationId: 'formation:line',
             formationLock: true,
             members: [
-                { instanceId: asUnitInstanceId('unit:mek'), order: 0 },
+                { instanceId: 'unit:mek', order: 0 },
                 {
-                    instanceId: asUnitInstanceId('unit:vehicle'),
+                    instanceId: 'unit:vehicle',
                     order: 1,
                     commander: true,
                 },
-                { instanceId: asUnitInstanceId('unit:other'), order: 2 },
+                { instanceId: 'unit:other', order: 2 },
             ],
         });
     });
@@ -209,7 +202,7 @@ describe('V2 force persistence', () => {
             roster: plannedForce.roster,
             command: {
                 kind: 'set-commander',
-                instanceId: asUnitInstanceId('unit:mek'),
+                instanceId: 'unit:mek',
                 commander: true,
             },
         });
@@ -749,7 +742,7 @@ function mixedForce(): SerializedCBTForceV2 {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId: asForceId('force:test'),
-        forceRevision: asStateRevision(4),
+        forceRevision: 4,
         scenarioRules: { schemaVersion: 1, values: {} },
         history: emptyRuntimeHistory(),
         units: [mek, vehicle, other],
@@ -770,22 +763,22 @@ function mixedForce(): SerializedCBTForceV2 {
             }],
         },
         encounter: {
-            encounterRevision: asStateRevision(0),
-            state: { schemaVersion: 2, encounterRevision: asStateRevision(0), facts: [] },
+            encounterRevision: 0,
+            state: { schemaVersion: 2, encounterRevision: 0, facts: [] },
         },
     };
 }
 
 function v2Entry(instance: string, uuid: typeof UUID_A): SerializedForceUnitEntryV2 {
-    const instanceId = asUnitInstanceId(instance);
+    const instanceId = instance;
     return {
         instanceId,
-        stateRevision: asStateRevision(3),
+        stateRevision: 3,
         unit: v2Unit(instanceId, uuid),
     };
 }
 
-function v2Unit(instanceId: ReturnType<typeof asUnitInstanceId>, uuid: typeof UUID_A): SerializedCBTUnitV2 {
+function v2Unit(instanceId: string, uuid: typeof UUID_A): SerializedCBTUnitV2 {
     const target = asSavedTargetRef('location:ct:internal');
     const entity = {
         origin: 'megamek' as const,
@@ -811,7 +804,7 @@ function v2Unit(instanceId: ReturnType<typeof asUnitInstanceId>, uuid: typeof UU
             schemaVersion: 2,
             values: { id: 'default', crewAssignment: { schemaVersion: 1, positions: [] } },
         },
-        stateRevision: asStateRevision(3),
+        stateRevision: 3,
         ruleChecks: { schemaVersion: 1, entries: [] },
         movementPsr: { schemaVersion: 2 },
         attackerTargeting: { schemaVersion: 1, components: [], actions: [], targets: [] },

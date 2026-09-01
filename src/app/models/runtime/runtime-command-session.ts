@@ -2,7 +2,6 @@
 
 import type { SerializedNonMekUnit } from './non-mek-unit-persistence';
 import type { SerializedCBTUnitV2 } from './persistence-v2';
-import type { UnitInstanceId } from './runtime-state';
 import type {
     RuntimeHistoryEvent,
     RuntimeHistoryEventInput,
@@ -20,7 +19,7 @@ import {
 /** Session-only restoration data. It is never part of force persistence. */
 export interface RuntimeCommandCheckpoint {
     readonly units: readonly Readonly<{
-        readonly instanceId: UnitInstanceId;
+        readonly instanceId: string;
         readonly unit: SerializedCBTUnitV2 | SerializedNonMekUnit;
     }>[];
 }
@@ -335,7 +334,7 @@ function mergeRuntimeHistoryTransition(
 
 export function pruneRuntimeCommandSession(
     session: RuntimeCommandSession,
-    removed: ReadonlySet<UnitInstanceId>,
+    removed: ReadonlySet<string>,
 ): RuntimeCommandSession {
     const entries: RuntimeCommandEntry[] = [];
     let cursor = 0;
@@ -351,7 +350,7 @@ function mergeCheckpoints(
     entries: readonly RuntimeCommandEntry[],
     side: 'before' | 'after',
 ): RuntimeCommandCheckpoint {
-    const units = new Map<UnitInstanceId, RuntimeCommandCheckpoint['units'][number]>();
+    const units = new Map<string, RuntimeCommandCheckpoint['units'][number]>();
     const rows = side === 'before' ? entries : [...entries].reverse();
     for (const entry of rows) {
         const checkpoint = entry[side];

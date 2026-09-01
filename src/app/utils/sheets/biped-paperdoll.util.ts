@@ -1,6 +1,6 @@
 import { CanonPipRenderer } from './canon-pip-renderer';
 import { CapitalShipPipRenderer } from './capital-ship-pip-renderer';
-import { ClassicPipRenderer } from './classic-pip-renderer';
+import { CBTPipRenderer } from './cbt-pip-renderer';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
 import { GenericPipRenderer } from './generic-pip-renderer';
 import { PipRendererShared } from './pip-renderer.shared';
@@ -810,7 +810,7 @@ export class BipedPaperdollUtil {
         requestedLayout: BipedPaperdollPipLayout,
         context: PlaceholderRenderContext,
     ): SVGGElement | null {
-        // Classic paperdoll assets describe their usable location bounds with
+        // CBT paperdoll assets describe their usable location bounds with
         // fill profiles.  Canon coordinates are still relative to those same
         // bounds, so they are a valid canonical container as well.
         const primaryPips = (requestedLayout === 'canon' ? group.canon || group.fill : group.fill)
@@ -863,7 +863,7 @@ export class BipedPaperdollUtil {
             case 'classic': {
                 const profile = PipShapeProfile.rectangle(0, 0, width, height);
                 return profile
-                    ? ClassicPipRenderer.createPips(profile, count, pipOptions, group.type, group.location)
+                    ? CBTPipRenderer.createPips(profile, count, pipOptions, group.type, group.location)
                     : null;
             }
             case 'generic':
@@ -1000,7 +1000,7 @@ export class BipedPaperdollUtil {
         // These spans come directly from MegaMekLab-authored paperdolls. Preserve
         // ArmorPipLayout's row rhythm for pixel parity while retaining the public
         // "distributed" policy/metadata selected by the family layout.
-        return ClassicPipRenderer.createPips(
+        return CBTPipRenderer.createPips(
             profile,
             count,
             options,
@@ -1079,7 +1079,7 @@ export class BipedPaperdollUtil {
         sections.forEach((section, index) => {
             const allocation = allocations[index];
             if (allocation <= 0) return;
-            const pips = ClassicPipRenderer.createPips(
+            const pips = CBTPipRenderer.createPips(
                 section.profile,
                 allocation,
                 options,
@@ -1161,7 +1161,7 @@ export class BipedPaperdollUtil {
                     bounds.maxY - bounds.minY,
                 );
                 const pips = profile
-                    ? ClassicPipRenderer.createPips(profile, count, options, type, location)
+                    ? CBTPipRenderer.createPips(profile, count, options, type, location)
                     : null;
                 if (pips && sourceTransform) pips.setAttribute('transform', sourceTransform);
                 return pips;
@@ -1258,7 +1258,7 @@ export class BipedPaperdollUtil {
         const pipOptions = this.getPlaceholderPipOptions(group.type, context.options);
         switch (layout) {
             case 'classic':
-                return ClassicPipRenderer.createPips(
+                return CBTPipRenderer.createPips(
                     group.profile, count, pipOptions, group.type, group.location);
             case 'distributed':
                 return DistributedPipRenderer.createPips(

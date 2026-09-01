@@ -26,7 +26,6 @@ import {
     type NonMekCrewRuntimeState,
     type NonMekUnitRuntimeState,
 } from './non-mek-unit-instance';
-import type { StateRevision } from './runtime-state';
 import type { CrewAssignment } from './crew-assignment';
 import { entityAmmoLoadout } from './mek-ammo';
 import { projectVehicleRuntimeRules } from '../rules/vehicle-runtime-rules';
@@ -98,7 +97,7 @@ export interface NonMekRecordSheetCrewPosition {
 /** Detached display/edit projection of one non-Mek BaseEntity plus sparse runtime state. */
 export interface NonMekRecordSheetSnapshot {
     readonly entityUuid: string;
-    readonly stateRevision: StateRevision;
+    readonly stateRevision: number;
     readonly displayName: string;
     readonly unitType: UnitType;
     readonly subtype: string;

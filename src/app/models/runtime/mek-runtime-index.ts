@@ -28,27 +28,27 @@ import {
     mekSystemComponentId,
 } from '../entity/mek-entity-conventions';
 import type {
-    ClassicRuntimeArmorFace,
-    ClassicRuntimeComponent,
-    ClassicRuntimeCrewPosition,
-    ClassicRuntimeLocation,
-    ClassicUnitRuntimeIndex,
-} from './classic-unit-runtime';
+    CBTRuntimeArmorFace,
+    CBTRuntimeComponent,
+    CBTRuntimeCrewPosition,
+    CBTRuntimeLocation,
+    CBTUnitRuntimeIndex,
+} from './cbt-unit-runtime';
 
-export interface MekIndexedLocation extends ClassicRuntimeLocation {
+export interface MekIndexedLocation extends CBTRuntimeLocation {
     readonly code: MekLocation;
     readonly armor: MountedArmor;
     readonly structure: MountedStructure;
 }
 
-export type MekIndexedArmorFace = ClassicRuntimeArmorFace;
+export type MekIndexedArmorFace = CBTRuntimeArmorFace;
 
-export interface MekIndexedEquipment extends ClassicRuntimeComponent {
+export interface MekIndexedEquipment extends CBTRuntimeComponent {
     readonly kind: 'equipment';
     readonly mount: EntityMountedEquipment;
 }
 
-export interface MekIndexedSystem extends ClassicRuntimeComponent {
+export interface MekIndexedSystem extends CBTRuntimeComponent {
     readonly kind: 'system';
     readonly systemType: MekSystemType;
     readonly placements: readonly Readonly<{
@@ -68,7 +68,7 @@ export interface MekIndexedCriticalSlot {
     readonly armored: boolean;
 }
 
-export type MekIndexedCrewPosition = ClassicRuntimeCrewPosition;
+export type MekIndexedCrewPosition = CBTRuntimeCrewPosition;
 
 export interface MekIndexedBay {
     readonly kind: 'weapon-bay' | 'machine-gun-array';
@@ -88,7 +88,7 @@ export interface MekIndexedRelationships {
  * Equipment entries point to the actual entity mounts. This index owns no
  * construction facts, equipment profiles, calculations, or runtime state.
  */
-export interface MekRuntimeIndex extends ClassicUnitRuntimeIndex {
+export interface MekRuntimeIndex extends CBTUnitRuntimeIndex {
     readonly locations: ReadonlyMap<LocationId, MekIndexedLocation>;
     readonly armorFaces: ReadonlyMap<ArmorFaceId, MekIndexedArmorFace>;
     readonly components: ReadonlyMap<ComponentId, MekIndexedComponent>;

@@ -60,7 +60,7 @@ export class CustomizeForcePackDialogComponent {
     private taggingService = inject(TaggingService);
     layoutService = inject(LayoutService);
     forceBuilderService = inject(ForceBuilderService);
-    ALPHA_STRIKE = GameSystem.ALPHA_STRIKE;
+    ALPHA_STRIKE = GameSystem.AS;
 
     // The pack we're customizing
     pack = this.data.pack;

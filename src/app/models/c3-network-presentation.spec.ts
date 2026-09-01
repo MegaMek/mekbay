@@ -7,7 +7,6 @@ import {
     CBTEncounterRuntime,
     type EncounterNetwork,
 } from './runtime/encounter-runtime';
-import { asUnitInstanceId } from './runtime/runtime-state';
 import { C3NetworkType, C3Role, type C3Component } from './c3-network.model';
 import {
     projectC3EditorNetworksToEncounter,
@@ -20,7 +19,7 @@ import {
 function component(
     id: string,
     role: C3Role,
-    networkType = C3NetworkType.C3,
+    networkType: C3NetworkType = C3NetworkType.C3,
     index = 0,
 ): C3Component {
     return Object.freeze({
@@ -34,14 +33,14 @@ function component(
 
 function unit(id: string, ...components: C3Component[]): C3EncounterPresentationUnit {
     return Object.freeze({
-        instanceId: asUnitInstanceId(id),
+        instanceId: id,
         c3Components: Object.freeze(components),
     });
 }
 
 describe('C3 encounter/editor presentation', () => {
     it('preserves a member Master capability while promoting an explicit emergency root', () => {
-        const commandId = asUnitInstanceId('command');
+        const commandId = 'command';
         const command = [
             component('master-a', C3Role.MASTER, C3NetworkType.C3, 0),
             component('master-b', C3Role.MASTER, C3NetworkType.C3, 1),
@@ -58,7 +57,7 @@ describe('C3 encounter/editor presentation', () => {
         expect(projectEncounterC3Components(commandId, command, [internal]).map(value => value.role))
             .toEqual([C3Role.MASTER, C3Role.MASTER]);
 
-        const emergencyId = asUnitInstanceId('emergency');
+        const emergencyId = 'emergency';
         const emergency = component('emergency-master', C3Role.SLAVE);
         const activated: EncounterNetwork = {
             id: asEncounterNetworkId('activated'),

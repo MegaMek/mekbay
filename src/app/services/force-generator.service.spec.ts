@@ -20,32 +20,32 @@ import { DataService } from './data.service';
 import type { ForceGenerationContext } from './force-generator.service';
 import {
     ForceGeneratorService,
-    getGeneratedClassicCrewSkill,
-    getForceGenerationClassicSkillPairs,
-    normalizeGeneratedClassicCrew,
+    getGeneratedCBTCrewSkill,
+    getForceGenerationCBTSkillPairs,
+    normalizeGeneratedCBTCrew,
 } from './force-generator.service';
 import { OptionsService } from './options.service';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 
-describe('generated Classic crew normalization', () => {
+describe('generated CBT crew normalization', () => {
     it('creates every LAM crew member with matching ground and aerospace skills', () => {
         const unit = createEmptyUnit({ subtype: 'Land-Air BattleMek', crewSize: 2 });
 
-        const crew = normalizeGeneratedClassicCrew(unit, undefined, 6, 7, 'Pilot');
+        const crew = normalizeGeneratedCBTCrew(unit, undefined, 6, 7, 'Pilot');
 
         expect(crew).toEqual([
             { id: 0, name: 'Pilot', gunnery: 6, piloting: 7, asfGunnery: 6, asfPiloting: 7 },
             { id: 1, name: '', gunnery: 6, piloting: 7, asfGunnery: 6, asfPiloting: 7 },
         ]);
-        expect(getGeneratedClassicCrewSkill(crew, 'gunnery', 4)).toBe(6);
-        expect(getGeneratedClassicCrewSkill(crew, 'piloting', 5)).toBe(7);
+        expect(getGeneratedCBTCrewSkill(crew, 'gunnery', 4)).toBe(6);
+        expect(getGeneratedCBTCrewSkill(crew, 'piloting', 5)).toBe(7);
     });
 
     it('preserves matching crew IDs, drops obsolete crew, and fills new positions', () => {
         const unit = createEmptyUnit({ crewSize: 2 });
-        const crew = normalizeGeneratedClassicCrew(unit, [
+        const crew = normalizeGeneratedCBTCrew(unit, [
             { id: 0, name: 'Pilot', gunnery: 3, piloting: 4 },
             { id: 9, name: 'Obsolete', gunnery: 0, piloting: 0 },
         ], 5, 6);
@@ -58,7 +58,7 @@ describe('generated Classic crew normalization', () => {
 
     it('enforces fixed Piloting and leaves ordinary crewless units compact', () => {
         const protoMek = createEmptyUnit({ type: 'ProtoMek', subtype: 'ProtoMek', crewSize: 1 });
-        const normalized = normalizeGeneratedClassicCrew(
+        const normalized = normalizeGeneratedCBTCrew(
             protoMek,
             [{ id: 0, name: '', gunnery: 2, piloting: 0 }],
             2,
@@ -66,12 +66,12 @@ describe('generated Classic crew normalization', () => {
         );
 
         expect(normalized?.[0].piloting).toBe(5);
-        expect(normalizeGeneratedClassicCrew(createEmptyUnit(), undefined, 4, 5)).toBeUndefined();
-        expect(getGeneratedClassicCrewSkill(undefined, 'gunnery', 4)).toBe(4);
+        expect(normalizeGeneratedCBTCrew(createEmptyUnit(), undefined, 4, 5)).toBeUndefined();
+        expect(getGeneratedCBTCrewSkill(undefined, 'gunnery', 4)).toBe(4);
     });
 });
 
-describe('Classic generation skill pairs', () => {
+describe('CBT generation skill pairs', () => {
     it('ignores Piloting range and max delta for fixed-Piloting units', () => {
         const conventionalInfantry = createEmptyUnit({
             type: 'Infantry',
@@ -79,7 +79,7 @@ describe('Classic generation skill pairs', () => {
             canAntiMech: false,
         });
 
-        const pairs = getForceGenerationClassicSkillPairs({
+        const pairs = getForceGenerationCBTSkillPairs({
             gunnery: { min: 4, max: 4 },
             piloting: { min: 0, max: 1 },
             maxDelta: 1,
@@ -89,7 +89,7 @@ describe('Classic generation skill pairs', () => {
     });
 
     it('still applies max delta to editable Piloting', () => {
-        const pairs = getForceGenerationClassicSkillPairs({
+        const pairs = getForceGenerationCBTSkillPairs({
             gunnery: { min: 4, max: 4 },
             piloting: { min: 2, max: 6 },
             maxDelta: 1,
@@ -324,7 +324,7 @@ describe('ForceGeneratorService', () => {
                 classic: { min: 7900, max: 8000 },
                 alphaStrike: { min: 290, max: 300 },
             },
-        }, 0, GameSystem.CLASSIC);
+        }, 0, GameSystem.CBT);
 
         expect(defaults).toEqual({
             classic: { min: 7900, max: 8000 },
@@ -338,7 +338,7 @@ describe('ForceGeneratorService', () => {
                 classic: { min: 7900, max: 8000 },
                 alphaStrike: { min: 290, max: 300 },
             },
-        }, 6500, GameSystem.CLASSIC);
+        }, 6500, GameSystem.CBT);
 
         expect(defaults.classic).toEqual({ min: 6500, max: 6500 });
         expect(defaults.alphaStrike).toEqual({ min: 290, max: 300 });
@@ -693,7 +693,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unit],
             context,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 10 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -1060,7 +1060,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [knownUnit, unknownUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -1090,7 +1090,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [availableUnit, unavailableUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -1114,7 +1114,7 @@ describe('ForceGeneratorService', () => {
 
         const baseRequest = {
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -1153,7 +1153,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [lockedPantherA, lockedPantherB, matchingPanther, wrongChassis],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 3,
             maxUnitCount: 4,
@@ -1204,7 +1204,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [vedette, goblin],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 3,
             maxUnitCount: 3,
@@ -1259,7 +1259,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [commandVehicle, secondCommandVehicle, ...supportVehicles],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 300, max: 300 },
             minUnitCount: 5,
             maxUnitCount: 8,
@@ -1300,7 +1300,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [lineA, lineB, lineC, artilleryA, artilleryB],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 4,
             maxUnitCount: 4,
@@ -1333,7 +1333,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [lineA, lineB, artilleryA, artilleryB],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 180, max: 185 },
             minUnitCount: 4,
             maxUnitCount: 4,
@@ -1378,7 +1378,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [...commandUnits, ...assaultUnits],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 8,
             maxUnitCount: 8,
@@ -1393,7 +1393,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.length).toBe(8);
         expect(preview.targetFormationGroups?.map((group) => group.formationId)).toEqual(['command-lance', 'assault-lance']);
-        expect(preview.targetFormationGroups?.every((group) => group.validatedGameSystem === GameSystem.ALPHA_STRIKE)).toBeTrue();
+        expect(preview.targetFormationGroups?.every((group) => group.validatedGameSystem === GameSystem.AS)).toBeTrue();
         expect(preview.explanationLines.join('\n')).not.toContain('Result note: Target formations achieved');
         const targetValidationSpy = spyOn(service as any, 'isGeneratedPreviewValidForFormation').and.callThrough();
         const previewEntry = service.createForcePreviewEntry(preview);
@@ -1420,7 +1420,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: commandUnits,
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 4,
             maxUnitCount: 4,
@@ -1469,7 +1469,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [...commandUnits, ...antiAirUnits, ...assaultUnits],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 8,
             maxUnitCount: 8,
@@ -1520,7 +1520,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [...assaultUnits, ...commandUnits],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 800, max: 800 },
             minUnitCount: 20,
             maxUnitCount: 20,
@@ -1550,7 +1550,7 @@ describe('ForceGeneratorService', () => {
         const underBudgetPreview = service.buildPreview({
             eligibleUnits: [...assaultUnits, ...commandUnits],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 810, max: 810 },
             minUnitCount: 20,
             maxUnitCount: 20,
@@ -1624,7 +1624,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits,
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 800, max: 800 },
             minUnitCount: 23,
             maxUnitCount: 25,
@@ -1684,7 +1684,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits,
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 120, max: 120 },
             minUnitCount: 12,
             maxUnitCount: 12,
@@ -1723,7 +1723,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: commandUnits,
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 5,
             maxUnitCount: 5,
@@ -1762,7 +1762,7 @@ describe('ForceGeneratorService', () => {
         spyOn(Math, 'random').and.returnValue(0);
 
         const context = service.resolveGenerationContext(anvilUnits, {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             targetFormations: [
                 { formationId: 'anvil-lance', count: 1 },
                 { formationId: 'battle-lance', count: 1 },
@@ -1771,7 +1771,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: anvilUnits,
             context,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 3,
             maxUnitCount: 3,
@@ -1820,13 +1820,13 @@ describe('ForceGeneratorService', () => {
             skills: { gunnery: number; piloting: number },
         ) => {
             const context = service.resolveGenerationContext(eligibleUnits, {
-                gameSystem: GameSystem.ALPHA_STRIKE,
+                gameSystem: GameSystem.AS,
                 targetFormationId: formationId,
             });
             const preview = service.buildPreview({
                 eligibleUnits,
                 context,
-                gameSystem: GameSystem.ALPHA_STRIKE,
+                gameSystem: GameSystem.AS,
                 budgetRange: { min: 0, max: 0 },
                 minUnitCount: eligibleUnits.length,
                 maxUnitCount: eligibleUnits.length,
@@ -1879,7 +1879,7 @@ describe('ForceGeneratorService', () => {
         spyOn(Math, 'random').and.returnValue(0.75);
 
         const context = service.resolveGenerationContext([strategicUnit], {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             targetFormationId: 'strategic-command-star',
         });
 
@@ -1920,7 +1920,7 @@ describe('ForceGeneratorService', () => {
         spyOn(Math, 'random').and.returnValue(0.75);
 
         const context = service.resolveGenerationContext([strategicUnit], {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             targetFormationId: 'strategic-command-star',
         });
 
@@ -1948,7 +1948,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits,
             context: createContext(clanWolf, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 3,
             maxUnitCount: 3,
@@ -1985,7 +1985,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits,
             context: createContext(clanJadeFalcon, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 100, max: 300 },
             minUnitCount: 5,
             maxUnitCount: 8,
@@ -2024,7 +2024,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits,
             context: createContext(clanWolf, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 4,
             maxUnitCount: 4,
@@ -2062,7 +2062,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits,
             context: createContext(clanWolf, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 3,
             maxUnitCount: 3,
@@ -2097,7 +2097,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits,
             context: createContext(clanWolf, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 3,
             maxUnitCount: 3,
@@ -2134,7 +2134,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits,
             context: createContext(clanWolf, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 3,
             maxUnitCount: 3,
@@ -2172,7 +2172,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits,
             context: createContext(clanHellsHorses, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 100, max: 300 },
             minUnitCount: 5,
             maxUnitCount: 8,
@@ -2219,7 +2219,7 @@ describe('ForceGeneratorService', () => {
         spyOn(Math, 'random').and.returnValue(0);
 
         const context = service.resolveGenerationContext(anvilUnits, {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             targetFormations: [
                 { formationId: 'anvil-lance', count: 1 },
                 { formationId: 'rifle-lance', count: 1 },
@@ -2228,7 +2228,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: anvilUnits,
             context,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 3,
             maxUnitCount: 3,
@@ -2271,7 +2271,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [...assaultUnits, ...fillerUnits],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 5,
             maxUnitCount: 5,
@@ -2300,7 +2300,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2318,7 +2318,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.some((line) => line.includes('Skill 5'))).toBeTrue();
     });
 
-    it('rolls Classic gunnery and piloting within range while respecting max delta', () => {
+    it('rolls CBT gunnery and piloting within range while respecting max delta', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const unit = createUnit({ id: 1, name: 'Skill Range CBT Unit', bv: 1000 });
@@ -2328,7 +2328,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2355,7 +2355,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.explanationLines.some((line) => line.includes('G/P'))).toBeTrue();
     });
 
-    it('preserves rolled Classic skills when the selected force is already within budget', () => {
+    it('preserves rolled CBT skills when the selected force is already within budget', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const unit = createUnit({ id: 1, name: 'Budget Valid Skill Range Unit', bv: 1000 });
@@ -2365,7 +2365,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             budgetRange: { min: 0, max: 20000 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2384,7 +2384,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units[0].piloting).toBe(5);
     });
 
-    it('rejects Classic skill ranges with no valid max-delta pair', () => {
+    it('rejects CBT skill ranges with no valid max-delta pair', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const unit = createUnit({ id: 1, name: 'Invalid Skill Range Unit', bv: 1000 });
@@ -2392,7 +2392,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2409,7 +2409,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBe('No valid Gunnery/Piloting skill pairs match the selected ranges with max delta 1.');
     });
 
-    it('ignores Classic max delta for fixed-Piloting units', () => {
+    it('ignores CBT max delta for fixed-Piloting units', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const unit = createUnit({
@@ -2423,7 +2423,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2484,7 +2484,7 @@ describe('ForceGeneratorService', () => {
                 availablePairCount: 3,
                 ruleset: null,
             },
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2532,7 +2532,7 @@ describe('ForceGeneratorService', () => {
                 availablePairCount: 3,
                 ruleset: null,
             },
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2575,7 +2575,7 @@ describe('ForceGeneratorService', () => {
                 availablePairCount: 3,
                 ruleset: null,
             },
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2639,7 +2639,7 @@ describe('ForceGeneratorService', () => {
                 availablePairCount: 2,
                 ruleset: null,
             } as ForceGenerationContext,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2675,7 +2675,7 @@ describe('ForceGeneratorService', () => {
         const request = {
             eligibleUnits: [unit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 5, max: 5 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2705,7 +2705,7 @@ describe('ForceGeneratorService', () => {
         const request = {
             eligibleUnits: [firstUnit] as UnitSummary[],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2769,7 +2769,7 @@ describe('ForceGeneratorService', () => {
         service.buildPreview({
             eligibleUnits: [unitA, unitB],
             context: baseContext,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2784,7 +2784,7 @@ describe('ForceGeneratorService', () => {
                 ...baseContext,
                 forceFaction: federatedSuns,
             },
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2833,7 +2833,7 @@ describe('ForceGeneratorService', () => {
         const buildAvailabilityWeightCacheSpy = spyOn(service as any, 'buildAvailabilityWeightCache').and.callThrough();
         const baseRequest = {
             eligibleUnits: [unitA, unitB],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2893,7 +2893,7 @@ describe('ForceGeneratorService', () => {
         const request = {
             eligibleUnits: [unitA, unitB],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -2942,7 +2942,7 @@ describe('ForceGeneratorService', () => {
         const request = {
             eligibleUnits: [unitA, unitB],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3033,7 +3033,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unitA, unitB],
             context: createContext(faction, era),
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             budgetRange: { min: 1000, max: 1001 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3075,7 +3075,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [mulVisibleUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 10 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3110,7 +3110,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [mulInvisibleUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 10 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3144,7 +3144,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [mulVisibleUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 10 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3203,7 +3203,7 @@ describe('ForceGeneratorService', () => {
                 availablePairCount: 2,
                 ruleset: null,
             },
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 10 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3234,7 +3234,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [mulInvisibleUnknown],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 10 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3273,7 +3273,7 @@ describe('ForceGeneratorService', () => {
         let preview = service.buildPreview({
             eligibleUnits: [requisitionUnit, salvageUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3289,7 +3289,7 @@ describe('ForceGeneratorService', () => {
         preview = service.buildPreview({
             eligibleUnits: [requisitionUnit, salvageUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3332,7 +3332,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [lockedUnit, zeroAvailabilityUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 10, max: 10 },
             minUnitCount: 2,
             maxUnitCount: 2,
@@ -3409,7 +3409,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 10 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3435,7 +3435,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [lightUnit, mediumUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 9, max: 9 },
             minUnitCount: 1,
             maxUnitCount: 2,
@@ -3460,7 +3460,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 6, max: 10 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3502,7 +3502,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: candidateUnits,
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 730, max: 0 },
             minUnitCount: 15,
             maxUnitCount: 15,
@@ -3543,7 +3543,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [requisitionUnit, salvageUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 100, max: 0 },
             minUnitCount: 2,
             maxUnitCount: 2,
@@ -3593,7 +3593,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [expensiveMek, moreExpensiveMek, cheaperAero],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 1 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3624,7 +3624,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: units,
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 1, max: 1 },
             minUnitCount: 4,
             maxUnitCount: 8,
@@ -3676,7 +3676,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [firstUnit, secondUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 0 },
             minUnitCount: 1,
             maxUnitCount: 2,
@@ -3706,7 +3706,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [lockedAtlas, locust],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 2,
             maxUnitCount: 2,
@@ -3738,7 +3738,7 @@ describe('ForceGeneratorService', () => {
         expect(entry!.groups[0].units[0].lockKey).toBe('locked-atlas');
     });
 
-    it('preserves all locked Classic crew through generation and preview entry creation', () => {
+    it('preserves all locked CBT crew through generation and preview entry creation', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const lockedAtlas = createUnit({
@@ -3757,7 +3757,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [lockedAtlas],
             context: createContext(faction, era),
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             budgetRange: { min: 0, max: 2000 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -3783,7 +3783,7 @@ describe('ForceGeneratorService', () => {
         expect(entry!.groups[0].units[0].crew).not.toBe(preview.units[0].crew);
     });
 
-    it('assigns Classic group command to the best crew', () => {
+    it('assigns CBT group command to the best crew', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
         const units = [
@@ -3795,7 +3795,7 @@ describe('ForceGeneratorService', () => {
         const skills = [[4, 5], [4, 3], [3, 4], [3, 3]] as const;
 
         const entry = service.createForceEntry({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: units.map((unit, index) => ({
                 unit,
                 cost: unit.bv,
@@ -3827,7 +3827,7 @@ describe('ForceGeneratorService', () => {
         const duplicatePreview = service.buildPreview({
             eligibleUnits: [atlasPrime, atlasAlt, locust],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 2,
             maxUnitCount: 2,
@@ -3838,7 +3838,7 @@ describe('ForceGeneratorService', () => {
         const uniquePreview = service.buildPreview({
             eligibleUnits: [atlasPrime, atlasAlt, locust],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 2,
             maxUnitCount: 2,
@@ -3866,7 +3866,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [atlas, locust],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 3,
             maxUnitCount: 3,
@@ -3916,7 +3916,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [crab27b, crab27, crab27sl],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 200, max: 0 },
             minUnitCount: 4,
             maxUnitCount: 4,
@@ -3991,7 +3991,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [hatamotoChi, hatamotoKaze, battleMek, industrialMek, omniMek],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 4,
             maxUnitCount: 4,
@@ -4050,7 +4050,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unitA, unitB],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 3,
             maxUnitCount: 3,
@@ -4108,7 +4108,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [locustOne, locustTwo, wasp],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 2,
             maxUnitCount: 2,
@@ -4167,7 +4167,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [locustA, locustB, ...crabVariants],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 100 },
             minUnitCount: 7,
             maxUnitCount: 7,
@@ -4236,7 +4236,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [locust20, locust21, locust22, wasp],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 100 },
             minUnitCount: 4,
             maxUnitCount: 4,
@@ -4297,7 +4297,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [locustA, locustB, wasp],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 100 },
             minUnitCount: 4,
             maxUnitCount: 4,
@@ -4362,7 +4362,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [locustA, locustB, wasp],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 100 },
             minUnitCount: 3,
             maxUnitCount: 3,
@@ -4431,7 +4431,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [locustA, locustB, wasp],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 100 },
             minUnitCount: 3,
             maxUnitCount: 3,
@@ -4483,7 +4483,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unitA],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 2,
             maxUnitCount: 2,
@@ -4525,7 +4525,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [unitA],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 2,
             maxUnitCount: 2,
@@ -4541,7 +4541,7 @@ describe('ForceGeneratorService', () => {
 
     it('creates a preview force entry even when the preview contains an error but still has units', () => {
         const preview = {
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             units: [{
                 unit: createUnit({ id: 1, name: 'Locked Atlas', chassis: 'Atlas', as: { PV: 6 } as UnitSummary['as'] }),
                 cost: 6,
@@ -4565,7 +4565,7 @@ describe('ForceGeneratorService', () => {
         const previewEntry = {
             instanceId: 'preview-entry',
             timestamp: '2026-05-11T00:00:00.000Z',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             owned: true,
             cloud: false,
             local: false,
@@ -4662,7 +4662,7 @@ describe('ForceGeneratorService', () => {
         });
 
         const entry = service.createForceEntry({
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             units: previewUnits.map((unit, index) => ({
                 unit,
                 cost: 25 + index,
@@ -4751,7 +4751,7 @@ describe('ForceGeneratorService', () => {
         });
 
         const entry = service.createForceEntry({
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             units: previewUnits.map((unit, index) => ({
                 unit,
                 cost: 30 + index,
@@ -4790,7 +4790,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [lightUnit, mediumUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 8, max: 8 },
             minUnitCount: 1,
             maxUnitCount: 2,
@@ -4850,7 +4850,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [nearBudgetA, nearBudgetB, countMatchA, countMatchB, countMatchC, countMatchD],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 20, max: 20 },
             minUnitCount: 4,
             maxUnitCount: 8,
@@ -4915,7 +4915,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [underTargetUnit, overTargetUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 5900, max: 5900 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -4962,7 +4962,7 @@ describe('ForceGeneratorService', () => {
         const baseRequest = {
             eligibleUnits: [seedUnit, commandUnit, scoutUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 2,
@@ -5044,7 +5044,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [jumpShip, mek],
             context: { ...createContext(faction, era), ruleset },
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 5 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -5123,7 +5123,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [...mekUnits, aeroUnit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 20, max: 20 },
             minUnitCount: 4,
             maxUnitCount: 8,
@@ -5184,7 +5184,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [...mekUnits, ...aeroUnits],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 20, max: 20 },
             minUnitCount: 4,
             maxUnitCount: 8,
@@ -5230,7 +5230,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [mek, fighter],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 20, max: 20 },
             minUnitCount: 4,
             maxUnitCount: 6,
@@ -5261,7 +5261,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [mek],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 25, max: 25 },
             minUnitCount: 5,
             maxUnitCount: 5,
@@ -5294,7 +5294,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: variants,
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 25, max: 25 },
             minUnitCount: 5,
             maxUnitCount: 5,
@@ -5321,7 +5321,7 @@ describe('ForceGeneratorService', () => {
         service.buildPreview({
             eligibleUnits: [unit],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 7, max: 7 },
             minUnitCount: 1,
             maxUnitCount: 1,
@@ -5365,7 +5365,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: variants,
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 25, max: 25 },
             minUnitCount: 5,
             maxUnitCount: 5,
@@ -5506,7 +5506,7 @@ describe('ForceGeneratorService', () => {
         let preview = service.buildPreview({
             eligibleUnits: [...mekUnits, ...aeroUnits],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 20, max: 30 },
             minUnitCount: 4,
             maxUnitCount: 12,
@@ -5524,7 +5524,7 @@ describe('ForceGeneratorService', () => {
         preview = service.buildPreview({
             eligibleUnits: [...mekUnits, ...aeroUnits],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 20, max: 30 },
             minUnitCount: 4,
             maxUnitCount: 12,
@@ -5607,7 +5607,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [seedUnit, switchedMatch, offMatch],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 2,
@@ -5698,7 +5698,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [seedUnit, parentMatch, offMatch],
             context: createContext(faction, era),
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             budgetRange: { min: 0, max: 20 },
             minUnitCount: 1,
             maxUnitCount: 2,
@@ -5808,7 +5808,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [...lanceUnits, ...companyUnits],
             context: createContext(faction, era),
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             budgetRange: { min: 5800, max: 5900 },
             minUnitCount: 4,
             maxUnitCount: 8,
@@ -5884,7 +5884,7 @@ describe('ForceGeneratorService', () => {
         const preview = service.buildPreview({
             eligibleUnits: [...squadronUnits, ...companyUnits],
             context: createContext(faction, era),
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             budgetRange: { min: 5800, max: 5900 },
             minUnitCount: 4,
             maxUnitCount: 8,

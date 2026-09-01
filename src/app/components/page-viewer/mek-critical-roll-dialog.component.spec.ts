@@ -8,12 +8,11 @@ import type { CBTForce } from '../../models/cbt-force.model';
 import type { CriticalSlotId, LocationId } from '../../models/entity/entity-identifiers';
 import { CBTForceMember, type CBTMekForceMember } from '../../models/force-member.model';
 import type { MekCriticalRollPlanV2, MekCriticalRollProfileV2 } from '../../models/runtime/mek-critical-hit-v2';
-import type { UnitInstanceId } from '../../models/runtime/runtime-state';
 import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
 import { ToastService } from '../../services/toast.service';
 import { MekCriticalRollDialogComponent } from './mek-critical-roll-dialog.component';
 
-const UNIT_ID = 'unit-1' as UnitInstanceId;
+const UNIT_ID = 'unit-1';
 const LOCATION_ID = 'loc-lt' as LocationId;
 const SLOT_ID = 'slot-lt-0' as CriticalSlotId;
 

@@ -72,7 +72,7 @@ export class ForceWorkspaceCommandsService {
         const requestedGameSystem = gameSystemOverride
             ?? this.workspace.smartCurrentForce()?.gameSystem
             ?? this.injector.get(GameService).currentGameSystem();
-        if (requestedGameSystem !== GameSystem.CLASSIC) {
+        if (requestedGameSystem !== GameSystem.CBT) {
             return this.addUnitCore(unit, gunnerySkill, pilotingSkill, group, gameSystemOverride);
         }
 
@@ -192,7 +192,7 @@ export class ForceWorkspaceCommandsService {
 
         if (isCBTForceMember(sourceUnit)) {
             try {
-                if (!(force instanceof CBTForce)) throw new Error('Classic member has a non-Classic owner');
+                if (!(force instanceof CBTForce)) throw new Error('CBT member has a non-CBT owner');
                 const identity = force.getUnitSourceIdentity(sourceUnit.id);
                 if (!identity) return null;
                 const group = force.groups().find(candidate => candidate.id === sourceUnit.rosterGroupId);
@@ -200,13 +200,13 @@ export class ForceWorkspaceCommandsService {
                 const sourceIndex = force.membersInGroup(group)
                     .findIndex(member => member.id === sourceUnit.id);
                 if (sourceIndex < 0) return null;
-                const clone = await this.unitAdmission.admitClassicIdentity({
+                const clone = await this.unitAdmission.admitCBTIdentity({
                     force,
                     identity,
                     rosterGroupId: sourceUnit.rosterGroupId,
                     rosterMemberIndex: sourceIndex + 1,
                 });
-                if (!isCBTForceMember(clone)) throw new Error('Classic clone returned an Alpha Strike unit');
+                if (!isCBTForceMember(clone)) throw new Error('CBT clone returned an Alpha Strike unit');
                 this.workspace.selectUnit(clone);
                 return clone;
             } catch (error) {
@@ -232,7 +232,7 @@ export class ForceWorkspaceCommandsService {
                 summary: unitData,
                 group,
             });
-            if (isCBTForceMember(newForceUnit)) throw new Error('Alpha Strike clone returned a Classic runtime');
+            if (isCBTForceMember(newForceUnit)) throw new Error('Alpha Strike clone returned a CBT runtime');
             // addUnit appends to end — move it to right after the source
             const updatedUnits = group.units();
             const newIndex = updatedUnits.findIndex(u => u.id === newForceUnit.id);
@@ -307,7 +307,7 @@ export class ForceWorkspaceCommandsService {
      */
     async removeUnit(unitToRemove: ForceMember, skipConfirmation = false) {
         if (isCBTForceMember(unitToRemove)) {
-            await this.removeClassicMember(unitToRemove, skipConfirmation);
+            await this.removeCBTMember(unitToRemove, skipConfirmation);
             return;
         }
         const targetForce = unitToRemove.force;
@@ -459,7 +459,7 @@ export class ForceWorkspaceCommandsService {
     public async requestCloneForce(force: Force): Promise<void> {
         if (!force) return;
         
-        const isAlphaStrike = force.gameSystem === GameSystem.ALPHA_STRIKE;
+        const isAlphaStrike = force.gameSystem === GameSystem.AS;
         const targetSystemLabel = isAlphaStrike ? 'CBT' : 'AS';
         
         const dialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
@@ -525,7 +525,7 @@ export class ForceWorkspaceCommandsService {
             return false;
         }
 
-        const isAlphaStrike = force.gameSystem === GameSystem.ALPHA_STRIKE;
+        const isAlphaStrike = force.gameSystem === GameSystem.AS;
         const targetSystemLabel = isAlphaStrike ? 'Classic BattleTech' : 'Alpha Strike';
 
         const forceSlot = this.workspace.getForceSlot(force);
@@ -653,7 +653,7 @@ export class ForceWorkspaceCommandsService {
         const unitData = this.dataService.getUnitByName(unitName);
         if (!unitData) return null;
         if (!(targetForce instanceof ASForce)) {
-            throw new Error('Classic units must be admitted from their canonical native source.');
+            throw new Error('CBT units must be admitted from their canonical native source.');
         }
         const newUnit = targetForce.createCompatibleUnit(unitData);
         newUnit.disabledSaving = true;
@@ -670,7 +670,7 @@ export class ForceWorkspaceCommandsService {
         return newUnit;
     }
 
-    private async removeClassicMember(
+    private async removeCBTMember(
         member: CBTForceMember,
         skipConfirmation: boolean,
     ): Promise<void> {
@@ -691,12 +691,12 @@ export class ForceWorkspaceCommandsService {
             if (!confirmed) return;
         }
         if (!force.isWholeOwnerAuthorityFingerprintCurrent(authority)
-            || force.getClassicMember(member.id) !== member) return;
+            || force.getCBTMember(member.id) !== member) return;
         if (members.length === 1) {
             await this.builder.deleteAndRemoveForce(force);
             return;
         }
-        const result = await force.removeClassicMember(member.id);
+        const result = await force.removeCBTMember(member.id);
         if (!result.accepted) {
             this.toastService.showToast(`Unable to remove unit: ${result.reason}`, 'error');
             return;

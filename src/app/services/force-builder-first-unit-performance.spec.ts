@@ -70,7 +70,7 @@ describe('ForceWorkspaceCommandsService first-unit work bounds', () => {
         const forceUnits: ForceUnit[] = [];
         const group = { units: groupUnits };
         const force = {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             faction: signal<Faction | null>(null),
             factionLock: false,
             era: signal<Era | null>(null),
@@ -149,10 +149,10 @@ describe('ForceWorkspaceCommandsService first-unit work bounds', () => {
         formations.reconcileASFormationAssignments = jasmine.createSpy('reconcileASFormationAssignments');
         service.formations = formations;
 
-        const created = await service.addUnit(unit, undefined, undefined, undefined, GameSystem.CLASSIC);
+        const created = await service.addUnit(unit, undefined, undefined, undefined, GameSystem.CBT);
 
         expect(created).toBe(admitted);
-        expect(service.builder.createNewForce).toHaveBeenCalledOnceWith('', GameSystem.CLASSIC);
+        expect(service.builder.createNewForce).toHaveBeenCalledOnceWith('', GameSystem.CBT);
         expect(selectedUnit()).toBe(created);
         expect(force.faction()).toBe(faction);
         expect(iteratedMemberships).toBe(0);

@@ -2,14 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { SerializedForce } from '../force-serialization';
-import type {
-    JsonValue,
-} from '../persisted-unit-state';
+import type { JsonValue } from '../persisted-unit-state';
 import { jsonValuesEqual } from '../../utils/json-value.util';
-import {
-    appendCBTForceRosterMember,
-    appendUnassignedCBTForceRosterMember,
-} from './cbt-force-roster';
+import { appendCBTForceRosterMember, appendUnassignedCBTForceRosterMember } from './cbt-force-roster';
 import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -24,13 +19,7 @@ import {
 } from './persistence-v2';
 import type { SerializedCBTUnitV2 } from './persistence-v2';
 import type { SerializedNonMekUnit } from './non-mek-unit-persistence';
-import type { ReadyClassicUnit } from './ready-classic-unit';
-import {
-    asStateRevision,
-    asUnitInstanceId,
-    type StateRevision,
-    type UnitInstanceId,
-} from './runtime-state';
+import type { CBTUnit } from './cbt-unit';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
 
 const DEFAULT_SCENARIO_RULES: JsonValue = Object.freeze({
@@ -64,10 +53,10 @@ export type CBTForcePersistenceResultV2 =
         readonly error: string;
     };
 
-interface CapturedReadyUnit {
-    readonly ready: ReadyClassicUnit;
-    readonly instanceId: UnitInstanceId;
-    readonly revision: StateRevision;
+interface CapturedCBTUnit {
+    readonly ready: CBTUnit;
+    readonly instanceId: string;
+    readonly revision: number;
     readonly serialized: SerializedCBTUnitV2 | SerializedNonMekUnit;
 }
 
@@ -77,18 +66,18 @@ interface CapturedReadyUnit {
  */
 export async function prepareCBTForcePersistenceV2(input: {
     readonly previous: SerializedCBTForceV2;
-    readonly liveUnits: readonly ReadyClassicUnit[];
+    readonly liveUnits: readonly CBTUnit[];
     readonly encounterState?: SerializedCBTEncounterStateV2;
 }): Promise<CBTForcePersistenceResultV2> {
     // `previous` is the already validated, deeply frozen envelope installed by
-    // CBTForceAuthority. Revalidating it here cloned and walked the complete
+    // CBTUnitStore. Revalidating it here cloned and walked the complete
     // force on every autosave, then did the same work again for the candidate.
     // Persistence is an internal typed transition; untrusted envelopes are
     // still fully validated by inspect/load and direct-admission boundaries.
     const previous = input.previous;
-    let captures: readonly CapturedReadyUnit[];
+    let captures: readonly CapturedCBTUnit[];
     try {
-        captures = captureReadyUnits(input.liveUnits, previous);
+        captures = captureCBTUnits(input.liveUnits, previous);
     } catch (error) {
         return readOnly('READY_RUNTIME_SERIALIZATION_FAILED', errorMessage(error));
     }
@@ -125,23 +114,23 @@ export async function prepareCBTForcePersistenceV2(input: {
     }
 }
 
-/** Adds one ready Non-Mek runtime directly to the current Classic owner. */
+/** Adds one ready Non-Mek runtime directly to the current CBT owner. */
 export async function prepareDirectUnitAdmission(input: {
     readonly forceId: string;
     readonly previous?: SerializedCBTForceV2;
-    readonly liveUnits: readonly ReadyClassicUnit[];
-    readonly candidate: ReadyClassicUnit;
+    readonly liveUnits: readonly CBTUnit[];
+    readonly candidate: CBTUnit;
     readonly scenarioRules: JsonValue;
     readonly typedEncounterState?: SerializedCBTEncounterStateV2;
     readonly targetRosterGroupId?: string;
     readonly targetRosterMemberIndex?: number;
     readonly commander?: boolean;
 }): Promise<CBTForcePersistenceResultV2> {
-    let candidate: CapturedReadyUnit;
-    let live: readonly CapturedReadyUnit[];
+    let candidate: CapturedCBTUnit;
+    let live: readonly CapturedCBTUnit[];
     try {
-        [candidate] = captureReadyUnits([input.candidate]);
-        live = captureReadyUnits(input.liveUnits);
+        [candidate] = captureCBTUnits([input.candidate]);
+        live = captureCBTUnits(input.liveUnits);
     } catch (error) {
         return readOnly('READY_RUNTIME_SERIALIZATION_FAILED', errorMessage(error));
     }
@@ -232,7 +221,7 @@ export async function prepareDirectUnitAdmission(input: {
     }
 }
 
-/** Creates the empty current Classic owner used before the first admission. */
+/** Creates the empty current CBT owner used before the first admission. */
 export async function prepareInitialCBTForceV2(input: {
     readonly forceId: string;
     readonly initialScenarioRules?: SerializedScenarioRulesV2;
@@ -260,7 +249,7 @@ async function createEmptyCBTForceV2(
     forceId: ReturnType<typeof asForceId>,
     scenarioRules: SerializedScenarioRulesV2,
 ): Promise<SerializedCBTForceV2> {
-    const revision = asStateRevision(0);
+    const revision = 0;
     return validateSerializedCBTForceV2({
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
@@ -277,7 +266,7 @@ async function createEmptyCBTForceV2(
     });
 }
 
-/** Validates the current Classic payload carried by the outer force record. */
+/** Validates the current CBT payload carried by the outer force record. */
 export async function inspectSerializedCBTForceV2(
     data: SerializedForce,
 ): Promise<SerializedCBTForceV2 | null> {
@@ -286,10 +275,10 @@ export async function inspectSerializedCBTForceV2(
     return validateSerializedCBTForceV2(raw);
 }
 
-function captureReadyUnits(
-    units: readonly ReadyClassicUnit[],
+function captureCBTUnits(
+    units: readonly CBTUnit[],
     previous?: SerializedCBTForceV2,
-): readonly CapturedReadyUnit[] {
+): readonly CapturedCBTUnit[] {
     const ids = new Set<string>();
     const previousById = new Map(previous?.units.map(entry => [entry.instanceId, entry] as const));
     return Object.freeze(units.map(ready => {
@@ -317,7 +306,7 @@ function captureReadyUnits(
     }));
 }
 
-function capturesAreCurrent(captures: readonly CapturedReadyUnit[]): boolean {
+function capturesAreCurrent(captures: readonly CapturedCBTUnit[]): boolean {
     return captures.every(capture => {
         try {
             return capture.ready.instanceId === capture.instanceId
@@ -330,7 +319,7 @@ function capturesAreCurrent(captures: readonly CapturedReadyUnit[]): boolean {
 
 function materializeReadyEntries(
     previous: SerializedCBTForceV2,
-    captures: readonly CapturedReadyUnit[],
+    captures: readonly CapturedCBTUnit[],
 ): {
     readonly kind: 'ready';
     readonly units: readonly SerializedForceUnitEntryV2[];
@@ -405,9 +394,9 @@ function materializeEncounter(
     });
 }
 
-function nextRevision(revision: number): StateRevision {
+function nextRevision(revision: number): number {
     if (revision >= Number.MAX_SAFE_INTEGER) throw new Error('Force revision is exhausted');
-    return asStateRevision(revision + 1);
+    return revision + 1;
 }
 
 function readOnly(

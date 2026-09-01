@@ -16,10 +16,10 @@ import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { UnitCardExpandedComponent } from './unit-card-expanded.component';
 
 describe('UnitCardExpandedComponent MegaMek availability display', () => {
-    const currentGameSystemSignal = signal(GameSystem.CLASSIC);
+    const currentGameSystemSignal = signal(GameSystem.CBT);
 
     const gameServiceStub = {
-        isAlphaStrike: computed(() => currentGameSystemSignal() === GameSystem.ALPHA_STRIKE),
+        isAlphaStrike: computed(() => currentGameSystemSignal() === GameSystem.AS),
         currentGameSystem: currentGameSystemSignal,
     };
 
@@ -46,7 +46,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
     }
 
     beforeEach(async () => {
-        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        currentGameSystemSignal.set(GameSystem.CBT);
         optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'both' });
 
         await TestBed.configureTestingModule({
@@ -148,7 +148,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         });
     });
 
-    it('always displays adjusted and base BV for Classic search results', () => {
+    it('always displays adjusted and base BV for CBT search results', () => {
         optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'base' });
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
         const unit = createEmptyUnit({ bv: 12_600 });
@@ -164,7 +164,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
     });
 
     it('always displays adjusted and base PV for Alpha Strike search results', () => {
-        currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
+        currentGameSystemSignal.set(GameSystem.AS);
         optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'adjusted' });
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
         const unit = createUnit();

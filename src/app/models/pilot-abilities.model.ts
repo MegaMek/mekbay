@@ -53,7 +53,7 @@ export interface PilotAbility {
 
 /** Resolve the game-system-specific details for a pilot ability, with fallback. */
 export function getAbilityDetails(ability: PilotAbility, gameSystem: GameSystem): PilotAbilityRuleDetails {
-    return ability[gameSystem] ?? ability[gameSystem === GameSystem.ALPHA_STRIKE ? 'cbt' : 'as'] ?? { summary: [] };
+    return ability[gameSystem] ?? ability[gameSystem === GameSystem.AS ? 'cbt' : 'as'] ?? { summary: [] };
 }
 
 export interface ASCustomPilotAbility {

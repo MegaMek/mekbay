@@ -11,14 +11,14 @@ import {
 import { isUnitBuildingLevel, isUnitWaterDepth } from '../unit-cover.model';
 import { getForceOpforInventoryTargetId } from '../../utils/inventory-control-opfor-target.util';
 import { asEncounterTargetId } from './encounter-runtime';
-import type { ReadyNonMekUnit } from './ready-non-mek-unit';
-import type { ReadyMekUnit } from './ready-unit-factory';
+import type { CBTNonMekUnit } from './cbt-non-mek-unit';
+import type { CBTMekUnit } from './cbt-mek-unit';
 import { entityUnitLabel } from './cbt-unit-label';
-import type { InventoryControlTargetRosterRow } from '../cbt-force-api';
+import type { InventoryControlTargetRosterRow } from '../cbt-force.types';
 
 export function mekTargetRosterRow(
     forceInstanceId: string,
-    unit: ReadyMekUnit,
+    unit: CBTMekUnit,
 ): InventoryControlTargetRosterRow {
     const entity = unit.getUnit();
     const query = unit.getInstance().query();
@@ -84,7 +84,7 @@ export function mekTargetRosterRow(
 
 export function entityTargetRosterRow(
     forceInstanceId: string,
-    unit: ReadyNonMekUnit,
+    unit: CBTNonMekUnit,
 ): InventoryControlTargetRosterRow {
     const entity = unit.getUnit();
     const runtime = unit.getInstance();
@@ -150,7 +150,7 @@ function effectiveStealthMoveDistance(
         : distance ?? 0;
 }
 
-function nonMekTargetUnitType(entity: ReturnType<ReadyNonMekUnit['getUnit']>): TnTargetUnitType {
+function nonMekTargetUnitType(entity: ReturnType<CBTNonMekUnit['getUnit']>): TnTargetUnitType {
     switch (entity.unitType()) {
         case 'Mek':
             return entity.unitSubtype().includes('Quad') ? 'mek-quad'

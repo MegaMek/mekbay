@@ -23,7 +23,7 @@ import {
 } from './equipment-panel';
 import { NonMekUnitInstance } from './non-mek-unit-instance';
 import { asEncounterTargetId } from './encounter-runtime';
-import { asStateRevision, asUnitInstanceId, type InstanceBaselineRef } from './runtime-state';
+import { type InstanceBaselineRef } from './runtime-state';
 import { nonMekDamageTrackId } from '../rules/non-mek-damage-track-rules';
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
@@ -142,7 +142,7 @@ describe('Entity equipment panel projection', () => {
         const weaponMount = addTestEquipment(entity, weapon, { location });
         const ammoMount = addTestEquipment(entity, standard, { location, shotsCount: 10 });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-equipment-panel'),
+            'unit:tank-equipment-panel',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -153,7 +153,7 @@ describe('Entity equipment panel projection', () => {
             .find(id => String(id) === String(ammoMount.mountId))!;
         const targetId = asEncounterTargetId('target:vehicle');
         const registry = Object.freeze({
-            revision: asStateRevision(0),
+            revision: 0,
             targets: Object.freeze([Object.freeze({
                 id: targetId,
                 letter: 'A',
@@ -307,7 +307,7 @@ describe('Entity equipment panel projection', () => {
         const mount = addTestEquipment(entity, laser, { location: 'Front' });
         addTestEquipment(entity, targetingComputer, { location: 'Body' });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-system-rules'),
+            'unit:tank-system-rules',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -334,7 +334,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             createDefaultCrewAssignment(runtime.getIndex().crewPositions),
-            Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) }),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }),
         );
         const row = snapshot.components.find(component =>
             component.componentId === asComponentId(mount.mountId))!;
@@ -362,7 +362,7 @@ describe('Entity equipment panel projection', () => {
         entity.originalWalkMP.set(8);
         const mount = addTestEquipment(entity, weapon, { location: 'Front' });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-charge-panel'),
+            'unit:tank-charge-panel',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -380,7 +380,7 @@ describe('Entity equipment panel projection', () => {
 
             movement: { mode: 'run', distance: 5, boosterComponentIds: [] },
         });
-        const registry = Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) });
+        const registry = Object.freeze({ revision: 0, targets: Object.freeze([]) });
         runtime.dispatchAttackerTargeting({
             kind: 'edit-attacker-targeting',
 
@@ -435,7 +435,7 @@ describe('Entity equipment panel projection', () => {
         entity.heatSinkCount.set(10);
         const mount = addTestEquipment(entity, weapon, { location: 'Nose' });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:aero-heat-panel'),
+            'unit:aero-heat-panel',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -452,7 +452,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             createDefaultCrewAssignment(runtime.getIndex().crewPositions),
-            Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) }),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }),
         );
         const row = snapshot.components.find(component =>
             component.componentId === asComponentId(mount.mountId))!;
@@ -478,12 +478,12 @@ describe('Entity equipment panel projection', () => {
         entity.setTonnage(10);
         entity.originalWalkMP.set(5);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:proto-frenzy'),
+            'unit:proto-frenzy',
             baseline(),
             entity,
             CORE_2026_RULESET,
         );
-        const registry = Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) });
+        const registry = Object.freeze({ revision: 0, targets: Object.freeze([]) });
         const snapshot = () => projectNonMekEquipmentPanel(
             entity,
             runtime.getIndex(),
@@ -538,7 +538,7 @@ describe('Entity equipment panel projection', () => {
         const mounts = Array.from({ length: 3 }, () =>
             addTestEquipment(entity, gun, { location: 'Field Guns' }));
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:infantry-field-gun-panel'),
+            'unit:infantry-field-gun-panel',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -557,7 +557,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             createDefaultCrewAssignment(runtime.getIndex().crewPositions),
-            Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) }),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }),
         );
         const rows = mounts.map(mount => snapshot.components.find(row =>
             row.componentId === asComponentId(mount.mountId))!);
@@ -586,7 +586,7 @@ describe('Entity equipment panel projection', () => {
             addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
         entity.addEquipmentBay('weapon-bay', { mounts });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:jumpship-bay-panel'),
+            'unit:jumpship-bay-panel',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -598,7 +598,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             createDefaultCrewAssignment(runtime.getIndex().crewPositions),
-            Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) }),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }),
         );
         const weapons = snapshot.components.filter(row => row.weapon !== undefined);
 
@@ -623,12 +623,12 @@ describe('Entity equipment panel projection', () => {
             addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
         entity.addEquipmentBay('weapon-bay', { mounts });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:dropship-bay-panel'),
+            'unit:dropship-bay-panel',
             baseline(),
             entity,
             CORE_2026_RULESET,
         );
-        const registry = Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) });
+        const registry = Object.freeze({ revision: 0, targets: Object.freeze([]) });
         const weaponRows = () => projectNonMekEquipmentPanel(
             entity,
             runtime.getIndex(),
@@ -682,7 +682,7 @@ describe('Entity equipment panel projection', () => {
         Array.from({ length: 72 }, () =>
             addTestEquipment(entity, ammo, { location, shotsCount: 10 }));
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:leviathan-scale-panel'),
+            'unit:leviathan-scale-panel',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -695,7 +695,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             createDefaultCrewAssignment(runtime.getIndex().crewPositions),
-            Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) }),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }),
         );
         const elapsed = performance.now() - started;
         const weaponRows = snapshot.components.filter(row => row.weapon !== undefined);

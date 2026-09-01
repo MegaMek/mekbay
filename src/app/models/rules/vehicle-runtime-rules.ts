@@ -24,7 +24,7 @@ import {
     calculateChargeDamage,
     type ChargeDamageProjection,
 } from './charge-damage';
-import { isCrewDeathCommitted } from '../runtime/classic-unit-runtime';
+import { isCrewDeathCommitted } from '../runtime/cbt-unit-runtime';
 
 export interface VehicleMotiveHit {
     readonly level: number;

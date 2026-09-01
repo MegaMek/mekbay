@@ -619,7 +619,7 @@ function createStrategicCommandBundle(): BenchmarkBundle {
 
 function createFormationExistingForceUnit(
     unit: UnitSummary,
-    gameSystem: GameSystem = GameSystem.ALPHA_STRIKE,
+    gameSystem: GameSystem = GameSystem.AS,
     options: { faction?: Faction; pilotSkill?: number; gunnerySkill?: number } = {},
 ): ForceUnit {
     return {
@@ -751,7 +751,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         };
 
         const gameServiceStub = {
-            currentGameSystem: signal(GameSystem.CLASSIC),
+            currentGameSystem: signal(GameSystem.CBT),
         };
 
         const loggerStub = {
@@ -988,7 +988,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
         expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
 
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.bvPvLimit.set(30);
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
@@ -1018,12 +1018,12 @@ describe('UnitSearchFiltersService search telemetry', () => {
         TestBed.tick();
 
         service.setBudgetMode('bv-normalization');
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         TestBed.tick();
 
         expect(service.budgetMode()).toBe('pv-normalization');
 
-        gameServiceStub.currentGameSystem.set(GameSystem.CLASSIC);
+        gameServiceStub.currentGameSystem.set(GameSystem.CBT);
         TestBed.tick();
 
         expect(service.budgetMode()).toBe('bv-normalization');
@@ -1093,7 +1093,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
     it('round-trips PV normalization through saved-search state', () => {
         const { service, gameServiceStub } = createService(createStandaloneBundle());
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         TestBed.tick();
         const pvNormalization = {
             targetPv: { min: 20, max: 40 },
@@ -1167,7 +1167,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.setFormationTarget({
             formationId: 'order-lance',
             existingUnits: [existingForceUnit],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         });
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
@@ -1182,7 +1182,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.setFormationTarget({
             formationId: 'order-lance',
             existingUnits: [existingForceUnit],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         });
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
@@ -1217,11 +1217,11 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { service, gameServiceStub } = createService(bundle);
         const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
 
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.setFormationTarget({
             formationId: 'assault-lance',
             existingUnits: [existingForceUnit],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         });
 
         service.setSearchText('formation=Order');
@@ -1240,7 +1240,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const { service, gameServiceStub } = createService(bundle);
         const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
 
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.setFormationTargetExistingUnits([existingForceUnit]);
         service.setSearchText('formation=Order');
 
@@ -1253,15 +1253,15 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const bundle = createStrategicCommandBundle();
         const { service, gameServiceStub } = createService(bundle);
         const existingUnits = [
-            createFormationExistingForceUnit(bundle.units.units[0], GameSystem.ALPHA_STRIKE, { faction: CLAN_WOLF_TEST_FACTION, pilotSkill: 4, gunnerySkill: 4 }),
-            createFormationExistingForceUnit(bundle.units.units[1], GameSystem.ALPHA_STRIKE, { faction: CLAN_WOLF_TEST_FACTION, pilotSkill: 4, gunnerySkill: 4 }),
+            createFormationExistingForceUnit(bundle.units.units[0], GameSystem.AS, { faction: CLAN_WOLF_TEST_FACTION, pilotSkill: 4, gunnerySkill: 4 }),
+            createFormationExistingForceUnit(bundle.units.units[1], GameSystem.AS, { faction: CLAN_WOLF_TEST_FACTION, pilotSkill: 4, gunnerySkill: 4 }),
         ];
 
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.setFormationTarget({
             formationId: 'strategic-command-star',
             existingUnits,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         });
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Elemental Point', 'Timber Wolf Prime']);
@@ -1274,12 +1274,12 @@ describe('UnitSearchFiltersService search telemetry', () => {
     it('limits faction dropdown availability by manual and semantic formation targets', () => {
         const createAlphaStrikeService = () => {
             const created = createService(createFormationFactionBundle());
-            created.gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+            created.gameServiceStub.currentGameSystem.set(GameSystem.AS);
             return created.service;
         };
 
         let service = createAlphaStrikeService();
-        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.AS });
 
         expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FREE_WORLDS_LEAGUE_FACTION, true);
         expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FEDERATED_SUNS_FACTION, false);
@@ -1313,7 +1313,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             ...optionsServiceStub.options(),
             availabilitySource: 'megamek',
         });
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
         service.setSearchText('formation=Anvil');
 
@@ -1359,9 +1359,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
             },
         ];
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
-        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.AS });
 
         expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'League Era', true);
         expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'Suns Era', false);
@@ -1422,9 +1422,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
             ...optionsServiceStub.options(),
             availabilitySource: 'megamek',
         });
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
-        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+        service.setFormationTarget({ formationId: 'anvil-lance', existingUnits: [], gameSystem: GameSystem.AS });
 
         expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'League Era', true);
         expectOptionAvailability(service.advOptions()['era']?.options ?? [], 'Suns Era', false);
@@ -1433,7 +1433,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
     it('limits formation dropdown availability by manual and semantic faction filters', () => {
         const { service } = createService(createFormationFactionBundle());
         const expectFormationAvailability = (formationId: string, available: boolean) => {
-            expect(service.getFormationTargetOptions(GameSystem.ALPHA_STRIKE).find((option) => option.name === formationId))
+            expect(service.getFormationTargetOptions(GameSystem.AS).find((option) => option.name === formationId))
                 .toEqual(jasmine.objectContaining({ name: formationId, available }));
         };
 
@@ -1452,7 +1452,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const semanticService = createService(createFormationFactionBundle()).service;
         semanticService.setSearchText(`faction="${FEDERATED_SUNS_FACTION}"`);
         const expectSemanticFormationAvailability = (formationId: string, available: boolean) => {
-            expect(semanticService.getFormationTargetOptions(GameSystem.ALPHA_STRIKE).find((option) => option.name === formationId))
+            expect(semanticService.getFormationTargetOptions(GameSystem.AS).find((option) => option.name === formationId))
                 .toEqual(jasmine.objectContaining({ name: formationId, available }));
         };
 
@@ -1463,7 +1463,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
     it('limits Clan-only formation availability to Clan faction filters', () => {
         const { service } = createService(createFormationFactionBundle());
         const expectFormationAvailability = (formationId: string, available: boolean) => {
-            expect(service.getFormationTargetOptions(GameSystem.ALPHA_STRIKE).find((option) => option.name === formationId))
+            expect(service.getFormationTargetOptions(GameSystem.AS).find((option) => option.name === formationId))
                 .toEqual(jasmine.objectContaining({ name: formationId, available }));
         };
 
@@ -1485,9 +1485,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
     it('limits faction dropdown availability by Clan-only formation targets', () => {
         const { service, gameServiceStub } = createService(createFormationFactionBundle());
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
-        service.setFormationTarget({ formationId: 'phalanx-star', existingUnits: [], gameSystem: GameSystem.ALPHA_STRIKE });
+        service.setFormationTarget({ formationId: 'phalanx-star', existingUnits: [], gameSystem: GameSystem.AS });
 
         expectOptionAvailability(service.advOptions()['faction']?.options ?? [], FEDERATED_SUNS_FACTION, false);
         expectOptionAvailability(service.advOptions()['faction']?.options ?? [], CLAN_WOLF_FACTION, true);
@@ -1496,9 +1496,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
     it('sorts formation target options alphabetically and resolves loose semantic names', () => {
         const { service, gameServiceStub } = createService(createStandaloneBundle());
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
-        const formationTargetOptions = service.getFormationTargetOptions(GameSystem.ALPHA_STRIKE);
+        const formationTargetOptions = service.getFormationTargetOptions(GameSystem.AS);
         const displayNames = formationTargetOptions
             .slice(1)
             .map((option) => option.displayName ?? option.name);
@@ -1534,7 +1534,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         service.setFormationTarget({
             formationId: 'order-lance',
             existingUnits: [existingForceUnit],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         });
         service.searchText.set('Test');
         service.filteredUnits();
@@ -1574,7 +1574,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         await flushAsyncWork();
 
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.searchText.set('pv>0 or pv<0');
 
         const corpusVersion = (service as any).getWorkerCorpusVersion();
@@ -5035,7 +5035,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[1].as.specials = [special];
 
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
         const params = new URLSearchParams();
         params.set('filters', `as.specials:${special}`);
@@ -5415,7 +5415,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[1].as = { ...bundle.units.units[1].as, PV: 40 };
 
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.CLASSIC);
+        gameServiceStub.currentGameSystem.set(GameSystem.CBT);
 
         const advOptions = service.advOptions();
 
@@ -5434,7 +5434,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[1].as = { ...bundle.units.units[1].as, PV: 40 };
 
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.CLASSIC);
+        gameServiceStub.currentGameSystem.set(GameSystem.CBT);
 
         service.setFilter('as.PV', [20, 30]);
 
@@ -5452,7 +5452,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[1].as = { ...bundle.units.units[1].as, PV: 40 };
 
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.CLASSIC);
+        gameServiceStub.currentGameSystem.set(GameSystem.CBT);
 
         service.searchText.set('pv=20-30');
 
@@ -6057,7 +6057,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }
 
         const { service, gameServiceStub } = createService(buildSmallBundle(benchmarkBundle));
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.setFilter('as.TP', ['BM']);
 
         const specialsOptions = service.advOptions()['as.specials']?.options ?? [];
@@ -6638,7 +6638,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }));
 
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.setFilter('as.specials', {
             AC: { name: 'AC', state: 'and', count: 1, minimumValues: [null, 4, null] },
         });
@@ -6669,7 +6669,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }));
 
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.searchText.set('specials&="AC*/>=4/*" specials&="AC*/*/>=3"');
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Both AC Ranges']);
@@ -6683,7 +6683,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[1].as.specials = ['AC2/2/2'];
 
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         service.setFilter('as.specials', {
             ECM: { name: 'ECM', state: 'not', count: 1 },
         });
@@ -6707,7 +6707,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[1].as.specials = ['TUR(3/3/3,AC1/1/4)'];
 
         const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.ALPHA_STRIKE);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
         const acOption = (service.advOptions()['as.specials']?.options ?? [])
             .filter(option => typeof option !== 'number')
             .find(option => option.name === 'AC');

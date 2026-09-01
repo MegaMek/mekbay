@@ -83,7 +83,7 @@ export interface ShareForceDialogData {
                             EXCEL
                         }
                     </button>
-                    @if (force.gameSystem === GameSystem.CLASSIC) {
+                    @if (force.gameSystem === GameSystem.CBT) {
                         <button class="bt-button export-btn" (click)="exportToMUL()" [disabled]="isExporting()">
                             @if (isExporting()) {
                                 EXPORTING...
@@ -251,7 +251,7 @@ export class ShareForceDialogComponent {
 
     async exportToMUL() {
         const members = this.force.members();
-        if (this.force.gameSystem !== GameSystem.CLASSIC) {
+        if (this.force.gameSystem !== GameSystem.CBT) {
             return;
         }
         if (members.length === 0) {

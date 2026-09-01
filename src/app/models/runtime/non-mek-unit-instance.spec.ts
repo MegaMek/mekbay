@@ -25,7 +25,7 @@ import {
     addTestEquipmentWithFlags,
 } from '../entity/testing/test-mounted-equipment';
 import { asEncounterTargetId, type TargetRegistrySnapshot } from './encounter-runtime';
-import { asStateRevision, asUnitInstanceId, type InstanceBaselineRef } from './runtime-state';
+import { type InstanceBaselineRef } from './runtime-state';
 import {
     canNonMekTakeActiveActions,
     createPristineNonMekUnitState,
@@ -68,7 +68,7 @@ describe('NonMekUnitInstance', () => {
         for (const entity of entities) {
             entity.uuid.set(UUID);
             const runtime = new NonMekUnitInstance(
-                asUnitInstanceId(`unit:${entity.entityType}`),
+                `unit:${entity.entityType}`,
                 baseline(),
                 entity,
                 CORE_2026_RULESET,
@@ -83,7 +83,7 @@ describe('NonMekUnitInstance', () => {
         const entity = new TestProtoMekEntity();
         entity.uuid.set(UUID);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:deferred-crew-death'),
+            'unit:deferred-crew-death',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -163,7 +163,7 @@ describe('NonMekUnitInstance', () => {
         const fighter = new TestAeroSpaceFighterEntity();
         fighter.uuid.set(UUID);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:air-ground-conditions'),
+            'unit:air-ground-conditions',
             baseline(),
             fighter,
             CORE_2026_RULESET,
@@ -196,7 +196,7 @@ describe('NonMekUnitInstance', () => {
         const jumpShip = new TestJumpShipEntity();
         jumpShip.uuid.set(UUID);
         const spaceOnly = new NonMekUnitInstance(
-            asUnitInstanceId('unit:airborne-only-conditions'),
+            'unit:airborne-only-conditions',
             baseline(),
             jumpShip,
             CORE_2026_RULESET,
@@ -208,7 +208,7 @@ describe('NonMekUnitInstance', () => {
         const tank = new TestTankEntity();
         tank.uuid.set(UUID);
         const groundOnly = new NonMekUnitInstance(
-            asUnitInstanceId('unit:ground-only-conditions'),
+            'unit:ground-only-conditions',
             baseline(),
             tank,
             CORE_2026_RULESET,
@@ -233,7 +233,7 @@ describe('NonMekUnitInstance', () => {
             location: entity.locationOrder[0],
         });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-delayed-power'),
+            'unit:tank-delayed-power',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -284,7 +284,7 @@ describe('NonMekUnitInstance', () => {
             location: 'Torso',
         });
         const protoRuntime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:protomek-ei'),
+            'unit:protomek-ei',
             baseline(),
             protoMek,
             CORE_2026_RULESET,
@@ -303,7 +303,7 @@ describe('NonMekUnitInstance', () => {
             location: tank.locationOrder[0],
         });
         const tankRuntime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-ei'),
+            'unit:tank-ei',
             baseline(),
             tank,
             CORE_2026_RULESET,
@@ -321,7 +321,7 @@ describe('NonMekUnitInstance', () => {
             location: entity.locationOrder[0],
         });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-probe-handoff'),
+            'unit:tank-probe-handoff',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -352,7 +352,7 @@ describe('NonMekUnitInstance', () => {
         entity.setTonnage(20);
         entity.setArmorValue(entity.locationOrder[0], 'front', 2);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank'),
+            'unit:tank',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -388,7 +388,7 @@ describe('NonMekUnitInstance', () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-crew-state'),
+            'unit:tank-crew-state',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -481,7 +481,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         entity.originalWalkMP.set(8);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-effective-rules'),
+            'unit:tank-effective-rules',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -532,7 +532,7 @@ describe('NonMekUnitInstance', () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-query-projection-scope'),
+            'unit:tank-query-projection-scope',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -558,7 +558,7 @@ describe('NonMekUnitInstance', () => {
         entity.setTonnage(20);
         entity.setArmorValue(entity.locationOrder[0], 'front', 3);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-pending'),
+            'unit:tank-pending',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -611,7 +611,7 @@ describe('NonMekUnitInstance', () => {
         const booster = addTestEquipmentWithFlags(entity, ['F_MASC', 'S_SUPERCHARGER']);
         const boosterComponentId = componentIdForMount(booster);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-turn'),
+            'unit:tank-turn',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -690,7 +690,7 @@ describe('NonMekUnitInstance', () => {
         entity.setTonnage(40);
         entity.originalWalkMP.set(4);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-turn-summary'),
+            'unit:tank-turn-summary',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -760,7 +760,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         entity.setTonnage(40);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-end-turn-checkpoint'),
+            'unit:tank-end-turn-checkpoint',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -803,7 +803,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         entity.heatSinkCount.set(10);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:aero-durable-recovery'),
+            'unit:aero-durable-recovery',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -882,7 +882,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         entity.originalWalkMP.set(4);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-no-controller'),
+            'unit:tank-no-controller',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -930,7 +930,7 @@ describe('NonMekUnitInstance', () => {
         droneEntity.originalWalkMP.set(4);
         addTestEquipmentWithFlags(droneEntity, 'F_DRONE_OPERATING_SYSTEM');
         const droneRuntime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-drone-controller'),
+            'unit:tank-drone-controller',
             baseline(),
             droneEntity,
             CORE_2026_RULESET,
@@ -967,7 +967,7 @@ describe('NonMekUnitInstance', () => {
         const booster = addTestEquipmentWithFlags(entity, 'F_MASC', { location: 'Torso' });
         const boosterId = componentIdForMount(booster);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:proto-turn'),
+            'unit:proto-turn',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -1096,7 +1096,7 @@ describe('NonMekUnitInstance', () => {
             shotsCount: 10,
         });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-equipment'),
+            'unit:tank-equipment',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -1146,7 +1146,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         addTestEquipment(entity, weapon, { location: entity.locationOrder[0] });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-unowned-mode'),
+            'unit:tank-unowned-mode',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -1199,7 +1199,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         addTestEquipment(entity, weapon, { location: entity.locationOrder[0] });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-uac-mode'),
+            'unit:tank-uac-mode',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -1279,7 +1279,7 @@ describe('NonMekUnitInstance', () => {
             shotsCount: 17,
         });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-mml-mode'),
+            'unit:tank-mml-mode',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -1345,13 +1345,13 @@ describe('NonMekUnitInstance', () => {
             addTestEquipment(entity, weapon, { location: entity.locationOrder[0] }));
         const componentIds = mounts.map(componentIdForMount);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:dropship-grouped-command'),
+            'unit:dropship-grouped-command',
             baseline(),
             entity,
             CORE_2026_RULESET,
         );
         const registry = Object.freeze({
-            revision: asStateRevision(0),
+            revision: 0,
             targets: Object.freeze([]),
         });
         const selectionRevision = runtime.revision();
@@ -1366,7 +1366,7 @@ describe('NonMekUnitInstance', () => {
                 selection: { kind: 'selected' },
             },
         }, registry, false)).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        expect(runtime.revision()).toBe(asStateRevision(selectionRevision + 1));
+        expect(runtime.revision()).toBe(selectionRevision + 1);
         expect(componentIds.map(componentId => runtime.attackerTargetingState()
             .components.get(componentId)?.selection)).toEqual(Array.from(
                 { length: 4 },
@@ -1381,7 +1381,7 @@ describe('NonMekUnitInstance', () => {
             status: 'destroyed',
             target: 'pending',
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        expect(runtime.revision()).toBe(asStateRevision(damageRevision + 1));
+        expect(runtime.revision()).toBe(damageRevision + 1);
         expect(componentIds.map(componentId => runtime.componentStatus(componentId, 'preview')))
             .toEqual(['destroyed', 'destroyed', 'destroyed', 'destroyed']);
     });
@@ -1435,7 +1435,7 @@ describe('NonMekUnitInstance', () => {
         entity.heatSinkCount.set(10);
         const mount = addTestEquipment(entity, weapon, { location: 'Nose' });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:aero-prototype-fire'),
+            'unit:aero-prototype-fire',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -1443,7 +1443,7 @@ describe('NonMekUnitInstance', () => {
         const weaponId = componentIdForMount(mount);
         const targetId = asEncounterTargetId('target:aero-prototype');
         const registry: TargetRegistrySnapshot = Object.freeze({
-            revision: asStateRevision(0),
+            revision: 0,
             targets: Object.freeze([Object.freeze({
                 id: targetId,
                 letter: 'A',
@@ -1565,7 +1565,7 @@ describe('NonMekUnitInstance', () => {
         }, fixture.registry, false);
         const before = fixture.runtime.revision();
         const plan = fixture.runtime.planAttackerTargetingReconciliation(Object.freeze({
-            revision: asStateRevision(1),
+            revision: 1,
             targets: Object.freeze([]),
         }));
 
@@ -1626,7 +1626,7 @@ describe('NonMekUnitInstance', () => {
         battleArmor.trooperCount.set(4);
         battleArmor.setArmorValue('Squad', 'front', 5);
         const battleArmorRuntime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:battle-armor'),
+            'unit:battle-armor',
             baseline(),
             battleArmor,
             CORE_2026_RULESET,
@@ -1645,7 +1645,7 @@ describe('NonMekUnitInstance', () => {
         fighter.uuid.set(UUID);
         fighter.structuralIntegrity.set(7);
         const fighterRuntime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:fighter'),
+            'unit:fighter',
             baseline(),
             fighter,
             CORE_2026_RULESET,
@@ -1661,7 +1661,7 @@ describe('NonMekUnitInstance', () => {
         warShip.uuid.set(UUID);
         warShip.structuralIntegrity.set(20);
         const warShipRuntime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:warship'),
+            'unit:warship',
             baseline(),
             warShip,
             CORE_2026_RULESET,
@@ -1677,7 +1677,7 @@ describe('NonMekUnitInstance', () => {
         fighter.uuid.set(UUID);
         fighter.heatSinkCount.set(10);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:fighter-heat-persistence'),
+            'unit:fighter-heat-persistence',
             baseline(),
             fighter,
             CORE_2026_RULESET,
@@ -1730,7 +1730,7 @@ describe('NonMekUnitInstance', () => {
             { location: 'Nose' },
         );
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:fighter-nova-heat'),
+            'unit:fighter-nova-heat',
             baseline(),
             fighter,
             CORE_2026_RULESET,
@@ -1773,7 +1773,7 @@ describe('NonMekUnitInstance', () => {
             { location: 'Nose' },
         );
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:fighter-heat-projection'),
+            'unit:fighter-heat-projection',
             baseline(),
             fighter,
             CORE_2026_RULESET,
@@ -1812,7 +1812,7 @@ describe('NonMekUnitInstance', () => {
         fighter.uuid.set(UUID);
         fighter.heatSinkCount.set(10);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:fighter-manual-heat'),
+            'unit:fighter-manual-heat',
             baseline(),
             fighter,
             CORE_2026_RULESET,
@@ -1852,7 +1852,7 @@ describe('NonMekUnitInstance', () => {
             { location: tank.locationOrder[0] },
         );
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-ground-mobile-hpg'),
+            'unit:tank-ground-mobile-hpg',
             baseline(),
             tank,
             CORE_2026_RULESET,
@@ -1921,7 +1921,7 @@ describe('NonMekUnitInstance', () => {
         fighter.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 100, techBase: 'IS' }));
         const hpg = addTestEquipmentWithFlags(fighter, 'F_MOBILE_HPG', { location: 'Nose' });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:fighter-mobile-hpg'),
+            'unit:fighter-mobile-hpg',
             baseline(),
             fighter,
             CORE_2026_RULESET,
@@ -1957,7 +1957,7 @@ describe('NonMekUnitInstance', () => {
             { location: tank.locationOrder[0] },
         );
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-booby-trap'),
+            'unit:tank-booby-trap',
             baseline(),
             tank,
             CORE_2026_RULESET,
@@ -1996,7 +1996,7 @@ describe('NonMekUnitInstance', () => {
         fighter.setTonnage(50);
         fighter.structuralIntegrity.set(10);
         const fighterRuntime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:fighter-bv'),
+            'unit:fighter-bv',
             baseline(),
             fighter,
             CORE_2026_RULESET,
@@ -2018,7 +2018,7 @@ describe('NonMekUnitInstance', () => {
         battleArmor.trooperCount.set(4);
         battleArmor.setArmorValue('Squad', 'front', 5);
         const battleArmorRuntime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:battle-armor-bv'),
+            'unit:battle-armor-bv',
             baseline(),
             battleArmor,
             CORE_2026_RULESET,
@@ -2049,7 +2049,7 @@ describe('NonMekUnitInstance', () => {
         entity.originalWalkMP.set(5);
         const mount = addTestEquipment(entity, weapon, { location: 'Left Arm' });
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:proto-bv'),
+            'unit:proto-bv',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -2083,7 +2083,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
 
         expect(() => new NonMekUnitInstance(
-            asUnitInstanceId('unit:mek'),
+            'unit:mek',
             baseline('mtf'),
             entity,
             CORE_2026_RULESET,
@@ -2096,7 +2096,7 @@ describe('NonMekUnitInstance', () => {
         entity.setTonnage(20);
         const pristine = createPristineNonMekUnitState(entity);
         const index = new NonMekUnitInstance(
-            asUnitInstanceId('unit:index'),
+            'unit:index',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -2112,7 +2112,7 @@ describe('NonMekUnitInstance', () => {
         };
 
         expect(() => new NonMekUnitInstance(
-            asUnitInstanceId('unit:invalid'),
+            'unit:invalid',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -2145,7 +2145,7 @@ function targetingFixture(instanceId: string) {
         shotsCount: 10,
     });
     const runtime = new NonMekUnitInstance(
-        asUnitInstanceId(instanceId),
+        instanceId,
         baseline(),
         entity,
         CORE_2026_RULESET,
@@ -2156,7 +2156,7 @@ function targetingFixture(instanceId: string) {
         .find(id => String(id) === String(ammoMount.mountId))!;
     const targetId = asEncounterTargetId('target:vehicle');
     const registry: TargetRegistrySnapshot = Object.freeze({
-        revision: asStateRevision(0),
+        revision: 0,
         targets: Object.freeze([Object.freeze({
             id: targetId,
             letter: 'A',

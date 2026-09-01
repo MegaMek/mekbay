@@ -547,7 +547,7 @@ function ensureRegisteredAbility(
         const key = `pilot:${abilityId}`;
         let entry = abilities.get(key);
         if (!entry) {
-            const details = getAbilityDetails(pilotAbility, GameSystem.ALPHA_STRIKE);
+            const details = getAbilityDetails(pilotAbility, GameSystem.AS);
             const description = details.description?.length ? details.description : details.summary;
             entry = createMutableAbilityReference({
                 key,

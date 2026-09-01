@@ -216,7 +216,7 @@ export class PageViewerNonMekRuntimeService {
             return;
         }
         if (interaction.kind === 'crew-profile') {
-            void this.pilotEditor.editClassicMember(member.force, member.id);
+            void this.pilotEditor.editCBTMember(member.force, member.id);
             return;
         }
         this.openDamagePicker(member, interaction, snapshot, event);

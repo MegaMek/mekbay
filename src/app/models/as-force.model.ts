@@ -13,11 +13,12 @@ import { ASForceUnit } from './as-force-unit.model';
 import { C3NetworkEditor } from './c3-network-editor';
 import { C3Network } from './c3-network.model';
 import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
+import { DialogsService } from '../services/dialogs.service';
 
 
 
 export class ASForce extends Force<ASForceUnit> {
-    override gameSystem: GameSystem = GameSystem.ALPHA_STRIKE;
+    override gameSystem: GameSystem = GameSystem.AS;
 
     constructor(name: string,
         dataService: DataService,
@@ -148,9 +149,9 @@ export class ASForce extends Force<ASForceUnit> {
     }
 
     /** Installs a current Alpha Strike grouped record into this owner. */
-    private populateFromSerialized(data: ASSerializedForce): void {
+    private populateFromSerialized(data: ASSerializedForce): readonly string[] {
         if (data.version !== 2
-            || data.type !== GameSystem.ALPHA_STRIKE
+            || data.type !== GameSystem.AS
             || data.cbt !== undefined
             || typeof data.instanceId !== 'string'
             || !data.instanceId.trim()
@@ -162,18 +163,38 @@ export class ASForce extends Force<ASForceUnit> {
         }
 
         const sanitizedData = Sanitizer.sanitize(data, AS_SERIALIZED_FORCE_SCHEMA);
+        const warnings = new Set<string>();
         this.loading = true;
         try {
             this.populateSerializedMetadata(sanitizedData);
 
             const parsedGroups: UnitGroup<ASForceUnit>[] = [];
             for (const serializedGroup of sanitizedData.groups) {
-                const units = serializedGroup.units.map(serializedUnit => ASForceUnit.deserialize(
-                    serializedUnit,
-                    this,
-                    this.dataService,
-                    this.injector,
-                ));
+                const units = serializedGroup.units.flatMap(serializedUnit => {
+                    try {
+                        return [ASForceUnit.deserialize(
+                            serializedUnit,
+                            this,
+                            this.dataService,
+                            this.injector,
+                        )];
+                    } catch {
+                        const uuid = typeof serializedUnit.uuid === 'string'
+                            ? serializedUnit.uuid
+                            : '';
+                        const summary = uuid ? this.dataService.getUnitByUuid(uuid) : undefined;
+                        if (!summary) {
+                            warnings.add(`Unit UUID "${uuid || 'unknown'}" is not installed and was skipped.`);
+                            return [];
+                        }
+                        const unit = this.createForceUnit(captureUnitForAdmission(summary));
+                        if (typeof serializedUnit.id === 'string' && serializedUnit.id) {
+                            unit.id = serializedUnit.id;
+                        }
+                        warnings.add(`Unit "${summary.name}" had invalid saved data; its state was ignored.`);
+                        return [unit];
+                    }
+                });
 
                 const group = new UnitGroup<ASForceUnit>(this);
                 group.id = serializedGroup.id;
@@ -199,10 +220,16 @@ export class ASForce extends Force<ASForceUnit> {
                     group.formationTargetGroupId.set(null);
                 }
             }
-            this.setNetwork(sanitizedData.c3Networks ?? []);
+            try {
+                this.setNetwork(sanitizedData.c3Networks ?? []);
+            } catch {
+                this.setNetwork([]);
+                warnings.add('C3 network data was invalid and was ignored.');
+            }
         } finally {
             this.loading = false;
         }
+        return Object.freeze([...warnings]);
     }
 
     /** Deserialize a plain object to an ASForce instance */
@@ -212,12 +239,18 @@ export class ASForce extends Force<ASForceUnit> {
         injector: Injector
     ): ASForce {
         const force = new ASForce(data.name ?? 'Unnamed Force', dataService, injector);
-        force.populateFromSerialized(data);
+        const warnings = force.populateFromSerialized(data);
         force.groups().forEach((group) => FormationAbilityAssignmentUtil.reconcileGroupFormationAssignments(group, { markModified: false }));
+        if (warnings.length > 0) {
+            void injector.get(DialogsService).showNotice(
+                warnings.map(warning => `• ${warning}`).join('\n'),
+                'Save Loaded with Warnings',
+            );
+        }
         return force;
     }
 
-    protected override deserializeFrom(serialized: SerializedForce): ASForce {
+    protected override async deserializeFrom(serialized: SerializedForce): Promise<ASForce> {
         return ASForce.deserialize(
             serialized as ASSerializedForce,
             this.dataService, this.injector

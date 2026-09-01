@@ -17,9 +17,9 @@ function createUnit(overrides: Pick<UnitSummary, 'name' | 'chassis' | 'model' | 
 function executeSortedUnits(units: UnitSummary[], sortKey: string): UnitSummary[] {
     return executeUnitSearch({
         units,
-        parsedQuery: parseSemanticQueryAST('', GameSystem.CLASSIC),
+        parsedQuery: parseSemanticQueryAST('', GameSystem.CBT),
         searchTokens: [],
-        gameSystem: GameSystem.CLASSIC,
+        gameSystem: GameSystem.CBT,
         sortKey,
         sortDirection: 'asc',
         bvPvLimit: 0,
@@ -37,9 +37,9 @@ function executeSortedUnits(units: UnitSummary[], sortKey: string): UnitSummary[
 function executeQuery(units: UnitSummary[], query: string): UnitSummary[] {
     return executeUnitSearch({
         units,
-        parsedQuery: parseSemanticQueryAST(query, GameSystem.CLASSIC),
+        parsedQuery: parseSemanticQueryAST(query, GameSystem.CBT),
         searchTokens: [],
-        gameSystem: GameSystem.CLASSIC,
+        gameSystem: GameSystem.CBT,
         sortKey: 'name',
         sortDirection: 'asc',
         bvPvLimit: 0,
@@ -59,9 +59,9 @@ describe('unit-search-executor', () => {
         const unit = createEmptyUnit({ name: 'AS Unit', as: { ...createEmptyUnit().as, PV: 20 } });
         const execution = executeUnitSearch({
             units: [unit],
-            parsedQuery: parseSemanticQueryAST('', GameSystem.ALPHA_STRIKE),
+            parsedQuery: parseSemanticQueryAST('', GameSystem.AS),
             searchTokens: [],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             sortKey: 'name',
             sortDirection: 'asc',
             bvPvLimit: 0,
@@ -100,9 +100,9 @@ describe('unit-search-executor', () => {
 
         const execution = executeUnitSearch({
             units: [excluded, matching],
-            parsedQuery: parseSemanticQueryAST('', GameSystem.ALPHA_STRIKE),
+            parsedQuery: parseSemanticQueryAST('', GameSystem.AS),
             searchTokens: [],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             sortKey: 'as.PV',
             sortDirection: 'asc',
             bvPvLimit: 0,
@@ -133,9 +133,9 @@ describe('unit-search-executor', () => {
         const higherBase = createEmptyUnit({ name: 'Alpha', as: { ...createEmptyUnit().as, PV: 25 } });
         const execution = executeUnitSearch({
             units: [higherBase, lowerBase],
-            parsedQuery: parseSemanticQueryAST('', GameSystem.ALPHA_STRIKE),
+            parsedQuery: parseSemanticQueryAST('', GameSystem.AS),
             searchTokens: [],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             sortKey: 'as.PV',
             sortDirection: 'asc',
             bvPvLimit: 0,
@@ -221,9 +221,9 @@ describe('unit-search-executor', () => {
         const indexedSpecials = parseASSpecials(['TUR(3/3/3,AC1/4/1)']);
         const execution = executeUnitSearch({
             units: [unit],
-            parsedQuery: parseSemanticQueryAST('specials="AC*/>=4/*"', GameSystem.ALPHA_STRIKE),
+            parsedQuery: parseSemanticQueryAST('specials="AC*/>=4/*"', GameSystem.AS),
             searchTokens: [],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             sortKey: 'name',
             sortDirection: 'asc',
             bvPvLimit: 0,

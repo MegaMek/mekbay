@@ -1,17 +1,9 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import {
-    C3EmergencyMasterActivationTracker,
-    isC3EmergencyMasterEquipment,
-} from './c3-emergency-master.model';
-import type { C3State } from './cbt-force-api';
-import {
-    C3NetworkType,
-    C3Role,
-    projectNonMekC3Components,
-    type C3Component,
-} from './c3-network.model';
+import { C3EmergencyMasterActivationTracker, isC3EmergencyMasterEquipment } from './c3-emergency-master.model';
+import type { C3State } from './cbt-force.types';
+import { C3NetworkType, C3Role, projectNonMekC3Components, type C3Component } from './c3-network.model';
 import {
     projectEncounterC3Components,
     validateEncounterNetworks,
@@ -29,18 +21,10 @@ import {
 } from './runtime/component-c3-emergency-master';
 import { projectOperationalC3Networks } from './runtime/c3-operational-network';
 import type { EncounterNetwork } from './runtime/encounter-runtime';
-import {
-    c3EndpointKey,
-    projectEffectiveMekC3Networks,
-} from './runtime/mek-c3-runtime';
+import { c3EndpointKey, projectEffectiveMekC3Networks } from './runtime/mek-c3-runtime';
 import { equipmentForComponent } from './runtime/mek-runtime-index';
-import {
-    isReadyNonMekUnit,
-    isReadyMekUnit,
-    type ReadyClassicUnit,
-} from './runtime/ready-classic-unit';
-import type { ReadyMekUnit } from './runtime/ready-unit-factory';
-import type { UnitInstanceId } from './runtime/runtime-state';
+import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit } from './runtime/cbt-unit';
+import type { CBTMekUnit } from './runtime/cbt-mek-unit';
 
 export interface C3EmergencyMasterNotice {
     readonly message: string;
@@ -49,14 +33,14 @@ export interface C3EmergencyMasterNotice {
 }
 
 export interface C3EmergencyMasterMutation {
-    readonly changedUnitIds: readonly UnitInstanceId[];
+    readonly changedUnitIds: readonly string[];
     readonly notices: readonly C3EmergencyMasterNotice[];
 }
 
 export interface C3EmergencyMasterEndTurnPlan {
-    readonly owner: ReadonlyMap<UnitInstanceId, ReadyClassicUnit>;
-    readonly unit: ReadyMekUnit;
-    readonly instanceId: UnitInstanceId;
+    readonly owner: ReadonlyMap<string, CBTUnit>;
+    readonly unit: CBTMekUnit;
+    readonly instanceId: string;
     readonly effectiveNetworks: readonly EncounterNetwork[];
     readonly definitions: readonly ComponentC3EmergencyMasterDefinition[];
 }
@@ -70,18 +54,18 @@ export class CBTForceC3 {
     private emergencyMasterTracker = new C3EmergencyMasterActivationTracker();
 
     public constructor(
-        private readonly currentUnits: () => ReadonlyMap<UnitInstanceId, ReadyClassicUnit> | null,
+        private readonly currentUnits: () => ReadonlyMap<string, CBTUnit> | null,
     ) {}
 
     public reset(): void {
         this.emergencyMasterTracker = new C3EmergencyMasterActivationTracker();
     }
 
-    public isEndpointOperational(instanceId: UnitInstanceId, componentId: ComponentId): boolean {
+    public isEndpointOperational(instanceId: string, componentId: ComponentId): boolean {
         const unit = this.currentUnits()?.get(instanceId);
         if (!unit) return false;
         try {
-            if (isReadyMekUnit(unit)) {
+            if (isCBTMekUnit(unit)) {
                 const query = unit.getInstance().query();
                 return !query.hasCondition('shutdown')
                     && !query.hasCondition('jammed')
@@ -98,11 +82,11 @@ export class CBTForceC3 {
     }
 
     /** BV follows configured wiring and permanent loss, never transient operation. */
-    public isEndpointIntact(instanceId: UnitInstanceId, componentId: ComponentId): boolean {
+    public isEndpointIntact(instanceId: string, componentId: ComponentId): boolean {
         const unit = this.currentUnits()?.get(instanceId);
         if (!unit) return false;
         try {
-            const query = isReadyMekUnit(unit)
+            const query = isCBTMekUnit(unit)
                 ? unit.getInstance().query()
                 : unit.captureRuntime().query;
             return query.componentStatus(componentId, 'committed') !== 'destroyed';
@@ -114,7 +98,7 @@ export class CBTForceC3 {
     public effectiveNetworks(configured: readonly EncounterNetwork[]): readonly EncounterNetwork[] {
         return projectEffectiveMekC3Networks(
             configured,
-            [...(this.currentUnits() ?? [])].flatMap(([instanceId, unit]) => isReadyMekUnit(unit)
+            [...(this.currentUnits() ?? [])].flatMap(([instanceId, unit]) => isCBTMekUnit(unit)
                 ? [Object.freeze({ instanceId, query: unit.getInstance().query() })]
                 : []),
         );
@@ -126,9 +110,9 @@ export class CBTForceC3 {
     }
 
     public state(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         networks: readonly EncounterNetwork[],
-        expectedUnit?: ReadyClassicUnit,
+        expectedUnit?: CBTUnit,
     ): C3State {
         const unit = this.currentUnits()?.get(instanceId);
         if (!unit || (expectedUnit !== undefined && expectedUnit !== unit)) return 'none';
@@ -144,17 +128,17 @@ export class CBTForceC3 {
     }
 
     public hasOperationalEndpoint(
-        instanceId: UnitInstanceId,
-        unit: ReadyClassicUnit,
+        instanceId: string,
+        unit: CBTUnit,
         networks: readonly EncounterNetwork[],
     ): boolean {
         return this.state(instanceId, networks, unit) === 'operational';
     }
 
     /** Units whose persisted emergency-master step can change during reconciliation. */
-    public emergencyMasterUnitIds(): readonly UnitInstanceId[] {
+    public emergencyMasterUnitIds(): readonly string[] {
         return Object.freeze([...(this.currentUnits() ?? [])].flatMap(([instanceId, unit]) => {
-            if (!isReadyMekUnit(unit)) return [];
+            if (!isCBTMekUnit(unit)) return [];
             const hasEmergencyMaster = [...unit.getIndex().components.keys()].some(componentId =>
                 isC3EmergencyMasterEquipment(equipmentForComponent(unit.getIndex(), componentId)));
             return hasEmergencyMaster ? [instanceId] : [];
@@ -163,7 +147,7 @@ export class CBTForceC3 {
 
     public reconcileEmergencyMasters(
         configured: readonly EncounterNetwork[],
-        candidateUnitIds: readonly UnitInstanceId[] = this.emergencyMasterUnitIds(),
+        candidateUnitIds: readonly string[] = this.emergencyMasterUnitIds(),
     ): C3EmergencyMasterMutation {
         const units = this.currentUnits();
         if (!units || candidateUnitIds.length === 0) return emptyC3EmergencyMasterMutation();
@@ -172,11 +156,11 @@ export class CBTForceC3 {
             typeof componentC3EmergencyMasterFacts
         >['status'] }> = [];
         const definitions = new Map<string, ComponentC3EmergencyMasterDefinition>();
-        const changedUnitIds = new Set<UnitInstanceId>();
+        const changedUnitIds = new Set<string>();
 
         for (const instanceId of new Set(candidateUnitIds)) {
             const unit = units.get(instanceId);
-            if (!unit || !isReadyMekUnit(unit)) continue;
+            if (!unit || !isCBTMekUnit(unit)) continue;
             const runtime = unit.getInstance();
             for (const [componentId] of unit.getIndex().components) {
                 if (!isC3EmergencyMasterEquipment(
@@ -222,12 +206,12 @@ export class CBTForceC3 {
     }
 
     public planEmergencyMasterEndTurn(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         configured: readonly EncounterNetwork[],
     ): C3EmergencyMasterEndTurnPlan | null {
         const owner = this.currentUnits();
         const candidate = owner?.get(instanceId);
-        const unit = candidate && isReadyMekUnit(candidate) ? candidate : undefined;
+        const unit = candidate && isCBTMekUnit(candidate) ? candidate : undefined;
         if (!owner || !unit) return null;
         const effectiveNetworks = this.effectiveNetworks(configured);
         const runtime = unit.getInstance();
@@ -298,7 +282,7 @@ export class CBTForceC3 {
  */
 export function validateCBTEncounterNetworks(
     configured: readonly EncounterNetwork[],
-    units: ReadonlyMap<UnitInstanceId, ReadyClassicUnit>,
+    units: ReadonlyMap<string, CBTUnit>,
 ): boolean {
     const presentation = [...units].map(([instanceId, unit]): C3EncounterPresentationUnit => Object.freeze({
         instanceId,
@@ -307,9 +291,9 @@ export function validateCBTEncounterNetworks(
     return validateEncounterNetworks(configured, presentation);
 }
 
-export function projectReadyC3Components(unit: ReadyClassicUnit): readonly C3Component[] {
-    if (!isReadyMekUnit(unit)) {
-        return isReadyNonMekUnit(unit)
+export function projectReadyC3Components(unit: CBTUnit): readonly C3Component[] {
+    if (!isCBTMekUnit(unit)) {
+        return isCBTNonMekUnit(unit)
             ? projectNonMekC3Components(unit.getIndex())
             : Object.freeze([]);
     }

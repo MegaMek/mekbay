@@ -5,16 +5,12 @@ import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { SavedEntityIdentity } from '../persisted-unit-state';
 import { buildMekRuntimeIndex, type MekRuntimeIndex } from './mek-runtime-index';
 import type { UnitProviderId, UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { jsonValuesEqual } from '../../utils/json-value.util';
 import type { InitializeUnitStateOptions } from './unit-state-initializer';
 import { initializeUnitState } from './unit-state-initializer';
-import {
-    asStateRevision,
-    type InstanceBaselineRef,
-    type StateRevision,
-    type UnitInstanceId,
-} from './runtime-state';
+import { type InstanceBaselineRef } from './runtime-state';
 import {
     CBTUnitInstance,
     type CBTUnitAttackerTargetingCommand,
@@ -38,39 +34,27 @@ import {
     type MekHeatRuntimeContextV2,
 } from './mek-heat-state-v2';
 import type { ScenarioRules } from './unit-state-initializer';
-import {
-    createMekMechanicsContextV2,
-    type MekMechanicsContextV2,
-} from './mek-mechanics-context-v2';
-import {
-    cloneNativeUnitSourceHandle,
-    type NativeUnitSourceHandle,
-} from '../native-unit-source-handle';
-import {
-    captureClassicUnitRuntime,
-    type ClassicUnitRuntimeReadModel,
-} from './classic-unit-runtime';
+import { createMekMechanicsContextV2, type MekMechanicsContextV2 } from './mek-mechanics-context-v2';
+import { cloneNativeUnitSourceHandle, type NativeUnitSourceHandle } from '../native-unit-source-handle';
+import { captureCBTUnitRuntime, type CBTUnitRuntimeReadModel } from './cbt-unit-runtime';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import type {
-    ReadySelectedWeaponFireResult,
-    ReadyTargetingReconciliation,
-    ReadyClassicUnit,
-    ReadyUnitCommandResult,
-} from './ready-classic-unit';
+    CBTSelectedWeaponFireResult,
+    CBTTargetingReconciliation,
+    CBTUnit,
+    CBTUnitDispatchResult,
+} from './cbt-unit';
 import type { EquipmentRowOrderGroup } from './equipment-row-order';
 
-export interface ReadyMekUnitFactoryDependencies {
-    readonly initializeOptions: InitializeUnitStateOptions;
-}
-
-export interface ReadyMekUnitRequest {
+export interface CreateCBTMekUnitRequest {
     readonly identity: { readonly provider: UnitProviderId; readonly uuid: UnitUuid };
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
+    readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
 }
 
 /** Only this ready wrapper exposes the full entity and operational instance. */
-export class ReadyMekUnit implements ReadyClassicUnit {
-    public readonly instanceId: UnitInstanceId;
+export class CBTMekUnit implements CBTUnit {
+    public readonly instanceId: string;
     private readonly entity: MekEntity;
     private readonly sourceRef: SavedEntityIdentity;
     private readonly runtime: CBTUnitInstance;
@@ -111,13 +95,13 @@ export class ReadyMekUnit implements ReadyClassicUnit {
         return this.runtime.revision();
     }
 
-    public captureRuntime(): ClassicUnitRuntimeReadModel {
-        return captureClassicUnitRuntime(this.runtime);
+    public captureRuntime(): CBTUnitRuntimeReadModel {
+        return captureCBTUnitRuntime(this.runtime);
     }
 
     public planTargetingReconciliation(
         registry: TargetRegistrySnapshot,
-    ): ReadyTargetingReconciliation | null {
+    ): CBTTargetingReconciliation | null {
         const plan = this.runtime.planAttackerTargetingReconciliation(registry, false);
         return plan === null ? null : Object.freeze({
             install: () => this.runtime.installAttackerTargetingReconciliation(plan),
@@ -129,7 +113,7 @@ export class ReadyMekUnit implements ReadyClassicUnit {
         permutation: readonly number[],
         rowCount: number,
         forceReadOnly: boolean,
-    ): ReadyUnitCommandResult {
+    ): CBTUnitDispatchResult {
         return this.runtime.setEquipmentRowOrder(
             group,
             permutation,
@@ -143,7 +127,7 @@ export class ReadyMekUnit implements ReadyClassicUnit {
         registry: TargetRegistrySnapshot,
         forceReadOnly: boolean,
         c3Available: boolean,
-    ): ReadySelectedWeaponFireResult {
+    ): CBTSelectedWeaponFireResult {
         const result = this.runtime.dispatchSelectedWeaponFire(
             command,
             registry,
@@ -160,11 +144,11 @@ export class ReadyMekUnit implements ReadyClassicUnit {
         command: CBTUnitAttackerTargetingCommand,
         registry: TargetRegistrySnapshot,
         forceReadOnly: boolean,
-    ): ReadyUnitCommandResult {
+    ): CBTUnitDispatchResult {
         return this.runtime.dispatchAttackerTargeting(command, registry, forceReadOnly);
     }
 
-    public endTurn(policy: MekHeatAutomationPolicyV2): ReadyUnitCommandResult {
+    public endTurn(policy: MekHeatAutomationPolicyV2): CBTUnitDispatchResult {
         return this.runtime.dispatch({
             type: 'end-turn',
             policy,
@@ -204,17 +188,25 @@ export class ReadyMekUnit implements ReadyClassicUnit {
         });
     }
 
-}
-
-/**
- * Async readiness boundary: entity loading and deterministic baseline
- * finish before a runtime can escape.
- */
-export class ReadyMekUnitFactory {
-    private readonly initializeOptions: InitializeUnitStateOptions;
-
-    public constructor(dependencies: ReadyMekUnitFactoryDependencies) {
-        this.initializeOptions = captureInitializeOptions(dependencies.initializeOptions);
+    /** Rebuilds the immutable deployment baseline for an unstarted unit. */
+    public static redeployCrew(
+        current: CBTMekUnit,
+        crewAssignment: CrewAssignment,
+        scenario: ScenarioRules,
+    ): Promise<CBTMekUnit> {
+        const saved = current.serialize();
+        return this.redeployPreCombat(current, {
+            initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
+            profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
+            deployment: {
+                id: saved.deployment.values.id,
+                ...(saved.deployment.values.initialHeat === undefined
+                    ? {}
+                    : { initialHeat: saved.deployment.values.initialHeat }),
+                crewAssignment,
+            },
+            scenario,
+        });
     }
 
     /**
@@ -224,9 +216,9 @@ export class ReadyMekUnitFactory {
      * wrapper atomically only after this method has completed successfully.
      */
     public static async redeployPreCombat(
-        current: ReadyMekUnit,
+        current: CBTMekUnit,
         options: InitializeUnitStateOptions,
-    ): Promise<ReadyMekUnit> {
+    ): Promise<CBTMekUnit> {
         options = captureInitializeOptions(options);
         const runtime = current.getInstance();
         if (runtime.revision() !== 0) {
@@ -290,7 +282,7 @@ export class ReadyMekUnitFactory {
             schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
             values: initialized.deployment,
         });
-        return new ReadyMekUnit(
+        return new CBTMekUnit(
             entity,
             sourceRef,
             instance,
@@ -302,9 +294,9 @@ export class ReadyMekUnitFactory {
 
     /** Resets gameplay state while retaining the exact entity, identity, crew, and rules baseline. */
     public static async repair(
-        current: ReadyMekUnit,
+        current: CBTMekUnit,
         scenario: ScenarioRules,
-    ): Promise<ReadyMekUnit> {
+    ): Promise<CBTMekUnit> {
         scenario = captureValue(scenario);
         const runtime = current.getInstance();
         const currentState = runtime.snapshot();
@@ -328,7 +320,7 @@ export class ReadyMekUnitFactory {
         }
         const state = Object.freeze({
             ...initialized.state,
-            stateRevision: asStateRevision(currentRevision + 1),
+            stateRevision: currentRevision + 1,
             ...(currentState.equipmentRowOrder === undefined
                 ? {}
                 : { equipmentRowOrder: currentState.equipmentRowOrder }),
@@ -359,7 +351,7 @@ export class ReadyMekUnitFactory {
             schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
             values: initialized.deployment,
         });
-        return new ReadyMekUnit(
+        return new CBTMekUnit(
             entity,
             sourceRef,
             instance,
@@ -371,64 +363,62 @@ export class ReadyMekUnitFactory {
 
     /** Builds a detached runtime candidate for an atomic force-owner transfer. */
     public static cloneForOwner(
-        current: ReadyMekUnit,
+        current: CBTMekUnit,
         scenario: ScenarioRules,
-    ): Promise<ReadyMekUnit> {
+    ): Promise<CBTMekUnit> {
         scenario = captureValue(scenario);
         const saved = current.serialize();
-        const factory = new ReadyMekUnitFactory({
-            initializeOptions: {
+        return CBTMekUnit.restoreFromEntity(
+            saved,
+            current.getUnit(),
+            current.getSourceRef(),
+            {
                 initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
                 profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
                 deployment: saved.deployment.values,
                 scenario,
             },
-        });
-        return factory.restoreFromEntity(
-            saved,
-            current.getUnit(),
-            current.getSourceRef(),
             current.getNativeSource(),
         );
     }
 
     /** Restores one session undo checkpoint against the exact retained entity owner. */
     public static restoreSnapshot(
-        current: ReadyMekUnit,
+        current: CBTMekUnit,
         saved: SerializedCBTUnitV2,
         scenario: ScenarioRules,
-    ): Promise<ReadyMekUnit> {
+    ): Promise<CBTMekUnit> {
         scenario = captureValue(scenario);
         if (saved.instanceId !== current.instanceId
             || saved.entity.provider !== current.getSourceRef().provider
             || saved.entity.uuid !== current.getSourceRef().uuid) {
             throw new Error('Runtime checkpoint does not match its retained Mek owner');
         }
-        const factory = new ReadyMekUnitFactory({
-            initializeOptions: {
+        return CBTMekUnit.restoreFromEntity(
+            saved,
+            current.getUnit(),
+            current.getSourceRef(),
+            {
                 initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
                 profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
                 deployment: saved.deployment.values,
                 scenario,
             },
-        });
-        return factory.restoreFromEntity(
-            saved,
-            current.getUnit(),
-            current.getSourceRef(),
             current.getNativeSource(),
         );
     }
 
     /** Uses the exact entity already checked by the whole-unit capability gate. */
-    public async createFromEntity(
-        request: ReadyMekUnitRequest,
+    public static async createFromEntity(
+        request: CreateCBTMekUnitRequest,
         entity: MekEntity,
         sourceRef: SavedEntityIdentity,
+        options: InitializeUnitStateOptions,
         nativeSource?: NativeUnitSourceHandle,
-    ): Promise<ReadyMekUnit> {
+    ): Promise<CBTMekUnit> {
         request = captureValue(request);
         sourceRef = captureValue(sourceRef);
+        options = captureInitializeOptions(options);
         if (sourceRef.provider !== request.identity.provider
             || sourceRef.uuid !== request.identity.uuid
             || sourceRef.uuid !== entity.uuid()) {
@@ -436,7 +426,23 @@ export class ReadyMekUnitFactory {
         }
         nativeSource = verifyNativeSource(sourceRef, nativeSource);
         const runtimeIndex = buildMekRuntimeIndex(entity);
-        const initialized = initializeUnitState(entity, runtimeIndex, sourceRef, this.initializeOptions);
+        if (request.crewSkills) {
+            options = {
+                ...options,
+                deployment: {
+                    ...options.deployment,
+                    crewAssignment: {
+                        schemaVersion: 1,
+                        positions: createDefaultCrewAssignment(runtimeIndex.crewPositions).positions.map(position => ({
+                            ...position,
+                            gunnery: request.crewSkills!.gunnery,
+                            piloting: effectiveEntityPilotingSkill(entity, request.crewSkills!.piloting),
+                        })),
+                    },
+                },
+            };
+        }
+        const initialized = initializeUnitState(entity, runtimeIndex, sourceRef, options);
         const instance = new CBTUnitInstance(
             request.instanceId,
             initialized.baselineRef,
@@ -449,20 +455,20 @@ export class ReadyMekUnitFactory {
                 entity,
                 runtimeIndex,
                 initialized.baselineRef.ruleset,
-                this.initializeOptions.scenario,
+                options.scenario,
             ),
             bindMekMechanicsContext(
                 entity,
                 runtimeIndex,
                 initialized.baselineRef.ruleset,
-                this.initializeOptions.scenario,
+                options.scenario,
             ),
         );
         const deployment: SerializedDeploymentConfigurationV2 = Object.freeze({
             schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
             values: initialized.deployment,
         });
-        return new ReadyMekUnit(
+        return new CBTMekUnit(
             entity,
             sourceRef,
             instance,
@@ -476,14 +482,16 @@ export class ReadyMekUnitFactory {
      * ready-runtime wrapper used for fresh and legacy-restored Meks. The
      * tolerant V2 restorer owns baseline drift; no legacy projection is used.
      */
-    public async restoreFromEntity(
+    public static async restoreFromEntity(
         saved: SerializedCBTUnitV2,
         entity: MekEntity,
         sourceRef: SavedEntityIdentity,
+        options: InitializeUnitStateOptions,
         nativeSource?: NativeUnitSourceHandle,
-    ): Promise<ReadyMekUnit> {
+    ): Promise<CBTMekUnit> {
         saved = captureValue(saved);
         sourceRef = captureValue(sourceRef);
+        options = captureInitializeOptions(options);
         if (sourceRef.provider !== saved.entity.provider
             || sourceRef.uuid !== saved.entity.uuid
             || sourceRef.uuid !== entity.uuid()) {
@@ -505,7 +513,7 @@ export class ReadyMekUnitFactory {
             });
         }
         const initialized = initializeUnitState(entity, runtimeIndex, sourceRef, {
-            ...this.initializeOptions,
+            ...options,
             deployment: deploymentValues,
         });
         // The native Entity owns topology. Storage carries only stable target IDs;
@@ -530,13 +538,13 @@ export class ReadyMekUnitFactory {
                 entity,
                 runtimeIndex,
                 initialized.baselineRef.ruleset,
-                this.initializeOptions.scenario,
+                options.scenario,
             ),
             bindMekMechanicsContext(
                 entity,
                 runtimeIndex,
                 initialized.baselineRef.ruleset,
-                this.initializeOptions.scenario,
+                options.scenario,
             ),
         );
         const deployment: SerializedDeploymentConfigurationV2 = Object.freeze({
@@ -552,7 +560,7 @@ export class ReadyMekUnitFactory {
             || restored.metadata.heatRecovery !== undefined
             ? restored.metadata
             : undefined;
-        return new ReadyMekUnit(
+        return new CBTMekUnit(
             entity,
             sourceRef,
             instance,

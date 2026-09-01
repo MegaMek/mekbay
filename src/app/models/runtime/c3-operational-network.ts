@@ -3,10 +3,9 @@
 
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { EncounterNetwork } from './encounter-runtime';
-import type { UnitInstanceId } from './runtime-state';
 
 export type C3EndpointOperationalQuery = (
-    instanceId: UnitInstanceId,
+    instanceId: string,
     componentId: ComponentId,
 ) => boolean;
 

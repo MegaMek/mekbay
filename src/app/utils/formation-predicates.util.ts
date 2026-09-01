@@ -13,7 +13,7 @@ const FIGHTER_AS_TYPES = new Set(['AF', 'CF']);
 const TRANSPORT_AS_TYPES = new Set(['AF', 'CF', 'SC', 'DS', 'DA']);
 const EW_SPECIALS = ['PRB', 'AECM', 'BH', 'ECM', 'LPRB', 'LECM', 'LTAG', 'TAG', 'WAT'];
 
-function isClassicFighter(facts: FormationUnitFacts): boolean {
+function isCBTFighter(facts: FormationUnitFacts): boolean {
     return facts.unitType === 'Aero'
         && (facts.unitSubtype.includes('Aerospace Fighter')
             || facts.unitSubtype.includes('Conventional Fighter'));
@@ -24,13 +24,13 @@ function isSupportAircraft(facts: FormationUnitFacts): boolean {
 }
 
 function isTransportSquadronUnit(facts: FormationUnitFacts, gameSystem: GameSystem): boolean {
-    if (gameSystem === GameSystem.ALPHA_STRIKE) {
+    if (gameSystem === GameSystem.AS) {
         const asType = facts.asType ?? '';
         return TRANSPORT_AS_TYPES.has(asType)
             || (asType === 'SV' && isSupportAircraft(facts));
     }
 
-    return isClassicFighter(facts)
+    return isCBTFighter(facts)
         || isSupportAircraft(facts)
         || (facts.unitType === 'Aero'
             && (facts.unitSubtype.includes('Small Craft')
@@ -54,7 +54,7 @@ function roleIncludes(facts: FormationUnitFacts, tokens: readonly string[]): boo
 }
 
 function asOrCbt(gameSystem: GameSystem, alphaStrike: boolean, classic: boolean): boolean {
-    return gameSystem === GameSystem.ALPHA_STRIKE ? alphaStrike : classic;
+    return gameSystem === GameSystem.AS ? alphaStrike : classic;
 }
 
 function isClanForce(facts: FormationUnitFacts): boolean {
@@ -63,14 +63,14 @@ function isClanForce(facts: FormationUnitFacts): boolean {
 }
 
 export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, FormationPredicate>> = {
-    'anti-air-equipment': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'anti-air-equipment': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? hasAnyAsSpecialPrefix(facts, ['FLK', 'AC', 'ART'])
         : facts.cbtHasAutocannon || facts.cbtHasArtillery || facts.cbtQuirks.includes('Anti-Aircraft Targeting'),
     'anvil-armor': (facts, gameSystem) => asOrCbt(gameSystem, facts.asArmor >= 4, facts.cbtArmor >= 105),
-    'anvil-weapon': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'anvil-weapon': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? hasAnyAsSpecialPrefix(facts, ['AC', 'FLK', 'LRM', 'SRM'])
         : facts.cbtHasAutocannon || facts.cbtHasLrm || facts.cbtHasSrm,
-    'artillery-equipment': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'artillery-equipment': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? hasAsSpecialPrefix(facts, 'ART')
         : facts.cbtHasArtillery,
     'assault-armor': (facts, gameSystem) => asOrCbt(gameSystem, facts.asArmor >= 5, facts.cbtArmor >= 135),
@@ -78,56 +78,56 @@ export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, Formati
     'assault-role-juggernaut': (facts) => facts.role === 'Juggernaut',
     'assault-role-sniper': (facts) => facts.role === 'Sniper',
     'assault-size': (facts, gameSystem) => asOrCbt(gameSystem, facts.asSize >= 4, facts.cbtIsAssaultOrLarger),
-    'aerospace-fighter-bm-ba-unit': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'aerospace-fighter-bm-ba-unit': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'AF' || facts.asType === 'BM' || facts.asType === 'BA'
         : facts.unitType === 'Aero' || facts.unitType === 'Mek' || facts.unitSubtype === 'Battle Armor',
-    'aerospace-unit': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'aerospace-unit': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? FIGHTER_AS_TYPES.has(facts.asType ?? '')
-        : isClassicFighter(facts),
+        : isCBTFighter(facts),
     'aerospace-superiority-role': (facts) => roleIn(facts, ['Interceptor', 'Fast Dogfighter']),
     'attack-or-dogfighter-role': (facts) => roleIn(facts, ['Attack', 'Attack Fighter', 'Dogfighter']),
-    'battle-armor-unit': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'battle-armor-unit': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'BA'
         : facts.unitSubtype === 'Battle Armor',
     'battle-role': (facts) => roleIn(facts, ['Brawler', 'Sniper', 'Skirmisher']),
-    'bm-or-mek-unit': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'bm-or-mek-unit': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'BM'
         : facts.unitType === 'Mek',
     'clan-force': (facts) => isClanForce(facts),
     'command-diverse-role': (facts) => roleIn(facts, ['Brawler', 'Striker', 'Scout']),
     'command-heavy-role': (facts) => roleIn(facts, ['Sniper', 'Missile Boat', 'Skirmisher', 'Juggernaut']),
-    'combat-vehicle': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'combat-vehicle': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'CV' || facts.asType === 'SV'
         : facts.unitType === 'Tank' || facts.unitType === 'VTOL',
     'direct-fire-damage': (facts, gameSystem) => asOrCbt(gameSystem, facts.asLongDamage >= 2, formationCanDealDamage(facts, 10, 18)),
     'dogfighter-role': (facts) => roleIncludes(facts, ['Dogfighter']),
-    'ew-equipment': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'ew-equipment': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? hasAnyAsSpecialPrefix(facts, EW_SPECIALS)
         : facts.cbtHasEcm || facts.cbtHasBap || facts.cbtHasTag,
     'fast-assault-move': (facts, gameSystem) => asOrCbt(gameSystem, facts.asGroundMove >= 10 || facts.asJumpMove > 0, facts.cbtWalk >= 5 || facts.cbtJump > 0),
-    'fire-support-equipment': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'fire-support-equipment': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? hasAsSpecialPrefix(facts, 'IF')
         : facts.cbtHasLrm || facts.cbtHasArtillery,
     'fire-support-or-dogfighter-role': (facts) => roleIn(facts, ['Fire Support', 'Dogfighter']),
     'fire-support-role': (facts) => facts.role === 'Fire Support',
     'fire-role': (facts) => roleIn(facts, ['Missile Boat', 'Sniper']),
-    'heavy-bm-or-mek': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'heavy-bm-or-mek': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'BM' && facts.asSize >= 3
         : facts.unitType === 'Mek' && facts.cbtIsHeavyOrLarger,
     'heavy-recon-move': (facts, gameSystem) => asOrCbt(gameSystem, facts.asAnyGroundOrJumpMove >= 8, facts.cbtWalk >= 4),
     'heavy-size': (facts, gameSystem) => asOrCbt(gameSystem, facts.asSize >= 3, facts.cbtIsHeavyOrLarger),
     'hunter-role': (facts) => roleIn(facts, ['Ambusher', 'Juggernaut']),
-    'infantry-unit': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'infantry-unit': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'CI' || facts.asType === 'BA' || facts.asType === 'PM'
         : facts.unitType === 'Infantry',
-    'indirect-fire-equipment': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'indirect-fire-equipment': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? hasAsSpecialPrefix(facts, 'IF')
         : facts.cbtHasLrm || facts.cbtHasArtillery,
     'interceptor-role': (facts) => facts.role === 'Interceptor',
-    'jump-or-infantry': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'jump-or-infantry': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asJumpMove > 0 || FORMATION_PREDICATES['infantry-unit'](facts, gameSystem)
         : facts.cbtJump > 0 || facts.unitType === 'Infantry',
-    'light-bm-or-mek': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'light-bm-or-mek': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'BM' && facts.asSize === 1
         : facts.unitType === 'Mek' && facts.cbtIsLight,
     'light-fire-role': (facts) => roleIn(facts, ['Missile Boat', 'Sniper']),
@@ -141,24 +141,24 @@ export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, Formati
     'medium-heavy-size': (facts, gameSystem) => asOrCbt(gameSystem, facts.asSize >= 2 && facts.asSize <= 3, facts.cbtIsMedium || (facts.cbtIsHeavyOrLarger && !facts.cbtIsAssaultOrLarger)),
     'medium-plus-size': (facts, gameSystem) => asOrCbt(gameSystem, facts.asSize >= 2, facts.cbtIsMediumOrLarger),
     'medium-size': (facts, gameSystem) => asOrCbt(gameSystem, facts.asSize === 2, facts.cbtIsMedium),
-    'phalanx-allowed-unit': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'phalanx-allowed-unit': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'BM' || facts.asType === 'BA' || facts.asType === 'CV'
         : facts.unitType === 'Mek' || facts.unitSubtype === 'Battle Armor' || ['Tank', 'VTOL', 'Naval'].includes(facts.unitType),
-    'phalanx-ba-or-cv': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'phalanx-ba-or-cv': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'BA' || facts.asType === 'CV'
         : facts.unitSubtype === 'Battle Armor' || ['Tank', 'VTOL', 'Naval'].includes(facts.unitType),
-    'phalanx-bm-or-ba': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'phalanx-bm-or-ba': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'BM' || facts.asType === 'BA'
         : facts.unitType === 'Mek' || facts.unitSubtype === 'Battle Armor',
     'phalanx-bm-or-mek': (facts, gameSystem) => FORMATION_PREDICATES['bm-or-mek-unit'](facts, gameSystem),
-    'phalanx-cv': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'phalanx-cv': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'CV'
         : ['Tank', 'VTOL', 'Naval'].includes(facts.unitType),
     'probe-move': (facts, gameSystem) => asOrCbt(gameSystem, facts.asAnyGroundOrJumpMove >= 10, facts.cbtWalk >= 6),
     'pursuit-move': (facts, gameSystem) => asOrCbt(gameSystem, facts.asAnyGroundOrJumpMove >= 12, facts.cbtWalk >= 6),
     'ranger-size': (facts, gameSystem) => asOrCbt(gameSystem, facts.asSize < 4, !facts.cbtIsAssaultOrLarger),
     'recon-move': (facts, gameSystem) => asOrCbt(gameSystem, facts.asAnyGroundOrJumpMove >= 10, facts.cbtWalk >= 5),
-    'rifle-autocannon': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'rifle-autocannon': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? hasAsSpecialPrefix(facts, 'AC') || hasAsSpecialPrefix(facts, 'FLK')
         : facts.cbtHasAutocannon,
     'rifle-medium-heavy-size': (facts, gameSystem) => FORMATION_PREDICATES['medium-heavy-size'](facts, gameSystem),
@@ -169,10 +169,10 @@ export const FORMATION_PREDICATES: Readonly<Record<FormationPredicateId, Formati
     'security-light-role': (facts) => roleIn(facts, ['Scout', 'Striker']),
     'short-damage-2': (facts, gameSystem) => asOrCbt(gameSystem, facts.asShortDamage >= 2, formationCanDealDamage(facts, 10, 6)),
     'slow-urban-move': (facts, gameSystem) => asOrCbt(gameSystem, facts.asGroundMove <= 8, facts.cbtWalk <= 4),
-    'strategic-aero': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'strategic-aero': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? facts.asType === 'AF'
         : facts.unitType === 'Aero',
-    'strategic-skill-3': (facts, gameSystem) => gameSystem === GameSystem.ALPHA_STRIKE
+    'strategic-skill-3': (facts, gameSystem) => gameSystem === GameSystem.AS
         ? (facts.pilotSkill ?? Number.POSITIVE_INFINITY) <= 3
         : (facts.gunnerySkill ?? Number.POSITIVE_INFINITY) <= 3,
     'striker-or-skirmisher-role': (facts) => roleIn(facts, ['Striker', 'Skirmisher']),

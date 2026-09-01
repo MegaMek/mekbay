@@ -69,7 +69,7 @@ export type C3NetworkDialogResult = C3NetworkDialogResultBase & (
 
 interface C3DialogUnit extends C3UnitView {
     readonly member?: CBTForceMember;
-    /** Alpha Strike-only adapter; Classic dialog rows are Entity-native. */
+    /** Alpha Strike-only adapter; CBT dialog rows are Entity-native. */
     getSummary?(): UnitSummary;
 }
 
@@ -202,7 +202,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected sidebarAnimated = signal(false);
     protected showBvDetails = signal(false);
     protected connectionsAboveNodes = computed(() => this.optionsService.options().c3NetworkConnectionsAboveNodes);
-    protected isClassicGame = computed(() => this.data.force.gameSystem === GameSystem.CLASSIC);
+    protected isCBTGame = computed(() => this.data.force.gameSystem === GameSystem.CBT);
 
     // Flag to skip initial effect trigger
     private initialized = false;
@@ -725,9 +725,9 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         const topology = runtimeGraph;
         const topLevel = topology.topLevelNetworks;
         const visited = new Set<string>();
-        const isClassic = this.isClassicGame();
+        const isCBT = this.isCBTGame();
         const getUnitBvData = (node: C3Node | null): { baseBv?: number; tagBv?: number; c3Bv?: number; externalStoresBv?: number; pilotBv?: number, adjustedBv?: number } => {
-            if (!isClassic || !node) return {};
+            if (!isCBT || !node) return {};
             return this.unitBvData(node.unit as C3DialogUnit) ?? {};
         };
 
@@ -805,7 +805,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
             // Calculate network tax for top-level networks only
             let networkTax: number | undefined;
-            if (isTopLevel && isClassic) {
+            if (isTopLevel && isCBT) {
                 // Sum the tax of all unique units in the network
                 const collectTaxes = (vm: Pick<SidebarNetworkVm, 'members' | 'subNetworks'>, seen: Set<string>): number => {
                     let sum = 0;
@@ -869,7 +869,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     /** Total BV summary for all C3 units */
     protected bvTotals = computed(() => {
-        if (!this.isClassicGame()) return null;
+        if (!this.isCBTGame()) return null;
         const nodes = this.nodes();
         const networks = this.networks();
         let totalBaseBv = 0;

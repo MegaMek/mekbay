@@ -228,10 +228,10 @@ export class UnitCardExpandedComponent {
     isAlphaStrike = computed<boolean>(() => {
         const u = this.unit();
         if (this.isForceUnit(u)) {
-            return u.force.gameSystem === GameSystem.ALPHA_STRIKE;
+            return u.force.gameSystem === GameSystem.AS;
         }
         if (this.gameSystemOverride()) {
-            return this.gameSystemOverride() === GameSystem.ALPHA_STRIKE;
+            return this.gameSystemOverride() === GameSystem.AS;
         }
         return this.gameService.isAlphaStrike();
     });

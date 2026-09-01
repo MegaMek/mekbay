@@ -12,7 +12,7 @@ export const OPTION_VALUES = {
     canvasInput: ['all', 'touch', 'pen'],
     swipeToNextSheet: ['vertical', 'horizontal', 'disabled'],
     unitDisplayName: ['chassisModel', 'alias', 'both'],
-    gameSystem: [GameSystem.CLASSIC, GameSystem.ALPHA_STRIKE],
+    gameSystem: [GameSystem.CBT, GameSystem.AS],
     availabilitySource: ['mul', 'megamek'],
     forceViewerBVPVDisplay: ['adjusted', 'base', 'both'],
     forceViewerBVPVDisplayDamage: ['damaged', 'pristine'],
@@ -20,7 +20,7 @@ export const OPTION_VALUES = {
     unitSearchExpandedViewLayout: ['panel-list-filters', 'filters-list-panel'],
     unitSearchViewMode: ['list', 'card', 'chassis', 'table'],
     forceOverviewViewMode: ['expanded', 'compact', 'table'],
-    classicUnitViewMode: ['sheet', 'tactical'],
+    cbtUnitViewMode: ['sheet', 'tactical'],
     ASVehiclesCriticalHitTable: ['default', 'scouringSands'],
     automationMode: ['yes', 'ask', 'no'],
 } as const;
@@ -32,7 +32,7 @@ export type RecordSheetDoubleTapZoomResetMode = OptionValue<'recordSheetDoubleTa
 export type ColorScheme = OptionValue<'colorScheme'>;
 export type UnitSearchViewMode = OptionValue<'unitSearchViewMode'>;
 export type AutomationMode = OptionValue<'automationMode'>;
-export type ClassicUnitViewMode = OptionValue<'classicUnitViewMode'>;
+export type CBTUnitViewMode = OptionValue<'cbtUnitViewMode'>;
 
 export const CBT_AUTOMATION_KEYS = [
     'pilotSkillCheck',
@@ -108,7 +108,7 @@ export interface Options {
     },
     sidebarLipPosition?: string;
     trackPhaseAndTurn: boolean;
-    classicUnitViewMode: ClassicUnitViewMode;
+    cbtUnitViewMode: CBTUnitViewMode;
     cbtAutomationOptions: CBTAutomationOptions;
     CBTOptionalRules: CBTOptionalRules;
     CBTRules: CBTRuleset;

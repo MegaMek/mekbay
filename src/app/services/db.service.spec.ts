@@ -36,7 +36,7 @@ describe('DbService current force persistence', () => {
             version: 2,
             timestamp: '2026-08-10T00:00:00.000Z',
             instanceId,
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Protected DB Force',
             groups: [],
         };
@@ -61,7 +61,7 @@ describe('DbService current force persistence', () => {
             version: 2,
             timestamp: '2026-08-10T00:00:00.000Z',
             instanceId,
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Obsolete development row',
             cbt: { schemaVersion: 8, forceRevision: 99 },
         });
@@ -69,7 +69,7 @@ describe('DbService current force persistence', () => {
             version: 2,
             timestamp: '2026-08-10T00:00:01.000Z',
             instanceId,
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Current compact row',
             cbt: createEmptyCBTForceForTest(instanceId, 1),
         };

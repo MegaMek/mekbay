@@ -21,27 +21,22 @@ import type {
     CBTForceEndTurnUnitResult,
     CBTMekUnitCommandResult,
     CBTNonMekUnitCommandResult,
-} from '../cbt-force-api';
-import {
-    hasMekRuntime,
-    hasNonMekRuntime,
-    type CBTUnitSnapshot,
-} from '../cbt-unit-snapshot';
+} from '../cbt-force.types';
+import { hasMekRuntime, hasNonMekRuntime, type CBTUnitSnapshot } from '../cbt-unit-snapshot';
 import type { NonMekUnitCommand } from './non-mek-unit-instance';
-import type { UnitInstanceId } from './runtime-state';
 import type { CBTUnitCommand } from './unit-instance';
 import type { MekHeatAutomationPolicyV2 } from './mek-heat-state-v2';
 
 type PreparedForcePhaseBoundary =
     | Readonly<{
         readonly kind: 'mek';
-        readonly instanceId: UnitInstanceId;
+        readonly instanceId: string;
         readonly before: CBTUnitSnapshot;
         readonly prepared: PreparedDirectMekAutomationCommand;
     }>
     | Readonly<{
         readonly kind: 'non-mek';
-        readonly instanceId: UnitInstanceId;
+        readonly instanceId: string;
         readonly before: CBTUnitSnapshot;
         readonly prepared: PreparedDirectNonMekAutomationCommand;
     }>;
@@ -74,15 +69,15 @@ function stateRevision(snapshot: CBTUnitSnapshot | null): number | null {
 
 export interface CBTForceUnitCommandBoundary {
     readonly readOnly: () => boolean;
-    readonly instanceIds: () => readonly UnitInstanceId[];
-    readonly snapshot: (instanceId: UnitInstanceId) => CBTUnitSnapshot | null;
+    readonly instanceIds: () => readonly string[];
+    readonly snapshot: (instanceId: string) => CBTUnitSnapshot | null;
     readonly heatPolicy: () => MekHeatAutomationPolicyV2;
     readonly dispatchMekCore: (
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitCommand,
     ) => Promise<CBTMekUnitCommandResult>;
     readonly dispatchNonMekCore: (
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: NonMekUnitCommand,
     ) => Promise<CBTNonMekUnitCommandResult>;
     readonly endTurnForAllCore: () => Promise<CBTForceEndTurnAllResult>;
@@ -96,7 +91,7 @@ export interface CBTForceUnitCommandBoundary {
 export class CBTForceUnitCommandDispatcher {
     private boundaryQueue: Promise<void> = Promise.resolve();
     /** Reviewed/partially-applied work retained only until this End Turn completes. */
-    private readonly pendingEndTurnSettlements = new Map<UnitInstanceId, PendingEndTurnSettlement>();
+    private readonly pendingEndTurnSettlements = new Map<string, PendingEndTurnSettlement>();
 
     constructor(
         private readonly force: CBTForce,
@@ -105,7 +100,7 @@ export class CBTForceUnitCommandDispatcher {
     ) {}
 
     dispatchNonMek(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: NonMekUnitCommand,
     ): Promise<CBTNonMekUnitCommandResult> {
         if (command.kind === 'end-turn' && this.nonMekAutomation()) {
@@ -130,7 +125,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     dispatchMek(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitCommand,
     ): Promise<CBTMekUnitCommandResult> {
         if (command.type === 'end-turn' && this.mekAutomation()) {
@@ -258,7 +253,7 @@ export class CBTForceUnitCommandDispatcher {
         });
     }
 
-    hasPendingEndTurn(instanceId: UnitInstanceId): boolean {
+    hasPendingEndTurn(instanceId: string): boolean {
         const snapshot = this.boundary.snapshot(instanceId);
         return snapshot !== null && this.phaseAlreadyEnded(snapshot);
     }
@@ -270,7 +265,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private async dispatchNonMekWithAutomation(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: NonMekUnitCommand,
         automate: boolean,
     ): Promise<CBTNonMekUnitCommandResult> {
@@ -353,7 +348,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private async dispatchMekWithAutomation(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitCommand,
         automate: boolean,
     ): Promise<CBTMekUnitCommandResult> {
@@ -435,7 +430,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private async endPhaseForAllWithAutomation(
-        instanceIds: readonly UnitInstanceId[],
+        instanceIds: readonly string[],
         endTurnBoundary = false,
     ): Promise<CBTForceEndTurnAllResult> {
         if (this.boundary.readOnly()) {
@@ -447,7 +442,7 @@ export class CBTForceUnitCommandDispatcher {
         const preparedPhases: PreparedForcePhaseBoundary[] = [];
         const mekRequests: DirectMekEndPhaseAutomationRequest[] = [];
         const nonMekRequests: DirectNonMekEndPhaseAutomationRequest[] = [];
-        const snapshots = new Map<UnitInstanceId, CBTUnitSnapshot>();
+        const snapshots = new Map<string, CBTUnitSnapshot>();
 
         // Complete every review before committing the first unit. Closing any
         // review therefore leaves the entire force at its current phase.
@@ -658,7 +653,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private async endTurnForAllWithAutomation(
-        instanceIds: readonly UnitInstanceId[],
+        instanceIds: readonly string[],
     ): Promise<CBTForceEndTurnAllResult> {
         const initialRevisions = new Map(instanceIds.map(instanceId => [
             instanceId,
@@ -691,8 +686,8 @@ export class CBTForceUnitCommandDispatcher {
 
         const mekRequests: DirectMekEndTurnAutomationRequest[] = [];
         const nonMekRequests: DirectNonMekEndTurnAutomationRequest[] = [];
-        const preparedMekById = new Map<UnitInstanceId, PreparedDirectMekAutomationCommand>();
-        const preparedNonMekById = new Map<UnitInstanceId, PreparedDirectNonMekAutomationCommand>();
+        const preparedMekById = new Map<string, PreparedDirectMekAutomationCommand>();
+        const preparedNonMekById = new Map<string, PreparedDirectNonMekAutomationCommand>();
         for (const instanceId of instanceIds) {
             const snapshot = this.boundary.snapshot(instanceId);
             if (!snapshot) continue;
@@ -779,7 +774,7 @@ export class CBTForceUnitCommandDispatcher {
             this.saveNonMekSettlement(row.instanceId, snapshot, row.prepared, false);
         }
 
-        const settledMekById = new Map<UnitInstanceId, PreparedDirectMekAutomationCommand>();
+        const settledMekById = new Map<string, PreparedDirectMekAutomationCommand>();
         for (const [instanceId, prepared] of preparedMekById) {
             const snapshot = this.boundary.snapshot(instanceId);
             const pending = snapshot ? this.pendingMekSettlement(instanceId, snapshot) : null;
@@ -808,7 +803,7 @@ export class CBTForceUnitCommandDispatcher {
             const afterSettlement = this.boundary.snapshot(instanceId);
             if (afterSettlement) this.saveMekSettlement(instanceId, afterSettlement, ready, true);
         }
-        const settledNonMekById = new Map<UnitInstanceId, PreparedDirectNonMekAutomationCommand>();
+        const settledNonMekById = new Map<string, PreparedDirectNonMekAutomationCommand>();
         for (const [instanceId, prepared] of preparedNonMekById) {
             const snapshot = this.boundary.snapshot(instanceId);
             const pending = snapshot ? this.pendingNonMekSettlement(instanceId, snapshot) : null;
@@ -930,7 +925,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private completedBoundaryBatch(
-        instanceIds: readonly UnitInstanceId[],
+        instanceIds: readonly string[],
         completed: readonly CBTForceEndTurnUnitResult[],
     ): CBTForceEndTurnAllResult {
         const completedById = new Map(completed.map(row => [row.instanceId, row] as const));
@@ -950,7 +945,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private rejectedBoundaryBatch(
-        instanceIds: readonly UnitInstanceId[],
+        instanceIds: readonly string[],
         reason: string,
     ): CBTForceEndTurnAllResult {
         return Object.freeze({
@@ -967,9 +962,9 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private failedBoundaryBatch(
-        instanceIds: readonly UnitInstanceId[],
+        instanceIds: readonly string[],
         completed: readonly CBTForceEndTurnUnitResult[],
-        failedInstanceId: UnitInstanceId,
+        failedInstanceId: string,
         reason: string,
         changed: boolean,
     ): CBTForceEndTurnAllResult {
@@ -996,8 +991,8 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private failedEndTurnBatch(
-        instanceIds: readonly UnitInstanceId[],
-        initialRevisions: ReadonlyMap<UnitInstanceId, number | null>,
+        instanceIds: readonly string[],
+        initialRevisions: ReadonlyMap<string, number | null>,
     ): CBTForceEndTurnAllResult {
         const results = instanceIds.map(instanceId => Object.freeze({
             instanceId,
@@ -1023,7 +1018,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private async markMekEndTurnHeatStaged(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         prepared: PreparedDirectMekAutomationCommand,
     ): Promise<PreparedDirectMekAutomationCommand | null> {
         if (prepared.command.type !== 'end-turn') return null;
@@ -1047,7 +1042,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private async markNonMekEndTurnHeatStaged(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         prepared: PreparedDirectNonMekAutomationCommand,
     ): Promise<PreparedDirectNonMekAutomationCommand | null> {
         if (prepared.command.kind !== 'end-turn') return null;
@@ -1071,7 +1066,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private pendingMekSettlement(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         snapshot: CBTUnitSnapshot,
     ): Extract<PendingEndTurnSettlement, { readonly kind: 'mek' }> | null {
         const pending = this.pendingSettlement(instanceId, snapshot);
@@ -1079,7 +1074,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private pendingNonMekSettlement(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         snapshot: CBTUnitSnapshot,
     ): Extract<PendingEndTurnSettlement, { readonly kind: 'non-mek' }> | null {
         const pending = this.pendingSettlement(instanceId, snapshot);
@@ -1087,7 +1082,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private pendingSettlement(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         snapshot: CBTUnitSnapshot,
     ): PendingEndTurnSettlement | null {
         const pending = this.pendingEndTurnSettlements.get(instanceId);
@@ -1100,7 +1095,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private saveMekSettlement(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         snapshot: CBTUnitSnapshot,
         prepared: PreparedDirectMekAutomationCommand,
         settled: boolean,
@@ -1114,7 +1109,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private saveNonMekSettlement(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         snapshot: CBTUnitSnapshot,
         prepared: PreparedDirectNonMekAutomationCommand,
         settled: boolean,
@@ -1128,7 +1123,7 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     /** Keeps a reviewed plan resumable after its own partial settlement only. */
-    private refreshEndTurnWorkflowRevision(instanceId: UnitInstanceId): void {
+    private refreshEndTurnWorkflowRevision(instanceId: string): void {
         const snapshot = this.boundary.snapshot(instanceId);
         const pending = this.pendingEndTurnSettlements.get(instanceId);
         const turn = turnCounter(snapshot);
@@ -1143,7 +1138,7 @@ export class CBTForceUnitCommandDispatcher {
         }));
     }
 
-    private clearEndTurnWorkflow(instanceId: UnitInstanceId): void {
+    private clearEndTurnWorkflow(instanceId: string): void {
         this.pendingEndTurnSettlements.delete(instanceId);
     }
 
@@ -1167,7 +1162,7 @@ export class CBTForceUnitCommandDispatcher {
             : null;
     }
 
-    private cancelledMek(instanceId: UnitInstanceId): CBTMekUnitCommandResult {
+    private cancelledMek(instanceId: string): CBTMekUnitCommandResult {
         const snapshot = this.boundary.snapshot(instanceId);
         return Object.freeze({
             accepted: true,
@@ -1176,7 +1171,7 @@ export class CBTForceUnitCommandDispatcher {
         });
     }
 
-    private cancelledNonMek(instanceId: UnitInstanceId): CBTNonMekUnitCommandResult {
+    private cancelledNonMek(instanceId: string): CBTNonMekUnitCommandResult {
         const snapshot = this.boundary.snapshot(instanceId);
         return Object.freeze({
             accepted: true,

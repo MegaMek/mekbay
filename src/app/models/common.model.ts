@@ -5,8 +5,8 @@
 export const REMOTE_HOST = 'https://db.mekbay.com';
 
 export enum GameSystem {
-    CLASSIC = 'cbt',
-    ALPHA_STRIKE = 'as'
+    CBT = 'cbt',
+    AS = 'as'
 }
 
 export enum Rulebook {

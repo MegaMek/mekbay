@@ -78,17 +78,17 @@ describe('UrlService', () => {
 
     describe('computeGameSystemOverride', () => {
         it('returns null when only gs is present', () => {
-            expect(computeGameSystemOverride(new URLSearchParams('gs=' + GameSystem.ALPHA_STRIKE), '/')).toBeNull();
+            expect(computeGameSystemOverride(new URLSearchParams('gs=' + GameSystem.AS), '/')).toBeNull();
         });
 
         it('returns the game system when meaningful params are present', () => {
-            expect(computeGameSystemOverride(new URLSearchParams(`gs=${GameSystem.CLASSIC}&q=atlas`), '/'))
-                .toBe(GameSystem.CLASSIC);
+            expect(computeGameSystemOverride(new URLSearchParams(`gs=${GameSystem.CBT}&q=atlas`), '/'))
+                .toBe(GameSystem.CBT);
         });
 
         it('treats a page path as meaningful', () => {
-            expect(computeGameSystemOverride(new URLSearchParams('gs=' + GameSystem.ALPHA_STRIKE), '/toe'))
-                .toBe(GameSystem.ALPHA_STRIKE);
+            expect(computeGameSystemOverride(new URLSearchParams('gs=' + GameSystem.AS), '/toe'))
+                .toBe(GameSystem.AS);
         });
 
         it('ignores invalid gs values', () => {

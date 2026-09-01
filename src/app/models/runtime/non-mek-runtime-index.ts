@@ -20,28 +20,28 @@ import {
     type LocationId,
 } from '../entity/entity-identifiers';
 import type {
-    ClassicRuntimeArmorFace,
-    ClassicRuntimeComponent,
-    ClassicRuntimeCrewPosition,
-    ClassicRuntimeLocation,
-    ClassicUnitRuntimeIndex,
-} from './classic-unit-runtime';
+    CBTRuntimeArmorFace,
+    CBTRuntimeComponent,
+    CBTRuntimeCrewPosition,
+    CBTRuntimeLocation,
+    CBTUnitRuntimeIndex,
+} from './cbt-unit-runtime';
 
-export type NonMekRuntimeLocation = ClassicRuntimeLocation;
+export type NonMekRuntimeLocation = CBTRuntimeLocation;
 
-export type NonMekRuntimeArmorFace = ClassicRuntimeArmorFace;
+export type NonMekRuntimeArmorFace = CBTRuntimeArmorFace;
 
-export interface NonMekRuntimeComponent extends ClassicRuntimeComponent {
+export interface NonMekRuntimeComponent extends CBTRuntimeComponent {
     readonly kind: 'equipment';
     readonly mount: EntityMountedEquipment;
 }
 
-export type NonMekRuntimeCrewPosition = ClassicRuntimeCrewPosition;
+export type NonMekRuntimeCrewPosition = CBTRuntimeCrewPosition;
 
 export type NonMekDamageTrack = NonMekDamageTrackDefinition;
 
 /** Disposable lookups over the canonical entity; no blueprint facts are copied. */
-export interface NonMekRuntimeIndex extends ClassicUnitRuntimeIndex {
+export interface NonMekRuntimeIndex extends CBTUnitRuntimeIndex {
     readonly locations: ReadonlyMap<LocationId, NonMekRuntimeLocation>;
     readonly armorFaces: ReadonlyMap<ArmorFaceId, NonMekRuntimeArmorFace>;
     readonly components: ReadonlyMap<ComponentId, NonMekRuntimeComponent>;

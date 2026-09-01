@@ -105,7 +105,7 @@ export class ForceDialogsService {
         const ref = this.dialogs.createDialog<PrintAllOptions | null>(PrintOptionsDialogComponent, {
             disableClose: false,
             data: {
-                gameSystem: force instanceof CBTForce ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE,
+                gameSystem: force instanceof CBTForce ? GameSystem.CBT : GameSystem.AS,
                 printSummary: async (printOptions: PrintAllOptions) => {
                     if (force instanceof CBTForce) {
                         await CBTSummaryPrintUtil.print(force, printOptions);
@@ -124,7 +124,7 @@ export class ForceDialogsService {
         if (!printOptions) return;
 
         if (force instanceof CBTForce) {
-            await CBTPrintUtil.multipagePrint(force.getClassicMembers(), printOptions, this.recordSheets);
+            await CBTPrintUtil.multipagePrint(force.getCBTMembers(), printOptions, this.recordSheets);
         } else if (force instanceof ASForce) {
             await ASPrintUtil.multipagePrint(
                 this.injector.get(ApplicationRef),

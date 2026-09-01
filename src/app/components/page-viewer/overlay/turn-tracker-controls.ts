@@ -23,7 +23,7 @@ import {
     isCBTMekForceMember,
     type CBTForceMember,
 } from '../../../models/force-member.model';
-import type { CBTForceEndTurnAllResult } from '../../../models/cbt-force-api';
+import type { CBTForceEndTurnAllResult } from '../../../models/cbt-force.types';
 import type { MekEquipmentChoice } from '../../../models/cbt-force.model';
 import {
     isUnitBuildingLevel,

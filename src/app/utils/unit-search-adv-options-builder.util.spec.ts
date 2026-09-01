@@ -25,7 +25,7 @@ describe('buildUnitSearchAdvOptions', () => {
             isComplexQuery: false,
             totalRanges: { tons: [20, 100] },
             dynamicInternalLabel: 'Internal',
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitFilterKernelDependencies: () => ({
                 getProperty: () => undefined,
                 getAdjustedBV: () => 0,
@@ -81,7 +81,7 @@ describe('buildUnitSearchAdvOptions', () => {
             isComplexQuery: false,
             totalRanges: {},
             dynamicInternalLabel: 'Internal',
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitFilterKernelDependencies: () => ({
                 getProperty: () => undefined,
                 getAdjustedBV: () => 0,
@@ -133,7 +133,7 @@ describe('buildUnitSearchAdvOptions', () => {
             isComplexQuery: false,
             totalRanges: {},
             dynamicInternalLabel: 'Internal',
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitFilterKernelDependencies: () => ({
                 getProperty: () => undefined,
                 getAdjustedBV: () => 0,
@@ -184,7 +184,7 @@ describe('buildUnitSearchAdvOptions', () => {
             isComplexQuery: false,
             totalRanges: {},
             dynamicInternalLabel: 'Internal',
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             getUnitFilterKernelDependencies: () => ({
                 getProperty: () => undefined,
                 getAdjustedBV: () => 0,

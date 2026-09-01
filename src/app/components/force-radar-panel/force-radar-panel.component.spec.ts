@@ -327,9 +327,9 @@ describe('ForceRadarPanelComponent', () => {
         expect(getAxis('range')?.ratio).toBeCloseTo(0.125, 6);
         expect(getAxis('dpt')?.ratio).toBeCloseTo(2 / 9, 6);
         expect(fixture.nativeElement.querySelectorAll('.radar-hover-node').length).toBe(4);
-        const classicHoveredLabels = Array.from(fixture.nativeElement.querySelectorAll('.radar-label-value-hover')) as SVGTextElement[];
+        const cbtHoveredLabels = Array.from(fixture.nativeElement.querySelectorAll('.radar-label-value-hover')) as SVGTextElement[];
 
-        expect(classicHoveredLabels.map((element) => element.textContent?.trim())).toEqual([
+        expect(cbtHoveredLabels.map((element) => element.textContent?.trim())).toEqual([
             '5/9',
             '40/62',
             '8/14',
@@ -419,7 +419,7 @@ describe('ForceRadarPanelComponent', () => {
             },
         });
         fixture.componentRef.setInput('force', new LoadForceEntry({
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             groups: [{
                 units: [
                     { unit: asMek, destroyed: false },
@@ -506,7 +506,7 @@ describe('ForceRadarPanelComponent', () => {
         });
 
         fixture.componentRef.setInput('force', new LoadForceEntry({
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             groups: [{
                 units: [
                     { unit: asMek, destroyed: false },

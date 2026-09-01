@@ -36,7 +36,7 @@ export class ForceUnitLoadingService {
         for (const force of forces) {
             if (seenForces.has(force)) continue;
             seenForces.add(force);
-            // Direct Classic runtimes are materialized by the V2 load transaction.
+            // Direct CBT runtimes are materialized by the V2 load transaction.
             if (force instanceof CBTForce) continue;
             captures.push(Object.freeze({
                 force,

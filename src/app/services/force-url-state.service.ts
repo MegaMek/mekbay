@@ -243,8 +243,8 @@ export class ForceUrlStateService {
 
     private createInlineForce(params: URLSearchParams): Force {
         const name = params.get('name') ?? '';
-        const gameSystem = params.get('gs') ?? GameSystem.CLASSIC;
-        const force: Force = gameSystem === GameSystem.ALPHA_STRIKE
+        const gameSystem = params.get('gs') ?? GameSystem.CBT;
+        const force: Force = gameSystem === GameSystem.AS
             ? new ASForce(name, this.dataService, this.injector)
             : new CBTForce(name, this.dataService, this.injector);
 

@@ -137,7 +137,7 @@ describe('App', () => {
       isAlphaStrike: jasmine.createSpy('isAlphaStrike').and.returnValue(false),
       setOverride: jasmine.createSpy('setOverride'),
       setMode: jasmine.createSpy('setMode'),
-      currentGameSystem: jasmine.createSpy('currentGameSystem').and.returnValue(GameSystem.CLASSIC),
+      currentGameSystem: jasmine.createSpy('currentGameSystem').and.returnValue(GameSystem.CBT),
     };
     accountAuthServiceMock = {
       handleOAuthRedirectReturn: jasmine.createSpy('handleOAuthRedirectReturn').and.resolveTo(undefined),

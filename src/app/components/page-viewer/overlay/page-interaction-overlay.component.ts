@@ -47,7 +47,7 @@ import {
     UnitNotificationBadgesComponent,
     type UnitNotificationActivation,
 } from '../../unit-notification-badges/unit-notification-badges.component';
-import { ClassicUnitViewModeService } from '../../../services/classic-unit-view-mode.service';
+import { CBTUnitViewModeService } from '../../../services/cbt-unit-view-mode.service';
 import { CBTAutomationToastService } from '../../../services/cbt-automation-toast.service';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
@@ -84,7 +84,7 @@ export class PageInteractionOverlayComponent {
     private toastService = inject(ToastService);
     private readonly automationToasts = inject(CBTAutomationToastService);
     private readonly automationToastVisibilityOwner = {};
-    protected readonly unitViewMode = inject(ClassicUnitViewModeService);
+    protected readonly unitViewMode = inject(CBTUnitViewModeService);
     private targetsOverlay = new WeaponTargetsOverlayController({
         overlay: this.overlay,
         overlayManager: this.overlayManager,

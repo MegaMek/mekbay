@@ -38,7 +38,7 @@ export interface PrintOptionsDialogData {
                     </div>
                 </div>
 
-                @if (isClassic()) {
+                @if (isCBT()) {
                 <div class="option-col">
                     <div class="option-row">
                         <label for="printPaperSize">Paper size:</label>
@@ -119,7 +119,7 @@ export interface PrintOptionsDialogData {
             </div>
         </div>
         <div class="wide-dialog-actions">
-            <button class="bt-button primary" [disabled]="isPrinting()" (click)="onPrint()">{{ isClassic() ? 'SHEETS' : 'CARDS' }}</button>
+            <button class="bt-button primary" [disabled]="isPrinting()" (click)="onPrint()">{{ isCBT() ? 'SHEETS' : 'CARDS' }}</button>
             <button class="bt-button" [disabled]="isPrinting()" (click)="onPrintSummary()">SUMMARY</button>
             <button class="bt-button" [disabled]="isPrinting()" (click)="onClose()">DISMISS</button>
         </div>
@@ -203,8 +203,8 @@ export class PrintOptionsDialogComponent {
     });
     protected readonly isPrinting = signal(false);
 
-    protected readonly isClassic = computed(() => this.data.gameSystem === GameSystem.CLASSIC);
-    protected readonly isAlphaStrike = computed(() => this.data.gameSystem === GameSystem.ALPHA_STRIKE);
+    protected readonly isCBT = computed(() => this.data.gameSystem === GameSystem.CBT);
+    protected readonly isAlphaStrike = computed(() => this.data.gameSystem === GameSystem.AS);
 
     protected onBooleanChange(key: 'clean' | 'printPilotData' | 'ASPrintPageBreakOnGroups', event: Event): void {
         const value = (event.target as HTMLSelectElement).value === 'true';

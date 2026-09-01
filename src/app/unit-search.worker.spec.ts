@@ -122,7 +122,7 @@ function createRequest(): UnitSearchWorkerQueryRequest {
         corpusVersion: '1:0',
         executionQuery: 'masak era&="Clan Invasion",ilClan faction="Clan Jade Falcon"',
         telemetryQuery: 'masak era&="Clan Invasion",ilClan faction="Clan Jade Falcon"',
-        gameSystem: GameSystem.CLASSIC,
+        gameSystem: GameSystem.CBT,
         sortKey: '',
         sortDirection: 'asc',
         bvPvLimit: 0,
@@ -371,7 +371,7 @@ describe('unit-search worker', () => {
             ...createRequest(),
             executionQuery: query,
             telemetryQuery: query,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         }).entries).toEqual([resultEntry(nestedHighAC)]);
     });
 
@@ -399,7 +399,7 @@ describe('unit-search worker', () => {
             ...createRequest(),
             executionQuery,
             telemetryQuery: executionQuery,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
         }).entries;
 
         expect(execute('specials&="AC*/>=4/*" specials&="AC*/*/>=3"')).toEqual([resultEntry(both)]);

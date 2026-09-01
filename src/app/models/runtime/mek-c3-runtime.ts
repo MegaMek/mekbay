@@ -1,20 +1,13 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import {
-    isC3EmergencyMasterModeRequested,
-    isC3EmergencyMasterOperatingTurnsFried,
-} from '../c3-emergency-master.model';
+import { isC3EmergencyMasterModeRequested, isC3EmergencyMasterOperatingTurnsFried } from '../c3-emergency-master.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { MekUnitQueryPort } from './unit-instance';
-import type {
-    EncounterNetwork,
-    EncounterNetworkEndpoint,
-} from './encounter-runtime';
-import type { UnitInstanceId } from './runtime-state';
+import type { EncounterNetwork, EncounterNetworkEndpoint } from './encounter-runtime';
 
 export interface MekC3RuntimeUnit {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly query: MekUnitQueryPort;
 }
 
@@ -58,7 +51,7 @@ export function projectEffectiveMekC3Networks(
 
 function emergencyPromotion(
     network: EncounterNetwork,
-    units: ReadonlyMap<UnitInstanceId, MekC3RuntimeUnit>,
+    units: ReadonlyMap<string, MekC3RuntimeUnit>,
 ): EmergencyPromotion | null {
     if (network.networkType !== 'c3') return null;
     const configuredMasters = network.endpoints.filter(endpoint => endpoint.role === 'master');
@@ -103,7 +96,7 @@ function emergencyPromotion(
 
 function endpointAvailable(
     endpoint: EncounterNetworkEndpoint,
-    units: ReadonlyMap<UnitInstanceId, MekC3RuntimeUnit>,
+    units: ReadonlyMap<string, MekC3RuntimeUnit>,
 ): boolean {
     const unit = units.get(endpoint.instanceId);
     if (!unit || unit.query.hasCondition('jammed')
@@ -119,7 +112,7 @@ function endpointAvailable(
 
 function configuredMasterInstalled(
     endpoint: EncounterNetworkEndpoint,
-    units: ReadonlyMap<UnitInstanceId, MekC3RuntimeUnit>,
+    units: ReadonlyMap<string, MekC3RuntimeUnit>,
 ): boolean {
     const unit = units.get(endpoint.instanceId);
     const capabilities = unit?.query.mekC3Endpoints();
@@ -147,6 +140,6 @@ function sameEndpoints(
     });
 }
 
-export function c3EndpointKey(instanceId: UnitInstanceId, componentId: ComponentId): string {
+export function c3EndpointKey(instanceId: string, componentId: ComponentId): string {
     return `${instanceId}\0${componentId}`;
 }

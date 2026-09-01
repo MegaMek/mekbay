@@ -65,7 +65,7 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.getBv()).toBeGreaterThan(30);
     });
 
-    it('loads from UnitSummary without opening a native Classic source', async () => {
+    it('loads from UnitSummary without opening a native CBT source', async () => {
         const readNativeUnitSource = jasmine.createSpy('readNativeUnitSource');
         const force = {
             owned: () => true,

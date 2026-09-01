@@ -347,7 +347,7 @@ export class FormationDropdownPanelComponent {
 
     formations = input.required<FormationDisplayItem[]>();
     selectedFormationId = input<string | null>(null);
-    gameSystem = input<GameSystem>(GameSystem.ALPHA_STRIKE);
+    gameSystem = input<GameSystem>(GameSystem.AS);
     label = input('Select formation');
     optionsId = input('');
     activeKey = input(AUTOMATIC_FORMATION_KEY);

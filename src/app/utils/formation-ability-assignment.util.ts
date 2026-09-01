@@ -163,7 +163,7 @@ function isCopiedAbilityAppropriateForUnit(
         return true;
     }
 
-    const unitTypeFilter = getAbilityDetails(pilotAbility, GameSystem.ALPHA_STRIKE).unitTypeFilter;
+    const unitTypeFilter = getAbilityDetails(pilotAbility, GameSystem.AS).unitTypeFilter;
     return !unitTypeFilter?.length || unitTypeFilter.includes(unitType);
 }
 

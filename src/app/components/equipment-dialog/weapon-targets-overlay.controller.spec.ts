@@ -14,7 +14,6 @@ import {
 import {
     ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
 } from '../../models/runtime/attacker-targeting-state';
-import { asStateRevision, asUnitInstanceId } from '../../models/runtime/runtime-state';
 import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
 import { LoggerService } from '../../services/logger.service';
 import { ToastService } from '../../services/toast.service';
@@ -38,18 +37,18 @@ function sharedTarget(overrides: Partial<EncounterTarget> = {}): EncounterTarget
 
 function createHarness(readOnly = false) {
     const target = sharedTarget();
-    const snapshot = { revision: asStateRevision(4), targets: [target] };
+    const snapshot = { revision: 4, targets: [target] };
     const query = jasmine.createSpy('queryInventoryControlTargetRegistry').and.returnValue(snapshot);
     const dispatch = jasmine.createSpy('dispatchInventoryControlTargetRegistry').and.returnValue({
         accepted: true,
         changed: false,
         snapshot,
     });
-    const instanceId = asUnitInstanceId('attacker-1');
+    const instanceId = 'attacker-1';
     const targeting = {
         instanceId,
-        stateRevision: asStateRevision(2),
-        registryRevision: asStateRevision(4),
+        stateRevision: 2,
+        registryRevision: 4,
         state: {
             schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
             components: new Map(),
@@ -58,7 +57,7 @@ function createHarness(readOnly = false) {
         },
     };
     const dispatchTargeting = jasmine.createSpy('dispatchAttackerTargeting')
-        .and.resolveTo({ accepted: true, idempotent: false, currentRevision: asStateRevision(3) });
+        .and.resolveTo({ accepted: true, idempotent: false, currentRevision: 3 });
     const force = {
         queryInventoryControlTargetRegistry: query,
         dispatchInventoryControlTargetRegistry: dispatch,
@@ -171,7 +170,7 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
             tnCalculator: { prone: false, immobile: false },
         });
         harness.query.and.returnValue({
-            revision: asStateRevision(7),
+            revision: 7,
             targets: [opfor],
         });
 
@@ -258,8 +257,8 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
 
     it('creates and deletes against the force-owned registry', () => {
         const harness = createHarness();
-        const emptySnapshot = { revision: asStateRevision(8), targets: [] as EncounterTarget[] };
-        const populatedSnapshot = { revision: asStateRevision(9), targets: [harness.target] };
+        const emptySnapshot = { revision: 8, targets: [] as EncounterTarget[] };
+        const populatedSnapshot = { revision: 9, targets: [harness.target] };
         harness.query.and.returnValues(emptySnapshot, populatedSnapshot);
 
         harness.controller.createTarget(harness.options);
@@ -286,7 +285,7 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
             source: 'opfor',
             readOnly: true,
         });
-        harness.query.and.returnValue({ revision: asStateRevision(10), targets: [...manual, opfor] });
+        harness.query.and.returnValue({ revision: 10, targets: [...manual, opfor] });
 
         harness.controller.createTarget(harness.options);
 
@@ -308,7 +307,7 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
         harness.logger.error.calls.reset();
         harness.toast.showToast.calls.reset();
         const allManual = [...manual, sharedTarget({ id: asEncounterTargetId('L'), letter: 'L' })];
-        harness.query.and.returnValue({ revision: asStateRevision(11), targets: allManual });
+        harness.query.and.returnValue({ revision: 11, targets: allManual });
         harness.controller.createTarget(harness.options);
 
         expect(harness.dispatch).not.toHaveBeenCalled();
@@ -348,11 +347,11 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
 
     it('projects and edits retained V2 target facts through the original target overlay', async () => {
         const harness = createHarness();
-        const instanceId = asUnitInstanceId('retained-targeting');
+        const instanceId = 'retained-targeting';
         const targeting = {
             instanceId,
-            stateRevision: asStateRevision(12),
-            registryRevision: asStateRevision(4),
+            stateRevision: 12,
+            registryRevision: 4,
             state: {
                 schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
                 components: new Map(),
@@ -364,7 +363,7 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
             },
         };
         const dispatchTargeting = jasmine.createSpy('dispatchAttackerTargeting')
-            .and.resolveTo({ accepted: true, idempotent: false, currentRevision: asStateRevision(13) });
+            .and.resolveTo({ accepted: true, idempotent: false, currentRevision: 13 });
         const force = {
             ...harness.force,
             readOnly: () => false,

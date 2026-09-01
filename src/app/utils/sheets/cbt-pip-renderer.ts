@@ -9,20 +9,20 @@ import type {
 import { PipRendererShared } from './pip-renderer.shared';
 import type { PipShapeProfile } from './pip-shape-profile';
 
-interface ClassicRow {
+interface CBTRow {
     readonly left: number;
     readonly top: number;
     readonly right: number;
-    readonly gap: ClassicGap;
+    readonly gap: CBTGap;
     count: number;
 }
 
-interface ClassicGap {
+interface CBTGap {
     readonly left: number;
     readonly right: number;
 }
 
-interface ClassicLayout {
+interface CBTLayout {
     readonly points: readonly PipPoint[];
     readonly radius: number;
 }
@@ -36,7 +36,7 @@ const PRECISION = 0.01;
  * distributed layout, this preserves the authored template's row rhythm so a
  * generated paperdoll overlays the classic sheet.
  */
-export class ClassicPipRenderer {
+export class CBTPipRenderer {
     public static createPips(
         shapeProfile: PipShapeProfile,
         count: number,
@@ -70,7 +70,7 @@ export class ClassicPipRenderer {
         profile: PipShapeProfile,
         pipCount: number,
         options: PipRenderOptions,
-    ): ClassicLayout | null {
+    ): CBTLayout | null {
         const spans = profile.spans;
         const { left, top, right, bottom } = profile.bounds;
         const width = right - left;
@@ -103,7 +103,7 @@ export class ClassicPipRenderer {
             top,
             top + (height - spacing * rowTarget) / 2 + spacing * 0.5 - radius,
         );
-        const rows: ClassicRow[] = [];
+        const rows: CBTRow[] = [];
         let shift = 0;
         let parity = columnTarget % 2;
         for (let index = 0; index < rowTarget; index++) {
@@ -152,7 +152,7 @@ export class ClassicPipRenderer {
 
     private static adjustCount(
         pipCount: number,
-        rows: ClassicRow[],
+        rows: CBTRow[],
         staggered: boolean,
         initialSpacing: number,
     ): number {
@@ -210,7 +210,7 @@ export class ClassicPipRenderer {
     }
 
     private static drawPoints(
-        rows: readonly ClassicRow[],
+        rows: readonly CBTRow[],
         staggered: boolean,
         radius: number,
         xSpacing: number,
@@ -293,7 +293,7 @@ export class ClassicPipRenderer {
         rowRight: number,
         first: PipShapeSpan['gap'],
         second: PipShapeSpan['gap'],
-    ): ClassicGap {
+    ): CBTGap {
         if (!first && !second) return { left: 0, right: 0 };
         const left = first && second ? Math.min(first.left, second.left) : (first ?? second)!.left;
         const right = first && second ? Math.max(first.right, second.right) : (first ?? second)!.right;
@@ -307,11 +307,11 @@ export class ClassicPipRenderer {
         return span.gap ? Math.max(0, span.gap.right - span.gap.left) : 0;
     }
 
-    private static usableWidth(row: ClassicRow): number {
+    private static usableWidth(row: CBTRow): number {
         return row.right - row.left - Math.max(0, row.gap.right - row.gap.left);
     }
 
-    private static isMirrored(row: ClassicRow, spacing: number): boolean {
+    private static isMirrored(row: CBTRow, spacing: number): boolean {
         return row.gap.right > row.gap.left
             && Math.abs((row.gap.left - row.left) - (row.right - row.gap.right)) < spacing;
     }

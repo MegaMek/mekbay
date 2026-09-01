@@ -12,8 +12,8 @@ import { PrintOptionsDialogComponent } from './print-options-dialog.component';
 describe('PrintOptionsDialogComponent', () => {
     afterEach(() => TestBed.resetTestingModule());
 
-    it('shows the Classic sheet options and restores the last paper size', () => {
-        const { fixture } = createComponent(GameSystem.CLASSIC, { paperSize: 'a4' });
+    it('shows the CBT sheet options and restores the last paper size', () => {
+        const { fixture } = createComponent(GameSystem.CBT, { paperSize: 'a4' });
         fixture.detectChanges();
 
         expect((fixture.nativeElement.querySelector('#printPilotData') as HTMLSelectElement).value).toBe('true');
@@ -22,8 +22,8 @@ describe('PrintOptionsDialogComponent', () => {
         expect(actionLabels(fixture.nativeElement)).toEqual(['SHEETS', 'SUMMARY', 'DISMISS']);
     });
 
-    it('shows Alpha Strike card options without Classic-only controls', () => {
-        const { fixture } = createComponent(GameSystem.ALPHA_STRIKE);
+    it('shows Alpha Strike card options without CBT-only controls', () => {
+        const { fixture } = createComponent(GameSystem.AS);
         fixture.detectChanges();
 
         expect(fixture.nativeElement.querySelector('#printPilotData')).toBeNull();
@@ -33,7 +33,7 @@ describe('PrintOptionsDialogComponent', () => {
     });
 
     it('saves one complete options object and returns it for sheet/card printing', async () => {
-        const { fixture, dialogRef, optionsService } = createComponent(GameSystem.CLASSIC);
+        const { fixture, dialogRef, optionsService } = createComponent(GameSystem.CBT);
         fixture.detectChanges();
         const pilotData = fixture.nativeElement.querySelector('#printPilotData') as HTMLSelectElement;
         pilotData.value = 'false';
@@ -47,7 +47,7 @@ describe('PrintOptionsDialogComponent', () => {
     });
 
     it('prints a standalone summary without closing the options dialog', async () => {
-        const { fixture, dialogRef, printSummary, optionsService } = createComponent(GameSystem.ALPHA_STRIKE);
+        const { fixture, dialogRef, printSummary, optionsService } = createComponent(GameSystem.AS);
         fixture.detectChanges();
         actionButtons(fixture.nativeElement)[1].click();
         await fixture.whenStable();
@@ -58,7 +58,7 @@ describe('PrintOptionsDialogComponent', () => {
     });
 
     it('ignores duplicate summary requests while printing is in progress', async () => {
-        const { fixture, printSummary } = createComponent(GameSystem.ALPHA_STRIKE);
+        const { fixture, printSummary } = createComponent(GameSystem.AS);
         let finish!: () => void;
         printSummary.and.returnValue(new Promise<void>(resolve => { finish = resolve; }));
         fixture.detectChanges();

@@ -13,11 +13,6 @@ import {
     CBT_FORCE_UNASSIGNED_GROUP_ID,
     MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
 } from './cbt-force-roster';
-import {
-    asUnitInstanceId,
-    type StateRevision,
-    type UnitInstanceId,
-} from './runtime-state';
 
 /** The legacy force model currently enforces this same durable group limit. */
 export const MAX_CBT_FORCE_ROSTER_GROUPS = 50;
@@ -65,7 +60,7 @@ export type CBTForceRosterCommand =
     }
     | {
         readonly kind: 'move-member';
-        readonly instanceId: UnitInstanceId;
+        readonly instanceId: string;
         readonly targetGroupId: string;
         readonly atIndex: number;
     }
@@ -76,12 +71,12 @@ export type CBTForceRosterCommand =
     }
     | {
         readonly kind: 'set-commander';
-        readonly instanceId: UnitInstanceId;
+        readonly instanceId: string;
         readonly commander: boolean;
     }
     | {
         readonly kind: 'remove-member';
-        readonly instanceId: UnitInstanceId;
+        readonly instanceId: string;
     };
 
 export type CBTForceRosterPlanRejectionReason =
@@ -100,7 +95,7 @@ export interface CBTForceRosterMutationPlan {
     readonly nextRoster: SerializedCBTForceRosterV1;
     readonly changed: true;
     /** The whole-owner transaction removes these unit entries and their cross-unit evidence too. */
-    readonly removedInstanceIds?: readonly UnitInstanceId[];
+    readonly removedInstanceIds?: readonly string[];
 }
 
 export type CBTForceRosterMutationPlanResult =
@@ -126,7 +121,7 @@ export interface CBTForceRosterCommandRejection {
 export type CBTForceRosterCommandResult = CBTForceRosterCommandRejection | {
     readonly accepted: true;
     readonly changed: true;
-    readonly forceRevision: StateRevision;
+    readonly forceRevision: number;
 };
 
 export interface PrepareCBTForceRosterMutationPlanInput {
@@ -154,7 +149,7 @@ export function prepareCBTForceRosterMutationPlan(
     if (!Number.isSafeInteger(maxGroups) || maxGroups < 0) {
         return rejectedPlan('INVALID_COMMAND');
     }
-    let result: { readonly roster: SerializedCBTForceRosterV1; readonly removedInstanceIds?: readonly UnitInstanceId[] }
+    let result: { readonly roster: SerializedCBTForceRosterV1; readonly removedInstanceIds?: readonly string[] }
         | CBTForceRosterPlanRejectionReason;
     try {
         switch (command.kind) {
@@ -252,7 +247,7 @@ function updateGroup(
 function deleteGroup(
     roster: SerializedCBTForceRosterV1,
     command: Extract<CBTForceRosterCommand, { readonly kind: 'delete-group' }>,
-): { readonly roster: SerializedCBTForceRosterV1; readonly removedInstanceIds?: readonly UnitInstanceId[] }
+): { readonly roster: SerializedCBTForceRosterV1; readonly removedInstanceIds?: readonly string[] }
     | CBTForceRosterPlanRejectionReason {
     const sourceIndex = roster.groups.findIndex(group => group.groupId === command.groupId);
     if (sourceIndex < 0) return 'UNKNOWN_GROUP';
@@ -372,7 +367,7 @@ function setCommander(
 function removeMember(
     roster: SerializedCBTForceRosterV1,
     command: Extract<CBTForceRosterCommand, { readonly kind: 'remove-member' }>,
-): { readonly roster: SerializedCBTForceRosterV1; readonly removedInstanceIds: readonly UnitInstanceId[] }
+): { readonly roster: SerializedCBTForceRosterV1; readonly removedInstanceIds: readonly string[] }
     | CBTForceRosterPlanRejectionReason {
     const location = findMember(roster, command.instanceId);
     if (!location) return 'UNKNOWN_MEMBER';
@@ -422,7 +417,7 @@ function validateDetachedCommand(detached: unknown): CBTForceRosterCommand {
             break;
         case 'move-member':
             exactKeys(record, ['kind', 'instanceId', 'targetGroupId', 'atIndex']);
-            asUnitInstanceId(requireString(record['instanceId']));
+            requireString(record['instanceId']);
             validateGroupId(record['targetGroupId']);
             requireInteger(record['atIndex']);
             break;
@@ -433,12 +428,12 @@ function validateDetachedCommand(detached: unknown): CBTForceRosterCommand {
             break;
         case 'set-commander':
             exactKeys(record, ['kind', 'instanceId', 'commander']);
-            asUnitInstanceId(requireString(record['instanceId']));
+            requireString(record['instanceId']);
             if (typeof record['commander'] !== 'boolean') throw new Error('Invalid commander');
             break;
         case 'remove-member':
             exactKeys(record, ['kind', 'instanceId']);
-            asUnitInstanceId(requireString(record['instanceId']));
+            requireString(record['instanceId']);
             break;
         default:
             throw new Error('Unknown command');
@@ -553,7 +548,7 @@ function freezeMembers(members: readonly SerializedCBTForceRosterMemberV1[]): re
     })));
 }
 
-function findMember(roster: SerializedCBTForceRosterV1, instanceId: UnitInstanceId): {
+function findMember(roster: SerializedCBTForceRosterV1, instanceId: string): {
     readonly groupIndex: number;
     readonly memberIndex: number;
 } | null {

@@ -16,7 +16,6 @@ import {
 import { ASForceUnit } from '../models/as-force-unit.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { UnitGroup } from '../models/force.model';
-import type { UnitInstanceId } from '../models/runtime/runtime-state';
 import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
 import { DialogsService } from './dialogs.service';
 import { ToastService } from './toast.service';
@@ -42,7 +41,7 @@ export class ForcePilotEditorService {
         await this.editAlphaStrikePilot(unit);
     }
 
-    async editClassicMember(force: CBTForce, instanceId: UnitInstanceId): Promise<void> {
+    async editCBTMember(force: CBTForce, instanceId: string): Promise<void> {
         if (force.readOnly()) return;
         const snapshot = force.getUnitCrewProfile(instanceId);
         if (!snapshot) {

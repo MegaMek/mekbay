@@ -6,8 +6,7 @@ import {
     MM_DATA_UNIT_PROVIDER_ID,
     asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
-import { asUnitInstanceId } from './runtime-state';
-import { ReadyNonMekUnit } from './ready-non-mek-unit';
+import { CBTNonMekUnit } from './cbt-non-mek-unit';
 import { entityTargetRosterRow } from './cbt-force-target-roster';
 
 describe('CBT force target roster', () => {
@@ -17,8 +16,8 @@ describe('CBT force target roster', () => {
         entity.uuid.set(uuid);
         entity.setTonnage(40);
         entity.originalWalkMP.set(4);
-        const ready = ReadyNonMekUnit.create(entity, {
-            instanceId: asUnitInstanceId('unit:target-roster-tank'),
+        const ready = CBTNonMekUnit.create(entity, {
+            instanceId: 'unit:target-roster-tank',
             identity: Object.freeze({
                 origin: 'megamek' as const,
                 provider: MM_DATA_UNIT_PROVIDER_ID,

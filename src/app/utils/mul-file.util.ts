@@ -119,7 +119,7 @@ export function sanitizeMulFilename(name: string | null | undefined): string {
 }
 
 export async function serializeForceToMul(force: CBTForce): Promise<string> {
-    if (force.gameSystem !== GameSystem.CLASSIC) {
+    if (force.gameSystem !== GameSystem.CBT) {
         throw new Error('MUL export is only available for Classic BattleTech forces.');
     }
     const roster = force.queryCanonicalRoster();
@@ -130,7 +130,7 @@ export async function serializeForceToMul(force: CBTForce): Promise<string> {
     setAttributes(root, { version: `mekbay-${APP_VERSION_STRING}` });
     let index = 0;
     for (const rosterMember of roster.snapshot.members) {
-        const member = force.getClassicMember(rosterMember.instanceId);
+        const member = force.getCBTMember(rosterMember.instanceId);
         if (!member) throw new Error(`MUL export requires ready runtime ${rosterMember.instanceId}`);
         const sheet = force.getMekRecordSheetSnapshot(member.id);
         const snapshot = force.getUnitSnapshot(member.id);
@@ -212,12 +212,12 @@ export async function parseMulForce(
                 commander: parseBoolean(entity.getAttribute('commander')),
                 instanceId: entity.getAttribute('externalId') || undefined,
             });
-            if (!isCBTForceMember(member)) throw new Error('MUL admission did not create a canonical Classic unit');
+            if (!isCBTForceMember(member)) throw new Error('MUL admission did not create a canonical CBT unit');
             admitted = member;
             await applyMulCrew(force, member, crew);
             await applyMulLocations(force, member, parseEntityLocations(entity), issues);
         } catch (error) {
-            if (admitted) await force.removeClassicMember(admitted.id);
+            if (admitted) await force.removeCBTMember(admitted.id);
             issues.push({ severity: 'error', message: `Could not import ${summary.name}: ${errorMessage(error)}` });
         }
     }

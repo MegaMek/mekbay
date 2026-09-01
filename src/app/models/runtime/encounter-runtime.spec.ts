@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { asComponentId } from '../entity/entity-identifiers';
-import { asStateRevision, asUnitInstanceId } from './runtime-state';
 import {
     asEncounterNetworkId,
     asEncounterTargetId,
@@ -43,7 +42,7 @@ describe('CBT encounter runtime', () => {
         expect(String(first.id)).toMatch(/^target:[0-9a-f-]{36}$/u);
         expect(String(second.id)).toMatch(/^target:[0-9a-f-]{36}$/u);
         expect(first.id).not.toBe(second.id);
-        expect(runtime.snapshot().revision).toBe(asStateRevision(2));
+        expect(runtime.snapshot().revision).toBe(2);
         expect(Object.isFrozen(runtime.snapshot().targets)).toBeTrue();
 
         const firstId = first.id;
@@ -71,12 +70,12 @@ describe('CBT encounter runtime', () => {
             color: '#123456',
             endpoints: [
                 {
-                    instanceId: asUnitInstanceId('instance-1'),
+                    instanceId: 'instance-1',
                     componentId: asComponentId('component:c3-master-a'),
                     role: 'master' as const,
                 },
                 {
-                    instanceId: asUnitInstanceId('instance-1'),
+                    instanceId: 'instance-1',
                     componentId: asComponentId('component:c3-master-b'),
                     role: 'member' as const,
                 },
@@ -122,7 +121,7 @@ describe('CBT encounter runtime', () => {
             kind: 'cross-unit-effect' as const,
             factId: 'effect:tagged',
             effectKey: 'tagged',
-            target: { instanceId: asUnitInstanceId('unit:target') },
+            target: { instanceId: 'unit:target' },
         };
 
         const encoded = encodeCBTEncounterStateV2(runtime.snapshot(), [preserved]);
@@ -138,7 +137,7 @@ describe('CBT encounter runtime', () => {
     it('rejects invalid persisted target origin ownership before restoring runtime state', () => {
         const invalid = {
             schemaVersion: 2 as const,
-            encounterRevision: asStateRevision(1),
+            encounterRevision: 1,
             facts: [{
                 kind: 'target' as const,
                 factId: encounterTargetFactId('opfor:v1:invalid-origin'),
@@ -157,7 +156,7 @@ describe('CBT encounter runtime', () => {
         expect(() => decodeCBTEncounterStateV2(invalid)).toThrow();
         expect(() => runtime.restoreSerialized(invalid)).toThrow();
         expect(runtime.targetRegistry()).toEqual({
-            revision: asStateRevision(0),
+            revision: 0,
             targets: [],
         });
     });
@@ -176,9 +175,9 @@ describe('force-shared target registry kernel', () => {
         });
 
         expect(created).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        expect(created.snapshot.revision).toBe(asStateRevision(1));
+        expect(created.snapshot.revision).toBe(1);
         expect(updated).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        expect(updated.snapshot.revision).toBe(asStateRevision(2));
+        expect(updated.snapshot.revision).toBe(2);
         expect(updated.snapshot.targets[0].name).toBe('Stale edit');
     });
 
@@ -202,7 +201,7 @@ describe('force-shared target registry kernel', () => {
         expect(created).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(unchangedUpdate).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(unchangedReplace).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
-        expect(runtime.targetRegistry().revision).toBe(asStateRevision(1));
+        expect(runtime.targetRegistry().revision).toBe(1);
     });
 
     it('returns deeply immutable queries detached from runtime state and later queries', () => {
@@ -252,7 +251,7 @@ describe('force-shared target registry kernel', () => {
     it('treats create and whole-registry replacement overflow as no-ops', () => {
         const fullTargets = Array.from({ length: 12 }, (_value, index) =>
             registryTarget(String.fromCharCode('A'.charCodeAt(0) + index)));
-        const full = queryTargetRegistry({ revision: asStateRevision(4), targets: fullTargets });
+        const full = queryTargetRegistry({ revision: 4, targets: fullTargets });
         const createOverflow = reduceTargetRegistry(full, {
             kind: 'create-target', target: registryTarget('M'),
         });
@@ -267,7 +266,7 @@ describe('force-shared target registry kernel', () => {
         expect(replaceOverflow).toEqual(jasmine.objectContaining({
             accepted: true, changed: false,
         }));
-        expect(replaceOverflow.snapshot.revision).toBe(asStateRevision(0));
+        expect(replaceOverflow.snapshot.revision).toBe(0);
         expect(replaceOverflow.snapshot.targets).toEqual([]);
     });
 
@@ -280,7 +279,7 @@ describe('force-shared target registry kernel', () => {
             readOnly: true,
         });
         const full = queryTargetRegistry({
-            revision: asStateRevision(8),
+            revision: 8,
             targets: [...manual, opfor],
         });
 
@@ -294,7 +293,7 @@ describe('force-shared target registry kernel', () => {
             accepted: true,
             changed: true,
         }));
-        expect(created.snapshot.revision).toBe(asStateRevision(9));
+        expect(created.snapshot.revision).toBe(9);
         expect(created.snapshot.targets).toHaveSize(12);
         expect(created.snapshot.targets.filter(target => target.source === 'opfor')).toEqual([]);
         expect(created.snapshot.targets.map(target => target.letter)).toEqual([
@@ -306,7 +305,7 @@ describe('force-shared target registry kernel', () => {
         const opfor = registryTarget('A', {
             id: asEncounterTargetId('opfor:unit-1'), source: 'opfor', readOnly: true,
         });
-        const snapshot = queryTargetRegistry({ revision: asStateRevision(2), targets: [opfor] });
+        const snapshot = queryTargetRegistry({ revision: 2, targets: [opfor] });
         const renamed = reduceTargetRegistry(snapshot, {
             kind: 'update-target',
             targetId: opfor.id, patch: { name: 'Forged identity' },

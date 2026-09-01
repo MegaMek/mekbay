@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { asStateRevision, freezeRuntimeState } from './runtime-state';
+import { freezeRuntimeState } from './runtime-state';
 import { ImmutableIndex } from '../entity/immutable-collections';
 import {
     restoreSerializedCBTUnitV2,

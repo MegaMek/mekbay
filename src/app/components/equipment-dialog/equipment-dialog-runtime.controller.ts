@@ -711,7 +711,7 @@ export class EquipmentDialogRuntimeController {
 
     private requiredSnapshot(): EquipmentPanelSnapshot {
         const snapshot = this.member.force.getEquipmentPanelSnapshot(this.member.id);
-        if (!snapshot) throw new Error('The selected Classic unit is no longer admitted');
+        if (!snapshot) throw new Error('The selected CBT unit is no longer admitted');
         return snapshot;
     }
 

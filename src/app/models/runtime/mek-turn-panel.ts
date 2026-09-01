@@ -17,34 +17,18 @@ import {
     TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
 import type { MekRuntimeIndex } from './mek-runtime-index';
-import type {
-    MekHeatAutomationPolicyV2,
-    MekHeatProjectionResultV2,
-    MekHeatStateV2,
-} from './mek-heat-state-v2';
+import type { MekHeatAutomationPolicyV2, MekHeatProjectionResultV2, MekHeatStateV2 } from './mek-heat-state-v2';
 import { movementBoosterUsableWhile } from './component-escalating-failure';
-import type {
-    MekMovementModeV2,
-    MekMovementPsrProjectionResultV2,
-    MekMovementPsrStateV2,
-} from './mek-movement-psr-v2';
-import type { StateRevision } from './runtime-state';
+import type { MekMovementModeV2, MekMovementPsrProjectionResultV2, MekMovementPsrStateV2 } from './mek-movement-psr-v2';
 import type { MekUnitQueryPort } from './unit-instance';
 import type { MekTurnStateV2 } from './mek-turn-state-v2';
-import {
-    MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
-    type MekRuleCheckStateV2,
-} from './mek-destruction-state-v2';
-import {
-    isUnitBuildingLevel,
-    resolveUnitBuildingCoverState,
-    type UnitBuildingCoverState,
-} from '../unit-cover.model';
+import { MEK_TORSO_CRIPPLING_RULE_CHECK_KEY, type MekRuleCheckStateV2 } from './mek-destruction-state-v2';
+import { isUnitBuildingLevel, resolveUnitBuildingCoverState, type UnitBuildingCoverState } from '../unit-cover.model';
 import { mekUnitHeight, resolveMekUnitWaterState } from './mek-targeting-rules';
 import { MAX_MEK_CREW_WOUNDS } from './runtime-state';
 import { getMekLocationLabel } from '../entity/types';
 import type { UnitConditionKey } from '../unit-condition.model';
-import { isCrewDeathCommitted } from './classic-unit-runtime';
+import { isCrewDeathCommitted } from './cbt-unit-runtime';
 
 export type MekAttackMovementModifiers = Readonly<Record<MekMovementModeV2, number>>;
 
@@ -61,7 +45,7 @@ export interface MekTurnPanelRuleCheck {
  */
 export interface MekTurnPanelSnapshot {
     readonly entityUuid: string;
-    readonly stateRevision: StateRevision;
+    readonly stateRevision: number;
     readonly hasPendingCombat: boolean;
     readonly hasPendingPhaseChanges: boolean;
     readonly movement: MekMovementPsrProjectionResultV2;

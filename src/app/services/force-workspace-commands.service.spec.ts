@@ -10,7 +10,6 @@ import { CBTForce } from '../models/cbt-force.model';
 import { GameSystem } from '../models/common.model';
 import { CBTForceMember } from '../models/force-member.model';
 import type { ForceSlot } from '../models/force-slot.model';
-import { asUnitInstanceId } from '../models/runtime/runtime-state';
 import { createEmptyUnit, createTestMekEntity } from '../testing/unit-test-helpers';
 import { AsAbilityLookupService } from './as-ability-lookup.service';
 import { DataService } from './data.service';
@@ -35,7 +34,7 @@ describe('ForceWorkspaceCommandsService force conversion', () => {
                 throw new Error('Expected a CBT conversion target');
             }
             return new CBTForceMember(
-                asUnitInstanceId('converted-unit'),
+                'converted-unit',
                 request.force,
                 createTestMekEntity(),
             );
@@ -72,8 +71,8 @@ describe('ForceWorkspaceCommandsService force conversion', () => {
         expect(crewTransfers.transferCrossSystem).toHaveBeenCalledOnceWith(
             sourceUnit,
             convertedUnit,
-            GameSystem.ALPHA_STRIKE,
-            GameSystem.CLASSIC,
+            GameSystem.AS,
+            GameSystem.CBT,
         );
         expect(builder.removeLoadedForce).toHaveBeenCalledOnceWith(source);
         expect(builder.addLoadedForce).toHaveBeenCalledOnceWith(
@@ -99,7 +98,7 @@ describe('ForceWorkspaceCommandsService force conversion', () => {
         const source = new CBTForce('Conversion test', dataService, injector);
         await source.addGroup();
         const sourceUnit = new CBTForceMember(
-            asUnitInstanceId('classic-source'),
+            'classic-source',
             source,
             createTestMekEntity({ uuid: summary.uuid }),
         );
@@ -139,8 +138,8 @@ describe('ForceWorkspaceCommandsService force conversion', () => {
         expect(crewTransfers.transferCrossSystem).toHaveBeenCalledOnceWith(
             sourceUnit,
             convertedUnit,
-            GameSystem.CLASSIC,
-            GameSystem.ALPHA_STRIKE,
+            GameSystem.CBT,
+            GameSystem.AS,
         );
         expect(builder.removeLoadedForce).toHaveBeenCalledOnceWith(source);
         expect(builder.addLoadedForce).toHaveBeenCalledOnceWith(

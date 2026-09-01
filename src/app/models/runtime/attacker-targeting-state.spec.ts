@@ -3,7 +3,6 @@
 
 import { asComponentId, type ComponentId } from '../entity/entity-identifiers';
 import { asEncounterTargetId, type EncounterTargetId } from './encounter-runtime';
-import { asStateRevision } from './runtime-state';
 import {
     MAX_ATTACKER_MANUAL_TN_MAGNITUDE,
     MAX_ATTACKER_TARGET_DISTANCE,
@@ -28,7 +27,7 @@ const SOURCE_BETA = asComponentId('component:ammo:beta');
 const PHYSICAL_COMPONENT = asComponentId('component:physical:club');
 const TARGET_ALPHA = asEncounterTargetId('target:alpha');
 const TARGET_BETA = asEncounterTargetId('target:beta');
-const REGISTRY_REVISION = asStateRevision(7);
+const REGISTRY_REVISION = 7;
 
 describe('attacker-local targeting state', () => {
     it('stores only sparse attacker-local facts and deeply freezes every queryable layer', () => {
@@ -181,7 +180,7 @@ describe('attacker-local targeting state', () => {
         const state = createPristineAttackerTargetingState();
         const result = reduceAttackerTargetingCommand(state, context(), {
             kind: 'set-component-selection',
-            expectedRegistryRevision: asStateRevision(Number(REGISTRY_REVISION) - 1),
+            expectedRegistryRevision: Number(REGISTRY_REVISION) - 1,
             componentId: WEAPON_ALPHA,
             selection: { kind: 'target', targetId: TARGET_ALPHA },
         });

@@ -30,14 +30,14 @@ interface AmmoSummary {
     shots: number;
 }
 
-/** Prints a force roster from admitted Classic Entity instances. */
+/** Prints a force roster from admitted CBT Entity instances. */
 export class CBTSummaryPrintUtil {
     public static async print(
         force: CBTForce,
         printOptions: CBTSummaryPrintOptions,
         triggerPrint: boolean = true,
     ): Promise<void> {
-        if (force.getClassicMembers().length === 0) {
+        if (force.getCBTMembers().length === 0) {
             console.warn('No units to export.');
             return;
         }
@@ -55,7 +55,7 @@ export class CBTSummaryPrintUtil {
         force: CBTForce,
         printPilotData: boolean,
     ): Promise<string> {
-        const members = force.getClassicMembers();
+        const members = force.getCBTMembers();
         let totalBaseBv = 0;
         let totalFinalBv = 0;
         const groupSections: string[] = [];

@@ -8,11 +8,10 @@ import {
     queryCBTForceRoster,
     type SerializedCBTForceRosterV1,
 } from './cbt-force-roster';
-import { asStateRevision, asUnitInstanceId } from './runtime-state';
 
-const A = asUnitInstanceId('unit:a');
-const B = asUnitInstanceId('unit:b');
-const C = asUnitInstanceId('unit:c');
+const A = 'unit:a';
+const B = 'unit:b';
+const C = 'unit:c';
 
 describe('CBT force roster', () => {
     it('appends a member to an existing group without mutating the source', () => {
@@ -87,7 +86,7 @@ describe('CBT force roster', () => {
     it('returns one detached structural snapshot', () => {
         const snapshot = queryCBTForceRoster({
             forceId: 'force:test',
-            forceRevision: asStateRevision(7),
+            forceRevision: 7,
             roster: roster(),
         });
 

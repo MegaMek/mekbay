@@ -37,7 +37,7 @@ export class UnitCardCompactComponent {
 
     isAlphaStrike = computed<boolean>(() => {
         const gs = this.gameSystem();
-        return gs != null ? gs === GameSystem.ALPHA_STRIKE : this.gameService.isAlphaStrike();
+        return gs != null ? gs === GameSystem.AS : this.gameService.isAlphaStrike();
     });
 
     /** Whether to show the info button */

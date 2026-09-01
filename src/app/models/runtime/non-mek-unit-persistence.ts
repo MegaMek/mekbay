@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { compareText } from '../../utils/string.util';
-import {
-    sanitizeSavedEntityIdentity,
-    type SavedEntityIdentity,
-} from '../persisted-unit-state';
+import { sanitizeSavedEntityIdentity, type SavedEntityIdentity } from '../persisted-unit-state';
 import type { EntityType } from '../entity/types';
 import { isNativeEntityType } from '../entity/codec-capabilities';
 import {
@@ -22,22 +19,12 @@ import {
 } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { requireUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
-import {
-    deserializeUnitCover,
-    serializeUnitCover,
-    type SerializedUnitCover,
-} from '../unit-cover.model';
+import { deserializeUnitCover, serializeUnitCover, type SerializedUnitCover } from '../unit-cover.model';
 import type { CrewAssignment } from './crew-assignment';
 import { assertCanonicalCrewAssignment } from './crew-assignment';
 import type { BaseEntity } from '../entity/base-entity';
 import { isCBTRuleset } from '../cbt-ruleset.model';
-import type {
-    ComponentRuntimeState,
-    InstanceBaselineRef,
-    StateRevision,
-    UnitInstanceId,
-} from './runtime-state';
-import { asStateRevision, asUnitInstanceId } from './runtime-state';
+import type { ComponentRuntimeState, InstanceBaselineRef } from './runtime-state';
 import {
     NonMekUnitInstance,
     freezeNonMekUnitState,
@@ -52,10 +39,7 @@ import {
     serializeAttackerTargetingState,
     type SerializedAttackerTargetingState,
 } from './attacker-targeting-state';
-import {
-    freezeEquipmentRowOrder,
-    type EquipmentRowOrderState,
-} from './equipment-row-order';
+import { freezeEquipmentRowOrder, type EquipmentRowOrderState } from './equipment-row-order';
 import { isEndTurnCheckpoint, type EndTurnCheckpoint } from './end-turn-checkpoint';
 
 export const NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION = 7 as const;
@@ -78,12 +62,12 @@ export interface SerializedNonMekUnitRestoration {
 
 export interface SerializedNonMekUnit {
     readonly schemaVersion: typeof NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION;
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly entity: SavedEntityIdentity;
     readonly baselineRefAtSave: InstanceBaselineRef;
     readonly deployment: SerializedNonMekDeployment;
     readonly family: Readonly<{ readonly kind: 'non-mek'; readonly entityType: NonMekEntityType }>;
-    readonly stateRevision: StateRevision;
+    readonly stateRevision: number;
     readonly destroyed?: true;
     readonly locationState?: readonly Readonly<{
         readonly locationId: LocationId;
@@ -170,8 +154,8 @@ export interface SerializeNonMekUnitInput {
 }
 
 export interface SerializedNonMekUnitInspection {
-    readonly instanceId: UnitInstanceId;
-    readonly stateRevision: StateRevision;
+    readonly instanceId: string;
+    readonly stateRevision: number;
 }
 
 /** Small wire guard used before a current force installs a non-Mek runtime. */
@@ -180,8 +164,8 @@ export function inspectSerializedNonMekUnit(value: unknown): SerializedNonMekUni
     if (record['schemaVersion'] !== NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION) {
         throw new Error(`Unsupported non-Mek unit schema ${String(record['schemaVersion'])}`);
     }
-    const instanceId = asUnitInstanceId(requireString(record['instanceId'], 'instanceId'));
-    const stateRevision = asStateRevision(requireInteger(record['stateRevision'], 'stateRevision'));
+    const instanceId = requireString(record['instanceId'], 'instanceId');
+    const stateRevision = requireInteger(record['stateRevision'], 'stateRevision');
     const entity = sanitizeSavedEntityIdentity(record['entity']);
     if (!entity) throw new Error('Non-Mek unit requires a saved entity identity');
     const baseline = requireRecord(record['baselineRefAtSave'], 'baselineRefAtSave');
@@ -385,7 +369,7 @@ export function restoreNonMekUnit(
     if (conditions.size !== (saved.conditions?.length ?? 0)) throw new Error('Duplicate persisted condition');
     const equipmentRowOrder = freezeEquipmentRowOrder(saved.equipmentRowOrder);
     const state = freezeNonMekUnitState({
-        stateRevision: asStateRevision(saved.stateRevision),
+        stateRevision: saved.stateRevision,
         explicitlyDestroyed: saved.destroyed === true,
         locations,
         components,
@@ -407,7 +391,7 @@ export function restoreNonMekUnit(
         pendingCombat: restorePendingCombat(saved),
     });
     return new NonMekUnitInstance(
-        asUnitInstanceId(saved.instanceId),
+        saved.instanceId,
         freezeBaseline(saved.baselineRefAtSave),
         entity,
         ruleset,

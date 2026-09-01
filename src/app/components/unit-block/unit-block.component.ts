@@ -40,7 +40,7 @@ import {
 import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
 import { hasMekRuntime, hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
 import { UnitNotificationBadgesComponent } from '../unit-notification-badges/unit-notification-badges.component';
-import { projectClassicUnitTagEcmCapabilitySummary } from '../../models/runtime/classic-unit-capability-projection';
+import { projectCBTUnitTagEcmCapabilitySummary } from '../../models/runtime/cbt-unit-capability-projection';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
 
 interface UnitConditionDisplay {
@@ -167,7 +167,7 @@ export class UnitBlockComponent {
     });
 
     /** Derives Alpha Strike status from the unit's own force, not the global game system. */
-    isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.ALPHA_STRIKE);
+    isAlphaStrike = computed<boolean>(() => this.forceUnit()?.force?.gameSystem === GameSystem.AS);
 
     isCommander = computed<boolean>(() => {
         const forceUnit = this.forceUnit();
@@ -286,7 +286,7 @@ export class UnitBlockComponent {
         if (!isCBTForceMember(member)) return member.getTagEcmCapabilitySummary();
         this.runtimeRevision();
         const snapshot = member.force.getUnitSnapshot(member.id);
-        return snapshot ? projectClassicUnitTagEcmCapabilitySummary(snapshot) : null;
+        return snapshot ? projectCBTUnitTagEcmCapabilitySummary(snapshot) : null;
     });
 
     tagDisplay = computed(() => this.capabilitySummary()?.tag ?? undefined);

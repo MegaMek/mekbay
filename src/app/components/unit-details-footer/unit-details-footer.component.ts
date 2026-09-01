@@ -32,7 +32,7 @@ export class UnitDetailsFooterComponent {
     readonly hasNext = input(false);
     readonly sheetTab = input<UnitDetailsSheetTabComponent | undefined>(undefined);
     readonly variantsTabState = input<VariantsTabState>({ ...DEFAULT_VARIANTS_TAB_STATE });
-    readonly gameSystem = input<GameSystem>(GameSystem.CLASSIC);
+    readonly gameSystem = input<GameSystem>(GameSystem.CBT);
 
     readonly prev = output<void>();
     readonly next = output<void>();

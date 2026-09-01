@@ -26,7 +26,6 @@ import { ForceUnitAdmissionService } from './force-unit-admission.service';
 import { CBTForce } from '../models/cbt-force.model';
 import { CBTForceMember } from '../models/force-member.model';
 import type { SerializedForce } from '../models/force-serialization';
-import { asUnitInstanceId } from '../models/runtime/runtime-state';
 import { C3NetworkEditor } from '../models/c3-network-editor';
 import { createEmptyCBTForceForTest, createTestMekEntity } from '../testing/unit-test-helpers';
 
@@ -65,7 +64,7 @@ function createSerializedForce(overrides: Partial<SerializedForce> = {}): Serial
         version: 2,
         timestamp: '2026-08-06T20:00:00.000Z',
         instanceId: 'force-1',
-        type: GameSystem.ALPHA_STRIKE,
+        type: GameSystem.AS,
         name: 'Test Force',
         groups: [],
         ...overrides,
@@ -95,7 +94,7 @@ function createHarness(formation: FormationTypeDefinition, factions: Faction[]) 
         formationUnits: () => groupUnits(),
     } as unknown as UnitGroup;
     const force = {
-        gameSystem: GameSystem.ALPHA_STRIKE,
+        gameSystem: GameSystem.AS,
         faction: signal<Faction | null>(null),
         factionLock: false,
         era: signal(null),
@@ -175,7 +174,7 @@ describe('ForceBuilderService formation filter integration', () => {
 
         await service.addUnit(createUnit());
 
-        expect(filtersService.getActiveFormationTargetDefinition).toHaveBeenCalledWith(GameSystem.ALPHA_STRIKE);
+        expect(filtersService.getActiveFormationTargetDefinition).toHaveBeenCalledWith(GameSystem.AS);
         expect(group.formation()).toBe(formation);
         expect(group.formationLock).toBeTrue();
         expect(group.formationHistory.size).toBe(0);
@@ -196,7 +195,7 @@ describe('ForceBuilderService formation filter integration', () => {
         const addUnitLoadingStates: boolean[] = [];
         const force = {
             name: 'Generated Test Force',
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             loading: false,
             instanceId: signal<string | null>(null),
             faction: signal<Faction | null>(null),
@@ -278,7 +277,7 @@ describe('ForceBuilderService formation filter integration', () => {
 
         const entry = new LoadForceEntry({
             name: 'Generated Test Force',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             faction,
             era,
             groups: [
@@ -739,12 +738,12 @@ describe('ForceBuilderService remote force updates', () => {
     it('treats equal-time divergent CBT revisions as a remote authority update', async () => {
         const timestamp = '2026-08-06T20:00:00.000Z';
         const local = createSerializedForce({
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             timestamp,
             cbt: createEmptyCBTForceForTest('force-1', 1),
         });
         const incoming = createSerializedForce({
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             timestamp,
             cbt: createEmptyCBTForceForTest('force-1', 2),
         });
@@ -766,7 +765,7 @@ describe('ForceBuilderService remote force updates', () => {
             };
         };
         const local = createSerializedForce({
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             timestamp,
             cbt: envelope('local'),
         });
@@ -776,7 +775,7 @@ describe('ForceBuilderService remote force updates', () => {
         expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
 
         const incoming = createSerializedForce({
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             timestamp,
             cbt: envelope('remote'),
         });
@@ -1406,7 +1405,7 @@ describe('ForceBuilderService production V2 unit selection', () => {
             subtype: 'BattleMek',
             hash: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
         } as unknown as UnitSummary;
-        const instanceId = asUnitInstanceId('unit:production-v2');
+        const instanceId = 'unit:production-v2';
         const force = new CBTForce('Force', {} as never, {} as never);
         const admit = spyOn(force, 'admitRetainedUnit').and.resolveTo({ kind: 'admitted', instanceId });
         const member = new CBTForceMember(instanceId, force, createTestMekEntity({
@@ -1414,7 +1413,7 @@ describe('ForceBuilderService production V2 unit selection', () => {
             chassis: unit.chassis,
             model: unit.model,
         }));
-        spyOn(force, 'getClassicMember').and.returnValue(member);
+        spyOn(force, 'getCBTMember').and.returnValue(member);
         spyOn(force, 'getRosterGroupId').and.callFake(() => force.groups()[0]?.id ?? null);
         spyOn(force, 'queryCanonicalRoster').and.returnValue({
             kind: 'available',
@@ -1448,7 +1447,7 @@ describe('ForceBuilderService production V2 unit selection', () => {
             assignFormationIfNeeded: jasmine.createSpy('assignFormationIfNeeded'),
         };
 
-        const result = await service.addUnit(unit, 3, 4, undefined, GameSystem.CLASSIC);
+        const result = await service.addUnit(unit, 3, 4, undefined, GameSystem.CBT);
 
         expect(result).toEqual(jasmine.objectContaining({
             kind: 'cbt', id: instanceId, force, entity: member.entity,

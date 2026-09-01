@@ -15,7 +15,7 @@ describe('CBTSummaryPrintUtil', () => {
         const members = Array.from({ length: 30 }, (_, index) =>
             createMember(force as unknown as CBTForce, `Unit ${index + 1}`, 'alpha'));
         force.groups = () => [group];
-        force.getClassicMembers = () => members;
+        force.getCBTMembers = () => members;
 
         const host = document.createElement('div');
         host.innerHTML = await createRosterSummary(force as unknown as CBTForce, true);
@@ -72,7 +72,7 @@ describe('CBTSummaryPrintUtil', () => {
 });
 
 interface MutableForceFixture {
-    getClassicMembers: () => CBTForceMember[];
+    getCBTMembers: () => CBTForceMember[];
     groups: () => Array<{ id: string; groupDisplayName(): string }>;
     getUnitCrewAssignment: () => unknown;
     faction: () => undefined;
@@ -84,7 +84,7 @@ interface MutableForceFixture {
 
 function createForce(): MutableForceFixture {
     return {
-        getClassicMembers: () => [],
+        getCBTMembers: () => [],
         groups: () => [],
         getUnitCrewAssignment: () => null,
         faction: () => undefined,

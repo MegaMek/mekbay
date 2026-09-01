@@ -10,7 +10,7 @@ import {
     Force,
     MAX_UNITS,
     UnitGroup,
-    type PreparedLoadedCBTForceV2Authority,
+    type RestoredCBTForce,
     buildEraWarningMessage,
     getEraUnitValidationSummary,
     resolveSerializedFormation,
@@ -30,7 +30,6 @@ import {
     type SerializedCBTEncounterStateV2,
     type SerializedCBTForceV2,
 } from './runtime/persistence-v2';
-import { asStateRevision } from './runtime/runtime-state';
 
 interface ControlledGate {
     readonly entered: Promise<void>;
@@ -125,7 +124,7 @@ class TestForce extends Force<ForceUnit> {
     private nextLoadGate: ControlledGate | null = null;
     private nextPersistenceGate: ControlledGate | null = null;
 
-    constructor(gameSystem = GameSystem.ALPHA_STRIKE) {
+    constructor(gameSystem = GameSystem.AS) {
         const dataService = {
             getFactionById: () => null,
             getEraById: () => null,
@@ -156,7 +155,7 @@ class TestForce extends Force<ForceUnit> {
         return forceUnit;
     }
 
-    protected override deserializeFrom(_serialized: SerializedForce): Force<ForceUnit> {
+    protected override async deserializeFrom(_serialized: SerializedForce): Promise<Force<ForceUnit>> {
         const force = new TestForce(this.gameSystem);
         force.loadSerialized(structuredClone(_serialized));
         return force;
@@ -227,31 +226,14 @@ class TestForce extends Force<ForceUnit> {
 
     commitQueuedOwnerMutation(): Promise<void> {
         this.reserveForceOwnerMutationIntent();
-        return this.enqueueCBTForceV2AuthorityMutation(() => {
+        return this.enqueueCBTMutation(() => {
             this.emitChangedFromReservedIntent();
         });
     }
 
-    failQueuedAuthorityInstall() {
-        return this.enqueueCBTForceV2AuthorityMutation(async () => {
-            const context = this.prepareCBTForceV2AuthorityMutation();
-            const prepared = await this.prepareCBTForcePersistenceV2({
-                forceId: context.metadata.instanceId,
-                previous: context.previous,
-                typedEncounterState: context.typedEncounterState,
-            });
-            return this.commitCBTForceV2AuthorityMutation(
-                context,
-                prepared,
-                () => { throw new Error('controlled install failure'); },
-                () => undefined,
-            );
-        });
-    }
-
-    protected override async prepareLoadedCBTForceV2Authority(
+    protected override async restoreCBTForce(
         envelope: SerializedCBTForceV2,
-    ): Promise<PreparedLoadedCBTForceV2Authority> {
+    ): Promise<RestoredCBTForce> {
         const validated = await validateSerializedCBTForceV2(envelope);
         const expected = this.cbtAuthority;
         const gate = this.nextLoadGate;
@@ -262,9 +244,8 @@ class TestForce extends Force<ForceUnit> {
         }
         return Object.freeze({
             replacement: validated,
-            canInstall: () => this.cbtAuthority === expected,
             install: () => {
-                if (this.cbtAuthority !== expected) throw new Error('Test Classic authority changed');
+                if (this.cbtAuthority !== expected) throw new Error('Test CBT authority changed');
                 this.cbtAuthority = validated;
             },
         });
@@ -302,14 +283,14 @@ function createSerializedForce(groups: SerializedForce['groups']): SerializedFor
         version: 2,
         timestamp: new Date().toISOString(),
         instanceId: 'force-id',
-        type: GameSystem.ALPHA_STRIKE,
+        type: GameSystem.AS,
         name: 'Test Force',
         groups: groups ?? [],
     };
 }
 
 async function createInitializedCBTForce(): Promise<TestForce> {
-    const force = new TestForce(GameSystem.CLASSIC);
+    const force = new TestForce(GameSystem.CBT);
     await force.serializeForPersistence();
     return force;
 }
@@ -802,7 +783,7 @@ describe('Force CBT V2 persistence boundary', () => {
     });
 
     it('returns the exact post-normalization owner fence with a persistence snapshot', async () => {
-        const force = new TestForce(GameSystem.CLASSIC);
+        const force = new TestForce(GameSystem.CBT);
         const before = force.captureWholeOwnerAuthorityFingerprint();
 
         const captured = await force.serializeForPersistenceWithAuthorityFence();
@@ -825,20 +806,9 @@ describe('Force CBT V2 persistence boundary', () => {
         expect(captureExact).not.toHaveBeenCalled();
     });
 
-    it('keeps an exact failed authority install a no-op for an already-submitted load', async () => {
-        const force = await createInitializedCBTForce();
-        const baseline = await force.serializeForPersistence();
-
-        const failedInstall = force.failQueuedAuthorityInstall();
-        const laterLoad = force.loadCBTForceV2Persistence(baseline);
-
-        expect(await failedInstall).toEqual({ kind: 'rejected', reason: 'install-failed' });
-        expect(await laterLoad).toBeTrue();
-    });
-
     it('proves that the paired AS serializer promoted its fresh identity', async () => {
         const force = new TestForce();
-        force.gameSystem = GameSystem.ALPHA_STRIKE;
+        force.gameSystem = GameSystem.AS;
 
         expect(force.instanceId()).toBeNull();
         expect(force.timestamp).toBeNull();
@@ -852,7 +822,7 @@ describe('Force CBT V2 persistence boundary', () => {
 
     it('rejects an identity-promotion proof after the promoted owner changes', async () => {
         const force = new TestForce();
-        force.gameSystem = GameSystem.ALPHA_STRIKE;
+        force.gameSystem = GameSystem.AS;
         const captured = await force.serializeForPersistenceWithAuthorityFence();
         expect(force.isPersistenceIdentityPromotion(captured.identityPromotionProof)).toBeTrue();
 
@@ -863,7 +833,7 @@ describe('Force CBT V2 persistence boundary', () => {
 
     it('retains Force-minted promotion provenance across a public serialization and later edit', async () => {
         const force = new TestForce();
-        force.gameSystem = GameSystem.ALPHA_STRIKE;
+        force.gameSystem = GameSystem.AS;
         const first = await force.serializeForPersistence();
         force.setName('One edit before the Data-owned save');
 
@@ -1037,7 +1007,7 @@ describe('Force CBT V2 persistence boundary', () => {
     });
 
     it('installs the first save identity and timestamp and makes the second save byte-stable', async () => {
-        const force = new TestForce(GameSystem.CLASSIC);
+        const force = new TestForce(GameSystem.CBT);
 
         expect(force.instanceId()).toBeNull();
         expect(force.timestamp).toBeNull();
@@ -1055,9 +1025,9 @@ describe('Force CBT V2 persistence boundary', () => {
     });
 
     it('retries a delayed save against the winning live identity and timestamp', async () => {
-        const winningOwner = new TestForce(GameSystem.CLASSIC);
+        const winningOwner = new TestForce(GameSystem.CBT);
         const winning = await winningOwner.serializeForPersistence();
-        const force = new TestForce(GameSystem.CLASSIC);
+        const force = new TestForce(GameSystem.CBT);
         const gate = force.gateNextPersistencePreparation();
         const saving = force.serializeForPersistence();
         await gate.entered;
@@ -1074,13 +1044,13 @@ describe('Force CBT V2 persistence boundary', () => {
     });
 
     it('initializes direct V2 authority and reloads/resaves the same canonical envelope', async () => {
-        const force = new TestForce(GameSystem.CLASSIC);
+        const force = new TestForce(GameSystem.CBT);
         const first = await force.serializeForPersistence();
         expect(first.cbt).toBeDefined();
         expect(force.serialize().cbt).toEqual(first.cbt);
         expect(first.cbt!.units).toEqual([]);
 
-        const reloaded = new TestForce(GameSystem.CLASSIC);
+        const reloaded = new TestForce(GameSystem.CBT);
         reloaded.loadSerialized(first);
         expect(reloaded.hasCBTForceV2()).toBeFalse();
         expect(await reloaded.loadCBTForceV2Persistence(first)).toBeTrue();
@@ -1095,7 +1065,7 @@ describe('Force CBT V2 persistence boundary', () => {
     });
 
     it('refuses unsupported V2 envelopes instead of installing a compatibility wrapper', async () => {
-        const source = new TestForce(GameSystem.CLASSIC);
+        const source = new TestForce(GameSystem.CBT);
         const persisted = await source.serializeForPersistence();
         const forwardVersion = CBT_FORCE_PERSISTENCE_SCHEMA_VERSION + 1;
         const forwardValue = {
@@ -1104,7 +1074,7 @@ describe('Force CBT V2 persistence boundary', () => {
             future: true,
         } as unknown as SerializedCBTForceV2;
         const forwardData = { ...persisted, cbt: forwardValue };
-        const forward = new TestForce(GameSystem.CLASSIC);
+        const forward = new TestForce(GameSystem.CBT);
         forward.loadSerialized(forwardData);
         expect(await forward.loadCBTForceV2Persistence(forwardData)).toBeFalse();
         expect(forward.hasCBTForceV2()).toBeFalse();
@@ -1127,9 +1097,9 @@ describe('Force CBT V2 persistence boundary', () => {
     });
 
     it('lets a later queued load win after an earlier queued local command commits', async () => {
-        const source = new TestForce(GameSystem.CLASSIC);
+        const source = new TestForce(GameSystem.CBT);
         const persisted = await source.serializeForPersistence();
-        const target = new TestForce(GameSystem.CLASSIC);
+        const target = new TestForce(GameSystem.CBT);
         target.loadSerialized(persisted);
         expect(await target.loadCBTForceV2Persistence(persisted)).toBeTrue();
 
@@ -1143,9 +1113,9 @@ describe('Force CBT V2 persistence boundary', () => {
     });
 
     it('invalidates an older delayed load when a queued local command is invoked later', async () => {
-        const source = new TestForce(GameSystem.CLASSIC);
+        const source = new TestForce(GameSystem.CBT);
         const persisted = await source.serializeForPersistence();
-        const target = new TestForce(GameSystem.CLASSIC);
+        const target = new TestForce(GameSystem.CBT);
         target.loadSerialized(persisted);
         expect(await target.loadCBTForceV2Persistence(persisted)).toBeTrue();
 
@@ -1162,18 +1132,18 @@ describe('Force CBT V2 persistence boundary', () => {
     });
 
     it('commits FIFO loads in call order so the second valid envelope is final', async () => {
-        const source = new TestForce(GameSystem.CLASSIC);
+        const source = new TestForce(GameSystem.CBT);
         const first = await source.serializeForPersistence();
         expect(first.cbt).toBeDefined();
         const secondEnvelope = await validateSerializedCBTForceV2({
             ...first.cbt!,
-            forceRevision: asStateRevision(Number(first.cbt!.forceRevision) + 1),
+            forceRevision: Number(first.cbt!.forceRevision) + 1,
         } as SerializedCBTForceV2);
         const second = {
             ...first,
             cbt: secondEnvelope,
         };
-        const target = new TestForce(GameSystem.CLASSIC);
+        const target = new TestForce(GameSystem.CBT);
         target.loadSerialized(first);
         const gate = target.gateNextLoadPreparation();
 

@@ -7,28 +7,24 @@ import type { MekEntity } from './entity/entities/mek/mek-entity';
 import type { NativeUnitSourceHandle } from './native-unit-source-handle';
 import type { SavedEntityIdentity } from './persisted-unit-state';
 import type { CrewAssignment } from './runtime/crew-assignment';
-import type {
-    ClassicUnitQueryPort,
-    ClassicUnitRuntimeIndex,
-    ClassicUnitRuntimeState,
-} from './runtime/classic-unit-runtime';
+import type { CBTUnitQueryPort, CBTUnitRuntimeIndex, CBTUnitRuntimeState } from './runtime/cbt-unit-runtime';
 import type { NonMekRuntimeIndex } from './runtime/non-mek-runtime-index';
 import type { NonMekUnitRuntimeState } from './runtime/non-mek-unit-instance';
 import type { MekRuntimeIndex } from './runtime/mek-runtime-index';
 import type { MekUnitQueryPort } from './runtime/unit-instance';
-import type { MekUnitRuntimeState, UnitInstanceId } from './runtime/runtime-state';
+import type { MekUnitRuntimeState } from './runtime/runtime-state';
 
-/** Complete immutable read model for any force-owned Classic BaseEntity. */
+/** Complete immutable read model for any force-owned CBT BaseEntity. */
 export interface CBTUnitSnapshot {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly entity: BaseEntity;
-    readonly index: ClassicUnitRuntimeIndex;
+    readonly index: CBTUnitRuntimeIndex;
     readonly sourceRef: SavedEntityIdentity;
     readonly nativeSource?: NativeUnitSourceHandle;
     readonly ruleset: CBTRuleset;
     readonly crewAssignment: CrewAssignment;
-    readonly state: ClassicUnitRuntimeState;
-    readonly query: ClassicUnitQueryPort;
+    readonly state: CBTUnitRuntimeState;
+    readonly query: CBTUnitQueryPort;
 }
 
 /**
@@ -52,7 +48,7 @@ export function hasNonMekRuntime(
 ): snapshot is CBTUnitSnapshot & Readonly<{
     index: NonMekRuntimeIndex;
     state: NonMekUnitRuntimeState;
-    query: ClassicUnitQueryPort;
+    query: CBTUnitQueryPort;
 }> {
     return snapshot.entity.entityType !== 'Mek';
 }

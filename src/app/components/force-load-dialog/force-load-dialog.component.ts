@@ -146,7 +146,7 @@ export class ForceLoadDialogComponent {
     private toastService = inject(ToastService);
     readonly hangarAllFilter = HANGAR_FILTER_ALL;
     readonly hangarUnfiledFilter = HANGAR_FILTER_UNFILED;
-    readonly hangarClassicFilter = HANGAR_FILTER_CLASSIC;
+    readonly hangarCBTFilter = HANGAR_FILTER_CLASSIC;
     readonly hangarAlphaStrikeFilter = HANGAR_FILTER_ALPHA_STRIKE;
     searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
     private hangarViewport = viewChild<CdkVirtualScrollViewport>('hangarViewport');
@@ -254,7 +254,7 @@ export class ForceLoadDialogComponent {
         if (!sel?.instanceId) return false;
         return this.forceWorkspace.loadedForces().some(s => s.force.instanceId() === sel.instanceId);
     });
-    gameTypeFilter = signal<'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE>('all');
+    gameTypeFilter = signal<'all' | GameSystem.CBT | GameSystem.AS>('all');
     hangarTagFilter = signal<string>(this.getStoredHangarTagFilter());
     hangarFactionFilter = signal<number | null>(this.getStoredNumberFilter(HANGAR_FACTION_FILTER_SESSION_KEY));
     hangarEraFilter = signal<number | null>(this.getStoredNumberFilter(HANGAR_ERA_FILTER_SESSION_KEY));
@@ -267,13 +267,13 @@ export class ForceLoadDialogComponent {
     hangarGameTypeCounts = computed(() => {
         const counts = new Map<string, number>([
             [HANGAR_FILTER_ALL, 0],
-            [GameSystem.CLASSIC, 0],
-            [GameSystem.ALPHA_STRIKE, 0],
+            [GameSystem.CBT, 0],
+            [GameSystem.AS, 0],
         ]);
 
         for (const force of this.hangarCountSourceForces()) {
             counts.set(HANGAR_FILTER_ALL, (counts.get(HANGAR_FILTER_ALL) ?? 0) + 1);
-            const forceType = force.type || GameSystem.CLASSIC;
+            const forceType = force.type || GameSystem.CBT;
             counts.set(forceType, (counts.get(forceType) ?? 0) + 1);
         }
 
@@ -318,15 +318,15 @@ export class ForceLoadDialogComponent {
     hangarDisplayCounts = computed(() => {
         const counts = new Map<string, number>([
             [HANGAR_FILTER_ALL, 0],
-            [GameSystem.CLASSIC, 0],
-            [GameSystem.ALPHA_STRIKE, 0],
+            [GameSystem.CBT, 0],
+            [GameSystem.AS, 0],
             [HANGAR_FILTER_UNFILED, 0],
         ]);
 
         for (const force of this.hangarCountSourceForces()) {
             counts.set(HANGAR_FILTER_ALL, (counts.get(HANGAR_FILTER_ALL) ?? 0) + 1);
 
-            const forceType = force.type || GameSystem.CLASSIC;
+            const forceType = force.type || GameSystem.CBT;
             counts.set(forceType, (counts.get(forceType) ?? 0) + 1);
 
             const forceTags = this.getForceTags(force);
@@ -1057,12 +1057,12 @@ export class ForceLoadDialogComponent {
         this.clearFilteredOutSelections();
     }
 
-    onGameTypeFilter(type: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE) {
+    onGameTypeFilter(type: 'all' | GameSystem.CBT | GameSystem.AS) {
         this.gameTypeFilter.set(type);
         this.clearFilteredOutSelections();
     }
 
-    getHangarGameTypeCount(type: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): number {
+    getHangarGameTypeCount(type: 'all' | GameSystem.CBT | GameSystem.AS): number {
         return this.hangarGameTypeCounts().get(type) ?? 0;
     }
 
@@ -1320,13 +1320,13 @@ export class ForceLoadDialogComponent {
     /** Pick the right point value: for hangar forces use per-entry type, for packs use current game system */
     private getForceValue(item: { type?: GameSystem; pv?: number; bv?: number }): number {
         const isAS = item.type != null
-            ? item.type === GameSystem.ALPHA_STRIKE   // Hangar: each force knows its own type
+            ? item.type === GameSystem.AS   // Hangar: each force knows its own type
             : this.gameService.isAlphaStrike();       // Packs: use current game system
         return isAS ? (item.pv ?? 0) : (item.bv ?? 0);
     }
 
     getGameTypeLabel(type: GameSystem | undefined): string {
-        return (type || GameSystem.CLASSIC) === GameSystem.ALPHA_STRIKE ? 'AS' : 'CBT';
+        return (type || GameSystem.CBT) === GameSystem.AS ? 'AS' : 'CBT';
     }
 
     getGroupName(group: LoadForceGroup): string {
@@ -1351,8 +1351,8 @@ export class ForceLoadDialogComponent {
         return force.groups.reduce((sum, group) => sum + group.units.length, 0);
     }
 
-    private matchesGameTypeFilter(item: { type?: GameSystem }, typeFilter: 'all' | GameSystem.CLASSIC | GameSystem.ALPHA_STRIKE): boolean {
-        const itemType = item.type || GameSystem.CLASSIC;
+    private matchesGameTypeFilter(item: { type?: GameSystem }, typeFilter: 'all' | GameSystem.CBT | GameSystem.AS): boolean {
+        const itemType = item.type || GameSystem.CBT;
         return typeFilter === 'all' || itemType === typeFilter;
     }
 
@@ -1367,16 +1367,16 @@ export class ForceLoadDialogComponent {
     }
 
     private matchesHangarTagFilter(force: LoadForceEntry, filter: string): boolean {
-        const forceType = force.type || GameSystem.CLASSIC;
+        const forceType = force.type || GameSystem.CBT;
         const forceTags = this.getForceTags(force);
 
         switch (filter) {
             case HANGAR_FILTER_ALL:
                 return true;
             case HANGAR_FILTER_CLASSIC:
-                return forceType === GameSystem.CLASSIC;
+                return forceType === GameSystem.CBT;
             case HANGAR_FILTER_ALPHA_STRIKE:
-                return forceType === GameSystem.ALPHA_STRIKE;
+                return forceType === GameSystem.AS;
             case HANGAR_FILTER_UNFILED:
                 return forceTags.length === 0;
             default:
@@ -1475,10 +1475,10 @@ export class ForceLoadDialogComponent {
         if (!stored) {
             return HANGAR_FILTER_ALL;
         }
-        if (stored === GameSystem.CLASSIC) {
+        if (stored === GameSystem.CBT) {
             return HANGAR_FILTER_CLASSIC;
         }
-        if (stored === GameSystem.ALPHA_STRIKE) {
+        if (stored === GameSystem.AS) {
             return HANGAR_FILTER_ALPHA_STRIKE;
         }
         return stored;

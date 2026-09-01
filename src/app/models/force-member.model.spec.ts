@@ -4,11 +4,10 @@
 import type { CBTForce } from './cbt-force.model';
 import { CBTForceMember } from './force-member.model';
 import { TestBipedMekEntity } from './entity/testing/test-entities';
-import { asUnitInstanceId } from './runtime/runtime-state';
 
 function createMember(id: string): CBTForceMember {
     return new CBTForceMember(
-        asUnitInstanceId(id),
+        id,
         {} as CBTForce,
         new TestBipedMekEntity(),
     );

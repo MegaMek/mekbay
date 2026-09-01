@@ -44,7 +44,7 @@ import { projectBackgroundCatalogProgress } from './models/startup-progress.mode
 import { GameSystem } from './models/common.model';
 import { Router, RouterOutlet } from '@angular/router';
 import { UrlService } from './services/url.service';
-import { ClassicUnitViewModeService } from './services/classic-unit-view-mode.service';
+import { CBTUnitViewModeService } from './services/cbt-unit-view-mode.service';
 
 const ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY = 'mekbayAndroidPwaBackExit';
 const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
@@ -110,7 +110,7 @@ export class App {
     private accountProtectionService = inject(AccountProtectionService);
     private router = inject(Router);
     private urlService = inject(UrlService);
-    protected readonly classicUnitViewMode = inject(ClassicUnitViewModeService);
+    protected readonly cbtUnitViewMode = inject(CBTUnitViewModeService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
     private overlayContainer = inject(OverlayContainer);

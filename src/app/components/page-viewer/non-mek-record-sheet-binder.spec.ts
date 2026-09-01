@@ -10,7 +10,6 @@ import {
 } from '../../models/entity/entity-identifiers';
 import type { EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
 import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
-import { asStateRevision } from '../../models/runtime/runtime-state';
 import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
 import { optimizeGeneratedSvg } from '../../utils/sheets/record-sheet-svg-rendering';
 import {
@@ -305,8 +304,8 @@ describe('bindNonMekRecordSheet', () => {
             })]),
         });
         const equipmentPanel = {
-            stateRevision: asStateRevision(4),
-            targetRegistryRevision: asStateRevision(1),
+            stateRevision: 4,
+            targetRegistryRevision: 1,
             crew: { gunnery: 4, piloting: 5 },
             targets: [],
             components: [{
@@ -333,7 +332,7 @@ describe('bindNonMekRecordSheet', () => {
         expect(interactions).toEqual([jasmine.objectContaining({
             kind: 'inventory-selection',
             componentIds: [componentId],
-            expectedRevision: asStateRevision(4),
+            expectedRevision: 4,
         })]);
     });
 
@@ -392,8 +391,8 @@ describe('bindNonMekRecordSheet', () => {
             }))),
         });
         const equipmentPanel = {
-            stateRevision: asStateRevision(4),
-            targetRegistryRevision: asStateRevision(1),
+            stateRevision: 4,
+            targetRegistryRevision: 1,
             crew: { gunnery: 4, piloting: 5 },
             targets: [],
             components: [{
@@ -446,8 +445,8 @@ describe('bindNonMekRecordSheet', () => {
             })]),
         });
         const equipmentPanel = {
-            stateRevision: asStateRevision(4),
-            targetRegistryRevision: asStateRevision(1),
+            stateRevision: 4,
+            targetRegistryRevision: 1,
             crew: { gunnery: 4, piloting: 5 },
             targets: [],
             components: [{
@@ -472,7 +471,7 @@ describe('bindNonMekRecordSheet', () => {
             kind: 'inventory-selection',
             componentIds: [componentId],
             mode: 'SRM',
-            expectedRevision: asStateRevision(4),
+            expectedRevision: 4,
         })]);
     });
 });
@@ -490,7 +489,7 @@ const ROTOR_DAMAGE_TRACK_ID = asSystemDamageTrackId('damage-track:rotor');
 function snapshot(remaining: number, destroyed = false): NonMekRecordSheetSnapshot {
     return Object.freeze({
         entityUuid: '019f6767-0dcb-7bb8-992f-aef08202f5e1',
-        stateRevision: asStateRevision(4),
+        stateRevision: 4,
         displayName: 'Test Tank T-1',
         unitType: 'Tank',
         subtype: 'Combat Vehicle',

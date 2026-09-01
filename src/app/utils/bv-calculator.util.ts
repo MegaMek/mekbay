@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { UnitSummary } from "../models/unit-summary.model";
-import { adjustClassicBattleValueForSkills } from '../models/entity/utils/battle-value/rules';
+import { adjustCBTBattleValueForSkills } from '../models/entity/utils/battle-value/rules';
 
 
 export class BVCalculatorUtil {
@@ -20,7 +20,7 @@ export class BVCalculatorUtil {
         gunnerySkill: number,
         pilotingSkill: number,
     ): number {
-        return adjustClassicBattleValueForSkills(baseBv, gunnerySkill, pilotingSkill, {
+        return adjustCBTBattleValueForSkills(baseBv, gunnerySkill, pilotingSkill, {
             unitType: unit.type,
             unitSubtype: unit.subtype,
             canAntiMech: unit.canAntiMech === true,

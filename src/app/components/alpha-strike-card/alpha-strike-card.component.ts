@@ -324,7 +324,7 @@ export class AlphaStrikeCardComponent {
         if (selection.kind === 'formation-wide') {
             this.dialogs.createDialog<void>(PilotAbilityInfoDialogComponent, {
                 data: {
-                    gameSystem: GameSystem.ALPHA_STRIKE,
+                    gameSystem: GameSystem.AS,
                     ability: selection.descriptor.ability,
                     isCustom: false,
                     isFormationWide: true,
@@ -361,7 +361,7 @@ export class AlphaStrikeCardComponent {
         }
         
         this.dialogs.createDialog<void>(PilotAbilityInfoDialogComponent, {
-            data: { gameSystem: GameSystem.ALPHA_STRIKE, ability, isCustom, isCommand } as PilotAbilityInfoDialogData
+            data: { gameSystem: GameSystem.AS, ability, isCustom, isCommand } as PilotAbilityInfoDialogData
         });
     }
 

@@ -10,20 +10,20 @@ import {
     type MekRuntimeCapabilityDecision,
 } from './mek-runtime-capability';
 import {
-    isReadyNonMekUnit,
-    isReadyMekUnit,
-    type ReadyClassicUnit,
-} from './ready-classic-unit';
-import type { ReadyMekUnit } from './ready-unit-factory';
+    isCBTNonMekUnit,
+    isCBTMekUnit,
+    type CBTUnit,
+} from './cbt-unit';
+import type { CBTMekUnit } from './cbt-mek-unit';
 
-export function readyUnitMatchesEntity(unit: ReadyClassicUnit, entity: BaseEntity): boolean {
-    if (isReadyMekUnit(unit)) {
+export function cbtUnitMatchesEntity(unit: CBTUnit, entity: BaseEntity): boolean {
+    if (isCBTMekUnit(unit)) {
         return entity.entityType === 'Mek' && unit.matchesEntity(entity as MekEntity);
     }
-    return isReadyNonMekUnit(unit) && entity.entityType !== 'Mek' && unit.matchesEntity(entity);
+    return isCBTNonMekUnit(unit) && entity.entityType !== 'Mek' && unit.matchesEntity(entity);
 }
 
-export function evaluateReadyMekRuntimeCapability(unit: ReadyMekUnit): MekRuntimeCapabilityDecision {
+export function evaluateCBTMekRuntimeCapability(unit: CBTMekUnit): MekRuntimeCapabilityDecision {
     const decision = evaluateMekRuntimeCapability(unit.getUnit());
     if (decision.readiness === 'deferred') return decision;
     const heat = requireSupportedMekHeatContext(

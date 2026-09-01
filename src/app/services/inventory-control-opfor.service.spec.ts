@@ -4,7 +4,6 @@
 import { signal } from '@angular/core';
 import type { Force } from '../models/force.model';
 import { CBTForce, type InventoryControlTargetRosterRow } from '../models/cbt-force.model';
-import { asStateRevision, asUnitInstanceId } from '../models/runtime/runtime-state';
 import {
     asEncounterTargetId,
     type EncounterTarget,
@@ -16,7 +15,7 @@ describe('InventoryControlOpforService', () => {
     function createOpforHarness() {
         const service = Object.create(InventoryControlOpforService.prototype) as InventoryControlOpforService;
         let targets: EncounterTarget[] = [];
-        let revision = asStateRevision(0);
+        let revision = 0;
         let rejectNext = false;
         const enabled = signal(true);
         const dispatch = jasmine.createSpy('dispatchInventoryControlTargetRegistry').and.callFake(
@@ -40,7 +39,7 @@ describe('InventoryControlOpforService', () => {
                 if (JSON.stringify(targets) === JSON.stringify(nextTargets)) {
                     return { accepted: true as const, changed: false as const, snapshot };
                 }
-                revision = asStateRevision(Number(revision) + 1);
+                revision = Number(revision) + 1;
                 targets = [...nextTargets];
                 return {
                     accepted: true as const,
@@ -78,7 +77,7 @@ describe('InventoryControlOpforService', () => {
         name: string,
         overrides: Partial<InventoryControlTargetRosterRow> = {},
     ): InventoryControlTargetRosterRow {
-        const instanceId = asUnitInstanceId(id);
+        const instanceId = id;
         return Object.freeze({
             instanceId,
             targetId: asEncounterTargetId(`opfor:${instanceId}`),

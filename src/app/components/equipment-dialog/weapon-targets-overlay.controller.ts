@@ -445,7 +445,7 @@ export class WeaponTargetsOverlayController {
         switch (snapshot?.ruleset) {
             case 'total-warfare': return TW_GAME_RULES;
             case 'core-2026': return CORE_2026_GAME_RULES;
-            default: throw new Error('Classic unit is missing its exact CBT ruleset');
+            default: throw new Error('CBT unit is missing its exact CBT ruleset');
         }
     }
 

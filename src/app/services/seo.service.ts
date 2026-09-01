@@ -17,19 +17,19 @@ interface PageSeo {
 
 const HOME_SEO: PageSeo = {
     title: 'MekBay: BattleTech Force Builder & Record Sheets',
-    description: 'Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets.',
+    description: 'Build and manage BattleTech forces for CBT and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets.',
     canonicalUrl: 'https://mekbay.com/',
 };
 
 const FORCE_GENERATOR_SEO: PageSeo = {
     title: 'BattleTech Force Generator | MekBay',
-    description: 'Generate balanced BattleTech forces for Classic and Alpha Strike by faction, era, unit type, Battle Value, or Point Value.',
+    description: 'Generate balanced BattleTech forces for CBT and Alpha Strike by faction, era, unit type, Battle Value, or Point Value.',
     canonicalUrl: 'https://mekbay.com/forcegenerator',
 };
 
 const UNIT_SEARCH_SEO: PageSeo = {
     title: 'BattleTech Unit Search | MekBay',
-    description: 'Search and compare BattleTech units for Classic and Alpha Strike by name, faction, era, role, Battle Value, Point Value, and more.',
+    description: 'Search and compare BattleTech units for CBT and Alpha Strike by name, faction, era, role, Battle Value, Point Value, and more.',
     canonicalUrl: 'https://mekbay.com/?expanded=true',
 };
 

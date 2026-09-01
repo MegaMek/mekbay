@@ -11,11 +11,7 @@ import type {
     MekLocationConditionKey,
     PpcCapacitorRuntimeState,
 } from './runtime-state';
-import {
-    isMekLocationConditionKey,
-    MAX_MEK_CREW_WOUNDS,
-    MAX_MEK_LOCATION_CONDITION_VALUE,
-} from './runtime-state';
+import { isMekLocationConditionKey, MAX_MEK_CREW_WOUNDS, MAX_MEK_LOCATION_CONDITION_VALUE } from './runtime-state';
 import {
     asComponentId,
     asCriticalSlotId,
@@ -26,43 +22,24 @@ import {
     type LocationId,
 } from '../entity/entity-identifiers';
 import { isCBTRuleset, type CBTRuleset } from '../cbt-ruleset.model';
+import { isC3NetworkRole, isC3NetworkType, type C3NetworkRole, type C3NetworkType } from '../c3-network.model';
 import { isRecord, jsonValuesEqual } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
-import {
-    sanitizeSavedEntityIdentity,
-    type JsonValue,
-    type SavedEntityIdentity,
-} from '../persisted-unit-state';
+import { sanitizeSavedEntityIdentity, type JsonValue, type SavedEntityIdentity } from '../persisted-unit-state';
 import { asSourceHash } from '../../services/unit-catalog/unit-catalog.types';
-import {
-    asStateRevision,
-    asUnitInstanceId,
-    type InstanceBaselineRef,
-    type StateRevision,
-    type UnitInstanceId,
-} from './runtime-state';
-import {
-    deserializeMekTurnStateV2,
-    type SerializedMekTurnStateV2,
-} from './mek-turn-state-v2';
+import { type InstanceBaselineRef } from './runtime-state';
+import { deserializeMekTurnStateV2, type SerializedMekTurnStateV2 } from './mek-turn-state-v2';
 import {
     deserializeMekMovementPsrStateV2,
     serializeMekMovementPsrStateV2,
     type SerializedMekMovementPsrStateV2,
 } from './mek-movement-psr-v2';
-import {
-    assertCanonicalCrewAssignment,
-    type CrewAssignment,
-    type CrewPositionDefinition,
-} from './crew-assignment';
+import { assertCanonicalCrewAssignment, type CrewAssignment, type CrewPositionDefinition } from './crew-assignment';
 import {
     MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
     type CanonicalMekDeploymentConfigurationV2,
 } from './unit-state-initializer';
-import {
-    MAX_MEK_HEATSINKS_OFF_V2,
-    MAX_MEK_HEAT_VALUE_V2,
-} from './mek-heat-state-v2';
+import { MAX_MEK_HEATSINKS_OFF_V2, MAX_MEK_HEAT_VALUE_V2 } from './mek-heat-state-v2';
 import {
     CBT_FORCE_ROSTER_SCHEMA_VERSION,
     CBT_FORCE_UNASSIGNED_GROUP_ID,
@@ -76,11 +53,7 @@ import type {
     TnTargetHexCover,
     TnTargetUnitType,
 } from '../target-number-calculator.model';
-import type {
-    MekRuleCheckKeyV2,
-    MekRuleCheckStatusV2,
-    MekRuleCheckTokenV2,
-} from './mek-destruction-state-v2';
+import type { MekRuleCheckKeyV2, MekRuleCheckStatusV2, MekRuleCheckTokenV2 } from './mek-destruction-state-v2';
 import {
     freezeAttackerTargetingState,
     attackerActionTargetKey,
@@ -90,20 +63,14 @@ import {
     AttackerLocalTargetState,
 } from './attacker-targeting-state';
 import { asEncounterTargetId } from './encounter-runtime';
-import {
-    inspectSerializedNonMekUnit,
-    type SerializedNonMekUnit,
-} from './non-mek-unit-persistence';
+import { inspectSerializedNonMekUnit, type SerializedNonMekUnit } from './non-mek-unit-persistence';
 import {
     isRuntimeHistoryMessageId,
     runtimeHistoryMessageCanReferenceUnit,
     runtimeHistoryMessageRequiresUnit,
     type SerializedRuntimeHistory,
 } from './runtime-history';
-import {
-    freezeEquipmentRowOrder,
-    type EquipmentRowOrderState,
-} from './equipment-row-order';
+import { freezeEquipmentRowOrder, type EquipmentRowOrderState } from './equipment-row-order';
 
 export type { SerializedMekTurnStateV2 } from './mek-turn-state-v2';
 
@@ -497,7 +464,7 @@ export type SerializedRecoverableStateFactV2 =
         readonly kind: 'mek-rule-check';
         readonly key: MekRuleCheckKeyV2;
         readonly token: MekRuleCheckTokenV2;
-        readonly openedRevision: StateRevision;
+        readonly openedRevision: number;
         readonly status: MekRuleCheckStatusV2;
     }
     | { readonly kind: 'pending-location-damage'; readonly damage: number }
@@ -572,7 +539,7 @@ export interface SerializedMekRuleCheckEntryV1 {
     readonly key: MekRuleCheckKeyV2;
     readonly token: MekRuleCheckTokenV2;
     readonly trigger: SavedTargetRef;
-    readonly openedRevision: StateRevision;
+    readonly openedRevision: number;
     readonly status: MekRuleCheckStatusV2;
 }
 
@@ -612,12 +579,12 @@ export interface SavedAttackerTargetingState {
 
 export interface SerializedCBTUnitV2 {
     readonly schemaVersion: typeof CBT_UNIT_PERSISTENCE_SCHEMA_VERSION;
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly entity: SavedEntityIdentity;
     readonly baselineRefAtSave: InstanceBaselineRef;
     readonly blueprintReferences: SavedBlueprintReferenceTableV2;
     readonly deployment: SerializedDeploymentConfigurationV2;
-    readonly stateRevision: StateRevision;
+    readonly stateRevision: number;
     /** Sparse committed fact; absence is the pristine false baseline. */
     readonly destroyed?: true;
     readonly locationState?: readonly SerializedLocationStateEntryV2[];
@@ -641,13 +608,13 @@ export interface SerializedCBTUnitV2 {
 }
 
 export interface SerializedForceUnitEntryV2 {
-    readonly instanceId: UnitInstanceId;
-    readonly stateRevision: StateRevision;
+    readonly instanceId: string;
+    readonly stateRevision: number;
     readonly unit: SerializedCBTUnitV2 | SerializedNonMekUnit;
 }
 
 export interface SerializedEncounterEndpointV2 {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly target?: SavedTargetRef;
 }
 
@@ -682,18 +649,16 @@ export interface SerializedEncounterTargetV2 {
     readonly tnCalculator?: SerializedEncounterTargetCalculatorV2;
 }
 
-export type SerializedEncounterNetworkTypeV2 = 'c3' | 'c3i' | 'naval' | 'nova';
-
 export interface SerializedEncounterNetworkEndpointV2 {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     /** Stable entity component identity. Numeric equipment positions are deliberately forbidden. */
     readonly componentId: ComponentId;
-    readonly role: 'master' | 'member' | 'peer';
+    readonly role: C3NetworkRole;
 }
 
 export interface SerializedEncounterNetworkV2 {
     readonly id: string;
-    readonly networkType: SerializedEncounterNetworkTypeV2;
+    readonly networkType: C3NetworkType;
     readonly color: string;
     readonly endpoints: readonly SerializedEncounterNetworkEndpointV2[];
 }
@@ -733,12 +698,12 @@ export type SerializedEncounterFactV2 =
 
 export interface SerializedCBTEncounterStateV2 {
     readonly schemaVersion: 2;
-    readonly encounterRevision: StateRevision;
+    readonly encounterRevision: number;
     readonly facts: readonly SerializedEncounterFactV2[];
 }
 
 export interface SerializedForceEncounterEntryV2 {
-    readonly encounterRevision: StateRevision;
+    readonly encounterRevision: number;
     readonly state: SerializedCBTEncounterStateV2;
 }
 
@@ -751,7 +716,7 @@ export interface SerializedCBTForceV2 {
     readonly schemaVersion: typeof CBT_FORCE_PERSISTENCE_SCHEMA_VERSION;
     readonly minimumWriterVersion: typeof CBT_FORCE_MINIMUM_WRITER_VERSION;
     readonly forceId: ForceId;
-    readonly forceRevision: StateRevision;
+    readonly forceRevision: number;
     readonly scenarioRules: SerializedScenarioRulesV2;
     readonly history: SerializedRuntimeHistory;
     readonly units: readonly SerializedForceUnitEntryV2[];
@@ -790,7 +755,7 @@ export class ForceEnvelopeValidationError extends Error {
 
 /** The encounter is present even before any cross-unit state exists. */
 export function emptySerializedEncounterV2(): SerializedForceEncounterEntryV2 {
-    const revision = asStateRevision(0);
+    const revision = 0;
     return Object.freeze({
         encounterRevision: revision,
         state: Object.freeze({ schemaVersion: 2, encounterRevision: revision, facts: Object.freeze([]) }),
@@ -849,7 +814,7 @@ function validateRuntimeHistory(value: unknown): void {
     const history = requireRecord(value, '$.history');
     exactKeys(history, ['u', 't'], '$.history');
     const unitIds = requireArray(history['u'], '$.history.u').map((unitId, index) =>
-        validateId(unitId, `$.history.u[${index}]`, asUnitInstanceId));
+        validateId(unitId, `$.history.u[${index}]`));
     if (new Set(unitIds).size !== unitIds.length) {
         fail('INVALID_SHAPE', '$.history.u', 'unit IDs must be unique');
     }
@@ -948,7 +913,7 @@ function validateRoster(
             const memberPath = `${path}.members[${memberIndex}]`;
             const member = requireRecord(rawMember, memberPath);
             exactKeys(member, ['instanceId', 'order', 'commander'], memberPath);
-            const instanceId = validateId(member['instanceId'], `${memberPath}.instanceId`, asUnitInstanceId);
+            const instanceId = validateId(member['instanceId'], `${memberPath}.instanceId`);
             if (memberIds.has(instanceId)) {
                 fail(
                     'DUPLICATE_ROSTER_MEMBER_ID',
@@ -1044,7 +1009,7 @@ function validateUnitEntry(
     const path = `$.units[${index}]`;
     const record = requireRecord(value, path);
     exactKeys(record, ['instanceId', 'stateRevision', 'unit'], path);
-    const instanceId = validateId(record['instanceId'], `${path}.instanceId`, asUnitInstanceId);
+    const instanceId = validateId(record['instanceId'], `${path}.instanceId`);
     const revision = validateRevision(record['stateRevision'], `${path}.stateRevision`);
     const unit = requireRecord(record['unit'], `${path}.unit`);
     const family = requireRecord(unit['family'], `${path}.unit.family`);
@@ -1105,7 +1070,7 @@ function validateV2Unit(
     if (record['schemaVersion'] !== CBT_UNIT_PERSISTENCE_SCHEMA_VERSION) {
         fail('INVALID_SHAPE', `${path}.schemaVersion`, `must be ${CBT_UNIT_PERSISTENCE_SCHEMA_VERSION}`);
     }
-    const instanceId = validateId(record['instanceId'], `${path}.instanceId`, asUnitInstanceId);
+    const instanceId = validateId(record['instanceId'], `${path}.instanceId`);
     const entity = validateSavedIdentity(record['entity'], `${path}.entity`);
     const baseline = validateBaseline(record['baselineRefAtSave'], `${path}.baselineRefAtSave`);
     if (entity.sourceFormat === 'blk' || baseline.sourceFormat === 'blk') {
@@ -2612,8 +2577,8 @@ function validateEncounterNetworkFact(
     const networkId = validateEncounterStableId(network['id'], `${path}.id`, 'network ID');
     if (networkIds.has(networkId)) fail('INVALID_SHAPE', `${path}.id`, 'duplicate encounter network ID');
     networkIds.add(networkId);
-    const networkType = String(network['networkType']);
-    if (!['c3', 'c3i', 'naval', 'nova'].includes(networkType)) {
+    const networkType = network['networkType'];
+    if (!isC3NetworkType(networkType)) {
         fail('INVALID_SHAPE', `${path}.networkType`, 'unknown C3 network type');
     }
     validateEncounterColor(network['color'], `${path}.color`);
@@ -2633,13 +2598,13 @@ function validateEncounterNetworkFact(
         const endpointPath = `${path}.endpoints[${index}]`;
         const endpoint = requireRecord(raw, endpointPath);
         exactKeys(endpoint, ['instanceId', 'componentId', 'role'], endpointPath);
-        const instanceId = validateId(endpoint['instanceId'], `${endpointPath}.instanceId`, asUnitInstanceId);
+        const instanceId = validateId(endpoint['instanceId'], `${endpointPath}.instanceId`);
         if (!instances.has(instanceId)) {
             fail('ENCOUNTER_ENDPOINT_INVALID', `${endpointPath}.instanceId`, 'network endpoint has no force unit');
         }
         const componentId = validateId(endpoint['componentId'], `${endpointPath}.componentId`, asComponentId);
         const role = endpoint['role'];
-        if (role !== 'master' && role !== 'member' && role !== 'peer') {
+        if (!isC3NetworkRole(role)) {
             fail('ENCOUNTER_ENDPOINT_INVALID', `${endpointPath}.role`, 'unknown network endpoint role');
         }
         const key = `${instanceId}\0${componentId}`;
@@ -2684,7 +2649,7 @@ function validateEncounterEndpoint(
 ): string {
     const endpoint = requireRecord(value, path);
     exactKeys(endpoint, ['instanceId', 'target'], path);
-    const instance = validateId(endpoint['instanceId'], `${path}.instanceId`, asUnitInstanceId);
+    const instance = validateId(endpoint['instanceId'], `${path}.instanceId`);
     if (!instances.has(instance)) {
         fail('ENCOUNTER_ENDPOINT_INVALID', `${path}.instanceId`, 'encounter endpoint has no force unit');
     }
@@ -2750,7 +2715,7 @@ function validateOrdinal(value: unknown, path: string): number {
 
 function validateRevision(value: unknown, path: string): number {
     if (typeof value !== 'number') fail('INVALID_SHAPE', path, 'must be a state revision');
-    try { return asStateRevision(value as number); }
+    try { return value as number; }
     catch (error) { throw validationError('INVALID_SHAPE', error, path); }
 }
 

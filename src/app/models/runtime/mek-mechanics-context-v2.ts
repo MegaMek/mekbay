@@ -16,11 +16,10 @@ import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { ComponentId, CrewPositionId } from '../entity/entity-identifiers';
 import type { MekRuntimeIndex } from './mek-runtime-index';
-import {
-    type CrewRuntimeState,
-} from './runtime-state';
-import { isCrewDeathCommitted } from './classic-unit-runtime';
+import { type CrewRuntimeState } from './runtime-state';
+import { isCrewDeathCommitted } from './cbt-unit-runtime';
 import type { CrewAssignment } from './crew-assignment';
+import type { C3NetworkType, C3Role } from '../c3-network.model';
 import {
     adjustMekStandAttemptsV2,
     declareMekActionV2,
@@ -98,9 +97,6 @@ export type MekMechanicsContextCapabilityV2 =
         readonly blockers: readonly MekMechanicsContextBlockerV2[];
     };
 
-export type MekC3EndpointFamilyV2 = 'c3' | 'c3i' | 'naval' | 'nova';
-export type MekC3EndpointRoleV2 = 'master' | 'slave' | 'peer';
-
 /**
  * The complete C3 fact surface allowed to leave the opaque mechanics context.
  * Slot topology, equipment definitions, the compiled profile, and the
@@ -108,9 +104,9 @@ export type MekC3EndpointRoleV2 = 'master' | 'slave' | 'peer';
  */
 export interface MekC3EndpointCapabilityV2 {
     readonly componentId: ComponentId;
-    readonly family: MekC3EndpointFamilyV2;
+    readonly family: C3NetworkType;
     /** Emergency masters are projected in their structural standby slave role. */
-    readonly role: MekC3EndpointRoleV2;
+    readonly role: C3Role;
     readonly boosted: boolean;
     readonly emergency: boolean;
 }

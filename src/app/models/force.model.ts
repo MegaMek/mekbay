@@ -6,7 +6,7 @@ import { signal, computed, type Signal, type WritableSignal, type Injector } fro
 import { Subject } from 'rxjs';
 import type { DataService } from '../services/data.service';
 import type { UnitSummary } from "./unit-summary.model";
-import { type SerializedClassicForce, type SerializedForce, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA, C3_POSITION_SCHEMA, FORCE_NOTE_MAX_LENGTH, sanitizeForceTags } from './force-serialization';
+import { type SerializedCBTForce, type SerializedForce, type SerializedGroup, type SerializedC3NetworkGroup, C3_NETWORK_GROUP_SCHEMA, C3_POSITION_SCHEMA, FORCE_NOTE_MAX_LENGTH, sanitizeForceTags } from './force-serialization';
 import { applyForceUnitOwnerC3Position, type ForceUnit } from './force-unit.model';
 import { GameSystem } from './common.model';
 import { C3NetworkEditor } from './c3-network-editor';
@@ -57,24 +57,18 @@ function sameCBTEncounterPersistenceState(
     return jsonValuesEqual(left, right);
 }
 
-/** Protected transaction value; callers cannot install it without the owner CAS. */
-export interface CBTForceV2AuthorityMutationContext {
+/** Values shared by one queued CBT force edit. */
+export interface CBTForceMutation {
     readonly metadata: SerializedForce & { readonly instanceId: string; readonly timestamp: string };
     readonly previous?: SerializedCBTForceV2;
     readonly typedEncounterState?: SerializedCBTEncounterStateV2;
-    readonly expectedCBTForceV2State: SerializedCBTForceV2 | null;
-    readonly expectedInstanceId: string | null;
-    readonly expectedTimestamp: string | null;
-    readonly expectedOwnerGeneration: number;
 }
 
-/** Detached subclass authority prepared during a V2 load. */
-export interface PreparedLoadedCBTForceV2Authority {
+/** Restored CBT state waiting for the force owner to install it. */
+export interface RestoredCBTForce {
     /** Optional one-way normalized envelope produced by an exact load converter. */
     readonly replacement?: SerializedCBTForceV2;
-    /** Complete synchronous validation performed before any base pointer moves. */
-    readonly canInstall: () => boolean;
-    /** Synchronous, prevalidated pointer install. It must not call user code. */
+    /** Synchronous install after asynchronous materialization is complete. */
     readonly install: () => void;
     /** Optional notice emitted only after the prepared owner was installed. */
     readonly afterInstall?: () => void | Promise<void>;
@@ -179,15 +173,10 @@ export interface ForceGroupPatch {
     readonly formationLock?: boolean;
 }
 
-export type CBTForceV2AuthorityMutationCommitResult =
-    | { readonly kind: 'committed' }
-    | { readonly kind: 'rejected'; readonly reason: 'stale' | 'install-failed' };
-
-export interface CBTForceV2AuthorityMutationInstall {
-    readonly context: CBTForceV2AuthorityMutationContext;
+export interface CBTForceMutationInstall {
+    readonly mutation: CBTForceMutation;
     readonly prepared: PreparedCBTForcePersistenceV2;
-    readonly installAuthority: () => void;
-    readonly rollbackAuthority: () => void;
+    readonly install: () => void;
 }
 
 function getEraEndYear(era: Era): number {
@@ -537,7 +526,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
 }
 
 export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
-    gameSystem: GameSystem = GameSystem.CLASSIC;
+    gameSystem: GameSystem = GameSystem.CBT;
     private readonly _instanceId: WritableSignal<string | null> = signal(null);
     /** Durable owner identity is observable but can only be assigned by Force-owned transactions. */
     public readonly instanceId: Signal<string | null> = this._instanceId.asReadonly();
@@ -637,7 +626,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         };
         this.pendingForceOwnerRetirement = pending;
         this.forceOwnerLifecycle.set('retirement-pending');
-        const ready = this.enqueueCBTForceV2AuthorityMutation(() => {
+        const ready = this.enqueueCBTMutation(() => {
             const current = this.forceOwnerLifecycle() === 'retirement-pending'
                 && this.pendingForceOwnerRetirement === pending
                 && this.forceOwnerGeneration === pending.generation
@@ -886,7 +875,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         const witnessForceId = forceId ?? 'force:unassigned-owner-witness';
         const witnessTimestamp = timestamp ?? '1970-01-01T00:00:00.000Z';
         const cbt = this.getSupportedCBTForceV2Envelope();
-        const serialized = this.gameSystem === GameSystem.CLASSIC
+        const serialized = this.gameSystem === GameSystem.CBT
             && cbt !== null
             ? this.buildCBTForcePersistenceRecord(
                 this.buildCBTForceMetadataRecord(witnessForceId, witnessTimestamp),
@@ -922,7 +911,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return this.getSupportedCBTForceV2Envelope()?.forceRevision;
     }
 
-    /** Subclasses expose their single installed Classic authority here. */
+    /** Subclasses expose their single installed CBT authority here. */
     protected getSupportedCBTForceV2Envelope(): SerializedCBTForceV2 | null {
         return null;
     }
@@ -953,7 +942,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     }
 
     /** Serializes whole-owner authority changes against the normal V2 save queue. */
-    protected enqueueCBTForceV2AuthorityMutation<T>(operation: () => T | Promise<T>): Promise<T> {
+    protected enqueueCBTMutation<T>(operation: () => T | Promise<T>): Promise<T> {
         const execute = async (): Promise<T> => {
             this.forceOwnerOperationDepth += 1;
             try {
@@ -991,7 +980,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     public [reserveUnitGroupOwnerMutation](group: UnitGroup): number | null {
         if (this.loading) return this.forceLocalMutationIntentEpoch;
         if (this.readOnly()
-            || (this.gameSystem === GameSystem.CLASSIC && this.hasCBTForceV2())
+            || (this.gameSystem === GameSystem.CBT && this.hasCBTForceV2())
             || group.force !== this
             || !this.groups().some(candidate => candidate === group)) return null;
         return this.reserveForceOwnerMutationIntent();
@@ -1033,161 +1022,63 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
     }
 
-    /** Captures the exact V2 owner before an asynchronous mutation is prepared. */
-    protected prepareCBTForceV2AuthorityMutation(): CBTForceV2AuthorityMutationContext {
-        if (this.gameSystem !== GameSystem.CLASSIC) {
-            throw new Error('CBT V2 authority can only be installed in a Classic force');
+    /** Captures the values needed to write one edit already serialized by the owner queue. */
+    protected beginCBTForceMutation(): CBTForceMutation {
+        if (this.gameSystem !== GameSystem.CBT) {
+            throw new Error('CBT V2 authority can only be installed in a CBT force');
         }
         if (this.readOnly()) {
             throw new Error(`Force "${this.name}" is read-only`);
         }
         const forceId = this.instanceId() ?? uuidv7();
         const timestamp = this.timestamp ?? new Date().toISOString();
-        const authority = this.getSupportedCBTForceV2Envelope();
+        const current = this.getSupportedCBTForceV2Envelope();
         return Object.freeze({
             metadata: this.buildCBTForceMetadataRecord(forceId, timestamp),
-            ...(authority === null
+            ...(current === null
                 ? {}
-                : { previous: authority }),
+                : { previous: current }),
             typedEncounterState: this.getCBTEncounterStateForPersistence(),
-            expectedCBTForceV2State: authority,
-            expectedInstanceId: this.instanceId(),
-            expectedTimestamp: this.timestamp,
-            expectedOwnerGeneration: this.forceOwnerGeneration,
         });
     }
 
-    /**
-     * Synchronous CAS for a previously sealed envelope and a non-throwing
-     * authority install. It rejects any intervening owner, encounter, or
-     * runtime change without moving the V2 pointer.
-     */
-    protected commitCBTForceV2AuthorityMutation(
-        context: CBTForceV2AuthorityMutationContext,
+    /** Installs one edit already serialized by the owner queue. */
+    protected commitCBTForceMutation(
+        mutation: CBTForceMutation,
         prepared: PreparedCBTForcePersistenceV2,
-        installAuthority: () => void,
-        rollbackAuthority: () => void,
-    ): CBTForceV2AuthorityMutationCommitResult {
-        if (!this.isCBTForceV2AuthorityMutationCurrent(context, prepared)) {
-            return Object.freeze({ kind: 'rejected', reason: 'stale' });
+        install: () => void,
+    ): void {
+        install();
+        this.restoreCBTEncounterPersistence(prepared.envelope.encounter);
+        if (this.getSupportedCBTForceV2Envelope() !== prepared.envelope) {
+            throw new Error('CBT unit store did not publish its prepared envelope');
         }
-
-        try {
-            // The sealed writer may advance the encounter revision when a
-            // legacy witness changes. Install that exact typed authority in
-            // the same CAS so the next save cannot observe an older runtime.
-            this.restoreCBTEncounterPersistence(prepared.envelope.encounter);
-            installAuthority();
-            if (this.getSupportedCBTForceV2Envelope() !== prepared.envelope) {
-                throw new Error('Classic authority install did not publish its prepared envelope');
-            }
-        } catch {
-            let rollbackSucceeded = true;
-            try {
-                rollbackAuthority();
-                if (context.typedEncounterState) {
-                    this.restoreCBTEncounterPersistence({
-                        encounterRevision: context.typedEncounterState.encounterRevision,
-                        state: context.typedEncounterState,
-                    });
-                }
-            } catch {
-                // Rollback functions are sealed, synchronous owner-pointer restores.
-                // A second fault cannot authorize publishing any of the new pointers.
-                rollbackSucceeded = false;
-            }
-            if (!rollbackSucceeded) {
-                this.reserveForceOwnerMutationIntent();
-                this.advanceForceOwnerGeneration();
-            }
-            return Object.freeze({ kind: 'rejected', reason: 'install-failed' });
-        }
-        // The install/rollback pair is synchronous and sealed. Reserve mutation
-        // authority only after the install succeeds so an exact rollback remains
-        // a true no-op and cannot invalidate an older queued load.
         this.reserveForceOwnerMutationIntent();
-        this._instanceId.set(context.metadata.instanceId);
-        this.timestamp = context.metadata.timestamp;
-        return Object.freeze({ kind: 'committed' });
+        this._instanceId.set(mutation.metadata.instanceId);
+        this.timestamp = mutation.metadata.timestamp;
     }
 
-    /** Installs two prevalidated force-owner changes together or leaves both untouched. */
-    protected commitPairedCBTForceV2AuthorityMutations(
+    /** Installs two edits while both owner queues are held. */
+    protected commitPairedCBTForceMutations(
         other: Force,
-        own: CBTForceV2AuthorityMutationInstall,
-        peer: CBTForceV2AuthorityMutationInstall,
-    ): CBTForceV2AuthorityMutationCommitResult {
-        if (other === this
-            || !this.isCBTForceV2AuthorityMutationCurrent(own.context, own.prepared)
-            || !other.isCBTForceV2AuthorityMutationCurrent(peer.context, peer.prepared)) {
-            return Object.freeze({ kind: 'rejected', reason: 'stale' });
-        }
-
-        try {
-            this.restoreCBTEncounterPersistence(own.prepared.envelope.encounter);
-            other.restoreCBTEncounterPersistence(peer.prepared.envelope.encounter);
-            own.installAuthority();
-            peer.installAuthority();
-            if (this.getSupportedCBTForceV2Envelope() !== own.prepared.envelope
-                || other.getSupportedCBTForceV2Envelope() !== peer.prepared.envelope) {
-                throw new Error('Paired Classic authority install did not publish both prepared envelopes');
-            }
-        } catch {
-            let rollbackSucceeded = true;
-            try {
-                peer.rollbackAuthority();
-                own.rollbackAuthority();
-                if (own.context.typedEncounterState) {
-                    this.restoreCBTEncounterPersistence({
-                        encounterRevision: own.context.typedEncounterState.encounterRevision,
-                        state: own.context.typedEncounterState,
-                    });
-                }
-                if (peer.context.typedEncounterState) {
-                    other.restoreCBTEncounterPersistence({
-                        encounterRevision: peer.context.typedEncounterState.encounterRevision,
-                        state: peer.context.typedEncounterState,
-                    });
-                }
-            } catch {
-                rollbackSucceeded = false;
-            }
-            if (!rollbackSucceeded) {
-                this.reserveForceOwnerMutationIntent();
-                other.reserveForceOwnerMutationIntent();
-                this.advanceForceOwnerGeneration();
-                other.advanceForceOwnerGeneration();
-            }
-            return Object.freeze({ kind: 'rejected', reason: 'install-failed' });
-        }
-
+        own: CBTForceMutationInstall,
+        peer: CBTForceMutationInstall,
+    ): void {
+        if (other === this) throw new Error('Cannot transfer a unit to the same force');
+        own.install();
+        peer.install();
+        this.restoreCBTEncounterPersistence(own.prepared.envelope.encounter);
+        other.restoreCBTEncounterPersistence(peer.prepared.envelope.encounter);
         this.reserveForceOwnerMutationIntent();
         other.reserveForceOwnerMutationIntent();
-        this._instanceId.set(own.context.metadata.instanceId);
-        this.timestamp = own.context.metadata.timestamp;
-        other._instanceId.set(peer.context.metadata.instanceId);
-        other.timestamp = peer.context.metadata.timestamp;
-        return Object.freeze({ kind: 'committed' });
-    }
-
-    private isCBTForceV2AuthorityMutationCurrent(
-        context: CBTForceV2AuthorityMutationContext,
-        prepared: PreparedCBTForcePersistenceV2,
-    ): boolean {
-        return !this.readOnly()
-            && this.forceOwnerGeneration === context.expectedOwnerGeneration
-            && this.instanceId() === context.expectedInstanceId
-            && this.timestamp === context.expectedTimestamp
-            && this.getSupportedCBTForceV2Envelope() === context.expectedCBTForceV2State
-            && prepared.envelope.forceId === context.metadata.instanceId
-            && sameCBTEncounterPersistenceState(
-                context.typedEncounterState,
-                this.getCBTEncounterStateForPersistence(),
-            );
+        this._instanceId.set(own.mutation.metadata.instanceId);
+        this.timestamp = own.mutation.metadata.timestamp;
+        other._instanceId.set(peer.mutation.metadata.instanceId);
+        other.timestamp = peer.mutation.metadata.timestamp;
     }
 
     public markCloudCBTForceV2Saved(serialized: SerializedForce): void {
-        if (this.gameSystem !== GameSystem.CLASSIC) return;
+        if (this.gameSystem !== GameSystem.CBT) return;
         if (serialized.cbt === undefined) {
             this.expectedCloudCBTForceV2Revision = null;
             return;
@@ -1212,7 +1103,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             return Promise.reject(error);
         }
         const submittedIntentEpoch = this.forceLocalMutationIntentEpoch;
-        return this.enqueueCBTForceV2AuthorityMutation(() => this.loadCBTForceV2PersistenceNow(
+        return this.enqueueCBTMutation(() => this.loadCBTForceV2PersistenceNow(
             captured,
             submittedIntentEpoch,
         ));
@@ -1222,7 +1113,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         data: SerializedForce,
         submittedIntentEpoch: number,
     ): Promise<boolean> {
-        if (this.gameSystem !== GameSystem.CLASSIC) return true;
+        if (this.gameSystem !== GameSystem.CBT) return true;
         if (!this.isForceOwnerMutationIntentCurrent(submittedIntentEpoch)) return false;
         const submittedGeneration = this.forceOwnerGeneration;
         const submittedV2State = this.getSupportedCBTForceV2Envelope();
@@ -1237,24 +1128,24 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             const clearedAuthority = this.clearLoadedCBTForceV2Authority();
             const changed = submittedV2State !== null || clearedAuthority;
             if (this.getSupportedCBTForceV2Envelope() !== null) {
-                throw new Error('Classic authority clear left a persistence envelope installed');
+                throw new Error('CBT authority clear left a persistence envelope installed');
             }
             if (changed) this.advanceForceOwnerGeneration();
             return true;
         }
         if (submittedForceId === null || result.forceId !== submittedForceId) return false;
-        const preparedAuthority = await this.prepareLoadedCBTForceV2Authority(result);
-        if (!ownerIsCurrent() || !preparedAuthority.canInstall()) return false;
-        const installedEnvelope = preparedAuthority.replacement ?? result;
+        const restored = await this.restoreCBTForce(result);
+        if (!ownerIsCurrent()) return false;
+        const installedEnvelope = restored.replacement ?? result;
         if (installedEnvelope.forceId !== submittedForceId) return false;
         this.restoreCBTEncounterPersistence(installedEnvelope.encounter);
-        preparedAuthority.install();
+        restored.install();
         if (this.getSupportedCBTForceV2Envelope() !== installedEnvelope) {
-            throw new Error('Classic authority load did not publish its validated envelope');
+            throw new Error('CBT authority load did not publish its validated envelope');
         }
         this.reconcileCBTForceV2Projection();
         this.advanceForceOwnerGeneration();
-        await preparedAuthority.afterInstall?.();
+        await restored.afterInstall?.();
         return true;
     }
 
@@ -1303,14 +1194,14 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             return Promise.reject(new Error(`Force "${this.name}" is being replaced and cannot accept a new persistence request`));
         }
         const pendingSettlement = pendingRetirement?.settled;
-        return this.enqueueCBTForceV2AuthorityMutation(async () => {
+        return this.enqueueCBTMutation(async () => {
             if (pendingSettlement) await pendingSettlement;
             if (this.readOnly()) {
                 throw new Error(`Force "${this.name}" is read-only and cannot be persisted`);
             }
             let serialized: SerializedForce;
             let identityInstalled = false;
-            if (this.gameSystem !== GameSystem.CLASSIC) {
+            if (this.gameSystem !== GameSystem.CBT) {
                 const forceId = this.instanceId() ?? uuidv7();
                 const timestamp = this.timestamp ?? new Date().toISOString();
                 identityInstalled = this.instanceId() === null;
@@ -1396,13 +1287,13 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 continue;
             }
 
-            // The concrete Classic owner installs its prepared envelope and
+            // The concrete CBT owner installs its prepared envelope and
             // live runtimes together after all persistence inputs win the CAS.
             const preparedAlreadyInstalled = expectedV2State !== null && prepared.reused;
             if (!preparedAlreadyInstalled) {
                 this.commitPreparedCBTForcePersistenceV2(prepared);
                 if (this.getSupportedCBTForceV2Envelope() !== prepared.envelope) {
-                    throw new Error('Classic persistence commit did not publish its prepared envelope');
+                    throw new Error('CBT persistence commit did not publish its prepared envelope');
                 }
                 this._instanceId.set(candidateMetadata.instanceId);
                 this.timestamp = candidateMetadata.timestamp;
@@ -1418,12 +1309,11 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         throw new Error('Force authority changed while persistence was being prepared');
     }
 
-    /** Subclasses may stage complete non-legacy authority before mixed writes are enabled. */
-    protected async prepareLoadedCBTForceV2Authority(
+    /** Subclasses restore their complete CBT state before it is installed. */
+    protected async restoreCBTForce(
         envelope: import('./runtime/persistence-v2').SerializedCBTForceV2,
-    ): Promise<PreparedLoadedCBTForceV2Authority> {
+    ): Promise<RestoredCBTForce> {
         return Object.freeze({
-            canInstall: () => true,
             install: () => undefined,
         });
     }
@@ -2001,7 +1891,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             version: 2,
             timestamp,
             instanceId,
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: this.name,
             ...(this.note ? { note: this.note } : {}),
             ...(this.tags.length > 0 ? { tags: [...this.tags] } : {}),
@@ -2064,12 +1954,12 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     protected buildCBTForcePersistenceRecord(
         metadata: SerializedForce,
         cbt: SerializedCBTForceV2,
-    ): SerializedClassicForce {
+    ): SerializedCBTForce {
         return Object.freeze({
             version: 2,
             timestamp: metadata.timestamp,
             instanceId: metadata.instanceId,
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: metadata.name,
             ...(metadata.note === undefined ? {} : { note: metadata.note }),
             ...(metadata.tags === undefined ? {} : { tags: metadata.tags }),
@@ -2128,7 +2018,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     /** Installs metadata for an already validated direct V2 CBT record. */
     protected populateFromCBTForceV2(data: SerializedForce): void {
         if (data.version !== 2
-            || data.type !== GameSystem.CLASSIC
+            || data.type !== GameSystem.CBT
             || typeof data.instanceId !== 'string'
             || !data.instanceId.trim()
             || typeof data.timestamp !== 'string'
@@ -2176,7 +2066,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
      * Subclass factory: deserialize a SerializedForce into a new Force instance
      * using this instance's injected services.
      */
-    protected abstract deserializeFrom(serialized: SerializedForce): Force;
+    protected abstract deserializeFrom(serialized: SerializedForce): Promise<Force>;
 
     /**
      * Async clone boundary for the completed force-target registry. Retained
@@ -2192,7 +2082,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         if (encounter?.facts.some(fact => fact.kind !== 'target')) {
             throw new Error('Typed cross-unit encounter facts cannot be cloned without a complete identity remap');
         }
-        const cloned = this.cloneLegacyGraph();
+        const cloned = await this.cloneLegacyGraph();
         if (encounter && encounter.facts.length > 0) {
             cloned.restoreCBTEncounterPersistence(Object.freeze({
                 encounterRevision: encounter.encounterRevision,
@@ -2203,7 +2093,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return cloned;
     }
 
-    private cloneLegacyGraph(): Force {
+    private cloneLegacyGraph(): Promise<Force> {
         const serialized = structuredClone(this.serialize());
 
         // Build old→new unit ID map
@@ -2256,8 +2146,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         serialized.timestamp = new Date().toISOString();
         serialized.owned = true;
 
-        const cloned = this.deserializeFrom(serialized);
-        cloned.persistenceIdentityPromotionInstanceId = cloned.instanceId();
-        return cloned;
+        return this.deserializeFrom(serialized).then(cloned => {
+            cloned.persistenceIdentityPromotionInstanceId = cloned.instanceId();
+            return cloned;
+        });
     }
 }

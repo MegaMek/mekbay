@@ -1,7 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { asStateRevision } from './runtime-state';
 import {
     createDirectMekRuntimeFixture,
     createDirectModularArmorRuntimeFixture,
@@ -27,7 +26,7 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         });
 
         expect(result.accepted).toBeTrue();
-        expect(instance.query().stateRevision).toBe(asStateRevision(1));
+        expect(instance.query().stateRevision).toBe(1);
     });
 
     it('defers a sixth-wound death until the phase boundary', () => {
@@ -207,7 +206,7 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         expect(preview.accepted).toBeTrue();
         if (!preview.accepted) return;
-        expect(preview.state.stateRevision).toBe(asStateRevision(revision + 1));
+        expect(preview.state.stateRevision).toBe(revision + 1);
         expect(preview.state.movementPsr.checks).toContain(jasmine.objectContaining({
             reason: 'Leg Actuator hit',
             status: 'pending',
@@ -591,7 +590,7 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         const laser = fixture.equipmentComponent('ISMediumLaser');
         const targetId = asEncounterTargetId('target:indirect');
         const registry: TargetRegistrySnapshot = Object.freeze({
-            revision: asStateRevision(0),
+            revision: 0,
             targets: Object.freeze([Object.freeze({
                 id: targetId,
                 letter: 'A',

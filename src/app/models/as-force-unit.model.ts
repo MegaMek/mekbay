@@ -85,7 +85,7 @@ export class ASForceUnit extends ForceUnit {
     public async load() {
         if (this.isLoaded()) return;
         // Alpha Strike owns only the lightweight catalog projection. Native
-        // Entity/source loading belongs exclusively to the Classic runtime.
+        // Entity/source loading belongs exclusively to the CBT runtime.
         this.isLoaded.set(true);
     }
 

@@ -5,8 +5,7 @@ import { signal } from '@angular/core';
 import type { CBTForce } from '../cbt-force.model';
 import { CBTForceMember } from '../force-member.model';
 import type { EncounterNetwork } from './encounter-runtime';
-import type { ReadyClassicUnit } from './ready-classic-unit';
-import { asUnitInstanceId, type UnitInstanceId } from './runtime-state';
+import type { CBTUnit } from './cbt-unit';
 import type { SerializedCBTForceV2 } from './persistence-v2';
 import type { ScenarioRules } from './unit-state-initializer';
 
@@ -23,7 +22,7 @@ export type CBTForceMemberRegistryRefresh = Readonly<{
  * topology and live operational C3 state deliberately have separate witnesses.
  */
 export class CBTForceMemberRegistry {
-    private readonly byId = new Map<UnitInstanceId, CBTForceMember>();
+    private readonly byId = new Map<string, CBTForceMember>();
     private readonly membersState = signal<readonly CBTForceMember[]>(Object.freeze([]));
     private readonly battleValueInputRevision = signal(0);
     private readonly operationalC3InputRevision = signal(0);
@@ -32,14 +31,14 @@ export class CBTForceMemberRegistry {
 
     public constructor(
         private readonly owner: CBTForce,
-        private readonly readyUnit: (instanceId: UnitInstanceId) => ReadyClassicUnit | null,
+        private readonly cbtUnit: (instanceId: string) => CBTUnit | null,
     ) {}
 
     public members(): readonly CBTForceMember[] {
         return this.membersState();
     }
 
-    public member(instanceId: UnitInstanceId): CBTForceMember | null {
+    public member(instanceId: string): CBTForceMember | null {
         return this.byId.get(instanceId) ?? null;
     }
 
@@ -68,11 +67,11 @@ export class CBTForceMemberRegistry {
             let requiresMembershipSync = false;
             const baseBattleValueChanged = baseBattleValueChangedUnitIds === null
                 ? null
-                : new Set(baseBattleValueChangedUnitIds.map(asUnitInstanceId));
+                : new Set(baseBattleValueChangedUnitIds);
             for (const value of new Set(changedUnitIds)) {
-                const instanceId = asUnitInstanceId(value);
+                const instanceId = value;
                 const member = this.byId.get(instanceId);
-                const runtime = this.readyUnit(instanceId);
+                const runtime = this.cbtUnit(instanceId);
                 if (!member || !runtime || member.entity !== runtime.getUnit()) {
                     requiresMembershipSync = true;
                     break;
@@ -112,11 +111,11 @@ export class CBTForceMemberRegistry {
             return Object.freeze({ membershipChanged, runtimeChanged: false });
         }
 
-        const retained = new Set<UnitInstanceId>();
+        const retained = new Set<string>();
         let membershipChanged = false;
         let runtimeChanged = false;
         const members = envelope.roster.groups.flatMap(group => group.members.flatMap(rosterMember => {
-            const runtime = this.readyUnit(rosterMember.instanceId);
+            const runtime = this.cbtUnit(rosterMember.instanceId);
             if (!runtime) return [];
             retained.add(rosterMember.instanceId);
             let member = this.byId.get(rosterMember.instanceId);

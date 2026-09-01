@@ -5,24 +5,15 @@ import { jsonValuesEqual } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import type { JsonValue } from '../persisted-unit-state';
 import type { MotiveModes } from '../motiveModes.model';
-import {
-    createSavedTargetRef,
-    parseSavedTargetRef,
-    type SerializedCBTUnitV2,
-} from './persistence-v2';
+import { createSavedTargetRef, parseSavedTargetRef, type SerializedCBTUnitV2 } from './persistence-v2';
 import {
     MAX_MEK_CREW_WOUNDS,
     type MekUnitRuntimeState,
     type CrewRuntimeState,
     type MekLocationConditionKey,
-    type UnitInstanceId,
 } from './runtime-state';
-import {
-    isReadyNonMekUnit,
-    isReadyMekUnit,
-    type ReadyClassicUnit,
-} from './ready-classic-unit';
-import type { ReadyMekUnit } from './ready-unit-factory';
+import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit } from './cbt-unit';
+import type { CBTMekUnit } from './cbt-mek-unit';
 import type {
     ArmorFaceId,
     ComponentId,
@@ -32,14 +23,10 @@ import type {
     SystemDamageTrackId,
 } from '../entity/entity-identifiers';
 import { getMekLocationLabel } from '../entity/types/mek';
-import type {
-    NonMekCrewRuntimeState,
-    NonMekUnitCommand,
-    NonMekUnitRuntimeState,
-} from './non-mek-unit-instance';
+import type { NonMekCrewRuntimeState, NonMekUnitCommand, NonMekUnitRuntimeState } from './non-mek-unit-instance';
 import type { CBTUnitCommand } from './unit-instance';
 import type { CrewAssignment } from './crew-assignment';
-import { isCrewDeathCommitted } from './classic-unit-runtime';
+import { isCrewDeathCommitted } from './cbt-unit-runtime';
 import { serializeUnitCover } from '../unit-cover.model';
 import type { EquipmentRowOrderState } from './equipment-row-order';
 import {
@@ -47,19 +34,16 @@ import {
     type RuntimeHistoryEventInput,
     type RuntimeHistoryTargetKind,
 } from './runtime-history';
-import {
-    isSerializedNonMekUnit,
-    type SerializedNonMekUnit,
-} from './non-mek-unit-persistence';
+import { isSerializedNonMekUnit, type SerializedNonMekUnit } from './non-mek-unit-persistence';
 
 interface MekHistoryUnitAccess {
-    instanceIds(): readonly UnitInstanceId[];
-    readyMekUnit(instanceId: UnitInstanceId): ReadyMekUnit | null;
+    instanceIds(): readonly string[];
+    mekUnit(instanceId: string): CBTMekUnit | null;
 }
 
 export function unitHistory(
     messageId: RuntimeHistoryEventInput['messageId'],
-    instanceId: UnitInstanceId,
+    instanceId: string,
     ...data: JsonValue[]
 ): RuntimeHistoryEventInput {
     return Object.freeze({ messageId, data: Object.freeze([instanceId, ...data]) });
@@ -76,7 +60,7 @@ export type RuntimeHistoryInput = RuntimeHistoryEventInput
     | readonly RuntimeHistoryEventInput[]
     | undefined;
 
-function armorHistoryTarget(unit: ReadyClassicUnit, faceId: ArmorFaceId): string {
+function armorHistoryTarget(unit: CBTUnit, faceId: ArmorFaceId): string {
     const index = unit.getIndex();
     const face = index.armorFaces.get(faceId);
     const location = face === undefined ? undefined : index.locations.get(face.locationId);
@@ -89,15 +73,15 @@ function armorHistoryTarget(unit: ReadyClassicUnit, faceId: ArmorFaceId): string
         );
 }
 
-function internalHistoryTarget(unit: ReadyClassicUnit, locationId: LocationId): string {
+function internalHistoryTarget(unit: CBTUnit, locationId: LocationId): string {
     const location = unit.getIndex().locations.get(locationId);
     return location === undefined
         ? locationId
         : createSavedTargetRef('location', location.code.toLowerCase(), 'internal');
 }
 
-function criticalHistoryTarget(unit: ReadyClassicUnit, criticalId: CriticalSlotId): string {
-    if (!isReadyMekUnit(unit)) return criticalId;
+function criticalHistoryTarget(unit: CBTUnit, criticalId: CriticalSlotId): string {
+    if (!isCBTMekUnit(unit)) return criticalId;
     const slot = unit.getIndex().slots.get(criticalId);
     const location = slot === undefined ? undefined : unit.getIndex().locations.get(slot.locationId);
     return slot === undefined || location === undefined
@@ -118,8 +102,8 @@ function crewStateCode(state: CrewRuntimeState | NonMekCrewRuntimeState): number
 }
 
 function crewRuntimeHistory(
-    instanceId: UnitInstanceId,
-    unit: ReadyClassicUnit,
+    instanceId: string,
+    unit: CBTUnit,
     positionId: CrewPositionId,
     before: CrewRuntimeState | NonMekCrewRuntimeState,
     after: CrewRuntimeState | NonMekCrewRuntimeState,
@@ -137,7 +121,7 @@ function crewRuntimeHistory(
 }
 
 export function heatHistory(
-    instanceId: UnitInstanceId,
+    instanceId: string,
     before: Readonly<{
         readonly current: number;
         readonly pendingOverride?: number;
@@ -182,8 +166,8 @@ function mekLocationConditionHistoryValue(
 }
 
 function mekLocationConditionHistory(
-    instanceId: UnitInstanceId,
-    unit: ReadyClassicUnit,
+    instanceId: string,
+    unit: CBTUnit,
     before: MekUnitRuntimeState,
     after: MekUnitRuntimeState,
     locationId: LocationId,
@@ -202,8 +186,8 @@ function mekLocationConditionHistory(
 }
 
 export function crewProfileHistory(
-    instanceId: UnitInstanceId,
-    unit: ReadyClassicUnit,
+    instanceId: string,
+    unit: CBTUnit,
     before: CrewAssignment,
     after: CrewAssignment,
 ): readonly RuntimeHistoryEventInput[] {
@@ -237,37 +221,37 @@ export function crewProfileHistory(
     return Object.freeze(events);
 }
 
-function historyLocationByCode(unit: ReadyClassicUnit, code: string) {
+function historyLocationByCode(unit: CBTUnit, code: string) {
     const normalized = code.toLowerCase();
     return [...unit.getIndex().locations.values()]
         .find(location => location.code.toLowerCase() === normalized);
 }
 
-function historyLocationLabel(unit: ReadyClassicUnit, locationId: LocationId): string {
+function historyLocationLabel(unit: CBTUnit, locationId: LocationId): string {
     const code = unit.getIndex().locations.get(locationId)?.code;
     return code === undefined ? locationId : getMekLocationLabel(code) ?? code;
 }
 
-function historyComponentLabel(unit: ReadyClassicUnit, componentId: ComponentId): string {
-    if (isReadyMekUnit(unit)) {
+function historyComponentLabel(unit: CBTUnit, componentId: ComponentId): string {
+    if (isCBTMekUnit(unit)) {
         const component = unit.getIndex().components.get(componentId);
         if (component?.kind === 'system') return component.systemType;
         return component?.mount.displayName() ?? componentId;
     }
-    if (isReadyNonMekUnit(unit)) {
+    if (isCBTNonMekUnit(unit)) {
         return unit.getIndex().components.get(componentId)?.mount.displayName() ?? componentId;
     }
     return componentId;
 }
 
 function historyCriticalLabel(
-    unit: ReadyClassicUnit,
+    unit: CBTUnit,
     targetId: string,
 ): string {
-    if (isReadyNonMekUnit(unit)) {
+    if (isCBTNonMekUnit(unit)) {
         return unit.getIndex().damageTracks.get(targetId as SystemDamageTrackId)?.label ?? targetId;
     }
-    if (!isReadyMekUnit(unit)) return targetId;
+    if (!isCBTMekUnit(unit)) return targetId;
     const slot = historyMekSlot(unit, targetId)
         ?? unit.getIndex().slots.get(targetId as CriticalSlotId);
     if (slot === undefined) return targetId;
@@ -277,7 +261,7 @@ function historyCriticalLabel(
     return `${component} at ${historyLocationLabel(unit, slot.locationId)} slot ${slot.slotIndex + 1}`;
 }
 
-function historyMekSlot(unit: ReadyMekUnit, targetId: string) {
+function historyMekSlot(unit: CBTMekUnit, targetId: string) {
     const parsed = parseSavedTargetRef(targetId);
     if (parsed?.kind !== 'slot') return undefined;
     const coordinate = parsed.parts[0]!;
@@ -291,7 +275,7 @@ function historyMekSlot(unit: ReadyMekUnit, targetId: string) {
 }
 
 export function historyTargetLabel(
-    unit: ReadyClassicUnit,
+    unit: CBTUnit,
     kind: RuntimeHistoryTargetKind,
     targetId: string,
 ): string {
@@ -326,7 +310,7 @@ export function historyTargetLabel(
     return historyLocationLabel(unit, targetId as LocationId);
 }
 
-export function historyCrewLabel(unit: ReadyClassicUnit, occurrence: number): string {
+export function historyCrewLabel(unit: CBTUnit, occurrence: number): string {
     const definition = [...unit.getIndex().crewPositions.values()]
         .find(position => position.occurrence === occurrence);
     const assigned = definition === undefined
@@ -339,8 +323,8 @@ export function historyCrewLabel(unit: ReadyClassicUnit, occurrence: number): st
 }
 
 export function nonMekCommandHistory(
-    instanceId: UnitInstanceId,
-    unit: ReadyClassicUnit,
+    instanceId: string,
+    unit: CBTUnit,
     command: NonMekUnitCommand,
     before: NonMekUnitRuntimeState,
     after: NonMekUnitRuntimeState,
@@ -424,8 +408,8 @@ export function nonMekCommandBoundary(command: NonMekUnitCommand): 'phase' | und
 }
 
 export function mekCommandHistory(
-    instanceId: UnitInstanceId,
-    unit: ReadyClassicUnit,
+    instanceId: string,
+    unit: CBTUnit,
     command: CBTUnitCommand,
     before: MekUnitRuntimeState,
     after: MekUnitRuntimeState,
@@ -535,7 +519,7 @@ export function mekCommandHistory(
 }
 
 function componentModeHistory(
-    instanceId: UnitInstanceId,
+    instanceId: string,
     componentId: ComponentId,
     before: string | undefined,
     after: string | undefined,
@@ -552,7 +536,7 @@ function componentModeHistory(
 }
 
 function mekTurnStateHistory(
-    instanceId: UnitInstanceId,
+    instanceId: string,
     before: MekUnitRuntimeState,
     after: MekUnitRuntimeState,
 ): readonly RuntimeHistoryEventInput[] {
@@ -585,8 +569,8 @@ function mekTurnStateHistory(
 }
 
 export function selectedWeaponFireHistory(
-    instanceId: UnitInstanceId,
-    unit: ReadyClassicUnit,
+    instanceId: string,
+    unit: CBTUnit,
 ): readonly RuntimeHistoryEventInput[] {
     const targeting = unit.captureRuntime().query.attackerTargetingState();
     return Object.freeze([...targeting.components]
@@ -601,18 +585,18 @@ export function selectedWeaponFireHistory(
 }
 
 interface ComponentModeHistoryState {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly componentId: ComponentId;
     readonly mode?: string;
 }
 
 export function captureMekComponentModes(
     authority: MekHistoryUnitAccess,
-    instanceIds: readonly UnitInstanceId[] = authority.instanceIds(),
+    instanceIds: readonly string[] = authority.instanceIds(),
 ): readonly ComponentModeHistoryState[] {
     const rows: ComponentModeHistoryState[] = [];
     for (const instanceId of instanceIds) {
-        const unit = authority.readyMekUnit(instanceId);
+        const unit = authority.mekUnit(instanceId);
         if (unit === null) continue;
         const query = unit.getInstance().query();
         for (const componentId of unit.getIndex().components.keys()) {
@@ -633,7 +617,7 @@ export function changedComponentModeHistory(
 ): readonly RuntimeHistoryEventInput[] {
     const events: RuntimeHistoryEventInput[] = [];
     for (const row of before) {
-        const after = authority.readyMekUnit(row.instanceId)
+        const after = authority.mekUnit(row.instanceId)
             ?.getInstance().query().componentMode(row.componentId);
         const event = componentModeHistory(row.instanceId, row.componentId, row.mode, after);
         if (event !== undefined) events.push(event);
@@ -642,7 +626,7 @@ export function changedComponentModeHistory(
 }
 
 function movementRuntimeHistory(
-    instanceId: UnitInstanceId,
+    instanceId: string,
     before: Readonly<{ readonly mode: MotiveModes; readonly distance: number }> | null | undefined,
     after: Readonly<{ readonly mode: MotiveModes; readonly distance: number }> | null | undefined,
 ): RuntimeHistoryEventInput {
@@ -705,11 +689,11 @@ export function preserveOperationalUnitState<T extends Readonly<{
     }) as T;
 }
 
-export function compareUnitInstanceIds(left: UnitInstanceId, right: UnitInstanceId): number {
+export function compareUnitInstanceIds(left: string, right: string): number {
     return compareText(left, right);
 }
 
-export function sameReadyUnitGameplayState(left: ReadyClassicUnit, right: ReadyClassicUnit): boolean {
+export function sameCBTUnitGameplayState(left: CBTUnit, right: CBTUnit): boolean {
     const { stateRevision: _leftRevision, ...leftState } = left.serialize();
     const { stateRevision: _rightRevision, ...rightState } = right.serialize();
     return jsonValuesEqual(leftState, rightState);

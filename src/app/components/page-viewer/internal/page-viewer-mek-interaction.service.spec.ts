@@ -149,7 +149,7 @@ describe('PageViewerMekInteractionService', () => {
                 { provide: OverlayManagerService, useValue: overlayManager },
                 { provide: PageViewerOverlayService, useValue: jasmine.createSpyObj('PageViewerOverlayService', ['openEquipment', 'openTurn']) },
                 { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['showToast']) },
-                { provide: ForcePilotEditorService, useValue: jasmine.createSpyObj('ForcePilotEditorService', ['editClassicMember']) },
+                { provide: ForcePilotEditorService, useValue: jasmine.createSpyObj('ForcePilotEditorService', ['editCBTMember']) },
                 { provide: PageViewerZoomPanService, useValue: jasmine.createSpyObj('PageViewerZoomPanService', ['cancelGesture']) },
             ],
         });
@@ -322,13 +322,13 @@ describe('PageViewerMekInteractionService', () => {
 
     it('opens the established crew editor from authored crew-name controls', async () => {
         const pilotEditor = TestBed.inject(ForcePilotEditorService) as jasmine.SpyObj<ForcePilotEditorService>;
-        pilotEditor.editClassicMember.and.resolveTo();
+        pilotEditor.editCBTMember.and.resolveTo();
         service.handle(member, {
             kind: 'crew-name', positionId: 'crew-0', expectedRevision: 1,
         } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
         await settleAsyncHandlers();
 
-        expect(pilotEditor.editClassicMember).toHaveBeenCalledOnceWith(force, member.id);
+        expect(pilotEditor.editCBTMember).toHaveBeenCalledOnceWith(force, member.id);
     });
 
     it('does not offer ejection for a torso-mounted cockpit', () => {

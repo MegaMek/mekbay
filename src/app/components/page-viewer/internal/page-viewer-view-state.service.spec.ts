@@ -7,12 +7,11 @@ import { TestBed } from '@angular/core/testing';
 import { CBTForceMember, type CBTMekForceMember } from '../../../models/force-member.model';
 import type { CBTForce } from '../../../models/cbt-force.model';
 import { TestBipedMekEntity } from '../../../models/entity/testing/test-entities';
-import { asUnitInstanceId } from '../../../models/runtime/runtime-state';
 import { PageViewerViewStateService } from './page-viewer-view-state.service';
 
 function createUnit(id: string): CBTMekForceMember {
     return new CBTForceMember(
-        asUnitInstanceId(id),
+        id,
         {} as CBTForce,
         new TestBipedMekEntity(),
     ) as CBTMekForceMember;

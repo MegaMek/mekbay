@@ -49,7 +49,7 @@ function createSerializedForceForTest(overrides: Partial<SerializedForce> = {}):
         version: 2,
         instanceId: 'force-test',
         timestamp: '2026-04-05T00:00:00Z',
-        type: GameSystem.ALPHA_STRIKE,
+        type: GameSystem.AS,
         name: 'Test Force',
         groups: [],
         ...overrides,
@@ -720,7 +720,7 @@ describe('DataService', () => {
                 version: 2,
                 instanceId: 'force-1',
                 timestamp: '2026-04-01T00:00:00Z',
-                type: GameSystem.ALPHA_STRIKE,
+                type: GameSystem.AS,
                 name: 'Local Force',
                 groups: [{
                     id: 'group-1',
@@ -741,7 +741,7 @@ describe('DataService', () => {
                 {
                     instanceId: 'force-1',
                     timestamp: '2026-04-02T00:00:00Z',
-                    type: GameSystem.ALPHA_STRIKE,
+                    type: GameSystem.AS,
                     name: 'Cloud Force',
                     owned: false,
                     groups: [{
@@ -753,7 +753,7 @@ describe('DataService', () => {
                 {
                     instanceId: 'force-2',
                     timestamp: '2026-04-03T00:00:00Z',
-                    type: GameSystem.CLASSIC,
+                    type: GameSystem.CBT,
                     name: 'Cloud Only',
                     owned: true,
                     groups: [{
@@ -796,7 +796,7 @@ describe('DataService', () => {
                     version: 2,
                     instanceId,
                     timestamp: '2026-04-01T00:00:00Z',
-                    type: GameSystem.ALPHA_STRIKE,
+                    type: GameSystem.AS,
                     name: 'Local Only',
                     groups: [],
                 }
@@ -842,7 +842,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-cloud-owned',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Owned Cloud Force',
             owned: true,
             cbt: createEmptyCBTForceForTest('force-cloud-owned'),
@@ -864,7 +864,7 @@ describe('DataService', () => {
             jasmine.objectContaining({
                 version: 2,
                 instanceId: cloudRawForce.instanceId,
-                type: GameSystem.CLASSIC,
+                type: GameSystem.CBT,
                 cbt: jasmine.objectContaining({ forceId: cloudRawForce.instanceId }),
             }),
         );
@@ -910,12 +910,12 @@ describe('DataService', () => {
         expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
     });
 
-    it('loads a persisted V1 Classic force through the one-way storage converter', async () => {
+    it('loads a persisted V1 CBT force through the one-way storage converter', async () => {
         const legacy: SerializedForce = {
             version: 1,
             instanceId: 'force-v1-local',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Legacy Local',
             owned: true,
             groups: [],
@@ -926,7 +926,7 @@ describe('DataService', () => {
         const loaded = await forcePersistence.getForce(legacy.instanceId);
 
         expect(loaded?.name).toBe('Legacy Local');
-        expect(loaded?.gameSystem).toBe(GameSystem.CLASSIC);
+        expect(loaded?.gameSystem).toBe(GameSystem.CBT);
         expect((await loaded!.serializeForPersistence()).version).toBe(2);
     });
 
@@ -945,7 +945,7 @@ describe('DataService', () => {
             version: 1,
             instanceId: 'force-v1-as',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'Legacy AS',
             groups: [{
                 id: 'group-v1-as',
@@ -1005,7 +1005,7 @@ describe('DataService', () => {
             version: 1,
             instanceId: 'force-v1-v2-tie',
             timestamp,
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Legacy Local',
             owned: true,
             groups: [],
@@ -1014,7 +1014,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: legacy.instanceId,
             timestamp,
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Current Cloud',
             owned: true,
             cbt: createEmptyCBTForceForTest(legacy.instanceId),
@@ -1032,7 +1032,7 @@ describe('DataService', () => {
                 version: 2,
                 instanceId: 'remote-force',
                 timestamp: '2026-04-05T00:00:00Z',
-                type: GameSystem.ALPHA_STRIKE,
+                type: GameSystem.AS,
                 name: 'Remote Force',
                 owned: false,
                 groups: [],
@@ -1064,13 +1064,13 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-1',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'Reconnect Force',
             groups: [],
         };
         const force = withMockWholeOwnerAuthority({
             name: 'Reconnect Force',
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId: () => 'force-1',
             serializeForPersistence: () => Promise.resolve(serializedForce),
@@ -1128,7 +1128,7 @@ describe('DataService', () => {
         const proof = Object.freeze({});
         const force = withMockWholeOwnerAuthority({
             name: serialized.name,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId,
             groups: () => [],
@@ -1190,7 +1190,7 @@ describe('DataService', () => {
         });
         const force = withMockWholeOwnerAuthority({
             name: serialized.name,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId: signal(serialized.instanceId),
             groups: () => [],
@@ -1215,7 +1215,7 @@ describe('DataService', () => {
         });
         const force = withMockWholeOwnerAuthority({
             name: serialized.name,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId: signal(serialized.instanceId),
             groups: () => [],
@@ -1249,7 +1249,7 @@ describe('DataService', () => {
         });
         const force = withMockWholeOwnerAuthority({
             name: serialized.name,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId: signal(serialized.instanceId),
             groups: () => [],
@@ -1279,13 +1279,13 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-v2',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Protected Force',
             cbt: createEmptyCBTForceForTest('force-v2'),
         };
         const force = withMockWholeOwnerAuthority({
             name: 'Protected Force',
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             readOnly: () => false,
             instanceId: () => 'force-v2',
             serializeForPersistence: jasmine.createSpy('serializeForPersistence').and.resolveTo(serializedForce),
@@ -1319,7 +1319,7 @@ describe('DataService', () => {
         });
         const force = withMockWholeOwnerAuthority({
             name: serialized.name,
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId: signal(serialized.instanceId),
             groups: () => [],
@@ -1361,7 +1361,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-chain',
             timestamp,
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Chained Force',
             cbt: createEmptyCBTForceForTest('force-chain', forceRevision),
         });
@@ -1370,7 +1370,7 @@ describe('DataService', () => {
         let expectedRevision: number | null | undefined = originalRevision;
         const force = withMockWholeOwnerAuthority({
             name: 'Chained Force',
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             readOnly: () => false,
             instanceId: () => 'force-chain',
             serializeForPersistence: jasmine.createSpy('serializeForPersistence').and.returnValues(
@@ -1415,7 +1415,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-staged',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'Trusted Remote Name',
             groups: [],
         };
@@ -1453,7 +1453,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-discard',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'Discarded Remote',
             groups: [],
         };
@@ -1607,7 +1607,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-generation',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'Old Local',
             groups: [],
         };
@@ -1624,7 +1624,7 @@ describe('DataService', () => {
         const oldPreparation = deferred<SerializedForce>();
         const liveForce = withMockWholeOwnerAuthority({
             name: 'Live Force',
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId: signal('force-generation'),
             serializeForPersistence: jasmine.createSpy('serializeForPersistence').and.returnValue(oldPreparation.promise),
@@ -1632,7 +1632,7 @@ describe('DataService', () => {
         } as any);
         const remoteForce = withMockWholeOwnerAuthority({
             name: 'Remote Authority',
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId: signal('force-generation'),
             groups: () => [],
@@ -1672,7 +1672,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-local-order',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'Queued Local',
             groups: [],
         };
@@ -1687,7 +1687,7 @@ describe('DataService', () => {
             : Promise.resolve());
         const liveForce = withMockWholeOwnerAuthority({
             name: 'Queued Local',
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId: signal('force-local-order'),
             serializeForPersistence: () => Promise.resolve(localBytes),
@@ -1725,7 +1725,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-unload',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'Pending Unload',
             groups: [],
         };
@@ -1734,7 +1734,7 @@ describe('DataService', () => {
         dbServiceMock.saveForce.and.returnValue(dbWrite.promise);
         const force = withMockWholeOwnerAuthority({
             name: 'Pending Unload',
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId: signal('force-unload'),
             serializeForPersistence: () => preparation.promise,
@@ -1799,7 +1799,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-cloud-generation',
             timestamp,
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name,
             groups: [],
         });
@@ -1808,7 +1808,7 @@ describe('DataService', () => {
         const remote = persisted('2026-04-05T00:00:02Z', 'Remote Authority');
         const force = withMockWholeOwnerAuthority({
             name: 'Old Live Force',
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId: signal('force-cloud-generation'),
             serializeForPersistence: jasmine.createSpy('serializeForPersistence').and.returnValues(
@@ -1861,7 +1861,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-cloud-await',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'Stale During canUseCloud',
             groups: [],
         };
@@ -1874,7 +1874,7 @@ describe('DataService', () => {
         spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(cloudReady.promise);
         const liveForce = withMockWholeOwnerAuthority({
             name: 'Stale During canUseCloud',
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             readOnly: () => false,
             instanceId: signal('force-cloud-await'),
             serializeForPersistence: () => Promise.resolve(local),
@@ -1908,7 +1908,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-rebase',
             timestamp: '2026-04-05T00:00:01Z',
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Remote Base',
             cbt: createEmptyCBTForceForTest('force-rebase', remoteRevision),
         };
@@ -1948,7 +1948,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-wire',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Wire Force',
         } as const;
         const valid = {
@@ -1974,7 +1974,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-raw-race',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Original Raw',
             cbt: createEmptyCBTForceForTest('force-raw-race'),
         };
@@ -2084,7 +2084,7 @@ describe('DataService', () => {
             version: 2,
             timestamp: '2026-08-22T00:00:00.000Z',
             instanceId: 'force-delete-current',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'AS force',
             groups: [{
                 id: 'group:one',
@@ -2120,7 +2120,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-live-tags',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Live Tagged Force',
             tags: [],
             cbt: createEmptyCBTForceForTest('force-live-tags'),
@@ -2128,7 +2128,7 @@ describe('DataService', () => {
         dbServiceMock.getForce.and.resolveTo(persisted);
         const activeForce = withMockWholeOwnerAuthority({
             name: 'Live Tagged Force',
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             timestamp: persisted.timestamp,
             readOnly: () => false,
             isWholeOwnerActive: () => true,
@@ -2157,7 +2157,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-1',
             timestamp: '2026-04-01T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'Tagged Force',
             tags: ['Recon', 'Fire Support'],
             groups: [],
@@ -2216,7 +2216,7 @@ describe('DataService', () => {
             version: 2,
             instanceId: 'force-inactive-cbt-tags',
             timestamp: '2026-04-05T00:00:00Z',
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Inactive CBT Force',
             cbt: createEmptyCBTForceForTest('force-inactive-cbt-tags'),
         };
@@ -2224,7 +2224,7 @@ describe('DataService', () => {
         dbServiceMock.getForce.and.resolveTo(existing);
         const detached = withMockWholeOwnerAuthority({
             name: existing.name,
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             timestamp: existing.timestamp,
             readOnly: () => false,
             instanceId: signal(existing.instanceId),

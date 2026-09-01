@@ -13,7 +13,7 @@ import {
 } from '../entity/testing/test-entities';
 import { asUnitUuid, MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
 import { NonMekUnitInstance } from '../runtime/non-mek-unit-instance';
-import { asUnitInstanceId, type InstanceBaselineRef } from '../runtime/runtime-state';
+import { type InstanceBaselineRef } from '../runtime/runtime-state';
 import { nonMekDamageTrackId } from './non-mek-damage-track-rules';
 import { aeroHeatEffects } from './aero-runtime-rules';
 
@@ -146,7 +146,7 @@ function fighter(id: string): NonMekUnitInstance {
 function aero(entity: AeroEntity, id: string): NonMekUnitInstance {
     entity.uuid.set(UUID);
     return new NonMekUnitInstance(
-        asUnitInstanceId(id),
+        id,
         baseline(),
         entity,
         CORE_2026_RULESET,

@@ -5,7 +5,7 @@ import type {
     CBTUnitRepairResult,
     CBTUnitTransferResult,
     RuntimeUndoCommandResult,
-} from '../cbt-force-api';
+} from '../cbt-force.types';
 import type { CBTForceRosterCommandRejection } from './cbt-force-roster-owner';
 
 export function rejectedRosterCommand(

@@ -43,8 +43,8 @@ function sharedPoolGroup(id: string, gameSystem: GameSystem): FormationSharedPoo
 
 describe('formation blueprint game-system rules', () => {
     it('keeps identity common while resolving every formation for both systems', () => {
-        const classic = getFormationDefinitions(GameSystem.CLASSIC);
-        const alphaStrike = getFormationDefinitions(GameSystem.ALPHA_STRIKE);
+        const classic = getFormationDefinitions(GameSystem.CBT);
+        const alphaStrike = getFormationDefinitions(GameSystem.AS);
 
         expect(classic.map(item => item.id)).toEqual(FORMATION_RUNTIME_DEFINITIONS.map(item => item.id));
         expect(alphaStrike.map(item => item.id)).toEqual(FORMATION_RUNTIME_DEFINITIONS.map(item => item.id));
@@ -55,12 +55,12 @@ describe('formation blueprint game-system rules', () => {
             expect('requirements' in source).toBeFalse();
             expect('rulesRef' in source).toBeFalse();
 
-            const classicDefinition = definition(source.id, GameSystem.CLASSIC);
-            const alphaStrikeDefinition = definition(source.id, GameSystem.ALPHA_STRIKE);
+            const classicDefinition = definition(source.id, GameSystem.CBT);
+            const alphaStrikeDefinition = definition(source.id, GameSystem.AS);
             expect(classicDefinition.name).toBe(source.name);
             expect(alphaStrikeDefinition.name).toBe(source.name);
-            expect(classicDefinition.gameSystem).toBe(GameSystem.CLASSIC);
-            expect(alphaStrikeDefinition.gameSystem).toBe(GameSystem.ALPHA_STRIKE);
+            expect(classicDefinition.gameSystem).toBe(GameSystem.CBT);
+            expect(alphaStrikeDefinition.gameSystem).toBe(GameSystem.AS);
         }
     });
 
@@ -87,44 +87,44 @@ describe('formation blueprint game-system rules', () => {
 
     it('uses the source pages for the weight-specific Battle Lance variants', () => {
         for (const id of ['light-battle-lance', 'medium-battle-lance', 'heavy-battle-lance']) {
-            expect(definition(id, GameSystem.CLASSIC).rulesRef)
+            expect(definition(id, GameSystem.CBT).rulesRef)
                 .withContext(id)
                 .toContain(jasmine.objectContaining({ book: Rulebook.CO, page: 63 }));
-            expect(definition(id, GameSystem.ALPHA_STRIKE).rulesRef)
+            expect(definition(id, GameSystem.AS).rulesRef)
                 .withContext(id)
                 .toContain(jasmine.objectContaining({ book: Rulebook.ASCE, page: 118 }));
         }
     });
 
     it('uses the system-specific Assault, Command, and Fire recipient counts', () => {
-        expect(assignmentGroup('assault-lance', GameSystem.CLASSIC)).toEqual(jasmine.objectContaining({
+        expect(assignmentGroup('assault-lance', GameSystem.CBT)).toEqual(jasmine.objectContaining({
             distribution: 'fixed',
             count: 2,
             perTurn: true,
         }));
-        expect(assignmentGroup('assault-lance', GameSystem.ALPHA_STRIKE)).toEqual(jasmine.objectContaining({
+        expect(assignmentGroup('assault-lance', GameSystem.AS)).toEqual(jasmine.objectContaining({
             distribution: 'half-round-down',
             perTurn: true,
         }));
 
         for (const id of ['command-lance', 'vehicle-command-lance']) {
-            expect(assignmentGroup(id, GameSystem.CLASSIC)).withContext(id).toEqual(jasmine.objectContaining({
+            expect(assignmentGroup(id, GameSystem.CBT)).withContext(id).toEqual(jasmine.objectContaining({
                 distribution: 'fixed',
                 count: 2,
                 excludeCommander: true,
             }));
-            expect(assignmentGroup(id, GameSystem.ALPHA_STRIKE)).withContext(id).toEqual(jasmine.objectContaining({
+            expect(assignmentGroup(id, GameSystem.AS)).withContext(id).toEqual(jasmine.objectContaining({
                 distribution: 'half-round-up',
             }));
         }
 
         for (const id of ['fire-lance', 'anti-air-lance', 'artillery-fire-lance', 'direct-fire-lance', 'fire-support-lance']) {
-            expect(assignmentGroup(id, GameSystem.CLASSIC)).withContext(id).toEqual(jasmine.objectContaining({
+            expect(assignmentGroup(id, GameSystem.CBT)).withContext(id).toEqual(jasmine.objectContaining({
                 distribution: 'fixed',
                 count: 2,
                 perTurn: true,
             }));
-            expect(assignmentGroup(id, GameSystem.ALPHA_STRIKE)).withContext(id).toEqual(jasmine.objectContaining({
+            expect(assignmentGroup(id, GameSystem.AS)).withContext(id).toEqual(jasmine.objectContaining({
                 distribution: 'half-round-down',
                 perTurn: true,
             }));
@@ -132,8 +132,8 @@ describe('formation blueprint game-system rules', () => {
     });
 
     it('uses the correct Battle Lance Lucky pools', () => {
-        const classic = sharedPoolGroup('battle-lance', GameSystem.CLASSIC).sharedPool;
-        const alphaStrike = sharedPoolGroup('battle-lance', GameSystem.ALPHA_STRIKE).sharedPool;
+        const classic = sharedPoolGroup('battle-lance', GameSystem.CBT).sharedPool;
+        const alphaStrike = sharedPoolGroup('battle-lance', GameSystem.AS).sharedPool;
 
         expect(classic).toEqual(jasmine.objectContaining({
             level: { kind: 'fixed', value: 6 },
@@ -149,32 +149,32 @@ describe('formation blueprint game-system rules', () => {
         expect(alphaStrike.totalUsesPerScenario).toBeUndefined();
     });
 
-    it('models all three Recon variants independently for Classic and Alpha Strike', () => {
-        expect(definition('recon-lance', GameSystem.CLASSIC).effectGroups).toEqual([
+    it('models all three Recon variants independently for CBT and Alpha Strike', () => {
+        expect(definition('recon-lance', GameSystem.CBT).effectGroups).toEqual([
             { abilityIds: ['eagles_eyes', 'maneuvering_ace'], selection: 'choose-one', distribution: 'fixed', count: 3 },
             { abilityIds: ['forward_observer'], selection: 'all', distribution: 'all' },
         ]);
-        expect(definition('recon-lance', GameSystem.ALPHA_STRIKE).effectGroups).toEqual([{
+        expect(definition('recon-lance', GameSystem.AS).effectGroups).toEqual([{
             abilityIds: ['eagles_eyes', 'forward_observer', 'maneuvering_ace'],
             selection: 'choose-one',
             distribution: 'all',
         }]);
 
-        expect(definition('heavy-recon-lance', GameSystem.CLASSIC).effectGroups).toEqual([
+        expect(definition('heavy-recon-lance', GameSystem.CBT).effectGroups).toEqual([
             { abilityIds: ['eagles_eyes', 'maneuvering_ace'], selection: 'choose-one', distribution: 'fixed', count: 2 },
             { abilityIds: ['forward_observer'], selection: 'all', distribution: 'all' },
         ]);
-        expect(definition('heavy-recon-lance', GameSystem.ALPHA_STRIKE).effectGroups).toEqual([{
+        expect(definition('heavy-recon-lance', GameSystem.AS).effectGroups).toEqual([{
             abilityIds: ['eagles_eyes', 'forward_observer', 'maneuvering_ace'],
             selection: 'choose-one',
             distribution: 'half-round-up',
         }]);
 
-        expect(definition('light-recon-lance', GameSystem.CLASSIC).effectGroups).toEqual([
+        expect(definition('light-recon-lance', GameSystem.CBT).effectGroups).toEqual([
             { abilityIds: ['eagles_eyes', 'maneuvering_ace'], selection: 'choose-one', distribution: 'all' },
             { abilityIds: ['forward_observer'], selection: 'all', distribution: 'all' },
         ]);
-        expect(definition('light-recon-lance', GameSystem.ALPHA_STRIKE).effectGroups).toEqual([{
+        expect(definition('light-recon-lance', GameSystem.AS).effectGroups).toEqual([{
             abilityIds: ['eagles_eyes', 'forward_observer', 'maneuvering_ace'],
             selection: 'choose-each',
             distribution: 'all',
@@ -183,12 +183,12 @@ describe('formation blueprint game-system rules', () => {
 
     it('keeps Alpha Strike-only Blood Stalker formation targeting and system-specific Support text', () => {
         for (const id of ['pursuit-lance', 'probe-lance', 'sweep-lance']) {
-            expect(definition(id, GameSystem.CLASSIC).effectDescription).withContext(id).not.toContain('enemy formation');
-            expect(definition(id, GameSystem.ALPHA_STRIKE).effectDescription).withContext(id).toContain('enemy formation');
+            expect(definition(id, GameSystem.CBT).effectDescription).withContext(id).not.toContain('enemy formation');
+            expect(definition(id, GameSystem.AS).effectDescription).withContext(id).toContain('enemy formation');
         }
 
-        const classicSupport = definition('support-lance', GameSystem.CLASSIC);
-        const alphaStrikeSupport = definition('support-lance', GameSystem.ALPHA_STRIKE);
+        const classicSupport = definition('support-lance', GameSystem.CBT);
+        const alphaStrikeSupport = definition('support-lance', GameSystem.AS);
 
         expect(classicSupport.effectDescription).toContain('For every two units');
         expect(classicSupport.effectDescription).toContain('choice of SPAs');
@@ -216,8 +216,8 @@ describe('formation blueprint game-system rules', () => {
     });
 
     it('uses each system\'s Communications Disruption effect', () => {
-        const classicDefinition = definition('electronic-warfare-squadron', GameSystem.CLASSIC);
-        const alphaStrikeDefinition = definition('electronic-warfare-squadron', GameSystem.ALPHA_STRIKE);
+        const classicDefinition = definition('electronic-warfare-squadron', GameSystem.CBT);
+        const alphaStrikeDefinition = definition('electronic-warfare-squadron', GameSystem.AS);
         const classic = classicDefinition.effectGroups?.[0];
         const alphaStrike = alphaStrikeDefinition.effectGroups?.[0];
         if (classic?.distribution !== 'formation-wide' || alphaStrike?.distribution !== 'formation-wide') {
@@ -236,25 +236,25 @@ describe('formation blueprint game-system rules', () => {
     });
 
     it('splits system-specific composition constraints and encodes the corrected squadron and vehicle rules', () => {
-        const classicBattle = getFormationBlueprint('battle-lance', GameSystem.CLASSIC);
-        const alphaStrikeBattle = getFormationBlueprint('battle-lance', GameSystem.ALPHA_STRIKE);
+        const classicBattle = getFormationBlueprint('battle-lance', GameSystem.CBT);
+        const alphaStrikeBattle = getFormationBlueprint('battle-lance', GameSystem.AS);
         expect(classicBattle?.constraints.some(constraint => constraint.kind === 'matched-pairs-min')).toBeTrue();
         expect(alphaStrikeBattle?.constraints.some(constraint => constraint.kind === 'matched-pairs-min')).toBeFalse();
 
-        const classicPursuitMove = getFormationBlueprint('pursuit-lance', GameSystem.CLASSIC)?.constraints
+        const classicPursuitMove = getFormationBlueprint('pursuit-lance', GameSystem.CBT)?.constraints
             .find(constraint => constraint.id === 'pursuit-move-percent');
-        const alphaStrikePursuitMove = getFormationBlueprint('pursuit-lance', GameSystem.ALPHA_STRIKE)?.constraints
+        const alphaStrikePursuitMove = getFormationBlueprint('pursuit-lance', GameSystem.AS)?.constraints
             .find(constraint => constraint.id === 'pursuit-move-percent');
         expect(classicPursuitMove).toEqual(jasmine.objectContaining({ rounding: 'ceil' }));
         expect(alphaStrikePursuitMove).toEqual(jasmine.objectContaining({ rounding: 'normal' }));
 
-        const fireSupportConstraints = getFormationBlueprint('fire-support-squadron', GameSystem.ALPHA_STRIKE)?.constraints ?? [];
+        const fireSupportConstraints = getFormationBlueprint('fire-support-squadron', GameSystem.AS)?.constraints ?? [];
         expect(fireSupportConstraints).toContain(jasmine.objectContaining({
             kind: 'all',
             predicate: 'fire-support-or-dogfighter-role',
         }));
 
-        const vehicleCommandConstraint = getFormationBlueprint('vehicle-command-lance', GameSystem.CLASSIC)?.constraints
+        const vehicleCommandConstraint = getFormationBlueprint('vehicle-command-lance', GameSystem.CBT)?.constraints
             .find(constraint => constraint.id === 'vehicle-command-command-pair');
         expect(vehicleCommandConstraint).toEqual(jasmine.objectContaining({
             kind: 'count-min',

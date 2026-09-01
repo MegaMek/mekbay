@@ -207,7 +207,7 @@ export class MekCriticalRollDialogComponent {
     private readProfile(): MekCriticalRollProfileV2 {
         const unit = this.data.member.force.getUnitSnapshot(this.data.member.id);
         if (!unit || !hasMekRuntime(unit)) {
-            throw new Error(`Classic Mek ${this.data.member.id} is no longer owned`);
+            throw new Error(`CBT Mek ${this.data.member.id} is no longer owned`);
         }
         return unit.query.mekCriticalRollProfile(this.data.locationId, this.data.target);
     }

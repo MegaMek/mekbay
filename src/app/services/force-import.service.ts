@@ -125,7 +125,7 @@ export class ForceImportService {
                         force,
                         summary: loadUnit.unit,
                         group: targetGroup,
-                        gunnerySkill: entry.type === GameSystem.ALPHA_STRIKE
+                        gunnerySkill: entry.type === GameSystem.AS
                             ? (loadUnit.skill ?? loadUnit.gunnery)
                             : loadUnit.gunnery,
                         pilotingSkill: loadUnit.piloting,
@@ -218,7 +218,7 @@ export class ForceImportService {
         const pack = result as ResolvedPack;
         if (!pack.units?.length) return;
         if (isAdd) {
-            const newForce = this.game.currentGameSystem() === GameSystem.ALPHA_STRIKE
+            const newForce = this.game.currentGameSystem() === GameSystem.AS
                 ? new ASForce('', this.dataService, this.injector)
                 : new CBTForce('', this.dataService, this.injector);
             if (!await this.builder.addForce(newForce, addAlignment)) return;
@@ -301,7 +301,7 @@ export class ForceImportService {
             this.toast.showToast('Failed to generate a new force.', 'error');
             return;
         }
-        const budgetMetric = result.config.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+        const budgetMetric = result.config.gameSystem === GameSystem.AS ? 'PV' : 'BV';
         this.toast.showToast(
             `Generated ${unitCount} units for ${result.forceEntry.faction?.name ?? 'Unknown Faction'} (${budgetMetric} ${result.totalCost.toLocaleString()}).`,
             'info',
@@ -347,7 +347,7 @@ export class ForceImportService {
                     && !needsConversion) {
                     const identity = sourceUnit.force.getUnitSourceIdentity(sourceUnit.id);
                     if (identity) {
-                        created = await this.admission.admitClassicIdentity({
+                        created = await this.admission.admitCBTIdentity({
                             force: targetForce,
                             identity,
                             group: newGroup,

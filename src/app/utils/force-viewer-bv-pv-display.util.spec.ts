@@ -30,7 +30,7 @@ describe('force viewer BV/PV display', () => {
         expect(formatBvPv(0, 0, 'both')).toBe('0');
     });
 
-    it('selects damaged or pristine Classic base and adjusted projections independently', () => {
+    it('selects damaged or pristine CBT base and adjusted projections independently', () => {
         const member = {
             kind: 'cbt',
             adjustedBattleValue: () => 800,

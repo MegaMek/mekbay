@@ -74,7 +74,7 @@ describe('createForcePreviewEntryFromForce', () => {
             name: 'Unsaved Alpha Force',
             note: 'Forward recon screen.',
             tags: ['Recon', 'Priority'],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             faction: () => null,
             era: () => null,
             totalBv: () => 123,
@@ -111,7 +111,7 @@ describe('createForcePreviewEntryFromForce', () => {
             name: 'Retained Force',
             note: '',
             tags: [],
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             faction: () => null,
             era: () => null,
             timestamp: '2026-08-14T00:00:00.000Z',
@@ -166,7 +166,7 @@ describe('force preview helpers', () => {
     it('treats saved load entries as compatible preview entries', () => {
         const resolvedUnit = { name: 'Atlas AS7-D', type: 'Mek' } as any;
         const entry = new LoadForceEntry({
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             groups: [{
                 units: [
                     { unit: resolvedUnit, destroyed: false },
@@ -185,6 +185,6 @@ describe('force preview helpers', () => {
             destroyed: false,
             gunnery: 2,
             piloting: 5,
-        }, GameSystem.CLASSIC)).toBe('2');
+        }, GameSystem.CBT)).toBe('2');
     });
 });

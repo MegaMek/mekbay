@@ -9,7 +9,6 @@ import type { CBTForce } from '../models/cbt-force.model';
 import { asCrewPositionId } from '../models/entity/entity-identifiers';
 import { CBTForceMember } from '../models/force-member.model';
 import type { CrewAssignment } from '../models/runtime/crew-assignment';
-import { asUnitInstanceId } from '../models/runtime/runtime-state';
 import { createEmptyUnit, createTestMekEntity } from '../testing/unit-test-helpers';
 import { AsAbilityLookupService } from './as-ability-lookup.service';
 import type { DataService } from './data.service';
@@ -37,7 +36,7 @@ describe('ForceCrewTransferService cross-system conversion', () => {
         force.getUnitCrewProfile.and.returnValue(profile);
         force.replaceUnitCrewProfile.and.resolveTo(profile);
         const target = new CBTForceMember(
-            asUnitInstanceId('cbt-target'),
+            'cbt-target',
             force,
             createTestMekEntity(),
         );
@@ -45,8 +44,8 @@ describe('ForceCrewTransferService cross-system conversion', () => {
         await service.transferCrossSystem(
             source,
             target,
-            GameSystem.ALPHA_STRIKE,
-            GameSystem.CLASSIC,
+            GameSystem.AS,
+            GameSystem.CBT,
         );
 
         expect(force.replaceUnitCrewProfile).toHaveBeenCalledOnceWith(target.id, [
@@ -68,7 +67,7 @@ describe('ForceCrewTransferService cross-system conversion', () => {
         force.getUnitCrewProfile.and.returnValue(profile);
         force.isUnitCommander.and.returnValue(true);
         const source = new CBTForceMember(
-            asUnitInstanceId('cbt-source'),
+            'cbt-source',
             force,
             createTestMekEntity(),
         );
@@ -77,8 +76,8 @@ describe('ForceCrewTransferService cross-system conversion', () => {
         await service.transferCrossSystem(
             source,
             target,
-            GameSystem.CLASSIC,
-            GameSystem.ALPHA_STRIKE,
+            GameSystem.CBT,
+            GameSystem.AS,
         );
 
         expect(target.alias()).toBe('Natasha Kerensky');

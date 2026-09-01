@@ -145,7 +145,7 @@ function unitsToCBTRows(units: UnitSummary[]): Record<string, unknown>[] {
     return units.map(unitToCBTRow);
 }
 
-/** Loaded Classic export facts come only from the admitted Entity. */
+/** Loaded CBT export facts come only from the admitted Entity. */
 function entityToCBTRow(unit: BaseEntity): Record<string, unknown> {
     const engine = unit.mountedEngine();
     const rangedWeapons = unit.rangedWeapons();
@@ -293,7 +293,7 @@ function unitsToASRows(units: UnitSummary[]): Record<string, unknown>[] {
 }
 
 /**
- * Converts one canonical Classic member to an export row from Entity + runtime.
+ * Converts one canonical CBT member to an export row from Entity + runtime.
  */
 function forceMemberToCBTRow(member: CBTForceMember, groupName: string): Record<string, unknown> {
     const unit = member.entity;
@@ -302,7 +302,7 @@ function forceMemberToCBTRow(member: CBTForceMember, groupName: string): Record<
     if (!isCBTMekForceMember(member)) {
         const snapshot = member.force.getUnitSnapshot(member.id);
         if (!snapshot || !hasNonMekRuntime(snapshot)) {
-            throw new Error(`Classic unit ${member.id} is no longer admitted`);
+            throw new Error(`CBT unit ${member.id} is no longer admitted`);
         }
         const crew = member.force.getUnitCrewAssignment(member.id)?.positions[0];
         const crewState = crew ? snapshot.state.crew.get(crew.positionId) : undefined;
@@ -383,9 +383,9 @@ function forceUnitToASRow(forceUnit: ForceUnit, groupName: string): Record<strin
  * Converts force groups to rows.
  */
 function forceMembersToRows(force: Force, members: readonly ForceMember[]): Record<string, unknown>[] {
-    if (force.gameSystem === GameSystem.ALPHA_STRIKE) {
+    if (force.gameSystem === GameSystem.AS) {
         return members.map(member => {
-            if (isCBTForceMember(member)) throw new Error('A Classic runtime cannot be exported as Alpha Strike');
+            if (isCBTForceMember(member)) throw new Error('A CBT runtime cannot be exported as Alpha Strike');
             const group = member.getGroup();
             let groupName = group?.groupDisplayName() ?? '';
             if (group?.activeFormation()) groupName += ` - ${group.formationDisplayName()}`;
@@ -402,7 +402,7 @@ function forceMembersToRows(force: Force, members: readonly ForceMember[]): Reco
         group.name?.trim() || group.groupId,
     ] as const));
     return members.map(member => {
-        if (!isCBTForceMember(member)) throw new Error('Classic force export requires canonical members');
+        if (!isCBTForceMember(member)) throw new Error('CBT force export requires canonical members');
         return forceMemberToCBTRow(member, groupNames.get(member.rosterGroupId) ?? member.rosterGroupId);
     });
 }
@@ -425,7 +425,7 @@ export async function exportUnitsToExcel(
 
     const { utils, writeFile } = await loadXlsx();
 
-    const rows = gameSystem === GameSystem.ALPHA_STRIKE
+    const rows = gameSystem === GameSystem.AS
         ? unitsToASRows(units)
         : unitsToCBTRows(units);
 
@@ -446,10 +446,10 @@ export async function exportUnitsToExcel(
     }
 
     const workbook = utils.book_new();
-    const sheetName = gameSystem === GameSystem.ALPHA_STRIKE ? 'Alpha Strike Units' : 'BattleTech Units';
+    const sheetName = gameSystem === GameSystem.AS ? 'Alpha Strike Units' : 'BattleTech Units';
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
-    const defaultFilename = gameSystem === GameSystem.ALPHA_STRIKE
+    const defaultFilename = gameSystem === GameSystem.AS
         ? 'mekbay-alpha-strike-units'
         : 'mekbay-battletech-units';
     const exportFilename = `${filename || defaultFilename}.xlsx`;
@@ -475,16 +475,16 @@ export async function exportUnitsToCSV(
 
     const { utils, writeFile } = await loadXlsx();
 
-    const rows = gameSystem === GameSystem.ALPHA_STRIKE
+    const rows = gameSystem === GameSystem.AS
         ? unitsToASRows(units)
         : unitsToCBTRows(units);
 
     const worksheet = utils.json_to_sheet(rows);
     const workbook = utils.book_new();
-    const sheetName = gameSystem === GameSystem.ALPHA_STRIKE ? 'Alpha Strike Units' : 'BattleTech Units';
+    const sheetName = gameSystem === GameSystem.AS ? 'Alpha Strike Units' : 'BattleTech Units';
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
-    const defaultFilename = gameSystem === GameSystem.ALPHA_STRIKE
+    const defaultFilename = gameSystem === GameSystem.AS
         ? 'mekbay-alpha-strike-units'
         : 'mekbay-battletech-units';
     const exportFilename = `${filename || defaultFilename}.csv`;
@@ -542,7 +542,7 @@ export async function exportForceToExcel(
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
     const timestamp = new Date().toISOString().slice(0, 10);
-    const systemLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
+    const systemLabel = gameSystem === GameSystem.AS ? 'as' : 'cbt';
     const forceName = sanitizeFilename(force.displayName()) || 'force';
     const defaultFilename = `mekbay-${systemLabel}-${forceName}-${timestamp}`;
     const exportFilename = `${filename || defaultFilename}.xlsx`;
@@ -576,7 +576,7 @@ export async function exportForceToCSV(
     utils.book_append_sheet(workbook, worksheet, sheetName);
 
     const timestamp = new Date().toISOString().slice(0, 10);
-    const systemLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
+    const systemLabel = gameSystem === GameSystem.AS ? 'as' : 'cbt';
     const forceName = sanitizeFilename(force.displayName()) || 'force';
     const defaultFilename = `mekbay-${systemLabel}-${forceName}-${timestamp}`;
     const exportFilename = `${filename || defaultFilename}.csv`;

@@ -13,12 +13,12 @@ import {
     effectiveEcmMode,
     type ElectronicComponentFact,
 } from './component-electronic-suite';
-import type { ClassicUnitQueryPort, ClassicUnitRuntimeIndex } from './classic-unit-runtime';
+import type { CBTUnitQueryPort, CBTUnitRuntimeIndex } from './cbt-unit-runtime';
 
-interface ClassicCapabilitySource {
-    readonly index: Pick<ClassicUnitRuntimeIndex, 'components'>;
+interface CBTCapabilitySource {
+    readonly index: Pick<CBTUnitRuntimeIndex, 'components'>;
     readonly query: Pick<
-        ClassicUnitQueryPort,
+        CBTUnitQueryPort,
         'componentMode' | 'componentStatus' | 'destroyed' | 'hasCondition'
     >;
 }
@@ -27,8 +27,8 @@ interface ClassicCapabilitySource {
  * Projects force-card electronics directly from canonical Entity mounts and
  * their sparse runtime state. Search summaries never participate.
  */
-export function projectClassicUnitTagEcmCapabilitySummary(
-    source: ClassicCapabilitySource,
+export function projectCBTUnitTagEcmCapabilitySummary(
+    source: CBTCapabilitySource,
 ): UnitTagEcmCapabilitySummary {
     const unitOperational = !source.query.destroyed()
         && !source.query.hasCondition('shutdown')

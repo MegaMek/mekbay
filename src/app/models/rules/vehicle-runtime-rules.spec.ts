@@ -22,7 +22,7 @@ import {
 } from '../cbt-ruleset.model';
 import { buildNonMekRuntimeIndex, componentIdForMount } from '../runtime/non-mek-runtime-index';
 import { NonMekUnitInstance } from '../runtime/non-mek-unit-instance';
-import { asUnitInstanceId, type InstanceBaselineRef } from '../runtime/runtime-state';
+import { type InstanceBaselineRef } from '../runtime/runtime-state';
 import { nonMekDamageTrackId } from './non-mek-damage-track-rules';
 import { projectVehicleRuntimeRules } from './vehicle-runtime-rules';
 
@@ -315,7 +315,7 @@ function instance(
     ruleset: CBTRuleset = CORE_2026_RULESET,
 ): NonMekUnitInstance {
     return new NonMekUnitInstance(
-        asUnitInstanceId(id),
+        id,
         baseline(ruleset),
         entity,
         ruleset,

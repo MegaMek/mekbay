@@ -18,7 +18,7 @@ import {
 import {
     sanitizeForceTags,
     type ASSerializedForce,
-    type SerializedClassicForce,
+    type SerializedCBTForce,
     type SerializedForce,
 } from '../models/force-serialization';
 import {
@@ -46,8 +46,7 @@ import { DialogsService } from './dialogs.service';
 import { LoggerService } from './logger.service';
 import { UserStateService } from './userState.service';
 import { UnitRuntimeService } from './unit-runtime.service';
-import { ReadyMekUnitService } from './ready-mek-unit.service';
-import { ReadyNonMekUnitService } from './ready-non-mek-unit.service';
+import { CBTUnitService } from './cbt-unit.service';
 import { WsService, type WsMessage } from './ws.service';
 
 type WsDataResponse<T> = WsMessage & { readonly data?: T };
@@ -261,20 +260,7 @@ export class ForcePersistenceService {
         ) => {
             const identity = request.source.identity;
             if (identity.kind !== 'resolved') return undefined;
-            const summary = this.dataService.getUnitByIdentity(
-                identity.savedIdentity.provider,
-                identity.savedIdentity.uuid,
-            );
-            if (!summary) return undefined;
-            if (summary.entityType === 'Mek') {
-                return this.injector.get(ReadyMekUnitService).loadReadyMek({
-                    identity: identity.savedIdentity,
-                    instanceId: request.instanceId,
-                    deployment: request.deployment,
-                    scenario: request.scenario,
-                });
-            }
-            return this.injector.get(ReadyNonMekUnitService).loadReadyNonMekUnit({
+            return this.injector.get(CBTUnitService).create({
                 identity: identity.savedIdentity,
                 instanceId: request.instanceId,
                 deployment: request.deployment,
@@ -308,13 +294,9 @@ export class ForcePersistenceService {
     }
 
     private async deserializeCurrentForce(persisted: SerializedForce): Promise<Force> {
-        const force = persisted.type === GameSystem.ALPHA_STRIKE
+        return persisted.type === GameSystem.AS
             ? ASForce.deserialize(persisted as ASSerializedForce, this.dataService, this.injector)
-            : CBTForce.deserializeV2(persisted as SerializedClassicForce, this.dataService, this.injector);
-        if (force.gameSystem === GameSystem.CLASSIC) {
-            await force.loadCBTForceV2Persistence(persisted);
-        }
-        return force;
+            : CBTForce.deserialize(persisted as SerializedCBTForce, this.dataService, this.injector);
     }
 
     /** Materializes a detached candidate before ForceBuilder commits it. */
@@ -685,7 +667,7 @@ export class ForcePersistenceService {
             resultHasDurableLocalIdentity = result === local && local !== null;
         }
 
-        if (result?.gameSystem === GameSystem.CLASSIC) {
+        if (result?.gameSystem === GameSystem.CBT) {
             if (!triedCloud) {
                 result.setExpectedCloudCBTForceV2Revision(undefined);
             } else if (cloudRaw === null) {
@@ -918,7 +900,7 @@ export class ForcePersistenceService {
         }
 
         let remoteRevision: number | null | undefined;
-        if (force.gameSystem === GameSystem.CLASSIC) {
+        if (force.gameSystem === GameSystem.CBT) {
             const inspected = await inspectSerializedCBTForceV2(remote);
             remoteRevision = inspected?.forceRevision ?? null;
         }
@@ -932,7 +914,7 @@ export class ForcePersistenceService {
             throw new Error('The local force changed while the sync conflict was open.');
         }
 
-        if (force.gameSystem === GameSystem.CLASSIC) {
+        if (force.gameSystem === GameSystem.CBT) {
             force.setExpectedCloudCBTForceV2Revision(remoteRevision);
         }
         const previousTimestamp = force.timestamp;
@@ -1090,7 +1072,7 @@ export class ForcePersistenceService {
         let rejection: unknown;
         try {
             const prepared = await force.serializeForPersistenceWithRevisionFence();
-            // Classic persistence may install its freshly sealed V2/bridge
+            // CBT persistence may install its freshly sealed V2/bridge
             // authority as part of serialization. Force returns the only
             // fingerprint that can soundly cross that controlled mutation.
             fence.revisionFence = prepared.revisionFence;
@@ -1161,7 +1143,7 @@ export class ForcePersistenceService {
             const authorityIsCurrent = () => this.isOwnerlessForceOperationCurrent(instanceId, lease, generation);
             if (!authorityIsCurrent()) throw new Error('The selected force authority changed while its tags were being updated.');
             const localRaw = await this.dbService.getForce(instanceId);
-            if (localRaw?.version === 2 && localRaw.type === GameSystem.ALPHA_STRIKE) {
+            if (localRaw?.version === 2 && localRaw.type === GameSystem.AS) {
                 if (!authorityIsCurrent()) {
                     throw new Error('The selected force authority changed while its tags were being updated.');
                 }
@@ -1216,7 +1198,7 @@ export class ForcePersistenceService {
             if (!force || force.readOnly()) {
                 throw new Error('The selected force is missing, protected, or read-only and cannot be retagged.');
             }
-            if (force.gameSystem === GameSystem.CLASSIC) {
+            if (force.gameSystem === GameSystem.CBT) {
                 if (cloudRaw) force.markCloudCBTForceV2Saved(cloudRaw);
                 else force.setExpectedCloudCBTForceV2Revision(triedCloud ? null : undefined);
             }
@@ -1316,7 +1298,7 @@ export class ForcePersistenceService {
         if (response.action !== 'forceSaved') {
             throw new Error(`Cloud save returned unexpected response: ${response.action ?? 'unknown'}.`);
         }
-        if (force.gameSystem === GameSystem.CLASSIC) force.markCloudCBTForceV2Saved(detached);
+        if (force.gameSystem === GameSystem.CBT) force.markCloudCBTForceV2Saved(detached);
         return this.isOwnerlessForceOperationCurrent(instanceId, lease, generation);
     }
 
@@ -1366,7 +1348,7 @@ export class ForcePersistenceService {
         const normalized = await this.normalizePersistedForce(detached);
         const instanceId = normalized.instanceId;
         if (!instanceId || !this.isOwnerlessForceOperationCurrent(instanceId, lease, generation)) return false;
-        if (normalized.type !== GameSystem.ALPHA_STRIKE && normalized.cbt !== undefined) {
+        if (normalized.type !== GameSystem.AS && normalized.cbt !== undefined) {
             await inspectSerializedCBTForceV2(normalized);
         }
         if (!this.isOwnerlessForceOperationCurrent(instanceId, lease, generation)) return false;

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { WeaponEquipment } from '../equipment.model';
-import { asStateRevision } from './runtime-state';
 import { projectMekEquipmentComponents } from './equipment-panel';
 import {
     mekComponentModes,

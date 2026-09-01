@@ -44,16 +44,10 @@ import {
     type EquipmentRowOrderState,
 } from './equipment-row-order';
 import type {
-    ClassicCrewRuntimeState,
-    ClassicLocationRuntimeState,
-    ClassicUnitRuntimeState,
-} from './classic-unit-runtime';
-
-declare const runtimeBrand: unique symbol;
-type RuntimeBrand<T, Name extends string> = T & { readonly [runtimeBrand]: Name };
-
-export type UnitInstanceId = RuntimeBrand<string, 'UnitInstanceId'>;
-export type StateRevision = RuntimeBrand<number, 'StateRevision'>;
+    CBTCrewRuntimeState,
+    CBTLocationRuntimeState,
+    CBTUnitRuntimeState,
+} from './cbt-unit-runtime';
 
 /** A sixth wound is fatal under the supported Mek rules profile. */
 export const MAX_MEK_CREW_WOUNDS = 6;
@@ -85,7 +79,7 @@ export interface InstanceBaselineRef {
     readonly initialStateProfile: InitialStateProfileRef;
 }
 
-export interface LocationRuntimeState extends ClassicLocationRuntimeState {
+export interface LocationRuntimeState extends CBTLocationRuntimeState {
     /** Sparse positive values. Boolean conditions use one; NARC uses its marker count. */
     readonly conditions: ReadonlyMap<MekLocationConditionKey, number>;
 }
@@ -173,7 +167,7 @@ export interface AmmoRuntimeState {
     readonly munitionOverride?: string;
 }
 
-export type CrewRuntimeState = ClassicCrewRuntimeState;
+export type CrewRuntimeState = CBTCrewRuntimeState;
 
 export interface PendingCombatOverlay {
     readonly locationInternalDamage: ReadonlyMap<LocationId, number>;
@@ -195,8 +189,8 @@ export interface PendingCombatOverlay {
     >;
 }
 
-export interface MekUnitRuntimeState extends ClassicUnitRuntimeState {
-    readonly stateRevision: StateRevision;
+export interface MekUnitRuntimeState extends CBTUnitRuntimeState {
+    readonly stateRevision: number;
     /** Explicit source/import override; absent mechanical damage remains independently derivable. */
     readonly explicitlyDestroyed: boolean;
     /** Reconciled effective value used by hot runtime projections; never persistence authority. */
@@ -221,18 +215,8 @@ export interface MekUnitRuntimeState extends ClassicUnitRuntimeState {
     readonly pendingCombat: PendingCombatOverlay;
 }
 
-export function asUnitInstanceId(value: string): UnitInstanceId {
-    if (!value.trim() || value.includes('\0')) throw new Error('Invalid unit instance ID');
-    return value as UnitInstanceId;
-}
-
-export function createUnitInstanceId(): UnitInstanceId {
-    return asUnitInstanceId(`unit:${uuidv4()}`);
-}
-
-export function asStateRevision(value: number): StateRevision {
-    if (!Number.isSafeInteger(value) || value < 0) throw new Error(`Invalid state revision: ${value}`);
-    return value as StateRevision;
+export function createUnitInstanceId(): string {
+    return `unit:${uuidv4()}`;
 }
 
 export function emptyPendingCombatOverlay(): PendingCombatOverlay {
@@ -252,7 +236,7 @@ export function emptyPendingCombatOverlay(): PendingCombatOverlay {
 
 export function createPristineMekState(): MekUnitRuntimeState {
     return freezeRuntimeState({
-        stateRevision: asStateRevision(0),
+        stateRevision: 0,
         explicitlyDestroyed: false,
         destroyed: false,
         locations: new ImmutableIndex<LocationId, LocationRuntimeState>([]),

@@ -20,7 +20,7 @@ import type {
     AvailabilitySource,
     CBTAutomationKey,
     CBTOptionalRules,
-    ClassicUnitViewMode,
+    CBTUnitViewMode,
     ForceViewerBVPVDisplay,
     ForceViewerBVPVDisplayDamage,
     RecordSheetDoubleTapZoomResetMode,
@@ -524,9 +524,9 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('trackPhaseAndTurn', value);
     }
 
-    onClassicUnitViewModeChange(showTactical: boolean): void {
-        const mode: ClassicUnitViewMode = showTactical ? 'tactical' : 'sheet';
-        this.optionsService.setOption('classicUnitViewMode', mode);
+    onCBTUnitViewModeChange(showTactical: boolean): void {
+        const mode: CBTUnitViewMode = showTactical ? 'tactical' : 'sheet';
+        this.optionsService.setOption('cbtUnitViewMode', mode);
     }
 
     onCbtAutomationModeChange(key: CBTAutomationKey, value: AutomationMode) {

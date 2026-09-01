@@ -103,7 +103,7 @@ export class ForceBudgetOptimizerDialogComponent {
     readonly maxPilotSkillDelta = signal(this.normalizeSkillValue(this.initialSkillSettings.maxDelta));
     readonly resultMessage = signal<string | null>(null);
 
-    readonly isAlphaStrike = computed(() => this.force.gameSystem === GameSystem.ALPHA_STRIKE);
+    readonly isAlphaStrike = computed(() => this.force.gameSystem === GameSystem.AS);
     readonly budgetLabel = computed(() => this.isAlphaStrike() ? 'PV' : 'BV');
     readonly members = computed(() => this.force.members());
     readonly currentTotal = computed(() => {
@@ -556,7 +556,7 @@ export class ForceBudgetOptimizerDialogComponent {
     }
 
     private resolveInitialGunnerySkillRange(): [number, number] {
-        const range = this.force.gameSystem === GameSystem.ALPHA_STRIKE
+        const range = this.force.gameSystem === GameSystem.AS
             ? this.initialSkillSettings.skill
             : this.initialSkillSettings.gunnery;
         return this.normalizeRange([range.min, range.max]);

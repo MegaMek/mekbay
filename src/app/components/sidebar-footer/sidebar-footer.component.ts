@@ -121,7 +121,7 @@ export class SidebarFooterComponent {
     private remoteUpdateSub: Subscription | null = null;
 
     optimizeBudgetLabel = computed(() => (
-        this.forceWorkspace.smartCurrentForce()?.gameSystem === GameSystem.ALPHA_STRIKE ? 'Optimize PV...' : 'Optimize BV...'
+        this.forceWorkspace.smartCurrentForce()?.gameSystem === GameSystem.AS ? 'Optimize PV...' : 'Optimize BV...'
     ));
 
     canOpenForceGeneratorWithCurrentForce = computed(() => {

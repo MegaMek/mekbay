@@ -162,7 +162,7 @@ export class UnitSearchComponent {
 
     private static readonly VIEW_MODE_OPTIONS: readonly ViewModeOptionConfig[] = [
         { mode: 'list', label: 'List View', caption: 'Result cards' },
-        { mode: 'card', label: 'Card View', caption: 'Alpha Strike cards', gameSystem: GameSystem.ALPHA_STRIKE },
+        { mode: 'card', label: 'Card View', caption: 'Alpha Strike cards', gameSystem: GameSystem.AS },
         { mode: 'chassis', label: 'Chassis View', caption: 'Grouped chassis' },
         { mode: 'table', label: 'Table View', caption: 'Expanded table', requiresExpanded: true },
     ];
@@ -247,7 +247,7 @@ export class UnitSearchComponent {
         { key: '1', filterKey: 'as.dmg._dmgS' },
         { key: '2', filterKey: 'as.dmg._dmgM' },
         { key: '3', filterKey: 'as.dmg._dmgL' },
-        // Classic
+        // CBT
         { key: 'b', filterKey: 'bv' },
         { key: 't', filterKey: 'tons' },
         { key: 'a', filterKey: 'armor' },
@@ -299,7 +299,7 @@ export class UnitSearchComponent {
     private readonly tableBvCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableBvCell');
     private readonly tablePvCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tablePvCell');
     private readonly tableMovementCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableMovementCell');
-    private readonly tableClassicMovementCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableClassicMovementCell');
+    private readonly tableCBTMovementCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableCBTMovementCell');
     private readonly tableSpecialsCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableSpecialsCell');
     private readonly tableTagsCell = viewChild<TemplateRef<DataTableCellContext<UnitSummary>>>('tableTagsCell');
 
@@ -588,7 +588,7 @@ export class UnitSearchComponent {
         const bvCell = this.tableBvCell();
         const pvCell = this.tablePvCell();
         const movementCell = this.tableMovementCell();
-        const classicMovementCell = this.tableClassicMovementCell();
+        const classicMovementCell = this.tableCBTMovementCell();
         const specialsCell = this.tableSpecialsCell();
         const tagsCell = this.tableTagsCell();
 
@@ -630,7 +630,7 @@ export class UnitSearchComponent {
                     id: 'subtype',
                     header: 'Subtype',
                     track: 130,
-                    value: unit => this.formatClassicSubtype(unit),
+                    value: unit => this.formatCBTSubtype(unit),
                     sortKey: 'subtype',
                     sortActive: this.isSortActive('subtype'),
                     cellClass: this.tableCellClass('cbt-td-subtype', this.isSortActive('subtype')),
@@ -740,7 +740,7 @@ export class UnitSearchComponent {
                     id: 'firepower',
                     header: 'Firepower',
                     track: 88,
-                    value: unit => this.formatClassicStat(unit._mdSumNoPhysical),
+                    value: unit => this.formatCBTStat(unit._mdSumNoPhysical),
                     sortKey: '_mdSumNoPhysical',
                     sortActive: this.isSortActive('_mdSumNoPhysical'),
                     cellClass: this.tableCellClass('cbt-td-firepower', this.isSortActive('_mdSumNoPhysical')),
@@ -750,7 +750,7 @@ export class UnitSearchComponent {
                     id: 'damage-per-turn',
                     header: 'Dmg/Turn',
                     track: 92,
-                    value: unit => this.formatClassicStat(unit.dpt),
+                    value: unit => this.formatCBTStat(unit.dpt),
                     sortKey: 'dpt',
                     sortActive: this.isSortActive('dpt'),
                     cellClass: this.tableCellClass('cbt-td-dpt', this.isSortActive('dpt')),
@@ -782,7 +782,7 @@ export class UnitSearchComponent {
                     id: 'sort-slot',
                     header: this.cbtTableSortSlotHeader() ?? '',
                     track: 100,
-                    value: unit => this.getClassicTableSortSlot(unit) ?? '',
+                    value: unit => this.getCBTTableSortSlot(unit) ?? '',
                     headerClass: 'as-th-sort-slot',
                     cellClass: 'as-td-sort-slot sort-slot',
                     align: 'center',
@@ -1636,7 +1636,7 @@ export class UnitSearchComponent {
     }
 
     advPanelFilterGameSystemToggleTitle() {
-        return this.otherAdvPanelFilterGameSystem() === GameSystem.CLASSIC
+        return this.otherAdvPanelFilterGameSystem() === GameSystem.CBT
             ? 'Show BattleTech filters'
             : 'Show Alpha Strike filters';
     }
@@ -1655,9 +1655,9 @@ export class UnitSearchComponent {
     }
 
     private getOtherGameSystem(gameSystem: GameSystem): GameSystem {
-        return gameSystem === GameSystem.CLASSIC
-            ? GameSystem.ALPHA_STRIKE
-            : GameSystem.CLASSIC;
+        return gameSystem === GameSystem.CBT
+            ? GameSystem.AS
+            : GameSystem.CBT;
     }
 
     onDocumentKeydown(event: KeyboardEvent) {
@@ -2092,7 +2092,7 @@ export class UnitSearchComponent {
         return this.formatTableSortSlotValue(unit, key);
     }
 
-    getClassicTableSortSlot(unit: UnitSummary): string | null {
+    getCBTTableSortSlot(unit: UnitSummary): string | null {
         const key = this.filtersService.selectedSort();
         if (!key) return null;
 
@@ -2158,7 +2158,7 @@ export class UnitSearchComponent {
         return cur;
     }
 
-    formatClassicMovement(unit: UnitSummary): string {
+    formatCBTMovement(unit: UnitSummary): string {
         if (!unit.walk) return '';
 
         let movement = `${unit.walk} / ${unit.run}`;
@@ -2175,7 +2175,7 @@ export class UnitSearchComponent {
         return movement;
     }
 
-    formatClassicSubtype(unit: UnitSummary): string {
+    formatCBTSubtype(unit: UnitSummary): string {
         return unit.subtype && unit.subtype !== unit.type ? unit.subtype : '';
     }
 
@@ -2191,11 +2191,11 @@ export class UnitSearchComponent {
 
     private formatTableSortSlotValue(unit: UnitSummary, key: string): string {
         if (UnitSearchComponent.SORT_KEY_GROUPS['movement'].includes(key)) {
-            return this.formatClassicMovement(unit) || '—';
+            return this.formatCBTMovement(unit) || '—';
         }
 
         if (key === 'subtype') {
-            return this.formatClassicSubtype(unit) || '—';
+            return this.formatCBTSubtype(unit) || '—';
         }
 
         if (isMegaMekRaritySortKey(key)) {
@@ -2247,14 +2247,14 @@ export class UnitSearchComponent {
         return this.getNestedProperty(unit, key);
     }
 
-    formatClassicStat(value: number | undefined): string {
+    formatCBTStat(value: number | undefined): string {
         if (value === undefined || value === null) {
             return '—';
         }
         return FormatNumberPipe.formatValue(value, true, false);
     }
 
-    formatClassicBv(unit: UnitSummary, gunnery: number, piloting: number): string {
+    formatCBTBv(unit: UnitSummary, gunnery: number, piloting: number): string {
         if (this.filtersService.activeBvNormalization()) {
             return formatBvPv(
                 this.getSearchResultContext(unit).adjustedValue,
@@ -2897,7 +2897,7 @@ export class UnitSearchComponent {
             if (!trimmed) return;
 
             const gameSystem = this.gameService.currentGameSystem();
-            const gsKey = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
+            const gsKey = gameSystem === GameSystem.AS ? 'as' : 'cbt';
             const id = uuidv7();
             const filter = this.filtersService.serializeCurrentSearchFilter(id, trimmed, gsKey);
 
@@ -2976,7 +2976,7 @@ export class UnitSearchComponent {
         // Game-agnostic searches (no gameSystem) don't switch the mode
         if (fav.gameSystem) {
             const currentGs = this.gameService.currentGameSystem();
-            const favGs = fav.gameSystem === 'as' ? GameSystem.ALPHA_STRIKE : GameSystem.CLASSIC;
+            const favGs = fav.gameSystem === 'as' ? GameSystem.AS : GameSystem.CBT;
             if (favGs !== currentGs) {
                 this.gameService.setMode(favGs);
             }

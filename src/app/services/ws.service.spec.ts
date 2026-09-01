@@ -161,7 +161,7 @@ describe('WsService', () => {
             version: 2,
             instanceId: 'force-1',
             timestamp: '2026-08-31T00:00:00Z',
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             name: 'Force 1',
             owned: true,
             groups: [],

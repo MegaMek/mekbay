@@ -11,7 +11,6 @@ import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { CBTEncounterSnapshot } from './encounter-runtime';
 import type { MekRuntimeIndex } from './mek-runtime-index';
-import type { UnitInstanceId } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 
 export interface EquipmentInteractionQueryContext {
@@ -58,7 +57,7 @@ export interface EquipmentInteractionChoice extends PickerChoice {
 }
 
 export interface EquipmentInteractionOwnerContext {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly encounter: () => CBTEncounterSnapshot;
 }
 

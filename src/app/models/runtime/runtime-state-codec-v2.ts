@@ -50,8 +50,6 @@ import {
     type SerializedUnresolvedStateRecoveryEntryV2,
 } from './persistence-v2';
 import {
-    asStateRevision,
-    asUnitInstanceId,
     freezeRuntimeState,
     type AmmoRuntimeState,
     type BombastLaserRuntimeState,
@@ -67,8 +65,6 @@ import {
     type MekShieldDamageRuntimeState,
     type PendingCombatOverlay,
     type PpcCapacitorRuntimeState,
-    type StateRevision,
-    type UnitInstanceId,
     isMekLocationConditionKey,
     MAX_MEK_CREW_WOUNDS,
     MAX_MEK_LOCATION_CONDITION_VALUE,
@@ -83,21 +79,9 @@ import {
     STEALTH_DISABLING_MODE,
     STEALTH_ENABLING_MODE,
 } from '../stealth-equipment.model';
-import {
-    equipmentForComponent,
-    type MekRuntimeIndex,
-    type MekIndexedComponent,
-} from './mek-runtime-index';
-import {
-    mekAmmoCapacity,
-    mekAmmoDefaultMunitionKey,
-    mekAmmoLoadout,
-    mekIntrinsicMagazine,
-} from './mek-ammo';
-import {
-    mekComponentModes,
-    type MekComponentModes,
-} from './mek-component-rules';
+import { equipmentForComponent, type MekRuntimeIndex, type MekIndexedComponent } from './mek-runtime-index';
+import { mekAmmoCapacity, mekAmmoDefaultMunitionKey, mekAmmoLoadout, mekIntrinsicMagazine } from './mek-ammo';
+import { mekComponentModes, type MekComponentModes } from './mek-component-rules';
 import { rapidFireAutocannonSupportsJamming } from './component-rapid-fire-autocannon';
 import { ecmRuntimeModes } from './component-electronic-suite';
 import { STATE_RESTORATION_ALGORITHM_VERSION_V2 } from './unit-restoration-repair-v2';
@@ -109,20 +93,14 @@ import {
     serializeMekTurnStateV2,
     type MekTurnStateV2,
 } from './mek-turn-state-v2';
-import {
-    canonicalizeMekHeatStateV2,
-    type MekHeatStateV2,
-} from './mek-heat-state-v2';
+import { canonicalizeMekHeatStateV2, type MekHeatStateV2 } from './mek-heat-state-v2';
 import {
     deserializeMekMovementPsrStateV2,
     remapMekMovementPsrStateIdsV2,
     serializeMekMovementPsrStateV2,
     type MekMovementPsrStateV2,
 } from './mek-movement-psr-v2';
-import {
-    freezeEquipmentRowOrder,
-    type EquipmentRowOrderState,
-} from './equipment-row-order';
+import { freezeEquipmentRowOrder, type EquipmentRowOrderState } from './equipment-row-order';
 import {
     freezeAttackerTargetingState,
     attackerActionTargetKey,
@@ -131,10 +109,7 @@ import {
     type AttackerLocalTargetState,
     type AttackerTargetingState,
 } from './attacker-targeting-state';
-import {
-    isPhysicalWeaponFlags,
-    resolveShieldProfileFromFlags,
-} from '../entity/utils/physical-weapon-kernel';
+import { isPhysicalWeaponFlags, resolveShieldProfileFromFlags } from '../entity/utils/physical-weapon-kernel';
 import { isShieldEquipment } from '../entity/utils/physical-weapon';
 import { asEncounterTargetId } from './encounter-runtime';
 import {
@@ -144,22 +119,13 @@ import {
     type MekRuleChecksV2,
     type MekRuleCheckStateV2,
 } from './mek-destruction-state-v2';
-import {
-    assertCanonicalCrewAssignment,
-    type CrewTopology,
-} from './crew-assignment';
+import { assertCanonicalCrewAssignment, type CrewTopology } from './crew-assignment';
 import { MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION } from './unit-state-initializer';
 import { isMekLocationPhysicallyDestroyed } from './mek-location-state-kernel';
-import {
-    mekCriticalSlotDirectHitThreshold,
-    mekCriticalSlotMaximumHits,
-} from './mek-critical-slot-rules';
+import { mekCriticalSlotDirectHitThreshold, mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
 import { GAUSS_POWERED_UP, isMekGaussPowerState } from './mek-gauss-power';
 import { isGaussEquipment } from '../gauss-equipment.model';
-import {
-    isModularArmorEquipment,
-    MODULAR_ARMOR_POINTS_PER_MOUNT,
-} from '../modular-armor.model';
+import { isModularArmorEquipment, MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
 
 export const V2_STATE_RESTORATION_ALGORITHM_VERSION = STATE_RESTORATION_ALGORITHM_VERSION_V2;
 
@@ -206,7 +172,7 @@ export interface V2StateRestoreWarning {
 export interface SerializeCBTUnitStateV2Input {
     readonly entity: MekEntity;
     readonly index: MekRuntimeIndex;
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly baselineRef: InstanceBaselineRef;
     readonly state: MekUnitRuntimeState;
     readonly deployment: SerializedDeploymentConfigurationV2;
@@ -618,8 +584,8 @@ export function serializeCBTUnitStateV2(
 ): SerializedCBTUnitV2 {
     assertBaselineMatchesEntity(input.baselineRef, input.entity, '$.baselineRef');
     const unit = codecUnit(input.entity, input.index, input.baselineRef.ruleset);
-    asUnitInstanceId(input.instanceId);
-    asStateRevision(input.state.stateRevision);
+    input.instanceId;
+    input.state.stateRevision;
     if (typeof input.state.explicitlyDestroyed !== 'boolean'
         || typeof input.state.destroyed !== 'boolean') {
         codecFail('INVALID_RUNTIME_STATE', '$.state.destroyed', 'must be boolean');
@@ -1039,7 +1005,7 @@ function serializeMekRuleChecks(
             key,
             token: check.token,
             trigger: target.ref,
-            openedRevision: asStateRevision(check.openedRevision),
+            openedRevision: check.openedRevision,
             status: check.status,
         });
     });
@@ -1074,7 +1040,7 @@ function restoreSavedMekRuleChecks(
         }
         previous = entry.key;
         canonicalBoundedText(entry.token, `${path}.token`);
-        const openedRevision = asStateRevision(entry.openedRevision);
+        const openedRevision = entry.openedRevision;
         if (openedRevision > saved.stateRevision) {
             codecFail('INVALID_SERIALIZED_STATE', `${path}.openedRevision`, 'cannot exceed unit revision');
         }
@@ -1172,8 +1138,8 @@ export async function restoreSerializedCBTUnitV2(
     if (saved.destroyed !== undefined && saved.destroyed !== true) {
         codecFail('INVALID_SERIALIZED_STATE', '$.destroyed', 'sparse destroyed state must be true when present');
     }
-    asUnitInstanceId(saved.instanceId);
-    asStateRevision(saved.stateRevision);
+    saved.instanceId;
+    saved.stateRevision;
     if (saved.deployment.schemaVersion !== MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION) {
         codecFail('DEPLOYMENT_MISMATCH', '$.deployment', 'unsupported saved deployment version');
     }
@@ -1744,7 +1710,7 @@ export async function restoreSerializedCBTUnitV2(
     const { equipmentRowOrder: _initializedOrder, ...initializedState } = initialized.state;
     const state = freezeRuntimeState({
         ...initializedState,
-        stateRevision: asStateRevision(saved.stateRevision),
+        stateRevision: saved.stateRevision,
         explicitlyDestroyed: saved.destroyed === true,
         destroyed: saved.destroyed === true,
         locations: new ImmutableIndex(locations),
@@ -3151,7 +3117,7 @@ function serializePending(
 /** Replays only facts the user explicitly scoped to this exact entity target through an alias. */
 function retryPriorUnresolved(
     entries: readonly SerializedUnresolvedStateRecoveryEntryV2[],
-    savedStateRevision: StateRevision,
+    savedStateRevision: number,
     accumulator: RestoreAccumulator,
     locations: Map<LocationId, LocationRuntimeState>,
     slots: Map<CriticalSlotId, CriticalSlotRuntimeState>,
@@ -3376,7 +3342,7 @@ function retryPriorUnresolved(
                     || (fact.status !== 'pending' && fact.status !== 'success' && fact.status !== 'failed')) {
                     codecFail('INVALID_SERIALIZED_STATE', '$.restoration.unresolved.fact', 'invalid Mek rule check');
                 }
-                const openedRevision = asStateRevision(fact.openedRevision);
+                const openedRevision = fact.openedRevision;
                 if (openedRevision > savedStateRevision) {
                     codecFail(
                         'INVALID_SERIALIZED_STATE',

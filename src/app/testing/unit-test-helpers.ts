@@ -10,7 +10,6 @@ import {
     emptyRuntimeHistory,
     type SerializedCBTForceV2,
 } from '../models/runtime/persistence-v2';
-import { asStateRevision } from '../models/runtime/runtime-state';
 import { getUnitTechBaseDisplay } from '../models/tech.model';
 import { uuidv4 } from '../utils/uuid.util';
 import {
@@ -34,7 +33,7 @@ export function createEmptyCBTForceForTest(
     forceId: string = 'force:test',
     revision: number = 0,
 ): SerializedCBTForceV2 {
-    const stateRevision = asStateRevision(revision);
+    const stateRevision = revision;
     return {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
@@ -198,7 +197,7 @@ function applyTestEntityIdentity(entity: BaseEntity, unit: UnitSummary): void {
     entity.techBase.set(unit.techBase === 'Clan' ? 'Clan' : 'IS');
 }
 
-/** Canonical Entity fixture for tests that exercise loaded Classic behavior. */
+/** Canonical Entity fixture for tests that exercise loaded CBT behavior. */
 export function createTestMekEntity(overrides: TestUnitOverrides = {}): TestBipedMekEntity {
     const unit = createEmptyUnit({ entityType: 'Mek', type: 'Mek', ...overrides });
     const entity = new TestBipedMekEntity();
@@ -206,7 +205,7 @@ export function createTestMekEntity(overrides: TestUnitOverrides = {}): TestBipe
     return entity;
 }
 
-/** Canonical Entity fixture for tests that exercise loaded Classic vehicles. */
+/** Canonical Entity fixture for tests that exercise loaded CBT vehicles. */
 export function createTestTankEntity(overrides: TestUnitOverrides = {}): TestTankEntity {
     const unit = createEmptyUnit({
         entityType: 'Tank',

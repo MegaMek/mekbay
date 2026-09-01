@@ -7,11 +7,11 @@ import type { ComponentId } from '../entity/entity-identifiers';
 import { TestBipedMekEntity } from '../entity/testing/test-entities';
 import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
 import type { UnitConditionKey } from '../unit-condition.model';
-import type { ClassicUnitQueryPort } from './classic-unit-runtime';
-import { projectClassicUnitTagEcmCapabilitySummary } from './classic-unit-capability-projection';
+import type { CBTUnitQueryPort } from './cbt-unit-runtime';
+import { projectCBTUnitTagEcmCapabilitySummary } from './cbt-unit-capability-projection';
 import { buildMekRuntimeIndex, componentIdForMount } from './mek-runtime-index';
 
-describe('Classic unit capability projection', () => {
+describe('CBT unit capability projection', () => {
     it('derives light TAG and the selected ECM mode from Entity equipment', () => {
         const entity = new TestBipedMekEntity();
         addTestEquipment(entity, tagWeapon('Light TAG', 3));
@@ -22,7 +22,7 @@ describe('Classic unit capability projection', () => {
             flags: ['F_ECM', 'F_ANGEL_ECM'],
         }));
 
-        const summary = projectClassicUnitTagEcmCapabilitySummary(source(entity, {
+        const summary = projectCBTUnitTagEcmCapabilitySummary(source(entity, {
             modes: new Map([[componentIdForMount(ecm), ECMMode.ECM_GHOST]]),
         }));
 
@@ -46,7 +46,7 @@ describe('Classic unit capability projection', () => {
             flags: ['F_ECM', 'F_ANGEL_ECM'],
         }));
 
-        const summary = projectClassicUnitTagEcmCapabilitySummary(source(entity, {
+        const summary = projectCBTUnitTagEcmCapabilitySummary(source(entity, {
             unavailable: new Set([
                 componentIdForMount(damagedTag),
                 componentIdForMount(damagedEcm),
@@ -68,11 +68,11 @@ describe('Classic unit capability projection', () => {
         }));
         const unavailable = new Set([componentIdForMount(tag), componentIdForMount(ecm)]);
 
-        expect(projectClassicUnitTagEcmCapabilitySummary(source(entity, { unavailable }))).toEqual({
+        expect(projectCBTUnitTagEcmCapabilitySummary(source(entity, { unavailable }))).toEqual({
             tag: { label: 'TAG', unavailable: true },
             ecm: { mode: ECMMode.OFF, unavailable: true },
         });
-        expect(projectClassicUnitTagEcmCapabilitySummary(source(entity, {
+        expect(projectCBTUnitTagEcmCapabilitySummary(source(entity, {
             conditions: new Set(['shutdown']),
         }))).toEqual({
             tag: { label: 'TAG', unavailable: true },
@@ -107,7 +107,7 @@ function source(
 ) {
     const index = buildMekRuntimeIndex(entity);
     const query: Pick<
-        ClassicUnitQueryPort,
+        CBTUnitQueryPort,
         'componentMode' | 'componentStatus' | 'destroyed' | 'hasCondition'
     > = {
         componentMode: componentId => options.modes?.get(componentId),

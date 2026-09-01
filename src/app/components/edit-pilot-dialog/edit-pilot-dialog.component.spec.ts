@@ -17,7 +17,7 @@ const CREW: CrewMemberDetails[] = [
     { id: 2, name: 'Officer', gunnery: 5, piloting: 4 },
 ];
 
-describe('Classic multi-crew pilot dialog logic', () => {
+describe('CBT multi-crew pilot dialog logic', () => {
     it('selects independent minimum Gunnery and Piloting values', () => {
         expect(getSyntheticCrewSkill(CREW, 'gunnery')).toBe(3);
         expect(getSyntheticCrewSkill(CREW, 'piloting')).toBe(2);

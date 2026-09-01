@@ -11,7 +11,7 @@ import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
 import { asUnitUuid, MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
 import { componentIdForMount } from '../runtime/non-mek-runtime-index';
 import { NonMekUnitInstance, projectNonMekMovementCapabilities } from '../runtime/non-mek-unit-instance';
-import { asUnitInstanceId, type InstanceBaselineRef } from '../runtime/runtime-state';
+import { type InstanceBaselineRef } from '../runtime/runtime-state';
 import { projectInfantryRuntimeRules } from './infantry-runtime-rules';
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
@@ -143,7 +143,7 @@ function instance(
     id: string,
 ): NonMekUnitInstance {
     return new NonMekUnitInstance(
-        asUnitInstanceId(id),
+        id,
         baseline(),
         entity,
         CORE_2026_RULESET,

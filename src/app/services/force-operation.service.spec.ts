@@ -64,7 +64,7 @@ describe('ForceOperationService', () => {
 
 function force(instanceId: string, name: string): Force {
     return {
-        gameSystem: GameSystem.CLASSIC,
+        gameSystem: GameSystem.CBT,
         instanceId: () => instanceId,
         displayName: () => name,
         faction: () => null,

@@ -756,7 +756,7 @@ export class PageViewerMekInteractionService {
         const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
         const position = snapshot?.crew.find(row => row.positionId === interaction.positionId);
         if (!position) return;
-        await this.pilotEditor.editClassicMember(member.force, member.id);
+        await this.pilotEditor.editCBTMember(member.force, member.id);
     }
 
     private openCrewStateMenu(

@@ -136,7 +136,7 @@ export class ForceBuilderViewerComponent {
     private blinkTimeouts = new Map<Force, ReturnType<typeof setTimeout>>();
     private remoteUpdateSub: Subscription | null = null;
 
-    /** Combined Classic members across all visible loaded forces. */
+    /** Combined CBT members across all visible loaded forces. */
     combinedBvMembers = computed(() => this.loadedSlots()
             .filter(slot => slot.force.gameSystem !== 'as')
             .flatMap(slot => slot.force.members()));
@@ -366,7 +366,7 @@ export class ForceBuilderViewerComponent {
         if (unit.force.readOnly()) return;
         event.stopPropagation();
         if (isCBTForceMember(unit)) {
-            await this.pilotEditor.editClassicMember(unit.force, unit.id);
+            await this.pilotEditor.editCBTMember(unit.force, unit.id);
         } else if (unit instanceof ASForceUnit) {
             await this.pilotEditor.editAlphaStrikeUnit(unit);
         }
@@ -550,7 +550,7 @@ export class ForceBuilderViewerComponent {
             if (!(fromForce instanceof CBTForce)) return;
             if (!(toForce instanceof CBTForce)) {
                 this.toastService.showToast(
-                    'Converting a live Classic unit to Alpha Strike is not supported yet.',
+                    'Converting a live CBT unit to Alpha Strike is not supported yet.',
                     'error',
                 );
                 return;
@@ -574,7 +574,7 @@ export class ForceBuilderViewerComponent {
             }
             await this.formations.assignFormationIfNeeded(fromGroup);
             if (fromGroup !== toGroup) await this.formations.assignFormationIfNeeded(toGroup);
-            this.forceWorkspace.selectUnit(fromForce.getClassicMember(movingMember.id));
+            this.forceWorkspace.selectUnit(fromForce.getCBTMember(movingMember.id));
             return;
         }
 
@@ -706,7 +706,7 @@ export class ForceBuilderViewerComponent {
         if (!removeEmptySource) this.formations.generateFactionAndForceNameIfNeeded(source);
         await this.formations.assignFormationIfNeeded(sourceGroup);
         await this.formations.assignFormationIfNeeded(targetGroup);
-        this.forceWorkspace.selectUnit(target.getClassicMember(member.id));
+        this.forceWorkspace.selectUnit(target.getCBTMember(member.id));
         if (removeEmptySource) await this.forceBuilderService.deleteAndRemoveForce(source);
         return true;
     }
@@ -768,7 +768,7 @@ export class ForceBuilderViewerComponent {
             if (!(sourceForce instanceof CBTForce)) return;
             if (!(targetForce instanceof CBTForce)) {
                 this.toastService.showToast(
-                    'Converting a live Classic unit to Alpha Strike is not supported yet.',
+                    'Converting a live CBT unit to Alpha Strike is not supported yet.',
                     'error',
                 );
                 return;
@@ -796,7 +796,7 @@ export class ForceBuilderViewerComponent {
             }
             await this.formations.assignFormationIfNeeded(sourceGroup);
             await this.formations.assignFormationIfNeeded(newGroup);
-            this.forceWorkspace.selectUnit(sourceForce.getClassicMember(movingMember.id));
+            this.forceWorkspace.selectUnit(sourceForce.getCBTMember(movingMember.id));
             return;
         }
 
@@ -1071,7 +1071,7 @@ export class ForceBuilderViewerComponent {
             if (fromForce.readOnly()) return;
             if (fromForce instanceof CBTForce || toForce instanceof CBTForce) {
                 this.toastService.showToast(
-                    'Moving a live Classic group between forces is not supported yet.',
+                    'Moving a live CBT group between forces is not supported yet.',
                     'error',
                 );
                 return;

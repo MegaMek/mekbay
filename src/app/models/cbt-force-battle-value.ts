@@ -16,18 +16,13 @@ import { projectEncounterNetworksToC3Editor } from './c3-network-presentation';
 import { isC3EmergencyMasterOperatingTurnsFried } from './c3-emergency-master.model';
 import { gameRulesFor, type TagBattleValueFacts } from './rules/game-rules';
 import type { EncounterNetwork } from './runtime/encounter-runtime';
-import {
-    isReadyNonMekUnit,
-    isReadyMekUnit,
-    type ReadyClassicUnit,
-} from './runtime/ready-classic-unit';
+import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit } from './runtime/cbt-unit';
 import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { scenarioRuleset } from './runtime/unit-state-initializer';
-import type { UnitInstanceId } from './runtime/runtime-state';
 import { adjustEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
 
 export interface CBTForceBattleValueUnit {
-    readonly unit: ReadyClassicUnit;
+    readonly unit: CBTUnit;
     readonly baseBattleValue: number | null;
 }
 
@@ -44,18 +39,18 @@ export interface CBTForceBattleValueInput {
     readonly scenario: ScenarioRules;
     readonly networks: readonly EncounterNetwork[];
     readonly isC3EndpointIntact: (
-        instanceId: UnitInstanceId,
+        instanceId: string,
         componentId: ComponentId,
     ) => boolean;
 }
 
 /** Current entity + sparse-runtime BV. No force-wide state participates. */
-export function currentUnitBaseBattleValue(unit: ReadyClassicUnit): number | null {
+export function currentUnitBaseBattleValue(unit: CBTUnit): number | null {
     return unit.captureRuntime().query.currentBaseBattleValue();
 }
 
 /** Immutable entity BV before runtime damage, TAG, C3, or skills. */
-export function pristineUnitBattleValue(unit: ReadyClassicUnit): number {
+export function pristineUnitBattleValue(unit: CBTUnit): number {
     return unit.getUnit().battleValue();
 }
 
@@ -66,7 +61,7 @@ export function pristineUnitBattleValue(unit: ReadyClassicUnit): number {
  */
 export function calculateCBTForceBattleValues(
     input: CBTForceBattleValueInput,
-): ReadonlyMap<UnitInstanceId, CBTForceBattleValueBreakdown> {
+): ReadonlyMap<string, CBTForceBattleValueBreakdown> {
     const inventories = input.units.map(row => ({
         ...row,
         inventory: tagBattleValueInventory(row.unit),
@@ -142,7 +137,7 @@ interface ReadyTagBattleValueInventory {
     readonly registry: EquipmentRegistry;
 }
 
-function tagBattleValueInventory(unit: ReadyClassicUnit): ReadyTagBattleValueInventory {
+function tagBattleValueInventory(unit: CBTUnit): ReadyTagBattleValueInventory {
     const mounts = unit.getUnit().equipment();
     const operational = new Set<string>();
     const ammunition: AmmoEquipment[] = [];
@@ -169,7 +164,7 @@ function tagBattleValueInventory(unit: ReadyClassicUnit): ReadyTagBattleValueInv
 }
 
 interface BattleValueC3View extends C3UnitView {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly c3Components: readonly C3Component[];
     getBaseBv(): number;
     tagBV(): number;
@@ -182,9 +177,9 @@ function battleValueC3View(
 ): BattleValueC3View {
     const { unit } = row;
     const entity = unit.getUnit();
-    const structural = isReadyMekUnit(unit)
+    const structural = isCBTMekUnit(unit)
         ? mekC3Components(unit)
-        : isReadyNonMekUnit(unit)
+        : isCBTNonMekUnit(unit)
             ? projectNonMekC3Components(unit.getIndex())
             : Object.freeze([]);
     return Object.freeze({
@@ -210,8 +205,8 @@ function battleValueC3View(
     });
 }
 
-function mekC3Components(unit: ReadyClassicUnit): readonly C3Component[] {
-    if (!isReadyMekUnit(unit)) return Object.freeze([]);
+function mekC3Components(unit: CBTUnit): readonly C3Component[] {
+    if (!isCBTMekUnit(unit)) return Object.freeze([]);
     const query = unit.getInstance().query();
     const projected = query.mekC3Endpoints();
     if (projected.kind !== 'supported') return Object.freeze([]);

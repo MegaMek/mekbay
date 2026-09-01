@@ -15,7 +15,7 @@ import {
     cbtUnitCheckReviewDescription,
 } from '../models/cbt-unit-check-presentation';
 import type { CBTForce } from '../models/cbt-force.model';
-import type { CBTNonMekUnitCommandResult } from '../models/cbt-force-api';
+import type { CBTNonMekUnitCommandResult } from '../models/cbt-force.types';
 import { hasNonMekRuntime, type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { isCaseEquipment } from '../models/case-equipment.model';
 import { isDroneOperatingSystemEquipment } from '../models/drone-operating-system.model';
@@ -26,14 +26,8 @@ import type { ComponentId, CrewPositionId } from '../models/entity/entity-identi
 import type { UnitConditionKey } from '../models/unit-condition.model';
 import { isAeroEntity } from '../models/entity/utils/entity-type-guards';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
-import {
-    ammoExplosionDamagePerShot,
-    ammoRackSize,
-} from '../models/runtime/mek-critical-hit-v2';
-import {
-    mekConsciousnessTarget,
-    twoD6Total,
-} from '../models/runtime/mek-automation-rules';
+import { ammoExplosionDamagePerShot, ammoRackSize } from '../models/runtime/mek-critical-hit-v2';
+import { mekConsciousnessTarget, twoD6Total } from '../models/runtime/mek-automation-rules';
 import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
 import {
     projectNonMekEndTurnHeat,
@@ -42,16 +36,10 @@ import {
     type NonMekUnitCommand,
     type NonMekUnitRuntimeState,
 } from '../models/runtime/non-mek-unit-instance';
-import {
-    MAX_MEK_CREW_WOUNDS,
-    type UnitInstanceId,
-} from '../models/runtime/runtime-state';
+import { MAX_MEK_CREW_WOUNDS } from '../models/runtime/runtime-state';
 import { selectedManualEndTurnHeat } from '../models/runtime/end-turn-heat-selection';
 import { CBTAutomationService } from './cbt-automation.service';
-import {
-    automationCheckEvidenceDice,
-    CBTAutomationCheckService,
-} from './cbt-automation-check.service';
+import { automationCheckEvidenceDice, CBTAutomationCheckService } from './cbt-automation-check.service';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
 import {
     automaticConsciousnessNotifications,
@@ -89,22 +77,22 @@ export interface PreparedDirectNonMekAutomationCommand {
 }
 
 export interface DirectNonMekEndTurnAutomationRequest {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly command: Extract<NonMekUnitCommand, { readonly kind: 'end-turn' }>;
 }
 
 export interface PreparedDirectNonMekEndTurnAutomation {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly prepared: PreparedDirectNonMekAutomationCommand;
 }
 
 export interface DirectNonMekEndPhaseAutomationRequest {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly command: Extract<NonMekUnitCommand, { readonly kind: 'end-phase' }>;
 }
 
 export interface PreparedDirectNonMekEndPhaseAutomation {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly prepared: PreparedDirectNonMekAutomationCommand;
 }
 
@@ -217,7 +205,7 @@ export class DirectNonMekAutomationService {
 
     async prepareCommand(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: NonMekUnitCommand,
     ): Promise<PreparedDirectNonMekAutomationCommand> {
         if (command.kind === 'set-crew-state') {
@@ -472,7 +460,7 @@ export class DirectNonMekAutomationService {
     /** Applies the reviewed heat/consequence chain before the turn reset. */
     async settleBeforeCommand(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         prepared: PreparedDirectNonMekAutomationCommand,
         dispatch: DirectNonMekAutomationDispatch,
     ): Promise<PreparedDirectNonMekAutomationCommand | null> {
@@ -539,7 +527,7 @@ export class DirectNonMekAutomationService {
 
     async afterCommand(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         before: CBTUnitSnapshot | null,
         prepared: PreparedDirectNonMekAutomationCommand,
         result: CBTNonMekUnitCommandResult,
@@ -598,7 +586,7 @@ export class DirectNonMekAutomationService {
         );
         if (resolutions === null) return null;
         const resolutionById = new Map(resolutions.map(result => [result.id, result]));
-        const controls = new Map<UnitInstanceId, StagedNonMekControlRecovery>();
+        const controls = new Map<string, StagedNonMekControlRecovery>();
         const controlCandidates = rows.flatMap(row => {
             if (!row.snapshot || !isAeroEntity(row.snapshot.entity)) return [];
             const recoveredPositions = new Set(row.recoveries
@@ -740,7 +728,7 @@ export class DirectNonMekAutomationService {
 
     private async applyPhaseBoundary(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         prepared: PreparedNonMekPhaseBoundary,
         dispatch: DirectNonMekAutomationDispatch,
     ): Promise<boolean> {
@@ -1037,7 +1025,7 @@ export class DirectNonMekAutomationService {
 
     private async applyAeroHeatEffects(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         prepared: PreparedAeroHeatEffects,
         dispatch: DirectNonMekAutomationDispatch,
     ): Promise<boolean> {
@@ -1138,7 +1126,7 @@ export class DirectNonMekAutomationService {
 
     private async explodeAmmo(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         ammo: AeroAmmoExplosionCandidate,
         dispatch: DirectNonMekAutomationDispatch,
     ): Promise<boolean> {
@@ -1210,7 +1198,7 @@ export class DirectNonMekAutomationService {
 
     private async applyResolvedCrewHits(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         initial: NonMekSnapshot,
         resolved: readonly ResolvedCrewHits[],
         dispatch: DirectNonMekAutomationDispatch,
@@ -1267,7 +1255,7 @@ export class DirectNonMekAutomationService {
 
     private async deferCrewRecovery(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         positionId: CrewPositionId,
         currentTurn: number,
         dispatch: DirectNonMekAutomationDispatch,
@@ -1292,7 +1280,7 @@ export class DirectNonMekAutomationService {
 
     private async recordCrewRecoveryTransition(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         before: NonMekSnapshot,
         after: NonMekSnapshot,
         positionId: CrewPositionId,
@@ -1445,7 +1433,7 @@ export class DirectNonMekAutomationService {
 
     private async setHeatControlConditions(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         randomMovement: boolean,
         outOfControl: boolean,
         dispatch: DirectNonMekAutomationDispatch,
@@ -1460,7 +1448,7 @@ export class DirectNonMekAutomationService {
 
     private async setCondition(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         condition: UnitConditionKey,
         active: boolean,
         dispatch: DirectNonMekAutomationDispatch,
@@ -1476,7 +1464,7 @@ export class DirectNonMekAutomationService {
 
     private async setControlRecovery(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         workflow: NonMekControlRecoveryWorkflow | null,
         dispatch: DirectNonMekAutomationDispatch,
     ): Promise<boolean> {
@@ -1493,14 +1481,14 @@ export class DirectNonMekAutomationService {
         return result.accepted;
     }
 
-    private snapshot(force: CBTForce, instanceId: UnitInstanceId): AeroSnapshot | null {
+    private snapshot(force: CBTForce, instanceId: string): AeroSnapshot | null {
         const snapshot = force.getUnitSnapshot(instanceId);
         return snapshot && hasNonMekRuntime(snapshot) && isAeroEntity(snapshot.entity)
             ? snapshot as AeroSnapshot
             : null;
     }
 
-    private nonMekSnapshot(force: CBTForce, instanceId: UnitInstanceId): NonMekSnapshot | null {
+    private nonMekSnapshot(force: CBTForce, instanceId: string): NonMekSnapshot | null {
         const snapshot = force.getUnitSnapshot(instanceId);
         return snapshot && hasNonMekRuntime(snapshot)
             ? snapshot as NonMekSnapshot

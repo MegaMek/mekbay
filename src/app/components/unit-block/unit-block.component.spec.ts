@@ -15,7 +15,6 @@ import { addTestEquipment } from '../../models/entity/testing/test-mounted-equip
 import { createEquipment, WeaponEquipment } from '../../models/equipment.model';
 import type { ForceUnit } from '../../models/force-unit.model';
 import { buildMekRuntimeIndex } from '../../models/runtime/mek-runtime-index';
-import { asUnitInstanceId } from '../../models/runtime/runtime-state';
 import { createUnitTagEcmCapabilitySummary } from '../../models/unit-capability-summary.model';
 import { OptionsService } from '../../services/options.service';
 import { UnitBlockComponent } from './unit-block.component';
@@ -60,7 +59,7 @@ describe('UnitBlockComponent capability badges', () => {
         expect(fixture.componentInstance.ecmDisplay()).toBeNull();
     });
 
-    it('projects Classic capability badges from Entity equipment and runtime state', () => {
+    it('projects CBT capability badges from Entity equipment and runtime state', () => {
         const changed = new Subject<void>();
         const entity = new TestBipedMekEntity();
         addTestEquipment(entity, new WeaponEquipment({
@@ -85,7 +84,7 @@ describe('UnitBlockComponent capability badges', () => {
         });
         const force = { changed, getUnitSnapshot } as unknown as CBTForce;
         const member = new CBTForceMember(
-            asUnitInstanceId('unit:classic-capability-card'),
+            'unit:classic-capability-card',
             force,
             entity,
         );
@@ -113,7 +112,7 @@ describe('UnitBlockComponent capability badges', () => {
             }),
         } as unknown as CBTForce;
         const member = new CBTForceMember(
-            asUnitInstanceId('unit:condition-card'),
+            'unit:condition-card',
             force,
             new TestBipedMekEntity(),
         );
@@ -143,7 +142,7 @@ describe('UnitBlockComponent capability badges', () => {
             }),
         } as unknown as CBTForce;
         const member = new CBTForceMember(
-            asUnitInstanceId('unit:movement-card'),
+            'unit:movement-card',
             force,
             new TestBipedMekEntity(),
         );
@@ -171,7 +170,7 @@ describe('UnitBlockComponent capability badges', () => {
             }),
         } as unknown as CBTForce;
         const member = new CBTForceMember(
-            asUnitInstanceId('unit:vehicle-condition-card'),
+            'unit:vehicle-condition-card',
             force,
             new TestTankEntity(),
         );
@@ -191,7 +190,7 @@ describe('UnitBlockComponent capability badges', () => {
             .and.returnValue({ unitType: 'Tank', crew: [] });
         const force = {
             changed,
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             readOnly: () => false,
             getUnitDestroyed: () => false,
             getUnitCrewAssignment: () => ({ positions: [] }),
@@ -207,7 +206,7 @@ describe('UnitBlockComponent capability badges', () => {
             getNonMekRecordSheetSnapshot,
         } as unknown as CBTForce;
         const member = new CBTForceMember(
-            asUnitInstanceId('unit:scoped-card'),
+            'unit:scoped-card',
             force,
             new TestTankEntity(),
         );

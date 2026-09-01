@@ -35,7 +35,7 @@ export const MEANINGFUL_URL_PARAMS = [
  */
 export function computeGameSystemOverride(params: URLSearchParams, pathname: string): GameSystem | null {
     const gsParam = params.get('gs');
-    if (gsParam !== GameSystem.ALPHA_STRIKE && gsParam !== GameSystem.CLASSIC) {
+    if (gsParam !== GameSystem.AS && gsParam !== GameSystem.CBT) {
         return null;
     }
     const isPagePath = pathname.replace(/\/+$/, '') !== '';

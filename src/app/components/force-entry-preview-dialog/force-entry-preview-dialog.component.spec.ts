@@ -30,7 +30,7 @@ describe('ForceEntryPreviewDialogComponent', () => {
         return new LoadForceEntry({
             instanceId: 'force-1',
             name: 'Shared Force',
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             groups: [],
             ...overrides,
         });
@@ -146,7 +146,7 @@ describe('ForceEntryPreviewDialogComponent', () => {
 
         expect(component).toBe(FormationInfoDialogComponent);
         expect(dialogOptions.data.formation.id).toBe('battle-lance');
-        expect(dialogOptions.data.gameSystem).toBe(GameSystem.CLASSIC);
+        expect(dialogOptions.data.gameSystem).toBe(GameSystem.CBT);
         expect(dialogOptions.data.formationDisplayName).toBe('Battle');
         expect(dialogOptions.data.unitCount).toBe(4);
     });

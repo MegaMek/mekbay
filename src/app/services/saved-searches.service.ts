@@ -51,7 +51,7 @@ export class SavedSearchesService {
     /** Get saved searches filtered by game system. Includes game-agnostic searches (no gameSystem). */
     public getSearchesForGameSystem(gameSystem: GameSystem): SerializedSearchFilter[] {
         const all = this.cachedSearches();
-        const gsKey = gameSystem === GameSystem.ALPHA_STRIKE ? 'as' : 'cbt';
+        const gsKey = gameSystem === GameSystem.AS ? 'as' : 'cbt';
         return Object.values(all)
             .filter(s => !s.gameSystem || s.gameSystem === gsKey)
             .sort((a, b) => naturalCompare(a.name, b.name));

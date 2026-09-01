@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { GameSystem } from '../common.model';
-import type { SerializedClassicForce } from '../force-serialization';
+import type { SerializedCBTForce } from '../force-serialization';
 import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -12,10 +12,9 @@ import {
     type SerializedCBTUnitV2,
     validateSerializedCBTForceV2,
 } from './persistence-v2';
-import { ReadyMekUnit, ReadyMekUnitFactory } from './ready-unit-factory';
-import { ReadyNonMekUnit } from './ready-non-mek-unit';
+import { CBTMekUnit } from './cbt-mek-unit';
+import { CBTNonMekUnit } from './cbt-non-mek-unit';
 import { isSerializedNonMekUnit, type SerializedNonMekUnit } from './non-mek-unit-persistence';
-import { asStateRevision, asUnitInstanceId } from './runtime-state';
 import {
     createDirectMekRuntimeFixture,
     createDirectModularArmorRuntimeFixture,
@@ -56,14 +55,17 @@ describe('compact force storage codec', () => {
         await expectAsync(validateSerializedCBTForceV2(decoded.cbt)).toBeResolved();
 
         const fixture = createDirectMekRuntimeFixture();
-        const restored = await new ReadyMekUnitFactory({
-            initializeOptions: {
+        const restored = await CBTMekUnit.restoreFromEntity(
+            decodedUnit,
+            fixture.entity,
+            fixture.identity,
+            {
                 initializerRevision: 1,
                 profileId: 'pristine',
                 deployment: { id: 'default' },
                 scenario: { id: 'megamek', ruleset: 'core-2026' },
             },
-        }).restoreFromEntity(decodedUnit, fixture.entity, fixture.identity);
+        );
         const restoredUnit = restored.serialize();
         expect(restoredUnit.locationState).toEqual(originalUnit.locationState);
         expect(restoredUnit.turn.pendingFallConsequences)
@@ -110,7 +112,7 @@ describe('compact force storage codec', () => {
 
             faceId: face.id, amount: 3, target: 'pending',
         }).accepted).toBeTrue();
-        const ready = new ReadyMekUnit(
+        const ready = new CBTMekUnit(
             fixture.entity,
             fixture.identity,
             fixture.instance,
@@ -149,7 +151,7 @@ describe('compact force storage codec', () => {
                 ]]],
             }],
         } as const;
-        const force: SerializedClassicForce = {
+        const force: SerializedCBTForce = {
             ...source,
             cbt: { ...source.cbt!, history },
         };
@@ -161,17 +163,15 @@ describe('compact force storage codec', () => {
 
     it('stores production defaults implicitly and roster membership by unit index', async () => {
         const fixture = createDirectMekRuntimeFixture();
-        const ready = await new ReadyMekUnitFactory({
-            initializeOptions: {
+        const ready = await CBTMekUnit.createFromEntity({
+            identity: fixture.identity,
+            instanceId: 'unit:implicit-defaults',
+        }, fixture.entity, fixture.identity, {
                 initializerRevision: UNIT_STATE_INITIALIZER_REVISION,
                 profileId: DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
                 deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
                 scenario: { id: 'megamek', ruleset: 'core-2026' },
-            },
-        }).createFromEntity({
-            identity: fixture.identity,
-            instanceId: asUnitInstanceId('unit:implicit-defaults'),
-        }, fixture.entity, fixture.identity);
+        });
         const force = forceWithUnit(ready.serialize(), 'force:implicit-defaults', 'Implicit defaults');
         const stored = encodeForceForStorage(force);
         const compact = stored['cbt'] as Record<string, unknown>;
@@ -194,14 +194,17 @@ describe('compact force storage codec', () => {
             throw new Error('Implicit-default fixture did not decode as a ready Mek');
         }
         expect(entry.unit.deployment.values.crewAssignment.positions).toEqual([]);
-        const restored = await new ReadyMekUnitFactory({
-            initializeOptions: {
+        const restored = await CBTMekUnit.restoreFromEntity(
+            entry.unit,
+            fixture.entity,
+            fixture.identity,
+            {
                 initializerRevision: UNIT_STATE_INITIALIZER_REVISION,
                 profileId: DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
                 deployment: entry.unit.deployment.values,
                 scenario: { id: 'megamek', ruleset: 'core-2026' },
             },
-        }).restoreFromEntity(entry.unit, fixture.entity, fixture.identity);
+        );
         expect(restored.getCrewAssignment()).toEqual(ready.getCrewAssignment());
     });
 
@@ -213,7 +216,7 @@ describe('compact force storage codec', () => {
             2,
             false,
         )).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        const ready = new ReadyMekUnit(
+        const ready = new CBTMekUnit(
             fixture.entity,
             fixture.identity,
             fixture.instance,
@@ -234,21 +237,24 @@ describe('compact force storage codec', () => {
             throw new Error('Row-order fixture did not decode as a ready Mek');
         }
         expect(entry.unit.equipmentRowOrder).toEqual({ ranged: [1, 0] });
-        const restored = await new ReadyMekUnitFactory({
-            initializeOptions: {
+        const restored = await CBTMekUnit.restoreFromEntity(
+            entry.unit,
+            fixture.entity,
+            fixture.identity,
+            {
                 initializerRevision: 1,
                 profileId: 'pristine',
                 deployment: { id: 'default' },
                 scenario: { id: 'megamek', ruleset: 'core-2026' },
             },
-        }).restoreFromEntity(entry.unit, fixture.entity, fixture.identity);
+        );
         expect(restored.getInstance().snapshot().equipmentRowOrder).toEqual({ ranged: [1, 0] });
     });
 
     it('round-trips formation target groups under one compact metadata key', () => {
         const source = damagedForce();
         const sourceGroup = source.cbt.roster.groups[0];
-        const force: SerializedClassicForce = {
+        const force: SerializedCBTForce = {
             ...source,
             cbt: {
                 ...source.cbt,
@@ -288,8 +294,8 @@ describe('compact force storage codec', () => {
             uuid,
             sourceFormat: 'blk' as const,
         });
-        const ready = ReadyNonMekUnit.create(entity, {
-            instanceId: asUnitInstanceId('unit:compact-tank'),
+        const ready = CBTNonMekUnit.create(entity, {
+            instanceId: 'unit:compact-tank',
             identity,
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
@@ -348,7 +354,7 @@ describe('compact force storage codec', () => {
                 escalatingFailure: { sequence: 1, active: true },
             }),
         ]));
-        expect(ReadyNonMekUnit.restore(entry.unit, entity, identity).serialize()).toEqual(unit);
+        expect(CBTNonMekUnit.restore(entry.unit, entity, identity).serialize()).toEqual(unit);
         expect(entry.unit.pendingCombat?.damageTrackHits?.[0]?.hitTimestamps).toEqual([17]);
 
         const compact = stored['cbt'] as Record<string, unknown>;
@@ -374,8 +380,8 @@ describe('compact force storage codec', () => {
             uuid,
             sourceFormat: 'blk' as const,
         });
-        const ready = ReadyNonMekUnit.create(entity, {
-            instanceId: asUnitInstanceId('unit:compact-aero-heat'),
+        const ready = CBTNonMekUnit.create(entity, {
+            instanceId: 'unit:compact-aero-heat',
             identity,
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
@@ -443,7 +449,7 @@ describe('compact force storage codec', () => {
         expect(entry.unit.heat).toEqual(unit.heat);
         expect(entry.unit.turn?.controlRecovery).toEqual(unit.turn?.controlRecovery);
         expect(entry.unit.crewState?.[0]?.recoveryReadyTurn).toBe(1);
-        expect(ReadyNonMekUnit.restore(entry.unit, entity, identity).serialize()).toEqual(unit);
+        expect(CBTNonMekUnit.restore(entry.unit, entity, identity).serialize()).toEqual(unit);
     });
 
     it('accepts the canonical expanded V2 record without repacking it', () => {
@@ -461,7 +467,7 @@ describe('compact force storage codec', () => {
             unconscious: false,
             ejected: false,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        const ready = () => new ReadyMekUnit(
+        const ready = () => new CBTMekUnit(
             fixture.entity,
             fixture.identity,
             fixture.instance,
@@ -490,7 +496,7 @@ describe('compact force storage codec', () => {
     });
 });
 
-function damagedForce(): SerializedClassicForce {
+function damagedForce(): SerializedCBTForce {
     const fixture = createDirectMekRuntimeFixture();
     const face = [...fixture.index.armorFaces.values()].find(candidate => candidate.maximumPoints > 2)!;
     expect(fixture.instance.dispatch({
@@ -533,7 +539,7 @@ function damagedForce(): SerializedClassicForce {
             seatbeltFailures: [pilotId],
         },
     }).accepted).toBeTrue();
-    const ready = new ReadyMekUnit(
+    const ready = new CBTMekUnit(
         fixture.entity,
         fixture.identity,
         fixture.instance,
@@ -547,7 +553,7 @@ function forceWithUnit(
     unit: SerializedCBTUnitV2 | SerializedNonMekUnit,
     forceIdText: string,
     name: string,
-): SerializedClassicForce {
+): SerializedCBTForce {
     const forceId = asForceId(forceIdText);
     const cbt: SerializedCBTForceV2 = {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -566,15 +572,15 @@ function forceWithUnit(
             }],
         },
         encounter: {
-            encounterRevision: asStateRevision(0),
-            state: { schemaVersion: 2, encounterRevision: asStateRevision(0), facts: [] },
+            encounterRevision: 0,
+            state: { schemaVersion: 2, encounterRevision: 0, facts: [] },
         },
     };
     return {
         version: 2,
         timestamp: '2026-08-23T00:00:00.000Z',
         instanceId: forceId,
-        type: GameSystem.CLASSIC,
+        type: GameSystem.CBT,
         name,
         cbt,
     };

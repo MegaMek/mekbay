@@ -1137,10 +1137,10 @@ export class PageViewerComponent implements AfterViewInit {
         svg: SVGSVGElement,
         overlayMode: 'fixed' | 'page'
     ): void {
-        this.bindClassicInteractiveLayers(wrapper, unit, svg, overlayMode);
+        this.bindCBTInteractiveLayers(wrapper, unit, svg, overlayMode);
     }
 
-    private bindClassicInteractiveLayers(
+    private bindCBTInteractiveLayers(
         wrapper: HTMLDivElement,
         member: PageViewerMember,
         svg: SVGSVGElement,

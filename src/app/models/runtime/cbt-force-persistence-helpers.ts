@@ -13,26 +13,20 @@ import {
     type SerializedEncounterFactV2,
     type SerializedForceEncounterEntryV2,
 } from './persistence-v2';
-import {
-    asStateRevision,
-    asUnitInstanceId,
-    type StateRevision,
-    type UnitInstanceId,
-} from './runtime-state';
 
-export function nextForceRevision(revision: StateRevision): StateRevision {
+export function nextForceRevision(revision: number): number {
     if (revision >= Number.MAX_SAFE_INTEGER) throw new Error('Force revision is exhausted');
-    return asStateRevision(revision + 1);
+    return revision + 1;
 }
 
 export async function remapCBTForceCloneEnvelope(
     source: SerializedCBTForceV2,
 ): Promise<SerializedCBTForceV2> {
-    const instanceIds = new Map<UnitInstanceId, UnitInstanceId>(source.units.map(entry => [
+    const instanceIds = new Map<string, string>(source.units.map(entry => [
         entry.instanceId,
-        asUnitInstanceId(uuidv7()),
+        uuidv7(),
     ]));
-    const remapInstanceId = (instanceId: UnitInstanceId): UnitInstanceId => {
+    const remapInstanceId = (instanceId: string): string => {
         const remapped = instanceIds.get(instanceId);
         if (!remapped) throw new Error(`Clone references unknown unit ${instanceId}`);
         return remapped;
@@ -64,7 +58,7 @@ export async function remapCBTForceCloneEnvelope(
     return validateSerializedCBTForceV2({
         ...source,
         forceId: asForceId(uuidv7()),
-        forceRevision: asStateRevision(0),
+        forceRevision: 0,
         units,
         roster,
         encounter,
@@ -74,7 +68,7 @@ export async function remapCBTForceCloneEnvelope(
 
 export function pruneRemovedUnitsFromEncounter(
     encounter: SerializedForceEncounterEntryV2,
-    instanceIds: ReadonlySet<UnitInstanceId>,
+    instanceIds: ReadonlySet<string>,
 ): SerializedForceEncounterEntryV2 {
     const facts = encounter.state.facts.flatMap(fact => {
         const retained = pruneEncounterFact(fact, instanceIds);
@@ -97,7 +91,7 @@ export function pruneRemovedUnitsFromEncounter(
 
 function remapEncounterFact(
     fact: SerializedEncounterFactV2,
-    remapInstanceId: (instanceId: UnitInstanceId) => UnitInstanceId,
+    remapInstanceId: (instanceId: string) => string,
 ): SerializedEncounterFactV2 {
     const remapEndpoint = (endpoint: SerializedEncounterEndpointV2): SerializedEncounterEndpointV2 => ({
         ...endpoint,
@@ -126,7 +120,7 @@ function remapEncounterFact(
 
 function pruneEncounterFact(
     fact: SerializedEncounterFactV2,
-    instanceIds: ReadonlySet<UnitInstanceId>,
+    instanceIds: ReadonlySet<string>,
 ): SerializedEncounterFactV2 | null {
     if (fact.kind === 'target') return fact;
     if (fact.kind === 'cross-unit-effect') {

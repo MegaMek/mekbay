@@ -9,27 +9,20 @@ import type {
     CriticalSlotId,
     LocationId,
 } from '../../models/entity/entity-identifiers';
-import type { StateRevision } from '../../models/runtime/runtime-state';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
 import type {
     MekRecordSheetArmorFace,
     MekRecordSheetLocation,
     MekRecordSheetSnapshot,
 } from '../../models/runtime/mek-record-sheet';
-import {
-    MM_DATA_MEK_SHEET_BINDING_MANIFEST,
-    type MekSheetBindingManifestV1,
-} from '../../models/mek-sheet-binding';
+import { MM_DATA_MEK_SHEET_BINDING_MANIFEST, type MekSheetBindingManifestV1 } from '../../models/mek-sheet-binding';
 import {
     isCenterPanelTarget,
     isPointInCenterPanel,
     resolveCenterPanelCursorElements,
 } from '../../utils/record-sheet-center-panel.util';
 import { MEK_CREW_STATE_DISPLAYS } from '../../models/mek-record-sheet-controls';
-import {
-    formatPilotingDisplay,
-    UNIT_CONDITION_DEFINITIONS,
-} from '../../models/unit-status-presentation';
+import { formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS } from '../../models/unit-status-presentation';
 import {
     projectWeaponTargetPresentation,
     equipmentPanelRuntimeTarget,
@@ -61,123 +54,123 @@ export type MekRecordSheetInteraction =
         faceId: ArmorFaceId;
         locationId: LocationId;
         button: 'primary' | 'secondary';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'internal';
         locationId: LocationId;
         button: 'primary' | 'secondary';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'critical';
         slotId: CriticalSlotId;
         componentIds: readonly ComponentId[];
         button: 'primary' | 'secondary';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'shield';
         componentId: ComponentId;
         track: 'absorption' | 'capacity';
         button: 'primary' | 'secondary';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'system-critical';
         slotId: CriticalSlotId;
         system: string;
         level: number;
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'crew-wounds';
         positionId: CrewPositionId;
         wounds: number;
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'crew-skill';
         positionId: CrewPositionId;
         skill: 'gunnery' | 'piloting';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'crew-name';
         positionId: CrewPositionId;
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'crew-state-menu';
         positionId: CrewPositionId;
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'open-equipment';
         tab: 'weapons' | 'ammo';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'heat';
         heat: number;
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'heat-preview';
         heat: number;
         baselineHeat: number;
         element: SVGElement;
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'heat-preview-end';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'heat-overflow';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'apply-heat';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'heat-sinks-off';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'condition-menu';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'condition';
         condition: UnitConditionKey;
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'shutdown';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'location-condition-menu';
         locationId: LocationId;
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'inventory-selection';
         componentIds: readonly ComponentId[];
         mode?: string;
         range?: 'short' | 'medium' | 'long' | 'extreme';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'action-selection';
         target: AttackerActionTarget;
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>
     | Readonly<{
         kind: 'reference-table';
-        expectedRevision: StateRevision;
+        expectedRevision: number;
     }>;
 
 export type MekRecordSheetInteractionHandler = (
@@ -615,7 +608,7 @@ function renderConditions(
     snapshot: MekRecordSheetSnapshot,
     emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
     signal: AbortSignal,
-    revision: () => StateRevision,
+    revision: () => number,
     interactive: boolean,
 ): void {
     const active = snapshot.crippled
@@ -648,7 +641,7 @@ function bindHeatSinkControls(
     svg: SVGSVGElement,
     emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
     signal: AbortSignal,
-    revision: () => StateRevision,
+    revision: () => number,
     interactive: boolean,
 ): void {
     if (!interactive) return;
@@ -664,7 +657,7 @@ function bindShutdownControl(
     svg: SVGSVGElement,
     emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
     signal: AbortSignal,
-    revision: () => StateRevision,
+    revision: () => number,
     interactive: boolean,
 ): void {
     if (!interactive) return;
@@ -716,7 +709,7 @@ function renderLocation(
         element: SVGElement,
         interaction: (button: 'primary' | 'secondary') => MekRecordSheetInteraction,
     ) => void,
-    revision: () => StateRevision,
+    revision: () => number,
     emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
     signal: AbortSignal,
     interactive: boolean,
@@ -820,7 +813,7 @@ function renderShields(
         element: SVGElement,
         interaction: (button: 'primary' | 'secondary') => MekRecordSheetInteraction,
     ) => void,
-    revision: () => StateRevision,
+    revision: () => number,
     interactive: boolean,
     markChanges: boolean,
 ): void {
@@ -866,7 +859,7 @@ function renderSystemDamage(
         element: SVGElement,
         interaction: (button: 'primary' | 'secondary') => MekRecordSheetInteraction,
     ) => void,
-    revision: () => StateRevision,
+    revision: () => number,
 ): void {
     for (const [system, anchor] of Object.entries(SYSTEM_DAMAGE_ANCHORS)) {
         const slots = snapshot.criticalSlots.filter(slot =>
@@ -908,7 +901,7 @@ function renderArmorFace(
         element: SVGElement,
         interaction: (button: 'primary' | 'secondary') => MekRecordSheetInteraction,
     ) => void,
-    revision: () => StateRevision,
+    revision: () => number,
     interactive: boolean,
     markChanges: boolean,
     locationDestroyed: boolean,
@@ -986,7 +979,7 @@ function renderInventory(
     issues: string[],
     emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
     signal: AbortSignal,
-    revision: () => StateRevision,
+    revision: () => number,
     interactive: boolean,
 ): void {
     const layoutRows = [...svg.querySelectorAll<SVGElement>(manifest.selectors.inventoryRow)]
@@ -1369,7 +1362,7 @@ function bindInventoryRangeButtons(
     mode: string | undefined,
     emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
     signal: AbortSignal,
-    revision: () => StateRevision,
+    revision: () => number,
 ): void {
     for (const definition of INVENTORY_RANGE_BUTTONS) {
         root.querySelectorAll<SVGElement>(`:scope > .inventoryEntryButton${definition.selector}`)
@@ -1515,7 +1508,7 @@ function renderCrew(
     issues: string[],
     emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
     signal: AbortSignal,
-    revision: () => StateRevision,
+    revision: () => number,
     interactive: boolean,
 ): void {
     const permanentPsrModifier = snapshot.movement.projection.kind === 'supported'
@@ -1648,7 +1641,7 @@ function bindCrewControls(
     position: MekRecordSheetSnapshot['crew'][number],
     emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
     signal: AbortSignal,
-    revision: () => StateRevision,
+    revision: () => number,
 ): void {
     const occurrence = position.occurrence;
     svg.querySelectorAll<SVGElement>(`.crewNameButton[crewId="${occurrence}"]`)
@@ -1678,7 +1671,7 @@ function bindEquipmentOpeners(
     svg: SVGSVGElement,
     emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
     signal: AbortSignal,
-    revision: () => StateRevision,
+    revision: () => number,
     interactive: boolean,
 ): void {
     if (!interactive) return;
@@ -1697,7 +1690,7 @@ function bindHeatControls(
     svg: SVGSVGElement,
     emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
     signal: AbortSignal,
-    revision: () => StateRevision,
+    revision: () => number,
     interactive: boolean,
 ): void {
     if (!interactive) return;
@@ -1717,7 +1710,7 @@ function bindReferenceTable(
     svg: SVGSVGElement,
     emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
     signal: AbortSignal,
-    revision: () => StateRevision,
+    revision: () => number,
     interactive: boolean,
 ): void {
     if (!interactive) return;

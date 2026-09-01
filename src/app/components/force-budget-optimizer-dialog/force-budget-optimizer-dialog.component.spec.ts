@@ -13,7 +13,7 @@ import { OptionsService } from '../../services/options.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { ForceBudgetOptimizerDialogComponent } from './force-budget-optimizer-dialog.component';
 
-interface ClassicSkillPrioritiesTestApi {
+interface CBTSkillPrioritiesTestApi {
     gunnery: number;
     piloting: number;
     balance: number;
@@ -21,8 +21,8 @@ interface ClassicSkillPrioritiesTestApi {
 
 interface ForceBudgetOptimizerDialogTestApi {
     targetBudget(): number;
-    getCBTSkillPriorities(entity: BaseEntity): ClassicSkillPrioritiesTestApi;
-    getCBTSmartScore(priorities: ClassicSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
+    getCBTSkillPriorities(entity: BaseEntity): CBTSkillPrioritiesTestApi;
+    getCBTSmartScore(priorities: CBTSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
     selectBestAffordableState(states: readonly OptimizationStateTestApi[], targetBudget: number): OptimizationStateTestApi | null;
 }
 
@@ -36,7 +36,7 @@ interface OptimizationStateTestApi {
 describe('ForceBudgetOptimizerDialogComponent', () => {
     async function createComponent(forceTotal = 0, bvPvLimit = 0): Promise<ForceBudgetOptimizerDialogTestApi> {
         const force = {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             totalBv: jasmine.createSpy('totalBv').and.returnValue(forceTotal),
             units: signal([]),
             members: signal(forceTotal > 0
@@ -96,7 +96,7 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
         return entity;
     }
 
-    it('uses ranged DPT and physical plus kick damage as comparable Classic skill priorities', async () => {
+    it('uses ranged DPT and physical plus kick damage as comparable CBT skill priorities', async () => {
         const component = await createComponent();
         const assassin = createMekEntity(11.3, 5);
 

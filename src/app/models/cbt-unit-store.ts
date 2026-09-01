@@ -15,33 +15,16 @@ import {
     type SerializedCBTForceV2,
     type SerializedCBTUnitV2,
 } from './runtime/persistence-v2';
-import {
-    asUnitInstanceId,
-    type MekUnitRuntimeState,
-    type StateRevision,
-    type UnitInstanceId,
-} from './runtime/runtime-state';
-import { ReadyMekUnitService } from '../services/ready-mek-unit.service';
-import { ReadyNonMekUnitService } from '../services/ready-non-mek-unit.service';
-import { ReadyMekUnitFactory, type ReadyMekUnit } from './runtime/ready-unit-factory';
-import {
-    isReadyNonMekUnit,
-    isReadyMekUnit,
-    type ReadyTargetingReconciliation,
-    type ReadyClassicUnit,
-} from './runtime/ready-classic-unit';
-import { ReadyNonMekUnit } from './runtime/ready-non-mek-unit';
-import {
-    isSerializedNonMekUnit,
-    type SerializedNonMekUnit,
-} from './runtime/non-mek-unit-persistence';
+import { type MekUnitRuntimeState } from './runtime/runtime-state';
+import { CBTUnitService } from '../services/cbt-unit.service';
+import { CBTMekUnit } from './runtime/cbt-mek-unit';
+import { isCBTNonMekUnit, isCBTMekUnit, type CBTTargetingReconciliation, type CBTUnit } from './runtime/cbt-unit';
+import { CBTNonMekUnit } from './runtime/cbt-non-mek-unit';
+import { isSerializedNonMekUnit, type SerializedNonMekUnit } from './runtime/non-mek-unit-persistence';
 import { jsonValuesEqual } from '../utils/json-value.util';
 import type { UnitConditionKey } from './unit-condition.model';
 import type { ScenarioRules } from './runtime/unit-state-initializer';
-import {
-    DEFAULT_FORCE_DEPLOYMENT_ID,
-    scenarioRuleset,
-} from './runtime/unit-state-initializer';
+import { DEFAULT_FORCE_DEPLOYMENT_ID, scenarioRuleset } from './runtime/unit-state-initializer';
 import type { CBTRuleset } from './cbt-ruleset.model';
 import {
     canonicalizeCrewAssignment,
@@ -51,16 +34,14 @@ import {
 } from './runtime/crew-assignment';
 import type { ComponentId } from './entity/entity-identifiers';
 import type { MekEntity } from './entity/entities/mek/mek-entity';
-import type {
-    NonMekUnitCommand,
-} from './runtime/non-mek-unit-instance';
+import type { NonMekUnitCommand } from './runtime/non-mek-unit-instance';
 import type {
     CBTUnitAttackerTargetingCommand,
     CBTUnitCommand,
     CBTUnitSelectedWeaponFireCommand,
 } from './runtime/unit-instance';
 import { evaluateMekRuntimeCapability } from './runtime/mek-runtime-capability';
-import { readyUnitMatchesEntity } from './runtime/cbt-ready-unit-validation';
+import { cbtUnitMatchesEntity } from './runtime/cbt-unit-validation';
 import { canPerformMekAction } from './runtime/mek-action-availability';
 import type {
     EquipmentInteractionRegistry,
@@ -68,22 +49,13 @@ import type {
     HandlerQueryContext,
 } from '../services/equipment-interaction-registry.service';
 import { ToastService } from '../services/toast.service';
-import {
-    MAX_MEK_HEAT_VALUE_V2,
-    type MekHeatAutomationPolicyV2,
-} from './runtime/mek-heat-state-v2';
-import {
-    currentUnitBaseBattleValue,
-    pristineUnitBattleValue,
-} from './cbt-force-battle-value';
+import { MAX_MEK_HEAT_VALUE_V2, type MekHeatAutomationPolicyV2 } from './runtime/mek-heat-state-v2';
+import { currentUnitBaseBattleValue, pristineUnitBattleValue } from './cbt-force-battle-value';
 import type { CBTUnitSnapshot } from './cbt-unit-snapshot';
 import type { EquipmentRowOrderGroup } from './runtime/equipment-row-order';
 import type { RuntimeCommandCheckpoint } from './runtime/runtime-command-session';
-import {
-    deploymentFromPersistence,
-    scenarioRulesFromPersistence,
-} from './runtime/cbt-force-scenario';
-import { sameReadyUnitGameplayState } from './runtime/cbt-force-runtime-history';
+import { deploymentFromPersistence, scenarioRulesFromPersistence } from './runtime/cbt-force-scenario';
+import { sameCBTUnitGameplayState } from './runtime/cbt-force-runtime-history';
 import type {
     AttackerTargetingCommandResult,
     AttackerTargetingSnapshot,
@@ -98,11 +70,8 @@ import type {
     MekEquipmentChoiceToken,
     MekEquipmentInteraction,
     SelectedWeaponFireCommandResult,
-} from './cbt-force-api';
-import {
-    entityTargetRosterRow,
-    mekTargetRosterRow,
-} from './runtime/cbt-force-target-roster';
+} from './cbt-force.types';
+import { entityTargetRosterRow, mekTargetRosterRow } from './runtime/cbt-force-target-roster';
 import { entityUnitLabel } from './runtime/cbt-unit-label';
 import {
     decodeEquipmentChoiceToken,
@@ -117,138 +86,96 @@ import {
     publishC3EmergencyMasterNotices,
     validateCBTEncounterNetworks,
 } from './cbt-force-c3';
-import { prepareCBTForceRosterMutationPlan } from './runtime/cbt-force-roster-owner';
 import { pruneRemovedUnitsFromEncounter } from './runtime/cbt-force-persistence-helpers';
 
-interface CBTForceAuthorityState {
+interface CBTUnitStoreState {
     readonly envelope: SerializedCBTForceV2;
-    readonly units: ReadonlyMap<UnitInstanceId, ReadyClassicUnit>;
+    readonly units: ReadonlyMap<string, CBTUnit>;
     readonly scenario: ScenarioRules;
 }
 
-export interface PreparedUnitAdmission {
-    readonly expectedBinding: CBTForceAuthorityState | null;
-    readonly nextBinding: CBTForceAuthorityState;
-}
-
-export interface PreparedUnitRemoval {
-    readonly expectedBinding: CBTForceAuthorityState;
-    readonly nextBinding: CBTForceAuthorityState;
-}
-
-export interface PreparedUnitRepair {
-    readonly expectedBinding: CBTForceAuthorityState;
-    readonly nextBinding: CBTForceAuthorityState;
-}
-
-interface ReadyUnitPersistenceWitness {
-    readonly unit: ReadyClassicUnit;
-    readonly revision: StateRevision;
-}
-
-export interface PreparedUnitLoad {
-    readonly expectedBinding: CBTForceAuthorityState | null;
+export interface RestoredCBTUnits {
     readonly envelope: SerializedCBTForceV2;
-    readonly nextBinding: CBTForceAuthorityState | null;
-    readonly readyWitnesses: readonly ReadyUnitPersistenceWitness[];
-    readonly ignoredUnitIds: readonly UnitInstanceId[];
+    readonly binding: CBTUnitStoreState;
+    readonly warnings: readonly string[];
 }
 
-export interface CBTForceAuthorityFence {
-    readonly expectedBinding: CBTForceAuthorityState | null;
-    readonly units: ReadonlyMap<UnitInstanceId, ReadyClassicUnit>;
-    readonly runtimeRevisions: ReadonlyMap<UnitInstanceId, StateRevision>;
+export interface CBTUnitStoreSnapshot {
+    readonly binding: CBTUnitStoreState | null;
+    readonly units: ReadonlyMap<string, CBTUnit>;
+    readonly runtimeRevisions: ReadonlyMap<string, number>;
 }
 
-/** Owns ready Entity + sparse-runtime units behind the Classic force boundary. */
-export class CBTForceAuthority {
-    private binding: CBTForceAuthorityState | null = null;
+/** Owns the Entity + sparse runtime aggregate for each loaded CBT unit. */
+export class CBTUnitStore {
+    private binding: CBTUnitStoreState | null = null;
     public readonly c3 = new CBTForceC3(() => this.binding?.units ?? null);
 
     public constructor() {
         Object.seal(this);
     }
 
-    public async prepareLoad(
+    public async restore(
         envelope: SerializedCBTForceV2,
-        readyMeks: ReadyMekUnitService | undefined,
-        readyNonMekUnits: ReadyNonMekUnitService | undefined,
-    ): Promise<PreparedUnitLoad> {
-        const expectedBinding = this.binding;
+        cbtUnits: CBTUnitService,
+    ): Promise<RestoredCBTUnits> {
         const scenario = scenarioRulesFromPersistence(envelope.scenarioRules.values);
         const entries = envelope.units;
-        const ignoredUnitIds = new Set<UnitInstanceId>();
+        const invalidStateUnitIds = new Set<string>();
+        const warnings = new Set<string>();
         const restored = await Promise.all(entries.map(async entry => {
             try {
-                if (isSerializedNonMekUnit(entry.unit)) {
-                    if (!readyNonMekUnits) throw new Error('A Ready non-Mek service is required for non-Mek members');
-                    return await readyNonMekUnits.restoreReadyNonMekUnit({ saved: entry.unit });
-                }
-                if (!readyMeks) throw new Error('A Ready Mek service is required for Mek members');
-                return await readyMeks.restoreReadyMekV2({
-                    saved: entry.unit,
-                    deployment: deploymentFromPersistence(entry.unit.deployment.values),
-                    scenario,
-                    initialStateProfileId: entry.unit.baselineRefAtSave.initialStateProfile.profileId,
-                });
+                return { entry, unit: await cbtUnits.restore(entry.unit, scenario) };
             } catch {
-                ignoredUnitIds.add(entry.instanceId);
-                if (isSerializedNonMekUnit(entry.unit)) {
-                    if (!readyNonMekUnits) throw new Error('A Ready non-Mek service is required for non-Mek members');
-                    try {
-                        return await readyNonMekUnits.loadReadyNonMekUnit({
-                            identity: entry.unit.entity,
-                            instanceId: entry.instanceId,
-                            deployment: entry.unit.deployment.values,
-                            scenario,
-                        });
-                    } catch {
-                        try {
-                            return await readyNonMekUnits.loadReadyNonMekUnit({
-                                identity: entry.unit.entity,
-                                instanceId: entry.instanceId,
-                                deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
-                                scenario,
-                            });
-                        } catch {
-                            return null;
-                        }
-                    }
-                }
-                if (!readyMeks) throw new Error('A Ready Mek service is required for Mek members');
+                invalidStateUnitIds.add(entry.instanceId);
                 try {
-                    return await readyMeks.loadReadyMek({
-                        identity: entry.unit.entity,
+                    const deployment = isSerializedNonMekUnit(entry.unit)
+                        ? entry.unit.deployment.values
+                        : deploymentFromPersistence(entry.unit.deployment.values);
+                    const identity = entry.unit.entity;
+                    return { entry, unit: await cbtUnits.create({
+                        identity,
                         instanceId: entry.instanceId,
-                        deployment: deploymentFromPersistence(entry.unit.deployment.values),
+                        deployment,
                         scenario,
-                    });
+                    }) };
                 } catch {
                     try {
-                        return await readyMeks.loadReadyMek({
-                            identity: entry.unit.entity,
+                        const identity = entry.unit.entity;
+                        return { entry, unit: await cbtUnits.create({
+                            identity,
                             instanceId: entry.instanceId,
                             deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
                             scenario,
-                        });
+                        }) };
                     } catch {
-                        return null;
+                        warnings.add(`Unit "${entry.instanceId}" could not be identified and was skipped.`);
+                        return { entry, unit: null };
                     }
                 }
             }
         }));
-        const units = new Map<UnitInstanceId, ReadyClassicUnit>();
-        restored.forEach(ready => {
-            if (ready === null) return;
-            if (units.has(ready.instanceId)) throw new Error(`Duplicate restored V2 runtime ${ready.instanceId}`);
-            units.set(ready.instanceId, ready);
+        const units = new Map<string, CBTUnit>();
+        const retainedEntries: typeof entries[number][] = [];
+        restored.forEach(({ entry, unit }) => {
+            if (unit === null) return;
+            if (unit.instanceId !== entry.instanceId) {
+                warnings.add(`Unit "${entry.instanceId}" resolved with an invalid identity and was skipped.`);
+                return;
+            }
+            if (units.has(unit.instanceId)) {
+                warnings.add(`Duplicate unit "${unit.instanceId}" was skipped.`);
+                return;
+            }
+            units.set(unit.instanceId, unit);
+            retainedEntries.push(entry);
         });
-        const retainedEntries = entries.filter(entry => units.has(entry.instanceId));
+        const retainedUnitIds = new Set(retainedEntries.map(entry => entry.instanceId));
         const removedUnitIds = new Set(entries
-            .filter(entry => !units.has(entry.instanceId))
+            .filter(entry => !retainedUnitIds.has(entry.instanceId))
             .map(entry => entry.instanceId));
-        const serializedUnits = new Map<UnitInstanceId, SerializedCBTUnitV2 | SerializedNonMekUnit>();
-        const readyWitnesses = retainedEntries.map(entry => {
+        const serializedUnits = new Map<string, SerializedCBTUnitV2 | SerializedNonMekUnit>();
+        retainedEntries.forEach(entry => {
             const ready = units.get(entry.instanceId)!;
             const entity = ready.getUnit();
             const serialized = ready.serialize();
@@ -266,31 +193,28 @@ export class CBTForceAuthority {
                 throw new Error(`Restored V2 runtime ${entry.instanceId} disagrees with its persisted native source`);
             }
             if (entry.stateRevision !== ready.revision()) {
-                ignoredUnitIds.add(entry.instanceId);
+                invalidStateUnitIds.add(entry.instanceId);
             }
             serializedUnits.set(entry.instanceId, serialized);
-            return Object.freeze({
-                unit: ready,
-                revision: ready.revision(),
-            });
         });
         const hydratedUnits = retainedEntries.map(entry => Object.freeze({
             ...entry,
             stateRevision: serializedUnits.get(entry.instanceId)!.stateRevision,
             unit: serializedUnits.get(entry.instanceId)!,
         }));
-        let roster = envelope.roster;
-        for (const instanceId of removedUnitIds) {
-            const removal = prepareCBTForceRosterMutationPlan({
-                roster,
-                command: { kind: 'remove-member', instanceId },
-            });
-            if (removal.kind === 'ready') roster = removal.plan.nextRoster;
-            else if (removal.reason !== 'UNKNOWN_MEMBER') {
-                throw new Error(`Could not remove skipped V2 unit ${instanceId} from its roster`);
+        for (const instanceId of invalidStateUnitIds) {
+            if (!removedUnitIds.has(instanceId)) {
+                warnings.add(`Unit "${instanceId}" had invalid saved state; that state was ignored.`);
             }
         }
-        const hydratedEnvelope = await validateSerializedCBTForceV2({
+        const roster = Object.freeze({
+            ...envelope.roster,
+            groups: Object.freeze(envelope.roster.groups.map(group => Object.freeze({
+                ...group,
+                members: Object.freeze(group.members.filter(member => !removedUnitIds.has(member.instanceId))),
+            }))),
+        });
+        let hydratedEnvelope = await validateSerializedCBTForceV2({
             ...envelope,
             schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
             minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
@@ -303,32 +227,34 @@ export class CBTForceAuthority {
         });
         const encounter = decodeCBTEncounterStateV2(hydratedEnvelope.encounter.state).snapshot;
         if (!validateCBTEncounterNetworks(encounter.networks, units)) {
-            throw new Error('Restored C3 network facts are not canonical for the restored units');
+            warnings.add('C3 network data was invalid and was ignored.');
+            hydratedEnvelope = await validateSerializedCBTForceV2({
+                ...hydratedEnvelope,
+                encounter: Object.freeze({
+                    ...hydratedEnvelope.encounter,
+                    state: Object.freeze({
+                        ...hydratedEnvelope.encounter.state,
+                        facts: Object.freeze(hydratedEnvelope.encounter.state.facts.filter(
+                            fact => fact.kind !== 'network',
+                        )),
+                    }),
+                }),
+            });
         }
-        const nextBinding: CBTForceAuthorityState = Object.freeze({
+        const nextBinding: CBTUnitStoreState = Object.freeze({
             envelope: hydratedEnvelope,
             units,
             scenario,
         });
         return Object.freeze({
-            expectedBinding,
             envelope: hydratedEnvelope,
-            nextBinding,
-            readyWitnesses: Object.freeze(readyWitnesses),
-            ignoredUnitIds: Object.freeze([...ignoredUnitIds]),
+            binding: nextBinding,
+            warnings: Object.freeze([...warnings]),
         });
     }
 
-    public isPreparedLoadCurrent(prepared: PreparedUnitLoad): boolean {
-        if (this.binding !== prepared.expectedBinding) return false;
-        for (const witness of prepared.readyWitnesses) {
-            if (witness.unit.revision() !== witness.revision) return false;
-        }
-        return true;
-    }
-
-    public installLoad(prepared: PreparedUnitLoad): void {
-        this.binding = prepared.nextBinding;
+    public install(restored: RestoredCBTUnits): void {
+        this.binding = restored.binding;
         this.c3.reset();
     }
 
@@ -345,9 +271,9 @@ export class CBTForceAuthority {
         return this.binding?.envelope.history ?? null;
     }
 
-    public liveUnits(): readonly ReadyClassicUnit[] {
+    public liveUnits(): readonly CBTUnit[] {
         const binding = this.binding;
-        if (!binding) throw new Error('The force has no installed Classic authority');
+        if (!binding) throw new Error('The force has no installed CBT authority');
         const envelope = binding.envelope;
         const expected = envelope.units;
         if (expected.length !== binding.units.size
@@ -357,18 +283,18 @@ export class CBTForceAuthority {
         return Object.freeze(expected.map(entry => binding.units.get(entry.instanceId)!));
     }
 
-    public readyUnit(instanceId: UnitInstanceId): ReadyClassicUnit | null {
+    public cbtUnit(instanceId: string): CBTUnit | null {
         return this.binding?.units.get(instanceId) ?? null;
     }
 
-    public readyMekUnit(instanceId: UnitInstanceId): ReadyMekUnit | null {
-        const unit = this.readyUnit(instanceId);
-        return unit && isReadyMekUnit(unit) ? unit : null;
+    public mekUnit(instanceId: string): CBTMekUnit | null {
+        const unit = this.cbtUnit(instanceId);
+        return unit && isCBTMekUnit(unit) ? unit : null;
     }
 
-    public readyNonMekUnit(instanceId: UnitInstanceId): ReadyNonMekUnit | null {
-        const unit = this.readyUnit(instanceId);
-        return unit && isReadyNonMekUnit(unit) ? unit : null;
+    public nonMekUnit(instanceId: string): CBTNonMekUnit | null {
+        const unit = this.cbtUnit(instanceId);
+        return unit && isCBTNonMekUnit(unit) ? unit : null;
     }
 
     public commit(envelope: SerializedCBTForceV2): void {
@@ -393,14 +319,12 @@ export class CBTForceAuthority {
         });
     }
 
-    /** Captures the exact retained owner/runtime revisions before admission awaits. */
-    public captureFence(): CBTForceAuthorityFence {
-        const expectedBinding = this.binding;
-        const live = expectedBinding
-            ? this.liveUnits()
-            : Object.freeze([] as ReadyClassicUnit[]);
+    /** Snapshot used only when work continues after the CBT owner queue is released. */
+    public snapshot(): CBTUnitStoreSnapshot {
+        const binding = this.binding;
+        const live = binding ? [...binding.units.values()] : [];
         return Object.freeze({
-            expectedBinding,
+            binding,
             units: new Map(live.map(unit => [unit.instanceId, unit] as const)),
             runtimeRevisions: new Map(live.map(unit => [
                 unit.instanceId,
@@ -409,133 +333,62 @@ export class CBTForceAuthority {
         });
     }
 
-    public isFenceCurrent(fence: CBTForceAuthorityFence): boolean {
+    public isSnapshotCurrent(snapshot: CBTUnitStoreSnapshot): boolean {
         const binding = this.binding;
-        if (binding !== fence.expectedBinding || (binding?.units.size ?? 0) !== fence.units.size) return false;
-        for (const [instanceId, unit] of fence.units) {
+        if (binding !== snapshot.binding || (binding?.units.size ?? 0) !== snapshot.units.size) return false;
+        for (const [instanceId, unit] of snapshot.units) {
             if (binding?.units.get(instanceId) !== unit
-                || unit.revision() !== fence.runtimeRevisions.get(instanceId)) return false;
+                || unit.revision() !== snapshot.runtimeRevisions.get(instanceId)) return false;
         }
         return true;
     }
 
-    public captureWholeOwnerFence(): CBTForceAuthorityFence {
-        const binding = this.binding;
-        const units = binding ? [...binding.units.values()] : [];
-        return Object.freeze({
-            expectedBinding: binding,
-            units: new Map(units.map(unit => [unit.instanceId, unit] as const)),
-            runtimeRevisions: new Map(units.map(unit => [
-                unit.instanceId,
-                unit.revision(),
-            ] as const)),
-        });
-    }
-
-    /**
-     * Builds the complete next owner binding without installing it. Existing
-     * runtime snapshots must still equal the sealed admission envelope, which
-     * fences concurrent commands, redeployments, saves, and reloads.
-     */
-    public prepareAdmission(
+    public add(
         envelope: SerializedCBTForceV2,
-        candidate: ReadyClassicUnit,
-    ): PreparedUnitAdmission {
-        const expectedBinding = this.binding;
-        const existing = expectedBinding
+        candidate: CBTUnit,
+    ): void {
+        const existing = this.binding
             ? this.liveUnits()
-            : Object.freeze([] as ReadyClassicUnit[]);
+            : Object.freeze([] as CBTUnit[]);
         if (existing.some(unit => unit.instanceId === candidate.instanceId)) {
             throw new Error(`V2 runtime ${candidate.instanceId} is already owned`);
         }
 
-        const units = new Map<UnitInstanceId, ReadyClassicUnit>(
+        const units = new Map<string, CBTUnit>(
             existing.map(unit => [unit.instanceId, unit] as const),
         );
         units.set(candidate.instanceId, candidate);
-        const entries = envelope.units;
-        if (entries.length !== units.size || entries.some(entry => !units.has(entry.instanceId))) {
-            throw new Error('Prepared V2 admission does not exactly cover the next runtime owner set');
-        }
-        for (const entry of entries) {
-            const current = units.get(entry.instanceId)!;
-            if (current.revision() !== entry.stateRevision
-                || current.instanceId !== entry.instanceId) {
-                throw new Error(`V2 runtime ${entry.instanceId} changed while admission was prepared`);
-            }
-        }
-
-        const nextBinding: CBTForceAuthorityState = Object.freeze({
-            envelope,
-            units,
-            scenario: scenarioRulesFromPersistence(envelope.scenarioRules.values),
-        });
-        return Object.freeze({ expectedBinding, nextBinding });
+        this.setUnits(envelope, units);
     }
 
-    public canInstallAdmission(prepared: PreparedUnitAdmission): boolean {
-        return this.binding === prepared.expectedBinding;
-    }
-
-    /** Prevalidated synchronous pointer install; deliberately invokes no user code. */
-    public installAdmission(prepared: PreparedUnitAdmission): void {
-        this.binding = prepared.nextBinding;
-    }
-
-    /** Synchronous rollback paired with installAdmission inside the owner CAS. */
-    public rollbackAdmission(prepared: PreparedUnitAdmission): void {
-        this.binding = prepared.expectedBinding;
-    }
-
-    public prepareRemoval(
+    public remove(
         envelope: SerializedCBTForceV2,
-        instanceIds: readonly UnitInstanceId[],
-    ): PreparedUnitRemoval {
-        const expectedBinding = this.binding;
-        if (!expectedBinding) throw new Error('The force has no installed V2 unit owner');
+        instanceIds: readonly string[],
+    ): void {
+        if (!this.binding) throw new Error('The force has no installed V2 unit owner');
         const units = new Map(this.liveUnits().map(unit => [unit.instanceId, unit] as const));
         for (const instanceId of instanceIds) {
             if (!units.delete(instanceId)) throw new Error(`Ready V2 runtime ${instanceId} is not owned`);
         }
-        const entries = envelope.units;
-        if (entries.length !== units.size || entries.some(entry => !units.has(entry.instanceId))) {
-            throw new Error('Prepared V2 removal does not exactly cover the next runtime owner set');
-        }
-        const nextBinding: CBTForceAuthorityState = Object.freeze({
-            ...expectedBinding,
-            envelope,
-            units,
-        });
-        return Object.freeze({ expectedBinding, nextBinding });
-    }
-
-    public installRemoval(prepared: PreparedUnitRemoval): void {
-        if (this.binding !== prepared.expectedBinding) {
-            throw new Error('The V2 unit owner changed before removal');
-        }
-        this.binding = prepared.nextBinding;
-    }
-
-    public rollbackRemoval(prepared: PreparedUnitRemoval): void {
-        this.binding = prepared.expectedBinding;
+        this.setUnits(envelope, units);
     }
 
     public async buildRepairCandidates(
-        instanceIds: readonly UnitInstanceId[],
-    ): Promise<ReadonlyMap<UnitInstanceId, ReadyClassicUnit>> {
+        instanceIds: readonly string[],
+    ): Promise<ReadonlyMap<string, CBTUnit>> {
         const binding = this.binding;
         if (!binding) throw new Error('The force has no installed V2 unit owner');
         const units = new Map(this.liveUnits().map(unit => [unit.instanceId, unit] as const));
         const repaired = await Promise.all(instanceIds.map(async instanceId => {
             const current = units.get(instanceId);
             if (!current) throw new Error(`Ready V2 runtime ${instanceId} is not owned`);
-            const candidate = isReadyMekUnit(current)
-                ? await ReadyMekUnitFactory.repair(current, binding.scenario)
-                : isReadyNonMekUnit(current)
-                    ? ReadyNonMekUnit.repair(current)
+            const candidate = isCBTMekUnit(current)
+                ? await CBTMekUnit.repair(current, binding.scenario)
+                : isCBTNonMekUnit(current)
+                    ? CBTNonMekUnit.repair(current)
                     : null;
-            if (candidate === null) throw new Error(`Unknown Classic runtime family ${instanceId}`);
-            return sameReadyUnitGameplayState(current, candidate)
+            if (candidate === null) throw new Error(`Unknown CBT runtime family ${instanceId}`);
+            return sameCBTUnitGameplayState(current, candidate)
                 ? null
                 : [instanceId, candidate] as const;
         }));
@@ -544,28 +397,28 @@ export class CBTForceAuthority {
 
     public async buildRuntimeCommandCandidates(
         checkpoint: RuntimeCommandCheckpoint,
-    ): Promise<ReadonlyMap<UnitInstanceId, ReadyClassicUnit>> {
+    ): Promise<ReadonlyMap<string, CBTUnit>> {
         const binding = this.binding;
-        if (!binding) throw new Error('The force has no installed Classic authority');
+        if (!binding) throw new Error('The force has no installed CBT authority');
         const restored = await Promise.all(checkpoint.units.map(async row => {
             const current = binding.units.get(row.instanceId);
             if (!current) throw new Error(`Undo checkpoint references unknown unit ${row.instanceId}`);
-            let candidate: ReadyClassicUnit;
+            let candidate: CBTUnit;
             if (isSerializedNonMekUnit(row.unit)) {
-                if (!isReadyNonMekUnit(current)) {
+                if (!isCBTNonMekUnit(current)) {
                     throw new Error(`Undo checkpoint family changed for ${row.instanceId}`);
                 }
-                candidate = ReadyNonMekUnit.restore(
+                candidate = CBTNonMekUnit.restore(
                     row.unit,
                     current.getUnit(),
                     current.getSourceRef(),
                     current.getNativeSource(),
                 );
             } else {
-                if (!isReadyMekUnit(current)) {
+                if (!isCBTMekUnit(current)) {
                     throw new Error(`Undo checkpoint family changed for ${row.instanceId}`);
                 }
-                candidate = await ReadyMekUnitFactory.restoreSnapshot(current, row.unit, binding.scenario);
+                candidate = await CBTMekUnit.restoreSnapshot(current, row.unit, binding.scenario);
             }
             if (!jsonValuesEqual(candidate.serialize(), row.unit)) {
                 throw new Error(`Undo checkpoint could not be restored exactly for ${row.instanceId}`);
@@ -575,14 +428,11 @@ export class CBTForceAuthority {
         return new Map(restored);
     }
 
-    public prepareRepair(
+    public replace(
         envelope: SerializedCBTForceV2,
-        replacements: ReadonlyMap<UnitInstanceId, ReadyClassicUnit>,
-        fence: CBTForceAuthorityFence,
-    ): PreparedUnitRepair {
-        if (!this.isFenceCurrent(fence) || !fence.expectedBinding) {
-            throw new Error('The V2 unit owner changed before repair installation');
-        }
+        replacements: ReadonlyMap<string, CBTUnit>,
+    ): void {
+        if (!this.binding) throw new Error('The force has no installed V2 unit owner');
         const units = new Map(this.liveUnits().map(unit => [unit.instanceId, unit] as const));
         for (const [instanceId, replacement] of replacements) {
             if (!units.has(instanceId) || replacement.instanceId !== instanceId) {
@@ -590,46 +440,30 @@ export class CBTForceAuthority {
             }
             units.set(instanceId, replacement);
         }
-        const entries = envelope.units;
-        if (entries.length !== units.size || entries.some(entry => !units.has(entry.instanceId))) {
-            throw new Error('Prepared V2 repair does not exactly cover the runtime owner set');
+        this.setUnits(envelope, units);
+    }
+
+    private setUnits(
+        envelope: SerializedCBTForceV2,
+        units: ReadonlyMap<string, CBTUnit>,
+    ): void {
+        if (envelope.units.length !== units.size
+            || envelope.units.some(entry => !units.has(entry.instanceId))) {
+            throw new Error('CBT envelope and installed units disagree');
         }
-        for (const entry of entries) {
-            const unit = units.get(entry.instanceId)!;
-            if (unit.revision() !== entry.stateRevision
-                || !jsonValuesEqual(unit.serialize(), entry.unit)) {
-                throw new Error(`Prepared V2 repair does not match runtime ${entry.instanceId}`);
-            }
-        }
-        return Object.freeze({
-            expectedBinding: fence.expectedBinding,
-            nextBinding: Object.freeze({
-                ...fence.expectedBinding,
-                envelope,
-                units,
-                scenario: scenarioRulesFromPersistence(envelope.scenarioRules.values),
-            }),
+        this.binding = Object.freeze({
+            envelope,
+            units,
+            scenario: scenarioRulesFromPersistence(envelope.scenarioRules.values),
         });
-    }
-
-    public installRepair(prepared: PreparedUnitRepair): void {
-        if (this.binding !== prepared.expectedBinding) {
-            throw new Error('The V2 unit owner changed before repair');
-        }
-        this.binding = prepared.nextBinding;
         this.c3.reset();
     }
 
-    public rollbackRepair(prepared: PreparedUnitRepair): void {
-        this.binding = prepared.expectedBinding;
-        this.c3.reset();
-    }
-
-    public instanceIds(): readonly UnitInstanceId[] {
+    public instanceIds(): readonly string[] {
         return Object.freeze([...(this.binding?.units.keys() ?? [])]);
     }
 
-    public ruleset(instanceId: UnitInstanceId): CBTRuleset | null {
+    public ruleset(instanceId: string): CBTRuleset | null {
         const binding = this.binding;
         return binding?.units.has(instanceId) === true
             ? scenarioRuleset(binding.scenario)
@@ -640,32 +474,32 @@ export class CBTForceAuthority {
         return this.binding?.scenario ?? null;
     }
 
-    public unitDestroyed(instanceId: UnitInstanceId): boolean | null {
-        const unit = this.readyUnit(instanceId);
+    public unitDestroyed(instanceId: string): boolean | null {
+        const unit = this.cbtUnit(instanceId);
         return unit?.captureRuntime().query.destroyed() ?? null;
     }
 
-    public unitCrewAssignment(instanceId: UnitInstanceId): CrewAssignment | null {
-        return this.readyUnit(instanceId)?.getCrewAssignment() ?? null;
+    public unitCrewAssignment(instanceId: string): CrewAssignment | null {
+        return this.cbtUnit(instanceId)?.getCrewAssignment() ?? null;
     }
 
-    public unitConditions(instanceId: UnitInstanceId): readonly UnitConditionKey[] | null {
-        const unit = this.readyUnit(instanceId);
+    public unitConditions(instanceId: string): readonly UnitConditionKey[] | null {
+        const unit = this.cbtUnit(instanceId);
         return unit?.captureRuntime().query.conditions() ?? null;
     }
 
-    public unitCurrentBaseBattleValue(instanceId: UnitInstanceId): number | null {
-        const unit = this.readyUnit(instanceId);
+    public unitCurrentBaseBattleValue(instanceId: string): number | null {
+        const unit = this.cbtUnit(instanceId);
         return unit ? currentUnitBaseBattleValue(unit) : null;
     }
 
-    public unitPristineBattleValue(instanceId: UnitInstanceId): number | null {
-        const unit = this.readyUnit(instanceId);
+    public unitPristineBattleValue(instanceId: string): number | null {
+        const unit = this.cbtUnit(instanceId);
         return unit ? pristineUnitBattleValue(unit) : null;
     }
 
-    public unitSnapshot(instanceId: UnitInstanceId): CBTUnitSnapshot | null {
-        const unit = this.readyUnit(instanceId);
+    public unitSnapshot(instanceId: string): CBTUnitSnapshot | null {
+        const unit = this.cbtUnit(instanceId);
         if (!unit) return null;
         const runtime = unit.captureRuntime();
         const nativeSource = unit.getNativeSource();
@@ -683,11 +517,11 @@ export class CBTForceAuthority {
     }
 
     public dispatchNonMekUnitCommand(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: NonMekUnitCommand,
         forceReadOnly: boolean,
     ): CBTNonMekUnitCommandResult {
-        const unit = this.readyNonMekUnit(instanceId);
+        const unit = this.nonMekUnit(instanceId);
         if (!unit) {
             return Object.freeze({
                 accepted: true,
@@ -707,11 +541,11 @@ export class CBTForceAuthority {
     }
 
     public dispatchMekUnitCommand(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitCommand,
         forceReadOnly: boolean,
     ): CBTMekUnitCommandResult {
-        const unit = this.readyMekUnit(instanceId);
+        const unit = this.mekUnit(instanceId);
         if (!unit) {
             return Object.freeze({ accepted: true, changed: false, state: null });
         }
@@ -727,7 +561,7 @@ export class CBTForceAuthority {
     }
 
     public attackerTargetingSnapshot(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         registry: TargetRegistrySnapshot,
     ): AttackerTargetingSnapshot | null {
         const unit = this.binding?.units.get(instanceId);
@@ -742,7 +576,7 @@ export class CBTForceAuthority {
     }
 
     public dispatchAttackerTargeting(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitAttackerTargetingCommand,
         registry: TargetRegistrySnapshot,
         networks: readonly EncounterNetwork[],
@@ -766,7 +600,7 @@ export class CBTForceAuthority {
     }
 
     public dispatchEquipmentRowOrder(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         group: EquipmentRowOrderGroup,
         permutation: readonly number[],
         rowCount: number,
@@ -785,14 +619,14 @@ export class CBTForceAuthority {
     }
 
     public dispatchSelectedWeaponFire(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitSelectedWeaponFireCommand,
         registry: TargetRegistrySnapshot,
         networks: readonly EncounterNetwork[],
         forceReadOnly: boolean,
     ): SelectedWeaponFireCommandResult {
         const binding = this.binding;
-        const unit = this.readyUnit(instanceId);
+        const unit = this.cbtUnit(instanceId);
         if (!binding || !unit) {
             return Object.freeze({
                 accepted: true,
@@ -807,8 +641,8 @@ export class CBTForceAuthority {
 
     public prepareTargetingReconciliation(
         registry: TargetRegistrySnapshot,
-    ): readonly ReadyTargetingReconciliation[] {
-        const plans: ReadyTargetingReconciliation[] = [];
+    ): readonly CBTTargetingReconciliation[] {
+        const plans: CBTTargetingReconciliation[] = [];
         for (const unit of this.binding?.units.values() ?? []) {
             const plan = unit.planTargetingReconciliation(registry);
             if (plan !== null) plans.push(plan);
@@ -818,28 +652,27 @@ export class CBTForceAuthority {
 
     /** Installs plans prepared immediately before the synchronous registry commit. */
     public installTargetingReconciliation(
-        prepared: readonly ReadyTargetingReconciliation[],
+        prepared: readonly CBTTargetingReconciliation[],
     ): void {
         for (const plan of prepared) plan.install();
     }
 
     public targetRoster(forceInstanceId: string): readonly InventoryControlTargetRosterRow[] {
         return Object.freeze([...(this.binding?.units.values() ?? [])]
-            .flatMap(unit => isReadyMekUnit(unit)
+            .flatMap(unit => isCBTMekUnit(unit)
                 ? [mekTargetRosterRow(forceInstanceId, unit)]
-                : isReadyNonMekUnit(unit)
+                : isCBTNonMekUnit(unit)
                     ? [entityTargetRosterRow(forceInstanceId, unit)]
                     : []));
     }
 
-    public crewProfile(instanceId: UnitInstanceId): CrewAssignment | null {
+    public crewProfile(instanceId: string): CrewAssignment | null {
         return this.binding?.units.get(instanceId)?.getCrewAssignment() ?? null;
     }
 
     public async replaceCrewProfile(
-        instanceId: UnitInstanceId,
+        instanceId: string,
         positions: readonly CrewAssignmentPosition[],
-        readyMeks: ReadyMekUnitService,
         isReadOnly: () => boolean,
         isOwnerCurrent: () => boolean,
         publishChanged: () => void,
@@ -863,18 +696,18 @@ export class CBTForceAuthority {
         }
         if (jsonValuesEqual(assignment, current.getCrewAssignment())) return current.getCrewAssignment();
 
-        let replacement: ReadyClassicUnit;
+        let replacement: CBTUnit;
         try {
-            if (isReadyMekUnit(current)) {
-                replacement = await readyMeks.redeployReadyMekV2({
+            if (isCBTMekUnit(current)) {
+                replacement = await CBTMekUnit.redeployCrew(
                     current,
-                    crewAssignment: assignment,
-                    scenario: binding.scenario,
-                });
-            } else if (isReadyNonMekUnit(current)) {
-                replacement = ReadyNonMekUnit.redeploy(current, assignment);
+                    assignment,
+                    binding.scenario,
+                );
+            } else if (isCBTNonMekUnit(current)) {
+                replacement = CBTNonMekUnit.redeploy(current, assignment);
             } else {
-                throw new Error(`Unknown Classic runtime family ${instanceId}`);
+                throw new Error(`Unknown CBT runtime family ${instanceId}`);
             }
             // Force the exact persistence codec before installing the candidate.
             const serialized = replacement.serialize();
@@ -882,7 +715,7 @@ export class CBTForceAuthority {
                 || serialized.instanceId !== instanceId
                 || serialized.stateRevision !== replacement.revision()
                 || replacement.getUnit() !== current.getUnit()
-                || !readyUnitMatchesEntity(replacement, current.getUnit())) {
+                || !cbtUnitMatchesEntity(replacement, current.getUnit())) {
                 throw new Error('Redeployed Ready unit changed owner identity or native source');
             }
         } catch {
@@ -924,7 +757,7 @@ export class CBTForceAuthority {
         const rows: MekEquipmentInteraction[] = [];
         const units = [...owner.units].sort(([left], [right]) => String(left).localeCompare(String(right)));
         for (const [instanceId, unit] of units) {
-            if (!isReadyMekUnit(unit)) continue;
+            if (!isCBTMekUnit(unit)) continue;
             const entity = unit.getUnit();
             const runtime = unit.getInstance();
             if (evaluateMekRuntimeCapability(entity).readiness !== 'ready'
@@ -1025,7 +858,7 @@ export class CBTForceAuthority {
         return Object.freeze(rows);
     }
 
-    public equipmentChoiceInstanceId(token: MekEquipmentChoiceToken): UnitInstanceId | null {
+    public equipmentChoiceInstanceId(token: MekEquipmentChoiceToken): string | null {
         return decodeEquipmentChoiceToken(token)?.instanceId ?? null;
     }
 
@@ -1084,7 +917,7 @@ export class CBTForceAuthority {
         if (!isOwnerCurrent()) return rejectedEquipmentChoice('OWNER_CHANGED');
         const owner = this.binding;
         const candidate = owner?.units.get(selected.instanceId);
-        if (!owner || !candidate || !isReadyMekUnit(candidate)) return rejectedEquipmentChoice('OWNER_CHANGED');
+        if (!owner || !candidate || !isCBTMekUnit(candidate)) return rejectedEquipmentChoice('OWNER_CHANGED');
         const unit = candidate;
         const entity = unit.getUnit();
         const runtime = unit.getInstance();
@@ -1180,9 +1013,9 @@ export class CBTForceAuthority {
         toast: Pick<ToastService, 'showToast'>,
     ): CBTForceEndTurnAllResult {
         const owner = this.binding;
-        const retained: Array<readonly [UnitInstanceId, ReadyClassicUnit]> = owner
+        const retained: Array<readonly [string, CBTUnit]> = owner
             ? [...owner.units].flatMap(([instanceId, unit]) =>
-                isReadyMekUnit(unit) || isReadyNonMekUnit(unit)
+                isCBTMekUnit(unit) || isCBTNonMekUnit(unit)
                     ? [[instanceId, unit] as const]
                     : [])
             : [];
@@ -1195,11 +1028,11 @@ export class CBTForceAuthority {
             })),
         ]);
 
-        const selectedPolicy = retained.some(([, unit]) => isReadyMekUnit(unit))
+        const selectedPolicy = retained.some(([, unit]) => isCBTMekUnit(unit))
             ? policy()
             : 'automatic';
         for (const [instanceId, unit] of retained) {
-            if (!isReadyMekUnit(unit)) continue;
+            if (!isCBTMekUnit(unit)) continue;
             const entity = unit.getUnit();
             if (evaluateMekRuntimeCapability(entity).readiness !== 'ready') {
                 return frozenEndTurnAllResult(false, false, preflightFailureRows(
@@ -1244,7 +1077,7 @@ export class CBTForceAuthority {
         }
 
         const c3Plans = new Map(retained.flatMap(([instanceId, unit]) =>
-            isReadyMekUnit(unit)
+            isCBTMekUnit(unit)
                 ? [[instanceId, this.c3.planEmergencyMasterEndTurn(instanceId, configuredNetworks)] as const]
                 : []));
         const results: CBTForceEndTurnUnitResult[] = [];
@@ -1254,17 +1087,17 @@ export class CBTForceAuthority {
             let accepted = false;
             let reason: string | undefined;
             try {
-                const reduction = isReadyMekUnit(unit)
+                const reduction = isCBTMekUnit(unit)
                     ? unit.endTurn(selectedPolicy)
-                    : isReadyNonMekUnit(unit)
+                    : isCBTNonMekUnit(unit)
                         ? unit.endTurn()
                         : null;
-                if (reduction === null) throw new Error('Unsupported Classic unit family');
+                if (reduction === null) throw new Error('Unsupported CBT unit family');
                 accepted = reduction.accepted;
             } catch (error) {
                 reason = error instanceof Error ? error.message : 'Retained V2 end-turn failed';
             }
-            const c3 = accepted && isReadyMekUnit(unit)
+            const c3 = accepted && isCBTMekUnit(unit)
                 ? this.c3.settleEmergencyMasterEndTurn(c3Plans.get(instanceId) ?? null)
                 : emptyC3EmergencyMasterMutation();
             publishC3EmergencyMasterNotices(c3.notices, toast);
@@ -1282,7 +1115,7 @@ export class CBTForceAuthority {
         if (reconciled.changedUnitIds.length > 0) {
             for (let index = 0; index < results.length; index += 1) {
                 const row = results[index]!;
-                if (!reconciled.changedUnitIds.includes(asUnitInstanceId(row.instanceId))) continue;
+                if (!reconciled.changedUnitIds.includes(row.instanceId)) continue;
                 results[index] = Object.freeze({ ...row, changed: true });
             }
             v2Changed = true;
@@ -1325,8 +1158,8 @@ function frozenEndTurnAllResult(
 }
 
 function preflightFailureRows(
-    retainedIds: readonly UnitInstanceId[],
-    failedId: UnitInstanceId,
+    retainedIds: readonly string[],
+    failedId: string,
     reason: string,
 ): readonly CBTForceEndTurnUnitResult[] {
     return Object.freeze([

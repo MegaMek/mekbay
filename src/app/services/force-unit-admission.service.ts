@@ -4,14 +4,10 @@
 import { inject, Injectable } from '@angular/core';
 import { ASForceUnit } from '../models/as-force-unit.model';
 import { ASForce } from '../models/as-force.model';
-import {
-    CBTForce,
-    type CBTDirectUnitAdmissionResult,
-} from '../models/cbt-force.model';
+import { CBTForce, type CBTDirectUnitAdmissionResult } from '../models/cbt-force.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
 import type { Force, UnitGroup } from '../models/force.model';
 import type { UnitSummary } from '../models/unit-summary.model';
-import type { UnitInstanceId } from '../models/runtime/runtime-state';
 import { DEFAULT_FORCE_DEPLOYMENT_ID } from '../models/runtime/unit-state-initializer';
 import {
     MM_DATA_UNIT_PROVIDER_ID,
@@ -19,10 +15,7 @@ import {
     type UnitProviderId,
     type UnitUuid,
 } from './unit-catalog/unit-catalog.types';
-import {
-    type CBTForceMember,
-    type ForceMember,
-} from '../models/force-member.model';
+import { type CBTForceMember, type ForceMember } from '../models/force-member.model';
 import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
 import { OptionsService } from './options.service';
 
@@ -37,10 +30,10 @@ export interface ForceUnitAdmissionRequest {
     readonly gunnerySkill?: number;
     readonly pilotingSkill?: number;
     readonly commander?: boolean;
-    readonly instanceId?: string | UnitInstanceId;
+    readonly instanceId?: string | string;
 }
 
-export interface ClassicUnitIdentityAdmissionRequest {
+export interface CBTUnitIdentityAdmissionRequest {
     readonly force: CBTForce;
     readonly identity: Readonly<{ readonly provider: UnitProviderId; readonly uuid: UnitUuid }>;
     readonly group?: UnitGroup;
@@ -49,11 +42,11 @@ export interface ClassicUnitIdentityAdmissionRequest {
     readonly gunnerySkill?: number;
     readonly pilotingSkill?: number;
     readonly commander?: boolean;
-    readonly instanceId?: string | UnitInstanceId;
+    readonly instanceId?: string | string;
 }
 
 /**
- * The single whole-unit admission selector. Classic always installs a native
+ * The single whole-unit admission selector. CBT always installs a native
  * Entity + Rules + sparse runtime; Alpha Strike owns its separate ForceUnit.
  */
 @Injectable({ providedIn: 'root' })
@@ -61,20 +54,20 @@ export class ForceUnitAdmissionService {
     private readonly options = inject(OptionsService);
 
     async admit(request: ForceUnitAdmissionRequest): Promise<ForceUnitAdmission> {
-        if (request.force instanceof CBTForce) return this.admitClassicUnit(request);
+        if (request.force instanceof CBTForce) return this.admitCBTUnit(request);
         const unit = await this.createAlphaStrikeUnit(request);
         this.applyRequestedSkills(unit, request);
         return unit;
     }
 
-    private async admitClassicUnit(
+    private async admitCBTUnit(
         request: ForceUnitAdmissionRequest,
     ): Promise<CBTForceMember> {
-        if (!(request.force instanceof CBTForce) || !isNativeClassicSummary(request.summary)) {
+        if (!(request.force instanceof CBTForce) || !isNativeCBTSummary(request.summary)) {
             throw new Error(`CBT runtime is not available for "${request.summary.name}"`);
         }
 
-        return this.admitClassicIdentity({
+        return this.admitCBTIdentity({
             ...request,
             force: request.force,
             identity: Object.freeze({
@@ -84,9 +77,9 @@ export class ForceUnitAdmissionService {
         });
     }
 
-    /** Entity-native admission used when a loaded Classic member is cloned or transferred. */
-    async admitClassicIdentity(
-        request: ClassicUnitIdentityAdmissionRequest,
+    /** Entity-native admission used when a loaded CBT member is cloned or transferred. */
+    async admitCBTIdentity(
+        request: CBTUnitIdentityAdmissionRequest,
     ): Promise<CBTForceMember> {
 
         let rosterGroupId = request.rosterGroupId ?? request.group?.id;
@@ -116,7 +109,7 @@ export class ForceUnitAdmissionService {
             ...(request.rosterMemberIndex === undefined
                 ? {}
                 : { targetRosterMemberIndex: request.rosterMemberIndex }),
-            ...(request.instanceId === undefined ? {} : { instanceId: request.instanceId as UnitInstanceId }),
+            ...(request.instanceId === undefined ? {} : { instanceId: request.instanceId }),
             ...(request.commander ? { commander: true } : {}),
         });
         if (result.kind === 'deferred') {
@@ -127,8 +120,8 @@ export class ForceUnitAdmissionService {
         if (result.kind === 'failed') {
             throw new Error(result.message);
         }
-        const member = request.force.getClassicMember(result.instanceId);
-        if (!member) throw new Error(`Admitted Classic unit ${result.instanceId} is not in the live force`);
+        const member = request.force.getCBTMember(result.instanceId);
+        if (!member) throw new Error(`Admitted CBT unit ${result.instanceId} is not in the live force`);
         return member;
     }
 
@@ -158,7 +151,7 @@ export class ForceUnitAdmissionService {
     }
 }
 
-function isNativeClassicSummary(unit: UnitSummary): boolean {
+function isNativeCBTSummary(unit: UnitSummary): boolean {
     if (unit.origin !== 'megamek' || unit.provider !== MM_DATA_UNIT_PROVIDER_ID) return false;
     try {
         asSourceHash(unit.hash);

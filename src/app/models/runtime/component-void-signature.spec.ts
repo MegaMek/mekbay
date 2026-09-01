@@ -7,7 +7,7 @@ import { StealthHandler } from './component-stealth';
 import { mekTargetRosterRow } from './cbt-force-target-roster';
 import { emptyCBTEncounterSnapshot } from './encounter-runtime';
 import { projectMekEquipmentPanel } from './equipment-panel';
-import { ReadyMekUnit } from './ready-unit-factory';
+import { CBTMekUnit } from './cbt-mek-unit';
 import {
     createDirectVoidSignatureRuntimeFixture,
     type DirectMekRuntimeFixture,
@@ -105,7 +105,7 @@ describe('direct Void Signature runtime', () => {
                 boosterComponentIds: [],
             },
         }).accepted).toBeTrue();
-        const ready = new ReadyMekUnit(
+        const ready = new CBTMekUnit(
             fixture.entity,
             fixture.identity,
             fixture.instance,

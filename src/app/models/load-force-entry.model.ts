@@ -91,7 +91,7 @@ export class LoadForceEntry implements ForcePreviewEntry {
     constructor(data: Partial<LoadForceEntry>) {
         this.instanceId = data.instanceId ?? '';
         this.timestamp = data.timestamp ?? '';
-        this.type = data.type ?? GameSystem.CLASSIC;
+        this.type = data.type ?? GameSystem.CBT;
         this.owned = data.owned ?? true;
         this.cloud = data.cloud ?? false;
         this.local = data.local ?? false;

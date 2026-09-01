@@ -14,7 +14,7 @@ import {
     asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
-import { asUnitInstanceId, type InstanceBaselineRef } from './runtime-state';
+import { type InstanceBaselineRef } from './runtime-state';
 import { NonMekUnitInstance } from './non-mek-unit-instance';
 import { projectNonMekRecordSheet } from './non-mek-record-sheet';
 
@@ -23,7 +23,7 @@ describe('projectNonMekRecordSheet', () => {
         const fighter = new TestAeroSpaceFighterEntity();
         fighter.uuid.set(UUID);
         const fighterRuntime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:aero-condition-sheet'),
+            'unit:aero-condition-sheet',
             baseline(),
             fighter,
             CORE_2026_RULESET,
@@ -47,7 +47,7 @@ describe('projectNonMekRecordSheet', () => {
         const jumpShip = new TestJumpShipEntity();
         jumpShip.uuid.set(UUID);
         const jumpShipRuntime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:space-only-condition-sheet'),
+            'unit:space-only-condition-sheet',
             baseline(),
             jumpShip,
             CORE_2026_RULESET,
@@ -73,7 +73,7 @@ describe('projectNonMekRecordSheet', () => {
         entity.originalWalkMP.set(8);
         entity.setArmorValue('Front', 'front', 3);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:tank-sheet'),
+            'unit:tank-sheet',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -147,7 +147,7 @@ describe('projectNonMekRecordSheet', () => {
         entity.trooperCount.set(4);
         entity.setArmorValue('Squad', 'front', 6);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:battle-armor-sheet'),
+            'unit:battle-armor-sheet',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -177,7 +177,7 @@ describe('projectNonMekRecordSheet', () => {
         entity.motiveType.set('Jump');
         entity.setArmorValue('Squad', 'front', 2);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:battle-armor-destroyed-sheet'),
+            'unit:battle-armor-destroyed-sheet',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -216,7 +216,7 @@ describe('projectNonMekRecordSheet', () => {
         entity.squadSize.set(7);
         entity.squadCount.set(4);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:infantry-sheet'),
+            'unit:infantry-sheet',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -244,7 +244,7 @@ describe('projectNonMekRecordSheet', () => {
         entity.setTonnage(6);
         entity.originalWalkMP.set(6);
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:protomek-sheet'),
+            'unit:protomek-sheet',
             baseline(),
             entity,
             CORE_2026_RULESET,
@@ -287,7 +287,7 @@ describe('projectNonMekRecordSheet', () => {
         entity.heatSinkCount.set(10);
         entity.heatSinkType.set('Double');
         const runtime = new NonMekUnitInstance(
-            asUnitInstanceId('unit:aero-sheet'),
+            'unit:aero-sheet',
             baseline(),
             entity,
             CORE_2026_RULESET,

@@ -6,11 +6,10 @@ import {
     type CBTForceRosterCommand,
 } from './cbt-force-roster-owner';
 import type { SerializedCBTForceRosterV1 } from './cbt-force-roster';
-import { asUnitInstanceId } from './runtime-state';
 
-const A = asUnitInstanceId('unit:a');
-const B = asUnitInstanceId('unit:b');
-const C = asUnitInstanceId('unit:c');
+const A = 'unit:a';
+const B = 'unit:b';
+const C = 'unit:c';
 
 describe('CBT force canonical roster owner boundary', () => {
     it('prepares exact create/update/delete group rosters without touching the source', () => {
@@ -157,7 +156,7 @@ describe('CBT force canonical roster owner boundary', () => {
             command: command('create-group', { groupId: 'group:new', atIndex: 0 }),
         })).toEqual(jasmine.objectContaining({ kind: 'rejected', reason: 'GROUP_CAPACITY' }));
         expect(reject(command('move-member', {
-            instanceId: asUnitInstanceId('unit:missing'), targetGroupId: 'group:alpha', atIndex: 0,
+            instanceId: 'unit:missing', targetGroupId: 'group:alpha', atIndex: 0,
         }), roster)).toBe('UNKNOWN_MEMBER');
         expect(reject(command('move-member', {
             instanceId: A, targetGroupId: 'group:missing', atIndex: 0,

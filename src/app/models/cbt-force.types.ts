@@ -11,12 +11,9 @@ import type {
     TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
 import type { SerializedEncounterTargetCalculatorV2 } from './runtime/persistence-v2';
-import type { MekUnitRuntimeState, StateRevision, UnitInstanceId } from './runtime/runtime-state';
+import type { MekUnitRuntimeState } from './runtime/runtime-state';
 import type { NonMekUnitRuntimeState } from './runtime/non-mek-unit-instance';
-import type {
-    ClassicUnitCommandResult,
-    ClassicUnitRuntimeState,
-} from './runtime/classic-unit-runtime';
+import type { CBTUnitCommandResult, CBTUnitRuntimeState } from './runtime/cbt-unit-runtime';
 import type { DeploymentConfiguration, ScenarioRules } from './runtime/unit-state-initializer';
 import type { MekRuntimeCapabilityDecision } from './runtime/mek-runtime-capability';
 import type { AttackerTargetingState } from './runtime/attacker-targeting-state';
@@ -28,7 +25,7 @@ export type CBTForceTargetRegistryDispatchResult = TargetRegistryCommandResult;
 
 /** Detached target-ready projection; no runtime owner escapes. */
 export interface InventoryControlTargetRosterRow {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly targetId: EncounterTargetId;
     readonly name: string;
     readonly unitType: TnTargetUnitType;
@@ -36,9 +33,9 @@ export interface InventoryControlTargetRosterRow {
     readonly projection: 'v2';
 }
 
-export type CBTNonMekUnitCommandResult = ClassicUnitCommandResult<NonMekUnitRuntimeState | null>;
+export type CBTNonMekUnitCommandResult = CBTUnitCommandResult<NonMekUnitRuntimeState | null>;
 export type CBTMekUnitCommandResult = Readonly<
-    ClassicUnitCommandResult<MekUnitRuntimeState | null>
+    CBTUnitCommandResult<MekUnitRuntimeState | null>
     & { readonly prototypeHeat?: readonly import('./prototype-laser-heat.model').PrototypeLaserHeatResult[] }
 >;
 
@@ -46,7 +43,7 @@ export type CBTUnitRepairResult =
     | Readonly<{
         readonly accepted: true;
         readonly changed: boolean;
-        readonly forceRevision: StateRevision;
+        readonly forceRevision: number;
     }>
     | Readonly<{
         readonly accepted: false;
@@ -58,7 +55,7 @@ export type CBTUnitTransferResult =
     | Readonly<{
         readonly accepted: true;
         readonly changed: true;
-        readonly instanceId: UnitInstanceId;
+        readonly instanceId: string;
     }>
     | Readonly<{
         readonly accepted: false;
@@ -80,7 +77,7 @@ export interface CBTDirectUnitAdmissionRequest {
     readonly deployment: DeploymentConfiguration;
     readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
     readonly scenario?: ScenarioRules;
-    readonly instanceId?: UnitInstanceId;
+    readonly instanceId?: string;
     readonly initialStateProfileId?: string;
     readonly targetRosterGroupId?: string;
     readonly targetRosterMemberIndex?: number;
@@ -88,7 +85,7 @@ export interface CBTDirectUnitAdmissionRequest {
 }
 
 export type CBTDirectUnitAdmissionResult =
-    | { readonly kind: 'admitted'; readonly instanceId: UnitInstanceId }
+    | { readonly kind: 'admitted'; readonly instanceId: string }
     | {
         readonly kind: 'deferred';
         readonly decision: Extract<MekRuntimeCapabilityDecision, { readonly readiness: 'deferred' }>;
@@ -107,15 +104,15 @@ export type CBTDirectUnitAdmissionResult =
     };
 
 export interface AttackerTargetingSnapshot {
-    readonly instanceId: UnitInstanceId;
-    readonly stateRevision: StateRevision;
-    readonly registryRevision: StateRevision;
+    readonly instanceId: string;
+    readonly stateRevision: number;
+    readonly registryRevision: number;
     readonly state: AttackerTargetingState;
 }
 
 export type C3State = 'none' | 'operational' | 'degraded';
 
-export type AttackerTargetingCommandResult = ClassicUnitCommandResult<ClassicUnitRuntimeState | null>;
+export type AttackerTargetingCommandResult = CBTUnitCommandResult<CBTUnitRuntimeState | null>;
 
 export type EquipmentRowOrderCommandResult = AttackerTargetingCommandResult;
 
@@ -162,12 +159,12 @@ export interface MekEquipmentChoice {
 }
 
 export interface MekEquipmentInteraction {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly unitLabel: string;
     readonly componentId: ComponentId;
     readonly relatedComponentId?: ComponentId;
     readonly componentLabel: string;
-    readonly stateRevision: StateRevision;
+    readonly stateRevision: number;
     readonly choices: readonly MekEquipmentChoice[];
 }
 

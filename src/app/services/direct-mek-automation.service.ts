@@ -3,10 +3,7 @@
 
 import { inject, Injectable } from '@angular/core';
 
-import type {
-    AutomationCheck,
-    AutomationCheckResolution,
-} from '../models/automation-check.model';
+import type { AutomationCheck, AutomationCheckResolution } from '../models/automation-check.model';
 import { orderedAutomationChecks } from '../models/automation-check.model';
 import type { AutomationReviewEvent } from '../models/automation-review.model';
 import {
@@ -15,21 +12,13 @@ import {
     cbtUnitCheckReviewDescription,
 } from '../models/cbt-unit-check-presentation';
 import type { CBTForce } from '../models/cbt-force.model';
-import type { CBTMekUnitCommandResult } from '../models/cbt-force-api';
+import type { CBTMekUnitCommandResult } from '../models/cbt-force.types';
 import { hasMekRuntime, type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { structureConstructionKind } from '../models/construction-equipment.model';
 import { AmmoEquipment } from '../models/equipment.model';
 import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
-import type {
-    ComponentId,
-    CrewPositionId,
-    LocationId,
-} from '../models/entity/entity-identifiers';
-import {
-    getMekLocationLabel,
-    getTopologyFor,
-    MEK_TORSO_LOCATIONS,
-} from '../models/entity/types';
+import type { ComponentId, CrewPositionId, LocationId } from '../models/entity/entity-identifiers';
+import { getMekLocationLabel, getTopologyFor, MEK_TORSO_LOCATIONS } from '../models/entity/types';
 import { gameRulesFor, type MekExplosionProtection } from '../models/rules/game-rules';
 import {
     ammoExplosionDamagePerShot,
@@ -61,27 +50,16 @@ import {
 import { projectMekLifeSupportPilotDamage } from '../models/runtime/mek-life-support';
 import type { MekRuntimeIndex } from '../models/runtime/mek-runtime-index';
 import { resolveMekUnitWaterState } from '../models/runtime/mek-targeting-rules';
-import {
-    MAX_MEK_CREW_WOUNDS,
-    type MekUnitRuntimeState,
-    type UnitInstanceId,
-} from '../models/runtime/runtime-state';
+import { MAX_MEK_CREW_WOUNDS, type MekUnitRuntimeState } from '../models/runtime/runtime-state';
 import { uuidv4 } from '../utils/uuid.util';
 import { selectedManualEndTurnHeat } from '../models/runtime/end-turn-heat-selection';
 import type { MekPendingFallConsequencesV2 } from '../models/runtime/mek-turn-state-v2';
-import type {
-    CBTUnitCommand,
-    MekHitArcV2,
-    MekUnitQueryPort,
-} from '../models/runtime/unit-instance';
+import type { CBTUnitCommand, MekHitArcV2, MekUnitQueryPort } from '../models/runtime/unit-instance';
 import { isModularArmorEquipment } from '../models/modular-armor.model';
 import type { MekHitLocationTable } from '../utils/record-sheet-reference-table';
 import { buildHeatSummaryRows } from '../utils/heat-summary.util';
 import { CBTAutomationService } from './cbt-automation.service';
-import {
-    automationCheckEvidenceDice,
-    CBTAutomationCheckService,
-} from './cbt-automation-check.service';
+import { automationCheckEvidenceDice, CBTAutomationCheckService } from './cbt-automation-check.service';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
 import {
     automaticConsciousnessNotifications,
@@ -117,22 +95,22 @@ export interface PreparedDirectMekAutomationCommand {
 }
 
 export interface DirectMekEndTurnAutomationRequest {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly command: Extract<CBTUnitCommand, { readonly type: 'end-turn' }>;
 }
 
 export interface DirectMekEndPhaseAutomationRequest {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly command: Extract<CBTUnitCommand, { readonly type: 'end-phase' }>;
 }
 
 export interface PreparedDirectMekEndPhaseAutomation {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly prepared: PreparedDirectMekAutomationCommand;
 }
 
 export interface PreparedDirectMekEndTurnAutomation {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly prepared: PreparedDirectMekAutomationCommand;
 }
 
@@ -294,7 +272,7 @@ export class DirectMekAutomationService {
 
     async prepareCommand(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: CBTUnitCommand,
     ): Promise<PreparedDirectMekAutomationCommand> {
         const snapshot = this.snapshot(force, instanceId);
@@ -607,7 +585,7 @@ export class DirectMekAutomationService {
     /** Applies the reviewed heat/consequence chain before the turn reset. */
     async settleBeforeCommand(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         prepared: PreparedDirectMekAutomationCommand,
         dispatch: DirectMekAutomationDispatch,
     ): Promise<PreparedDirectMekAutomationCommand | null> {
@@ -680,7 +658,7 @@ export class DirectMekAutomationService {
 
     async afterCommand(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         before: CBTUnitSnapshot | null,
         prepared: PreparedDirectMekAutomationCommand,
         result: CBTMekUnitCommandResult,
@@ -845,7 +823,7 @@ export class DirectMekAutomationService {
         const checkById = new Map(checkResults.map(result => [result.id, result]));
         const acceptedCheckIds = new Set(checkResults.map(result => result.id));
 
-        const falls = new Map<UnitInstanceId, PreparedMekFall | null>();
+        const falls = new Map<string, PreparedMekFall | null>();
         for (const row of rows) {
             const staged = row.staged;
             if (!staged) continue;
@@ -1010,7 +988,7 @@ export class DirectMekAutomationService {
 
     private async applyPhaseBoundary(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         prepared: PreparedMekPhaseBoundary,
         dispatch: DirectMekAutomationDispatch,
         resumedFallEventId?: string,
@@ -1104,7 +1082,7 @@ export class DirectMekAutomationService {
 
     private async applyPhaseRecoveries(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         opening: MekSnapshot,
         recoveries: readonly PreparedMekConsciousnessRecovery[],
         dispatch: DirectMekAutomationDispatch,
@@ -1156,7 +1134,7 @@ export class DirectMekAutomationService {
 
     private async resolveCriticalChance(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         sourceLocationId: LocationId,
         target: 'committed' | 'pending',
         context: DirectCriticalChanceContext,
@@ -1257,7 +1235,7 @@ export class DirectMekAutomationService {
 
     private async resolveBreachOrFlood(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         command: Readonly<{
             faceId: Extract<CBTUnitCommand, { readonly type: 'damage-armor' }>['faceId'];
             target: Extract<CBTUnitCommand, { readonly type: 'damage-armor' }>['target'];
@@ -1278,7 +1256,7 @@ export class DirectMekAutomationService {
 
     private async resolveBreachOrFloodLocation(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         locationId: LocationId,
         target: 'committed' | 'pending',
         dispatch: DirectMekAutomationDispatch,
@@ -1325,7 +1303,7 @@ export class DirectMekAutomationService {
 
     private async resolveExplosionConsequences(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         before: MekSnapshot,
         plan: Extract<MekCriticalRollPlanV2, { readonly kind: 'applied' }>,
         target: 'committed' | 'pending',
@@ -1540,7 +1518,7 @@ export class DirectMekAutomationService {
 
     private async applyMekHeatEffects(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         prepared: PreparedMekHeatEffects,
         dispatch: DirectMekAutomationDispatch,
     ): Promise<boolean> {
@@ -1617,7 +1595,7 @@ export class DirectMekAutomationService {
 
     private async resolveShutdownFall(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         dispatch: DirectMekAutomationDispatch,
     ): Promise<boolean> {
         const snapshot = this.snapshot(force, instanceId);
@@ -1663,7 +1641,7 @@ export class DirectMekAutomationService {
 
     private async resolveFall(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         reason: string,
         dispatch: DirectMekAutomationDispatch,
         allowCancel = false,
@@ -1754,7 +1732,7 @@ export class DirectMekAutomationService {
 
     private async applyPreparedFall(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         prepared: PreparedMekFall,
         dispatch: DirectMekAutomationDispatch,
     ): Promise<boolean> {
@@ -1796,7 +1774,7 @@ export class DirectMekAutomationService {
     /** Continues only the unapplied post-fall stage after CLOSE/reopen. */
     private async resumePendingFallConsequences(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         dispatch: DirectMekAutomationDispatch,
     ): Promise<string | null | false> {
         let snapshot = this.snapshot(force, instanceId);
@@ -1868,7 +1846,7 @@ export class DirectMekAutomationService {
 
     private async setPendingFallConsequences(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         pending: MekPendingFallConsequencesV2 | null,
         dispatch: DirectMekAutomationDispatch,
     ): Promise<boolean> {
@@ -1882,7 +1860,7 @@ export class DirectMekAutomationService {
 
     private async resolveFallSeatbelts(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         seatbelts: PreparedMekFall['seatbelts'],
         forceFailure: boolean,
     ): Promise<ReadonlySet<CrewPositionId> | null> {
@@ -1932,7 +1910,7 @@ export class DirectMekAutomationService {
 
     private async applyFallDamageGroup(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         sourceCode: string,
         rearArc: boolean,
         incomingDamage: number,
@@ -2075,7 +2053,7 @@ export class DirectMekAutomationService {
 
     private canShareCompositePip(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         locationCode: string | null,
         rearArc: boolean,
     ): boolean {
@@ -2124,7 +2102,7 @@ export class DirectMekAutomationService {
 
     private async applyPilotHits(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         hits: number,
         dispatch: DirectMekAutomationDispatch,
     ): Promise<boolean> {
@@ -2147,7 +2125,7 @@ export class DirectMekAutomationService {
      */
     private async applyLifeSupportHits(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         staged: ResolvedMekHeatEffects,
         dispatch: DirectMekAutomationDispatch,
     ): Promise<readonly AppliedMekLifeSupportDamage[] | null> {
@@ -2209,7 +2187,7 @@ export class DirectMekAutomationService {
 
     private async applyCrewHitsByPosition(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         hitsByPosition: ReadonlyMap<CrewPositionId, number>,
         dispatch: DirectMekAutomationDispatch,
         eventPrefix: string,
@@ -2268,7 +2246,7 @@ export class DirectMekAutomationService {
 
     private async applyResolvedCrewHits(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         initial: MekSnapshot,
         resolved: readonly ResolvedCrewHits[],
         dispatch: DirectMekAutomationDispatch,
@@ -2301,7 +2279,7 @@ export class DirectMekAutomationService {
 
     private async deferCrewRecovery(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         positionId: CrewPositionId,
         currentTurn: number,
         dispatch: DirectMekAutomationDispatch,
@@ -2323,7 +2301,7 @@ export class DirectMekAutomationService {
 
     private async recordCrewRecoveryTransition(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         before: MekSnapshot,
         after: MekSnapshot,
         positionId: CrewPositionId,
@@ -2376,7 +2354,7 @@ export class DirectMekAutomationService {
 
     private async explodeAmmo(
         force: CBTForce,
-        instanceId: UnitInstanceId,
+        instanceId: string,
         componentId: ComponentId,
         dispatch: DirectMekAutomationDispatch,
     ): Promise<string | null> {
@@ -2546,7 +2524,7 @@ export class DirectMekAutomationService {
         return water.submerged || (water.partiallyUnderwater && snapshot.entity.locationIsLeg(locationCode));
     }
 
-    private snapshot(force: CBTForce, instanceId: UnitInstanceId): MekSnapshot | null {
+    private snapshot(force: CBTForce, instanceId: string): MekSnapshot | null {
         const snapshot = force.getUnitSnapshot(instanceId);
         return snapshot && hasMekRuntime(snapshot) ? snapshot as MekSnapshot : null;
     }

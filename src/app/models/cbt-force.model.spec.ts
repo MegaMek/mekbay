@@ -5,8 +5,7 @@
 import type { Injector } from '@angular/core';
 import type { DataService } from '../services/data.service';
 import { LoggerService } from '../services/logger.service';
-import { ReadyMekUnitService } from '../services/ready-mek-unit.service';
-import { ReadyNonMekUnitService } from '../services/ready-non-mek-unit.service';
+import { CBTUnitService } from '../services/cbt-unit.service';
 import { ToastService } from '../services/toast.service';
 import { DialogsService } from '../services/dialogs.service';
 import { ForceDialogsService } from '../services/force-dialogs.service';
@@ -15,7 +14,7 @@ import { C3Handler } from './runtime/component-c3-configuration';
 import { C3EmergencyMasterHandler } from './runtime/component-c3-emergency-master';
 import { GameSystem } from './common.model';
 import { CBTForce } from './cbt-force.model';
-import type { SerializedClassicForce } from './force-serialization';
+import type { SerializedCBTForce } from './force-serialization';
 import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -26,45 +25,26 @@ import {
     type SerializedCBTUnitV2,
     type SerializedCBTForceV2,
 } from './runtime/persistence-v2';
-import {
-    asEncounterNetworkId,
-    asEncounterTargetId,
-    type EncounterNetwork,
-} from './runtime/encounter-runtime';
+import { asEncounterNetworkId, asEncounterTargetId, type EncounterNetwork } from './runtime/encounter-runtime';
 import { RUNTIME_HISTORY_MESSAGE } from './runtime/runtime-history';
-import { ReadyMekUnitFactory } from './runtime/ready-unit-factory';
+import { CBTMekUnit } from './runtime/cbt-mek-unit';
 import { decodeForceFromStorage, encodeForceForStorage } from './runtime/force-storage-codec';
-import { ReadyNonMekUnit } from './runtime/ready-non-mek-unit';
-import type { ReadyClassicUnit } from './runtime/ready-classic-unit';
-import {
-    isSerializedNonMekUnit,
-    type SerializedNonMekUnit,
-} from './runtime/non-mek-unit-persistence';
-import {
-
-    asStateRevision,
-    asUnitInstanceId,
-    type UnitInstanceId,
-} from './runtime/runtime-state';
+import { CBTNonMekUnit } from './runtime/cbt-non-mek-unit';
+import type { CBTUnit } from './runtime/cbt-unit';
+import { isSerializedNonMekUnit, type SerializedNonMekUnit } from './runtime/non-mek-unit-persistence';
 import {
     createDirectC3MasterRuntimeFixture,
     createDirectMekRuntimeFixture,
 } from './runtime/testing/direct-mek-runtime-fixture';
 import type { UnitSummary } from './unit-summary.model';
-import {
-    TestBattleArmorEntity,
-    TestTankEntity,
-} from './entity/testing/test-entities';
+import { TestBattleArmorEntity, TestTankEntity } from './entity/testing/test-entities';
 import { createTestEquipmentRegistry } from './entity/testing/test-equipment-registry';
 import { EntityMountedEquipment } from './entity/types';
 import { AmmoEquipment, MiscEquipment, WeaponEquipment } from './equipment.model';
 import { asComponentId } from './entity/entity-identifiers';
 import type { BaseEntity } from './entity/base-entity';
 import { CORE_2026_RULESET } from './cbt-ruleset.model';
-import {
-    MM_DATA_UNIT_PROVIDER_ID,
-    asUnitUuid,
-} from '../services/unit-catalog/unit-catalog.types';
+import { MM_DATA_UNIT_PROVIDER_ID, asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type { UnitCover } from './unit-cover.model';
 import { hasNonMekRuntime, hasMekRuntime } from './cbt-unit-snapshot';
 
@@ -77,13 +57,13 @@ const injector = {
     get: () => jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
 } as unknown as Injector;
 
-function directForceRecord(): SerializedClassicForce {
+function directForceRecord(): SerializedCBTForce {
     const forceId = asForceId('force:encounter');
     const cbt: SerializedCBTForceV2 = {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
-        forceRevision: asStateRevision(0),
+        forceRevision: 0,
         scenarioRules: {
             schemaVersion: 1,
             values: { id: 'default', ruleset: 'core-2026' },
@@ -97,27 +77,23 @@ function directForceRecord(): SerializedClassicForce {
         version: 2,
         timestamp: '2026-01-01T00:00:00.000Z',
         instanceId: forceId,
-        type: GameSystem.CLASSIC,
+        type: GameSystem.CBT,
         name: 'Encounter force',
         cbt,
     };
 }
 
-async function loadForce(record: SerializedClassicForce = directForceRecord()): Promise<CBTForce> {
-    const force = CBTForce.deserializeV2(structuredClone(record), dataService, injector);
-    if (!await force.loadCBTForceV2Persistence(record)) {
-        throw new Error('Direct V2 force fixture failed to load');
-    }
-    return force;
+async function loadForce(record: SerializedCBTForce = directForceRecord()): Promise<CBTForce> {
+    return CBTForce.deserialize(structuredClone(record), dataService, injector);
 }
 
-function mekRuntimeSnapshot(force: CBTForce, instanceId: UnitInstanceId) {
+function mekRuntimeSnapshot(force: CBTForce, instanceId: string) {
     const snapshot = force.getUnitSnapshot(instanceId);
     if (!snapshot || !hasMekRuntime(snapshot)) throw new Error(`Missing Mek runtime ${instanceId}`);
     return snapshot;
 }
 
-function entityRuntimeSnapshot(force: CBTForce, instanceId: UnitInstanceId) {
+function entityRuntimeSnapshot(force: CBTForce, instanceId: string) {
     const snapshot = force.getUnitSnapshot(instanceId);
     if (!snapshot || !hasNonMekRuntime(snapshot)) throw new Error(`Missing Non-Mek runtime ${instanceId}`);
     return snapshot;
@@ -127,27 +103,25 @@ async function readyCloneForce(): Promise<{
     readonly force: CBTForce;
     readonly armorFaceId: ReturnType<typeof createDirectMekRuntimeFixture>['index']['armorFaces'] extends ReadonlyMap<infer T, unknown> ? T : never;
     readonly createTargetForce: () => Promise<CBTForce>;
-    readonly reload: (record: SerializedClassicForce) => Promise<CBTForce>;
+    readonly reload: (record: SerializedCBTForce) => Promise<CBTForce>;
 }> {
     const fixture = createDirectC3MasterRuntimeFixture();
-    const factory = new ReadyMekUnitFactory({
-        initializeOptions: {
-            initializerRevision: 1,
-            profileId: 'pristine',
-            deployment: { id: 'default' },
-            scenario: { id: 'megamek', ruleset: 'core-2026' },
-        },
-    });
-    const firstId = asUnitInstanceId('unit:clone:first');
-    const secondId = asUnitInstanceId('unit:clone:second');
-    const first = await factory.createFromEntity({
+    const initializeOptions = {
+        initializerRevision: 1,
+        profileId: 'pristine',
+        deployment: { id: 'default' },
+        scenario: { id: 'megamek', ruleset: 'core-2026' as const },
+    };
+    const firstId = 'unit:clone:first';
+    const secondId = 'unit:clone:second';
+    const first = await CBTMekUnit.createFromEntity({
         identity: fixture.identity,
         instanceId: firstId,
-    }, fixture.entity, fixture.identity);
-    const second = await factory.createFromEntity({
+    }, fixture.entity, fixture.identity, initializeOptions);
+    const second = await CBTMekUnit.createFromEntity({
         identity: fixture.identity,
         instanceId: secondId,
-    }, fixture.entity, fixture.identity);
+    }, fixture.entity, fixture.identity, initializeOptions);
     const armorFaceId = [...fixture.index.armorFaces.keys()][0]!;
     const damaged = first.getInstance().dispatch({
         type: 'damage-armor',
@@ -166,7 +140,7 @@ async function readyCloneForce(): Promise<{
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
-        forceRevision: asStateRevision(7),
+        forceRevision: 7,
         scenarioRules: { schemaVersion: 1, values: { id: 'megamek', ruleset: 'core-2026' } },
         history: emptyRuntimeHistory(),
         units: [
@@ -186,10 +160,10 @@ async function readyCloneForce(): Promise<{
             }],
         },
         encounter: {
-            encounterRevision: asStateRevision(3),
+            encounterRevision: 3,
             state: {
                 schemaVersion: 2,
-                encounterRevision: asStateRevision(3),
+                encounterRevision: 3,
                 facts: [{
                     kind: 'network',
                     factId: encounterNetworkFactId('network:clone-source'),
@@ -219,40 +193,38 @@ async function readyCloneForce(): Promise<{
         getEraById: () => null,
         getUnitByIdentity: () => summary,
     } as unknown as DataService;
-    const readyMeks = {
-        restoreReadyMekV2: ({ saved }: { readonly saved: SerializedCBTUnitV2 }) =>
-            factory.restoreFromEntity(saved, fixture.entity, fixture.identity),
-    } as unknown as ReadyMekUnitService;
+    const cbtUnits = {
+        restore: (saved: SerializedCBTUnitV2) =>
+            CBTMekUnit.restoreFromEntity(
+                saved,
+                fixture.entity,
+                fixture.identity,
+                initializeOptions,
+            ),
+    } as unknown as CBTUnitService;
     const localInjector = {
-        get: (token: unknown) => token === ReadyMekUnitService
-            ? readyMeks
+        get: (token: unknown) => token === CBTUnitService
+            ? cbtUnits
             : token === ToastService
                 ? jasmine.createSpyObj<ToastService>('ToastService', ['showToast'])
                 : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
     } as unknown as Injector;
-    const record: SerializedClassicForce = {
+    const record: SerializedCBTForce = {
         version: 2,
         timestamp: '2026-01-01T00:00:00.000Z',
         instanceId: forceId,
-        type: GameSystem.CLASSIC,
+        type: GameSystem.CBT,
         name: 'Ready clone force',
         cbt,
     };
-    const force = CBTForce.deserializeV2(record, localData, localInjector);
-    if (!await force.loadCBTForceV2Persistence(record)) {
-        throw new Error('Ready clone fixture failed to load');
-    }
+    const force = await CBTForce.deserialize(record, localData, localInjector);
     const createTargetForce = async (): Promise<CBTForce> => {
         const target = new CBTForce('Transfer target', localData, localInjector);
         await target.addGroup('Target lance');
         return target;
     };
-    const reload = async (saved: SerializedClassicForce): Promise<CBTForce> => {
-        const restored = CBTForce.deserializeV2(saved, localData, localInjector);
-        if (!await restored.loadCBTForceV2Persistence(saved)) {
-            throw new Error('Ready clone fixture failed to reload');
-        }
-        return restored;
+    const reload = async (saved: SerializedCBTForce): Promise<CBTForce> => {
+        return CBTForce.deserialize(saved, localData, localInjector);
     };
     return { force, armorFaceId, createTargetForce, reload };
 }
@@ -262,11 +234,11 @@ async function readyEntityForce(options: Readonly<{
     readonly entity?: BaseEntity;
 }> = {}): Promise<{
     readonly force: CBTForce;
-    readonly instanceId: ReturnType<typeof asUnitInstanceId>;
+    readonly instanceId: string;
     readonly createTargetForce: () => Promise<CBTForce>;
-    readonly reload: (record: SerializedClassicForce) => Promise<CBTForce>;
+    readonly reload: (record: SerializedCBTForce) => Promise<CBTForce>;
     readonly dialogs: jasmine.SpyObj<DialogsService>;
-    readonly readyNonMekUnits: jasmine.SpyObj<ReadyNonMekUnitService>;
+    readonly cbtUnits: jasmine.SpyObj<CBTUnitService>;
 }> {
     const entity = options.entity ?? new TestTankEntity();
     if (options.supportsAirborne) entity.motiveType.set('WiGE');
@@ -279,8 +251,8 @@ async function readyEntityForce(options: Readonly<{
         uuid,
         sourceFormat: 'blk' as const,
     });
-    const instanceId = asUnitInstanceId('unit:entity:tank');
-    const ready = ReadyNonMekUnit.create(entity, {
+    const instanceId = 'unit:entity:tank';
+    const ready = CBTNonMekUnit.create(entity, {
         instanceId,
         identity,
         deployment: { id: 'default' },
@@ -293,7 +265,7 @@ async function readyEntityForce(options: Readonly<{
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
-        forceRevision: asStateRevision(0),
+        forceRevision: 0,
         scenarioRules: { schemaVersion: 1, values: { id: 'megamek', ruleset: CORE_2026_RULESET } },
         history: emptyRuntimeHistory(),
         units: [{ instanceId, stateRevision: serialized.stateRevision, unit: serialized }],
@@ -322,17 +294,19 @@ async function readyEntityForce(options: Readonly<{
         getEraById: () => null,
         getUnitByIdentity: () => summary,
     } as unknown as DataService;
-    const readyNonMekUnits = jasmine.createSpyObj<ReadyNonMekUnitService>(
-        'ReadyNonMekUnitService',
-        ['restoreReadyNonMekUnit', 'loadReadyNonMekUnit'],
+    const cbtUnits = jasmine.createSpyObj<CBTUnitService>(
+        'CBTUnitService',
+        ['restore', 'create'],
     );
-    readyNonMekUnits.restoreReadyNonMekUnit.and.callFake(
-        ({ saved }: { readonly saved: SerializedNonMekUnit }) =>
-            Promise.resolve(ReadyNonMekUnit.restore(saved, entity, identity)),
+    cbtUnits.restore.and.callFake(
+        (saved: SerializedCBTUnitV2 | SerializedNonMekUnit) => {
+            if (!isSerializedNonMekUnit(saved)) throw new Error('Expected a non-Mek fixture');
+            return Promise.resolve(CBTNonMekUnit.restore(saved, entity, identity));
+        },
     );
-    readyNonMekUnits.loadReadyNonMekUnit.and.callFake((
-            request: Parameters<ReadyNonMekUnitService['loadReadyNonMekUnit']>[0],
-        ) => Promise.resolve(ReadyNonMekUnit.create(entity, {
+    cbtUnits.create.and.callFake((
+            request: Parameters<CBTUnitService['create']>[0],
+        ) => Promise.resolve(CBTNonMekUnit.create(entity, {
             instanceId: request.instanceId,
             identity,
             deployment: request.deployment,
@@ -342,46 +316,40 @@ async function readyEntityForce(options: Readonly<{
     const dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['showNotice']);
     dialogs.showNotice.and.resolveTo();
     const localInjector = {
-        get: (token: unknown) => token === ReadyNonMekUnitService
-            ? readyNonMekUnits
+        get: (token: unknown) => token === CBTUnitService
+            ? cbtUnits
             : token === DialogsService
                 ? dialogs
                 : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
     } as unknown as Injector;
-    const record: SerializedClassicForce = {
+    const record: SerializedCBTForce = {
         version: 2,
         timestamp: '2026-01-01T00:00:00.000Z',
         instanceId: forceId,
-        type: GameSystem.CLASSIC,
+        type: GameSystem.CBT,
         name: 'Ready entity force',
         cbt,
     };
-    const force = CBTForce.deserializeV2(record, localData, localInjector);
-    if (!await force.loadCBTForceV2Persistence(record)) {
-        throw new Error('Ready Entity fixture failed to load');
-    }
+    const force = await CBTForce.deserialize(record, localData, localInjector);
     const createTargetForce = async (): Promise<CBTForce> => {
         const target = new CBTForce('Entity transfer target', localData, localInjector);
         await target.addGroup('Vehicle target');
         return target;
     };
-    const reload = async (saved: SerializedClassicForce): Promise<CBTForce> => {
-        const restored = CBTForce.deserializeV2(saved, localData, localInjector);
-        if (!await restored.loadCBTForceV2Persistence(saved)) {
-            throw new Error('Ready Entity fixture failed to reload');
-        }
-        return restored;
+    const reload = async (saved: SerializedCBTForce): Promise<CBTForce> => {
+        return CBTForce.deserialize(saved, localData, localInjector);
     };
-    return { force, instanceId, createTargetForce, reload, dialogs, readyNonMekUnits };
+    return { force, instanceId, createTargetForce, reload, dialogs, cbtUnits };
 }
 
 async function readyEntityC3Force(
     system: 'c3i' | 'nova' = 'c3i',
 ): Promise<Readonly<{
     force: CBTForce;
-    firstId: ReturnType<typeof asUnitInstanceId>;
-    secondId: ReturnType<typeof asUnitInstanceId>;
+    firstId: string;
+    secondId: string;
     componentId: ReturnType<typeof asComponentId>;
+    dialogs: jasmine.SpyObj<DialogsService>;
 }>> {
     const c3 = new MiscEquipment({
         id: system === 'nova' ? 'TestNovaCEWS' : 'TestC3i',
@@ -410,9 +378,9 @@ async function readyEntityC3Force(
         uuid,
         sourceFormat: 'blk' as const,
     });
-    const firstId = asUnitInstanceId('unit:entity:c3:first');
-    const secondId = asUnitInstanceId('unit:entity:c3:second');
-    const create = (instanceId: ReturnType<typeof asUnitInstanceId>) => ReadyNonMekUnit.create(entity, {
+    const firstId = 'unit:entity:c3:first';
+    const secondId = 'unit:entity:c3:second';
+    const create = (instanceId: string) => CBTNonMekUnit.create(entity, {
         instanceId,
         identity,
         deployment: { id: 'default' },
@@ -426,7 +394,7 @@ async function readyEntityC3Force(
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
-        forceRevision: asStateRevision(0),
+        forceRevision: 0,
         scenarioRules: { schemaVersion: 1, values: { id: 'megamek', ruleset: CORE_2026_RULESET } },
         history: emptyRuntimeHistory(),
         units: [
@@ -456,36 +424,37 @@ async function readyEntityC3Force(
         getEraById: () => null,
         getUnitByIdentity: () => summary,
     } as unknown as DataService;
-    const readyNonMekUnits = {
-        restoreReadyNonMekUnit: ({ saved }: { readonly saved: SerializedNonMekUnit }) =>
-            Promise.resolve(ReadyNonMekUnit.restore(saved, entity, identity)),
-    } as unknown as ReadyNonMekUnitService;
+    const cbtUnits = {
+        restore: (saved: SerializedNonMekUnit) =>
+            Promise.resolve(CBTNonMekUnit.restore(saved, entity, identity)),
+    } as unknown as CBTUnitService;
+    const dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['showNotice']);
+    dialogs.showNotice.and.resolveTo();
     const localInjector = {
-        get: (token: unknown) => token === ReadyNonMekUnitService
-            ? readyNonMekUnits
+        get: (token: unknown) => token === CBTUnitService
+            ? cbtUnits
+            : token === DialogsService
+                ? dialogs
             : token === ToastService
                 ? jasmine.createSpyObj<ToastService>('ToastService', ['showToast'])
                 : jasmine.createSpyObj<LoggerService>('runtime service', ['error', 'warn']),
     } as unknown as Injector;
-    const record: SerializedClassicForce = {
+    const record: SerializedCBTForce = {
         version: 2,
         timestamp: '2026-01-01T00:00:00.000Z',
         instanceId: forceId,
-        type: GameSystem.CLASSIC,
+        type: GameSystem.CBT,
         name: 'Ready Entity C3 force',
         cbt,
     };
-    const force = CBTForce.deserializeV2(record, localData, localInjector);
-    if (!await force.loadCBTForceV2Persistence(record)) {
-        throw new Error('Ready Entity C3 fixture failed to load');
-    }
-    return Object.freeze({ force, firstId, secondId, componentId });
+    const force = await CBTForce.deserialize(record, localData, localInjector);
+    return Object.freeze({ force, firstId, secondId, componentId, dialogs });
 }
 
 async function readyC3Force(owned = true): Promise<{
     readonly force: CBTForce;
-    readonly masterId: ReturnType<typeof asUnitInstanceId>;
-    readonly emergencyId: ReturnType<typeof asUnitInstanceId>;
+    readonly masterId: string;
+    readonly emergencyId: string;
     readonly masterComponentId: ReturnType<typeof createDirectMekRuntimeFixture>['index']['components'] extends ReadonlyMap<infer T, unknown> ? T : never;
     readonly emergencyComponentId: ReturnType<typeof createDirectMekRuntimeFixture>['index']['components'] extends ReadonlyMap<infer T, unknown> ? T : never;
     readonly toast: jasmine.SpyObj<ToastService>;
@@ -495,31 +464,32 @@ async function readyC3Force(owned = true): Promise<{
     const masterFixture = createDirectC3MasterRuntimeFixture(undefined, 'unit:c3-force-master');
     const emergencyFixture = createDirectMekRuntimeFixture(undefined, 'unit:c3-force-emergency');
     const memberFixture = createDirectMekRuntimeFixture(undefined, 'unit:c3-force-member');
-    const masterId = asUnitInstanceId('unit:c3-force-master');
-    const emergencyId = asUnitInstanceId('unit:c3-force-emergency');
-    const memberId = asUnitInstanceId('unit:c3-force-member');
-    const factory = new ReadyMekUnitFactory({
-        initializeOptions: {
-            initializerRevision: 1,
-            profileId: 'pristine',
-            deployment: { id: 'default' },
-            scenario: { id: 'megamek', ruleset: 'core-2026' },
-        },
-    });
-    const master = await factory.createFromEntity(
+    const masterId = 'unit:c3-force-master';
+    const emergencyId = 'unit:c3-force-emergency';
+    const memberId = 'unit:c3-force-member';
+    const initializeOptions = {
+        initializerRevision: 1,
+        profileId: 'pristine',
+        deployment: { id: 'default' },
+        scenario: { id: 'megamek', ruleset: 'core-2026' as const },
+    };
+    const master = await CBTMekUnit.createFromEntity(
         { identity: masterFixture.identity, instanceId: masterId },
         masterFixture.entity,
         masterFixture.identity,
+        initializeOptions,
     );
-    const emergency = await factory.createFromEntity(
+    const emergency = await CBTMekUnit.createFromEntity(
         { identity: emergencyFixture.identity, instanceId: emergencyId },
         emergencyFixture.entity,
         emergencyFixture.identity,
+        initializeOptions,
     );
-    const member = await factory.createFromEntity(
+    const member = await CBTMekUnit.createFromEntity(
         { identity: memberFixture.identity, instanceId: memberId },
         memberFixture.entity,
         memberFixture.identity,
+        initializeOptions,
     );
     const masterComponentId = masterFixture.equipmentComponent('Test C3 Master').id;
     const emergencyComponentId = emergencyFixture.equipmentComponent('Test C3 Emergency Master').id;
@@ -532,7 +502,10 @@ async function readyC3Force(owned = true): Promise<{
         edit: { kind: 'toggle-requested', turningOn: false },
     });
     if (!memberOff.accepted) throw new Error('C3 member setup failed');
-    const readyById = new Map([
+    const readyById = new Map<string, {
+        ready: CBTMekUnit;
+        fixture: ReturnType<typeof createDirectMekRuntimeFixture>;
+    }>([
         [masterId, { ready: master, fixture: masterFixture }],
         [emergencyId, { ready: emergency, fixture: emergencyFixture }],
         [memberId, { ready: member, fixture: memberFixture }],
@@ -546,7 +519,7 @@ async function readyC3Force(owned = true): Promise<{
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
-        forceRevision: asStateRevision(0),
+        forceRevision: 0,
         scenarioRules: { schemaVersion: 1, values: { id: 'megamek', ruleset: 'core-2026' } },
         history: emptyRuntimeHistory(),
         units,
@@ -563,10 +536,10 @@ async function readyC3Force(owned = true): Promise<{
             }],
         },
         encounter: {
-            encounterRevision: asStateRevision(0),
+            encounterRevision: 0,
             state: {
                 schemaVersion: 2,
-                encounterRevision: asStateRevision(0),
+                encounterRevision: 0,
                 facts: [{
                     kind: 'network',
                     factId: encounterNetworkFactId('network:c3-runtime'),
@@ -597,13 +570,18 @@ async function readyC3Force(owned = true): Promise<{
         getUnitByIdentity: () => summary,
         getEquipmentRegistry: () => emergencyFixture.equipment,
     } as unknown as DataService;
-    const readyMeks = {
-        restoreReadyMekV2: ({ saved }: { readonly saved: SerializedCBTUnitV2 }) => {
+    const cbtUnits = {
+        restore: (saved: SerializedCBTUnitV2) => {
             const entry = readyById.get(saved.instanceId);
             if (!entry) throw new Error(`Unknown C3 fixture ${saved.instanceId}`);
-            return factory.restoreFromEntity(saved, entry.fixture.entity, entry.fixture.identity);
+            return CBTMekUnit.restoreFromEntity(
+                saved,
+                entry.fixture.entity,
+                entry.fixture.identity,
+                initializeOptions,
+            );
         },
-    } as unknown as ReadyMekUnitService;
+    } as unknown as CBTUnitService;
     const toast = jasmine.createSpyObj<ToastService>('ToastService', ['showToast']);
     const dialogs = jasmine.createSpyObj<DialogsService>(
         'DialogsService',
@@ -617,8 +595,8 @@ async function readyC3Force(owned = true): Promise<{
     const forceDialogs = jasmine.createSpyObj<ForceDialogsService>('ForceDialogsService', ['openC3Network']);
     forceDialogs.openC3Network.and.callFake(async () => { notifyC3DialogOpened(); });
     const localInjector = {
-        get: (token: unknown) => token === ReadyMekUnitService
-            ? readyMeks
+        get: (token: unknown) => token === CBTUnitService
+            ? cbtUnits
             : token === ToastService
                 ? toast
                 : token === DialogsService
@@ -629,19 +607,16 @@ async function readyC3Force(owned = true): Promise<{
                             ? forceDialogs
                             : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
     } as unknown as Injector;
-    const record: SerializedClassicForce = {
+    const record: SerializedCBTForce = {
         version: 2,
         timestamp: '2026-01-01T00:00:00.000Z',
         instanceId: forceId,
-        type: GameSystem.CLASSIC,
+        type: GameSystem.CBT,
         name: 'C3 runtime force',
         owned,
         cbt,
     };
-    const force = CBTForce.deserializeV2(record, localData, localInjector);
-    if (!await force.loadCBTForceV2Persistence(record)) {
-        throw new Error('C3 runtime force failed to load');
-    }
+    const force = await CBTForce.deserialize(record, localData, localInjector);
     return {
         force,
         masterId,
@@ -689,7 +664,7 @@ function updateTarget(
 describe('CBTForce V2 encounter persistence', () => {
     it('loads V2 best effort and drops unsupported unit state without preserving its shape', async () => {
         const { force, instanceId, reload, dialogs } = await readyEntityForce();
-        const unsupported = structuredClone(await force.serializeForPersistence()) as SerializedClassicForce;
+        const unsupported = structuredClone(await force.serializeForPersistence()) as SerializedCBTForce;
         const envelope = unsupported.cbt;
         const entry = envelope.units[0]!;
         if (!isSerializedNonMekUnit(entry.unit)) throw new Error('Expected a non-Mek V2 fixture');
@@ -712,7 +687,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(JSON.stringify(rewritten)).not.toContain('not-a-condition');
         expect(JSON.stringify(rewritten)).not.toContain('"state":"killed"');
         expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
-            'Some V2 unit data could not be loaded and was ignored.',
+            `• Unit "${instanceId}" had invalid saved state; that state was ignored.`,
             'Save Loaded with Warnings',
         );
     });
@@ -723,13 +698,13 @@ describe('CBTForce V2 encounter persistence', () => {
             instanceId,
             reload,
             dialogs,
-            readyNonMekUnits,
+            cbtUnits,
         } = await readyEntityForce();
-        const saved = structuredClone(await force.serializeForPersistence()) as SerializedClassicForce;
+        const saved = structuredClone(await force.serializeForPersistence()) as SerializedCBTForce;
         Reflect.set(saved.cbt!, 'history', { u: [instanceId], t: [] });
         dialogs.showNotice.calls.reset();
-        readyNonMekUnits.restoreReadyNonMekUnit.and.rejectWith(new Error('Unit not found'));
-        readyNonMekUnits.loadReadyNonMekUnit.and.rejectWith(new Error('Unit not found'));
+        cbtUnits.restore.and.rejectWith(new Error('Unit not found'));
+        cbtUnits.create.and.rejectWith(new Error('Unit not found'));
 
         const restored = await reload(saved);
         const rewritten = await restored.serializeForPersistence();
@@ -739,14 +714,14 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(rewritten.cbt!.roster.groups[0].members).toEqual([]);
         expect(rewritten.cbt!.history).toEqual({ u: [], t: [] });
         expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
-            'Some V2 unit data could not be loaded and was ignored.',
+            `• Unit "${instanceId}" could not be identified and was skipped.`,
             'Save Loaded with Warnings',
         );
     });
 
     it('keeps a V2 catalog unit when its deployment data is unreadable', async () => {
         const { force, instanceId, reload, dialogs } = await readyEntityForce();
-        const saved = structuredClone(await force.serializeForPersistence()) as SerializedClassicForce;
+        const saved = structuredClone(await force.serializeForPersistence()) as SerializedCBTForce;
         const unit = saved.cbt!.units[0]!.unit;
         if (!isSerializedNonMekUnit(unit)) throw new Error('Expected a non-Mek V2 fixture');
         Reflect.set(unit.deployment, 'values', { id: 'broken', crewAssignment: 'garbage' });
@@ -758,7 +733,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(restored.getUnitSnapshot(instanceId)).not.toBeNull();
         expect(rewritten.cbt!.units.map(entry => entry.instanceId)).toEqual([instanceId]);
         expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
-            'Some V2 unit data could not be loaded and was ignored.',
+            `• Unit "${instanceId}" had invalid saved state; that state was ignored.`,
             'Save Loaded with Warnings',
         );
     });
@@ -799,7 +774,7 @@ describe('CBTForce V2 encounter persistence', () => {
         const saved = await force.serializeForPersistence();
         expect(saved.cbt?.encounter.state.facts.map(fact => fact.kind)).toEqual(['target']);
 
-        const reloaded = await loadForce(saved as SerializedClassicForce);
+        const reloaded = await loadForce(saved as SerializedCBTForce);
         expect(reloaded.queryInventoryControlTargetRegistry().targets
             .find(candidate => candidate.id === targetId)?.name).toBe('Primary');
         expect(reloaded.c3EncounterNetworks()).toEqual([]);
@@ -825,8 +800,8 @@ describe('CBTForce V2 encounter persistence', () => {
         let release!: () => void;
         const preparationGate = new Promise<void>(resolve => { release = resolve; });
         const seam = force as any;
-        const originalPrepare = seam.prepareLoadedCBTForceV2Authority.bind(force);
-        spyOn(seam, 'prepareLoadedCBTForceV2Authority').and.callFake(async (...args: unknown[]) => {
+        const originalPrepare = seam.restoreCBTForce.bind(force);
+        spyOn(seam, 'restoreCBTForce').and.callFake(async (...args: unknown[]) => {
             entered();
             await preparationGate;
             return originalPrepare(...args);
@@ -860,7 +835,7 @@ describe('CBTForce V2 encounter persistence', () => {
         }, 'opfor-sync');
         expect(installed.accepted).toBeTrue();
 
-        const reloaded = await loadForce(await force.serializeForPersistence() as SerializedClassicForce);
+        const reloaded = await loadForce(await force.serializeForPersistence() as SerializedCBTForce);
         expect(reloaded.inventoryControlOpforEnabled()).toBeTrue();
         expect(reloaded.queryInventoryControlTargetRegistry().targets.map(target => target.source))
             .toEqual(['opfor']);
@@ -902,16 +877,16 @@ describe('CBTForce V2 encounter persistence', () => {
 
     it('reuses validated persistence entries and serializes only changed runtimes', async () => {
         const { force, reload } = await readyCloneForce();
-        const authority = (force as unknown as {
-            readonly authority: { liveUnits(): readonly ReadyClassicUnit[] };
-        }).authority;
-        const [first, second] = authority.liveUnits();
-        const readyPrototype = Object.getPrototypeOf(first) as Pick<ReadyClassicUnit, 'serialize'>;
+        const unitStore = (force as unknown as {
+            readonly unitStore: { liveUnits(): readonly CBTUnit[] };
+        }).unitStore;
+        const [first, second] = unitStore.liveUnits();
+        const readyPrototype = Object.getPrototypeOf(first) as Pick<CBTUnit, 'serialize'>;
         const serialize = spyOn(readyPrototype, 'serialize').and.callThrough();
-        const serializationCount = (unit: ReadyClassicUnit) => serialize.calls.all()
+        const serializationCount = (unit: CBTUnit) => serialize.calls.all()
             .filter(call => call.object === unit).length;
 
-        const unchanged = await force.serializeForPersistence() as SerializedClassicForce;
+        const unchanged = await force.serializeForPersistence() as SerializedCBTForce;
         expect(serializationCount(first)).toBe(0);
         expect(serializationCount(second)).toBe(0);
 
@@ -925,7 +900,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(shutdown.accepted).toBeTrue();
         serialize.calls.reset();
 
-        const changed = await force.serializeForPersistence() as SerializedClassicForce;
+        const changed = await force.serializeForPersistence() as SerializedCBTForce;
         expect(serializationCount(first)).toBe(1);
         expect(serializationCount(second)).toBe(0);
         expect(Number(changed.cbt!.forceRevision)).toBe(Number(unchanged.cbt!.forceRevision) + 1);
@@ -1014,8 +989,8 @@ describe('CBTForce V2 encounter persistence', () => {
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(
             encodeForceForStorage(source),
         )));
-        if (decoded.type !== GameSystem.CLASSIC || decoded.version !== 2 || decoded.cbt === undefined) {
-            throw new Error('Compact fixture did not decode as a current Classic force');
+        if (decoded.type !== GameSystem.CBT || decoded.version !== 2 || decoded.cbt === undefined) {
+            throw new Error('Compact fixture did not decode as a current CBT force');
         }
         const decodedEntry = decoded.cbt.units.find(entry => entry.instanceId === instanceId);
         if (!decodedEntry || isSerializedNonMekUnit(decodedEntry.unit)) {
@@ -1023,7 +998,7 @@ describe('CBTForce V2 encounter persistence', () => {
         }
         expect(decodedEntry.unit.blueprintReferences.targets).toEqual({});
 
-        const restored = await reload(decoded as SerializedClassicForce);
+        const restored = await reload(decoded as SerializedCBTForce);
         expect(mekRuntimeSnapshot(restored, instanceId).query.remainingArmor(armorFaceId)).toBe(remaining);
         const hydrated = await restored.serializeForPersistence();
         const hydratedEntry = hydrated.cbt!.units.find(entry => entry.instanceId === instanceId);
@@ -1050,13 +1025,13 @@ describe('CBTForce V2 encounter persistence', () => {
         const { force, armorFaceId } = await readyCloneForce();
         spyOn(force as any, 'currentHeatPolicy').and.returnValue('manual');
         spyOn(force, 'getUnitAdjustedBattleValue').and.returnValue(0);
-        const [firstMember, secondMember] = force.getClassicMembers();
+        const [firstMember, secondMember] = force.getCBTMembers();
         if (!firstMember || !secondMember) throw new Error('Ready Mek members are missing');
         const baseProjection = spyOn(force, 'getUnitCurrentBaseBattleValue').and.callThrough();
-        const callsFor = (instanceId: UnitInstanceId) => baseProjection.calls.allArgs()
+        const callsFor = (instanceId: string) => baseProjection.calls.allArgs()
             .filter(([candidate]) => candidate === instanceId).length;
         const sheetProjection = spyOn(force, 'getMekRecordSheetSnapshot').and.callThrough();
-        const sheetCallsFor = (instanceId: UnitInstanceId) => sheetProjection.calls.allArgs()
+        const sheetCallsFor = (instanceId: string) => sheetProjection.calls.allArgs()
             .filter(([candidate]) => candidate === instanceId).length;
 
         firstMember.currentBaseBattleValue();
@@ -1152,7 +1127,7 @@ describe('CBTForce V2 encounter persistence', () => {
             armored: false,
         })]);
         const { force, instanceId } = await readyEntityForce({ entity });
-        const member = force.getClassicMember(instanceId)!;
+        const member = force.getCBTMember(instanceId)!;
         const currentBefore = member.currentBaseBattleValue()!;
         const adjustedBefore = member.adjustedBattleValue()!;
         const pristineBefore = member.pristineBattleValue()!;
@@ -1308,7 +1283,7 @@ describe('CBTForce V2 encounter persistence', () => {
 
     it('keeps transient C3 operation out of adjusted BV while refreshing live state', async () => {
         const { force, masterId } = await readyC3Force();
-        const master = force.getClassicMember(masterId);
+        const master = force.getCBTMember(masterId);
         if (!master) throw new Error('C3 master member is missing');
         const stateProjection = spyOn(force, 'getC3State').and.callThrough();
         const adjustedProjection = spyOn(force, 'getUnitAdjustedBattleValue').and.callThrough();
@@ -1371,8 +1346,8 @@ describe('CBTForce V2 encounter persistence', () => {
 
     it('charges intact Nova CEWS units without configured links and removes destroyed endpoints', async () => {
         const { force, firstId, secondId, componentId } = await readyEntityC3Force('nova');
-        const first = force.getClassicMember(firstId)!;
-        const second = force.getClassicMember(secondId)!;
+        const first = force.getCBTMember(firstId)!;
+        const second = force.getCBTMember(secondId)!;
         const forceBase = first.currentBaseBattleValue()! + second.currentBaseBattleValue()!;
         const expectedTax = Math.round(forceBase * 0.05);
 
@@ -1411,10 +1386,10 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(force.getC3State(secondId)).toBe('operational');
         expect(force.isC3EndpointOperational(firstId, componentId)).toBeTrue();
 
-        const firstMember = force.getClassicMember(firstId)!;
-        const secondMember = force.getClassicMember(secondId)!;
+        const firstMember = force.getCBTMember(firstId)!;
+        const secondMember = force.getCBTMember(secondId)!;
         const baseProjection = spyOn(force, 'getUnitCurrentBaseBattleValue').and.callThrough();
-        const callsFor = (instanceId: UnitInstanceId) => baseProjection.calls.allArgs()
+        const callsFor = (instanceId: string) => baseProjection.calls.allArgs()
             .filter(([candidate]) => candidate === instanceId).length;
         const firstBaseBefore = firstMember.currentBaseBattleValue();
         const firstAdjustedBefore = firstMember.adjustedBattleValue();
@@ -1484,8 +1459,8 @@ describe('CBTForce V2 encounter persistence', () => {
             .toBeRejectedWithError(/Cannot persist non-canonical C3 network facts/u);
     });
 
-    it('validates encounter networks with the canonical utility after hydrating a load', async () => {
-        const { force, firstId, secondId, componentId } = await readyEntityC3Force();
+    it('ignores invalid encounter networks while hydrating a V2 load', async () => {
+        const { force, firstId, secondId, componentId, dialogs } = await readyEntityC3Force();
         expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
             force.captureForceOwnerRevisionFence(),
             [{
@@ -1503,9 +1478,13 @@ describe('CBTForce V2 encounter persistence', () => {
             candidate.kind === 'network');
         fact.network.endpoints = [fact.network.endpoints[0]];
 
-        await expectAsync(force.loadCBTForceV2Persistence(tampered))
-            .toBeRejectedWithError(/Restored C3 network facts are not canonical/u);
-        expect(force.c3EncounterNetworks()[0].endpoints).toHaveSize(2);
+        dialogs.showNotice.calls.reset();
+        await expectAsync(force.loadCBTForceV2Persistence(tampered)).toBeResolvedTo(true);
+        expect(force.c3EncounterNetworks()).toEqual([]);
+        expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
+            '• C3 network data was invalid and was ignored.',
+            'Save Loaded with Warnings',
+        );
     });
 
     it('commits and persists a C3 editor linkage across a cloud-save acknowledgement', async () => {
@@ -1738,9 +1717,9 @@ describe('CBTForce V2 encounter persistence', () => {
         const transferred = await source.transferMemberTo(target, instanceId, targetGroup.id, 0);
 
         expect(transferred).toEqual({ accepted: true, changed: true, instanceId });
-        expect(source.getClassicMember(instanceId)).toBeNull();
+        expect(source.getCBTMember(instanceId)).toBeNull();
         expect(source.getUnitSnapshot(instanceId)).toBeNull();
-        expect(target.getClassicMember(instanceId)).not.toBeNull();
+        expect(target.getCBTMember(instanceId)).not.toBeNull();
         expect(mekRuntimeSnapshot(target, instanceId).query.remainingArmor(armorFaceId)).toBe(remainingArmor);
         expect(mekRuntimeSnapshot(target, instanceId).entity).toBe(sourceSnapshot.entity);
         const targetRoster = target.queryCanonicalRoster();
@@ -1756,12 +1735,12 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(Number(targetAfter.cbt!.forceRevision)).toBe(Number(targetBefore.cbt!.forceRevision) + 1);
     });
 
-    it('loads and transfers a non-Mek through the same Classic owner', async () => {
+    it('loads and transfers a non-Mek through the same CBT owner', async () => {
         const { force: source, instanceId, createTargetForce } = await readyEntityForce();
         const target = await createTargetForce();
 
-        expect(source.getClassicMember(instanceId)).not.toBeNull();
-        expect(source.getClassicMember(instanceId)?.entity.entityType).not.toBe('Mek');
+        expect(source.getCBTMember(instanceId)).not.toBeNull();
+        expect(source.getCBTMember(instanceId)?.entity.entityType).not.toBe('Mek');
 
         const transferred = await source.transferMemberTo(
             target,
@@ -1771,9 +1750,9 @@ describe('CBTForce V2 encounter persistence', () => {
         );
 
         expect(transferred).toEqual({ accepted: true, changed: true, instanceId });
-        expect(source.getClassicMember(instanceId)).toBeNull();
-        expect(target.getClassicMember(instanceId)).not.toBeNull();
-        expect(target.getClassicMember(instanceId)?.entity.entityType).not.toBe('Mek');
+        expect(source.getCBTMember(instanceId)).toBeNull();
+        expect(target.getCBTMember(instanceId)).not.toBeNull();
+        expect(target.getCBTMember(instanceId)?.entity.entityType).not.toBe('Mek');
         const crew = target.getUnitCrewProfile(instanceId)!;
         const crewChanged = await target.replaceUnitCrewProfile(
             instanceId,
@@ -2044,7 +2023,7 @@ describe('CBTForce V2 encounter persistence', () => {
         });
         expect(ended.accepted).toBeTrue();
         expect(force.getRuntimeUndoState()).toEqual({ canUndo: true, canRedo: false });
-        const saved = await force.serializeForPersistence() as SerializedClassicForce;
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
         expect(saved.cbt.history.t.length).toBe(1);
         expect(saved.cbt.history.t[0].p.flat().map(message => message[0])).toEqual([
             RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR,
@@ -2096,7 +2075,7 @@ describe('CBTForce V2 encounter persistence', () => {
         damage = visible[0].event.message;
         expect(String(damage[damage.length - 1])).not.toBe('pending');
 
-        const restored = await reload(await force.serializeForPersistence() as SerializedClassicForce);
+        const restored = await reload(await force.serializeForPersistence() as SerializedCBTForce);
         expect(restored.getRuntimeHistory().map(row => row.event.message[0])).toEqual([
             RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR,
         ]);
@@ -2389,30 +2368,4 @@ describe('CBTForce V2 encounter persistence', () => {
         ]);
     });
 
-    it('rolls both V2 owners back when paired transfer installation fails', async () => {
-        const { force: source, createTargetForce } = await readyCloneForce();
-        const target = await createTargetForce();
-        const sourceBefore = await source.serializeForPersistence();
-        const targetBefore = await target.serializeForPersistence();
-        const instanceId = sourceBefore.cbt!.roster.groups[0].members[0].instanceId;
-        const targetAuthority = (target as any).authority;
-        spyOn(Object.getPrototypeOf(targetAuthority), 'installAdmission').and.throwError('test install failure');
-
-        const transferred = await source.transferMemberTo(
-            target,
-            instanceId,
-            target.groups()[0].id,
-            0,
-        );
-
-        expect(transferred).toEqual({
-            accepted: false,
-            changed: false,
-            reason: 'PERSISTENCE_REJECTED',
-        });
-        expect((await source.serializeForPersistence()).cbt).toEqual(sourceBefore.cbt);
-        expect((await target.serializeForPersistence()).cbt).toEqual(targetBefore.cbt);
-        expect(source.getClassicMember(instanceId)).not.toBeNull();
-        expect(target.getClassicMember(instanceId)).toBeNull();
-    });
 });

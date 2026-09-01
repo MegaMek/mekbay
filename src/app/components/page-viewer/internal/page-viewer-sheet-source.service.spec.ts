@@ -7,7 +7,6 @@ import {
 } from '../../../models/entity/testing/test-entities';
 import type { CBTForce } from '../../../models/cbt-force.model';
 import { CBTForceMember } from '../../../models/force-member.model';
-import { asUnitInstanceId } from '../../../models/runtime/runtime-state';
 import { TestBed } from '@angular/core/testing';
 import { RecordSheetSourceService } from '../../../services/record-sheet-source.service';
 import { RecordSheetSvgGenerator } from '../../../utils/sheets/record-sheet-svg-generator';
@@ -44,7 +43,7 @@ describe('PageViewerSheetSourceService', () => {
         expect(member.force.getUnitSnapshot).toHaveBeenCalledOnceWith(member.id);
     });
 
-    it('loads non-Mek Classic members through the generic Entity snapshot', async () => {
+    it('loads non-Mek CBT members through the generic Entity snapshot', async () => {
         const entity = new TestTankEntity();
         entity.chassis.set('Vedette');
         const member = createMember('Tank', entity);
@@ -130,5 +129,5 @@ function createMember(entityType: 'Mek' | 'Tank', entity: TestQuadMekEntity | Te
             sourceHashAtSave: `hash-${entityType}`,
         }),
     } as unknown as CBTForce;
-    return new CBTForceMember(asUnitInstanceId(`unit-${entityType}`), force, entity);
+    return new CBTForceMember(`unit-${entityType}`, force, entity);
 }

@@ -6,11 +6,7 @@ import { isPlainRecord } from '../../utils/json-value.util';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import { asComponentId, type ComponentId } from '../entity/entity-identifiers';
 import { asEncounterTargetId, type EncounterTargetId } from './encounter-runtime';
-import type { StateRevision } from './runtime-state';
-import {
-    TN_CUSTOM_MODIFIER_MAX,
-    TN_CUSTOM_MODIFIER_MIN,
-} from '../target-number-calculator.model';
+import { TN_CUSTOM_MODIFIER_MAX, TN_CUSTOM_MODIFIER_MIN } from '../target-number-calculator.model';
 
 export const ATTACKER_TARGETING_STATE_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_ATTACKER_TARGET_DISTANCE = 1;
@@ -126,7 +122,7 @@ export interface AttackerWeaponValidation {
 
 /** Detached validation facts supplied by the force-owned command boundary. */
 export interface AttackerTargetingValidationContext {
-    readonly registryRevision: StateRevision;
+    readonly registryRevision: number;
     readonly forceReadOnly: boolean;
     readonly targets: readonly AttackerRegistryTargetValidation[];
     readonly weapons: readonly AttackerWeaponValidation[];
@@ -134,7 +130,7 @@ export interface AttackerTargetingValidationContext {
 }
 
 interface AttackerTargetingCommandEnvelope {
-    readonly expectedRegistryRevision: StateRevision;
+    readonly expectedRegistryRevision: number;
 }
 
 export type AttackerTargetingEdit =
@@ -1124,7 +1120,7 @@ function stringSet(values: readonly unknown[]): ReadonlySet<string> | null {
     return new ImmutableSet(result);
 }
 
-function validRevision(value: unknown): value is StateRevision {
+function validRevision(value: unknown): value is number {
     return Number.isSafeInteger(value) && Number(value) >= 0;
 }
 

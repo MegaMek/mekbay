@@ -115,7 +115,7 @@ export class CBTPrintUtil {
         recordSheetSource: RecordSheetSourceService,
     ): Promise<readonly PreparedPrintSheet[]> {
         const ready = member.force.getUnitSnapshot(member.id);
-        if (!ready) throw new Error(`Classic unit ${member.id} is no longer admitted`);
+        if (!ready) throw new Error(`CBT unit ${member.id} is no longer admitted`);
         const entity = ready.entity;
         const profile = recordSheetLayoutProfile(entity, paperSize);
         const generatorOptions = {
@@ -151,7 +151,7 @@ export class CBTPrintUtil {
         }
 
         const current = member.force.getNonMekRecordSheetSnapshot(member.id);
-        if (!current) throw new Error(`Classic Entity ${member.id} is no longer admitted`);
+        if (!current) throw new Error(`CBT Entity ${member.id} is no longer admitted`);
         const snapshot = clean ? this.pristineEntityPrintSnapshot(current) : current;
         return sheets.svgs.map(svg => {
             const binding = bindNonMekRecordSheet(svg, snapshot);

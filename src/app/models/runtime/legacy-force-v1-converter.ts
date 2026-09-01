@@ -44,26 +44,12 @@ import {
     MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
     type SerializedCBTForceRosterGroupV1,
 } from './cbt-force-roster';
-import {
-    asStateRevision,
-    asUnitInstanceId,
-    freezeRuntimeState,
-    type MekUnitRuntimeState,
-    type CrewRuntimeState,
-} from './runtime-state';
-import type { ReadyMekUnit } from './ready-unit-factory';
-import type { ReadyNonMekUnit } from './ready-non-mek-unit';
-import {
-    isReadyMekUnit,
-    isReadyNonMekUnit,
-    type ReadyClassicUnit,
-} from './ready-classic-unit';
+import { freezeRuntimeState, type MekUnitRuntimeState, type CrewRuntimeState } from './runtime-state';
+import type { CBTMekUnit } from './cbt-mek-unit';
+import type { CBTNonMekUnit } from './cbt-non-mek-unit';
+import { isCBTMekUnit, isCBTNonMekUnit, type CBTUnit } from './cbt-unit';
 import type { SerializedNonMekUnit } from './non-mek-unit-persistence';
-import type {
-    NonMekDamageTrack,
-    NonMekRuntimeComponent,
-    NonMekRuntimeIndex,
-} from './non-mek-runtime-index';
+import type { NonMekDamageTrack, NonMekRuntimeComponent, NonMekRuntimeIndex } from './non-mek-runtime-index';
 import type { CrewAssignment, CrewTopology } from './crew-assignment';
 import { createDefaultCrewAssignment } from './crew-assignment';
 import type {
@@ -76,18 +62,12 @@ import type {
 import { restoreLegacyUnitState } from './state-restorer';
 import { serializeCBTUnitStateV2 } from './runtime-state-codec-v2';
 import { canonicalizeMekTurnStateV2 } from './mek-turn-state-v2';
-import {
-    createMekHeatContextV2,
-    mekHeatSourceSignatureV2,
-} from './mek-heat-state-v2';
+import { createMekHeatContextV2, mekHeatSourceSignatureV2 } from './mek-heat-state-v2';
 import { createMekMechanicsContextV2 } from './mek-mechanics-context-v2';
 import { CBTUnitInstance } from './unit-instance';
 import { DEFAULT_FORCE_DEPLOYMENT_ID } from './unit-state-initializer';
 import { C3NetworkEditor } from '../c3-network-editor';
-import {
-    projectC3EditorNetworksToEncounter,
-    type C3EncounterPresentationUnit,
-} from '../c3-network-presentation';
+import { projectC3EditorNetworksToEncounter, type C3EncounterPresentationUnit } from '../c3-network-presentation';
 import { projectReadyC3Components } from '../cbt-force-c3';
 import { encodeCBTEncounterStateV2 } from './encounter-runtime';
 import { Sanitizer } from '../../utils/sanitizer.util';
@@ -106,10 +86,10 @@ export interface PersistedForceV1ConversionOptions {
     readonly resolveIdentity: UnitIdentityResolver;
     readonly materializeUnit?: (request: {
         readonly source: LegacyUnitSourceV1;
-        readonly instanceId: ReturnType<typeof asUnitInstanceId>;
+        readonly instanceId: string;
         readonly deployment: typeof V1_CONVERSION_DEPLOYMENT;
         readonly scenario: typeof V1_SCENARIO_RULES.values;
-    }) => Promise<ReadyClassicUnit | undefined>;
+    }) => Promise<CBTUnit | undefined>;
     readonly onWarning?: (warning: PersistedForceV1ConversionWarning) => void;
 }
 
@@ -129,8 +109,8 @@ type ResolvedLegacyUnitSourceV1 = Readonly<{
     identity: Extract<PersistedUnitIdentity, { readonly kind: 'resolved' }>;
 }>;
 
-interface ResolvedLegacyClassicUnitV1 {
-    readonly instanceId: ReturnType<typeof asUnitInstanceId>;
+interface ResolvedLegacyCBTUnitV1 {
+    readonly instanceId: string;
     readonly source: ResolvedLegacyUnitSourceV1;
 }
 
@@ -143,16 +123,16 @@ export async function convertPersistedForceV1(
         throw new Error('Force V1 conversion requires a version 1 force');
     }
     const legacyType = (force as SerializedForce & { readonly type?: unknown }).type;
-    if (legacyType === GameSystem.ALPHA_STRIKE) {
+    if (legacyType === GameSystem.AS) {
         return convertAlphaStrikeForce(force, options);
     }
     // Early production V1 records had no game-system discriminator. Like the
-    // origin/next loader, treat every non-AS record as Classic.
-    if ((legacyType !== undefined && legacyType !== GameSystem.CLASSIC) || force.cbt !== undefined) {
+    // origin/next loader, treat every non-AS record as CBT.
+    if ((legacyType !== undefined && legacyType !== GameSystem.CBT) || force.cbt !== undefined) {
         throw new Error('Unsupported version 1 force type');
     }
 
-    return convertClassicForce(force, options);
+    return convertCBTForce(force, options);
 }
 
 function convertAlphaStrikeForce(
@@ -230,7 +210,7 @@ function convertAlphaStrikeForce(
         version: 2,
         timestamp: requireV1Text(payload, 'timestamp', 'Alpha Strike V1 force'),
         instanceId: requireV1Text(payload, 'instanceId', 'Alpha Strike V1 force'),
-        type: GameSystem.ALPHA_STRIKE,
+        type: GameSystem.AS,
         name: requireV1Text(payload, 'name', 'Alpha Strike V1 force'),
         ...(typeof force.note === 'string' && force.note.length > 0 ? { note: force.note } : {}),
         ...(Array.isArray(force.tags) && force.tags.length > 0 ? { tags: [...force.tags] } : {}),
@@ -320,7 +300,7 @@ function convertAlphaStrikeV1State(value: JsonValue | undefined): ASSerializedSt
 /** Converts one pristine V2 Mek baseline plus its V1 payload into a standalone V2 snapshot. */
 export async function convertPersistedMekUnitV1(
     source: LegacyUnitSourceV1,
-    fresh: ReadyMekUnit,
+    fresh: CBTMekUnit,
 ): Promise<SerializedCBTUnitV2> {
     const baseline = fresh.serialize();
     if (baseline.stateRevision !== 0 || baseline.restoration !== undefined) {
@@ -365,7 +345,7 @@ export async function convertPersistedMekUnitV1(
 /** Converts one pristine non-Mek Entity baseline and its V1 sparse state. */
 export function convertPersistedNonMekUnitV1(
     source: LegacyUnitSourceV1,
-    fresh: ReadyNonMekUnit,
+    fresh: CBTNonMekUnit,
     onIssue?: (message: string) => void,
 ): SerializedNonMekUnit {
     const baseline = fresh.serialize();
@@ -1228,7 +1208,7 @@ function compareNumbers(left: number, right: number): number {
 /** Converts the one heat witness whose V1 and current signatures differ. */
 function convertLegacyMovementHeatAcknowledgement(
     state: MekUnitRuntimeState,
-    fresh: ReadyMekUnit,
+    fresh: CBTMekUnit,
     baseline: SerializedCBTUnitV2,
 ): MekUnitRuntimeState {
     const savedSignature = state.turn.acknowledgedHeatSources.get('movement');
@@ -1280,44 +1260,44 @@ function convertLegacyMovementHeatAcknowledgement(
     });
 }
 
-async function convertClassicForce(
+async function convertCBTForce(
     force: SerializedForce,
     options: PersistedForceV1ConversionOptions,
 ): Promise<SerializedForce> {
     if (!options.materializeUnit) {
-        throw new Error('Classic V1 conversion requires the unit catalog');
+        throw new Error('CBT V1 conversion requires the unit catalog');
     }
-    const payload = requireObject(cloneAsJson(force), 'Classic V1 force');
+    const payload = requireObject(cloneAsJson(force), 'CBT V1 force');
     const rawGroups = payload['groups'];
     if (rawGroups !== undefined && !Array.isArray(rawGroups)) {
-        throw new Error('Classic V1 force groups must be an array');
+        throw new Error('CBT V1 force groups must be an array');
     }
 
-    const stateRevision = asStateRevision(0);
+    const stateRevision = 0;
     const seenInstanceIds = new Set<string>();
-    const resolvedUnits: ResolvedLegacyClassicUnitV1[] = [];
+    const resolvedUnits: ResolvedLegacyCBTUnitV1[] = [];
     const groupIds = new Set<string>();
     const rosterGroups: SerializedCBTForceRosterGroupV1[] = [];
 
     for (const [groupOrder, rawGroup] of (rawGroups ?? []).entries()) {
-        const group = requireObject(rawGroup, `Classic V1 group ${groupOrder}`);
+        const group = requireObject(rawGroup, `CBT V1 group ${groupOrder}`);
         const groupId = readGroupId(group, groupOrder);
         if (groupId === CBT_FORCE_UNASSIGNED_GROUP_ID) {
-            throw new Error(`Classic V1 group ${groupOrder} uses reserved ID ${groupId}`);
+            throw new Error(`CBT V1 group ${groupOrder} uses reserved ID ${groupId}`);
         }
-        if (groupIds.has(groupId)) throw new Error(`Classic V1 force has duplicate group ID ${groupId}`);
+        if (groupIds.has(groupId)) throw new Error(`CBT V1 force has duplicate group ID ${groupId}`);
         groupIds.add(groupId);
 
         const rawMembers = group['units'];
-        if (!Array.isArray(rawMembers)) throw new Error(`Classic V1 group ${groupId} requires a units array`);
-        let commanderInstanceId: ReturnType<typeof asUnitInstanceId> | undefined;
+        if (!Array.isArray(rawMembers)) throw new Error(`CBT V1 group ${groupId} requires a units array`);
+        let commanderInstanceId: string | undefined;
         const members = rawMembers.flatMap((rawMember, memberOrder) => {
-            const unit = requireObject(rawMember, `Classic V1 unit ${groupOrder}:${memberOrder}`);
+            const unit = requireObject(rawMember, `CBT V1 unit ${groupOrder}:${memberOrder}`);
             const rawId = unit['id'];
-            if (typeof rawId !== 'string') throw new Error(`Classic V1 unit ${groupOrder}:${memberOrder} requires an ID`);
-            const instanceId = asUnitInstanceId(rawId);
+            if (typeof rawId !== 'string') throw new Error(`CBT V1 unit ${groupOrder}:${memberOrder} requires an ID`);
+            const instanceId = rawId;
             if (seenInstanceIds.has(instanceId)) {
-                throw new Error(`Classic V1 force has duplicate unit ID ${instanceId}`);
+                throw new Error(`CBT V1 force has duplicate unit ID ${instanceId}`);
             }
             seenInstanceIds.add(instanceId);
 
@@ -1332,7 +1312,7 @@ async function convertClassicForce(
                 return [];
             }
 
-            const commander = sparseTrue(unit, 'commander', `Classic V1 unit ${instanceId}`);
+            const commander = sparseTrue(unit, 'commander', `CBT V1 unit ${instanceId}`);
             if (commander) {
                 if (commanderInstanceId !== undefined) {
                     throw new CBTForceRosterValidationError(
@@ -1355,15 +1335,15 @@ async function convertClassicForce(
             })];
         });
 
-        const name = optionalMetadata(group, 'name', `Classic V1 group ${groupId}`);
-        const color = optionalMetadata(group, 'color', `Classic V1 group ${groupId}`);
-        const formationId = optionalMetadata(group, 'formationId', `Classic V1 group ${groupId}`);
+        const name = optionalMetadata(group, 'name', `CBT V1 group ${groupId}`);
+        const color = optionalMetadata(group, 'color', `CBT V1 group ${groupId}`);
+        const formationId = optionalMetadata(group, 'formationId', `CBT V1 group ${groupId}`);
         const formationTargetGroupId = optionalMetadata(
             group,
             'formationTargetGroupId',
-            `Classic V1 group ${groupId}`,
+            `CBT V1 group ${groupId}`,
         );
-        const formationLock = sparseTrue(group, 'formationLock', `Classic V1 group ${groupId}`);
+        const formationLock = sparseTrue(group, 'formationLock', `CBT V1 group ${groupId}`);
         rosterGroups.push(Object.freeze({
             groupId,
             order: groupOrder,
@@ -1391,7 +1371,7 @@ async function convertClassicForce(
         version: 2,
         timestamp: force.timestamp,
         instanceId: force.instanceId,
-        type: GameSystem.CLASSIC,
+        type: GameSystem.CBT,
         name: force.name,
         ...(force.note === undefined ? {} : { note: force.note }),
         ...(force.tags === undefined ? {} : { tags: force.tags }),
@@ -1407,8 +1387,8 @@ async function convertClassicForce(
 
 async function materializeResolvedUnits(
     forceId: ReturnType<typeof asForceId>,
-    stateRevision: ReturnType<typeof asStateRevision>,
-    resolvedUnits: readonly ResolvedLegacyClassicUnitV1[],
+    stateRevision: number,
+    resolvedUnits: readonly ResolvedLegacyCBTUnitV1[],
     rosterGroups: readonly SerializedCBTForceRosterGroupV1[],
     materializeUnit: NonNullable<PersistedForceV1ConversionOptions['materializeUnit']>,
     rawLegacyNetworks: JsonValue | undefined,
@@ -1419,7 +1399,7 @@ async function materializeResolvedUnits(
     const presentations: C3EncounterPresentationUnit[] = [];
     for (const entry of resolvedUnits) {
         const legacyName = legacyUnitName(entry.source);
-        let ready: ReadyClassicUnit | undefined;
+        let ready: CBTUnit | undefined;
         try {
             ready = await materializeUnit({
                 source: entry.source,
@@ -1453,9 +1433,9 @@ async function materializeResolvedUnits(
 
         let unit: SerializedCBTUnitV2 | SerializedNonMekUnit;
         try {
-            unit = isReadyMekUnit(ready)
+            unit = isCBTMekUnit(ready)
                 ? await convertPersistedMekUnitV1(entry.source, ready)
-                : isReadyNonMekUnit(ready)
+                : isCBTNonMekUnit(ready)
                     ? convertPersistedNonMekUnitV1(entry.source, ready, message => onWarning?.({
                         kind: 'state-partial',
                         unit: legacyName,
@@ -1677,7 +1657,7 @@ function buildLegacyUnitSourceV1(
 function convertLegacyC3Networks(
     raw: JsonValue | undefined,
     units: readonly C3EncounterPresentationUnit[],
-    revision: ReturnType<typeof asStateRevision>,
+    revision: number,
     onWarning?: PersistedForceV1ConversionOptions['onWarning'],
 ): ReturnType<typeof encodeCBTEncounterStateV2> {
     if (raw === undefined) {
@@ -1744,7 +1724,7 @@ function readGroupId(group: JsonObject, groupOrder: number): string {
     const value = group['id'];
     if (value === undefined) return `v1-group:${groupOrder}`;
     if (typeof value !== 'string' || !value.trim() || value.length > 512 || value.includes('\0')) {
-        throw new Error(`Classic V1 group ${groupOrder} has an invalid ID`);
+        throw new Error(`CBT V1 group ${groupOrder} has an invalid ID`);
     }
     return value;
 }

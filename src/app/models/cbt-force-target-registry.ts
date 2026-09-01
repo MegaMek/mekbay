@@ -5,7 +5,7 @@
 import type {
     CBTForceTargetRegistryAuthority,
     CBTForceTargetRegistryDispatchResult,
-} from './cbt-force-api';
+} from './cbt-force.types';
 import type {
     TargetRegistryCommand,
     TargetRegistryCommandResult,

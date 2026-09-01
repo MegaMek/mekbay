@@ -4,7 +4,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import type { CBTForce } from '../models/cbt-force.model';
-import type { CBTNonMekUnitCommandResult } from '../models/cbt-force-api';
+import type { CBTNonMekUnitCommandResult } from '../models/cbt-force.types';
 import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import type { UnitConditionKey } from '../models/unit-condition.model';
 import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
@@ -21,10 +21,7 @@ import {
     type NonMekUnitCommand,
 } from '../models/runtime/non-mek-unit-instance';
 import { componentIdForMount } from '../models/runtime/non-mek-runtime-index';
-import {
-    asUnitInstanceId,
-    type InstanceBaselineRef,
-} from '../models/runtime/runtime-state';
+import { type InstanceBaselineRef } from '../models/runtime/runtime-state';
 import {
     asUnitUuid,
     MM_DATA_UNIT_PROVIDER_ID,
@@ -916,9 +913,9 @@ function createHarness(withAmmo = false, suffix = '', commandConsole = false) {
         }));
         addTestEquipmentWithFlags(entity, 'F_CASE', { location: 'Nose' });
     }
-    const instanceId = asUnitInstanceId(`${withAmmo
+    const instanceId = `${withAmmo
         ? 'unit:aero-automation-ammo'
-        : 'unit:aero-automation'}${suffix ? `:${suffix}` : ''}`);
+        : 'unit:aero-automation'}${suffix ? `:${suffix}` : ''}`;
     const runtime = new NonMekUnitInstance(
         instanceId,
         baseline(),

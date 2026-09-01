@@ -39,13 +39,13 @@ describe('buildWorkerExecutionQuery', () => {
             const executionQuery = buildWorkerExecutionQuery({
                 effectiveFilterState: testCase.filterState,
                 effectiveTextSearch: '',
-                gameSystem: GameSystem.CLASSIC,
+                gameSystem: GameSystem.CBT,
                 totalRangesCache: {},
             });
 
             expect(executionQuery).toBe(testCase.expectedQuery);
 
-            const parsed = parseSemanticQueryAST(executionQuery, GameSystem.CLASSIC);
+            const parsed = parseSemanticQueryAST(executionQuery, GameSystem.CBT);
             expect(parsed.textSearch).toBe('');
             expect(parsed.tokens).toEqual(testCase.expectedTokens);
         }
@@ -60,13 +60,13 @@ describe('buildWorkerExecutionQuery', () => {
                 },
             },
             effectiveTextSearch: "Ti Ts'ang",
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             totalRangesCache: {},
         });
 
         expect(executionQuery).toBe("Ti Ts\\'ang type=Mek");
 
-        const parsed = parseSemanticQueryAST(executionQuery, GameSystem.CLASSIC);
+        const parsed = parseSemanticQueryAST(executionQuery, GameSystem.CBT);
         expect(parsed.errors).toEqual([]);
         expect(parsed.textSearch).toBe("Ti Ts'ang");
         expect(parsed.tokens).toEqual([
@@ -90,13 +90,13 @@ describe('buildWorkerExecutionQuery', () => {
                 },
             },
             effectiveTextSearch: '',
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             totalRangesCache: {},
         });
 
         expect(executionQuery).toContain('weaponType="AI:>=2"');
         expect(executionQuery).toContain('weaponType&=AE');
-        expect(parseSemanticQueryAST(executionQuery, GameSystem.CLASSIC).errors).toEqual([]);
+        expect(parseSemanticQueryAST(executionQuery, GameSystem.CBT).errors).toEqual([]);
     });
 
     it('serializes contextual Alpha Strike special minima for worker execution', () => {
@@ -115,12 +115,12 @@ describe('buildWorkerExecutionQuery', () => {
                 },
             },
             effectiveTextSearch: '',
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             totalRangesCache: {},
         });
 
         expect(executionQuery).toBe('specials="AC*/*/>=3"');
-        expect(parseSemanticQueryAST(executionQuery, GameSystem.ALPHA_STRIKE).tokens).toEqual([
+        expect(parseSemanticQueryAST(executionQuery, GameSystem.AS).tokens).toEqual([
             jasmine.objectContaining({
                 field: 'specials',
                 operator: '=',
@@ -128,8 +128,8 @@ describe('buildWorkerExecutionQuery', () => {
             }),
         ]);
         expect(tokensToFilterState(
-            parseSemanticQueryAST(executionQuery, GameSystem.ALPHA_STRIKE).tokens,
-            GameSystem.ALPHA_STRIKE,
+            parseSemanticQueryAST(executionQuery, GameSystem.AS).tokens,
+            GameSystem.AS,
             {},
         )['as.specials']?.value).toEqual({
             AC: {
@@ -149,26 +149,26 @@ describe('buildWorkerExecutionQuery', () => {
                 'specials&="AC*/>=4/*"',
                 'specials&="AC*/*/>=3"',
             ],
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             totalRangesCache: {},
         });
 
         expect(executionQuery).toBe('specials&="AC*/>=4/*" specials&="AC*/*/>=3"');
-        expect(parseSemanticQueryAST(executionQuery, GameSystem.ALPHA_STRIKE).tokens).toEqual([
+        expect(parseSemanticQueryAST(executionQuery, GameSystem.AS).tokens).toEqual([
             jasmine.objectContaining({ operator: '&=', values: ['AC*/>=4/*'] }),
             jasmine.objectContaining({ operator: '&=', values: ['AC*/*/>=3'] }),
         ]);
 
         expect(tokensToFilterState(
-            parseSemanticQueryAST(executionQuery, GameSystem.ALPHA_STRIKE).tokens,
-            GameSystem.ALPHA_STRIKE,
+            parseSemanticQueryAST(executionQuery, GameSystem.AS).tokens,
+            GameSystem.AS,
             {},
         )['as.specials']?.semanticOnly).toBeTrue();
     });
 
     it('keeps formatted digit-bearing artillery minima UI-representable', () => {
-        const parsed = parseSemanticQueryAST('specials="ARTCM5>=1"', GameSystem.ALPHA_STRIKE);
-        const state = tokensToFilterState(parsed.tokens, GameSystem.ALPHA_STRIKE, {})['as.specials'];
+        const parsed = parseSemanticQueryAST('specials="ARTCM5>=1"', GameSystem.AS);
+        const state = tokensToFilterState(parsed.tokens, GameSystem.AS, {})['as.specials'];
 
         expect(state?.semanticOnly).toBeUndefined();
         expect(state?.value).toEqual({
@@ -190,12 +190,12 @@ describe('buildWorkerExecutionQuery', () => {
                 },
             },
             effectiveTextSearch: '',
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             totalRangesCache: {},
         });
 
         expect(executionQuery).toBe('rulesRefs=TW,Shrap01,AAA');
-        expect(parseSemanticQueryAST(executionQuery, GameSystem.CLASSIC).tokens).toEqual([
+        expect(parseSemanticQueryAST(executionQuery, GameSystem.CBT).tokens).toEqual([
             jasmine.objectContaining({
                 field: 'rulesrefs',
                 operator: '=',
@@ -211,14 +211,14 @@ describe('buildWorkerExecutionQuery', () => {
             },
             effectiveTextSearch: 'Atlas',
             preservedQuery: 'faction=="Clan Coyote" Atlas OR faction="Federated Suns"',
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             totalRangesCache: {},
         });
 
         expect(executionQuery).toBe(
             '(faction=="Clan Coyote" Atlas OR faction="Federated Suns") era="Clan Invasion"',
         );
-        expect(parseSemanticQueryAST(executionQuery, GameSystem.CLASSIC).errors).toEqual([]);
+        expect(parseSemanticQueryAST(executionQuery, GameSystem.CBT).errors).toEqual([]);
     });
 });
 

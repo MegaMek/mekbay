@@ -358,7 +358,7 @@ export class ForceBuilderService {
         const gameService = this.injector.get(GameService);
         const gameSystem = gameSystemOverride ?? gameService.currentGameSystem();
         let newForce: Force | null = null;
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        if (gameSystem === GameSystem.AS) {
             newForce = new ASForce(name, this.dataService, this.injector);
         } else {
             newForce = new CBTForce(name, this.dataService, this.injector);

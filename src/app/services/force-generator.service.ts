@@ -433,7 +433,7 @@ interface ForceGenerationSkillSettings {
     maxDelta: number;
 }
 
-interface ForceGenerationClassicSkillPair {
+interface ForceGenerationCBTSkillPair {
     gunnery: number;
     piloting: number;
 }
@@ -551,7 +551,7 @@ export interface GeneratedForceUnit {
     variantGroupKey?: string;
 }
 
-export function normalizeGeneratedClassicCrew(
+export function normalizeGeneratedCBTCrew(
     unit: UnitSummary,
     crew: readonly CrewMemberDetails[] | undefined,
     gunnery: number,
@@ -584,7 +584,7 @@ export function normalizeGeneratedClassicCrew(
     });
 }
 
-export function getGeneratedClassicCrewSkill(
+export function getGeneratedCBTCrewSkill(
     crew: readonly CrewMemberDetails[] | undefined,
     skillType: 'gunnery' | 'piloting',
     fallback: number,
@@ -840,7 +840,7 @@ function createGeneratedPreviewGroup(
         commanderIndex = generatedUnits.reduce((bestIndex, unit, index) => {
             const best = generatedUnits[bestIndex];
             if (!best) return index;
-            if (gameSystem === GameSystem.ALPHA_STRIKE) {
+            if (gameSystem === GameSystem.AS) {
                 return (unit.skill ?? Number.POSITIVE_INFINITY) < (best.skill ?? Number.POSITIVE_INFINITY)
                     ? index
                     : bestIndex;
@@ -861,11 +861,11 @@ function createGeneratedPreviewGroup(
         units: generatedUnits.map((generatedUnit, index) => ({
             unit: generatedUnit.unit,
             destroyed: false,
-            gunnery: gameSystem === GameSystem.CLASSIC ? generatedUnit.gunnery : undefined,
-            piloting: gameSystem === GameSystem.CLASSIC ? generatedUnit.piloting : undefined,
-            skill: gameSystem === GameSystem.ALPHA_STRIKE ? generatedUnit.skill : undefined,
+            gunnery: gameSystem === GameSystem.CBT ? generatedUnit.gunnery : undefined,
+            piloting: gameSystem === GameSystem.CBT ? generatedUnit.piloting : undefined,
+            skill: gameSystem === GameSystem.AS ? generatedUnit.skill : undefined,
             alias: generatedUnit.alias,
-            crew: gameSystem === GameSystem.CLASSIC
+            crew: gameSystem === GameSystem.CBT
                 ? generatedUnit.crew?.map((member) => ({ ...member }))
                 : undefined,
             commander: requiresCommander ? index === commanderIndex : generatedUnit.commander,
@@ -1405,7 +1405,7 @@ function hasVariableForceGenerationSkillSettings(
     settings: ForceGenerationSkillSettings,
 ): boolean {
     return isForceGenerationSkillRangeVariable(settings.gunnery)
-        || (gameSystem === GameSystem.CLASSIC && isForceGenerationSkillRangeVariable(settings.piloting));
+        || (gameSystem === GameSystem.CBT && isForceGenerationSkillRangeVariable(settings.piloting));
 }
 
 function pickRandomIntegerInRange(range: ForceGenerationSkillRange): number {
@@ -1416,11 +1416,11 @@ function pickRandomIntegerInRange(range: ForceGenerationSkillRange): number {
     return range.min + Math.floor(Math.random() * (range.max - range.min + 1));
 }
 
-export function getForceGenerationClassicSkillPairs(
+export function getForceGenerationCBTSkillPairs(
     settings: ForceGenerationSkillSettings,
     unit?: UnitSummary,
-): ForceGenerationClassicSkillPair[] {
-    const pairs: ForceGenerationClassicSkillPair[] = [];
+): ForceGenerationCBTSkillPair[] {
+    const pairs: ForceGenerationCBTSkillPair[] = [];
     const pairKeys = new Set<string>();
     const fixedPiloting = unit ? getFixedPilotingSkill(unit) : null;
 
@@ -1444,7 +1444,7 @@ function hasValidForceGenerationSkillSettings(
     gameSystem: GameSystem,
     settings: ForceGenerationSkillSettings,
 ): boolean {
-    return gameSystem !== GameSystem.CLASSIC || getForceGenerationClassicSkillPairs(settings).length > 0;
+    return gameSystem !== GameSystem.CBT || getForceGenerationCBTSkillPairs(settings).length > 0;
 }
 
 function formatForceGenerationSkillRange(range: ForceGenerationSkillRange): string {
@@ -1455,7 +1455,7 @@ function formatForceGenerationSkillSettingsNote(
     gameSystem: GameSystem,
     skillSettings: ForceGenerationSkillSettings,
 ): string {
-    if (gameSystem === GameSystem.ALPHA_STRIKE) {
+    if (gameSystem === GameSystem.AS) {
         return `Skill target: Pilot Skill ${formatForceGenerationSkillRange(skillSettings.gunnery)}.`;
     }
 
@@ -1540,7 +1540,7 @@ function resolveUnitCountRangeWithEditedMax(
 }
 
 function getBudgetMetric(unit: UnitSummary, gameSystem: GameSystem, gunnery: number, piloting: number): number {
-    if (gameSystem === GameSystem.ALPHA_STRIKE) {
+    if (gameSystem === GameSystem.AS) {
         return Math.max(0, adjustPointValueForSkill(unit.as.PV, gunnery));
     }
 
@@ -1858,7 +1858,7 @@ function formatForceGenerationSkillSummary(
     gameSystem: GameSystem,
     step: Pick<ForceGenerationSelectionStep, 'skill' | 'gunnery' | 'piloting'>,
 ): string | null {
-    if (gameSystem === GameSystem.ALPHA_STRIKE) {
+    if (gameSystem === GameSystem.AS) {
         return step.skill === undefined ? null : `Skill ${step.skill}`;
     }
 
@@ -1986,13 +1986,13 @@ export class ForceGeneratorService implements OnDestroy {
         return {
             classic: normalizeInitialBudgetRange(
                 options.lastBudget.classic.min,
-                unitSearchGameSystem === GameSystem.CLASSIC && hasUnitSearchLimit
+                unitSearchGameSystem === GameSystem.CBT && hasUnitSearchLimit
                     ? unitSearchLimit
                     : options.lastBudget.classic.max,
             ),
             alphaStrike: normalizeInitialBudgetRange(
                 options.lastBudget.alphaStrike.min,
-                unitSearchGameSystem === GameSystem.ALPHA_STRIKE && hasUnitSearchLimit
+                unitSearchGameSystem === GameSystem.AS && hasUnitSearchLimit
                     ? unitSearchLimit
                     : options.lastBudget.alphaStrike.max,
             ),
@@ -2872,7 +2872,7 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         if (bestAttempt.selectedCandidates.length > 0) {
-            const budgetLabel = options.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+            const budgetLabel = options.gameSystem === GameSystem.AS ? 'PV' : 'BV';
             return this.buildPreviewFromSelectionAttempt(
                 options,
                 eligibleUnits.length,
@@ -3008,8 +3008,8 @@ export class ForceGeneratorService implements OnDestroy {
             name: resolvedName,
             faction,
             era,
-            bv: preview.gameSystem === GameSystem.CLASSIC ? preview.totalCost : undefined,
-            pv: preview.gameSystem === GameSystem.ALPHA_STRIKE ? preview.totalCost : undefined,
+            bv: preview.gameSystem === GameSystem.CBT ? preview.totalCost : undefined,
+            pv: preview.gameSystem === GameSystem.AS ? preview.totalCost : undefined,
             groups: previewGroups,
         };
 
@@ -3666,24 +3666,24 @@ export class ForceGeneratorService implements OnDestroy {
         unit: UnitSummary,
         options: ForceGenerationRequest,
     ): GeneratedForceUnit {
-        const skill = options.gameSystem === GameSystem.ALPHA_STRIKE
+        const skill = options.gameSystem === GameSystem.AS
             ? lockedUnit.skill ?? lockedUnit.gunnery ?? options.gunnery
             : undefined;
-        const gunnery = options.gameSystem === GameSystem.CLASSIC
+        const gunnery = options.gameSystem === GameSystem.CBT
             ? lockedUnit.gunnery ?? lockedUnit.skill ?? options.gunnery
             : undefined;
-        const piloting = options.gameSystem === GameSystem.CLASSIC
+        const piloting = options.gameSystem === GameSystem.CBT
             ? getEffectivePilotingSkill(unit, lockedUnit.piloting ?? options.piloting)
             : undefined;
-        const crew = options.gameSystem === GameSystem.CLASSIC
-            ? normalizeGeneratedClassicCrew(unit, lockedUnit.crew, gunnery!, piloting!, lockedUnit.alias)
+        const crew = options.gameSystem === GameSystem.CBT
+            ? normalizeGeneratedCBTCrew(unit, lockedUnit.crew, gunnery!, piloting!, lockedUnit.alias)
             : undefined;
         const resolvedGunnery = gunnery === undefined
             ? undefined
-            : getGeneratedClassicCrewSkill(crew, 'gunnery', gunnery);
+            : getGeneratedCBTCrewSkill(crew, 'gunnery', gunnery);
         const resolvedPiloting = piloting === undefined
             ? undefined
-            : getGeneratedClassicCrewSkill(crew, 'piloting', piloting);
+            : getGeneratedCBTCrewSkill(crew, 'piloting', piloting);
 
         return {
             ...lockedUnit,
@@ -3707,13 +3707,13 @@ export class ForceGeneratorService implements OnDestroy {
         options: ForceGenerationRequest,
     ): ForceGenerationBaseCandidateUnit {
         const skillSettings = resolveForceGenerationSkillSettings(options);
-        const skill = options.gameSystem === GameSystem.ALPHA_STRIKE
+        const skill = options.gameSystem === GameSystem.AS
             ? skillSettings.gunnery.min
             : undefined;
-        const gunnery = options.gameSystem === GameSystem.CLASSIC
+        const gunnery = options.gameSystem === GameSystem.CBT
             ? skillSettings.gunnery.min
             : undefined;
-        const piloting = options.gameSystem === GameSystem.CLASSIC
+        const piloting = options.gameSystem === GameSystem.CBT
             ? getEffectivePilotingSkill(unit, skillSettings.piloting.min)
             : undefined;
 
@@ -4014,7 +4014,7 @@ export class ForceGeneratorService implements OnDestroy {
             return candidate;
         }
 
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        if (gameSystem === GameSystem.AS) {
             const skill = pickRandomIntegerInRange(skillSettings.gunnery);
             return {
                 ...candidate,
@@ -4025,7 +4025,7 @@ export class ForceGeneratorService implements OnDestroy {
             };
         }
 
-        const classicSkillPairs = getForceGenerationClassicSkillPairs(skillSettings, candidate.unit);
+        const classicSkillPairs = getForceGenerationCBTSkillPairs(skillSettings, candidate.unit);
         const skillPair = classicSkillPairs[Math.floor(Math.random() * classicSkillPairs.length)]
             ?? { gunnery: skillSettings.gunnery.min, piloting: skillSettings.piloting.min };
 
@@ -4061,7 +4061,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         const options: ForceGenerationCandidateUnit[] = [];
         const optionKeys = new Set<string>();
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        if (gameSystem === GameSystem.AS) {
             for (let skill = skillSettings.gunnery.min; skill <= skillSettings.gunnery.max; skill += 1) {
                 const adjustedCandidate = this.createCandidateWithSpecificSkills(
                     candidate,
@@ -4076,7 +4076,7 @@ export class ForceGeneratorService implements OnDestroy {
                 }
             }
         } else {
-            for (const skillPair of getForceGenerationClassicSkillPairs(skillSettings, candidate.unit)) {
+            for (const skillPair of getForceGenerationCBTSkillPairs(skillSettings, candidate.unit)) {
                 const adjustedCandidate = this.createCandidateWithSpecificSkills(
                     candidate,
                     gameSystem,
@@ -4200,11 +4200,11 @@ export class ForceGeneratorService implements OnDestroy {
         gameSystem: GameSystem,
         skillSettings: ForceGenerationSkillSettings,
     ): number {
-        const gunnery = gameSystem === GameSystem.ALPHA_STRIKE
+        const gunnery = gameSystem === GameSystem.AS
             ? candidate.skill ?? candidate.gunnery ?? skillSettings.gunnery.min
             : candidate.gunnery ?? candidate.skill ?? skillSettings.gunnery.min;
         const gunneryDistance = this.getSkillRangeDistance(gunnery, skillSettings.gunnery);
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        if (gameSystem === GameSystem.AS) {
             return gunneryDistance;
         }
 
@@ -4393,7 +4393,7 @@ export class ForceGeneratorService implements OnDestroy {
         gunnery: number,
         piloting: number,
     ): ForceGenerationCandidateUnit {
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        if (gameSystem === GameSystem.AS) {
             return {
                 ...candidate,
                 cost: getBudgetMetric(candidate.unit, gameSystem, gunnery, piloting),
@@ -4420,7 +4420,7 @@ export class ForceGeneratorService implements OnDestroy {
     ): ForceGenerationCandidateUnit {
         let lowestCostCandidate: ForceGenerationCandidateUnit | null = null;
 
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        if (gameSystem === GameSystem.AS) {
             for (let skill = skillSettings.gunnery.min; skill <= skillSettings.gunnery.max; skill += 1) {
                 const adjustedCandidate = this.createCandidateWithSpecificSkills(
                     candidate,
@@ -4433,7 +4433,7 @@ export class ForceGeneratorService implements OnDestroy {
                 }
             }
         } else {
-            for (const skillPair of getForceGenerationClassicSkillPairs(skillSettings, candidate.unit)) {
+            for (const skillPair of getForceGenerationCBTSkillPairs(skillSettings, candidate.unit)) {
                 const adjustedCandidate = this.createCandidateWithSpecificSkills(
                     candidate,
                     gameSystem,
@@ -4470,12 +4470,12 @@ export class ForceGeneratorService implements OnDestroy {
         gameSystem: GameSystem,
         skillSettings: ForceGenerationSkillSettings,
     ): readonly ForceGenerationCandidateUnit[] {
-        if (gameSystem !== GameSystem.CLASSIC) {
+        if (gameSystem !== GameSystem.CBT) {
             return candidates;
         }
 
         return candidates.filter((candidate) => {
-            return getForceGenerationClassicSkillPairs(skillSettings, candidate.unit).length > 0;
+            return getForceGenerationCBTSkillPairs(skillSettings, candidate.unit).length > 0;
         });
     }
 
@@ -5247,7 +5247,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private createGeneratedUnit(candidate: ForceGenerationCandidateUnit): GeneratedForceUnit {
         const crew = candidate.gunnery !== undefined && candidate.piloting !== undefined
-            ? normalizeGeneratedClassicCrew(
+            ? normalizeGeneratedCBTCrew(
                 candidate.unit,
                 candidate.crew,
                 candidate.gunnery,
@@ -5257,15 +5257,15 @@ export class ForceGeneratorService implements OnDestroy {
             : undefined;
         const gunnery = candidate.gunnery === undefined
             ? undefined
-            : getGeneratedClassicCrewSkill(crew, 'gunnery', candidate.gunnery);
+            : getGeneratedCBTCrewSkill(crew, 'gunnery', candidate.gunnery);
         const piloting = candidate.piloting === undefined
             ? undefined
-            : getGeneratedClassicCrewSkill(crew, 'piloting', candidate.piloting);
+            : getGeneratedCBTCrewSkill(crew, 'piloting', candidate.piloting);
         return {
             unit: candidate.unit,
             cost: gunnery === undefined || piloting === undefined
                 ? candidate.cost
-                : getBudgetMetric(candidate.unit, GameSystem.CLASSIC, gunnery, piloting),
+                : getBudgetMetric(candidate.unit, GameSystem.CBT, gunnery, piloting),
             skill: candidate.skill,
             gunnery,
             piloting,
@@ -5299,7 +5299,7 @@ export class ForceGeneratorService implements OnDestroy {
         attemptsElapsedMs?: number,
     ): string[] {
         const lines: string[] = [];
-        const budgetLabel = gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+        const budgetLabel = gameSystem === GameSystem.AS ? 'PV' : 'BV';
         const maxLabel = Number.isFinite(budgetRange.max) ? budgetRange.max.toLocaleString() : 'no max';
         const availabilitySourceRollNote = ignoreRarityWeight
             ? null
@@ -6014,7 +6014,7 @@ export class ForceGeneratorService implements OnDestroy {
             return;
         }
 
-        const budgetLabel = options.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+        const budgetLabel = options.gameSystem === GameSystem.AS ? 'PV' : 'BV';
         const maxLabel = Number.isFinite(budgetRange.max) ? budgetRange.max.toLocaleString() : 'no max';
         const contextLabel = [options.context.forceFaction?.name, options.context.forceEra?.name]
             .filter(Boolean)
@@ -7599,7 +7599,7 @@ export class ForceGeneratorService implements OnDestroy {
             : satisfiedTargetCount > 0
                 ? `Target formations achieved: ${satisfiedTargetCount} of ${requestedTargetCount} requested${achievedSummary ? ` (${achievedSummary})` : ''}.`
                 : 'Unable to complete any requested target formation within the selected filters, budget, and locked units.';
-        const budgetLabel = options.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+        const budgetLabel = options.gameSystem === GameSystem.AS ? 'PV' : 'BV';
         const budgetIssue = budgetValid
             ? null
             : `Budget mismatch: ${totalCost.toLocaleString()} ${budgetLabel} is outside ${this.getFormattedBudgetRange(budgetRange)}.`;

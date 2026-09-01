@@ -345,7 +345,7 @@ function buildRadarAxis(
 }
 
 function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem, unit: UnitSummary): MinMaxStatsRange {
-    return gameSystem === GameSystem.ALPHA_STRIKE
+    return gameSystem === GameSystem.AS
         ? dataService.getASUnitTypeMaxStats(unit.as?.TP ?? '')
         : dataService.getUnitSubtypeMaxStats(unit.subtype);
 }
@@ -561,7 +561,7 @@ export class ForceRadarPanelComponent {
     readonly renderHeight = RADAR_RENDER_HEIGHT;
     readonly force = input.required<ForcePreviewEntry>();
     readonly hoveredUnit = input<UnitSummary | null>(null);
-    readonly axisDefinitions = computed(() => this.force().type === GameSystem.ALPHA_STRIKE
+    readonly axisDefinitions = computed(() => this.force().type === GameSystem.AS
         ? ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS
         : CLASSIC_RADAR_AXIS_DEFINITIONS);
 
@@ -582,7 +582,7 @@ export class ForceRadarPanelComponent {
         }));
 
         for (const unit of this.units()) {
-            const maxStats = gameSystem === GameSystem.ALPHA_STRIKE
+            const maxStats = gameSystem === GameSystem.AS
                 ? this.dataService.getASUnitTypeMaxStats(unit.as?.TP ?? '')
                 : this.dataService.getUnitSubtypeMaxStats(unit.subtype);
 

@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-/** Closed vocabulary shared by stored and rules-derived Classic unit conditions. */
+/** Closed vocabulary shared by stored and rules-derived CBT unit conditions. */
 export const UNIT_CONDITION_KEYS = Object.freeze([
     'shutdown',
     'abandoned',

@@ -280,10 +280,10 @@ export class UnitSearchFiltersService {
     readonly activeNormalization = computed<UnitSearchNormalization | null>(() => {
         const gameSystem = this.gameService.currentGameSystem();
         const mode = this.budgetMode();
-        if (gameSystem === GameSystem.CLASSIC && mode === 'bv-normalization') {
+        if (gameSystem === GameSystem.CBT && mode === 'bv-normalization') {
             return { kind: 'bv', settings: this.classicBvNormalizationSettings() };
         }
-        if (gameSystem === GameSystem.ALPHA_STRIKE && mode === 'pv-normalization') {
+        if (gameSystem === GameSystem.AS && mode === 'pv-normalization') {
             return { kind: 'pv', settings: this.alphaStrikePvNormalizationSettings() };
         }
         return null;
@@ -2177,7 +2177,7 @@ export class UnitSearchFiltersService {
         }
 
         const filterUnits = () => {
-            const isAlphaStrike = this.gameService.currentGameSystem() === GameSystem.ALPHA_STRIKE;
+            const isAlphaStrike = this.gameService.currentGameSystem() === GameSystem.AS;
             return units.filter((unit) => {
                 const unitValue = isAlphaStrike ? this.getAdjustedPV(unit) : this.getAdjustedBV(unit);
                 return unitValue <= remainingBudget;
@@ -2661,9 +2661,9 @@ export class UnitSearchFiltersService {
                 untracked(() => {
                     this.selectedSort.set('');
                     const mode = this.budgetMode();
-                    if (currentGameSystem === GameSystem.ALPHA_STRIKE && mode === 'bv-normalization') {
+                    if (currentGameSystem === GameSystem.AS && mode === 'bv-normalization') {
                         this.budgetMode.set('pv-normalization');
-                    } else if (currentGameSystem === GameSystem.CLASSIC && mode === 'pv-normalization') {
+                    } else if (currentGameSystem === GameSystem.CBT && mode === 'pv-normalization') {
                         this.budgetMode.set('bv-normalization');
                     }
                 });

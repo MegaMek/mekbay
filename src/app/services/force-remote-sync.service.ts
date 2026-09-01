@@ -66,7 +66,7 @@ function parseForceTimestamp(timestamp: string | null | undefined): number | nul
 function captureRemoteForceCommitFence(force: Force): RemoteForceCommitFence {
     return Object.freeze({
         timestamp: force.timestamp,
-        cbtRevision: force.gameSystem === GameSystem.CLASSIC
+        cbtRevision: force.gameSystem === GameSystem.CBT
             ? force.getCBTForceV2Revision()
             : undefined,
         authorityFingerprint: force.captureWholeOwnerAuthorityFingerprint(),
@@ -77,7 +77,7 @@ function matchesRemoteForceCommitFence(force: Force, fence: RemoteForceCommitFen
     try {
         return force.timestamp === fence.timestamp
             && force.isWholeOwnerAuthorityFingerprintCurrent(fence.authorityFingerprint)
-            && (force.gameSystem !== GameSystem.CLASSIC
+            && (force.gameSystem !== GameSystem.CBT
                 || force.getCBTForceV2Revision() === fence.cbtRevision);
     } catch {
         return false;
@@ -305,7 +305,7 @@ export class ForceRemoteSyncService {
             this.logger.error(`Ignoring remote force update for ${targetForce.instanceId()}: force identity or game system changed.`);
             return false;
         }
-        if (targetForce.gameSystem === GameSystem.CLASSIC
+        if (targetForce.gameSystem === GameSystem.CBT
             && targetForce.hasCBTForceV2()
             && !stagedForce.hasCBTForceV2()) {
             this.logger.error(`Ignoring unsafe remote CBT persistence update for ${targetForce.instanceId()}: missing-v2`);

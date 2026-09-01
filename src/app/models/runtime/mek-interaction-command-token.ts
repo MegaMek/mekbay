@@ -6,22 +6,16 @@ import type {
     V2EquipmentInteractionChoiceBinding,
     V2EquipmentInteractionKind,
 } from '../../services/equipment-interaction-registry.service';
-import type { MekEquipmentChoiceToken } from '../cbt-force-api';
-import {
-    asStateRevision,
-    asUnitInstanceId,
-    type StateRevision,
-    type UnitInstanceId,
-} from './runtime-state';
+import type { MekEquipmentChoiceToken } from '../cbt-force.types';
 
 export type ExpandedV2EquipmentInteractionChoiceBinding = V2EquipmentInteractionChoiceBinding & Readonly<{
     groupLabel?: string;
 }>;
 
 export interface EquipmentChoiceTokenPayload {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly entityUuid: string;
-    readonly stateRevision: StateRevision;
+    readonly stateRevision: number;
     readonly componentId: ComponentId;
     readonly relatedComponentId?: ComponentId;
     readonly kind: V2EquipmentInteractionKind;
@@ -33,9 +27,9 @@ export interface EquipmentChoiceTokenPayload {
 
 const EQUIPMENT_CHOICE_TOKEN_KIND = 'mek-equipment-choice-v1';
 export function encodeEquipmentChoiceToken(input: {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly entityUuid: string;
-    readonly stateRevision: StateRevision;
+    readonly stateRevision: number;
     readonly interaction: ExpandedV2EquipmentInteractionChoiceBinding;
 }): MekEquipmentChoiceToken {
     const interaction = input.interaction;
@@ -66,9 +60,9 @@ export function decodeEquipmentChoiceToken(token: MekEquipmentChoiceToken): Equi
             || (typeof row[8] !== 'string' && (typeof row[8] !== 'number' || !Number.isFinite(row[8])))
             || typeof row[9] !== 'string' || (row[10] !== null && typeof row[10] !== 'string')) return null;
         return Object.freeze({
-            instanceId: asUnitInstanceId(row[1]),
+            instanceId: row[1],
             entityUuid: row[2],
-            stateRevision: asStateRevision(row[3] as number),
+            stateRevision: row[3] as number,
             componentId: asComponentId(row[4]),
             ...(row[5] === null ? {} : { relatedComponentId: asComponentId(row[5]) }),
             kind: row[6] as V2EquipmentInteractionKind,

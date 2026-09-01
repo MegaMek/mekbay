@@ -69,8 +69,8 @@ const MEK_SKILL_MULTIPLIERS = Object.freeze([
   Object.freeze([1.10, 0.99, 0.95, 0.90, 0.83, 0.75, 0.71, 0.68, 0.64]),
 ] as const);
 
-/** Minimal canonical facts needed by the Classic crew-skill BV rule. */
-export interface ClassicSkillUnitFacts {
+/** Minimal canonical facts needed by the CBT crew-skill BV rule. */
+export interface CBTSkillUnitFacts {
   readonly unitType: UnitType;
   readonly unitSubtype: UnitSubtype;
   readonly canAntiMech: boolean;
@@ -80,7 +80,7 @@ const DEFAULT_PILOTING_SKILL = 5;
 const NO_ANTIMEK_SKILL = 8;
 
 /** Fixed piloting column for unit families that do not use the requested value. */
-export function fixedClassicPilotingSkill(facts: ClassicSkillUnitFacts): number | null {
+export function fixedCBTPilotingSkill(facts: CBTSkillUnitFacts): number | null {
   if (facts.unitType === 'ProtoMek') return DEFAULT_PILOTING_SKILL;
   if (facts.unitType !== 'Infantry' || facts.canAntiMech) return null;
   if (facts.unitSubtype === 'Conventional Infantry'
@@ -88,11 +88,11 @@ export function fixedClassicPilotingSkill(facts: ClassicSkillUnitFacts): number 
   return DEFAULT_PILOTING_SKILL;
 }
 
-export function effectiveClassicPilotingSkill(
-  facts: ClassicSkillUnitFacts,
+export function effectiveCBTPilotingSkill(
+  facts: CBTSkillUnitFacts,
   requested: number,
 ): number {
-  return fixedClassicPilotingSkill(facts) ?? requested;
+  return fixedCBTPilotingSkill(facts) ?? requested;
 }
 
 /** Total Warfare/Core crew-skill adjustment over a current or pristine Mek BV. */
@@ -103,15 +103,15 @@ export function adjustMekBattleValueForSkills(base: number, gunnery: number, pil
 }
 
 /** Entity/search adapters share this rule without making UnitSummary an authority. */
-export function adjustClassicBattleValueForSkills(
+export function adjustCBTBattleValueForSkills(
   base: number,
   gunnery: number,
   piloting: number,
-  facts: ClassicSkillUnitFacts,
+  facts: CBTSkillUnitFacts,
 ): number {
   return adjustMekBattleValueForSkills(
     base,
     gunnery,
-    effectiveClassicPilotingSkill(facts, piloting),
+    effectiveCBTPilotingSkill(facts, piloting),
   );
 }

@@ -75,10 +75,10 @@ export interface SerializedForce {
     cbt?: SerializedCBTForceV2;
 }
 
-/** Current Classic force wire record. Legacy groups never enter the live model. */
-export interface SerializedClassicForce extends SerializedForce {
+/** Current CBT force wire record. Legacy groups never enter the live model. */
+export interface SerializedCBTForce extends SerializedForce {
     version: 2;
-    type: GameSystem.CLASSIC;
+    type: GameSystem.CBT;
     cbt: SerializedCBTForceV2;
     groups?: never;
     c3Networks?: never;
@@ -86,7 +86,7 @@ export interface SerializedClassicForce extends SerializedForce {
 
 export interface ASSerializedForce extends SerializedForce {
     version: 2;
-    type: GameSystem.ALPHA_STRIKE;
+    type: GameSystem.AS;
     groups: ASSerializedGroup[];
     cbt?: never;
 }

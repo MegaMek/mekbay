@@ -2,21 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../entity/base-entity';
+import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
 import type { SavedEntityIdentity } from '../persisted-unit-state';
 import type { NativeUnitSourceHandle } from '../native-unit-source-handle';
 import { cloneNativeUnitSourceHandle } from '../native-unit-source-handle';
-import type { StateRevision, UnitInstanceId } from './runtime-state';
-import { asStateRevision } from './runtime-state';
 import type { CrewAssignment } from './crew-assignment';
-import {
-    canonicalizeCrewAssignment,
-    createDefaultCrewAssignment,
-} from './crew-assignment';
+import { canonicalizeCrewAssignment, createDefaultCrewAssignment } from './crew-assignment';
 import { buildNonMekRuntimeIndex, type NonMekRuntimeIndex } from './non-mek-runtime-index';
-import {
-    createPristineNonMekUnitState,
-    NonMekUnitInstance,
-} from './non-mek-unit-instance';
+import { createPristineNonMekUnitState, NonMekUnitInstance } from './non-mek-unit-instance';
 import {
     NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
     canonicalizeNonMekUnitRestoration,
@@ -28,39 +21,34 @@ import {
     type SerializedNonMekUnitRestoration,
 } from './non-mek-unit-persistence';
 import { scenarioRuleset, type ScenarioRules } from './unit-state-initializer';
-import {
-    captureClassicUnitRuntime,
-    type ClassicUnitRuntimeReadModel,
-} from './classic-unit-runtime';
+import { captureCBTUnitRuntime, type CBTUnitRuntimeReadModel } from './cbt-unit-runtime';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import type {
-    ReadySelectedWeaponFireResult,
-    ReadyTargetingReconciliation,
-    ReadyClassicUnit,
-    ReadyUnitCommandResult,
-} from './ready-classic-unit';
+    CBTSelectedWeaponFireResult,
+    CBTTargetingReconciliation,
+    CBTUnit,
+    CBTUnitDispatchResult,
+} from './cbt-unit';
 import type { EquipmentRowOrderGroup } from './equipment-row-order';
-import type {
-    CBTUnitAttackerTargetingCommand,
-    CBTUnitSelectedWeaponFireCommand,
-} from './unit-instance';
+import type { CBTUnitAttackerTargetingCommand, CBTUnitSelectedWeaponFireCommand } from './unit-instance';
 
 export interface NonMekUnitDeploymentInput {
     readonly id: string;
     readonly crewAssignment?: CrewAssignment;
 }
 
-export interface CreateReadyNonMekUnitRequest {
-    readonly instanceId: UnitInstanceId;
+export interface CreateCBTNonMekUnitRequest {
+    readonly instanceId: string;
     readonly identity: SavedEntityIdentity;
     readonly deployment: NonMekUnitDeploymentInput;
     readonly scenario: ScenarioRules;
     readonly initialStateProfileId: string;
+    readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
 }
 
 /** Ready ownership aggregate for one non-Mek BaseEntity plus its direct sparse runtime. */
-export class ReadyNonMekUnit implements ReadyClassicUnit {
-    public readonly instanceId: UnitInstanceId;
+export class CBTNonMekUnit implements CBTUnit {
+    public readonly instanceId: string;
 
     public constructor(
         private readonly entity: BaseEntity,
@@ -70,7 +58,7 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
         private readonly nativeSource?: NativeUnitSourceHandle,
         private readonly restoration?: SerializedNonMekUnitRestoration,
     ) {
-        if (entity.entityType === 'Mek') throw new Error('ReadyNonMekUnit accepts non-Mek entities only');
+        if (entity.entityType === 'Mek') throw new Error('CBTNonMekUnit accepts non-Mek entities only');
         if (sourceRef.uuid !== entity.uuid() || !runtime.matchesEntity(entity)) {
             throw new Error('Ready entity identity does not match its runtime');
         }
@@ -102,13 +90,13 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
         return this.runtime.revision();
     }
 
-    public captureRuntime(): ClassicUnitRuntimeReadModel {
-        return captureClassicUnitRuntime(this.runtime);
+    public captureRuntime(): CBTUnitRuntimeReadModel {
+        return captureCBTUnitRuntime(this.runtime);
     }
 
     public planTargetingReconciliation(
         registry: TargetRegistrySnapshot,
-    ): ReadyTargetingReconciliation | null {
+    ): CBTTargetingReconciliation | null {
         const plan = this.runtime.planAttackerTargetingReconciliation(registry);
         return plan === null ? null : Object.freeze({
             install: () => this.runtime.installAttackerTargetingReconciliation(plan),
@@ -120,7 +108,7 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
         permutation: readonly number[],
         rowCount: number,
         forceReadOnly: boolean,
-    ): ReadyUnitCommandResult {
+    ): CBTUnitDispatchResult {
         return this.runtime.setEquipmentRowOrder(
             group,
             permutation,
@@ -134,7 +122,7 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
         registry: TargetRegistrySnapshot,
         forceReadOnly: boolean,
         c3Available: boolean,
-    ): ReadySelectedWeaponFireResult {
+    ): CBTSelectedWeaponFireResult {
         return this.runtime.dispatchSelectedWeaponFire(
             command,
             registry,
@@ -147,14 +135,14 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
         command: CBTUnitAttackerTargetingCommand,
         registry: TargetRegistrySnapshot,
         forceReadOnly: boolean,
-    ): ReadyUnitCommandResult {
+    ): CBTUnitDispatchResult {
         return this.runtime.dispatchAttackerTargeting({
             kind: 'edit-attacker-targeting',
             edit: command.edit,
         }, registry, forceReadOnly);
     }
 
-    public endTurn(): ReadyUnitCommandResult {
+    public endTurn(): CBTUnitDispatchResult {
         return this.runtime.dispatch({
             kind: 'end-turn',
         });
@@ -189,13 +177,22 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
 
     public static create(
         entity: BaseEntity,
-        request: CreateReadyNonMekUnitRequest,
+        request: CreateCBTNonMekUnitRequest,
         nativeSource?: NativeUnitSourceHandle,
-    ): ReadyNonMekUnit {
+    ): CBTNonMekUnit {
         verifySource(entity, request.identity, nativeSource);
         const index = buildNonMekRuntimeIndex(entity);
-        const crewAssignment = request.deployment.crewAssignment === undefined
-            ? createDefaultCrewAssignment(index.crewPositions)
+        const crewAssignment = request.crewSkills
+            ? {
+                schemaVersion: 1 as const,
+                positions: createDefaultCrewAssignment(index.crewPositions).positions.map(position => ({
+                    ...position,
+                    gunnery: request.crewSkills!.gunnery,
+                    piloting: effectiveEntityPilotingSkill(entity, request.crewSkills!.piloting),
+                })),
+            }
+            : request.deployment.crewAssignment === undefined
+                ? createDefaultCrewAssignment(index.crewPositions)
             : canonicalizeCrewAssignment(index.crewPositions, request.deployment.crewAssignment);
         const ruleset = scenarioRuleset(request.scenario);
         const baseline = Object.freeze({
@@ -221,7 +218,7 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
                 crewAssignment,
             }),
         });
-        return new ReadyNonMekUnit(entity, request.identity, runtime, deployment, nativeSource);
+        return new CBTNonMekUnit(entity, request.identity, runtime, deployment, nativeSource);
     }
 
     public static restore(
@@ -229,7 +226,7 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
         entity: BaseEntity,
         sourceRef: SavedEntityIdentity,
         nativeSource?: NativeUnitSourceHandle,
-    ): ReadyNonMekUnit {
+    ): CBTNonMekUnit {
         verifySource(entity, sourceRef, nativeSource);
         if (saved.entity.provider !== sourceRef.provider || saved.entity.uuid !== sourceRef.uuid) {
             throw new Error('Persisted entity source does not match the loaded source');
@@ -248,7 +245,7 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
             }
         }
         const runtime = restoreNonMekUnit(saved, entity);
-        return new ReadyNonMekUnit(
+        return new CBTNonMekUnit(
             entity,
             sourceRef,
             runtime,
@@ -258,14 +255,14 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
         );
     }
 
-    public static repair(current: ReadyNonMekUnit): ReadyNonMekUnit {
+    public static repair(current: CBTNonMekUnit): CBTNonMekUnit {
         const runtime = current.getInstance();
         const currentState = runtime.snapshot();
         const revision = runtime.revision();
         if (revision >= Number.MAX_SAFE_INTEGER) throw new Error('Unit revision is exhausted');
         const state = Object.freeze({
             ...createPristineNonMekUnitState(current.getUnit()),
-            stateRevision: asStateRevision(revision + 1),
+            stateRevision: revision + 1,
             ...(currentState.equipmentRowOrder === undefined
                 ? {}
                 : { equipmentRowOrder: currentState.equipmentRowOrder }),
@@ -277,7 +274,7 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
             runtime.ruleset,
             state,
         );
-        return new ReadyNonMekUnit(
+        return new CBTNonMekUnit(
             current.getUnit(),
             current.getSourceRef(),
             replacement,
@@ -288,14 +285,14 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
     }
 
     public static redeploy(
-        current: ReadyNonMekUnit,
+        current: CBTNonMekUnit,
         crewAssignment: CrewAssignment,
-    ): ReadyNonMekUnit {
+    ): CBTNonMekUnit {
         const assignment = canonicalizeCrewAssignment(
             current.getIndex().crewPositions,
             crewAssignment,
         );
-        return new ReadyNonMekUnit(
+        return new CBTNonMekUnit(
             current.entity,
             current.sourceRef,
             current.runtime,

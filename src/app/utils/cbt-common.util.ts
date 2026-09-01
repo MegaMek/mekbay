@@ -4,9 +4,9 @@
 
 import type { UnitSummary } from "../models/unit-summary.model";
 import {
-    effectiveClassicPilotingSkill,
-    fixedClassicPilotingSkill,
-    type ClassicSkillUnitFacts,
+    effectiveCBTPilotingSkill,
+    fixedCBTPilotingSkill,
+    type CBTSkillUnitFacts,
 } from '../models/entity/utils/battle-value/rules';
 
 /**
@@ -16,7 +16,7 @@ import {
 export function getFixedPilotingSkill(
     unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
 ): number | null {
-    return fixedClassicPilotingSkill(summarySkillFacts(unit));
+    return fixedCBTPilotingSkill(summarySkillFacts(unit));
 }
 
 /**
@@ -37,12 +37,12 @@ export function getEffectivePilotingSkill(
     unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
     pilotingSkill: number,
 ): number {
-    return effectiveClassicPilotingSkill(summarySkillFacts(unit), pilotingSkill);
+    return effectiveCBTPilotingSkill(summarySkillFacts(unit), pilotingSkill);
 }
 
 function summarySkillFacts(
     unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
-): ClassicSkillUnitFacts {
+): CBTSkillUnitFacts {
     return Object.freeze({
         unitType: unit.type,
         unitSubtype: unit.subtype,

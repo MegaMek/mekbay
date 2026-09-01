@@ -32,8 +32,8 @@ import {
     FORCE_GENERATION_MAX_PILOT_SKILL,
     FORCE_GENERATION_MIN_PILOT_SKILL,
     ForceGeneratorService,
-    getGeneratedClassicCrewSkill,
-    normalizeGeneratedClassicCrew,
+    getGeneratedCBTCrewSkill,
+    normalizeGeneratedCBTCrew,
     type ForceGenerationPreview,
     type ForceGenerationPreviewTask,
     type ForceGenerationRequest,
@@ -161,7 +161,7 @@ export class SearchForceGeneratorDialogComponent {
     );
 
     readonly gameSystem = this.selectedGameSystem.asReadonly();
-    readonly isAlphaStrike = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE);
+    readonly isAlphaStrike = computed(() => this.gameSystem() === GameSystem.AS);
     readonly useHex = computed<boolean>(() => this.optionsService.options().ASUseHex);
     readonly availabilitySource = computed(() => this.optionsService.options().availabilitySource);
     readonly eligibleUnits = this.filtersService.forceGeneratorEligibleUnits;
@@ -200,7 +200,7 @@ export class SearchForceGeneratorDialogComponent {
         const filterKey = this.unitTypeFilterKey();
         return filterKey ? this.getDropdownFilter(filterKey) : null;
     });
-    readonly subtypeFilter = computed(() => this.gameSystem() === GameSystem.CLASSIC ? this.getDropdownFilter('subtype') : null);
+    readonly subtypeFilter = computed(() => this.gameSystem() === GameSystem.CBT ? this.getDropdownFilter('subtype') : null);
     readonly tagsFilter = computed(() => this.getDropdownFilter('_tags'));
     readonly targetFormationEraOptions = computed(() => this.getDropdownOptionsForTargetFormation('era', this.eraFilter()));
     readonly randomFactionOption: DropdownOption = {
@@ -257,7 +257,7 @@ export class SearchForceGeneratorDialogComponent {
             return true;
         }
 
-        return this.gameSystem() === GameSystem.CLASSIC
+        return this.gameSystem() === GameSystem.CBT
             && (this.pilotingSkillRangeActive() || this.maxPilotSkillDeltaActive());
     });
     private readonly primaryDialogFilterKeys = computed(() => {
@@ -453,7 +453,7 @@ export class SearchForceGeneratorDialogComponent {
             lines.push(`Target Formations: ${targetFormationSummary}`);
         }
 
-        const skillLabel = this.gameSystem() === GameSystem.ALPHA_STRIKE
+        const skillLabel = this.gameSystem() === GameSystem.AS
             ? `Pilot Skill ${this.formatSkillRange(this.gunnerySkillRange())}`
             : `Gunnery ${this.formatSkillRange(this.gunnerySkillRange())} Piloting ${this.formatSkillRange(this.pilotingSkillRange())} Delta ${this.maxPilotSkillDelta()}`;
         lines.push(`${skillLabel}`);
@@ -477,7 +477,7 @@ export class SearchForceGeneratorDialogComponent {
     readonly classicBudgetMax = signal(this.initialBudgetDefaults.classic.max);
     readonly alphaStrikeBudgetMin = signal(this.initialBudgetDefaults.alphaStrike.min);
     readonly alphaStrikeBudgetMax = signal(this.initialBudgetDefaults.alphaStrike.max);
-    readonly budgetRange = computed(() => this.gameSystem() === GameSystem.ALPHA_STRIKE
+    readonly budgetRange = computed(() => this.gameSystem() === GameSystem.AS
         ? { min: this.alphaStrikeBudgetMin(), max: this.alphaStrikeBudgetMax() }
         : { min: this.classicBudgetMin(), max: this.classicBudgetMax() });
     readonly minUnitCount = signal(this.initialUnitCountDefaults.min);
@@ -493,7 +493,7 @@ export class SearchForceGeneratorDialogComponent {
         const skillRanges = this.forceGenerationSkillRanges();
         return {
             gameSystem,
-            budgetRange: gameSystem === GameSystem.ALPHA_STRIKE
+            budgetRange: gameSystem === GameSystem.AS
                 ? { min: this.alphaStrikeBudgetMin(), max: this.alphaStrikeBudgetMax() }
                 : { min: this.classicBudgetMin(), max: this.classicBudgetMax() },
             gunnery: skillRanges.gunnery.min,
@@ -574,11 +574,11 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     budgetMinimumFieldLabel(): string {
-        return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Min PV' : 'Min BV';
+        return this.gameSystem() === GameSystem.AS ? 'Min PV' : 'Min BV';
     }
 
     budgetMaximumFieldLabel(): string {
-        return this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'Max PV' : 'Max BV';
+        return this.gameSystem() === GameSystem.AS ? 'Max PV' : 'Max BV';
     }
 
     setPilotSkill(type: 'gunnery' | 'piloting', value: number): void {
@@ -638,7 +638,7 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     advPanelFilterGameSystemToggleTitle(): string {
-        return this.otherAdvPanelFilterGameSystem() === GameSystem.CLASSIC
+        return this.otherAdvPanelFilterGameSystem() === GameSystem.CBT
             ? 'Show BattleTech filters'
             : 'Show Alpha Strike filters';
     }
@@ -652,7 +652,7 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     toggleGameSystem(): void {
-        this.setGameSystem(this.isAlphaStrike() ? GameSystem.CLASSIC : GameSystem.ALPHA_STRIKE);
+        this.setGameSystem(this.isAlphaStrike() ? GameSystem.CBT : GameSystem.AS);
     }
 
     onEraSelectionChange(selection: MultiStateSelection | readonly string[]): void {
@@ -1343,7 +1343,7 @@ export class SearchForceGeneratorDialogComponent {
 
         const budgetRange = this.normalizePreviewBudgetRange(settings.budgetRange);
         if (totalCost < budgetRange.min || totalCost > budgetRange.max) {
-            const budgetLabel = settings.gameSystem === GameSystem.ALPHA_STRIKE ? 'PV' : 'BV';
+            const budgetLabel = settings.gameSystem === GameSystem.AS ? 'PV' : 'BV';
             return `Current preview totals ${totalCost.toLocaleString()} ${budgetLabel}, outside the current target of ${this.formatBudgetTarget(budgetRange, budgetLabel)}. Press REROLL to generate a force for the updated settings.`;
         }
 
@@ -1380,18 +1380,18 @@ export class SearchForceGeneratorDialogComponent {
         piloting: number,
     ): GeneratedForceUnit[] {
         return lockedUnits.map((lockedUnit) => {
-            const skill = gameSystem === GameSystem.ALPHA_STRIKE
+            const skill = gameSystem === GameSystem.AS
                 ? lockedUnit.skill ?? lockedUnit.gunnery ?? gunnery
                 : undefined;
-            const resolvedGunnery = gameSystem === GameSystem.CLASSIC
+            const resolvedGunnery = gameSystem === GameSystem.CBT
                 ? lockedUnit.gunnery ?? lockedUnit.skill ?? gunnery
                 : undefined;
-            const resolvedPiloting = gameSystem === GameSystem.CLASSIC
+            const resolvedPiloting = gameSystem === GameSystem.CBT
                 ? getEffectivePilotingSkill(lockedUnit.unit, lockedUnit.piloting ?? piloting)
                 : undefined;
             const crew = resolvedGunnery === undefined || resolvedPiloting === undefined
                 ? undefined
-                : normalizeGeneratedClassicCrew(
+                : normalizeGeneratedCBTCrew(
                     lockedUnit.unit,
                     lockedUnit.crew,
                     resolvedGunnery,
@@ -1400,10 +1400,10 @@ export class SearchForceGeneratorDialogComponent {
                 );
             const syntheticGunnery = resolvedGunnery === undefined
                 ? undefined
-                : getGeneratedClassicCrewSkill(crew, 'gunnery', resolvedGunnery);
+                : getGeneratedCBTCrewSkill(crew, 'gunnery', resolvedGunnery);
             const syntheticPiloting = resolvedPiloting === undefined
                 ? undefined
-                : getGeneratedClassicCrewSkill(crew, 'piloting', resolvedPiloting);
+                : getGeneratedCBTCrewSkill(crew, 'piloting', resolvedPiloting);
 
             return {
                 unit: lockedUnit.unit,
@@ -1426,14 +1426,14 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private resolveUnitTypeFilterKey(): UnitTypeFilterKey | null {
-        const filterKey = this.gameSystem() === GameSystem.ALPHA_STRIKE ? 'as.TP' : 'type';
+        const filterKey = this.gameSystem() === GameSystem.AS ? 'as.TP' : 'type';
         return this.getDropdownFilter(filterKey) ? filterKey : null;
     }
 
     private getOtherGameSystem(gameSystem: GameSystem): GameSystem {
-        return gameSystem === GameSystem.CLASSIC
-            ? GameSystem.ALPHA_STRIKE
-            : GameSystem.CLASSIC;
+        return gameSystem === GameSystem.CBT
+            ? GameSystem.AS
+            : GameSystem.CBT;
     }
 
     private setMultiStateFilter(key: MultiStateFilterKey, selection: MultiStateSelection | readonly string[]): void {
@@ -1541,7 +1541,7 @@ export class SearchForceGeneratorDialogComponent {
     private setBudgetRangeForSystem(gameSystem: GameSystem, range: { min: number; max: number }): void {
         const nextMin = Math.max(0, Math.floor(range.min));
         const nextMax = Math.max(0, Math.floor(range.max));
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        if (gameSystem === GameSystem.AS) {
             const didChangeMin = this.alphaStrikeBudgetMin() !== nextMin;
             const didChangeMax = this.alphaStrikeBudgetMax() !== nextMax;
             if (!didChangeMin && !didChangeMax) {
@@ -1888,7 +1888,7 @@ export class SearchForceGeneratorDialogComponent {
         unit: UnitSummary,
         gameSystem: GameSystem,
     ): GeneratedForceUnit[] {
-        if (gameSystem === GameSystem.ALPHA_STRIKE) {
+        if (gameSystem === GameSystem.AS) {
             return this.expandSkillRange(this.gunnerySkillRange()).map((skill) => ({
                 ...original,
                 unit,
@@ -1910,9 +1910,9 @@ export class SearchForceGeneratorDialogComponent {
             pilotingValues
                 .filter((piloting) => fixedPiloting !== null || Math.abs(gunnery - piloting) <= maxDelta)
                 .map((piloting) => {
-                    const crew = normalizeGeneratedClassicCrew(unit, undefined, gunnery, piloting);
-                    const syntheticGunnery = getGeneratedClassicCrewSkill(crew, 'gunnery', gunnery);
-                    const syntheticPiloting = getGeneratedClassicCrewSkill(crew, 'piloting', piloting);
+                    const crew = normalizeGeneratedCBTCrew(unit, undefined, gunnery, piloting);
+                    const syntheticGunnery = getGeneratedCBTCrewSkill(crew, 'gunnery', gunnery);
+                    const syntheticPiloting = getGeneratedCBTCrewSkill(crew, 'piloting', piloting);
                     return {
                         ...original,
                         unit,
@@ -2030,15 +2030,15 @@ export class SearchForceGeneratorDialogComponent {
             return;
         }
 
-        if (this.gameSystem() === GameSystem.ALPHA_STRIKE) {
+        if (this.gameSystem() === GameSystem.AS) {
             await this.editAlphaStrikePreviewUnitPilot(unitEntry);
             return;
         }
 
-        await this.editClassicPreviewUnitPilot(unitEntry);
+        await this.editCBTPreviewUnitPilot(unitEntry);
     }
 
-    private async editClassicPreviewUnitPilot(unitEntry: ForcePreviewUnit): Promise<void> {
+    private async editCBTPreviewUnitPilot(unitEntry: ForcePreviewUnit): Promise<void> {
         const unit = unitEntry.unit;
         if (!unit) {
             return;
@@ -2049,7 +2049,7 @@ export class SearchForceGeneratorDialogComponent {
             unit,
             unitEntry.piloting ?? this.pilotingSkillRange()[0],
         );
-        const normalizedCrew = normalizeGeneratedClassicCrew(
+        const normalizedCrew = normalizeGeneratedCBTCrew(
             unit,
             unitEntry.crew,
             initialGunnery,
@@ -2098,7 +2098,7 @@ export class SearchForceGeneratorDialogComponent {
             return;
         }
 
-        const normalizedResultCrew = normalizeGeneratedClassicCrew(
+        const normalizedResultCrew = normalizeGeneratedCBTCrew(
             unit,
             result.crew.flatMap(member => typeof member.id === 'number' ? [{
                 ...member,
@@ -2118,7 +2118,7 @@ export class SearchForceGeneratorDialogComponent {
             piloting,
             skill: undefined,
             commander: result.commander,
-            cost: this.forceGeneratorService.getBudgetMetric(unit, GameSystem.CLASSIC, gunnery, piloting),
+            cost: this.forceGeneratorService.getBudgetMetric(unit, GameSystem.CBT, gunnery, piloting),
         }));
     }
 
@@ -2164,7 +2164,7 @@ export class SearchForceGeneratorDialogComponent {
             piloting: undefined,
             crew: undefined,
             commander: result.commander,
-            cost: this.forceGeneratorService.getBudgetMetric(unit, GameSystem.ALPHA_STRIKE, result.skill, this.pilotingSkillRange()[0]),
+            cost: this.forceGeneratorService.getBudgetMetric(unit, GameSystem.AS, result.skill, this.pilotingSkillRange()[0]),
         }));
     }
 
@@ -2218,24 +2218,24 @@ export class SearchForceGeneratorDialogComponent {
     ): GeneratedForceUnit {
         const defaultGunnery = this.gunnerySkillRange()[0];
         const defaultPiloting = this.pilotingSkillRange()[0];
-        const skill = gameSystem === GameSystem.ALPHA_STRIKE
+        const skill = gameSystem === GameSystem.AS
             ? original.skill ?? original.gunnery ?? defaultGunnery
             : undefined;
-        const gunnery = gameSystem === GameSystem.CLASSIC
+        const gunnery = gameSystem === GameSystem.CBT
             ? original.gunnery ?? original.skill ?? defaultGunnery
             : undefined;
-        const piloting = gameSystem === GameSystem.CLASSIC
+        const piloting = gameSystem === GameSystem.CBT
             ? getEffectivePilotingSkill(variant, original.piloting ?? defaultPiloting)
             : undefined;
         const crew = gunnery === undefined || piloting === undefined
             ? undefined
-            : normalizeGeneratedClassicCrew(variant, original.crew, gunnery, piloting, original.alias);
+            : normalizeGeneratedCBTCrew(variant, original.crew, gunnery, piloting, original.alias);
         const syntheticGunnery = gunnery === undefined
             ? undefined
-            : getGeneratedClassicCrewSkill(crew, 'gunnery', gunnery);
+            : getGeneratedCBTCrewSkill(crew, 'gunnery', gunnery);
         const syntheticPiloting = piloting === undefined
             ? undefined
-            : getGeneratedClassicCrewSkill(crew, 'piloting', piloting);
+            : getGeneratedCBTCrewSkill(crew, 'piloting', piloting);
 
         return {
             ...original,
@@ -2261,13 +2261,13 @@ export class SearchForceGeneratorDialogComponent {
         const gameSystem = this.gameSystem();
         const defaultGunnery = this.gunnerySkillRange()[0];
         const defaultPiloting = this.pilotingSkillRange()[0];
-        const skill = gameSystem === GameSystem.ALPHA_STRIKE
+        const skill = gameSystem === GameSystem.AS
             ? unitEntry.skill ?? defaultGunnery
             : undefined;
-        const gunnery = gameSystem === GameSystem.CLASSIC
+        const gunnery = gameSystem === GameSystem.CBT
             ? unitEntry.gunnery ?? defaultGunnery
             : undefined;
-        const piloting = gameSystem === GameSystem.CLASSIC
+        const piloting = gameSystem === GameSystem.CBT
             ? unitEntry.piloting ?? defaultPiloting
             : undefined;
 
@@ -2283,7 +2283,7 @@ export class SearchForceGeneratorDialogComponent {
             gunnery,
             piloting,
             alias: unitEntry.alias,
-            crew: gameSystem === GameSystem.CLASSIC
+            crew: gameSystem === GameSystem.CBT
                 ? unitEntry.crew?.map((member) => ({ ...member }))
                 : undefined,
             commander: unitEntry.commander,

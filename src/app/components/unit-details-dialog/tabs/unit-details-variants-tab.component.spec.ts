@@ -24,7 +24,7 @@ describe('UnitDetailsVariantsTabComponent', () => {
         type: 'Mek',
         bv: 1_000,
     });
-    const gameSystem = signal(GameSystem.CLASSIC);
+    const gameSystem = signal(GameSystem.CBT);
 
     beforeEach(async () => {
         await TestBed.configureTestingModule({
@@ -36,7 +36,7 @@ describe('UnitDetailsVariantsTabComponent', () => {
                     provide: GameService,
                     useValue: {
                         currentGameSystem: gameSystem,
-                        isAlphaStrike: computed(() => gameSystem() === GameSystem.ALPHA_STRIKE),
+                        isAlphaStrike: computed(() => gameSystem() === GameSystem.AS),
                     },
                 },
                 {

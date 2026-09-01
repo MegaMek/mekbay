@@ -23,11 +23,7 @@ import {
 } from './component-state-change';
 import type { CBTEncounterSnapshot, EncounterNetworkEndpoint } from './encounter-runtime';
 import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-import {
-    type C3EmergencyMasterOperatingTurns,
-    type C3EmergencyMasterRuntimeState,
-    type UnitInstanceId,
-} from './runtime-state';
+import { type C3EmergencyMasterOperatingTurns, type C3EmergencyMasterRuntimeState } from './runtime-state';
 import type { CBTUnitInstance } from './unit-instance';
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import {
@@ -55,7 +51,7 @@ export type TypedC3EmergencyMasterEndpointRole = Extract<
 >;
 
 export interface ComponentC3EmergencyMasterContext {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly encounter: () => Pick<CBTEncounterSnapshot, 'networks'>;
 }
 
@@ -118,7 +114,7 @@ export function isC3EmergencyMasterComponent(
 
 export function typedC3EmergencyMasterEndpointRole(
     encounter: Pick<CBTEncounterSnapshot, 'networks'>,
-    instanceId: UnitInstanceId,
+    instanceId: string,
     componentId: ComponentId,
 ): TypedC3EmergencyMasterEndpointRole | null {
     const matches = encounter.networks.flatMap(network => network.networkType !== 'c3'

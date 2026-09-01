@@ -2,14 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { CBTForce } from '../models/cbt-force.model';
-import {
-    CBTForceMember,
-    isCBTForceMember,
-    isCBTMekForceMember,
-} from '../models/force-member.model';
+import { CBTForceMember, isCBTForceMember, isCBTMekForceMember } from '../models/force-member.model';
 import type { Injector } from '@angular/core';
 import type { DataService } from './data.service';
-import type { UnitInstanceId } from '../models/runtime/runtime-state';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { MM_DATA_UNIT_PROVIDER_ID } from './unit-catalog/unit-catalog.types';
 import { ForceUnitAdmissionService } from './force-unit-admission.service';
@@ -29,7 +24,7 @@ describe('ForceUnitAdmissionService', () => {
             subtype: '',
         } as unknown as UnitSummary;
         const ownedMember = new CBTForceMember(
-            'instance-1' as UnitInstanceId,
+            'instance-1',
             force,
             createTestMekEntity({
                 uuid: summary.uuid,
@@ -39,9 +34,9 @@ describe('ForceUnitAdmissionService', () => {
         );
         const admit = spyOn(force, 'admitRetainedUnit').and.resolveTo({
             kind: 'admitted',
-            instanceId: 'instance-1' as UnitInstanceId,
+            instanceId: 'instance-1',
         });
-        spyOn(force, 'getClassicMember').and.returnValue(ownedMember);
+        spyOn(force, 'getCBTMember').and.returnValue(ownedMember);
 
         const member = await createAdmissionService().admit({
             force,
@@ -60,7 +55,7 @@ describe('ForceUnitAdmissionService', () => {
         expect(member).toBe(ownedMember);
     });
 
-    it('admits a native BLK family through the same direct Classic member path', async () => {
+    it('admits a native BLK family through the same direct CBT member path', async () => {
         const force = new CBTForce('Vehicle force', {} as DataService, {} as Injector);
         const summary = {
             name: 'Vedette Medium Tank',
@@ -73,7 +68,7 @@ describe('ForceUnitAdmissionService', () => {
             subtype: 'Tracked',
         } as unknown as UnitSummary;
         const ownedMember = new CBTForceMember(
-            'instance-vehicle' as UnitInstanceId,
+            'instance-vehicle',
             force,
             createTestTankEntity({
                 uuid: summary.uuid,
@@ -83,9 +78,9 @@ describe('ForceUnitAdmissionService', () => {
         );
         const admit = spyOn(force, 'admitRetainedUnit').and.resolveTo({
             kind: 'admitted',
-            instanceId: 'instance-vehicle' as UnitInstanceId,
+            instanceId: 'instance-vehicle',
         });
-        spyOn(force, 'getClassicMember').and.returnValue(ownedMember);
+        spyOn(force, 'getCBTMember').and.returnValue(ownedMember);
 
         const member = await createAdmissionService().admit({ force, summary });
 

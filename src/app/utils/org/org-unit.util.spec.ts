@@ -6,7 +6,7 @@ import { compileUnitFacts } from './org-facts.util';
 import { orgUnitFromEntity, orgUnitFromFormationUnit } from './org-unit.util';
 
 describe('organization unit facts boundary', () => {
-    it('compiles loaded Classic facts from Entity without creating a catalog projection', () => {
+    it('compiles loaded CBT facts from Entity without creating a catalog projection', () => {
         const entity = createTestMekEntity({
             uuid: '019f6767-0dcb-7bb8-992f-aef08202f5e9',
             chassis: 'Atlas',

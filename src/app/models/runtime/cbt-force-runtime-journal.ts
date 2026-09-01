@@ -20,11 +20,7 @@ import {
 } from './runtime-command-session';
 import { emptyRuntimeHistory } from './persistence-v2';
 import type { SerializedRuntimeHistory } from './runtime-history';
-import {
-    preserveOperationalUnitState,
-    type RuntimeHistoryInput,
-} from './cbt-force-runtime-history';
-import type { UnitInstanceId } from './runtime-state';
+import { preserveOperationalUnitState, type RuntimeHistoryInput } from './cbt-force-runtime-history';
 import { isSerializedNonMekUnit } from './non-mek-unit-persistence';
 
 /** Sole owner of session-only checkpoints and the durable semantic-history view. */
@@ -44,7 +40,7 @@ export class CBTForceRuntimeJournal {
         return runtimeHistoryRows(durable ?? emptyRuntimeHistory(), this.session);
     }
 
-    public capture(instanceIds: readonly UnitInstanceId[]): CapturedRuntimeCommandMutation {
+    public capture(instanceIds: readonly string[]): CapturedRuntimeCommandMutation {
         return captureRuntimeCommandMutation(this.units, instanceIds);
     }
 
@@ -52,7 +48,7 @@ export class CBTForceRuntimeJournal {
         captured: CapturedRuntimeCommandMutation,
         history: RuntimeHistoryInput,
         boundary?: 'phase',
-    ): readonly UnitInstanceId[] {
+    ): readonly string[] {
         const recorded = recordRuntimeCommandMutation(
             this.units,
             this.session,
@@ -77,7 +73,7 @@ export class CBTForceRuntimeJournal {
         return Object.freeze({
             ...checkpoint,
             units: Object.freeze(checkpoint.units.map(row => {
-                const current = this.units.readyUnit(row.instanceId)?.serialize();
+                const current = this.units.cbtUnit(row.instanceId)?.serialize();
                 if (current === undefined) return row;
                 if (isSerializedNonMekUnit(row.unit)) {
                     if (!isSerializedNonMekUnit(current)) {
@@ -103,7 +99,7 @@ export class CBTForceRuntimeJournal {
         this.session = move.session;
     }
 
-    public prune(removed: ReadonlySet<UnitInstanceId>): void {
+    public prune(removed: ReadonlySet<string>): void {
         this.session = pruneRuntimeCommandSession(this.session, removed);
     }
 

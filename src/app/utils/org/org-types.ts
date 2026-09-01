@@ -106,7 +106,7 @@ export interface PointRange {
  * Minimal structural input accepted by the organization solver.
  *
  * A UnitSummary satisfies this interface for unloaded catalog/generator work.
- * Loaded Classic members instead compile it directly from Entity, so runtime
+ * Loaded CBT members instead compile it directly from Entity, so runtime
  * organization logic never depends on or synthesizes catalog projections.
  */
 export interface OrgUnit {

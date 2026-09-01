@@ -157,8 +157,8 @@ export function executeUnitSearch<TUnit extends UnitSearchRecord>(
         return matcher;
     };
     const normalizationEnabled = normalization !== null
-        && ((normalization.kind === 'bv' && request.gameSystem === GameSystem.CLASSIC)
-            || (normalization.kind === 'pv' && request.gameSystem === GameSystem.ALPHA_STRIKE));
+        && ((normalization.kind === 'bv' && request.gameSystem === GameSystem.CBT)
+            || (normalization.kind === 'pv' && request.gameSystem === GameSystem.AS));
     const normalizationMatchCache = new Map<string, UnitSearchNormalizationMatch | null>();
     const resolveNormalizationMatch = (unit: TUnit): UnitSearchNormalizationMatch | null => {
         if (!normalizationEnabled) {
@@ -237,7 +237,7 @@ export function executeUnitSearch<TUnit extends UnitSearchRecord>(
     if (normalizationEnabled) {
         candidateUnits = measureStage(
             telemetryStages,
-            request.gameSystem === GameSystem.CLASSIC ? 'bv-normalization' : 'pv-normalization',
+            request.gameSystem === GameSystem.CBT ? 'bv-normalization' : 'pv-normalization',
             unitCount,
             () => allUnits.filter(unit => resolveNormalizationMatch(unit) !== null),
             value => value.length,
@@ -274,7 +274,7 @@ export function executeUnitSearch<TUnit extends UnitSearchRecord>(
 
     if (request.bvPvLimit > 0) {
         const remaining = request.bvPvLimit - request.forceTotalBvPv;
-        const isAS = request.gameSystem === GameSystem.ALPHA_STRIKE;
+        const isAS = request.gameSystem === GameSystem.AS;
         results = measureStage(
             telemetryStages,
             'budget-filter',

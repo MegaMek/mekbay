@@ -101,7 +101,7 @@ function createForcePreviewEntryData(data: Partial<ForcePreviewEntry>): ForcePre
     const previewEntry: ForcePreviewEntry = {
         instanceId: data.instanceId ?? '',
         timestamp: data.timestamp ?? '',
-        type: data.type ?? GameSystem.CLASSIC,
+        type: data.type ?? GameSystem.CBT,
         owned: data.owned ?? true,
         cloud: data.cloud ?? false,
         local: data.local ?? false,
@@ -168,12 +168,12 @@ export function createForcePreviewUnitFromSerializedUnit(
 
 export function createForcePreviewUnitFromForceMember(
     member: ForceMember,
-    resolveClassicSummary?: (member: Extract<ForceMember, { readonly kind: 'cbt' }>) => UnitSummary | undefined,
+    resolveCBTSummary?: (member: Extract<ForceMember, { readonly kind: 'cbt' }>) => UnitSummary | undefined,
 ): ForcePreviewUnit {
     if (isCBTForceMember(member)) {
         const crew = member.force.getUnitCrewAssignment(member.id)?.positions ?? [];
         const previewUnit: ForcePreviewUnit = {
-            unit: resolveClassicSummary?.(member),
+            unit: resolveCBTSummary?.(member),
             destroyed: member.force.getUnitDestroyed(member.id) ?? false,
             lockKey: member.id,
         };
@@ -247,7 +247,7 @@ export function createForcePreviewEntry(
         name: raw.name,
         note: raw.note || undefined,
         tags: raw.tags?.length ? [...raw.tags] : undefined,
-        type: raw.type ?? GameSystem.CLASSIC,
+        type: raw.type ?? GameSystem.CBT,
         faction: raw.factionId != null ? resolver.getFactionById(raw.factionId) ?? null : null,
         era: raw.eraId != null ? resolver.getEraById(raw.eraId) ?? null : null,
         bv: raw.bv,
@@ -262,7 +262,7 @@ export function createForcePreviewEntryFromSerializedForce(
     resolver: ForceEntryResolver,
     options: { cloud?: boolean; local?: boolean } = {},
 ): ForcePreviewEntry {
-    if (raw.version !== 2 || (raw.type === GameSystem.CLASSIC && raw.cbt === undefined)) {
+    if (raw.version !== 2 || (raw.type === GameSystem.CBT && raw.cbt === undefined)) {
         throw new Error('Force preview requires normalized current persistence');
     }
     return createForcePreviewEntryData({
@@ -273,13 +273,13 @@ export function createForcePreviewEntryFromSerializedForce(
         name: raw.name,
         note: raw.note || undefined,
         tags: raw.tags?.length ? [...raw.tags] : undefined,
-        type: raw.type ?? GameSystem.CLASSIC,
+        type: raw.type ?? GameSystem.CBT,
         faction: raw.factionId != null ? resolver.getFactionById(raw.factionId) ?? null : null,
         era: raw.eraId != null ? resolver.getEraById(raw.eraId) ?? null : null,
         bv: raw.bv,
         pv: raw.pv,
         timestamp: raw.timestamp,
-        groups: raw.type === GameSystem.CLASSIC
+        groups: raw.type === GameSystem.CBT
             ? createCBTForcePreviewGroups(raw.cbt!, resolver)
             : (raw.groups ?? []).map((group) => ({
                 name: group.name,
@@ -296,7 +296,7 @@ export function createForcePreviewEntryFromForce(
     force: Force,
     members: readonly ForceMember[],
     options: { cloud?: boolean; local?: boolean } = {},
-    resolveClassicSummary?: (member: Extract<ForceMember, { readonly kind: 'cbt' }>) => UnitSummary | undefined,
+    resolveCBTSummary?: (member: Extract<ForceMember, { readonly kind: 'cbt' }>) => UnitSummary | undefined,
 ): ForcePreviewEntry {
     const tags = force.tags ?? [];
     const groups = force.groups()
@@ -309,7 +309,7 @@ export function createForcePreviewEntryFromForce(
                 name: group.name() || undefined,
                 formationId: group.activeFormation()?.id,
                 units: groupMembers.map(member =>
-                    createForcePreviewUnitFromForceMember(member, resolveClassicSummary)),
+                    createForcePreviewUnitFromForceMember(member, resolveCBTSummary)),
             };
         })
         .filter(group => group.units.length > 0);
@@ -327,8 +327,8 @@ export function createForcePreviewEntryFromForce(
         type: force.gameSystem,
         faction: force.faction(),
         era: force.era(),
-        bv: force.gameSystem === GameSystem.CLASSIC ? total : undefined,
-        pv: force.gameSystem === GameSystem.ALPHA_STRIKE ? total : undefined,
+        bv: force.gameSystem === GameSystem.CBT ? total : undefined,
+        pv: force.gameSystem === GameSystem.AS ? total : undefined,
         timestamp: force.timestamp ?? '',
         groups,
     });
@@ -344,7 +344,7 @@ export function getForcePreviewResolvedUnits(forcePreview: ForcePreviewEntry): U
 }
 
 export function getForcePreviewUnitPilotStats(forcePreviewUnit: ForcePreviewUnit, gameSystem: GameSystem): string {
-    if (gameSystem === GameSystem.ALPHA_STRIKE) {
+    if (gameSystem === GameSystem.AS) {
         return `${forcePreviewUnit.skill ?? forcePreviewUnit.gunnery ?? '?'}`;
     }
 

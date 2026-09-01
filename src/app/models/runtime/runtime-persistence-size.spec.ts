@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
-import { ReadyMekUnitFactory } from './ready-unit-factory';
+import { CBTMekUnit } from './cbt-mek-unit';
 import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -11,8 +11,7 @@ import {
     type SerializedCBTForceV2,
 } from './persistence-v2';
 import { RUNTIME_HISTORY_MESSAGE, type SerializedRuntimeHistory } from './runtime-history';
-import { asStateRevision, asUnitInstanceId } from './runtime-state';
-import { ReadyNonMekUnit } from './ready-non-mek-unit';
+import { CBTNonMekUnit } from './cbt-non-mek-unit';
 import { TestTankEntity } from '../entity/testing/test-entities';
 import {
     MM_DATA_UNIT_PROVIDER_ID,
@@ -40,8 +39,8 @@ describe('compact runtime persistence', () => {
             uuid,
             sourceFormat: 'blk' as const,
         });
-        const unit = ReadyNonMekUnit.create(entity, {
-            instanceId: asUnitInstanceId('unit:size-tank'),
+        const unit = CBTNonMekUnit.create(entity, {
+            instanceId: 'unit:size-tank',
             identity,
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
@@ -54,9 +53,9 @@ describe('compact runtime persistence', () => {
 
     it('keeps a 100-unit current-and-previous-turn save comfortably below 600 KB', async () => {
         const template = await pristineMek();
-        const instanceIds = Array.from({ length: 100 }, (_, index) => asUnitInstanceId(
+        const instanceIds = Array.from({ length: 100 }, (_, index) => 
             `019f6767-0dcb-7bb8-992f-${String(index).padStart(12, '0')}`,
-        ));
+        );
         const history = Object.freeze({
             u: Object.freeze(instanceIds),
             t: Object.freeze(Array.from({ length: 2 }, (_, turn) => Object.freeze({
@@ -84,7 +83,7 @@ describe('compact runtime persistence', () => {
             schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
             minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
             forceId: asForceId('019f6767-0dcb-7bb8-992f-999999999999'),
-            forceRevision: asStateRevision(0),
+            forceRevision: 0,
             scenarioRules: { schemaVersion: 1, values: { id: 'megamek', ruleset: 'core-2026' } },
             history,
             units,
@@ -110,7 +109,7 @@ describe('compact runtime persistence', () => {
             version: 2,
             timestamp: '2026-08-22T00:00:00.000Z',
             instanceId: force.forceId,
-            type: GameSystem.CLASSIC,
+            type: GameSystem.CBT,
             name: 'Maximum size budget',
             cbt: force,
         });
@@ -120,18 +119,15 @@ describe('compact runtime persistence', () => {
 
 async function pristineMek() {
     const fixture = createDirectMekRuntimeFixture();
-    const factory = new ReadyMekUnitFactory({
-        initializeOptions: {
+    return (await CBTMekUnit.createFromEntity({
+        identity: fixture.identity,
+        instanceId: 'unit:size-template',
+    }, fixture.entity, fixture.identity, {
             initializerRevision: 1,
             profileId: 'pristine',
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
-        },
-    });
-    return (await factory.createFromEntity({
-        identity: fixture.identity,
-        instanceId: asUnitInstanceId('unit:size-template'),
-    }, fixture.entity, fixture.identity)).serialize();
+    })).serialize();
 }
 
 function byteLength(value: unknown): number {

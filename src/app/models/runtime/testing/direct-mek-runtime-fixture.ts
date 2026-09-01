@@ -18,7 +18,6 @@ import {
     asUnitUuid,
 } from '../../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET, type CBTRuleset } from '../../cbt-ruleset.model';
-import { asUnitInstanceId } from '../runtime-state';
 import {
     buildMekRuntimeIndex,
     type MekRuntimeIndex,
@@ -523,7 +522,7 @@ function createFixture(
             })}`);
         }
         return new CBTUnitInstance(
-            asUnitInstanceId(id),
+            id,
             initialized.baselineRef,
             entity,
             index,

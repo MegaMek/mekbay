@@ -4,13 +4,13 @@
 import type { BaseEntity } from '../../base-entity';
 import { InfantryBaseEntity } from '../../entities/infantry/infantry-base-entity';
 import {
-  adjustClassicBattleValueForSkills,
-  effectiveClassicPilotingSkill,
-  type ClassicSkillUnitFacts,
+  adjustCBTBattleValueForSkills,
+  effectiveCBTPilotingSkill,
+  type CBTSkillUnitFacts,
 } from './rules';
 
 /** Canonical crew-skill facts for a loaded Entity. */
-export function classicSkillFactsForEntity(entity: BaseEntity): ClassicSkillUnitFacts {
+export function classicSkillFactsForEntity(entity: BaseEntity): CBTSkillUnitFacts {
   return Object.freeze({
     unitType: entity.unitType(),
     unitSubtype: entity.unitSubtype(),
@@ -19,7 +19,7 @@ export function classicSkillFactsForEntity(entity: BaseEntity): ClassicSkillUnit
 }
 
 export function effectiveEntityPilotingSkill(entity: BaseEntity, requested: number): number {
-  return effectiveClassicPilotingSkill(classicSkillFactsForEntity(entity), requested);
+  return effectiveCBTPilotingSkill(classicSkillFactsForEntity(entity), requested);
 }
 
 export function adjustEntityBattleValueForSkills(
@@ -28,7 +28,7 @@ export function adjustEntityBattleValueForSkills(
   gunnery: number,
   piloting: number,
 ): number {
-  return adjustClassicBattleValueForSkills(
+  return adjustCBTBattleValueForSkills(
     base,
     gunnery,
     piloting,

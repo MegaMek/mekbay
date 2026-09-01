@@ -14,7 +14,7 @@ import type {
 } from '../runtime/non-mek-unit-instance';
 import { gameRulesFor } from './game-rules';
 import type { UnitConditionKey } from '../unit-condition.model';
-import { isCrewDeathCommitted } from '../runtime/classic-unit-runtime';
+import { isCrewDeathCommitted } from '../runtime/cbt-unit-runtime';
 
 export interface ProtoMekRuntimeRulesProjection {
     readonly destroyed: boolean;

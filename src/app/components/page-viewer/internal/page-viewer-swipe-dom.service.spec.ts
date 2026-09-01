@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { TestBed } from '@angular/core/testing';
-import { asUnitInstanceId } from '../../../models/runtime/runtime-state';
 
 import { PageViewerSwipeDomService } from './page-viewer-swipe-dom.service';
 import { PageViewerWrapperLayoutService } from './page-viewer-wrapper-layout.service';
@@ -420,9 +419,9 @@ describe('PageViewerSwipeDomService', () => {
 
     it('resolves the next displayed units from winning unit indices when not in add-only mode', () => {
         const units = [
-            { id: asUnitInstanceId('a') },
-            { id: asUnitInstanceId('b') },
-            { id: asUnitInstanceId('c') }
+            { id: 'a' },
+            { id: 'b' },
+            { id: 'c' }
         ] as never as { id: string }[];
 
         const displayedUnits = service.resolveDisplayedUnits({
@@ -432,8 +431,8 @@ describe('PageViewerSwipeDomService', () => {
         });
 
         expect(displayedUnits?.map((unit) => unit.id)).toEqual([
-            asUnitInstanceId('c'),
-            asUnitInstanceId('b'),
+            'c',
+            'b',
         ]);
     });
 

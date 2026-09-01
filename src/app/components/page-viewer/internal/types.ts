@@ -11,7 +11,7 @@ export interface ViewportTransform {
     translateY: number;
 }
 
-/** A Classic record-sheet owner. V2 members expose Entity + runtime through CBTForce. */
+/** A CBT record-sheet owner. V2 members expose Entity + runtime through CBTForce. */
 export type PageViewerMember = CBTForceMember;
 /** Shared drawing surface also serves Alpha Strike cards. */
 export type PageCanvasMember = ASForceUnit | CBTForceMember;

@@ -1,7 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { StateRevision, UnitInstanceId } from './runtime-state';
 
 export const CBT_FORCE_ROSTER_SCHEMA_VERSION = 1 as const;
 export const CBT_FORCE_UNASSIGNED_GROUP_ID = 'cbt:unassigned' as const;
@@ -22,12 +21,12 @@ export class CBTForceRosterValidationError extends Error {
 }
 
 export interface CBTForceRosterUnitBinding {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly commander?: true;
 }
 
 export interface SerializedCBTForceRosterMemberV1 {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly order: number;
     /** Sparse mutable organizational fact; false is represented by absence. */
     readonly commander?: true;
@@ -52,7 +51,7 @@ export interface SerializedCBTForceRosterV1 {
 }
 
 export interface CBTForceRosterMemberRow {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly groupId: string;
     readonly groupOrder: number;
     readonly memberOrder: number;
@@ -74,14 +73,14 @@ export interface CBTForceRosterGroupRow {
 export interface CBTForceRosterSnapshot {
     readonly schemaVersion: 1;
     readonly forceId: string;
-    readonly forceRevision: StateRevision;
+    readonly forceRevision: number;
     readonly groups: readonly CBTForceRosterGroupRow[];
     readonly members: readonly CBTForceRosterMemberRow[];
 }
 
 export interface CBTForceRosterEnvelopeView {
     readonly forceId: string;
-    readonly forceRevision: StateRevision;
+    readonly forceRevision: number;
     readonly roster: SerializedCBTForceRosterV1;
 }
 

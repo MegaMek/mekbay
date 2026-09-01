@@ -1,7 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { asStateRevision, asUnitInstanceId } from './runtime-state';
 import {
     RUNTIME_HISTORY_MESSAGE,
     type SerializedRuntimeHistory,
@@ -22,7 +21,7 @@ const AFTER = Object.freeze({
     units: Object.freeze([]),
     encounter: Object.freeze({
         schemaVersion: 2 as const,
-        encounterRevision: asStateRevision(1),
+        encounterRevision: 1,
         facts: Object.freeze([]),
     }),
 }) satisfies RuntimeCommandCheckpoint;
@@ -30,7 +29,7 @@ const AFTER = Object.freeze({
 function unitCheckpoint(instanceId: string): RuntimeCommandCheckpoint {
     return Object.freeze({
         units: Object.freeze([Object.freeze({
-            instanceId: asUnitInstanceId(instanceId),
+            instanceId: instanceId,
             unit: Object.freeze({}) as never,
         })]),
     });

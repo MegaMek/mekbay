@@ -33,7 +33,7 @@ import { UnitSearchComponent } from './unit-search.component';
 
 describe('UnitSearchComponent card virtualization', () => {
     const filteredUnitsSignal = signal<UnitSummary[]>([]);
-    const currentGameSystemSignal = signal(GameSystem.ALPHA_STRIKE);
+    const currentGameSystemSignal = signal(GameSystem.AS);
     const closePanelsRequestSignal = signal({ requestId: 0, exitExpandedView: false });
     const isSearchSettledSignal = signal(true);
     const interactionReadySignal = signal(true);
@@ -128,7 +128,7 @@ describe('UnitSearchComponent card virtualization', () => {
     };
 
     const gameServiceStub = {
-        isAlphaStrike: computed(() => currentGameSystemSignal() === GameSystem.ALPHA_STRIKE),
+        isAlphaStrike: computed(() => currentGameSystemSignal() === GameSystem.AS),
         currentGameSystem: currentGameSystemSignal,
     };
 
@@ -253,7 +253,7 @@ describe('UnitSearchComponent card virtualization', () => {
         layoutServiceStub.windowWidth.set(1280);
         layoutServiceStub.windowHeight.set(900);
         savedSearchesServiceStub.version.set(0);
-        currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
+        currentGameSystemSignal.set(GameSystem.AS);
 
         await TestBed.configureTestingModule({
             imports: [UnitSearchComponent],
@@ -320,7 +320,7 @@ describe('UnitSearchComponent card virtualization', () => {
                             <ng-template #tableNameCell let-unit>{{ unit.name }}</ng-template>
                             <ng-template #tableYearCell let-unit>{{ unit.year }}</ng-template>
                             <ng-template #tableBvCell let-unit>{{ unit.bv }}</ng-template>
-                            <ng-template #tableClassicMovementCell let-unit>{{ unit.walk }}</ng-template>
+                            <ng-template #tableCBTMovementCell let-unit>{{ unit.walk }}</ng-template>
                             <ng-template #tableTagsCell let-unit>{{ unit.name }}</ng-template>
                         </div>
                     `,
@@ -364,11 +364,11 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.displayedUnitKeys()).toEqual([]);
     });
 
-    it('shows normalized Gunnery/Piloting immediately after BV in the Classic table', () => {
+    it('shows normalized Gunnery/Piloting immediately after BV in the CBT table', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const unit = createUnit('Normalized Unit');
-        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        currentGameSystemSignal.set(GameSystem.CBT);
         filtersServiceStub.budgetMode.set('bv-normalization');
         filtersServiceStub.getSearchResultPilotContext.and.returnValue({ kind: 'bv', adjustedValue: 1234, gunnery: 3, piloting: 6 });
         fixture.detectChanges();
@@ -390,7 +390,7 @@ describe('UnitSearchComponent card virtualization', () => {
     it('omits the Gunnery/Piloting column when BV normalization is inactive', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
-        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        currentGameSystemSignal.set(GameSystem.CBT);
         filtersServiceStub.budgetMode.set(null);
         fixture.detectChanges();
 
@@ -837,8 +837,8 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(component.inlinePanelUnit()).toBeNull();
     });
 
-    it('disables Alpha Strike card view while in Classic mode', () => {
-        currentGameSystemSignal.set(GameSystem.CLASSIC);
+    it('disables Alpha Strike card view while in CBT mode', () => {
+        currentGameSystemSignal.set(GameSystem.CBT);
         filtersServiceStub.viewMode.set('list');
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
@@ -1308,17 +1308,17 @@ describe('UnitSearchComponent card virtualization', () => {
 
         fixture.detectChanges();
 
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.AS);
         expect(component.dropdownFilters().some(filter => filter.key === 'as.TP')).toBeTrue();
         expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeFalse();
 
-        component.setAdvPanelFilterGameSystem(GameSystem.CLASSIC);
+        component.setAdvPanelFilterGameSystem(GameSystem.CBT);
         fixture.detectChanges();
 
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CBT);
         expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeTrue();
         expect(component.dropdownFilters().some(filter => filter.key === 'as.TP')).toBeFalse();
-        expect(currentGameSystemSignal()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(currentGameSystemSignal()).toBe(GameSystem.AS);
     });
 
     it('resyncs the visible advanced filter set when the global game mode changes', () => {
@@ -1326,22 +1326,22 @@ describe('UnitSearchComponent card virtualization', () => {
         const component = fixture.componentInstance;
 
         fixture.detectChanges();
-        component.setAdvPanelFilterGameSystem(GameSystem.CLASSIC);
+        component.setAdvPanelFilterGameSystem(GameSystem.CBT);
         fixture.detectChanges();
 
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CBT);
 
-        currentGameSystemSignal.set(GameSystem.CLASSIC);
+        currentGameSystemSignal.set(GameSystem.CBT);
         fixture.detectChanges();
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.CBT);
 
-        component.setAdvPanelFilterGameSystem(GameSystem.ALPHA_STRIKE);
+        component.setAdvPanelFilterGameSystem(GameSystem.AS);
         fixture.detectChanges();
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.AS);
 
-        currentGameSystemSignal.set(GameSystem.ALPHA_STRIKE);
+        currentGameSystemSignal.set(GameSystem.AS);
         fixture.detectChanges();
-        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(component.advPanelFilterGameSystem()).toBe(GameSystem.AS);
         expect(component.dropdownFilters().some(filter => filter.key === 'as.TP')).toBeTrue();
         expect(component.dropdownFilters().some(filter => filter.key === 'type')).toBeFalse();
     });

@@ -100,7 +100,7 @@ function createGroup(
     const force = {
         faction: () => faction,
         era: () => null,
-        gameSystem: GameSystem.ALPHA_STRIKE,
+        gameSystem: GameSystem.AS,
         groups: () => [group],
     };
 
@@ -123,7 +123,7 @@ function createGroup(
 }
 
 function getFormation(id: string): FormationTypeDefinition {
-    const formation = LanceTypeIdentifierUtil.getDefinitionById(id, GameSystem.ALPHA_STRIKE);
+    const formation = LanceTypeIdentifierUtil.getDefinitionById(id, GameSystem.AS);
     if (!formation) {
         throw new Error(`Formation ${id} not found`);
     }

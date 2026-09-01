@@ -26,7 +26,7 @@ import { ForceOverviewDialogComponent } from './force-overview-dialog.component'
 describe('ForceOverviewDialogComponent', () => {
     const forceMembers = signal<ForceMember[]>([]);
     const force = {
-        gameSystem: GameSystem.CLASSIC,
+        gameSystem: GameSystem.CBT,
         note: '',
         readOnly: signal(false),
         groups: signal([]),
@@ -87,7 +87,7 @@ describe('ForceOverviewDialogComponent', () => {
             .compileComponents();
     });
 
-    it('keeps persisted table mode and builds Classic unit columns', () => {
+    it('keeps persisted table mode and builds CBT unit columns', () => {
         const fixture = TestBed.createComponent(ForceOverviewDialogComponent);
         fixture.detectChanges();
 
@@ -95,7 +95,7 @@ describe('ForceOverviewDialogComponent', () => {
         const columns = component.forceTableColumns();
         const bvIndex = columns.findIndex(column => column.id === 'bv');
 
-        expect(component.gameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.gameSystem()).toBe(GameSystem.CBT);
         expect(component.isTableMode()).toBeTrue();
         expect(columns.map(column => column.id)).toEqual([
             'icon', 'name', 'type', 'subtype', 'role', 'bv', 'skill', 'tons', 'year',

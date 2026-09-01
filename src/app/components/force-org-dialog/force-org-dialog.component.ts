@@ -94,9 +94,9 @@ function snapGroupYUpToGrid(value: number): number {
 }
 
 /** Compute total BV and PV for a force, preferring saved values over unit-derived sums.
- *  Only sums BV for Classic forces and PV for Alpha Strike forces. */
+ *  Only sums BV for CBT forces and PV for Alpha Strike forces. */
 function computeForceUnitTotals(force: LoadForceEntry): { totalBv: number; totalPv: number } {
-    const isAS = force.type === GameSystem.ALPHA_STRIKE;
+    const isAS = force.type === GameSystem.AS;
     if (isAS && typeof force.pv === 'number') {
         return { totalBv: 0, totalPv: force.pv };
     }
@@ -508,15 +508,15 @@ export class ForceOrgDialogComponent {
     private sidebarDisplayCounts = computed(() => {
         const counts = new Map<string, number>([
             [SIDEBAR_FILTER_ALL, 0],
-            [GameSystem.CLASSIC, 0],
-            [GameSystem.ALPHA_STRIKE, 0],
+            [GameSystem.CBT, 0],
+            [GameSystem.AS, 0],
             [SIDEBAR_FILTER_UNTAGGED, 0],
         ]);
 
         for (const force of this.sidebarCountSourceForces()) {
             counts.set(SIDEBAR_FILTER_ALL, (counts.get(SIDEBAR_FILTER_ALL) ?? 0) + 1);
 
-            const forceType = force.type || GameSystem.CLASSIC;
+            const forceType = force.type || GameSystem.CBT;
             counts.set(forceType, (counts.get(forceType) ?? 0) + 1);
 
             const forceTags = this.getForceTags(force);
@@ -586,8 +586,8 @@ export class ForceOrgDialogComponent {
         if (
             filter === SIDEBAR_FILTER_ALL
             || filter === SIDEBAR_FILTER_UNTAGGED
-            || filter === GameSystem.CLASSIC
-            || filter === GameSystem.ALPHA_STRIKE
+            || filter === GameSystem.CBT
+            || filter === GameSystem.AS
         ) {
             return null;
         }
@@ -1196,11 +1196,11 @@ export class ForceOrgDialogComponent {
             return 'No untagged forces available.';
         }
 
-        if (this.sidebarFilter() === GameSystem.CLASSIC) {
+        if (this.sidebarFilter() === GameSystem.CBT) {
             return 'No BattleTech forces available.';
         }
 
-        if (this.sidebarFilter() === GameSystem.ALPHA_STRIKE) {
+        if (this.sidebarFilter() === GameSystem.AS) {
             return 'No Alpha Strike forces available.';
         }
 
@@ -1252,8 +1252,8 @@ export class ForceOrgDialogComponent {
                 case 'name':
                     return dir * naturalCompare(a.name || '', b.name || '');
                 case 'value': {
-                    const aVal = (a.type === GameSystem.ALPHA_STRIKE) ? (a.pv ?? 0) : (a.bv ?? 0);
-                    const bVal = (b.type === GameSystem.ALPHA_STRIKE) ? (b.pv ?? 0) : (b.bv ?? 0);
+                    const aVal = (a.type === GameSystem.AS) ? (a.pv ?? 0) : (a.bv ?? 0);
+                    const bVal = (b.type === GameSystem.AS) ? (b.pv ?? 0) : (b.bv ?? 0);
                     return dir * (aVal - bVal);
                 }
                 case 'faction': {
@@ -1311,10 +1311,10 @@ export class ForceOrgDialogComponent {
         switch (filter) {
             case SIDEBAR_FILTER_ALL:
                 return true;
-            case GameSystem.CLASSIC:
-                return (force.type || GameSystem.CLASSIC) === GameSystem.CLASSIC;
-            case GameSystem.ALPHA_STRIKE:
-                return (force.type || GameSystem.CLASSIC) === GameSystem.ALPHA_STRIKE;
+            case GameSystem.CBT:
+                return (force.type || GameSystem.CBT) === GameSystem.CBT;
+            case GameSystem.AS:
+                return (force.type || GameSystem.CBT) === GameSystem.AS;
             case SIDEBAR_FILTER_UNTAGGED:
                 return forceTags.length === 0;
             default:

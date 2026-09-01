@@ -16,7 +16,7 @@ export function orgUnitFromSummary(summary: UnitSummary): OrgUnit {
 
 /**
  * Compile the organization solver's small, immutable input from canonical Entity data.
- * This deliberately is not a UnitSummary projection: loaded Classic units never cross
+ * This deliberately is not a UnitSummary projection: loaded CBT units never cross
  * back into the catalog model.
  */
 export function orgUnitFromEntity(entity: BaseEntity): OrgUnit {

@@ -4,7 +4,12 @@
 import { compareText } from '../../utils/string.util';
 import { isPlainRecord } from '../../utils/json-value.util';
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import { c3EquipmentTraits, type C3EquipmentTraits } from '../c3-network.model';
+import {
+    c3EquipmentTraits,
+    type C3EquipmentTraits,
+    type C3NetworkType,
+    type C3Role,
+} from '../c3-network.model';
 import { COCKPIT_DATA } from '../entity/components/cockpit-data';
 import { ENGINE_DATA, type EnginePowerSource } from '../entity/components/engine-data';
 import { GYRO_DATA } from '../entity/components/gyro-data';
@@ -164,13 +169,10 @@ export interface MekArmorVariant {
     readonly locationIds: readonly LocationId[];
 }
 
-export type MekC3NetworkType = 'c3' | 'c3i' | 'naval' | 'nova';
-export type MekC3Role = 'master' | 'slave' | 'peer';
-
 export interface MekOrdinaryC3Endpoint extends MekEquipmentGroup {
     readonly kind: 'ordinary';
-    readonly networkType: MekC3NetworkType;
-    readonly role: MekC3Role;
+    readonly networkType: C3NetworkType;
+    readonly role: C3Role;
     readonly boosted: boolean;
 }
 
@@ -857,7 +859,7 @@ function compileC3Endpoint(
     result: CompiledFeatures,
     blockers: MekMechanicsProfileBlocker[],
 ): void {
-    const networkTypes: readonly MekC3NetworkType[] = traits.networkTypes;
+    const networkTypes: readonly C3NetworkType[] = traits.networkTypes;
     if (networkTypes.length !== 1) {
         blockers.push(profileBlocker(
             'AMBIGUOUS_C3_ENDPOINT', `${base.equipmentId}:network`, [base.componentId], base.criticalSlotIds,
@@ -877,7 +879,7 @@ function compileC3Endpoint(
         return;
     }
     const networkType = networkTypes[0]!;
-    const roles: readonly MekC3Role[] = traits.ordinaryRoles;
+    const roles: readonly C3Role[] = traits.ordinaryRoles;
     if (roles.length !== 1) {
         blockers.push(profileBlocker(
             'AMBIGUOUS_C3_ENDPOINT', `${base.equipmentId}:role`, [base.componentId], base.criticalSlotIds,

@@ -3,23 +3,17 @@
 
 import type { ComponentId } from './entity/entity-identifiers';
 import type { SerializedC3NetworkGroup } from './force-serialization';
-import {
-    C3Network,
-    C3NetworkType,
-    C3Role,
-    type C3Component,
-} from './c3-network.model';
+import { C3Network, C3NetworkType, C3Role, type C3Component } from './c3-network.model';
 import { C3NetworkEditor } from './c3-network-editor';
 import {
     asEncounterNetworkId,
     type EncounterNetwork,
     type EncounterNetworkEndpoint,
 } from './runtime/encounter-runtime';
-import type { UnitInstanceId } from './runtime/runtime-state';
 
 /** Short-lived editor projection. Stable runtime identities remain authoritative. */
 export interface C3EncounterPresentationUnit {
-    readonly instanceId: UnitInstanceId;
+    readonly instanceId: string;
     readonly c3Components: readonly C3Component[];
 }
 
@@ -28,7 +22,7 @@ export interface C3EncounterPresentationUnit {
  * storage relationship, not a capability role: it may be a Slave or a Master.
  */
 export function projectEncounterC3Components(
-    instanceId: UnitInstanceId,
+    instanceId: string,
     components: readonly C3Component[],
     networks: readonly EncounterNetwork[],
 ): readonly C3Component[] {

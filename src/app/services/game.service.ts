@@ -100,7 +100,7 @@ export class GameService {
     }
 
     isAlphaStrike = computed(() => {
-        return this.currentGameSystem() === GameSystem.ALPHA_STRIKE;
+        return this.currentGameSystem() === GameSystem.AS;
     });
 
 }

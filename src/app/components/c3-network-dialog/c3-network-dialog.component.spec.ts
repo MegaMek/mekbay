@@ -168,7 +168,7 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         const close = jasmine.createSpy('close');
         const members = signal(units.map(state => state.unit));
         const force = {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: members,
             members,
             c3Networks: signal([]),

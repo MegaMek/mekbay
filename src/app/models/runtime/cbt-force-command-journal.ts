@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { ReadyClassicUnit } from './ready-classic-unit';
+import type { CBTUnit } from './cbt-unit';
 import { emptyRuntimeHistory } from './persistence-v2';
 import {
     appendRuntimeCommandEntry,
@@ -16,7 +16,6 @@ import {
     type RuntimeHistoryEventInput,
     type SerializedRuntimeHistory,
 } from './runtime-history';
-import { asUnitInstanceId, type UnitInstanceId } from './runtime-state';
 import {
     compareUnitInstanceIds,
     serializedUnitTurnCounter,
@@ -25,34 +24,34 @@ import {
 } from './cbt-force-runtime-history';
 
 export interface RuntimeCommandJournalUnitAccess {
-    readyUnit(instanceId: UnitInstanceId): ReadyClassicUnit | null;
+    cbtUnit(instanceId: string): CBTUnit | null;
     history(): SerializedRuntimeHistory | null;
 }
 
 export interface CapturedRuntimeCommandMutation {
     readonly checkpoint: RuntimeCommandCheckpoint;
-    readonly openingWitnesses: ReadonlyMap<UnitInstanceId, Readonly<{
-        unit: ReadyClassicUnit;
+    readonly openingWitnesses: ReadonlyMap<string, Readonly<{
+        unit: CBTUnit;
         revision: number;
     }>>;
 }
 
 export interface RecordedRuntimeCommandMutation {
     readonly session: RuntimeCommandSession;
-    readonly changedUnitIds: readonly UnitInstanceId[];
+    readonly changedUnitIds: readonly string[];
 }
 
 export function captureRuntimeCommandMutation(
     authority: RuntimeCommandJournalUnitAccess,
-    instanceIds: readonly UnitInstanceId[],
+    instanceIds: readonly string[],
 ): CapturedRuntimeCommandMutation {
     const ids = [...new Set(instanceIds)].sort(compareUnitInstanceIds);
-    const openingWitnesses = new Map<UnitInstanceId, Readonly<{
-        unit: ReadyClassicUnit;
+    const openingWitnesses = new Map<string, Readonly<{
+        unit: CBTUnit;
         revision: number;
     }>>();
     const units = Object.freeze(ids.map(instanceId => {
-        const unit = authority.readyUnit(instanceId);
+        const unit = authority.cbtUnit(instanceId);
         if (!unit) throw new Error(`Cannot capture unknown runtime ${instanceId}`);
         openingWitnesses.set(instanceId, Object.freeze({ unit, revision: unit.revision() }));
         return Object.freeze({ instanceId, unit: unit.serialize() });
@@ -71,7 +70,7 @@ export function recordRuntimeCommandMutation(
     boundary?: 'phase',
 ): RecordedRuntimeCommandMutation {
     const changedUnitIds = captured.checkpoint.units.flatMap(row => {
-        const current = authority.readyUnit(row.instanceId);
+        const current = authority.cbtUnit(row.instanceId);
         if (!current) throw new Error(`Cannot record unknown runtime ${row.instanceId}`);
         const opening = captured.openingWitnesses.get(row.instanceId);
         return opening?.unit === current && opening.revision === current.revision()
@@ -88,7 +87,7 @@ export function recordRuntimeCommandMutation(
     });
     const after = Object.freeze({
         units: Object.freeze(changedUnitIds.map(instanceId => {
-            const unit = authority.readyUnit(instanceId);
+            const unit = authority.cbtUnit(instanceId);
             if (!unit) throw new Error(`Cannot record unknown runtime ${instanceId}`);
             return Object.freeze({ instanceId, unit: unit.serialize() });
         })),
@@ -149,7 +148,7 @@ function positionRuntimeHistory(
             : null;
         const capturedUnit = unitId === null
             ? undefined
-            : beforeById.get(asUnitInstanceId(unitId));
+            : beforeById.get(unitId);
         const capturedTurn = capturedUnit === undefined
             ? null
             : serializedUnitTurnCounter(capturedUnit);

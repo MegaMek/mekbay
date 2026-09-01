@@ -2,28 +2,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { EntityMountedEquipment } from '../entity/types';
-import type {
-    ArmorFaceId,
-    ComponentId,
-    CrewPositionId,
-    LocationId,
-} from '../entity/entity-identifiers';
+import type { ArmorFaceId, ComponentId, CrewPositionId, LocationId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { AmmoEquipment } from '../equipment.model';
 import type { UnitConditionKey } from '../unit-condition.model';
 import type { AttackerTargetingState } from './attacker-targeting-state';
 import type { EquipmentRowOrderState } from './equipment-row-order';
 import type { EndTurnCheckpoint } from './end-turn-checkpoint';
-import type {
-    AmmoRuntimeState,
-    ComponentRuntimeState,
-    StateRevision,
-} from './runtime-state';
+import type { AmmoRuntimeState, ComponentRuntimeState } from './runtime-state';
 
 export type RuntimeStatePerspective = 'committed' | 'preview';
 
-/** Shared immutable location topology for every Classic BaseEntity runtime. */
-export interface ClassicRuntimeLocation {
+/** Shared immutable location topology for every CBT BaseEntity runtime. */
+export interface CBTRuntimeLocation {
     readonly id: LocationId;
     readonly code: string;
     readonly sheetCode?: string;
@@ -33,8 +24,8 @@ export interface ClassicRuntimeLocation {
     readonly soldierPips?: boolean;
 }
 
-/** Shared immutable armor topology for every Classic BaseEntity runtime. */
-export interface ClassicRuntimeArmorFace {
+/** Shared immutable armor topology for every CBT BaseEntity runtime. */
+export interface CBTRuntimeArmorFace {
     readonly id: ArmorFaceId;
     readonly locationId: LocationId;
     readonly face: 'front' | 'rear';
@@ -42,34 +33,34 @@ export interface ClassicRuntimeArmorFace {
 }
 
 /** Components share identity; only equipment-backed components have a mount. */
-export interface ClassicRuntimeComponent {
+export interface CBTRuntimeComponent {
     readonly id: ComponentId;
     readonly kind: 'equipment' | 'system';
     readonly mount?: EntityMountedEquipment;
 }
 
-export interface ClassicRuntimeCrewPosition {
+export interface CBTRuntimeCrewPosition {
     readonly id: CrewPositionId;
     readonly occurrence: number;
 }
 
 /**
- * One disposable topology contract for every Classic BaseEntity. Family-only
+ * One disposable topology contract for every CBT BaseEntity. Family-only
  * metadata lives on the indexed rows or in explicit mechanics capabilities.
  */
-export interface ClassicUnitRuntimeIndex {
-    readonly locations: ReadonlyMap<LocationId, ClassicRuntimeLocation>;
-    readonly armorFaces: ReadonlyMap<ArmorFaceId, ClassicRuntimeArmorFace>;
-    readonly components: ReadonlyMap<ComponentId, ClassicRuntimeComponent>;
-    readonly crewPositions: ReadonlyMap<CrewPositionId, ClassicRuntimeCrewPosition>;
+export interface CBTUnitRuntimeIndex {
+    readonly locations: ReadonlyMap<LocationId, CBTRuntimeLocation>;
+    readonly armorFaces: ReadonlyMap<ArmorFaceId, CBTRuntimeArmorFace>;
+    readonly components: ReadonlyMap<ComponentId, CBTRuntimeComponent>;
+    readonly crewPositions: ReadonlyMap<CrewPositionId, CBTRuntimeCrewPosition>;
 }
 
-export interface ClassicLocationRuntimeState {
+export interface CBTLocationRuntimeState {
     readonly internalDamage: number;
     readonly armorDamage: readonly { readonly faceId: ArmorFaceId; readonly damage: number }[];
 }
 
-export interface ClassicCrewRuntimeState {
+export interface CBTCrewRuntimeState {
     readonly wounds: number;
     readonly unconscious: boolean;
     readonly ejected: boolean;
@@ -80,12 +71,12 @@ export interface ClassicCrewRuntimeState {
 }
 
 /** A sixth wound is fatal, but origin/next commits that death only at phase end. */
-export function isCrewDeathCommitted(state: ClassicCrewRuntimeState): boolean {
+export function isCrewDeathCommitted(state: CBTCrewRuntimeState): boolean {
     return state.dead === true;
 }
 
-/** Boundary facts shared by every Classic family runtime. */
-export interface ClassicTurnRuntimeState {
+/** Boundary facts shared by every CBT family runtime. */
+export interface CBTTurnRuntimeState {
     readonly turnCounter: number;
     /** A committed phase-scoped edit exists and has not crossed End Phase yet. */
     readonly phaseStateChanged: boolean;
@@ -93,22 +84,22 @@ export interface ClassicTurnRuntimeState {
 }
 
 /**
- * Common sparse state owned by every Classic runtime. Family-specific turn
+ * Common sparse state owned by every CBT runtime. Family-specific turn
  * declarations extend the shared boundary facts on their concrete state.
  */
-export interface ClassicUnitRuntimeState {
-    readonly stateRevision: StateRevision;
-    readonly locations: ReadonlyMap<LocationId, ClassicLocationRuntimeState>;
+export interface CBTUnitRuntimeState {
+    readonly stateRevision: number;
+    readonly locations: ReadonlyMap<LocationId, CBTLocationRuntimeState>;
     readonly components: ReadonlyMap<ComponentId, ComponentRuntimeState>;
     readonly ammo: ReadonlyMap<ComponentId, AmmoRuntimeState>;
-    readonly crew: ReadonlyMap<CrewPositionId, ClassicCrewRuntimeState>;
+    readonly crew: ReadonlyMap<CrewPositionId, CBTCrewRuntimeState>;
     readonly conditions: ReadonlySet<UnitConditionKey>;
-    readonly turn: ClassicTurnRuntimeState;
+    readonly turn: CBTTurnRuntimeState;
     readonly attackerTargeting: AttackerTargetingState;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
 }
 
-export interface ClassicUnitCommandResult<State extends ClassicUnitRuntimeState | null> {
+export interface CBTUnitCommandResult<State extends CBTUnitRuntimeState | null> {
     /** False only when the owning force is read-only. */
     readonly accepted: boolean;
     readonly changed: boolean;
@@ -120,8 +111,8 @@ export interface ClassicUnitCommandResult<State extends ClassicUnitRuntimeState 
  * Mek-only rule queries extend this interface and are obtained through an
  * explicit capability guard.
  */
-export interface ClassicUnitQueryPort {
-    readonly stateRevision: StateRevision;
+export interface CBTUnitQueryPort {
+    readonly stateRevision: number;
     /** One authoritative dirty check for the current phase. */
     hasPendingPhaseChanges(): boolean;
     hasPendingCombat(): boolean;
@@ -137,31 +128,31 @@ export interface ClassicUnitQueryPort {
     equipmentRowOrder(): EquipmentRowOrderState | undefined;
     hasCondition(condition: UnitConditionKey): boolean;
     conditions(): readonly UnitConditionKey[];
-    crewState(positionId: CrewPositionId): ClassicCrewRuntimeState;
+    crewState(positionId: CrewPositionId): CBTCrewRuntimeState;
 }
 
 /** One atomically captured force-facing runtime read model. */
-export interface ClassicUnitRuntimeReadModel {
-    readonly index: ClassicUnitRuntimeIndex;
-    readonly state: ClassicUnitRuntimeState;
-    readonly query: ClassicUnitQueryPort;
+export interface CBTUnitRuntimeReadModel {
+    readonly index: CBTUnitRuntimeIndex;
+    readonly state: CBTUnitRuntimeState;
+    readonly query: CBTUnitQueryPort;
 }
 
 /** Minimal family-neutral source for an atomic force-facing runtime read. */
-export interface ClassicUnitRuntimePort {
-    getIndex(): ClassicUnitRuntimeIndex;
-    snapshot(): ClassicUnitRuntimeState;
-    query(): ClassicUnitQueryPort;
+export interface CBTUnitRuntimePort {
+    getIndex(): CBTUnitRuntimeIndex;
+    snapshot(): CBTUnitRuntimeState;
+    query(): CBTUnitQueryPort;
 }
 
-/** The single capture path used by every ready Classic unit. */
-export function captureClassicUnitRuntime(
-    runtime: ClassicUnitRuntimePort,
-): ClassicUnitRuntimeReadModel {
+/** The single capture path used by every ready CBT unit. */
+export function captureCBTUnitRuntime(
+    runtime: CBTUnitRuntimePort,
+): CBTUnitRuntimeReadModel {
     const state = runtime.snapshot();
     const query = runtime.query();
     if (state.stateRevision !== query.stateRevision) {
-        throw new Error('Classic unit changed while its read model was captured');
+        throw new Error('CBT unit changed while its read model was captured');
     }
     return Object.freeze({ index: runtime.getIndex(), state, query });
 }

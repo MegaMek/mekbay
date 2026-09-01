@@ -24,7 +24,7 @@ describe('createLoadForceEntry', () => {
             name: 'Alpha Lance',
             note: 'Fast cavalry reserve.',
             tags: ['Recon', 'Skirmish'],
-            type: GameSystem.ALPHA_STRIKE,
+            type: GameSystem.AS,
             factionId: 1,
             eraId: 3025,
             pv: 123,

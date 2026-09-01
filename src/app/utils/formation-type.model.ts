@@ -171,7 +171,7 @@ export function getFormationTypeGameSystemDefinition(
     definition: FormationTypeDefinitionSource,
     gameSystem: GameSystem,
 ): FormationTypeGameSystemDefinition {
-    return gameSystem === GameSystem.CLASSIC
+    return gameSystem === GameSystem.CBT
         ? definition.classic
         : definition.alphaStrike;
 }

@@ -36,25 +36,25 @@ describe('OptionsService theme migration', () => {
         expect(service.options().colorScheme).toBe('default');
     });
 
-    it('defaults Classic units to Sheet View', async () => {
+    it('defaults CBT units to Sheet View', async () => {
         savedOptions = null;
 
         const service = await createService();
 
-        expect(service.options().classicUnitViewMode).toBe('sheet');
+        expect(service.options().cbtUnitViewMode).toBe('sheet');
     });
 
-    it('restores and validates the Classic unit view preference', async () => {
-        savedOptions = { classicUnitViewMode: 'tactical' };
+    it('restores and validates the CBT unit view preference', async () => {
+        savedOptions = { cbtUnitViewMode: 'tactical' };
         let service = await createService();
 
-        expect(service.options().classicUnitViewMode).toBe('tactical');
+        expect(service.options().cbtUnitViewMode).toBe('tactical');
 
         TestBed.resetTestingModule();
-        savedOptions = { classicUnitViewMode: 'invalid' };
+        savedOptions = { cbtUnitViewMode: 'invalid' };
         service = await createService();
 
-        expect(service.options().classicUnitViewMode).toBe('sheet');
+        expect(service.options().cbtUnitViewMode).toBe('sheet');
     });
 
     it('disables the force sync conflict dialog by default', async () => {
@@ -73,7 +73,7 @@ describe('OptionsService theme migration', () => {
         expect(service.options().enableForceSyncConflictDialog).toBeTrue();
     });
 
-    it('defaults Classic force BV to the current damaged state', async () => {
+    it('defaults CBT force BV to the current damaged state', async () => {
         savedOptions = null;
 
         const service = await createService();
@@ -81,7 +81,7 @@ describe('OptionsService theme migration', () => {
         expect(service.options().forceViewerBVPVDisplayDamage).toBe('damaged');
     });
 
-    it('restores and validates the Classic force BV damage policy', async () => {
+    it('restores and validates the CBT force BV damage policy', async () => {
         savedOptions = { forceViewerBVPVDisplayDamage: 'pristine' };
 
         const service = await createService();

@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-/** Inclusive numeric range used by Classic BV normalization. */
+/** Inclusive numeric range used by CBT BV normalization. */
 export interface UnitSearchNumericRange {
     readonly min: number;
     readonly max: number;
 }
 
-/** Default maximum and sentinel for preserving unbounded Classic BV selection behavior. */
+/** Default maximum and sentinel for preserving unbounded CBT BV selection behavior. */
 export const DEFAULT_CLASSIC_BV_NORMALIZATION_MAX = 999_999;
 export const DEFAULT_CLASSIC_BV_NORMALIZATION_MAX_DELTA = 8;
 /** Default maximum and sentinel for preserving unbounded Alpha Strike PV selection behavior. */

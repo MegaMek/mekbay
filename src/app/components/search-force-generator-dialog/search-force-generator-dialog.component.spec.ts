@@ -169,7 +169,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             getEraById: jasmine.createSpy('getEraById').and.returnValue(null),
         };
         let previewResult: any = {
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [],
             totalCost: 0,
             error: null,
@@ -206,8 +206,8 @@ describe('SearchForceGeneratorDialogComponent', () => {
                 name: preview.name ?? 'Generated Preview',
                 faction: preview.faction,
                 era: preview.era,
-                bv: preview.gameSystem === GameSystem.CLASSIC ? preview.totalCost : undefined,
-                pv: preview.gameSystem === GameSystem.ALPHA_STRIKE ? preview.totalCost : undefined,
+                bv: preview.gameSystem === GameSystem.CBT ? preview.totalCost : undefined,
+                pv: preview.gameSystem === GameSystem.AS ? preview.totalCost : undefined,
                 groups: [{
                     units: preview.units.map((unit: any) => ({
                         unit: unit.unit,
@@ -307,11 +307,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
             createForceEntry: createForceEntrySpy,
             createForceEntryFromPreviewEntry: createForceEntryFromPreviewEntrySpy,
             getBudgetMetric: (unit: UnitSummary, gameSystem: GameSystem) => {
-                return gameSystem === GameSystem.ALPHA_STRIKE ? unit.as?.PV ?? 0 : unit.bv ?? 0;
+                return gameSystem === GameSystem.AS ? unit.as?.PV ?? 0 : unit.bv ?? 0;
             },
         };
 
-        gameSystemSignal = signal(GameSystem.CLASSIC);
+        gameSystemSignal = signal(GameSystem.CBT);
 
         TestBed.configureTestingModule({
             providers: [
@@ -604,7 +604,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [{
                 unit: atlas,
                 cost: 7950,
@@ -697,7 +697,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [{
                 unit: atlas,
                 cost: 7950,
@@ -778,10 +778,10 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(component.additionalFiltersExcludedKeys()).toContain('subtype');
         expect(component.additionalFiltersExcludedKeys()).not.toContain('as.TP');
 
-        component.setGameSystem(GameSystem.ALPHA_STRIKE);
+        component.setGameSystem(GameSystem.AS);
 
-        expect(component.gameSystem()).toBe(GameSystem.ALPHA_STRIKE);
-        expect(gameSystemSignal()).toBe(GameSystem.CLASSIC);
+        expect(component.gameSystem()).toBe(GameSystem.AS);
+        expect(gameSystemSignal()).toBe(GameSystem.CBT);
         expect(component.selectedUnitTypeValues()).toEqual(['BM']);
         expect(component.selectedSubtypeValues()).toEqual([]);
         expect(component.additionalFiltersExcludedKeys()).toContain('as.TP');
@@ -794,44 +794,44 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('highlights the advanced system toggle only for active filters hidden behind it', () => {
-        component.advPanelFilterGameSystem.set(GameSystem.ALPHA_STRIKE);
+        component.advPanelFilterGameSystem.set(GameSystem.AS);
         effectiveFilterStateSignal.set({
             type: { interactedWith: true },
             subtype: { interactedWith: true },
         });
 
-        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.CBT);
         expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeFalse();
 
-        component.advPanelFilterGameSystem.set(GameSystem.CLASSIC);
+        component.advPanelFilterGameSystem.set(GameSystem.CBT);
         effectiveFilterStateSignal.set({
             'as.TP': { interactedWith: true },
         });
 
-        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.ALPHA_STRIKE);
+        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.AS);
         expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeTrue();
 
-        component.setGameSystem(GameSystem.ALPHA_STRIKE);
+        component.setGameSystem(GameSystem.AS);
 
         expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeFalse();
 
-        component.advPanelFilterGameSystem.set(GameSystem.ALPHA_STRIKE);
+        component.advPanelFilterGameSystem.set(GameSystem.AS);
         effectiveFilterStateSignal.set({
             type: { interactedWith: true },
             subtype: { interactedWith: true },
         });
 
-        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.CLASSIC);
+        expect(component.otherAdvPanelFilterGameSystem()).toBe(GameSystem.CBT);
         expect(component.otherAdvPanelFilterGameSystemHasActiveFilters()).toBeTrue();
     });
 
     it('uses the local generator mode for preview requests without changing the global game system', () => {
-        component.setGameSystem(GameSystem.ALPHA_STRIKE);
+        component.setGameSystem(GameSystem.AS);
 
         component.reroll();
 
-        expect(buildPreviewSpy.calls.mostRecent().args[0].gameSystem).toBe(GameSystem.ALPHA_STRIKE);
-        expect(gameSystemSignal()).toBe(GameSystem.CLASSIC);
+        expect(buildPreviewSpy.calls.mostRecent().args[0].gameSystem).toBe(GameSystem.AS);
+        expect(gameSystemSignal()).toBe(GameSystem.CBT);
     });
 
     it('records successful force generations over websocket when reroll produces a preview', () => {
@@ -844,7 +844,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [{
                 unit: atlas,
                 cost: 1897,
@@ -866,7 +866,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('does not record force generations when reroll fails to produce a preview', () => {
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [],
             totalCost: 0,
             error: 'No matching units found.',
@@ -924,7 +924,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             owned: () => true,
             instanceId: () => 'force-1',
             name: 'Current Force',
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             faction: () => null,
             era: () => null,
             totalBv: () => 10,
@@ -973,7 +973,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         forceGeneratorEligibleUnitsSignal.set([atlas, locust]);
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [{ unit: atlas, cost: 1897, gunnery: 4, piloting: 5, lockKey: 'atlas-slot' }],
             totalCost: 1897,
             error: null,
@@ -1006,7 +1006,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         forceGeneratorEligibleUnitsSignal.set([atlas]);
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [{ unit: atlas, cost: 1897, gunnery: 4, piloting: 5, lockKey: 'atlas-slot' }],
             totalCost: 1897,
             error: null,
@@ -1043,7 +1043,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [{
                 unit: atlas,
                 cost: 1897,
@@ -1106,7 +1106,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [{
                 unit: atlas,
                 cost: 1897,
@@ -1519,7 +1519,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
 
     it('disambiguates duplicate target formation names in the generator dropdown', () => {
-        gameSystemSignal.set(GameSystem.ALPHA_STRIKE);
+        gameSystemSignal.set(GameSystem.AS);
 
         const displayNameById = new Map(component.targetFormationOptions().map((option) => [
             option.name,
@@ -1656,7 +1656,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         } as unknown as Event);
 
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [{
                 unit: atlas,
                 cost: 1897,
@@ -1699,7 +1699,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         } as unknown as Event);
 
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [{
                 unit: atlas,
                 cost: 1897,
@@ -1787,7 +1787,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             maxDelta: 2,
         });
 
-        fixture.componentInstance.setGameSystem(GameSystem.ALPHA_STRIKE);
+        fixture.componentInstance.setGameSystem(GameSystem.AS);
         fixture.detectChanges();
 
         const alphaStrikeText = fixture.nativeElement.textContent as string;
@@ -1858,7 +1858,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             as: { PV: 6 },
         });
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             units: [{
                 unit: atlas,
                 cost: 6,
@@ -1908,7 +1908,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [{
                 unit: atlas,
                 cost: 1897,
@@ -1947,7 +1947,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         ]);
     });
 
-    it('normalizes fixed Piloting when replacing a Classic preview unit', () => {
+    it('normalizes fixed Piloting when replacing a CBT preview unit', () => {
         const originalUnit = createEmptyUnit({ id: 1, name: 'Original', crewSize: 1 });
         const protoMek = createEmptyUnit({
             id: 2,
@@ -1967,7 +1967,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const replacement = (component as any).createReplacementPreviewUnit(
             original,
             protoMek,
-            GameSystem.CLASSIC,
+            GameSystem.CBT,
         );
 
         expect(replacement.piloting).toBe(5);
@@ -1993,7 +1993,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const replacement = (component as any).createReplacementPreviewUnit(
             original,
             lam,
-            GameSystem.CLASSIC,
+            GameSystem.CBT,
         );
 
         expect(replacement.gunnery).toBe(6);
@@ -2022,7 +2022,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const candidates = (component as any).createPreviewSlotPilotRerollCandidates(
             { unit: createEmptyUnit(), cost: 100 },
             lam,
-            GameSystem.CLASSIC,
+            GameSystem.CBT,
         );
 
         expect(candidates).toHaveSize(1);
@@ -2048,7 +2048,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const candidates = (component as any).createPreviewSlotPilotRerollCandidates(
             { unit: createEmptyUnit(), cost: 100 },
             conventionalInfantry,
-            GameSystem.CLASSIC,
+            GameSystem.CBT,
         );
 
         expect(candidates).toHaveSize(1);
@@ -2057,7 +2057,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(candidates[0].crew).toBeUndefined();
     });
 
-    it('recomputes locked unit values when switching from Alpha Strike to Classic', () => {
+    it('recomputes locked unit values when switching from Alpha Strike to CBT', () => {
         const atlas = createEmptyUnit({
             id: 1,
             name: 'Atlas AS7-D',
@@ -2067,9 +2067,9 @@ describe('SearchForceGeneratorDialogComponent', () => {
             as: { PV: 54 },
         });
 
-        component.setGameSystem(GameSystem.ALPHA_STRIKE);
+        component.setGameSystem(GameSystem.AS);
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             units: [{
                 unit: atlas,
                 cost: 54,
@@ -2091,11 +2091,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         buildPreviewSpy.calls.reset();
-        component.setGameSystem(GameSystem.CLASSIC);
+        component.setGameSystem(GameSystem.CBT);
         const preview = component.preview();
 
         expect(buildPreviewSpy).not.toHaveBeenCalled();
-        expect(preview.gameSystem).toBe(GameSystem.CLASSIC);
+        expect(preview.gameSystem).toBe(GameSystem.CBT);
         expect(preview.units).toEqual([
             jasmine.objectContaining({
                 lockKey: 'generated:0:Atlas AS7-D',
@@ -2106,7 +2106,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         ]);
     });
 
-    it('recomputes locked unit values when switching from Classic to Alpha Strike', () => {
+    it('recomputes locked unit values when switching from CBT to Alpha Strike', () => {
         const atlas = createEmptyUnit({
             id: 1,
             name: 'Atlas AS7-D',
@@ -2117,7 +2117,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.CLASSIC,
+            gameSystem: GameSystem.CBT,
             units: [{
                 unit: atlas,
                 cost: 1897,
@@ -2140,11 +2140,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         buildPreviewSpy.calls.reset();
-        component.setGameSystem(GameSystem.ALPHA_STRIKE);
+        component.setGameSystem(GameSystem.AS);
         const preview = component.preview();
 
         expect(buildPreviewSpy).not.toHaveBeenCalled();
-        expect(preview.gameSystem).toBe(GameSystem.ALPHA_STRIKE);
+        expect(preview.gameSystem).toBe(GameSystem.AS);
         expect(preview.units).toEqual([
             jasmine.objectContaining({
                 lockKey: 'generated:0:Atlas AS7-D',
@@ -2164,7 +2164,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         });
 
         (component as any).__test.setPreviewResult({
-            gameSystem: GameSystem.ALPHA_STRIKE,
+            gameSystem: GameSystem.AS,
             units: [{
                 unit: atlas,
                 cost: 6,
