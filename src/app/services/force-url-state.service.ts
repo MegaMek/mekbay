@@ -32,7 +32,6 @@ export interface ForceUrlWorkspace {
     readonly clear: () => Promise<boolean>;
     readonly addLoadedForce: (force: Force, alignment: ForceAlignment, activate: boolean) => boolean;
     readonly getForceSlot: (force: Force) => ForceSlot | undefined;
-    readonly loadAllUnits: (forces: readonly Force[]) => Promise<void>;
 }
 
 /** Owns force URL parsing, startup restoration, and URL synchronization. */
@@ -235,9 +234,6 @@ export class ForceUrlStateService {
             }
         }
 
-        if (loadedAny) {
-            await workspace.loadAllUnits(workspace.loadedForces().map(slot => slot.force));
-        }
         return loadedAny;
     }
 

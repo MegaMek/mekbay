@@ -1,20 +1,18 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { computed, effect, inject, Injectable, signal } from '@angular/core';
+import { computed, effect, Injectable, signal } from '@angular/core';
 
 import { GameSystem } from '../models/common.model';
 import type { Force } from '../models/force.model';
 import type { ForceMember } from '../models/force-member.model';
 import type { ForceSlot } from '../models/force-slot.model';
-import { DataService } from './data.service';
 
 export type ForceAlignmentFilter = 'friendly' | 'enemy' | 'all';
 
 /** Owns the loaded workspace and its active presentation selection. */
 @Injectable({ providedIn: 'root' })
 export class ForceWorkspaceStateService {
-    private readonly dataService = inject(DataService);
     private readonly savedSelectionByFilter = new Map<ForceAlignmentFilter, string | null>();
 
     readonly selectedUnit = signal<ForceMember | null>(null, { equal: () => false });

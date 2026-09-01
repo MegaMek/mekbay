@@ -24,7 +24,6 @@ import { InventoryControlOpforService } from './inventory-control-opfor.service'
 import { ForceUrlStateService } from './force-url-state.service';
 import { ForceDialogsService } from './force-dialogs.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
-import { ASForceUnitLoadingService } from './as-force-unit-loading.service';
 import { ForceSlotLifecycleService } from './force-slot-lifecycle.service';
 import { OptionsService } from './options.service';
 
@@ -41,12 +40,12 @@ export class ForceBuilderService {
     private readonly forceUrl = inject(ForceUrlStateService);
     private readonly forceDialogs = inject(ForceDialogsService);
     private readonly workspace = inject(ForceWorkspaceStateService);
-    private readonly unitLoading = inject(ASForceUnitLoadingService);
     private readonly slotLifecycle = inject(ForceSlotLifecycleService);
     private readonly options = inject(OptionsService);
 
-    /** Emits whenever a force is successfully loaded via loadForceEntry. */
-    public readonly forceLoaded$ = new Subject<void>();
+    private readonly forceLoaded = new Subject<void>();
+    /** Emits whenever ForceImportService successfully applies a force entry. */
+    readonly forceLoaded$ = this.forceLoaded.asObservable();
 
 
     constructor() {
@@ -58,7 +57,6 @@ export class ForceBuilderService {
             removeAllForces: () => this.removeAllForces(),
             clearLoadedForcesForOperation: () => this.clearLoadedForcesForOperation(),
             addLoadedForce: (force, alignment, activate) => this.addLoadedForce(force, alignment, { activate }),
-            loadAllUnits: forces => this.unitLoading.load(forces),
             setUrlInitializationPending: pending => this.forceUrl.setSynchronizationEnabled(!pending),
         });
         this.forceUrl.configure({
@@ -68,13 +66,8 @@ export class ForceBuilderService {
             clear: () => this.clear(),
             addLoadedForce: (force, alignment, activate) => this.addLoadedForce(force, alignment, { activate }),
             getForceSlot: force => this.workspace.getForceSlot(force),
-            loadAllUnits: forces => this.unitLoading.load(forces),
         });
         this.forceUrl.start();
-        this.forceDialogs.configure({
-            getForceSlot: force => this.workspace.getForceSlot(force),
-            loadAllUnits: forces => this.unitLoading.load(forces),
-        });
         this.opforTargets.connect(this.workspace.loadedForces);
         effect(() => {
             if (!this.options.initialized()) return;
@@ -87,6 +80,11 @@ export class ForceBuilderService {
                     ));
             }
         });
+    }
+
+    /** Import workflow notification used by UI that outlives nested force dialogs. */
+    notifyForceLoaded(): void {
+        this.forceLoaded.next();
     }
 
 
@@ -329,7 +327,6 @@ export class ForceBuilderService {
                     return false;
                 }
             }
-            await this.unitLoading.load([force]);
         } finally {
             this.forceUrl.setSynchronizationEnabled(true);
         }
@@ -346,7 +343,6 @@ export class ForceBuilderService {
             if (!this.addLoadedForce(force, alignment, { activate })) {
                 return false;
             }
-            await this.unitLoading.load([force]);
         } finally {
             this.forceUrl.setSynchronizationEnabled(true);
         }

@@ -55,4 +55,63 @@ describe('SwipeDirective', () => {
             fixture.nativeElement.remove();
         }
     });
+
+    it('leaves an externally observed tap with the control underneath', () => {
+        const fixture = TestBed.createComponent(SwipeHostComponent);
+        fixture.detectChanges();
+        document.body.appendChild(fixture.nativeElement);
+
+        try {
+            const child = fixture.nativeElement.querySelector('.child') as HTMLButtonElement;
+            const pointerDownSpy = jasmine.createSpy('pointerDown');
+            const pointerUpSpy = jasmine.createSpy('pointerUp');
+            child.addEventListener('pointerdown', pointerDownSpy);
+            child.addEventListener('pointerup', pointerUpSpy);
+
+            const down = pointer('pointerdown', { pointerId: 1, clientX: 0, clientY: 0 });
+            expect(fixture.componentInstance.swipe().startSwipe(down as PointerEvent)).toBeTrue();
+            expect(child.dispatchEvent(down)).toBeTrue();
+
+            const up = pointer('pointerup', { pointerId: 1, clientX: 0, clientY: 0 });
+            expect(child.dispatchEvent(up)).toBeTrue();
+
+            expect(pointerDownSpy).toHaveBeenCalledTimes(1);
+            expect(pointerUpSpy).toHaveBeenCalledTimes(1);
+            expect(down.defaultPrevented).toBeFalse();
+            expect(up.defaultPrevented).toBeFalse();
+        } finally {
+            fixture.nativeElement.remove();
+        }
+    });
+
+    it('claims the pointer stream after a swipe wins', () => {
+        const fixture = TestBed.createComponent(SwipeHostComponent);
+        fixture.detectChanges();
+        document.body.appendChild(fixture.nativeElement);
+
+        try {
+            const child = fixture.nativeElement.querySelector('.child') as HTMLButtonElement;
+            const pointerMoveSpy = jasmine.createSpy('pointerMove');
+            const pointerUpSpy = jasmine.createSpy('pointerUp');
+            child.addEventListener('pointermove', pointerMoveSpy);
+            child.addEventListener('pointerup', pointerUpSpy);
+
+            child.dispatchEvent(pointer('pointerdown', { pointerId: 1, clientX: 0, clientY: 0 }));
+            const move = pointer('pointermove', { pointerId: 1, clientX: 30, clientY: 0 });
+            child.dispatchEvent(move);
+            const claimedMove = pointer('pointermove', { pointerId: 1, clientX: 40, clientY: 0 });
+            child.dispatchEvent(claimedMove);
+            const up = pointer('pointerup', { pointerId: 1, clientX: 30, clientY: 0 });
+            child.dispatchEvent(up);
+
+            expect(pointerMoveSpy).toHaveBeenCalledTimes(1);
+            expect(pointerUpSpy).not.toHaveBeenCalled();
+            expect(move.defaultPrevented).toBeTrue();
+            expect(claimedMove.defaultPrevented).toBeTrue();
+            expect(up.defaultPrevented).toBeTrue();
+            expect(fixture.componentInstance.swipe().swiping()).toBeFalse();
+        } finally {
+            fixture.nativeElement.remove();
+        }
+    });
 });

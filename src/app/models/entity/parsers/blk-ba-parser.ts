@@ -6,7 +6,6 @@ import { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
 import {
   ArmorType,
   BA_WEIGHT_CLASS_BY_CODE,
-  EntityTechBase,
   EquipmentTechBase,
   LocationArmor,
   locationArmor,
@@ -25,7 +24,7 @@ import {
   MountedArmor,
 } from '../components';
 import { BuildingBlock } from './building-block';
-import { getBlkTechBase, parseBaseBlk } from './blk-base-parser';
+import { parseBaseBlk } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
 import { ParseContext } from './parse-context';
 
@@ -46,7 +45,6 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
 
   // ── Base parsing ──
   parseBaseBlk(bb, entity, ctx);
-  const techBase = getBlkTechBase(bb);
 
   // ── BA-specific fields ──
   // Trooper Count can appear as 'Trooper Count' (with space) or 'troopercount'
@@ -111,7 +109,7 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   }
 
   // ── Squad / Trooper Equipment ──
-  parseBaEquipment(bb, entity, techBase, ctx);
+  parseBaEquipment(bb, entity, ctx);
   // Fallback from BLKBattleArmorFile.java:168 to add slotless equipment for movement
   addMissingMovementEquipment(entity, ctx);
 
@@ -150,25 +148,24 @@ function addMissingMovementEquipment(entity: BattleArmorEntity, ctx: ParseContex
 function parseBaEquipment(
   bb: BuildingBlock,
   entity: BattleArmorEntity,
-  techBase: EntityTechBase,
   ctx: ParseContext,
 ): void {
   // Squad Equipment (or legacy Point Equipment) → Squad
   if (bb.exists('Squad Equipment')) {
-    parseLocationEquipment(bb, entity, 'Squad Equipment', 'Squad', techBase, ctx);
+    parseLocationEquipment(bb, entity, 'Squad Equipment', 'Squad', ctx);
   } else if (bb.exists('Point Equipment')) {
     entity.squadEquipmentTag.set('Point');
-    parseLocationEquipment(bb, entity, 'Point Equipment', 'Squad', techBase, ctx);
+    parseLocationEquipment(bb, entity, 'Point Equipment', 'Squad', ctx);
   }
 
   // Trooper N Equipment
   for (let i = 1; i <= 6; i++) {
     const tag = `Trooper ${i} Equipment`;
-    parseLocationEquipment(bb, entity, tag, `Trooper ${i}`, techBase, ctx);
+    parseLocationEquipment(bb, entity, tag, `Trooper ${i}`, ctx);
   }
 
   // Slotless equipment → location 'None' (equipment not assigned to a specific trooper)
-  parseLocationEquipment(bb, entity, 'slotless_equipment', 'None', techBase, ctx);
+  parseLocationEquipment(bb, entity, 'slotless_equipment', 'None', ctx);
 }
 
 function parseLocationEquipment(
@@ -176,7 +173,6 @@ function parseLocationEquipment(
   entity: BattleArmorEntity,
   blkTag: string,
   location: string,
-  techBase: EntityTechBase,
   ctx: ParseContext,
 ): void {
   if (!bb.exists(blkTag)) return;

@@ -15,7 +15,7 @@ import {
   STANDARD_STRUCTURE_EQUIPMENT,
   getStructureByName,
 } from '../components';
-import { ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import { ArmorEquipment, MiscEquipment } from '../../equipment.model';
 import {
   ArmorType,
   EntityFluff,
@@ -32,14 +32,12 @@ import {
   areMekSplitLocationsAdjacent,
   getMekSplitPrimaryLocation,
   locationArmor,
-  createCompoundTechLevel,
   requireArmorEquipment,
 } from '../types';
 import { applyMtfFluffField, isMtfLocationHeader } from './entity-fluff-parser';
 import { EquipmentRegistry } from '../../equipment-lookup';
 import { isTargetingComputerEquipment } from '../utils/targeting-computer';
 import { ParseContext } from './parse-context';
-import { componentTechLevelFromRulesLevel } from './blk-codec';
 import {
   decodeMtfArmor,
   decodeMtfCockpitType,

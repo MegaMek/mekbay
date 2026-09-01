@@ -4,7 +4,7 @@
 
 import { ChangeDetectionStrategy, Component, inject, input, output, computed } from '@angular/core';
 import type { UnitSummary, UnitComponent } from '../../models/unit-summary.model';
-import { ForceUnit } from '../../models/force-unit.model';
+import type { ForceUnit } from '../../models/force-unit.model';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { UnitTagsComponent, type TagClickEvent } from '../unit-tags/unit-tags.component';
@@ -120,7 +120,7 @@ export class UnitCardExpandedComponent {
 
     /** Check if the input is a ForceUnit */
     protected isForceUnit(u: UnitSummary | ForceUnit): u is ForceUnit {
-        return u instanceof ForceUnit;
+        return u instanceof ASForceUnit;
     }
 
     /** Resolved Unit - extracts the Unit from ForceUnit if needed */

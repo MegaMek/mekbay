@@ -28,7 +28,7 @@ export class ASForce extends Force<ASForceUnit> {
     }
 
     private createForceUnit(unit: UnitSummary): ASForceUnit {
-        return new ASForceUnit(unit, this, this.dataService, this.injector);
+        return new ASForceUnit(unit, this, this.injector);
     }
 
     /** Creates a detached Alpha Strike unit for an explicit cross-system transfer. */
@@ -180,10 +180,13 @@ export class ASForce extends Force<ASForceUnit> {
                         warnings.add(`Unit "${currentSummary.name}" source file has changed since this force was last used.`);
                     }
                     try {
+                        if (!currentSummary) {
+                            throw new Error(`Unit UUID "${serializedUnit.uuid}" is not installed`);
+                        }
                         return [ASForceUnit.deserialize(
                             serializedUnit,
                             this,
-                            this.dataService,
+                            currentSummary,
                             this.injector,
                         )];
                     } catch {
@@ -229,7 +232,13 @@ export class ASForce extends Force<ASForceUnit> {
                 }
             }
             try {
-                this.setNetwork(sanitizedData.c3Networks ?? []);
+                const unitsById = new Map(parsedGroups
+                    .flatMap(group => group.units())
+                    .map(unit => [unit.id, unit] as const));
+                this.setNetwork(C3NetworkEditor.clean(
+                    structuredClone(sanitizedData.c3Networks ?? []),
+                    unitsById,
+                ));
             } catch {
                 this.setNetwork([]);
                 warnings.add('C3 network data was invalid and was ignored.');

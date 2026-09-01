@@ -33,7 +33,6 @@ export interface ForceOperationHost {
     removeAllForces(): Promise<boolean>;
     clearLoadedForcesForOperation(): Promise<boolean>;
     addLoadedForce(force: Force, alignment: ForceAlignment, activate: boolean): boolean;
-    loadAllUnits(forces: Force[]): Promise<void>;
     setUrlInitializationPending(pending: boolean): void;
 }
 
@@ -249,7 +248,6 @@ export class ForceOperationService {
                 return false;
             }
             if (!entry.owned) await this.offerOwnedEnemySideSwitch(host);
-            await host.loadAllUnits(host.loadedForces().map(slot => slot.force));
             this.currentOperation.set(entry);
             return true;
         } finally {

@@ -187,6 +187,7 @@ export class SwipeDirective {
 
         const deltaX = this.currentX - this.startX;
         const deltaY = this.currentY - this.startY;
+        let claimedThisMove = false;
         // Check if threshold reached and decide gesture direction
         if (!this.swipeAxis) {
             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
@@ -209,6 +210,7 @@ export class SwipeDirective {
                 return;
             }
             this.swipeAxis = isHorizontal ? 'horizontal' : 'vertical';
+            claimedThisMove = true;
 
             try {
                 this.elRef.nativeElement.setPointerCapture(this.activePointerId);
@@ -226,6 +228,11 @@ export class SwipeDirective {
 
         // Emit move events for valid gestures
         if (this.swipeAxis) {
+            event.preventDefault();
+            // Let the threshold-crossing move reach the original control so
+            // press/long-press handlers can cancel. Pointer capture owns the
+            // remainder of the gesture; later moves must not leak through.
+            if (!claimedThisMove) event.stopPropagation();
             this.renderer.addClass(this.elRef.nativeElement, 'swiping');
             const isHorizontal = this.swipeAxis === 'horizontal';
             const delta = isHorizontal ? deltaX : deltaY;
@@ -271,6 +278,8 @@ export class SwipeDirective {
         }
 
         if (this.swipeAxis) {
+            event.preventDefault();
+            event.stopPropagation();
             const deltaX = this.currentX - this.startX;
             const deltaY = this.currentY - this.startY;
             
@@ -305,6 +314,8 @@ export class SwipeDirective {
         }
 
         if (this.swipeAxis) {
+            event.preventDefault();
+            event.stopPropagation();
             // Emit end event with success: false on cancel
             const deltaX = this.currentX - this.startX;
             const deltaY = this.currentY - this.startY;

@@ -35,11 +35,7 @@ import { LoggerService } from './logger.service';
 import { OptionsService } from './options.service';
 import { RecordSheetSourceService } from './record-sheet-source.service';
 import { ToastService } from './toast.service';
-
-export interface ForceDialogWorkspace {
-    readonly getForceSlot: (force: Force) => ForceSlot | undefined;
-    readonly loadAllUnits: (forces: readonly Force[]) => Promise<void>;
-}
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
 
 /** Owns force dialogs, printing, naming, and save-confirmation interactions. */
 @Injectable({ providedIn: 'root' })
@@ -53,14 +49,7 @@ export class ForceDialogsService {
     private readonly recordSheets = inject(RecordSheetSourceService);
     private readonly router = inject(Router);
     private readonly toast = inject(ToastService);
-    private workspace: ForceDialogWorkspace | null = null;
-
-    configure(workspace: ForceDialogWorkspace): void {
-        if (this.workspace && this.workspace !== workspace) {
-            throw new Error('ForceDialogsService is already configured.');
-        }
-        this.workspace = workspace;
-    }
+    private readonly workspace = inject(ForceWorkspaceStateService);
 
     shareForce(force: Force | null): void {
         if (!force) return;
@@ -226,12 +215,7 @@ export class ForceDialogsService {
     }
 
     async openC3Network(force: Force, readOnly = false): Promise<void> {
-        const workspace = this.requireWorkspace();
-        if (!(force instanceof CBTForce)) await workspace.loadAllUnits([force]);
-        if (!(force instanceof CBTForce) && force.units().some(unit => !unit.isLoaded())) {
-            this.toast.showToast('Unable to configure C3 until every unit is loaded.', 'error');
-            return;
-        }
+        const workspace = this.workspace;
         const expectedSlot = workspace.getForceSlot(force);
         if (!expectedSlot || expectedSlot.force !== force || !force.isWholeOwnerActive()) return;
         const expectedUnits = force instanceof CBTForce ? null : [...force.units()];
@@ -290,8 +274,4 @@ export class ForceDialogsService {
         force.setName(result.name);
     }
 
-    private requireWorkspace(): ForceDialogWorkspace {
-        if (!this.workspace) throw new Error('ForceDialogsService has not been configured.');
-        return this.workspace;
-    }
 }

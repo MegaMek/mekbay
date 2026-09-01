@@ -59,7 +59,7 @@ import { currentUnitBaseBattleValue, pristineUnitBattleValue } from './cbt-force
 import type { CBTUnitSnapshot } from './cbt-unit-snapshot';
 import type { EquipmentRowOrderGroup } from './runtime/equipment-row-order';
 import type { RuntimeCommandCheckpoint } from './runtime/runtime-command-session';
-import { deploymentFromPersistence, scenarioRulesFromPersistence } from './runtime/cbt-force-scenario';
+import { scenarioRulesFromPersistence } from './runtime/cbt-force-scenario';
 import { sameCBTUnitGameplayState } from './runtime/cbt-force-runtime-history';
 import type {
     AttackerTargetingCommandResult,
@@ -139,7 +139,7 @@ export class CBTUnitStore {
                 try {
                     const deployment = isSerializedNonMekUnit(entry.unit)
                         ? entry.unit.deployment.values
-                        : deploymentFromPersistence(entry.unit.deployment.values);
+                        : entry.unit.deployment.values;
                     const identity = entry.unit.entity;
                     return { entry, unit: await cbtUnits.create({
                         uuid: identity,

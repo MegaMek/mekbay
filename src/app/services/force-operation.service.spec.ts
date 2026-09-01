@@ -92,7 +92,6 @@ function host(
         removeAllForces: async () => true,
         clearLoadedForcesForOperation: async () => true,
         addLoadedForce: () => true,
-        loadAllUnits: async () => undefined,
         setUrlInitializationPending: () => undefined,
     };
 }

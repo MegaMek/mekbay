@@ -13,7 +13,6 @@ import {
   INFANTRY_SPECIALIZATION_FROM_BIT,
   InfantryMount,
   InfantrySpecialization,
-  MotiveType,
 } from '../types';
 import { BuildingBlock, parseExactFiniteNumber, parseExactInteger } from './building-block';
 import { parseBaseBlk, parseBlkEquipment } from './blk-base-parser';

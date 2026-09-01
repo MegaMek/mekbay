@@ -12,7 +12,7 @@ import {
 } from '../types';
 import { BuildingBlock } from './building-block';
 import { FIGHTER_EQUIP_TAGS, FWS_EQUIP_TAGS } from './blk-constants';
-import { getBlkTechBase, parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment, parseBlkSupportArmor, resolveBlkStructure } from './blk-base-parser';
+import { parseBaseBlk, parseBlkAeroEngine, parseBlkArmor, parseBlkArmorValues, parseBlkEquipment, parseBlkSupportArmor, resolveBlkStructure } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 import { decodeMotiveType } from './motive-type-codec';
 import { decodeBlkAeroCockpitType } from './blk-codec';
@@ -39,7 +39,6 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
   // ── Base parsing (identity, year, source, transporters, role, etc.) ──
   parseBaseBlk(bb, entity, ctx);
   if (!bb.exists('internal_type')) resolveBlkStructure(entity, 0, ctx);
-  const techBase = getBlkTechBase(bb);
 
   // ── Movement ──
   if (bb.exists('SafeThrust'))   entity.originalWalkMP.set(bb.getFirstInt('SafeThrust'));

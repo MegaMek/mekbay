@@ -20,13 +20,11 @@ import { ForceUrlStateService } from './force-url-state.service';
 import { ForceDialogsService } from './force-dialogs.service';
 import { ForceRemoteSyncService } from './force-remote-sync.service';
 import { ForceSlotLifecycleService } from './force-slot-lifecycle.service';
-import { ASForceUnitLoadingService } from './as-force-unit-loading.service';
 import { ForceFormationService } from './force-formation.service';
 import { ForceUnitAdmissionService } from './force-unit-admission.service';
 import { CBTForce } from '../models/cbt-force.model';
 import { CBTForceMember } from '../models/force-member.model';
 import type { SerializedForce } from '../models/force-serialization';
-import { C3NetworkEditor } from '../models/c3-network-editor';
 import { createEmptyCBTForceForTest, createTestMekEntity } from '../testing/unit-test-helpers';
 
 function createFaction(id: number, name: string): Faction {
@@ -524,7 +522,6 @@ describe('ForceBuilderService remote force updates', () => {
         slotLifecycle.activateForceSlot = jasmine.createSpy('activateForceSlot');
         slotLifecycle.disposeDetachedForceSlot = jasmine.createSpy('disposeDetachedForceSlot');
         service.slotLifecycle = slotLifecycle;
-        service.unitLoading = { load: jasmine.createSpy('load').and.resolveTo() };
         const remoteSync = Object.create(ForceRemoteSyncService.prototype) as any;
         for (const dependency of ['forcePersistence', 'logger', 'optionsService', 'dialogsService', 'toastService', 'forceUrl']) {
             Object.defineProperty(remoteSync, dependency, {
@@ -1172,8 +1169,8 @@ describe('ForceBuilderService remote force updates', () => {
     });
 
     it('moves a selection from a retiring slot onto the preserved exact owner', async () => {
-        const preservedUnit = { id: 'preserved-unit', isLoaded: () => true } as ForceUnit;
-        const retiringUnit = { id: 'retiring-unit', isLoaded: () => true } as ForceUnit;
+        const preservedUnit = { id: 'preserved-unit' } as unknown as ForceUnit;
+        const retiringUnit = { id: 'retiring-unit' } as unknown as ForceUnit;
         const { service, targetForce, expectedSlot, selectedUnit } = createUpdateHarness(
             createSerializedForce(),
             [preservedUnit],
@@ -1283,82 +1280,6 @@ describe('ForceBuilderService remote force updates', () => {
 
         const submitted = service.loadForceParamsCore.calls.mostRecent().args[0] as URLSearchParams;
         expect(submitted.get('instance')).toBe('submitted-force');
-    });
-
-    function createOverlayOwner(instanceId: string, loadGate: ReturnType<typeof deferred<void>>) {
-        const loaded = signal(false);
-        const unit = {
-            id: `${instanceId}-unit`,
-            isLoaded: loaded,
-            load: jasmine.createSpy('load').and.callFake(async () => {
-                await loadGate.promise;
-                loaded.set(true);
-            }),
-        } as unknown as ForceUnit;
-        const fingerprint = Object.freeze({});
-        const force = {
-            instanceId: signal(instanceId),
-            units: () => [unit],
-            members: () => [unit],
-            faction: () => null,
-            displayName: () => instanceId,
-            readOnly: () => false,
-            isWholeOwnerActive: () => true,
-            captureWholeOwnerAuthorityFingerprint: jasmine.createSpy('captureFingerprint').and.returnValue(fingerprint),
-            isWholeOwnerAuthorityFingerprintCurrent: jasmine.createSpy('fingerprintCurrent').and.returnValue(true),
-            c3Networks: () => [],
-            setNetworkIfWholeOwnerAuthorityCurrent: jasmine.createSpy('setNetworkIfCurrent').and.returnValue(true),
-        } as unknown as Force;
-        return { force, unit, fingerprint };
-    }
-
-    function createOverlayHarness(forces: Force[]) {
-        const service = Object.create(ASForceUnitLoadingService.prototype) as any;
-        const slots = signal(forces.map(force => ({ force, alignment: 'friendly', changeSub: null })));
-        const dialogRef = { close: jasmine.createSpy('close') };
-        service.workspace = {
-            loadedForces: slots,
-            getForceSlot: (force: Force) => slots().find(slot => slot.force === force),
-        };
-        service.dialogs = {
-            createDialog: jasmine.createSpy('createDialog').and.returnValue(dialogRef),
-        };
-        return { service, slots, dialogRef };
-    }
-
-    it('does not expand an in-flight overlay to forces appended to the caller array', async () => {
-        const firstGate = deferred<void>();
-        const appendedGate = deferred<void>();
-        const first = createOverlayOwner('first-overlay', firstGate);
-        const appended = createOverlayOwner('appended-overlay', appendedGate);
-        const callerForces = [first.force];
-        const { service } = createOverlayHarness([first.force, appended.force]);
-
-        const loading = service.load(callerForces);
-        expect(first.unit.load).toHaveBeenCalledTimes(1);
-        callerForces.push(appended.force);
-        firstGate.resolve();
-        await loading;
-
-        expect(appended.unit.load).not.toHaveBeenCalled();
-        expect(appended.force.captureWholeOwnerAuthorityFingerprint).not.toHaveBeenCalled();
-        appendedGate.resolve();
-    });
-
-    it('does not clean networks on an owner replaced while its overlay load is pending', async () => {
-        const gate = deferred<void>();
-        const owner = createOverlayOwner('stale-overlay', gate);
-        const { service, slots } = createOverlayHarness([owner.force]);
-        const clean = spyOn(C3NetworkEditor, 'clean').and.returnValue([{ id: 'cleaned' }] as any);
-
-        const loading = service.load([owner.force]);
-        expect(owner.unit.load).toHaveBeenCalledTimes(1);
-        slots.set([]);
-        gate.resolve();
-        await loading;
-
-        expect(clean).not.toHaveBeenCalled();
-        expect(owner.force.setNetworkIfWholeOwnerAuthorityCurrent).not.toHaveBeenCalled();
     });
 
 });

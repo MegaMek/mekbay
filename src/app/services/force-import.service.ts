@@ -14,7 +14,6 @@ import {
     MAX_UNITS,
     type UnitGroup,
 } from '../models/force.model';
-import type { ForceUnit } from '../models/force-unit.model';
 import { LoadForceEntry } from '../models/load-force-entry.model';
 import {
     forceMemberCommander,
@@ -37,7 +36,6 @@ import { DataService } from './data.service';
 import { ForcePersistenceService } from './force-persistence.service';
 import { ForceBuilderService } from './force-builder.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
-import { ASForceUnitLoadingService } from './as-force-unit-loading.service';
 import { ForceCrewTransferService } from './force-crew-transfer.service';
 import { ForceFormationService } from './force-formation.service';
 import { ForceOperationService } from './force-operation.service';
@@ -52,7 +50,6 @@ import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 export class ForceImportService {
     private readonly builder = inject(ForceBuilderService);
     private readonly workspace = inject(ForceWorkspaceStateService);
-    private readonly unitLoading = inject(ASForceUnitLoadingService);
     private readonly dataService = inject(DataService);
     private readonly forcePersistence = inject(ForcePersistenceService);
     private readonly dialogs = inject(DialogsService);
@@ -76,13 +73,16 @@ export class ForceImportService {
             if (!targetForce) return false;
             const sourceForce = await this.resolveForceSource(entry);
             if (!sourceForce) return false;
-            return this.insertForceInto(sourceForce, targetForce);
+            const inserted = await this.insertForceInto(sourceForce, targetForce);
+            if (inserted) this.builder.notifyForceLoaded();
+            return inserted;
         }
 
         const requestedForce = await this.resolveForceSource(entry);
-        return requestedForce
-            ? this.applyForceToWorkspace(requestedForce, mode, alignment, activate)
-            : false;
+        if (!requestedForce) return false;
+        const applied = await this.applyForceToWorkspace(requestedForce, mode, alignment, activate);
+        if (applied) this.builder.notifyForceLoaded();
+        return applied;
     }
 
     async createGeneratedForce(entry: LoadForceEntry): Promise<Force | null> {
@@ -204,7 +204,6 @@ export class ForceImportService {
                 if (!unit?.unit) continue;
                 await this.admission.admit({ force: newForce, summary: unit.unit, group });
             }
-            await this.unitLoading.load([newForce]);
             this.workspace.selectUnit(newForce.members()[0] ?? null);
             return;
         }
@@ -219,7 +218,6 @@ export class ForceImportService {
             if (!unit?.unit) continue;
             await this.admission.admit({ force: newForce, summary: unit.unit, group });
         }
-        await this.unitLoading.load([newForce]);
         this.workspace.selectUnit(newForce.members()[0] ?? null);
     }
 

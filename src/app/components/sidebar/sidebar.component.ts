@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, computed, input, viewChild, ElementRef, Renderer2 } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal, computed, input, viewChild, ElementRef } from '@angular/core';
 import { type Portal, PortalModule } from '@angular/cdk/portal';
 import { LayoutService } from '../../services/layout.service';
 import type { UnitSearchComponent } from '../unit-search/unit-search.component';
@@ -30,10 +30,12 @@ import { ConnectionStatusBadgeComponent } from '../connection-status-badge/conne
 export class SidebarComponent {
     readonly COLLAPSED_WIDTH = 72;
     readonly EXPANDED_WIDTH = 360;
+    private readonly EDGE_SWIPE_WIDTH = 32;
+    private readonly LIP_DRAG_THRESHOLD = 4;
+
     elRef = inject(ElementRef<HTMLElement>);
     layout = inject(LayoutService);
     options = inject(OptionsService);
-    renderer = inject(Renderer2);
     protected isNextBuild = BUILD_BRANCH !== 'main';
     private dialogsService = inject(DialogsService);
     unitSearchPortal = input<Portal<HTMLElement>>();
@@ -90,7 +92,10 @@ export class SidebarComponent {
     });
 
     constructor() {
+        window.addEventListener('pointerdown', this.onEdgePointerDown, true);
+
         inject(DestroyRef).onDestroy(() => {
+            window.removeEventListener('pointerdown', this.onEdgePointerDown, true);
             this.cleanupLipListeners();
             // Detach portal if still attached to prevent DOM node retention
             const portal = this.unitSearchPortal();
@@ -168,7 +173,7 @@ export class SidebarComponent {
             const parsed = parseFloat(savedPos);
             if (!Number.isNaN(parsed)) topPx = parsed;
         }
-        if (topPx === undefined) return null;
+        if (topPx === null) return null;
         return `${topPx}px`;
     });
 
@@ -181,33 +186,35 @@ export class SidebarComponent {
         this.dialogsService.showNextDialog();
     }
 
-    public onEdgePointerDown(ev: PointerEvent) {
-        if (this.isDesktop()) { return; }
-        if (ev.isPrimary === false) { return; }
-        if (ev.clientX > 32) { return; }
+    private readonly onEdgePointerDown = (event: PointerEvent): void => {
+        if (this.isDesktop() || this.drawerOpenState() || event.clientX > this.EDGE_SWIPE_WIDTH) return;
+        if (document.querySelector('[aria-modal="true"]')) return;
 
-        ev.preventDefault();
-        
-        const directive = this.swipeDirective();
-        if (directive) {
-            directive.startSwipe(ev);
+        const target = event.target;
+        if (target instanceof Element && target.closest('.burger-lip-btn, .cdk-overlay-container')) {
+            return;
         }
-    }
+
+        // Observe edge gestures from the capture phase instead of placing a hit
+        // target over the page. startSwipe does not consume a tap; the actual
+        // control under the pointer remains the click target unless a swipe wins.
+        this.swipeDirective()?.startSwipe(event);
+    };
 
     /* --------------------------------------------------------
      * Lip button
      */
     private lipPointerId: number | null = null;
+    private lipStartX = 0;
     private lipStartY = 0;
     private lipStartTop = 0;
-    private lipMoved = false;
+    private lipDragging = false;
+    private lipSwipeActive = false;
     private ignoreNextLipClick = false;
-    private lipUnlistenMove?: () => void;
-    private lipUnlistenUp?: () => void;
 
     onLipPointerDown(event: PointerEvent) {
         const lip = this.burgerLipBtn()?.nativeElement;
-        if (!lip || event.isPrimary === false) return;
+        if (!lip || event.isPrimary === false || event.button !== 0) return;
 
         // compute current top relative to sidebar host
         const hostRect = this.elRef.nativeElement.getBoundingClientRect();
@@ -215,59 +222,85 @@ export class SidebarComponent {
         const currentTop = btnRect.top - hostRect.top;
 
         this.lipPointerId = event.pointerId;
+        this.lipStartX = event.clientX;
         this.lipStartY = event.clientY;
         this.lipStartTop = currentTop;
-        this.lipMoved = false;
+        this.lipDragging = false;
+        this.lipSwipeActive = false;
         this.ignoreNextLipClick = false;
 
-        // set transient signal so computed style will apply top positioning        
-        this.lipTop.set(currentTop);
-
-        try { lip.setPointerCapture(event.pointerId); } catch { /* ignore */ }
-
-        const move = (ev: PointerEvent) => {
-            if (ev.pointerId !== this.lipPointerId) return;
-            const dy = ev.clientY - this.lipStartY;
-            const hostHeight = this.elRef.nativeElement.offsetHeight;
-            const btnHeight = lip.offsetHeight;
-            const minTop = 0;
-            const maxTop = Math.max(0, hostHeight - btnHeight);
-            const newTop = Math.max(0, Math.min(Math.max(this.lipStartTop + dy, minTop), maxTop));
-            this.lipTop.set(newTop);
-            if (!this.lipMoved && Math.abs(dy) > 4) this.lipMoved = true;
-            ev.preventDefault();
-            ev.stopPropagation();
-        };
-
-        const up = (ev: PointerEvent) => {
-            if (ev.pointerId !== this.lipPointerId) return;
-            try { lip.releasePointerCapture(ev.pointerId); } catch { /* ignore */ }
-            if (this.lipMoved) this.ignoreNextLipClick = true;
-            this.lipPointerId = null;
-            this.lipStartY = 0;
-            this.lipStartTop = 0;
-            this.lipMoved = false;
-            this.cleanupLipListeners();
-            ev.preventDefault();
-            ev.stopPropagation();
-            let finalTop = this.lipTop();
-            if (finalTop !== null) {
-                if (finalTop < 0) {
-                    finalTop = 0;
-                }
-                this.options.setOption('sidebarLipPosition', `${Math.round(finalTop)}`);
-            }
-        };
-
-        // keep the listeners in renderer so Angular can clean them properly
-        // use 'window' target for global pointer move/up handling
-        this.lipUnlistenMove = this.renderer.listen('window', 'pointermove', move);
-        this.lipUnlistenUp = this.renderer.listen('window', 'pointerup', up);
+        window.addEventListener('pointermove', this.onLipPointerMove, true);
+        window.addEventListener('pointerup', this.onLipPointerUp, true);
+        window.addEventListener('pointercancel', this.onLipPointerCancel, true);
     }
 
-    private cleanupLipListeners() {
-        if (this.lipUnlistenMove) { this.lipUnlistenMove(); this.lipUnlistenMove = undefined; }
-        if (this.lipUnlistenUp) { this.lipUnlistenUp(); this.lipUnlistenUp = undefined; }
+    private readonly onLipPointerMove = (event: PointerEvent): void => {
+        if (event.pointerId !== this.lipPointerId || this.lipSwipeActive) return;
+
+        const lip = this.burgerLipBtn()?.nativeElement;
+        if (!lip) return;
+
+        const dx = event.clientX - this.lipStartX;
+        const dy = event.clientY - this.lipStartY;
+        if (!this.lipDragging) {
+            if (Math.abs(dy) <= this.LIP_DRAG_THRESHOLD || Math.abs(dy) <= Math.abs(dx)) return;
+
+            this.lipDragging = true;
+            this.ignoreNextLipClick = true;
+            this.lipTop.set(this.lipStartTop);
+            try { lip.setPointerCapture(event.pointerId); } catch { /* ignore */ }
+        }
+
+        const maxTop = Math.max(0, this.elRef.nativeElement.offsetHeight - lip.offsetHeight);
+        this.lipTop.set(Math.max(0, Math.min(this.lipStartTop + dy, maxTop)));
+        event.preventDefault();
+        event.stopPropagation();
+    };
+
+    private readonly onLipPointerUp = (event: PointerEvent): void => {
+        if (event.pointerId !== this.lipPointerId) return;
+
+        if (this.lipDragging) {
+            event.preventDefault();
+            event.stopPropagation();
+            const finalTop = this.lipTop();
+            if (finalTop !== null) {
+                this.options.setOption('sidebarLipPosition', `${Math.round(finalTop)}`);
+            }
+        }
+
+        this.finishLipPointer(event.pointerId);
+    };
+
+    private readonly onLipPointerCancel = (event: PointerEvent): void => {
+        if (event.pointerId !== this.lipPointerId) return;
+
+        if (this.lipDragging) {
+            this.lipTop.set(this.lipStartTop);
+        }
+        this.ignoreNextLipClick = false;
+        this.finishLipPointer(event.pointerId);
+    };
+
+    private finishLipPointer(pointerId: number): void {
+        const lip = this.burgerLipBtn()?.nativeElement;
+        try {
+            if (lip?.hasPointerCapture(pointerId)) lip.releasePointerCapture(pointerId);
+        } catch { /* ignore */ }
+
+        this.lipPointerId = null;
+        this.lipStartX = 0;
+        this.lipStartY = 0;
+        this.lipStartTop = 0;
+        this.lipDragging = false;
+        this.lipSwipeActive = false;
+        this.cleanupLipListeners();
+    }
+
+    private cleanupLipListeners(): void {
+        window.removeEventListener('pointermove', this.onLipPointerMove, true);
+        window.removeEventListener('pointerup', this.onLipPointerUp, true);
+        window.removeEventListener('pointercancel', this.onLipPointerCancel, true);
     }
 
     onLipButtonClick() {
@@ -291,6 +324,11 @@ export class SidebarComponent {
     };
 
     public onSwipeStart(event: SwipeStartEvent) {
+        if (event.originalEvent.pointerId === this.lipPointerId) {
+            this.lipSwipeActive = true;
+            this.ignoreNextLipClick = true;
+        }
+
         this.layout.isMenuDragging.set(true);
         this.startRatio = this.layout.menuOpenRatio();
 
@@ -340,11 +378,4 @@ export class SidebarComponent {
         this.layout.menuOpenRatio.set(0);
     }
 
-    public onEdgeTouchStart(ev: TouchEvent) {
-        if (this.isDesktop()) { return; }
-        if (ev.touches.length !== 1) { return; }
-        if (ev.touches[0].clientX > 32) { return; }
-
-        ev.preventDefault();
-    }
 }

@@ -3,10 +3,20 @@
 // Author: Drake
 
 import { computed, signal } from '@angular/core';
-import { ForceUnitState } from './force-unit-state.model';
 import type { ASForceUnit } from './as-force-unit.model';
-import { type ASSerializedState, type ASCriticalHit, type C3_POSITION_SCHEMA, AS_SERIALIZED_STATE_SCHEMA } from './force-serialization';
+import {
+    type ASSerializedState,
+    type ASCriticalHit,
+    type C3_POSITION_SCHEMA,
+    AS_SERIALIZED_STATE_SCHEMA,
+    conditionFromSerialized,
+    conditionsForSerialization,
+    normalizeConditionData,
+    type ConditionData,
+    type SerializedCondition,
+} from './force-serialization';
 import { Sanitizer } from '../utils/sanitizer.util';
+import type { UnitConditionKey } from './unit-condition.model';
 
 /*
  * 
@@ -14,8 +24,12 @@ import { Sanitizer } from '../utils/sanitizer.util';
  * Uses timestamp-based critical hit tracking for proper effect ordering.
  * Pending state uses delta system (0 = no change).
  */
-export class ASForceUnitState extends ForceUnitState {
-    declare unit: ASForceUnit;
+export class ASForceUnitState {
+    readonly unit: ASForceUnit;
+    readonly modified = signal(false);
+    readonly destroyed = signal(false);
+    readonly conditions = signal<Map<UnitConditionKey, ConditionData | undefined>>(new Map());
+    readonly c3Position = signal<{ x: number; y: number } | null>(null);
 
     // Committed state
     public heat = signal<number>(0);
@@ -42,7 +56,28 @@ export class ASForceUnitState extends ForceUnitState {
     public pendingRestored = signal<Set<string>>(new Set());
 
     constructor(unit: ASForceUnit) {
-        super(unit);
+        this.unit = unit;
+    }
+
+    hasCondition(condition: UnitConditionKey): boolean {
+        return this.conditions().has(condition);
+    }
+
+    setConditions(conditions: Iterable<SerializedCondition>): void {
+        const nextConditions = new Map<UnitConditionKey, ConditionData | undefined>();
+        for (const entry of conditions) {
+            const [condition, data] = conditionFromSerialized(entry);
+            nextConditions.set(condition, data);
+        }
+        this.conditions.set(nextConditions);
+    }
+
+    conditionsForSerialization(): SerializedCondition[] | undefined {
+        const conditions = this.conditions();
+        if (conditions.size === 0) return undefined;
+        const serializable = new Map(Array.from(conditions.entries())
+            .map(([state, data]) => [state, normalizeConditionData(data)]));
+        return conditionsForSerialization(serializable);
     }
 
     /**
@@ -396,7 +431,7 @@ export class ASForceUnitState extends ForceUnitState {
         this.pendingRestored.set(new Set());
     }
 
-    override update(data: ASSerializedState) {
+    update(data: ASSerializedState): void {
         // Sanitize the input data using the schema
         const sanitized = Sanitizer.sanitize(data, AS_SERIALIZED_STATE_SCHEMA);
         

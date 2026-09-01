@@ -47,7 +47,7 @@ export { LamEntity } from './entities/mek/lam-entity';
 
 // ── Mek Parsers ──
 export { parseMtf } from './parsers/mtf-parser';
-export { parseBaseBlk, getBlkEquipmentLines, getBlkTechBase } from './parsers/blk-base-parser';
+export { parseBaseBlk, getBlkTechBase } from './parsers/blk-base-parser';
 
 // ── Mek Writers ──
 export { writeMtf } from './writers/mtf-writer';

@@ -24,7 +24,6 @@ import {
     asSavedTargetRef,
     createSavedTargetRef,
     CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
-    CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
     savedTargetReferenceClosureV2,
     validateSavedBlueprintReferenceTableV2,
     type OneBasedCriticalSlotOrdinal,
@@ -39,14 +38,10 @@ import {
     type SerializedDeploymentConfigurationV2,
     type SerializedLocationConditionStateEntryV2,
     type SerializedLocationStateEntryV2,
-    type SerializedMekHeatRecoveryAuthorityV1,
     type SavedAttackerTargetingState,
     type SerializedPendingCombatStateV2,
-    type SerializedIgnoredStateRecoveryDecisionV2,
-    type SerializedPersistedRestoreAliasV2,
     type SerializedRecoverableStateFactV2,
     type SerializedSlotStateEntryV2,
-    type SerializedUnitRestorationMetadataV2,
     type SerializedUnresolvedStateRecoveryEntryV2,
 } from './persistence-v2';
 import {
@@ -125,8 +120,6 @@ import { mekCriticalSlotDirectHitThreshold, mekCriticalSlotMaximumHits } from '.
 import { GAUSS_POWERED_UP, isMekGaussPowerState } from './mek-gauss-power';
 import { isGaussEquipment } from '../gauss-equipment.model';
 import { isModularArmorEquipment, MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
-
-export const V2_STATE_RESTORATION_ALGORITHM_VERSION = CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2;
 
 export type V2StateCodecErrorCode =
     | 'BASELINE_ENTITY_MISMATCH'
@@ -1633,7 +1626,7 @@ export async function restoreSerializedCBTUnitV2(
         pendingCombat,
     });
 
-    const unresolvedEntries = await finalizeUnresolved(
+    const unresolvedEntries = finalizeUnresolved(
         accumulator.unresolvedDrafts,
         new Set(),
     );
@@ -1759,188 +1752,6 @@ function movementComponentCandidates(
     return Object.freeze([...new Set(candidates.map(candidate => candidate.componentId))].sort(compareText));
 }
 
-function assertRecoverySourcesOwnEntries(
-    references: SavedBlueprintReferenceTableV2,
-    unresolved: readonly SerializedUnresolvedStateRecoveryEntryV2[],
-): void {
-    for (const [index, entry] of unresolved.entries()) {
-        assertExactObjectKeys(entry, [
-            'recoveryId', 'sourceTargetRef', 'sourceTarget', 'fact', 'reason',
-        ], `$.restoration.unresolved[${index}]`);
-        let sourceTargetRef: SavedTargetRef;
-        try {
-            sourceTargetRef = asSavedTargetRef(entry.sourceTargetRef);
-        } catch {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `$.restoration.unresolved[${index}].sourceTargetRef`,
-                'is not a valid saved target ref',
-            );
-        }
-        const owned = references.targets[sourceTargetRef];
-        if (owned === undefined) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `$.restoration.unresolved[${index}].sourceTargetRef`,
-                'is not owned by the durable heat recovery source table',
-            );
-        }
-        if (!jsonValuesEqual(owned, entry.sourceTarget)) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `$.restoration.unresolved[${index}].sourceTargetRef`,
-                'does not own the byte-exact unresolved source target',
-            );
-        }
-    }
-}
-
-function sameReferenceTable(
-    left: SavedBlueprintReferenceTableV2,
-    right: SavedBlueprintReferenceTableV2,
-): boolean {
-    return jsonValuesEqual(left, right);
-}
-
-function assertMekHeatRecoveryAuthorityForWrite(
-    restoration: SerializedUnitRestorationMetadataV2 | undefined,
-    currentReferences: SavedBlueprintReferenceTableV2,
-): void {
-    assertMekHeatRecoveryAuthority(
-        restoration,
-        currentReferences,
-        '$.restoration',
-    );
-}
-
-function assertMekHeatRecoveryAuthority(
-    restoration: SerializedUnitRestorationMetadataV2 | undefined,
-    currentReferences: SavedBlueprintReferenceTableV2,
-    path: string,
-): void {
-    if (restoration !== undefined) {
-        if (restoration.algorithmVersion !== V2_STATE_RESTORATION_ALGORITHM_VERSION) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `${path}.algorithmVersion`,
-                `must be ${V2_STATE_RESTORATION_ALGORITHM_VERSION}`,
-            );
-        }
-        for (const [index, alias] of restoration.acceptedAliases.entries()) {
-            if (alias.algorithmVersion !== V2_STATE_RESTORATION_ALGORITHM_VERSION) {
-                codecFail(
-                    'INVALID_SERIALIZED_STATE',
-                    `${path}.acceptedAliases[${index}].algorithmVersion`,
-                    `must be ${V2_STATE_RESTORATION_ALGORITHM_VERSION}`,
-                );
-            }
-        }
-        for (const [index, ignored] of (restoration.ignoredRecovery ?? []).entries()) {
-            if (ignored.algorithmVersion !== V2_STATE_RESTORATION_ALGORITHM_VERSION) {
-                codecFail(
-                    'INVALID_SERIALIZED_STATE',
-                    `${path}.ignoredRecovery[${index}].algorithmVersion`,
-                    `must be ${V2_STATE_RESTORATION_ALGORITHM_VERSION}`,
-                );
-            }
-        }
-    }
-    const unresolved = restoration?.unresolved ?? [];
-    const authority = restoration?.heatRecovery;
-    if (unresolved.length === 0) {
-        if (authority !== undefined) {
-            codecFail('INVALID_SERIALIZED_STATE', `${path}.heatRecovery`, 'empty recovery must omit heat authority');
-        }
-        return;
-    }
-    if (authority === undefined) {
-        assertRecoverySourcesOwnEntries(currentReferences, unresolved);
-        return;
-    }
-    assertExactObjectKeys(authority, [
-        'schemaVersion', 'sourceReferences', 'targetTranslation', 'currentReferences',
-    ], `${path}.heatRecovery`);
-    if (authority.schemaVersion !== 1) {
-        codecFail('INVALID_SERIALIZED_STATE', `${path}.heatRecovery.schemaVersion`, 'must be 1');
-    }
-    assertRecoveryReferenceTableShape(authority.sourceReferences, `${path}.heatRecovery.sourceReferences`);
-    assertRecoveryReferenceTableShape(authority.currentReferences, `${path}.heatRecovery.currentReferences`);
-    if (!sameReferenceTable(authority.currentReferences, currentReferences)) {
-        codecFail(
-            'INVALID_SERIALIZED_STATE',
-            `${path}.heatRecovery.currentReferences`,
-            'must equal the unit current blueprint reference table',
-        );
-    }
-    assertRecoverySourcesOwnEntries(authority.sourceReferences, unresolved);
-    const activeSourceRefs = new Set(unresolved.map(entry => entry.sourceTargetRef));
-    const expectedSourceClosure = savedTargetReferenceClosureV2(
-        authority.sourceReferences.targets,
-        [...activeSourceRefs],
-    );
-    if (expectedSourceClosure === undefined
-        || !jsonValuesEqual(Object.keys(authority.sourceReferences.targets).sort(), expectedSourceClosure)) {
-        codecFail(
-            'INVALID_SERIALIZED_STATE',
-            `${path}.heatRecovery.sourceReferences.targets`,
-            'must contain exactly the active recovery roots and their transitive target dependencies',
-        );
-    }
-    if (authority.targetTranslation === null
-        || typeof authority.targetTranslation !== 'object'
-        || Array.isArray(authority.targetTranslation)) {
-        codecFail('INVALID_SERIALIZED_STATE', `${path}.heatRecovery.targetTranslation`, 'must be an object');
-    }
-    for (const [rawSourceRef, rawCurrentRef] of Object.entries(authority.targetTranslation)) {
-        let sourceRef: SavedTargetRef;
-        let currentRef: SavedTargetRef;
-        try {
-            sourceRef = asSavedTargetRef(rawSourceRef);
-            currentRef = asSavedTargetRef(rawCurrentRef);
-        } catch {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `${path}.heatRecovery.targetTranslation.${rawSourceRef}`,
-                'contains an invalid target ref',
-            );
-        }
-        if (authority.sourceReferences.targets[sourceRef] === undefined
-            || authority.currentReferences.targets[currentRef] === undefined) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `${path}.heatRecovery.targetTranslation.${sourceRef}`,
-                'translation is outside its exact source/current tables',
-            );
-        }
-        if (!activeSourceRefs.has(sourceRef)) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `${path}.heatRecovery.targetTranslation.${sourceRef}`,
-                'translation does not belong to an active unresolved source row',
-            );
-        }
-    }
-}
-
-function assertRecoveryReferenceTableShape(
-    table: SavedBlueprintReferenceTableV2,
-    path: string,
-): void {
-    try {
-        validateSavedBlueprintReferenceTableV2(table, path);
-    } catch (error) {
-        codecFail(
-            'INVALID_SERIALIZED_STATE',
-            path,
-            error instanceof Error ? error.message : 'invalid saved blueprint reference table',
-        );
-    }
-}
-
-/**
- * Component-owned lifecycle payloads may embed the ID of a related component. Translate those
- * IDs through the same exhaustive saved witness table used for their owning state row.
- */
 function translateSavedComponentRuntimeIds(
     state: ComponentRuntimeState,
     accumulator: RestoreAccumulator,
@@ -2660,431 +2471,6 @@ function serializePending(
 }
 
 /** Replays only facts the user explicitly scoped to this exact entity target through an alias. */
-function retryPriorUnresolved(
-    entries: readonly SerializedUnresolvedStateRecoveryEntryV2[],
-    savedStateRevision: number,
-    accumulator: RestoreAccumulator,
-    locations: Map<LocationId, LocationRuntimeState>,
-    slots: Map<CriticalSlotId, CriticalSlotRuntimeState>,
-    components: Map<ComponentId, ComponentRuntimeState>,
-    ammo: Map<ComponentId, AmmoRuntimeState>,
-    crew: Map<CrewPositionId, CBTCrewRuntimeState>,
-    pendingLocation: Map<LocationId, number>,
-    pendingArmor: Map<ArmorFaceId, number>,
-    pendingSlots: Map<CriticalSlotId, number>,
-    pendingComponents: Map<ComponentId, EquipmentStatus>,
-    pendingShieldDamage: Map<ComponentId, MekShieldDamageRuntimeState>,
-    pendingModularArmorDamage: Map<ComponentId, number>,
-    pendingLocationConditions: Map<LocationId, Map<MekLocationConditionKey, number>>,
-    ruleChecks: Map<
-        typeof MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
-        MekRuleCheckStateV2
-    >,
-): readonly SerializedUnresolvedStateRecoveryEntryV2[] {
-    const retained: SerializedUnresolvedStateRecoveryEntryV2[] = [];
-    for (const entry of entries) {
-        const current = acceptedAliasTarget(entry.sourceTargetRef, entry.sourceTarget, accumulator);
-        if (!current) {
-            retained.push(canonicalClone(entry));
-            continue;
-        }
-        accumulator.translations.set(entry.sourceTargetRef, current.ref);
-        const fact = entry.fact;
-        let remaining: SerializedRecoverableStateFactV2 | null = null;
-        let applied = false;
-        switch (fact.kind) {
-            case 'location-damage': {
-                if (!isCurrentLocation(current)) break;
-                const requested = requireNonnegativeInteger(fact.damage, '$.restoration.unresolved.fact.damage');
-                const effective = Math.min(requested, current.maximum);
-                applyLocationDamage(locations, current, effective);
-                applied = true;
-                if (effective !== requested) {
-                    remaining = fact;
-                    warn(accumulator, {
-                        code: 'DAMAGE_CLAMPED',
-                        message: `Remapped damage ${requested} exceeds the current maximum ${current.maximum}.`,
-                        currentTargetRef: current.ref,
-                        saved: { damage: requested },
-                        current: { maximum: current.maximum, effectiveDamage: effective },
-                    });
-                }
-                break;
-            }
-            case 'location-condition': {
-                if (!isCurrentLocation(current) || current.target.section !== 'internal') break;
-                const condition = requireMekLocationConditionKey(
-                    fact.condition,
-                    '$.restoration.unresolved.fact.condition',
-                    'INVALID_SERIALIZED_STATE',
-                );
-                const value = requireMekLocationConditionValue(
-                    condition,
-                    fact.value,
-                    '$.restoration.unresolved.fact.value',
-                    false,
-                    'INVALID_SERIALIZED_STATE',
-                );
-                applyLocationCondition(locations, current.locationId, condition, value);
-                applied = true;
-                break;
-            }
-            case 'slot-hits': {
-                if (!isCurrentSlot(current)) break;
-                const requested = requireNonnegativeInteger(fact.hits, '$.restoration.unresolved.fact.hits');
-                const destroyedTurn = fact.destroyedTurn === undefined
-                    ? undefined
-                    : requirePositiveSerializedInteger(
-                        fact.destroyedTurn,
-                        '$.restoration.unresolved.fact.destroyedTurn',
-                    );
-                const effective = Math.min(requested, current.maximumHits);
-                if (effective === 0) slots.delete(current.slotId);
-                else slots.set(current.slotId, Object.freeze({
-                    hits: effective,
-                    ...(destroyedTurn === undefined || effective < current.directHitThreshold
-                        ? {}
-                        : { destroyedTurn }),
-                }));
-                applied = true;
-                if (effective !== requested) {
-                    remaining = fact;
-                    warn(accumulator, {
-                        code: 'DAMAGE_CLAMPED',
-                        message: `Remapped critical hits ${requested} exceed the current slot capacity ${current.maximumHits}.`,
-                        currentTargetRef: current.ref,
-                        saved: { hits: requested },
-                        current: { maximumHits: current.maximumHits, effectiveHits: effective },
-                    });
-                }
-                break;
-            }
-            case 'component-state': {
-                if (!isCurrentComponent(current)) break;
-                const savedState = deserializeComponentState(fact, '$.restoration.unresolved.fact');
-                const partition = partitionComponentState(savedState, current);
-                if (partition.supportedFact) {
-                    applyComponentState(components, current.componentId, partition);
-                    applied = true;
-                }
-                const remainingComponentState = partition.clampedShieldDamage
-                    ? Object.freeze({
-                        ...(partition.unsupportedFact ?? { kind: 'component-state' as const }),
-                        shieldDamage: partition.clampedShieldDamage.requested,
-                    })
-                    : partition.unsupportedFact;
-                if (remainingComponentState) {
-                    remaining = remainingComponentState;
-                    warn(accumulator, {
-                        code: 'UNSUPPORTED_EQUIPMENT_STATE_RETAINED',
-                        message: 'A remapped component fact is still unsupported by the current equipment definition and remains recoverable.',
-                        currentTargetRef: current.ref,
-                    });
-                }
-                if (partition.clampedShieldDamage) warn(accumulator, {
-                    code: 'DAMAGE_CLAMPED',
-                    message: 'Remapped shield damage exceeds the current shield track bounds.',
-                    currentTargetRef: current.ref,
-                    saved: { ...partition.clampedShieldDamage.requested },
-                    current: {
-                        maximumAbsorption: current.shieldMaximumAbsorption,
-                        maximumCapacity: current.shieldMaximumCapacity,
-                        effectiveDamage: partition.clampedShieldDamage.effective,
-                    },
-                });
-                break;
-            }
-            case 'ammo-state': {
-                if (!isCurrentAmmo(current)) break;
-                const requested = requireNonnegativeInteger(fact.shotsSpent, '$.restoration.unresolved.fact.shotsSpent');
-                const munitionOverride = optionalBoundedText(
-                    fact.munitionOverride,
-                    '$.restoration.unresolved.fact.munitionOverride',
-                );
-                const loadout = mekAmmoLoadout(
-                    accumulator.unit.entity,
-                    accumulator.unit.index,
-                    current.componentId,
-                    accumulator.unit.ruleset,
-                    munitionOverride,
-                );
-                const supportedMunition = munitionOverride === undefined || loadout !== null;
-                const capacity = loadout?.capacity ?? current.capacity;
-                const effective = Math.min(requested, capacity);
-                if (effective > 0 || (munitionOverride !== undefined && supportedMunition)) {
-                    ammo.set(
-                        current.componentId,
-                        Object.freeze({
-                            shotsSpent: effective,
-                            ...(munitionOverride !== undefined && supportedMunition ? { munitionOverride } : {}),
-                        }),
-                    );
-                } else if (munitionOverride === undefined) ammo.delete(current.componentId);
-                applied = requested > 0 || (munitionOverride !== undefined && supportedMunition);
-                if (effective !== requested) {
-                    remaining = fact;
-                    warn(accumulator, {
-                        code: 'DAMAGE_CLAMPED',
-                        message: `Remapped ammunition consumption ${requested} exceeds current capacity ${capacity}.`,
-                        currentTargetRef: current.ref,
-                        saved: { shotsSpent: requested },
-                        current: { capacity, effectiveShotsSpent: effective },
-                    });
-                } else if (munitionOverride !== undefined && !supportedMunition) {
-                    remaining = { kind: 'ammo-state', shotsSpent: 0, munitionOverride };
-                    warn(accumulator, {
-                        code: 'UNSUPPORTED_EQUIPMENT_STATE_RETAINED',
-                        message: 'A remapped munition override still lacks a compiled capability and remains recoverable.',
-                        currentTargetRef: current.ref,
-                    });
-                }
-                break;
-            }
-            case 'crew-state': {
-                if (!isCurrentCrew(current)) break;
-                const requested = requireNonnegativeInteger(fact.wounds, '$.restoration.unresolved.fact.wounds');
-                if (typeof fact.unconscious !== 'boolean') {
-                    codecFail('INVALID_SERIALIZED_STATE', '$.restoration.unresolved.fact.unconscious', 'must be boolean');
-                }
-                const ejected = fact.ejected === true;
-                const dead = fact.dead === true;
-                if (fact.dead !== undefined && !dead) {
-                    codecFail('INVALID_SERIALIZED_STATE', '$.restoration.unresolved.fact.dead', 'sparse dead state must be true');
-                }
-                if (fact.ejected !== undefined && !ejected) {
-                    codecFail('INVALID_SERIALIZED_STATE', '$.restoration.unresolved.fact.ejected', 'sparse ejected state must be true');
-                }
-                const effective = Math.min(requested, MAX_MEK_CREW_WOUNDS);
-                if (dead && effective < MAX_MEK_CREW_WOUNDS) {
-                    codecFail(
-                        'INVALID_SERIALIZED_STATE',
-                        '$.restoration.unresolved.fact.dead',
-                        'committed death requires fatal wounds',
-                    );
-                }
-                if (effective === 0 && !fact.unconscious && !ejected) crew.delete(current.positionId);
-                else crew.set(current.positionId, Object.freeze({
-                    wounds: effective,
-                    unconscious: fact.unconscious,
-                    ejected,
-                    ...(dead ? { dead: true as const } : {}),
-                }));
-                applied = true;
-                if (effective !== requested) {
-                    remaining = fact;
-                    warn(accumulator, {
-                        code: 'DAMAGE_CLAMPED',
-                        message: `Remapped crew wounds ${requested} exceed the current limit ${MAX_MEK_CREW_WOUNDS}.`,
-                        currentTargetRef: current.ref,
-                        saved: { wounds: requested },
-                        current: { maximumWounds: MAX_MEK_CREW_WOUNDS, effectiveWounds: effective },
-                    });
-                }
-                break;
-            }
-            case 'mek-rule-check': {
-                if (fact.key !== MEK_TORSO_CRIPPLING_RULE_CHECK_KEY
-                    || (fact.status !== 'pending' && fact.status !== 'success' && fact.status !== 'failed')) {
-                    codecFail('INVALID_SERIALIZED_STATE', '$.restoration.unresolved.fact', 'invalid Mek rule check');
-                }
-                const openedRevision = fact.openedRevision;
-                if (openedRevision > savedStateRevision) {
-                    codecFail(
-                        'INVALID_SERIALIZED_STATE',
-                        '$.restoration.unresolved.fact.openedRevision',
-                        'cannot exceed unit revision',
-                    );
-                }
-                if (entry.sourceTarget.kind !== 'location-section'
-                    || entry.sourceTarget.section !== 'internal') {
-                    codecFail(
-                        'TARGET_KIND_MISMATCH',
-                        '$.restoration.unresolved.sourceTarget',
-                        'torso check requires an internal location target',
-                    );
-                }
-                const sourceLocationId = asLocationId(entry.sourceTarget.location);
-                if (fact.token !== createMekTorsoCripplingRuleCheckTokenV2(
-                    openedRevision,
-                    sourceLocationId,
-                )) {
-                    codecFail(
-                        'INVALID_SERIALIZED_STATE',
-                        '$.restoration.unresolved.fact.token',
-                        'does not bind the exact saved torso trigger witness',
-                    );
-                }
-                if (!isCurrentLocation(current) || current.target.section !== 'internal') break;
-                if (ruleChecks.has(MEK_TORSO_CRIPPLING_RULE_CHECK_KEY)) {
-                    codecFail(
-                        'INVALID_SERIALIZED_STATE',
-                        '$.restoration.unresolved.fact.key',
-                        'duplicate recoverable Mek rule check',
-                    );
-                }
-                ruleChecks.set(MEK_TORSO_CRIPPLING_RULE_CHECK_KEY, Object.freeze({
-                    token: createMekTorsoCripplingRuleCheckTokenV2(
-                        openedRevision,
-                        current.locationId,
-                    ),
-                    triggerLocationId: current.locationId,
-                    openedRevision,
-                    status: fact.status,
-                }));
-                applied = true;
-                break;
-            }
-            case 'pending-location-damage': {
-                if (!isCurrentLocation(current)) break;
-                const damage = requireSignedNonzeroInteger(fact.damage, '$.restoration.unresolved.fact.damage');
-                if (current.armorFaceId) pendingArmor.set(current.armorFaceId, damage);
-                else pendingLocation.set(current.locationId, damage);
-                applied = true;
-                break;
-            }
-            case 'pending-location-condition': {
-                if (!isCurrentLocation(current) || current.target.section !== 'internal') break;
-                const condition = requireMekLocationConditionKey(
-                    fact.condition,
-                    '$.restoration.unresolved.fact.condition',
-                    'INVALID_SERIALIZED_STATE',
-                );
-                const value = requireMekLocationConditionValue(
-                    condition,
-                    fact.value,
-                    '$.restoration.unresolved.fact.value',
-                    true,
-                    'INVALID_SERIALIZED_STATE',
-                );
-                setPendingLocationCondition(
-                    pendingLocationConditions,
-                    current.locationId,
-                    condition,
-                    value,
-                );
-                applied = true;
-                break;
-            }
-            case 'pending-slot-hits': {
-                if (!isCurrentSlot(current)) break;
-                const requested = requireSignedNonzeroInteger(fact.hits, '$.restoration.unresolved.fact.hits');
-                const committed = slots.get(current.slotId)?.hits ?? 0;
-                const effective = Math.max(-committed, Math.min(requested, current.maximumHits - committed));
-                if (effective !== 0) pendingSlots.set(current.slotId, effective);
-                applied = effective !== 0;
-                if (effective !== requested) {
-                    remaining = fact;
-                    warn(accumulator, {
-                        code: 'DAMAGE_CLAMPED',
-                        message: `Remapped pending critical delta ${requested} exceeds the current slot bounds.`,
-                        currentTargetRef: current.ref,
-                        saved: { hits: requested },
-                        current: { committedHits: committed, maximumHits: current.maximumHits, effectiveDelta: effective },
-                    });
-                }
-                break;
-            }
-            case 'pending-component-status': {
-                if (!isCurrentComponent(current)) break;
-                if (!isEquipmentStatus(fact.status)) {
-                    codecFail('INVALID_SERIALIZED_STATE', '$.restoration.unresolved.fact.status', 'invalid pending status');
-                }
-                pendingComponents.set(current.componentId, fact.status);
-                applied = true;
-                break;
-            }
-            case 'pending-shield-damage': {
-                if (!isCurrentComponent(current)
-                    || current.target.kind !== 'component'
-                    || !current.supportsShieldDamage) break;
-                const requested = readPendingShieldDamage(
-                    fact,
-                    '$.restoration.unresolved.fact',
-                );
-                const effective = clampPendingShieldDamage(
-                    current,
-                    components.get(current.componentId),
-                    requested,
-                );
-                if (effective.absorptionDamage !== 0 || effective.capacityDamage !== 0) {
-                    pendingShieldDamage.set(current.componentId, effective);
-                    applied = true;
-                }
-                if (!shieldDamageEqual(effective, requested)) {
-                    remaining = fact;
-                    warn(accumulator, {
-                        code: 'DAMAGE_CLAMPED',
-                        message: 'Remapped pending shield damage exceeds the current shield track bounds.',
-                        currentTargetRef: current.ref,
-                        saved: { ...requested },
-                        current: {
-                            maximumAbsorption: current.shieldMaximumAbsorption,
-                            maximumCapacity: current.shieldMaximumCapacity,
-                            effectiveDelta: effective,
-                        },
-                    });
-                }
-                break;
-            }
-            case 'pending-modular-armor-damage': {
-                if (!isCurrentComponent(current)
-                    || current.target.kind !== 'component'
-                    || !current.supportsModularArmor) break;
-                const requested = requireSignedNonzeroInteger(
-                    fact.damage,
-                    '$.restoration.unresolved.fact.damage',
-                );
-                const committed = components.get(current.componentId)?.modularArmorDamage ?? 0;
-                const effective = Math.max(
-                    -committed,
-                    Math.min(requested, MODULAR_ARMOR_POINTS_PER_MOUNT - committed),
-                );
-                if (effective !== 0) {
-                    pendingModularArmorDamage.set(current.componentId, effective);
-                    applied = true;
-                }
-                if (effective !== requested) {
-                    remaining = fact;
-                    warn(accumulator, {
-                        code: 'DAMAGE_CLAMPED',
-                        message: 'Remapped pending Modular Armor damage exceeds its capacity.',
-                        currentTargetRef: current.ref,
-                        saved: { damage: requested },
-                        current: {
-                            committedDamage: committed,
-                            capacity: MODULAR_ARMOR_POINTS_PER_MOUNT,
-                            effectiveDelta: effective,
-                        },
-                    });
-                }
-                break;
-            }
-        }
-        if (!applied && remaining === null) {
-            retained.push(canonicalClone(entry));
-            continue;
-        }
-        if (applied) {
-            warn(accumulator, {
-                code: 'TARGET_REKEYED',
-                message: 'Applied a prior unresolved fact through its exact accepted repair alias.',
-                currentTargetRef: current.ref,
-            });
-            accumulator.appliedWithWarning += 1;
-        }
-        if (remaining) retained.push(canonicalClone({
-            ...entry,
-            fact: remaining,
-            reason: remaining.kind === 'component-state'
-                ? 'UNSUPPORTED_COMPONENT_CAPABILITY'
-                : remaining.kind === 'ammo-state'
-                    ? 'UNSUPPORTED_MUNITION_OR_CAPACITY'
-                    : entry.reason,
-        }));
-    }
-    return Object.freeze(retained);
-}
-
 function restorePending(
     pending: SerializedPendingCombatStateV2 | undefined,
     accumulator: RestoreAccumulator,
@@ -3404,20 +2790,6 @@ function shieldDamageEqual(
         && left.capacityDamage === right.capacityDamage;
 }
 
-function resolveRecoveryAuthorityTarget(
-    target: SavedStateTargetV2,
-    accumulator: RestoreAccumulator,
-): CurrentTarget | undefined {
-    switch (target.kind) {
-        case 'location-section': return resolveLocationTarget(target, accumulator);
-        case 'critical-slot': return resolveSlotTarget(target, accumulator);
-        case 'component':
-        case 'intrinsic-system': return resolveComponentTarget(target, accumulator);
-        case 'ammo-source': return resolveAmmoTarget(target, accumulator);
-        case 'crew-position': return resolveCrewTarget(target, accumulator);
-    }
-}
-
 function resolveLocationTarget(
     target: Extract<SavedStateTargetV2, { kind: 'location-section' }>,
     accumulator: RestoreAccumulator,
@@ -3523,14 +2895,6 @@ function resolveCrewTarget(
         if (sameOccurrence.length > 1) candidates = sameOccurrence;
     }
     return candidates.length === 1 ? candidates[0] : undefined;
-}
-
-function acceptedAliasTarget(
-    _sourceRef: SavedTargetRef,
-    _source: SavedStateTargetV2,
-    _accumulator: RestoreAccumulator,
-): CurrentTarget | undefined {
-    return undefined;
 }
 
 function sourceTarget<K extends SavedStateTargetV2['kind']>(
@@ -4344,10 +3708,10 @@ function assertBaselineMatchesEntity(
     }
 }
 
-async function finalizeUnresolved(
+function finalizeUnresolved(
     drafts: readonly RestoreAccumulator['unresolvedDrafts'][number][],
     usedIds: Set<string>,
-): Promise<readonly SerializedUnresolvedStateRecoveryEntryV2[]> {
+): readonly SerializedUnresolvedStateRecoveryEntryV2[] {
     const result: SerializedUnresolvedStateRecoveryEntryV2[] = [];
     let sequence = 0;
     for (const draft of drafts) {
@@ -4357,67 +3721,6 @@ async function finalizeUnresolved(
         result.push(canonicalClone({ recoveryId, ...draft }));
     }
     return Object.freeze(result);
-}
-
-/**
- * Applies a durable ignore decision to its recovery ID for the current restoration algorithm.
- */
-async function applyIgnoredRecoveryDecisions(
-    entries: readonly SerializedUnresolvedStateRecoveryEntryV2[],
-    decisions: readonly SerializedIgnoredStateRecoveryDecisionV2[],
-    occupiedIds: ReadonlySet<string> = new Set(),
-): Promise<readonly SerializedUnresolvedStateRecoveryEntryV2[]> {
-    const decisionsByKey = new Map<string, SerializedIgnoredStateRecoveryDecisionV2>();
-    for (const [index, decision] of decisions.entries()) {
-        boundedText(decision.recoveryId, `$.restoration.ignoredRecovery[${index}].recoveryId`);
-        if (!Number.isSafeInteger(decision.algorithmVersion) || decision.algorithmVersion < 1) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `$.restoration.ignoredRecovery[${index}].algorithmVersion`,
-                'must be a positive safe integer',
-            );
-        }
-        const key = `${decision.algorithmVersion}\0${decision.recoveryId}`;
-        if (decisionsByKey.has(key)) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `$.restoration.ignoredRecovery[${index}].recoveryId`,
-                'duplicate ignored recovery decision for the same algorithm',
-            );
-        }
-        decisionsByKey.set(key, decision);
-    }
-
-    const usedIds = new Set(occupiedIds);
-    const retained: SerializedUnresolvedStateRecoveryEntryV2[] = [];
-    for (const entry of entries) {
-        boundedText(entry.recoveryId, '$.restoration.unresolved.recoveryId');
-        if (usedIds.has(entry.recoveryId)) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                '$.restoration.unresolved.recoveryId',
-                `duplicate recovery ID ${entry.recoveryId}`,
-            );
-        }
-        const decision = decisionsByKey.get(
-            `${V2_STATE_RESTORATION_ALGORITHM_VERSION}\0${entry.recoveryId}`,
-        );
-        if (decision) continue;
-        usedIds.add(entry.recoveryId);
-        retained.push(canonicalClone(entry));
-    }
-    retained.sort((left, right) => compareText(left.recoveryId, right.recoveryId));
-    return Object.freeze(retained);
-}
-
-function mergePersistedWarnings(
-    prior: readonly { readonly code: string; readonly message: string }[],
-    current: readonly V2StateRestoreWarning[],
-): readonly { readonly code: string; readonly message: string }[] {
-    const rows = [...prior.map(canonicalClone), ...current.map(warning => ({ code: warning.code, message: warning.message }))];
-    const unique = new Map(rows.map(row => [`${row.code}\0${row.message}`, row]));
-    return Object.freeze([...unique.values()].sort((left, right) =>
-        compareText(`${left.code}\0${left.message}`, `${right.code}\0${right.message}`)));
 }
 
 function forEachUnique<T extends { readonly target: SavedTargetRef }>(

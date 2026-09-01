@@ -3,12 +3,20 @@
 // Author: Drake
 
 import { computed, type Injector, signal, type Signal } from '@angular/core';
-import type { DataService } from '../services/data.service';
-import type { UnitSummary } from "./unit-summary.model";
+import type { UnitSummary } from './unit-summary.model';
 import { AsAbilityLookupService } from '../services/as-ability-lookup.service';
-import { type ASSerializedState, type ASSerializedUnit, AS_SERIALIZED_UNIT_SCHEMA } from './force-serialization';
+import {
+    type ASSerializedState,
+    type ASSerializedUnit,
+    AS_SERIALIZED_UNIT_SCHEMA,
+    type ConditionData,
+} from './force-serialization';
 import type { ASForce } from './as-force.model';
-import { ForceUnit } from './force-unit.model';
+import {
+    applyForceUnitOwnerC3Position,
+    type ForceUnit,
+} from './force-unit.model';
+import type { UnitGroup } from './force.model';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnitState } from './as-force-unit-state.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
@@ -34,16 +42,30 @@ import {
     type UnitTagEcmCapabilitySummary,
 } from './unit-capability-summary.model';
 import { sourceHashCanary } from './source-hash-canary';
+import type { C3Component } from './c3-network.model';
+import type { UnitConditionKey } from './unit-condition.model';
+import { uuidv7 } from '../utils/uuid.util';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;
 
 
-export class ASForceUnit extends ForceUnit {
-    override get force(): ASForce { return super.force as ASForce; }
-    override set force(value: ASForce) { super.force = value; }
-    protected override state: ASForceUnitState;
+export class ASForceUnit implements ForceUnit {
+    protected readonly unit: UnitSummary;
+    protected readonly state: ASForceUnitState;
     protected readonly abilityLookup: AsAbilityLookupService;
+    private readonly _forceRef = signal<ASForce>(null!);
+    protected readonly _formationCommander = signal(false);
+
+    id = uuidv7();
+    updatedTs = 0;
+    disabledSaving = false;
+
+    get force(): ASForce { return this._forceRef(); }
+    set force(value: ASForce) { this._forceRef.set(value); }
+
+    readonly readOnly = computed(() => this.force.readOnly());
+    readonly commander = this._formationCommander.asReadonly();
 
     private readonly _pilotName = signal<string | undefined>(undefined);
     private readonly _pilotSkill = signal<number>(4);
@@ -75,23 +97,87 @@ export class ASForceUnit extends ForceUnit {
 
     constructor(unit: UnitSummary,
         force: ASForce,
-        dataService: DataService,
         injector: Injector
     ) {
-        super(unit, force, dataService, injector);
+        this.unit = unit;
+        this.force = force;
         this.state = new ASForceUnitState(this);
         this.abilityLookup = injector.get(AsAbilityLookupService);
     }
 
-    public async load() {
-        if (this.isLoaded()) return;
-        // Alpha Strike owns only the lightweight catalog projection. Native
-        // Entity/source loading belongs exclusively to the CBT runtime.
-        this.isLoaded.set(true);
+    getDisplayName(): string {
+        return `${this.unit.chassis} ${this.unit.model}`.trim();
     }
 
-    override getTagEcmCapabilitySummary(): UnitTagEcmCapabilitySummary {
+    get modified(): boolean {
+        return this.state.modified();
+    }
+
+    setModified(): void {
+        if (this.disabledSaving) return;
+        this.state.modified.set(true);
+        this.updatedTs = Date.now();
+        this.force.emitChanged();
+    }
+
+    get destroyed(): boolean {
+        return this.state.destroyed();
+    }
+
+    getConditions(): ReadonlyMap<UnitConditionKey, ConditionData | undefined> {
+        return this.state.conditions();
+    }
+
+    isC3EndpointOperational(_componentIndex: number, _component?: C3Component): boolean {
+        return !this.destroyed;
+    }
+
+    isC3Jammed(): boolean {
+        return false;
+    }
+
+    get c3Position() {
+        return this.state.c3Position;
+    }
+
+    [applyForceUnitOwnerC3Position](pos: { x: number; y: number } | null): void {
+        this.state.c3Position.set(pos === null ? null : { x: pos.x, y: pos.y });
+    }
+
+    setFormationCommander(value: boolean, markModified = true): void {
+        if (this._formationCommander() === value) return;
+        this._formationCommander.set(value);
+        if (markModified) this.setModified();
+    }
+
+    getSummary(): UnitSummary {
+        return this.unit;
+    }
+
+    getFormationSummary(): UnitSummary {
+        return this.unit;
+    }
+
+    getC3Specials(): readonly string[] {
+        return this.unit.as.specials ?? [];
+    }
+
+    getC3Presentation() {
+        return Object.freeze({
+            chassis: this.unit.chassis,
+            model: this.unit.model,
+            icon: this.unit.icon,
+            tons: this.unit.tons,
+            walk: this.unit.walk,
+        });
+    }
+
+    getTagEcmCapabilitySummary(): UnitTagEcmCapabilitySummary {
         return resolveAlphaStrikeTagEcmCapabilitySummary(this.getSummary().as.specials);
+    }
+
+    getGroup(): UnitGroup<ForceUnit> | null {
+        return this.force.groups().find(group => group.units().some(unit => unit === this)) ?? null;
     }
     
     public getBaseBv = computed<number>(() => {
@@ -485,7 +571,7 @@ export class ASForceUnit extends ForceUnit {
         return this._pilotSkill();
     });
 
-    public override update(data: ASSerializedUnit) {
+    public update(data: ASSerializedUnit) {
         if (data.updatedTs !== undefined) {
             this.updatedTs = data.updatedTs;
         }
@@ -509,7 +595,7 @@ export class ASForceUnit extends ForceUnit {
         }
     }
 
-    public override serialize(): ASSerializedUnit {
+    public serialize(): ASSerializedUnit {
         // Build consumed map with [committed, pending] format
         const consumed: Record<string, [number, number]> = {};
         for (const [key, value] of Object.entries(this.state.consumedAbilities())) {
@@ -572,15 +658,15 @@ export class ASForceUnit extends ForceUnit {
     public static deserialize(
         data: ASSerializedUnit,
         force: ASForce,
-        dataService: DataService,
+        unit: UnitSummary,
         injector: Injector
     ): ASForceUnit {
         // Sanitize the input data using the schema
         const sanitizedData = Sanitizer.sanitize(data, AS_SERIALIZED_UNIT_SCHEMA);
-        
-        const unit = dataService.getUnitByUuid(sanitizedData.uuid);
-        if (!unit) throw new Error(`Unit UUID "${sanitizedData.uuid}" is not installed`);
-        const fu = new ASForceUnit(unit, force, dataService, injector);
+        if (unit.uuid !== sanitizedData.uuid) {
+            throw new Error('Serialized Alpha Strike unit does not match its catalog summary');
+        }
+        const fu = new ASForceUnit(unit, force, injector);
         fu.id = sanitizedData.id;
         
         if (sanitizedData.alias !== undefined) {

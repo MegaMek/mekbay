@@ -215,15 +215,6 @@ function parseMetadataList(values: readonly string[]): string[] {
 }
 
 /**
- * Parse equipment from a location block in BLK format.
- * Returns array of equipment lines (already trimmed).
- */
-export function getBlkEquipmentLines(bb: BuildingBlock, locationTag: string): string[] {
-  if (!bb.exists(locationTag)) return [];
-  return bb.getDataAsString(locationTag).filter(l => l.trim() !== '');
-}
-
-/**
  * Parse BLK equipment blocks for a set of location tags and add them
  * to the entity.
  *

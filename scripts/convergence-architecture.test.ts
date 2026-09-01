@@ -53,6 +53,9 @@ const deletedPaths = [
     'src/app/models/runtime/c3-operational-network.ts',
     'src/app/models/runtime/entity-runtime-index.ts',
     'src/app/models/runtime/component-bap.ts',
+    'src/app/models/force-unit-state.model.ts',
+    'src/app/services/as-force-unit-loading.service.ts',
+    'src/app/components/force-loading-overlay/force-loading-overlay.component.ts',
     'scripts/audit-v1-force-corpus.ts',
 ];
 for (const path of deletedPaths) {
@@ -101,10 +104,11 @@ assert.doesNotMatch(
 );
 
 const forceUnit = source(join(app, 'models', 'force-unit.model.ts'));
+assert.match(forceUnit, /export interface ForceUnit/u);
 assert.doesNotMatch(
     forceUnit,
-    /static deserialize|must be implemented by subclass|\bdestroy\(|isComputedCondition|hasComputedCondition|phaseTrigger|\bsetC3Position\(|applyC3PositionFromOwnerTransaction/u,
-    'the shared ForceUnit model must not expose obsolete deserialization, lifecycle, computed-condition, or standalone C3 seams',
+    /abstract class ForceUnit|\bisLoaded\b|\bload\(\)|static deserialize|must be implemented by subclass|\bdestroy\(|isComputedCondition|hasComputedCondition|phaseTrigger|\bsetC3Position\(|applyC3PositionFromOwnerTransaction/u,
+    'the shared ForceUnit contract must not recreate obsolete inheritance, deferred loading, deserialization, lifecycle, computed-condition, or standalone C3 seams',
 );
 assert.match(forceUnit, /export const applyForceUnitOwnerC3Position = Symbol/u);
 assert.match(force, /setC3ConfigurationIfOwnerRevisionCurrent\([\s\S]*ForceOwnerRevisionFence/u);

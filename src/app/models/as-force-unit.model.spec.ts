@@ -4,7 +4,6 @@
 
 import { Injector, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { DataService } from '../services/data.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { ASForce } from './as-force.model';
 import { ASForceUnit } from './as-force-unit.model';
@@ -30,7 +29,6 @@ describe('ASForceUnit ability effects', () => {
         return new ASForceUnit(
             unit,
             force,
-            {} as DataService,
             injector,
         );
     }
@@ -65,23 +63,20 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.getBv()).toBeGreaterThan(30);
     });
 
-    it('loads from UnitSummary without opening a native CBT source', async () => {
-        const readNativeUnitSource = jasmine.createSpy('readNativeUnitSource');
+    it('constructs from UnitSummary without opening a native CBT source', () => {
         const force = {
             owned: () => true,
             emitChanged: jasmine.createSpy('emitChanged'),
             groups: () => [],
         } as unknown as ASForce;
+        const summary = createTestUnit();
         const forceUnit = new ASForceUnit(
-            createTestUnit(),
+            summary,
             force,
-            { readNativeUnitSource } as unknown as DataService,
             injector,
         );
 
-        await forceUnit.load();
-        expect(forceUnit.isLoaded()).toBeTrue();
-        expect(readNativeUnitSource).not.toHaveBeenCalled();
+        expect(forceUnit.getSummary()).toBe(summary);
     });
 
     it('keeps default heat behavior without Hot Dog', () => {

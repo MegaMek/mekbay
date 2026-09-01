@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EntityTechBase } from '../types';
-
 /**
  * Strip equipment name suffixes that are mount modifiers, not part of the
  * equipment's internal name. Returns the clean name plus parsed modifiers.

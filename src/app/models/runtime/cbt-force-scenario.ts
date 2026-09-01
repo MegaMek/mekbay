@@ -4,16 +4,8 @@
 import type { JsonObject, JsonValue } from '../persisted-unit-state';
 import {
     scenarioRuleset,
-    type CanonicalMekDeploymentConfigurationV2,
-    type DeploymentConfiguration,
     type ScenarioRules,
 } from './unit-state-initializer';
-
-export function deploymentFromPersistence(
-    value: CanonicalMekDeploymentConfigurationV2,
-): DeploymentConfiguration {
-    return value;
-}
 
 export function scenarioRulesFromPersistence(value: JsonValue): ScenarioRules {
     if (!isJsonObject(value)
