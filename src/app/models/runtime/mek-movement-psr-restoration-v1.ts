@@ -127,7 +127,7 @@ export function projectLegacyMekTurnStateV1(
         acknowledgedHeatSources: turn.acknowledgedHeatSources,
         heatDissipationConsumed: turn.heatDissipationConsumed,
         spotting: turn.spotting,
-        equipmentStateChanged: turn.equipmentStateChanged,
+        phaseStateChanged: turn.equipmentStateChanged,
     });
 }
 

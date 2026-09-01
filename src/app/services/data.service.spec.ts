@@ -932,13 +932,15 @@ describe('DataService', () => {
 
     it('loads a persisted V1 Alpha Strike force with its units intact', async () => {
         const atlas = createUnit('Atlas');
-        unitRuntimeServiceMock.resolveUnitReference.and.returnValue({
+        unitRuntimeServiceMock.resolvePersistedUnitIdentity.and.returnValue({
             kind: 'resolved',
-            unit: atlas,
-            usedLegacyNameFallback: true,
-            sourceChanged: false,
-            formatChanged: false,
+            savedIdentity: {
+                origin: atlas.origin,
+                provider: atlas.provider,
+                uuid: atlas.uuid,
+            },
         });
+        unitRuntimeServiceMock.getUnitByUuid.and.returnValue(atlas);
         const legacy: SerializedForce = {
             version: 1,
             instanceId: 'force-v1-as',
@@ -970,13 +972,7 @@ describe('DataService', () => {
 
     it('loads a current Alpha Strike cloud save without a second storage-parser pass', async () => {
         const atlas = createUnit('Atlas');
-        unitRuntimeServiceMock.resolveUnitReference.and.returnValue({
-            kind: 'resolved',
-            unit: atlas,
-            usedLegacyNameFallback: true,
-            sourceChanged: false,
-            formatChanged: false,
-        });
+        unitRuntimeServiceMock.getUnitByUuid.and.returnValue(atlas);
         const current = createSerializedForceForTest({
             instanceId: 'force-current-as',
             name: 'Current AS',
@@ -985,7 +981,7 @@ describe('DataService', () => {
                 name: 'Lance',
                 units: [{
                     id: 'unit-current-as',
-                    unit: 'Atlas',
+                    uuid: atlas.uuid,
                     state: createASStateForTest(),
                 }],
             }],

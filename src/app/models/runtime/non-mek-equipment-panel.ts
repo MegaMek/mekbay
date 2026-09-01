@@ -421,6 +421,173 @@ function projectAerospaceWeapon(
     });
 }
 
+function projectWeaponAttackComponents(
+    entity: BaseEntity,
+    index: NonMekRuntimeIndex,
+    state: NonMekUnitRuntimeState,
+    components: readonly EquipmentPanelComponent[],
+): readonly EquipmentPanelComponent[] {
+    const rowsById = new Map(components.map(row => [row.componentId, row] as const));
+    const bayGroups = nonMekWeaponAttackGroups(entity, index, state)
+        .filter(group => group.kind === 'weapon-bay');
+    if (bayGroups.length === 0) return components;
+    const groupByMember = new Map<ComponentId, typeof bayGroups[number]>();
+    bayGroups.forEach(group => group.memberIds.forEach(componentId =>
+        groupByMember.set(componentId, group)));
+
+    const result: EquipmentPanelComponent[] = [];
+    for (const row of components) {
+        const group = groupByMember.get(row.componentId);
+        if (!group) {
+            result.push(row);
+            continue;
+        }
+        if (row.componentId !== group.componentId) continue;
+        const members = group.memberIds.flatMap(componentId => {
+            const member = rowsById.get(componentId);
+            return member?.weapon === undefined ? [] : [member];
+        });
+        if (members.length > 0) result.push(projectWeaponBayComponent(group, members));
+    }
+    return Object.freeze(result);
+}
+
+function projectWeaponBayComponent(
+    group: ReturnType<typeof nonMekWeaponAttackGroups>[number],
+    members: readonly EquipmentPanelComponent[],
+): EquipmentPanelComponent {
+    const representative = members.find(member => member.weapon?.selectable === true) ?? members[0];
+    const representativeWeapon = representative.weapon!;
+    const operational = members.filter(member => member.status === 'available' && !member.jammed);
+    const operationalWeapons = operational.map(member => member.weapon!);
+    const attackValues = AEROSPACE_RANGE_BRACKETS.map((_, index) => operationalWeapons.reduce(
+        (sum, weapon) => sum + (weapon.aerospace?.attackValues[index] ?? 0),
+        0,
+    )) as [number, number, number, number];
+    const aerospace = representativeWeapon.aerospace === undefined
+        ? undefined
+        : Object.freeze({
+            attackValues: Object.freeze([...attackValues]) as readonly [number, number, number, number],
+            rangeLimits: representativeWeapon.aerospace.rangeLimits,
+            maximumBracket: [...AEROSPACE_RANGE_BRACKETS].reverse()
+                .find(range => attackValues[AEROSPACE_RANGE_BRACKETS.indexOf(range)] > 0)
+                ?? representativeWeapon.aerospace.maximumBracket,
+            capital: representativeWeapon.aerospace.capital,
+        });
+    const damageByRange = Object.freeze(Object.fromEntries(AEROSPACE_RANGE_BRACKETS.map(
+        (range, index) => [range, attackValues[index] > 0 ? String(attackValues[index]) : '—'],
+    )) as NonNullable<EquipmentPanelComponent['weapon']>['damageTextByRange']);
+    const selection = uniformValue(operational.map(member => member.weapon?.selection));
+    const ammoSelection = uniformValue(operational.map(member => member.weapon?.ammoSelection));
+    const ammoSources = mergeAmmoSources(members.flatMap(member => member.weapon?.ammoSources ?? []));
+    const effectiveWeaponTypes = Object.freeze([...new Set(members.flatMap(
+        member => member.weapon?.effectiveWeaponTypes ?? [],
+    ))]);
+    const locations = new Map(members.flatMap(member => member.locations)
+        .map(location => [location.locationId, location] as const));
+    const firingHeat = operationalWeapons.reduce((sum, weapon) => sum + weapon.firingHeat, 0);
+    const damage = attackValues.find(value => value > 0)
+        ?? operationalWeapons.reduce((sum, weapon) =>
+            sum + (typeof weapon.damage === 'number' ? weapon.damage : 0), 0);
+    const weapon = Object.freeze({
+        ...representativeWeapon,
+        heat: firingHeat,
+        firingHeat,
+        selectable: operationalWeapons.some(candidate => candidate.selectable),
+        damage,
+        damageText: AEROSPACE_RANGE_BRACKETS.map((range, index) =>
+            `${range[0].toUpperCase()}:${attackValues[index] > 0 ? attackValues[index] : '—'}`).join(' '),
+        damageTextByRange: damageByRange,
+        ...(aerospace === undefined ? {} : { aerospace }),
+        ...(selection === undefined ? { selection: undefined } : { selection }),
+        ...(ammoSelection === undefined ? { ammoSelection: undefined } : { ammoSelection }),
+        ammoSources,
+        effectiveWeaponTypes,
+        disabledTargetReasons: commonDisabledTargetReasons(members),
+    });
+    const source = group.source === 'synthetic-bay'
+        ? 'synthetic-bay' as const
+        : 'authored-bay' as const;
+    return Object.freeze({
+        componentId: group.componentId,
+        label: weaponBayLabel(group.label, members),
+        ...(representative.equipment === undefined ? {} : { equipment: representative.equipment }),
+        locations: Object.freeze([...locations.values()]),
+        status: aggregateStatus(members.map(member => member.status)),
+        previewStatus: aggregateStatus(members.map(member => member.previewStatus)),
+        modes: Object.freeze([]),
+        ...(representative.mode === undefined ? {} : { mode: representative.mode }),
+        jammed: members.every(member => member.jammed),
+        ...(members.some(member => member.heatWeakened === true) ? { heatWeakened: true } : {}),
+        weapon,
+        attack: Object.freeze({
+            kind: 'weapon-bay',
+            source,
+            members: Object.freeze(members.map(member => Object.freeze({
+                componentId: member.componentId,
+                selectable: member.weapon?.selectable === true,
+                ...(member.weapon?.selection === undefined
+                    ? {}
+                    : { selection: member.weapon.selection }),
+                ...(member.weapon?.ammoSelection === undefined
+                    ? {}
+                    : { ammoSelection: member.weapon.ammoSelection }),
+                ammoSources: member.weapon?.ammoSources ?? Object.freeze([]),
+            }))),
+        }),
+    });
+}
+
+function weaponBayLabel(label: string, members: readonly EquipmentPanelComponent[]): string {
+    const counts = new Map<string, number>();
+    members.forEach(member => counts.set(member.label, (counts.get(member.label) ?? 0) + 1));
+    const composition = [...counts].map(([name, count]) => `${count} ${name}`).join(', ');
+    return `${label}: ${composition}`;
+}
+
+function aggregateStatus(
+    statuses: readonly EquipmentPanelComponent['status'][],
+): EquipmentPanelComponent['status'] {
+    if (statuses.includes('available')) return 'available';
+    if (statuses.includes('disabled')) return 'disabled';
+    return statuses[0] ?? 'available';
+}
+
+function mergeAmmoSources(
+    sources: readonly EquipmentPanelAmmoSource[],
+): readonly EquipmentPanelAmmoSource[] {
+    const merged = new Map<ComponentId, EquipmentPanelAmmoSource>();
+    for (const source of sources) {
+        const existing = merged.get(source.componentId);
+        if (!existing) {
+            merged.set(source.componentId, source);
+            continue;
+        }
+        const loadouts = new Map([...existing.loadouts, ...source.loadouts]
+            .map(loadout => [loadout.munitionKey, loadout] as const));
+        merged.set(source.componentId, Object.freeze({
+            ...existing,
+            loadouts: Object.freeze([...loadouts.values()]),
+        }));
+    }
+    return Object.freeze([...merged.values()].sort((left, right) =>
+        compareText(left.componentId, right.componentId)));
+}
+
+function commonDisabledTargetReasons(
+    members: readonly EquipmentPanelComponent[],
+): Readonly<Record<string, string>> {
+    const reasons = members.map(member => member.weapon?.disabledTargetReasons ?? {});
+    const first = reasons[0] ?? {};
+    return Object.freeze(Object.fromEntries(Object.entries(first).filter(([targetId, reason]) =>
+        reasons.every(candidate => candidate[targetId] === reason))));
+}
+
+function uniformValue<T>(values: readonly (T | undefined)[]): T | undefined {
+    const first = values[0];
+    return values.every(value => JSON.stringify(value) === JSON.stringify(first)) ? first : undefined;
+}
+
 function projectProtoMekFrenzy(
     entity: BaseEntity,
     state: NonMekUnitRuntimeState,

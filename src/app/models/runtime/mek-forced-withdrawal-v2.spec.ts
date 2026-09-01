@@ -6,7 +6,6 @@ import type { CriticalSlotId } from '../entity/entity-identifiers';
 import {
     MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
 } from './mek-destruction-state-v2';
-import { asCommandId } from './runtime-state';
 import {
     createDirectMekRuntimeFixture,
     createDirectNoForcedWithdrawalRuntimeFixture,
@@ -33,8 +32,8 @@ describe('direct Mek forced-withdrawal rules', () => {
         expect(torsoFixture.instance.query().hasCondition('crippled')).toBeFalse();
         expect(torsoFixture.instance.dispatch({
             type: 'resolve-mek-rule-check',
-            commandId: nextCommandId('core:torso-check'),
-            expectedRevision: torsoFixture.instance.revision(),
+
+
             key: MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
             token: check!.token,
             outcome: 'failed',
@@ -52,8 +51,8 @@ describe('direct Mek forced-withdrawal rules', () => {
         const pilot = [...crewFixture.index.crewPositions.values()][0]!;
         expect(crewFixture.instance.dispatch({
             type: 'set-crew-state',
-            commandId: nextCommandId('tw:crew'),
-            expectedRevision: crewFixture.instance.revision(),
+
+
             positionId: pilot.id,
             wounds: 4,
             unconscious: false,
@@ -65,13 +64,15 @@ describe('direct Mek forced-withdrawal rules', () => {
         const deadPilot = [...deadCrewFixture.index.crewPositions.values()][0]!;
         expect(deadCrewFixture.instance.dispatch({
             type: 'set-crew-state',
-            commandId: nextCommandId('tw:dead-crew'),
-            expectedRevision: deadCrewFixture.instance.revision(),
+
+
             positionId: deadPilot.id,
             wounds: 6,
             unconscious: false,
             ejected: false,
         }).accepted).toBeTrue();
+        expect(deadCrewFixture.instance.query().hasCondition('crippled')).toBeTrue();
+        expect(deadCrewFixture.instance.dispatch({ type: 'end-phase' }).accepted).toBeTrue();
         expect(deadCrewFixture.instance.query().hasCondition('crippled')).toBeFalse();
 
         const sensorFixture = createDirectMekRuntimeFixture(TOTAL_WARFARE_RULESET);
@@ -113,13 +114,6 @@ describe('direct Mek forced-withdrawal rules', () => {
     });
 });
 
-let commandNumber = 0;
-
-function nextCommandId(label: string) {
-    commandNumber += 1;
-    return asCommandId(`${label}:${commandNumber}`);
-}
-
 function systemSlots(
     fixture: DirectMekRuntimeFixture,
     systemType: string,
@@ -139,8 +133,8 @@ function hitCriticals(
     for (const slotId of slotIds) {
         expect(fixture.instance.dispatch({
             type: 'hit-critical',
-            commandId: nextCommandId('hit-critical'),
-            expectedRevision: fixture.instance.revision(),
+
+
             slotId,
             hits: 1,
             target: 'pending',
@@ -161,8 +155,8 @@ function damageInternal(
     const location = locationByCode(fixture, code);
     expect(fixture.instance.dispatch({
         type: 'damage-internal',
-        commandId: nextCommandId('damage-internal'),
-        expectedRevision: fixture.instance.revision(),
+
+
         locationId: location.id,
         amount,
         target: 'pending',
@@ -176,8 +170,8 @@ function destroyFrontArmor(fixture: DirectMekRuntimeFixture, code: string): void
     if (!face) throw new Error(`Direct fixture is missing ${code} front armor`);
     expect(fixture.instance.dispatch({
         type: 'damage-armor',
-        commandId: nextCommandId('damage-armor'),
-        expectedRevision: fixture.instance.revision(),
+
+
         faceId: face.id,
         amount: face.maximumPoints,
         target: 'pending',

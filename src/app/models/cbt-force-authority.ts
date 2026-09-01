@@ -10,7 +10,7 @@ import {
 import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-    CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
+    emptyRuntimeHistory,
     validateSerializedCBTForceV2,
     type SerializedCBTForceV2,
     type SerializedCBTUnitV2,
@@ -32,14 +32,16 @@ import {
 } from './runtime/ready-classic-unit';
 import { ReadyNonMekUnit } from './runtime/ready-non-mek-unit';
 import {
-    NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
     isSerializedNonMekUnit,
     type SerializedNonMekUnit,
 } from './runtime/non-mek-unit-persistence';
 import { jsonValuesEqual } from '../utils/json-value.util';
 import type { UnitConditionKey } from './unit-condition.model';
 import type { ScenarioRules } from './runtime/unit-state-initializer';
-import { scenarioRuleset } from './runtime/unit-state-initializer';
+import {
+    DEFAULT_FORCE_DEPLOYMENT_ID,
+    scenarioRuleset,
+} from './runtime/unit-state-initializer';
 import type { CBTRuleset } from './cbt-ruleset.model';
 import {
     canonicalizeCrewAssignment,
@@ -115,6 +117,8 @@ import {
     publishC3EmergencyMasterNotices,
     validateCBTEncounterNetworks,
 } from './cbt-force-c3';
+import { prepareCBTForceRosterMutationPlan } from './runtime/cbt-force-roster-owner';
+import { pruneRemovedUnitsFromEncounter } from './runtime/cbt-force-persistence-helpers';
 
 interface CBTForceAuthorityState {
     readonly envelope: SerializedCBTForceV2;
@@ -192,56 +196,59 @@ export class CBTForceAuthority {
                 if (isSerializedNonMekUnit(entry.unit)) {
                     if (!readyNonMekUnits) throw new Error('A Ready non-Mek service is required for non-Mek members');
                     try {
-                        return await readyNonMekUnits.restoreReadyNonMekUnit({
-                            saved: Object.freeze({
-                                ...entry.unit,
-                                schemaVersion: NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
-                            }),
+                        return await readyNonMekUnits.loadReadyNonMekUnit({
+                            identity: entry.unit.entity,
+                            instanceId: entry.instanceId,
+                            deployment: entry.unit.deployment.values,
+                            scenario,
                         });
                     } catch {
-                        // The unit identity is still usable; only its runtime payload is discarded.
+                        try {
+                            return await readyNonMekUnits.loadReadyNonMekUnit({
+                                identity: entry.unit.entity,
+                                instanceId: entry.instanceId,
+                                deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
+                                scenario,
+                            });
+                        } catch {
+                            return null;
+                        }
                     }
-                    return readyNonMekUnits.loadReadyNonMekUnit({
-                        identity: entry.unit.entity,
-                        instanceId: entry.instanceId,
-                        deployment: entry.unit.deployment.values,
-                        scenario,
-                        initialStateProfileId: entry.unit.baselineRefAtSave.initialStateProfile.profileId,
-                    });
                 }
                 if (!readyMeks) throw new Error('A Ready Mek service is required for Mek members');
                 try {
-                    return await readyMeks.restoreReadyMekV2({
-                        saved: Object.freeze({
-                            ...entry.unit,
-                            schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
-                        }),
+                    return await readyMeks.loadReadyMek({
+                        identity: entry.unit.entity,
+                        instanceId: entry.instanceId,
                         deployment: deploymentFromPersistence(entry.unit.deployment.values),
                         scenario,
-                        initialStateProfileId: entry.unit.baselineRefAtSave.initialStateProfile.profileId,
                     });
                 } catch {
-                    // The unit identity is still usable; only its runtime payload is discarded.
+                    try {
+                        return await readyMeks.loadReadyMek({
+                            identity: entry.unit.entity,
+                            instanceId: entry.instanceId,
+                            deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
+                            scenario,
+                        });
+                    } catch {
+                        return null;
+                    }
                 }
-                return readyMeks.loadReadyMek({
-                    identity: entry.unit.entity,
-                    instanceId: entry.instanceId,
-                    deployment: deploymentFromPersistence(entry.unit.deployment.values),
-                    scenario,
-                    initialStateProfileId: entry.unit.baselineRefAtSave.initialStateProfile.profileId,
-                });
             }
         }));
         const units = new Map<UnitInstanceId, ReadyClassicUnit>();
         restored.forEach(ready => {
+            if (ready === null) return;
             if (units.has(ready.instanceId)) throw new Error(`Duplicate restored V2 runtime ${ready.instanceId}`);
             units.set(ready.instanceId, ready);
         });
-        if (units.size !== entries.length || entries.some(entry => !units.has(entry.instanceId))) {
-            throw new Error('Restored V2 runtime coverage is incomplete');
-        }
+        const retainedEntries = entries.filter(entry => units.has(entry.instanceId));
+        const removedUnitIds = new Set(entries
+            .filter(entry => !units.has(entry.instanceId))
+            .map(entry => entry.instanceId));
         const serializedUnits = new Map<UnitInstanceId, SerializedCBTUnitV2 | SerializedNonMekUnit>();
-        const readyWitnesses = entries.map(entry => {
+        const readyWitnesses = retainedEntries.map(entry => {
             const ready = units.get(entry.instanceId)!;
             const entity = ready.getUnit();
             const serialized = ready.serialize();
@@ -267,16 +274,32 @@ export class CBTForceAuthority {
                 revision: ready.revision(),
             });
         });
-        const hydratedUnits = envelope.units.map(entry => Object.freeze({
+        const hydratedUnits = retainedEntries.map(entry => Object.freeze({
             ...entry,
             stateRevision: serializedUnits.get(entry.instanceId)!.stateRevision,
             unit: serializedUnits.get(entry.instanceId)!,
         }));
+        let roster = envelope.roster;
+        for (const instanceId of removedUnitIds) {
+            const removal = prepareCBTForceRosterMutationPlan({
+                roster,
+                command: { kind: 'remove-member', instanceId },
+            });
+            if (removal.kind === 'ready') roster = removal.plan.nextRoster;
+            else if (removal.reason !== 'UNKNOWN_MEMBER') {
+                throw new Error(`Could not remove skipped V2 unit ${instanceId} from its roster`);
+            }
+        }
         const hydratedEnvelope = await validateSerializedCBTForceV2({
             ...envelope,
             schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
             minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
             units: hydratedUnits,
+            roster,
+            encounter: removedUnitIds.size === 0
+                ? envelope.encounter
+                : pruneRemovedUnitsFromEncounter(envelope.encounter, removedUnitIds),
+            history: removedUnitIds.size === 0 ? envelope.history : emptyRuntimeHistory(),
         });
         const encounter = decodeCBTEncounterStateV2(hydratedEnvelope.encounter.state).snapshot;
         if (!validateCBTEncounterNetworks(encounter.networks, units)) {

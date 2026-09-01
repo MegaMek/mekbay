@@ -140,6 +140,11 @@ import {
     settleMobileHpgMode,
     type MobileHpgComponentFact,
 } from './component-mobile-hpg';
+import {
+    canSwitchNonMekAirGroundState,
+    canonicalNonMekAirborneState,
+    projectedNonMekAirGroundCondition,
+} from './non-mek-airborne-state';
 import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
 import { isBoobyTrapEquipment } from '../aerospace-support-equipment.model';
 import {
@@ -154,19 +159,18 @@ import {
     prototypeLaserMaximumExtraHeat,
     type PrototypeLaserHeatResult,
 } from '../prototype-laser-heat.model';
-import type {
-    ClassicCrewRuntimeState,
-    ClassicLocationRuntimeState,
-    ClassicUnitQueryPort,
-    ClassicUnitRuntimeState,
-    RuntimeStatePerspective,
+import {
+    isCrewDeathCommitted,
+    type ClassicCrewRuntimeState,
+    type ClassicLocationRuntimeState,
+    type ClassicUnitCommandResult,
+    type ClassicUnitQueryPort,
+    type ClassicUnitRuntimeState,
+    type RuntimeStatePerspective,
 } from './classic-unit-runtime';
+import type { EndTurnCheckpoint } from './end-turn-checkpoint';
 
 export type NonMekEntityType = Exclude<EntityType, 'Mek'>;
-export const NON_MEK_UNIT_RUNTIME_SCHEMA_VERSION = 5 as const;
-
-export type NonMekCrewState = Extract<CrewMemberState, 'killed' | 'stunned'>;
-
 export interface NonMekComponentModeDefinition {
     readonly modes: readonly string[];
     readonly defaultMode?: string;
@@ -240,9 +244,10 @@ export function effectiveNonMekComponentMode(
     return nonMekComponentModes(entity, equipment, ruleset).defaultMode;
 }
 
-/** Non-Mek-only crew states layered over the common wounds/consciousness row. */
+/** Non-Mek-only conditions remain independent so terminal states only hide, never erase, others. */
 export interface NonMekCrewRuntimeState extends ClassicCrewRuntimeState {
-    readonly state?: NonMekCrewState;
+    readonly killed?: true;
+    readonly stunned?: true;
 }
 
 const PRISTINE_NON_MEK_CREW_STATE: NonMekCrewRuntimeState = Object.freeze({
@@ -255,10 +260,25 @@ export function effectiveNonMekCrewState(
     state: NonMekCrewRuntimeState | undefined,
 ): CrewMemberState {
     const current = state ?? PRISTINE_NON_MEK_CREW_STATE;
-    if (current.wounds >= 6) return 'dead';
-    if (current.state !== undefined) return current.state;
+    if (isCrewDeathCommitted(current)) return 'dead';
+    if (current.killed) return 'killed';
     if (current.ejected) return 'ejected';
-    return current.unconscious ? 'unconscious' : 'healthy';
+    if (current.unconscious) return 'unconscious';
+    return current.stunned ? 'stunned' : 'healthy';
+}
+
+export function hasNonMekCrewState(
+    state: NonMekCrewRuntimeState,
+    key: CrewMemberState,
+): boolean {
+    switch (key) {
+        case 'dead': return state.dead === true;
+        case 'killed': return state.killed === true;
+        case 'ejected': return state.ejected;
+        case 'unconscious': return state.unconscious;
+        case 'stunned': return state.stunned === true;
+        case 'healthy': return effectiveNonMekCrewState(state) === 'healthy';
+    }
 }
 
 export type NonMekLocationRuntimeState = ClassicLocationRuntimeState;
@@ -302,6 +322,14 @@ export interface NonMekEndTurnHeatProjection {
     readonly sources: readonly Readonly<{ readonly id: string; readonly label: string; readonly value: number }>[];
 }
 
+export type NonMekControlRecoveryCause = 'heat-random-movement' | 'controller-loss';
+
+/** Deferred aerospace Control Roll created by a rules event, never by manual conditions. */
+export interface NonMekControlRecoveryWorkflow {
+    readonly readyTurn: number;
+    readonly cause: NonMekControlRecoveryCause;
+}
+
 /** Per-unit turn facts that are not part of the immutable BaseEntity blueprint. */
 export interface NonMekTurnRuntimeState {
     readonly turnCounter: number;
@@ -310,16 +338,15 @@ export interface NonMekTurnRuntimeState {
     readonly weaponsHeat: number;
     readonly cover: UnitCover | null;
     readonly spotting: boolean;
+    /** Durable origin/next phase-dirty marker, cleared only by a phase boundary. */
+    readonly phaseStateChanged: boolean;
+    readonly endTurnCheckpoint?: EndTurnCheckpoint;
+    readonly controlRecovery?: NonMekControlRecoveryWorkflow;
 }
 
 /** Sparse state shared by non-Mek entity families. Family mechanics extend this state directly. */
 export interface NonMekUnitRuntimeState extends ClassicUnitRuntimeState {
-    readonly schemaVersion: typeof NON_MEK_UNIT_RUNTIME_SCHEMA_VERSION;
     readonly stateRevision: StateRevision;
-    readonly family: Readonly<{
-        readonly kind: 'non-mek';
-        readonly entityType: NonMekEntityType;
-    }>;
     /** Explicit user/import override; use query.destroyed() for effective destruction. */
     readonly explicitlyDestroyed: boolean;
     readonly locations: ReadonlyMap<LocationId, NonMekLocationRuntimeState>;
@@ -340,6 +367,10 @@ export interface NonMekUnitRuntimeState extends ClassicUnitRuntimeState {
 export function hasPendingNonMekChanges(state: NonMekUnitRuntimeState): boolean {
     return !pendingCombatEmpty(state.pendingCombat)
         || state.heat.pendingOverride !== undefined;
+}
+
+function hasPendingNonMekPhaseChanges(state: NonMekUnitRuntimeState): boolean {
+    return hasPendingNonMekChanges(state) || state.turn.phaseStateChanged;
 }
 
 export interface NonMekMovementCapabilities {
@@ -590,105 +621,92 @@ export function projectNonMekDefenseModifierBreakdown(
     return Object.freeze(entries.map(entry => Object.freeze(entry)));
 }
 
-export function supportsNonMekAirborneSelection(entity: BaseEntity): boolean {
-    return entity.entityType === 'DropShip'
-        || entity.unitType() === 'VTOL'
-        || entity.motiveType() === 'WiGE';
+/** A permanent space-only airborne invariant is not a user-authored turn choice. */
+export function hasNonMekAirborneTurnSelection(
+    entity: BaseEntity,
+    state: Readonly<{ readonly turn: Readonly<{ readonly airborne: boolean | null }> }>,
+): boolean {
+    return canSwitchNonMekAirGroundState(entity) && state.turn.airborne !== null;
 }
 
 export interface NonMekAttackerTargetingCommand {
     readonly kind: 'edit-attacker-targeting';
-    readonly expectedRevision: StateRevision;
-    readonly expectedRegistryRevision: StateRevision;
     readonly edit: AttackerTargetingEdit;
 }
 
 export interface NonMekAttackerTargetingReconciliationPlan {
-    readonly expectedRevision: StateRevision;
     readonly nextTargeting: AttackerTargetingState;
 }
 
-export type NonMekSelectedWeaponFireResult =
-    | Readonly<{
-        readonly accepted: true;
-        readonly changed: true;
-        readonly state: NonMekUnitRuntimeState;
-        readonly prototypeHeat: readonly PrototypeLaserHeatResult[];
-    }>
-    | Readonly<{
-        readonly accepted: false;
-        readonly reason:
-            | 'REVISION_CONFLICT'
-            | 'STALE_TARGET_REGISTRY'
-            | 'FORCE_READ_ONLY'
-            | 'INVALID_TARGETING'
-            | 'INVALID_TARGET'
-            | 'EXCEEDS_CAPACITY'
-            | 'C3_UNAVAILABLE';
-        readonly state: NonMekUnitRuntimeState;
-    }>;
+export type NonMekSelectedWeaponFireResult = Readonly<
+    ClassicUnitCommandResult<NonMekUnitRuntimeState>
+    & { readonly prototypeHeat: readonly PrototypeLaserHeatResult[] }
+>;
 
 export type NonMekUnitCommand =
-    | Readonly<{ readonly kind: 'set-destroyed'; readonly expectedRevision: StateRevision; readonly destroyed: boolean }>
-    | Readonly<{ readonly kind: 'detonate-booby-trap'; readonly expectedRevision: StateRevision; readonly componentId: ComponentId }>
-    | Readonly<{ readonly kind: 'set-internal-damage'; readonly expectedRevision: StateRevision; readonly locationId: LocationId; readonly damage: number }>
-    | Readonly<{ readonly kind: 'set-armor-damage'; readonly expectedRevision: StateRevision; readonly faceId: ArmorFaceId; readonly damage: number }>
-    | Readonly<{ readonly kind: 'damage-internal'; readonly expectedRevision: StateRevision; readonly locationId: LocationId; readonly amount: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'repair-internal'; readonly expectedRevision: StateRevision; readonly locationId: LocationId; readonly amount: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'damage-armor'; readonly expectedRevision: StateRevision; readonly faceId: ArmorFaceId; readonly amount: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'repair-armor'; readonly expectedRevision: StateRevision; readonly faceId: ArmorFaceId; readonly amount: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'damage-track'; readonly expectedRevision: StateRevision; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }>
-    | Readonly<{ readonly kind: 'repair-damage-track'; readonly expectedRevision: StateRevision; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'set-sensor-damage-level'; readonly expectedRevision: StateRevision; readonly level: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }>
-    | Readonly<{ readonly kind: 'set-component-status'; readonly expectedRevision: StateRevision; readonly componentId: ComponentId; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'set-component-statuses'; readonly expectedRevision: StateRevision; readonly componentIds: readonly ComponentId[]; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'set-component-mode'; readonly expectedRevision: StateRevision; readonly componentId: ComponentId; readonly mode: string }>
+    | Readonly<{ readonly kind: 'set-destroyed'; readonly destroyed: boolean }>
+    | Readonly<{ readonly kind: 'detonate-booby-trap'; readonly componentId: ComponentId }>
+    | Readonly<{ readonly kind: 'set-internal-damage'; readonly locationId: LocationId; readonly damage: number }>
+    | Readonly<{ readonly kind: 'set-armor-damage'; readonly faceId: ArmorFaceId; readonly damage: number }>
+    | Readonly<{ readonly kind: 'damage-internal'; readonly locationId: LocationId; readonly amount: number; readonly target: 'committed' | 'pending' }>
+    | Readonly<{ readonly kind: 'repair-internal'; readonly locationId: LocationId; readonly amount: number; readonly target: 'committed' | 'pending' }>
+    | Readonly<{ readonly kind: 'damage-armor'; readonly faceId: ArmorFaceId; readonly amount: number; readonly target: 'committed' | 'pending' }>
+    | Readonly<{ readonly kind: 'repair-armor'; readonly faceId: ArmorFaceId; readonly amount: number; readonly target: 'committed' | 'pending' }>
+    | Readonly<{ readonly kind: 'damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }>
+    | Readonly<{ readonly kind: 'repair-damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending' }>
+    | Readonly<{ readonly kind: 'set-sensor-damage-level'; readonly level: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }>
+    | Readonly<{ readonly kind: 'set-component-status'; readonly componentId: ComponentId; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending' }>
+    | Readonly<{ readonly kind: 'set-component-statuses'; readonly componentIds: readonly ComponentId[]; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending' }>
+    | Readonly<{ readonly kind: 'set-component-mode'; readonly componentId: ComponentId; readonly mode: string }>
     | Readonly<{
         readonly kind: 'edit-escalating-failure';
-        readonly expectedRevision: StateRevision;
         readonly componentId: ComponentId;
         readonly edit:
             | Readonly<{ readonly kind: 'select-sequence'; readonly index: number }>
             | Readonly<{ readonly kind: 'set-status'; readonly status: 'available' | 'disabled' }>;
     }>
-    | Readonly<{ readonly kind: 'set-ammo-spent'; readonly expectedRevision: StateRevision; readonly componentId: ComponentId; readonly shotsSpent: number }>
-    | Readonly<{ readonly kind: 'configure-ammo-source'; readonly expectedRevision: StateRevision; readonly componentId: ComponentId; readonly munitionKey: string; readonly remaining: number }>
-    | Readonly<{ readonly kind: 'set-crew-state'; readonly expectedRevision: StateRevision; readonly positionId: CrewPositionId; readonly wounds: number; readonly unconscious: boolean; readonly ejected: boolean; readonly state?: NonMekCrewState }>
-    | Readonly<{ readonly kind: 'set-condition'; readonly expectedRevision: StateRevision; readonly condition: UnitConditionKey; readonly active: boolean }>
-    | Readonly<{ readonly kind: 'set-heat'; readonly expectedRevision: StateRevision; readonly heat: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'set-heatsinks-off'; readonly expectedRevision: StateRevision; readonly heatsinksOff: number }>
-    | Readonly<{ readonly kind: 'apply-heat'; readonly expectedRevision: StateRevision }>
-    | Readonly<{ readonly kind: 'set-airborne'; readonly expectedRevision: StateRevision; readonly airborne: boolean | null }>
-    | Readonly<{ readonly kind: 'set-movement'; readonly expectedRevision: StateRevision; readonly movement: NonMekMovementDeclaration | null }>
-    | Readonly<{ readonly kind: 'set-cover'; readonly expectedRevision: StateRevision; readonly cover: UnitCover | null }>
-    | Readonly<{ readonly kind: 'set-spotting'; readonly expectedRevision: StateRevision; readonly spotting: boolean }>
-    | Readonly<{ readonly kind: 'end-phase'; readonly expectedRevision: StateRevision }>
-    | Readonly<{ readonly kind: 'cancel-pending'; readonly expectedRevision: StateRevision }>
+    | Readonly<{ readonly kind: 'set-ammo-spent'; readonly componentId: ComponentId; readonly shotsSpent: number }>
+    | Readonly<{ readonly kind: 'configure-ammo-source'; readonly componentId: ComponentId; readonly munitionKey: string; readonly remaining: number }>
+    | Readonly<{
+        readonly kind: 'set-crew-state';
+        readonly positionId: CrewPositionId;
+        readonly wounds: number;
+        readonly unconscious: boolean;
+        readonly ejected: boolean;
+        readonly killed: boolean;
+        readonly stunned: boolean;
+        readonly recoveryReadyTurn?: number | null;
+    }>
+    | Readonly<{ readonly kind: 'set-condition'; readonly condition: UnitConditionKey; readonly active: boolean }>
+    | Readonly<{ readonly kind: 'set-heat'; readonly heat: number; readonly target: 'committed' | 'pending' }>
+    | Readonly<{ readonly kind: 'set-heatsinks-off'; readonly heatsinksOff: number }>
+    | Readonly<{ readonly kind: 'apply-heat' }>
+    | Readonly<{ readonly kind: 'set-airborne'; readonly airborne: boolean | null }>
+    | Readonly<{ readonly kind: 'set-movement'; readonly movement: NonMekMovementDeclaration | null }>
+    | Readonly<{ readonly kind: 'set-cover'; readonly cover: UnitCover | null }>
+    | Readonly<{ readonly kind: 'set-spotting'; readonly spotting: boolean }>
+    | Readonly<{ readonly kind: 'set-control-recovery'; readonly workflow: NonMekControlRecoveryWorkflow | null }>
+    | Readonly<{
+        readonly kind: 'end-phase';
+        /** Set only when End Turn is completing its prerequisite phase. */
+        readonly endTurnBoundary?: true;
+    }>
+    | Readonly<{
+        readonly kind: 'mark-end-turn-heat-staged';
+        }>
+    | Readonly<{ readonly kind: 'cancel-pending' }>
     | Readonly<{
         readonly kind: 'end-turn';
-        readonly expectedRevision: StateRevision;
         /** Defaults to automatic; manual leaves current heat unchanged unless an explicit override exists. */
         readonly heatPolicy?: 'automatic' | 'manual';
     }>;
 
-export type NonMekUnitCommandResult = Readonly<{
-    readonly accepted: boolean;
-    readonly changed: boolean;
-    readonly state: NonMekUnitRuntimeState;
-    readonly reason?:
-        | 'STALE_REVISION'
-        | 'STALE_TARGET_REGISTRY'
-        | 'FORCE_READ_ONLY'
-        | 'INVALID_TARGETING'
-        | 'INVALID_COMMAND';
-}>;
+export type NonMekUnitCommandResult = ClassicUnitCommandResult<NonMekUnitRuntimeState>;
 
 export function createPristineNonMekUnitState(entity: BaseEntity): NonMekUnitRuntimeState {
     if (entity.entityType === 'Mek') throw new Error('Meks require CBTUnitInstance');
     return freezeNonMekUnitState({
-        schemaVersion: NON_MEK_UNIT_RUNTIME_SCHEMA_VERSION,
         stateRevision: asStateRevision(0),
-        family: Object.freeze({ kind: 'non-mek', entityType: entity.entityType }),
         explicitlyDestroyed: false,
         locations: new Map(),
         components: new Map(),
@@ -699,11 +717,12 @@ export function createPristineNonMekUnitState(entity: BaseEntity): NonMekUnitRun
         heat: Object.freeze({ current: 0, previous: 0, heatsinksOff: 0 }),
         turn: Object.freeze({
             turnCounter: 0,
-            airborne: null,
+            airborne: canonicalNonMekAirborneState(entity, null),
             movement: null,
             weaponsHeat: 0,
             cover: null,
             spotting: false,
+            phaseStateChanged: false,
         }),
         attackerTargeting: createPristineAttackerTargetingState(),
         pendingCombat: emptyPendingCombat(),
@@ -715,7 +734,6 @@ export function freezeNonMekUnitState(state: NonMekUnitRuntimeState): NonMekUnit
     const equipmentRowOrder = freezeEquipmentRowOrder(rawEquipmentRowOrder);
     return Object.freeze({
         ...values,
-        family: Object.freeze({ ...state.family }),
         locations: new ImmutableIndex([...state.locations].map(([id, value]) => [
             id,
             Object.freeze({
@@ -755,6 +773,13 @@ export function freezeNonMekUnitState(state: NonMekUnitRuntimeState): NonMekUnit
             weaponsHeat: state.turn.weaponsHeat,
             cover: state.turn.cover,
             spotting: state.turn.spotting,
+            phaseStateChanged: state.turn.phaseStateChanged,
+            ...(state.turn.endTurnCheckpoint === undefined
+                ? {}
+                : { endTurnCheckpoint: state.turn.endTurnCheckpoint }),
+            ...(state.turn.controlRecovery === undefined
+                ? {}
+                : { controlRecovery: Object.freeze({ ...state.turn.controlRecovery }) }),
             movement: state.turn.movement === null
                 ? null
                 : Object.freeze({
@@ -796,9 +821,6 @@ export class NonMekUnitInstance {
             throw new Error('Runtime baseline does not match the entity UUID');
         }
         if (baselineRef.ruleset !== ruleset) throw new Error('Runtime ruleset does not match its baseline');
-        if (initialState.family.entityType !== entity.entityType) {
-            throw new Error('Runtime family does not match the entity type');
-        }
         this.index = buildNonMekRuntimeIndex(entity);
         this.state = validateState(initialState, this.index, entity, ruleset);
     }
@@ -912,25 +934,15 @@ export class NonMekUnitInstance {
 
     /** Updates presentation order without entering gameplay undo/history. */
     public setEquipmentRowOrder(
-        expectedRevision: StateRevision,
         group: EquipmentRowOrderGroup,
         permutation: readonly number[],
         rowCount: number,
         forceReadOnly: boolean,
     ): NonMekUnitCommandResult {
-        if (expectedRevision !== this.state.stateRevision) {
-            return Object.freeze({
-                accepted: false,
-                changed: false,
-                reason: 'STALE_REVISION',
-                state: this.state,
-            });
-        }
         if (forceReadOnly) {
             return Object.freeze({
                 accepted: false,
                 changed: false,
-                reason: 'FORCE_READ_ONLY',
                 state: this.state,
             });
         }
@@ -943,12 +955,7 @@ export class NonMekUnitInstance {
                 rowCount,
             );
         } catch {
-            return Object.freeze({
-                accepted: false,
-                changed: false,
-                reason: 'INVALID_COMMAND',
-                state: this.state,
-            });
+            return Object.freeze({ accepted: true, changed: false, state: this.state });
         }
         if (equipmentRowOrder === this.state.equipmentRowOrder) {
             return Object.freeze({ accepted: true, changed: false, state: this.state });
@@ -967,19 +974,10 @@ export class NonMekUnitInstance {
         registry: TargetRegistrySnapshot,
         forceReadOnly: boolean,
     ): NonMekUnitCommandResult {
-        if (command.expectedRevision !== this.state.stateRevision) {
-            return Object.freeze({
-                accepted: false,
-                changed: false,
-                reason: 'STALE_REVISION',
-                state: this.state,
-            });
-        }
         if (forceReadOnly) {
             return Object.freeze({
                 accepted: false,
                 changed: false,
-                reason: 'FORCE_READ_ONLY',
                 state: this.state,
             });
         }
@@ -1000,9 +998,8 @@ export class NonMekUnitInstance {
                     this.ruleset,
                 )))) {
             return Object.freeze({
-                accepted: false,
+                accepted: true,
                 changed: false,
-                reason: 'INVALID_TARGETING',
                 state: this.state,
             });
         }
@@ -1015,18 +1012,13 @@ export class NonMekUnitInstance {
             false,
         );
         const reduced = reduceAttackerTargetingCommand(this.state.attackerTargeting, context, {
-            expectedRegistryRevision: command.expectedRegistryRevision,
+            expectedRegistryRevision: registry.revision,
             ...command.edit,
         });
         if (!reduced.accepted) {
             return Object.freeze({
-                accepted: false,
+                accepted: forceReadOnly ? false : true,
                 changed: false,
-                reason: reduced.reason === 'STALE_REGISTRY'
-                    ? 'STALE_TARGET_REGISTRY'
-                    : reduced.reason === 'READ_ONLY'
-                        ? 'FORCE_READ_ONLY'
-                        : 'INVALID_TARGETING',
                 state: this.state,
             });
         }
@@ -1048,22 +1040,29 @@ export class NonMekUnitInstance {
         forceReadOnly: boolean,
         c3Available: boolean,
     ): NonMekSelectedWeaponFireResult {
-        const rejected = (reason: Extract<NonMekSelectedWeaponFireResult, { accepted: false }>['reason']) =>
-            Object.freeze({ accepted: false as const, reason, state: this.state });
-        if (command.expectedRevision !== this.state.stateRevision) return rejected('REVISION_CONFLICT');
-        if (command.expectedRegistryRevision !== registry.revision) return rejected('STALE_TARGET_REGISTRY');
-        if (forceReadOnly) return rejected('FORCE_READ_ONLY');
+        const unchanged = (): NonMekSelectedWeaponFireResult => Object.freeze({
+            accepted: true,
+            changed: false,
+            state: this.state,
+            prototypeHeat: Object.freeze([]),
+        });
+        if (forceReadOnly) return Object.freeze({
+            accepted: false,
+            changed: false,
+            state: this.state,
+            prototypeHeat: Object.freeze([]),
+        });
         if (mobileHpgBlocksWeaponAttacks(buildNonMekMobileHpgFacts(
             this.entity,
             this.index,
             this.state,
             this.ruleset,
-        ))) return rejected('INVALID_TARGETING');
+        ))) return unchanged();
         if (command.heatPolicy !== 'automatic' && command.heatPolicy !== 'manual') {
-            return rejected('INVALID_TARGET');
+            return unchanged();
         }
         const heatRollEvidence = prototypeLaserHeatRollMap(command.prototypeHeatRolls);
-        if (!heatRollEvidence.accepted) return rejected('INVALID_TARGET');
+        if (!heatRollEvidence.accepted) return unchanged();
 
         let context: AttackerTargetingValidationContext;
         try {
@@ -1076,20 +1075,20 @@ export class NonMekUnitInstance {
                 false,
             );
         } catch {
-            return rejected('INVALID_TARGETING');
+            return unchanged();
         }
         const reconciled = reconcileAttackerTargetingState(this.state.attackerTargeting, context);
-        if (!reconciled.accepted || reconciled.changed) return rejected('INVALID_TARGETING');
+        if (!reconciled.accepted || reconciled.changed) return unchanged();
 
         const selected = [...this.state.attackerTargeting.components]
             .filter(([, component]) => component.selection !== undefined)
             .sort(([left], [right]) => compareText(left, right));
         if (selected.length === 0 || selected.length > MAX_ATTACKER_TARGETING_COMPONENTS) {
-            return rejected('INVALID_TARGETING');
+            return unchanged();
         }
         if (!c3Available && selected.some(([, component]) => component.selection?.kind === 'target'
             && this.state.attackerTargeting.targets.get(component.selection.targetId)?.useC3 === true)) {
-            return rejected('C3_UNAVAILABLE');
+            return unchanged();
         }
 
         const ammoSpends = new Map<ComponentId, number>();
@@ -1097,7 +1096,7 @@ export class NonMekUnitInstance {
         let heat = 0;
         const vehicle = this.vehicleRules();
         const infantry = this.infantryRules();
-        if (this.destroyed() || this.hasCondition('shutdown')) return rejected('INVALID_TARGET');
+        if (this.destroyed() || this.hasCondition('shutdown')) return unchanged();
         for (const [weaponId, targeting] of selected) {
             const component = this.index.components.get(weaponId);
             const weapon = component?.mount.equipment;
@@ -1107,7 +1106,7 @@ export class NonMekUnitInstance {
                 || this.state.components.get(weaponId)?.jammed === true
                 || vehicle?.fireBlockedComponentIds.has(weaponId) === true
                 || infantry?.fireBlockedComponentIds.has(weaponId) === true) {
-                return rejected('INVALID_TARGET');
+                return unchanged();
             }
             const mode = this.componentMode(weaponId);
             const shots = rapidFireAutocannonShotCount(weapon, mode);
@@ -1123,7 +1122,7 @@ export class NonMekUnitInstance {
                         weaponId,
                         heatRollEvidence.rolls.get(weaponId) ?? 0,
                     );
-                    if (rolled === null) return rejected('INVALID_TARGET');
+                    if (rolled === null) return unchanged();
                     const result = shots === 1
                         ? rolled
                         : Object.freeze({
@@ -1136,14 +1135,14 @@ export class NonMekUnitInstance {
                 }
             }
             if (!Number.isSafeInteger(heat) || heat < 0 || heat > 1_000_000) {
-                return rejected('EXCEEDS_CAPACITY');
+                return unchanged();
             }
             if (weapon.ammoType === 'NA') {
-                if (targeting.ammo !== undefined) return rejected('INVALID_TARGET');
+                if (targeting.ammo !== undefined) return unchanged();
                 continue;
             }
             const ammoSelection = targeting.ammo;
-            if (!ammoSelection?.preferredSourceId) return rejected('INVALID_TARGET');
+            if (!ammoSelection?.preferredSourceId) return unchanged();
             const sourceId = ammoSelection.preferredSourceId;
             const source = this.index.components.get(sourceId);
             const runtimeAmmo = this.state.ammo.get(sourceId);
@@ -1158,7 +1157,7 @@ export class NonMekUnitInstance {
                 || loadout.munitionKey !== ammoSelection.munitionKey
                 || this.componentStatus(sourceId, 'committed') !== 'available'
                 || !weaponAcceptsAmmo(weapon, loadout.equipment, mode)) {
-                return rejected('INVALID_TARGET');
+                return unchanged();
             }
             ammoSpends.set(sourceId, (ammoSpends.get(sourceId) ?? 0) + shots);
         }
@@ -1174,7 +1173,7 @@ export class NonMekUnitInstance {
                 current?.munitionOverride,
             )!;
             const shotsSpent = (current?.shotsSpent ?? 0) + amount;
-            if (shotsSpent > loadout.capacity) return rejected('EXCEEDS_CAPACITY');
+            if (shotsSpent > loadout.capacity) return unchanged();
             ammo.set(sourceId, Object.freeze({
                 shotsSpent,
                 ...(current?.munitionOverride === undefined
@@ -1184,7 +1183,7 @@ export class NonMekUnitInstance {
         }
         const weaponsHeat = this.state.turn.weaponsHeat + (this.entity.tracksHeat() ? heat : 0);
         if (!Number.isSafeInteger(weaponsHeat) || weaponsHeat > 1_000_000) {
-            return rejected('EXCEEDS_CAPACITY');
+            return unchanged();
         }
         this.state = freezeNonMekUnitState({
             ...this.state,
@@ -1217,23 +1216,18 @@ export class NonMekUnitInstance {
             throw new Error(`Non-Mek attacker targeting reconciliation failed: ${reduced.reason}`);
         }
         return reduced.changed
-            ? Object.freeze({
-                expectedRevision: this.state.stateRevision,
-                nextTargeting: reduced.state,
-            })
+            ? Object.freeze({ nextTargeting: reduced.state })
             : null;
     }
 
-    public commitAttackerTargetingReconciliation(
+    public installAttackerTargetingReconciliation(
         plan: NonMekAttackerTargetingReconciliationPlan,
-    ): boolean {
-        if (this.state.stateRevision !== plan.expectedRevision) return false;
+    ): void {
         this.state = freezeNonMekUnitState({
             ...this.state,
             stateRevision: nextRevision(this.state.stateRevision),
             attackerTargeting: plan.nextTargeting,
         });
-        return true;
     }
 
     public stateView(): EntityStateView {
@@ -1245,14 +1239,11 @@ export class NonMekUnitInstance {
     }
 
     public dispatch(command: NonMekUnitCommand): NonMekUnitCommandResult {
-        if (command.expectedRevision !== this.state.stateRevision) {
-            return Object.freeze({ accepted: false, changed: false, reason: 'STALE_REVISION', state: this.state });
-        }
         let next: NonMekUnitRuntimeState | null;
         try {
             next = reduceNonMekUnitState(this.state, this.index, this.entity, this.ruleset, command);
         } catch {
-            return Object.freeze({ accepted: false, changed: false, reason: 'INVALID_COMMAND', state: this.state });
+            return Object.freeze({ accepted: true, changed: false, state: this.state });
         }
         if (next === null) return Object.freeze({ accepted: true, changed: false, state: this.state });
         this.state = next;
@@ -1327,9 +1318,10 @@ function createNonMekUnitQuery(
         );
     let effectiveConditionValues: readonly UnitConditionKey[] | undefined;
     const effectiveConditions = (): readonly UnitConditionKey[] =>
-        effectiveConditionValues ??= projectedConditions(state, projection());
+        effectiveConditionValues ??= projectedConditions(entity, state, projection());
     return Object.freeze({
         stateRevision: state.stateRevision,
+        hasPendingPhaseChanges: () => hasPendingNonMekPhaseChanges(state),
         hasPendingCombat: () => hasPendingNonMekChanges(state),
         destroyed: () => projectedRuntimeDestroyed(index, state, projection()),
         currentBaseBattleValue: () => entity.battleValueFor(stateView(), ruleset),
@@ -1372,9 +1364,7 @@ function createNonMekUnitQuery(
         },
         attackerTargetingState: () => state.attackerTargeting,
         equipmentRowOrder: () => state.equipmentRowOrder,
-        hasCondition: (condition: UnitConditionKey) => (
-            storedCondition(state, condition) || effectiveConditions().includes(condition)
-        ),
+        hasCondition: (condition: UnitConditionKey) => effectiveConditions().includes(condition),
         conditions: effectiveConditions,
         crewState: (positionId: CrewPositionId) => {
             if (!index.crewPositions.has(positionId)) {
@@ -1414,7 +1404,7 @@ function entityHasCondition(
     ruleset: CBTRuleset,
     condition: UnitConditionKey,
 ): boolean {
-    if (storedCondition(state, condition)) return true;
+    if (state.conditions.has(condition)) return true;
     return projectedHasCondition(projectNonMekRuntime(entity, index, state, ruleset), condition);
 }
 
@@ -1425,27 +1415,26 @@ function projectedHasCondition(
     return projectedComputedConditions(projection).includes(condition);
 }
 
-function storedCondition(state: NonMekUnitRuntimeState, condition: UnitConditionKey): boolean {
-    return (condition === 'airborne' && state.turn.airborne === true)
-        || state.conditions.has(condition);
-}
-
 function entityConditions(
     entity: BaseEntity,
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
 ): readonly UnitConditionKey[] {
-    return projectedConditions(state, projectNonMekRuntime(entity, index, state, ruleset));
+    return projectedConditions(entity, state, projectNonMekRuntime(entity, index, state, ruleset));
 }
 
 function projectedConditions(
+    entity: BaseEntity,
     state: NonMekUnitRuntimeState,
     projection: ProjectedNonMekRuntime,
 ): readonly UnitConditionKey[] {
     const conditions = new Set(state.conditions);
-    if (state.turn.airborne === true) conditions.add('airborne');
     projectedComputedConditions(projection).forEach(condition => conditions.add(condition));
+    conditions.delete('airborne');
+    conditions.delete('grounded');
+    const airGroundCondition = projectedNonMekAirGroundCondition(entity, state.turn.airborne);
+    if (airGroundCondition !== null) conditions.add(airGroundCondition);
     return Object.freeze([...conditions]);
 }
 
@@ -1635,7 +1624,7 @@ function reduceNonMekUnitState(
                 BOOBY_TRAP_ARMED_MODE,
             );
             if (!detonated) return null;
-            candidate = { ...detonated, explicitlyDestroyed: true };
+            candidate = detonated;
             break;
         }
         case 'set-internal-damage': {
@@ -1979,37 +1968,63 @@ function reduceNonMekUnitState(
         case 'set-crew-state': {
             if (!index.crewPositions.has(command.positionId)
                 || !Number.isSafeInteger(command.wounds) || command.wounds < 0 || command.wounds > 6
-                || (command.state !== undefined && command.state !== 'killed' && command.state !== 'stunned')
-                || (command.state !== undefined && (command.unconscious || command.ejected))
-                || (command.unconscious && command.ejected)) {
+                || typeof command.killed !== 'boolean'
+                || typeof command.stunned !== 'boolean'
+                || (command.recoveryReadyTurn !== undefined
+                    && command.recoveryReadyTurn !== null
+                    && (!Number.isSafeInteger(command.recoveryReadyTurn)
+                        || command.recoveryReadyTurn < 0))
+                || (command.recoveryReadyTurn !== undefined && !command.unconscious)) {
                 throw new Error('Invalid crew state');
             }
+            const current = state.crew.get(command.positionId) ?? PRISTINE_NON_MEK_CREW_STATE;
+            const dead = command.wounds >= 6 ? current.dead : undefined;
+            const recoveryReadyTurn = !command.unconscious
+                ? undefined
+                : command.recoveryReadyTurn !== undefined
+                    ? command.recoveryReadyTurn
+                    : current.recoveryReadyTurn;
             const nextCrew = Object.freeze({
                 wounds: command.wounds,
                 unconscious: command.unconscious,
                 ejected: command.ejected,
-                ...(command.state === undefined ? {} : { state: command.state }),
+                ...(dead ? { dead: true as const } : {}),
+                ...(command.killed ? { killed: true as const } : {}),
+                ...(command.stunned ? { stunned: true as const } : {}),
+                ...(recoveryReadyTurn === undefined ? {} : { recoveryReadyTurn }),
             });
-            const current = state.crew.get(command.positionId) ?? PRISTINE_NON_MEK_CREW_STATE;
             if (current.wounds === nextCrew.wounds
                 && current.unconscious === nextCrew.unconscious
                 && current.ejected === nextCrew.ejected
-                && current.state === nextCrew.state) return null;
+                && current.dead === nextCrew.dead
+                && current.killed === nextCrew.killed
+                && current.stunned === nextCrew.stunned
+                && current.recoveryReadyTurn === nextCrew.recoveryReadyTurn) return null;
             const crew = new Map(state.crew);
             if (nextCrew.wounds === 0 && !nextCrew.unconscious && !nextCrew.ejected
-                && nextCrew.state === undefined) crew.delete(command.positionId);
+                && !nextCrew.killed && !nextCrew.stunned) crew.delete(command.positionId);
             else crew.set(command.positionId, nextCrew);
-            candidate = { ...state, crew };
+            candidate = {
+                ...state,
+                crew,
+                turn: Object.freeze({ ...state.turn, phaseStateChanged: true }),
+            };
             break;
         }
         case 'set-condition': {
             const condition = command.condition;
+            if (condition === 'airborne' || condition === 'grounded') {
+                throw new Error('Airborne state requires the typed airborne command');
+            }
             const active = state.conditions.has(condition);
             if (active === command.active) return null;
             const conditions = new Set(state.conditions);
             if (command.active) conditions.add(condition);
             else conditions.delete(condition);
-            candidate = { ...state, conditions };
+            if (condition === 'out-of-control' && !command.active) {
+                const { controlRecovery: _discarded, ...turn } = state.turn;
+                candidate = { ...state, conditions, turn: Object.freeze(turn) };
+            } else candidate = { ...state, conditions };
             break;
         }
         case 'set-heat': {
@@ -2045,7 +2060,7 @@ function reduceNonMekUnitState(
             candidate = commitPendingHeat(state);
             break;
         case 'set-airborne':
-            if (!supportsNonMekAirborneSelection(entity)
+            if (!canSwitchNonMekAirGroundState(entity)
                 || (command.airborne !== null && typeof command.airborne !== 'boolean')) {
                 throw new Error('Invalid airborne state');
             }
@@ -2056,6 +2071,7 @@ function reduceNonMekUnitState(
                     ...state.turn,
                     airborne: command.airborne,
                     movement: null,
+                    phaseStateChanged: true,
                 }),
             };
             break;
@@ -2072,6 +2088,7 @@ function reduceNonMekUnitState(
                 turn: Object.freeze({
                     ...state.turn,
                     movement,
+                    phaseStateChanged: true,
                     ...(movement?.mode === 'sprint' ? { spotting: false } : {}),
                 }),
             };
@@ -2102,8 +2119,61 @@ function reduceNonMekUnitState(
             };
             break;
         }
-        case 'end-phase':
-            candidate = commitPendingNonMekChanges(state, index);
+        case 'set-control-recovery': {
+            const workflow = command.workflow;
+            if (!isAeroEntity(entity)
+                || (workflow !== null && (
+                    !state.conditions.has('out-of-control')
+                    || !Number.isSafeInteger(workflow.readyTurn)
+                    || workflow.readyTurn < 0
+                    || (workflow.cause !== 'heat-random-movement'
+                        && workflow.cause !== 'controller-loss')
+                ))) throw new Error('Invalid aerospace Control recovery');
+            const current = state.turn.controlRecovery;
+            if (current?.readyTurn === workflow?.readyTurn
+                && current?.cause === workflow?.cause) return null;
+            if (current === undefined && workflow === null) return null;
+            if (workflow === null) {
+                const { controlRecovery: _discarded, ...turn } = state.turn;
+                candidate = { ...state, turn: Object.freeze(turn) };
+            } else {
+                candidate = {
+                    ...state,
+                    turn: Object.freeze({
+                        ...state.turn,
+                        controlRecovery: Object.freeze({ ...workflow }),
+                    }),
+                };
+            }
+            break;
+        }
+        case 'end-phase': {
+            const committed = commitCrewDeaths(commitPendingNonMekChanges(state, index));
+            candidate = {
+                ...committed,
+                turn: Object.freeze({
+                    ...committed.turn,
+                    phaseStateChanged: false,
+                    ...(command.endTurnBoundary
+                        && committed.turn.endTurnCheckpoint === undefined
+                        ? { endTurnCheckpoint: 'phase-ended' as const }
+                        : {}),
+                }),
+            };
+            break;
+        }
+        case 'mark-end-turn-heat-staged':
+            if (state.turn.endTurnCheckpoint === 'heat-staged') return null;
+            if (state.turn.endTurnCheckpoint !== 'phase-ended') {
+                throw new Error('End Turn heat cannot be staged before its phase boundary');
+            }
+            candidate = {
+                ...state,
+                turn: Object.freeze({
+                    ...state.turn,
+                    endTurnCheckpoint: 'heat-staged',
+                }),
+            };
             break;
         case 'cancel-pending':
             if (!hasPendingNonMekChanges(state)) return null;
@@ -2142,15 +2212,20 @@ function reduceNonMekUnitState(
             committed = settleNonMekEscalatingFailures(index, committed, ruleset);
             committed = settleNonMekMobileHpgs(entity, index, committed);
             committed = settleNonMekElectronicSuites(entity, index, committed, ruleset);
+            committed = commitCrewDeaths(committed);
             candidate = {
                 ...committed,
                 turn: Object.freeze({
                     turnCounter: state.turn.turnCounter + 1,
-                    airborne: null,
+                    airborne: canonicalNonMekAirborneState(entity, null),
                     movement: null,
                     weaponsHeat: 0,
                     cover: null,
                     spotting: false,
+                    phaseStateChanged: false,
+                    ...(state.turn.controlRecovery === undefined
+                        ? {}
+                        : { controlRecovery: state.turn.controlRecovery }),
                 }),
             };
             break;
@@ -2277,6 +2352,16 @@ function commitPendingNonMekChanges(
     index: NonMekRuntimeIndex,
 ): NonMekUnitRuntimeState {
     return commitPendingHeat(commitPendingCombat(state, index));
+}
+
+function commitCrewDeaths(state: NonMekUnitRuntimeState): NonMekUnitRuntimeState {
+    let crew: Map<CrewPositionId, NonMekCrewRuntimeState> | undefined;
+    for (const [positionId, current] of state.crew) {
+        if (current.wounds < 6 || current.dead === true) continue;
+        crew ??= new Map(state.crew);
+        crew.set(positionId, Object.freeze({ ...current, dead: true }));
+    }
+    return crew === undefined ? state : { ...state, crew: new ImmutableIndex(crew) };
 }
 
 function commitPendingHeat(state: NonMekUnitRuntimeState): NonMekUnitRuntimeState {
@@ -2814,9 +2899,6 @@ function validateState(
     entity: BaseEntity,
     ruleset: CBTRuleset,
 ): NonMekUnitRuntimeState {
-    if (state.schemaVersion !== NON_MEK_UNIT_RUNTIME_SCHEMA_VERSION) {
-        throw new Error('Unsupported non-Mek runtime state version');
-    }
     asStateRevision(state.stateRevision);
     if (typeof state.explicitlyDestroyed !== 'boolean') {
         throw new Error('Invalid explicit destroyed state');
@@ -2898,9 +2980,15 @@ function validateState(
         if (!index.crewPositions.has(positionId)) throw new Error(`Runtime references unknown crew position ${positionId}`);
         if (!Number.isSafeInteger(crew.wounds) || crew.wounds < 0 || crew.wounds > 6
             || typeof crew.unconscious !== 'boolean' || typeof crew.ejected !== 'boolean'
-            || (crew.state !== undefined && crew.state !== 'killed' && crew.state !== 'stunned')
-            || (crew.state !== undefined && (crew.unconscious || crew.ejected))
-            || (crew.unconscious && crew.ejected)) {
+            || (crew.dead !== undefined && crew.dead !== true)
+            || (crew.dead === true && crew.wounds < 6)
+            || (crew.killed !== undefined && crew.killed !== true)
+            || (crew.stunned !== undefined && crew.stunned !== true)
+            || (crew.recoveryReadyTurn !== undefined
+                && crew.recoveryReadyTurn !== null
+                && (!Number.isSafeInteger(crew.recoveryReadyTurn)
+                    || crew.recoveryReadyTurn < 0))
+            || (crew.recoveryReadyTurn !== undefined && !crew.unconscious)) {
             throw new Error(`Runtime has invalid crew state ${positionId}`);
         }
     }
@@ -2923,9 +3011,18 @@ function validateState(
         || (state.turn.airborne !== null && typeof state.turn.airborne !== 'boolean')
         || (state.turn.cover !== null && !isUnitCover(state.turn.cover))
         || typeof state.turn.spotting !== 'boolean'
+        || typeof state.turn.phaseStateChanged !== 'boolean'
         || (state.turn.spotting && state.turn.movement?.mode === 'sprint')) {
         throw new Error('Runtime has invalid non-Mek turn state');
     }
+    if (state.turn.controlRecovery !== undefined && (
+        !isAeroEntity(entity)
+        || !state.conditions.has('out-of-control')
+        || !Number.isSafeInteger(state.turn.controlRecovery.readyTurn)
+        || state.turn.controlRecovery.readyTurn < 0
+        || (state.turn.controlRecovery.cause !== 'heat-random-movement'
+            && state.turn.controlRecovery.cause !== 'controller-loss')
+    )) throw new Error('Runtime has invalid aerospace Control recovery');
     if (!entity.tracksHeat() && state.turn.weaponsHeat !== 0) {
         throw new Error('Runtime weapon heat belongs to a non-Mek unit that does not track heat');
     }
@@ -2987,7 +3084,18 @@ function validateState(
         boundedDelta(pending.hitDelta, state.damageTracks.get(damageTrackId)?.hits ?? 0, definition.maximumHits);
         validateHitTimestamps(pending.hitTimestamps, Math.max(0, pending.hitDelta), damageTrackId);
     }
-    return freezeNonMekUnitState(state);
+    let canonical = state;
+    if (state.conditions.has('airborne') || state.conditions.has('grounded')) {
+        const conditions = new Set(state.conditions);
+        conditions.delete('airborne');
+        conditions.delete('grounded');
+        canonical = { ...canonical, conditions };
+    }
+    const canonicalAirborne = canonicalNonMekAirborneState(entity, canonical.turn.airborne);
+    if (canonical.turn.airborne !== canonicalAirborne) {
+        canonical = { ...canonical, turn: { ...canonical.turn, airborne: canonicalAirborne } };
+    }
+    return freezeNonMekUnitState(canonical);
 }
 
 function damageTrackTimestamps(

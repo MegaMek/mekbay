@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { WeaponEquipment } from '../equipment.model';
-import { asCommandId, asStateRevision } from './runtime-state';
+import { asStateRevision } from './runtime-state';
 import { projectMekEquipmentComponents } from './equipment-panel';
 import {
     mekComponentModes,
@@ -54,8 +54,8 @@ describe('direct Mek component rules', () => {
 
         expect(tw.instance.dispatch({
             type: 'set-component-mode',
-            commandId: asCommandId('flamer:heat'),
-            expectedRevision: asStateRevision(0),
+
+
             componentId: tw.componentId,
             mode: FLAMER_HEAT_MODE,
         }).accepted).toBeTrue();

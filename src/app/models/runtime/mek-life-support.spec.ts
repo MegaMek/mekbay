@@ -1,7 +1,4 @@
-// Copyright (C) 2026 The MegaMek Team
-// SPDX-License-Identifier: GPL-3.0-or-later
 
-import { asCommandId } from './runtime-state';
 import { projectMekLifeSupportPilotDamage } from './mek-life-support';
 import type { DirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 import {
@@ -31,20 +28,20 @@ describe('Mek Life Support rules', () => {
         const fixture = createDirectMekRuntimeFixture();
         const slot = lifeSupportSlot(fixture);
         expect(fixture.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('life-support:preview'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'hit-critical',
+
             slotId: slot.id, hits: 1, target: 'pending',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'replace-turn-state', commandId: asCommandId('life-support:depth-1'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'replace-turn-state',
+
             turn: { ...fixture.instance.query().turnState(), cover: 'underwater-depth-1' },
         }).accepted).toBeTrue();
 
         expect(projection(fixture, 10)).toEqual(jasmine.objectContaining({ damaged: true, oxygenHits: 0 }));
         expect(fixture.instance.dispatch({
-            type: 'set-condition', commandId: asCommandId('life-support:prone'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'set-condition',
+
             condition: 'prone', active: true,
         }).accepted).toBeTrue();
         expect(projection(fixture, 10).oxygenHits).toBe(1);
@@ -53,20 +50,20 @@ describe('Mek Life Support rules', () => {
     it('keeps a prone superheavy Mek above water until depth 2', () => {
         const fixture = damagedLifeSupport(createDirectSuperheavyRuntimeFixture());
         expect(fixture.instance.dispatch({
-            type: 'set-condition', commandId: asCommandId('life-support:superheavy:prone'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'set-condition',
+
             condition: 'prone', active: true,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'replace-turn-state', commandId: asCommandId('life-support:superheavy:depth-1'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'replace-turn-state',
+
             turn: { ...fixture.instance.query().turnState(), cover: 'underwater-depth-1' },
         }).accepted).toBeTrue();
         expect(projection(fixture, 10).oxygenHits).toBe(0);
 
         expect(fixture.instance.dispatch({
-            type: 'replace-turn-state', commandId: asCommandId('life-support:superheavy:depth-2'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'replace-turn-state',
+
             turn: { ...fixture.instance.query().turnState(), cover: 'underwater-depth-2' },
         }).accepted).toBeTrue();
         expect(projection(fixture, 10).oxygenHits).toBe(1);
@@ -85,8 +82,8 @@ function projection(fixture: DirectMekRuntimeFixture, heat: number) {
 
 function damagedLifeSupport(fixture: DirectMekRuntimeFixture): DirectMekRuntimeFixture {
     expect(fixture.instance.dispatch({
-        type: 'hit-critical', commandId: asCommandId(`life-support:damage:${fixture.instance.id}`),
-        expectedRevision: fixture.instance.query().stateRevision,
+        type: 'hit-critical',
+
         slotId: lifeSupportSlot(fixture).id, hits: 1, target: 'committed',
     }).accepted).toBeTrue();
     return fixture;

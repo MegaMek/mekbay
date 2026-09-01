@@ -1,13 +1,14 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { asCommandId, asStateRevision } from './runtime-state';
+import { asStateRevision, freezeRuntimeState } from './runtime-state';
 import { ImmutableIndex } from '../entity/immutable-collections';
 import {
     restoreSerializedCBTUnitV2,
     serializeCBTUnitStateV2,
 } from './runtime-state-codec-v2';
 import {
+    createDirectBoobyTrapRuntimeFixture,
     createDirectEscalatingFailureRuntimeFixture,
     createDirectMekRuntimeFixture,
     createDirectModularArmorRuntimeFixture,
@@ -15,6 +16,25 @@ import {
 } from './testing/direct-mek-runtime-fixture';
 
 describe('direct Mek V2 state codec', () => {
+    it('persists only an explicit destruction override, not derived destruction', () => {
+        const fixture = createDirectBoobyTrapRuntimeFixture();
+        const trap = fixture.equipmentComponent('Test Booby Trap');
+
+        expect(fixture.instance.dispatch({
+            type: 'detonate-booby-trap',
+            componentId: trap.id,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(fixture.instance.query().destroyed()).toBeTrue();
+        expect(serialize(fixture).destroyed).toBeUndefined();
+
+        const explicit = freezeRuntimeState({
+            ...fixture.instance.snapshot(),
+            explicitlyDestroyed: true,
+            destroyed: true,
+        });
+        expect(serialize(fixture, explicit).destroyed).toBeTrue();
+    });
+
     it('round-trips only sparse runtime deviations over the entity baseline', async () => {
         const fixture = createDirectMekRuntimeFixture();
         const face = [...fixture.index.armorFaces.values()].find(candidate => candidate.maximumPoints > 2)!;
@@ -23,12 +43,12 @@ describe('direct Mek V2 state codec', () => {
         if (ammo.kind !== 'equipment') throw new Error('Fixture ammo is missing');
 
         expect(fixture.instance.dispatch({
-            type: 'damage-armor', commandId: asCommandId('codec:armor'),
-            expectedRevision: asStateRevision(0), faceId: face.id, amount: 2, target: 'committed',
+            type: 'damage-armor',
+            faceId: face.id, amount: 2, target: 'committed',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'spend-ammo', commandId: asCommandId('codec:ammo'),
-            expectedRevision: asStateRevision(1), componentId: ammo.id, amount: 4,
+            type: 'spend-ammo',
+            componentId: ammo.id, amount: 4,
         }).accepted).toBeTrue();
 
         const saved = serialize(fixture);
@@ -45,6 +65,40 @@ describe('direct Mek V2 state codec', () => {
         expect(restored.state.ammo.size).toBe(1);
         expect(restored.unresolved).toEqual([]);
         expect(replay.snapshot().locations.size).toBe(0);
+    });
+
+    it('round-trips pending and committed crew death distinctly', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const positionId = [...fixture.index.crewPositions.keys()][0]!;
+        expect(fixture.instance.dispatch({
+            type: 'set-crew-state',
+            positionId,
+            wounds: 6,
+            unconscious: false,
+            ejected: false,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+
+        const pendingSave = serialize(fixture);
+        expect(pendingSave.crew.positions[0]?.dead).toBeUndefined();
+        const pendingRestore = await restoreSerializedCBTUnitV2(
+            pendingSave,
+            fixture.entity,
+            fixture.index,
+            fixture.initialized,
+        );
+        expect(pendingRestore.state.crew.get(positionId)?.dead).toBeUndefined();
+
+        expect(fixture.instance.dispatch({ type: 'end-phase' }))
+            .toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        const committedSave = serialize(fixture);
+        expect(committedSave.crew.positions[0]?.dead).toBeTrue();
+        const committedRestore = await restoreSerializedCBTUnitV2(
+            committedSave,
+            fixture.entity,
+            fixture.index,
+            fixture.initialized,
+        );
+        expect(committedRestore.state.crew.get(positionId)?.dead).toBeTrue();
     });
 
     it('uses provider plus UUID as compatibility and reports source drift', async () => {
@@ -73,8 +127,8 @@ describe('direct Mek V2 state codec', () => {
         const leg = [...fixture.index.locations.values()].find(location => location.code === 'LL')!;
 
         expect(fixture.instance.dispatch({
-            type: 'damage-internal', commandId: asCommandId('codec:automatic-fall'),
-            expectedRevision: asStateRevision(0), locationId: leg.id,
+            type: 'damage-internal',
+            locationId: leg.id,
             amount: leg.internalPoints, target: 'committed',
         }).accepted).toBeTrue();
 
@@ -105,14 +159,14 @@ describe('direct Mek V2 state codec', () => {
 
         expect(fixture.instance.dispatch({
             type: 'end-turn',
-            commandId: asCommandId('codec:advance-turn'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'hit-critical',
-            commandId: asCommandId('codec:hip-hit'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             slotId: hip.id,
             hits: 1,
             target: 'committed',
@@ -135,18 +189,18 @@ describe('direct Mek V2 state codec', () => {
         const fixture = createDirectMekRuntimeFixture();
         const hag = fixture.equipmentComponent('Test HAG');
         expect(fixture.instance.dispatch({
-            type: 'set-component-mode', commandId: asCommandId('codec:hag-flak'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'set-component-mode',
+
             componentId: hag.id, mode: 'Flak',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'toggle-gauss-power', commandId: asCommandId('codec:gauss-powering-down'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'toggle-gauss-power',
+
             componentId: hag.id,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'end-turn', commandId: asCommandId('codec:gauss-powered-down'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'end-turn',
+
             policy: 'automatic',
         }).accepted).toBeTrue();
 
@@ -173,8 +227,8 @@ describe('direct Mek V2 state codec', () => {
         const stealth = fixture.equipmentComponent('Test Stealth');
         expect(fixture.instance.dispatch({
             type: 'set-stealth-state',
-            commandId: asCommandId('codec:stealth-enabling'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             componentId: stealth.id,
             state: 'enabling',
         }).accepted).toBeTrue();
@@ -197,8 +251,8 @@ describe('direct Mek V2 state codec', () => {
         for (let index = 0; index < 14; index += 1) {
             expect(fixture.instance.dispatch({
                 type: 'edit-escalating-failure',
-                commandId: asCommandId(`codec:blue-shield:${index}`),
-                expectedRevision: fixture.instance.query().stateRevision,
+
+
                 componentId: blueShield.id,
                 edit: { kind: 'select-sequence', index },
             }).accepted).toBeTrue();
@@ -215,13 +269,13 @@ describe('direct Mek V2 state codec', () => {
         const fixture = createDirectShieldRuntimeFixture();
         const shield = fixture.equipmentComponent('Test Medium Shield');
         expect(fixture.instance.dispatch({
-            type: 'damage-shield', commandId: asCommandId('codec:shield-committed'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'damage-shield',
+
             componentId: shield.id, track: 'absorption', amount: 2, target: 'committed',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'damage-shield', commandId: asCommandId('codec:shield-pending'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'damage-shield',
+
             componentId: shield.id, track: 'capacity', amount: 4, target: 'pending',
         }).accepted).toBeTrue();
 
@@ -257,13 +311,13 @@ describe('direct Mek V2 state codec', () => {
         const face = [...fixture.index.armorFaces.values()].find(candidate =>
             candidate.locationId === slot.locationId && candidate.face === 'front')!;
         expect(fixture.instance.dispatch({
-            type: 'damage-armor', commandId: asCommandId('codec:modular:committed'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'damage-armor',
+
             faceId: face.id, amount: 6, target: 'committed',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'damage-armor', commandId: asCommandId('codec:modular:pending'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'damage-armor',
+
             faceId: face.id, amount: 3, target: 'pending',
         }).accepted).toBeTrue();
 
@@ -295,8 +349,8 @@ describe('direct Mek V2 state codec', () => {
         expect(() => serialize(fixture, impossibleState)).toThrowError(/shield damage exceeds its track bounds/u);
 
         expect(fixture.instance.dispatch({
-            type: 'damage-shield', commandId: asCommandId('codec:shield-stale-source'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'damage-shield',
+
             componentId: shield.id, track: 'absorption', amount: 1, target: 'committed',
         }).accepted).toBeTrue();
         const stale = serialize(fixture);

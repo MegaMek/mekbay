@@ -3,7 +3,7 @@
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const CONTROL_CLASS = 'record-sheet-page-flip-control';
-const CONTROL_SIZE = 50;
+const CONTROL_SIZE = 40;
 
 /** Adds one compact, accessible page switch to every page in a multi-page sheet. */
 export function addRecordSheetPageFlipControls(svgs: readonly SVGSVGElement[]): void {

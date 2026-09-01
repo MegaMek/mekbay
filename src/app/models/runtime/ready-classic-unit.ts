@@ -9,8 +9,10 @@ import type { NativeUnitSourceHandle } from '../native-unit-source-handle';
 import type { CrewAssignment } from './crew-assignment';
 import type { StateRevision, UnitInstanceId } from './runtime-state';
 import type {
+    ClassicUnitCommandResult,
     ClassicUnitRuntimeIndex,
     ClassicUnitRuntimeReadModel,
+    ClassicUnitRuntimeState,
 } from './classic-unit-runtime';
 import type { SerializedCBTUnitV2 } from './persistence-v2';
 import type { SerializedNonMekUnit } from './non-mek-unit-persistence';
@@ -19,56 +21,17 @@ import type { EquipmentRowOrderGroup } from './equipment-row-order';
 import type {
     CBTUnitAttackerTargetingCommand,
     CBTUnitSelectedWeaponFireCommand,
-    CommandReduction,
 } from './unit-instance';
 import type { PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
 
 export interface ReadyTargetingReconciliation {
-    readonly expectedRevision: StateRevision;
-    commit(): boolean;
+    install(): void;
 }
 
-export type ReadyEquipmentRowOrderResult =
-    | Readonly<{
-        readonly accepted: true;
-        readonly idempotent: boolean;
-        readonly currentRevision: StateRevision;
-    }>
-    | Readonly<{
-        readonly accepted: false;
-        readonly reason: 'REVISION_CONFLICT' | 'FORCE_READ_ONLY' | 'INVALID_ORDER';
-        readonly currentRevision: StateRevision;
-    }>;
-
-export type ReadySelectedWeaponFireResult =
-    | Readonly<{
-        readonly accepted: true;
-        readonly idempotent: boolean;
-        readonly currentRevision: StateRevision;
-        readonly prototypeHeat: readonly PrototypeLaserHeatResult[];
-    }>
-    | Readonly<{
-        readonly accepted: false;
-        readonly reason: Extract<CommandReduction, { readonly accepted: false }>['reason'];
-        readonly currentRevision: StateRevision;
-    }>;
-
-export type ReadyAttackerTargetingResult =
-    | Readonly<{
-        readonly accepted: true;
-        readonly idempotent: boolean;
-        readonly currentRevision: StateRevision;
-    }>
-    | Readonly<{
-        readonly accepted: false;
-        readonly reason: Extract<CommandReduction, { readonly accepted: false }>['reason'];
-        readonly currentRevision: StateRevision;
-    }>;
-
-export type ReadyEndTurnResult = Readonly<{
-    readonly accepted: boolean;
-    readonly reason?: string;
-}>;
+export type ReadyUnitCommandResult = ClassicUnitCommandResult<ClassicUnitRuntimeState>;
+export type ReadySelectedWeaponFireResult = Readonly<
+    ReadyUnitCommandResult & { readonly prototypeHeat: readonly PrototypeLaserHeatResult[] }
+>;
 
 /** Family-neutral ownership boundary used by CBTForce. */
 export interface ReadyClassicUnit {
@@ -82,12 +45,11 @@ export interface ReadyClassicUnit {
     captureRuntime(): ClassicUnitRuntimeReadModel;
     planTargetingReconciliation(registry: TargetRegistrySnapshot): ReadyTargetingReconciliation | null;
     setEquipmentRowOrder(
-        expectedRevision: StateRevision,
         group: EquipmentRowOrderGroup,
         permutation: readonly number[],
         rowCount: number,
         forceReadOnly: boolean,
-    ): ReadyEquipmentRowOrderResult;
+    ): ReadyUnitCommandResult;
     dispatchSelectedWeaponFire(
         command: CBTUnitSelectedWeaponFireCommand,
         registry: TargetRegistrySnapshot,
@@ -98,7 +60,7 @@ export interface ReadyClassicUnit {
         command: CBTUnitAttackerTargetingCommand,
         registry: TargetRegistrySnapshot,
         forceReadOnly: boolean,
-    ): ReadyAttackerTargetingResult;
+    ): ReadyUnitCommandResult;
     serialize(): SerializedCBTUnitV2 | SerializedNonMekUnit;
 }
 

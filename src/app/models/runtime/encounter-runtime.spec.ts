@@ -34,10 +34,10 @@ describe('CBT encounter runtime', () => {
         const first = { ...registryTarget('A'), id: createEncounterTargetId() };
         const second = { ...registryTarget('B'), id: createEncounterTargetId() };
         expect(runtime.dispatchTargetRegistry({
-            kind: 'create-target', expectedRevision: runtime.targetRegistry().revision, target: first,
+            kind: 'create-target', target: first,
         }).accepted).toBeTrue();
         expect(runtime.dispatchTargetRegistry({
-            kind: 'create-target', expectedRevision: runtime.targetRegistry().revision, target: second,
+            kind: 'create-target', target: second,
         }).accepted).toBeTrue();
 
         expect(String(first.id)).toMatch(/^target:[0-9a-f-]{36}$/u);
@@ -51,14 +51,14 @@ describe('CBT encounter runtime', () => {
         expect(Object.isFrozen(runtime.targetRegistry().targets[0])).toBeTrue();
 
         runtime.dispatchTargetRegistry({
-            kind: 'update-target', expectedRevision: runtime.targetRegistry().revision,
+            kind: 'update-target',
             targetId: firstId, patch: { name: 'Primary' },
         });
         expect(runtime.targetRegistry().targets.find(target => target.id === firstId)).toEqual(jasmine.objectContaining({
             name: 'Primary',
         }));
         runtime.dispatchTargetRegistry({
-            kind: 'delete-target', expectedRevision: runtime.targetRegistry().revision, targetId: secondId,
+            kind: 'delete-target', targetId: secondId,
         });
         expect(runtime.targetRegistry().targets.map(target => target.id)).toEqual([firstId]);
     });
@@ -116,7 +116,7 @@ describe('CBT encounter runtime', () => {
         const runtime = new CBTEncounterRuntime();
         const created = { ...registryTarget('A'), id: createEncounterTargetId() };
         runtime.dispatchTargetRegistry({
-            kind: 'create-target', expectedRevision: runtime.targetRegistry().revision, target: created,
+            kind: 'create-target', target: created,
         });
         const preserved = {
             kind: 'cross-unit-effect' as const,
@@ -165,40 +165,37 @@ describe('CBT encounter runtime', () => {
 });
 
 describe('force-shared target registry kernel', () => {
-    it('requires the caller revision and rejects a stale command without capturing the latest revision', () => {
+    it('applies sequential registry edits to the latest snapshot', () => {
         const initial = queryTargetRegistry(emptyCBTEncounterSnapshot());
         const created = reduceTargetRegistry(initial, {
-            kind: 'create-target', expectedRevision: asStateRevision(0), target: registryTarget('A'),
+            kind: 'create-target', target: registryTarget('A'),
         });
-        const stale = reduceTargetRegistry(created.snapshot, {
-            kind: 'update-target', expectedRevision: asStateRevision(0),
+        const updated = reduceTargetRegistry(created.snapshot, {
+            kind: 'update-target',
             targetId: asEncounterTargetId('target:A'), patch: { name: 'Stale edit' },
         });
 
-        expect(created).toEqual(jasmine.objectContaining({
-            accepted: true, changed: true, previousRevision: asStateRevision(0),
-        }));
+        expect(created).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(created.snapshot.revision).toBe(asStateRevision(1));
-        expect(stale).toEqual(jasmine.objectContaining({
-            accepted: false, changed: false, reason: 'STALE_REVISION', snapshot: created.snapshot,
-        }));
-        expect(stale.snapshot.targets[0].name).toBe('Target A');
+        expect(updated).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(updated.snapshot.revision).toBe(asStateRevision(2));
+        expect(updated.snapshot.targets[0].name).toBe('Stale edit');
     });
 
     it('accepts semantic no-ops without advancing the revision', () => {
         const runtime = new CBTEncounterRuntime();
         const emptyReset = runtime.dispatchTargetRegistry({
-            kind: 'reset-targets', expectedRevision: asStateRevision(0),
+            kind: 'reset-targets',
         });
         const created = runtime.dispatchTargetRegistry({
-            kind: 'create-target', expectedRevision: asStateRevision(0), target: registryTarget('A'),
+            kind: 'create-target', target: registryTarget('A'),
         });
         const unchangedUpdate = runtime.dispatchTargetRegistry({
-            kind: 'update-target', expectedRevision: asStateRevision(1),
+            kind: 'update-target',
             targetId: asEncounterTargetId('target:A'), patch: { name: 'Target A' },
         });
         const unchangedReplace = runtime.dispatchTargetRegistry({
-            kind: 'replace-targets', expectedRevision: asStateRevision(1), targets: [registryTarget('A')],
+            kind: 'replace-targets', targets: [registryTarget('A')],
         });
 
         expect(emptyReset).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
@@ -211,7 +208,7 @@ describe('force-shared target registry kernel', () => {
     it('returns deeply immutable queries detached from runtime state and later queries', () => {
         const runtime = new CBTEncounterRuntime();
         runtime.dispatchTargetRegistry({
-            kind: 'create-target', expectedRevision: asStateRevision(0),
+            kind: 'create-target',
             target: registryTarget('A', {
                 tnCalculator: {
                     prone: true,
@@ -243,7 +240,7 @@ describe('force-shared target registry kernel', () => {
         }).toThrow();
 
         runtime.dispatchTargetRegistry({
-            kind: 'update-target', expectedRevision: first.revision,
+            kind: 'update-target',
             targetId: first.targets[0].id, patch: { color: '#abcdef' },
         });
         const second = runtime.targetRegistry();
@@ -252,23 +249,23 @@ describe('force-shared target registry kernel', () => {
         expect(second.targets[0]).not.toBe(first.targets[0]);
     });
 
-    it('reports capacity for create and whole-registry replacement overflow', () => {
+    it('treats create and whole-registry replacement overflow as no-ops', () => {
         const fullTargets = Array.from({ length: 12 }, (_value, index) =>
             registryTarget(String.fromCharCode('A'.charCodeAt(0) + index)));
         const full = queryTargetRegistry({ revision: asStateRevision(4), targets: fullTargets });
         const createOverflow = reduceTargetRegistry(full, {
-            kind: 'create-target', expectedRevision: asStateRevision(4), target: registryTarget('M'),
+            kind: 'create-target', target: registryTarget('M'),
         });
         const replaceOverflow = reduceTargetRegistry(queryTargetRegistry(emptyCBTEncounterSnapshot()), {
-            kind: 'replace-targets', expectedRevision: asStateRevision(0),
+            kind: 'replace-targets',
             targets: [...fullTargets, registryTarget('M')],
         });
 
         expect(createOverflow).toEqual(jasmine.objectContaining({
-            accepted: false, changed: false, reason: 'EXCEEDS_CAPACITY',
+            accepted: true, changed: false,
         }));
         expect(replaceOverflow).toEqual(jasmine.objectContaining({
-            accepted: false, changed: false, reason: 'EXCEEDS_CAPACITY',
+            accepted: true, changed: false,
         }));
         expect(replaceOverflow.snapshot.revision).toBe(asStateRevision(0));
         expect(replaceOverflow.snapshot.targets).toEqual([]);
@@ -289,14 +286,13 @@ describe('force-shared target registry kernel', () => {
 
         const created = reduceTargetRegistry(full, {
             kind: 'create-target',
-            expectedRevision: asStateRevision(8),
+
             target: registryTarget('L'),
         });
 
         expect(created).toEqual(jasmine.objectContaining({
             accepted: true,
             changed: true,
-            previousRevision: asStateRevision(8),
         }));
         expect(created.snapshot.revision).toBe(asStateRevision(9));
         expect(created.snapshot.targets).toHaveSize(12);
@@ -312,43 +308,39 @@ describe('force-shared target registry kernel', () => {
         });
         const snapshot = queryTargetRegistry({ revision: asStateRevision(2), targets: [opfor] });
         const renamed = reduceTargetRegistry(snapshot, {
-            kind: 'update-target', expectedRevision: asStateRevision(2),
+            kind: 'update-target',
             targetId: opfor.id, patch: { name: 'Forged identity' },
         });
         const deleted = reduceTargetRegistry(snapshot, {
-            kind: 'delete-target', expectedRevision: asStateRevision(2), targetId: opfor.id,
+            kind: 'delete-target', targetId: opfor.id,
         });
         const recolored = reduceTargetRegistry(snapshot, {
-            kind: 'update-target', expectedRevision: asStateRevision(2),
+            kind: 'update-target',
             targetId: opfor.id, patch: { color: '#abcdef' },
         });
 
         expect(renamed).toEqual(jasmine.objectContaining({
-            accepted: false, reason: 'READ_ONLY_TARGET',
+            accepted: false, changed: false,
         }));
         expect(deleted).toEqual(jasmine.objectContaining({
-            accepted: false, reason: 'READ_ONLY_TARGET',
+            accepted: false, changed: false,
         }));
         expect(recolored).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(recolored.snapshot.targets[0].color).toBe('#abcdef');
     });
 
-    it('distinguishes target-origin, invalid, and not-found failures with deterministic precedence', () => {
+    it('treats invalid, inapplicable, and not-found edits as deterministic no-ops', () => {
         const initial = queryTargetRegistry(emptyCBTEncounterSnapshot());
         const invalidOrigin = reduceTargetRegistry(initial, {
-            kind: 'create-target', expectedRevision: asStateRevision(0),
+            kind: 'create-target',
             target: registryTarget('A', { source: 'opfor' }),
         });
         const notFound = reduceTargetRegistry(initial, {
-            kind: 'delete-target', expectedRevision: asStateRevision(0),
+            kind: 'delete-target',
             targetId: asEncounterTargetId('missing'),
         });
         const attackerLocal = reduceTargetRegistry(initial, {
-            kind: 'create-target', expectedRevision: asStateRevision(0),
-            target: { ...registryTarget('A'), distance: 7 } as EncounterTarget,
-        });
-        const staleMalformed = reduceTargetRegistry(initial, {
-            kind: 'create-target', expectedRevision: asStateRevision(99),
+            kind: 'create-target',
             target: { ...registryTarget('A'), distance: 7 } as EncounterTarget,
         });
         const malformedAfterOrigin = registryTarget('B', { name: '' });
@@ -356,22 +348,21 @@ describe('force-shared target registry kernel', () => {
             [registryTarget('A', { source: 'opfor' }), malformedAfterOrigin],
             [malformedAfterOrigin, registryTarget('A', { source: 'opfor' })],
         ].map(targets => reduceTargetRegistry(initial, {
-            kind: 'replace-targets', expectedRevision: asStateRevision(0), targets,
+            kind: 'replace-targets', targets,
         }));
 
         expect(invalidOrigin).toEqual(jasmine.objectContaining({
-            accepted: false, reason: 'TARGET_ORIGIN_POLICY',
+            accepted: true, changed: false,
         }));
         expect(notFound).toEqual(jasmine.objectContaining({
-            accepted: false, reason: 'TARGET_NOT_FOUND',
+            accepted: true, changed: false,
         }));
         expect(attackerLocal).toEqual(jasmine.objectContaining({
-            accepted: false, reason: 'INVALID_TARGET',
+            accepted: true, changed: false,
         }));
-        expect(staleMalformed).toEqual(jasmine.objectContaining({
-            accepted: false, reason: 'STALE_REVISION',
-        }));
-        expect(bothOrders.map(result => result.accepted ? null : result.reason))
-            .toEqual(['INVALID_TARGET', 'INVALID_TARGET']);
+        expect(bothOrders).toEqual([
+            jasmine.objectContaining({ accepted: true, changed: false }),
+            jasmine.objectContaining({ accepted: true, changed: false }),
+        ]);
     });
 });

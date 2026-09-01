@@ -570,10 +570,10 @@ export async function restoreLegacyUnitState(
         ruleChecks,
     );
     if (restoredLegacyRuleChecks) appliedWithWarning++;
-    let destroyed = initialized.state.destroyed;
+    let explicitlyDestroyed = initialized.state.explicitlyDestroyed;
     if (rawState['destroyed'] !== undefined) {
         if (typeof rawState['destroyed'] === 'boolean') {
-            destroyed = rawState['destroyed'];
+            explicitlyDestroyed = rawState['destroyed'];
             appliedExact++;
         } else {
             unresolved.push(recover(
@@ -673,7 +673,8 @@ export async function restoreLegacyUnitState(
     });
     const state = freezeRuntimeState({
         ...initialized.state,
-        destroyed,
+        explicitlyDestroyed,
+        destroyed: explicitlyDestroyed || initialized.state.destroyed,
         locations: new ImmutableIndex(locations),
         slots: new ImmutableIndex(slots),
         components: new ImmutableIndex(components),

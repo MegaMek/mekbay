@@ -5,6 +5,7 @@ import {
     TestAeroSpaceFighterEntity,
     TestBattleArmorEntity,
     TestInfantryEntity,
+    TestJumpShipEntity,
     TestProtoMekEntity,
     TestTankEntity,
 } from '../entity/testing/test-entities';
@@ -18,6 +19,51 @@ import { NonMekUnitInstance } from './non-mek-unit-instance';
 import { projectNonMekRecordSheet } from './non-mek-record-sheet';
 
 describe('projectNonMekRecordSheet', () => {
+    it('carries selectable air-ground state into presentation but suppresses space-only invariants', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        const fighterRuntime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:aero-condition-sheet'),
+            baseline(),
+            fighter,
+            CORE_2026_RULESET,
+        );
+        fighterRuntime.dispatch({
+            kind: 'set-airborne',
+
+            airborne: false,
+        });
+        const grounded = projectNonMekRecordSheet(
+            fighter,
+            fighterRuntime.getIndex(),
+            fighterRuntime.snapshot(),
+            CORE_2026_RULESET,
+            fighterRuntime.battleValue(),
+            fighter.battleValue(),
+        );
+        expect(grounded.conditions).toContain('grounded');
+        expect(grounded.conditions).not.toContain('airborne');
+
+        const jumpShip = new TestJumpShipEntity();
+        jumpShip.uuid.set(UUID);
+        const jumpShipRuntime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:space-only-condition-sheet'),
+            baseline(),
+            jumpShip,
+            CORE_2026_RULESET,
+        );
+        const spaceOnly = projectNonMekRecordSheet(
+            jumpShip,
+            jumpShipRuntime.getIndex(),
+            jumpShipRuntime.snapshot(),
+            CORE_2026_RULESET,
+            jumpShipRuntime.battleValue(),
+            jumpShip.battleValue(),
+        );
+        expect(spaceOnly.conditions).not.toContain('airborne');
+        expect(spaceOnly.conditions).not.toContain('grounded');
+    });
+
     it('maps a Tank Entity and sparse runtime damage to authored sheet codes', () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
@@ -37,7 +83,7 @@ describe('projectNonMekRecordSheet', () => {
         const face = runtime.getIndex().armorFaces.get(front.armorFaceIds[0])!;
         runtime.dispatch({
             kind: 'set-armor-damage',
-            expectedRevision: runtime.revision(),
+
             faceId: face.id,
             damage: 1,
         });
@@ -54,12 +100,13 @@ describe('projectNonMekRecordSheet', () => {
         });
         runtime.dispatch({
             kind: 'set-crew-state',
-            expectedRevision: runtime.revision(),
+
             positionId: crewPositionId,
             wounds: 0,
             unconscious: false,
             ejected: false,
-            state: 'stunned',
+            killed: false,
+            stunned: true,
         });
 
         const snapshot = projectNonMekRecordSheet(
@@ -139,13 +186,13 @@ describe('projectNonMekRecordSheet', () => {
         const face = runtime.getIndex().armorFaces.get(location.armorFaceIds[0]!)!;
         runtime.dispatch({
             kind: 'set-armor-damage',
-            expectedRevision: runtime.revision(),
+
             faceId: face.id,
             damage: face.maximumPoints,
         });
         runtime.dispatch({
             kind: 'set-internal-damage',
-            expectedRevision: runtime.revision(),
+
             locationId: location.id,
             damage: location.internalPoints,
         });
@@ -205,11 +252,13 @@ describe('projectNonMekRecordSheet', () => {
         const crewId = [...runtime.getIndex().crewPositions.keys()][0]!;
         runtime.dispatch({
             kind: 'set-crew-state',
-            expectedRevision: runtime.revision(),
+
             positionId: crewId,
             wounds: 0,
             unconscious: true,
             ejected: false,
+            killed: false,
+            stunned: false,
         });
 
         const snapshot = projectNonMekRecordSheet(
@@ -245,13 +294,13 @@ describe('projectNonMekRecordSheet', () => {
         );
         runtime.dispatch({
             kind: 'set-heat',
-            expectedRevision: runtime.revision(),
+
             heat: 19,
             target: 'pending',
         });
         runtime.dispatch({
             kind: 'set-heatsinks-off',
-            expectedRevision: runtime.revision(),
+
             heatsinksOff: 2,
         });
         const snapshot = projectNonMekRecordSheet(

@@ -53,7 +53,6 @@ declare const runtimeBrand: unique symbol;
 type RuntimeBrand<T, Name extends string> = T & { readonly [runtimeBrand]: Name };
 
 export type UnitInstanceId = RuntimeBrand<string, 'UnitInstanceId'>;
-export type CommandId = RuntimeBrand<string, 'CommandId'>;
 export type StateRevision = RuntimeBrand<number, 'StateRevision'>;
 
 /** A sixth wound is fatal under the supported Mek rules profile. */
@@ -197,9 +196,10 @@ export interface PendingCombatOverlay {
 }
 
 export interface MekUnitRuntimeState extends ClassicUnitRuntimeState {
-    readonly schemaVersion: 7;
     readonly stateRevision: StateRevision;
-    /** Exact committed legacy unit-destruction fact; false is the pristine baseline. */
+    /** Explicit source/import override; absent mechanical damage remains independently derivable. */
+    readonly explicitlyDestroyed: boolean;
+    /** Reconciled effective value used by hot runtime projections; never persistence authority. */
     readonly destroyed: boolean;
     readonly locations: ReadonlyMap<LocationId, LocationRuntimeState>;
     readonly slots: ReadonlyMap<CriticalSlotId, CriticalSlotRuntimeState>;
@@ -209,7 +209,6 @@ export interface MekUnitRuntimeState extends ClassicUnitRuntimeState {
     readonly crew: ReadonlyMap<CrewPositionId, CrewRuntimeState>;
     readonly heat: MekHeatStateV2;
     readonly conditions: ReadonlySet<UnitConditionKey>;
-    readonly family: { readonly kind: 'mek' };
     /** Persistent typed outcomes; required even when empty in runtime schema V4. */
     readonly ruleChecks: MekRuleChecksV2;
     /** Sole typed owner of Mek movement declarations, phase damage, and pilot checks. */
@@ -229,15 +228,6 @@ export function asUnitInstanceId(value: string): UnitInstanceId {
 
 export function createUnitInstanceId(): UnitInstanceId {
     return asUnitInstanceId(`unit:${uuidv4()}`);
-}
-
-export function asCommandId(value: string): CommandId {
-    if (!value.trim() || value.length > 256 || value.includes('\0')) throw new Error('Invalid command ID');
-    return value as CommandId;
-}
-
-export function createCommandId(): CommandId {
-    return asCommandId(`command:${uuidv4()}`);
 }
 
 export function asStateRevision(value: number): StateRevision {
@@ -262,8 +252,8 @@ export function emptyPendingCombatOverlay(): PendingCombatOverlay {
 
 export function createPristineMekState(): MekUnitRuntimeState {
     return freezeRuntimeState({
-        schemaVersion: 7,
         stateRevision: asStateRevision(0),
+        explicitlyDestroyed: false,
         destroyed: false,
         locations: new ImmutableIndex<LocationId, LocationRuntimeState>([]),
         slots: new ImmutableIndex<CriticalSlotId, CriticalSlotRuntimeState>([]),
@@ -272,7 +262,6 @@ export function createPristineMekState(): MekUnitRuntimeState {
         crew: new ImmutableIndex<CrewPositionId, CrewRuntimeState>([]),
         heat: createPristineMekHeatStateV2(),
         conditions: new ImmutableSet([]),
-        family: Object.freeze({ kind: 'mek' }),
         ruleChecks: new ImmutableIndex([]),
         movementPsr: createPristineMekMovementPsrStateV2(),
         attackerTargeting: createPristineAttackerTargetingState(),

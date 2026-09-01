@@ -242,9 +242,17 @@ export class ForcePersistenceService {
     ): Promise<SerializedForce> {
         if (raw.version !== 1) return raw;
 
-        const warnings: PersistedForceV1ConversionWarning[] = [];
+        const warnings = new Map<string, {
+            readonly warning: PersistedForceV1ConversionWarning;
+            count: number;
+        }>();
         const warn = (warning: PersistedForceV1ConversionWarning): void => {
-            warnings.push(warning);
+            const current = warnings.get(warning.message);
+            if (current) {
+                current.count += 1;
+                return;
+            }
+            warnings.set(warning.message, { warning, count: 1 });
             this.logger.warn(`V1 force conversion: ${warning.message}`);
         };
 
@@ -285,9 +293,10 @@ export class ForcePersistenceService {
             materializeUnit,
             onWarning: warn,
         });
-        if (notifyWarnings && warnings.length > 0) {
+        if (notifyWarnings && warnings.size > 0) {
             await this.injector.get(DialogsService).showNotice(
-                warnings.map(warning => `• ${warning.message}`).join('\n'),
+                [...warnings.values()].map(({ warning, count }) =>
+                    `• ${warning.message}${count === 1 ? '' : ` (${count} occurrences)`}`).join('\n'),
                 'V1 Save Loaded with Warnings',
             );
         }

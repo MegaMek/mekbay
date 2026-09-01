@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { compareText } from '../../utils/string.util';
+import { canChangeAirborneGround, motiveModeFactsForEntity } from '../motiveModes.model';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import type {
     ArmorFaceId,
@@ -21,13 +22,11 @@ import {
 } from './equipment-status-kernel';
 import {
     asStateRevision,
-    createCommandId,
     type MekUnitRuntimeState,
     type AmmoRuntimeState,
     type BombastLaserRuntimeState,
     type C3EmergencyMasterOperatingTurns,
     type C3EmergencyMasterRuntimeState,
-    type CommandId,
     type ComponentRuntimeState,
     type CrewRuntimeState,
     type CriticalSlotRuntimeState,
@@ -122,7 +121,6 @@ import {
     createPristineMekTurnStateV2,
     MAX_MEK_TURN_NUMBER,
     mekTurnStatesEqualV2,
-    serializeMekTurnStateV2,
     type MekPendingFallConsequencesV2,
     type MekTurnStateV2,
 } from './mek-turn-state-v2';
@@ -333,9 +331,12 @@ import {
 } from './mek-runtime-index';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { MekSystemType } from '../entity/types';
-import type {
-    ClassicUnitQueryPort,
-    RuntimeStatePerspective,
+import {
+    isCrewDeathCommitted,
+    type ClassicCrewRuntimeState,
+    type ClassicUnitCommandResult,
+    type ClassicUnitQueryPort,
+    type RuntimeStatePerspective,
 } from './classic-unit-runtime';
 
 export type StatePerspective = RuntimeStatePerspective;
@@ -347,35 +348,23 @@ interface MekRuntimeSource {
     readonly ruleset: CBTRuleset;
 }
 
-interface CommandEnvelope {
-    readonly commandId: CommandId;
-    readonly expectedRevision: StateRevision;
-}
-
 export interface CBTUnitAttackerTargetingCommand {
     readonly type: 'edit-attacker-targeting';
-    readonly commandId: CommandId;
-    readonly expectedRevision: StateRevision;
-    readonly expectedRegistryRevision: StateRevision;
     readonly edit: AttackerTargetingEdit;
 }
 
 /** Fires the current targeting selection; no second weapon-selection payload exists. */
 export interface CBTUnitSelectedWeaponFireCommand {
     readonly type: 'fire-selected-weapons';
-    readonly commandId: CommandId;
-    readonly expectedRevision: StateRevision;
-    readonly expectedRegistryRevision: StateRevision;
     readonly heatPolicy: MekHeatAutomationPolicyV2;
     readonly prototypeHeatRolls?: readonly PrototypeLaserHeatRoll[];
 }
 
 export interface CBTUnitAttackerTargetingReconciliationPlan {
-    readonly expectedRevision: StateRevision;
     readonly nextTargeting: AttackerTargetingState;
 }
 
-export type CBTUnitCommand = CommandEnvelope & (
+export type CBTUnitCommand = (
     | {
         readonly type: 'damage-armor';
         readonly faceId: ArmorFaceId;
@@ -631,62 +620,12 @@ export type CBTUnitCommand = CommandEnvelope & (
     | { readonly type: 'cancel-pending' }
 );
 
-export interface UnitDomainEvent {
-    readonly kind: CBTUnitCommand['type']
-        | CBTUnitAttackerTargetingCommand['type']
-        | CBTUnitSelectedWeaponFireCommand['type'];
-    readonly commandId: CommandId;
-    readonly revision: StateRevision;
-}
+export type MekUnitCommandResult = Readonly<
+    ClassicUnitCommandResult<MekUnitRuntimeState>
+    & { readonly prototypeHeat?: readonly PrototypeLaserHeatResult[] }
+>;
 
-export type CommandReduction =
-    | {
-        readonly accepted: true;
-        readonly idempotent: boolean;
-        readonly previousRevision: StateRevision;
-        readonly state: MekUnitRuntimeState;
-        readonly events: readonly UnitDomainEvent[];
-        readonly prototypeHeat?: readonly PrototypeLaserHeatResult[];
-    }
-    | {
-        readonly accepted: false;
-        readonly reason:
-            | 'REVISION_CONFLICT'
-            | 'COMMAND_ID_CONFLICT'
-            | 'INVALID_TARGET'
-            | 'INVALID_AMOUNT'
-            | 'INVALID_TURN_STATE'
-            | 'EXCEEDS_CAPACITY'
-            | 'UNSUPPORTED_HEAT_CONTEXT'
-            | 'UNSUPPORTED_MECHANICS_CONTEXT'
-            | 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT'
-            | 'INVALID_MOVEMENT_PSR_DECLARATION'
-            | 'ILLEGAL_MOVEMENT_PSR_DECLARATION'
-            | 'INVALID_PILOT_CHECK'
-            | 'INVALID_DICE_EVIDENCE'
-            | 'OUTCOME_MISMATCH'
-            | 'PENDING_PILOT_CHECKS'
-            | 'INVALID_RULE_CHECK'
-            | 'RULE_CHECK_TRIGGER_CONFLICT'
-            | 'STALE_TARGET_REGISTRY'
-            | 'FORCE_READ_ONLY'
-            | 'INVALID_TARGETING'
-            | 'C3_UNAVAILABLE'
-            | 'NO_CHANGE';
-        readonly currentRevision: StateRevision;
-    };
-
-export type MekEquipmentRowOrderResult =
-    | Readonly<{
-        readonly accepted: true;
-        readonly changed: boolean;
-        readonly currentRevision: StateRevision;
-    }>
-    | Readonly<{
-        readonly accepted: false;
-        readonly reason: 'REVISION_CONFLICT' | 'FORCE_READ_ONLY' | 'INVALID_ORDER';
-        readonly currentRevision: StateRevision;
-    }>;
+export type MekEquipmentRowOrderResult = ClassicUnitCommandResult<MekUnitRuntimeState>;
 
 export interface MekUnitQueryPort extends ClassicUnitQueryPort {
     /** Preview forced-withdrawal fact; unsupported contexts throw instead of guessing. */
@@ -761,7 +700,7 @@ export interface MekUnitQueryPort extends ClassicUnitQueryPort {
     mekMovementPsrState(): MekMovementPsrStateV2;
     mekPilotChecks(): readonly MekPilotCheckV2[];
     /** Pure preview of the exact phase-boundary reduction; never mutates runtime state. */
-    previewEndPhase(): CommandReduction;
+    previewEndPhase(): MekUnitCommandResult;
     mekMovementMode():
         | { readonly kind: 'supported'; readonly mode: MekMovementModeV2 | null }
         | { readonly kind: 'unsupported' };
@@ -787,8 +726,6 @@ export type MekBattleValueProjection =
     }>
     | Readonly<{ kind: 'unsupported'; blockers: readonly Readonly<{ reason: string }>[] }>;
 
-const IDEMPOTENCY_WINDOW = 256;
-
 export class CBTUnitInstance {
     readonly #source: MekRuntimeSource;
     readonly #runtimeIndex: MekRuntimeIndex;
@@ -796,10 +733,6 @@ export class CBTUnitInstance {
     readonly #crewAssignment: CrewAssignment;
     readonly #heatContext: MekHeatRuntimeContextV2;
     readonly #mechanicsContext: MekMechanicsContextV2;
-    readonly #acceptedCommands = new Map<CommandId, {
-        readonly commandKey: string;
-        readonly reduction: Extract<CommandReduction, { accepted: true }>;
-    }>();
     #state: MekUnitRuntimeState;
 
     public constructor(
@@ -921,11 +854,14 @@ export class CBTUnitInstance {
                 && isDroneOperatingSystemEquipment(component.mount.equipment))
             .map(component => component.id);
         const hasDroneOperatingSystem = droneOperatingSystemIds.length > 0;
+        const hasAirGroundSelection = canChangeAirborneGround(motiveModeFactsForEntity(unit.entity));
+        const storedDisplayConditions = new ImmutableSet<UnitConditionKey>([...state.conditions].filter(condition =>
+            condition !== 'airborne' && condition !== 'grounded'));
         const effectiveCrewState = (positionId: CrewPositionId): 'healthy' | 'ejected' | 'unconscious' | 'dead' => {
             const position = unit.index.crewPositions.get(positionId);
             if (!position) throw new Error(`Unknown crew position ${positionId}`);
             const crew = state.crew.get(positionId) ?? HEALTHY_CREW_STATE;
-            if (crew.wounds >= MAX_MEK_CREW_WOUNDS) return 'dead';
+            if (isCrewDeathCommitted(crew)) return 'dead';
             const destruction = mechanicsProjection();
             if (destruction.kind === 'supported') {
                 const hasCommandConsole = this.unit.mountedCockpit().hasCommandConsoleBonus;
@@ -947,6 +883,10 @@ export class CBTUnitInstance {
             if (projectedDerivedConditions) return projectedDerivedConditions;
             const conditions = new Set<UnitConditionKey>();
             if (state.turn.spotting) conditions.add('spotting');
+            if (hasAirGroundSelection) {
+                if (state.turn.airborne === true) conditions.add('airborne');
+                else if (state.turn.airborne === false) conditions.add('grounded');
+            }
             if (hasDroneOperatingSystem && droneOperatingSystemIds.every(componentId =>
                 statusKernel('committed').component(componentId).status !== 'available')) {
                 conditions.add('disconnected');
@@ -992,6 +932,7 @@ export class CBTUnitInstance {
         );
         return Object.freeze({
             stateRevision: state.stateRevision,
+            hasPendingPhaseChanges: () => hasPendingMekPhaseChanges(state),
             hasPendingCombat: () => hasPending(state.pendingCombat),
             destroyed: () => {
                 const projection = mechanicsProjection();
@@ -1275,11 +1216,11 @@ export class CBTUnitInstance {
             attackerTargetingState: () => state.attackerTargeting,
             equipmentRowOrder: () => state.equipmentRowOrder,
             hasCondition: (condition: UnitConditionKey) => (
-                state.conditions.has(condition) || derivedConditions().has(condition)
+                storedDisplayConditions.has(condition) || derivedConditions().has(condition)
             ),
             conditions: () => Object.freeze([
                 ...new Set([
-                    ...state.conditions,
+                    ...storedDisplayConditions,
                     ...derivedConditions(),
                 ]),
             ].sort(compareText)),
@@ -1293,8 +1234,6 @@ export class CBTUnitInstance {
             turnState: () => state.turn,
             previewEndPhase: () => this.preview({
                 type: 'end-phase',
-                commandId: createCommandId(),
-                expectedRevision: state.stateRevision,
             }),
             linkedTarget: (componentId: ComponentId) => requireComponent(unit, componentId, () =>
                 unit.index.relationships.linkedTargetBySource.get(componentId)),
@@ -1311,7 +1250,7 @@ export class CBTUnitInstance {
         });
     }
 
-    private preview(command: CBTUnitCommand): CommandReduction {
+    private preview(command: CBTUnitCommand): MekUnitCommandResult {
         return reduce(
             this.#source,
             this.getIndex(),
@@ -1324,8 +1263,8 @@ export class CBTUnitInstance {
         );
     }
 
-    public dispatch(command: CBTUnitCommand): CommandReduction {
-        return this.dispatchOwned(command, () => reduce(
+    public dispatch(command: CBTUnitCommand): MekUnitCommandResult {
+        return this.dispatchOwned(() => reduce(
             this.#source,
             this.getIndex(),
             this.#state,
@@ -1342,8 +1281,8 @@ export class CBTUnitInstance {
         command: CBTUnitAttackerTargetingCommand,
         registry: TargetRegistrySnapshot,
         forceReadOnly: boolean,
-    ): CommandReduction {
-        return this.dispatchOwned(command, () => reduceAttackerTargeting(
+    ): MekUnitCommandResult {
+        return this.dispatchOwned(() => reduceAttackerTargeting(
             this.#source,
             this.getIndex(),
             this.#state,
@@ -1360,8 +1299,8 @@ export class CBTUnitInstance {
         registry: TargetRegistrySnapshot,
         forceReadOnly: boolean,
         c3Available: boolean,
-    ): CommandReduction {
-        return this.dispatchOwned(command, () => reduceSelectedWeaponFire(
+    ): MekUnitCommandResult {
+        return this.dispatchOwned(() => reduceSelectedWeaponFire(
             this.#source,
             this.getIndex(),
             this.#state,
@@ -1397,34 +1336,19 @@ export class CBTUnitInstance {
             planned.state,
         );
         return planned.changed || nextTargeting !== planned.state
-            ? Object.freeze({
-                expectedRevision: this.#state.stateRevision,
-                nextTargeting,
-            })
+            ? Object.freeze({ nextTargeting })
             : null;
     }
 
     /** Updates presentation order without entering gameplay undo/history. */
     public setEquipmentRowOrder(
-        expectedRevision: StateRevision,
         group: EquipmentRowOrderGroup,
         permutation: readonly number[],
         rowCount: number,
         forceReadOnly: boolean,
     ): MekEquipmentRowOrderResult {
-        if (expectedRevision !== this.#state.stateRevision) {
-            return Object.freeze({
-                accepted: false,
-                reason: 'REVISION_CONFLICT',
-                currentRevision: this.#state.stateRevision,
-            });
-        }
         if (forceReadOnly) {
-            return Object.freeze({
-                accepted: false,
-                reason: 'FORCE_READ_ONLY',
-                currentRevision: this.#state.stateRevision,
-            });
+            return Object.freeze({ accepted: false, changed: false, state: this.#state });
         }
         let equipmentRowOrder: EquipmentRowOrderState | undefined;
         try {
@@ -1435,18 +1359,10 @@ export class CBTUnitInstance {
                 rowCount,
             );
         } catch {
-            return Object.freeze({
-                accepted: false,
-                reason: 'INVALID_ORDER',
-                currentRevision: this.#state.stateRevision,
-            });
+            return unchanged(this.#state);
         }
         if (equipmentRowOrder === this.#state.equipmentRowOrder) {
-            return Object.freeze({
-                accepted: true,
-                changed: false,
-                currentRevision: this.#state.stateRevision,
-            });
+            return unchanged(this.#state);
         }
         const { equipmentRowOrder: _currentOrder, ...current } = this.#state;
         this.#state = freezeRuntimeState({
@@ -1457,60 +1373,28 @@ export class CBTUnitInstance {
         return Object.freeze({
             accepted: true,
             changed: true,
-            currentRevision: this.#state.stateRevision,
+            state: this.#state,
         });
     }
 
-    /** Installs a precomputed synchronous reconciliation; the force owns the surrounding CAS. */
-    public commitAttackerTargetingReconciliation(
+    /** Installs a precomputed synchronous reconciliation. */
+    public installAttackerTargetingReconciliation(
         plan: CBTUnitAttackerTargetingReconciliationPlan,
-    ): boolean {
-        if (this.#state.stateRevision !== plan.expectedRevision) return false;
+    ): void {
         const nextRevision = asStateRevision(this.#state.stateRevision + 1);
         this.#state = freezeRuntimeState({
             ...this.#state,
             stateRevision: nextRevision,
             attackerTargeting: plan.nextTargeting,
         });
-        return true;
     }
 
     private dispatchOwned(
-        command: CBTUnitCommand | CBTUnitAttackerTargetingCommand | CBTUnitSelectedWeaponFireCommand,
-        apply: () => CommandReduction,
-    ): CommandReduction {
-        const previous = this.#acceptedCommands.get(command.commandId);
-        if (previous) {
-            let commandKey: string;
-            try {
-                commandKey = canonicalCommandKey(command);
-            } catch {
-                return {
-                    accepted: false,
-                    reason: 'COMMAND_ID_CONFLICT',
-                    currentRevision: this.#state.stateRevision,
-                };
-            }
-            if (previous.commandKey !== commandKey) {
-                return {
-                    accepted: false,
-                    reason: 'COMMAND_ID_CONFLICT',
-                    currentRevision: this.#state.stateRevision,
-                };
-            }
-            return { ...previous.reduction, idempotent: true };
-        }
-        if (command.expectedRevision !== this.#state.stateRevision) {
-            return { accepted: false, reason: 'REVISION_CONFLICT', currentRevision: this.#state.stateRevision };
-        }
+        apply: () => MekUnitCommandResult,
+    ): MekUnitCommandResult {
         const next = apply();
         if (!next.accepted) return next;
-        const commandKey = canonicalCommandKey(command);
-        this.#state = next.state;
-        this.#acceptedCommands.set(command.commandId, Object.freeze({ commandKey, reduction: next }));
-        while (this.#acceptedCommands.size > IDEMPOTENCY_WINDOW) {
-            this.#acceptedCommands.delete(this.#acceptedCommands.keys().next().value!);
-        }
+        if (next.changed) this.#state = next.state;
         return next;
     }
 }
@@ -1524,35 +1408,28 @@ function reduceAttackerTargeting(
     forceReadOnly: boolean,
     runtime: MekUnitQueryPort,
     statusTopology: RuntimeEquipmentStatusTopology,
-): CommandReduction {
+): MekUnitCommandResult {
     const selectingComponents = (command.edit.kind === 'set-component-selection'
         || command.edit.kind === 'set-component-selections')
         && command.edit.selection !== null;
     if (selectingComponents
         && mobileHpgBlocksWeaponAttacks(
             buildMekMobileHpgFacts(unit, state, statusTopology, 'committed'),
-        )) return rejected(state, 'INVALID_TARGETING');
+        )) return unchanged(state);
     let context: AttackerTargetingValidationContext;
     try {
         context = buildAttackerTargetingContext(unit, index, state, registry, forceReadOnly);
     } catch {
-        return rejected(state, 'INVALID_TARGETING');
+        return unchanged(state);
     }
     const planned = reduceAttackerTargetingCommand(state.attackerTargeting, context, {
-        expectedRegistryRevision: command.expectedRegistryRevision,
+        expectedRegistryRevision: registry.revision,
         ...command.edit,
     });
     if (!planned.accepted) {
-        return rejected(
-            state,
-            planned.reason === 'STALE_REGISTRY'
-                ? 'STALE_TARGET_REGISTRY'
-                : planned.reason === 'READ_ONLY'
-                    ? 'FORCE_READ_ONLY'
-                    : 'INVALID_TARGETING',
-        );
+        return forceReadOnly ? readOnly(state) : unchanged(state);
     }
-    if (!planned.changed) return rejected(state, 'NO_CHANGE');
+    if (!planned.changed) return unchanged(state);
     const targetComponentIds = command.edit.kind === 'set-component-selection'
         && command.edit.selection?.kind === 'target'
         ? [command.edit.componentId]
@@ -1568,7 +1445,7 @@ function reduceAttackerTargeting(
         planned.state,
         componentId,
     ))) {
-        return rejected(state, 'INVALID_TARGETING');
+        return unchanged(state);
     }
     const nextTargeting = reconcileMekWeaponTargetPolicies(
         unit, index, runtime, registry, planned.state,
@@ -1581,10 +1458,8 @@ function reduceAttackerTargeting(
     });
     return Object.freeze({
         accepted: true,
-        idempotent: false,
-        previousRevision: state.stateRevision,
+        changed: true,
         state: nextState,
-        events: Object.freeze([{ kind: command.type, commandId: command.commandId, revision: nextRevision }]),
     });
 }
 
@@ -1600,26 +1475,23 @@ function reduceSelectedWeaponFire(
     statusTopology: RuntimeEquipmentStatusTopology,
     heatContext: MekHeatRuntimeContextV2,
     mechanicsContext: MekMechanicsContextV2,
-): CommandReduction {
-    if (command.expectedRegistryRevision !== registry.revision) {
-        return rejected(state, 'STALE_TARGET_REGISTRY');
-    }
-    if (forceReadOnly) return rejected(state, 'FORCE_READ_ONLY');
+): MekUnitCommandResult {
+    if (forceReadOnly) return readOnly(state);
     if (mobileHpgBlocksWeaponAttacks(
         buildMekMobileHpgFacts(unit, state, statusTopology, 'committed'),
-    )) return rejected(state, 'INVALID_TARGETING');
-    if (!isHeatPolicy(command.heatPolicy)) return rejected(state, 'INVALID_TARGET');
+    )) return unchanged(state);
+    if (!isHeatPolicy(command.heatPolicy)) return unchanged(state);
 
     let context: AttackerTargetingValidationContext;
     try {
         context = buildAttackerTargetingContext(unit, index, state, registry, false);
     } catch {
-        return rejected(state, 'INVALID_TARGETING');
+        return unchanged(state);
     }
     const reconciled = reconcileAttackerTargetingState(state.attackerTargeting, context);
-    if (!reconciled.accepted || reconciled.changed) return rejected(state, 'INVALID_TARGETING');
+    if (!reconciled.accepted || reconciled.changed) return unchanged(state);
     if (reconcileMekWeaponTargetPolicies(unit, index, runtime, registry, state.attackerTargeting)
-        !== state.attackerTargeting) return rejected(state, 'INVALID_TARGETING');
+        !== state.attackerTargeting) return unchanged(state);
 
     const selected = [...state.attackerTargeting.components]
         .filter(([, component]) => component.selection !== undefined)
@@ -1628,7 +1500,7 @@ function reduceSelectedWeaponFire(
         component.selection?.kind === 'target' ? [component.selection.targetId] : []));
     if (!c3Available && [...selectedTargetIds].some(targetId =>
         state.attackerTargeting.targets.get(targetId)?.useC3 === true)) {
-        return rejected(state, 'C3_UNAVAILABLE');
+        return unchanged(state);
     }
 
     const selections = selected.map(([weaponId, component]): MekWeaponFireSelectionV2 => Object.freeze({
@@ -1650,14 +1522,14 @@ function reduceSelectedWeaponFire(
             action.target,
             'physical-attack',
             unit.ruleset,
-        )) return rejected(state, 'INVALID_TARGET');
+        )) return unchanged(state);
         selectedSpotWelders.push(action.target.componentId);
     }
     if (selections.length === 0 && selectedSpotWelders.length === 0) {
-        return rejected(state, 'INVALID_AMOUNT');
+        return unchanged(state);
     }
 
-    let fired: Extract<CommandReduction, { accepted: true }> | undefined;
+    let fired: MekUnitCommandResult | undefined;
     if (selections.length > 0) {
         const result = reduce(
             unit,
@@ -1665,8 +1537,6 @@ function reduceSelectedWeaponFire(
             state,
             {
                 type: 'fire-weapons',
-                commandId: command.commandId,
-                expectedRevision: command.expectedRevision,
                 selections,
                 heatPolicy: command.heatPolicy,
                 ...(command.prototypeHeatRolls === undefined
@@ -1710,7 +1580,7 @@ function reduceSelectedWeaponFire(
                 heatContext,
                 command.heatPolicy,
             );
-            if (projected > MAX_MEK_HEAT_VALUE_V2) return rejected(state, 'EXCEEDS_CAPACITY');
+            if (projected > MAX_MEK_HEAT_VALUE_V2) return unchanged(state);
             nextState = {
                 ...nextState,
                 heat: canonicalizeMekHeatStateV2({
@@ -1727,23 +1597,13 @@ function reduceSelectedWeaponFire(
         const revision = asStateRevision(state.stateRevision + 1);
         return Object.freeze({
             accepted: true,
-            idempotent: false,
-            previousRevision: state.stateRevision,
+            changed: true,
             state: freezeRuntimeState({ ...nextState, stateRevision: revision }),
-            events: Object.freeze([Object.freeze({
-                kind: command.type,
-                commandId: command.commandId,
-                revision,
-            })]),
         });
     }
     return Object.freeze({
         ...fired,
         state: nextState === fired.state ? fired.state : freezeRuntimeState(nextState),
-        events: Object.freeze(fired.events.map(event => Object.freeze({
-            ...event,
-            kind: command.type,
-        }))),
     });
 }
 
@@ -1883,7 +1743,7 @@ function reduce(
     statusTopology: RuntimeEquipmentStatusTopology,
     heatContext: MekHeatRuntimeContextV2,
     mechanicsContext: MekMechanicsContextV2,
-): CommandReduction {
+): MekUnitCommandResult {
     const entity = unit.entity;
     const ruleset = unit.ruleset;
     const nextRevision = asStateRevision(state.stateRevision + 1);
@@ -1891,15 +1751,15 @@ function reduce(
     let prototypeHeat: readonly PrototypeLaserHeatResult[] | undefined;
     switch (command.type) {
         case 'damage-armor': {
-            if (!isStateMutationTarget(command.target)) return rejected(state, 'INVALID_TARGET');
-            if (!positiveInteger(command.amount)) return rejected(state, 'INVALID_AMOUNT');
+            if (!isStateMutationTarget(command.target)) return unchanged(state);
+            if (!positiveInteger(command.amount)) return unchanged(state);
             const face = unit.index.armorFaces.get(command.faceId);
-            if (!face) return rejected(state, 'INVALID_TARGET');
+            if (!face) return unchanged(state);
             const capacity = armorMutationCapacity(
                 unit, state, face.locationId, command.faceId, 'damage', command.target,
             );
             if (command.amount > capacity) {
-                return rejected(state, 'EXCEEDS_CAPACITY');
+                return unchanged(state);
             }
             changed = applyArmorMutation(
                 unit, state, face.locationId, command.faceId, command.amount, command.target,
@@ -1907,15 +1767,15 @@ function reduce(
             break;
         }
         case 'repair-armor': {
-            if (!isStateMutationTarget(command.target)) return rejected(state, 'INVALID_TARGET');
-            if (!positiveInteger(command.amount)) return rejected(state, 'INVALID_AMOUNT');
+            if (!isStateMutationTarget(command.target)) return unchanged(state);
+            if (!positiveInteger(command.amount)) return unchanged(state);
             const face = unit.index.armorFaces.get(command.faceId);
-            if (!face) return rejected(state, 'INVALID_TARGET');
+            if (!face) return unchanged(state);
             const capacity = armorMutationCapacity(
                 unit, state, face.locationId, command.faceId, 'repair', command.target,
             );
             if (command.amount > capacity) {
-                return rejected(state, 'EXCEEDS_CAPACITY');
+                return unchanged(state);
             }
             changed = applyArmorMutation(
                 unit, state, face.locationId, command.faceId, -command.amount, command.target,
@@ -1923,21 +1783,21 @@ function reduce(
             break;
         }
         case 'damage-internal': {
-            if (!isStateMutationTarget(command.target)) return rejected(state, 'INVALID_TARGET');
-            if (!positiveInteger(command.amount)) return rejected(state, 'INVALID_AMOUNT');
+            if (!isStateMutationTarget(command.target)) return unchanged(state);
+            if (!positiveInteger(command.amount)) return unchanged(state);
             if ((command.hardenedArmorApplies !== undefined
                     && typeof command.hardenedArmorApplies !== 'boolean')
                 || (command.armorDamagedBySameHit !== undefined
                     && typeof command.armorDamagedBySameHit !== 'boolean')) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             const location = unit.index.locations.get(command.locationId);
-            if (!location) return rejected(state, 'INVALID_TARGET');
+            if (!location) return unchanged(state);
             if (internalDamage(state, command.locationId, 'preview') + command.amount > location.internalPoints
                 || (command.target === 'committed'
                     && internalDamage(state, command.locationId, 'committed') + command.amount
                         > location.internalPoints)) {
-                return rejected(state, 'EXCEEDS_CAPACITY');
+                return unchanged(state);
             }
             changed = command.target === 'pending'
                 ? withPending(state, 'locationInternalDamage', command.locationId, command.amount)
@@ -1948,14 +1808,14 @@ function reduce(
             break;
         }
         case 'repair-internal': {
-            if (!isStateMutationTarget(command.target)) return rejected(state, 'INVALID_TARGET');
-            if (!positiveInteger(command.amount)) return rejected(state, 'INVALID_AMOUNT');
+            if (!isStateMutationTarget(command.target)) return unchanged(state);
+            if (!positiveInteger(command.amount)) return unchanged(state);
             const location = unit.index.locations.get(command.locationId);
-            if (!location) return rejected(state, 'INVALID_TARGET');
+            if (!location) return unchanged(state);
             if (internalDamage(state, command.locationId, 'preview') - command.amount < 0
                 || (command.target === 'committed'
                     && internalDamage(state, command.locationId, 'committed') - command.amount < 0)) {
-                return rejected(state, 'EXCEEDS_CAPACITY');
+                return unchanged(state);
             }
             changed = command.target === 'pending'
                 ? withPending(state, 'locationInternalDamage', command.locationId, -command.amount)
@@ -1963,15 +1823,15 @@ function reduce(
             break;
         }
         case 'hit-critical': {
-            if (!isStateMutationTarget(command.target)) return rejected(state, 'INVALID_TARGET');
-            if (!positiveInteger(command.hits)) return rejected(state, 'INVALID_AMOUNT');
+            if (!isStateMutationTarget(command.target)) return unchanged(state);
+            if (!positiveInteger(command.hits)) return unchanged(state);
             const slot = unit.index.slots.get(command.slotId);
-            if (!slot) return rejected(state, 'INVALID_TARGET');
+            if (!slot) return unchanged(state);
             const capacity = mekCriticalSlotMaximumHits(unit.index, unit.ruleset, slot);
             if (criticalHits(state, command.slotId, 'preview') + command.hits > capacity
                 || (command.target === 'committed'
                     && criticalHits(state, command.slotId, 'committed') + command.hits > capacity)) {
-                return rejected(state, 'EXCEEDS_CAPACITY');
+                return unchanged(state);
             }
             if (command.target === 'pending') {
                 changed = withPending(state, 'criticalHits', command.slotId, command.hits);
@@ -1993,14 +1853,14 @@ function reduce(
             break;
         }
         case 'repair-critical': {
-            if (!isStateMutationTarget(command.target)) return rejected(state, 'INVALID_TARGET');
-            if (!positiveInteger(command.hits)) return rejected(state, 'INVALID_AMOUNT');
+            if (!isStateMutationTarget(command.target)) return unchanged(state);
+            if (!positiveInteger(command.hits)) return unchanged(state);
             const slot = unit.index.slots.get(command.slotId);
-            if (!slot) return rejected(state, 'INVALID_TARGET');
+            if (!slot) return unchanged(state);
             if (criticalHits(state, command.slotId, 'preview') - command.hits < 0
                 || (command.target === 'committed'
                     && criticalHits(state, command.slotId, 'committed') - command.hits < 0)) {
-                return rejected(state, 'EXCEEDS_CAPACITY');
+                return unchanged(state);
             }
             changed = command.target === 'pending'
                 ? withPending(state, 'criticalHits', command.slotId, -command.hits)
@@ -2009,7 +1869,7 @@ function reduce(
         }
         case 'apply-mek-blow-off': {
             if (!isStateMutationTarget(command.target) || !unit.index.locations.has(command.locationId)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             const plan = projectMekBlowOffV2(
                 unit.index,
@@ -2022,7 +1882,7 @@ function reduce(
         }
         case 'apply-mek-critical-roll': {
             if (!isStateMutationTarget(command.target) || !unit.index.locations.has(command.locationId)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             const plan = projectMekCriticalRollV2(
                 entity,
@@ -2033,13 +1893,13 @@ function reduce(
                 command.results,
                 command.target,
             );
-            if (plan.kind === 'invalid') return rejected(state, 'INVALID_DICE_EVIDENCE');
-            if (plan.kind === 'not-applied') return rejected(state, 'NO_CHANGE');
+            if (plan.kind === 'invalid') return unchanged(state);
+            if (plan.kind === 'not-applied') return unchanged(state);
             if ((command.applyExplosion !== undefined && typeof command.applyExplosion !== 'boolean')
                 || (command.applyPilotHits !== undefined && typeof command.applyPilotHits !== 'boolean')
                 || (command.settlePendingExplosion !== undefined
                     && typeof command.settlePendingExplosion !== 'boolean')) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             changed = applyMekCriticalRollPlan(
                 unit,
@@ -2057,7 +1917,7 @@ function reduce(
             if (!isStateMutationTarget(command.target)
                 || !Number.isSafeInteger(command.level)
                 || command.level < 0) {
-                return rejected(state, 'INVALID_AMOUNT');
+                return unchanged(state);
             }
             const slots = [...unit.index.slots.values()]
                 .filter(slot => slot.componentIds.some(componentId => {
@@ -2069,7 +1929,7 @@ function reduce(
                     || left.slotIndex - right.slotIndex
                     || compareText(left.id, right.id));
             if (slots.length === 0 || command.level > slots.length) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             let next = state;
             for (let index = 0; index < slots.length; index++) {
@@ -2086,11 +1946,11 @@ function reduce(
             break;
         }
         case 'set-component-status': {
-            if (!isStateMutationTarget(command.target)) return rejected(state, 'INVALID_TARGET');
+            if (!isStateMutationTarget(command.target)) return unchanged(state);
             const component = unit.index.components.get(command.componentId);
             if (!component || component.kind !== 'equipment'
                 || !isEquipmentStatus(command.status)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             if (command.target === 'pending') {
                 changed = withPendingComponentStatus(state, command.componentId, command.status);
@@ -2114,10 +1974,10 @@ function reduce(
             if (!isStateMutationTarget(command.target)
                 || !isMekShieldTrack(command.track)
                 || !positiveInteger(command.amount)) {
-                return rejected(state, 'INVALID_AMOUNT');
+                return unchanged(state);
             }
             const profile = shieldProfile(unit, command.componentId);
-            if (!profile) return rejected(state, 'INVALID_TARGET');
+            if (!profile) return unchanged(state);
             const perspective = command.target === 'pending' ? 'preview' : 'committed';
             const current = shieldDamage(state, command.componentId, command.track, perspective);
             const maximum = command.track === 'absorption'
@@ -2125,7 +1985,7 @@ function reduce(
                 : profile.damageCapacity;
             const delta = command.type === 'damage-shield' ? command.amount : -command.amount;
             if (current + delta < 0 || current + delta > maximum) {
-                return rejected(state, 'EXCEEDS_CAPACITY');
+                return unchanged(state);
             }
             changed = withShieldDamage(
                 state,
@@ -2141,7 +2001,7 @@ function reduce(
             if (!isBoobyTrapEquipment(equipment)
                 || runtime.componentStatus(command.componentId, 'committed') !== 'available'
                 || isBoobyTrapDetonated(state.components.get(command.componentId)?.mode)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             const detonated = withComponentMode(
                 state,
@@ -2149,13 +2009,13 @@ function reduce(
                 BOOBY_TRAP_DETONATED_MODE,
                 BOOBY_TRAP_ARMED_MODE,
             );
-            if (!detonated) return rejected(state, 'NO_CHANGE');
-            changed = { ...detonated, destroyed: true };
+            if (!detonated) return unchanged(state);
+            changed = detonated;
             break;
         }
         case 'set-component-mode': {
             const equipment = equipmentForComponent(index, command.componentId);
-            if (isBoobyTrapEquipment(equipment)) return rejected(state, 'INVALID_TARGET');
+            if (isBoobyTrapEquipment(equipment)) return unchanged(state);
             if (isMobileHpgEquipment(equipment)) {
                 const hpg = reduceMobileHpgMode(
                     unit,
@@ -2164,7 +2024,7 @@ function reduce(
                     command.componentId,
                     command.mode,
                 );
-                if (hpg === 'invalid') return rejected(state, 'INVALID_TARGET');
+                if (hpg === 'invalid') return unchanged(state);
                 changed = hpg;
                 break;
             }
@@ -2176,31 +2036,31 @@ function reduce(
                     command.componentId,
                     command.mode,
                 );
-                if (electronic.kind === 'invalid') return rejected(state, 'INVALID_TARGET');
+                if (electronic.kind === 'invalid') return unchanged(state);
                 if (electronic.kind === 'handled') {
                     changed = electronic.state;
                     break;
                 }
             }
-            if (isCoolantPodEquipment(equipment)) return rejected(state, 'INVALID_TARGET');
+            if (isCoolantPodEquipment(equipment)) return unchanged(state);
             if (equipment && isStealthSystemEquipment(equipment)
                 && isSwitchableStealthEquipment(equipment)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             const modes = mekComponentModes(entity, index, command.componentId, ruleset);
             if (!index.components.has(command.componentId) || !modes.modes.includes(command.mode)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             if (isMachineGunArrayEquipment(equipment)) {
                 if (!isMachineGunArrayController(index, command.componentId)
                     || !isMachineGunArrayLifecycleState(command.mode)) {
-                    return rejected(state, 'INVALID_TARGET');
+                    return unchanged(state);
                 }
                 const current = machineGunArrayLifecycleState(
                     state.components.get(command.componentId)?.mode,
                 );
                 if (command.mode !== nextMachineGunArrayState(current)) {
-                    return rejected(state, 'INVALID_TARGET');
+                    return unchanged(state);
                 }
             }
             changed = withComponentMode(
@@ -2232,7 +2092,7 @@ function reduce(
                     ...changed,
                     turn: canonicalizeMekTurnStateV2({
                         ...changed.turn,
-                        equipmentStateChanged: true,
+                        phaseStateChanged: true,
                     }),
                 };
             }
@@ -2243,11 +2103,11 @@ function reduce(
             if (!equipment
                 || !isStealthSystemEquipment(equipment)
                 || !isSwitchableStealthEquipment(equipment)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             const current = componentStealthState(unit, state, command.componentId);
             if (nextStealthState(current) !== command.state) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             if ((command.state === 'enabling' || command.state === 'enabled')
                 && (componentRuntimeStatus(unit, state, command.componentId, 'preview') !== 'available'
@@ -2259,7 +2119,7 @@ function reduce(
                             statusTopology,
                             'preview',
                         ))))) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             changed = withStealthState(
                 unit,
@@ -2273,7 +2133,7 @@ function reduce(
         case 'toggle-gauss-power': {
             const equipment = equipmentForComponent(index, command.componentId);
             if (!isGaussEquipment(equipment)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             changed = withGaussPowerState(
                 state,
@@ -2286,21 +2146,21 @@ function reduce(
         case 'set-component-jammed': {
             if (!rapidFireAutocannonSupportsJamming(index, command.componentId, ruleset)
                 || typeof command.jammed !== 'boolean') {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             changed = withComponentJammed(state, command.componentId, command.jammed);
             break;
         }
         case 'edit-escalating-failure': {
             const definition = escalatingFailureDefinition(unit, command.componentId);
-            if (!definition) return rejected(state, 'INVALID_TARGET');
+            if (!definition) return unchanged(state);
             if (command.edit.kind === 'select-sequence') {
                 if (!Number.isSafeInteger(command.edit.index)
                     || command.edit.index < 0
                     || command.edit.index >= definition.targets.length
                     || componentRuntimeStatus(unit, state, command.componentId) !== 'available'
                     || !canUseEscalatingFailure(definition, state.turn.airborne)) {
-                    return rejected(state, 'INVALID_TARGET');
+                    return unchanged(state);
                 }
                 changed = withEscalatingFailureSelection(
                     state,
@@ -2313,7 +2173,7 @@ function reduce(
                 if ((command.edit.status === 'disabled' && current !== 'available')
                     || (command.edit.status === 'available'
                         && state.components.get(command.componentId)?.statusOverride !== 'disabled')) {
-                    return rejected(state, 'INVALID_TARGET');
+                    return unchanged(state);
                 }
                 changed = withEscalatingFailureStatus(
                     state,
@@ -2325,7 +2185,7 @@ function reduce(
         }
         case 'set-ppc-capacitor-charge': {
             if (!isPpcCapacitorPair(entity, index, command.capacitorId, command.weaponId)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             const pair = Object.freeze({
                 capacitorId: command.capacitorId,
@@ -2333,14 +2193,14 @@ function reduce(
             });
             const lifecycle = state.components.get(pair.capacitorId)?.ppcCapacitor;
             if (command.state !== null && command.state !== PPC_CAPACITOR_CHARGING_STATE) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             if (command.state === PPC_CAPACITOR_CHARGING_STATE
                 && (componentRuntimeStatus(unit, state, pair.capacitorId, 'preview') !== 'available'
                     || componentRuntimeStatus(unit, state, pair.weaponId, 'preview') !== 'available'
                     || lifecycle?.firedThisTurn
                     || lifecycle?.chargeState === PPC_CAPACITOR_CHARGED_STATE)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             changed = withPpcCapacitorState(
                 state,
@@ -2353,17 +2213,17 @@ function reduce(
         }
         case 'set-bombast-laser-charge': {
             if (!isCoreBombastLaserComponent(index, command.componentId, ruleset)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             const lifecycle = state.components.get(command.componentId)?.bombastLaser;
             if (command.state !== null && command.state !== BOMBAST_LASER_CHARGING_STATE) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             if (command.state === BOMBAST_LASER_CHARGING_STATE
                 && (componentRuntimeStatus(unit, state, command.componentId, 'preview') !== 'available'
                     || lifecycle?.firedThisTurn === true
                     || lifecycle?.chargeState === BOMBAST_LASER_CHARGED_STATE)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             changed = withBombastLaserState(
                 state,
@@ -2377,14 +2237,14 @@ function reduce(
         case 'edit-c3-emergency-master': {
             if (!isC3EmergencyMasterComponent(index, command.componentId)
                 || componentRuntimeStatus(unit, state, command.componentId, 'preview') !== 'available') {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             const lifecycle = state.components.get(command.componentId)?.c3EmergencyMaster;
             const operatingTurns = lifecycle?.operatingTurns ?? 0;
             if (command.edit.kind === 'toggle-requested') {
                 if (typeof command.edit.turningOn !== 'boolean'
                     || operatingTurns === C3EM_FRIED_SEQUENCE_VALUE) {
-                    return rejected(state, 'INVALID_TARGET');
+                    return unchanged(state);
                 }
                 changed = withC3EmergencyMasterState(state, command.componentId, {
                     mode: command.edit.turningOn ? 'on' : 'off',
@@ -2396,7 +2256,7 @@ function reduce(
                 });
             } else if (command.edit.kind === 'select-operating-turns') {
                 if (!isC3EmergencyMasterOperatingTurns(command.edit.turns)) {
-                    return rejected(state, 'INVALID_TARGET');
+                    return unchanged(state);
                 }
                 changed = withC3EmergencyMasterState(state, command.componentId, {
                     ...(command.edit.turns === C3EM_FRIED_SEQUENCE_VALUE
@@ -2407,7 +2267,7 @@ function reduce(
             } else if (command.edit.kind === 'ensure-active-started') {
                 if (command.edit.endpointRole !== 'master'
                     || operatingTurns === C3EM_FRIED_SEQUENCE_VALUE) {
-                    return rejected(state, 'INVALID_TARGET');
+                    return unchanged(state);
                 }
                 changed = operatingTurns === 0
                     ? withC3EmergencyMasterState(state, command.componentId, {
@@ -2418,7 +2278,7 @@ function reduce(
             } else {
                 if (command.edit.endpointRole !== 'master'
                     || operatingTurns === C3EM_FRIED_SEQUENCE_VALUE) {
-                    return rejected(state, 'INVALID_TARGET');
+                    return unchanged(state);
                 }
                 const nextTurns = Math.min(
                     C3EM_FRIED_SEQUENCE_VALUE,
@@ -2434,8 +2294,8 @@ function reduce(
             break;
         }
         case 'configure-ammo-source': {
-            if (!boundedRuntimeText(command.munitionKey)) return rejected(state, 'INVALID_TARGET');
-            if (!nonnegativeInteger(command.remaining)) return rejected(state, 'INVALID_AMOUNT');
+            if (!boundedRuntimeText(command.munitionKey)) return unchanged(state);
+            if (!nonnegativeInteger(command.remaining)) return unchanged(state);
             const loadout = mekAmmoLoadout(
                 unit.entity,
                 unit.index,
@@ -2443,8 +2303,8 @@ function reduce(
                 unit.ruleset,
                 command.munitionKey,
             );
-            if (!loadout) return rejected(state, 'INVALID_TARGET');
-            if (command.remaining > loadout.capacity) return rejected(state, 'EXCEEDS_CAPACITY');
+            if (!loadout) return unchanged(state);
+            if (command.remaining > loadout.capacity) return unchanged(state);
             changed = withAmmoConfiguration(
                 state,
                 unit,
@@ -2455,7 +2315,7 @@ function reduce(
             break;
         }
         case 'spend-ammo': {
-            if (!positiveInteger(command.amount)) return rejected(state, 'INVALID_AMOUNT');
+            if (!positiveInteger(command.amount)) return unchanged(state);
             const current = state.ammo.get(command.componentId);
             const capacity = mekAmmoCapacity(
                 unit.entity,
@@ -2464,9 +2324,9 @@ function reduce(
                 unit.ruleset,
                 current?.munitionOverride,
             );
-            if (capacity === null) return rejected(state, 'INVALID_TARGET');
+            if (capacity === null) return unchanged(state);
             const spent = current?.shotsSpent ?? 0;
-            if (spent + command.amount > capacity) return rejected(state, 'EXCEEDS_CAPACITY');
+            if (spent + command.amount > capacity) return unchanged(state);
             changed = withAmmoSpent(state, command.componentId, command.amount);
             break;
         }
@@ -2479,7 +2339,7 @@ function reduce(
                     component.kind === 'equipment'
                     && isCoolantPodEquipment(component.mount.equipment)
                     && effectiveComponentMode(unit, state, componentId) === COOLANT_POD_ACTIVE_MODE)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             const ammo = state.ammo.get(command.componentId);
             const capacity = mekAmmoCapacity(
@@ -2490,7 +2350,7 @@ function reduce(
                 ammo?.munitionOverride,
             );
             if (capacity === null || (ammo?.shotsSpent ?? 0) >= capacity) {
-                return rejected(state, 'EXCEEDS_CAPACITY');
+                return unchanged(state);
             }
             const spent = withAmmoSpent(state, command.componentId, 1);
             const activated = withComponentMode(
@@ -2499,21 +2359,21 @@ function reduce(
                 COOLANT_POD_ACTIVE_MODE,
                 COOLANT_POD_READY_MODE,
             );
-            if (activated === null) return rejected(state, 'INVALID_TARGET');
+            if (activated === null) return unchanged(state);
             changed = {
                 ...activated,
                 turn: canonicalizeMekTurnStateV2({
                     ...activated.turn,
-                    equipmentStateChanged: true,
+                    phaseStateChanged: true,
                 }),
             };
             break;
         }
         case 'fire-weapons': {
             if (mekHeatCapabilityV2(heatContext, entity).kind === 'unsupported') {
-                return rejected(state, 'UNSUPPORTED_HEAT_CONTEXT');
+                return unchanged(state);
             }
-            if (!isHeatPolicy(command.heatPolicy)) return rejected(state, 'INVALID_TARGET');
+            if (!isHeatPolicy(command.heatPolicy)) return unchanged(state);
             const planned = planMekWeaponFireV2(
                 entity,
                 index,
@@ -2523,14 +2383,7 @@ function reduce(
                 command.prototypeHeatRolls,
             );
             if (!planned.accepted) {
-                return rejected(
-                    state,
-                    planned.code === 'EMPTY_SELECTION' || planned.code === 'TOO_MANY_SELECTIONS'
-                        ? 'INVALID_AMOUNT'
-                        : planned.code === 'INSUFFICIENT_AMMO' || planned.code === 'HEAT_LIMIT_EXCEEDED'
-                            ? 'EXCEEDS_CAPACITY'
-                            : 'INVALID_TARGET',
-                );
+                return unchanged(state);
             }
             changed = applyMekWeaponFirePlanV2(state, planned.plan);
             prototypeHeat = planned.plan.prototypeHeat;
@@ -2544,7 +2397,7 @@ function reduce(
                     heatContext,
                     command.heatPolicy,
                 );
-                if (projected > MAX_MEK_HEAT_VALUE_V2) return rejected(state, 'EXCEEDS_CAPACITY');
+                if (projected > MAX_MEK_HEAT_VALUE_V2) return unchanged(state);
                 changed = {
                     ...changed,
                     heat: canonicalizeMekHeatStateV2({
@@ -2559,9 +2412,9 @@ function reduce(
         }
         case 'set-heat': {
             if (mekHeatCapabilityV2(heatContext, entity).kind === 'unsupported') {
-                return rejected(state, 'UNSUPPORTED_HEAT_CONTEXT');
+                return unchanged(state);
             }
-            if (!canonicalNonnegativeNumber(command.heat)) return rejected(state, 'INVALID_AMOUNT');
+            if (!canonicalNonnegativeNumber(command.heat)) return unchanged(state);
             const heat = canonicalizeMekHeatStateV2({
                 current: command.heat,
                 previous: state.heat.current,
@@ -2572,10 +2425,10 @@ function reduce(
         }
         case 'set-pending-heat': {
             if (mekHeatCapabilityV2(heatContext, entity).kind === 'unsupported') {
-                return rejected(state, 'UNSUPPORTED_HEAT_CONTEXT');
+                return unchanged(state);
             }
             if (command.heat !== null && !canonicalNonnegativeNumber(command.heat)) {
-                return rejected(state, 'INVALID_AMOUNT');
+                return unchanged(state);
             }
             const pendingOverride = command.heat === null ? undefined : command.heat;
             changed = state.heat.pendingOverride === pendingOverride
@@ -2593,14 +2446,14 @@ function reduce(
         }
         case 'set-heatsinks-off': {
             const capability = mekHeatCapabilityV2(heatContext, entity);
-            if (capability.kind === 'unsupported') return rejected(state, 'UNSUPPORTED_HEAT_CONTEXT');
+            if (capability.kind === 'unsupported') return unchanged(state);
             if (!Number.isSafeInteger(command.heatsinksOff)
                 || command.heatsinksOff < 0
                 || command.heatsinksOff > MAX_MEK_HEATSINKS_OFF_V2) {
-                return rejected(state, 'INVALID_AMOUNT');
+                return unchanged(state);
             }
             if (command.heatsinksOff > capability.maxHeatsinksOff) {
-                return rejected(state, 'EXCEEDS_CAPACITY');
+                return unchanged(state);
             }
             changed = state.heat.heatsinksOff === command.heatsinksOff
                 ? null
@@ -2615,22 +2468,22 @@ function reduce(
         }
         case 'apply-heat': {
             if (mekHeatCapabilityV2(heatContext, entity).kind === 'unsupported') {
-                return rejected(state, 'UNSUPPORTED_HEAT_CONTEXT');
+                return unchanged(state);
             }
-            if (!isHeatPolicy(command.policy)) return rejected(state, 'INVALID_TARGET');
+            if (!isHeatPolicy(command.policy)) return unchanged(state);
             const input = buildHeatKernelInput(unit, state, statusTopology);
             const projection = projectMekHeatContextV2(
                 heatContext, entity, input, command.policy,
             );
-            if (projection.kind === 'unsupported') return rejected(state, 'UNSUPPORTED_HEAT_CONTEXT');
+            if (projection.kind === 'unsupported') return unchanged(state);
             if (command.policy === 'automatic'
                 && projection.projection.projected > MAX_MEK_HEAT_VALUE_V2) {
-                return rejected(state, 'EXCEEDS_CAPACITY');
+                return unchanged(state);
             }
             const applied = applyPendingMekHeatContextV2(
                 heatContext, entity, input, command.policy,
             );
-            if (applied.kind === 'unsupported') return rejected(state, 'UNSUPPORTED_HEAT_CONTEXT');
+            if (applied.kind === 'unsupported') return unchanged(state);
             changed = applied.application.changed
                 ? {
                     ...state,
@@ -2642,12 +2495,15 @@ function reduce(
         }
         case 'set-condition': {
             if (!isUnitConditionKey(command.condition) || typeof command.active !== 'boolean') {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
+            }
+            if (command.condition === 'airborne' || command.condition === 'grounded') {
+                return unchanged(state);
             }
             // Shutdown is owned by typed shutdown/startup actions. Generic
             // condition mutation may never bypass that transition.
             if (command.condition === 'shutdown' && !command.active) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             const conditions = new Set(state.conditions);
             const existed = conditions.has(command.condition);
@@ -2660,7 +2516,7 @@ function reduce(
             break;
         }
         case 'set-mek-shutdown-state': {
-            if (typeof command.shutdown !== 'boolean') return rejected(state, 'INVALID_TARGET');
+            if (typeof command.shutdown !== 'boolean') return unchanged(state);
             const conditions = new Set(state.conditions);
             const existed = conditions.has('shutdown');
             if (command.shutdown === existed) changed = null;
@@ -2682,20 +2538,20 @@ function reduce(
                 command.outcome,
             );
             if (resolved.kind === 'unsupported') {
-                return rejected(state, 'UNSUPPORTED_MECHANICS_CONTEXT');
+                return unchanged(state);
             }
-            if (!resolved.resolution.accepted) return rejected(state, resolved.resolution.reason);
+            if (!resolved.resolution.accepted) return unchanged(state);
             changed = { ...state, ruleChecks: resolved.resolution.ruleChecks };
             break;
         }
         case 'set-location-condition': {
-            if (!isStateMutationTarget(command.target)) return rejected(state, 'INVALID_TARGET');
+            if (!isStateMutationTarget(command.target)) return unchanged(state);
             if (!unit.index.locations.has(command.locationId)
                 || !isMekLocationConditionKey(command.condition)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             if (!isMekLocationConditionValue(command.condition, command.value, true)) {
-                return rejected(state, 'INVALID_AMOUNT');
+                return unchanged(state);
             }
             changed = command.target === 'pending'
                 ? withPendingLocationCondition(
@@ -2717,20 +2573,19 @@ function reduce(
         }
         case 'set-crew-state': {
             if (!unit.index.crewPositions.has(command.positionId)) {
-                return rejected(state, 'INVALID_TARGET');
+                return unchanged(state);
             }
             if (!Number.isSafeInteger(command.wounds)
                 || command.wounds < 0
                 || command.wounds > MAX_MEK_CREW_WOUNDS
                 || typeof command.unconscious !== 'boolean'
                 || typeof command.ejected !== 'boolean'
-                || (command.unconscious && command.ejected)
                 || (command.recoveryReadyTurn !== undefined
                     && command.recoveryReadyTurn !== null
                     && (!Number.isSafeInteger(command.recoveryReadyTurn)
                         || command.recoveryReadyTurn < 0))
                 || (command.recoveryReadyTurn !== undefined && !command.unconscious)) {
-                return rejected(state, 'INVALID_AMOUNT');
+                return unchanged(state);
             }
             changed = withCrewState(
                 state,
@@ -2746,11 +2601,11 @@ function reduce(
             if (command.declaration.mode !== 'stationary'
                 && mobileHpgBlocksMovement(
                     buildMekMobileHpgFacts(unit, state, statusTopology, 'committed'),
-                )) return rejected(state, 'ILLEGAL_MOVEMENT_PSR_DECLARATION');
+                )) return unchanged(state);
             const input = createMovementRuntimeInput(
                 unit, state, statusTopology, runtime.crewAssignment(), mechanicsContext,
             );
-            if (!input) return rejected(state, 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT');
+            if (!input) return unchanged(state);
             const transition = declareMekMovementContextV2(
                 mechanicsContext,
                 entity,
@@ -2760,11 +2615,7 @@ function reduce(
                 nextRevision,
             );
             if (!transition.accepted) {
-                return rejected(state, transition.reason === 'UNSUPPORTED'
-                    ? 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT'
-                    : transition.reason === 'INVALID_DECLARATION'
-                        ? 'INVALID_MOVEMENT_PSR_DECLARATION'
-                        : 'ILLEGAL_MOVEMENT_PSR_DECLARATION');
+                return unchanged(state);
             }
             changed = mekMovementPsrStatesEqualV2(state.movementPsr, transition.state)
                 ? null
@@ -2772,24 +2623,36 @@ function reduce(
                     ? {
                         ...state,
                         movementPsr: transition.state,
-                        turn: { ...state.turn, spotting: false },
+                        turn: {
+                            ...state.turn,
+                            spotting: false,
+                            phaseStateChanged: true,
+                        },
                         attackerTargeting: createPristineAttackerTargetingState(),
                     }
-                    : { ...state, movementPsr: transition.state };
+                    : {
+                        ...state,
+                        movementPsr: transition.state,
+                        turn: { ...state.turn, phaseStateChanged: true },
+                    };
             break;
         }
         case 'clear-mek-movement': {
             const movementPsr = clearMekMovementV2(state.movementPsr);
             changed = mekMovementPsrStatesEqualV2(state.movementPsr, movementPsr)
                 ? null
-                : { ...state, movementPsr };
+                : {
+                    ...state,
+                    movementPsr,
+                    turn: { ...state.turn, phaseStateChanged: true },
+                };
             break;
         }
         case 'declare-mek-action': {
             const input = createMovementRuntimeInput(
                 unit, state, statusTopology, runtime.crewAssignment(), mechanicsContext,
             );
-            if (!input) return rejected(state, 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT');
+            if (!input) return unchanged(state);
             const transition = declareMekActionContextV2(
                 mechanicsContext,
                 entity,
@@ -2799,11 +2662,7 @@ function reduce(
                 nextRevision,
             );
             if (!transition.accepted) {
-                return rejected(state, transition.reason === 'UNSUPPORTED'
-                    ? 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT'
-                    : transition.reason === 'INVALID_DECLARATION'
-                        ? 'INVALID_MOVEMENT_PSR_DECLARATION'
-                        : 'ILLEGAL_MOVEMENT_PSR_DECLARATION');
+                return unchanged(state);
             }
             const conditions = new Set(state.conditions);
             if (command.action.kind === 'shutdown') conditions.add('shutdown');
@@ -2812,6 +2671,7 @@ function reduce(
                 ...state,
                 movementPsr: transition.state,
                 conditions: new ImmutableSet(conditions),
+                turn: { ...state.turn, phaseStateChanged: true },
             };
             break;
         }
@@ -2820,19 +2680,23 @@ function reduce(
                 check.status === 'pending'
                 && check.source.sourceKind === 'action'
                 && check.source.triggerKind === state.movementPsr.action!.kind)) {
-                return rejected(state, 'PENDING_PILOT_CHECKS');
+                return unchanged(state);
             }
             const movementPsr = clearMekActionV2(state.movementPsr);
             changed = mekMovementPsrStatesEqualV2(state.movementPsr, movementPsr)
                 ? null
-                : { ...state, movementPsr };
+                : {
+                    ...state,
+                    movementPsr,
+                    turn: { ...state.turn, phaseStateChanged: true },
+                };
             break;
         }
         case 'prepare-mek-stand': {
             const input = createMovementRuntimeInput(
                 unit, state, statusTopology, runtime.crewAssignment(), mechanicsContext,
             );
-            if (!input) return rejected(state, 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT');
+            if (!input) return unchanged(state);
             const transition = prepareMekStandUpContextV2(
                 mechanicsContext,
                 entity,
@@ -2840,11 +2704,7 @@ function reduce(
                 state.movementPsr,
             );
             if (!transition.accepted) {
-                return rejected(state, transition.reason === 'UNSUPPORTED'
-                    ? 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT'
-                    : transition.reason === 'INVALID_DECLARATION'
-                        ? 'INVALID_MOVEMENT_PSR_DECLARATION'
-                        : 'ILLEGAL_MOVEMENT_PSR_DECLARATION');
+                return unchanged(state);
             }
             changed = mekMovementPsrStatesEqualV2(state.movementPsr, transition.state)
                 ? null
@@ -2855,7 +2715,7 @@ function reduce(
             const input = createMovementRuntimeInput(
                 unit, state, statusTopology, runtime.crewAssignment(), mechanicsContext,
             );
-            if (!input) return rejected(state, 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT');
+            if (!input) return unchanged(state);
             const transition = resolveMekStandAttemptContextV2(
                 mechanicsContext,
                 entity,
@@ -2866,13 +2726,7 @@ function reduce(
                 nextRevision,
             );
             if (!transition.accepted) {
-                return rejected(state, transition.reason === 'UNSUPPORTED'
-                    ? 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT'
-                    : transition.reason === 'INVALID_DECLARATION'
-                        ? 'INVALID_MOVEMENT_PSR_DECLARATION'
-                        : transition.reason === 'ILLEGAL_DECLARATION'
-                            ? 'ILLEGAL_MOVEMENT_PSR_DECLARATION'
-                            : transition.reason);
+                return unchanged(state);
             }
             const conditions = new Set(state.conditions);
             if (transition.failed) conditions.add('prone');
@@ -2885,11 +2739,11 @@ function reduce(
             break;
         }
         case 'adjust-mek-stand-attempts': {
-            if (!Number.isSafeInteger(command.delta)) return rejected(state, 'INVALID_AMOUNT');
+            if (!Number.isSafeInteger(command.delta)) return unchanged(state);
             const input = createMovementRuntimeInput(
                 unit, state, statusTopology, runtime.crewAssignment(), mechanicsContext,
             );
-            if (!input) return rejected(state, 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT');
+            if (!input) return unchanged(state);
             let movementPsr: MekMovementPsrStateV2;
             try {
                 const adjusted = adjustMekStandAttemptsContextV2(
@@ -2899,10 +2753,10 @@ function reduce(
                     state.movementPsr,
                     command.delta,
                 );
-                if ('kind' in adjusted) return rejected(state, 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT');
+                if ('kind' in adjusted) return unchanged(state);
                 movementPsr = adjusted;
             } catch {
-                return rejected(state, 'INVALID_AMOUNT');
+                return unchanged(state);
             }
             changed = mekMovementPsrStatesEqualV2(state.movementPsr, movementPsr)
                 ? null
@@ -2918,13 +2772,10 @@ function reduce(
                 command.evidence,
             );
             if (projectedResolution.kind === 'unsupported') {
-                return rejected(state, 'UNSUPPORTED_MOVEMENT_PSR_CONTEXT');
+                return unchanged(state);
             }
             const resolution = projectedResolution.resolution;
-            if (!resolution.accepted) return rejected(
-                state,
-                resolution.reason === 'INVALID_CHECK' ? 'INVALID_PILOT_CHECK' : resolution.reason,
-            );
+            if (!resolution.accepted) return unchanged(state);
             const conditions = new Set(state.conditions);
             const check = resolution.state.checks.find(candidate => candidate.checkId === command.checkId)!;
             if (resolution.failed) conditions.add('prone');
@@ -2946,7 +2797,7 @@ function reduce(
                     ? null
                     : { ...state, movementPsr };
             } catch {
-                return rejected(state, 'INVALID_PILOT_CHECK');
+                return unchanged(state);
             }
             break;
         }
@@ -2962,10 +2813,10 @@ function reduce(
             try {
                 turn = canonicalizeMekTurnStateV2(command.turn);
             } catch {
-                return rejected(state, 'INVALID_TURN_STATE');
+                return unchanged(state);
             }
             if (state.movementPsr.movement?.mode === 'sprint' && turn.spotting) {
-                return rejected(state, 'INVALID_TURN_STATE');
+                return unchanged(state);
             }
             const movementPsr = state.turn.airborne === turn.airborne
                 ? state.movementPsr
@@ -2984,7 +2835,7 @@ function reduce(
                     ? baseTurn
                     : { ...baseTurn, pendingFallConsequences: command.pending });
             } catch {
-                return rejected(state, 'INVALID_TURN_STATE');
+                return unchanged(state);
             }
             changed = mekTurnStatesEqualV2(state.turn, turn) ? null : { ...state, turn };
             break;
@@ -3008,7 +2859,7 @@ function reduce(
             if (state.turn.endTurnCheckpoint === 'heat-staged') {
                 changed = null;
             } else if (state.turn.endTurnCheckpoint !== 'phase-ended') {
-                return rejected(state, 'INVALID_TURN_STATE');
+                return unchanged(state);
             } else {
                 changed = {
                     ...state,
@@ -3021,22 +2872,22 @@ function reduce(
             break;
         case 'end-turn':
             if (mekHeatCapabilityV2(heatContext, entity).kind === 'unsupported') {
-                return rejected(state, 'UNSUPPORTED_HEAT_CONTEXT');
+                return unchanged(state);
             }
-            if (!isHeatPolicy(command.policy)) return rejected(state, 'INVALID_TARGET');
+            if (!isHeatPolicy(command.policy)) return unchanged(state);
             const endTurnProjection = projectMekHeatContextV2(
                 heatContext,
                 entity,
                 buildHeatKernelInput(unit, state, statusTopology),
                 command.policy,
             );
-            if (endTurnProjection.kind === 'unsupported') return rejected(state, 'UNSUPPORTED_HEAT_CONTEXT');
+            if (endTurnProjection.kind === 'unsupported') return unchanged(state);
             if (command.policy === 'automatic'
                 && endTurnProjection.projection.projected > MAX_MEK_HEAT_VALUE_V2) {
-                return rejected(state, 'EXCEEDS_CAPACITY');
+                return unchanged(state);
             }
             const ended = endTurn(unit, entity, index, state, command.policy, statusTopology, heatContext);
-            if (ended === 'unsupported') return rejected(state, 'UNSUPPORTED_HEAT_CONTEXT');
+            if (ended === 'unsupported') return unchanged(state);
             changed = ended;
             break;
         case 'commit-pending':
@@ -3050,7 +2901,7 @@ function reduce(
     // without damage to commit. Movement reconciliation still blocks pending
     // checks and settles resolved evidence atomically.
     if (!changed && movementBoundaryNeedsEvaluation(state, command.type)) changed = state;
-    if (!changed) return rejected(state, 'NO_CHANGE');
+    if (!changed) return unchanged(state);
     changed = reconcileHeatAcknowledgements(entity, unit, changed, statusTopology, heatContext);
     const ruleCheckReconciliation = reconcileMekRuleChecksContextV2(
         mechanicsContext,
@@ -3061,7 +2912,7 @@ function reduce(
     );
     if (ruleCheckReconciliation.kind === 'supported'
         && ruleCheckReconciliation.triggerConflict) {
-        return rejected(state, 'RULE_CHECK_TRIGGER_CONFLICT');
+        return unchanged(state);
     }
     changed = reconcileMekDerivedState(unit, changed, mechanicsContext, nextRevision);
     const movementReconciliation = reconcileMovementAfterCommand(
@@ -3074,24 +2925,16 @@ function reduce(
         mechanicsContext,
         nextRevision,
     );
-    if (movementReconciliation.kind === 'rejected') {
-        return rejected(state, movementReconciliation.reason);
-    }
-    changed = movementReconciliation.state;
+    if (movementReconciliation === null) return unchanged(state);
+    changed = movementReconciliation;
     const nextState = freezeRuntimeState({ ...changed, stateRevision: nextRevision });
     return Object.freeze({
         accepted: true,
-        idempotent: false,
-        previousRevision: state.stateRevision,
+        changed: true,
         state: nextState,
-        events: Object.freeze([{ kind: command.type, commandId: command.commandId, revision: nextRevision }]),
         ...(prototypeHeat === undefined ? {} : { prototypeHeat }),
     });
 }
-
-type MovementPostCommandResult =
-    | { readonly kind: 'accepted'; readonly state: MekUnitRuntimeState }
-    | { readonly kind: 'rejected'; readonly reason: 'PENDING_PILOT_CHECKS' };
 
 function movementBoundaryNeedsEvaluation(
     state: MekUnitRuntimeState,
@@ -3117,7 +2960,7 @@ function reconcileMovementAfterCommand(
     crewAssignment: CrewAssignment,
     mechanicsContext: MekMechanicsContextV2,
     nextRevision: StateRevision,
-): MovementPostCommandResult {
+): MekUnitRuntimeState | null {
     const mutations = committedMekDamageMutations(unit, before, candidate, statusTopology);
     let changed = candidate;
     const input = createMovementRuntimeInput(
@@ -3127,7 +2970,7 @@ function reconcileMovementAfterCommand(
         crewAssignment,
         mechanicsContext,
     );
-    if (!input) return Object.freeze({ kind: 'accepted', state: changed });
+    if (!input) return changed;
 
     if (mutations.length > 0) {
         const synthesis = synthesizeCommittedMekDamagePilotChecksContextV2(
@@ -3180,7 +3023,7 @@ function reconcileMovementAfterCommand(
                 };
             }
         } catch {
-            return Object.freeze({ kind: 'rejected', reason: 'PENDING_PILOT_CHECKS' });
+            return null;
         }
     }
     if (command.type === 'end-phase'
@@ -3192,7 +3035,7 @@ function reconcileMovementAfterCommand(
             changed = { ...changed, conditions: new ImmutableSet(conditions) };
         }
     }
-    return Object.freeze({ kind: 'accepted', state: changed });
+    return changed;
 }
 
 function reconcileMekDerivedState(
@@ -3247,7 +3090,7 @@ function mekDamageStateView(
             return Object.freeze({
                 wounds: crew.wounds,
                 ejected: crew.ejected,
-                fatallyWounded: crew.wounds >= MAX_MEK_CREW_WOUNDS,
+                fatallyWounded: isCrewDeathCommitted(crew),
             });
         },
         locationCondition: (
@@ -3274,7 +3117,7 @@ function projectRuntimeMekDestruction(
     );
     if (projection.kind === 'unsupported'
         || projection.facts.committed.destroyed
-        || !hasDetonatedBoobyTrap(unit, state)) return projection;
+        || (!state.explicitlyDestroyed && !hasDetonatedBoobyTrap(unit, state))) return projection;
     return Object.freeze({
         ...projection,
         destroyed: true,
@@ -3714,12 +3557,13 @@ function endPhase(
     endTurnBoundary: boolean,
 ): MekUnitRuntimeState | null {
     const committed = commitPending(unit, entity, index, state) ?? state;
-    const arraysSettled = settleMachineGunArrays(unit, committed);
+    const deathsSettled = commitCrewDeaths(committed);
+    const arraysSettled = settleMachineGunArrays(unit, deathsSettled);
     const shieldsSettled = lowerCoreShields(unit, arraysSettled);
     const stealthSettled = settleStealthSystems(unit, shieldsSettled, statusTopology, false);
     const phaseTurn = canonicalizeMekTurnStateV2({
         ...stealthSettled.turn,
-        equipmentStateChanged: false,
+        phaseStateChanged: false,
         ...(endTurnBoundary && stealthSettled.turn.endTurnCheckpoint === undefined
             ? { endTurnCheckpoint: 'phase-ended' as const }
             : {}),
@@ -3858,18 +3702,19 @@ function endTurn(
     const electronicSettled = settleElectronicSuites(unit, hpgSettled, statusTopology);
     const stealthSettled = settleStealthSystems(unit, electronicSettled, statusTopology, true);
     const committed = commitPending(unit, entity, index, stealthSettled) ?? stealthSettled;
-    const conditions = new Set(committed.conditions);
+    const deathsSettled = commitCrewDeaths(committed);
+    const conditions = new Set(deathsSettled.conditions);
     conditions.delete('tagged');
     conditions.delete('skidding');
     const turn = createPristineMekTurnStateV2(Math.min(
-        committed.turn.turnCounter + 1,
+        deathsSettled.turn.turnCounter + 1,
         MAX_MEK_TURN_NUMBER,
     ));
-    if (committed === state
+    if (deathsSettled === state
         && conditions.size === state.conditions.size
         && mekTurnStatesEqualV2(state.turn, turn)) return null;
     return {
-        ...committed,
+        ...deathsSettled,
         conditions: new ImmutableSet(conditions),
         turn,
     };
@@ -4295,7 +4140,7 @@ function reduceMobileHpgMode(
     const changed = withComponentMode(state, componentId, requestedMode, HPG_IDLE_MODE);
     return changed === null ? null : {
         ...changed,
-        turn: canonicalizeMekTurnStateV2({ ...changed.turn, equipmentStateChanged: true }),
+        turn: canonicalizeMekTurnStateV2({ ...changed.turn, phaseStateChanged: true }),
     };
 }
 
@@ -4374,7 +4219,7 @@ function reduceElectronicComponentMode(
         kind: 'handled',
         state: {
             ...next,
-            turn: canonicalizeMekTurnStateV2({ ...next.turn, equipmentStateChanged: true }),
+            turn: canonicalizeMekTurnStateV2({ ...next.turn, phaseStateChanged: true }),
         },
     });
 }
@@ -4465,7 +4310,7 @@ function withStealthState(
     if (!changed || !markEquipmentStateChanged) return changed;
     return {
         ...changed,
-        turn: canonicalizeMekTurnStateV2({ ...changed.turn, equipmentStateChanged: true }),
+        turn: canonicalizeMekTurnStateV2({ ...changed.turn, phaseStateChanged: true }),
     };
 }
 
@@ -4501,7 +4346,7 @@ function withGaussPowerState(
         ...state,
         components: new ImmutableIndex(components),
         turn: markEquipmentStateChanged
-            ? canonicalizeMekTurnStateV2({ ...state.turn, equipmentStateChanged: true })
+            ? canonicalizeMekTurnStateV2({ ...state.turn, phaseStateChanged: true })
             : state.turn,
     };
 }
@@ -4624,7 +4469,7 @@ function withPpcCapacitorState(
         ...state,
         components: new ImmutableIndex(components),
         turn: markEquipmentStateChanged
-            ? canonicalizeMekTurnStateV2({ ...state.turn, equipmentStateChanged: true })
+            ? canonicalizeMekTurnStateV2({ ...state.turn, phaseStateChanged: true })
             : state.turn,
     };
 }
@@ -4805,7 +4650,7 @@ function withBombastLaserState(
         ...state,
         components: new ImmutableIndex(components),
         turn: markEquipmentStateChanged
-            ? canonicalizeMekTurnStateV2({ ...state.turn, equipmentStateChanged: true })
+            ? canonicalizeMekTurnStateV2({ ...state.turn, phaseStateChanged: true })
             : state.turn,
     };
 }
@@ -4944,7 +4789,8 @@ function withCrewState(
     requestedRecoveryReadyTurn?: number | null,
 ): MekUnitRuntimeState | null {
     const current = state.crew.get(positionId) ?? HEALTHY_CREW_STATE;
-    const recoveryReadyTurn = !unconscious || ejected || wounds >= MAX_MEK_CREW_WOUNDS
+    const dead = wounds >= MAX_MEK_CREW_WOUNDS ? current.dead : undefined;
+    const recoveryReadyTurn = !unconscious
         ? undefined
         : requestedRecoveryReadyTurn !== undefined
             ? requestedRecoveryReadyTurn
@@ -4952,6 +4798,7 @@ function withCrewState(
     if (current.wounds === wounds
         && current.unconscious === unconscious
         && current.ejected === ejected
+        && current.dead === dead
         && current.recoveryReadyTurn === recoveryReadyTurn) return null;
     const crew = new Map(state.crew);
     if (wounds === 0 && !unconscious && !ejected) crew.delete(positionId);
@@ -4959,9 +4806,24 @@ function withCrewState(
         wounds,
         unconscious,
         ejected,
+        ...(dead ? { dead: true as const } : {}),
         ...(recoveryReadyTurn === undefined ? {} : { recoveryReadyTurn }),
     }));
-    return { ...state, crew: new ImmutableIndex(crew) };
+    return {
+        ...state,
+        crew: new ImmutableIndex(crew),
+        turn: canonicalizeMekTurnStateV2({ ...state.turn, phaseStateChanged: true }),
+    };
+}
+
+function commitCrewDeaths(state: MekUnitRuntimeState): MekUnitRuntimeState {
+    let crew: Map<CrewPositionId, ClassicCrewRuntimeState> | undefined;
+    for (const [positionId, current] of state.crew) {
+        if (current.wounds < MAX_MEK_CREW_WOUNDS || current.dead === true) continue;
+        crew ??= new Map(state.crew);
+        crew.set(positionId, Object.freeze({ ...current, dead: true }));
+    }
+    return crew === undefined ? state : { ...state, crew: new ImmutableIndex(crew) };
 }
 
 function withPending<K extends 'armorDamage' | 'locationInternalDamage' | 'criticalHits'>(
@@ -5485,6 +5347,16 @@ function hasPending(pending: PendingCombatOverlay): boolean {
         || pending.locationConditions.size > 0;
 }
 
+/** All runtime facts that require the current phase to be closed. */
+function hasPendingMekPhaseChanges(state: MekUnitRuntimeState): boolean {
+    return hasPending(state.pendingCombat)
+        || state.movementPsr.damageThisPhase > 0
+        || state.movementPsr.checks.some(check => check.status === 'pending')
+        || state.movementPsr.automaticFalls.length > 0
+        || state.ruleChecks.size > 0
+        || state.turn.phaseStateChanged;
+}
+
 function validateState(
     state: MekUnitRuntimeState,
     unit: MekRuntimeSource,
@@ -5492,10 +5364,9 @@ function validateState(
     const entity = unit.entity;
     const index = unit.index;
     const ruleset = unit.ruleset;
-    if (state.schemaVersion !== 7) throw new Error('Unsupported runtime-state schema');
-    if (state.family.kind !== 'mek') throw new Error('Unsupported runtime-state family');
     asStateRevision(state.stateRevision);
-    if (typeof state.destroyed !== 'boolean') throw new Error('Invalid runtime destroyed state');
+    if (typeof state.explicitlyDestroyed !== 'boolean'
+        || typeof state.destroyed !== 'boolean') throw new Error('Invalid runtime destroyed state');
     try {
         canonicalizeMekHeatStateV2(state.heat);
     } catch {
@@ -5697,7 +5568,8 @@ function validateState(
             || crew.wounds > MAX_MEK_CREW_WOUNDS
             || typeof crew.unconscious !== 'boolean'
             || typeof crew.ejected !== 'boolean'
-            || (crew.unconscious && crew.ejected)
+            || (crew.dead !== undefined && crew.dead !== true)
+            || (crew.dead === true && crew.wounds < MAX_MEK_CREW_WOUNDS)
             || (crew.recoveryReadyTurn !== undefined
                 && crew.recoveryReadyTurn !== null
                 && (!Number.isSafeInteger(crew.recoveryReadyTurn)
@@ -6159,17 +6031,10 @@ function isEquipmentStatus(value: unknown): value is EquipmentStatus {
     return value === 'available' || value === 'disabled' || value === 'destroyed';
 }
 
-function rejected(
-    state: MekUnitRuntimeState,
-    reason: Extract<CommandReduction, { accepted: false }>['reason'],
-): CommandReduction {
-    return { accepted: false, reason, currentRevision: state.stateRevision };
+function unchanged(state: MekUnitRuntimeState): MekUnitCommandResult {
+    return Object.freeze({ accepted: true, changed: false, state });
 }
 
-function canonicalCommandKey(
-    command: CBTUnitCommand | CBTUnitAttackerTargetingCommand | CBTUnitSelectedWeaponFireCommand,
-): string {
-    return JSON.stringify(command.type === 'replace-turn-state'
-        ? { ...command, turn: serializeMekTurnStateV2(command.turn) }
-        : command);
+function readOnly(state: MekUnitRuntimeState): MekUnitCommandResult {
+    return Object.freeze({ accepted: false, changed: false, state });
 }

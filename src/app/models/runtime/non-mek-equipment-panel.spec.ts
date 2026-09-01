@@ -5,7 +5,9 @@ import { CORE_2026_RULESET } from '../cbt-ruleset.model';
 import { AmmoEquipment, createEquipment, WeaponEquipment } from '../equipment.model';
 import {
     TestAeroSpaceFighterEntity,
+    TestDropShipEntity,
     TestInfantryEntity,
+    TestJumpShipEntity,
     TestProtoMekEntity,
     TestTankEntity,
 } from '../entity/testing/test-entities';
@@ -166,15 +168,15 @@ describe('Entity equipment panel projection', () => {
 
         runtime.dispatch({
             kind: 'configure-ammo-source',
-            expectedRevision: runtime.revision(),
+
             componentId: ammoId,
             munitionKey: precision.id,
             remaining: 4,
         });
         runtime.dispatchAttackerTargeting({
             kind: 'edit-attacker-targeting',
-            expectedRevision: runtime.revision(),
-            expectedRegistryRevision: registry.revision,
+
+
             edit: {
                 kind: 'set-component-selection',
                 componentId: weaponId,
@@ -183,8 +185,8 @@ describe('Entity equipment panel projection', () => {
         }, registry, false);
         runtime.dispatchAttackerTargeting({
             kind: 'edit-attacker-targeting',
-            expectedRevision: runtime.revision(),
-            expectedRegistryRevision: registry.revision,
+
+
             edit: {
                 kind: 'set-target-facts',
                 targetId,
@@ -193,8 +195,8 @@ describe('Entity equipment panel projection', () => {
         }, registry, false);
         runtime.dispatchAttackerTargeting({
             kind: 'edit-attacker-targeting',
-            expectedRevision: runtime.revision(),
-            expectedRegistryRevision: registry.revision,
+
+
             edit: {
                 kind: 'set-component-ammo',
                 componentId: weaponId,
@@ -203,14 +205,14 @@ describe('Entity equipment panel projection', () => {
         }, registry, false);
         runtime.dispatch({
             kind: 'set-component-status',
-            expectedRevision: runtime.revision(),
+
             componentId: weaponId,
             status: 'destroyed',
             target: 'pending',
         });
         runtime.dispatch({
             kind: 'set-component-status',
-            expectedRevision: runtime.revision(),
+
             componentId: ammoId,
             status: 'destroyed',
             target: 'pending',
@@ -267,7 +269,7 @@ describe('Entity equipment panel projection', () => {
             { id: 'precision', label: 'Precision', modifier: -2 },
         ]);
 
-        runtime.dispatch({ kind: 'end-phase', expectedRevision: runtime.revision() });
+        runtime.dispatch({ kind: 'end-phase'});
         const committed = projectNonMekEquipmentPanel(
             entity,
             runtime.getIndex(),
@@ -312,7 +314,7 @@ describe('Entity equipment panel projection', () => {
         );
         runtime.dispatch({
             kind: 'damage-track',
-            expectedRevision: runtime.revision(),
+
             damageTrackId: nonMekDamageTrackId('engine_hit_1'),
             amount: 1,
             target: 'committed',
@@ -320,7 +322,7 @@ describe('Entity equipment panel projection', () => {
         });
         runtime.dispatch({
             kind: 'set-sensor-damage-level',
-            expectedRevision: runtime.revision(),
+
             level: 4,
             target: 'committed',
             timestamp: 2,
@@ -367,7 +369,7 @@ describe('Entity equipment panel projection', () => {
         );
         runtime.dispatch({
             kind: 'damage-track',
-            expectedRevision: runtime.revision(),
+
             damageTrackId: nonMekDamageTrackId('stabilizer_hit_front'),
             amount: 1,
             target: 'committed',
@@ -375,14 +377,14 @@ describe('Entity equipment panel projection', () => {
         });
         runtime.dispatch({
             kind: 'set-movement',
-            expectedRevision: runtime.revision(),
+
             movement: { mode: 'run', distance: 5, boosterComponentIds: [] },
         });
         const registry = Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) });
         runtime.dispatchAttackerTargeting({
             kind: 'edit-attacker-targeting',
-            expectedRevision: runtime.revision(),
-            expectedRegistryRevision: registry.revision,
+
+
             edit: {
                 kind: 'set-action-selection',
                 target: { kind: 'intrinsic', actionId: 'intrinsic:charge' },
@@ -440,7 +442,7 @@ describe('Entity equipment panel projection', () => {
         );
         runtime.dispatch({
             kind: 'set-heat',
-            expectedRevision: runtime.revision(),
+
             heat: 24,
             target: 'committed',
         });
@@ -506,11 +508,13 @@ describe('Entity equipment panel projection', () => {
         const crewId = [...runtime.getIndex().crewPositions.keys()][0]!;
         runtime.dispatch({
             kind: 'set-crew-state',
-            expectedRevision: runtime.revision(),
+
             positionId: crewId,
             wounds: 0,
             unconscious: true,
             ejected: false,
+            killed: false,
+            stunned: false,
         });
         expect(snapshot().physicalAttacks[0]).toEqual(jasmine.objectContaining({
             label: 'Frenzy',
@@ -542,7 +546,7 @@ describe('Entity equipment panel projection', () => {
         const troopLocation = [...runtime.getIndex().locations.values()][0]!;
         runtime.dispatch({
             kind: 'set-internal-damage',
-            expectedRevision: runtime.revision(),
+
             locationId: troopLocation.id,
             damage: 7,
         });
@@ -560,6 +564,147 @@ describe('Entity equipment panel projection', () => {
 
         expect(rows.map(row => row.status)).toEqual(['available', 'available', 'available']);
         expect(rows.map(row => row.weapon?.selectable)).toEqual([true, true, false]);
+    });
+
+    it('projects one aggregate attack row per authored capital bay', () => {
+        const laser = new WeaponEquipment({
+            id: 'CapitalBayLaser',
+            name: 'Capital Bay Laser',
+            type: 'weapon',
+            weapon: {
+                atClass: 'CAPITAL_LASER',
+                capital: true,
+                damage: 1,
+                heat: 10,
+                ranges: [12, 24, 40, 50],
+                av: [1, 1, 1, 0],
+            },
+        });
+        const entity = new TestJumpShipEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        entity.uuid.set(UUID);
+        const mounts = Array.from({ length: 4 }, () =>
+            addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
+        entity.addEquipmentBay('weapon-bay', { mounts });
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:jumpship-bay-panel'),
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+
+        const snapshot = projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) }),
+        );
+        const weapons = snapshot.components.filter(row => row.weapon !== undefined);
+
+        expect(weapons).toHaveSize(1);
+        expect(weapons[0].attack?.source).toBe('authored-bay');
+        expect(weapons[0].attack?.members.map(member => member.componentId))
+            .toEqual(mounts.map(mount => asComponentId(mount.mountId)));
+        expect(weapons[0].weapon?.firingHeat).toBe(40);
+        expect(weapons[0].weapon?.aerospace?.attackValues).toEqual([4, 4, 4, 0]);
+    });
+
+    it('switches a DropShip projection between bay and grounded individual attacks', () => {
+        const laser = new WeaponEquipment({
+            id: 'DropShipBayLaser',
+            name: 'DropShip Bay Laser',
+            type: 'weapon',
+            weapon: { damage: 5, heat: 5, ranges: [6, 12, 20, 25], av: [5, 5, 0, 0] },
+        });
+        const entity = new TestDropShipEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        entity.uuid.set(UUID);
+        const mounts = Array.from({ length: 3 }, () =>
+            addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
+        entity.addEquipmentBay('weapon-bay', { mounts });
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:dropship-bay-panel'),
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const registry = Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) });
+        const weaponRows = () => projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            registry,
+        ).components.filter(row => row.weapon !== undefined);
+
+        expect(weaponRows()).toHaveSize(1);
+        runtime.dispatch({ kind: 'set-airborne', airborne: false });
+        expect(weaponRows()).toHaveSize(3);
+        runtime.dispatch({ kind: 'set-airborne', airborne: true });
+        expect(weaponRows()).toHaveSize(1);
+    });
+
+    it('keeps a Leviathan-scale inventory projection bounded by bay count', () => {
+        const weapon = new WeaponEquipment({
+            id: 'LeviathanScaleNac',
+            name: 'Leviathan Scale NAC',
+            type: 'weapon',
+            weapon: {
+                atClass: 'CAPITAL_AC',
+                ammoType: 'NAC',
+                rackSize: 10,
+                capital: true,
+                damage: 1,
+                heat: 10,
+                ranges: [12, 24, 40, 50],
+                av: [1, 1, 1, 0],
+            },
+        });
+        const ammo = new AmmoEquipment({
+            id: 'LeviathanScaleNacAmmo',
+            name: 'Leviathan Scale NAC Ammo',
+            type: 'ammo',
+            ammo: { type: 'NAC', rackSize: 10, shots: 10 },
+        });
+        const entity = new TestJumpShipEntity(createTestEquipmentRegistry({
+            [weapon.id]: weapon,
+            [ammo.id]: ammo,
+        }));
+        entity.uuid.set(UUID);
+        const location = entity.locationOrder[0];
+        const baySizes = Array.from({ length: 73 }, (_, index) => index < 67 ? 7 : 6);
+        for (const size of baySizes) {
+            const mounts = Array.from({ length: size }, () =>
+                addTestEquipment(entity, weapon, { location }));
+            entity.addEquipmentBay('weapon-bay', { mounts });
+        }
+        Array.from({ length: 72 }, () =>
+            addTestEquipment(entity, ammo, { location, shotsCount: 10 }));
+        const runtime = new NonMekUnitInstance(
+            asUnitInstanceId('unit:leviathan-scale-panel'),
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+
+        const started = performance.now();
+        const snapshot = projectNonMekEquipmentPanel(
+            entity,
+            runtime.getIndex(),
+            CORE_2026_RULESET,
+            runtime.snapshot(),
+            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            Object.freeze({ revision: asStateRevision(0), targets: Object.freeze([]) }),
+        );
+        const elapsed = performance.now() - started;
+        const weaponRows = snapshot.components.filter(row => row.weapon !== undefined);
+
+        expect(entity.equipment()).toHaveSize(577);
+        expect(weaponRows).toHaveSize(73);
+        expect(weaponRows.flatMap(row => row.attack?.members ?? [])).toHaveSize(505);
+        expect(snapshot.components).toHaveSize(145);
+        expect(elapsed).withContext(`projection took ${elapsed.toFixed(1)}ms`).toBeLessThan(3_000);
     });
 });
 

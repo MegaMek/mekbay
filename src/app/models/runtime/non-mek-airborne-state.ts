@@ -12,7 +12,7 @@ export function isSatelliteEntity(entity: BaseEntity): boolean {
 }
 
 /** Space-only craft have no grounded movement state to select or display. */
-export function isOnlyAirborneNonMekEntity(entity: BaseEntity): boolean {
+export function isOnlyAirborne(entity: BaseEntity): boolean {
     return entity.entityType === 'JumpShip'
         || entity.entityType === 'WarShip'
         || entity.entityType === 'SpaceStation'
@@ -21,13 +21,14 @@ export function isOnlyAirborneNonMekEntity(entity: BaseEntity): boolean {
 
 /** One canonical classification for storage, controls, movement, and presentation. */
 export function nonMekAirGroundCapability(entity: BaseEntity): NonMekAirGroundCapability {
-    if (isOnlyAirborneNonMekEntity(entity)) return 'only-airborne';
+    if (isOnlyAirborne(entity)) return 'only-airborne';
     const switchable = entity.entityType === 'Aero'
         || entity.entityType === 'ConvFighter'
         || entity.entityType === 'FixedWingSupport'
         || entity.entityType === 'SmallCraft'
         || entity.entityType === 'DropShip'
         || entity.unitType() === 'VTOL'
+        || entity.motiveType() === 'VTOL'
         || entity.motiveType() === 'WiGE';
     return switchable ? 'switchable' : 'only-grounded';
 }

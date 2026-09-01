@@ -40,15 +40,7 @@ import {
     type ReadyClassicUnit,
 } from './runtime/ready-classic-unit';
 import type { ReadyMekUnit } from './runtime/ready-unit-factory';
-import {
-    createCommandId,
-    type MekUnitRuntimeState,
-    type UnitInstanceId,
-} from './runtime/runtime-state';
-import type {
-    CommandReduction,
-    UnitDomainEvent,
-} from './runtime/unit-instance';
+import type { UnitInstanceId } from './runtime/runtime-state';
 
 export interface C3EmergencyMasterNotice {
     readonly message: string;
@@ -57,9 +49,8 @@ export interface C3EmergencyMasterNotice {
 }
 
 export interface C3EmergencyMasterMutation {
-    readonly changed: boolean;
+    readonly changedUnitIds: readonly UnitInstanceId[];
     readonly notices: readonly C3EmergencyMasterNotice[];
-    readonly eventsByUnit: ReadonlyMap<UnitInstanceId, readonly UnitDomainEvent[]>;
 }
 
 export interface C3EmergencyMasterEndTurnPlan {
@@ -181,8 +172,7 @@ export class CBTForceC3 {
             typeof componentC3EmergencyMasterFacts
         >['status'] }> = [];
         const definitions = new Map<string, ComponentC3EmergencyMasterDefinition>();
-        const eventsByUnit = new Map<UnitInstanceId, UnitDomainEvent[]>();
-        let changed = false;
+        const changedUnitIds = new Set<UnitInstanceId>();
 
         for (const instanceId of new Set(candidateUnitIds)) {
             const unit = units.get(instanceId);
@@ -206,20 +196,13 @@ export class CBTForceC3 {
                 statuses.push(Object.freeze({ key, status: facts.status }));
                 definitions.set(key, definition);
                 if (facts.status !== 'active' || facts.operatingTurns !== 0) continue;
-                const commandId = createCommandId();
                 const result = syncComponentC3EmergencyMasterEncounter(
                     runtime,
                     definition,
                     context,
-                    () => commandId,
                 );
                 if (!result.accepted || !result.changed) continue;
-                changed = true;
-                appendC3Event(eventsByUnit, instanceId, Object.freeze({
-                    kind: 'edit-c3-emergency-master',
-                    commandId,
-                    revision: runtime.revision(),
-                }));
+                changedUnitIds.add(instanceId);
             }
         }
 
@@ -233,9 +216,8 @@ export class CBTForceC3 {
             })];
         });
         return Object.freeze({
-            changed,
+            changedUnitIds: Object.freeze([...changedUnitIds]),
             notices: Object.freeze(notices),
-            eventsByUnit: freezeC3Events(eventsByUnit),
         });
     }
 
@@ -281,7 +263,6 @@ export class CBTForceC3 {
             return emptyC3EmergencyMasterMutation();
         }
         const runtime = plan.unit.getInstance();
-        const eventsByUnit = new Map<UnitInstanceId, UnitDomainEvent[]>();
         const notices: C3EmergencyMasterNotice[] = [];
         let changed = false;
         for (const definition of plan.definitions) {
@@ -289,20 +270,13 @@ export class CBTForceC3 {
                 instanceId: plan.instanceId,
                 encounter: () => ({ networks: plan.effectiveNetworks }),
             };
-            const commandId = createCommandId();
             const result = settleComponentC3EmergencyMasterEndTurn(
                 runtime,
                 definition,
                 context,
-                () => commandId,
             );
             if (!result.accepted || !result.changed) continue;
             changed = true;
-            appendC3Event(eventsByUnit, plan.instanceId, Object.freeze({
-                kind: 'edit-c3-emergency-master',
-                commandId,
-                revision: runtime.revision(),
-            }));
             const facts = componentC3EmergencyMasterFacts(runtime, definition, context);
             notices.push(Object.freeze({
                 message: `${definition.unitDisplayName}: ${definition.displayName} ${
@@ -312,9 +286,8 @@ export class CBTForceC3 {
             }));
         }
         return Object.freeze({
-            changed,
+            changedUnitIds: changed ? Object.freeze([plan.instanceId]) : Object.freeze([]),
             notices: Object.freeze(notices),
-            eventsByUnit: freezeC3Events(eventsByUnit),
         });
     }
 }
@@ -354,45 +327,10 @@ export function projectReadyC3Components(unit: ReadyClassicUnit): readonly C3Com
     })));
 }
 
-function appendC3Event(
-    events: Map<UnitInstanceId, UnitDomainEvent[]>,
-    instanceId: UnitInstanceId,
-    event: UnitDomainEvent,
-): void {
-    const current = events.get(instanceId);
-    if (current) current.push(event);
-    else events.set(instanceId, [event]);
-}
-
-function freezeC3Events(
-    events: ReadonlyMap<UnitInstanceId, readonly UnitDomainEvent[]>,
-): ReadonlyMap<UnitInstanceId, readonly UnitDomainEvent[]> {
-    return new Map([...events].map(([instanceId, unitEvents]) => [
-        instanceId,
-        Object.freeze([...unitEvents]),
-    ] as const));
-}
-
 export function emptyC3EmergencyMasterMutation(): C3EmergencyMasterMutation {
     return Object.freeze({
-        changed: false,
+        changedUnitIds: Object.freeze([]),
         notices: Object.freeze([]),
-        eventsByUnit: new Map(),
-    });
-}
-
-export function mergeC3CommandReduction(
-    reduction: Extract<CommandReduction, { readonly accepted: true }>,
-    state: MekUnitRuntimeState,
-    instanceId: UnitInstanceId,
-    ...mutations: readonly C3EmergencyMasterMutation[]
-): CommandReduction {
-    const c3Events = mutations.flatMap(mutation => mutation.eventsByUnit.get(instanceId) ?? []);
-    if (state.stateRevision === reduction.state.stateRevision && c3Events.length === 0) return reduction;
-    return Object.freeze({
-        ...reduction,
-        state,
-        events: Object.freeze([...reduction.events, ...c3Events]),
     });
 }
 

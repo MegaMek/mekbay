@@ -181,6 +181,7 @@ describe('Classic V1 force converter', () => {
                 unit: 'Legacy Tank',
                 state: {
                     destroyed: true,
+                    shutdown: true,
                     locations: {
                         [locationCode]: {
                             internal: Math.min(1, location.internalPoints),
@@ -209,7 +210,8 @@ describe('Classic V1 force converter', () => {
             identity: { kind: 'resolved', savedIdentity: identity },
         };
 
-        const saved = convertPersistedNonMekUnitV1(source, fresh);
+        const issues: string[] = [];
+        const saved = convertPersistedNonMekUnitV1(source, fresh, issue => issues.push(issue));
         const restored = ReadyNonMekUnit.restore(saved, entity, identity);
         const state = restored.getInstance().snapshot();
 
@@ -220,10 +222,10 @@ describe('Classic V1 force converter', () => {
         expect(saved.restoration).toBeUndefined();
         expect(saved.turn).toEqual({
             turnCounter: 3,
-            airborne: true,
             movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
         });
         expect(JSON.stringify(saved)).not.toContain('"heat":5');
+        expect(issues.some(issue => issue.includes('shutdown'))).toBeFalse();
         expect(state.explicitlyDestroyed).toBeTrue();
         expect(state.conditions.has('immobile')).toBeTrue();
         expect(state.crew.get([...fresh.getIndex().crewPositions.keys()][0])).toEqual({
@@ -231,7 +233,7 @@ describe('Classic V1 force converter', () => {
         });
         expect(state.turn).toEqual({
             turnCounter: 3,
-            airborne: true,
+            airborne: null,
             movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
             weaponsHeat: 0,
             cover: null,
@@ -247,13 +249,13 @@ describe('Classic V1 force converter', () => {
         const stunnedSaved = convertPersistedNonMekUnitV1(source, fresh);
         const positionId = [...fresh.getIndex().crewPositions.keys()][0];
         expect(ReadyNonMekUnit.restore(stunnedSaved, entity, identity)
-            .getInstance().snapshot().crew.get(positionId)?.state).toBe('stunned');
+            .getInstance().snapshot().crew.get(positionId)?.stunned).toBeTrue();
         expect(stunnedSaved.restoration).toBeUndefined();
 
         legacyCrew['state'] = 4;
         const killedSaved = convertPersistedNonMekUnitV1(source, fresh);
         expect(ReadyNonMekUnit.restore(killedSaved, entity, identity)
-            .getInstance().snapshot().crew.get(positionId)?.state).toBe('killed');
+            .getInstance().snapshot().crew.get(positionId)?.killed).toBeTrue();
     });
 
     it('restores the production V1 aerospace heat profile into direct non-Mek state', () => {

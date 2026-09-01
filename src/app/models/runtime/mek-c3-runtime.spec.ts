@@ -11,7 +11,7 @@ import {
     type EncounterNetwork,
 } from './encounter-runtime';
 import { projectEffectiveMekC3Networks } from './mek-c3-runtime';
-import { createCommandId, type UnitInstanceId } from './runtime-state';
+import { type UnitInstanceId } from './runtime-state';
 import {
     createDirectC3MasterRuntimeFixture,
     createDirectMekRuntimeFixture,
@@ -39,8 +39,8 @@ describe('effective Mek C3 runtime', () => {
 
         expect(master.instance.dispatch({
             type: 'set-component-status',
-            commandId: createCommandId(),
-            expectedRevision: master.instance.snapshot().stateRevision,
+
+
             componentId: masterComponent.id,
             status: 'destroyed',
             target: 'committed',
@@ -85,16 +85,16 @@ describe('effective Mek C3 runtime', () => {
         const configuredNetworks = [configured] as const;
         expect(master.instance.dispatch({
             type: 'set-component-status',
-            commandId: createCommandId(),
-            expectedRevision: master.instance.snapshot().stateRevision,
+
+
             componentId: masterComponent.id,
             status: 'destroyed',
             target: 'committed',
         }).accepted).toBeTrue();
         expect(emergency.instance.dispatch({
             type: 'edit-c3-emergency-master',
-            commandId: createCommandId(),
-            expectedRevision: emergency.instance.snapshot().stateRevision,
+
+
             componentId: emergencyComponent.id,
             edit: { kind: 'toggle-requested', turningOn: false },
         }).accepted).toBeTrue();
@@ -119,23 +119,23 @@ describe('effective Mek C3 runtime', () => {
         );
         expect(master.instance.dispatch({
             type: 'set-component-status',
-            commandId: createCommandId(),
-            expectedRevision: master.instance.revision(),
+
+
             componentId: masterComponent.id,
             status: 'destroyed',
             target: 'committed',
         }).accepted).toBeTrue();
         expect(emergency.instance.dispatch({
             type: 'set-stealth-state',
-            commandId: createCommandId(),
-            expectedRevision: emergency.instance.revision(),
+
+
             componentId: stealthComponent.id,
             state: 'enabling',
         }).accepted).toBeTrue();
         expect(emergency.instance.dispatch({
             type: 'end-turn',
-            commandId: createCommandId(),
-            expectedRevision: emergency.instance.revision(),
+
+
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(emergency.instance.query().c3DisruptedByStealth()).toBeTrue();

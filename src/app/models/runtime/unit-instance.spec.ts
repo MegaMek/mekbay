@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { asCommandId, asStateRevision } from './runtime-state';
+import { asStateRevision } from './runtime-state';
 import {
     createDirectMekRuntimeFixture,
     createDirectModularArmorRuntimeFixture,
@@ -22,12 +22,69 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         const result = instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('phase:empty'),
-            expectedRevision: instance.query().stateRevision,
+
+
         });
 
         expect(result.accepted).toBeTrue();
         expect(instance.query().stateRevision).toBe(asStateRevision(1));
+    });
+
+    it('defers a sixth-wound death until the phase boundary', () => {
+        const { instance, index } = createDirectMekRuntimeFixture();
+        const pilotId = [...index.crewPositions.keys()][0]!;
+
+        expect(instance.query().hasPendingPhaseChanges()).toBeFalse();
+        expect(instance.dispatch({
+            type: 'set-crew-state',
+            positionId: pilotId,
+            wounds: 6,
+            unconscious: true,
+            ejected: true,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        const pendingCrew = instance.query().crewState(pilotId);
+        expect(pendingCrew).toEqual(jasmine.objectContaining({
+            wounds: 6,
+            unconscious: true,
+            ejected: true,
+        }));
+        expect(pendingCrew.dead).toBeUndefined();
+        expect(instance.query().hasPendingPhaseChanges()).toBeTrue();
+        expect(instance.query().hasCondition('abandoned')).toBeTrue();
+
+        expect(instance.dispatch({ type: 'end-phase' }))
+            .toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(instance.query().crewState(pilotId)).toEqual(jasmine.objectContaining({
+            wounds: 6,
+            dead: true,
+            unconscious: true,
+            ejected: true,
+        }));
+        expect(instance.query().hasPendingPhaseChanges()).toBeFalse();
+        expect(instance.query().hasCondition('abandoned')).toBeTrue();
+
+        expect(instance.dispatch({
+            type: 'set-crew-state',
+            positionId: pilotId,
+            wounds: 5,
+            unconscious: true,
+            ejected: true,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        const repairedCrew = instance.query().crewState(pilotId);
+        expect(repairedCrew).toEqual(jasmine.objectContaining({
+            unconscious: true,
+            ejected: true,
+        }));
+        expect(repairedCrew.dead).toBeUndefined();
+
+        expect(instance.dispatch({
+            type: 'set-crew-state',
+            positionId: pilotId,
+            wounds: 5,
+            unconscious: false,
+            ejected: false,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(instance.query().hasCondition('abandoned')).toBeFalse();
     });
 
     it('keeps the entity pristine while two sparse runtimes diverge', () => {
@@ -40,8 +97,8 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         expect(first.dispatch({
             type: 'damage-armor',
-            commandId: asCommandId('damage:first'),
-            expectedRevision: asStateRevision(0),
+
+
             faceId: face.id,
             amount: 1,
             target: 'committed',
@@ -59,15 +116,15 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         const face = [...index.armorFaces.values()].find(candidate => candidate.maximumPoints > 1)!;
 
         expect(instance.dispatch({
-            type: 'damage-armor', commandId: asCommandId('pending:armor'),
-            expectedRevision: asStateRevision(0), faceId: face.id, amount: 1, target: 'pending',
+            type: 'damage-armor',
+            faceId: face.id, amount: 1, target: 'pending',
         }).accepted).toBeTrue();
         expect(instance.query().remainingArmor(face.id, 'committed')).toBe(face.maximumPoints);
         expect(instance.query().remainingArmor(face.id, 'preview')).toBe(face.maximumPoints - 1);
 
         expect(instance.dispatch({
-            type: 'commit-pending', commandId: asCommandId('pending:commit'),
-            expectedRevision: asStateRevision(1),
+            type: 'commit-pending',
+
         }).accepted).toBeTrue();
         expect(instance.query().remainingArmor(face.id, 'committed')).toBe(face.maximumPoints - 1);
         expect(instance.snapshot().pendingCombat.armorDamage.size).toBe(0);
@@ -84,8 +141,8 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         expect(instance.dispatch({
             type: 'hit-critical',
-            commandId: asCommandId('pending-psr:hit'),
-            expectedRevision: instance.query().stateRevision,
+
+
             slotId: slot.id,
             hits: 1,
             target: 'pending',
@@ -94,8 +151,8 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         const committed = instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('pending-psr:commit'),
-            expectedRevision: instance.query().stateRevision,
+
+
         });
         expect(committed.accepted).toBeTrue();
         expect(instance.query().criticalHits(slot.id, 'committed')).toBe(1);
@@ -107,23 +164,23 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         expect(instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('pending-psr:blocked'),
-            expectedRevision: instance.query().stateRevision,
+
+
         })).toEqual(jasmine.objectContaining({
-            accepted: false,
-            reason: 'PENDING_PILOT_CHECKS',
+            accepted: true,
+            changed: false,
         }));
         expect(instance.dispatch({
             type: 'resolve-mek-pilot-check',
-            commandId: asCommandId('pending-psr:resolve'),
-            expectedRevision: instance.query().stateRevision,
+
+
             checkId: check.checkId,
             evidence: { dice: [6, 6], claimedOutcome: 'success' },
         }).accepted).toBeTrue();
         expect(instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('pending-psr:end'),
-            expectedRevision: instance.query().stateRevision,
+
+
         }).accepted).toBeTrue();
         expect(instance.query().mekPilotChecks()).toEqual([]);
     });
@@ -138,8 +195,8 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
             }))!;
         expect(instance.dispatch({
             type: 'hit-critical',
-            commandId: asCommandId('preview-phase:hit'),
-            expectedRevision: instance.query().stateRevision,
+
+
             slotId: slot.id,
             hits: 1,
             target: 'pending',
@@ -167,8 +224,8 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         expect(instance.dispatch({
             type: 'set-location-condition',
-            commandId: asCommandId('reattach:detach'),
-            expectedRevision: instance.query().stateRevision,
+
+
             locationId: leg.id,
             condition: 'blown-off',
             value: 1,
@@ -176,8 +233,8 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         }).accepted).toBeTrue();
         expect(instance.dispatch({
             type: 'set-location-condition',
-            commandId: asCommandId('reattach:preview'),
-            expectedRevision: instance.query().stateRevision,
+
+
             locationId: leg.id,
             condition: 'blown-off',
             value: 0,
@@ -186,8 +243,8 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         const committed = instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('reattach:commit'),
-            expectedRevision: instance.query().stateRevision,
+
+
         });
 
         expect(committed.accepted).toBeTrue();
@@ -212,18 +269,18 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         const pristineBv = instance.query().mekBattleValue();
         expect(pristineBv.kind).toBe('complete');
         expect(instance.dispatch({
-            type: 'set-component-mode', commandId: asCommandId('mode:rapid'),
-            expectedRevision: asStateRevision(0), componentId: ac.id, mode: 'Rapid',
+            type: 'set-component-mode',
+            componentId: ac.id, mode: 'Rapid',
         }).accepted).toBeTrue();
         expect(instance.query().componentMode(ac.id)).toBe('Rapid');
         expect(instance.dispatch({
-            type: 'spend-ammo', commandId: asCommandId('ammo:spend'),
-            expectedRevision: asStateRevision(1), componentId: ammo.id, amount: 3,
+            type: 'spend-ammo',
+            componentId: ammo.id, amount: 3,
         }).accepted).toBeTrue();
         expect(instance.query().remainingAmmo(ammo.id)).toBe(17);
         expect(instance.dispatch({
-            type: 'set-component-status', commandId: asCommandId('laser:destroy'),
-            expectedRevision: asStateRevision(2), componentId: laser.id,
+            type: 'set-component-status',
+            componentId: laser.id,
             status: 'destroyed', target: 'committed',
         }).accepted).toBeTrue();
         expect(instance.query().componentStatus(laser.id)).toBe('destroyed');
@@ -256,24 +313,20 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         }
     });
 
-    it('enforces revision CAS and command idempotency', () => {
+    it('applies each command to the current state', () => {
         const { instance, index } = createDirectMekRuntimeFixture();
         const face = [...index.armorFaces.values()].find(candidate => candidate.maximumPoints > 1)!;
         const command = {
             type: 'damage-armor' as const,
-            commandId: asCommandId('cas:damage'),
-            expectedRevision: asStateRevision(0),
             faceId: face.id,
             amount: 1,
             target: 'committed' as const,
         };
         const first = instance.dispatch(command);
-        expect(first.accepted).toBeTrue();
-        expect(instance.dispatch(command)).toEqual(jasmine.objectContaining({ accepted: true, idempotent: true }));
-        expect(instance.dispatch({ ...command, commandId: asCommandId('cas:stale') }))
-            .toEqual({ accepted: false, reason: 'REVISION_CONFLICT', currentRevision: asStateRevision(1) });
-        expect(instance.dispatch({ ...command, amount: 2 }))
-            .toEqual({ accepted: false, reason: 'COMMAND_ID_CONFLICT', currentRevision: asStateRevision(1) });
+        const second = instance.dispatch(command);
+        expect(first).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(second).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(instance.query().remainingArmor(face.id, 'committed')).toBe(face.maximumPoints - 2);
     });
 
     it('binds both production rulesets without changing the entity', () => {
@@ -288,8 +341,8 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         const { instance } = createDirectMekRuntimeFixture();
         expect(instance.dispatch({
             type: 'declare-mek-movement',
-            commandId: asCommandId('movement:walk'),
-            expectedRevision: asStateRevision(0),
+
+
             declaration: {
                 schemaVersion: 1,
                 mode: 'walk',
@@ -302,8 +355,8 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         const currentTurn = instance.query().turnState();
         expect(instance.dispatch({
             type: 'replace-turn-state',
-            commandId: asCommandId('turn:airborne'),
-            expectedRevision: asStateRevision(1),
+
+
             turn: { ...currentTurn, airborne: true },
         }).accepted).toBeTrue();
 
@@ -319,8 +372,8 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         expect(instance.dispatch({
             type: 'damage-internal',
-            commandId: asCommandId('fall:left-leg'),
-            expectedRevision: asStateRevision(0),
+
+
             locationId: leg.id,
             amount: leg.internalPoints,
             target: 'committed',
@@ -335,27 +388,27 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         expect(instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('fall:end-phase'),
-            expectedRevision: instance.query().stateRevision,
+
+
         }).accepted).toBeTrue();
         expect(instance.query().mekMovementPsrState().automaticFalls.length).toBe(1);
         expect(instance.query().hasCondition('prone')).toBeTrue();
         expect(instance.dispatch({
             type: 'dismiss-mek-automatic-falls',
-            commandId: asCommandId('fall:handled'),
-            expectedRevision: instance.query().stateRevision,
+
+
         }).accepted).toBeTrue();
         if (instance.query().mekPilotChecks().some(check => check.status === 'pending')) {
             expect(instance.dispatch({
                 type: 'dismiss-mek-pilot-checks',
-                commandId: asCommandId('fall:checks-handled'),
-                expectedRevision: instance.query().stateRevision,
+
+
             }).accepted).toBeTrue();
         }
         const resolvedBoundary = instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('fall:resolved'),
-            expectedRevision: instance.query().stateRevision,
+
+
         });
         expect(resolvedBoundary.accepted).withContext(JSON.stringify(resolvedBoundary)).toBeTrue();
         expect(instance.query().mekMovementPsrState().automaticFalls).toEqual([]);
@@ -370,16 +423,16 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
                 return component?.kind === 'system' && component.systemType === 'Foot Actuator';
             }))!;
         expect(instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('dismiss:hit'),
-            expectedRevision: instance.query().stateRevision,
+            type: 'hit-critical',
+
             slotId: slot.id, hits: 1, target: 'committed',
         }).accepted).toBeTrue();
         const check = instance.query().mekPilotChecks()[0]!;
         expect(check.status).toBe('pending');
 
         expect(instance.dispatch({
-            type: 'dismiss-mek-pilot-checks', commandId: asCommandId('dismiss:check'),
-            expectedRevision: instance.query().stateRevision,
+            type: 'dismiss-mek-pilot-checks',
+
             checkIds: [check.checkId],
         }).accepted).toBeTrue();
         expect(instance.query().mekPilotChecks()).toEqual([]);
@@ -392,16 +445,16 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            commandId: asCommandId('rapid-fire:mode'),
-            expectedRevision: asStateRevision(0),
+
+
             componentId: ac.id,
             mode: 'Rapid',
         }).accepted).toBeTrue();
         const munitionKey = fixture.instance.query().ammoLoadout(ammo.id).munitionKey;
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
-            commandId: asCommandId('rapid-fire:fire'),
-            expectedRevision: asStateRevision(1),
+
+
             heatPolicy: 'manual',
             selections: [{
                 weaponId: ac.id,
@@ -419,8 +472,8 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         const laser = fixture.equipmentComponent('ISMediumPulseLaserPrototype');
         const fired = fixture.instance.dispatch({
             type: 'fire-weapons',
-            commandId: asCommandId('prototype-laser:fire'),
-            expectedRevision: asStateRevision(0),
+
+
             heatPolicy: 'manual',
             selections: [{ weaponId: laser.id }],
             prototypeHeatRolls: [{ weaponId: laser.id, roll: 6 }],
@@ -443,11 +496,11 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         const missingLaser = missing.equipmentComponent('ISMediumPulseLaserPrototype');
         expect(missing.instance.dispatch({
             type: 'fire-weapons',
-            commandId: asCommandId('prototype-laser:missing'),
-            expectedRevision: asStateRevision(0),
+
+
             heatPolicy: 'manual',
             selections: [{ weaponId: missingLaser.id }],
-        })).toEqual(jasmine.objectContaining({ accepted: false, reason: 'INVALID_TARGET' }));
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(missing.instance.query().turnState().weaponsHeat).toBe(0);
     });
 
@@ -456,21 +509,21 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         const laser = fixture.equipmentComponent('ISMediumLaser');
 
         expect(fixture.instance.dispatch({
-            type: 'set-heat', commandId: asCommandId('heat-correction:current'),
-            expectedRevision: asStateRevision(0), heat: 10,
+            type: 'set-heat',
+            heat: 10,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'fire-weapons', commandId: asCommandId('heat-correction:fire'),
-            expectedRevision: asStateRevision(1), heatPolicy: 'automatic',
+            type: 'fire-weapons',
+            heatPolicy: 'automatic',
             selections: [{ weaponId: laser.id }],
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'set-pending-heat', commandId: asCommandId('heat-correction:select'),
-            expectedRevision: asStateRevision(2), heat: 23,
+            type: 'set-pending-heat',
+            heat: 23,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'apply-heat', commandId: asCommandId('heat-correction:apply'),
-            expectedRevision: asStateRevision(3), policy: 'automatic',
+            type: 'apply-heat',
+            policy: 'automatic',
         }).accepted).toBeTrue();
 
         expect(fixture.instance.query().heatState()).toEqual(jasmine.objectContaining({
@@ -487,24 +540,24 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         const laser = fixture.equipmentComponent('ISMediumLaser');
 
         expect(fixture.instance.dispatch({
-            type: 'set-heat', commandId: asCommandId('heat-end-turn:current'),
-            expectedRevision: asStateRevision(0), heat: 10,
+            type: 'set-heat',
+            heat: 10,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'fire-weapons', commandId: asCommandId('heat-end-turn:fire'),
-            expectedRevision: asStateRevision(1), heatPolicy: 'automatic',
+            type: 'fire-weapons',
+            heatPolicy: 'automatic',
             selections: [{ weaponId: laser.id }],
         }).accepted).toBeTrue();
         const projected = fixture.instance.query().heatProjection('automatic');
         if (projected.kind !== 'supported') throw new Error('Fixture heat must be supported');
         expect(fixture.instance.dispatch({
-            type: 'set-pending-heat', commandId: asCommandId('heat-end-turn:select'),
-            expectedRevision: asStateRevision(2), heat: 25,
+            type: 'set-pending-heat',
+            heat: 25,
         }).accepted).toBeTrue();
 
         expect(fixture.instance.dispatch({
-            type: 'end-turn', commandId: asCommandId('heat-end-turn:end'),
-            expectedRevision: asStateRevision(3), policy: 'automatic',
+            type: 'end-turn',
+            policy: 'automatic',
         }).accepted).toBeTrue();
         expect(fixture.instance.query().heatState().current).toBe(projected.projection.projected);
         expect(fixture.instance.query().heatState().current).not.toBe(25);
@@ -516,18 +569,18 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         const laser = fixture.equipmentComponent('ISMediumLaser');
 
         expect(fixture.instance.dispatch({
-            type: 'set-heat', commandId: asCommandId('manual-heat:current'),
-            expectedRevision: asStateRevision(0), heat: 10,
+            type: 'set-heat',
+            heat: 10,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'fire-weapons', commandId: asCommandId('manual-heat:fire'),
-            expectedRevision: asStateRevision(1), heatPolicy: 'manual',
+            type: 'fire-weapons',
+            heatPolicy: 'manual',
             selections: [{ weaponId: laser.id }],
         }).accepted).toBeTrue();
 
         expect(fixture.instance.dispatch({
-            type: 'end-turn', commandId: asCommandId('manual-heat:end'),
-            expectedRevision: asStateRevision(2), policy: 'manual',
+            type: 'end-turn',
+            policy: 'manual',
         }).accepted).toBeTrue();
         expect(fixture.instance.query().heatState().current).toBe(10);
         expect(fixture.instance.query().turnState().weaponsHeat).toBe(0);
@@ -550,9 +603,9 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         expect(fixture.instance.dispatchAttackerTargeting({
             type: 'edit-attacker-targeting',
-            commandId: asCommandId('targeting:indirect-facts'),
-            expectedRevision: asStateRevision(0),
-            expectedRegistryRevision: registry.revision,
+
+
+
             edit: {
                 kind: 'set-target-facts',
                 targetId,
@@ -562,19 +615,18 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
         expect(fixture.instance.dispatchAttackerTargeting({
             type: 'edit-attacker-targeting',
-            commandId: asCommandId('targeting:illegal-laser'),
-            expectedRevision: asStateRevision(1),
-            expectedRegistryRevision: registry.revision,
+
+
+
             edit: {
                 kind: 'set-component-selection',
                 componentId: laser.id,
                 selection: { kind: 'target', targetId },
             },
-        }, registry, false)).toEqual({
-            accepted: false,
-            reason: 'INVALID_TARGETING',
-            currentRevision: asStateRevision(1),
-        });
+        }, registry, false)).toEqual(jasmine.objectContaining({
+            accepted: true,
+            changed: false,
+        }));
         expect(fixture.instance.query().attackerTargetingState().components.get(laser.id)).toBeUndefined();
     });
 });

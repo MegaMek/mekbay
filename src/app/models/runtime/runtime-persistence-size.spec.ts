@@ -75,7 +75,6 @@ describe('compact runtime persistence', () => {
         const units = instanceIds.map(instanceId => {
             const unit = Object.freeze({ ...template, instanceId });
             return Object.freeze({
-                kind: 'ready' as const,
                 instanceId,
                 stateRevision: unit.stateRevision,
                 unit,
@@ -97,7 +96,6 @@ describe('compact runtime persistence', () => {
                     name: 'Size budget',
                     members: instanceIds.map((instanceId, order) => ({
                         instanceId,
-                        kind: 'ready' as const,
                         order,
                     })),
                 }],

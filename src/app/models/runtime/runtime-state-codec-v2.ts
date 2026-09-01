@@ -620,10 +620,8 @@ export function serializeCBTUnitStateV2(
     const unit = codecUnit(input.entity, input.index, input.baselineRef.ruleset);
     asUnitInstanceId(input.instanceId);
     asStateRevision(input.state.stateRevision);
-    if (input.state.schemaVersion !== 7 || input.state.family.kind !== 'mek') {
-        codecFail('INVALID_RUNTIME_STATE', '$.state', 'only Mek runtime-state schema V7 is supported');
-    }
-    if (typeof input.state.destroyed !== 'boolean') {
+    if (typeof input.state.explicitlyDestroyed !== 'boolean'
+        || typeof input.state.destroyed !== 'boolean') {
         codecFail('INVALID_RUNTIME_STATE', '$.state.destroyed', 'must be boolean');
     }
     const turn = serializeRuntimeTurn(input.state.turn, '$.state.turn');
@@ -778,8 +776,18 @@ export function serializeCBTUnitStateV2(
         if (typeof value.unconscious !== 'boolean') {
             codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}.unconscious`, 'must be boolean');
         }
-        if (typeof value.ejected !== 'boolean' || (value.unconscious && value.ejected)) {
-            codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}.ejected`, 'must be boolean and mutually exclusive with unconscious');
+        if (value.dead !== undefined && value.dead !== true) {
+            codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}.dead`, 'sparse dead state must be true');
+        }
+        if (typeof value.ejected !== 'boolean') {
+            codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}.ejected`, 'must be boolean');
+        }
+        if (value.dead === true && wounds < MAX_MEK_CREW_WOUNDS) {
+            codecFail(
+                'INVALID_RUNTIME_STATE',
+                `$.state.crew.${positionId}.dead`,
+                'committed death requires fatal wounds',
+            );
         }
         if (value.recoveryReadyTurn !== undefined
             && value.recoveryReadyTurn !== null
@@ -805,6 +813,7 @@ export function serializeCBTUnitStateV2(
             target: target.ref,
             wounds,
             unconscious: value.unconscious,
+            ...(value.dead ? { dead: true as const } : {}),
             ...(value.ejected ? { ejected: true as const } : {}),
             ...(value.recoveryReadyTurn === undefined
                 ? {}
@@ -867,7 +876,7 @@ export function serializeCBTUnitStateV2(
         blueprintReferences: current.table,
         deployment: input.deployment,
         stateRevision: input.state.stateRevision,
-        ...(input.state.destroyed ? { destroyed: true as const } : {}),
+        ...(input.state.explicitlyDestroyed ? { destroyed: true as const } : {}),
         ...(locationState.length === 0 ? {} : { locationState }),
         ...(locationConditions.length === 0 ? {} : { locationConditions }),
         ...(slotState.length === 0 ? {} : { slotState }),
@@ -1568,11 +1577,19 @@ export async function restoreSerializedCBTUnitV2(
             codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions.unconscious', 'must be boolean');
         }
         const ejected = entry.ejected === true;
+        const dead = entry.dead === true;
+        if (entry.dead !== undefined && !dead) {
+            codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions.dead', 'sparse dead state must be true');
+        }
         if (entry.ejected !== undefined && !ejected) {
             codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions.ejected', 'sparse ejected state must be true');
         }
-        if (entry.unconscious && ejected) {
-            codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions', 'crew cannot be unconscious and ejected simultaneously');
+        if (dead && requested < MAX_MEK_CREW_WOUNDS) {
+            codecFail(
+                'INVALID_SERIALIZED_STATE',
+                '$.crew.positions.dead',
+                'committed death requires fatal wounds',
+            );
         }
         const recoveryReadyTurn = entry.recoveryReadyTurn;
         if (recoveryReadyTurn !== undefined
@@ -1598,6 +1615,7 @@ export async function restoreSerializedCBTUnitV2(
             kind: 'crew-state',
             wounds: requested,
             unconscious: entry.unconscious,
+            ...(dead ? { dead: true } : {}),
             ...(ejected ? { ejected: true } : {}),
         };
         const currentTarget = resolveCrewTarget(target, accumulator, entry.target);
@@ -1621,6 +1639,7 @@ export async function restoreSerializedCBTUnitV2(
             wounds: effective,
             unconscious: entry.unconscious,
             ejected,
+            ...(dead ? { dead: true as const } : {}),
             ...(recoveryReadyTurn === undefined ? {} : { recoveryReadyTurn }),
         }));
         const rekeyed = target.savedCrewPositionId !== undefined
@@ -1726,6 +1745,7 @@ export async function restoreSerializedCBTUnitV2(
     const state = freezeRuntimeState({
         ...initializedState,
         stateRevision: asStateRevision(saved.stateRevision),
+        explicitlyDestroyed: saved.destroyed === true,
         destroyed: saved.destroyed === true,
         locations: new ImmutableIndex(locations),
         slots: new ImmutableIndex(slots),
@@ -3316,18 +3336,27 @@ function retryPriorUnresolved(
                     codecFail('INVALID_SERIALIZED_STATE', '$.restoration.unresolved.fact.unconscious', 'must be boolean');
                 }
                 const ejected = fact.ejected === true;
+                const dead = fact.dead === true;
+                if (fact.dead !== undefined && !dead) {
+                    codecFail('INVALID_SERIALIZED_STATE', '$.restoration.unresolved.fact.dead', 'sparse dead state must be true');
+                }
                 if (fact.ejected !== undefined && !ejected) {
                     codecFail('INVALID_SERIALIZED_STATE', '$.restoration.unresolved.fact.ejected', 'sparse ejected state must be true');
                 }
-                if (fact.unconscious && ejected) {
-                    codecFail('INVALID_SERIALIZED_STATE', '$.restoration.unresolved.fact', 'crew cannot be unconscious and ejected simultaneously');
-                }
                 const effective = Math.min(requested, MAX_MEK_CREW_WOUNDS);
+                if (dead && effective < MAX_MEK_CREW_WOUNDS) {
+                    codecFail(
+                        'INVALID_SERIALIZED_STATE',
+                        '$.restoration.unresolved.fact.dead',
+                        'committed death requires fatal wounds',
+                    );
+                }
                 if (effective === 0 && !fact.unconscious && !ejected) crew.delete(current.positionId);
                 else crew.set(current.positionId, Object.freeze({
                     wounds: effective,
                     unconscious: fact.unconscious,
                     ejected,
+                    ...(dead ? { dead: true as const } : {}),
                 }));
                 applied = true;
                 if (effective !== requested) {

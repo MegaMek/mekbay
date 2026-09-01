@@ -38,4 +38,24 @@ describe('CBTAutomationService', () => {
         review.and.resolveTo(null);
         expect(await service.resolve('breachAndFloodCheck', events)).toBeNull();
     });
+
+    it('coalesces concurrent compatible family reviews and returns only each caller\'s ids', async () => {
+        mode = 'ask';
+        review.and.callFake(async (combined: readonly AutomationReviewEvent[]) =>
+            new Set([combined[0]!.id, combined[1]!.id]));
+        const options = {
+            title: 'Review End-Turn Heat',
+            message: 'Choose heat.',
+            allowCancel: true,
+        };
+
+        const [mek, aero] = await Promise.all([
+            service.resolve('heatAndDissipationResolution', [events[0]!], options),
+            service.resolve('heatAndDissipationResolution', [events[1]!], options),
+        ]);
+
+        expect(review).toHaveBeenCalledOnceWith(events, options);
+        expect([...(mek ?? [])]).toEqual(['one']);
+        expect([...(aero ?? [])]).toEqual(['two']);
+    });
 });

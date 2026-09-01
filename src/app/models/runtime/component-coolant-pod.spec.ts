@@ -30,14 +30,14 @@ describe('direct coolant-pod runtime', () => {
         }).accepted).toBeTrue();
         expect(heatCapacity(fixture)).toBe(7);
 
-        expect(activate(fixture, first!, 'coolant:first')).toBeTrue();
+        expect(activate(fixture, first!)).toBeTrue();
         expect(fixture.instance.query().remainingAmmo(first!)).toBe(0);
         expect(fixture.instance.query().componentMode(first!)).toBe(COOLANT_POD_ACTIVE_MODE);
         expect(heatCapacity(fixture)).toBe(14);
         expect(heatProjected(fixture)).toBe(6);
 
         const beforeRejectedUse = fixture.instance.revision();
-        expect(activate(fixture, second!, 'coolant:second')).toBeFalse();
+        expect(activate(fixture, second!)).toBeFalse();
         expect(fixture.instance.revision()).toBe(beforeRejectedUse);
         expect(fixture.instance.query().remainingAmmo(second!)).toBe(1);
 
@@ -53,13 +53,13 @@ describe('direct coolant-pod runtime', () => {
         expect(fixture.instance.query().remainingAmmo(second!)).toBe(1);
         expect(heatCapacity(fixture)).toBe(7);
 
-        expect(activate(fixture, second!, 'coolant:next-turn')).toBeTrue();
+        expect(activate(fixture, second!)).toBeTrue();
     });
 
     it('does not grant cooling after the active pod becomes unavailable', () => {
         const fixture = createDirectCoolantPodRuntimeFixture();
         const [pod] = coolantPods(fixture);
-        expect(activate(fixture, pod!, 'coolant:destroyed:activate')).toBeTrue();
+        expect(activate(fixture, pod!)).toBeTrue();
         expect(heatCapacity(fixture)).toBe(20);
 
         expect(fixture.instance.dispatch({
@@ -88,7 +88,7 @@ describe('direct coolant-pod runtime', () => {
         expect(fixture.instance.query().componentEscalatingFailure(radical.id)?.active).toBeTrue();
         expect(heatCapacity(fixture)).toBe(20);
 
-        expect(activate(fixture, pod!, 'coolant:radical:pod')).toBeTrue();
+        expect(activate(fixture, pod!)).toBeTrue();
         expect(fixture.instance.query().remainingAmmo(pod!)).toBe(0);
         expect(heatCapacity(fixture)).toBe(20);
     });
@@ -104,14 +104,13 @@ function coolantPods(fixture: DirectMekRuntimeFixture): ComponentId[] {
 function activate(
     fixture: DirectMekRuntimeFixture,
     componentId: ComponentId,
-    commandId: string,
 ): boolean {
     return fixture.instance.dispatch({
         type: 'activate-coolant-pod',
         
         
         componentId,
-    }).accepted;
+    }).changed;
 }
 
 function heatCapacity(fixture: DirectMekRuntimeFixture): number {

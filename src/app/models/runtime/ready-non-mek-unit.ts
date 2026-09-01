@@ -34,12 +34,10 @@ import {
 } from './classic-unit-runtime';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import type {
-    ReadyAttackerTargetingResult,
-    ReadyEquipmentRowOrderResult,
-    ReadyEndTurnResult,
     ReadySelectedWeaponFireResult,
     ReadyTargetingReconciliation,
     ReadyClassicUnit,
+    ReadyUnitCommandResult,
 } from './ready-classic-unit';
 import type { EquipmentRowOrderGroup } from './equipment-row-order';
 import type {
@@ -113,40 +111,22 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
     ): ReadyTargetingReconciliation | null {
         const plan = this.runtime.planAttackerTargetingReconciliation(registry);
         return plan === null ? null : Object.freeze({
-            expectedRevision: plan.expectedRevision,
-            commit: () => this.runtime.commitAttackerTargetingReconciliation(plan),
+            install: () => this.runtime.installAttackerTargetingReconciliation(plan),
         });
     }
 
     public setEquipmentRowOrder(
-        expectedRevision: StateRevision,
         group: EquipmentRowOrderGroup,
         permutation: readonly number[],
         rowCount: number,
         forceReadOnly: boolean,
-    ): ReadyEquipmentRowOrderResult {
-        const result = this.runtime.setEquipmentRowOrder(
-            expectedRevision,
+    ): ReadyUnitCommandResult {
+        return this.runtime.setEquipmentRowOrder(
             group,
             permutation,
             rowCount,
             forceReadOnly,
         );
-        return result.accepted
-            ? Object.freeze({
-                accepted: true,
-                idempotent: !result.changed,
-                currentRevision: result.state.stateRevision,
-            })
-            : Object.freeze({
-                accepted: false,
-                reason: result.reason === 'STALE_REVISION'
-                    ? 'REVISION_CONFLICT'
-                    : result.reason === 'FORCE_READ_ONLY'
-                        ? 'FORCE_READ_ONLY'
-                        : 'INVALID_ORDER',
-                currentRevision: result.state.stateRevision,
-            });
     }
 
     public dispatchSelectedWeaponFire(
@@ -155,64 +135,29 @@ export class ReadyNonMekUnit implements ReadyClassicUnit {
         forceReadOnly: boolean,
         c3Available: boolean,
     ): ReadySelectedWeaponFireResult {
-        const result = this.runtime.dispatchSelectedWeaponFire(
+        return this.runtime.dispatchSelectedWeaponFire(
             command,
             registry,
             forceReadOnly,
             c3Available,
         );
-        return result.accepted
-            ? Object.freeze({
-                accepted: true,
-                idempotent: !result.changed,
-                currentRevision: result.state.stateRevision,
-                prototypeHeat: result.prototypeHeat,
-            })
-            : Object.freeze({
-                accepted: false,
-                reason: result.reason,
-                currentRevision: result.state.stateRevision,
-            });
     }
 
     public dispatchAttackerTargeting(
         command: CBTUnitAttackerTargetingCommand,
         registry: TargetRegistrySnapshot,
         forceReadOnly: boolean,
-    ): ReadyAttackerTargetingResult {
-        const result = this.runtime.dispatchAttackerTargeting({
+    ): ReadyUnitCommandResult {
+        return this.runtime.dispatchAttackerTargeting({
             kind: 'edit-attacker-targeting',
-            expectedRevision: command.expectedRevision,
-            expectedRegistryRevision: command.expectedRegistryRevision,
             edit: command.edit,
         }, registry, forceReadOnly);
-        return result.accepted
-            ? Object.freeze({
-                accepted: true,
-                idempotent: !result.changed,
-                currentRevision: result.state.stateRevision,
-            })
-            : Object.freeze({
-                accepted: false,
-                reason: result.reason === 'STALE_REVISION'
-                    ? 'REVISION_CONFLICT'
-                    : result.reason === 'STALE_TARGET_REGISTRY'
-                        ? 'STALE_TARGET_REGISTRY'
-                        : result.reason === 'FORCE_READ_ONLY'
-                            ? 'FORCE_READ_ONLY'
-                            : 'INVALID_TARGETING',
-                currentRevision: result.state.stateRevision,
-            });
     }
 
-    public endTurn(): ReadyEndTurnResult {
-        const result = this.runtime.dispatch({
+    public endTurn(): ReadyUnitCommandResult {
+        return this.runtime.dispatch({
             kind: 'end-turn',
-            expectedRevision: this.runtime.revision(),
         });
-        return result.accepted
-            ? Object.freeze({ accepted: true })
-            : Object.freeze({ accepted: false, reason: result.reason });
     }
 
     public getSourceRef(): SavedEntityIdentity {

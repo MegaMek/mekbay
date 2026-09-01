@@ -19,7 +19,6 @@ import {
     type DirectMekRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 import type { ComponentId } from '../entity/entity-identifiers';
-import { asCommandId } from './runtime-state';
 import { BOMBAST_LASER_CHARGING_STATE } from './component-bombast-laser';
 import { PPC_CAPACITOR_CHARGING_STATE } from './component-ppc-capacitor';
 
@@ -99,8 +98,8 @@ describe('direct Mek critical-hit rules', () => {
         );
         expect(first).toEqual(jasmine.objectContaining({ kind: 'applied', slotId: slot.id }));
         expect(fixture.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('critical:first'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'hit-critical',
+
             slotId: slot.id, hits: 1, target: 'committed',
         }).accepted).toBeTrue();
         expect(projectMekCriticalRollV2(
@@ -140,8 +139,8 @@ describe('direct Mek critical-hit rules', () => {
             total + fixture.instance.query().remainingInternal(locationId), 0);
         expect(fixture.instance.dispatch({
             type: 'apply-mek-critical-roll',
-            commandId: asCommandId('critical:ammo-explosion'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             locationId: location.id,
             results: dice,
             target: 'committed',
@@ -164,8 +163,8 @@ describe('direct Mek critical-hit rules', () => {
         const dice = criticalDice(slot.slotIndex);
         const beforeInternal = skipExplosion.instance.query().remainingInternal(location.id);
         expect(skipExplosion.instance.dispatch({
-            type: 'apply-mek-critical-roll', commandId: asCommandId('critical:skip-explosion'),
-            expectedRevision: skipExplosion.instance.query().stateRevision,
+            type: 'apply-mek-critical-roll',
+
             locationId: location.id, results: dice, target: 'committed', applyExplosion: false,
         }).accepted).toBeTrue();
         expect(skipExplosion.instance.query().criticalHits(slot.id)).toBe(1);
@@ -178,8 +177,8 @@ describe('direct Mek critical-hit rules', () => {
         const secondLocation = skipPilot.index.locations.get(secondSlot.locationId)!;
         const pilot = [...skipPilot.index.crewPositions.values()].find(position => position.occurrence === 0)!;
         expect(skipPilot.instance.dispatch({
-            type: 'apply-mek-critical-roll', commandId: asCommandId('critical:skip-pilot'),
-            expectedRevision: skipPilot.instance.query().stateRevision,
+            type: 'apply-mek-critical-roll',
+
             locationId: secondLocation.id, results: criticalDice(secondSlot.slotIndex),
             target: 'committed', applyPilotHits: false,
         }).accepted).toBeTrue();
@@ -208,14 +207,14 @@ describe('direct Mek critical-hit rules', () => {
         };
         const toggle = (commandId: string) => fixture.instance.dispatch({
             type: 'toggle-gauss-power' as const,
-            commandId: asCommandId(commandId),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             componentId: gauss.id,
         });
         const endTurn = (commandId: string) => fixture.instance.dispatch({
             type: 'end-turn' as const,
-            commandId: asCommandId(commandId),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             policy: 'automatic' as const,
         });
 
@@ -252,8 +251,8 @@ describe('direct Mek critical-hit rules', () => {
         expect(explosionDamage()).toBeUndefined();
         expect(fixture.instance.dispatch({
             type: 'edit-escalating-failure',
-            commandId: asCommandId('critical:blue-shield-active'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             componentId: blueShield.id,
             edit: { kind: 'select-sequence', index: 0 },
         }).accepted).toBeTrue();
@@ -261,8 +260,8 @@ describe('direct Mek critical-hit rules', () => {
 
         expect(fixture.instance.dispatch({
             type: 'end-turn',
-            commandId: asCommandId('critical:blue-shield-settle'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(explosionDamage()).toBeUndefined();
@@ -300,8 +299,8 @@ describe('direct Mek critical-hit rules', () => {
         )).toBe(10);
 
         expect(core.instance.dispatch({
-            type: 'spend-ammo', commandId: asCommandId('critical:empty-coolant-pod'),
-            expectedRevision: core.instance.query().stateRevision,
+            type: 'spend-ammo',
+
             componentId: pod.id, amount: 1,
         }).accepted).toBeTrue();
         expect(criticalExplosionDamage(core, 'Test Coolant Pod')).toBeUndefined();
@@ -327,8 +326,8 @@ describe('direct Mek critical-hit rules', () => {
             candidate.componentIds.includes(laser.id))!;
         expect(fixture.instance.dispatch({
             type: 'apply-mek-critical-roll',
-            commandId: asCommandId('critical:risc-module-explosion'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             locationId: plan.targetLocationId,
             results: criticalDice(slotForComponent(fixture, module.id).slotIndex),
             target: 'committed',
@@ -341,8 +340,8 @@ describe('direct Mek critical-hit rules', () => {
 
         expect(fresh.instance.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('critical:risc-parent-destroyed'),
-            expectedRevision: fresh.instance.query().stateRevision,
+
+
             componentId: freshLaser.id,
             status: 'destroyed',
             target: 'committed',
@@ -393,21 +392,21 @@ describe('direct Mek critical-hit rules', () => {
         expect(plan.explosion!.locations[1]!.internalDamage).toBeGreaterThan(0);
     });
 
-    it('rejects malformed critical dice without changing the revision', () => {
+    it('ignores malformed critical dice without changing the revision', () => {
         const fixture = createDirectMekRuntimeFixture();
         const arm = [...fixture.index.locations.values()].find(location => location.code === 'LA')!;
         const revision = fixture.instance.query().stateRevision;
         const result = fixture.instance.dispatch({
             type: 'apply-mek-critical-roll',
-            commandId: asCommandId('critical:invalid-dice'),
-            expectedRevision: revision,
+
+
             locationId: arm.id,
             results: [7, 1],
             target: 'committed',
         });
         expect(result).toEqual(jasmine.objectContaining({
-            accepted: false,
-            reason: 'INVALID_DICE_EVIDENCE',
+            accepted: true,
+            changed: false,
         }));
         expect(fixture.instance.query().stateRevision).toBe(revision);
     });
@@ -431,8 +430,8 @@ describe('direct Mek critical-hit rules', () => {
             : { kind: 'blown-off', locationId: arm.id });
         const result = fixture.instance.dispatch({
             type: 'apply-mek-blow-off',
-            commandId: asCommandId('critical:blow-off'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             locationId: arm.id,
             target: 'pending',
         });
@@ -451,16 +450,16 @@ describe('direct Mek critical-hit rules', () => {
 
         expect(fixture.instance.dispatch({
             type: 'damage-internal',
-            commandId: asCommandId('critical:leg-internal'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             locationId: leg.id,
             amount: 1,
             target: 'pending',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'set-location-condition',
-            commandId: asCommandId('critical:leg-blown-off'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             locationId: leg.id,
             condition: 'blown-off',
             value: 1,
@@ -471,8 +470,8 @@ describe('direct Mek critical-hit rules', () => {
 
         const committed = fixture.instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('critical:leg-commit'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
         });
 
         expect(committed.accepted).toBeTrue();
@@ -489,23 +488,23 @@ describe('direct Mek critical-hit rules', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-bombast-laser-charge',
-            commandId: asCommandId('critical:bombast-charge'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             componentId: bombast.id,
             state: BOMBAST_LASER_CHARGING_STATE,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'end-turn',
-            commandId: asCommandId('critical:bombast-charged'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             policy: 'automatic',
         }).accepted).toBeTrue();
 
         const before = fixture.instance.query().remainingInternal(location.id);
         expect(fixture.instance.dispatch({
             type: 'apply-mek-critical-roll',
-            commandId: asCommandId('critical:bombast-hit'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             locationId: location.id,
             results: criticalDice(slot.slotIndex),
             target: 'pending',
@@ -513,8 +512,8 @@ describe('direct Mek critical-hit rules', () => {
         expect(fixture.instance.query().remainingInternal(location.id)).toBe(before);
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            commandId: asCommandId('critical:bombast-explode'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
         }).accepted).toBeTrue();
 
         expect(fixture.instance.query().remainingInternal(location.id)).toBeLessThan(before);
@@ -528,29 +527,29 @@ describe('direct Mek critical-hit rules', () => {
             candidate.componentIds.includes(bombast.id))!;
         const location = fixture.index.locations.get(slot.locationId)!;
         expect(fixture.instance.dispatch({
-            type: 'set-bombast-laser-charge', commandId: asCommandId('critical:bombast-cancel-charge'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'set-bombast-laser-charge',
+
             componentId: bombast.id, state: BOMBAST_LASER_CHARGING_STATE,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'end-turn', commandId: asCommandId('critical:bombast-cancel-charged'),
-            expectedRevision: fixture.instance.query().stateRevision, policy: 'automatic',
+            type: 'end-turn',
+            policy: 'automatic',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'apply-mek-critical-roll', commandId: asCommandId('critical:bombast-cancel-hit'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'apply-mek-critical-roll',
+
             locationId: location.id, results: criticalDice(slot.slotIndex), target: 'pending',
         }).accepted).toBeTrue();
 
         const before = fixture.instance.query().remainingInternal(location.id);
         expect(fixture.instance.dispatch({
-            type: 'fire-weapons', commandId: asCommandId('critical:bombast-fire'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'fire-weapons',
+
             selections: [{ weaponId: bombast.id }], heatPolicy: 'automatic',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'end-phase', commandId: asCommandId('critical:bombast-cancel-commit'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'end-phase',
+
         }).accepted).toBeTrue();
 
         expect(fixture.instance.query().remainingInternal(location.id)).toBe(before);
@@ -564,29 +563,29 @@ describe('direct Mek critical-hit rules', () => {
             candidate.componentIds.includes(bombast.id))!;
         const location = fixture.index.locations.get(slot.locationId)!;
         expect(fixture.instance.dispatch({
-            type: 'set-bombast-laser-charge', commandId: asCommandId('critical:bombast-discharge-charge'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'set-bombast-laser-charge',
+
             componentId: bombast.id, state: BOMBAST_LASER_CHARGING_STATE,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'end-turn', commandId: asCommandId('critical:bombast-discharge-charged'),
-            expectedRevision: fixture.instance.query().stateRevision, policy: 'automatic',
+            type: 'end-turn',
+            policy: 'automatic',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'apply-mek-critical-roll', commandId: asCommandId('critical:bombast-discharge-hit'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'apply-mek-critical-roll',
+
             locationId: location.id, results: criticalDice(slot.slotIndex), target: 'pending',
         }).accepted).toBeTrue();
 
         const before = fixture.instance.query().remainingInternal(location.id);
         expect(fixture.instance.dispatch({
-            type: 'set-bombast-laser-charge', commandId: asCommandId('critical:bombast-discharge'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'set-bombast-laser-charge',
+
             componentId: bombast.id, state: null,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'end-phase', commandId: asCommandId('critical:bombast-discharge-commit'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'end-phase',
+
         }).accepted).toBeTrue();
 
         expect(fixture.instance.query().remainingInternal(location.id)).toBe(before);
@@ -601,24 +600,24 @@ describe('direct Mek critical-hit rules', () => {
             candidate.componentIds.includes(weapon.id))!;
         const location = fixture.index.locations.get(slot.locationId)!;
         expect(fixture.instance.dispatch({
-            type: 'set-ppc-capacitor-charge', commandId: asCommandId('critical:ppc-charge'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'set-ppc-capacitor-charge',
+
             capacitorId: capacitor.id, weaponId: weapon.id, state: PPC_CAPACITOR_CHARGING_STATE,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'end-turn', commandId: asCommandId('critical:ppc-charged'),
-            expectedRevision: fixture.instance.query().stateRevision, policy: 'automatic',
+            type: 'end-turn',
+            policy: 'automatic',
         }).accepted).toBeTrue();
 
         const before = fixture.instance.query().remainingInternal(location.id);
         expect(fixture.instance.dispatch({
-            type: 'apply-mek-critical-roll', commandId: asCommandId('critical:ppc-hit'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'apply-mek-critical-roll',
+
             locationId: location.id, results: criticalDice(slot.slotIndex), target: 'pending',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'end-phase', commandId: asCommandId('critical:ppc-explode'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'end-phase',
+
         }).accepted).toBeTrue();
 
         expect(fixture.instance.query().remainingInternal(location.id)).toBeLessThan(before);
@@ -634,29 +633,29 @@ describe('direct Mek critical-hit rules', () => {
             candidate.componentIds.includes(weapon.id))!;
         const location = fixture.index.locations.get(slot.locationId)!;
         expect(fixture.instance.dispatch({
-            type: 'set-ppc-capacitor-charge', commandId: asCommandId('critical:ppc-discharge-charge'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'set-ppc-capacitor-charge',
+
             capacitorId: capacitor.id, weaponId: weapon.id, state: PPC_CAPACITOR_CHARGING_STATE,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'end-turn', commandId: asCommandId('critical:ppc-discharge-charged'),
-            expectedRevision: fixture.instance.query().stateRevision, policy: 'automatic',
+            type: 'end-turn',
+            policy: 'automatic',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'apply-mek-critical-roll', commandId: asCommandId('critical:ppc-discharge-hit'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'apply-mek-critical-roll',
+
             locationId: location.id, results: criticalDice(slot.slotIndex), target: 'pending',
         }).accepted).toBeTrue();
 
         const before = fixture.instance.query().remainingInternal(location.id);
         expect(fixture.instance.dispatch({
-            type: 'set-ppc-capacitor-charge', commandId: asCommandId('critical:ppc-discharge'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'set-ppc-capacitor-charge',
+
             capacitorId: capacitor.id, weaponId: weapon.id, state: null,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'end-phase', commandId: asCommandId('critical:ppc-discharge-commit'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'end-phase',
+
         }).accepted).toBeTrue();
 
         expect(fixture.instance.query().remainingInternal(location.id)).toBe(before);
@@ -702,8 +701,8 @@ function setCommittedComponentStatus(
 ): boolean {
     return fixture.instance.dispatch({
         type: 'set-component-status',
-        commandId: asCommandId(commandId),
-        expectedRevision: fixture.instance.query().stateRevision,
+
+
         componentId,
         status,
         target: 'committed',

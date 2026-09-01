@@ -11,31 +11,20 @@ import type {
     TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
 import type { SerializedEncounterTargetCalculatorV2 } from './runtime/persistence-v2';
-import type { StateRevision, UnitInstanceId } from './runtime/runtime-state';
+import type { MekUnitRuntimeState, StateRevision, UnitInstanceId } from './runtime/runtime-state';
 import type { NonMekUnitRuntimeState } from './runtime/non-mek-unit-instance';
-import type { CommandReduction } from './runtime/unit-instance';
+import type {
+    ClassicUnitCommandResult,
+    ClassicUnitRuntimeState,
+} from './runtime/classic-unit-runtime';
 import type { DeploymentConfiguration, ScenarioRules } from './runtime/unit-state-initializer';
 import type { MekRuntimeCapabilityDecision } from './runtime/mek-runtime-capability';
-import type {
-    CrewProfileCommandResult,
-    CrewProfileSnapshot,
-} from './runtime/crew-profile';
 import type { AttackerTargetingState } from './runtime/attacker-targeting-state';
 import type { RuntimeCommandEntry } from './runtime/runtime-command-session';
 
 export type CBTForceTargetRegistryAuthority = 'user' | 'opfor-sync' | 'registry-reset';
 
-export type CBTForceTargetRegistryDispatchResult = TargetRegistryCommandResult | {
-    readonly accepted: false;
-    readonly changed: false;
-    readonly reason: 'FORCE_READ_ONLY';
-    readonly snapshot: TargetRegistrySnapshot;
-} | {
-    readonly accepted: false;
-    readonly changed: false;
-    readonly reason: 'TARGETING_RECONCILIATION_FAILED';
-    readonly snapshot: TargetRegistrySnapshot;
-};
+export type CBTForceTargetRegistryDispatchResult = TargetRegistryCommandResult;
 
 /** Detached target-ready projection; no runtime owner escapes. */
 export interface InventoryControlTargetRosterRow {
@@ -47,38 +36,11 @@ export interface InventoryControlTargetRosterRow {
     readonly projection: 'v2';
 }
 
-export type CBTNonMekUnitCommandResult =
-    | Readonly<{
-        readonly accepted: true;
-        readonly changed: boolean;
-        readonly state: NonMekUnitRuntimeState;
-    }>
-    | Readonly<{
-        readonly accepted: false;
-        readonly changed: false;
-        readonly reason:
-            | 'NOT_ADMITTED'
-            | 'AUTOMATION_CANCELLED'
-            | 'FORCE_READ_ONLY'
-            | 'STALE_REVISION'
-            | 'STALE_TARGET_REGISTRY'
-            | 'INVALID_TARGETING'
-            | 'INVALID_COMMAND';
-        readonly currentRevision: StateRevision | null;
-    }>;
-
-export type CBTMekUnitCommandResult = CommandReduction
-    | Readonly<{
-        readonly accepted: false;
-        readonly reason: 'NOT_ADMITTED' | 'INVALID_COMMAND';
-        readonly currentRevision: null;
-    }>
-    | Readonly<{
-        /** The reducer may have staged boundary facts, but the requested composite action stopped. */
-        readonly accepted: false;
-        readonly reason: 'AUTOMATION_CANCELLED';
-        readonly currentRevision: StateRevision;
-    }>;
+export type CBTNonMekUnitCommandResult = ClassicUnitCommandResult<NonMekUnitRuntimeState | null>;
+export type CBTMekUnitCommandResult = Readonly<
+    ClassicUnitCommandResult<MekUnitRuntimeState | null>
+    & { readonly prototypeHeat?: readonly import('./prototype-laser-heat.model').PrototypeLaserHeatResult[] }
+>;
 
 export type CBTUnitRepairResult =
     | Readonly<{
@@ -144,12 +106,6 @@ export type CBTDirectUnitAdmissionResult =
         readonly message: string;
     };
 
-export type MekCrewProfileCommandResult = CrewProfileCommandResult | {
-    readonly accepted: false;
-    readonly reason: 'REDEPLOY_FAILED';
-    readonly snapshot: CrewProfileSnapshot;
-};
-
 export interface AttackerTargetingSnapshot {
     readonly instanceId: UnitInstanceId;
     readonly stateRevision: StateRevision;
@@ -159,38 +115,14 @@ export interface AttackerTargetingSnapshot {
 
 export type C3State = 'none' | 'operational' | 'degraded';
 
-export type AttackerTargetingCommandResult =
-    | {
-        readonly accepted: true;
-        readonly idempotent: boolean;
-        readonly currentRevision: StateRevision;
-    }
-    | {
-        readonly accepted: false;
-        readonly reason: Extract<CommandReduction, { readonly accepted: false }>['reason']
-            | 'UNIT_NOT_FOUND'
-            | 'OWNER_CHANGED'
-            | 'C3_UNAVAILABLE';
-        readonly currentRevision: StateRevision | null;
-    };
+export type AttackerTargetingCommandResult = ClassicUnitCommandResult<ClassicUnitRuntimeState | null>;
 
-export type EquipmentRowOrderCommandResult =
-    | Readonly<{
-        readonly accepted: true;
-        readonly idempotent: boolean;
-        readonly currentRevision: StateRevision;
-    }>
-    | Readonly<{
-        readonly accepted: false;
-        readonly reason: 'UNIT_NOT_FOUND' | 'REVISION_CONFLICT' | 'FORCE_READ_ONLY' | 'INVALID_ORDER';
-        readonly currentRevision: StateRevision | null;
-    }>;
+export type EquipmentRowOrderCommandResult = AttackerTargetingCommandResult;
 
 export type SelectedWeaponFireCommandResult =
-    | (Extract<AttackerTargetingCommandResult, { readonly accepted: true }> & Readonly<{
+    Readonly<AttackerTargetingCommandResult & {
         readonly prototypeHeat: readonly import('./prototype-laser-heat.model').PrototypeLaserHeatResult[];
-    }>)
-    | Extract<AttackerTargetingCommandResult, { readonly accepted: false }>;
+    }>;
 
 export type RuntimeUndoCommandResult = Readonly<{
     readonly accepted: boolean;

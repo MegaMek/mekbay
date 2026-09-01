@@ -11,7 +11,6 @@ import type { InitializeUnitStateOptions } from './unit-state-initializer';
 import { initializeUnitState } from './unit-state-initializer';
 import {
     asStateRevision,
-    createCommandId,
     type InstanceBaselineRef,
     type StateRevision,
     type UnitInstanceId,
@@ -53,12 +52,10 @@ import {
 } from './classic-unit-runtime';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import type {
-    ReadyAttackerTargetingResult,
-    ReadyEquipmentRowOrderResult,
-    ReadyEndTurnResult,
     ReadySelectedWeaponFireResult,
     ReadyTargetingReconciliation,
     ReadyClassicUnit,
+    ReadyUnitCommandResult,
 } from './ready-classic-unit';
 import type { EquipmentRowOrderGroup } from './equipment-row-order';
 
@@ -123,32 +120,22 @@ export class ReadyMekUnit implements ReadyClassicUnit {
     ): ReadyTargetingReconciliation | null {
         const plan = this.runtime.planAttackerTargetingReconciliation(registry, false);
         return plan === null ? null : Object.freeze({
-            expectedRevision: plan.expectedRevision,
-            commit: () => this.runtime.commitAttackerTargetingReconciliation(plan),
+            install: () => this.runtime.installAttackerTargetingReconciliation(plan),
         });
     }
 
     public setEquipmentRowOrder(
-        expectedRevision: StateRevision,
         group: EquipmentRowOrderGroup,
         permutation: readonly number[],
         rowCount: number,
         forceReadOnly: boolean,
-    ): ReadyEquipmentRowOrderResult {
-        const result = this.runtime.setEquipmentRowOrder(
-            expectedRevision,
+    ): ReadyUnitCommandResult {
+        return this.runtime.setEquipmentRowOrder(
             group,
             permutation,
             rowCount,
             forceReadOnly,
         );
-        return result.accepted
-            ? Object.freeze({
-                accepted: true,
-                idempotent: !result.changed,
-                currentRevision: result.currentRevision,
-            })
-            : result;
     }
 
     public dispatchSelectedWeaponFire(
@@ -163,49 +150,25 @@ export class ReadyMekUnit implements ReadyClassicUnit {
             forceReadOnly,
             c3Available,
         );
-        return result.accepted
-            ? Object.freeze({
-                accepted: true,
-                idempotent: result.idempotent,
-                currentRevision: result.state.stateRevision,
-                prototypeHeat: result.prototypeHeat ?? Object.freeze([]),
-            })
-            : Object.freeze({
-                accepted: false,
-                reason: result.reason,
-                currentRevision: result.currentRevision,
-            });
+        return Object.freeze({
+            ...result,
+            prototypeHeat: result.prototypeHeat ?? Object.freeze([]),
+        });
     }
 
     public dispatchAttackerTargeting(
         command: CBTUnitAttackerTargetingCommand,
         registry: TargetRegistrySnapshot,
         forceReadOnly: boolean,
-    ): ReadyAttackerTargetingResult {
-        const result = this.runtime.dispatchAttackerTargeting(command, registry, forceReadOnly);
-        return result.accepted
-            ? Object.freeze({
-                accepted: true,
-                idempotent: result.idempotent,
-                currentRevision: result.state.stateRevision,
-            })
-            : Object.freeze({
-                accepted: false,
-                reason: result.reason,
-                currentRevision: result.currentRevision,
-            });
+    ): ReadyUnitCommandResult {
+        return this.runtime.dispatchAttackerTargeting(command, registry, forceReadOnly);
     }
 
-    public endTurn(policy: MekHeatAutomationPolicyV2): ReadyEndTurnResult {
-        const result = this.runtime.dispatch({
+    public endTurn(policy: MekHeatAutomationPolicyV2): ReadyUnitCommandResult {
+        return this.runtime.dispatch({
             type: 'end-turn',
-            commandId: createCommandId(),
-            expectedRevision: this.runtime.revision(),
             policy,
         });
-        return result.accepted || result.reason === 'NO_CHANGE'
-            ? Object.freeze({ accepted: true })
-            : Object.freeze({ accepted: false, reason: result.reason });
     }
 
     public getSourceRef(): SavedEntityIdentity {

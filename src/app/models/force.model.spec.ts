@@ -252,6 +252,7 @@ class TestForce extends Force<ForceUnit> {
     protected override async prepareLoadedCBTForceV2Authority(
         envelope: SerializedCBTForceV2,
     ): Promise<PreparedLoadedCBTForceV2Authority> {
+        const validated = await validateSerializedCBTForceV2(envelope);
         const expected = this.cbtAuthority;
         const gate = this.nextLoadGate;
         this.nextLoadGate = null;
@@ -260,10 +261,11 @@ class TestForce extends Force<ForceUnit> {
             await gate.wait;
         }
         return Object.freeze({
+            replacement: validated,
             canInstall: () => this.cbtAuthority === expected,
             install: () => {
                 if (this.cbtAuthority !== expected) throw new Error('Test Classic authority changed');
-                this.cbtAuthority = envelope;
+                this.cbtAuthority = validated;
             },
         });
     }
@@ -1092,7 +1094,7 @@ describe('Force CBT V2 persistence boundary', () => {
         expect(Number(changed.cbt!.encounter.encounterRevision)).toBe(0);
     });
 
-    it('rejects unsupported V2 envelopes instead of installing a compatibility wrapper', async () => {
+    it('refuses unsupported V2 envelopes instead of installing a compatibility wrapper', async () => {
         const source = new TestForce(GameSystem.CLASSIC);
         const persisted = await source.serializeForPersistence();
         const forwardVersion = CBT_FORCE_PERSISTENCE_SCHEMA_VERSION + 1;
@@ -1104,7 +1106,7 @@ describe('Force CBT V2 persistence boundary', () => {
         const forwardData = { ...persisted, cbt: forwardValue };
         const forward = new TestForce(GameSystem.CLASSIC);
         forward.loadSerialized(forwardData);
-        await expectAsync(forward.loadCBTForceV2Persistence(forwardData)).toBeRejected();
+        expect(await forward.loadCBTForceV2Persistence(forwardData)).toBeFalse();
         expect(forward.hasCBTForceV2()).toBeFalse();
     });
 

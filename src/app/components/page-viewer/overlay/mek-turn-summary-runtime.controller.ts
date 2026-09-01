@@ -367,7 +367,7 @@ export class MekTurnSummaryRuntimeController {
 
     private requiredSnapshot(): MekTurnPanelSnapshot {
         const snapshot = this.member.force.getMekTurnPanelSnapshot(this.member.id, this.heatPolicy());
-        if (!snapshot) throw new Error('The selected V2 Mek is no longer admitted');
+        if (!snapshot) throw new Error('The selected Mek is no longer admitted');
         return snapshot;
     }
 

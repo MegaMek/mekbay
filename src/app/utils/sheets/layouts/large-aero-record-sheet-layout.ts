@@ -356,6 +356,8 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         interface ProjectedBay {
             row: AeroDataInventoryRow;
             sortOrder: number;
+            locationCode: string;
+            rearMounted: boolean;
         }
         const projected: ProjectedBay[] = [];
         for (const bay of entity.equipmentBays()) {
@@ -368,11 +370,63 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
             projected.push({
                 row,
                 sortOrder: this.largeAeroBaySortOrder(locationCode, weapons[0].rearMounted),
+                locationCode,
+                rearMounted: weapons[0].rearMounted,
             });
         }
-        return projected
-            .sort((left, right) => left.sortOrder - right.sortOrder)
-            .map((projection, index) => ({ ...projection.row, id: `bay_${index + 1}` }));
+        const sorted = projected.sort((left, right) => left.sortOrder - right.sortOrder);
+        const rows = entity.entityType === 'DropShip'
+            ? this.condenseDropShipSideBays(sorted)
+            : sorted;
+        return rows.map((projection, index) => ({ ...projection.row, id: `bay_${index + 1}` }));
+    }
+
+    private condenseDropShipSideBays<T extends Readonly<{
+        row: AeroDataInventoryRow;
+        sortOrder: number;
+        locationCode: string;
+        rearMounted: boolean;
+    }>>(bays: readonly T[]): readonly T[] {
+        const consumed = new Set<number>();
+        const result: T[] = [];
+        const signature = (bay: T): string => JSON.stringify({
+            nameLines: bay.row.nameLines,
+            heat: bay.row.heat,
+            damageByRange: bay.row.damageByRange,
+            rearMounted: bay.rearMounted,
+        });
+        for (let index = 0; index < bays.length; index++) {
+            if (consumed.has(index)) continue;
+            const bay = bays[index];
+            if (bay.locationCode !== 'LS' && bay.locationCode !== 'RS') {
+                result.push(bay);
+                continue;
+            }
+            const opposite = bay.locationCode === 'LS' ? 'RS' : 'LS';
+            const match = bays.findIndex((candidate, candidateIndex) =>
+                candidateIndex > index
+                && !consumed.has(candidateIndex)
+                && candidate.locationCode === opposite
+                && signature(candidate) === signature(bay));
+            if (match < 0) {
+                result.push(bay);
+                continue;
+            }
+            consumed.add(match);
+            const counterpart = bays[match];
+            const left = bay.locationCode === 'LS' ? bay : counterpart;
+            const right = bay.locationCode === 'RS' ? bay : counterpart;
+            result.push({
+                ...left,
+                row: {
+                    ...left.row,
+                    location: `${left.row.location}/${right.row.location}`,
+                    componentIds: [...left.row.componentIds, ...right.row.componentIds],
+                },
+                sortOrder: Math.min(left.sortOrder, right.sortOrder),
+            });
+        }
+        return result.sort((left, right) => left.sortOrder - right.sortOrder);
     }
 
     private standardBayRow(

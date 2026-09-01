@@ -92,6 +92,8 @@ import { projectReadyC3Components } from '../cbt-force-c3';
 import { encodeCBTEncounterStateV2 } from './encounter-runtime';
 import { Sanitizer } from '../../utils/sanitizer.util';
 import { isRecord, jsonValuesEqual } from '../../utils/json-value.util';
+import type { BaseEntity } from '../entity/base-entity';
+import { canonicalNonMekAirborneState } from './non-mek-airborne-state';
 
 const V1_SCENARIO_RULES = Object.freeze({
     schemaVersion: 1 as const,
@@ -432,7 +434,7 @@ export function convertPersistedNonMekUnitV1(
         fresh.getUnit().engineHeatSinks(),
         issues,
     );
-    const turn = restoreLegacyEntityTurn(rawState['turnState'], issues);
+    const turn = restoreLegacyEntityTurn(rawState['turnState'], fresh.getUnit(), issues);
     const destroyed = rawState['destroyed'] === true;
     if (rawState['destroyed'] !== undefined && typeof rawState['destroyed'] !== 'boolean') {
         issues.push('Malformed V1 destroyed state was skipped.');
@@ -539,7 +541,9 @@ function restoreLegacyNonMekCrewState(
     wounds: number;
     unconscious: boolean;
     ejected: boolean;
-    state?: 'killed' | 'stunned';
+    dead?: true;
+    killed?: true;
+    stunned?: true;
 }>[] {
     const rows = legacyCrewRows(source);
     const restored = [...topology.values()]
@@ -553,7 +557,7 @@ function restoreLegacyNonMekCrewState(
             }
             const state = legacyNonMekCrewState(row);
             return state.wounds === 0 && !state.unconscious && !state.ejected
-                && state.state === undefined
+                && !state.killed && !state.stunned
                 ? []
                 : [Object.freeze({ positionId: position.id, ...state })];
         });
@@ -578,6 +582,7 @@ function legacyCrewState(row: Readonly<Record<string, JsonValue>>): Readonly<{
     wounds: number;
     unconscious: boolean;
     ejected: boolean;
+    dead?: true;
 }> {
     const rawHits = integer(row['hits']);
     const rawState = integer(row['state']);
@@ -587,6 +592,7 @@ function legacyCrewState(row: Readonly<Record<string, JsonValue>>): Readonly<{
             : Math.min(6, Math.max(0, rawHits ?? 0)),
         unconscious: rawState === 1,
         ejected: rawState === 3,
+        ...(rawState === 2 || rawState === 4 ? { dead: true as const } : {}),
     });
 }
 
@@ -594,7 +600,9 @@ function legacyNonMekCrewState(row: Readonly<Record<string, JsonValue>>): Readon
     wounds: number;
     unconscious: boolean;
     ejected: boolean;
-    state?: 'killed' | 'stunned';
+    dead?: true;
+    killed?: true;
+    stunned?: true;
 }> {
     const rawHits = integer(row['hits']);
     const rawState = integer(row['state']);
@@ -602,8 +610,9 @@ function legacyNonMekCrewState(row: Readonly<Record<string, JsonValue>>): Readon
         wounds: rawState === 2 ? 6 : Math.min(6, Math.max(0, rawHits ?? 0)),
         unconscious: rawState === 1,
         ejected: rawState === 3,
-        ...(rawState === 4 ? { state: 'killed' as const }
-            : rawState === 5 ? { state: 'stunned' as const } : {}),
+        ...(rawState === 2 ? { dead: true as const } : {}),
+        ...(rawState === 4 ? { killed: true as const } : {}),
+        ...(rawState === 5 ? { stunned: true as const } : {}),
     });
 }
 
@@ -1018,6 +1027,7 @@ function preserveUnsupportedLegacyFamilyState(
 ): void {
     const ignored = new Set([
         'modified', 'destroyed', 'conditions', 'crew', 'crits', 'locations', 'inventory', 'heat', 'turnState',
+        'shutdown',
     ]);
     for (const [key, value] of Object.entries(rawState)) {
         if (ignored.has(key) || value === undefined || value === null) continue;
@@ -1077,6 +1087,7 @@ const LEGACY_NON_MEK_MOVEMENT_MODES = new Set([
 
 function restoreLegacyEntityTurn(
     value: JsonValue | undefined,
+    entity: BaseEntity,
     issues: string[],
 ): SerializedNonMekUnit['turn'] {
     if (value === undefined || value === null) return undefined;
@@ -1097,9 +1108,16 @@ function restoreLegacyEntityTurn(
         : nonnegativeInteger(value['turnCounter']);
     if (turnCounter === null) issues.push('Malformed V1 turn counter was skipped.');
 
-    const airborne = value['airborne'];
-    if (airborne !== undefined && typeof airborne !== 'boolean') {
+    const rawAirborne = value['airborne'];
+    if (rawAirborne !== undefined && typeof rawAirborne !== 'boolean') {
         issues.push('Malformed V1 airborne state was skipped.');
+    }
+    const airborne = canonicalNonMekAirborneState(
+        entity,
+        typeof rawAirborne === 'boolean' ? rawAirborne : null,
+    );
+    if (typeof rawAirborne === 'boolean' && airborne !== rawAirborne) {
+        issues.push('V1 airborne state is not supported by this unit and was skipped.');
     }
 
     const rawMode = value['moveMode'];
@@ -1120,12 +1138,12 @@ function restoreLegacyEntityTurn(
     const movement = mode !== undefined && distance !== undefined && distance !== null
         ? Object.freeze({ mode, distance, boosterComponentIds: Object.freeze([]) })
         : undefined;
-    if ((turnCounter ?? 0) === 0 && typeof airborne !== 'boolean' && movement === undefined) {
+    if ((turnCounter ?? 0) === 0 && airborne === null && movement === undefined) {
         return undefined;
     }
     return Object.freeze({
         ...(turnCounter === null || turnCounter === 0 ? {} : { turnCounter }),
-        ...(typeof airborne === 'boolean' ? { airborne } : {}),
+        ...(airborne === null ? {} : { airborne }),
         ...(movement === undefined ? {} : { movement }),
     });
 }

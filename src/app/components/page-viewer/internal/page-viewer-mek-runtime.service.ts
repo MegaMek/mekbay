@@ -69,7 +69,7 @@ export class PageViewerMekRuntimeService {
 
     private requiredSnapshot(member: CBTMekForceMember): MekRecordSheetSnapshot {
         const snapshot = member.mekRecordSheetSnapshot();
-        if (!snapshot) throw new Error('The selected V2 Mek is no longer admitted');
+        if (!snapshot) throw new Error('The selected Mek is no longer admitted');
         return snapshot;
     }
 

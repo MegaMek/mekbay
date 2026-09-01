@@ -17,9 +17,9 @@ import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { ComponentId, CrewPositionId } from '../entity/entity-identifiers';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import {
-    MAX_MEK_CREW_WOUNDS,
     type CrewRuntimeState,
 } from './runtime-state';
+import { isCrewDeathCommitted } from './classic-unit-runtime';
 import type { CrewAssignment } from './crew-assignment';
 import {
     adjustMekStandAttemptsV2,
@@ -754,7 +754,7 @@ function runtimeCrewPositions(
             && seat.locationIds.every(locationId => !input.locationDestroyed(locationId));
         const healthy = !runtime.unconscious
             && !runtime.ejected
-            && runtime.wounds < MAX_MEK_CREW_WOUNDS;
+            && !isCrewDeathCommitted(runtime);
         return Object.freeze({ position, assigned, healthy, seatAvailable, functional: healthy && seatAvailable });
     });
 }

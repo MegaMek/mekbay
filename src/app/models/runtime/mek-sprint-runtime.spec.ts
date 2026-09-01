@@ -6,7 +6,6 @@ import type { ComponentId } from '../entity/entity-identifiers';
 import { evaluateMekMechanicsScenarioSupport } from './mek-mechanics-profile';
 import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from './mek-movement-psr-v2';
 import { projectMekTurnPanel } from './mek-turn-panel';
-import { createCommandId } from './runtime-state';
 import {
     createDirectMekRuntimeFixture,
     createDirectSprintingEngineHeatRuntimeFixture,
@@ -53,8 +52,8 @@ describe('direct optional Sprint rules', () => {
 
         expect(fixture.instance.dispatch({
             type: 'replace-turn-state',
-            commandId: createCommandId(),
-            expectedRevision: fixture.instance.revision(),
+
+
             turn: { ...fixture.instance.query().turnState(), spotting: true },
         }).accepted).toBeTrue();
         expect(activate(fixture, masc.id)).toBeTrue();
@@ -72,10 +71,10 @@ describe('direct optional Sprint rules', () => {
         expect(fixture.instance.query().turnState().spotting).toBeFalse();
         expect(fixture.instance.dispatch({
             type: 'replace-turn-state',
-            commandId: createCommandId(),
-            expectedRevision: fixture.instance.revision(),
+
+
             turn: { ...fixture.instance.query().turnState(), spotting: true },
-        }).accepted).toBeFalse();
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
 
         const heat = fixture.instance.query().heatProjection('manual');
         expect(heat.kind).toBe('supported');
@@ -140,8 +139,8 @@ describe('direct optional Sprint rules', () => {
         const airborne = createDirectSprintingRuntimeFixture('core-2026', false, 'unit:sprint:airborne');
         expect(airborne.instance.dispatch({
             type: 'replace-turn-state',
-            commandId: createCommandId(),
-            expectedRevision: airborne.instance.revision(),
+
+
             turn: { ...airborne.instance.query().turnState(), airborne: true },
         }).accepted).toBeTrue();
         expect(sprintReasonCodes(airborne)).toContain('AIRBORNE');
@@ -149,8 +148,8 @@ describe('direct optional Sprint rules', () => {
         const prone = createDirectSprintingRuntimeFixture('core-2026', false, 'unit:sprint:prone');
         expect(prone.instance.dispatch({
             type: 'set-condition',
-            commandId: createCommandId(),
-            expectedRevision: prone.instance.revision(),
+
+
             condition: 'prone',
             active: true,
         }).accepted).toBeTrue();
@@ -165,8 +164,8 @@ describe('direct optional Sprint rules', () => {
             }))!;
         expect(hip.instance.dispatch({
             type: 'hit-critical',
-            commandId: createCommandId(),
-            expectedRevision: hip.instance.revision(),
+
+
             slotId: leftHip.id,
             hits: 1,
             target: 'committed',
@@ -179,8 +178,8 @@ describe('direct optional Sprint rules', () => {
         for (const leg of legs) {
             expect(quad.instance.dispatch({
                 type: 'damage-internal',
-                commandId: createCommandId(),
-                expectedRevision: quad.instance.revision(),
+
+
                 locationId: leg.id,
                 amount: leg.internalPoints,
                 target: 'committed',
@@ -206,11 +205,11 @@ function sprintReasonCodes(fixture: DirectMekRuntimeFixture): readonly string[] 
 function activate(fixture: DirectMekRuntimeFixture, componentId: ComponentId): boolean {
     return fixture.instance.dispatch({
         type: 'edit-escalating-failure',
-        commandId: createCommandId(),
-        expectedRevision: fixture.instance.revision(),
+
+
         componentId,
         edit: { kind: 'select-sequence', index: 0 },
-    }).accepted;
+    }).changed;
 }
 
 function declareSprint(
@@ -220,13 +219,13 @@ function declareSprint(
 ): boolean {
     return fixture.instance.dispatch({
         type: 'declare-mek-movement',
-        commandId: createCommandId(),
-        expectedRevision: fixture.instance.revision(),
+
+
         declaration: {
             schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
             mode: 'sprint',
             distance,
             boosterComponentIds,
         },
-    }).accepted;
+    }).changed;
 }

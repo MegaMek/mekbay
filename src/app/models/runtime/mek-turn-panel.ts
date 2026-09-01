@@ -44,6 +44,7 @@ import { mekUnitHeight, resolveMekUnitWaterState } from './mek-targeting-rules';
 import { MAX_MEK_CREW_WOUNDS } from './runtime-state';
 import { getMekLocationLabel } from '../entity/types';
 import type { UnitConditionKey } from '../unit-condition.model';
+import { isCrewDeathCommitted } from './classic-unit-runtime';
 
 export type MekAttackMovementModifiers = Readonly<Record<MekMovementModeV2, number>>;
 
@@ -62,6 +63,7 @@ export interface MekTurnPanelSnapshot {
     readonly entityUuid: string;
     readonly stateRevision: StateRevision;
     readonly hasPendingCombat: boolean;
+    readonly hasPendingPhaseChanges: boolean;
     readonly movement: MekMovementPsrProjectionResultV2;
     readonly movementState: MekMovementPsrStateV2;
     readonly ruleChecks: readonly MekTurnPanelRuleCheck[];
@@ -156,6 +158,7 @@ export function projectMekTurnPanel(
         entityUuid: entity.uuid(),
         stateRevision: query.stateRevision,
         hasPendingCombat: query.hasPendingCombat(),
+        hasPendingPhaseChanges: query.hasPendingPhaseChanges(),
         movement,
         movementState,
         ruleChecks,
@@ -201,19 +204,14 @@ export function isMekTurnPanelDirty(snapshot: MekTurnPanelSnapshot): boolean {
         || snapshot.turn.acknowledgedHeatSources.size > 0
         || snapshot.turn.heatDissipationConsumed > 0
         || snapshot.turn.spotting
-        || snapshot.turn.equipmentStateChanged
+        || snapshot.turn.phaseStateChanged
         || snapshot.heat.pendingOverride !== undefined
         || (snapshot.heatProjection.kind === 'supported'
             && snapshot.heatProjection.projection.hasPendingSettlement);
 }
 
 export function isMekTurnPanelDirtyPhase(snapshot: MekTurnPanelSnapshot): boolean {
-    return snapshot.hasPendingCombat
-        || snapshot.movementState.damageThisPhase > 0
-        || snapshot.movementState.checks.some(check => check.status === 'pending')
-        || snapshot.movementState.automaticFalls.length > 0
-        || snapshot.ruleChecks.length > 0
-        || snapshot.turn.equipmentStateChanged;
+    return snapshot.hasPendingPhaseChanges;
 }
 
 /** Production turn-button phase: movement selection first, then weapon fire. */
@@ -278,7 +276,7 @@ export function projectMekSpottingModifier(
         const position = crewByOccurrence.get(occurrence);
         if (!position) return 1;
         const state = query.crewState(position.id);
-        if (state.unconscious || state.ejected || state.wounds >= MAX_MEK_CREW_WOUNDS) return 1;
+        if (state.unconscious || state.ejected || isCrewDeathCommitted(state)) return 1;
     }
     const cockpit = [...index.components.values()].find(component =>
         component.kind === 'system' && component.systemType === 'Cockpit');

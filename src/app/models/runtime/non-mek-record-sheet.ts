@@ -35,6 +35,7 @@ import { projectInfantryRuntimeRules } from '../rules/infantry-runtime-rules';
 import { projectAeroRuntimeRules, type AeroHeatEffects } from '../rules/aero-runtime-rules';
 import { projectNonMekComponentStatuses } from './non-mek-component-status';
 import type { UnitConditionKey } from '../unit-condition.model';
+import { projectedNonMekAirGroundCondition } from './non-mek-airborne-state';
 
 export interface NonMekRecordSheetArmorFace {
     readonly faceId: ArmorFaceId;
@@ -272,6 +273,10 @@ export function projectNonMekRecordSheet(
     vehicleRules?.computedConditions.forEach(condition => conditions.add(condition));
     protoMekRules?.computedConditions.forEach(condition => conditions.add(condition));
     aeroRules?.computedConditions.forEach(condition => conditions.add(condition));
+    conditions.delete('airborne');
+    conditions.delete('grounded');
+    const airGroundCondition = projectedNonMekAirGroundCondition(entity, state.turn.airborne);
+    if (airGroundCondition !== null) conditions.add(airGroundCondition);
     const destroyed = vehicleRules?.destroyed
         ?? protoMekRules?.destroyed
         ?? infantryRules?.destroyed

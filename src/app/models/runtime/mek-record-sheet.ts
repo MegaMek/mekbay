@@ -27,13 +27,13 @@ import type {
 } from './mek-movement-psr-v2';
 import {
     MEK_LOCATION_CONDITION_KEYS,
-    MAX_MEK_CREW_WOUNDS,
     type MekUnitRuntimeState,
     type CrewRuntimeState,
     type MekLocationConditionKey,
     type StateRevision,
 } from './runtime-state';
 import type { MekUnitQueryPort } from './unit-instance';
+import { isCrewDeathCommitted } from './classic-unit-runtime';
 import {
     projectMekEquipmentComponents,
     type EquipmentPanelComponent,
@@ -587,7 +587,7 @@ function effectiveMekCrewState(
     mainCockpitUnavailable: boolean,
     commandConsoleUnavailable: boolean,
 ): MekRecordSheetCrewPosition['effectiveState'] {
-    if (state.wounds >= MAX_MEK_CREW_WOUNDS) return 'dead';
+    if (isCrewDeathCommitted(state)) return 'dead';
     const hasCommandConsole = entity.mountedCockpit().hasCommandConsoleBonus;
     const cockpitUnavailable = !hasCommandConsole
         ? mainCockpitUnavailable

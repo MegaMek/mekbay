@@ -118,9 +118,11 @@ export function isCompactStoredForce(value: unknown): boolean {
     const root = value as Record<string, unknown>;
     if (root['version'] !== 2 || root['type'] !== GameSystem.CLASSIC) return false;
     const cbt = root['cbt'];
-    return cbt !== null && typeof cbt === 'object' && !Array.isArray(cbt)
-        && !('schemaVersion' in cbt)
-        && 'r' in cbt && 'u' in cbt && 'g' in cbt;
+    if (cbt === null || typeof cbt !== 'object' || Array.isArray(cbt)) return false;
+    const compact = cbt as Record<string, unknown>;
+    return !('schemaVersion' in compact)
+        && compact['v'] === COMPACT_FORCE_FORMAT_VERSION
+        && 'r' in compact && 'u' in compact && 'g' in compact;
 }
 
 type CompactIdentity = Readonly<{
@@ -134,6 +136,7 @@ type CompactCrewPosition = readonly unknown[];
 type CompactDeployment = readonly unknown[];
 
 type CompactForce = Readonly<{
+    v: 2;
     r: number;
     s: JsonValue;
     u: readonly unknown[];
@@ -144,6 +147,7 @@ type CompactForce = Readonly<{
 
 const MEK = 'm';
 const ENTITY = 'e';
+const COMPACT_FORCE_FORMAT_VERSION = 2;
 
 export function encodeForceForStorage(force: SerializedForce): StoredForceRecord {
     const detached = clone(force);
@@ -153,7 +157,8 @@ export function encodeForceForStorage(force: SerializedForce): StoredForceRecord
     if (force.cbt === undefined) {
         throw new Error('Current Classic persistence requires a current CBT snapshot');
     }
-    return Object.freeze({ ...detached, cbt: packForce(force.cbt) });
+    const { groups: _legacyGroups, c3Networks: _legacyNetworks, ...current } = detached;
+    return Object.freeze({ ...current, cbt: packForce(force.cbt) });
 }
 
 export function decodeForceFromStorage(value: unknown): SerializedForce {
@@ -163,8 +168,10 @@ export function decodeForceFromStorage(value: unknown): SerializedForce {
     if (root['version'] !== 2) throw new Error('Unsupported force persistence version');
     if (root['type'] !== GameSystem.CLASSIC) return detached as SerializedForce;
     const compact = record(root['cbt'], 'force.cbt');
-    if ('schemaVersion' in compact || !('r' in compact) || !('u' in compact) || !('g' in compact)) {
-        throw new Error('Unsupported intermediate Classic persistence shape');
+    if ('schemaVersion' in compact) return detached as SerializedForce;
+    if (compact['v'] !== COMPACT_FORCE_FORMAT_VERSION
+        || !('r' in compact) || !('u' in compact) || !('g' in compact)) {
+        throw new Error('Unsupported compact Classic persistence shape');
     }
     const instanceId = text(root['instanceId'], 'force.instanceId');
     return unpackClassicForce(root, instanceId, unpackForce(compact, instanceId));
@@ -210,6 +217,7 @@ function packForce(force: SerializedCBTForceV2): CompactForce {
         && force.encounter.state.facts.length === 0;
     const ruleset = rulesetFromScenario(force.scenarioRules.values);
     return Object.freeze({
+        v: COMPACT_FORCE_FORMAT_VERSION,
         r: force.forceRevision,
         s: clone(force.scenarioRules.values),
         u: Object.freeze(force.units.map(entry => packUnitEntry(entry, ruleset))),
@@ -220,7 +228,10 @@ function packForce(force: SerializedCBTForceV2): CompactForce {
 }
 
 function unpackForce(value: Record<string, unknown>, forceId: string): SerializedCBTForceV2 {
-    exactKeys(value, ['r', 's', 'u', 'g', 'h', 'e'], 'force.cbt');
+    exactKeys(value, ['v', 'r', 's', 'u', 'g', 'h', 'e'], 'force.cbt');
+    if (value['v'] !== COMPACT_FORCE_FORMAT_VERSION) {
+        throw new Error('Unsupported compact Classic persistence format');
+    }
     const revision = asStateRevision(integer(value['r'], 'force.cbt.r'));
     const scenario = clone(value['s']) as JsonValue;
     const ruleset = rulesetFromScenario(scenario);
@@ -291,8 +302,7 @@ function packMekUnit(unit: SerializedCBTUnitV2, ruleset: CBTRuleset): unknown {
         w: packRows(unit.crew.positions, row => tuple(
             row.target,
             row.wounds,
-            row.unconscious ? 1 : 0,
-            row.ejected ? 1 : 0,
+            packedCrewState(row),
             row.recoveryReadyTurn,
         )),
         h: heatIsPristine ? undefined : packHeat(unit.heat),
@@ -363,19 +373,26 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
         }),
         crew: {
             schemaVersion: 1,
-            positions: value['w'] === undefined ? [] : unpackRows(value['w'], `${path}.w`, (row, rowPath) => ({
-                target: asSavedTargetRef(rowText(row, 0, rowPath)),
-                wounds: rowInteger(row, 1, rowPath),
-                unconscious: rowBit(row, 2, rowPath),
-                ...(rowBit(row, 3, rowPath) ? { ejected: true as const } : {}),
-                ...(row[4] === undefined
-                    ? {}
-                    : {
-                        recoveryReadyTurn: row[4] === null
-                            ? null
-                            : rowInteger(row, 4, rowPath),
-                    }),
-            })),
+            positions: value['w'] === undefined ? [] : unpackRows(value['w'], `${path}.w`, (row, rowPath) => {
+                const state = row[2] === undefined ? 0 : rowInteger(row, 2, rowPath);
+                if (state < 0 || (state & ~MEK_CREW_STATE_MASK) !== 0) {
+                    throw new Error(`${rowPath}[2] is not a Mek crew state`);
+                }
+                return {
+                    target: asSavedTargetRef(rowText(row, 0, rowPath)),
+                    wounds: rowInteger(row, 1, rowPath),
+                    unconscious: (state & CREW_UNCONSCIOUS) !== 0,
+                    ...((state & CREW_EJECTED) !== 0 ? { ejected: true as const } : {}),
+                    ...((state & CREW_DEAD) !== 0 ? { dead: true as const } : {}),
+                    ...(row[3] === undefined
+                        ? {}
+                        : {
+                            recoveryReadyTurn: row[3] === null
+                                ? null
+                                : rowInteger(row, 3, rowPath),
+                        }),
+                };
+            }),
         },
         heat: value['h'] === undefined
             ? { heat: pristineHeat }
@@ -434,7 +451,7 @@ function packNonMekUnit(unit: SerializedNonMekUnit, ruleset: CBTRuleset): unknow
         w: packRows(unit.crewState, row => tuple(
             row.positionId,
             row.wounds,
-            packedNonMekCrewState(row),
+            packedCrewState(row),
             row.recoveryReadyTurn,
         )),
         o: unit.conditions?.length ? unit.conditions : undefined,
@@ -662,13 +679,29 @@ function unpackNonMekMovement(
     };
 }
 
-function packedNonMekCrewState(
-    row: NonNullable<SerializedNonMekUnit['crewState']>[number],
+const CREW_UNCONSCIOUS = 1;
+const CREW_EJECTED = 2;
+const CREW_DEAD = 4;
+const CREW_KILLED = 8;
+const CREW_STUNNED = 16;
+const MEK_CREW_STATE_MASK = CREW_UNCONSCIOUS | CREW_EJECTED | CREW_DEAD;
+const NON_MEK_CREW_STATE_MASK = MEK_CREW_STATE_MASK | CREW_KILLED | CREW_STUNNED;
+
+function packedCrewState(
+    row: Readonly<{
+        readonly unconscious: boolean;
+        readonly ejected?: boolean;
+        readonly dead?: true;
+        readonly killed?: true;
+        readonly stunned?: true;
+    }>,
 ): number | undefined {
-    if (row.state === 'killed') return 3;
-    if (row.state === 'stunned') return 4;
-    if (row.ejected) return 2;
-    return row.unconscious ? 1 : undefined;
+    const state = (row.unconscious ? CREW_UNCONSCIOUS : 0)
+        | (row.ejected ? CREW_EJECTED : 0)
+        | (row.dead ? CREW_DEAD : 0)
+        | (row.killed ? CREW_KILLED : 0)
+        | (row.stunned ? CREW_STUNNED : 0);
+    return state === 0 ? undefined : state;
 }
 
 function unpackNonMekCrewState(
@@ -677,14 +710,17 @@ function unpackNonMekCrewState(
 ): NonNullable<SerializedNonMekUnit['crewState']>[number] {
     if (row.length < 2 || row.length > 4) throw new Error(`${path} is not a compact non-Mek crew row`);
     const state = row[2] === undefined ? 0 : rowInteger(row, 2, path);
-    if (state < 0 || state > 4) throw new Error(`${path}[2] is not a non-Mek crew state`);
+    if (state < 0 || (state & ~NON_MEK_CREW_STATE_MASK) !== 0) {
+        throw new Error(`${path}[2] is not a non-Mek crew state`);
+    }
     return {
         positionId: asCrewPositionId(rowText(row, 0, path)),
         wounds: rowInteger(row, 1, path),
-        unconscious: state === 1,
-        ejected: state === 2,
-        ...(state === 3 ? { state: 'killed' as const }
-            : state === 4 ? { state: 'stunned' as const } : {}),
+        unconscious: (state & CREW_UNCONSCIOUS) !== 0,
+        ejected: (state & CREW_EJECTED) !== 0,
+        ...((state & CREW_DEAD) !== 0 ? { dead: true as const } : {}),
+        ...((state & CREW_KILLED) !== 0 ? { killed: true as const } : {}),
+        ...((state & CREW_STUNNED) !== 0 ? { stunned: true as const } : {}),
         ...(row[3] === undefined
             ? {}
             : {
@@ -1072,7 +1108,7 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
         h: value.acknowledgedHeatSources?.map(row => [row.sourceId, row.signature]),
         d: value.heatDissipationConsumed,
         s: value.spotting ? 1 : undefined,
-        e: value.equipmentStateChanged ? 1 : undefined,
+        e: value.phaseStateChanged ? 1 : undefined,
         p: packEndTurnCheckpoint(value.endTurnCheckpoint),
         f: value.pendingFallConsequences === undefined
             ? undefined
@@ -1107,7 +1143,7 @@ function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
         })),
         heatDissipationConsumed: optionalInteger(turn['d'], `${path}.d`),
         spotting: turn['s'] === undefined ? undefined : truthyOne(turn['s'], `${path}.s`),
-        equipmentStateChanged: turn['e'] === undefined ? undefined : truthyOne(turn['e'], `${path}.e`),
+        phaseStateChanged: turn['e'] === undefined ? undefined : truthyOne(turn['e'], `${path}.e`),
         endTurnCheckpoint: turn['p'] === undefined
             ? undefined
             : unpackEndTurnCheckpoint(turn['p'], `${path}.p`),

@@ -11,7 +11,6 @@ import {
     projectMekMovementHeatV2,
     type MekMovementHeatFactsV2,
 } from './mek-heat-state-v2';
-import { asCommandId } from './runtime-state';
 import {
     createDirectEngineHeatRuntimeFixture,
     createDirectMekRuntimeFixture,
@@ -53,8 +52,8 @@ function damageOneEngineCritical(fixture: DirectMekRuntimeFixture): void {
     if (!slot) throw new Error('Fixture Engine has no critical slot');
     const result = fixture.instance.dispatch({
         type: 'hit-critical',
-        commandId: asCommandId(`heat-engine:${fixture.instance.id}`),
-        expectedRevision: fixture.instance.query().stateRevision,
+
+
         slotId: slot.id,
         hits: 1,
         target: 'committed',

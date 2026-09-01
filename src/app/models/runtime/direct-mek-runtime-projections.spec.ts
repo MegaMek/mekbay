@@ -25,7 +25,7 @@ import {
     projectMekSpottingModifier,
     projectMekTurnPanel,
 } from './mek-turn-panel';
-import { asCommandId, asStateRevision } from './runtime-state';
+import { asStateRevision } from './runtime-state';
 import {
     createDirectAesRuntimeFixture,
     createDirectBoosterRuntimeFixture,
@@ -61,16 +61,16 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'damage-internal',
-            commandId: asCommandId('location-loss:pending-left-torso'),
-            expectedRevision: asStateRevision(0),
+
+
             locationId: leftTorso.id,
             amount: leftTorso.internalPoints,
             target: 'pending',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'commit-pending',
-            commandId: asCommandId('location-loss:commit-left-torso'),
-            expectedRevision: asStateRevision(1),
+
+
         }).accepted).toBeTrue();
 
         const query = fixture.instance.query();
@@ -108,8 +108,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'damage-armor',
-            commandId: asCommandId('turn-panel:pending-damage'),
-            expectedRevision: asStateRevision(0),
+
+
             faceId: face.id,
             amount: 1,
             target: 'pending',
@@ -126,6 +126,47 @@ describe('direct Mek entity/runtime projections', () => {
         expect(isMekTurnPanelDirtyPhase(panel)).toBeTrue();
     });
 
+    it('keeps movement edits phase-dirty until the phase boundary', () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const panel = () => projectMekTurnPanel(
+            fixture.entity,
+            fixture.index,
+            fixture.instance.ruleset(),
+            fixture.instance.query(),
+            'manual',
+        );
+
+        expect(isMekTurnPanelDirtyPhase(panel())).toBeFalse();
+        expect(fixture.instance.dispatch({
+            type: 'declare-mek-movement',
+
+
+            declaration: {
+                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
+                mode: 'walk',
+                distance: 1,
+                boosterComponentIds: [],
+            },
+        }).accepted).toBeTrue();
+        expect(fixture.instance.query().turnState().phaseStateChanged).toBeTrue();
+        expect(isMekTurnPanelDirtyPhase(panel())).toBeTrue();
+
+        expect(fixture.instance.dispatch({
+            type: 'clear-mek-movement',
+
+
+        }).accepted).toBeTrue();
+        expect(panel().movementState.movement).toBeNull();
+        expect(isMekTurnPanelDirtyPhase(panel())).toBeTrue();
+
+        expect(fixture.instance.dispatch({
+            type: 'end-phase',
+
+
+        }).accepted).toBeTrue();
+        expect(isMekTurnPanelDirtyPhase(panel())).toBeFalse();
+    });
+
     it('builds the sheet and equipment panel from entity facts plus sparse state', () => {
         const fixture = createDirectMekRuntimeFixture();
         const registry = emptyCBTEncounterSnapshot();
@@ -135,12 +176,12 @@ describe('direct Mek entity/runtime projections', () => {
         if (laser.kind !== 'equipment') throw new Error('Fixture laser is missing');
 
         expect(fixture.instance.dispatch({
-            type: 'damage-armor', commandId: asCommandId('projection:armor'),
-            expectedRevision: asStateRevision(0), faceId: face.id, amount: 1, target: 'committed',
+            type: 'damage-armor',
+            faceId: face.id, amount: 1, target: 'committed',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'set-component-status', commandId: asCommandId('projection:laser'),
-            expectedRevision: asStateRevision(1), componentId: laser.id,
+            type: 'set-component-status',
+            componentId: laser.id,
             status: 'destroyed', target: 'committed',
         }).accepted).toBeTrue();
 
@@ -187,8 +228,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('ammo-source:pending-destroyed'),
-            expectedRevision: fixture.instance.revision(),
+
+
             componentId: ammo.id,
             status: 'destroyed',
             target: 'pending',
@@ -201,8 +242,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'commit-pending',
-            commandId: asCommandId('ammo-source:commit-destroyed'),
-            expectedRevision: fixture.instance.revision(),
+
+
         }).accepted).toBeTrue();
         expect(source()).toEqual(jasmine.objectContaining({
             status: 'destroyed',
@@ -217,8 +258,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-crew-state',
-            commandId: asCommandId('conditions:unconscious'),
-            expectedRevision: asStateRevision(0),
+
+
             positionId: pilot.id,
             wounds: 0,
             unconscious: true,
@@ -252,8 +293,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-crew-state',
-            commandId: asCommandId('conditions:ejected'),
-            expectedRevision: asStateRevision(1),
+
+
             positionId: pilot.id,
             wounds: 0,
             unconscious: false,
@@ -289,8 +330,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-crew-state',
-            commandId: asCommandId('unit-status:unconscious'),
-            expectedRevision: fixture.instance.revision(),
+
+
             positionId: pilot.id,
             wounds: 1,
             unconscious: true,
@@ -298,8 +339,8 @@ describe('direct Mek entity/runtime projections', () => {
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'set-location-condition',
-            commandId: asCommandId('unit-status:narc'),
-            expectedRevision: fixture.instance.revision(),
+
+
             locationId: head.id,
             condition: 'narc',
             value: 2,
@@ -335,15 +376,15 @@ describe('direct Mek entity/runtime projections', () => {
         expect(fixture.instance.query().conditions()).not.toContain('stealth');
         expect(fixture.instance.dispatch({
             type: 'set-stealth-state',
-            commandId: asCommandId('unit-status:enable-stealth'),
-            expectedRevision: fixture.instance.revision(),
+
+
             componentId: stealth.id,
             state: 'enabling',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'end-turn',
-            commandId: asCommandId('unit-status:settle-stealth'),
-            expectedRevision: fixture.instance.revision(),
+
+
             policy: 'automatic',
         }).accepted).toBeTrue();
 
@@ -365,8 +406,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'hit-critical',
-            commandId: asCommandId('conditions:cockpit-destroyed'),
-            expectedRevision: asStateRevision(0),
+
+
             slotId: cockpitSlot.id,
             hits: 1,
             target: 'committed',
@@ -399,8 +440,8 @@ describe('direct Mek entity/runtime projections', () => {
         )).toBe(0);
 
         expect(fixture.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('command-console:main-cockpit'),
-            expectedRevision: fixture.instance.revision(), slotId: cockpitSlots[0]!.id,
+            type: 'hit-critical',
+            slotId: cockpitSlots[0]!.id,
             hits: 1, target: 'committed',
         }).accepted).toBeTrue();
         let query = fixture.instance.query();
@@ -413,8 +454,8 @@ describe('direct Mek entity/runtime projections', () => {
         expect(projectMekSpottingModifier(fixture.entity, fixture.index, query)).toBe(1);
 
         expect(fixture.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('command-console:second-cockpit'),
-            expectedRevision: fixture.instance.revision(), slotId: cockpitSlots[1]!.id,
+            type: 'hit-critical',
+            slotId: cockpitSlots[1]!.id,
             hits: 1, target: 'committed',
         }).accepted).toBeTrue();
         query = fixture.instance.query();
@@ -438,8 +479,8 @@ describe('direct Mek entity/runtime projections', () => {
                 .not.toContain('Mounts small or torso cockpit');
 
             expect(fixture.instance.dispatch({
-                type: 'set-crew-state', commandId: asCommandId(`drone:${ruleset}:eject`),
-                expectedRevision: fixture.instance.revision(), positionId: pilot.id,
+                type: 'set-crew-state',
+                positionId: pilot.id,
                 wounds: 0, unconscious: false, ejected: true,
             }).accepted).toBeTrue();
             expect(fixture.instance.query().hasCondition('abandoned')).toBeFalse();
@@ -448,8 +489,8 @@ describe('direct Mek entity/runtime projections', () => {
             }));
 
             expect(fixture.instance.dispatch({
-                type: 'set-component-status', commandId: asCommandId(`drone:${ruleset}:destroy-os`),
-                expectedRevision: fixture.instance.revision(), componentId: drone.id,
+                type: 'set-component-status',
+                componentId: drone.id,
                 status: 'destroyed', target: 'committed',
             }).accepted).toBeTrue();
             expect(fixture.instance.query().hasCondition('disconnected')).toBeTrue();
@@ -458,8 +499,8 @@ describe('direct Mek entity/runtime projections', () => {
             }));
 
             expect(fixture.instance.dispatch({
-                type: 'set-component-status', commandId: asCommandId(`drone:${ruleset}:repair-os`),
-                expectedRevision: fixture.instance.revision(), componentId: drone.id,
+                type: 'set-component-status',
+                componentId: drone.id,
                 status: 'available', target: 'committed',
             }).accepted).toBeTrue();
             expect(fixture.instance.query().hasCondition('disconnected')).toBeFalse();
@@ -482,22 +523,22 @@ describe('direct Mek entity/runtime projections', () => {
         expect(movement()).toEqual(jasmine.objectContaining({ runMp: 8, maximumRunMp: 10 }));
         expect(run()).toEqual(jasmine.objectContaining({ ordinaryMaximumMp: 8, maximumMp: 10 }));
         expect(fixture.instance.dispatch({
-            type: 'declare-mek-movement', commandId: asCommandId('masc:inactive-run'),
-            expectedRevision: asStateRevision(0),
+            type: 'declare-mek-movement',
+
             declaration: {
                 schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 10, boosterComponentIds: [masc.id],
             },
-        }).accepted).toBeFalse();
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
 
         expect(fixture.instance.dispatch({
-            type: 'edit-escalating-failure', commandId: asCommandId('masc:activate'),
-            expectedRevision: asStateRevision(0), componentId: masc.id,
+            type: 'edit-escalating-failure',
+            componentId: masc.id,
             edit: { kind: 'select-sequence', index: 0 },
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'declare-mek-movement', commandId: asCommandId('masc:active-run'),
-            expectedRevision: asStateRevision(1),
+            type: 'declare-mek-movement',
+
             declaration: {
                 schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 10, boosterComponentIds: [masc.id],
@@ -505,8 +546,8 @@ describe('direct Mek entity/runtime projections', () => {
         }).accepted).toBeTrue();
 
         expect(fixture.instance.dispatch({
-            type: 'set-component-status', commandId: asCommandId('masc:failed'),
-            expectedRevision: asStateRevision(2), componentId: masc.id,
+            type: 'set-component-status',
+            componentId: masc.id,
             status: 'destroyed', target: 'committed',
         }).accepted).toBeTrue();
         expect(movement()).toEqual(jasmine.objectContaining({ runMp: 8, maximumRunMp: 8 }));
@@ -518,13 +559,13 @@ describe('direct Mek entity/runtime projections', () => {
         const fixture = createDirectMekRuntimeFixture();
         const masc = fixture.equipmentComponent('Test MASC');
         expect(fixture.instance.dispatch({
-            type: 'edit-escalating-failure', commandId: asCommandId('masc:disabled:activate'),
-            expectedRevision: asStateRevision(0), componentId: masc.id,
+            type: 'edit-escalating-failure',
+            componentId: masc.id,
             edit: { kind: 'select-sequence', index: 0 },
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'set-component-status', commandId: asCommandId('masc:disabled:set'),
-            expectedRevision: asStateRevision(1), componentId: masc.id,
+            type: 'set-component-status',
+            componentId: masc.id,
             status: 'disabled', target: 'committed',
         }).accepted).toBeTrue();
 
@@ -555,13 +596,13 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(movement()).toEqual(jasmine.objectContaining({ runMp: 8, maximumRunMp: 13 }));
         expect(fixture.instance.dispatch({
-            type: 'edit-escalating-failure', commandId: asCommandId('booster:supercharger'),
-            expectedRevision: asStateRevision(0), componentId: supercharger.id,
+            type: 'edit-escalating-failure',
+            componentId: supercharger.id,
             edit: { kind: 'select-sequence', index: 0 },
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'declare-mek-movement', commandId: asCommandId('booster:supercharger-run'),
-            expectedRevision: asStateRevision(1),
+            type: 'declare-mek-movement',
+
             declaration: {
                 schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 10, boosterComponentIds: [supercharger.id],
@@ -570,13 +611,13 @@ describe('direct Mek entity/runtime projections', () => {
         expect(movement().declaration?.maximumMp).toBe(10);
 
         expect(fixture.instance.dispatch({
-            type: 'edit-escalating-failure', commandId: asCommandId('booster:masc'),
-            expectedRevision: asStateRevision(2), componentId: masc.id,
+            type: 'edit-escalating-failure',
+            componentId: masc.id,
             edit: { kind: 'select-sequence', index: 0 },
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'declare-mek-movement', commandId: asCommandId('booster:stacked-run'),
-            expectedRevision: asStateRevision(3),
+            type: 'declare-mek-movement',
+
             declaration: {
                 schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 13, boosterComponentIds: [masc.id, supercharger.id],
@@ -591,8 +632,8 @@ describe('direct Mek entity/runtime projections', () => {
         const viral = fixture.equipmentComponent('Test RISC Viral Jammer');
         for (const [index, component] of [masc, viral].entries()) {
             expect(fixture.instance.dispatch({
-                type: 'edit-escalating-failure', commandId: asCommandId(`turn-panel:active:${index}`),
-                expectedRevision: asStateRevision(index), componentId: component.id,
+                type: 'edit-escalating-failure',
+                componentId: component.id,
                 edit: { kind: 'select-sequence', index: 0 },
             }).accepted).toBeTrue();
         }
@@ -611,18 +652,18 @@ describe('direct Mek entity/runtime projections', () => {
         const fixture = createDirectJetBoosterRuntimeFixture();
         const jetBooster = fixture.equipmentComponent('Test Jet Booster');
         expect(fixture.instance.dispatch({
-            type: 'edit-escalating-failure', commandId: asCommandId('jet-booster:grounded-activate'),
-            expectedRevision: asStateRevision(0), componentId: jetBooster.id,
+            type: 'edit-escalating-failure',
+            componentId: jetBooster.id,
             edit: { kind: 'select-sequence', index: 0 },
-        }).accepted).toBeFalse();
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(fixture.instance.dispatch({
-            type: 'replace-turn-state', commandId: asCommandId('jet-booster:airborne'),
-            expectedRevision: asStateRevision(0),
+            type: 'replace-turn-state',
+
             turn: { ...fixture.instance.query().turnState(), airborne: true },
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'edit-escalating-failure', commandId: asCommandId('jet-booster:activate'),
-            expectedRevision: asStateRevision(1), componentId: jetBooster.id,
+            type: 'edit-escalating-failure',
+            componentId: jetBooster.id,
             edit: { kind: 'select-sequence', index: 0 },
         }).accepted).toBeTrue();
         expect(projectMekTurnPanel(
@@ -633,8 +674,8 @@ describe('direct Mek entity/runtime projections', () => {
             'manual',
         ).activeBoosterComponentIds).toEqual([jetBooster.id]);
         expect(fixture.instance.dispatch({
-            type: 'declare-mek-movement', commandId: asCommandId('jet-booster:run'),
-            expectedRevision: asStateRevision(2),
+            type: 'declare-mek-movement',
+
             declaration: {
                 schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 10, boosterComponentIds: [jetBooster.id],
@@ -642,8 +683,8 @@ describe('direct Mek entity/runtime projections', () => {
         }).accepted).toBeTrue();
 
         expect(fixture.instance.dispatch({
-            type: 'replace-turn-state', commandId: asCommandId('jet-booster:grounded'),
-            expectedRevision: asStateRevision(3),
+            type: 'replace-turn-state',
+
             turn: { ...fixture.instance.query().turnState(), airborne: null },
         }).accepted).toBeTrue();
         const query = fixture.instance.query();
@@ -656,13 +697,13 @@ describe('direct Mek entity/runtime projections', () => {
             'manual',
         ).activeBoosterComponentIds).toEqual([]);
         expect(fixture.instance.dispatch({
-            type: 'declare-mek-movement', commandId: asCommandId('jet-booster:grounded-run'),
-            expectedRevision: asStateRevision(4),
+            type: 'declare-mek-movement',
+
             declaration: {
                 schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 10, boosterComponentIds: [jetBooster.id],
             },
-        }).accepted).toBeFalse();
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
     });
 
     it('ports Core and Total Warfare charge damage through entity construction plus sparse state', () => {
@@ -688,8 +729,8 @@ describe('direct Mek entity/runtime projections', () => {
             weakened: false,
         }));
         expect(core.instance.dispatch({
-            type: 'declare-mek-movement', commandId: asCommandId('charge:core:walk'),
-            expectedRevision: asStateRevision(0),
+            type: 'declare-mek-movement',
+
             declaration: { schemaVersion: 1, mode: 'walk', distance: 5, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(effect(core)).toEqual(jasmine.objectContaining({
@@ -702,8 +743,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         const ramPlate = core.equipmentComponent('Test Ram Plate');
         expect(core.instance.dispatch({
-            type: 'set-component-status', commandId: asCommandId('charge:core:ram-plate'),
-            expectedRevision: asStateRevision(1), componentId: ramPlate.id,
+            type: 'set-component-status',
+            componentId: ramPlate.id,
             status: 'destroyed', target: 'committed',
         }).accepted).toBeTrue();
         expect(effect(core)).toEqual(jasmine.objectContaining({
@@ -722,8 +763,8 @@ describe('direct Mek entity/runtime projections', () => {
             weakened: false,
         }));
         expect(tw.instance.dispatch({
-            type: 'declare-mek-movement', commandId: asCommandId('charge:tw:walk'),
-            expectedRevision: asStateRevision(0),
+            type: 'declare-mek-movement',
+
             declaration: { schemaVersion: 1, mode: 'walk', distance: 5, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(effect(tw)).toEqual(jasmine.objectContaining({
@@ -736,8 +777,8 @@ describe('direct Mek entity/runtime projections', () => {
         const flooded = createDirectChargeRuntimeFixture('core-2026', 'unit:flooded-spikes');
         const leftLeg = [...flooded.index.locations.values()].find(location => location.code === 'LL')!;
         expect(flooded.instance.dispatch({
-            type: 'set-location-condition', commandId: asCommandId('charge:spikes:flooded'),
-            expectedRevision: asStateRevision(0), locationId: leftLeg.id,
+            type: 'set-location-condition',
+            locationId: leftLeg.id,
             condition: 'flooded', value: 1, target: 'committed',
         }).accepted).toBeTrue();
         expect(effect(flooded).displayFormula).toBe('13.5×(TMM+1)+2');
@@ -770,24 +811,24 @@ describe('direct Mek entity/runtime projections', () => {
             damage: 8, maximumDamage: 16, baseDamage: 8, weakened: false,
         }));
         expect(fixture.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('claw:upper-arm'),
-            expectedRevision: asStateRevision(0), slotId: actuator('Upper Arm Actuator').id,
+            type: 'hit-critical',
+            slotId: actuator('Upper Arm Actuator').id,
             hits: 1, target: 'committed',
         }).accepted).toBeTrue();
         expect(effect()).toEqual(jasmine.objectContaining({
             damage: 4, maximumDamage: 8, baseDamage: 4, weakened: true,
         }));
         expect(fixture.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('claw:lower-arm'),
-            expectedRevision: asStateRevision(1), slotId: actuator('Lower Arm Actuator').id,
+            type: 'hit-critical',
+            slotId: actuator('Lower Arm Actuator').id,
             hits: 1, target: 'committed',
         }).accepted).toBeTrue();
         expect(effect()).toEqual(jasmine.objectContaining({
             damage: 2, maximumDamage: 4, baseDamage: 2, weakened: true,
         }));
         expect(fixture.instance.dispatch({
-            type: 'set-heat', commandId: asCommandId('claw:tsm'),
-            expectedRevision: asStateRevision(2), heat: 9,
+            type: 'set-heat',
+            heat: 9,
         }).accepted).toBeTrue();
         expect(effect()).toEqual(jasmine.objectContaining({
             damage: 4, maximumDamage: 4, baseDamage: 2, weakened: true, boosted: true,
@@ -826,8 +867,8 @@ describe('direct Mek entity/runtime projections', () => {
             label: 'Paired Arm AES', modifier: -1,
         }));
         expect(arms.instance.dispatch({
-            type: 'set-component-status', commandId: asCommandId('aes:paired:left'),
-            expectedRevision: asStateRevision(0), componentId: aesAt(arms, 'LA').id,
+            type: 'set-component-status',
+            componentId: aesAt(arms, 'LA').id,
             status: 'destroyed', target: 'committed',
         }).accepted).toBeTrue();
         expect(action(armRows(), 'Club (Club/Improvised)').hitModifierBreakdown).toContain(jasmine.objectContaining({
@@ -843,8 +884,8 @@ describe('direct Mek entity/runtime projections', () => {
             label: 'Leg AES', modifier: -1,
         }));
         expect(legs.instance.dispatch({
-            type: 'set-component-status', commandId: asCommandId('aes:legs:left'),
-            expectedRevision: asStateRevision(0), componentId: aesAt(legs, 'LL').id,
+            type: 'set-component-status',
+            componentId: aesAt(legs, 'LL').id,
             status: 'destroyed', target: 'committed',
         }).accepted).toBeTrue();
         expect(kick().hitModifierBreakdown).toContain(jasmine.objectContaining({
@@ -901,15 +942,15 @@ describe('direct Mek entity/runtime projections', () => {
         expect(heat.projection.committedSources.some(source =>
             source.id === `vibroblade:${vibroblade.id}`)).toBeFalse();
         expect(fixture.instance.dispatch({
-            type: 'set-heat', commandId: asCommandId('vibroblade:tsm'),
-            expectedRevision: asStateRevision(0), heat: 9,
+            type: 'set-heat',
+            heat: 9,
         }).accepted).toBeTrue();
         expect(effect()).toEqual(jasmine.objectContaining({
             damage: 14, maximumDamage: 14, alternateDamage: 7, boosted: true,
         }));
         expect(fixture.instance.dispatch({
-            type: 'set-component-mode', commandId: asCommandId('vibroblade:on'),
-            expectedRevision: asStateRevision(1), componentId: vibroblade.id, mode: 'ON',
+            type: 'set-component-mode',
+            componentId: vibroblade.id, mode: 'ON',
         }).accepted).toBeTrue();
         expect(effect()).toEqual(jasmine.objectContaining({
             damage: 7, maximumDamage: 7, boosted: false,
@@ -922,8 +963,8 @@ describe('direct Mek entity/runtime projections', () => {
             source.id === `vibroblade:${vibroblade.id}`)?.value).toBe(3);
 
         expect(fixture.instance.dispatch({
-            type: 'set-component-status', commandId: asCommandId('vibroblade:destroyed'),
-            expectedRevision: asStateRevision(2), componentId: vibroblade.id,
+            type: 'set-component-status',
+            componentId: vibroblade.id,
             status: 'destroyed', target: 'committed',
         }).accepted).toBeTrue();
         heat = fixture.instance.query().heatProjection('manual');
@@ -957,22 +998,22 @@ describe('direct Mek entity/runtime projections', () => {
     it('projects production movement labels and defender modifiers outside the overlay UI', () => {
         const fixture = createDirectMekRuntimeFixture('total-warfare');
         expect(fixture.instance.dispatch({
-            type: 'declare-mek-movement', commandId: asCommandId('turn-rules:walk'),
-            expectedRevision: asStateRevision(0),
+            type: 'declare-mek-movement',
+
             declaration: { schemaVersion: 1, mode: 'walk', distance: 3, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'set-condition', commandId: asCommandId('turn-rules:skidding'),
-            expectedRevision: asStateRevision(1), condition: 'skidding', active: true,
+            type: 'set-condition',
+            condition: 'skidding', active: true,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'set-condition', commandId: asCommandId('turn-rules:prone'),
-            expectedRevision: asStateRevision(2), condition: 'prone', active: true,
+            type: 'set-condition',
+            condition: 'prone', active: true,
         }).accepted).toBeTrue();
         const turn = fixture.instance.query().turnState();
         expect(fixture.instance.dispatch({
-            type: 'replace-turn-state', commandId: asCommandId('turn-rules:cover'),
-            expectedRevision: asStateRevision(3), turn: { ...turn, cover: 'light' },
+            type: 'replace-turn-state',
+            turn: { ...turn, cover: 'light' },
         }).accepted).toBeTrue();
 
         const panel = projectMekTurnPanel(
@@ -1007,12 +1048,12 @@ describe('direct Mek entity/runtime projections', () => {
     it('composes ruleset bases with sparse Spotting and Skidding attack modifiers once', () => {
         const tw = createDirectMekRuntimeFixture('total-warfare');
         expect(tw.instance.dispatch({
-            type: 'set-condition', commandId: asCommandId('attack-rules:tw:skidding'),
-            expectedRevision: asStateRevision(0), condition: 'skidding', active: true,
+            type: 'set-condition',
+            condition: 'skidding', active: true,
         }).accepted).toBeTrue();
         expect(tw.instance.dispatch({
-            type: 'replace-turn-state', commandId: asCommandId('attack-rules:tw:spotting'),
-            expectedRevision: asStateRevision(1),
+            type: 'replace-turn-state',
+
             turn: { ...tw.instance.query().turnState(), spotting: true },
         }).accepted).toBeTrue();
         const twPanel = projectMekEquipmentPanel(
@@ -1030,12 +1071,12 @@ describe('direct Mek entity/runtime projections', () => {
 
         const core = createDirectMekRuntimeFixture('core-2026');
         expect(core.instance.dispatch({
-            type: 'set-condition', commandId: asCommandId('attack-rules:core:skidding'),
-            expectedRevision: asStateRevision(0), condition: 'skidding', active: true,
+            type: 'set-condition',
+            condition: 'skidding', active: true,
         }).accepted).toBeTrue();
         expect(core.instance.dispatch({
-            type: 'replace-turn-state', commandId: asCommandId('attack-rules:core:spotting'),
-            expectedRevision: asStateRevision(1),
+            type: 'replace-turn-state',
+
             turn: { ...core.instance.query().turnState(), spotting: true },
         }).accepted).toBeTrue();
         const corePanel = projectMekEquipmentPanel(
@@ -1061,21 +1102,21 @@ describe('direct Mek entity/runtime projections', () => {
             })!;
 
         expect(fixture.instance.dispatch({
-            type: 'set-heat', commandId: asCommandId('combat-modifiers:heat'),
-            expectedRevision: asStateRevision(0), heat: 13,
+            type: 'set-heat',
+            heat: 13,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'set-condition', commandId: asCommandId('combat-modifiers:prone'),
-            expectedRevision: asStateRevision(1), condition: 'prone', active: true,
+            type: 'set-condition',
+            condition: 'prone', active: true,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('combat-modifiers:sensor'),
-            expectedRevision: asStateRevision(2), slotId: slot('Sensors', 'HD').id,
+            type: 'hit-critical',
+            slotId: slot('Sensors', 'HD').id,
             hits: 1, target: 'committed',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('combat-modifiers:upper-arm'),
-            expectedRevision: asStateRevision(3), slotId: slot('Upper Arm Actuator', 'LA').id,
+            type: 'hit-critical',
+            slotId: slot('Upper Arm Actuator', 'LA').id,
             hits: 1, target: 'committed',
         }).accepted).toBeTrue();
 
@@ -1112,8 +1153,8 @@ describe('direct Mek entity/runtime projections', () => {
                 return component?.kind === 'system' && component.systemType === 'Lower Arm Actuator';
             }))!;
         expect(fixture.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('combat-modifiers:tw-lower-arm'),
-            expectedRevision: asStateRevision(0), slotId: lowerArm.id,
+            type: 'hit-critical',
+            slotId: lowerArm.id,
             hits: 1, target: 'committed',
         }).accepted).toBeTrue();
 
@@ -1164,8 +1205,8 @@ describe('direct Mek entity/runtime projections', () => {
         ]);
 
         expect(fixture.instance.dispatch({
-            type: 'set-component-status', commandId: asCommandId('combat-modifiers:aes-destroyed'),
-            expectedRevision: asStateRevision(0), componentId: aes.id,
+            type: 'set-component-status',
+            componentId: aes.id,
             status: 'destroyed', target: 'committed',
         }).accepted).toBeTrue();
 
@@ -1209,8 +1250,8 @@ describe('direct Mek entity/runtime projections', () => {
         ]);
 
         expect(fixture.instance.dispatch({
-            type: 'set-crew-state', commandId: asCommandId('combat-modifiers:dgo-disabled'),
-            expectedRevision: asStateRevision(0), positionId: gunneryOfficer.id,
+            type: 'set-crew-state',
+            positionId: gunneryOfficer.id,
             wounds: 0, unconscious: true, ejected: false,
         }).accepted).toBeTrue();
         expect(panel().components.find(row => row.label === 'Medium Laser')?.weapon?.hitModifierBreakdown).toEqual([
@@ -1218,8 +1259,8 @@ describe('direct Mek entity/runtime projections', () => {
         ]);
 
         expect(fixture.instance.dispatch({
-            type: 'set-crew-state', commandId: asCommandId('combat-modifiers:pilot-disabled'),
-            expectedRevision: asStateRevision(1), positionId: pilot.id,
+            type: 'set-crew-state',
+            positionId: pilot.id,
             wounds: 0, unconscious: true, ejected: false,
         }).accepted).toBeTrue();
         expect(panel().physicalAttacks.find(attack => attack.label === 'Punch')?.hitModifiers).toEqual([1]);
@@ -1250,8 +1291,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('leg-aes:destroyed'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             componentId: aes.id,
             status: 'destroyed',
             target: 'committed',
@@ -1285,8 +1326,8 @@ describe('direct Mek entity/runtime projections', () => {
         const ac = fixture.equipmentComponent('Test AC');
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            commandId: asCommandId('projection:rapid-fire'),
-            expectedRevision: asStateRevision(0),
+
+
             componentId: ac.id,
             mode: 'Rapid',
         }).accepted).toBeTrue();
@@ -1345,8 +1386,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            commandId: asCommandId('projection:targeting-computer:hag-flak'),
-            expectedRevision: asStateRevision(0),
+
+
             componentId: hag.id,
             mode: 'Flak',
         }).accepted).toBeTrue();
@@ -1356,8 +1397,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('projection:targeting-computer:destroyed'),
-            expectedRevision: asStateRevision(1),
+
+
             componentId: targetingComputer.id,
             status: 'destroyed',
             target: 'committed',
@@ -1388,8 +1429,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(row().weapon?.toHitModifier).toEqual([-4, -3, -2]);
         expect(fixture.instance.dispatch({
-            type: 'set-component-status', commandId: asCommandId('vsp:destroy-targeting-computer'),
-            expectedRevision: fixture.instance.revision(), componentId: targetingComputer.id,
+            type: 'set-component-status',
+            componentId: targetingComputer.id,
             status: 'destroyed', target: 'committed',
         }).accepted).toBeTrue();
         const projected = projectMekEquipmentPanel(
@@ -1427,9 +1468,9 @@ describe('direct Mek entity/runtime projections', () => {
         });
         expect(fixture.instance.dispatchAttackerTargeting({
             type: 'edit-attacker-targeting',
-            commandId: asCommandId('projection:indirect-facts'),
-            expectedRevision: asStateRevision(0),
-            expectedRegistryRevision: registry.revision,
+
+
+
             edit: {
                 kind: 'set-target-facts',
                 targetId,
@@ -1464,8 +1505,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('artemis-v:disable'),
-            expectedRevision: fixture.instance.snapshot().stateRevision,
+
+
             componentId: artemis.id,
             status: 'disabled',
             target: 'committed',
@@ -1483,15 +1524,15 @@ describe('direct Mek entity/runtime projections', () => {
         const stealth = fixture.equipmentComponent('Test Stealth');
         expect(fixture.instance.dispatch({
             type: 'set-stealth-state',
-            commandId: asCommandId('artemis-v:enable-stealth'),
-            expectedRevision: fixture.instance.revision(),
+
+
             componentId: stealth.id,
             state: 'enabling',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'end-turn',
-            commandId: asCommandId('artemis-v:settle-stealth'),
-            expectedRevision: fixture.instance.revision(),
+
+
             policy: 'automatic',
         }).accepted).toBeTrue();
 
@@ -1518,9 +1559,9 @@ describe('direct Mek entity/runtime projections', () => {
         });
         expect(ordinary.instance.dispatchAttackerTargeting({
             type: 'edit-attacker-targeting',
-            commandId: asCommandId('artemis-v:indirect-target'),
-            expectedRevision: ordinary.instance.revision(),
-            expectedRegistryRevision: registry.revision,
+
+
+
             edit: {
                 kind: 'set-target-facts',
                 targetId,
@@ -1553,8 +1594,8 @@ describe('direct Mek entity/runtime projections', () => {
         expect(row().weapon?.firingHeat).toBe(2);
         expect(fixture.instance.dispatch({
             type: 'set-component-status',
-            commandId: asCommandId('laser-insulator:disable'),
-            expectedRevision: fixture.instance.revision(),
+
+
             componentId: insulator.id,
             status: 'disabled',
             target: 'committed',
@@ -1582,9 +1623,9 @@ describe('direct Mek entity/runtime projections', () => {
         const munitionKey = fixture.instance.query().ammoLoadout(ammo.id).munitionKey;
         expect(fixture.instance.dispatchAttackerTargeting({
             type: 'edit-attacker-targeting',
-            commandId: asCommandId('projection:semi-guided-ammo'),
-            expectedRevision: asStateRevision(0),
-            expectedRegistryRevision: registry.revision,
+
+
+
             edit: {
                 kind: 'set-component-ammo',
                 componentId: launcher.id,
@@ -1593,9 +1634,9 @@ describe('direct Mek entity/runtime projections', () => {
         }, registry, false).accepted).toBeTrue();
         expect(fixture.instance.dispatchAttackerTargeting({
             type: 'edit-attacker-targeting',
-            commandId: asCommandId('projection:semi-guided-target'),
-            expectedRevision: asStateRevision(1),
-            expectedRegistryRevision: registry.revision,
+
+
+
             edit: { kind: 'set-target-facts', targetId, facts: { distance: 3 } },
         }, registry, false).accepted).toBeTrue();
 
@@ -1614,8 +1655,8 @@ describe('direct Mek entity/runtime projections', () => {
         const fixture = createDirectMekRuntimeFixture('core-2026');
 
         expect(fixture.instance.dispatch({
-            type: 'set-condition', commandId: asCommandId('standing:core:prone'),
-            expectedRevision: asStateRevision(0), condition: 'prone', active: true,
+            type: 'set-condition',
+            condition: 'prone', active: true,
         }).accepted).toBeTrue();
         const before = fixture.instance.query().mekMovementPsr();
         expect(before.kind).toBe('supported');
@@ -1632,12 +1673,12 @@ describe('direct Mek entity/runtime projections', () => {
         }));
 
         expect(fixture.instance.dispatch({
-            type: 'prepare-mek-stand', commandId: asCommandId('standing:core:prepare'),
-            expectedRevision: asStateRevision(1),
+            type: 'prepare-mek-stand',
+
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'resolve-mek-stand-attempt', commandId: asCommandId('standing:core:fail'),
-            expectedRevision: asStateRevision(2), carefulStand: false,
+            type: 'resolve-mek-stand-attempt',
+            carefulStand: false,
             evidence: { dice: [1, 1], claimedOutcome: 'failed' },
         }).accepted).toBeTrue();
 
@@ -1660,8 +1701,8 @@ describe('direct Mek entity/runtime projections', () => {
         const fixture = createDirectMekRuntimeFixture('total-warfare');
 
         expect(fixture.instance.dispatch({
-            type: 'set-condition', commandId: asCommandId('standing:tw:prone'),
-            expectedRevision: asStateRevision(0), condition: 'prone', active: true,
+            type: 'set-condition',
+            condition: 'prone', active: true,
         }).accepted).toBeTrue();
         const before = fixture.instance.query().mekMovementPsr();
         expect(before.kind).toBe('supported');
@@ -1674,12 +1715,12 @@ describe('direct Mek entity/runtime projections', () => {
         }));
 
         expect(fixture.instance.dispatch({
-            type: 'prepare-mek-stand', commandId: asCommandId('standing:tw:prepare'),
-            expectedRevision: asStateRevision(1),
+            type: 'prepare-mek-stand',
+
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'resolve-mek-stand-attempt', commandId: asCommandId('standing:tw:fail'),
-            expectedRevision: asStateRevision(2), carefulStand: true,
+            type: 'resolve-mek-stand-attempt',
+            carefulStand: true,
             evidence: { dice: [1, 1], claimedOutcome: 'failed' },
         }).accepted).toBeTrue();
 
@@ -1709,8 +1750,8 @@ describe('direct Mek entity/runtime projections', () => {
         )).toEqual(serialized);
 
         expect(fixture.instance.dispatch({
-            type: 'adjust-mek-stand-attempts', commandId: asCommandId('standing:tw:undo'),
-            expectedRevision: asStateRevision(3), delta: -1,
+            type: 'adjust-mek-stand-attempts',
+            delta: -1,
         }).accepted).toBeTrue();
         expect(fixture.instance.query().mekMovementPsrState()).toEqual(jasmine.objectContaining({
             standAttempts: 0,
@@ -1728,8 +1769,8 @@ describe('direct Mek entity/runtime projections', () => {
                 .find(candidate => candidate.code === locationCode)!;
             return fixture.instance.dispatch({
                 type: 'damage-internal',
-                commandId: asCommandId(commandId),
-                expectedRevision: fixture.instance.query().stateRevision,
+
+
                 locationId: location.id,
                 amount: location.internalPoints,
                 target: 'committed',
@@ -1773,16 +1814,16 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(tw.instance.dispatch({
             type: 'set-condition',
-            commandId: asCommandId('tw-running-minimum:prone'),
-            expectedRevision: tw.instance.query().stateRevision,
+
+
             condition: 'prone',
             active: true,
         }).accepted).toBeTrue();
         expect(runAction(tw).reasons.some(reason => reason.code === 'PRONE')).toBeFalse();
         expect(tw.instance.dispatch({
             type: 'declare-mek-movement',
-            commandId: asCommandId('tw-running-minimum:declare'),
-            expectedRevision: tw.instance.query().stateRevision,
+
+
             declaration: {
                 schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run',
@@ -1796,8 +1837,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(tw.instance.dispatch({
             type: 'resolve-mek-stand-attempt',
-            commandId: asCommandId('tw-running-minimum:stand'),
-            expectedRevision: tw.instance.query().stateRevision,
+
+
             carefulStand: false,
             evidence: { dice: [1, 1], claimedOutcome: 'failed' },
         }).accepted).toBeTrue();
@@ -1821,8 +1862,8 @@ describe('direct Mek entity/runtime projections', () => {
         expect(destroyLeg(overheated, 'LL', 'tw-no-running-minimum:destroy').accepted).toBeTrue();
         expect(overheated.instance.dispatch({
             type: 'set-heat',
-            commandId: asCommandId('tw-no-running-minimum:heat'),
-            expectedRevision: overheated.instance.query().stateRevision,
+
+
             heat: 5,
         }).accepted).toBeTrue();
         expect(movement(overheated)).toEqual(jasmine.objectContaining({
@@ -1856,8 +1897,8 @@ describe('direct Mek entity/runtime projections', () => {
             for (const [index, slot] of slots.entries()) {
                 expect(scenario.fixture.instance.dispatch({
                     type: 'hit-critical',
-                    commandId: asCommandId(`leg-floor:${scenario.label}:${index}`),
-                    expectedRevision: scenario.fixture.instance.query().stateRevision,
+
+
                     slotId: slot.id,
                     hits: 1,
                     target: 'committed',
@@ -1887,8 +1928,8 @@ describe('direct Mek entity/runtime projections', () => {
                 .find(candidate => candidate.code === locationCode)!;
             return fixture.instance.dispatch({
                 type: 'damage-internal',
-                commandId: asCommandId(commandId),
-                expectedRevision: fixture.instance.query().stateRevision,
+
+
                 locationId: location.id,
                 amount: location.internalPoints,
                 target: 'committed',
@@ -1908,8 +1949,8 @@ describe('direct Mek entity/runtime projections', () => {
                 }))!;
             return fixture.instance.dispatch({
                 type: 'hit-critical',
-                commandId: asCommandId(commandId),
-                expectedRevision: fixture.instance.query().stateRevision,
+
+
                 slotId: slot.id,
                 hits: 1,
                 target: 'committed',
@@ -1939,8 +1980,8 @@ describe('direct Mek entity/runtime projections', () => {
             .toBeFalse();
         expect(coreTwo.instance.dispatch({
             type: 'declare-mek-movement',
-            commandId: asCommandId('core-quad-two-legs:run'),
-            expectedRevision: coreTwo.instance.query().stateRevision,
+
+
             declaration: {
                 schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run',
@@ -1978,8 +2019,8 @@ describe('direct Mek entity/runtime projections', () => {
         const initialTurn = fixture.instance.query().turnState();
 
         expect(fixture.instance.dispatch({
-            type: 'replace-turn-state', commandId: asCommandId('heat-water:submerged'),
-            expectedRevision: asStateRevision(0),
+            type: 'replace-turn-state',
+
             turn: { ...initialTurn, cover: 'underwater-depth-2' },
         }).accepted).toBeTrue();
         let heat = fixture.instance.query().heatProjection('manual');
@@ -1989,8 +2030,8 @@ describe('direct Mek entity/runtime projections', () => {
         expect(heat.projection.underwaterBonus).toBe(6);
 
         expect(fixture.instance.dispatch({
-            type: 'replace-turn-state', commandId: asCommandId('heat-water:partial'),
-            expectedRevision: asStateRevision(1),
+            type: 'replace-turn-state',
+
             turn: { ...fixture.instance.query().turnState(), cover: 'underwater-depth-1' },
         }).accepted).toBeTrue();
         heat = fixture.instance.query().heatProjection('manual');
@@ -2000,8 +2041,8 @@ describe('direct Mek entity/runtime projections', () => {
         expect(heat.projection.underwaterBonus).toBe(0);
 
         expect(fixture.instance.dispatch({
-            type: 'set-condition', commandId: asCommandId('heat-water:prone'),
-            expectedRevision: asStateRevision(2), condition: 'prone', active: true,
+            type: 'set-condition',
+            condition: 'prone', active: true,
         }).accepted).toBeTrue();
         heat = fixture.instance.query().heatProjection('manual');
         expect(heat.kind).toBe('supported');
@@ -2025,8 +2066,8 @@ describe('direct Mek entity/runtime projections', () => {
         ): number | undefined => {
             expect(fixture.instance.dispatch({
                 type: 'declare-mek-movement',
-                commandId: asCommandId(`partial-wing:jump:${distance}`),
-                expectedRevision: fixture.instance.query().stateRevision,
+
+
                 declaration: {
                     schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                     mode: 'jump',
@@ -2051,8 +2092,8 @@ describe('direct Mek entity/runtime projections', () => {
             slot.componentIds.includes(wing.id))!;
         expect(damaged.instance.dispatch({
             type: 'hit-critical',
-            commandId: asCommandId('partial-wing:damage'),
-            expectedRevision: damaged.instance.query().stateRevision,
+
+
             slotId: wingSlot.id,
             hits: 1,
             target: 'committed',
@@ -2069,12 +2110,12 @@ describe('direct Mek entity/runtime projections', () => {
         const fixture = createDirectMekRuntimeFixture('total-warfare');
 
         expect(fixture.instance.dispatch({
-            type: 'set-condition', commandId: asCommandId('standing:success:prone'),
-            expectedRevision: asStateRevision(0), condition: 'prone', active: true,
+            type: 'set-condition',
+            condition: 'prone', active: true,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
-            type: 'resolve-mek-stand-attempt', commandId: asCommandId('standing:success:roll'),
-            expectedRevision: asStateRevision(1), carefulStand: false,
+            type: 'resolve-mek-stand-attempt',
+            carefulStand: false,
             evidence: { dice: [6, 6], claimedOutcome: 'success' },
         }).accepted).toBeTrue();
 
@@ -2099,8 +2140,8 @@ describe('direct Mek entity/runtime projections', () => {
         for (let index = 0; index < 3; index += 1) {
             expect(fixture.instance.dispatch({
                 type: 'hit-critical',
-                commandId: asCommandId(`core-heavy-duty:${index + 1}`),
-                expectedRevision: fixture.instance.query().stateRevision,
+
+
                 slotId: slots[index]!.id,
                 hits: 1,
                 target: 'committed',
@@ -2115,8 +2156,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(fixture.instance.dispatch({
             type: 'hit-critical',
-            commandId: asCommandId('core-heavy-duty:4'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             slotId: slots[3]!.id,
             hits: 1,
             target: 'committed',
@@ -2142,8 +2183,8 @@ describe('direct Mek entity/runtime projections', () => {
             commandId: string,
         ) => fixture.instance.dispatch({
             type: 'hit-critical',
-            commandId: asCommandId(commandId),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             slotId: slotFor(fixture, systemType).id,
             hits: 1,
             target: 'committed',
@@ -2202,8 +2243,8 @@ describe('direct Mek entity/runtime projections', () => {
             commandId: string,
         ) => fixture.instance.dispatch({
             type: 'hit-critical',
-            commandId: asCommandId(commandId),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             slotId: slotFor(fixture, locationCode, systemType).id,
             hits: 1,
             target: 'committed',
@@ -2228,8 +2269,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         expect(sameLeg.instance.dispatch({
             type: 'resolve-mek-pilot-check',
-            commandId: asCommandId('core-grouped:resolve'),
-            expectedRevision: sameLeg.instance.query().stateRevision,
+
+
             checkId: displayed[0]!.checkId,
             evidence: { dice: [6, 6], claimedOutcome: 'success' },
         }).accepted).toBeTrue();
@@ -2251,8 +2292,8 @@ describe('direct Mek entity/runtime projections', () => {
         expect(hit(jumping, 'LL', 'Foot Actuator', 'core-jump:foot').accepted).toBeTrue();
         expect(jumping.instance.dispatch({
             type: 'declare-mek-movement',
-            commandId: asCommandId('core-jump:declare'),
-            expectedRevision: jumping.instance.query().stateRevision,
+
+
             declaration: { schemaVersion: 1, mode: 'jump', distance: 1, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(jumping.instance.query().mekPilotChecks()).toEqual([jasmine.objectContaining({
@@ -2284,8 +2325,8 @@ describe('direct Mek entity/runtime projections', () => {
             commandId: string,
         ) => fixture.instance.dispatch({
             type: 'hit-critical',
-            commandId: asCommandId(commandId),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
             slotId: slotFor(fixture, systemType).id,
             hits: 1,
             target: 'committed',
@@ -2295,8 +2336,8 @@ describe('direct Mek entity/runtime projections', () => {
                 if (check.status !== 'pending') continue;
                 expect(fixture.instance.dispatch({
                     type: 'resolve-mek-pilot-check',
-                    commandId: asCommandId(`${prefix}:${check.checkId}`),
-                    expectedRevision: fixture.instance.query().stateRevision,
+
+
                     checkId: check.checkId,
                     evidence: { dice: [6, 6], claimedOutcome: 'success' },
                 }).accepted).toBeTrue();
@@ -2306,8 +2347,8 @@ describe('direct Mek entity/runtime projections', () => {
             resolveChecks(fixture, `${commandId}:resolve`);
             expect(fixture.instance.dispatch({
                 type: 'end-turn',
-                commandId: asCommandId(commandId),
-                expectedRevision: fixture.instance.query().stateRevision,
+
+
                 policy: 'automatic',
             }).accepted).toBeTrue();
         };
@@ -2332,8 +2373,8 @@ describe('direct Mek entity/runtime projections', () => {
             .toBe(1);
         expect(sameTurn.instance.dispatch({
             type: 'repair-critical',
-            commandId: asCommandId('tw-same-turn:repair-hip'),
-            expectedRevision: sameTurn.instance.query().stateRevision,
+
+
             slotId: slotFor(sameTurn, 'Hip').id,
             hits: 1,
             target: 'committed',
@@ -2365,8 +2406,8 @@ describe('direct Mek entity/runtime projections', () => {
             const leg = [...fixture.index.locations.values()].find(location => location.code === 'LL')!;
             expect(fixture.instance.dispatch({
                 type: 'damage-internal',
-                commandId: asCommandId(`${ruleset}:destroyed-leg-psr`),
-                expectedRevision: fixture.instance.query().stateRevision,
+
+
                 locationId: leg.id,
                 amount: leg.internalPoints,
                 target: 'committed',
@@ -2398,8 +2439,8 @@ describe('direct Mek entity/runtime projections', () => {
             for (const [index, leg] of legs.entries()) {
                 expect(fixture.instance.dispatch({
                     type: 'damage-internal',
-                    commandId: asCommandId(`${scenario.ruleset}:quad-leg-psr:${index}`),
-                    expectedRevision: fixture.instance.query().stateRevision,
+
+
                     locationId: leg.id,
                     amount: leg.internalPoints,
                     target: 'committed',
@@ -2428,8 +2469,8 @@ describe('direct Mek entity/runtime projections', () => {
             .sort((left, right) => left.slotIndex - right.slotIndex);
 
         expect(fixture.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('tw-heavy-duty:1'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'hit-critical',
+
             slotId: slots[0]!.id, hits: 1, target: 'committed',
         }).accepted).toBeTrue();
         let projection = fixture.instance.query().mekMovementPsr();
@@ -2447,8 +2488,8 @@ describe('direct Mek entity/runtime projections', () => {
         ]);
 
         expect(fixture.instance.dispatch({
-            type: 'declare-mek-movement', commandId: asCommandId('tw-heavy-duty:run'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'declare-mek-movement',
+
             declaration: { schemaVersion: 1, mode: 'run', distance: 1, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(fixture.instance.query().mekPilotChecks()).toContain(jasmine.objectContaining({
@@ -2458,8 +2499,8 @@ describe('direct Mek entity/runtime projections', () => {
 
         for (let index = 1; index < 3; index += 1) {
             expect(fixture.instance.dispatch({
-                type: 'hit-critical', commandId: asCommandId(`tw-heavy-duty:${index + 1}`),
-                expectedRevision: fixture.instance.query().stateRevision,
+                type: 'hit-critical',
+
                 slotId: slots[index]!.id, hits: 1, target: 'committed',
             }).accepted).toBeTrue();
         }
@@ -2479,14 +2520,14 @@ describe('direct Mek entity/runtime projections', () => {
             slot.componentIds.includes(coreAc.id))!;
 
         expect(core.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('core-one-slot-ac:1'),
-            expectedRevision: core.instance.query().stateRevision,
+            type: 'hit-critical',
+
             slotId: coreSlot.id, hits: 1, target: 'committed',
         }).accepted).toBeTrue();
         expect(core.instance.query().componentStatus(coreAc.id)).toBe('available');
         expect(core.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('core-one-slot-ac:2'),
-            expectedRevision: core.instance.query().stateRevision,
+            type: 'hit-critical',
+
             slotId: coreSlot.id, hits: 1, target: 'committed',
         }).accepted).toBeTrue();
         expect(core.instance.query().criticalHits(coreSlot.id)).toBe(2);
@@ -2496,16 +2537,16 @@ describe('direct Mek entity/runtime projections', () => {
         const twAc = tw.equipmentComponent('Test AC');
         const twSlot = [...tw.index.slots.values()].find(slot => slot.componentIds.includes(twAc.id))!;
         expect(tw.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('tw-one-slot-ac:1'),
-            expectedRevision: tw.instance.query().stateRevision,
+            type: 'hit-critical',
+
             slotId: twSlot.id, hits: 1, target: 'committed',
         }).accepted).toBeTrue();
         expect(tw.instance.query().componentStatus(twAc.id)).toBe('destroyed');
         expect(tw.instance.dispatch({
-            type: 'hit-critical', commandId: asCommandId('tw-one-slot-ac:2'),
-            expectedRevision: tw.instance.query().stateRevision,
+            type: 'hit-critical',
+
             slotId: twSlot.id, hits: 1, target: 'committed',
-        }).accepted).toBeFalse();
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
     });
 
     it('accepts committed damage for a gyro-less Mek without inventing a gyro fall', () => {
@@ -2517,8 +2558,8 @@ describe('direct Mek entity/runtime projections', () => {
         const face = [...fixture.index.armorFaces.values()].find(candidate => candidate.maximumPoints > 0)!;
 
         expect(fixture.instance.dispatch({
-            type: 'damage-armor', commandId: asCommandId('no-gyro:damage'),
-            expectedRevision: fixture.instance.query().stateRevision,
+            type: 'damage-armor',
+
             faceId: face.id, amount: 1, target: 'committed',
         }).accepted).toBeTrue();
         expect(fixture.instance.query().mekMovementPsrState().automaticFalls).toEqual([]);
@@ -2562,8 +2603,8 @@ describe('direct Mek entity/runtime projections', () => {
                 const beforeArmor = fixture.instance.query().remainingArmor(panel.face.id);
                 expect(fixture.instance.dispatch({
                     type: 'damage-armor',
-                    commandId: asCommandId(`${ruleset}:modular:damage:${index}`),
-                    expectedRevision: fixture.instance.query().stateRevision,
+
+
                     faceId: panel.face.id,
                     amount: 10,
                     target: 'pending',
@@ -2573,8 +2614,8 @@ describe('direct Mek entity/runtime projections', () => {
                 expect(fixture.instance.query().remainingArmor(panel.face.id, 'preview')).toBe(beforeArmor);
                 expect(fixture.instance.dispatch({
                     type: 'commit-pending',
-                    commandId: asCommandId(`${ruleset}:modular:commit:${index}`),
-                    expectedRevision: fixture.instance.query().stateRevision,
+
+
                 }).accepted).toBeTrue();
                 expect(fixture.instance.query().modularArmorRemaining(panel.component.id)).toBe(0);
             }
@@ -2609,8 +2650,8 @@ describe('direct Mek entity/runtime projections', () => {
 
             expect(fixture.instance.dispatch({
                 type: 'repair-armor',
-                commandId: asCommandId(`${ruleset}:modular:repair`),
-                expectedRevision: fixture.instance.query().stateRevision,
+
+
                 faceId: panels[0]!.face.id,
                 amount: 10,
                 target: 'pending',
@@ -2622,8 +2663,8 @@ describe('direct Mek entity/runtime projections', () => {
             }));
             expect(fixture.instance.dispatch({
                 type: 'commit-pending',
-                commandId: asCommandId(`${ruleset}:modular:repair:commit`),
-                expectedRevision: fixture.instance.query().stateRevision,
+
+
             }).accepted).toBeTrue();
             expect(movement()).toEqual(jasmine.objectContaining({
                 walkMp: 4,

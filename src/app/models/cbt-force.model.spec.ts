@@ -37,7 +37,6 @@ import { decodeForceFromStorage, encodeForceForStorage } from './runtime/force-s
 import { ReadyNonMekUnit } from './runtime/ready-non-mek-unit';
 import type { ReadyClassicUnit } from './runtime/ready-classic-unit';
 import {
-    NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
     isSerializedNonMekUnit,
     type SerializedNonMekUnit,
 } from './runtime/non-mek-unit-persistence';
@@ -267,6 +266,7 @@ async function readyEntityForce(options: Readonly<{
     readonly createTargetForce: () => Promise<CBTForce>;
     readonly reload: (record: SerializedClassicForce) => Promise<CBTForce>;
     readonly dialogs: jasmine.SpyObj<DialogsService>;
+    readonly readyNonMekUnits: jasmine.SpyObj<ReadyNonMekUnitService>;
 }> {
     const entity = options.entity ?? new TestTankEntity();
     if (options.supportsAirborne) entity.motiveType.set('WiGE');
@@ -322,10 +322,15 @@ async function readyEntityForce(options: Readonly<{
         getEraById: () => null,
         getUnitByIdentity: () => summary,
     } as unknown as DataService;
-    const readyNonMekUnits = {
-        restoreReadyNonMekUnit: ({ saved }: { readonly saved: SerializedNonMekUnit }) =>
+    const readyNonMekUnits = jasmine.createSpyObj<ReadyNonMekUnitService>(
+        'ReadyNonMekUnitService',
+        ['restoreReadyNonMekUnit', 'loadReadyNonMekUnit'],
+    );
+    readyNonMekUnits.restoreReadyNonMekUnit.and.callFake(
+        ({ saved }: { readonly saved: SerializedNonMekUnit }) =>
             Promise.resolve(ReadyNonMekUnit.restore(saved, entity, identity)),
-        loadReadyNonMekUnit: (
+    );
+    readyNonMekUnits.loadReadyNonMekUnit.and.callFake((
             request: Parameters<ReadyNonMekUnitService['loadReadyNonMekUnit']>[0],
         ) => Promise.resolve(ReadyNonMekUnit.create(entity, {
             instanceId: request.instanceId,
@@ -333,8 +338,7 @@ async function readyEntityForce(options: Readonly<{
             deployment: request.deployment,
             scenario: request.scenario,
             initialStateProfileId: request.initialStateProfileId ?? 'pristine-non-mek-v1',
-        })),
-    } as unknown as ReadyNonMekUnitService;
+        })));
     const dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['showNotice']);
     dialogs.showNotice.and.resolveTo();
     const localInjector = {
@@ -368,7 +372,7 @@ async function readyEntityForce(options: Readonly<{
         }
         return restored;
     };
-    return { force, instanceId, createTargetForce, reload, dialogs };
+    return { force, instanceId, createTargetForce, reload, dialogs, readyNonMekUnits };
 }
 
 async function readyEntityC3Force(
@@ -690,10 +694,7 @@ describe('CBTForce V2 encounter persistence', () => {
         const entry = envelope.units[0]!;
         if (!isSerializedNonMekUnit(entry.unit)) throw new Error('Expected a non-Mek V2 fixture');
         const positionId = entry.unit.deployment.values.crewAssignment.positions[0]!.positionId;
-        Reflect.set(envelope, 'schemaVersion', CBT_FORCE_PERSISTENCE_SCHEMA_VERSION - 1);
-        Reflect.set(envelope, 'minimumWriterVersion', CBT_FORCE_MINIMUM_WRITER_VERSION - 1);
-        Reflect.set(entry.unit, 'schemaVersion', NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION - 1);
-        Reflect.set(entry.unit, 'conditions', ['immobile']);
+        Reflect.set(entry.unit, 'conditions', ['not-a-condition']);
         Reflect.set(entry.unit, 'crewState', [{
             positionId,
             wounds: 1,
@@ -706,11 +707,58 @@ describe('CBTForce V2 encounter persistence', () => {
         const snapshot = entityRuntimeSnapshot(restored, instanceId);
         const rewritten = await restored.serializeForPersistence();
 
-        expect(snapshot.state.conditions.has('immobile')).toBeTrue();
-        expect(snapshot.state.crew.get(positionId)?.wounds).toBe(1);
+        expect(snapshot.state.conditions.size).toBe(0);
+        expect(snapshot.state.crew.get(positionId)).toBeUndefined();
+        expect(JSON.stringify(rewritten)).not.toContain('not-a-condition');
         expect(JSON.stringify(rewritten)).not.toContain('"state":"killed"');
         expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
-            'Some V2 unit data used an unsupported format and was ignored.',
+            'Some V2 unit data could not be loaded and was ignored.',
+            'Save Loaded with Warnings',
+        );
+    });
+
+    it('skips an unavailable V2 catalog unit and removes its force references', async () => {
+        const {
+            force,
+            instanceId,
+            reload,
+            dialogs,
+            readyNonMekUnits,
+        } = await readyEntityForce();
+        const saved = structuredClone(await force.serializeForPersistence()) as SerializedClassicForce;
+        Reflect.set(saved.cbt!, 'history', { u: [instanceId], t: [] });
+        dialogs.showNotice.calls.reset();
+        readyNonMekUnits.restoreReadyNonMekUnit.and.rejectWith(new Error('Unit not found'));
+        readyNonMekUnits.loadReadyNonMekUnit.and.rejectWith(new Error('Unit not found'));
+
+        const restored = await reload(saved);
+        const rewritten = await restored.serializeForPersistence();
+
+        expect(restored.getUnitSnapshot(instanceId)).toBeNull();
+        expect(rewritten.cbt!.units).toEqual([]);
+        expect(rewritten.cbt!.roster.groups[0].members).toEqual([]);
+        expect(rewritten.cbt!.history).toEqual({ u: [], t: [] });
+        expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
+            'Some V2 unit data could not be loaded and was ignored.',
+            'Save Loaded with Warnings',
+        );
+    });
+
+    it('keeps a V2 catalog unit when its deployment data is unreadable', async () => {
+        const { force, instanceId, reload, dialogs } = await readyEntityForce();
+        const saved = structuredClone(await force.serializeForPersistence()) as SerializedClassicForce;
+        const unit = saved.cbt!.units[0]!.unit;
+        if (!isSerializedNonMekUnit(unit)) throw new Error('Expected a non-Mek V2 fixture');
+        Reflect.set(unit.deployment, 'values', { id: 'broken', crewAssignment: 'garbage' });
+        dialogs.showNotice.calls.reset();
+
+        const restored = await reload(saved);
+        const rewritten = await restored.serializeForPersistence();
+
+        expect(restored.getUnitSnapshot(instanceId)).not.toBeNull();
+        expect(rewritten.cbt!.units.map(entry => entry.instanceId)).toEqual([instanceId]);
+        expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
+            'Some V2 unit data could not be loaded and was ignored.',
             'Save Loaded with Warnings',
         );
     });

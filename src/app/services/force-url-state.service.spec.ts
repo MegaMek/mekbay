@@ -8,6 +8,7 @@ import type { ForceMember } from '../models/force-member.model';
 import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
 import { ForceOperationService } from './force-operation.service';
+import { ForcePersistenceService } from './force-persistence.service';
 import { ForceUnitAdmissionService } from './force-unit-admission.service';
 import { ForceUrlStateService, type ForceUrlWorkspace } from './force-url-state.service';
 import { LayoutService } from './layout.service';
@@ -30,6 +31,7 @@ describe('ForceUrlStateService', () => {
                 { provide: DataService, useValue: { isDataReady: () => false } },
                 { provide: DialogsService, useValue: {} },
                 { provide: ForceOperationService, useValue: { currentOperation: signal(null) } },
+                { provide: ForcePersistenceService, useValue: { getForce: jasmine.createSpy('getForce') } },
                 { provide: ForceUnitAdmissionService, useValue: {} },
                 { provide: LayoutService, useValue: {} },
                 { provide: LoggerService, useValue: {} },

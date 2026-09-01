@@ -2131,7 +2131,7 @@ export class CBTForce extends Force<never> {
                 ? {}
                 : {
                     afterInstall: () => this.injector.get(DialogsService).showNotice(
-                        'Some V2 unit data used an unsupported format and was ignored.',
+                        'Some V2 unit data could not be loaded and was ignored.',
                         'Save Loaded with Warnings',
                     ),
                 }),

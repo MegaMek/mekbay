@@ -10,6 +10,7 @@ import { SwUpdate } from '@angular/service-worker';
 import { Subject } from 'rxjs';
 import { App } from './app';
 import { DataService } from './services/data.service';
+import { ForcePersistenceService } from './services/force-persistence.service';
 import { ForceImportService } from './services/force-import.service';
 import { ForceDialogsService } from './services/force-dialogs.service';
 import { ForceWorkspaceStateService } from './services/force-workspace-state.service';
@@ -47,6 +48,7 @@ describe('App', () => {
     activateUpdate: jasmine.Spy<() => Promise<boolean>>;
   };
   let dataServiceMock: any;
+  let forcePersistenceServiceMock: any;
   let forceBuilderServiceMock: any;
   let layoutServiceMock: any;
   let wsServiceMock: any;
@@ -78,8 +80,10 @@ describe('App', () => {
       runtimeCatalogProgress: signal({ status: 'idle' }),
       auxiliaryCatalogProgress: signal({ status: 'idle' }),
       ensureMegaMekAvailabilityCatalogInitialized: jasmine.createSpy('ensureMegaMekAvailabilityCatalogInitialized').and.resolveTo(false),
-      isCloudForceLoading: signal(false),
       getUnitByName: jasmine.createSpy('getUnitByName').and.returnValue(undefined),
+    };
+    forcePersistenceServiceMock = {
+      isCloudForceLoading: signal(false),
       hasPendingForceSaves: jasmine.createSpy('hasPendingForceSaves').and.returnValue(false),
     };
     forceBuilderServiceMock = {
@@ -177,6 +181,7 @@ describe('App', () => {
           useValue: swUpdateMock,
         },
         { provide: DataService, useValue: dataServiceMock },
+        { provide: ForcePersistenceService, useValue: forcePersistenceServiceMock },
         { provide: ForceWorkspaceStateService, useValue: forceBuilderServiceMock },
         { provide: ForceImportService, useValue: forceBuilderServiceMock },
         { provide: ForceDialogsService, useValue: forceBuilderServiceMock },
@@ -214,11 +219,11 @@ describe('App', () => {
     fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     const event = { preventDefault: jasmine.createSpy('preventDefault') } as unknown as BeforeUnloadEvent;
-    dataServiceMock.hasPendingForceSaves.and.returnValue(true);
+    forcePersistenceServiceMock.hasPendingForceSaves.and.returnValue(true);
 
     expect(app.beforeUnloadHandler(event)).toBe('You have unsaved changes. Are you sure you want to leave?');
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
-    expect(dataServiceMock.hasPendingForceSaves).toHaveBeenCalled();
+    expect(forcePersistenceServiceMock.hasPendingForceSaves).toHaveBeenCalled();
   });
 
   it('allows unload once the full force-save pipeline is settled', () => {

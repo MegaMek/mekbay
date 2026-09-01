@@ -26,6 +26,7 @@ describe('V1 unit-state ingress', () => {
             locations: { CT: { internal: 2, armor: 1 } },
         }), fixture.entity, fixture.initialized);
 
+        expect(restored.state.explicitlyDestroyed).toBeTrue();
         expect(restored.state.destroyed).toBeTrue();
         expect(restored.state.conditions.has('prone')).toBeTrue();
         expect(restored.state.heat).toEqual({

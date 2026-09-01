@@ -81,12 +81,7 @@ export interface TargetRegistryTargetPatch {
     readonly tnCalculator?: SerializedEncounterTargetCalculatorV2 | null;
 }
 
-interface TargetRegistryCommandEnvelope {
-    readonly expectedRevision: StateRevision;
-}
-
-/** Every production mutation is an explicit compare-and-swap command. */
-export type TargetRegistryCommand = TargetRegistryCommandEnvelope & (
+export type TargetRegistryCommand =
     | { readonly kind: 'create-target'; readonly target: EncounterTarget }
     | {
         readonly kind: 'update-target';
@@ -95,34 +90,17 @@ export type TargetRegistryCommand = TargetRegistryCommandEnvelope & (
     }
     | { readonly kind: 'delete-target'; readonly targetId: EncounterTargetId }
     | { readonly kind: 'replace-targets'; readonly targets: readonly EncounterTarget[] }
-    | { readonly kind: 'reset-targets' }
-);
-
-export type TargetRegistryRejectionReason =
-    | 'STALE_REVISION'
-    | 'REVISION_EXHAUSTED'
-    | 'READ_ONLY_TARGET'
-    | 'TARGET_ORIGIN_POLICY'
-    | 'INVALID_TARGET'
-    | 'TARGET_NOT_FOUND'
-    | 'EXCEEDS_CAPACITY';
+    | { readonly kind: 'reset-targets' };
 
 export type TargetRegistryCommandResult =
     | {
         readonly accepted: true;
-        readonly changed: true;
-        readonly previousRevision: StateRevision;
-        readonly snapshot: TargetRegistrySnapshot;
-    }
-    | {
-        readonly accepted: true;
-        readonly changed: false;
+        readonly changed: boolean;
         readonly snapshot: TargetRegistrySnapshot;
     }
     | {
         readonly accepted: false;
         readonly changed: false;
-        readonly reason: TargetRegistryRejectionReason;
         readonly snapshot: TargetRegistrySnapshot;
     };
 
@@ -146,59 +124,49 @@ export function reclaimableTargetRegistryOpfor(
 }
 
 /**
- * Pure force-shared target-registry reducer. Validation precedence is stable:
- * stale revision, malformed input, origin policy, identity/capacity, then access policy.
+ * Pure force-shared target-registry reducer. Invalid or inapplicable edits are
+ * accepted no-ops; only a read-only target rejects a mutation.
  */
 export function reduceTargetRegistry(
     current: TargetRegistrySnapshot,
     command: TargetRegistryCommand,
 ): TargetRegistryCommandResult {
     const snapshot = freezeTargetRegistrySnapshot(current);
-    if (command.expectedRevision !== snapshot.revision) {
-        return rejectedTargetRegistry(snapshot, 'STALE_REVISION');
-    }
-
     switch (command.kind) {
         case 'create-target': {
-            if (!hasExactKeys(command, ['kind', 'expectedRevision', 'target'])) {
-                return rejectedTargetRegistry(snapshot, 'INVALID_TARGET');
-            }
             const target = tryFreezeTarget(command.target, false);
-            if (!target) return rejectedTargetRegistry(snapshot, 'INVALID_TARGET');
-            if (!validTargetOrigin(target)) return rejectedTargetRegistry(snapshot, 'TARGET_ORIGIN_POLICY');
+            if (!target || !validTargetOrigin(target)) return unchangedTargetRegistry(snapshot);
             let retained = snapshot.targets;
             if (snapshot.targets.length >= INVENTORY_CONTROL_TARGET_MAX_COUNT) {
                 const reclaimable = target.source === 'opfor'
                     ? null
                     : reclaimableTargetRegistryOpfor(snapshot.targets);
                 if (!reclaimable || target.letter !== reclaimable.letter) {
-                    return rejectedTargetRegistry(snapshot, 'EXCEEDS_CAPACITY');
+                    return unchangedTargetRegistry(snapshot);
                 }
                 retained = snapshot.targets.filter(candidate => candidate.id !== reclaimable.id);
             }
             if (retained.some(candidate => candidate.id === target.id || candidate.letter === target.letter)) {
-                return rejectedTargetRegistry(snapshot, 'INVALID_TARGET');
+                return unchangedTargetRegistry(snapshot);
             }
             return changedTargetRegistry(snapshot, [...retained, target]);
         }
         case 'update-target': {
-            if (!hasExactKeys(command, ['kind', 'expectedRevision', 'targetId', 'patch'])
-                || !validEncounterTargetId(command.targetId)
+            if (!validEncounterTargetId(command.targetId)
                 || !validTargetPatch(command.patch)) {
-                return rejectedTargetRegistry(snapshot, 'INVALID_TARGET');
+                return unchangedTargetRegistry(snapshot);
             }
             const targetIndex = snapshot.targets.findIndex(target => target.id === command.targetId);
-            if (targetIndex < 0) return rejectedTargetRegistry(snapshot, 'TARGET_NOT_FOUND');
+            if (targetIndex < 0) return unchangedTargetRegistry(snapshot);
             const existing = snapshot.targets[targetIndex];
             if (existing.readOnly === true && targetPatchChangesReadOnlyIdentity(command.patch)) {
-                return rejectedTargetRegistry(snapshot, 'READ_ONLY_TARGET');
+                return readOnlyTargetRegistry(snapshot);
             }
             const target = patchedTarget(existing, command.patch);
-            if (!target) return rejectedTargetRegistry(snapshot, 'INVALID_TARGET');
-            if (!validTargetOrigin(target)) return rejectedTargetRegistry(snapshot, 'TARGET_ORIGIN_POLICY');
+            if (!target || !validTargetOrigin(target)) return unchangedTargetRegistry(snapshot);
             if (snapshot.targets.some((candidate, index) => index !== targetIndex
                 && (candidate.id === target.id || candidate.letter === target.letter))) {
-                return rejectedTargetRegistry(snapshot, 'INVALID_TARGET');
+                return unchangedTargetRegistry(snapshot);
             }
             if (targetsEqual(existing, target)) return unchangedTargetRegistry(snapshot);
             const targets = [...snapshot.targets];
@@ -206,36 +174,27 @@ export function reduceTargetRegistry(
             return changedTargetRegistry(snapshot, targets);
         }
         case 'delete-target': {
-            if (!hasExactKeys(command, ['kind', 'expectedRevision', 'targetId'])
-                || !validEncounterTargetId(command.targetId)) {
-                return rejectedTargetRegistry(snapshot, 'INVALID_TARGET');
-            }
+            if (!validEncounterTargetId(command.targetId)) return unchangedTargetRegistry(snapshot);
             const existing = snapshot.targets.find(target => target.id === command.targetId);
-            if (!existing) return rejectedTargetRegistry(snapshot, 'TARGET_NOT_FOUND');
-            if (existing.readOnly === true) return rejectedTargetRegistry(snapshot, 'READ_ONLY_TARGET');
+            if (!existing) return unchangedTargetRegistry(snapshot);
+            if (existing.readOnly === true) return readOnlyTargetRegistry(snapshot);
             return changedTargetRegistry(snapshot, snapshot.targets.filter(target => target.id !== command.targetId));
         }
         case 'replace-targets': {
-            if (!hasExactKeys(command, ['kind', 'expectedRevision', 'targets']) || !Array.isArray(command.targets)) {
-                return rejectedTargetRegistry(snapshot, 'INVALID_TARGET');
-            }
+            if (!Array.isArray(command.targets)) return unchangedTargetRegistry(snapshot);
             const replacement = canonicalTargetList(command.targets);
-            if (replacement.reason) return rejectedTargetRegistry(snapshot, replacement.reason);
-            if (replacement.targets.length > INVENTORY_CONTROL_TARGET_MAX_COUNT) {
-                return rejectedTargetRegistry(snapshot, 'EXCEEDS_CAPACITY');
+            if (!replacement || replacement.length > INVENTORY_CONTROL_TARGET_MAX_COUNT) {
+                return unchangedTargetRegistry(snapshot);
             }
-            if (targetListsEqual(snapshot.targets, replacement.targets)) return unchangedTargetRegistry(snapshot);
-            return changedTargetRegistry(snapshot, replacement.targets);
+            if (targetListsEqual(snapshot.targets, replacement)) return unchangedTargetRegistry(snapshot);
+            return changedTargetRegistry(snapshot, replacement);
         }
         case 'reset-targets':
-            if (!hasExactKeys(command, ['kind', 'expectedRevision'])) {
-                return rejectedTargetRegistry(snapshot, 'INVALID_TARGET');
-            }
             return snapshot.targets.length === 0
                 ? unchangedTargetRegistry(snapshot)
                 : changedTargetRegistry(snapshot, []);
         default:
-            return rejectedTargetRegistry(snapshot, 'INVALID_TARGET');
+            return unchangedTargetRegistry(snapshot);
     }
 }
 
@@ -256,7 +215,6 @@ export class CBTEncounterRuntime {
         return queryTargetRegistry(this.#snapshot);
     }
 
-    /** Explicit-revision production command surface. No revision is inferred for the caller. */
     public dispatchTargetRegistry(command: TargetRegistryCommand): TargetRegistryCommandResult {
         const result = reduceTargetRegistry(this.targetRegistry(), command);
         if (result.accepted && result.changed) {
@@ -516,14 +474,11 @@ function freezeTargetRegistrySnapshot(
     });
 }
 
-function rejectedTargetRegistry(
-    snapshot: TargetRegistrySnapshot,
-    reason: TargetRegistryRejectionReason,
-): TargetRegistryCommandResult {
-    return Object.freeze({ accepted: false, changed: false, reason, snapshot });
+export function readOnlyTargetRegistry(snapshot: TargetRegistrySnapshot): TargetRegistryCommandResult {
+    return Object.freeze({ accepted: false, changed: false, snapshot });
 }
 
-function unchangedTargetRegistry(snapshot: TargetRegistrySnapshot): TargetRegistryCommandResult {
+export function unchangedTargetRegistry(snapshot: TargetRegistrySnapshot): TargetRegistryCommandResult {
     return Object.freeze({ accepted: true, changed: false, snapshot });
 }
 
@@ -531,13 +486,9 @@ function changedTargetRegistry(
     previous: TargetRegistrySnapshot,
     targets: readonly EncounterTarget[],
 ): TargetRegistryCommandResult {
-    if (Number(previous.revision) >= Number.MAX_SAFE_INTEGER) {
-        return rejectedTargetRegistry(previous, 'REVISION_EXHAUSTED');
-    }
     return Object.freeze({
         accepted: true,
         changed: true,
-        previousRevision: previous.revision,
         snapshot: freezeTargetRegistrySnapshot({
             revision: asStateRevision(Number(previous.revision) + 1),
             targets,
@@ -545,29 +496,26 @@ function changedTargetRegistry(
     });
 }
 
-function canonicalTargetList(targets: readonly EncounterTarget[]): {
-    readonly targets: readonly EncounterTarget[];
-    readonly reason?: 'INVALID_TARGET' | 'TARGET_ORIGIN_POLICY';
-} {
+function canonicalTargetList(targets: readonly EncounterTarget[]): readonly EncounterTarget[] | null {
     const canonical: EncounterTarget[] = [];
     for (const target of targets) {
         const frozen = tryFreezeTarget(target, false);
-        if (!frozen) return { targets: Object.freeze([]), reason: 'INVALID_TARGET' };
+        if (!frozen) return null;
         canonical.push(frozen);
     }
     const ids = new Set<string>();
     const letters = new Set<string>();
     for (const target of canonical) {
         if (ids.has(target.id) || letters.has(target.letter)) {
-            return { targets: Object.freeze([]), reason: 'INVALID_TARGET' };
+            return null;
         }
         ids.add(target.id);
         letters.add(target.letter);
     }
     if (canonical.some(target => !validTargetOrigin(target))) {
-        return { targets: Object.freeze([]), reason: 'TARGET_ORIGIN_POLICY' };
+        return null;
     }
-    return { targets: freezeTargetRegistrySnapshot({ revision: asStateRevision(0), targets: canonical }).targets };
+    return freezeTargetRegistrySnapshot({ revision: asStateRevision(0), targets: canonical }).targets;
 }
 
 function tryFreezeTarget(target: EncounterTarget, validateOrigin = true): EncounterTarget | null {

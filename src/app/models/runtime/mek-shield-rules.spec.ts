@@ -5,7 +5,6 @@ import { emptyCBTEncounterSnapshot } from './encounter-runtime';
 import { projectMekEquipmentPanel } from './equipment-panel';
 import { projectMekRecordSheet } from './mek-record-sheet';
 import type { MekShieldProjectionV2, MekShieldTrack } from './mek-shield-rules';
-import { asCommandId } from './runtime-state';
 import {
     createDirectShieldRuntimeFixture,
     type DirectMekRuntimeFixture,
@@ -107,8 +106,8 @@ describe('direct V2 Mek shield rules', () => {
 
         expect(fixture.instance.dispatch({
             type: 'commit-pending',
-            commandId: asCommandId('shield:commit'),
-            expectedRevision: fixture.instance.query().stateRevision,
+
+
         }).accepted).toBeTrue();
         expect(onlyShield(fixture).capacity).toBe(0);
         expect(fixture.instance.snapshot().pendingCombat.shieldDamage.size).toBe(0);
@@ -196,8 +195,8 @@ function damageShield(
 ): void {
     expect(fixture.instance.dispatch({
         type: 'damage-shield',
-        commandId: asCommandId(`shield:${track}:${target}:${amount}`),
-        expectedRevision: fixture.instance.query().stateRevision,
+
+
         componentId: shieldComponent(fixture).id,
         track,
         amount,
@@ -208,8 +207,8 @@ function damageShield(
 function hitCritical(fixture: DirectMekRuntimeFixture, slotId: ReturnType<typeof shieldCriticals>[number]['id']): void {
     expect(fixture.instance.dispatch({
         type: 'hit-critical',
-        commandId: asCommandId(`shield:critical:${slotId}`),
-        expectedRevision: fixture.instance.query().stateRevision,
+
+
         slotId,
         hits: 1,
         target: 'committed',
@@ -230,8 +229,8 @@ function hitSystem(fixture: DirectMekRuntimeFixture, systemType: string): void {
 function setHeat(fixture: DirectMekRuntimeFixture, heat: number): void {
     expect(fixture.instance.dispatch({
         type: 'set-heat',
-        commandId: asCommandId(`shield:heat:${heat}`),
-        expectedRevision: fixture.instance.query().stateRevision,
+
+
         heat,
     }).accepted).toBeTrue();
 }

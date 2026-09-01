@@ -3,17 +3,34 @@
 
 import { compareText } from '../../utils/string.util';
 import { ImmutableIndex } from '../entity/immutable-collections';
+import { asCrewPositionId, type CrewPositionId } from '../entity/entity-identifiers';
 import {
     deserializeUnitCover,
     isUnitCover,
     serializeUnitCover,
     type UnitCover,
 } from '../unit-cover.model';
+import { isEndTurnCheckpoint, type EndTurnCheckpoint } from './end-turn-checkpoint';
 
 export const MAX_MEK_TURN_COLLECTION_ENTRIES = 256;
 export const MAX_MEK_TURN_TEXT_LENGTH = 512;
 export const MAX_MEK_TURN_SIGNATURE_LENGTH = 2_048;
 export const MAX_MEK_TURN_NUMBER = 1_000_000;
+
+export type MekPendingFallConsequenceStage = 'head-hits' | 'seatbelts' | 'crew-hits';
+
+/** Durable cursor for the unapplied consequences of an already-damaged fall. */
+export interface MekPendingFallConsequencesV2 {
+    readonly eventId: string;
+    readonly totalDamage: number;
+    readonly hitArcLabel: string;
+    readonly applyPilotHits: boolean;
+    readonly forceSeatbeltFailure: boolean;
+    readonly seatbeltPositionIds: readonly CrewPositionId[];
+    readonly headHits: number;
+    readonly stage: MekPendingFallConsequenceStage;
+    readonly seatbeltFailures?: readonly CrewPositionId[];
+}
 
 /**
  * Unit-owned facts whose lifetime is one CBT turn. Movement, phase damage, and
@@ -28,7 +45,9 @@ export interface MekTurnStateV2 {
     readonly acknowledgedHeatSources: ReadonlyMap<string, string>;
     readonly heatDissipationConsumed: number;
     readonly spotting: boolean;
-    readonly equipmentStateChanged: boolean;
+    readonly phaseStateChanged: boolean;
+    readonly endTurnCheckpoint?: EndTurnCheckpoint;
+    readonly pendingFallConsequences?: MekPendingFallConsequencesV2;
 }
 
 /** Canonical sparse wire form. Map entries are unique and ascending by key. */
@@ -44,7 +63,9 @@ export interface SerializedMekTurnStateV2 {
     }[];
     readonly heatDissipationConsumed?: number;
     readonly spotting?: true;
-    readonly equipmentStateChanged?: true;
+    readonly phaseStateChanged?: true;
+    readonly endTurnCheckpoint?: EndTurnCheckpoint;
+    readonly pendingFallConsequences?: MekPendingFallConsequencesV2;
 }
 
 export class MekTurnStateValidationError extends Error {
@@ -62,8 +83,13 @@ const TURN_KEYS = Object.freeze([
     'acknowledgedHeatSources',
     'heatDissipationConsumed',
     'spotting',
-    'equipmentStateChanged',
+    'phaseStateChanged',
+    'endTurnCheckpoint',
+    'pendingFallConsequences',
 ] as const);
+
+const REQUIRED_TURN_KEYS = TURN_KEYS.filter(key =>
+    key !== 'endTurnCheckpoint' && key !== 'pendingFallConsequences');
 
 const PRISTINE_MEK_TURN_STATE = freezeMekTurnState({
     turnCounter: 0,
@@ -73,7 +99,7 @@ const PRISTINE_MEK_TURN_STATE = freezeMekTurnState({
     acknowledgedHeatSources: new Map(),
     heatDissipationConsumed: 0,
     spotting: false,
-    equipmentStateChanged: false,
+    phaseStateChanged: false,
 });
 
 export function createPristineMekTurnStateV2(turnCounter = 0): MekTurnStateV2 {
@@ -88,7 +114,7 @@ export function createPristineMekTurnStateV2(turnCounter = 0): MekTurnStateV2 {
 export function canonicalizeMekTurnStateV2(value: MekTurnStateV2): MekTurnStateV2 {
     const record = requireRecord(value, '$');
     exactKeys(record, TURN_KEYS, '$');
-    requireKeys(record, TURN_KEYS, '$');
+    requireKeys(record, REQUIRED_TURN_KEYS, '$');
     return freezeMekTurnState({
         turnCounter: turnNumber(record['turnCounter'], '$.turnCounter'),
         airborne: nullableBoolean(record['airborne'], '$.airborne'),
@@ -103,10 +129,21 @@ export function canonicalizeMekTurnStateV2(value: MekTurnStateV2): MekTurnStateV
             '$.heatDissipationConsumed',
         ),
         spotting: requiredBoolean(record['spotting'], '$.spotting'),
-        equipmentStateChanged: requiredBoolean(
-            record['equipmentStateChanged'],
-            '$.equipmentStateChanged',
+        phaseStateChanged: requiredBoolean(
+            record['phaseStateChanged'],
+            '$.phaseStateChanged',
         ),
+        ...(record['endTurnCheckpoint'] === undefined
+            ? {}
+            : { endTurnCheckpoint: checkpoint(record['endTurnCheckpoint'], '$.endTurnCheckpoint') }),
+        ...(record['pendingFallConsequences'] === undefined
+            ? {}
+            : {
+                pendingFallConsequences: canonicalPendingFallConsequences(
+                    record['pendingFallConsequences'],
+                    '$.pendingFallConsequences',
+                ),
+            }),
     });
 }
 
@@ -126,7 +163,13 @@ export function serializeMekTurnStateV2(value: MekTurnStateV2): SerializedMekTur
             ? {}
             : { heatDissipationConsumed: turn.heatDissipationConsumed }),
         ...(turn.spotting ? { spotting: true as const } : {}),
-        ...(turn.equipmentStateChanged ? { equipmentStateChanged: true as const } : {}),
+        ...(turn.phaseStateChanged ? { phaseStateChanged: true as const } : {}),
+        ...(turn.endTurnCheckpoint === undefined
+            ? {}
+            : { endTurnCheckpoint: turn.endTurnCheckpoint }),
+        ...(turn.pendingFallConsequences === undefined
+            ? {}
+            : { pendingFallConsequences: turn.pendingFallConsequences }),
     });
 }
 
@@ -153,9 +196,20 @@ export function deserializeMekTurnStateV2(value: unknown): MekTurnStateV2 {
         spotting: record['spotting'] === undefined
             ? false
             : requireExactBoolean(record['spotting'], true, '$.spotting'),
-        equipmentStateChanged: record['equipmentStateChanged'] === undefined
+        phaseStateChanged: record['phaseStateChanged'] === undefined
             ? false
-            : requireExactBoolean(record['equipmentStateChanged'], true, '$.equipmentStateChanged'),
+            : requireExactBoolean(record['phaseStateChanged'], true, '$.phaseStateChanged'),
+        ...(record['endTurnCheckpoint'] === undefined
+            ? {}
+            : { endTurnCheckpoint: checkpoint(record['endTurnCheckpoint'], '$.endTurnCheckpoint') }),
+        ...(record['pendingFallConsequences'] === undefined
+            ? {}
+            : {
+                pendingFallConsequences: canonicalPendingFallConsequences(
+                    record['pendingFallConsequences'],
+                    '$.pendingFallConsequences',
+                ),
+            }),
     });
 }
 
@@ -167,7 +221,75 @@ function freezeMekTurnState(value: MekTurnStateV2): MekTurnStateV2 {
     return Object.freeze({
         ...value,
         acknowledgedHeatSources: new ImmutableIndex(sortEntries(value.acknowledgedHeatSources)),
+        ...(value.pendingFallConsequences === undefined
+            ? {}
+            : {
+                pendingFallConsequences: Object.freeze({
+                    ...value.pendingFallConsequences,
+                    seatbeltPositionIds: Object.freeze([
+                        ...value.pendingFallConsequences.seatbeltPositionIds,
+                    ]),
+                    ...(value.pendingFallConsequences.seatbeltFailures === undefined
+                        ? {}
+                        : {
+                            seatbeltFailures: Object.freeze([
+                                ...value.pendingFallConsequences.seatbeltFailures,
+                            ]),
+                        }),
+                }),
+            }),
     });
+}
+
+function canonicalPendingFallConsequences(
+    value: unknown,
+    path: string,
+): MekPendingFallConsequencesV2 {
+    const record = requireRecord(value, path);
+    exactKeys(record, [
+        'eventId', 'totalDamage', 'hitArcLabel', 'applyPilotHits',
+        'forceSeatbeltFailure', 'seatbeltPositionIds', 'headHits', 'stage',
+        'seatbeltFailures',
+    ], path);
+    requireKeys(record, [
+        'eventId', 'totalDamage', 'hitArcLabel', 'applyPilotHits',
+        'forceSeatbeltFailure', 'seatbeltPositionIds', 'headHits', 'stage',
+    ], path);
+    const stage = record['stage'];
+    if (stage !== 'head-hits' && stage !== 'seatbelts' && stage !== 'crew-hits') {
+        fail('must be a valid fall-consequence stage', `${path}.stage`);
+    }
+    const positions = canonicalCrewPositionIds(record['seatbeltPositionIds'], `${path}.seatbeltPositionIds`);
+    const failures = record['seatbeltFailures'] === undefined
+        ? undefined
+        : canonicalCrewPositionIds(record['seatbeltFailures'], `${path}.seatbeltFailures`);
+    if (stage !== 'crew-hits' && failures !== undefined) {
+        fail('is only valid at the crew-hits stage', `${path}.seatbeltFailures`);
+    }
+    return Object.freeze({
+        eventId: canonicalText(record['eventId'], `${path}.eventId`, MAX_MEK_TURN_SIGNATURE_LENGTH),
+        totalDamage: turnNumber(record['totalDamage'], `${path}.totalDamage`),
+        hitArcLabel: canonicalText(record['hitArcLabel'], `${path}.hitArcLabel`, MAX_MEK_TURN_TEXT_LENGTH),
+        applyPilotHits: requiredBoolean(record['applyPilotHits'], `${path}.applyPilotHits`),
+        forceSeatbeltFailure: requiredBoolean(
+            record['forceSeatbeltFailure'],
+            `${path}.forceSeatbeltFailure`,
+        ),
+        seatbeltPositionIds: positions,
+        headHits: turnNumber(record['headHits'], `${path}.headHits`),
+        stage,
+        ...(failures === undefined ? {} : { seatbeltFailures: failures }),
+    });
+}
+
+function canonicalCrewPositionIds(value: unknown, path: string): readonly CrewPositionId[] {
+    const ids = requireArray(value, path).map((item, index) =>
+        asCrewPositionId(canonicalText(item, `${path}[${index}]`, MAX_MEK_TURN_TEXT_LENGTH)));
+    const unique = [...new Set(ids)].sort(compareText);
+    if (unique.length !== ids.length || unique.some((id, index) => id !== ids[index])) {
+        fail('must contain unique sorted crew positions', path);
+    }
+    return Object.freeze(unique);
 }
 
 function canonicalStringMap(value: unknown, path: string): ReadonlyMap<string, string> {
@@ -260,6 +382,11 @@ function deserializeSparseCover(value: unknown, path: string): UnitCover | null 
 
 function requiredBoolean(value: unknown, path: string): boolean {
     if (typeof value !== 'boolean') fail('must be boolean', path);
+    return value;
+}
+
+function checkpoint(value: unknown, path: string): EndTurnCheckpoint {
+    if (!isEndTurnCheckpoint(value)) fail('must be a valid End Turn checkpoint', path);
     return value;
 }
 

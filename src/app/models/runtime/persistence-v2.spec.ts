@@ -1,10 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import {
-    type JsonObject,
-    type DeferredUnitSource,
-} from '../persisted-unit-state';
 import { asSourceHash, asUnitProviderId, asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asComponentId } from '../entity/entity-identifiers';
 import {
@@ -51,17 +47,17 @@ describe('V2 force persistence', () => {
         expect(createSavedTargetRef('slot', 'ra:3')).toBe('s:ra:3');
     });
 
-    it('round-trips one ready Mek and two deferred entries canonically', async () => {
+    it('round-trips materialized units canonically', async () => {
         const sealed = await validateSerializedCBTForceV2(mixedForce());
         const restored = await validateSerializedCBTForceV2(JSON.parse(JSON.stringify(sealed)));
 
-        expect(restored.units.map(entry => entry.kind)).toEqual(['ready', 'deferred', 'deferred']);
-        expect(restored.units[2].kind).toBe('deferred');
-        if (restored.units[2].kind === 'deferred') {
-            expect(restored.units[2].source.identity.kind).toBe('unresolved');
-        }
+        expect(restored.units.map(entry => entry.instanceId)).toEqual([
+            asUnitInstanceId('unit:mek'),
+            asUnitInstanceId('unit:vehicle'),
+            asUnitInstanceId('unit:other'),
+        ]);
         const mek = restored.units[0];
-        expect(mek.kind === 'ready' && !isSerializedNonMekUnit(mek.unit)
+        expect(!isSerializedNonMekUnit(mek.unit)
             ? mek.unit.pendingCombat?.locationDamage?.[0].damage
             : undefined).toBe(-1);
         expect(Object.isFrozen(restored.roster)).toBeTrue();
@@ -74,21 +70,20 @@ describe('V2 force persistence', () => {
             formationId: 'formation:line',
             formationLock: true,
             members: [
-                { kind: 'ready', instanceId: asUnitInstanceId('unit:mek'), order: 0 },
+                { instanceId: asUnitInstanceId('unit:mek'), order: 0 },
                 {
-                    kind: 'deferred',
                     instanceId: asUnitInstanceId('unit:vehicle'),
                     order: 1,
                     commander: true,
                 },
-                { kind: 'deferred', instanceId: asUnitInstanceId('unit:ambiguous'), order: 2 },
+                { instanceId: asUnitInstanceId('unit:other'), order: 2 },
             ],
         });
     });
 
     it('snapshots force validation before any async mutation window', async () => {
         const body = clone(mixedForce());
-        const unit = body.units.find((entry: any) => entry.kind === 'ready').unit;
+        const unit = body.units[0].unit;
         unit.restoration = {
             schemaVersion: 1,
             algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
@@ -102,21 +97,19 @@ describe('V2 force persistence', () => {
         const mutable = clone(sealed);
         const validationPending = validateSerializedCBTForceV2(mutable);
         const invalid = clone(sealed);
-        invalid.units.find((entry: any) => entry.kind === 'ready')
-            .unit.restoration.algorithmVersion = 1;
+        invalid.units[0].unit.restoration.algorithmVersion = 1;
         for (const key of Object.keys(mutable)) delete mutable[key];
         Object.assign(mutable, invalid);
 
         const validated = await validationPending;
-        const validatedUnit = validated.units.find(entry => entry.kind === 'ready');
-        expect(validatedUnit?.kind === 'ready' && !isSerializedNonMekUnit(validatedUnit.unit)
+        const validatedUnit = validated.units[0];
+        expect(!isSerializedNonMekUnit(validatedUnit.unit)
             ? validatedUnit.unit.restoration?.algorithmVersion
             : undefined).toBe(CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2);
-        expect(mutable.units.find((entry: any) => entry.kind === 'ready')
-            .unit.restoration.algorithmVersion).toBe(1);
+        expect(mutable.units[0].unit.restoration.algorithmVersion).toBe(1);
     });
 
-    it('fails closed on duplicate, orphaned, missing, cross-kind, or misordered roster rows', async () => {
+    it('fails closed on duplicate, orphaned, missing, obsolete-kind, or misordered roster rows', async () => {
         const duplicateGroup = clone(mixedForce());
         duplicateGroup.roster.groups.push({
             ...duplicateGroup.roster.groups[0],
@@ -140,9 +133,13 @@ describe('V2 force persistence', () => {
         missing.roster.groups[0].members.pop();
         await expectCode(validateSerializedCBTForceV2(asForce(missing)), 'MISSING_ROSTER_MEMBER_ID');
 
-        const crossKind = clone(mixedForce());
-        crossKind.roster.groups[0].members[0].kind = 'deferred';
-        await expectCode(validateSerializedCBTForceV2(asForce(crossKind)), 'ROSTER_KIND_MISMATCH');
+        const obsoleteUnitKind = clone(mixedForce());
+        obsoleteUnitKind.units[0].kind = 'ready';
+        await expectCode(validateSerializedCBTForceV2(asForce(obsoleteUnitKind)), 'INVALID_SHAPE');
+
+        const obsoleteRosterKind = clone(mixedForce());
+        obsoleteRosterKind.roster.groups[0].members[0].kind = 'ready';
+        await expectCode(validateSerializedCBTForceV2(asForce(obsoleteRosterKind)), 'INVALID_SHAPE');
 
         const groupOrder = clone(mixedForce());
         groupOrder.roster.groups[0].order = 1;
@@ -306,7 +303,7 @@ describe('V2 force persistence', () => {
 
         const sealed = await validateSerializedCBTForceV2(asForce(valid));
         const restored = sealed.units[0];
-        const warnings = restored.kind === 'ready' && !isSerializedNonMekUnit(restored.unit)
+        const warnings = !isSerializedNonMekUnit(restored.unit)
             ? restored.unit.restoration?.warnings
             : undefined;
         expect(warnings).toEqual([{
@@ -745,11 +742,9 @@ describe('V2 force persistence', () => {
 });
 
 function mixedForce(): SerializedCBTForceV2 {
-    const vehicleKey = 'vehicle:1';
-    const ambiguousKey = 'ambiguous:1';
     const mek = v2Entry('unit:mek', UUID_A);
-    const vehicleId = asUnitInstanceId('unit:vehicle');
-    const ambiguousId = asUnitInstanceId('unit:ambiguous');
+    const vehicle = v2Entry('unit:vehicle', UUID_B);
+    const other = v2Entry('unit:other', UUID_C);
     return {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
@@ -757,11 +752,7 @@ function mixedForce(): SerializedCBTForceV2 {
         forceRevision: asStateRevision(4),
         scenarioRules: { schemaVersion: 1, values: {} },
         history: emptyRuntimeHistory(),
-        units: [
-            mek,
-            { kind: 'deferred', instanceId: vehicleId, stateRevision: asStateRevision(2), source: legacyBridge(vehicleKey, 'Vedette', 'resolved') },
-            { kind: 'deferred', instanceId: ambiguousId, stateRevision: asStateRevision(0), source: legacyBridge(ambiguousKey, 'Unknown Mek', 'ambiguous') },
-        ],
+        units: [mek, vehicle, other],
         roster: {
             schemaVersion: 1,
             groups: [{
@@ -772,9 +763,9 @@ function mixedForce(): SerializedCBTForceV2 {
                 formationId: 'formation:line',
                 formationLock: true,
                 members: [
-                    { kind: 'ready', instanceId: mek.instanceId, order: 0 },
-                    { kind: 'deferred', instanceId: vehicleId, order: 1, commander: true },
-                    { kind: 'deferred', instanceId: ambiguousId, order: 2 },
+                    { instanceId: mek.instanceId, order: 0 },
+                    { instanceId: vehicle.instanceId, order: 1, commander: true },
+                    { instanceId: other.instanceId, order: 2 },
                 ],
             }],
         },
@@ -785,10 +776,9 @@ function mixedForce(): SerializedCBTForceV2 {
     };
 }
 
-function v2Entry(instance: string, uuid: typeof UUID_A): SerializedForceUnitEntryV2 & { kind: 'ready' } {
+function v2Entry(instance: string, uuid: typeof UUID_A): SerializedForceUnitEntryV2 {
     const instanceId = asUnitInstanceId(instance);
     return {
-        kind: 'ready',
         instanceId,
         stateRevision: asStateRevision(3),
         unit: v2Unit(instanceId, uuid),
@@ -831,24 +821,6 @@ function v2Unit(instanceId: ReturnType<typeof asUnitInstanceId>, uuid: typeof UU
         conditions: { values: ['prone'] },
         turn: { schemaVersion: 1 },
         pendingCombat: { locationDamage: [{ target, damage: -1 }] },
-    };
-}
-
-function legacyBridge(key: string, name: string, identity: 'resolved' | 'ambiguous'): DeferredUnitSource {
-    const payload: JsonObject = {
-        id: key,
-        unit: name,
-        state: { name },
-        ...(key === 'vehicle:1' ? { commander: true } : {}),
-    };
-    return {
-        payload,
-        identity: identity === 'resolved'
-            ? { kind: 'resolved', savedIdentity: { origin: 'megamek', provider: PROVIDER, uuid: UUID_B, sourceHashAtSave: DIGEST, sourceFormat: 'blk' } }
-            : {
-                kind: 'unresolved', rawLegacyName: name, reason: 'ambiguous',
-                candidates: [{ provider: PROVIDER, uuid: UUID_B }, { provider: PROVIDER, uuid: UUID_C }],
-            },
     };
 }
 

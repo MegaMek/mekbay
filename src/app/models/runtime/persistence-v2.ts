@@ -13,6 +13,7 @@ import type {
 } from './runtime-state';
 import {
     isMekLocationConditionKey,
+    MAX_MEK_CREW_WOUNDS,
     MAX_MEK_LOCATION_CONDITION_VALUE,
 } from './runtime-state';
 import {
@@ -25,7 +26,7 @@ import {
     type LocationId,
 } from '../entity/entity-identifiers';
 import { isCBTRuleset, type CBTRuleset } from '../cbt-ruleset.model';
-import { jsonValuesEqual } from '../../utils/json-value.util';
+import { isRecord, jsonValuesEqual } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import {
     sanitizeSavedEntityIdentity,
@@ -106,9 +107,9 @@ import {
 
 export type { SerializedMekTurnStateV2 } from './mek-turn-state-v2';
 
-export const CBT_FORCE_PERSISTENCE_SCHEMA_VERSION = 15 as const;
-export const CBT_FORCE_MINIMUM_WRITER_VERSION = 16 as const;
-export const CBT_UNIT_PERSISTENCE_SCHEMA_VERSION = 9 as const;
+export const CBT_FORCE_PERSISTENCE_SCHEMA_VERSION = 16 as const;
+export const CBT_FORCE_MINIMUM_WRITER_VERSION = 17 as const;
+export const CBT_UNIT_PERSISTENCE_SCHEMA_VERSION = 10 as const;
 export const CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2 = 2 as const;
 export const MAX_SERIALIZED_ENCOUNTER_FACTS = 1024;
 export const MAX_SERIALIZED_ENCOUNTER_TARGETS = 12;
@@ -422,8 +423,12 @@ export interface SerializedCrewStateV2 {
         readonly target: SavedTargetRef;
         readonly wounds: number;
         readonly unconscious: boolean;
+        /** Sparse committed death; six wounds without it are pending until phase end. */
+        readonly dead?: true;
         /** Sparse state: omitted is canonical false. */
         readonly ejected?: true;
+        /** Earliest turn for a queued recovery; null explicitly means none. */
+        readonly recoveryReadyTurn?: number | null;
     }[];
 }
 
@@ -484,6 +489,7 @@ export type SerializedRecoverableStateFactV2 =
         readonly kind: 'crew-state';
         readonly wounds: number;
         readonly unconscious: boolean;
+        readonly dead?: true;
         /** Omitted is canonical false. */
         readonly ejected?: true;
     }
@@ -1853,14 +1859,26 @@ function validateCrew(value: unknown, path: string, targets: Record<string, Save
     exactKeys(crew, ['schemaVersion', 'positions'], path);
     if (crew['schemaVersion'] !== 1) fail('INVALID_SHAPE', `${path}.schemaVersion`, 'must be 1');
     validateTargetStateArray(crew['positions'], `${path}.positions`, targets, ['crew-position'], (entry, entryPath) => {
-        exactKeys(entry, ['target', 'wounds', 'unconscious', 'ejected'], entryPath);
-        requireSafeNonnegative(entry['wounds'], `${entryPath}.wounds`);
+        exactKeys(entry, [
+            'target', 'wounds', 'unconscious', 'dead', 'ejected', 'recoveryReadyTurn',
+        ], entryPath);
+        const wounds = requireSafeNonnegative(entry['wounds'], `${entryPath}.wounds`);
         if (typeof entry['unconscious'] !== 'boolean') fail('INVALID_SHAPE', `${entryPath}.unconscious`, 'must be boolean');
+        if (entry['dead'] !== undefined && entry['dead'] !== true) {
+            fail('INVALID_SHAPE', `${entryPath}.dead`, 'sparse dead state must be true');
+        }
         if (entry['ejected'] !== undefined && entry['ejected'] !== true) {
             fail('INVALID_SHAPE', `${entryPath}.ejected`, 'sparse ejected state must be true');
         }
-        if (entry['unconscious'] === true && entry['ejected'] === true) {
-            fail('INVALID_SHAPE', entryPath, 'crew cannot be unconscious and ejected simultaneously');
+        if (entry['dead'] === true && wounds < MAX_MEK_CREW_WOUNDS) {
+            fail('INVALID_SHAPE', entryPath, 'committed crew death requires fatal wounds');
+        }
+        if (entry['recoveryReadyTurn'] !== undefined
+            && entry['recoveryReadyTurn'] !== null) {
+            requireSafeNonnegative(entry['recoveryReadyTurn'], `${entryPath}.recoveryReadyTurn`);
+        }
+        if (entry['recoveryReadyTurn'] !== undefined && entry['unconscious'] !== true) {
+            fail('INVALID_SHAPE', `${entryPath}.recoveryReadyTurn`, 'requires unconscious crew');
         }
         if (entry['wounds'] === 0 && entry['unconscious'] === false && entry['ejected'] !== true) {
             fail('INVALID_SHAPE', entryPath, 'sparse crew state must contain a fact');
@@ -2274,16 +2292,19 @@ function validateRecoverableFact(value: unknown, path: string, targetKind: unkno
             if (targetKind !== 'ammo-source') fail('TARGET_KIND_MISMATCH', path, 'ammo fact has wrong witness');
             return;
         case 'crew-state':
-            exactKeys(fact, ['kind', 'wounds', 'unconscious', 'ejected'], path);
-            requireSafeNonnegative(fact['wounds'], `${path}.wounds`);
+            exactKeys(fact, ['kind', 'wounds', 'unconscious', 'dead', 'ejected'], path);
+            const wounds = requireSafeNonnegative(fact['wounds'], `${path}.wounds`);
             if (typeof fact['unconscious'] !== 'boolean') {
                 fail('INVALID_SHAPE', `${path}.unconscious`, 'must be boolean');
             }
             if (fact['ejected'] !== undefined && fact['ejected'] !== true) {
                 fail('INVALID_SHAPE', `${path}.ejected`, 'sparse ejected state must be true');
             }
-            if (fact['unconscious'] === true && fact['ejected'] === true) {
-                fail('INVALID_SHAPE', path, 'crew cannot be unconscious and ejected simultaneously');
+            if (fact['dead'] !== undefined && fact['dead'] !== true) {
+                fail('INVALID_SHAPE', `${path}.dead`, 'sparse dead state must be true');
+            }
+            if (fact['dead'] === true && wounds < MAX_MEK_CREW_WOUNDS) {
+                fail('INVALID_SHAPE', path, 'committed crew death requires fatal wounds');
             }
             if (targetKind !== 'crew-position') {
                 fail('TARGET_KIND_MISMATCH', path, 'crew fact has non-crew witness');
@@ -2787,10 +2808,6 @@ function requireArray(value: unknown, path: string): unknown[] {
 function requireRecord(value: unknown, path: string): Record<string, unknown> {
     if (!isRecord(value) || Object.getPrototypeOf(value) !== Object.prototype) fail('INVALID_SHAPE', path, 'must be a plain object');
     return value as Record<string, unknown>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function exactKeys(record: Record<string, unknown>, allowed: readonly string[], path: string): void {

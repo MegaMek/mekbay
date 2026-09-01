@@ -39,11 +39,9 @@ import type {
 } from './runtime-state';
 import { asStateRevision, asUnitInstanceId } from './runtime-state';
 import {
-    NON_MEK_UNIT_RUNTIME_SCHEMA_VERSION,
     NonMekUnitInstance,
     freezeNonMekUnitState,
     nonMekComponentStateModes,
-    type NonMekCrewState,
     type NonMekMovementDeclaration,
     type NonMekUnitRuntimeState,
     type NonMekEntityType,
@@ -58,8 +56,9 @@ import {
     freezeEquipmentRowOrder,
     type EquipmentRowOrderState,
 } from './equipment-row-order';
+import { isEndTurnCheckpoint, type EndTurnCheckpoint } from './end-turn-checkpoint';
 
-export const NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION = 6 as const;
+export const NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION = 7 as const;
 export const NON_MEK_DEPLOYMENT_SCHEMA_VERSION = 1 as const;
 
 export interface NonMekDeploymentConfiguration {
@@ -116,7 +115,10 @@ export interface SerializedNonMekUnit {
         readonly wounds: number;
         readonly unconscious: boolean;
         readonly ejected: boolean;
-        readonly state?: NonMekCrewState;
+        readonly dead?: true;
+        readonly killed?: true;
+        readonly stunned?: true;
+        readonly recoveryReadyTurn?: number | null;
     }>[];
     readonly conditions?: readonly UnitConditionKey[];
     readonly heat?: Readonly<{
@@ -132,6 +134,9 @@ export interface SerializedNonMekUnit {
         readonly weaponsHeat?: number;
         readonly cover?: SerializedUnitCover;
         readonly spotting?: true;
+        readonly phaseStateChanged?: true;
+        readonly endTurnCheckpoint?: EndTurnCheckpoint;
+        readonly controlRecovery?: NonMekUnitRuntimeState['turn']['controlRecovery'];
     }>;
     readonly attackerTargeting: SerializedAttackerTargetingState;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
@@ -202,6 +207,7 @@ export function inspectSerializedNonMekUnit(value: unknown): SerializedNonMekUni
 
 export function serializeNonMekUnit(input: SerializeNonMekUnitInput): SerializedNonMekUnit {
     const entity = input.instance.getUnit();
+    if (entity.entityType === 'Mek') throw new Error('Meks require the Mek serializer');
     const state = input.instance.snapshot();
     const index = input.instance.getIndex();
     if (input.sourceRef.uuid !== entity.uuid()
@@ -264,7 +270,7 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
         entity: Object.freeze({ ...input.sourceRef }),
         baselineRefAtSave: freezeBaseline(input.instance.baselineRef),
         deployment: freezeDeployment(input.deployment),
-        family: Object.freeze({ kind: 'non-mek', entityType: state.family.entityType }),
+        family: Object.freeze({ kind: 'non-mek', entityType: entity.entityType }),
         stateRevision: state.stateRevision,
         ...(state.explicitlyDestroyed ? { destroyed: true as const } : {}),
         ...(locationState.length === 0 ? {} : { locationState: Object.freeze(locationState) }),
@@ -367,16 +373,19 @@ export function restoreNonMekUnit(
             wounds: entry.wounds,
             unconscious: entry.unconscious,
             ejected: entry.ejected,
-            ...(entry.state === undefined ? {} : { state: entry.state }),
+            ...(entry.dead ? { dead: true as const } : {}),
+            ...(entry.killed ? { killed: true as const } : {}),
+            ...(entry.stunned ? { stunned: true as const } : {}),
+            ...(entry.recoveryReadyTurn === undefined
+                ? {}
+                : { recoveryReadyTurn: entry.recoveryReadyTurn }),
         }));
     }
     const conditions = new Set((saved.conditions ?? []).map(requireUnitConditionKey));
     if (conditions.size !== (saved.conditions?.length ?? 0)) throw new Error('Duplicate persisted condition');
     const equipmentRowOrder = freezeEquipmentRowOrder(saved.equipmentRowOrder);
     const state = freezeNonMekUnitState({
-        schemaVersion: NON_MEK_UNIT_RUNTIME_SCHEMA_VERSION,
         stateRevision: asStateRevision(saved.stateRevision),
-        family: Object.freeze({ kind: 'non-mek', entityType: saved.family.entityType }),
         explicitlyDestroyed: saved.destroyed === true,
         locations,
         components,
@@ -409,13 +418,23 @@ export function restoreNonMekUnit(
 function serializeNonMekTurn(state: NonMekUnitRuntimeState): SerializedNonMekUnit['turn'] {
     const turn = state.turn;
     if (turn.turnCounter === 0 && turn.airborne === null && turn.movement === null
-        && turn.weaponsHeat === 0 && turn.cover === null && !turn.spotting) return undefined;
+        && turn.weaponsHeat === 0 && turn.cover === null && !turn.spotting
+        && !turn.phaseStateChanged
+        && turn.endTurnCheckpoint === undefined
+        && turn.controlRecovery === undefined) return undefined;
     return Object.freeze({
         ...(turn.turnCounter === 0 ? {} : { turnCounter: turn.turnCounter }),
         ...(turn.airborne === null ? {} : { airborne: turn.airborne }),
         ...(turn.weaponsHeat === 0 ? {} : { weaponsHeat: turn.weaponsHeat }),
         ...(turn.cover === null ? {} : { cover: serializeUnitCover(turn.cover) }),
         ...(turn.spotting ? { spotting: true as const } : {}),
+        ...(turn.phaseStateChanged ? { phaseStateChanged: true as const } : {}),
+        ...(turn.endTurnCheckpoint === undefined
+            ? {}
+            : { endTurnCheckpoint: turn.endTurnCheckpoint }),
+        ...(turn.controlRecovery === undefined
+            ? {}
+            : { controlRecovery: Object.freeze({ ...turn.controlRecovery }) }),
         ...(turn.movement === null
             ? {}
             : {
@@ -444,6 +463,13 @@ function restoreNonMekTurn(saved: SerializedNonMekUnit): NonMekUnitRuntimeState[
             ? null
             : deserializeUnitCover(saved.turn.cover) ?? null,
         spotting: saved.turn?.spotting === true,
+        phaseStateChanged: saved.turn?.phaseStateChanged === true,
+        ...(saved.turn?.endTurnCheckpoint === undefined
+            ? {}
+            : { endTurnCheckpoint: saved.turn.endTurnCheckpoint }),
+        ...(saved.turn?.controlRecovery === undefined
+            ? {}
+            : { controlRecovery: Object.freeze({ ...saved.turn.controlRecovery }) }),
         movement: saved.turn?.movement === undefined
             ? null
             : Object.freeze({
@@ -459,7 +485,8 @@ function validateSerializedNonMekTurn(value: unknown): void {
     const keys = Object.keys(turn);
     if (keys.some(key => key !== 'turnCounter' && key !== 'airborne'
         && key !== 'movement' && key !== 'weaponsHeat'
-        && key !== 'cover' && key !== 'spotting')) {
+        && key !== 'cover' && key !== 'spotting' && key !== 'endTurnCheckpoint'
+        && key !== 'controlRecovery' && key !== 'phaseStateChanged')) {
         throw new Error('Non-Mek turn contains unknown fields');
     }
     if (turn['turnCounter'] !== undefined) requireInteger(turn['turnCounter'], 'entity turn counter');
@@ -472,6 +499,24 @@ function validateSerializedNonMekTurn(value: unknown): void {
     }
     if (turn['spotting'] !== undefined && turn['spotting'] !== true) {
         throw new Error('Non-Mek spotting state must be true when present');
+    }
+    if (turn['phaseStateChanged'] !== undefined && turn['phaseStateChanged'] !== true) {
+        throw new Error('Non-Mek phase state marker must be true when present');
+    }
+    if (turn['endTurnCheckpoint'] !== undefined
+        && !isEndTurnCheckpoint(turn['endTurnCheckpoint'])) {
+        throw new Error('Non-Mek End Turn checkpoint is invalid');
+    }
+    if (turn['controlRecovery'] !== undefined) {
+        const recovery = requireRecord(turn['controlRecovery'], 'entity Control recovery');
+        if (Object.keys(recovery).some(key => key !== 'readyTurn' && key !== 'cause')) {
+            throw new Error('Non-Mek Control recovery contains unknown fields');
+        }
+        requireInteger(recovery['readyTurn'], 'entity Control recovery turn');
+        if (recovery['cause'] !== 'heat-random-movement'
+            && recovery['cause'] !== 'controller-loss') {
+            throw new Error('Non-Mek Control recovery cause is invalid');
+        }
     }
     if (turn['movement'] === undefined) return;
     const movement = requireRecord(turn['movement'], 'entity movement');

@@ -3,6 +3,7 @@
 
 import { jsonValuesEqual } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
+import { isObjectLiteralRecord } from '../../utils/json-value.util';
 import {
     asCriticalSlotId,
     asLocationId,
@@ -507,7 +508,7 @@ export function createPristineMekMovementPsrStateV2(): MekMovementPsrStateV2 {
 export function canonicalizeMekMovementDeclarationV2(
     value: MekMovementDeclarationV2,
 ): MekMovementDeclarationV2 {
-    if (!plainRecord(value)
+    if (!isObjectLiteralRecord(value)
         || !exactKeys(value, ['schemaVersion', 'mode', 'distance', 'boosterComponentIds'])
         || value.schemaVersion !== MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION
         || !isMovementMode(value.mode)
@@ -533,7 +534,7 @@ export function canonicalizeMekMovementDeclarationV2(
 export function canonicalizeMekActionDeclarationV2(
     value: MekActionDeclarationV2,
 ): MekActionDeclarationV2 {
-    if (!plainRecord(value)
+    if (!isObjectLiteralRecord(value)
         || !exactKeys(value, ['schemaVersion', 'kind'])
         || value.schemaVersion !== MEK_ACTION_DECLARATION_SCHEMA_VERSION
         || !isActionKind(value.kind)) {
@@ -545,7 +546,7 @@ export function canonicalizeMekActionDeclarationV2(
 export function canonicalizeMekMovementPsrStateV2(
     value: MekMovementPsrStateV2,
 ): MekMovementPsrStateV2 {
-    if (!plainRecord(value)
+    if (!isObjectLiteralRecord(value)
         || !exactKeys(value, [
             'movement', 'action', 'standAttempts', 'carefulStand', 'damageThisPhase', 'checks',
             'automaticFalls',
@@ -1116,7 +1117,7 @@ export function resolveMekPilotCheckV2(
 ): MekPilotCheckResolutionResultV2 {
     const canonical = canonicalizeMekMovementPsrStateV2(state);
     if (!boundedText(checkId, 256)) return Object.freeze({ accepted: false, reason: 'INVALID_CHECK' });
-    if (!plainRecord(evidence)
+    if (!isObjectLiteralRecord(evidence)
         || !exactKeys(evidence, ['dice', 'claimedOutcome'])
         || !Array.isArray(evidence.dice)
         || evidence.dice.length !== 2
@@ -1234,7 +1235,7 @@ export function serializeMekMovementPsrStateV2(
 
 /** Strict current-wire decoder; unknown fields and explicit sparse defaults reject. */
 export function deserializeMekMovementPsrStateV2(value: unknown): MekMovementPsrStateV2 {
-    if (!plainRecord(value)
+    if (!isObjectLiteralRecord(value)
         || !exactKeys(value, [
             'schemaVersion', 'movement', 'action', 'standAttempts', 'carefulStand',
             'damageThisPhase', 'checks', 'automaticFalls',
@@ -1344,7 +1345,7 @@ export function remapMekMovementPsrStateIdsV2(
 }
 
 export function canonicalizeMekAutomaticFallV2(value: unknown): MekAutomaticFallV2 {
-    if (!plainRecord(value)
+    if (!isObjectLiteralRecord(value)
         || !exactKeys(value, ['triggerKind', 'locationIds'])
         || !isMekAutomaticFallTriggerKind(value['triggerKind'])
         || !Array.isArray(value['locationIds'])) {
@@ -2585,7 +2586,7 @@ function seed(source: MekPilotCheckSourceV2, reason: string): MekPilotCheckSeedV
 }
 
 function canonicalizeCheck(value: unknown): MekPilotCheckV2 {
-    if (!plainRecord(value)
+    if (!isObjectLiteralRecord(value)
         || !exactKeys(value, [
             'checkId', 'source', 'producingRevision', 'ordinal', 'targetNumber', 'reason', 'status', 'resolution',
         ])
@@ -2629,7 +2630,7 @@ function canonicalizeCheck(value: unknown): MekPilotCheckV2 {
 }
 
 function canonicalizeSource(value: unknown): MekPilotCheckSourceV2 {
-    if (!plainRecord(value)
+    if (!isObjectLiteralRecord(value)
         || !exactKeys(value, [
             'sourceKind', 'triggerKind', 'witness', 'criticalSlotIds', 'locationIds',
             'baseTarget', 'triggerModifier',
@@ -2849,7 +2850,7 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
 }
 
 function exactWitnessRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
-    if (!plainRecord(value)
+    if (!isObjectLiteralRecord(value)
         || Object.keys(value).length !== keys.length
         || !exactKeys(value, keys)) {
         throw new Error('Invalid Mek pilot check witness structure');
@@ -2882,7 +2883,7 @@ function exactWitnessIds(value: unknown, label: string): string[] {
 }
 
 function canonicalResolution(value: unknown): MekPilotCheckResolutionEvidenceV2 {
-    if (!plainRecord(value)
+    if (!isObjectLiteralRecord(value)
         || !exactKeys(value, ['dice', 'total'])
         || !Array.isArray(value['dice'])
         || value['dice'].length !== 2
@@ -2897,7 +2898,7 @@ function canonicalResolution(value: unknown): MekPilotCheckResolutionEvidenceV2 
 }
 
 function canonicalDamageMutation(value: unknown): MekCommittedDamageMutationV2 {
-    if (!plainRecord(value)) throw new Error('Invalid committed Mek damage mutation');
+    if (!isObjectLiteralRecord(value)) throw new Error('Invalid committed Mek damage mutation');
     if (value['kind'] === 'critical') {
         const slotId = value['slotId'];
         const beforeHits = value['beforeHits'];
@@ -3032,10 +3033,10 @@ function deserializeActionDeclaration(value: unknown): MekActionDeclarationV2 {
 }
 
 function deserializeCheck(value: unknown): MekPilotCheckV2 {
-    if (!plainRecord(value)) throw new Error('Invalid serialized Mek pilot check');
+    if (!isObjectLiteralRecord(value)) throw new Error('Invalid serialized Mek pilot check');
     const result = canonicalizeCheck(value);
     const source = value['source'];
-    if (!plainRecord(source)
+    if (!isObjectLiteralRecord(source)
         || !sameStrings(source['criticalSlotIds'] as readonly string[], result.source.criticalSlotIds)
         || !sameStrings(source['locationIds'] as readonly string[], result.source.locationIds)) {
         throw new Error('Serialized Mek pilot check source IDs are not canonical');
@@ -3646,11 +3647,6 @@ function canonicalNonnegativeInteger(value: unknown, maximum: number): value is 
 function canonicalInteger(value: unknown, minimum: number, maximum: number): value is number {
     return typeof value === 'number' && Number.isSafeInteger(value) && !Object.is(value, -0)
         && value >= minimum && value <= maximum;
-}
-
-function plainRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value)
-        && Object.getPrototypeOf(value) === Object.prototype;
 }
 
 function exactKeys(value: object, allowed: readonly string[]): boolean {
