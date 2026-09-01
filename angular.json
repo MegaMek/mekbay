@@ -159,6 +159,8 @@
           "builder": "@angular/build:karma",
           "options": {
             "tsConfig": "tsconfig.spec.json",
+            "karmaConfig": ".karma-no-gpu.cjs",
+            "browsers": "ChromeHeadlessNoGpu",
             "assets": [
               {
                 "glob": "**/*",

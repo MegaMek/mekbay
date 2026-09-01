@@ -39,7 +39,7 @@ import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { GameService } from './game.service';
 import { UrlService } from './url.service';
 import { NavigationEnd, Router } from '@angular/router';
-import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
+import { getEffectivePilotingSkill, getFixedPilotingSkill } from '../utils/cbt-common.util';
 import type { ResolvedPack } from '../utils/force-pack.util';
 import { buildMultiForceQueryParams, parseForceFromUrl, type ForceQueryParams, type ForceUrlUnitLookupMode } from '../utils/force-url.util';
 import { CBTPrintUtil } from '../utils/cbtprint.util';
@@ -1099,6 +1099,17 @@ export class ForceBuilderService {
 
         try {
             const newForceUnit = force.addUnit(unitData, group);
+            const fixedPilotingSkill = getFixedPilotingSkill(unitData);
+            if (newForceUnit instanceof CBTForceUnit && fixedPilotingSkill !== null) {
+                newForceUnit.disabledSaving = true;
+                try {
+                    for (const crew of newForceUnit.getCrewMembers()) {
+                        crew.setSkill('piloting', fixedPilotingSkill);
+                    }
+                } finally {
+                    newForceUnit.disabledSaving = false;
+                }
+            }
             // addUnit appends to end — move it to right after the source
             const updatedUnits = group.units();
             const newIndex = updatedUnits.findIndex(u => u.id === newForceUnit.id);

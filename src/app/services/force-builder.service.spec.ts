@@ -251,6 +251,56 @@ describe('ForceBuilderService formation filter integration', () => {
     });
 });
 
+describe('ForceBuilderService unit cloning', () => {
+    it('initializes fixed Piloting for every crew member on a CBT clone', async () => {
+        const service = Object.create(ForceBuilderService.prototype) as any;
+        const unitData = {
+            ...createUnit(),
+            type: 'Infantry',
+            subtype: 'Conventional Infantry',
+            canAntiMech: false,
+        } as UnitSummary;
+        const crew = [
+            { setSkill: jasmine.createSpy('setSkill0') },
+            { setSkill: jasmine.createSpy('setSkill1') },
+        ];
+        const clone = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
+        Object.assign(clone, {
+            id: 'clone',
+            disabledSaving: false,
+            getCrewMembers: () => crew,
+        });
+        const groupUnits = signal<ForceUnit[]>([]);
+        const group = {
+            units: groupUnits,
+            reorderUnit: jasmine.createSpy('reorderUnit'),
+        } as unknown as UnitGroup;
+        const force = {
+            readOnly: () => false,
+            addUnit: jasmine.createSpy('addUnit').and.callFake(() => {
+                groupUnits.set([...groupUnits(), clone]);
+                return clone;
+            }),
+        } as unknown as Force;
+        const source = {
+            id: 'source',
+            force,
+            getUnit: () => unitData,
+            getGroup: () => group,
+        } as unknown as ForceUnit;
+        groupUnits.set([source]);
+        service.selectUnit = jasmine.createSpy('selectUnit');
+        service.toastService = { showToast: jasmine.createSpy('showToast') };
+
+        const result = await service.cloneUnit(source);
+
+        expect(result).toBe(clone);
+        expect(crew[0].setSkill).toHaveBeenCalledOnceWith('piloting', 8);
+        expect(crew[1].setSkill).toHaveBeenCalledOnceWith('piloting', 8);
+        expect(clone.disabledSaving).toBeFalse();
+    });
+});
+
 describe('ForceBuilderService unit conversion', () => {
     it('starts loading a converted unit immediately', () => {
         const service = Object.create(ForceBuilderService.prototype) as any;
