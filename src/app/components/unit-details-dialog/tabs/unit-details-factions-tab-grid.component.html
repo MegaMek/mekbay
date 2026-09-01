@@ -33,7 +33,14 @@
         [class.subrow]="isSubrow"
         [class.expanded]="rowExpanded"
     >
-        <th class="faction-row-heading" scope="row">
+        <th
+            class="faction-row-heading"
+            scope="row"
+            [attr.title]="factionColumnCollapsed() ? row.name : null"
+        >
+            @if (factionColumnCollapsed()) {
+                <span class="visually-hidden">{{ row.name }}</span>
+            }
             @if (row.isCatchAll && row.subrows.length > 0) {
                 <button
                     type="button"
@@ -111,11 +118,30 @@
 </ng-template>
 
 <div class="faction-availability-matrix-scroll allow-select">
-    <table class="faction-availability-matrix">
+    <table
+        class="faction-availability-matrix"
+        [class.faction-column-collapsed]="factionColumnCollapsed()"
+    >
         <caption class="visually-hidden">Faction availability by era</caption>
         <thead>
             <tr>
-                <th class="faction-column-heading" scope="col">Factions</th>
+                <th class="faction-column-heading" scope="col">
+                    <div class="faction-column-heading-content">
+                        <span
+                            class="faction-column-label"
+                            [class.visually-hidden]="factionColumnCollapsed()"
+                        >Factions</span>
+                        <button
+                            type="button"
+                            class="bt-button"
+                            [attr.aria-expanded]="!factionColumnCollapsed()"
+                            [attr.aria-label]="factionColumnCollapsed() ? 'Show faction names' : 'Hide faction names'"
+                            (click)="toggleFactionColumn()"
+                        >
+                            {{ factionColumnCollapsed() ? '>' : '<' }}
+                        </button>
+                    </div>
+                </th>
                 @for (era of matrix.eras; track era.eraId) {
                     <th class="era-column-heading" scope="col" [attr.title]="era.eraName">
                         <div class="era-heading-content">

@@ -48,6 +48,7 @@ interface FactionAvailabilityMatrix {
 })
 export class UnitDetailsFactionsTabGridComponent {
     readonly availability = input.required<readonly FactionAvailability[]>();
+    readonly factionColumnCollapsed = signal(false);
 
     readonly megaMekRequisitionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
     readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;
@@ -56,6 +57,10 @@ export class UnitDetailsFactionsTabGridComponent {
     ));
 
     private readonly expandedCatchAlls = signal(new Set<number>());
+
+    toggleFactionColumn(): void {
+        this.factionColumnCollapsed.update(collapsed => !collapsed);
+    }
 
     toggleCatchAll(factionId: number): void {
         this.expandedCatchAlls.update(set => {

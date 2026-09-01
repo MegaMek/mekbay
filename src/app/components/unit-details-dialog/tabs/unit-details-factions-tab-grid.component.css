@@ -63,6 +63,44 @@
     text-transform: uppercase;
 }
 
+.faction-column-heading-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.faction-availability-matrix.faction-column-collapsed .faction-column-heading,
+.faction-availability-matrix.faction-column-collapsed .faction-row-heading {
+    width: 52px;
+    min-width: 52px;
+    max-width: 52px;
+}
+
+.faction-column-collapsed .faction-column-heading {
+    padding-inline: 14px;
+}
+
+.faction-column-collapsed .faction-name,
+.faction-column-collapsed .subrow-count,
+.faction-column-collapsed .disclosure-icon,
+.faction-column-collapsed .disclosure-spacer {
+    display: none;
+}
+
+.faction-column-collapsed .faction-column-heading-content,
+.faction-column-collapsed .faction-identity {
+    justify-content: center;
+}
+
+.faction-column-collapsed .faction-identity,
+.faction-column-collapsed .subrow .faction-identity {
+    padding-inline: 9px;
+    gap: 0;
+}
+
 .era-column-heading {
     padding: 0;
     text-align: center;
