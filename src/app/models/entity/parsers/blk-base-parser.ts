@@ -51,6 +51,7 @@ import {
   weaponBayDamageLimit,
   weaponBayGroupingKey,
 } from '../utils/weapon-bay-grouping';
+import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
 
 /**
  * Common BLK parsing - reads universal blocks that apply to all unit types.
@@ -65,7 +66,7 @@ export function parseBaseBlk(
 ): void {
   // ── Identity ──
   const uuid = bb.getFirstString('UUID');
-  if (uuid) entity.uuid.set(uuid);
+  if (uuid) entity.uuid.set(asUnitUuid(uuid));
   entity.chassis.set(bb.getFirstString('Name'));
   entity.model.set(bb.getFirstString('Model'));
 

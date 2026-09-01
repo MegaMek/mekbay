@@ -33,6 +33,7 @@ import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.servic
 import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalog.service';
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { createEmptyCBTForceForTest, createEmptyUnit } from '../testing/unit-test-helpers';
+import { asUnitUuid } from './unit-catalog/unit-catalog.types';
 import { MULFACTION_NONE } from '../models/mulfactions.model';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MiscEquipment } from '../models/equipment.model';
@@ -233,7 +234,6 @@ describe('DataService', () => {
     const unitRuntimeServiceMock = {
         getUnitByName: jasmine.createSpy('getUnitByName').and.returnValue(undefined),
         getUnitByUuid: jasmine.createSpy('getUnitByUuid').and.returnValue(undefined),
-        getSavedEntityIdentity: jasmine.createSpy('getSavedEntityIdentity').and.returnValue(undefined),
         resolveUnitReference: jasmine.createSpy('resolveUnitReference'),
         resolvePersistedUnitIdentity: jasmine.createSpy('resolvePersistedUnitIdentity').and.callFake(
             (reference: { unit: string }) => ({
@@ -245,7 +245,7 @@ describe('DataService', () => {
         ),
         prepareRuntimeCatalog: jasmine.createSpy('prepareRuntimeCatalog').and.returnValue({
             unitNameMap: new Map(),
-            unitIdentityMap: new Map(),
+            unitUuidMap: new Map(),
         }),
         commitPreparedRuntimeCatalog: jasmine.createSpy('commitPreparedRuntimeCatalog'),
         applyTagDataToUnits: jasmine.createSpy('applyTagDataToUnits'),
@@ -365,7 +365,7 @@ describe('DataService', () => {
                 coreRevision: revision,
                 summaries: [],
                 units,
-                summariesByIdentity: new Map(),
+                summariesByUuid: new Map(),
             },
             core: {
                 revision,
@@ -409,14 +409,12 @@ describe('DataService', () => {
         unitRuntimeServiceMock.getUnitByName.and.returnValue(undefined);
         unitRuntimeServiceMock.getUnitByUuid.calls.reset();
         unitRuntimeServiceMock.getUnitByUuid.and.returnValue(undefined);
-        unitRuntimeServiceMock.getSavedEntityIdentity.calls.reset();
-        unitRuntimeServiceMock.getSavedEntityIdentity.and.returnValue(undefined);
         unitRuntimeServiceMock.resolveUnitReference.calls.reset();
         unitRuntimeServiceMock.resolvePersistedUnitIdentity.calls.reset();
         unitRuntimeServiceMock.prepareRuntimeCatalog.calls.reset();
         unitRuntimeServiceMock.prepareRuntimeCatalog.and.returnValue({
             unitNameMap: new Map(),
-            unitIdentityMap: new Map(),
+            unitUuidMap: new Map(),
         });
         unitRuntimeServiceMock.commitPreparedRuntimeCatalog.calls.reset();
         unitRuntimeServiceMock.applyTagDataToUnits.calls.reset();
@@ -577,10 +575,11 @@ describe('DataService', () => {
 
     it('delegates unit lookup to the runtime service', () => {
         service.getUnitByName('Mad Cat Prime');
-        service.getUnitByUuid('unit-uuid');
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+        service.getUnitByUuid(uuid);
 
         expect(unitRuntimeServiceMock.getUnitByName).toHaveBeenCalledOnceWith('Mad Cat Prime');
-        expect(unitRuntimeServiceMock.getUnitByUuid).toHaveBeenCalledOnceWith('unit-uuid');
+        expect(unitRuntimeServiceMock.getUnitByUuid).toHaveBeenCalledOnceWith(uuid);
     });
 
     it('resolves equipment names through the catalog registry', () => {

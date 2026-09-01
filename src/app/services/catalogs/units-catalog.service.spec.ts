@@ -17,7 +17,6 @@ import {
     MM_DATA_UNIT_PROVIDER_ID,
     asCatalogActivationId,
     asSourceHash,
-    asUnitProviderId,
     asUnitUuid,
     makeUnitFileName,
     type StoredCoreContent,
@@ -141,9 +140,8 @@ describe('UnitsCatalogService native core projection', () => {
         expect(initializeCore).toHaveBeenCalledTimes(1);
         expect(service.getUnits().map(unit => unit.name)).toEqual(['Alpha', 'Beta']);
         expect(service.getCoreSummaries().map(unit => unit.name)).toEqual(['Alpha', 'Beta']);
-        expect(service.getCoreSummaryByIdentity(MM_DATA_UNIT_PROVIDER_ID, UUIDS[0])?.name)
+        expect(service.getCoreSummaryByUuid(UUIDS[0])?.name)
             .toBe('Alpha');
-        expect(service.getCoreSummaryByIdentity(asUnitProviderId('user'), UUIDS[0])).toBeUndefined();
         expect(service.getUnits().every(unit => !Object.hasOwn(unit, 'fluff'))).toBeTrue();
     });
 
@@ -176,8 +174,8 @@ describe('UnitsCatalogService native core projection', () => {
         let release!: (source: StoredCoreContent) => void;
         readUnitSource.and.returnValue(new Promise<StoredCoreContent>(resolve => { release = resolve; }));
 
-        const first = service.readNativeUnitSource(MM_DATA_UNIT_PROVIDER_ID, UUIDS[0]);
-        const second = service.readNativeUnitSource(MM_DATA_UNIT_PROVIDER_ID, UUIDS[0]);
+        const first = service.readNativeUnitSource(UUIDS[0]);
+        const second = service.readNativeUnitSource(UUIDS[0]);
         expect(readUnitSource).toHaveBeenCalledTimes(1);
         release({
             file,
@@ -190,14 +188,9 @@ describe('UnitsCatalogService native core projection', () => {
         expect(firstSource).toEqual(secondSource);
         expect(firstSource?.bytes).not.toBe(secondSource?.bytes);
         readUnitSource.and.resolveTo(firstSource);
-        await service.readNativeUnitSource(MM_DATA_UNIT_PROVIDER_ID, UUIDS[0]);
+        await service.readNativeUnitSource(UUIDS[0]);
         expect(readUnitSource).toHaveBeenCalledTimes(2);
         expect(logger.info).toHaveBeenCalledTimes(2);
-    });
-
-    it('rejects non-core providers without touching native storage', async () => {
-        expect(await service.readNativeUnitSource(asUnitProviderId('user'), UUIDS[0])).toBeUndefined();
-        expect(readUnitSource).not.toHaveBeenCalled();
     });
 
     it('acknowledges the committed core generation and delegates rejection', async () => {

@@ -25,8 +25,9 @@ import { isCBTRuleset, type CBTRuleset } from '../cbt-ruleset.model';
 import { isC3NetworkRole, isC3NetworkType, type C3NetworkRole, type C3NetworkType } from '../c3-network.model';
 import { isRecord, jsonValuesEqual } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
-import { sanitizeSavedEntityIdentity, type JsonValue, type SavedEntityIdentity } from '../persisted-unit-state';
-import { asSourceHash } from '../../services/unit-catalog/unit-catalog.types';
+import type { JsonValue } from '../persisted-unit-state';
+import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { asSourceHashCanary, type SourceHashCanary } from '../source-hash-canary';
 import { type InstanceBaselineRef } from './runtime-state';
 import { deserializeMekTurnStateV2, type SerializedMekTurnStateV2 } from './mek-turn-state-v2';
 import {
@@ -494,7 +495,7 @@ export interface SerializedUnresolvedStateRecoveryEntryV2 {
 export interface SerializedPersistedRestoreAliasV2 {
     /** Exact source-table occurrence selected by the repair owner. */
     readonly sourceTargetRef: SavedTargetRef;
-    readonly targetEntity: SavedEntityIdentity;
+    readonly targetEntity: UnitUuid;
     readonly target: SavedTargetRef;
     readonly algorithmVersion: number;
 }
@@ -525,7 +526,6 @@ export interface SerializedUnitRestorationMetadataV2 {
     readonly schemaVersion: 1;
     readonly algorithmVersion: number;
     readonly fromBaseline: SerializedRestorationBaselineV2;
-    readonly sourceChanged: boolean;
     readonly warnings: readonly { readonly code: string; readonly message: string }[];
     readonly unresolved: readonly SerializedUnresolvedStateRecoveryEntryV2[];
     readonly acceptedAliases: readonly SerializedPersistedRestoreAliasV2[];
@@ -580,7 +580,8 @@ export interface SavedAttackerTargetingState {
 export interface SerializedCBTUnitV2 {
     readonly schemaVersion: typeof CBT_UNIT_PERSISTENCE_SCHEMA_VERSION;
     readonly instanceId: string;
-    readonly entity: SavedEntityIdentity;
+    readonly entity: UnitUuid;
+    readonly sourceHashCanary?: SourceHashCanary;
     readonly baselineRefAtSave: InstanceBaselineRef;
     readonly blueprintReferences: SavedBlueprintReferenceTableV2;
     readonly deployment: SerializedDeploymentConfigurationV2;
@@ -604,7 +605,6 @@ export interface SerializedCBTUnitV2 {
     readonly conditions?: SerializedCommonConditionStateV2;
     readonly turn: SerializedMekTurnStateV2;
     readonly pendingCombat?: SerializedPendingCombatStateV2;
-    readonly restoration?: SerializedUnitRestorationMetadataV2;
 }
 
 export interface SerializedForceUnitEntryV2 {
@@ -1062,30 +1062,26 @@ function validateV2Unit(
 } {
     const record = requireRecord(value, path);
     exactKeys(record, [
-        'schemaVersion', 'instanceId', 'entity', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
+        'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
         'stateRevision', 'destroyed', 'locationState', 'locationConditions', 'slotState', 'componentState', 'ammoState', 'crew', 'heat',
         'family', 'ruleChecks', 'movementPsr', 'attackerTargeting',
-        'equipmentRowOrder', 'conditions', 'turn', 'pendingCombat', 'restoration',
+        'equipmentRowOrder', 'conditions', 'turn', 'pendingCombat',
     ], path);
     if (record['schemaVersion'] !== CBT_UNIT_PERSISTENCE_SCHEMA_VERSION) {
         fail('INVALID_SHAPE', `${path}.schemaVersion`, `must be ${CBT_UNIT_PERSISTENCE_SCHEMA_VERSION}`);
     }
     const instanceId = validateId(record['instanceId'], `${path}.instanceId`);
     const entity = validateSavedIdentity(record['entity'], `${path}.entity`);
+    if (record['sourceHashCanary'] !== undefined) {
+        try {
+            asSourceHashCanary(requireString(record, 'sourceHashCanary', path));
+        } catch {
+            fail('INVALID_SHAPE', `${path}.sourceHashCanary`, 'must be a four-character base64url canary');
+        }
+    }
     const baseline = validateBaseline(record['baselineRefAtSave'], `${path}.baselineRefAtSave`);
-    if (entity.sourceFormat === 'blk' || baseline.sourceFormat === 'blk') {
-        fail('DESIGN_IDENTITY_MISMATCH', `${path}.entity.sourceFormat`, 'Mek V2 baselines must use MTF native sources');
-    }
-    if (entity.provider !== baseline.provider || entity.uuid !== baseline.uuid) {
+    if (entity !== baseline.uuid) {
         fail('DESIGN_IDENTITY_MISMATCH', `${path}.baselineRefAtSave.entity`, 'saved entity and baseline identify different designs');
-    }
-    if (entity.sourceHashAtSave !== undefined && baseline.sourceHash !== undefined
-        && entity.sourceHashAtSave !== baseline.sourceHash) {
-        fail('DESIGN_IDENTITY_MISMATCH', `${path}.entity.sourceHashAtSave`, 'source hash conflicts with the baseline witness');
-    }
-    if (entity.sourceFormat !== undefined && baseline.sourceFormat !== undefined
-        && entity.sourceFormat !== baseline.sourceFormat) {
-        fail('DESIGN_IDENTITY_MISMATCH', `${path}.entity.sourceFormat`, 'source format conflicts with the baseline witness');
     }
     const savedTargets = validateSavedBlueprintReferenceTableV2(
         record['blueprintReferences'],
@@ -1198,14 +1194,6 @@ function validateV2Unit(
         validateUniqueSortedUnitConditions(conditions['values'], `${path}.conditions.values`);
     }
     if (record['pendingCombat'] !== undefined) validatePending(record['pendingCombat'], `${path}.pendingCombat`, targets);
-    if (record['restoration'] !== undefined) {
-        validateUnitRestoration(
-            record['restoration'],
-            `${path}.restoration`,
-            targets,
-            baseline.entity,
-        );
-    }
     return {
         instanceId,
         revision,
@@ -1292,11 +1280,8 @@ function collectSavedComponentIds(
 }
 
 interface ValidatedBaseline {
-    readonly provider: string;
     readonly uuid: string;
-    readonly sourceHash?: string;
-    readonly sourceFormat?: string;
-    readonly entity: SavedEntityIdentity;
+    readonly entity: UnitUuid;
     readonly ruleset: CBTRuleset;
 }
 
@@ -1313,29 +1298,16 @@ function validateBaseline(value: unknown, path: string): ValidatedBaseline {
     requirePositiveInteger(profile['initializerRevision'], `${path}.initialStateProfile.initializerRevision`);
     validateId(profile['profileId'], `${path}.initialStateProfile.profileId`);
     return {
-        provider: entity.provider,
-        uuid: entity.uuid,
-        ...(entity.sourceHashAtSave === undefined ? {} : { sourceHash: entity.sourceHashAtSave }),
-        ...(entity.sourceFormat === undefined ? {} : { sourceFormat: entity.sourceFormat }),
+        uuid: entity,
         entity,
         ruleset: record['ruleset'],
     };
 }
 
-function validateSavedIdentity(value: unknown, path: string): SavedEntityIdentity {
-    const record = requireRecord(value, path);
-    exactKeys(record, ['origin', 'provider', 'uuid', 'sourceHashAtSave', 'sourceFormat'], path);
-    if (record['origin'] !== 'megamek' && record['origin'] !== 'user') fail('INVALID_SHAPE', `${path}.origin`, 'must be core or user');
-    if (typeof record['provider'] !== 'string') fail('INVALID_SHAPE', `${path}.provider`, 'must be a string');
-    if (typeof record['uuid'] !== 'string') fail('INVALID_SHAPE', `${path}.uuid`, 'must be a string');
-    if (record['sourceHashAtSave'] !== undefined && typeof record['sourceHashAtSave'] !== 'string') fail('INVALID_SHAPE', `${path}.sourceHashAtSave`, 'must be a string');
-    if (record['sourceFormat'] !== undefined && record['sourceFormat'] !== 'mtf' && record['sourceFormat'] !== 'blk') {
-        fail('INVALID_SHAPE', `${path}.sourceFormat`, 'must be mtf or blk');
-    }
+function validateSavedIdentity(value: unknown, path: string): UnitUuid {
+    if (typeof value !== 'string') fail('INVALID_SHAPE', path, 'must be a UUID string');
     try {
-        const identity = sanitizeSavedEntityIdentity(record);
-        if (!identity) fail('INVALID_SHAPE', path, 'identity is required');
-        return identity!;
+        return asUnitUuid(value);
     } catch (error) {
         throw validationError('INVALID_SHAPE', error, path);
     }
@@ -1354,21 +1326,6 @@ export function validateSavedBlueprintReferenceTableV2(
         validateSavedTarget(target, `${path}.targets.${ref}`, targets);
     }
     return targets as Record<string, SavedStateTargetV2>;
-}
-
-/** Exact standalone-unit restoration validation used before any retry or alias replay. */
-export function validateSerializedCBTUnitRestorationV2(value: SerializedCBTUnitV2): void {
-    const targets = validateSavedBlueprintReferenceTableV2(
-        value.blueprintReferences,
-        '$.blueprintReferences',
-    );
-    if (value.restoration === undefined) return;
-    validateUnitRestoration(
-        value.restoration,
-        '$.restoration',
-        targets,
-        value.baselineRefAtSave.entity,
-    );
 }
 
 function validateSavedTarget(value: unknown, path: string, table: Record<string, unknown>): void {
@@ -1889,11 +1846,11 @@ function validateUnitRestoration(
     value: unknown,
     path: string,
     targets: Record<string, SavedStateTargetV2>,
-    currentEntity: SavedEntityIdentity,
+    currentEntity: UnitUuid,
 ): void {
     const metadata = requireRecord(value, path);
     exactKeys(metadata, [
-        'schemaVersion', 'algorithmVersion', 'fromBaseline', 'sourceChanged', 'warnings',
+        'schemaVersion', 'algorithmVersion', 'fromBaseline', 'warnings',
         'unresolved', 'acceptedAliases', 'ignoredRecovery',
         'heatRecovery',
     ], path);
@@ -1906,7 +1863,6 @@ function validateUnitRestoration(
             `must be ${CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2}`,
         );
     }
-    if (typeof metadata['sourceChanged'] !== 'boolean') fail('INVALID_SHAPE', `${path}.sourceChanged`, 'must be boolean');
     const from = requireRecord(metadata['fromBaseline'], `${path}.fromBaseline`);
     if (from['kind'] === 'legacy-v1') {
         exactKeys(from, ['kind', 'coordinateProfileVersion'], `${path}.fromBaseline`);

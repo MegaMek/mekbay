@@ -192,16 +192,16 @@ export class ForceWorkspaceCommandsService {
         if (isCBTForceMember(sourceUnit)) {
             try {
                 if (!(force instanceof CBTForce)) throw new Error('CBT member has a non-CBT owner');
-                const identity = force.getUnitSourceIdentity(sourceUnit.id);
-                if (!identity) return null;
+                const uuid = force.getUnitUuid(sourceUnit.id);
+                if (!uuid) return null;
                 const group = force.groups().find(candidate => candidate.id === sourceUnit.rosterGroupId);
                 if (!group) return null;
                 const sourceIndex = force.membersInGroup(group)
                     .findIndex(member => member.id === sourceUnit.id);
                 if (sourceIndex < 0) return null;
-                const clone = await this.unitAdmission.admitCBTIdentity({
+                const clone = await this.unitAdmission.admitCBT({
                     force,
-                    identity,
+                    uuid,
                     rosterGroupId: sourceUnit.rosterGroupId,
                     rosterMemberIndex: sourceIndex + 1,
                 });
@@ -576,7 +576,7 @@ export class ForceWorkspaceCommandsService {
                 for (const sourceUnit of force.membersInGroup(sourceGroup)) {
                     const summary = resolveForceMemberCatalogSummary(
                         sourceUnit,
-                        (provider, uuid) => this.dataService.getUnitByIdentity(provider, uuid),
+                        uuid => this.dataService.getUnitByUuid(uuid),
                     );
                     if (!summary) {
                         throw new Error(`Catalog conversion data is unavailable for ${isCBTForceMember(sourceUnit)

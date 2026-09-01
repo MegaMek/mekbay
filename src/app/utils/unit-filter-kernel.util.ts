@@ -5,6 +5,7 @@
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { UnitSearchRecord } from './unit-search-worker-protocol.util';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import {
     ADVANCED_FILTERS,
     AS_MOVEMENT_MODE_DISPLAY_NAMES,
@@ -51,8 +52,8 @@ export interface UnitFilterKernelDependencies<
     unitMatchesAvailabilityRarity: (unit: TUnit, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
     getForcePackLookupSet: (packName: string) => ReadonlySet<string> | undefined;
     getAvailabilityLookupKey: (unit: TUnit) => string;
-    getIndexedUnitIds?: (filterKey: string, value: string) => ReadonlySet<string> | undefined;
-    getIndexedASSpecials?: (unitUuid: string) => ParsedASSpecials | undefined;
+    getIndexedUnitIds?: (filterKey: string, value: string) => ReadonlySet<UnitUuid> | undefined;
+    getIndexedASSpecials?: (unitUuid: UnitUuid) => ParsedASSpecials | undefined;
 }
 
 interface ApplyUnitFilterStateRequest<TUnit extends UnitSearchRecord> {

@@ -952,9 +952,9 @@ export class DbService {
                     forces.push(cursor.value);
                     cursor.continue();
                 } else {
-                    // Old records use ISO strings while current compact V2 uses
-                    // epoch numbers. IndexedDB orders those as different key
-                    // types, so normalize before comparing during the transition.
+                    // V1 records use ISO strings while current records use epoch
+                    // numbers. IndexedDB orders those as different key types, so
+                    // normalize before comparing.
                     forces.sort((left, right) => forceTimestamp(right) - forceTimestamp(left));
                     const entries: SerializedForce[] = [];
                     for (const raw of forces) {

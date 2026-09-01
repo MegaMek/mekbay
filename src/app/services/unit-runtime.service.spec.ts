@@ -92,14 +92,14 @@ describe('UnitRuntimeService', () => {
         expect(service.getUnitByUuid(second.uuid)).toBe(second);
     });
 
-    it('resolves provider plus UUID before a conflicting legacy name', () => {
+    it('resolves a V1 UUID before a conflicting legacy name', () => {
         const requested = createCatalogUnit('Shared Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
         const collision = createCatalogUnit('Shared Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d35678');
         service.preprocessUnits([collision, requested]);
 
         const resolution = service.resolveUnitReference({
             unit: 'A stale legacy name is only evidence',
-            entityIdentity: service.getSavedEntityIdentity(requested),
+            entityIdentity: { uuid: requested.uuid },
         });
 
         expect(resolution.kind).toBe('resolved');
@@ -110,37 +110,14 @@ describe('UnitRuntimeService', () => {
         expect(service.getUnitByName('Shared Name')).toBeUndefined();
     });
 
-    it('indexes summaries by provider and UUID without a readiness facade', () => {
+    it('indexes summaries by UUID without a readiness facade', () => {
         const catalogOnly = createCatalogUnit('Static Emplacement', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
         const gameplayReady = createUnit('Gameplay Ready');
         service.preprocessUnits([catalogOnly, gameplayReady]);
 
-        expect(service.getUnitByIdentity(MM_DATA_UNIT_PROVIDER_ID, catalogOnly.uuid)).toBe(catalogOnly);
+        expect(service.getUnitByUuid(catalogOnly.uuid)).toBe(catalogOnly);
         expect(Object.prototype.hasOwnProperty.call(catalogOnly, 'readiness')).toBeFalse();
         expect(Object.prototype.hasOwnProperty.call(gameplayReady, 'readiness')).toBeFalse();
-    });
-
-    it('keeps an exact published source resolvable while two revisions share provider and UUID', () => {
-        const uuid = '01890f3a-9d5b-7c24-8b2e-6f8a10d31234';
-        const sourceA = asSourceHash('A'.repeat(27));
-        const sourceB = asSourceHash('B'.repeat(26) + 'A');
-        const revisionA = createCatalogUnit('Crab CRB-20', uuid, sourceA);
-        const revisionB = createCatalogUnit('Crab CRB-20', uuid, sourceB);
-        service.preprocessUnits([revisionA, revisionB]);
-
-        expect(service.getUnitByIdentity(MM_DATA_UNIT_PROVIDER_ID, uuid)).toBeUndefined();
-        expect(service.getUnitByPublicationArtifact(
-            MM_DATA_UNIT_PROVIDER_ID,
-            uuid,
-            'ignored-for-native-source',
-            sourceA,
-        )).toBe(revisionA);
-        expect(service.getUnitByPublicationArtifact(
-            MM_DATA_UNIT_PROVIDER_ID,
-            uuid,
-            'ignored-for-native-source',
-            sourceB,
-        )).toBe(revisionB);
     });
 
     it('uses a legacy name only when it has exactly one catalog match', () => {
@@ -170,10 +147,10 @@ describe('UnitRuntimeService', () => {
         }
     });
 
-    it('does not fall back by name when a saved provider/UUID is missing locally', () => {
+    it('does not fall back by name when a saved UUID is missing locally', () => {
         const sameNameWrongDesign = createCatalogUnit('Expected Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d35678');
         const missing = createCatalogUnit('Missing', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
-        const missingIdentity = service.getSavedEntityIdentity(missing);
+        const missingIdentity = { uuid: missing.uuid };
         service.preprocessUnits([sameNameWrongDesign]);
 
         const resolution = service.resolveUnitReference({ unit: 'Expected Name', entityIdentity: missingIdentity });
@@ -181,13 +158,13 @@ describe('UnitRuntimeService', () => {
         expect(resolution.kind).toBe('deferred');
         if (resolution.kind === 'deferred') {
             expect(resolution.descriptor.reason).toBe('not-found');
-            expect(resolution.descriptor.requestedIdentity?.uuid).toBe(
+            expect(resolution.descriptor.requestedUuid).toBe(
                 asUnitUuid('01890f3a-9d5b-7c24-8b2e-6f8a10d31234'),
             );
         }
     });
 
-    it('accepts the same provider/UUID across source changes and reports the mismatch', () => {
+    it('ignores historical V1 source metadata and resolves the saved UUID', () => {
         const current = createCatalogUnit(
             'Updated Unit',
             '01890f3a-9d5b-7c24-8b2e-6f8a10d31234',
@@ -198,20 +175,15 @@ describe('UnitRuntimeService', () => {
         const resolution = service.resolveUnitReference({
             unit: 'Old Name',
             entityIdentity: {
-                origin: 'user',
-                provider: MM_DATA_UNIT_PROVIDER_ID,
                 uuid: asUnitUuid('01890f3a-9d5b-7c24-8b2e-6f8a10d31234'),
                 sourceHashAtSave: asSourceHash('A'.repeat(27)),
-                sourceFormat: 'mtf',
             },
         });
 
         expect(resolution.kind).toBe('resolved');
         if (resolution.kind === 'resolved') {
             expect(resolution.unit).toBe(current);
-            expect(resolution.sourceChanged).toBeTrue();
-            expect(resolution.savedIdentity?.origin).toBe('user');
-            expect(resolution.currentIdentity?.origin).toBe('megamek');
+            expect(resolution.uuid).toBe(asUnitUuid('01890f3a-9d5b-7c24-8b2e-6f8a10d31234'));
         }
     });
 

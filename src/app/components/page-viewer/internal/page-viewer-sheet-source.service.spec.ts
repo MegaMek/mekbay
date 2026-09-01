@@ -123,11 +123,6 @@ function createMember(entityType: 'Mek' | 'Tank', entity: TestQuadMekEntity | Te
     const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({ entity });
     const force = {
         getUnitSnapshot,
-        getUnitSourceIdentity: () => ({
-            provider: 'mm-data',
-            uuid: entity.uuid(),
-            sourceHashAtSave: `hash-${entityType}`,
-        }),
     } as unknown as CBTForce;
     return new CBTForceMember(`unit-${entityType}`, force, entity);
 }

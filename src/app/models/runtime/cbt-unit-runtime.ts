@@ -149,10 +149,9 @@ export interface CBTUnitRuntimePort {
 export function captureCBTUnitRuntime(
     runtime: CBTUnitRuntimePort,
 ): CBTUnitRuntimeReadModel {
-    const state = runtime.snapshot();
-    const query = runtime.query();
-    if (state.stateRevision !== query.stateRevision) {
-        throw new Error('CBT unit changed while its read model was captured');
-    }
-    return Object.freeze({ index: runtime.getIndex(), state, query });
+    return Object.freeze({
+        index: runtime.getIndex(),
+        state: runtime.snapshot(),
+        query: runtime.query(),
+    });
 }

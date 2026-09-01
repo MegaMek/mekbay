@@ -17,6 +17,7 @@ import {
     isVehicleEntity,
 } from '../entity/utils/entity-type-guards';
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { STANDARD_MOVEMENT_CALCULATION, type EntityTechBase } from '../entity/types';
 import type { UnitType } from '../unit-summary.model';
 import type { CrewMemberState } from '../crew.model';
@@ -96,7 +97,7 @@ export interface NonMekRecordSheetCrewPosition {
 
 /** Detached display/edit projection of one non-Mek BaseEntity plus sparse runtime state. */
 export interface NonMekRecordSheetSnapshot {
-    readonly entityUuid: string;
+    readonly entityUuid: UnitUuid;
     readonly stateRevision: number;
     readonly displayName: string;
     readonly unitType: UnitType;

@@ -13,10 +13,7 @@ import {
 import { RUNTIME_HISTORY_MESSAGE, type SerializedRuntimeHistory } from './runtime-history';
 import { CBTNonMekUnit } from './cbt-non-mek-unit';
 import { TestTankEntity } from '../entity/testing/test-entities';
-import {
-    MM_DATA_UNIT_PROVIDER_ID,
-    asUnitUuid,
-} from '../../services/unit-catalog/unit-catalog.types';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { GameSystem } from '../common.model';
 import { encodeForceForStorage } from './force-storage-codec';
 
@@ -33,15 +30,10 @@ describe('compact runtime persistence', () => {
         const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2');
         entity.uuid.set(uuid);
         entity.setTonnage(20);
-        const identity = Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid,
-            sourceFormat: 'blk' as const,
-        });
+        const identity = uuid;
         const unit = CBTNonMekUnit.create(entity, {
             instanceId: 'unit:size-tank',
-            identity,
+            uuid: identity,
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
             initialStateProfileId: 'pristine-non-mek-v1',
@@ -120,7 +112,7 @@ describe('compact runtime persistence', () => {
 async function pristineMek() {
     const fixture = createDirectMekRuntimeFixture();
     return (await CBTMekUnit.createFromEntity({
-        identity: fixture.identity,
+        uuid: fixture.identity,
         instanceId: 'unit:size-template',
     }, fixture.entity, fixture.identity, {
             initializerRevision: 1,

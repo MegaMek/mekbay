@@ -11,6 +11,7 @@ import {
 import {
     MM_DATA_UNIT_PROVIDER_ID,
     asSourceHash,
+    asUnitProviderId,
     asUnitUuid,
     type UnitUuid,
 } from './unit-catalog.types';
@@ -47,7 +48,7 @@ describe('core catalog generation', () => {
         ].join(':'));
     });
 
-    it('reuses only the exact provider, UUID, hash, and summary version', () => {
+    it('reuses the exact MegaMek UUID, hash, and summary version regardless of obsolete provider metadata', () => {
         const unit = summary(firstUuid, manifestHash);
         const entry = {
             origin: 'megamek' as const,
@@ -56,6 +57,10 @@ describe('core catalog generation', () => {
         };
 
         expect(isReusableCoreSummary(unit, entry)).toBeTrue();
+        expect(isReusableCoreSummary(unit, {
+            ...entry,
+            design: { ...entry.design, provider: asUnitProviderId('obsolete-provider') },
+        })).toBeTrue();
         expect(isReusableCoreSummary(
             { ...unit, summaryVersion: UNIT_SUMMARY_VERSION - 1 },
             entry,
@@ -70,10 +75,6 @@ describe('core catalog generation', () => {
         expect(isUnitSummaryArray([{ ...unit, summaryVersion: 0 }])).toBeFalse();
     });
 
-    it('rejects duplicate catalog entries', () => {
-        const unit = summary(firstUuid, manifestHash);
-        expect(() => prepareUnitSummaryArray([unit, unit])).toThrowError(/Duplicate catalog summary/u);
-    });
 });
 
 const summaryDependencyHashes = Object.freeze({

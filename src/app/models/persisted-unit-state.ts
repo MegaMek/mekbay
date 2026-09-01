@@ -2,14 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    asSourceHash,
-    asUnitProviderId,
-    asUnitUuid,
-    type CatalogEntryOrigin,
     type DesignIdentity,
-    type NativeUnitFormat,
-    type SourceHash,
-    type UnitProviderId,
     type UnitUuid,
 } from '../services/unit-catalog/unit-catalog.types';
 import { isRecord } from '../utils/json-value.util';
@@ -18,16 +11,8 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export interface JsonObject { [key: string]: JsonValue }
 
-export interface SavedEntityIdentity {
-    readonly origin: CatalogEntryOrigin;
-    readonly provider: UnitProviderId;
-    readonly uuid: UnitUuid;
-    readonly sourceHashAtSave?: SourceHash;
-    readonly sourceFormat?: NativeUnitFormat;
-}
-
 export type PersistedUnitIdentity =
-    | { readonly kind: 'resolved'; readonly savedIdentity: SavedEntityIdentity }
+    | { readonly kind: 'resolved'; readonly uuid: UnitUuid }
     | {
         readonly kind: 'unresolved';
         readonly rawLegacyName: string;
@@ -66,7 +51,7 @@ export interface DeferredUnitDescriptor {
     readonly rawChassis?: string;
     readonly rawModel?: string;
     readonly rawEntityType?: string;
-    readonly requestedIdentity?: SavedEntityIdentity;
+    readonly requestedUuid?: UnitUuid;
     readonly candidates: readonly DesignIdentity[];
     readonly reason: 'not-found' | 'ambiguous' | 'catalog-not-ready';
     readonly gameplayAdmission?: {
@@ -74,14 +59,6 @@ export interface DeferredUnitDescriptor {
         readonly code: 'CATALOG_ONLY' | 'NO_RUNTIME_AUTHORITY';
         readonly message: string;
     };
-}
-
-export interface UnitDefinitionResolutionWitness {
-    readonly savedIdentity?: SavedEntityIdentity;
-    readonly currentIdentity?: SavedEntityIdentity;
-    readonly usedLegacyNameFallback: boolean;
-    readonly sourceChanged: boolean;
-    readonly formatChanged: boolean;
 }
 
 export type UnitIdentityResolver = (
@@ -104,37 +81,12 @@ export function cloneAsJson(value: unknown): JsonValue {
     return JSON.parse(json) as JsonValue;
 }
 
-export function sanitizeSavedEntityIdentity(value: unknown): SavedEntityIdentity | undefined {
-    if (value === undefined || value === null) return undefined;
-    if (!isRecord(value)) throw new Error('entityIdentity must be an object');
-    if (value['origin'] !== 'megamek' && value['origin'] !== 'user') {
-        throw new Error('entityIdentity.origin must be megamek or user');
-    }
-
-    const provider = asUnitProviderId(String(value['provider'] ?? ''));
-    const uuid = asUnitUuid(String(value['uuid'] ?? ''));
-    const sourceHashAtSave = value['sourceHashAtSave'] === undefined
-        ? undefined
-        : asSourceHash(String(value['sourceHashAtSave']));
-    const sourceFormat = value['sourceFormat'];
-    if (sourceFormat !== undefined && sourceFormat !== 'mtf' && sourceFormat !== 'blk') {
-        throw new Error('entityIdentity.sourceFormat must be mtf or blk');
-    }
-    return {
-        origin: value['origin'],
-        provider,
-        uuid,
-        ...(sourceHashAtSave === undefined ? {} : { sourceHashAtSave }),
-        ...(sourceFormat === undefined ? {} : { sourceFormat }),
-    };
-}
-
 function describeDeferredUnit(descriptor: DeferredUnitDescriptor): string {
     if (descriptor.gameplayAdmission) {
         return `${descriptor.gameplayAdmission.message} Its saved state was retained as deferred state.`;
     }
-    const identity = descriptor.requestedIdentity
-        ? `${descriptor.requestedIdentity.provider}/${descriptor.requestedIdentity.uuid}`
+    const identity = descriptor.requestedUuid
+        ? descriptor.requestedUuid
         : `legacy name "${descriptor.rawLegacyName}"`;
     if (descriptor.reason === 'ambiguous') {
         return `Unit reference ${identity} is ambiguous and was retained as deferred state`;

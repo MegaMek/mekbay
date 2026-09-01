@@ -22,8 +22,13 @@ export class MekFallingAutomationService {
     private readonly dialogs = inject(DialogsService);
     private readonly options = inject(OptionsService);
 
-    async resolve(data: FallingDamageDialogData): Promise<FallingDamageDialogResult | null> {
-        switch (this.options.cbtAutomationMode('fallingCheck')) {
+    async resolve(
+        data: FallingDamageDialogData,
+        options: Readonly<{ interactive?: boolean }> = {},
+    ): Promise<FallingDamageDialogResult | null> {
+        const configured = this.options.cbtAutomationMode('fallingCheck');
+        const mode = configured === 'yes' && options.interactive ? 'ask' : configured;
+        switch (mode) {
             case 'no':
                 return Object.freeze({ action: 'skip' });
             case 'yes': {

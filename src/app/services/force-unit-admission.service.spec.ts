@@ -2,27 +2,44 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { CBTForce } from '../models/cbt-force.model';
+import { ASForce } from '../models/as-force.model';
+import { ASForceUnit } from '../models/as-force-unit.model';
 import { CBTForceMember, isCBTForceMember, isCBTMekForceMember } from '../models/force-member.model';
-import type { Injector } from '@angular/core';
+import { Injector } from '@angular/core';
 import type { DataService } from './data.service';
-import type { UnitSummary } from '../models/unit-summary.model';
-import { MM_DATA_UNIT_PROVIDER_ID } from './unit-catalog/unit-catalog.types';
 import { ForceUnitAdmissionService } from './force-unit-admission.service';
-import { createTestMekEntity, createTestTankEntity } from '../testing/unit-test-helpers';
+import { createEmptyUnit, createTestMekEntity, createTestTankEntity } from '../testing/unit-test-helpers';
+import { AsAbilityLookupService } from './as-ability-lookup.service';
+import { OptionsService } from './options.service';
 
 describe('ForceUnitAdmissionService', () => {
+    it('applies Alpha Strike skill and commander facts during admission', async () => {
+        const injector = Injector.create({
+            providers: [{ provide: AsAbilityLookupService, useValue: {} }],
+        });
+        const force = new ASForce('Alpha Strike force', {} as DataService, injector);
+
+        const member = await createAdmissionService().admit({
+            force,
+            summary: createEmptyUnit(),
+            gunnerySkill: 2,
+            commander: true,
+        });
+
+        expect(member).toBeInstanceOf(ASForceUnit);
+        if (!(member instanceof ASForceUnit)) return;
+        expect(member.pilotSkill()).toBe(2);
+        expect(member.commander()).toBeTrue();
+    });
+
     it('creates and targets the first roster group for a retained CBT Mek', async () => {
         const force = new CBTForce('Test force', {} as DataService, {} as Injector);
-        const summary = {
+        const summary = createEmptyUnit({
             name: 'Crab CRB-20',
             uuid: '019f6767-0dcb-7bb8-992f-aef08202f5e1',
-            origin: 'megamek',
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            hash: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
             entityType: 'Mek',
             type: 'Mek',
-            subtype: '',
-        } as unknown as UnitSummary;
+        });
         const ownedMember = new CBTForceMember(
             'instance-1',
             force,
@@ -57,16 +74,13 @@ describe('ForceUnitAdmissionService', () => {
 
     it('admits a native BLK family through the same direct CBT member path', async () => {
         const force = new CBTForce('Vehicle force', {} as DataService, {} as Injector);
-        const summary = {
+        const summary = createEmptyUnit({
             name: 'Vedette Medium Tank',
             uuid: '019f6767-0dcb-7bb8-992f-aef08202f5e2',
-            origin: 'megamek',
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            hash: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
             entityType: 'Tank',
-            type: 'Combat Vehicle',
-            subtype: 'Tracked',
-        } as unknown as UnitSummary;
+            type: 'Tank',
+            subtype: 'Combat Vehicle',
+        });
         const ownedMember = new CBTForceMember(
             'instance-vehicle',
             force,
@@ -92,11 +106,17 @@ describe('ForceUnitAdmissionService', () => {
 });
 
 function createAdmissionService(): ForceUnitAdmissionService {
-    const service = Object.create(ForceUnitAdmissionService.prototype) as any;
-    service.options = {
-        options: () => ({
-            CBTOptionalRules: { forcedWithdrawal: false, sprinting: false },
-        }),
-    };
-    return service as ForceUnitAdmissionService;
+    return Injector.create({
+        providers: [
+            ForceUnitAdmissionService,
+            {
+                provide: OptionsService,
+                useValue: {
+                    options: () => ({
+                        CBTOptionalRules: { forcedWithdrawal: false, sprinting: false },
+                    }),
+                },
+            },
+        ],
+    }).get(ForceUnitAdmissionService);
 }

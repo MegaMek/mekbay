@@ -14,16 +14,14 @@ import { getUnitTechBaseDisplay } from '../models/tech.model';
 import {
     type DeferredUnitDescriptor,
     type PersistedUnitIdentity,
-    type SavedEntityIdentity,
-    sanitizeSavedEntityIdentity,
 } from '../models/persisted-unit-state';
+import { isRecord } from '../utils/json-value.util';
 import {
     asUnitProviderId,
-    asSourceHash,
     asUnitUuid,
     encodeDesignIdentity,
     type DesignIdentity,
-    type UnitProviderId,
+    type UnitUuid,
 } from './unit-catalog/unit-catalog.types';
 
 export interface SerializedUnitIdentityReference {
@@ -31,18 +29,16 @@ export interface SerializedUnitIdentityReference {
     readonly chassis?: string;
     readonly model?: string;
     readonly type?: string;
-    readonly entityIdentity?: SavedEntityIdentity;
+    /** Historical V1 identity object. */
+    readonly entityIdentity?: unknown;
 }
 
 export type UnitReferenceResolution =
     | {
         readonly kind: 'resolved';
         readonly unit: UnitSummary;
-        readonly currentIdentity?: SavedEntityIdentity;
-        readonly savedIdentity?: SavedEntityIdentity;
+        readonly uuid: UnitUuid;
         readonly usedLegacyNameFallback: boolean;
-        readonly sourceChanged: boolean;
-        readonly formatChanged: boolean;
     }
     | {
         readonly kind: 'deferred';
@@ -51,8 +47,7 @@ export type UnitReferenceResolution =
 
 export interface PreparedUnitRuntimeCatalog {
     readonly unitNameMap: ReadonlyMap<string, readonly UnitSummary[]>;
-    readonly unitIdentityMap: ReadonlyMap<string, readonly UnitSummary[]>;
-    readonly unitUuidMap: ReadonlyMap<string, UnitSummary>;
+    readonly unitUuidMap: ReadonlyMap<UnitUuid, UnitSummary>;
 }
 
 @Injectable({
@@ -64,8 +59,7 @@ export class UnitRuntimeService {
     private readonly unitSearchIndexService = inject(UnitSearchIndexService);
 
     private unitNameMap: ReadonlyMap<string, readonly UnitSummary[]> = new Map();
-    private unitIdentityMap: ReadonlyMap<string, readonly UnitSummary[]> = new Map();
-    private unitUuidMap: ReadonlyMap<string, UnitSummary> = new Map();
+    private unitUuidMap: ReadonlyMap<UnitUuid, UnitSummary> = new Map();
 
     private static getUnitNameKey(name: string): string {
         return name.toLowerCase();
@@ -79,31 +73,21 @@ export class UnitRuntimeService {
     /** Builds lookup maps and unit-local display fields without changing live lookup state. */
     public prepareRuntimeCatalog(units: UnitSummary[]): PreparedUnitRuntimeCatalog {
         const unitNameMap = new Map<string, UnitSummary[]>();
-        const unitIdentityMap = new Map<string, UnitSummary[]>();
-        const unitUuidMap = new Map<string, UnitSummary>();
+        const unitUuidMap = new Map<UnitUuid, UnitSummary>();
         for (const unit of units) {
             unit._techBaseDisplay = getUnitTechBaseDisplay(unit);
             const nameKey = UnitRuntimeService.getUnitNameKey(unit.name);
             const nameMatches = unitNameMap.get(nameKey) ?? [];
             nameMatches.push(unit);
             unitNameMap.set(nameKey, nameMatches);
-
-            const identity = this.getSavedEntityIdentity(unit);
-            if (identity) {
-                const identityKey = encodeDesignIdentity(identity);
-                const identityMatches = unitIdentityMap.get(identityKey) ?? [];
-                identityMatches.push(unit);
-                unitIdentityMap.set(identityKey, identityMatches);
-            }
             unitUuidMap.set(unit.uuid, unit);
         }
-        return Object.freeze({ unitNameMap, unitIdentityMap, unitUuidMap });
+        return Object.freeze({ unitNameMap, unitUuidMap });
     }
 
     /** Final reference-only lookup switch. */
     public commitPreparedRuntimeCatalog(candidate: PreparedUnitRuntimeCatalog): void {
         this.unitNameMap = candidate.unitNameMap;
-        this.unitIdentityMap = candidate.unitIdentityMap;
         this.unitUuidMap = candidate.unitUuidMap;
     }
 
@@ -223,81 +207,19 @@ export class UnitRuntimeService {
         return this.unitNameMap.get(UnitRuntimeService.getUnitNameKey(name)) ?? [];
     }
 
-    public getUnitByUuid(uuid: string): UnitSummary | undefined {
+    public getUnitByUuid(uuid: UnitUuid): UnitSummary | undefined {
         return this.unitUuidMap.get(uuid);
-    }
-
-    public getUnitByIdentity(provider: UnitProviderId, uuid: string): UnitSummary | undefined {
-        let key: string;
-        try {
-            key = encodeDesignIdentity({ provider: asUnitProviderId(provider), uuid: asUnitUuid(uuid) });
-        } catch {
-            return undefined;
-        }
-        const matches = this.unitIdentityMap.get(key) ?? [];
-        return matches.length === 1 ? matches[0] : undefined;
-    }
-
-    /**
-     * Resolves the one catalog summary authored from the exact publication
-     * artifact. Provider/UUID alone is deliberately insufficient while two
-     * source revisions can coexist during a catalog handoff.
-     */
-    public getUnitByPublicationArtifact(
-        provider: UnitProviderId,
-        uuid: string,
-        documentRevision: string,
-        nativeSourceHash?: string,
-    ): UnitSummary | undefined {
-        let key: string;
-        try {
-            key = encodeDesignIdentity({ provider: asUnitProviderId(provider), uuid: asUnitUuid(uuid) });
-        } catch {
-            return undefined;
-        }
-        const expectedRevision = nativeSourceHash ?? documentRevision;
-        const exact = (this.unitIdentityMap.get(key) ?? [])
-            .filter(unit => unit.hash === expectedRevision);
-        return exact.length === 1 ? exact[0] : undefined;
-    }
-
-    /** Returns the durable design/source witness authored on the UnitSummary. */
-    public getSavedEntityIdentity(unit: UnitSummary): SavedEntityIdentity | undefined {
-        let provider: UnitProviderId;
-        try {
-            provider = asUnitProviderId(unit.provider);
-        } catch {
-            return undefined;
-        }
-
-        let uuid;
-        try {
-            uuid = asUnitUuid(unit.uuid);
-        } catch {
-            return undefined;
-        }
-
-        let sourceFormat: 'mtf' | 'blk' | undefined;
-        let sourceHashAtSave;
-        if (unit.origin === 'megamek') {
-            try {
-                sourceHashAtSave = asSourceHash(unit.hash);
-                sourceFormat = unit.entityType === 'Mek' ? 'mtf' : 'blk';
-            } catch {
-                return undefined;
-            }
-        }
-        return { origin: unit.origin, provider, uuid, sourceHashAtSave, sourceFormat };
     }
 
     public resolveUnitReference(
         reference: SerializedUnitIdentityReference,
         catalogReady = true,
     ): UnitReferenceResolution {
-        let savedIdentity: SavedEntityIdentity | undefined;
+        let savedUuid: UnitUuid | undefined;
         if (reference.entityIdentity !== undefined) {
             try {
-                savedIdentity = sanitizeSavedEntityIdentity(reference.entityIdentity);
+                if (!isRecord(reference.entityIdentity)) throw new Error('invalid V1 entity identity');
+                savedUuid = asUnitUuid(String(reference.entityIdentity['uuid'] ?? ''));
             } catch {
                 return {
                     kind: 'deferred',
@@ -306,33 +228,23 @@ export class UnitRuntimeService {
             }
         }
 
-        if (savedIdentity) {
-            const key = encodeDesignIdentity(savedIdentity);
-            const matches = this.unitIdentityMap.get(key) ?? [];
-            if (matches.length === 1) {
-                const unit = matches[0];
-                const currentIdentity = this.getSavedEntityIdentity(unit);
+        if (savedUuid) {
+            const unit = this.unitUuidMap.get(savedUuid);
+            if (unit !== undefined) {
                 return {
                     kind: 'resolved',
                     unit,
-                    currentIdentity,
-                    savedIdentity,
+                    uuid: savedUuid,
                     usedLegacyNameFallback: false,
-                    sourceChanged: !!savedIdentity.sourceHashAtSave
-                        && !!currentIdentity?.sourceHashAtSave
-                        && savedIdentity.sourceHashAtSave !== currentIdentity.sourceHashAtSave,
-                    formatChanged: !!savedIdentity.sourceFormat
-                        && !!currentIdentity?.sourceFormat
-                        && savedIdentity.sourceFormat !== currentIdentity.sourceFormat,
                 };
             }
             return {
                 kind: 'deferred',
                 descriptor: this.makeDeferredDescriptor(
                     reference,
-                    this.designCandidates(matches),
-                    matches.length > 1 ? 'ambiguous' : catalogReady ? 'not-found' : 'catalog-not-ready',
-                    savedIdentity,
+                    [],
+                    catalogReady ? 'not-found' : 'catalog-not-ready',
+                    savedUuid,
                 ),
             };
         }
@@ -343,10 +255,8 @@ export class UnitRuntimeService {
             return {
                 kind: 'resolved',
                 unit,
-                currentIdentity: this.getSavedEntityIdentity(unit),
+                uuid: unit.uuid,
                 usedLegacyNameFallback: true,
-                sourceChanged: false,
-                formatChanged: false,
             };
         }
         return {
@@ -364,8 +274,8 @@ export class UnitRuntimeService {
         catalogReady = true,
     ): PersistedUnitIdentity {
         const resolution = this.resolveUnitReference(reference, catalogReady);
-        if (resolution.kind === 'resolved' && resolution.currentIdentity) {
-            return { kind: 'resolved', savedIdentity: resolution.currentIdentity };
+        if (resolution.kind === 'resolved') {
+            return { kind: 'resolved', uuid: resolution.uuid };
         }
         if (resolution.kind === 'deferred') {
             return {
@@ -392,28 +302,36 @@ export class UnitRuntimeService {
     private designCandidates(units: readonly UnitSummary[]): DesignIdentity[] {
         const identities = new Map<string, DesignIdentity>();
         for (const unit of units) {
-            const identity = this.getSavedEntityIdentity(unit);
+            const identity = this.getCatalogIdentity(unit);
             if (!identity) continue;
-            identities.set(encodeDesignIdentity(identity), {
-                provider: identity.provider,
-                uuid: identity.uuid,
-            });
+            identities.set(encodeDesignIdentity(identity), identity);
         }
         return Array.from(identities.values());
+    }
+
+    private getCatalogIdentity(unit: UnitSummary): DesignIdentity | undefined {
+        try {
+            return {
+                provider: asUnitProviderId(unit.provider),
+                uuid: asUnitUuid(unit.uuid),
+            };
+        } catch {
+            return undefined;
+        }
     }
 
     private makeDeferredDescriptor(
         reference: SerializedUnitIdentityReference,
         candidates: readonly DesignIdentity[],
         reason: DeferredUnitDescriptor['reason'],
-        requestedIdentity?: SavedEntityIdentity,
+        requestedUuid?: UnitUuid,
     ): DeferredUnitDescriptor {
         return {
             rawLegacyName: reference.unit,
             rawChassis: reference.chassis,
             rawModel: reference.model,
             rawEntityType: reference.type,
-            requestedIdentity,
+            requestedUuid,
             candidates,
             reason,
         };

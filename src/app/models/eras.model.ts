@@ -8,6 +8,7 @@ export type EraMembership = number[] | Set<number>;
 export interface Era {
     id: number; // MUL id (unique)
     name: string; // Faction name
+    shortName?: string; // Short name for compact displays
     years: {
         from?: number; // Start year of the era
         to?: number; // End year of the era

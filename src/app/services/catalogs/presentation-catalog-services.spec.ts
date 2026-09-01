@@ -17,7 +17,7 @@ describe('presentation catalog services', () => {
     const service = new FluffImageCatalogService();
     service.publish(buildFluffImageCatalog({
       provider: MM_DATA_UNIT_PROVIDER_ID,
-      baseUrl: 'https://db.mekbay.com',
+      baseUrl: 'https://fluff.example.test',
       wireJson: '["Mek/Atlas.png"]',
     }));
     const result = service.resolveUnitImage(entryKey.design, {

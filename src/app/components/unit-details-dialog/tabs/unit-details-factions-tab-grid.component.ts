@@ -10,6 +10,7 @@ import {
     MEGAMEK_PRODUCTION_ICON_PATH,
     MEGAMEK_SALVAGE_ICON_PATH,
 } from '../../../models/megamek/availability.model';
+import { MULFACTION_EXTINCT } from '../../../models/mulfactions.model';
 import {
     PREFIX_CATCH_ALL,
     type FactionAvailability,
@@ -111,10 +112,18 @@ export class UnitDetailsFactionsTabGridComponent {
 
         availability.forEach((era, eraIndex) => {
             for (const faction of era.factions) {
+                if (faction.id === MULFACTION_EXTINCT) {
+                    continue;
+                }
+
                 const row = getOrCreateRow(faction);
                 setCell(row, eraIndex, faction);
 
                 for (const collapsedFaction of faction.collapsedFactions ?? []) {
+                    if (collapsedFaction.id === MULFACTION_EXTINCT) {
+                        continue;
+                    }
+
                     const childRow = getOrCreateRow(collapsedFaction);
                     setCell(childRow, eraIndex, collapsedFaction);
 

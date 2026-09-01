@@ -118,7 +118,7 @@ describe('UnitDetailsFactionTabComponent', () => {
         });
     });
 
-    it('renders MUL factions from direct membership and keeps Extinct without MegaMek badges', () => {
+    it('omits Extinct from the grid while preserving it in shared MUL availability', () => {
         const fixture = TestBed.createComponent(UnitDetailsFactionTabComponent);
         fixture.componentRef.setInput('unit', unit);
         fixture.detectChanges();
@@ -133,12 +133,11 @@ describe('UnitDetailsFactionTabComponent', () => {
         const extinctRow = factionRows.find((row) => row.textContent?.includes('Extinct'));
 
         expect(disclaimer).toBeNull();
-        expect(factionRows.length).toBe(2);
+        expect(factionRows.length).toBe(1);
         expect(draconisCombineRow).toBeTruthy();
         expect(mercenariesRow).toBeUndefined();
-        expect(extinctRow).toBeTruthy();
+        expect(extinctRow).toBeUndefined();
         expect(draconisCombineRow?.querySelectorAll('.faction-megamek-availability-badge').length).toBe(2);
-        expect(extinctRow?.querySelectorAll('.faction-megamek-availability-badge').length).toBe(0);
         expect(draconisCombineRow?.querySelector('.faction-row-heading .faction-logo')).toBeTruthy();
         expect(draconisCombineRow?.querySelector('.availability-cell .cell-faction-logo')).toBeTruthy();
         expect(badgeLabels).toEqual(['Requisition: Common', 'Salvage: Rare']);
@@ -165,6 +164,13 @@ describe('UnitDetailsFactionTabComponent', () => {
             },
         ]);
         expect(viewModel[0].factions.find((faction) => faction.name === 'Extinct')?.megaMekTooltip).toBeNull();
+
+        const listButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.mode-switch-label-button'))
+            .find((button) => button.textContent?.trim() === 'List');
+        listButton?.click();
+        fixture.detectChanges();
+
+        expect(element.querySelector('.faction-availability-list')?.textContent).toContain('Extinct');
     });
 
     it('renders eras as columns and sorts logo-backed faction rows alphabetically', () => {
@@ -203,26 +209,71 @@ describe('UnitDetailsFactionTabComponent', () => {
             const matrix = grid.availabilityMatrix();
             const clanSeaFoxRow = matrix.rows.find((row) => row.name === 'Clan Sea Fox');
 
-            expect(eraHeaders.length).toBe(1);
+            expect(eraHeaders.length).toBe(2);
             expect(eraHeaders[0].textContent).toContain('Clan Invasion');
             expect(eraHeaders[0].querySelector('.era-icon')).toBeTruthy();
+            expect(eraHeaders[1].textContent).toContain('ilClan');
             expect(getComputedStyle(eraHeaders[0]).width).toBe('70px');
+            expect(matrix.eras.map((era) => era.eraName)).toEqual(['Clan Invasion', 'ilClan']);
             expect(matrix.rows.map((row) => row.name)).toEqual([
                 'Clan Sea Fox',
                 'Draconis Combine',
-                'Extinct',
             ]);
             expect(factionHeadings.map((heading) => heading.querySelector('.faction-name')?.textContent?.trim())).toEqual([
                 'Clan Sea Fox',
                 'Draconis Combine',
-                'Extinct',
             ]);
             expect(clanSeaFoxRow?.cells[0]).not.toBeNull();
+            expect(clanSeaFoxRow?.cells[1]).toBeNull();
             expect(factionHeadings[0].querySelector('.faction-logo')).toBeTruthy();
         } finally {
             factions.length = originalFactionCount;
             eras[0].icon = originalEraIcon;
         }
+    });
+
+    it('uses an era short name only for the visible grid column heading', () => {
+        const originalShortName = eras[0].shortName;
+        eras[0].shortName = 'Clan Inv.';
+
+        try {
+            const fixture = TestBed.createComponent(UnitDetailsFactionTabComponent);
+            fixture.componentRef.setInput('unit', unit);
+            fixture.detectChanges();
+
+            const firstHeader = fixture.nativeElement.querySelector('.era-column-heading') as HTMLElement;
+
+            expect(firstHeader.querySelector('.era-name')?.textContent?.trim()).toBe('Clan Inv.');
+            expect(firstHeader.title).toBe('Clan Invasion');
+            expect(fixture.componentInstance.factionAvailability()[0].eraShortName).toBe('Clan Inv.');
+        } finally {
+            eras[0].shortName = originalShortName;
+        }
+    });
+
+    it('keeps every era column when the unit has no faction rows', () => {
+        const fixture = TestBed.createComponent(UnitDetailsFactionTabComponent);
+        fixture.componentRef.setInput('unit', createEmptyUnit({
+            id: 999,
+            name: 'No Factions',
+            chassis: 'No Factions',
+            model: '',
+            type: 'Mek',
+        }));
+        fixture.detectChanges();
+
+        const element = fixture.nativeElement as HTMLElement;
+        const eraHeaders = Array.from(element.querySelectorAll('.era-column-heading'));
+        const noFactionsCell = element.querySelector<HTMLTableCellElement>('.no-factions-cell');
+
+        expect(eraHeaders.map((header) => header.textContent?.trim())).toEqual([
+            jasmine.stringContaining('Clan Invasion'),
+            jasmine.stringContaining('ilClan'),
+        ]);
+        expect(element.querySelector('.faction-availability-matrix')).toBeTruthy();
+        expect(element.querySelectorAll('.faction-row').length).toBe(0);
+        expect(noFactionsCell?.colSpan).toBe(3);
+        expect(noFactionsCell?.textContent).toContain('No faction availability information for this unit.');
     });
 
     it('only groups factions under a catchall that directly contains the unit in factions.json', () => {
@@ -321,7 +372,7 @@ describe('UnitDetailsFactionTabComponent', () => {
             expect(Array.from(element.querySelectorAll('.faction-row.subrow .faction-name'))
                 .map((name) => name.textContent?.trim())).toEqual(['Faction X', 'Faction Y']);
 
-            const listButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.view-switch-button'))
+            const listButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.mode-switch-label-button'))
                 .find((button) => button.textContent?.trim() === 'List');
             listButton?.click();
             fixture.detectChanges();
@@ -383,11 +434,14 @@ describe('UnitDetailsFactionTabComponent', () => {
         fixture.detectChanges();
 
         const element = fixture.nativeElement as HTMLElement;
-        const listButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.view-switch-button'))
+        const listButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.mode-switch-label-button'))
             .find((button) => button.textContent?.trim() === 'List');
-        const gridButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.view-switch-button'))
+        const gridButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.mode-switch-label-button'))
             .find((button) => button.textContent?.trim() === 'Grid');
+        const switchToolbar = element.querySelector<HTMLElement>('.view-switch-toolbar');
 
+        expect(element.querySelector('.mode-switch-control')).toBeTruthy();
+        expect(getComputedStyle(switchToolbar!).justifyContent).toBe('center');
         expect(gridButton?.getAttribute('aria-pressed')).toBe('true');
         expect(listButton?.getAttribute('aria-pressed')).toBe('false');
         expect(fixture.debugElement.query(By.directive(UnitDetailsFactionsTabGridComponent))).toBeTruthy();
@@ -401,6 +455,7 @@ describe('UnitDetailsFactionTabComponent', () => {
         expect(fixture.debugElement.query(By.directive(UnitDetailsFactionsTabGridComponent))).toBeNull();
         expect(fixture.debugElement.query(By.directive(UnitDetailsFactionsTabListComponent))).toBeTruthy();
         expect(element.querySelector('.faction-availability-list')).toBeTruthy();
+        expect(element.querySelectorAll('.era-name').length).toBe(1);
         expect(element.querySelector('.era-name')?.textContent).toContain('Clan Invasion');
         expect(element.querySelector('.faction-list')?.textContent).toContain('Draconis Combine');
 

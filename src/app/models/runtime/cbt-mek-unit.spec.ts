@@ -8,7 +8,7 @@ describe('CBTMekUnit direct entity boundary', () => {
     it('creates and restores one effective unit around the same pristine entity', async () => {
         const fixture = createDirectMekRuntimeFixture();
         const ready = await CBTMekUnit.createFromEntity({
-            identity: fixture.identity,
+            uuid: fixture.identity,
             instanceId: 'unit:ready',
         }, fixture.entity, fixture.identity, initializeOptions);
         const face = [...ready.getIndex().armorFaces.values()].find(candidate => candidate.maximumPoints > 1)!;

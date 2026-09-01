@@ -3,18 +3,33 @@
 // Author: Drake
 
 import { GameSystem } from '../models/common.model';
+import { asUnitUuid, type UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { filterUnitsWithAST, getMatchingTextForUnit, parseSemanticQueryAST, tokenizeForHighlight, type ParseResult } from './semantic-filter-ast.util';
 import { filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';
 import { matchesSearch, parseSearchQuery } from './search.util';
 
-function getUnitId(unit: unknown): string {
-    if (!unit || typeof unit !== 'object') return '';
+function testUnitUuid(value: string | number): UnitUuid {
+    const text = String(value);
+    let hash = 0;
+    for (const character of text) {
+        hash = ((hash * 31) ^ character.charCodeAt(0)) >>> 0;
+    }
+    const suffix = `${hash.toString(16).padStart(8, '0')}${text.length.toString(16).padStart(4, '0')}`;
+    return asUnitUuid(`01900000-0000-7000-8000-${suffix}`);
+}
+
+function getUnitId(unit: unknown): UnitUuid {
+    if (!unit || typeof unit !== 'object') return testUnitUuid('missing');
     const value = unit as { id?: string | number; name?: string };
     if (value.id !== undefined) {
-        return String(value.id);
+        return testUnitUuid(value.id);
     }
 
-    return value.name ?? '';
+    return testUnitUuid(value.name ?? 'missing');
+}
+
+function unitIds(...values: readonly (string | number)[]): Set<UnitUuid> {
+    return new Set(values.map(testUnitUuid));
 }
 
 describe('semantic boolean filters', () => {
@@ -94,8 +109,8 @@ describe('semantic boolean filters', () => {
                     return undefined;
                 }
                 return value === 'yes'
-                    ? new Set(['1', '2'])
-                    : new Set(['3', '4']);
+                    ? unitIds(1, 2)
+                    : unitIds(3, 4);
             },
         });
 
@@ -236,10 +251,10 @@ describe('semantic filter exclusivity', () => {
             getIndexedFilterValues: (filterKey: string) => filterKey === 'faction' ? ['Draconis Combine', 'Federated Suns'] : [],
             getIndexedUnitIds: (filterKey: string, value: string) => {
                 if (filterKey === 'faction' && value === 'Draconis Combine') {
-                    return new Set(['Unit 1', 'Unit 2']);
+                    return unitIds('Unit 1', 'Unit 2');
                 }
                 if (filterKey === 'faction' && value === 'Federated Suns') {
-                    return new Set(['Unit 3', 'Unit 4', 'Unit 5', 'Unit 6']);
+                    return unitIds('Unit 3', 'Unit 4', 'Unit 5', 'Unit 6');
                 }
                 return undefined;
             },
@@ -280,16 +295,16 @@ describe('semantic filter exclusivity', () => {
                 }
 
                 if (value === 'Capellan Confederation') {
-                    return new Set(['Unit 1', 'Unit 2']);
+                    return unitIds('Unit 1', 'Unit 2');
                 }
                 if (value === 'Capellan March') {
-                    return new Set<string>();
+                    return new Set<UnitUuid>();
                 }
                 if (value === 'Federated Suns') {
-                    return new Set(['Unit 2', 'Unit 3']);
+                    return unitIds('Unit 2', 'Unit 3');
                 }
 
-                return new Set<string>();
+                return new Set<UnitUuid>();
             },
             unitBelongsToFaction: (unit: { faction?: string[] }, factionName: string) => {
                 membershipChecks++;
@@ -317,9 +332,9 @@ describe('semantic filter exclusivity', () => {
                     return undefined;
                 }
                 if (scope?.eraNames !== undefined) {
-                    return new Set<string>();
+                    return new Set<UnitUuid>();
                 }
-                return value === 'Clan Coyote' ? new Set(['1']) : new Set(['2']);
+                return value === 'Clan Coyote' ? unitIds(1) : unitIds(2);
             },
             getAllFactionNames: () => ['Clan Coyote', 'Federated Suns'],
         };
@@ -424,16 +439,16 @@ describe('semantic filter exclusivity', () => {
                 }
 
                 if (value === 'Capellan Confederation') {
-                    return new Set(['Unit 1']);
+                    return unitIds('Unit 1');
                 }
                 if (value === 'Capellan March') {
-                    return new Set(['Unit 2']);
+                    return unitIds('Unit 2');
                 }
                 if (value === 'Federated Suns') {
-                    return new Set(['Unit 3']);
+                    return unitIds('Unit 3');
                 }
 
-                return new Set<string>();
+                return new Set<UnitUuid>();
             },
             unitBelongsToFaction: (unit: { faction?: string[] }, factionName: string) => {
                 membershipChecks++;
@@ -485,10 +500,10 @@ describe('semantic filter exclusivity', () => {
             getIndexedFilterValues: (filterKey: string) => filterKey === 'faction' ? ["Wolf's Dragoons", 'Clan Wolf'] : [],
             getIndexedUnitIds: (filterKey: string, value: string) => {
                 if (filterKey === 'faction' && value === "Wolf's Dragoons") {
-                    return new Set(['1']);
+                    return unitIds(1);
                 }
                 if (filterKey === 'faction' && value === 'Clan Wolf') {
-                    return new Set(['2']);
+                    return unitIds(2);
                 }
                 return undefined;
             },
@@ -934,7 +949,7 @@ describe('semantic filter exclusivity', () => {
             getIndexedFilterValues: (filterKey: string) => filterKey === 'as.specials' ? ['FLK1/1/1'] : [],
             getIndexedUnitIds: (filterKey: string, value: string) => {
                 if (filterKey === 'as.specials' && value === 'FLK1/1/1') {
-                    return new Set(['1']);
+                    return unitIds(1);
                 }
                 return undefined;
             },

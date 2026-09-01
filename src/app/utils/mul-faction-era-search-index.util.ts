@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { UnitSearchWorkerFactionEraSnapshot } from './unit-search-worker-protocol.util';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 /**
  * Runtime form of the compact MUL faction/era snapshot.
@@ -12,9 +13,9 @@ import type { UnitSearchWorkerFactionEraSnapshot } from './unit-search-worker-pr
  * faction-by-era index containing millions of repeated identity strings.
  */
 export interface MulFactionEraSearchIndex {
-    readonly unitUuidsByMulId: ReadonlyMap<number, readonly string[]>;
+    readonly unitUuidsByMulId: ReadonlyMap<number, readonly UnitUuid[]>;
     readonly factionEraReferenceIds: ReadonlyMap<string, ReadonlyMap<string, readonly number[]>>;
-    readonly factionEraUnitIds: Map<string, Map<string, ReadonlySet<string>>>;
+    readonly factionEraUnitIds: Map<string, Map<string, ReadonlySet<UnitUuid>>>;
 }
 
 export function createMulFactionEraSearchIndex(
@@ -40,7 +41,7 @@ function getExactFactionEraUnitUuids(
     index: MulFactionEraSearchIndex,
     eraName: string,
     factionName: string,
-): ReadonlySet<string> {
+): ReadonlySet<UnitUuid> {
     let eraFactionUnitIds = index.factionEraUnitIds.get(eraName);
     if (!eraFactionUnitIds) {
         eraFactionUnitIds = new Map();
@@ -49,7 +50,7 @@ function getExactFactionEraUnitUuids(
 
     let exactPair = eraFactionUnitIds.get(factionName);
     if (!exactPair) {
-        const expanded = new Set<string>();
+        const expanded = new Set<UnitUuid>();
         const referenceIds = index.factionEraReferenceIds.get(eraName)?.get(factionName) ?? [];
         for (const referenceId of referenceIds) {
             for (const unitUuid of index.unitUuidsByMulId.get(referenceId) ?? []) {
@@ -67,16 +68,16 @@ export function getMulFactionEraUnitUuids(
     index: MulFactionEraSearchIndex,
     eraNames: readonly string[],
     factionNames: readonly string[],
-): ReadonlySet<string> {
+): ReadonlySet<UnitUuid> {
     if (eraNames.length === 0 || factionNames.length === 0) {
-        return new Set<string>();
+        return new Set<UnitUuid>();
     }
 
     if (eraNames.length === 1 && factionNames.length === 1) {
         return getExactFactionEraUnitUuids(index, eraNames[0], factionNames[0]);
     }
 
-    const unitUuids = new Set<string>();
+    const unitUuids = new Set<UnitUuid>();
     for (const eraName of eraNames) {
         for (const factionName of factionNames) {
             for (const unitUuid of getExactFactionEraUnitUuids(index, eraName, factionName)) {

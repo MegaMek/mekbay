@@ -13,7 +13,7 @@ import {
 } from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
 import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
-import { asUnitUuid, MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asComponentId } from '../entity/entity-identifiers';
 import { createDefaultCrewAssignment } from './crew-assignment';
 import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
@@ -710,12 +710,7 @@ describe('Entity equipment panel projection', () => {
 
 function baseline(): InstanceBaselineRef {
     return Object.freeze({
-        entity: Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid: UUID,
-            sourceFormat: 'blk' as const,
-        }),
+        entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
             schemaVersion: 1 as const,

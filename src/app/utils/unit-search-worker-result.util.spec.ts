@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { UnitSummary } from '../models/unit-summary.model';
+import { asUnitUuid, type UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type { UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
 import { hydrateWorkerSearchResult } from './unit-search-worker-result.util';
 
@@ -21,15 +22,15 @@ function createResult(entries: UnitSearchWorkerResultMessage['entries']): UnitSe
 }
 
 describe('hydrateWorkerSearchResult', () => {
-    const alpha = { uuid: '01900000-0000-7000-8000-000000000001', name: 'Alpha' } as UnitSummary;
-    const beta = { uuid: '01900000-0000-7000-8000-000000000002', name: 'Beta' } as UnitSummary;
-    const otherAlpha = { uuid: '01900000-0000-7000-8000-000000000003', name: 'Alpha' } as UnitSummary;
+    const alpha = { uuid: asUnitUuid('01900000-0000-7000-8000-000000000001'), name: 'Alpha' } as UnitSummary;
+    const beta = { uuid: asUnitUuid('01900000-0000-7000-8000-000000000002'), name: 'Beta' } as UnitSummary;
+    const otherAlpha = { uuid: asUnitUuid('01900000-0000-7000-8000-000000000003'), name: 'Alpha' } as UnitSummary;
     const units = new Map([
         [alpha.uuid, alpha],
         [beta.uuid, beta],
         [otherAlpha.uuid, otherAlpha],
     ]);
-    const resolve = (unitUuid: string) => units.get(unitUuid as UnitSummary['uuid']);
+    const resolve = (unitUuid: UnitUuid) => units.get(unitUuid);
     const entry = (unit: UnitSummary) => ({ unitUuid: unit.uuid });
 
     it('hydrates known units and their matching normalization metadata atomically', () => {
@@ -48,7 +49,7 @@ describe('hydrateWorkerSearchResult', () => {
         const hydrated = hydrateWorkerSearchResult(
             createResult([
                 {
-                    unitUuid: '01900000-0000-7000-8000-000000000099',
+                    unitUuid: asUnitUuid('01900000-0000-7000-8000-000000000099'),
                     match: { kind: 'bv', adjustedValue: 1, gunnery: 4, piloting: 5 },
                 },
                 entry(beta),

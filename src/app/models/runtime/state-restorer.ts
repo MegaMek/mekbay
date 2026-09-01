@@ -7,7 +7,6 @@ import {
     type JsonObject,
     type JsonValue,
 } from '../persisted-unit-state';
-import type { SavedEntityIdentity } from '../persisted-unit-state';
 import { isUnitConditionKey } from '../unit-condition.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import { INTRINSIC_ONE_SHOT_AMMO_STATE } from '../ammo-weapon-profile.model';
@@ -111,7 +110,6 @@ import { isShieldEquipment, resolveShieldProfile } from '../entity/utils/physica
 export const STATE_RESTORATION_ALGORITHM_VERSION = 9 as const;
 
 export type StateRestoreWarningCode =
-    | 'SOURCE_REVISION_CHANGED'
     | 'SLOT_OCCUPANT_MISMATCH'
     | 'SYSTEM_TARGET_REKEYED'
     | 'DAMAGE_CLAMPED'
@@ -165,8 +163,8 @@ export interface SavedBlueprintTargetTable {
 
 export interface UnitRestorationMetadata {
     readonly algorithmVersion: typeof STATE_RESTORATION_ALGORITHM_VERSION;
-    readonly savedIdentity: SavedEntityIdentity;
-    readonly targetEntity: SavedEntityIdentity;
+    readonly savedIdentity: UnitUuid;
+    readonly targetEntity: UnitUuid;
     readonly warnings: readonly StateRestoreWarning[];
     readonly unresolved: readonly UnresolvedStateRecoveryEntry[];
     readonly idTranslation: Readonly<Record<string, ComponentId | CriticalSlotId | LocationId | ArmorFaceId>>;
@@ -175,7 +173,7 @@ export interface UnitRestorationMetadata {
 interface MekRestoreUnit {
     readonly entity: MekEntity;
     readonly index: MekRuntimeIndex;
-    readonly identity: SavedEntityIdentity;
+    readonly identity: UnitUuid;
     readonly ruleset: CBTRuleset;
 }
 
@@ -216,11 +214,10 @@ export async function restoreLegacyUnitState(
         throw new StateRestoreIdentityError('An unresolved legacy design cannot become an operational V2 instance');
     }
     const sourceState = readLegacyUnitStateV1(record);
-    const saved = record.identity.savedIdentity;
-    if (saved.provider !== initialized.baselineRef.entity.provider
-        || saved.uuid !== initialized.baselineRef.entity.uuid
-        || saved.uuid !== entity.uuid()) {
-        throw new StateRestoreIdentityError('Saved state belongs to a different provider/UUID design');
+    const saved = record.identity.uuid;
+    if (saved !== initialized.baselineRef.entity
+        || saved !== entity.uuid()) {
+        throw new StateRestoreIdentityError('Saved state belongs to a different UUID');
     }
     const unit: MekRestoreUnit = Object.freeze({
         entity,
@@ -241,15 +238,6 @@ export async function restoreLegacyUnitState(
     const idTranslation: Record<string, ComponentId | CriticalSlotId | LocationId | ArmorFaceId> = {};
     let appliedExact = 0;
     let appliedWithWarning = 0;
-    if (saved.sourceHashAtSave && saved.sourceHashAtSave !== unit.identity.sourceHashAtSave) {
-        warnings.push({
-            code: 'SOURCE_REVISION_CHANGED',
-            message: 'The same design was restored against a different local source revision.',
-            saved: { sourceHash: saved.sourceHashAtSave },
-            current: { sourceHash: unit.identity.sourceHashAtSave ?? '<local>' },
-        });
-    }
-
     const slots = new Map(initialized.state.slots);
     const components = new Map(initialized.state.components);
     const ammo = new Map(initialized.state.ammo);
@@ -421,10 +409,7 @@ export async function restoreLegacyUnitState(
         );
         const ppcCapacitor = restoreLegacyPpcCapacitorState(
             escalatingFailure.unknownStates,
-            saved.sourceHashAtSave !== undefined
-                && saved.sourceHashAtSave === unit.identity.sourceHashAtSave
-                ? ppcCapacitorWeaponId(entity, unit.index, matched.id)
-                : undefined,
+            ppcCapacitorWeaponId(entity, unit.index, matched.id),
         );
         const bombastLaser = restoreLegacyBombastLaserState(
             ppcCapacitor.unknownStates,

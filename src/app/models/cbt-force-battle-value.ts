@@ -5,7 +5,6 @@ import { AmmoEquipment, WeaponEquipment, ammoMatchesWeapon } from './equipment.m
 import type { EquipmentRegistry } from './equipment-lookup';
 import { asComponentId, type ComponentId } from './entity/entity-identifiers';
 import {
-    C3NetworkType,
     C3Role,
     C3TaxCalculator,
     projectNonMekC3Components,
@@ -216,7 +215,7 @@ function mekC3Components(unit: CBTUnit): readonly C3Component[] {
             : undefined;
         return Object.freeze({
             componentId: endpoint.componentId,
-            networkType: endpoint.family as C3NetworkType,
+            networkType: endpoint.family,
             role: endpoint.role === 'master'
                 ? C3Role.MASTER
                 : endpoint.role === 'peer' ? C3Role.PEER : C3Role.SLAVE,

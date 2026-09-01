@@ -193,12 +193,12 @@ export class UnitBlockComponent {
 
     readonly notificationSnapshot = computed(() => {
         this.runtimeRevision();
-        if (!this.optionsService.options().trackPhaseAndTurn) return null;
         const member = this.forceUnit();
         return isCBTForceMember(member)
             ? projectRuntimeUnitNotifications(
                 member.force.getUnitSnapshot(member.id),
                 {
+                    pilotSkillCheck: this.optionsService.cbtAutomationMode('pilotSkillCheck'),
                     pilotHitsAndConsciousnessCheck: this.optionsService.cbtAutomationMode(
                         'pilotHitsAndConsciousnessCheck',
                     ),
@@ -323,7 +323,7 @@ export class UnitBlockComponent {
                 const projection = snapshot.query.mekC3Endpoints();
                 if (projection.kind === 'supported') {
                     components = projection.endpoints.map(endpoint => ({
-                        networkType: endpoint.family as C3NetworkType,
+                        networkType: endpoint.family,
                     }));
                 }
             } else if (hasNonMekRuntime(snapshot)) {

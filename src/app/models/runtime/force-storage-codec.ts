@@ -18,8 +18,9 @@ import type {
     SerializedForce,
 } from '../force-serialization';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
-import type { JsonValue, SavedEntityIdentity } from '../persisted-unit-state';
-import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import type { JsonValue } from '../persisted-unit-state';
+import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { asSourceHashCanary } from '../source-hash-canary';
 import {
     asArmorFaceId,
     asComponentId,
@@ -41,7 +42,6 @@ import type {
     SerializedCBTUnitV2,
     SerializedForceEncounterEntryV2,
     SerializedForceUnitEntryV2,
-    SerializedUnitRestorationMetadataV2,
 } from './persistence-v2';
 import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
@@ -97,7 +97,6 @@ import {
     serializeAttackerTargetingState,
     type SerializedAttackerTargetingState,
 } from './attacker-targeting-state';
-import { MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
 import type { EquipmentRowOrderState } from './equipment-row-order';
 import { isSparseMekGaussPowerState, type SparseMekGaussPowerState } from './mek-gauss-power';
 import {
@@ -127,7 +126,7 @@ export function isCompactStoredForce(value: unknown): boolean {
         && 'r' in compact && 'u' in compact && 'g' in compact;
 }
 
-type CompactIdentity = string;
+type CompactUnitUuid = string;
 
 type CompactCrewPosition = readonly unknown[];
 type CompactDeployment = readonly unknown[];
@@ -161,6 +160,7 @@ type CompactASGroup = Readonly<{
 type CompactASUnit = Readonly<{
     i: string;
     u: string;
+    h?: string;
     a?: string;
     t?: number;
     s?: number;
@@ -228,18 +228,10 @@ export function decodeForceFromStorage(value: unknown): SerializedForce {
     const detached = clone(value);
     const root = record(detached, 'force');
     if (root['version'] === 1) return detached as SerializedForce;
-    if (root['version'] !== 2) throw new Error('Unsupported force persistence version');
     if (root['type'] === GameSystem.AS) {
-        if (root['a'] === undefined) return detached as SerializedForce;
         return unpackASForce(root, record(root['a'], 'force.a'));
     }
-    if (root['type'] !== GameSystem.CBT) return detached as SerializedForce;
     const compact = record(root['cbt'], 'force.cbt');
-    if ('schemaVersion' in compact) return detached as SerializedForce;
-    if (compact['v'] !== COMPACT_FORCE_FORMAT_VERSION
-        || !('r' in compact) || !('u' in compact) || !('g' in compact)) {
-        throw new Error('Unsupported compact CBT persistence shape');
-    }
     const instanceId = text(root['instanceId'], 'force.instanceId');
     return unpackCBTForce(root, instanceId, unpackForce(compact, instanceId));
 }
@@ -275,6 +267,7 @@ function packASUnit(unit: ASSerializedUnit): CompactASUnit {
     return compactObject({
         i: packOpaqueId(unit.id),
         u: packUuid(unit.uuid),
+        h: unit.sourceHashCanary,
         a: unit.alias,
         t: unit.updatedTs,
         s: unit.skill,
@@ -329,6 +322,9 @@ function unpackASForce(root: Record<string, unknown>, compact: Record<string, un
         'version', 'timestamp', 'instanceId', 'type', 'name', 'note', 'tags',
         'factionId', 'factionLock', 'eraId', 'eraLock', 'bv', 'pv', 'owned', 'a',
     ], 'force');
+    if (root['version'] !== 2 || root['type'] !== GameSystem.AS) {
+        throw new Error('Force does not match the current Alpha Strike schema');
+    }
     exactKeys(compact, ['v', 'g', 'n'], 'force.a');
     if (compact['v'] !== COMPACT_AS_FORMAT_VERSION) {
         throw new Error('Unsupported compact Alpha Strike persistence format');
@@ -384,10 +380,13 @@ function unpackASGroup(value: unknown, path: string): ASSerializedGroup {
 
 function unpackASUnit(value: unknown, path: string): ASSerializedUnit {
     const unit = record(value, path);
-    exactKeys(unit, ['i', 'u', 'a', 't', 's', 'b', 'f', 'c', 'x'], path);
+    exactKeys(unit, ['i', 'u', 'h', 'a', 't', 's', 'b', 'f', 'c', 'x'], path);
     return {
         id: unpackOpaqueId(text(unit['i'], `${path}.i`), `${path}.i`),
         uuid: unpackUuid(text(unit['u'], `${path}.u`), `${path}.u`),
+        ...(unit['h'] === undefined ? {} : {
+            sourceHashCanary: unpackSourceHashCanary(unit['h'], `${path}.h`),
+        }),
         ...(unit['a'] === undefined ? {} : { alias: text(unit['a'], `${path}.a`) }),
         ...(unit['t'] === undefined ? {} : { updatedTs: finiteNumber(unit['t'], `${path}.t`) }),
         ...(unit['s'] === undefined ? {} : { skill: finiteNumber(unit['s'], `${path}.s`) }),
@@ -507,16 +506,13 @@ function unpackASNetwork(value: unknown, path: string): SerializedC3NetworkGroup
     };
 }
 
-function packTimestamp(value: string): number | string {
+function packTimestamp(value: string): number {
     const parsed = Date.parse(value);
     if (!Number.isSafeInteger(parsed)) throw new Error('Force timestamp is invalid');
-    // All production writers use canonical ISO timestamps. Preserve unusual legacy
-    // strings losslessly while compacting canonical V2 timestamps to epoch millis.
-    return new Date(parsed).toISOString() === value ? parsed : value;
+    return parsed;
 }
 
 function unpackTimestamp(value: unknown, path: string): string {
-    if (typeof value === 'string') return value;
     const parsed = integer(value, path);
     const date = new Date(parsed);
     if (!Number.isFinite(date.getTime())) throw new Error(`${path} is not a valid timestamp`);
@@ -591,6 +587,9 @@ function unpackCBTForce(
         'version', 'timestamp', 'instanceId', 'type', 'name', 'note', 'tags',
         'factionId', 'factionLock', 'eraId', 'eraLock', 'bv', 'pv', 'owned', 'cbt',
     ], 'force');
+    if (root['version'] !== 2 || root['type'] !== GameSystem.CBT) {
+        throw new Error('Force does not match the current CBT schema');
+    }
     return {
         version: 2,
         timestamp: unpackTimestamp(root['timestamp'], 'force.timestamp'),
@@ -711,7 +710,8 @@ function packMekUnit(unit: SerializedCBTUnitV2, ruleset: CBTRuleset): unknown {
         && unit.heat.heatsinksOff === undefined;
     return compactObject({
         i: packOpaqueId(unit.instanceId),
-        e: packIdentity(unit.entity, 'mtf'),
+        e: packUnitUuid(unit.entity),
+        h: unit.sourceHashCanary,
         d: packDeployment(unit.deployment.values),
         r: unit.stateRevision === 0 ? undefined : unit.stateRevision,
         x: unit.destroyed ? 1 : undefined,
@@ -726,7 +726,7 @@ function packMekUnit(unit: SerializedCBTUnitV2, ruleset: CBTRuleset): unknown {
             packedCrewState(row),
             row.recoveryReadyTurn,
         )),
-        h: heatIsPristine ? undefined : packHeat(unit.heat),
+        z: heatIsPristine ? undefined : packHeat(unit.heat),
         rC: unit.ruleChecks.entries.length === 0 ? undefined : unit.ruleChecks.entries.map(row => [
             row.key, row.token, row.trigger, row.openedRevision, row.status,
         ]),
@@ -736,16 +736,15 @@ function packMekUnit(unit: SerializedCBTUnitV2, ruleset: CBTRuleset): unknown {
         o: unit.conditions?.values.length ? unit.conditions.values : undefined,
         t: packTurn(unit.turn),
         p: packPending(unit.pendingCombat),
-        z: packDiagnostics(unit.restoration),
     });
 }
 
 function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path: string): SerializedCBTUnitV2 {
     exactKeys(value, [
         'k', 'i', 'e', 'd', 'r', 'x', 'l', 'n', 's', 'c', 'a', 'w',
-        'h', 'rC', 'm', 'tA', 'y', 'o', 't', 'p', 'z',
+        'h', 'z', 'rC', 'm', 'tA', 'y', 'o', 't', 'p',
     ], path);
-    const entity = unpackIdentity(value['e'], 'mtf', `${path}.e`);
+    const entity = unpackUnitUuid(value['e'], `${path}.e`);
     const baseline = defaultBaseline(
         entity, ruleset, UNIT_STATE_INITIALIZER_REVISION, DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
     );
@@ -755,6 +754,9 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
         schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
         instanceId: unpackOpaqueId(text(value['i'], `${path}.i`), `${path}.i`),
         entity,
+        ...(value['h'] === undefined ? {} : {
+            sourceHashCanary: unpackSourceHashCanary(value['h'], `${path}.h`),
+        }),
         baselineRefAtSave: baseline,
         // BaseEntity topology is rebuilt after the exact native source is loaded.
         // The storage wire never carries a copied blueprint reference catalog.
@@ -815,9 +817,9 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
                 };
             }),
         },
-        heat: value['h'] === undefined
+        heat: value['z'] === undefined
             ? { heat: pristineHeat }
-            : unpackHeat(value['h'], `${path}.h`),
+            : unpackHeat(value['z'], `${path}.z`),
         family: { kind: 'mek' },
         ruleChecks: {
             schemaVersion: 1,
@@ -839,9 +841,6 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
         }),
         turn: unpackTurn(value['t'], `${path}.t`),
         ...(value['p'] === undefined ? {} : { pendingCombat: unpackPending(value['p'], `${path}.p`) }),
-        ...(value['z'] === undefined ? {} : {
-            restoration: unpackDiagnostics(value['z'], baseline, `${path}.z`),
-        }),
     };
 }
 
@@ -851,7 +850,8 @@ function packNonMekUnit(unit: SerializedNonMekUnit, ruleset: CBTRuleset): unknow
         k: ENTITY,
         t: unit.family.entityType,
         i: packOpaqueId(unit.instanceId),
-        e: packIdentity(unit.entity, 'blk'),
+        e: packUnitUuid(unit.entity),
+        h: unit.sourceHashCanary,
         d: packDeployment(unit.deployment.values),
         r: unit.stateRevision === 0 ? undefined : unit.stateRevision,
         x: unit.destroyed ? 1 : undefined,
@@ -876,27 +876,26 @@ function packNonMekUnit(unit: SerializedNonMekUnit, ruleset: CBTRuleset): unknow
             row.recoveryReadyTurn,
         )),
         o: unit.conditions?.length ? unit.conditions : undefined,
-        h: packNonMekHeat(unit.heat),
+        z: packNonMekHeat(unit.heat),
         v: packNonMekTurn(unit.turn),
         tA: packDirectTargeting(unit.attackerTargeting),
         y: packEquipmentRowOrder(unit.equipmentRowOrder),
         p: packNonMekPending(unit.pendingCombat),
-        z: unit.restoration === undefined ? undefined : compactObject({
-            w: unit.restoration.warnings.length ? unit.restoration.warnings : undefined,
-            u: unit.restoration.unresolved.length ? unit.restoration.unresolved : undefined,
-        }),
     });
 }
 
 function unpackNonMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path: string): SerializedNonMekUnit {
-    exactKeys(value, ['k', 't', 'i', 'e', 'd', 'r', 'x', 'l', 'c', 'q', 'a', 'w', 'o', 'h', 'v', 'tA', 'y', 'p', 'z'], path);
-    const entity = unpackIdentity(value['e'], 'blk', `${path}.e`);
+    exactKeys(value, ['k', 't', 'i', 'e', 'h', 'd', 'r', 'x', 'l', 'c', 'q', 'a', 'w', 'o', 'z', 'v', 'tA', 'y', 'p'], path);
+    const entity = unpackUnitUuid(value['e'], `${path}.e`);
     const baseline = defaultBaseline(entity, ruleset, 1, DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID);
     const deployment = unpackNonMekDeployment(value['d'], `${path}.d`);
     return {
         schemaVersion: NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
         instanceId: unpackOpaqueId(text(value['i'], `${path}.i`), `${path}.i`),
         entity,
+        ...(value['h'] === undefined ? {} : {
+            sourceHashCanary: unpackSourceHashCanary(value['h'], `${path}.h`),
+        }),
         baselineRefAtSave: baseline,
         deployment,
         family: { kind: 'non-mek', entityType: unpackNonMekEntityType(value['t'], `${path}.t`) },
@@ -963,14 +962,13 @@ function unpackNonMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, p
         ...(value['o'] === undefined ? {} : {
             conditions: unpackUnitConditions(value['o'], `${path}.o`),
         }),
-        ...(value['h'] === undefined ? {} : { heat: unpackNonMekHeat(value['h'], `${path}.h`) }),
+        ...(value['z'] === undefined ? {} : { heat: unpackNonMekHeat(value['z'], `${path}.z`) }),
         ...(value['v'] === undefined ? {} : { turn: unpackNonMekTurn(value['v'], `${path}.v`) }),
         attackerTargeting: unpackDirectTargeting(value['tA'], `${path}.tA`),
         ...(value['y'] === undefined ? {} : {
             equipmentRowOrder: unpackEquipmentRowOrder(value['y'], `${path}.y`),
         }),
         ...(value['p'] === undefined ? {} : { pendingCombat: unpackNonMekPending(value['p'], `${path}.p`) }),
-        ...(value['z'] === undefined ? {} : { restoration: unpackNonMekDiagnostics(value['z'], `${path}.z`) }),
     };
 }
 
@@ -1152,30 +1150,20 @@ function unpackNonMekCrewState(
     };
 }
 
-function packIdentity(identity: SavedEntityIdentity, sourceFormat: 'mtf' | 'blk'): CompactIdentity {
-    if (identity.sourceFormat !== undefined && identity.sourceFormat !== sourceFormat) {
-        throw new Error(`A ${sourceFormat.toUpperCase()} unit cannot save a ${identity.sourceFormat.toUpperCase()} source`);
-    }
-    return packUuid(String(identity.uuid));
+function packUnitUuid(uuid: UnitUuid): CompactUnitUuid {
+    return packUuid(String(uuid));
 }
 
-function unpackIdentity(value: unknown, sourceFormat: 'mtf' | 'blk', path: string): SavedEntityIdentity {
-    // Current storage uses only the globally stable catalog UUID. Accept the old
-    // object wrapper for one-way compatibility, but deliberately discard its
-    // persisted provider/origin/hash metadata.
-    const uuid = typeof value === 'string'
-        ? unpackStoredUuid(value, path)
-        : (() => {
-            const legacy = record(value, path);
-            exactKeys(legacy, ['o', 'p', 'u', 'h'], path);
-            return unpackStoredUuid(text(legacy['u'], `${path}.u`), `${path}.u`);
-        })();
-    return {
-        origin: 'megamek',
-        provider: MM_DATA_UNIT_PROVIDER_ID,
-        uuid,
-        sourceFormat,
-    };
+function unpackUnitUuid(value: unknown, path: string): UnitUuid {
+    return unpackStoredUuid(text(value, path), path);
+}
+
+function unpackSourceHashCanary(value: unknown, path: string) {
+    try {
+        return asSourceHashCanary(text(value, path));
+    } catch {
+        throw new Error(`${path} must be a four-character base64url canary`);
+    }
 }
 
 function assertUnitRuleset(
@@ -1188,7 +1176,7 @@ function assertUnitRuleset(
 }
 
 function defaultBaseline(
-    entity: SavedEntityIdentity,
+    entity: UnitUuid,
     ruleset: CBTRuleset,
     defaultRevision: number,
     defaultProfileId: string,
@@ -1841,36 +1829,6 @@ function unpackNonMekPending(value: unknown, path: string): NonNullable<Serializ
                 hitTimestamps: unpackIntegerArray(row[2], `${rowPath}[2]`),
             })),
         }),
-    };
-}
-
-/** Current persistence keeps diagnostic text only; recovery graphs never cross the wire. */
-function packDiagnostics(value: SerializedUnitRestorationMetadataV2 | undefined): unknown {
-    if (value === undefined || value.warnings.length === 0) return undefined;
-    return value.warnings.map(warning => [warning.code, warning.message]);
-}
-
-function unpackDiagnostics(value: unknown, baseline: SerializedCBTUnitV2['baselineRefAtSave'], path: string): SerializedUnitRestorationMetadataV2 {
-    const warnings = unpackRows(value, path, (row, rowPath) => ({
-        code: rowText(row, 0, rowPath), message: rowText(row, 1, rowPath),
-    }));
-    return {
-        schemaVersion: 1,
-        algorithmVersion: 2,
-        fromBaseline: baseline,
-        sourceChanged: true,
-        warnings,
-        unresolved: [],
-        acceptedAliases: [],
-    };
-}
-
-function unpackNonMekDiagnostics(value: unknown, path: string): NonNullable<SerializedNonMekUnit['restoration']> {
-    const diagnostics = record(value, path);
-    exactKeys(diagnostics, ['w', 'u'], path);
-    return {
-        warnings: unpackTextArray(diagnostics['w'] ?? [], `${path}.w`),
-        unresolved: unpackTextArray(diagnostics['u'] ?? [], `${path}.u`),
     };
 }
 

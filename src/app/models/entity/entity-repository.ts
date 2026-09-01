@@ -6,7 +6,6 @@ import type {
     NativeUnitFormat,
     SourceHash,
     UnitFileName,
-    UnitProviderId,
     UnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
 import { asSourceHash } from '../../services/unit-catalog/unit-catalog.types';
@@ -15,8 +14,6 @@ import { parseEntity } from './parse-entity';
 import type { EntityLoadIssue, ParseContextOptions } from './parsers/parse-context';
 
 export interface NativeEntitySource {
-    readonly origin: 'megamek' | 'user';
-    readonly provider: UnitProviderId;
     readonly uuid: UnitUuid;
     readonly format: NativeUnitFormat;
     readonly sourceHash: SourceHash;
@@ -30,10 +27,7 @@ export interface LoadedEntity {
 }
 
 export interface NativeEntitySourceRepository {
-    read(identity: Readonly<{
-        provider: UnitProviderId;
-        uuid: UnitUuid;
-    }>): Promise<NativeEntitySource | undefined>;
+    read(uuid: UnitUuid): Promise<NativeEntitySource | undefined>;
 }
 
 export type EntityRepositoryErrorCode =
@@ -69,13 +63,12 @@ export class EntityRepository {
     ) {}
 
     public async load(identity: Readonly<{
-        provider: UnitProviderId;
         uuid: UnitUuid;
         /** Lets generation-aware callers hit the canonical cache before source I/O. */
         sourceHash?: SourceHash;
     }>): Promise<LoadedEntity> {
         if (identity.sourceHash !== undefined) {
-            const key = cacheKey(identity.provider, identity.uuid, identity.sourceHash);
+            const key = cacheKey(identity.uuid, identity.sourceHash);
             const cached = this.cache.get(key);
             if (cached !== undefined) return cached;
             const loading = this.loadSource(identity, identity.sourceHash);
@@ -88,21 +81,21 @@ export class EntityRepository {
             }
         }
 
-        const source = captureSource(await this.sources.read(identity));
+        const source = captureSource(await this.sources.read(identity.uuid));
         if (source === undefined) {
             throw new EntityRepositoryError(
                 'SOURCE_NOT_FOUND',
-                `Native source is not installed for ${identity.provider}/${identity.uuid}`,
+                `Native source is not installed for ${identity.uuid}`,
             );
         }
-        if (source.provider !== identity.provider || source.uuid !== identity.uuid) {
+        if (source.uuid !== identity.uuid) {
             throw new EntityRepositoryError(
                 'SOURCE_IDENTITY_MISMATCH',
-                'Native source repository returned a different provider/UUID design',
+                'Native source repository returned a different unit UUID',
             );
         }
         validateSource(source);
-        const key = cacheKey(source.provider, source.uuid, source.sourceHash);
+        const key = cacheKey(source.uuid, source.sourceHash);
         const cached = this.cache.get(key);
         if (cached !== undefined) return cached;
 
@@ -123,21 +116,20 @@ export class EntityRepository {
     }
 
     private async loadSource(
-        identity: Readonly<{ provider: UnitProviderId; uuid: UnitUuid }>,
+        identity: Readonly<{ uuid: UnitUuid }>,
         expectedHash: SourceHash,
     ): Promise<LoadedEntity> {
-        const source = captureSource(await this.sources.read(identity));
+        const source = captureSource(await this.sources.read(identity.uuid));
         if (source === undefined) {
             throw new EntityRepositoryError(
                 'SOURCE_NOT_FOUND',
-                `Native source is not installed for ${identity.provider}/${identity.uuid}`,
+                `Native source is not installed for ${identity.uuid}`,
             );
         }
-        if (source.provider !== identity.provider || source.uuid !== identity.uuid
-            || source.sourceHash !== expectedHash) {
+        if (source.uuid !== identity.uuid || source.sourceHash !== expectedHash) {
             throw new EntityRepositoryError(
                 'SOURCE_IDENTITY_MISMATCH',
-                'Native source repository returned a different provider/UUID/source revision',
+                'Native source repository returned a different UUID/source revision',
             );
         }
         validateSource(source);
@@ -145,8 +137,8 @@ export class EntityRepository {
     }
 }
 
-function cacheKey(provider: UnitProviderId, uuid: UnitUuid, hash: SourceHash): string {
-    return `${provider}\0${uuid}\0${hash}`;
+function cacheKey(uuid: UnitUuid, hash: SourceHash): string {
+    return `${uuid}\0${hash}`;
 }
 
 function loadedEntity(

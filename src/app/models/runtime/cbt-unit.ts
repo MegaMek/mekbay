@@ -4,8 +4,8 @@
 import { CBTMekUnit } from './cbt-mek-unit';
 import { CBTNonMekUnit } from './cbt-non-mek-unit';
 import type { BaseEntity } from '../entity/base-entity';
-import type { SavedEntityIdentity } from '../persisted-unit-state';
 import type { NativeUnitSourceHandle } from '../native-unit-source-handle';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import type { CrewAssignment } from './crew-assignment';
 import type {
     CBTUnitCommandResult,
@@ -30,9 +30,9 @@ export type CBTSelectedWeaponFireResult = Readonly<
 /** Family-neutral ownership boundary used by CBTForce. */
 export interface CBTUnit {
     readonly instanceId: string;
+    readonly uuid: UnitUuid;
     getUnit(): BaseEntity;
     getIndex(): CBTUnitRuntimeIndex;
-    getSourceRef(): SavedEntityIdentity;
     getNativeSource(): NativeUnitSourceHandle | undefined;
     getCrewAssignment(): CrewAssignment;
     revision(): number;

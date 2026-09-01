@@ -42,7 +42,6 @@ import {
     type PersistedForceV1ConversionWarning,
     type PersistedForceV1ConversionOptions,
 } from '../models/runtime/legacy-force-v1-converter';
-import type { SavedEntityIdentity } from '../models/persisted-unit-state';
 import { naturalCompare } from '../utils/sort.util';
 import { DataService } from './data.service';
 import { DbService } from './db.service';
@@ -264,7 +263,7 @@ export class ForcePersistenceService {
             const identity = request.source.identity;
             if (identity.kind !== 'resolved') return undefined;
             return this.injector.get(CBTUnitService).create({
-                identity: identity.savedIdentity,
+                uuid: identity.uuid,
                 instanceId: request.instanceId,
                 deployment: request.deployment,
                 scenario: request.scenario,
@@ -277,7 +276,7 @@ export class ForcePersistenceService {
                 chassis: typeof unit['chassis'] === 'string' ? unit['chassis'] : undefined,
                 model: typeof unit['model'] === 'string' ? unit['model'] : undefined,
                 type: typeof unit['type'] === 'string' ? unit['type'] : undefined,
-                entityIdentity: unit['entityIdentity'] as SavedEntityIdentity | undefined,
+                entityIdentity: unit['entityIdentity'],
             }, this.dataService.isDataReady()),
             materializeUnit,
             onWarning: warn,

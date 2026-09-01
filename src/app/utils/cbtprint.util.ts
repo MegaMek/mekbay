@@ -122,10 +122,7 @@ export class CBTPrintUtil {
             format: profile.compact ? 'compact' : paperSize,
             pageFormat: paperSize,
         } as const;
-        const identity = member.force.getUnitSourceIdentity(member.id);
-        const sheets = await recordSheetSource.load(entity, generatorOptions, {
-            ...(identity ? { design: identity } : {}),
-        });
+        const sheets = await recordSheetSource.load(entity, generatorOptions);
         const compact = profile.compact;
 
         if (isCBTMekForceMember(member)) {

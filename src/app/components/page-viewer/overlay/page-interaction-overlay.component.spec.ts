@@ -31,6 +31,24 @@ describe('PageInteractionOverlay turn boundaries', () => {
         expect(resume).toHaveBeenCalledOnceWith('mek-1');
     });
 
+    it('keeps the unnumbered automatic-fall icon routed to its explanation panel', async () => {
+        const component: PageInteractionOverlayComponent = Object.create(
+            PageInteractionOverlayComponent.prototype,
+        );
+        Object.assign(component as unknown as Record<string, unknown>, {
+            notificationSnapshot: () => ({
+                pendingEvents: [],
+                automaticFallTooltip: [{ label: 'Automatic fall', value: 'Gyro destroyed' }],
+            }),
+        });
+        const openPsrWarning = spyOn(component, 'openPsrWarning');
+        const event = {} as Event;
+
+        await component.openNotification({ kind: 'fall', event });
+
+        expect(openPsrWarning).toHaveBeenCalledOnceWith(event);
+    });
+
     it('dispatches End Phase through the admitted V2 member', async () => {
         const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
             accepted: true,

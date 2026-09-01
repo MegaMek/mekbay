@@ -909,9 +909,9 @@ export class ForceOverviewDialogComponent {
     }
 
     private resolveCBTCatalogSummary(member: CBTForceMember): UnitSummary {
-        const identity = member.force.getUnitSourceIdentity(member.id);
-        const summary = identity
-            ? this.dataService.getUnitByIdentity(identity.provider, identity.uuid)
+        const uuid = member.force.getUnitUuid(member.id);
+        const summary = uuid
+            ? this.dataService.getUnitByUuid(uuid)
             : undefined;
         if (!summary) {
             throw new Error(`Catalog presentation is unavailable for ${member.entity.displayName()}`);

@@ -8,10 +8,10 @@ describe('presentation catalog builders', () => {
   it('parses paths and normalizes the provider base URL', () => {
     const catalog = buildFluffImageCatalog({
       provider: MM_DATA_UNIT_PROVIDER_ID,
-      baseUrl: 'https://db.mekbay.com/path///',
+      baseUrl: 'https://fluff.example.test/path///',
       wireJson: '["Mek/Atlas.png"]',
     });
-    expect(catalog.baseUrl).toBe('https://db.mekbay.com/path');
+    expect(catalog.baseUrl).toBe('https://fluff.example.test/path');
     expect(catalog.paths[0]).toBe('Mek/Atlas.png');
   });
 

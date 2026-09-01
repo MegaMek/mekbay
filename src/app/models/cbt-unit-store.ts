@@ -126,7 +126,12 @@ export class CBTUnitStore {
         const warnings = new Set<string>();
         const restored = await Promise.all(entries.map(async entry => {
             try {
-                return { entry, unit: await cbtUnits.restore(entry.unit, scenario) };
+                return {
+                    entry,
+                    unit: await cbtUnits.restore(entry.unit, scenario, unitName => {
+                        warnings.add(`Unit "${unitName}" source file has changed since this force was last used.`);
+                    }),
+                };
             } catch {
                 invalidStateUnitIds.add(entry.instanceId);
                 try {
@@ -135,7 +140,7 @@ export class CBTUnitStore {
                         : deploymentFromPersistence(entry.unit.deployment.values);
                     const identity = entry.unit.entity;
                     return { entry, unit: await cbtUnits.create({
-                        identity,
+                        uuid: identity,
                         instanceId: entry.instanceId,
                         deployment,
                         scenario,
@@ -144,7 +149,7 @@ export class CBTUnitStore {
                     try {
                         const identity = entry.unit.entity;
                         return { entry, unit: await cbtUnits.create({
-                            identity,
+                            uuid: identity,
                             instanceId: entry.instanceId,
                             deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
                             scenario,
@@ -185,11 +190,8 @@ export class CBTUnitStore {
                 || serialized.stateRevision !== ready.revision()) {
                 throw new Error(`Restored V2 runtime ${entry.instanceId} disagrees with its persisted revision`);
             }
-            const sourceRef = ready.getSourceRef();
-            if (sourceRef.provider !== entry.unit.entity.provider
-                || entity.uuid() !== entry.unit.entity.uuid
-                || serialized.entity.provider !== entry.unit.entity.provider
-                || serialized.entity.uuid !== entry.unit.entity.uuid
+            if (entity.uuid() !== entry.unit.entity
+                || serialized.entity !== entry.unit.entity
                 || ready.getUnit() !== entity) {
                 throw new Error(`Restored V2 runtime ${entry.instanceId} disagrees with its persisted native source`);
             }
@@ -412,7 +414,7 @@ export class CBTUnitStore {
                 candidate = CBTNonMekUnit.restore(
                     row.unit,
                     current.getUnit(),
-                    current.getSourceRef(),
+                    current.uuid,
                     current.getNativeSource(),
                 );
             } else {
@@ -506,9 +508,9 @@ export class CBTUnitStore {
         const nativeSource = unit.getNativeSource();
         return Object.freeze({
             instanceId,
+            uuid: unit.uuid,
             entity: unit.getUnit(),
             index: runtime.index,
-            sourceRef: unit.getSourceRef(),
             ...(nativeSource === undefined ? {} : { nativeSource }),
             ruleset: this.ruleset(instanceId)!,
             crewAssignment: unit.getCrewAssignment(),

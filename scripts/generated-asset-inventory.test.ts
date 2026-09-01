@@ -23,6 +23,8 @@ test('generated inventory owns only the stable unit outputs', () => {
   const paths = new Set(GENERATED_ASSET_FILES.map(entry => entry.relativePath));
   assert.equal(paths.has('units-manifest.json'), true);
   assert.equal(paths.has('units.zip'), true);
+  assert.equal(paths.has('eras.json'), false);
+  assert.equal(paths.has('factions.json'), false);
   assert.equal([...paths].some(value => value.includes('core-units')), false);
   assert.deepEqual(GENERATED_ASSET_PATTERNS.map(entry => entry.directory), ['units']);
   assert.equal(GENERATED_ASSET_PATTERNS[0].pattern.test(`${UUID}.mtf`), true);
@@ -57,6 +59,8 @@ test('assets manifest is a direct SHA-1 map and excludes individual units', t =>
   fs.writeFileSync(path.join(generated, 'units.zip'), 'zip');
   fs.writeFileSync(path.join(generated, 'units', `${UUID}.mtf`), 'unit');
   fs.writeFileSync(path.join(online, 'static', 'equipment.json'), '{}');
+  fs.writeFileSync(path.join(online, 'static', 'eras.json'), '{}');
+  fs.writeFileSync(path.join(online, 'static', 'factions.json'), '{}');
   fs.writeFileSync(path.join(online, 'asset-manifest.json'), 'obsolete');
 
   const manifest = buildRepositoryAssetsManifest(root);
@@ -64,6 +68,8 @@ test('assets manifest is a direct SHA-1 map and excludes individual units', t =>
     'online-assets/generated/units-manifest.json',
     'online-assets/generated/units.zip',
     'online-assets/static/equipment.json',
+    'online-assets/static/eras.json',
+    'online-assets/static/factions.json',
   ]);
   assert.equal(manifest['online-assets/generated/units.zip'], sha1(Buffer.from('zip')));
   assert.equal(Object.keys(manifest).some(key => key.includes('/units/')), false);

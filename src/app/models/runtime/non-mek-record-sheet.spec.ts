@@ -10,7 +10,6 @@ import {
     TestTankEntity,
 } from '../entity/testing/test-entities';
 import {
-    MM_DATA_UNIT_PROVIDER_ID,
     asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
@@ -328,12 +327,7 @@ const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
 function baseline(): InstanceBaselineRef {
     return Object.freeze({
-        entity: Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid: UUID,
-            sourceFormat: 'blk' as const,
-        }),
+        entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
             schemaVersion: 1 as const,

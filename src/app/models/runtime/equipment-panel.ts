@@ -15,6 +15,7 @@ import {
     type WeaponDamage,
 } from '../equipment.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import type {
     AttackerAmmoSelection,
     AttackerActionTarget,
@@ -926,7 +927,7 @@ function physicalAttackHitResolution(
  * force-owned target registry. SVG nodes are display-only and never inputs.
  */
 export interface EquipmentPanelSnapshot {
-    readonly entityUuid: string;
+    readonly entityUuid: UnitUuid;
     readonly ruleset: CBTRuleset;
     readonly stateRevision: number;
     readonly targetRegistryRevision: number;

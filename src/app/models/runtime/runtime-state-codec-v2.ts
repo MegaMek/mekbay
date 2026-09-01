@@ -24,9 +24,9 @@ import {
     asSavedTargetRef,
     createSavedTargetRef,
     CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
+    CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
     savedTargetReferenceClosureV2,
     validateSavedBlueprintReferenceTableV2,
-    validateSerializedCBTUnitRestorationV2,
     type OneBasedCriticalSlotOrdinal,
     type SavedBlueprintReferenceTableV2,
     type SavedSlotCoordinateV2,
@@ -83,9 +83,9 @@ import { mekAmmoCapacity, mekAmmoDefaultMunitionKey, mekAmmoLoadout, mekIntrinsi
 import { mekComponentModes, type MekComponentModes } from './mek-component-rules';
 import { rapidFireAutocannonSupportsJamming } from './component-rapid-fire-autocannon';
 import { ecmRuntimeModes } from './component-electronic-suite';
-import { STATE_RESTORATION_ALGORITHM_VERSION_V2 } from './unit-restoration-repair-v2';
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import type { SavedEntityIdentity } from '../persisted-unit-state';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { asSourceHashCanary, type SourceHashCanary } from '../source-hash-canary';
 import {
     canonicalizeMekTurnStateV2,
     deserializeMekTurnStateV2,
@@ -126,7 +126,7 @@ import { GAUSS_POWERED_UP, isMekGaussPowerState } from './mek-gauss-power';
 import { isGaussEquipment } from '../gauss-equipment.model';
 import { isModularArmorEquipment, MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
 
-export const V2_STATE_RESTORATION_ALGORITHM_VERSION = STATE_RESTORATION_ALGORITHM_VERSION_V2;
+export const V2_STATE_RESTORATION_ALGORITHM_VERSION = CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2;
 
 export type V2StateCodecErrorCode =
     | 'BASELINE_ENTITY_MISMATCH'
@@ -150,7 +150,6 @@ export class V2StateCodecError extends Error {
 }
 
 export type V2StateRestoreWarningCode =
-    | 'SOURCE_REVISION_CHANGED'
     | 'ENTITY_BASELINE_CHANGED'
     | 'INITIAL_BASELINE_CHANGED'
     | 'SLOT_OCCUPANT_MISMATCH'
@@ -172,11 +171,10 @@ export interface SerializeCBTUnitStateV2Input {
     readonly entity: MekEntity;
     readonly index: MekRuntimeIndex;
     readonly instanceId: string;
+    readonly sourceHashCanary?: SourceHashCanary;
     readonly baselineRef: InstanceBaselineRef;
     readonly state: MekUnitRuntimeState;
     readonly deployment: SerializedDeploymentConfigurationV2;
-    /** Recovery evidence is an application-owned sidecar and must survive ordinary combat saves. */
-    readonly restoration?: SerializedUnitRestorationMetadataV2;
 }
 
 export interface RestoreSerializedCBTUnitV2Result {
@@ -184,7 +182,6 @@ export interface RestoreSerializedCBTUnitV2Result {
     readonly baselineRef: InstanceBaselineRef;
     readonly blueprintReferences: SavedBlueprintReferenceTableV2;
     readonly targetTranslation: Readonly<Record<SavedTargetRef, SavedTargetRef>>;
-    readonly metadata: SerializedUnitRestorationMetadataV2;
     readonly warnings: readonly V2StateRestoreWarning[];
     readonly unresolved: readonly SerializedUnresolvedStateRecoveryEntryV2[];
     readonly appliedExact: number;
@@ -257,10 +254,9 @@ interface CurrentTargetIndex {
 
 interface RestoreAccumulator {
     readonly unit: MekCodecUnit;
-    readonly currentIdentity: SavedEntityIdentity;
+    readonly currentIdentity: UnitUuid;
     readonly current: CurrentTargetIndex;
     readonly sourceTargets: Readonly<Record<SavedTargetRef, SavedStateTargetV2>>;
-    readonly aliasBySourceWitness: ReadonlyMap<string, SavedTargetRef>;
     readonly translations: Map<SavedTargetRef, SavedTargetRef>;
     readonly warnings: V2StateRestoreWarning[];
     readonly warningKeys: Set<string>;
@@ -434,7 +430,7 @@ function restoreAttackerTargeting(
             }
             const ref = asSavedTargetRef(canonicalBoundedText(row['target'], `${path}.target`));
             const source = sourceTarget(accumulator, ref, ['component'], path);
-            const current = resolveComponentTarget(source, accumulator, ref);
+            const current = resolveComponentTarget(source, accumulator);
             if (!current || !isPhysicalWeaponFlags(
                 equipmentForComponent(accumulator.unit.index, current.componentId)?.flags ?? new Set(),
             )) {
@@ -465,7 +461,7 @@ function restoreAttackerTargeting(
         }
         const ref = asSavedTargetRef(canonicalBoundedText(row['target'], `${path}.target`));
         const source = sourceTarget(accumulator, ref, ['component'], path);
-        const current = resolveComponentTarget(source, accumulator, ref);
+        const current = resolveComponentTarget(source, accumulator);
         if (!current
             || equipmentForComponent(accumulator.unit.index, current.componentId)?.type !== 'weapon') {
             codecFail(
@@ -506,7 +502,7 @@ function restoreAttackerTargeting(
                     ['ammo-source'],
                     `${path}.ammo.preferredSourceTarget`,
                 );
-                const resolvedSource = resolveAmmoTarget(sourceTargetValue, accumulator, sourceRef);
+                const resolvedSource = resolveAmmoTarget(sourceTargetValue, accumulator);
                 if (!resolvedSource) {
                     codecFail(
                         'INVALID_SERIALIZED_STATE',
@@ -805,8 +801,6 @@ export function serializeCBTUnitStateV2(
             error instanceof Error ? error.message : 'invalid heat state',
         );
     }
-    const restoration = input.restoration;
-    assertMekHeatRecoveryAuthorityForWrite(restoration, current.table);
     const pendingCombat = serializePending(
         input.state.pendingCombat,
         current,
@@ -830,13 +824,11 @@ export function serializeCBTUnitStateV2(
     ammoState.sort(compareTargetEntry);
     crewState.sort(compareTargetEntry);
 
-    if (input.baselineRef.entity.sourceFormat === 'blk') {
-        codecFail('DESIGN_IDENTITY_MISMATCH', '$.entity', 'Mek V2 state cannot use a BLK baseline');
-    }
     const exhaustiveValue: SerializedCBTUnitV2 = {
         schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
         instanceId: input.instanceId,
         entity: input.baselineRef.entity,
+        ...(input.sourceHashCanary === undefined ? {} : { sourceHashCanary: input.sourceHashCanary }),
         baselineRefAtSave: input.baselineRef,
         blueprintReferences: current.table,
         deployment: input.deployment,
@@ -864,22 +856,12 @@ export function serializeCBTUnitStateV2(
         ...(conditions.length === 0 ? {} : { conditions: { values: conditions } }),
         turn,
         ...(pendingCombat ? { pendingCombat } : {}),
-        ...(restoration ? { restoration } : {}),
     };
     const value: SerializedCBTUnitV2 = {
         ...exhaustiveValue,
         blueprintReferences: compactActiveBlueprintReferences(exhaustiveValue),
     };
     const serialized = canonicalClone(value);
-    try {
-        validateSerializedCBTUnitRestorationV2(serialized);
-    } catch (error) {
-        codecFail(
-            'INVALID_SERIALIZED_STATE',
-            '$.restoration',
-            error instanceof Error ? error.message : 'invalid serialized restoration metadata',
-        );
-    }
     return serialized;
 }
 
@@ -890,13 +872,6 @@ export function serializeCBTUnitStateV2(
 function compactActiveBlueprintReferences(
     value: SerializedCBTUnitV2,
 ): SavedBlueprintReferenceTableV2 {
-    if (value.restoration !== undefined
-        && (value.restoration.unresolved.length > 0
-            || value.restoration.acceptedAliases.length > 0
-            || value.restoration.heatRecovery !== undefined)) {
-        return value.blueprintReferences;
-    }
-
     const strings = new Set<string>();
     for (const part of [
         value.locationState,
@@ -1124,16 +1099,6 @@ export async function restoreSerializedCBTUnitV2(
     if (saved.schemaVersion !== CBT_UNIT_PERSISTENCE_SCHEMA_VERSION || saved.family.kind !== 'mek') {
         codecFail('INVALID_SERIALIZED_STATE', '$', 'only the current Mek serialized unit schema is supported');
     }
-    try {
-        validateSerializedCBTUnitRestorationV2(saved);
-    } catch (error) {
-        codecFail(
-            'INVALID_SERIALIZED_STATE',
-            '$.restoration',
-            error instanceof Error ? error.message : 'invalid serialized restoration metadata',
-        );
-    }
-    assertSavedMekHeatRecoveryAuthority(saved);
     if (saved.destroyed !== undefined && saved.destroyed !== true) {
         codecFail('INVALID_SERIALIZED_STATE', '$.destroyed', 'sparse destroyed state must be true when present');
     }
@@ -1148,24 +1113,11 @@ export async function restoreSerializedCBTUnitV2(
     const warnings: V2StateRestoreWarning[] = [];
     const warningKeys = new Set<string>();
     const sourceTargets = saved.blueprintReferences.targets;
-    const priorUnresolvedAtSave = saved.restoration?.unresolved ?? [];
-    const ignoredRecovery = saved.restoration?.ignoredRecovery ?? [];
-    const aliasBySourceWitness = await usableAliasMap(
-        saved.restoration?.acceptedAliases ?? [],
-        current,
-        initialized.baselineRef.entity,
-        saved.restoration?.heatRecovery?.sourceReferences.targets ?? sourceTargets,
-    );
-    const priorUnresolved = await applyIgnoredRecoveryDecisions(
-        priorUnresolvedAtSave,
-        ignoredRecovery,
-    );
     const accumulator: RestoreAccumulator = {
         unit,
         currentIdentity: initialized.baselineRef.entity,
         current,
         sourceTargets,
-        aliasBySourceWitness,
         translations: new Map(),
         warnings,
         warningKeys,
@@ -1173,21 +1125,9 @@ export async function restoreSerializedCBTUnitV2(
         appliedExact: 0,
         appliedWithWarning: 0,
     };
-    await assertSavedRecoveryTranslationIsCanonical(saved);
     const restoredMovement = restoreSavedMekMovementPsr(saved, accumulator);
 
-    const sourceHash = saved.entity.sourceHashAtSave ?? saved.baselineRefAtSave.entity.sourceHashAtSave;
-    const currentHash = initialized.baselineRef.entity.sourceHashAtSave;
-    if (sourceHash !== undefined && sourceHash !== currentHash) {
-        warn(accumulator, {
-            code: 'SOURCE_REVISION_CHANGED',
-            message: 'The same design was restored against a different local source revision.',
-            saved: { sourceHash },
-            current: { sourceHash: currentHash ?? '<canonical>' },
-        });
-    }
-    if (!jsonValuesEqual(saved.baselineRefAtSave.entity, initialized.baselineRef.entity)
-        || saved.baselineRefAtSave.ruleset !== initialized.baselineRef.ruleset) {
+    if (saved.baselineRefAtSave.ruleset !== initialized.baselineRef.ruleset) {
         warn(accumulator, {
             code: 'ENTITY_BASELINE_CHANGED',
             message: 'The saved state was translated to the current entity baseline.',
@@ -1226,25 +1166,6 @@ export async function restoreSerializedCBTUnitV2(
     const pendingLocationConditions = clonePendingLocationConditions(
         initialized.state.pendingCombat.locationConditions,
     );
-    const retainedPriorUnresolved = retryPriorUnresolved(
-        priorUnresolved,
-        saved.stateRevision,
-        accumulator,
-        locations,
-        slots,
-        components,
-        ammo,
-        crew,
-        pendingLocation,
-        pendingArmor,
-        pendingSlots,
-        pendingComponents,
-        pendingShieldDamage,
-        pendingModularArmorDamage,
-        pendingLocationConditions,
-        ruleChecks,
-    );
-
     restoreSavedMekRuleChecks(saved, accumulator, ruleChecks);
 
     forEachUnique(saved.locationState, '$.locationState', entry => {
@@ -1345,7 +1266,7 @@ export async function restoreSerializedCBTUnitV2(
         if (!savedFact) {
             codecFail('INVALID_SERIALIZED_STATE', '$.componentState', 'sparse component state must contain a fact');
         }
-        const currentTarget = resolveComponentTarget(target, accumulator, entry.target);
+        const currentTarget = resolveComponentTarget(target, accumulator);
         if (!currentTarget) {
             if (savedState.statusOverride !== undefined) {
                 unresolved(accumulator, entry.target, target, {
@@ -1452,7 +1373,7 @@ export async function restoreSerializedCBTUnitV2(
         if (target.munitionAtSave !== undefined && target.munitionAtSave !== munitionOverride) {
             codecFail('INVALID_SERIALIZED_STATE', '$.ammoState.munitionOverride', 'munition fact disagrees with its saved target witness');
         }
-        const currentTarget = resolveAmmoTarget(target, accumulator, entry.target);
+        const currentTarget = resolveAmmoTarget(target, accumulator);
         if (!currentTarget) {
             if (shotsFact) {
                 unresolved(
@@ -1583,7 +1504,7 @@ export async function restoreSerializedCBTUnitV2(
             ...(dead ? { dead: true } : {}),
             ...(ejected ? { ejected: true } : {}),
         };
-        const currentTarget = resolveCrewTarget(target, accumulator, entry.target);
+        const currentTarget = resolveCrewTarget(target, accumulator);
         if (!currentTarget) return unresolved(accumulator, entry.target, target, fact, 'CREW_POSITION_NOT_FOUND');
         const effective = Math.min(requested, MAX_MEK_CREW_WOUNDS);
         let warned = false;
@@ -1727,71 +1648,19 @@ export async function restoreSerializedCBTUnitV2(
         pendingCombat,
     });
 
-    const retainedPriorRecoveryIds = new Set(retainedPriorUnresolved.map(entry => entry.recoveryId));
-    const finalizedUnresolved = await finalizeUnresolved(
+    const unresolvedEntries = await finalizeUnresolved(
         accumulator.unresolvedDrafts,
-        new Set(retainedPriorRecoveryIds),
+        new Set(),
     );
-    const newUnresolved = await applyIgnoredRecoveryDecisions(
-        finalizedUnresolved,
-        ignoredRecovery,
-        retainedPriorRecoveryIds,
-    );
-    const combinedUnresolved = [
-        ...retainedPriorUnresolved,
-        ...newUnresolved,
-    ];
-    const combinedRecoveryIds = new Set<string>();
-    for (const entry of combinedUnresolved) {
-        if (combinedRecoveryIds.has(entry.recoveryId)) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                '$.restoration.unresolved',
-                `retained and newly generated recovery rows collide at ID ${entry.recoveryId}`,
-            );
-        }
-        combinedRecoveryIds.add(entry.recoveryId);
-    }
-    const unresolvedEntries = Object.freeze(combinedUnresolved.sort((left, right) =>
-        compareText(left.recoveryId, right.recoveryId)));
-    const persistedWarnings = mergePersistedWarnings(saved.restoration?.warnings ?? [], warnings);
-    const sourceChanged = saved.restoration?.sourceChanged === true
-        || !jsonValuesEqual(saved.baselineRefAtSave.entity, initialized.baselineRef.entity)
-        || saved.baselineRefAtSave.ruleset !== initialized.baselineRef.ruleset;
     const targetTranslation = Object.freeze(Object.fromEntries(
         [...accumulator.translations].sort(([left], [right]) => compareText(left, right)),
     ) as Record<SavedTargetRef, SavedTargetRef>);
-    const heatRecovery = buildDurableMekHeatRecoveryAuthority(
-        saved,
-        current.table,
-        unresolvedEntries,
-        retainedPriorRecoveryIds,
-        accumulator,
-    );
-    const acceptedAliases = await retainActiveRecoveryAliases(
-        saved.restoration?.acceptedAliases ?? [],
-        unresolvedEntries,
-    );
-    const metadata: SerializedUnitRestorationMetadataV2 = canonicalClone({
-        schemaVersion: 1,
-        algorithmVersion: V2_STATE_RESTORATION_ALGORITHM_VERSION,
-        fromBaseline: saved.restoration?.fromBaseline ?? saved.baselineRefAtSave,
-        sourceChanged,
-        warnings: persistedWarnings,
-        unresolved: unresolvedEntries,
-        acceptedAliases,
-        ...(saved.restoration?.ignoredRecovery === undefined
-            ? {}
-            : { ignoredRecovery: saved.restoration.ignoredRecovery }),
-        ...(heatRecovery === undefined ? {} : { heatRecovery }),
-    });
 
     return Object.freeze({
         state,
         baselineRef: initialized.baselineRef,
         blueprintReferences: current.table,
         targetTranslation,
-        metadata,
         warnings: Object.freeze(warnings.map(canonicalClone)),
         unresolved: unresolvedEntries,
         appliedExact: accumulator.appliedExact,
@@ -1840,7 +1709,7 @@ function movementPsrIdResolvers(
             for (const [sourceRef, target] of sourceRows) {
                 if ((target.kind !== 'component' && target.kind !== 'intrinsic-system')
                     || target.savedComponentId !== sourceId) continue;
-                for (const id of movementComponentCandidates(target, sourceRef, accumulator)) {
+                for (const id of movementComponentCandidates(target, accumulator)) {
                     candidates.add(id);
                 }
             }
@@ -1877,17 +1746,12 @@ function movementPsrIdResolvers(
 
 function movementComponentCandidates(
     target: Extract<SavedStateTargetV2, { kind: 'component' | 'intrinsic-system' }>,
-    sourceRef: SavedTargetRef,
     accumulator: RestoreAccumulator,
 ): readonly ComponentId[] {
     const savedId = componentSavedId(target);
     if (savedId !== undefined) {
         const exact = accumulator.current.componentById.get(savedId);
         if (exact && componentsCompatible(target, exact.target)) return Object.freeze([exact.componentId]);
-    }
-    const alias = acceptedAliasTarget(sourceRef, target, accumulator);
-    if (alias && isCurrentComponent(alias) && componentsCompatible(target, alias.target)) {
-        return Object.freeze([alias.componentId]);
     }
     let candidates = accumulator.current.components.filter(candidate =>
         componentsCompatible(target, candidate.target));
@@ -1908,301 +1772,6 @@ function movementComponentCandidates(
         if (sameOccurrence.length > 0) candidates = sameOccurrence;
     }
     return Object.freeze([...new Set(candidates.map(candidate => candidate.componentId))].sort(compareText));
-}
-
-function retainActiveRecoveryAliases(
-    aliases: readonly SerializedPersistedRestoreAliasV2[],
-    unresolved: readonly SerializedUnresolvedStateRecoveryEntryV2[],
-): readonly SerializedPersistedRestoreAliasV2[] {
-    const active = new Set(unresolved.map(entry => entry.sourceTargetRef));
-    return Object.freeze(aliases.filter(alias => active.has(alias.sourceTargetRef)));
-}
-
-function buildDurableMekHeatRecoveryAuthority(
-    saved: SerializedCBTUnitV2,
-    currentReferences: SavedBlueprintReferenceTableV2,
-    unresolved: readonly SerializedUnresolvedStateRecoveryEntryV2[],
-    retainedPriorRecoveryIds: ReadonlySet<string>,
-    accumulator: RestoreAccumulator,
-): SerializedMekHeatRecoveryAuthorityV1 | undefined {
-    if (unresolved.length === 0) return undefined;
-    const prior = saved.restoration?.heatRecovery;
-    if (prior !== undefined && !sameReferenceTable(prior.currentReferences, saved.blueprintReferences)) {
-        codecFail(
-            'INVALID_SERIALIZED_STATE',
-            '$.restoration.heatRecovery.currentReferences',
-            'does not match the saved unit reference table',
-        );
-    }
-
-    const mergedTargets: Record<SavedTargetRef, SavedStateTargetV2> = {};
-    for (const [index, entry] of unresolved.entries()) {
-        const ref = entry.sourceTargetRef;
-        const owningTable = retainedPriorRecoveryIds.has(entry.recoveryId)
-            ? prior?.sourceReferences ?? saved.blueprintReferences
-            : saved.blueprintReferences;
-        const durableTarget = owningTable.targets[ref];
-        if (durableTarget === undefined
-            || !jsonValuesEqual(durableTarget, entry.sourceTarget)) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `$.restoration.unresolved[${index}].sourceTargetRef`,
-                'recovery source is not owned by the saved or retained source table',
-            );
-        }
-        const sourceClosure = savedTargetReferenceClosureV2(owningTable.targets, [ref]);
-        if (sourceClosure === undefined) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `$.restoration.unresolved[${index}].sourceTargetRef`,
-                'active recovery source closure is incomplete',
-            );
-        }
-        for (const requiredRef of sourceClosure) {
-            const requiredTarget = owningTable.targets[requiredRef]!;
-            const existing = mergedTargets[requiredRef];
-            if (existing !== undefined
-                && !jsonValuesEqual(existing, requiredTarget)) {
-                codecFail(
-                    'INVALID_SERIALIZED_STATE',
-                    `$.restoration.heatRecovery.sourceReferences.targets.${requiredRef}`,
-                    'active recovery source closures collide at one ref with different target content',
-                );
-            }
-            mergedTargets[requiredRef] = requiredTarget;
-        }
-    }
-    const canonicalMergedTargets = Object.fromEntries(
-        Object.entries(mergedTargets).sort(([left], [right]) => compareText(left, right)),
-    ) as Record<SavedTargetRef, SavedStateTargetV2>;
-    const sourceReferences: SavedBlueprintReferenceTableV2 = Object.freeze({
-        schemaVersion: 1,
-        targets: Object.freeze(canonicalMergedTargets),
-    });
-    assertRecoverySourcesOwnEntries(sourceReferences, unresolved);
-    const targetTranslation = deriveActiveRecoveryTranslation(unresolved, accumulator);
-    return Object.freeze({
-        schemaVersion: 1,
-        sourceReferences,
-        targetTranslation,
-        currentReferences,
-    });
-}
-
-async function assertSavedRecoveryTranslationIsCanonical(
-    saved: SerializedCBTUnitV2,
-): Promise<void> {
-    const authority = saved.restoration?.heatRecovery;
-    if (authority === undefined) return;
-    const expected: Record<SavedTargetRef, SavedTargetRef> = {};
-    for (const entry of saved.restoration?.unresolved ?? []) {
-        const aliases = (saved.restoration?.acceptedAliases ?? []).filter(alias =>
-            alias.sourceTargetRef === entry.sourceTargetRef
-            && alias.algorithmVersion === V2_STATE_RESTORATION_ALGORITHM_VERSION
-            && jsonValuesEqual(alias.targetEntity, saved.baselineRefAtSave.entity));
-        const aliasTargets = [...new Set(aliases.map(alias => alias.target))];
-        if (aliasTargets.length > 1) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                '$.restoration.acceptedAliases',
-                'one active source witness has conflicting aliases for the saved entity',
-            );
-        }
-        let targetRef: SavedTargetRef | undefined = aliasTargets[0];
-        if (targetRef !== undefined) {
-            const target = authority.currentReferences.targets[targetRef];
-            if (target === undefined || !recoveryAliasKindsCompatible(entry.sourceTarget, target)) {
-                codecFail(
-                    'TARGET_KIND_MISMATCH',
-                    '$.restoration.acceptedAliases.target',
-                    'saved-entity alias does not select a compatible current target',
-                );
-            }
-        } else {
-            targetRef = resolveSavedTargetInReferenceTable(
-                entry.sourceTargetRef,
-                entry.sourceTarget,
-                authority.currentReferences,
-            );
-        }
-        if (targetRef !== undefined) {
-            expected[entry.sourceTargetRef] = targetRef;
-        }
-    }
-    const canonicalExpected = Object.freeze(Object.fromEntries(
-        Object.entries(expected).sort(([left], [right]) => compareText(left, right)),
-    ) as Record<SavedTargetRef, SavedTargetRef>);
-    if (!jsonValuesEqual(authority.targetTranslation, canonicalExpected)) {
-        codecFail(
-            'INVALID_SERIALIZED_STATE',
-            '$.restoration.heatRecovery.targetTranslation',
-            'must equal the exact active-row mapping derived from the saved reference table and accepted aliases',
-        );
-    }
-}
-
-function resolveSavedTargetInReferenceTable(
-    sourceRef: SavedTargetRef,
-    source: SavedStateTargetV2,
-    current: SavedBlueprintReferenceTableV2,
-): SavedTargetRef | undefined {
-    const exact = current.targets[sourceRef];
-    if (exact !== undefined && jsonValuesEqual(exact, source)) {
-        return sourceRef;
-    }
-    const candidates = Object.entries(current.targets)
-        .filter(([, target]) => recoveryAliasKindsCompatible(source, target))
-        .map(([ref, target]) => ({ ref: asSavedTargetRef(ref), target }));
-    switch (source.kind) {
-        case 'location-section':
-            return uniqueSavedTargetRef(candidates.filter(({ target }) =>
-                target.kind === 'location-section'
-                && target.location === source.location
-                && target.section === source.section));
-        case 'critical-slot':
-            return uniqueSavedTargetRef(candidates.filter(({ target }) =>
-                target.kind === 'critical-slot'
-                && target.location === source.location
-                && target.slot === source.slot));
-        case 'component':
-        case 'intrinsic-system':
-            return resolveSavedComponentTarget(source, candidates);
-        case 'ammo-source':
-            return resolveSavedAmmoTarget(source, candidates);
-        case 'crew-position':
-            return resolveSavedCrewTarget(source, candidates);
-    }
-}
-
-function resolveSavedComponentTarget(
-    source: Extract<SavedStateTargetV2, { kind: 'component' | 'intrinsic-system' }>,
-    candidates: readonly { readonly ref: SavedTargetRef; readonly target: SavedStateTargetV2 }[],
-): SavedTargetRef | undefined {
-    let compatible = candidates.filter((candidate): candidate is {
-        readonly ref: SavedTargetRef;
-        readonly target: Extract<SavedStateTargetV2, { kind: 'component' | 'intrinsic-system' }>;
-    } => (candidate.target.kind === 'component' || candidate.target.kind === 'intrinsic-system')
-        && componentsCompatible(source, candidate.target));
-    const savedId = componentSavedId(source);
-    if (savedId !== undefined) {
-        const exact = compatible.filter(({ target }) => componentSavedId(target) === savedId);
-        if (exact.length === 1) return exact[0].ref;
-    }
-    if (source.criticalSlots.length > 0) {
-        const atSlots = compatible.filter(({ target }) =>
-            sameSavedSlotCoordinates(source.criticalSlots, target.criticalSlots));
-        if (atSlots.length === 1) return atSlots[0].ref;
-        if (atSlots.length > 1) compatible = atSlots;
-    }
-    if (source.locations.length > 0) {
-        const atLocations = compatible.filter(({ target }) =>
-            sameStringSet(source.locations, target.locations));
-        if (atLocations.length === 1) return atLocations[0].ref;
-        if (atLocations.length > 1) compatible = atLocations;
-    }
-    if (source.kind === 'component' && source.occurrence !== undefined) {
-        const atOccurrence = compatible.filter(({ target }) =>
-            target.kind === 'component' && target.occurrence === source.occurrence);
-        if (atOccurrence.length === 1) return atOccurrence[0].ref;
-        if (atOccurrence.length > 1) compatible = atOccurrence;
-    }
-    return uniqueSavedTargetRef(compatible);
-}
-
-function resolveSavedAmmoTarget(
-    source: Extract<SavedStateTargetV2, { kind: 'ammo-source' }>,
-    candidates: readonly { readonly ref: SavedTargetRef; readonly target: SavedStateTargetV2 }[],
-): SavedTargetRef | undefined {
-    let compatible = candidates.filter((candidate): candidate is {
-        readonly ref: SavedTargetRef;
-        readonly target: Extract<SavedStateTargetV2, { kind: 'ammo-source' }>;
-    } => candidate.target.kind === 'ammo-source' && ammoCompatible(source, candidate.target));
-    const savedId = source.savedAmmoSourceId
-        ?? (source.source.kind === 'installed-bin' ? source.source.savedComponentId : undefined);
-    if (savedId !== undefined) {
-        const exact = compatible.filter(({ target }) => {
-            const targetId = target.savedAmmoSourceId
-                ?? (target.source.kind === 'installed-bin' ? target.source.savedComponentId : undefined);
-            return targetId === savedId;
-        });
-        if (exact.length === 1) return exact[0].ref;
-    }
-    if (source.criticalSlots.length > 0) {
-        const atSlots = compatible.filter(({ target }) =>
-            sameSavedSlotCoordinates(source.criticalSlots, target.criticalSlots));
-        if (atSlots.length === 1) return atSlots[0].ref;
-        if (atSlots.length > 1) compatible = atSlots;
-    }
-    if (source.location !== undefined) {
-        const atLocation = compatible.filter(({ target }) => target.location === source.location);
-        if (atLocation.length === 1) return atLocation[0].ref;
-        if (atLocation.length > 1) compatible = atLocation;
-    }
-    if (source.occurrence !== undefined) {
-        const atOccurrence = compatible.filter(({ target }) => target.occurrence === source.occurrence);
-        if (atOccurrence.length === 1) return atOccurrence[0].ref;
-        if (atOccurrence.length > 1) compatible = atOccurrence;
-    }
-    return uniqueSavedTargetRef(compatible);
-}
-
-function resolveSavedCrewTarget(
-    source: Extract<SavedStateTargetV2, { kind: 'crew-position' }>,
-    candidates: readonly { readonly ref: SavedTargetRef; readonly target: SavedStateTargetV2 }[],
-): SavedTargetRef | undefined {
-    let compatible = candidates.filter((candidate): candidate is {
-        readonly ref: SavedTargetRef;
-        readonly target: Extract<SavedStateTargetV2, { kind: 'crew-position' }>;
-    } => candidate.target.kind === 'crew-position'
-        && candidate.target.positionKey === source.positionKey);
-    if (source.savedCrewPositionId !== undefined) {
-        const exact = compatible.filter(({ target }) =>
-            target.savedCrewPositionId === source.savedCrewPositionId);
-        if (exact.length === 1) return exact[0].ref;
-    }
-    if (source.occurrence !== undefined) {
-        const atOccurrence = compatible.filter(({ target }) => target.occurrence === source.occurrence);
-        if (atOccurrence.length === 1) return atOccurrence[0].ref;
-        if (atOccurrence.length > 1) compatible = atOccurrence;
-    }
-    return uniqueSavedTargetRef(compatible);
-}
-
-function uniqueSavedTargetRef(
-    candidates: readonly { readonly ref: SavedTargetRef }[],
-): SavedTargetRef | undefined {
-    return candidates.length === 1 ? candidates[0].ref : undefined;
-}
-
-function sameSavedSlotCoordinates(
-    left: readonly SavedSlotCoordinateV2[],
-    right: readonly SavedSlotCoordinateV2[],
-): boolean {
-    const key = (slot: SavedSlotCoordinateV2) => `${slot.location}\0${slot.slot}`;
-    const a = left.map(key).sort(compareText);
-    const b = right.map(key).sort(compareText);
-    return a.length === b.length && a.every((value, index) => value === b[index]);
-}
-
-function deriveActiveRecoveryTranslation(
-    unresolved: readonly SerializedUnresolvedStateRecoveryEntryV2[],
-    accumulator: RestoreAccumulator,
-): Readonly<Record<SavedTargetRef, SavedTargetRef>> {
-    const translation: Record<SavedTargetRef, SavedTargetRef> = {};
-    for (const entry of unresolved) {
-        const aliased = acceptedAliasTarget(entry.sourceTargetRef, entry.sourceTarget, accumulator);
-        const resolvedRef = aliased?.ref ?? resolveSavedTargetInReferenceTable(
-            entry.sourceTargetRef,
-            entry.sourceTarget,
-            accumulator.current.table,
-        );
-        if (resolvedRef !== undefined) {
-            translation[entry.sourceTargetRef] = resolvedRef;
-        }
-    }
-    return Object.freeze(Object.fromEntries(
-        Object.entries(translation).sort(([left], [right]) => compareText(left, right)),
-    ) as Record<SavedTargetRef, SavedTargetRef>);
 }
 
 function assertRecoverySourcesOwnEntries(
@@ -2255,14 +1824,6 @@ function assertMekHeatRecoveryAuthorityForWrite(
     assertMekHeatRecoveryAuthority(
         restoration,
         currentReferences,
-        '$.restoration',
-    );
-}
-
-function assertSavedMekHeatRecoveryAuthority(saved: SerializedCBTUnitV2): void {
-    assertMekHeatRecoveryAuthority(
-        saved.restoration,
-        saved.blueprintReferences,
         '$.restoration',
     );
 }
@@ -3659,7 +3220,7 @@ function restorePending(
         if (!isEquipmentStatus(entry.status)) {
             codecFail('INVALID_SERIALIZED_STATE', '$.pendingCombat.componentStatus.status', `invalid status ${entry.status}`);
         }
-        const current = resolveComponentTarget(target, accumulator, entry.target);
+        const current = resolveComponentTarget(target, accumulator);
         if (!current) {
             return unresolved(
                 accumulator,
@@ -3697,7 +3258,7 @@ function restorePending(
             kind: 'pending-shield-damage',
             ...requested,
         };
-        const current = resolveComponentTarget(target, accumulator, entry.target);
+        const current = resolveComponentTarget(target, accumulator);
         if (!current || current.target.kind !== 'component' || !current.supportsShieldDamage) {
             return unresolved(
                 accumulator,
@@ -3760,7 +3321,7 @@ function restorePending(
                 kind: 'pending-modular-armor-damage',
                 damage: requested,
             };
-            const current = resolveComponentTarget(target, accumulator, entry.target);
+            const current = resolveComponentTarget(target, accumulator);
             if (!current || current.target.kind !== 'component' || !current.supportsModularArmor) {
                 return unresolved(
                     accumulator,
@@ -3893,16 +3454,12 @@ function resolveSlotTarget(
 function resolveComponentTarget(
     target: Extract<SavedStateTargetV2, { kind: 'component' | 'intrinsic-system' }>,
     accumulator: RestoreAccumulator,
-    sourceRef?: SavedTargetRef,
 ): CurrentComponentTarget | undefined {
     const savedId = componentSavedId(target);
     if (savedId) {
         const exact = accumulator.current.componentById.get(savedId);
         if (exact && componentsCompatible(target, exact.target)) return exact;
     }
-    const alias = sourceRef === undefined ? undefined : acceptedAliasTarget(sourceRef, target, accumulator);
-    if (alias && isCurrentComponent(alias) && componentsCompatible(target, alias.target)) return alias;
-
     let candidates = accumulator.current.components.filter(candidate => componentsCompatible(target, candidate.target));
     const savedSlots = target.criticalSlots;
     if (savedSlots.length > 0) {
@@ -3929,7 +3486,6 @@ function resolveComponentTarget(
 function resolveAmmoTarget(
     target: Extract<SavedStateTargetV2, { kind: 'ammo-source' }>,
     accumulator: RestoreAccumulator,
-    sourceRef?: SavedTargetRef,
 ): CurrentAmmoTarget | undefined {
     if (target.source.kind !== 'installed-bin') {
         const owner = accumulator.sourceTargets[target.source.ownerComponentTarget];
@@ -3939,18 +3495,13 @@ function resolveAmmoTarget(
             ? undefined
             : accumulator.current.ammoById.get(currentOwner.componentId);
         if (exact && ammoCompatible(target, exact.target)) return exact;
-        const alias = sourceRef === undefined ? undefined : acceptedAliasTarget(sourceRef, target, accumulator);
-        return alias && isCurrentAmmo(alias) && ammoCompatible(target, alias.target)
-            ? alias
-            : undefined;
+        return undefined;
     }
     const savedId = target.savedAmmoSourceId ?? target.source.savedComponentId;
     if (savedId) {
         const exact = accumulator.current.ammoById.get(savedId);
         if (exact && ammoCompatible(target, exact.target)) return exact;
     }
-    const alias = sourceRef === undefined ? undefined : acceptedAliasTarget(sourceRef, target, accumulator);
-    if (alias && isCurrentAmmo(alias) && ammoCompatible(target, alias.target)) return alias;
     let candidates = accumulator.current.ammo.filter(candidate => ammoCompatible(target, candidate.target));
     if (target.criticalSlots.length > 0) {
         const occupantIds = componentsAtAllCoordinates(target.criticalSlots, accumulator);
@@ -3974,14 +3525,11 @@ function resolveAmmoTarget(
 function resolveCrewTarget(
     target: Extract<SavedStateTargetV2, { kind: 'crew-position' }>,
     accumulator: RestoreAccumulator,
-    sourceRef?: SavedTargetRef,
 ): CurrentCrewTarget | undefined {
     if (target.savedCrewPositionId) {
         const exact = accumulator.current.crewById.get(target.savedCrewPositionId);
         if (exact && exact.target.positionKey === target.positionKey) return exact;
     }
-    const alias = sourceRef === undefined ? undefined : acceptedAliasTarget(sourceRef, target, accumulator);
-    if (alias && isCurrentCrew(alias)) return alias;
     let candidates = [...(accumulator.current.crewByPositionKey.get(target.positionKey) ?? [])];
     if (target.occurrence !== undefined) {
         const sameOccurrence = candidates.filter(candidate =>
@@ -3993,60 +3541,11 @@ function resolveCrewTarget(
 }
 
 function acceptedAliasTarget(
-    sourceRef: SavedTargetRef,
+    _sourceRef: SavedTargetRef,
     _source: SavedStateTargetV2,
-    accumulator: RestoreAccumulator,
+    _accumulator: RestoreAccumulator,
 ): CurrentTarget | undefined {
-    const ref = accumulator.aliasBySourceWitness.get(sourceAliasKey(sourceRef));
-    return ref ? accumulator.current.byRef.get(ref) : undefined;
-}
-
-async function usableAliasMap(
-    aliases: readonly SerializedPersistedRestoreAliasV2[],
-    current: CurrentTargetIndex,
-    currentIdentity: SavedEntityIdentity,
-    sourceTargets: Readonly<Record<SavedTargetRef, SavedStateTargetV2>>,
-): Promise<ReadonlyMap<string, SavedTargetRef>> {
-    const result = new Map<string, SavedTargetRef>();
-    for (const alias of aliases) {
-        const source = sourceTargets[alias.sourceTargetRef];
-        if (source === undefined) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                '$.restoration.acceptedAliases.sourceTargetRef',
-                'accepted alias source ref is not owned by the exact recovery table',
-            );
-        }
-        const currentTarget = current.byRef.get(alias.target);
-        if (alias.algorithmVersion !== V2_STATE_RESTORATION_ALGORITHM_VERSION
-            || !jsonValuesEqual(alias.targetEntity, currentIdentity)
-            || currentTarget === undefined) continue;
-        if (!recoveryAliasKindsCompatible(source, currentTarget.target)) {
-            codecFail(
-                'TARGET_KIND_MISMATCH',
-                '$.restoration.acceptedAliases.target',
-                `accepted alias cannot map ${source.kind} recovery to ${currentTarget.target.kind}`,
-            );
-        }
-        const key = sourceAliasKey(alias.sourceTargetRef);
-        const existing = result.get(key);
-        if (existing !== undefined && existing !== alias.target) {
-            codecFail('INVALID_SERIALIZED_STATE', '$.restoration.acceptedAliases', 'one source witness has conflicting accepted aliases');
-        }
-        result.set(key, alias.target);
-    }
-    return result;
-}
-
-function recoveryAliasKindsCompatible(source: SavedStateTargetV2, target: SavedStateTargetV2): boolean {
-    if (source.kind === 'component' || source.kind === 'intrinsic-system') {
-        return target.kind === 'component' || target.kind === 'intrinsic-system';
-    }
-    return source.kind === target.kind;
-}
-
-function sourceAliasKey(sourceRef: SavedTargetRef): string {
-    return sourceRef;
+    return undefined;
 }
 
 function sourceTarget<K extends SavedStateTargetV2['kind']>(
@@ -4791,20 +4290,12 @@ function assertSerializedIdentity(
     entity: MekEntity,
 ): void {
     const baseline = saved.baselineRefAtSave.entity;
-    if (saved.entity.provider !== baseline.provider || saved.entity.uuid !== baseline.uuid) {
+    if (saved.entity !== baseline) {
         codecFail('DESIGN_IDENTITY_MISMATCH', '$.baselineRefAtSave', 'saved lookup identity conflicts with its baseline');
     }
-    if (saved.entity.provider !== currentBaseline.entity.provider
-        || saved.entity.uuid !== currentBaseline.entity.uuid
-        || saved.entity.uuid !== entity.uuid()) {
-        codecFail('DESIGN_IDENTITY_MISMATCH', '$.entity', 'saved state belongs to a different provider/UUID design');
-    }
-    if (saved.entity.sourceHashAtSave !== undefined && baseline.sourceHashAtSave !== undefined
-        && saved.entity.sourceHashAtSave !== baseline.sourceHashAtSave) {
-        codecFail('DESIGN_IDENTITY_MISMATCH', '$.entity.sourceHashAtSave', 'source hash conflicts with the saved baseline');
-    }
-    if (saved.entity.sourceFormat === 'blk' || baseline.sourceFormat === 'blk') {
-        codecFail('DESIGN_IDENTITY_MISMATCH', '$.entity.sourceFormat', 'Mek V2 state cannot use a BLK baseline');
+    if (saved.entity !== currentBaseline.entity
+        || saved.entity !== entity.uuid()) {
+        codecFail('DESIGN_IDENTITY_MISMATCH', '$.entity', 'saved state belongs to a different UUID');
     }
 }
 
@@ -4817,12 +4308,19 @@ function assertExactSerializedUnitKeys(
     if (saved.schemaVersion !== CBT_UNIT_PERSISTENCE_SCHEMA_VERSION) {
         codecFail('INVALID_SERIALIZED_STATE', '$.schemaVersion', `must be unit schema ${CBT_UNIT_PERSISTENCE_SCHEMA_VERSION}`);
     }
+    if (saved.sourceHashCanary !== undefined) {
+        try {
+            asSourceHashCanary(saved.sourceHashCanary);
+        } catch {
+            codecFail('INVALID_SERIALIZED_STATE', '$.sourceHashCanary', 'must be a four-character base64url canary');
+        }
+    }
     const allowed = new Set([
-        'schemaVersion', 'instanceId', 'entity', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
+        'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
         'stateRevision', 'destroyed', 'locationState', 'locationConditions', 'slotState', 'componentState',
         'ammoState', 'crew', 'heat', 'family',
         'ruleChecks', 'movementPsr', 'attackerTargeting',
-        'equipmentRowOrder', 'conditions', 'turn', 'pendingCombat', 'restoration',
+        'equipmentRowOrder', 'conditions', 'turn', 'pendingCombat',
     ]);
     for (const key of Object.keys(saved)) if (!allowed.has(key)) {
         codecFail('INVALID_SERIALIZED_STATE', `$.${key}`, 'unknown serialized unit field');
@@ -4856,7 +4354,7 @@ function assertBaselineMatchesEntity(
     entity: MekEntity,
     path: string,
 ): void {
-    if (baseline.entity.uuid !== entity.uuid()) {
+    if (baseline.entity !== entity.uuid()) {
         codecFail('BASELINE_ENTITY_MISMATCH', path, 'runtime baseline does not match the entity');
     }
 }

@@ -108,9 +108,9 @@ export class ForceBuilderViewerComponent {
         const eras = this.dataService.getEras();
         const summaries = force.members().flatMap(member => {
             if (!isCBTForceMember(member)) return [member.getSummary()];
-            const identity = member.force.getUnitSourceIdentity(member.id);
-            const summary = identity
-                ? this.dataService.getUnitByIdentity(identity.provider, identity.uuid)
+            const uuid = member.force.getUnitUuid(member.id);
+            const summary = uuid
+                ? this.dataService.getUnitByUuid(uuid)
                 : undefined;
             return summary ? [summary] : [];
         });
@@ -326,9 +326,9 @@ export class ForceBuilderViewerComponent {
     showUnitInfo(event: MouseEvent, unit: ForceMember) {
         event.stopPropagation();
         if (isCBTForceMember(unit)) {
-            const identity = unit.force.getUnitSourceIdentity(unit.id);
-            const summary = identity
-                ? this.dataService.getUnitByIdentity(identity.provider, identity.uuid)
+            const uuid = unit.force.getUnitUuid(unit.id);
+            const summary = uuid
+                ? this.dataService.getUnitByUuid(uuid)
                 : undefined;
             if (!summary) return;
             this.dialogsService.createDialog(UnitDetailsDialogComponent, {

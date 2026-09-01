@@ -1,14 +1,13 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { asSourceHash, asUnitProviderId, asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asComponentId } from '../entity/entity-identifiers';
 import {
     ForceEnvelopeValidationError,
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
-    CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
     asForceId,
     asSavedTargetRef,
     createSavedTargetRef,
@@ -26,11 +25,9 @@ import { MAX_MEK_HEATSINKS_OFF_V2, MAX_MEK_HEAT_VALUE_V2 } from './mek-heat-stat
 import { prepareCBTForceRosterMutationPlan } from './cbt-force-roster-owner';
 import { isSerializedNonMekUnit } from './non-mek-unit-persistence';
 
-const DIGEST = asSourceHash('A'.repeat(27));
 const UUID_A = asUnitUuid('01890e02-93bd-7b31-b5fa-4b56e92b1234');
 const UUID_B = asUnitUuid('01890e02-93bd-7b31-b5fa-4b56e92b1235');
 const UUID_C = asUnitUuid('01890e02-93bd-7b31-b5fa-4b56e92b1236');
-const PROVIDER = asUnitProviderId('mm-data');
 
 describe('V2 force persistence', () => {
     it('uses compact target prefixes without length framing', () => {
@@ -75,31 +72,17 @@ describe('V2 force persistence', () => {
     });
 
     it('snapshots force validation before any async mutation window', async () => {
-        const body = clone(mixedForce());
-        const unit = body.units[0].unit;
-        unit.restoration = {
-            schemaVersion: 1,
-            algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
-            fromBaseline: unit.baselineRefAtSave,
-            sourceChanged: false,
-            warnings: [],
-            unresolved: [],
-            acceptedAliases: [],
-        };
-        const sealed = await validateSerializedCBTForceV2(asForce(body));
+        const sealed = await validateSerializedCBTForceV2(mixedForce());
         const mutable = clone(sealed);
         const validationPending = validateSerializedCBTForceV2(mutable);
         const invalid = clone(sealed);
-        invalid.units[0].unit.restoration.algorithmVersion = 1;
+        invalid.units[0].unit.stateRevision = -1;
         for (const key of Object.keys(mutable)) delete mutable[key];
         Object.assign(mutable, invalid);
 
         const validated = await validationPending;
-        const validatedUnit = validated.units[0];
-        expect(!isSerializedNonMekUnit(validatedUnit.unit)
-            ? validatedUnit.unit.restoration?.algorithmVersion
-            : undefined).toBe(CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2);
-        expect(mutable.units[0].unit.restoration.algorithmVersion).toBe(1);
+        expect(validated.units[0].unit.stateRevision).toBe(3);
+        expect(mutable.units[0].unit.stateRevision).toBe(-1);
     });
 
     it('fails closed on duplicate, orphaned, missing, obsolete-kind, or misordered roster rows', async () => {
@@ -276,37 +259,6 @@ describe('V2 force persistence', () => {
         const missingAssignment = clone(mixedForce());
         delete missingAssignment.units[0].unit.deployment.values.crewAssignment;
         await expectCode(validateSerializedCBTForceV2(asForce(missingAssignment)), 'INVALID_SHAPE');
-    });
-
-    it('round-trips compact V1 conversion diagnostics without raw legacy state', async () => {
-        const valid = clone(mixedForce());
-        const unit = valid.units[0].unit;
-        unit.restoration = {
-            schemaVersion: 1,
-            algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
-            fromBaseline: {
-                kind: 'legacy-v1',
-                coordinateProfileVersion: 1,
-            },
-            sourceChanged: false,
-            warnings: [{ code: 'LEGACY_FACT_RETAINED', message: 'One opaque fact was retained.' }],
-            unresolved: [],
-            acceptedAliases: [],
-        };
-
-        const sealed = await validateSerializedCBTForceV2(asForce(valid));
-        const restored = sealed.units[0];
-        const warnings = !isSerializedNonMekUnit(restored.unit)
-            ? restored.unit.restoration?.warnings
-            : undefined;
-        expect(warnings).toEqual([{
-            code: 'LEGACY_FACT_RETAINED',
-            message: 'One opaque fact was retained.',
-        }]);
-
-        const rawLegacy = clone(valid);
-        rawLegacy.units[0].unit.restoration.legacyEvidence = { raw: true };
-        await expectCode(validateSerializedCBTForceV2(asForce(rawLegacy)), 'INVALID_SHAPE');
     });
 
     it('validates bounded canonical nonmovement turn payloads and rejects duplicate movement authority', async () => {
@@ -538,124 +490,6 @@ describe('V2 force persistence', () => {
         }
     });
 
-    it('validates unresolved pending repairs as signed typed facts', async () => {
-        const valid = clone(mixedForce());
-        const unit = valid.units[0].unit;
-        const [targetRef, sourceTarget] = Object.entries(unit.blueprintReferences.targets)[0];
-        unit.restoration = {
-            schemaVersion: 1,
-            algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
-            fromBaseline: unit.baselineRefAtSave,
-            sourceChanged: false,
-            warnings: [],
-            unresolved: [{
-                recoveryId: 'recovery:pending-location',
-                sourceTargetRef: asSavedTargetRef(targetRef),
-                sourceTarget,
-                fact: { kind: 'pending-location-damage', damage: -1 },
-                reason: 'LOCATION_NOT_FOUND',
-            }],
-            acceptedAliases: [],
-            heatRecovery: {
-                schemaVersion: 1,
-                sourceReferences: unit.blueprintReferences,
-                targetTranslation: { [targetRef]: targetRef },
-                currentReferences: unit.blueprintReferences,
-            },
-            ignoredRecovery: [{
-                recoveryId: 'recovery:ignored-location',
-                algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
-            }],
-        };
-        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
-
-        const missingHeatAuthority = clone(valid);
-        delete missingHeatAuthority.units[0].unit.restoration.heatRecovery;
-        await expectCode(validateSerializedCBTForceV2(asForce(missingHeatAuthority)), 'INVALID_SHAPE', undefined, 'missing heat authority');
-
-        const substitutedCurrentTable = clone(valid);
-        substitutedCurrentTable.units[0].unit.restoration.heatRecovery.currentReferences.targets = {};
-        await expectCode(validateSerializedCBTForceV2(asForce(substitutedCurrentTable)), 'INVALID_SHAPE', undefined, 'substituted current table');
-
-        const forgedTranslation = clone(valid);
-        forgedTranslation.units[0].unit.restoration.heatRecovery.targetTranslation[targetRef] =
-            'target:forged-current-ref';
-        await expectCode(validateSerializedCBTForceV2(asForce(forgedTranslation)), 'DANGLING_TARGET_REF');
-
-        const zero = clone(valid);
-        zero.units[0].unit.restoration.unresolved[0].fact.damage = 0;
-        await expectCode(validateSerializedCBTForceV2(asForce(zero)), 'INVALID_SHAPE', undefined, 'zero pending damage');
-
-        const wrongKind = clone(valid);
-        wrongKind.units[0].unit.restoration.unresolved[0] = {
-            recoveryId: 'recovery:wrong-kind',
-            sourceTargetRef: asSavedTargetRef(targetRef),
-            sourceTarget,
-            fact: { kind: 'pending-component-status', status: 'available' },
-            reason: 'COMPONENT_NOT_FOUND',
-        };
-        await expectCode(validateSerializedCBTForceV2(asForce(wrongKind)), 'TARGET_KIND_MISMATCH');
-
-        const duplicateIgnored = clone(valid);
-        duplicateIgnored.units[0].unit.restoration.ignoredRecovery.push(
-            clone(duplicateIgnored.units[0].unit.restoration.ignoredRecovery[0]),
-        );
-        await expectCode(validateSerializedCBTForceV2(asForce(duplicateIgnored)), 'INVALID_SHAPE');
-
-        const activeOverlap = clone(valid);
-        activeOverlap.units[0].unit.restoration.ignoredRecovery[0].recoveryId = 'recovery:pending-location';
-        await expectCode(validateSerializedCBTForceV2(asForce(activeOverlap)), 'INVALID_SHAPE');
-
-        const unsupportedAlgorithmOverlap = clone(activeOverlap);
-        unsupportedAlgorithmOverlap.units[0].unit.restoration.ignoredRecovery[0].algorithmVersion = 1;
-        await expectCode(validateSerializedCBTForceV2(asForce(unsupportedAlgorithmOverlap)), 'INVALID_SHAPE');
-        expect(targetRef).toBeTruthy();
-    });
-
-    it('retains historical aliases without requiring their old target ref in the current table', async () => {
-        const historical = clone(mixedForce());
-        const unit = historical.units[0].unit;
-        const [rawSourceRef, sourceTarget] = Object.entries(unit.blueprintReferences.targets)[0] as [
-            string,
-            Record<string, unknown>,
-        ];
-        const sourceTargetRef = asSavedTargetRef(rawSourceRef);
-        const historicalEntity = clone(unit.baselineRefAtSave.entity);
-        historicalEntity.sourceHashAtSave = asSourceHash(`${'H'.repeat(26)}A`);
-        unit.restoration = {
-            schemaVersion: 1,
-            algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
-            fromBaseline: unit.baselineRefAtSave,
-            sourceChanged: true,
-            warnings: [],
-            unresolved: [{
-                recoveryId: 'recovery:historical-alias',
-                sourceTargetRef,
-                sourceTarget,
-                fact: { kind: 'location-damage', damage: 1 },
-                reason: 'HISTORICAL_ALIAS_TARGET',
-            }],
-            acceptedAliases: [{
-                sourceTargetRef,
-                targetEntity: historicalEntity,
-                target: 'component:historical-only',
-                algorithmVersion: CBT_UNIT_RESTORATION_ALGORITHM_VERSION_V2,
-            }],
-            heatRecovery: {
-                schemaVersion: 1,
-                sourceReferences: unit.blueprintReferences,
-                targetTranslation: { [sourceTargetRef]: sourceTargetRef },
-                currentReferences: unit.blueprintReferences,
-            },
-        };
-        await expectAsync(validateSerializedCBTForceV2(asForce(historical))).toBeResolved();
-
-        const danglingCurrent = clone(historical);
-        danglingCurrent.units[0].unit.restoration.acceptedAliases[0].targetEntity =
-            clone(danglingCurrent.units[0].unit.baselineRefAtSave.entity);
-        await expectCode(validateSerializedCBTForceV2(asForce(danglingCurrent)), 'DANGLING_TARGET_REF');
-    });
-
     it('rejects sealed encounter candidates whose target source and read-only ownership disagree', async () => {
         const targetFact = (source: 'manual' | 'opfor', readOnly: boolean) => ({
             kind: 'target',
@@ -780,17 +614,11 @@ function v2Entry(instance: string, uuid: typeof UUID_A): SerializedForceUnitEntr
 
 function v2Unit(instanceId: string, uuid: typeof UUID_A): SerializedCBTUnitV2 {
     const target = asSavedTargetRef('location:ct:internal');
-    const entity = {
-        origin: 'megamek' as const,
-        provider: PROVIDER,
-        uuid,
-        sourceHashAtSave: DIGEST,
-        sourceFormat: 'mtf' as const,
-    };
+    const entity = uuid;
     return {
         schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
         instanceId,
-        entity: { origin: 'megamek', provider: PROVIDER, uuid, sourceHashAtSave: DIGEST, sourceFormat: 'mtf' },
+        entity,
         baselineRefAtSave: {
             entity,
             ruleset: 'core-2026',

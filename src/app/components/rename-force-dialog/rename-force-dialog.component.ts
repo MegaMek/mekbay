@@ -700,9 +700,9 @@ export class RenameForceDialogComponent implements OnDestroy {
     private forceSummaries(): UnitSummary[] {
         return this.data.force.members().flatMap(member => {
             if (!isCBTForceMember(member)) return [member.getSummary()];
-            const identity = member.force.getUnitSourceIdentity(member.id);
-            const summary = identity
-                ? this.dataService.getUnitByIdentity(identity.provider, identity.uuid)
+            const uuid = member.force.getUnitUuid(member.id);
+            const summary = uuid
+                ? this.dataService.getUnitByUuid(uuid)
                 : undefined;
             return summary ? [summary] : [];
         });

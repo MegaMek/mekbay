@@ -50,13 +50,6 @@ interface BenchmarkBundle {
     eras: Eras;
 }
 
-interface SyntheticMegaMekRarityBenchmarkScenario {
-    bundle: BenchmarkBundle;
-    availabilityRecords: MegaMekWeightedAvailabilityRecord[];
-    availabilityRecordsByName: ReadonlyMap<string, MegaMekWeightedAvailabilityRecord>;
-    expectedTopScore: number;
-}
-
 function stubMegaMekAvailabilityRecords(
     dataService: DataService,
     records: readonly MegaMekWeightedAvailabilityRecord[],
@@ -109,7 +102,7 @@ class TestUnitsCatalog {
         return this.units;
     }
 
-    public getCoreSummaryByIdentity(): undefined {
+    public getCoreSummaryByUuid(): undefined {
         return undefined;
     }
 
@@ -165,56 +158,6 @@ function prepareUnitForSearch(unit: UnitSummary, index: number): UnitSummary {
     clone.source = Array.isArray(clone.source) ? clone.source : [];
     clone.published = Array.isArray(clone.published) ? clone.published : [];
     return clone;
-}
-
-function buildBenchmarkBundle(payload: BenchmarkBundle, targetCount: number): BenchmarkBundle {
-    const prepared = payload.units.units.map((unit, index) => prepareUnitForSearch(unit, index));
-    if (prepared.length === 0) {
-        return {
-            units: { ...payload.units, units: [] },
-            factions: { ...payload.factions, factions: [] },
-            eras: { ...payload.eras, eras: [] },
-        };
-    }
-
-    const dataset: UnitSummary[] = [];
-    const idExpansion = new Map<number, number[]>();
-    for (let index = 0; index < targetCount; index++) {
-        const unit = prepareUnitForSearch(prepared[index % prepared.length], index);
-        dataset.push(unit);
-        const expandedIds = idExpansion.get(prepared[index % prepared.length].id) ?? [];
-        expandedIds.push(unit.id);
-        idExpansion.set(prepared[index % prepared.length].id, expandedIds);
-    }
-
-    const expandIds = (ids: number[]) => ids.flatMap(id => idExpansion.get(id) ?? []);
-
-    return {
-        units: {
-            ...payload.units,
-            units: dataset,
-        },
-        eras: {
-            ...payload.eras,
-            eras: payload.eras.eras.map(era => ({
-                ...cloneUnit(era),
-                factions: Array.isArray(era.factions) ? [...era.factions] : Array.from(era.factions),
-                units: expandIds(Array.isArray(era.units) ? era.units : Array.from(era.units)),
-            })),
-        },
-        factions: {
-            ...payload.factions,
-            factions: payload.factions.factions.map(faction => ({
-                ...cloneUnit(faction),
-                eras: Object.fromEntries(
-                    Object.entries(faction.eras).map(([eraId, unitIds]) => [
-                        Number(eraId),
-                        new Set(expandIds(Array.isArray(unitIds) ? unitIds : Array.from(unitIds))),
-                    ])
-                ) as Record<number, Set<number>>,
-            })),
-        },
-    };
 }
 
 function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
@@ -660,50 +603,6 @@ function setFactionFilter(service: UnitSearchFiltersService, factionName: string
     });
 }
 
-function buildSyntheticMegaMekRarityBenchmarkScenario(targetCount: number): SyntheticMegaMekRarityBenchmarkScenario {
-    const bundle = buildBenchmarkBundle(createStandaloneBundle(), targetCount);
-    let expectedTopScore = -1;
-
-    const availabilityRecords = bundle.units.units.flatMap((unit, index) => {
-        if (index % 13 === 0) {
-            return [];
-        }
-
-        let requisitionScore = ((index % 10) * 10) + 5;
-        let salvageScore = ((((index + 3) % 8) + 1) * 12) - 5;
-
-        if (index % 10 === 0) {
-            requisitionScore = 0;
-        }
-        if (index % 15 === 0) {
-            salvageScore = 0;
-        }
-
-        const effectiveScore = Math.max(requisitionScore, salvageScore);
-        expectedTopScore = Math.max(expectedTopScore, effectiveScore);
-
-        return [{
-            n: unit.name,
-            e: {
-                '1': {
-                    '1': [requisitionScore, salvageScore] as [number, number],
-                },
-            },
-        }];
-    });
-
-    const availabilityRecordsByName = new Map(
-        availabilityRecords.map(record => [record.n, record] as const)
-    );
-
-    return {
-        bundle,
-        availabilityRecords,
-        availabilityRecordsByName,
-        expectedTopScore,
-    };
-}
-
 function hydrateDataService(
     dataService: DataService,
     unitsCatalog: TestUnitsCatalog,
@@ -723,14 +622,11 @@ async function flushAsyncWork(): Promise<void> {
 
 describe('UnitSearchFiltersService search telemetry', () => {
     let benchmarkBundle: BenchmarkBundle | null = null;
-    let sharedService: UnitSearchFiltersService | null = null;
-    let sharedDataService: DataService | null = null;
-    let sharedGameServiceStub: { currentGameSystem: ReturnType<typeof signal<GameSystem>> } | null = null;
+    let sharedService: UnitSearchFiltersService;
 
     function createService(
         bundleOverride?: BenchmarkBundle,
         options?: {
-            useRealLogger?: boolean;
             workerFactory?: (() => SearchWorkerLike) | null;
             automaticallyConvertFiltersToSemantic?: boolean;
             initialParams?: URLSearchParams;
@@ -826,9 +722,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             ],
         });
 
-        if (!options?.useRealLogger) {
-            TestBed.overrideProvider(LoggerService, { useValue: loggerStub });
-        }
+        TestBed.overrideProvider(LoggerService, { useValue: loggerStub });
 
         const dataService = TestBed.inject(DataService);
         const bundle = bundleOverride ?? benchmarkBundle;
@@ -841,77 +735,26 @@ describe('UnitSearchFiltersService search telemetry', () => {
             service: TestBed.inject(UnitSearchFiltersService),
             optionsServiceStub,
             loggerStub,
-            logger: TestBed.inject(LoggerService),
             gameServiceStub,
             urlServiceStub,
         };
     }
 
-    beforeAll(async () => {
-        try {
-            const [unitsResponse, factionsResponse, erasResponse] = await Promise.all([
-                fetch('https://db.mekbay.com/units.json'),
-                fetch('https://db.mekbay.com/factions.json'),
-                fetch('https://db.mekbay.com/eras.json'),
-            ]);
-
-            if (!unitsResponse.ok || !factionsResponse.ok || !erasResponse.ok) {
-                throw new Error('Failed to load one or more benchmark payloads');
-            }
-
-            benchmarkBundle = buildBenchmarkBundle({
-                units: await unitsResponse.json() as Units,
-                factions: await factionsResponse.json() as MULFactions,
-                eras: await erasResponse.json() as Eras,
-            }, 10000);
-
-            const { service, dataService, gameServiceStub } = createService();
-            sharedService = service;
-            sharedDataService = dataService;
-            sharedGameServiceStub = gameServiceStub;
-        } catch {
-            benchmarkBundle = null;
-        }
+    beforeAll(() => {
+        benchmarkBundle = createStandaloneBundle();
+        const { service } = createService();
+        sharedService = service;
     });
 
     afterAll(() => {
         jasmine.DEFAULT_TIMEOUT_INTERVAL = originalJasmineTimeoutInterval;
     });
 
-    xit('captures stage timings for a 10,000-unit real-data search', async () => {
-        if (!sharedService) {
-            pending('Real unit data could not be loaded for the benchmark test.');
-            return;
-        }
-        sharedService.resetFilters();
-        sharedService.searchText.set('crab bv=1000-3000');
-        const service = sharedService;
-
-        const results = service.filteredUnits();
-        await Promise.resolve();
-        const telemetry = service.searchTelemetry();
-
-        expect(results.length).toBeGreaterThan(0);
-        expect(telemetry).not.toBeNull();
-        expect(telemetry?.query).toBe('crab bv=1000-3000');
-        expect(telemetry?.unitCount).toBe(10000);
-        expect(telemetry?.resultCount).toBe(results.length);
-        expect(telemetry?.totalMs).toBeGreaterThan(0);
-        expect(telemetry?.stages.map(stage => stage.name)).toContain('parse-query');
-        expect(telemetry?.stages.map(stage => stage.name)).toContain('ast-filter');
-        expect(telemetry?.stages.map(stage => stage.name)).toContain('sort');
-    });
-
     it('skips relevance prep for complex filter-only searches', async () => {
-        if (!sharedService) {
-            pending('Real unit data could not be loaded for the benchmark test.');
-            return;
-        }
-
         sharedService.resetFilters();
         const service = sharedService;
 
-        service.searchText.set('(faction=="draco*" or faction="*suns") and type=BM');
+        service.searchText.set('(faction=="test*" or faction="*faction") and type=BM');
 
         const results = service.filteredUnits();
         await Promise.resolve();
@@ -924,7 +767,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(telemetry?.stages.map(stage => stage.name)).toContain('ast-filter');
     });
 
-    xit('recomputes search results when the search corpus is refreshed', async () => {
+    it('recomputes search results when the search corpus is refreshed', async () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length === 0) {
             pending('Real unit data could not be loaded for the benchmark test.');
             return;
@@ -948,7 +791,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const telemetry = service.searchTelemetry();
 
         expect(results.some(unit => unit.name === 'Refresh Probe Unit')).toBeTrue();
-        expect(telemetry?.unitCount).toBe(10001);
+        expect(telemetry?.unitCount).toBe(3);
     });
 
     it('invalidates force pack lookup caches when the search corpus is refreshed', () => {
@@ -1524,10 +1367,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
         });
         const existingForceUnit = createFormationExistingForceUnit(bundle.units.units[0]);
 
-        expect(bundle.units.units.map(unit => dataService.getUnitByIdentity(
-            unit.provider,
-            unit.uuid,
-        )?.name)).toEqual(bundle.units.units.map(unit => unit.name));
+        expect(bundle.units.units.map(unit => dataService.getUnitByUuid(unit.uuid)?.name))
+            .toEqual(bundle.units.units.map(unit => unit.name));
 
         await flushAsyncWork();
 
@@ -3068,10 +2909,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
             },
         ]);
 
-        expect(bundle.units.units.map(unit => dataService.getUnitByIdentity(
-            unit.provider,
-            unit.uuid,
-        )?.name)).toEqual(bundle.units.units.map(unit => unit.name));
+        expect(bundle.units.units.map(unit => dataService.getUnitByUuid(unit.uuid)?.name))
+            .toEqual(bundle.units.units.map(unit => unit.name));
 
         await flushAsyncWork();
 
@@ -5978,7 +5817,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const testMek = bundle.units.units.find(unit => unit.name === 'Test Mek')!;
         const testTank = bundle.units.units.find(unit => unit.name === 'Test Tank')!;
         const { dataService, service } = createService(bundle);
-        const initialTagIds = dataService.getIndexedUnitIds('_tags', 'tag-a');
+        const searchIndex = TestBed.inject(UnitSearchIndexService);
+        const initialTagIds = searchIndex.getIndexedUnitIds('_tags', 'tag-a');
 
         expect(initialTagIds?.has(testMek.uuid)).toBeTrue();
 
@@ -5999,13 +5839,13 @@ describe('UnitSearchFiltersService search telemetry', () => {
             formatVersion: 3,
         });
 
-        const indexedAlphaIds = dataService.getIndexedUnitIds('_tags', 'alpha-tag');
-        const indexedBetaIds = dataService.getIndexedUnitIds('_tags', 'beta-tag');
-        const dropdownUniverse = dataService.getDropdownOptionUniverse('_tags').map(option => option.name);
+        const indexedAlphaIds = searchIndex.getIndexedUnitIds('_tags', 'alpha-tag');
+        const indexedBetaIds = searchIndex.getIndexedUnitIds('_tags', 'beta-tag');
+        const dropdownUniverse = searchIndex.getDropdownOptionUniverse('_tags').map(option => option.name);
         const tagOptions = service.advOptions()['_tags']?.options ?? [];
         const namedTagOptions = tagOptions.filter(option => typeof option !== 'number');
 
-        expect(dataService.getIndexedUnitIds('_tags', 'tag-a')).toBeUndefined();
+        expect(searchIndex.getIndexedUnitIds('_tags', 'tag-a')).toBeUndefined();
         expect(indexedAlphaIds?.has(testMek.uuid)).toBeTrue();
         expect(indexedBetaIds?.has(testTank.uuid)).toBeTrue();
         expect(dropdownUniverse).toEqual(['alpha-tag', 'beta-tag']);
@@ -6068,37 +5908,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedSpecialsOptions.length).toBe(2);
         expect(availableSpecial).toEqual(jasmine.objectContaining({ name: 'ECM', available: true }));
         expect(unavailableSpecial).toEqual(jasmine.objectContaining({ name: 'TAG', available: false }));
-    });
-
-    xit('captures advOptions telemetry with per-filter timings', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length === 0) {
-            pending('Real unit data could not be loaded for the advOptions telemetry test.');
-            return;
-        }
-
-        const { service } = createService();
-        service.searchText.set('crab');
-        service.setFilter('type', ['Mek']);
-
-        const advOptions = service.advOptions();
-        expect(Object.keys(advOptions).length).toBeGreaterThan(0);
-        expect(service.advOptionsTelemetry()).toBeNull();
-
-        await Promise.resolve();
-
-        const telemetry = service.advOptionsTelemetry();
-        const componentStage = telemetry?.filters.find(stage => stage.key === 'componentName');
-
-        expect(telemetry).not.toBeNull();
-        expect(telemetry?.query).toBe('crab');
-        expect(telemetry?.baseUnitCount).toBe(10000);
-        expect(telemetry?.textFilteredUnitCount).toBeLessThanOrEqual(telemetry?.baseUnitCount ?? 0);
-        expect(telemetry?.visibleFilterCount).toBeGreaterThan(0);
-        expect(componentStage).toEqual(jasmine.objectContaining({ key: 'componentName', type: 'dropdown' }));
-        expect(componentStage?.optionCount).toBeGreaterThan(0);
-        expect(componentStage?.contextUnitCount).toBeGreaterThan(0);
-        expect(componentStage?.contextDerivationMs).toBeGreaterThanOrEqual(0);
-        expect(componentStage?.contextStrategy).toBe('fully-filtered');
     });
 
     it('captures excluded-filter context derivation telemetry for interacted filters', async () => {
@@ -6166,210 +5975,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(oneFilter.base).toBeGreaterThan(0);
         expect(twoFilters.excluded).toBe(2);
         expect(threeFilters.excluded).toBe(3);
-    });
-
-    // Manual diagnostic benchmark: run with xit -> it to enable
-    xit('benchmarks advOptions telemetry for componentName, source, role, faction, and era filters', async () => {
-        if (!sharedService) {
-            pending('Real unit data could not be loaded for the advOptions filter benchmark test.');
-            return;
-        }
-
-        const service = sharedService;
-        service.resetFilters();
-
-        const pickFirstAvailableOption = (service: UnitSearchFiltersService, key: string): string => {
-            const filter = service.advOptions()[key];
-            if (!filter || filter.type !== 'dropdown') {
-                throw new Error(`Expected dropdown filter for ${key}`);
-            }
-
-            const option = filter.options.find(entry => entry.available !== false);
-            if (!option) {
-                throw new Error(`Expected at least one available option for ${key}`);
-            }
-
-            return option.name;
-        };
-
-        const selectedValues = {
-            componentName: pickFirstAvailableOption(service, 'componentName'),
-            source: pickFirstAvailableOption(service, 'source'),
-            role: pickFirstAvailableOption(service, 'role'),
-            faction: pickFirstAvailableOption(service, 'faction'),
-            era: pickFirstAvailableOption(service, 'era'),
-        };
-
-        const measureScenario = async (
-            label: string,
-            configure: (service: UnitSearchFiltersService, selectedValues: {
-                componentName: string;
-                source: string;
-                role: string;
-                faction: string;
-                era: string;
-            }) => void,
-        ) => {
-            service.resetFilters();
-            await flushAsyncWork();
-
-            configure(service, selectedValues);
-
-            const filteredUnits = service.filteredUnits();
-            const advOptions = service.advOptions();
-            expect(Object.keys(advOptions).length).toBeGreaterThan(0);
-
-            await flushAsyncWork();
-
-            const telemetry = service.advOptionsTelemetry();
-            expect(telemetry).not.toBeNull();
-
-            const filters = telemetry?.filters ?? [];
-            return {
-                label,
-                selectedValue: selectedValues[label as keyof typeof selectedValues],
-                resultCount: filteredUnits.length,
-                totalMs: Number((telemetry?.totalMs ?? 0).toFixed(2)),
-                totalContextDerivationMs: Number(filters.reduce((sum, stage) => sum + stage.contextDerivationMs, 0).toFixed(2)),
-                slowestContextStages: filters
-                    .slice()
-                    .sort((a, b) => b.contextDerivationMs - a.contextDerivationMs)
-                    .slice(0, 5)
-                    .map(stage => ({
-                        key: stage.key,
-                        strategy: stage.contextStrategy,
-                        contextDerivationMs: Number(stage.contextDerivationMs.toFixed(2)),
-                        contextUnitCount: stage.contextUnitCount,
-                    })),
-            };
-        };
-
-        const report = [
-            await measureScenario('componentName', (service, selectedValues) => {
-                service.setFilter('componentName', {
-                    [selectedValues.componentName]: {
-                        name: selectedValues.componentName,
-                        state: 'or',
-                        count: 1,
-                    },
-                });
-            }),
-            await measureScenario('source', (service, selectedValues) => {
-                service.setFilter('source', {
-                    [selectedValues.source]: {
-                        name: selectedValues.source,
-                        state: 'or',
-                        count: 1,
-                    },
-                });
-            }),
-            await measureScenario('role', (service, selectedValues) => {
-                service.setFilter('role', [selectedValues.role]);
-            }),
-            await measureScenario('faction', (service, selectedValues) => {
-                service.setFilter('faction', {
-                    [selectedValues.faction]: {
-                        name: selectedValues.faction,
-                        state: 'or',
-                        count: 1,
-                    },
-                });
-            }),
-            await measureScenario('era', (service, selectedValues) => {
-                service.setFilter('era', [selectedValues.era]);
-            }),
-        ];
-
-        console.info('ADV_OPTIONS_FILTER_BENCH', JSON.stringify(report));
-
-        expect(report.length).toBe(5);
-        expect(report.every(entry => entry.totalMs >= 0)).toBeTrue();
-    });
-
-    // Manual diagnostic benchmark: run with xit -> it to enable
-    xit('benchmarks synthetic MegaMek rarity sorting across 50,000 units', async () => {
-        const setupStartedAt = performance.now();
-        const scenario = buildSyntheticMegaMekRarityBenchmarkScenario(50000);
-        const { dataService, service } = createService(scenario.bundle);
-
-        stubMegaMekAvailabilityRecords(dataService, scenario.availabilityRecords);
-
-        (service as any).slowSearchTelemetryThresholdMs = 0;
-        service.setSortOrder('name');
-        service.filteredUnits();
-        await flushAsyncWork();
-        const setupMs = performance.now() - setupStartedAt;
-
-        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
-        service.setSortDirection('desc');
-        service.searchText.set('');
-
-        const coldStartedAt = performance.now();
-        const coldFilteredUnits = service.filteredUnits();
-        const coldElapsedMs = performance.now() - coldStartedAt;
-
-        await flushAsyncWork();
-
-        const coldTelemetry = service.searchTelemetry();
-        const coldSortStage = coldTelemetry?.stages.find(stage => stage.name === 'sort');
-
-        service.setSortOrder('name');
-        service.filteredUnits();
-        await flushAsyncWork();
-
-        service.setSortOrder(MEGAMEK_RARITY_PRODUCTION_SORT_KEY);
-
-        const warmStartedAt = performance.now();
-        const filteredUnits = service.filteredUnits();
-        const warmElapsedMs = performance.now() - warmStartedAt;
-
-        await flushAsyncWork();
-
-        const telemetry = service.searchTelemetry();
-        const sortStage = telemetry?.stages.find(stage => stage.name === 'sort');
-        const topRecord = scenario.availabilityRecordsByName.get(filteredUnits[0]?.name ?? '');
-        const topScore = Math.max(topRecord?.e['1']?.['1']?.[0] ?? -1, topRecord?.e['1']?.['1']?.[1] ?? -1);
-
-        console.info('MEGAMEK_RARITY_SORT_BENCH', JSON.stringify({
-            unitCount: scenario.bundle.units.units.length,
-            resultCount: filteredUnits.length,
-            setupMs: Number(setupMs.toFixed(2)),
-            coldTotalMs: Number(coldElapsedMs.toFixed(2)),
-            coldTelemetryTotalMs: Number((coldTelemetry?.totalMs ?? 0).toFixed(2)),
-            coldSortMs: Number((coldSortStage?.durationMs ?? 0).toFixed(2)),
-            warmTotalMs: Number(warmElapsedMs.toFixed(2)),
-            warmTelemetryTotalMs: Number((telemetry?.totalMs ?? 0).toFixed(2)),
-            warmSortMs: Number((sortStage?.durationMs ?? 0).toFixed(2)),
-            topScore,
-        }));
-
-        expect(coldFilteredUnits.length).toBe(50000);
-        expect(filteredUnits.length).toBe(50000);
-        expect(telemetry?.unitCount).toBe(50000);
-        expect(sortStage).toBeDefined();
-        expect(topScore).toBe(scenario.expectedTopScore);
-    });
-
-    xit('does not write to logger signals synchronously while filteredUnits is computing', async () => {
-        if (!benchmarkBundle || benchmarkBundle.units.units.length === 0) {
-            pending('Real unit data could not be loaded for the logger regression test.');
-            return;
-        }
-
-        const { service, logger } = createService(undefined, { useRealLogger: true });
-        const loggerService = logger as LoggerService;
-        spyOn(console, 'log');
-        (service as any).slowSearchTelemetryThresholdMs = 0;
-
-        service.searchText.set('crab bv=1000-3000');
-
-        expect(() => service.filteredUnits()).not.toThrow();
-        expect(service.searchTelemetry()).toBeNull();
-
-        await Promise.resolve();
-
-        expect(service.searchTelemetry()).not.toBeNull();
-        expect(loggerService.logs().some(entry => entry.message.includes('Unit search telemetry:'))).toBeTrue();
     });
 
     it('uses worker results when a worker factory is provided', async () => {

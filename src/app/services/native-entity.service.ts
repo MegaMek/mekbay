@@ -9,18 +9,14 @@ import {
     type NativeEntitySourceRepository,
 } from '../models/entity/entity-repository';
 import type { NativeUnitSourceHandle } from '../models/native-unit-source-handle';
-import type { SavedEntityIdentity } from '../models/persisted-unit-state';
+import { sourceHashCanary } from '../models/source-hash-canary';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
 import { CoreUnitCatalogService } from './unit-catalog/core-unit-catalog.service';
 import { DataService } from './data.service';
-import {
-    MM_DATA_UNIT_PROVIDER_ID,
-    type SourceHash,
-    type UnitProviderId,
-    type UnitUuid,
-} from './unit-catalog/unit-catalog.types';
+import type { UnitUuid } from './unit-catalog/unit-catalog.types';
+import { UnitsCatalogService } from './catalogs/units-catalog.service';
 
 interface PreparedEntityRepository {
     readonly inputsKey: string;
@@ -28,7 +24,7 @@ interface PreparedEntityRepository {
     readonly generation: NonNullable<ReturnType<CoreUnitCatalogService['getPublishedGeneration']>>;
 }
 
-export type NativeEntityLoadErrorCode = 'UNSUPPORTED_PROVIDER' | 'CATALOG_NOT_READY';
+export type NativeEntityLoadErrorCode = 'CATALOG_NOT_READY';
 
 export class NativeEntityLoadError extends Error {
     public constructor(
@@ -43,19 +39,14 @@ export class NativeEntityLoadError extends Error {
 @Injectable({ providedIn: 'root' })
 export class CoreCatalogNativeEntitySourceRepository implements NativeEntitySourceRepository {
     private readonly data = inject(DataService);
+    private readonly catalog = inject(UnitsCatalogService);
 
-    public async read(identity: {
-        readonly provider: UnitProviderId;
-        readonly uuid: UnitUuid;
-    }): Promise<NativeEntitySource | undefined> {
-        if (identity.provider !== MM_DATA_UNIT_PROVIDER_ID) return undefined;
+    public async read(uuid: UnitUuid): Promise<NativeEntitySource | undefined> {
         await this.data.requireApplicationCatalogReady();
-        const stored = await this.data.readNativeUnitSource(identity.provider, identity.uuid);
+        const stored = await this.catalog.readNativeUnitSource(uuid);
         if (!stored) return undefined;
         return Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid: identity.uuid,
+            uuid,
             format: stored.format,
             sourceHash: stored.hash,
             bytes: stored.bytes,
@@ -75,31 +66,16 @@ export class NativeEntityService {
     private readonly data = inject(DataService);
     private cachedRepository?: PreparedEntityRepository;
 
-    public canLoad(identity: { readonly provider: UnitProviderId }): boolean {
-        return identity.provider === MM_DATA_UNIT_PROVIDER_ID;
+    public canLoad(identity: { readonly uuid: UnitUuid }): boolean {
+        const units = this.coreCatalog.getPublishedGeneration()?.manifest.manifest.units;
+        return units !== undefined && Object.prototype.hasOwnProperty.call(units, identity.uuid);
     }
 
-    public async load(identity: {
-        readonly provider: UnitProviderId;
-        readonly uuid: UnitUuid;
-        readonly sourceHashAtSave?: SourceHash;
-    }): Promise<LoadedEntity> {
-        const captured = Object.freeze({ ...identity });
-        if (!this.canLoad(captured)) {
-            throw new NativeEntityLoadError(
-                'UNSUPPORTED_PROVIDER',
-                `Native entity loading does not support provider ${captured.provider}`,
-            );
-        }
+    public async load(uuid: UnitUuid): Promise<LoadedEntity> {
         const prepared = await this.prepareRepository();
-        // The UUID is the persisted source of truth. A saved hash describes an
-        // obsolete catalog snapshot and must never reject a unit after mm-data
-        // legitimately updates it. Use only the current generation hash to
-        // verify/cache the source that is installed now.
-        const sourceHash = prepared.generation.manifest.manifest.units[captured.uuid]?.hash;
+        const sourceHash = prepared.generation.manifest.manifest.units[uuid]?.hash;
         return prepared.repository.load({
-            provider: captured.provider,
-            uuid: captured.uuid,
+            uuid,
             ...(sourceHash === undefined ? {} : { sourceHash }),
         });
     }
@@ -143,24 +119,15 @@ export class NativeEntityService {
     }
 }
 
-export function savedIdentityForLoadedEntity(loaded: LoadedEntity): SavedEntityIdentity {
-    return Object.freeze({
-        origin: loaded.source.origin,
-        provider: loaded.source.provider,
-        uuid: loaded.source.uuid,
-        sourceHashAtSave: loaded.source.sourceHash,
-        sourceFormat: loaded.source.format,
-    });
-}
-
 export function nativeSourceHandleForLoadedEntity(
     loaded: LoadedEntity,
 ): NativeUnitSourceHandle | undefined {
     if (loaded.source.file === undefined) return undefined;
+    const hashCanary = sourceHashCanary(loaded.source.sourceHash);
     return Object.freeze({
         file: loaded.source.file,
-        sourceHash: loaded.source.sourceHash,
         format: loaded.source.format,
+        ...(hashCanary === undefined ? {} : { sourceHashCanary: hashCanary }),
         bytes: loaded.source.bytes.slice(0),
     });
 }

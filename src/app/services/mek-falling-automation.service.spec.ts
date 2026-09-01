@@ -59,6 +59,25 @@ describe('MekFallingAutomationService', () => {
             .toEqual({ action: 'skip' });
     });
 
+    it('opens the editable fall dialog for a badge resume even in yes mode', async () => {
+        const createDialog = jasmine.createSpy('createDialog')
+            .and.returnValue({ closed: of(undefined) });
+        TestBed.configureTestingModule({ providers: [
+            MekFallingAutomationService,
+            { provide: OptionsService, useValue: { cbtAutomationMode: () => 'yes' } },
+            { provide: DialogsService, useValue: { createDialog } },
+        ] });
+
+        expect(await TestBed.inject(MekFallingAutomationService).resolve(
+            data,
+            { interactive: true },
+        )).toBeNull();
+        expect(createDialog).toHaveBeenCalledWith(
+            jasmine.any(Function),
+            jasmine.objectContaining({ disableClose: false, data }),
+        );
+    });
+
     it('treats closing the ask dialog as cancellation', async () => {
         const createDialog = jasmine.createSpy('createDialog').and.returnValue({ closed: of(undefined) });
         TestBed.configureTestingModule({ providers: [

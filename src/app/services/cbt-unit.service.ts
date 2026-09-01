@@ -17,19 +17,15 @@ import {
     type DeploymentConfiguration,
     type ScenarioRules,
 } from '../models/runtime/unit-state-initializer';
-import type { SourceHash, UnitProviderId, UnitUuid } from './unit-catalog/unit-catalog.types';
+import type { UnitUuid } from './unit-catalog/unit-catalog.types';
+import { sourceHashCanaryChanged } from '../models/source-hash-canary';
 import {
     NativeEntityService,
     nativeSourceHandleForLoadedEntity,
-    savedIdentityForLoadedEntity,
 } from './native-entity.service';
 
 export interface CreateCBTUnitRequest {
-    readonly identity: {
-        readonly provider: UnitProviderId;
-        readonly uuid: UnitUuid;
-        readonly sourceHashAtSave?: SourceHash;
-    };
+    readonly uuid: UnitUuid;
     readonly instanceId: string;
     readonly deployment: DeploymentConfiguration;
     readonly scenario: ScenarioRules;
@@ -43,15 +39,15 @@ export class CBTUnitService {
     private readonly entities = inject(NativeEntityService);
 
     public async create(request: CreateCBTUnitRequest): Promise<CBTUnit> {
-        const loaded = await this.entities.load(request.identity);
-        const identity = savedIdentityForLoadedEntity(loaded);
+        const loaded = await this.entities.load(request.uuid);
+        const uuid = loaded.source.uuid;
         const nativeSource = nativeSourceHandleForLoadedEntity(loaded);
         if (loaded.entity instanceof MekEntity) {
             return CBTMekUnit.createFromEntity({
-                identity: request.identity,
+                uuid: request.uuid,
                 instanceId: request.instanceId,
                 ...(request.crewSkills ? { crewSkills: request.crewSkills } : {}),
-            }, loaded.entity, identity, {
+            }, loaded.entity, uuid, {
                     initializerRevision: UNIT_STATE_INITIALIZER_REVISION,
                     profileId: request.initialStateProfileId ?? DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
                     deployment: request.deployment,
@@ -63,7 +59,7 @@ export class CBTUnitService {
         }
         return CBTNonMekUnit.create(loaded.entity, {
             instanceId: request.instanceId,
-            identity,
+            uuid,
             deployment: request.deployment,
             scenario: request.scenario,
             initialStateProfileId: request.initialStateProfileId
@@ -75,24 +71,31 @@ export class CBTUnitService {
     public async restore(
         saved: SerializedCBTUnitV2 | SerializedNonMekUnit,
         scenario: ScenarioRules,
+        onSourceHashChanged?: (unitName: string) => void,
     ): Promise<CBTUnit> {
         const loaded = await this.entities.load(saved.entity);
-        const identity = savedIdentityForLoadedEntity(loaded);
+        const uuid = loaded.source.uuid;
         const nativeSource = nativeSourceHandleForLoadedEntity(loaded);
+        if (sourceHashCanaryChanged(saved.sourceHashCanary, loaded.source.sourceHash)) {
+            onSourceHashChanged?.(loaded.entity.displayName());
+        }
+        let unit: CBTUnit;
         if (isSerializedNonMekUnit(saved)) {
             if (loaded.entity instanceof MekEntity) {
                 throw new Error('A persisted non-Mek runtime resolved to a Mek entity');
             }
-            return CBTNonMekUnit.restore(saved, loaded.entity, identity, nativeSource);
+            unit = CBTNonMekUnit.restore(saved, loaded.entity, uuid, nativeSource);
+        } else {
+            if (!(loaded.entity instanceof MekEntity)) {
+                throw new Error('A persisted Mek runtime resolved to a non-Mek entity');
+            }
+            unit = await CBTMekUnit.restoreFromEntity(saved, loaded.entity, uuid, {
+                    initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
+                    profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
+                    deployment: saved.deployment.values,
+                    scenario,
+            }, nativeSource);
         }
-        if (!(loaded.entity instanceof MekEntity)) {
-            throw new Error('A persisted Mek runtime resolved to a non-Mek entity');
-        }
-        return CBTMekUnit.restoreFromEntity(saved, loaded.entity, identity, {
-                initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
-                profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
-                deployment: saved.deployment.values,
-                scenario,
-        }, nativeSource);
+        return unit;
     }
 }

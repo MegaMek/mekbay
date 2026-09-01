@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { compareText } from '../../utils/string.util';
-import { sanitizeSavedEntityIdentity, type SavedEntityIdentity } from '../persisted-unit-state';
+import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { asSourceHashCanary, type SourceHashCanary } from '../source-hash-canary';
 import type { EntityType } from '../entity/types';
 import { isNativeEntityType } from '../entity/codec-capabilities';
 import {
@@ -55,15 +56,11 @@ export interface SerializedNonMekDeployment {
     readonly values: NonMekDeploymentConfiguration;
 }
 
-export interface SerializedNonMekUnitRestoration {
-    readonly warnings: readonly string[];
-    readonly unresolved: readonly string[];
-}
-
 export interface SerializedNonMekUnit {
     readonly schemaVersion: typeof NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION;
     readonly instanceId: string;
-    readonly entity: SavedEntityIdentity;
+    readonly entity: UnitUuid;
+    readonly sourceHashCanary?: SourceHashCanary;
     readonly baselineRefAtSave: InstanceBaselineRef;
     readonly deployment: SerializedNonMekDeployment;
     readonly family: Readonly<{ readonly kind: 'non-mek'; readonly entityType: NonMekEntityType }>;
@@ -143,14 +140,13 @@ export interface SerializedNonMekUnit {
             readonly hitTimestamps: readonly number[];
         }>[];
     }>;
-    readonly restoration?: SerializedNonMekUnitRestoration;
 }
 
 export interface SerializeNonMekUnitInput {
     readonly instance: NonMekUnitInstance;
-    readonly sourceRef: SavedEntityIdentity;
+    readonly uuid: UnitUuid;
+    readonly sourceHashCanary?: SourceHashCanary;
     readonly deployment: SerializedNonMekDeployment;
-    readonly restoration?: SerializedNonMekUnitRestoration;
 }
 
 export interface SerializedNonMekUnitInspection {
@@ -166,11 +162,13 @@ export function inspectSerializedNonMekUnit(value: unknown): SerializedNonMekUni
     }
     const instanceId = requireString(record['instanceId'], 'instanceId');
     const stateRevision = requireInteger(record['stateRevision'], 'stateRevision');
-    const entity = sanitizeSavedEntityIdentity(record['entity']);
-    if (!entity) throw new Error('Non-Mek unit requires a saved entity identity');
+    const entity = parseCurrentUnitUuid(record['entity'], 'entity');
+    if (record['sourceHashCanary'] !== undefined) {
+        asSourceHashCanary(requireString(record['sourceHashCanary'], 'sourceHashCanary'));
+    }
     const baseline = requireRecord(record['baselineRefAtSave'], 'baselineRefAtSave');
-    const baselineEntity = sanitizeSavedEntityIdentity(baseline['entity']);
-    if (!baselineEntity || baselineEntity.provider !== entity.provider || baselineEntity.uuid !== entity.uuid) {
+    const baselineEntity = parseCurrentUnitUuid(baseline['entity'], 'baselineRefAtSave.entity');
+    if (baselineEntity !== entity) {
         throw new Error('Non-Mek unit baseline identity does not match its source');
     }
     if (!isCBTRuleset(baseline['ruleset'])) throw new Error('Non-Mek unit baseline ruleset is invalid');
@@ -194,8 +192,8 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
     if (entity.entityType === 'Mek') throw new Error('Meks require the Mek serializer');
     const state = input.instance.snapshot();
     const index = input.instance.getIndex();
-    if (input.sourceRef.uuid !== entity.uuid()
-        || input.instance.baselineRef.entity.uuid !== entity.uuid()) {
+    if (input.uuid !== entity.uuid()
+        || input.instance.baselineRef.entity !== entity.uuid()) {
         throw new Error('Non-Mek runtime identity changed before serialization');
     }
     assertCanonicalCrewAssignment(
@@ -251,7 +249,8 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
     return Object.freeze({
         schemaVersion: NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
         instanceId: input.instance.id,
-        entity: Object.freeze({ ...input.sourceRef }),
+        entity: input.uuid,
+        ...(input.sourceHashCanary === undefined ? {} : { sourceHashCanary: input.sourceHashCanary }),
         baselineRefAtSave: freezeBaseline(input.instance.baselineRef),
         deployment: freezeDeployment(input.deployment),
         family: Object.freeze({ kind: 'non-mek', entityType: entity.entityType }),
@@ -268,9 +267,6 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
         attackerTargeting: serializeAttackerTargetingState(state.attackerTargeting),
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         ...(pendingCombat === undefined ? {} : { pendingCombat }),
-        ...(input.restoration === undefined
-            ? {}
-            : { restoration: canonicalizeNonMekUnitRestoration(input.restoration) }),
     });
 }
 
@@ -285,8 +281,8 @@ export function restoreNonMekUnit(
         || saved.family.entityType !== entity.entityType) {
         throw new Error('Persisted runtime family does not match the entity');
     }
-    if (saved.entity.uuid !== entity.uuid()
-        || saved.baselineRefAtSave.entity.uuid !== entity.uuid()) {
+    if (saved.entity !== entity.uuid()
+        || saved.baselineRefAtSave.entity !== entity.uuid()) {
         throw new Error('Persisted runtime identity does not match the entity');
     }
     const ruleset = saved.baselineRefAtSave.ruleset;
@@ -572,10 +568,15 @@ function restorePendingCombat(saved: SerializedNonMekUnit): NonMekUnitRuntimeSta
 
 function freezeBaseline(value: InstanceBaselineRef): InstanceBaselineRef {
     return Object.freeze({
-        entity: Object.freeze({ ...value.entity }),
+        entity: value.entity,
         ruleset: value.ruleset,
         initialStateProfile: Object.freeze({ ...value.initialStateProfile }),
     });
+}
+
+function parseCurrentUnitUuid(value: unknown, label: string): UnitUuid {
+    if (typeof value !== 'string') throw new Error(`${label} must be a UUID string`);
+    return asUnitUuid(value);
 }
 
 function freezeDeployment(value: SerializedNonMekDeployment): SerializedNonMekDeployment {
@@ -594,22 +595,6 @@ function freezeDeployment(value: SerializedNonMekDeployment): SerializedNonMekDe
             }),
         }),
     });
-}
-
-export function canonicalizeNonMekUnitRestoration(
-    value: SerializedNonMekUnitRestoration,
-): SerializedNonMekUnitRestoration {
-    return Object.freeze({
-        warnings: Object.freeze(value.warnings.map(boundedMessage)),
-        unresolved: Object.freeze(value.unresolved.map(boundedMessage)),
-    });
-}
-
-function boundedMessage(value: string): string {
-    if (typeof value !== 'string' || value.length > 2_000 || value.includes('\0')) {
-        throw new Error('Invalid restoration message');
-    }
-    return value;
 }
 
 function requireRecord(value: unknown, label: string): Record<string, unknown> {

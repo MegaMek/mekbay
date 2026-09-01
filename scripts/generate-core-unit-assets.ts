@@ -7,7 +7,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import JSZip from 'jszip';
-import { REMOTE_HOST } from '../src/app/models/common.model';
 import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import {
     createEquipment,
@@ -207,27 +206,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-async function fetchBoundedReleaseJson(relativePath: string, maximumBytes: number): Promise<string> {
-    const url = new URL(relativePath, `${REMOTE_HOST.replace(/\/+$/u, '')}/`);
-    const response = await fetch(url, {
-        redirect: 'error',
-        cache: 'no-store',
-        headers: { Accept: 'application/json' },
-    });
-    if (!response.ok || response.status !== 200 || response.redirected) {
-        throw new Error(`Core release dependency ${url} returned HTTP ${response.status}`);
-    }
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.byteLength < 1 || bytes.byteLength > maximumBytes) {
-        throw new Error(`Core release dependency ${url} has an invalid byte length`);
-    }
-    try {
-        return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    } catch (error) {
-        throw new Error(`Core release dependency ${url} is not valid UTF-8`, { cause: error });
-    }
-}
-
 function isPlaytestEquipment(
     internalName: string,
     equipment: RawEquipmentData['equipment'][string],
@@ -244,19 +222,30 @@ async function createProductionSummaryGenerationContext(
     const staticCatalogRoot = path.join(projectRoot, 'public', 'online-assets', 'static');
     const equipmentPath = path.join(staticCatalogRoot, 'equipment.json');
     const quirksPath = path.join(staticCatalogRoot, 'quirks.json');
+    const erasPath = path.join(staticCatalogRoot, 'eras.json');
+    const factionsPath = path.join(staticCatalogRoot, 'factions.json');
     const spriteManifestPath = path.join(assetsRoot, 'sprites', 'unit-icons.json');
-    for (const requiredPath of [sourcebooksPath, equipmentPath, quirksPath, spriteManifestPath]) {
+    for (const requiredPath of [
+        sourcebooksPath,
+        equipmentPath,
+        quirksPath,
+        erasPath,
+        factionsPath,
+        spriteManifestPath,
+    ]) {
         if (!fs.existsSync(requiredPath)) throw new Error(`Core summary generation input is missing: ${requiredPath}`);
     }
 
-    const [erasText, factionsText] = await Promise.all([
-        fetchBoundedReleaseJson('eras.json', MAX_RELEASE_ERAS_BYTES),
-        fetchBoundedReleaseJson('factions.json', MAX_RELEASE_FACTIONS_BYTES),
-    ]);
     const equipmentBytes = fs.readFileSync(equipmentPath);
     const quirksBytes = fs.readFileSync(quirksPath);
+    const erasBytes = fs.readFileSync(erasPath);
+    const factionsBytes = fs.readFileSync(factionsPath);
     if (equipmentBytes.byteLength > MAX_RELEASE_EQUIPMENT_BYTES
-        || quirksBytes.byteLength > MAX_RELEASE_QUIRKS_BYTES) {
+        || quirksBytes.byteLength > MAX_RELEASE_QUIRKS_BYTES
+        || erasBytes.byteLength < 1
+        || erasBytes.byteLength > MAX_RELEASE_ERAS_BYTES
+        || factionsBytes.byteLength < 1
+        || factionsBytes.byteLength > MAX_RELEASE_FACTIONS_BYTES) {
         throw new Error('Repository-authored catalog input exceeds its byte ceiling');
     }
 
@@ -264,8 +253,8 @@ async function createProductionSummaryGenerationContext(
     const equipmentRaw = parseJson<RawEquipmentData>(equipmentBytes, 'equipment.json');
     const quirksRaw = parseJson<Quirks>(quirksBytes, 'quirks.json');
     const sourcebooksRaw = parseJson<unknown>(sourcebooksBytes, 'sourcebooks.json');
-    const erasRaw = parseJson<Eras>(Buffer.from(erasText), 'eras.json');
-    const factionsRaw = parseJson<RawMULFactions>(Buffer.from(factionsText), 'factions.json');
+    const erasRaw = parseJson<Eras>(erasBytes, 'eras.json');
+    const factionsRaw = parseJson<RawMULFactions>(factionsBytes, 'factions.json');
     if (!isRecord(equipmentRaw) || !isRecord(equipmentRaw.equipment)
         || Object.keys(equipmentRaw.equipment).length < 4_000) {
         throw new Error('Core summary equipment catalog is missing or implausibly small');
@@ -276,9 +265,6 @@ async function createProductionSummaryGenerationContext(
     if (!Array.isArray(sourcebooksRaw) || sourcebooksRaw.length < 100) {
         throw new Error('Core summary sourcebook catalog is missing or implausibly small');
     }
-    writeDeterministicFile(path.join(assetsRoot, 'eras.json'), erasText);
-    writeDeterministicFile(path.join(assetsRoot, 'factions.json'), factionsText);
-
     const equipment: EquipmentMap = {};
     for (const [internalName, raw] of equipmentCatalogEntriesIncludingSupplements(equipmentRaw.equipment)) {
         if (!isPlaytestEquipment(internalName, raw)) equipment[internalName] = createEquipment(raw);
@@ -303,12 +289,12 @@ async function createProductionSummaryGenerationContext(
     };
     const erasCatalog: Eras = {
         version: erasRaw.version,
-        assetHash: sha1(erasText),
+        assetHash: sha1(erasBytes),
         eras: erasRaw.eras,
     };
     const factionsCatalog: RawMULFactions = {
         version: factionsRaw.version,
-        assetHash: sha1(factionsText),
+        assetHash: sha1(factionsBytes),
         factions: factionsRaw.factions,
     };
     const dependencyBundle = await buildApplicationCatalogDependencyBundle({

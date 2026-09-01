@@ -8,7 +8,7 @@ import type {
     CriticalSlotId,
     LocationId,
 } from '../entity/entity-identifiers';
-import type { SavedEntityIdentity } from '../persisted-unit-state';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import type { EquipmentStatus } from '../equipment-status.model';
@@ -71,7 +71,7 @@ export interface InitialStateProfileRef {
 }
 
 export interface InstanceBaselineRef {
-    readonly entity: SavedEntityIdentity;
+    readonly entity: UnitUuid;
     readonly ruleset: CBTRuleset;
     readonly initialStateProfile: InitialStateProfileRef;
 }

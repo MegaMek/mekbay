@@ -24,7 +24,6 @@ import { componentIdForMount } from '../models/runtime/non-mek-runtime-index';
 import { type InstanceBaselineRef } from '../models/runtime/runtime-state';
 import {
     asUnitUuid,
-    MM_DATA_UNIT_PROVIDER_ID,
 } from './unit-catalog/unit-catalog.types';
 import { CBTAutomationService } from './cbt-automation.service';
 import {
@@ -231,6 +230,41 @@ describe('DirectNonMekAutomationService', () => {
             'heatEffectsCheck',
             jasmine.any(Array),
             jasmine.objectContaining({ title: 'Resolve Pending Checks' }),
+        );
+    });
+
+    it('keeps badge-driven aerospace heat checks interactive through the inner rolls', async () => {
+        const harness = createHarness();
+        setHeat(harness.runtime, 30);
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preparedRows = await service.prepareEndTurnCommands(
+            harness.force,
+            [{
+                instanceId: harness.instanceId,
+                command: { kind: 'end-turn', heatPolicy: 'automatic' },
+            }],
+            { interactive: true },
+        );
+
+        expect(preparedRows).not.toBeNull();
+        expect(resolveChecksAutomation).toHaveBeenCalledWith(
+            'heatEffectsCheck',
+            jasmine.any(Array),
+            jasmine.objectContaining({ interactive: true }),
+        );
+        const settled = await service.settleBeforeCommand(
+            harness.force,
+            harness.instanceId,
+            preparedRows![0].prepared,
+            harness.dispatch,
+        );
+
+        expect(settled).not.toBeNull();
+        expect(resolveChecksAutomation).toHaveBeenCalledWith(
+            'pilotHitsAndConsciousnessCheck',
+            jasmine.any(Array),
+            jasmine.objectContaining({ interactive: true }),
         );
     });
 
@@ -927,7 +961,7 @@ function createHarness(withAmmo = false, suffix = '', commandConsole = false) {
         instanceId,
         entity,
         index: runtime.getIndex(),
-        sourceRef: baseline().entity,
+        uuid: baseline().entity,
         ruleset: CORE_2026_RULESET,
         crewAssignment: crew,
         state: runtime.snapshot(),
@@ -996,12 +1030,7 @@ function setCondition(runtime: NonMekUnitInstance, condition: UnitConditionKey, 
 
 function baseline(): InstanceBaselineRef {
     return Object.freeze({
-        entity: Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid: UUID,
-            sourceFormat: 'blk' as const,
-        }),
+        entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
             schemaVersion: 1 as const,

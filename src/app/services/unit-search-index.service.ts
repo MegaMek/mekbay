@@ -6,7 +6,6 @@ import { Injectable } from '@angular/core';
 import type { UnitSummary, UnitComponent, UnitType } from '../models/unit-summary.model';
 import { type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
-import type { BucketStatSummary, MinMaxStatsRange, UnitSubtypeMaxStats } from './data.service';
 import { removeAccents } from '../utils/string.util';
 import { naturalCompare } from '../utils/sort.util';
 import { getMergedTags, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
@@ -23,6 +22,48 @@ import {
     getASSpecialMinimumFieldLabels,
     type ParsedASSpecials,
 } from '../utils/as-special-filter.util';
+import type { UnitUuid } from './unit-catalog/unit-catalog.types';
+
+export const DOES_NOT_TRACK = 999;
+
+export interface BucketStatSummary {
+    readonly min: number;
+    readonly max: number;
+    readonly average: number;
+}
+
+export interface MinMaxStatsRange {
+    readonly armor: BucketStatSummary;
+    readonly internal: BucketStatSummary;
+    readonly heat: BucketStatSummary;
+    readonly dissipation: BucketStatSummary;
+    readonly dissipationEfficiency: BucketStatSummary;
+    readonly runMP: BucketStatSummary;
+    readonly run2MP: BucketStatSummary;
+    readonly umuMP: BucketStatSummary;
+    readonly jumpMP: BucketStatSummary;
+    readonly alphaNoPhysical: BucketStatSummary;
+    readonly alphaNoPhysicalNoOneshots: BucketStatSummary;
+    readonly maxRange: BucketStatSummary;
+    readonly weightedMaxRange: BucketStatSummary;
+    readonly dpt: BucketStatSummary;
+    readonly asTmm: BucketStatSummary;
+    readonly asArm: BucketStatSummary;
+    readonly asStr: BucketStatSummary;
+    readonly asDmgS: BucketStatSummary;
+    readonly asDmgM: BucketStatSummary;
+    readonly asDmgL: BucketStatSummary;
+    readonly dropshipCapacity: BucketStatSummary;
+    readonly escapePods: BucketStatSummary;
+    readonly lifeBoats: BucketStatSummary;
+    readonly gravDecks: BucketStatSummary;
+    readonly sailIntegrity: BucketStatSummary;
+    readonly kfIntegrity: BucketStatSummary;
+}
+
+export interface UnitSubtypeMaxStats {
+    [unitSubtype: string]: MinMaxStatsRange;
+}
 
 export interface UnitSearchDropdownOption {
     name: string;
@@ -44,12 +85,12 @@ interface ASUnitTypeMaxStats {
 export interface PreparedUnitSearchIndexes {
     readonly unitSubtypeMaxStats: UnitSubtypeMaxStats;
     readonly unitAsTypeMaxStats: ASUnitTypeMaxStats;
-    readonly searchFilterIndex: Map<string, Map<string, Set<string>>>;
-    readonly componentCountIndex: Map<string, Map<string, number>>;
+    readonly searchFilterIndex: Map<string, Map<string, Set<UnitUuid>>>;
+    readonly componentCountIndex: Map<string, Map<UnitUuid, number>>;
     readonly searchFilterValues: Map<string, string[]>;
     readonly dropdownOptionUniverse: Map<string, UnitSearchDropdownOption[]>;
     readonly asSpecialFieldCounts: Map<string, number>;
-    readonly asSpecialsByUnit: Map<string, ParsedASSpecials>;
+    readonly asSpecialsByUnit: Map<UnitUuid, ParsedASSpecials>;
     readonly factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot;
     readonly preparationTimings: {
         readonly unitDerivativesMs: number;
@@ -150,12 +191,12 @@ function createEmptyMinMaxStatsRange(): MinMaxStatsRange {
 export class UnitSearchIndexService {
     private unitSubtypeMaxStats: UnitSubtypeMaxStats = {};
     private unitAsTypeMaxStats: ASUnitTypeMaxStats = {};
-    private searchFilterIndex = new Map<string, Map<string, Set<string>>>();
-    private componentCountIndex = new Map<string, Map<string, number>>();
+    private searchFilterIndex = new Map<string, Map<string, Set<UnitUuid>>>();
+    private componentCountIndex = new Map<string, Map<UnitUuid, number>>();
     private searchFilterValues = new Map<string, string[]>();
     private dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
     private asSpecialFieldCounts = new Map<string, number>();
-    private asSpecialsByUnit = new Map<string, ParsedASSpecials>();
+    private asSpecialsByUnit = new Map<UnitUuid, ParsedASSpecials>();
     private indexStats: PreparedUnitSearchIndexes['indexStats'] = Object.freeze({
         filterKeys: 0,
         filterValues: 0,
@@ -389,8 +430,8 @@ export class UnitSearchIndexService {
         extinctFaction?: Faction,
         equipmentRegistry?: EquipmentRegistry,
     ): void {
-        this.searchFilterIndex = new Map<string, Map<string, Set<string>>>();
-        this.componentCountIndex = new Map<string, Map<string, number>>();
+        this.searchFilterIndex = new Map<string, Map<string, Set<UnitUuid>>>();
+        this.componentCountIndex = new Map<string, Map<UnitUuid, number>>();
         this.searchFilterValues = new Map<string, string[]>();
         this.asSpecialFieldCounts = new Map<string, number>();
         this.asSpecialsByUnit = buildASSpecialsByUnitIndex(
@@ -493,12 +534,12 @@ export class UnitSearchIndexService {
             return;
         }
 
-        const tagIndex = new Map<string, Set<string>>();
+        const tagIndex = new Map<string, Set<UnitUuid>>();
         for (const unit of units) {
             for (const tag of getMergedTags(unit)) {
                 let unitIds = tagIndex.get(tag);
                 if (!unitIds) {
-                    unitIds = new Set<string>();
+                    unitIds = new Set<UnitUuid>();
                     tagIndex.set(tag, unitIds);
                 }
                 unitIds.add(unit.uuid);
@@ -518,7 +559,7 @@ export class UnitSearchIndexService {
         this.dropdownOptionUniverse.delete('_tags');
     }
 
-    public getIndexedUnitIds(filterKey: string, value: string): ReadonlySet<string> | undefined {
+    public getIndexedUnitIds(filterKey: string, value: string): ReadonlySet<UnitUuid> | undefined {
         return this.searchFilterIndex.get(filterKey)?.get(value);
     }
 
@@ -526,7 +567,7 @@ export class UnitSearchIndexService {
         return this.searchFilterValues.get(filterKey) ?? [];
     }
 
-    public getIndexedASSpecials(unitUuid: string): ParsedASSpecials | undefined {
+    public getIndexedASSpecials(unitUuid: UnitUuid): ParsedASSpecials | undefined {
         return this.asSpecialsByUnit.get(unitUuid);
     }
 
@@ -550,8 +591,8 @@ export class UnitSearchIndexService {
     public getFactionEraUnitUuids(
         eraNames: readonly string[],
         factionNames: readonly string[],
-    ): ReadonlySet<string> {
-        const unitUuids = new Set<string>();
+    ): ReadonlySet<UnitUuid> {
+        const unitUuids = new Set<UnitUuid>();
         for (const eraName of eraNames) {
             const factionMap = this.factionEraSnapshot.referenceIdsByEraAndFaction[eraName];
             for (const factionName of factionNames) {
@@ -569,7 +610,7 @@ export class UnitSearchIndexService {
         return this.dropdownOptionUniverse.get(filterKey)?.map(option => ({ ...option })) ?? [];
     }
 
-    public getIndexedComponentUnitCounts(name: string): ReadonlyMap<string, number> | undefined {
+    public getIndexedComponentUnitCounts(name: string): ReadonlyMap<UnitUuid, number> | undefined {
         return this.componentCountIndex.get(name.toLowerCase());
     }
 
@@ -620,7 +661,7 @@ export class UnitSearchIndexService {
         this.dropdownOptionUniverse.set('faction', factions.map(faction => ({ name: faction.name, img: faction.img })));
     }
 
-    private addASSpecialIndexValues(parsedSpecials: ParsedASSpecials | undefined, unitUuid: string): void {
+    private addASSpecialIndexValues(parsedSpecials: ParsedASSpecials | undefined, unitUuid: UnitUuid): void {
         for (const occurrence of parsedSpecials?.occurrences ?? []) {
             if (!occurrence.token) continue;
             this.addSearchIndexValue('as.specials', occurrence.token, unitUuid);
@@ -632,7 +673,7 @@ export class UnitSearchIndexService {
     }
 
     private createFactionEraSnapshot(
-        unitUuidsByMulId: Map<number, string[]>,
+        unitUuidsByMulId: Map<number, UnitUuid[]>,
         eras: Era[],
         factions: Faction[],
     ): UnitSearchWorkerFactionEraSnapshot {
@@ -673,8 +714,8 @@ export class UnitSearchIndexService {
         });
     }
 
-    private createUnitUuidsByMulId(units: UnitSummary[]): Map<number, string[]> {
-        const unitUuidsByMulId = new Map<number, string[]>();
+    private createUnitUuidsByMulId(units: UnitSummary[]): Map<number, UnitUuid[]> {
+        const unitUuidsByMulId = new Map<number, UnitUuid[]>();
         for (const unit of units) {
             const unitUuids = unitUuidsByMulId.get(unit.id);
             if (unitUuids) {
@@ -686,7 +727,7 @@ export class UnitSearchIndexService {
         return unitUuidsByMulId;
     }
 
-    private addSearchIndexValue(filterKey: string, value: string | undefined, unitUuid: string): void {
+    private addSearchIndexValue(filterKey: string, value: string | undefined, unitUuid: UnitUuid): void {
         if (!value) {
             return;
         }
@@ -694,20 +735,20 @@ export class UnitSearchIndexService {
         const normalizedValue = String(value);
         let filterIndex = this.searchFilterIndex.get(filterKey);
         if (!filterIndex) {
-            filterIndex = new Map<string, Set<string>>();
+            filterIndex = new Map<string, Set<UnitUuid>>();
             this.searchFilterIndex.set(filterKey, filterIndex);
         }
 
         let unitIds = filterIndex.get(normalizedValue);
         if (!unitIds) {
-            unitIds = new Set<string>();
+            unitIds = new Set<UnitUuid>();
             filterIndex.set(normalizedValue, unitIds);
         }
 
         unitIds.add(unitUuid);
     }
 
-    private addSearchIndexValues(filterKey: string, values: Iterable<string>, unitUuid: string): void {
+    private addSearchIndexValues(filterKey: string, values: Iterable<string>, unitUuid: UnitUuid): void {
         for (const value of values) {
             this.addSearchIndexValue(filterKey, value, unitUuid);
         }
@@ -715,7 +756,7 @@ export class UnitSearchIndexService {
 
     private prepareUnitComponentIndexes(
         unit: UnitSummary,
-        unitUuid: string,
+        unitUuid: UnitUuid,
         equipmentRegistry?: EquipmentRegistry,
     ): void {
         const counts: Partial<Record<WeaponType, number>> = {};
@@ -753,11 +794,11 @@ export class UnitSearchIndexService {
         this.addSearchIndexValues('weaponType', unit._weaponTypes, unitUuid);
     }
 
-    private addComponentUnitCount(name: string, unitUuid: string, quantity: number): void {
+    private addComponentUnitCount(name: string, unitUuid: UnitUuid, quantity: number): void {
         const normalizedName = name.toLowerCase();
         let unitCounts = this.componentCountIndex.get(normalizedName);
         if (!unitCounts) {
-            unitCounts = new Map<string, number>();
+            unitCounts = new Map<UnitUuid, number>();
             this.componentCountIndex.set(normalizedName, unitCounts);
         }
 

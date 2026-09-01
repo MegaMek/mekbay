@@ -7,7 +7,11 @@ import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
-import { DataService, type BucketStatSummary, type MinMaxStatsRange } from '../../services/data.service';
+import {
+    UnitSearchIndexService,
+    type BucketStatSummary,
+    type MinMaxStatsRange,
+} from '../../services/unit-search-index.service';
 import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { ForceRadarPanelComponent } from './force-radar-panel.component';
 
@@ -152,7 +156,7 @@ describe('ForceRadarPanelComponent', () => {
             imports: [ForceRadarPanelComponent],
             providers: [
                 {
-                    provide: DataService,
+                    provide: UnitSearchIndexService,
                     useValue: {
                         getUnitSubtypeMaxStats: (subtype: string) => subtypeMaxStats.get(subtype) ?? createMaxStats({}),
                         getASUnitTypeMaxStats: (asUnitType: string) => asTypeMaxStats.get(asUnitType) ?? createMaxStats({}),

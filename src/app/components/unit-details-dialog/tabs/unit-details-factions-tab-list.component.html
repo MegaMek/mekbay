@@ -28,11 +28,12 @@
     }
 </ng-template>
 
+@let eras = availableEras();
 <div class="faction-availability-list allow-select">
-    @if (availability().length === 0) {
+    @if (eras.length === 0) {
         <div class="no-factions">No faction availability information for this unit.</div>
     } @else {
-        @for (era of availability(); let eraIndex = $index; let isLastEra = $last; track era.eraId) {
+        @for (era of eras; let eraIndex = $index; let isLastEra = $last; track era.eraId) {
             <div class="era-name">
                 @if (era.eraImg) {
                     <img [src]="era.eraImg" class="era-icon" alt="{{ era.eraName }}" title="{{ era.eraName }}" />

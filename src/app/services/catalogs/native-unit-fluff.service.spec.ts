@@ -43,7 +43,7 @@ describe('NativeUnitFluffService', () => {
 
     const fluff = await service.load(unit);
 
-    expect(catalog.readNativeUnitSource).toHaveBeenCalledOnceWith(MM_DATA_UNIT_PROVIDER_ID, uuid);
+    expect(catalog.readNativeUnitSource).toHaveBeenCalledOnceWith(uuid);
     expect(fluff).toEqual({
       overview: 'Native overview',
       systems: [{ label: 'Engine', manufacturer: 'Vlar' }],

@@ -21,7 +21,7 @@ type RemoteOperationVerification = Readonly<{
 }>;
 type RemoteForceInfo = Readonly<
     Omit<OperationForceInfo, 'alignment' | 'timestamp' | 'forceTimestamp'>
-    & { timestamp?: string }
+    & { timestamp?: string | number }
 >;
 
 @Injectable({ providedIn: 'root' })
@@ -454,7 +454,9 @@ export class OperationStorageService {
                         eraId: entry.eraId,
                         bv: entry.bv,
                         pv: entry.pv,
-                        forceTimestamp: entry.timestamp,
+                        forceTimestamp: typeof entry.timestamp === 'number'
+                            ? new Date(entry.timestamp).toISOString()
+                            : entry.timestamp,
                         exists: true,
                     });
                 }

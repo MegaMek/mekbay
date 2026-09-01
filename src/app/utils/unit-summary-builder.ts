@@ -14,10 +14,10 @@ import type {
   UnitSummaryComponent,
   WeightClass,
 } from '../models/unit-summary.model';
-import {
-  asUnitUuid,
-  type CatalogEntryKey,
-  type NativeUnitFormat,
+import type {
+  CatalogEntryKey,
+  NativeUnitFormat,
+  UnitUuid,
 } from '../services/unit-catalog/unit-catalog.types';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 import { UnitMetadataBuilder } from './unit-metadata-builder';
@@ -147,7 +147,7 @@ export class UnitSummaryBuilder {
   private buildStaticEmplacement(
     entity: StaticEmplacementEntity,
     context: UnitSummaryBuildContext,
-    uuid: ReturnType<typeof asUnitUuid>,
+    uuid: UnitUuid,
   ): UnitSummary {
     const loadIssues = entity.loadIssues().map(issue => ({ ...issue }));
     const components = cloneComponents(buildUnitComponentMetadata(entity) ?? []);
@@ -226,8 +226,8 @@ export class UnitSummaryBuilder {
 function validateIdentityAndSource(
   entity: BaseEntity,
   context: UnitSummaryBuildContext,
-): ReturnType<typeof asUnitUuid> {
-  const uuid = asUnitUuid(entity.uuid());
+): UnitUuid {
+  const uuid = entity.uuid();
   if (uuid !== context.entryKey.design.uuid) {
     throw new Error(`Entity UUID ${uuid} does not match catalog UUID ${context.entryKey.design.uuid}`);
   }

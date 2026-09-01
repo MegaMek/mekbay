@@ -13,7 +13,6 @@ import { getForceOpforInventoryTargetId } from '../../utils/inventory-control-op
 import { asEncounterTargetId } from './encounter-runtime';
 import type { CBTNonMekUnit } from './cbt-non-mek-unit';
 import type { CBTMekUnit } from './cbt-mek-unit';
-import { entityUnitLabel } from './cbt-unit-label';
 import type { InventoryControlTargetRosterRow } from '../cbt-force.types';
 
 export function mekTargetRosterRow(
@@ -56,7 +55,7 @@ export function mekTargetRosterRow(
     return Object.freeze({
         instanceId: unit.instanceId,
         targetId: asEncounterTargetId(getForceOpforInventoryTargetId(forceInstanceId, unit.instanceId)),
-        name: entityUnitLabel(entity, unit.instanceId),
+        name: entity.displayName() || unit.instanceId,
         unitType,
         tnCalculator: Object.freeze({
             isAirborne: movement?.mode === 'jump' || turn.airborne === true,
@@ -114,7 +113,7 @@ export function entityTargetRosterRow(
     return Object.freeze({
         instanceId: unit.instanceId,
         targetId: asEncounterTargetId(getForceOpforInventoryTargetId(forceInstanceId, unit.instanceId)),
-        name: entityUnitLabel(entity, unit.instanceId),
+        name: entity.displayName() || unit.instanceId,
         unitType,
         tnCalculator: Object.freeze({
             isAirborne: turn.movement?.mode === 'jump' || turn.airborne === true,

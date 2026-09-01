@@ -34,14 +34,15 @@ import type {
 } from './utils/unit-search-worker-protocol.util';
 import { getUnitVariantGroupKey } from './utils/unit-variant.util';
 import { buildASSpecialsByUnitIndex, type ParsedASSpecials } from './utils/as-special-filter.util';
+import type { UnitUuid } from './services/unit-catalog/unit-catalog.types';
 
 interface WorkerCorpusRuntime extends MulFactionEraSearchIndex {
     corpusVersion: string;
     units: UnitSearchWorkerUnit[];
-    allUnitUuids: ReadonlySet<string>;
-    indexedUnitUuids: Map<string, Map<string, ReadonlySet<string>>>;
+    allUnitUuids: ReadonlySet<UnitUuid>;
+    indexedUnitUuids: Map<string, Map<string, ReadonlySet<UnitUuid>>>;
     indexedFilterValues: Map<string, string[]>;
-    indexedASSpecials: Map<string, ParsedASSpecials>;
+    indexedASSpecials: Map<UnitUuid, ParsedASSpecials>;
     forcePackToLookupKey: Map<string, Set<string>>;
 }
 
@@ -56,11 +57,11 @@ function getUnitNameKey(name: string): string {
     return name.toLowerCase();
 }
 
-function buildIndexedUnitUuids(indexes: UnitSearchWorkerIndexSnapshot): Map<string, Map<string, ReadonlySet<string>>> {
-    const result = new Map<string, Map<string, ReadonlySet<string>>>();
+function buildIndexedUnitUuids(indexes: UnitSearchWorkerIndexSnapshot): Map<string, Map<string, ReadonlySet<UnitUuid>>> {
+    const result = new Map<string, Map<string, ReadonlySet<UnitUuid>>>();
 
     for (const [filterKey, valueMap] of Object.entries(indexes)) {
-        const filterIndex = new Map<string, ReadonlySet<string>>();
+        const filterIndex = new Map<string, ReadonlySet<UnitUuid>>();
         for (const [value, unitUuids] of Object.entries(valueMap)) {
             filterIndex.set(value, new Set(unitUuids));
         }
@@ -80,7 +81,7 @@ function buildIndexedFilterValues(indexes: UnitSearchWorkerIndexSnapshot): Map<s
     return result;
 }
 
-function addUnitUuids(target: Set<string>, source: ReadonlySet<string> | undefined): void {
+function addUnitUuids(target: Set<UnitUuid>, source: ReadonlySet<UnitUuid> | undefined): void {
     if (!source || source.size === 0) {
         return;
     }
@@ -157,12 +158,12 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
     const parsedQuery = parseSemanticQueryAST(request.executionQuery, request.gameSystem);
     const parseDurationMs = getNowMs() - parseStartedAt;
 
-    const getFactionEraUnitUuids = (eraName: string, factionNames: readonly string[]): ReadonlySet<string> => {
+    const getFactionEraUnitUuids = (eraName: string, factionNames: readonly string[]): ReadonlySet<UnitUuid> => {
         return getMulFactionEraUnitUuids(runtime, [eraName], factionNames);
     };
 
-    const getMembershipUnitUuids = (scope?: AvailabilityFilterScope): ReadonlySet<string> => {
-        const unitUuids = new Set<string>();
+    const getMembershipUnitUuids = (scope?: AvailabilityFilterScope): ReadonlySet<UnitUuid> => {
+        const unitUuids = new Set<UnitUuid>();
 
         if (scope?.eraNames !== undefined && scope.factionNames !== undefined) {
             for (const eraName of scope.eraNames) {
@@ -196,7 +197,7 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
     const getScopedEraUnitUuids = (
         eraName: string,
         scope?: AvailabilityFilterScope,
-    ): ReadonlySet<string> => {
+    ): ReadonlySet<UnitUuid> => {
         return getMembershipUnitUuids(
             scope?.factionNames === undefined
                 ? { eraNames: [eraName] }
@@ -207,7 +208,7 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
     const getScopedFactionUnitUuids = (
         factionName: string,
         eraNames?: readonly string[],
-    ): ReadonlySet<string> => {
+    ): ReadonlySet<UnitUuid> => {
         return getMembershipUnitUuids(
             eraNames === undefined
                 ? { factionNames: [factionName] }
@@ -227,7 +228,7 @@ function buildResultMessage(runtime: WorkerCorpusRuntime, request: UnitSearchWor
         filterKey: string,
         value: string,
         scope?: AvailabilityFilterScope,
-    ): ReadonlySet<string> | undefined => {
+    ): ReadonlySet<UnitUuid> | undefined => {
         if (filterKey === 'era') {
             return getScopedEraUnitUuids(value, scope);
         }

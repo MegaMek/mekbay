@@ -21,8 +21,6 @@ import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availa
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import type { ForceNameWords } from '../models/force-name-words.model';
 import { getForcePacks } from '../models/forcepacks.model';
-import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
-import type { ParsedASSpecials } from '../utils/as-special-filter.util';
 import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
 import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catalog.service';
@@ -34,7 +32,6 @@ import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.servic
 import {
     UnitSearchIndexService,
     type PreparedUnitSearchIndexes,
-    type UnitSearchDropdownOption,
 } from './unit-search-index.service';
 import {
     UnitRuntimeService,
@@ -52,54 +49,11 @@ import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 import type { RuntimeCatalogProgressState } from '../models/startup-progress.model';
 import {
     DeferredUnitResolutionError,
-    type SavedEntityIdentity,
 } from '../models/persisted-unit-state';
 import type { UnitReferenceResolution } from './unit-runtime.service';
-import type { StoredCoreContent, UnitProviderId } from './unit-catalog/unit-catalog.types';
+import type { UnitUuid } from './unit-catalog/unit-catalog.types';
 import { PresentationCatalogSyncService } from './catalogs/presentation-catalog-sync.service';
 
-
-export const DOES_NOT_TRACK = 999;
-
-export interface BucketStatSummary {
-    min: number;
-    max: number;
-    average: number;
-}
-
-export interface MinMaxStatsRange {
-    armor: BucketStatSummary,
-    internal: BucketStatSummary,
-    heat: BucketStatSummary,
-    dissipation: BucketStatSummary,
-    dissipationEfficiency: BucketStatSummary,
-    runMP: BucketStatSummary,
-    run2MP: BucketStatSummary,
-    umuMP: BucketStatSummary,
-    jumpMP: BucketStatSummary,
-    alphaNoPhysical: BucketStatSummary,
-    alphaNoPhysicalNoOneshots: BucketStatSummary,
-    maxRange: BucketStatSummary,
-    weightedMaxRange: BucketStatSummary,
-    dpt: BucketStatSummary,
-    asTmm: BucketStatSummary,
-    asArm: BucketStatSummary,
-    asStr: BucketStatSummary,
-    asDmgS: BucketStatSummary,
-    asDmgM: BucketStatSummary,
-    asDmgL: BucketStatSummary,
-
-    // Capital ships
-    dropshipCapacity: BucketStatSummary,
-    escapePods: BucketStatSummary,
-    lifeBoats: BucketStatSummary,
-    gravDecks: BucketStatSummary,
-    sailIntegrity: BucketStatSummary,
-    kfIntegrity: BucketStatSummary,
-}
-export interface UnitSubtypeMaxStats {
-    [unitSubtype: string]: MinMaxStatsRange
-}
 
 type TagRefreshOptions = Readonly<{ searchIndexChanged?: boolean }>;
 // Cross-tab message for the one store that currently needs live refresh.
@@ -348,37 +302,11 @@ export class DataService {
         return this.unitRuntimeService.getUnitsByName(name);
     }
 
-    public getUnitByUuid(uuid: string): UnitSummary | undefined {
+    public getUnitByUuid(uuid: UnitUuid): UnitSummary | undefined {
         return this.unitRuntimeService.getUnitByUuid(uuid);
     }
 
-    public getUnitByIdentity(provider: UnitProviderId, uuid: string): UnitSummary | undefined {
-        return this.unitRuntimeService.getUnitByIdentity(provider, uuid);
-    }
-
-    public getUnitByPublicationArtifact(
-        provider: UnitProviderId,
-        uuid: string,
-        documentRevision: string,
-        nativeSourceHash?: string,
-    ): UnitSummary | undefined {
-        return this.unitRuntimeService.getUnitByPublicationArtifact(
-            provider,
-            uuid,
-            documentRevision,
-            nativeSourceHash,
-        );
-    }
-
-    public readNativeUnitSource(provider: UnitProviderId, uuid: string): Promise<StoredCoreContent | undefined> {
-        return this.unitsCatalog.readNativeUnitSource(provider, uuid);
-    }
-
-    public getSavedEntityIdentity(unit: UnitSummary): SavedEntityIdentity | undefined {
-        return this.unitRuntimeService.getSavedEntityIdentity(unit);
-    }
-
-    /** UUID/provider is authoritative; name is accepted only for an unversioned unique legacy match. */
+    /** UUID is authoritative; name is accepted only for an unversioned unique legacy match. */
     public resolveSerializedUnit(data: SerializedUnit): Extract<UnitReferenceResolution, { readonly kind: 'resolved' }> {
         const resolution = this.unitRuntimeService.resolveUnitReference(
             data,
@@ -501,41 +429,6 @@ export class DataService {
     private invalidateForcePackCaches(): void {
         this.forcePackToLookupKey = null;
         this.lookupKeyToForcePacks = null;
-    }
-
-    public getIndexedUnitIds(filterKey: string, value: string): ReadonlySet<string> | undefined {
-        return this.unitSearchIndexService.getIndexedUnitIds(filterKey, value);
-    }
-
-    public getIndexedFilterValues(filterKey: string): string[] {
-        return this.unitSearchIndexService.getIndexedFilterValues(filterKey);
-    }
-
-    public getIndexedASSpecials(unitUuid: string): ParsedASSpecials | undefined {
-        return this.unitSearchIndexService.getIndexedASSpecials(unitUuid);
-    }
-
-    public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
-        return this.unitSearchIndexService.getSearchWorkerIndexSnapshot();
-    }
-
-    public getSearchWorkerFactionEraSnapshot(): UnitSearchWorkerFactionEraSnapshot {
-        return this.unitSearchIndexService.getSearchWorkerFactionEraSnapshot();
-    }
-
-    public getFactionEraUnitUuids(
-        eraNames: readonly string[],
-        factionNames: readonly string[],
-    ): ReadonlySet<string> {
-        return this.unitSearchIndexService.getFactionEraUnitUuids(eraNames, factionNames);
-    }
-
-    public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {
-        return this.unitSearchIndexService.getDropdownOptionUniverse(filterKey);
-    }
-
-    public getIndexedComponentUnitCounts(name: string): ReadonlyMap<string, number> | undefined {
-        return this.unitSearchIndexService.getIndexedComponentUnitCounts(name);
     }
 
     private queueUnitCatalogRevision(revision: number): void {
@@ -769,14 +662,6 @@ export class DataService {
         const pending = this.unitsCatalog.pendingActivation();
         if (!pending || pending.revision !== revision || (expected && pending !== expected)) return undefined;
         return pending;
-    }
-
-    public getUnitSubtypeMaxStats(subtype: string): MinMaxStatsRange {
-        return this.unitSearchIndexService.getUnitSubtypeMaxStats(subtype);
-    }
-
-    public getASUnitTypeMaxStats(asUnitType: string): MinMaxStatsRange {
-        return this.unitSearchIndexService.getASUnitTypeMaxStats(asUnitType);
     }
 
     private applyNoneFactionMemberships(units: readonly UnitSummary[], eras: readonly Era[], factions: readonly Faction[]): void {

@@ -412,12 +412,12 @@ function parseASSpecialsInContext(
 }
 
 /** Build one generation-local parsed tuple index used by both sync and worker search. */
-export function buildASSpecialsByUnitIndex<T>(
+export function buildASSpecialsByUnitIndex<T, TUnitId extends string>(
     units: readonly T[],
-    getUnitId: (unit: T) => string,
+    getUnitId: (unit: T) => TUnitId,
     getSpecials: (unit: T) => unknown,
-): Map<string, ParsedASSpecials> {
-    const index = new Map<string, ParsedASSpecials>();
+): Map<TUnitId, ParsedASSpecials> {
+    const index = new Map<TUnitId, ParsedASSpecials>();
     const context = createASSpecialParseContext();
     for (const unit of units) {
         index.set(getUnitId(unit), parseASSpecialsInContext(getSpecials(unit), context));

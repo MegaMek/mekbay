@@ -274,7 +274,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                             : undefined;
                         return Object.freeze({
                             componentId: endpoint.componentId,
-                            networkType: endpoint.family as C3NetworkType,
+                            networkType: endpoint.family,
                             role: endpoint.role === 'master'
                                 ? C3Role.MASTER
                                 : endpoint.role === 'peer' ? C3Role.PEER : C3Role.SLAVE,
@@ -797,10 +797,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
             let displayName = 'Unknown Network';
             if (network.peerIds) {
-                displayName = `${c3NetworkTypeName(network.type as C3NetworkType)} (${network.peerIds.length} peers)`;
+                displayName = `${c3NetworkTypeName(network.type)} (${network.peerIds.length} peers)`;
             } else if (network.masterId) {
                 const memberCount = topology.treeUnitIds(network.id).size;
-                displayName = `${c3NetworkTypeName(network.type as C3NetworkType)} (${memberCount} ${memberCount > 1 ? 'members' : 'member'})`;
+                displayName = `${c3NetworkTypeName(network.type)} (${memberCount} ${memberCount > 1 ? 'members' : 'member'})`;
             }
 
             // Calculate network tax for top-level networks only

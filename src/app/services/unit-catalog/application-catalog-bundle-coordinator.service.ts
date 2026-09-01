@@ -42,8 +42,8 @@ export const DEPENDENCY_ASSET_PATHS = Object.freeze({
     equipment: 'online-assets/static/equipment.json',
     quirks: 'online-assets/static/quirks.json',
     sourcebooks: 'online-assets/generated/sourcebooks.json',
-    eras: 'online-assets/generated/eras.json',
-    factions: 'online-assets/generated/factions.json',
+    eras: 'online-assets/static/eras.json',
+    factions: 'online-assets/static/factions.json',
     sprites: 'online-assets/generated/sprites/unit-icons.json',
 } as const);
 

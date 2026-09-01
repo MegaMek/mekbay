@@ -39,7 +39,7 @@ import { CBTUnitService } from '../services/cbt-unit.service';
 import { CBTMekUnit } from './runtime/cbt-mek-unit';
 import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit, type CBTTargetingReconciliation } from './runtime/cbt-unit';
 import { jsonValuesEqual } from '../utils/json-value.util';
-import type { JsonValue, SavedEntityIdentity } from './persisted-unit-state';
+import type { JsonValue } from './persisted-unit-state';
 import {
     prepareCBTForcePersistenceV2 as prepareCurrentCBTForcePersistenceV2,
     prepareDirectUnitAdmission,
@@ -80,7 +80,6 @@ import { calculateCBTForceBattleValues, type CBTForceBattleValueBreakdown } from
 import { hasNonMekRuntime, hasMekRuntime, type CBTUnitSnapshot } from './cbt-unit-snapshot';
 import { CBTUnitStore, type CBTUnitStoreSnapshot } from './cbt-unit-store';
 import { publishC3EmergencyMasterNotices } from './cbt-force-c3';
-import { entityUnitLabel } from './runtime/cbt-unit-label';
 import { CBT_FORCE_UNASSIGNED_GROUP_ID, queryCBTForceRoster } from './runtime/cbt-force-roster';
 import {
     projectMekRecordSheet,
@@ -858,7 +857,7 @@ export class CBTForce extends Force<never> {
         if (!this.isWholeOwnerActive()) {
             return directAdmissionFailure('READ_ONLY', 'The force is being replaced');
         }
-        let identity: CBTDirectUnitAdmissionRequest['identity'];
+        let uuid: CBTDirectUnitAdmissionRequest['uuid'];
         let deployment: DeploymentConfiguration;
         let requestedScenario: ScenarioRules | undefined;
         let crewSkills: CBTDirectUnitAdmissionRequest['crewSkills'];
@@ -868,10 +867,7 @@ export class CBTForce extends Force<never> {
         let targetRosterMemberIndex: number | undefined;
         let commander = false;
         try {
-            identity = Object.freeze({
-                provider: request.identity.provider,
-                uuid: request.identity.uuid,
-            });
+            uuid = request.uuid;
             deployment = structuredClone(request.deployment);
             requestedScenario = request.scenario === undefined
                 ? undefined
@@ -940,7 +936,7 @@ export class CBTForce extends Force<never> {
             let candidate: CBTUnit;
             try {
                 candidate = await this.injector.get(CBTUnitService).create({
-                    identity,
+                    uuid,
                     instanceId,
                     deployment,
                     scenario,
@@ -1102,9 +1098,8 @@ export class CBTForce extends Force<never> {
         return this.unitStore.unitSnapshot(instanceId);
     }
 
-    /** Stable source identity for catalog-only presentation lookups. */
-    public getUnitSourceIdentity(instanceId: string): SavedEntityIdentity | null {
-        return this.unitStore.cbtUnit(instanceId)?.getSourceRef() ?? null;
+    public getUnitUuid(instanceId: string): UnitUuid | null {
+        return this.unitStore.cbtUnit(instanceId)?.uuid ?? null;
     }
 
     /** Total entity + runtime record-sheet projection; no SVG participates. */
@@ -1221,7 +1216,7 @@ export class CBTForce extends Force<never> {
 
     public runtimeHistoryUnitLabel(instanceId: string): string {
         const unit = this.unitStore.cbtUnit(instanceId);
-        return unit ? entityUnitLabel(unit.getUnit(), unit.instanceId) : instanceId;
+        return unit ? unit.getUnit().displayName() || unit.instanceId : instanceId;
     }
 
     public runtimeHistoryTargetLabel(

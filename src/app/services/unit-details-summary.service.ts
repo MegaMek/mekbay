@@ -10,11 +10,13 @@ import { DataService } from './data.service';
 import { LoggerService } from './logger.service';
 import { EntityCoreUnitSummaryProjector } from './unit-catalog/entity-summary-projector';
 import { asSourceHash, makeUnitFileName } from './unit-catalog/unit-catalog.types';
+import { UnitsCatalogService } from './catalogs/units-catalog.service';
 
 /** Resolves the active details entry */
 @Injectable({ providedIn: 'root' })
 export class UnitDetailsSummaryService {
     private readonly data = inject(DataService);
+    private readonly catalog = inject(UnitsCatalogService);
     private readonly logger = inject(LoggerService);
 
     public async resolve(summary: UnitSummary): Promise<UnitSummary> {
@@ -26,7 +28,7 @@ export class UnitDetailsSummaryService {
         try {
             const hash = asSourceHash(summary.hash);
             const format = summary.entityType === 'Mek' ? 'mtf' : 'blk';
-            const source = await this.data.readNativeUnitSource(summary.provider, summary.uuid);
+            const source = await this.catalog.readNativeUnitSource(summary.uuid);
             if (!source) throw new Error('native source is not installed');
             if (source.hash !== hash
                 || source.format !== format
@@ -60,7 +62,7 @@ export class UnitDetailsSummaryService {
             return { ...summary, ...rebuilt.summary };
         } catch (error) {
             this.logger.warn(
-                `Could not rebuild details summary for ${summary.provider}/${summary.uuid}: ${errorMessage(error)}`,
+                `Could not rebuild details summary for ${summary.uuid}: ${errorMessage(error)}`,
             );
             return summary;
         }

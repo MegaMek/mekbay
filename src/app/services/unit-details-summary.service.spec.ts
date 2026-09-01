@@ -18,23 +18,25 @@ import {
     MM_DATA_UNIT_PROVIDER_ID,
 } from './unit-catalog/unit-catalog.types';
 import { UnitDetailsSummaryService } from './unit-details-summary.service';
+import { UnitsCatalogService } from './catalogs/units-catalog.service';
 
 describe('UnitDetailsSummaryService', () => {
     const uuid = asUnitUuid('019f583e-b5e8-7032-b925-ba6c429a0687');
     let data: jasmine.SpyObj<Pick<
         DataService,
-        'readNativeUnitSource' | 'getEquipmentRegistry' | 'getSourcebookByAbbrev' | 'getQuirkByKey'
+        'getEquipmentRegistry' | 'getSourcebookByAbbrev' | 'getQuirkByKey'
     >>;
+    let catalog: jasmine.SpyObj<Pick<UnitsCatalogService, 'readNativeUnitSource'>>;
     let logger: jasmine.SpyObj<Pick<LoggerService, 'warn'>>;
     let service: UnitDetailsSummaryService;
 
     beforeEach(() => {
         data = jasmine.createSpyObj('DataService', [
-            'readNativeUnitSource',
             'getEquipmentRegistry',
             'getSourcebookByAbbrev',
             'getQuirkByKey',
         ]);
+        catalog = jasmine.createSpyObj('UnitsCatalogService', ['readNativeUnitSource']);
         logger = jasmine.createSpyObj('LoggerService', ['warn']);
         data.getEquipmentRegistry.and.returnValue(equipmentRegistry());
         data.getSourcebookByAbbrev.and.returnValue(undefined);
@@ -44,6 +46,7 @@ describe('UnitDetailsSummaryService', () => {
             providers: [
                 UnitDetailsSummaryService,
                 { provide: DataService, useValue: data },
+                { provide: UnitsCatalogService, useValue: catalog },
                 { provide: LoggerService, useValue: logger },
             ],
         });
@@ -62,11 +65,11 @@ describe('UnitDetailsSummaryService', () => {
         const hash = asSourceHash(await sha1Base64Url(bytes));
         const file = makeUnitFileName(uuid, 'blk');
         const cached = nativeSummary(hash);
-        data.readNativeUnitSource.and.resolveTo({ file, hash, format: 'blk', bytes });
+        catalog.readNativeUnitSource.and.resolveTo({ file, hash, format: 'blk', bytes });
 
         const rebuilt = await service.resolve(cached);
 
-        expect(data.readNativeUnitSource).toHaveBeenCalledOnceWith(MM_DATA_UNIT_PROVIDER_ID, uuid);
+        expect(catalog.readNativeUnitSource).toHaveBeenCalledOnceWith(uuid);
         expect(rebuilt).not.toBe(cached);
         expect(rebuilt.entityType).toBe('GunEmplacement');
         expect(rebuilt.chassis).toBe('Medium Sniper Turret');
@@ -83,14 +86,14 @@ describe('UnitDetailsSummaryService', () => {
 
         await expectAsync(service.resolve(cached)).toBeResolvedTo(cached);
 
-        expect(data.readNativeUnitSource).not.toHaveBeenCalled();
+        expect(catalog.readNativeUnitSource).not.toHaveBeenCalled();
     });
 
     it('falls back to the cached summary when installed source evidence does not match', async () => {
         const hash = asSourceHash('A'.repeat(27));
         const file = makeUnitFileName(uuid, 'blk');
         const cached = nativeSummary(hash);
-        data.readNativeUnitSource.and.resolveTo({
+        catalog.readNativeUnitSource.and.resolveTo({
             file,
             hash: asSourceHash('B'.repeat(26) + 'A'),
             format: 'blk',

@@ -33,6 +33,7 @@ import {
     resolveAlphaStrikeTagEcmCapabilitySummary,
     type UnitTagEcmCapabilitySummary,
 } from './unit-capability-summary.model';
+import { sourceHashCanary } from './source-hash-canary';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;
@@ -553,9 +554,11 @@ export class ASForceUnit extends ForceUnit {
         };
         const abilities = this._pilotAbilities();
         const formationAbilities = this._formationAbilities();
+        const hashCanary = sourceHashCanary(this.getSummary().hash);
         return {
             id: this.id,
             uuid: this.getSummary().uuid,
+            ...(hashCanary === undefined ? {} : { sourceHashCanary: hashCanary }),
             ...(Object.keys(state).length === 0 ? {} : { state }),
             ...(this.alias() === undefined ? {} : { alias: this.alias() }),
             ...(this.updatedTs === 0 ? {} : { updatedTs: this.updatedTs }),

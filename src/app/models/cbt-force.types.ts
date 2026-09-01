@@ -6,11 +6,11 @@ import type {
     PickerChoiceColors,
     PickerChoiceSelectionTone,
     PickerDisplayType,
-    PickerTooltipType,
     PickerValue,
 } from '../components/picker/picker.interface';
+import type { TooltipType } from '../components/tooltip/tooltip.component';
 import type { TnTargetUnitType } from './target-number-calculator.model';
-import type { UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type {
     EquipmentInteractionHandlerId,
     EquipmentInteractionKind,
@@ -81,7 +81,7 @@ export type CBTUnitTransferResult =
     }>;
 
 export interface CBTDirectUnitAdmissionRequest {
-    readonly identity: Readonly<{ readonly provider: UnitProviderId; readonly uuid: UnitUuid }>;
+    readonly uuid: UnitUuid;
     readonly deployment: DeploymentConfiguration;
     readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
     readonly scenario?: ScenarioRules;
@@ -138,7 +138,7 @@ export type RuntimeUndoCommandResult = Readonly<{
 /** Minimal transient identity needed to re-resolve one currently available choice. */
 export interface CBTEquipmentChoiceCommand {
     readonly instanceId: string;
-    readonly entityUuid: string;
+    readonly entityUuid: UnitUuid;
     readonly componentId: ComponentId;
     readonly relatedComponentId?: ComponentId;
     readonly handlerId: EquipmentInteractionHandlerId;
@@ -158,7 +158,7 @@ export interface CBTEquipmentChoice {
     readonly colors?: Readonly<PickerChoiceColors>;
     readonly keepOpen?: boolean;
     readonly displayType?: PickerDisplayType;
-    readonly tooltipType?: PickerTooltipType;
+    readonly tooltipType?: TooltipType;
     readonly failureTarget?: number;
 }
 

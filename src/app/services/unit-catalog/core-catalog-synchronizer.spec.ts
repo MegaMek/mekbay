@@ -56,7 +56,7 @@ describe('CoreCatalogSynchronizer', () => {
         ]);
         repository.loadManifest.and.resolveTo(assetsManifest());
         synchronizer = new CoreCatalogSynchronizer(database, {
-            baseUrl: 'https://db.mekbay.com/',
+            baseUrl: 'https://assets.example.test/',
             repositoryAssets: repository,
         });
     });

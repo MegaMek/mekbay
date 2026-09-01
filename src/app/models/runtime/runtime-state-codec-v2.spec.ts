@@ -101,27 +101,6 @@ describe('direct Mek V2 state codec', () => {
         expect(committedRestore.state.crew.get(positionId)?.dead).toBeTrue();
     });
 
-    it('uses provider plus UUID as compatibility and reports source drift', async () => {
-        const fixture = createDirectMekRuntimeFixture();
-        const original = serialize(fixture);
-        const changedIdentity = {
-            ...original.entity,
-            sourceHashAtSave: `${'B'.repeat(26)}A` as typeof original.entity.sourceHashAtSave,
-        };
-        const saved = {
-            ...original,
-            entity: changedIdentity,
-            baselineRefAtSave: {
-                ...original.baselineRefAtSave,
-                entity: changedIdentity,
-            },
-        };
-
-        const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
-        expect(restored.metadata.sourceChanged).toBeTrue();
-        expect(restored.baselineRef.entity).toEqual(fixture.identity);
-    });
-
     it('round-trips an automatic fall as sparse phase state', async () => {
         const fixture = createDirectMekRuntimeFixture();
         const leg = [...fixture.index.locations.values()].find(location => location.code === 'LL')!;
@@ -378,10 +357,7 @@ describe('direct Mek V2 state codec', () => {
     it('rejects a snapshot for another unit UUID', async () => {
         const fixture = createDirectMekRuntimeFixture();
         const original = serialize(fixture);
-        const changedIdentity = {
-            ...original.entity,
-            uuid: '019f6767-0dcb-7bb8-992f-aef08202f5e2' as typeof original.entity.uuid,
-        };
+        const changedIdentity = '019f6767-0dcb-7bb8-992f-aef08202f5e2' as typeof original.entity;
         const saved = {
             ...original,
             entity: changedIdentity,

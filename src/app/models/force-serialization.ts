@@ -9,6 +9,7 @@ import type { C3NetworkType } from './c3-network.model';
 import type { SerializedCBTForceV2 } from './runtime/persistence-v2';
 import { isUnitConditionKey, type UnitConditionKey } from './unit-condition.model';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import { asSourceHashCanary, type SourceHashCanary } from './source-hash-canary';
 
 export const FORCE_NOTE_MAX_LENGTH = 2000;
 const FORCE_TAG_MAX_LENGTH = 48;
@@ -114,8 +115,8 @@ export interface SerializedUnit {
     alias?: string;
     commander?: boolean;
     updatedTs?: number;
-    /** Historical UUID/provider identity used only while importing V1. */
-    entityIdentity?: import('./persisted-unit-state').SavedEntityIdentity;
+    /** Historical object used only while importing V1. */
+    entityIdentity?: unknown;
     state: SerializedState;
 }
 
@@ -126,6 +127,7 @@ export interface SerializedUnit {
 export interface ASSerializedUnit {
     id: string;
     uuid: UnitUuid;
+    sourceHashCanary?: SourceHashCanary;
     alias?: string;
     updatedTs?: number;
     state?: ASSerializedState;
@@ -418,6 +420,7 @@ export const AS_SERIALIZED_STATE_SCHEMA = Sanitizer.schema<ASSerializedState>()
 export const AS_SERIALIZED_UNIT_SCHEMA = Sanitizer.schema<ASSerializedUnit>()
     .string('id')
     .string('uuid')
+    .custom('sourceHashCanary', (value: unknown) => asSourceHashCanary(String(value)))
     .string('alias')
     .number('updatedTs')
     .number('skill', { min: 0, max: 8 })

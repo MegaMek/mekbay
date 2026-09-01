@@ -41,7 +41,7 @@ describe('CatalogStorage', () => {
     const record = {
       key: fluffImageCatalogKey(provider),
       provider,
-      baseUrl: 'https://db.mekbay.com',
+      baseUrl: 'https://fluff.example.test',
       wireJson: '["Mek/Atlas.png"]',
       etag: 'v1',
     };

@@ -28,7 +28,7 @@ describe('UnitFluffImageService', () => {
   it('uses the provider catalog for units and ignores a stale persisted img field', () => {
     catalogs.publish(buildFluffImageCatalog({
       provider: MM_DATA_UNIT_PROVIDER_ID,
-      baseUrl: 'https://db.mekbay.com',
+      baseUrl: 'https://fluff.example.test',
       wireJson: '["Mek/Atlas.png"]',
     }));
     const unit = {
@@ -41,7 +41,7 @@ describe('UnitFluffImageService', () => {
       fluff: { img: 'Mek/Wrong.png' },
     } as unknown as UnitSummary;
 
-    expect(service.resolveUrl(unit)).toBe('https://db.mekbay.com/images/fluff/Mek/Atlas.png');
+    expect(service.resolveUrl(unit)).toBe('https://fluff.example.test/images/fluff/Mek/Atlas.png');
   });
 
   it('does not read inline fluff or server-host fields from a summary', () => {
@@ -61,7 +61,7 @@ describe('UnitFluffImageService', () => {
   it('does not borrow an image for another provider', () => {
     catalogs.publish(buildFluffImageCatalog({
       provider: MM_DATA_UNIT_PROVIDER_ID,
-      baseUrl: 'https://db.mekbay.com',
+      baseUrl: 'https://fluff.example.test',
       wireJson: '["Mek/Atlas.png"]',
     }));
     const unit = {

@@ -13,7 +13,6 @@ import {
     TestWarShipEntity,
 } from '../entity/testing/test-entities';
 import {
-    MM_DATA_UNIT_PROVIDER_ID,
     asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
@@ -111,7 +110,7 @@ describe('NonMekUnitInstance', () => {
 
         const pendingSave = serializeNonMekUnit({
             instance: runtime,
-            sourceRef: baseline().entity,
+            uuid: baseline().entity,
             deployment,
         });
         expect(pendingSave.crewState?.[0]?.dead).toBeUndefined();
@@ -136,7 +135,7 @@ describe('NonMekUnitInstance', () => {
 
         const committedSave = serializeNonMekUnit({
             instance: pendingRestore,
-            sourceRef: baseline().entity,
+            uuid: baseline().entity,
             deployment,
         });
         expect(committedSave.crewState?.[0]?.dead).toBeTrue();
@@ -410,7 +409,7 @@ describe('NonMekUnitInstance', () => {
 
         const saved = serializeNonMekUnit({
             instance: runtime,
-            sourceRef: baseline().entity,
+            uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
@@ -651,7 +650,7 @@ describe('NonMekUnitInstance', () => {
 
         const saved = serializeNonMekUnit({
             instance: runtime,
-            sourceRef: baseline().entity,
+            uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
@@ -728,7 +727,7 @@ describe('NonMekUnitInstance', () => {
 
         const saved = serializeNonMekUnit({
             instance: runtime,
-            sourceRef: baseline().entity,
+            uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
@@ -778,7 +777,7 @@ describe('NonMekUnitInstance', () => {
 
         const saved = serializeNonMekUnit({
             instance: runtime,
-            sourceRef: baseline().entity,
+            uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
@@ -834,7 +833,7 @@ describe('NonMekUnitInstance', () => {
 
         const saved = serializeNonMekUnit({
             instance: runtime,
-            sourceRef: baseline().entity,
+            uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
@@ -1163,7 +1162,7 @@ describe('NonMekUnitInstance', () => {
 
         const saved = serializeNonMekUnit({
             instance: runtime,
-            sourceRef: baseline().entity,
+            uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
@@ -1604,7 +1603,7 @@ describe('NonMekUnitInstance', () => {
         }
         const saved = serializeNonMekUnit({
             instance: fixture.runtime,
-            sourceRef: baseline().entity,
+            uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
@@ -1691,7 +1690,7 @@ describe('NonMekUnitInstance', () => {
         } as const;
         expect(serializeNonMekUnit({
             instance: runtime,
-            sourceRef: baseline().entity,
+            uuid: baseline().entity,
             deployment,
         }).heat).toBeUndefined();
 
@@ -1708,7 +1707,7 @@ describe('NonMekUnitInstance', () => {
         });
         const saved = serializeNonMekUnit({
             instance: runtime,
-            sourceRef: baseline().entity,
+            uuid: baseline().entity,
             deployment,
         });
         expect(saved.heat).toEqual({
@@ -2169,14 +2168,9 @@ function targetingFixture(instanceId: string) {
     return { entity, runtime, weaponId, ammoId, ammo, targetId, registry };
 }
 
-function baseline(sourceFormat: 'mtf' | 'blk' = 'blk'): InstanceBaselineRef {
+function baseline(_sourceFormat: 'mtf' | 'blk' = 'blk'): InstanceBaselineRef {
     return Object.freeze({
-        entity: Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid: UUID,
-            sourceFormat,
-        }),
+        entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
             schemaVersion: 1 as const,

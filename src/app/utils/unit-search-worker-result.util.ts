@@ -6,6 +6,7 @@ import type { GameSystem } from '../models/common.model';
 import type { UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { SearchTelemetrySnapshot } from '../services/unit-search-filters.model';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type { UnitSearchWorkerResultMessage } from './unit-search-worker-protocol.util';
 
 interface WorkerResultTelemetryContext {
@@ -20,16 +21,16 @@ interface WorkerResultTelemetryContext {
 
 export interface HydratedWorkerSearchResult {
     units: UnitSummary[];
-    normalizationMatchesByUnitUuid: ReadonlyMap<string, UnitSearchNormalizationMatch>;
+    normalizationMatchesByUnitUuid: ReadonlyMap<UnitUuid, UnitSearchNormalizationMatch>;
 }
 
 export function hydrateWorkerSearchResult(
     result: UnitSearchWorkerResultMessage,
-    getUnitByUuid: (unitUuid: string) => UnitSummary | undefined,
+    getUnitByUuid: (unitUuid: UnitUuid) => UnitSummary | undefined,
 ): HydratedWorkerSearchResult {
     const units: UnitSummary[] = [];
-    const normalizationMatchesByUnitUuid = new Map<string, UnitSearchNormalizationMatch>();
-    const seenUnitUuids = new Set<string>();
+    const normalizationMatchesByUnitUuid = new Map<UnitUuid, UnitSearchNormalizationMatch>();
+    const seenUnitUuids = new Set<UnitUuid>();
 
     for (const entry of result.entries) {
         if (seenUnitUuids.has(entry.unitUuid)) {
@@ -52,7 +53,7 @@ export function hydrateWorkerSearchResult(
 
 export function hydrateWorkerResultUnits(
     result: UnitSearchWorkerResultMessage,
-    getUnitByUuid: (unitUuid: string) => UnitSummary | undefined,
+    getUnitByUuid: (unitUuid: UnitUuid) => UnitSummary | undefined,
 ): UnitSummary[] {
     return hydrateWorkerSearchResult(result, getUnitByUuid).units;
 }

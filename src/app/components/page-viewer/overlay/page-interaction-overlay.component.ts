@@ -124,12 +124,12 @@ export class PageInteractionOverlayComponent {
     });
     readonly notificationSnapshot = computed(() => {
         this.runtimeVersion();
-        if (!this.optionsService.options().trackPhaseAndTurn) return null;
         const member = this.member();
         return member
             ? projectRuntimeUnitNotifications(
                 member.force.getUnitSnapshot(member.id),
                 {
+                    pilotSkillCheck: this.optionsService.cbtAutomationMode('pilotSkillCheck'),
                     pilotHitsAndConsciousnessCheck: this.optionsService.cbtAutomationMode(
                         'pilotHitsAndConsciousnessCheck',
                     ),
@@ -273,7 +273,15 @@ export class PageInteractionOverlayComponent {
         );
     }
 
-    async openNotification({ event }: UnitNotificationActivation): Promise<void> {
+    async openNotification({ kind, event }: UnitNotificationActivation): Promise<void> {
+        if (kind === 'fall') {
+            const pendingFall = this.notificationSnapshot()?.pendingEvents.some(candidate =>
+                candidate.kind === 'fall' && candidate.count > 0) === true;
+            if (!pendingFall) {
+                this.openPsrWarning(event);
+                return;
+            }
+        }
         event.stopPropagation();
         if (!this.turnTrackerVisible()) return;
         const member = this.member();

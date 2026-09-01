@@ -73,12 +73,12 @@ export function projectEncounterNetworksToC3Editor(
                 if (endpoint.role !== 'peer') {
                     throw new Error(`Peer C3 network "${network.id}" contains a non-peer endpoint.`);
                 }
-                requireVisualComponent(unitsById, endpoint, network.networkType as C3NetworkType, C3Role.PEER);
+                requireVisualComponent(unitsById, endpoint, network.networkType, C3Role.PEER);
                 return String(endpoint.instanceId);
             });
             return {
                 id: network.id,
-                type: network.networkType as C3NetworkType,
+                type: network.networkType,
                 color: network.color,
                 peerIds,
             };

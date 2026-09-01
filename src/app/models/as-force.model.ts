@@ -14,6 +14,7 @@ import { C3NetworkEditor } from './c3-network-editor';
 import { C3Network } from './c3-network.model';
 import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
 import { DialogsService } from '../services/dialogs.service';
+import { sourceHashCanaryChanged } from './source-hash-canary';
 
 
 
@@ -171,6 +172,13 @@ export class ASForce extends Force<ASForceUnit> {
             const parsedGroups: UnitGroup<ASForceUnit>[] = [];
             for (const serializedGroup of sanitizedData.groups) {
                 const units = serializedGroup.units.flatMap(serializedUnit => {
+                    const currentSummary = this.dataService.getUnitByUuid(serializedUnit.uuid);
+                    if (currentSummary && sourceHashCanaryChanged(
+                        serializedUnit.sourceHashCanary,
+                        currentSummary.hash,
+                    )) {
+                        warnings.add(`Unit "${currentSummary.name}" source file has changed since this force was last used.`);
+                    }
                     try {
                         return [ASForceUnit.deserialize(
                             serializedUnit,

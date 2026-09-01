@@ -16,10 +16,7 @@ export class PageViewerSheetSourceService {
         const pages = await member.loadRecordSheets(async () => {
             const unit = member.force.getUnitSnapshot(member.id);
             if (!unit) throw new Error('The selected CBT unit is no longer admitted');
-            const identity = member.force.getUnitSourceIdentity(member.id);
-            const result = await this.source.load(unit.entity, {}, {
-                ...(identity ? { design: identity } : {}),
-            });
+            const result = await this.source.load(unit.entity);
             if (result.svgs.length === 0) {
                 throw new Error(`No record sheet is available for ${member.entity.displayName()}`);
             }

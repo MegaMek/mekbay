@@ -16,6 +16,7 @@ import {
     bindNonMekRecordSheet,
     type NonMekRecordSheetInteraction,
 } from './non-mek-record-sheet-binder';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 describe('bindNonMekRecordSheet', () => {
     it('renders entity damage and emits stable runtime identifiers', () => {
@@ -488,7 +489,7 @@ const ROTOR_DAMAGE_TRACK_ID = asSystemDamageTrackId('damage-track:rotor');
 
 function snapshot(remaining: number, destroyed = false): NonMekRecordSheetSnapshot {
     return Object.freeze({
-        entityUuid: '019f6767-0dcb-7bb8-992f-aef08202f5e1',
+        entityUuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'),
         stateRevision: 4,
         displayName: 'Test Tank T-1',
         unitType: 'Tank',

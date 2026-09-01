@@ -59,7 +59,7 @@ describe('UnitDetailsIntelTabComponent', () => {
     });
 
     it('keeps catalog-resolved artwork independent from an empty native fluff result', async () => {
-        fluffImages.resolveUrl.and.returnValue('https://db.mekbay.com/images/fluff/Mek/Awesome.png');
+        fluffImages.resolveUrl.and.returnValue('https://fluff.example.test/images/fluff/Mek/Awesome.png');
         const fixture = await createComponent(undefined);
         const element = fixture.nativeElement as HTMLElement;
 
@@ -76,7 +76,7 @@ describe('UnitDetailsIntelTabComponent', () => {
     });
 
     it('renders a failed native read without hiding independently resolved artwork', async () => {
-        fluffImages.resolveUrl.and.returnValue('https://db.mekbay.com/images/fluff/Mek/Awesome.png');
+        fluffImages.resolveUrl.and.returnValue('https://fluff.example.test/images/fluff/Mek/Awesome.png');
         nativeFluff.load.and.rejectWith(new Error('read failed'));
         const fixture = TestBed.createComponent(UnitDetailsIntelTabComponent);
         fixture.componentRef.setInput('unit', testUnit());

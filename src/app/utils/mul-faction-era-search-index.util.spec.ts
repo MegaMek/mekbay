@@ -5,13 +5,18 @@ import {
     createMulFactionEraSearchIndex,
     getMulFactionEraUnitUuids,
 } from './mul-faction-era-search-index.util';
+import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 describe('mul-faction-era-search-index', () => {
+    const unitOne = asUnitUuid('01900000-0000-7000-8000-000000000001');
+    const unitOneAlternate = asUnitUuid('01900000-0000-7000-8000-000000000002');
+    const unitTwo = asUnitUuid('01900000-0000-7000-8000-000000000003');
+    const unitThree = asUnitUuid('01900000-0000-7000-8000-000000000004');
     const snapshot = {
         unitUuidsByMulId: {
-            '1': ['unit-one', 'unit-one-alternate'],
-            '2': ['unit-two'],
-            '3': ['unit-three'],
+            '1': [unitOne, unitOneAlternate],
+            '2': [unitTwo],
+            '3': [unitThree],
         },
         referenceIdsByEraAndFaction: {
             Succession: {
@@ -28,7 +33,7 @@ describe('mul-faction-era-search-index', () => {
         const index = createMulFactionEraSearchIndex(snapshot);
 
         expect(Array.from(getMulFactionEraUnitUuids(index, ['Succession'], ['Lyran'])))
-            .toEqual(['unit-one', 'unit-one-alternate', 'unit-two']);
+            .toEqual([unitOne, unitOneAlternate, unitTwo]);
         expect(index.factionEraUnitIds.get('Succession')?.size).toBe(1);
         expect(index.factionEraUnitIds.has('Invasion')).toBeFalse();
     });
@@ -40,7 +45,7 @@ describe('mul-faction-era-search-index', () => {
             index,
             ['Succession', 'Invasion'],
             ['Lyran', 'Kurita'],
-        ))).toEqual(['unit-one', 'unit-one-alternate', 'unit-two', 'unit-three']);
+        ))).toEqual([unitOne, unitOneAlternate, unitTwo, unitThree]);
     });
 
     it('returns no memberships for an incomplete scope', () => {

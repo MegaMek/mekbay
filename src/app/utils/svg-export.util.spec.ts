@@ -39,7 +39,7 @@ describe('SvgExportUtil', () => {
         return svg;
     }
 
-    function addFluffImage(svg: SVGSVGElement, src = 'https://db.mekbay.com/images/fluff/Mek/Atlas.png'): void {
+    function addFluffImage(svg: SVGSVGElement, src = 'https://fluff.example.test/images/fluff/Mek/Atlas.png'): void {
         const referenceTable = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         referenceTable.classList.add('referenceTable');
         referenceTable.style.display = 'none';

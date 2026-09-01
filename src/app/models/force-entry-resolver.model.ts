@@ -5,12 +5,11 @@
 import type { Era } from './eras.model';
 import type { Faction } from './factions.model';
 import type { UnitSummary } from './unit-summary.model';
-import type { UnitProviderId } from '../services/unit-catalog/unit-catalog.types';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 export interface ForceEntryResolver {
     getUnitByName(name: string): UnitSummary | undefined;
-    getUnitByUuid(uuid: string): UnitSummary | undefined;
-    getUnitByIdentity(provider: UnitProviderId, uuid: string): UnitSummary | undefined;
+    getUnitByUuid(uuid: UnitUuid): UnitSummary | undefined;
     getFactionById(id: number): Faction | undefined;
     getEraById(id: number): Era | undefined;
 }

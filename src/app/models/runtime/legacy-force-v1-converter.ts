@@ -174,7 +174,7 @@ function convertAlphaStrikeForce(
                 return [];
             }
 
-            const base: ASSerializedUnit = { id: instanceId, uuid: identity.savedIdentity.uuid };
+            const base: ASSerializedUnit = { id: instanceId, uuid: identity.uuid };
             try {
                 return [{ ...base, ...convertAlphaStrikeV1MutableState(unit) }];
             } catch (error) {
@@ -305,7 +305,7 @@ export async function convertPersistedMekUnitV1(
     fresh: CBTMekUnit,
 ): Promise<SerializedCBTUnitV2> {
     const baseline = fresh.serialize();
-    if (baseline.stateRevision !== 0 || baseline.restoration !== undefined) {
+    if (baseline.stateRevision !== 0) {
         throw new Error('V1 conversion requires a pristine current Mek baseline');
     }
     const restored = await restoreLegacyUnitState(source, fresh.getUnit(), {
@@ -351,12 +351,11 @@ export function convertPersistedNonMekUnitV1(
     onIssue?: (message: string) => void,
 ): SerializedNonMekUnit {
     const baseline = fresh.serialize();
-    if (baseline.stateRevision !== 0 || baseline.restoration !== undefined) {
+    if (baseline.stateRevision !== 0) {
         throw new Error('V1 conversion requires a pristine current Entity baseline');
     }
     if (source.identity.kind !== 'resolved'
-        || source.identity.savedIdentity.provider !== baseline.entity.provider
-        || source.identity.savedIdentity.uuid !== baseline.entity.uuid) {
+        || source.identity.uuid !== baseline.entity) {
         throw new Error('V1 Entity state belongs to a different design');
     }
 
@@ -366,11 +365,6 @@ export function convertPersistedNonMekUnitV1(
         ? recovery.rawUnitAndFamilyState
         : {};
     const issues: string[] = [];
-    if (source.identity.savedIdentity.sourceHashAtSave
-        && source.identity.savedIdentity.sourceHashAtSave !== baseline.entity.sourceHashAtSave) {
-        issues.push('The native source changed since this V1 unit was saved.');
-    }
-
     const locations = restoreLegacyEntityLocations(rawState['locations'], index, issues);
     const componentState = new Map<ComponentId, {
         status?: 'disabled' | 'destroyed';
@@ -1425,11 +1419,10 @@ async function materializeResolvedUnits(
             });
             continue;
         }
-        const identity = entry.source.identity.savedIdentity;
-        const readyIdentity = ready.getSourceRef();
+        const identity = entry.source.identity.uuid;
+        const readyIdentity = ready.uuid;
         if (ready.instanceId !== entry.instanceId
-            || readyIdentity.provider !== identity.provider
-            || readyIdentity.uuid !== identity.uuid) {
+            || readyIdentity !== identity) {
             throw new Error(`Converted V1 unit ${entry.instanceId} changed identity`);
         }
 
@@ -1693,7 +1686,7 @@ function convertLegacyC3Networks(
 function legacyUnitName(source: LegacyUnitSourceV1): string {
     const payload = isRecord(source.payload) ? source.payload : undefined;
     return stringValue(payload?.['unit']) ?? String(
-        source.identity.kind === 'resolved' ? source.identity.savedIdentity.uuid : 'unknown unit',
+        source.identity.kind === 'resolved' ? source.identity.uuid : 'unknown unit',
     );
 }
 

@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { InputSignal, OutputEmitterRef, WritableSignal } from '@angular/core';
+import type { TooltipType } from '../tooltip/tooltip.component';
 
 /*
  * Picker interface for all picker components
@@ -40,8 +41,6 @@ export type PickerDisplayType = 'button' | 'dropdown' | 'label' | 'state-button'
 /** Active-choice visual tone. Selected is the strong/default active state; muted is a softer active state. */
 export type PickerChoiceSelectionTone = 'selected' | 'muted';
 
-export type PickerTooltipType = 'info' | 'success' | 'error';
-
 /** Optional background and text colors for renderer states. */
 export interface PickerChoiceColors {
     normal?: string;
@@ -73,7 +72,7 @@ export interface PickerChoice {
     keepOpen?: boolean;
     displayType?: PickerDisplayType;
     choices?: PickerDropdownOption[];
-    tooltipType?: PickerTooltipType;
+    tooltipType?: TooltipType;
 }
 
 // =============================================================================

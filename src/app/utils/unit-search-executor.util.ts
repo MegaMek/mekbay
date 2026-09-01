@@ -29,6 +29,7 @@ import { findBvNormalizationMatch } from './bv-normalization.util';
 import { findPvNormalizationMatch } from './pv-normalization.util';
 import type { ParsedASSpecials } from './as-special-filter.util';
 import type { UnitSearchRecord } from './unit-search-worker-protocol.util';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 export interface UnitSearchExecutionRequest<
     TUnit extends UnitSearchRecord = UnitSummary,
@@ -59,9 +60,9 @@ export interface UnitSearchExecutionRequest<
     getAllAvailabilityRarityNames?: () => string[];
     getAllFormationNames?: () => string[];
     getDisplayName?: (filterKey: string, value: string) => string | undefined;
-    getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<string> | undefined;
+    getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<UnitUuid> | undefined;
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
-    getIndexedASSpecials?: (unitUuid: string) => ParsedASSpecials | undefined;
+    getIndexedASSpecials?: (unitUuid: UnitUuid) => ParsedASSpecials | undefined;
     availabilitySortScope?: AvailabilityFilterScope;
     getMegaMekRaritySortScore?: (unit: NoInfer<TUnit>, scope?: AvailabilityFilterScope) => number;
 }
@@ -70,7 +71,7 @@ export interface UnitSearchExecutionResult<
     TUnit extends UnitSearchRecord = UnitSummary,
 > {
     results: TUnit[];
-    normalizationMatchesByUnitUuid: ReadonlyMap<string, UnitSearchNormalizationMatch>;
+    normalizationMatchesByUnitUuid: ReadonlyMap<UnitUuid, UnitSearchNormalizationMatch>;
     telemetryStages: SearchTelemetryStage[];
     totalMs: number;
     unitCount: number;
@@ -395,7 +396,7 @@ export function executeUnitSearch<TUnit extends UnitSearchRecord>(
         value => value.length,
     );
 
-    const normalizationMatchesByUnitUuid = new Map<string, UnitSearchNormalizationMatch>();
+    const normalizationMatchesByUnitUuid = new Map<UnitUuid, UnitSearchNormalizationMatch>();
     if (normalizationEnabled) {
         for (const unit of sorted) {
             const match = resolveNormalizationMatch(unit);

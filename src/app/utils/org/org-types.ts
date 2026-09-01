@@ -7,6 +7,7 @@ import type {
     ASUnitTypeCode,
     UnitSummary,
 } from '../../models/unit-summary.model';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 /*
  *
@@ -111,7 +112,7 @@ export interface PointRange {
  */
 export interface OrgUnit {
     readonly id: number;
-    readonly uuid: string;
+    readonly uuid: UnitUuid;
     readonly name: string;
     readonly type: UnitSummary['type'];
     readonly subtype: UnitSummary['subtype'];

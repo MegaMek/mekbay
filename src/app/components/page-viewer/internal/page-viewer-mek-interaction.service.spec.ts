@@ -26,6 +26,7 @@ import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.s
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import type { UnitConditionKey } from '../../../models/unit-condition.model';
 import type { MekLocationConditionKey } from '../../../models/runtime/runtime-state';
+import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
 
 describe('PageViewerMekInteractionService', () => {
     let service: PageViewerMekInteractionService;
@@ -189,7 +190,7 @@ describe('PageViewerMekInteractionService', () => {
     it('uses the original critical choice picker and dispatches typed equipment choices', async () => {
         const command: CBTEquipmentChoiceCommand = {
             instanceId: 'unit-1',
-            entityUuid: 'entity-1',
+            entityUuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'),
             componentId: 'ammo-1' as ComponentId,
             handlerId: 'special-handler',
             value: 'special',
@@ -296,7 +297,7 @@ describe('PageViewerMekInteractionService', () => {
     it('restores handler-authored dropdowns, colors, tones, and typed commands on the sheet', async () => {
         const standardCommand: CBTEquipmentChoiceCommand = {
             instanceId: 'unit-1',
-            entityUuid: 'entity-1',
+            entityUuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'),
             componentId: 'ammo-1' as ComponentId,
             handlerId: 'ecm-handler',
             value: 'standard',

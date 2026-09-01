@@ -22,6 +22,7 @@ import type {
     RemoteLoadForceUnit,
 } from './remote-load-force-entry.model';
 import type { UnitSummary } from './unit-summary.model';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { uuidv7 } from '../utils/uuid.util';
 import type { CrewMemberDetails } from './crew.model';
 import type { SerializedCBTForceV2 } from './runtime/persistence-v2';
@@ -86,7 +87,7 @@ function resolveSerializedUnitId(id: string | undefined): string {
 function createForcePreviewGroups(
     rawGroups: readonly RemoteLoadForceGroup[] | undefined,
     getUnitByName: (name: string) => UnitSummary | undefined,
-    getUnitByUuid?: (uuid: string) => UnitSummary | undefined,
+    getUnitByUuid?: (uuid: UnitUuid) => UnitSummary | undefined,
 ): ForcePreviewGroup[] {
     if (!Array.isArray(rawGroups)) {
         return [];
@@ -136,7 +137,7 @@ export function isForcePreviewEntry(value: unknown): value is ForcePreviewEntry 
 export function createForcePreviewUnit(
     raw: RemoteLoadForceUnit,
     getUnitByName: (name: string) => UnitSummary | undefined,
-    getUnitByUuid?: (uuid: string) => UnitSummary | undefined,
+    getUnitByUuid?: (uuid: UnitUuid) => UnitSummary | undefined,
 ): ForcePreviewUnit {
     const previewUnit: ForcePreviewUnit = {
         unit: raw.uuid !== undefined
@@ -157,7 +158,7 @@ export function createForcePreviewUnit(
 
 export function createForcePreviewUnitFromSerializedUnit(
     unit: ASSerializedUnit,
-    getUnitByUuid: (uuid: string) => UnitSummary | undefined,
+    getUnitByUuid: (uuid: UnitUuid) => UnitSummary | undefined,
 ): ForcePreviewUnit {
     const resolvedUnit = getUnitByUuid(unit.uuid);
     const previewUnit: ForcePreviewUnit = {
@@ -220,7 +221,7 @@ function createCBTForcePreviewGroups(
             const entry = entries.get(member.instanceId)!;
             const identity = entry.unit.entity;
             const preview: ForcePreviewUnit = {
-                unit: resolver.getUnitByIdentity(identity.provider, identity.uuid),
+                unit: resolver.getUnitByUuid(identity),
                 destroyed: entry.unit.destroyed === true,
                 lockKey: member.instanceId,
             };

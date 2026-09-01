@@ -94,7 +94,7 @@ describe('ForceWorkspaceCommandsService force conversion', () => {
             subtype: 'BattleMek',
             as: { TP: 'BM', PV: 20 },
         });
-        dataService.getUnitByIdentity.and.returnValue(summary);
+        dataService.getUnitByUuid.and.returnValue(summary);
         const source = new CBTForce('Conversion test', dataService, injector);
         await source.addGroup();
         const sourceUnit = new CBTForceMember(
@@ -103,11 +103,7 @@ describe('ForceWorkspaceCommandsService force conversion', () => {
             createTestMekEntity({ uuid: summary.uuid }),
         );
         spyOn(source, 'membersInGroup').and.returnValue([sourceUnit]);
-        spyOn(source, 'getUnitSourceIdentity').and.returnValue({
-            origin: summary.origin,
-            provider: summary.provider,
-            uuid: summary.uuid,
-        });
+        spyOn(source, 'getUnitUuid').and.returnValue(summary.uuid);
         spyOn(source, 'isUnitCommander').and.returnValue(true);
         admission.admit.and.callFake(async request => {
             if (!(request.force instanceof ASForce)) {
@@ -152,7 +148,7 @@ describe('ForceWorkspaceCommandsService force conversion', () => {
 });
 
 function createHarness() {
-    const dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByIdentity']);
+    const dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByUuid']);
     const builder = jasmine.createSpyObj<ForceBuilderService>(
         'ForceBuilderService',
         ['removeLoadedForce', 'addLoadedForce'],

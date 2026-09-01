@@ -5,6 +5,7 @@ import { compareText } from '../../utils/string.util';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { calculateModifierTotal, type UnitModifierBreakdownEntry, type UnitModifierTotal } from '../combat-modifier';
 import { gameRulesFor } from '../rules/game-rules';
 import {
@@ -44,7 +45,7 @@ export interface MekTurnPanelRuleCheck {
  * SVG nor UnitSummary participates in this projection.
  */
 export interface MekTurnPanelSnapshot {
-    readonly entityUuid: string;
+    readonly entityUuid: UnitUuid;
     readonly stateRevision: number;
     readonly hasPendingCombat: boolean;
     readonly hasPendingPhaseChanges: boolean;

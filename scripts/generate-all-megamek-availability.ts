@@ -4604,8 +4604,6 @@ function run(): void {
 
     const mulFactionNames = loadMulFactionNames(MUL_FACTIONS_PATH);
 
-    writeJsonFile(path.join(OUTPUT_DIR, 'eras.json'), exportData.eras);
-    writeJsonFile(path.join(OUTPUT_DIR, 'factions.json'), exportData.factions);
     writeJsonFile(path.join(OUTPUT_DIR, 'faction-era-data.json'), exportData.factionEraData);
     writeJsonFile(
         path.join(OUTPUT_DIR, 'chassis.json'),
@@ -4659,8 +4657,6 @@ function run(): void {
     cleanupStaleOutputFiles(
         OUTPUT_DIR,
         [
-            'eras.json',
-            'factions.json',
             'faction-era-data.json',
             'rulesets.json',
             'chassis.json',

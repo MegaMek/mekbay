@@ -21,6 +21,7 @@ import { MULFACTION_EXTINCT } from '../../../models/mulfactions.model';
 import type { UnitSummary } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';
+import { ModeSwitchComponent } from '../../mode-switch/mode-switch.component';
 import { UnitDetailsFactionsTabGridComponent } from './unit-details-factions-tab-grid.component';
 import { UnitDetailsFactionsTabListComponent } from './unit-details-factions-tab-list.component';
 import {
@@ -61,7 +62,7 @@ function splitFactionName(name: string): FactionNameWrapParts {
 @Component({
     selector: 'unit-details-factions-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [UnitDetailsFactionsTabGridComponent, UnitDetailsFactionsTabListComponent],
+    imports: [ModeSwitchComponent, UnitDetailsFactionsTabGridComponent, UnitDetailsFactionsTabListComponent],
     templateUrl: './unit-details-factions-tab.component.html',
     styleUrl: './unit-details-factions-tab.component.css',
 })
@@ -88,8 +89,8 @@ export class UnitDetailsFactionTabComponent {
             : this.buildMulFactionAvailability(unit, allEras, allFactions, megaMekAvailabilityByEraFaction);
     });
 
-    selectView(view: FactionAvailabilityView): void {
-        this.selectedView.set(view);
+    setGridView(selected: boolean): void {
+        this.selectedView.set(selected ? 'grid' : 'list');
     }
 
     private buildMulFactionAvailability(
@@ -279,14 +280,12 @@ export class UnitDetailsFactionTabComponent {
         const availability: FactionAvailability[] = [];
 
         for (const era of eras) {
-            const matchingFactions = factionAvailabilityByEraId.get(era.id);
-            if (!matchingFactions || matchingFactions.length === 0) {
-                continue;
-            }
+            const matchingFactions = factionAvailabilityByEraId.get(era.id) ?? [];
 
             availability.push({
                 eraId: era.id,
                 eraName: era.name,
+                eraShortName: era.shortName,
                 eraIcon: era.icon ?? era.img,
                 eraImg: era.img,
                 eraYearFrom: era.years.from,

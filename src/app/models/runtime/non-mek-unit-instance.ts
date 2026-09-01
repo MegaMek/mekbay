@@ -775,7 +775,7 @@ export class NonMekUnitInstance {
         initialState: NonMekUnitRuntimeState = createPristineNonMekUnitState(entity),
     ) {
         if (entity.entityType === 'Mek') throw new Error('Meks require CBTUnitInstance');
-        if (baselineRef.entity.uuid !== entity.uuid()) {
+        if (baselineRef.entity !== entity.uuid()) {
             throw new Error('Runtime baseline does not match the entity UUID');
         }
         if (baselineRef.ruleset !== ruleset) throw new Error('Runtime ruleset does not match its baseline');

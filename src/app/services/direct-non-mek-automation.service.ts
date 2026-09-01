@@ -28,6 +28,10 @@ import { isAeroEntity } from '../models/entity/utils/entity-type-guards';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
 import { ammoExplosionDamagePerShot, ammoRackSize } from '../models/runtime/mek-critical-hit-v2';
 import { mekConsciousnessTarget, twoD6Total } from '../models/runtime/mek-automation-rules';
+import {
+    projectAeroHeatAutomationChecks,
+    type AeroHeatAutomationCheck,
+} from '../models/runtime/aero-heat-automation-rules';
 import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
 import {
     projectNonMekEndTurnHeat,
@@ -100,23 +104,9 @@ export interface DirectNonMekAutomationReviewOptions {
     readonly interactive?: boolean;
 }
 
-type AeroHeatCheckKind =
-    | 'shutdown'
-    | 'startup'
-    | 'ammo-explosion'
-    | 'random-movement'
-    | 'clear-heat-control'
-    | 'pilot-damage';
-
-interface AeroHeatCheck {
-    readonly kind: AeroHeatCheckKind;
-    readonly target?: number;
-    readonly automaticOutcome?: 'success' | 'failed';
-}
-
 interface StagedAeroHeatCheck {
     readonly id: string;
-    readonly check: AeroHeatCheck;
+    readonly check: AeroHeatAutomationCheck;
 }
 
 interface RolledAeroHeatCheck extends StagedAeroHeatCheck {
@@ -141,6 +131,7 @@ interface PreparedAeroHeatEffects {
     readonly staged: ResolvedAeroHeatEffects;
     readonly applyEffects: boolean;
     readonly applyPilotHits: boolean;
+    readonly interactive: boolean;
 }
 
 interface PreparedNonMekCrewRecovery {
@@ -344,7 +335,7 @@ export class DirectNonMekAutomationService {
                     applyEffects: selected,
                     applyPilotHits: selected && pilotHitsMode !== 'no',
                 } satisfies NonMekEndTurnDecision);
-            }));
+            }), review.interactive);
         }
 
         const acceptedHeat = await this.automation.resolve(
@@ -463,7 +454,7 @@ export class DirectNonMekAutomationService {
             heatAccepted: row.heatAccepted,
             applyEffects: row.staged !== null && acceptedEffects.has(row.staged.id),
             applyPilotHits: acceptedPilotHits.has(this.pilotHitEventId(row.request)),
-        } satisfies NonMekEndTurnDecision)));
+        } satisfies NonMekEndTurnDecision)), review.interactive);
     }
 
     /** Applies the reviewed heat/consequence chain before the turn reset. */
@@ -826,6 +817,7 @@ export class DirectNonMekAutomationService {
 
     private async resolveAeroEndTurnDecisions(
         decisions: readonly NonMekEndTurnDecision[],
+        interactive?: boolean,
     ): Promise<readonly PreparedDirectNonMekEndTurnAutomation[] | null> {
         const checks = orderedAutomationChecks(decisions.flatMap(decision => {
             if (!decision.snapshot || !decision.staged || !decision.applyEffects) return [];
@@ -857,7 +849,7 @@ export class DirectNonMekAutomationService {
         const resolutions = await this.automationChecks.resolve(
             'heatEffectsCheck',
             checks,
-            { title: 'Resolve Pending Checks' },
+            { title: 'Resolve Pending Checks', interactive },
         );
         if (resolutions === null) return null;
         const resolutionById = new Map(resolutions.map(result => [result.id, result]));
@@ -900,6 +892,7 @@ export class DirectNonMekAutomationService {
                 staged,
                 decision.applyEffects,
                 decision.applyPilotHits,
+                interactive === true,
             );
         }));
     }
@@ -910,6 +903,7 @@ export class DirectNonMekAutomationService {
         staged: ResolvedAeroHeatEffects | null,
         applyEffects: boolean,
         applyPilotHits: boolean,
+        interactive: boolean,
     ): PreparedDirectNonMekEndTurnAutomation {
         return Object.freeze({
             instanceId: request.instanceId,
@@ -919,7 +913,12 @@ export class DirectNonMekAutomationService {
                     heatPolicy: heatAccepted ? 'automatic' as const : 'manual' as const,
                 }),
                 ...(staged === null ? {} : {
-                    heatEffects: Object.freeze({ staged, applyEffects, applyPilotHits }),
+                    heatEffects: Object.freeze({
+                        staged,
+                        applyEffects,
+                        applyPilotHits,
+                        interactive,
+                    }),
                 }),
             }),
         });
@@ -960,50 +959,20 @@ export class DirectNonMekAutomationService {
             });
         }
         const effects = projection.heat.effects;
-        const controller = this.activeController(snapshot);
+        const activeController = this.activeController(snapshot) !== null;
         const ammoCandidates = this.preferredExplosiveAmmoCandidates(snapshot);
         const hadHeatControlEffect = snapshot.state.turn.controlRecovery?.cause
             === 'heat-random-movement'
             && snapshot.query.hasCondition('out-of-control')
             && snapshot.query.hasCondition('random-movement');
-        const checks: AeroHeatCheck[] = [];
-        if (snapshot.query.hasCondition('shutdown')) {
-            if (heat < 14) {
-                checks.push(Object.freeze({ kind: 'startup', automaticOutcome: 'success' }));
-            } else if (controller && effects.shutdownTarget !== undefined
-                && effects.shutdownTarget <= 12) {
-                checks.push(Object.freeze({ kind: 'startup', target: effects.shutdownTarget }));
-            }
-        } else if (effects.shutdownTarget !== undefined) {
-            checks.push(Object.freeze(
-                effects.shutdownTarget >= 100 || !controller
-                    ? { kind: 'shutdown', automaticOutcome: 'failed' }
-                    : { kind: 'shutdown', target: effects.shutdownTarget },
-            ));
-        }
-        if (effects.ammoExplosionTarget !== undefined && ammoCandidates.length > 0) {
-            checks.push(Object.freeze({
-                kind: 'ammo-explosion',
-                target: effects.ammoExplosionTarget,
-            }));
-        }
-        if (effects.randomMovementTarget !== undefined) {
-            checks.push(Object.freeze({
-                kind: 'random-movement',
-                target: effects.randomMovementTarget,
-            }));
-        } else if (heat < 5 && hadHeatControlEffect) {
-            checks.push(Object.freeze({
-                kind: 'clear-heat-control',
-                automaticOutcome: 'success',
-            }));
-        }
-        if (effects.pilotDamageTarget !== undefined) {
-            checks.push(Object.freeze({
-                kind: 'pilot-damage',
-                target: effects.pilotDamageTarget,
-            }));
-        }
+        const checks = projectAeroHeatAutomationChecks({
+            heat,
+            effects,
+            shutdown: snapshot.query.hasCondition('shutdown'),
+            activeController,
+            hasExplosiveAmmo: ammoCandidates.length > 0,
+            hadHeatControlEffect,
+        });
         return Object.freeze({
             id: `aero-heat-effects:${snapshot.instanceId}:${revision}`,
             heat,
@@ -1051,7 +1020,7 @@ export class DirectNonMekAutomationService {
         // Preflight the complete crew consequence before applying ammunition
         // or condition mutations. CLOSE must leave the whole chain resumable.
         const crewPlan = pilotHits > 0
-            ? await this.resolveCrewHits(snapshot, pilotHits)
+            ? await this.resolveCrewHits(snapshot, pilotHits, prepared.interactive)
             : Object.freeze([]);
         if (crewPlan === null) return false;
         for (const row of prepared.staged.checks) {
@@ -1178,6 +1147,7 @@ export class DirectNonMekAutomationService {
     private resolveCrewHits(
         initial: NonMekSnapshot,
         hits: number,
+        interactive = false,
     ): Promise<readonly ResolvedCrewHits[] | null> {
         const positions = [...initial.index.crewPositions.values()]
             .sort((left, right) => left.occurrence - right.occurrence);
@@ -1203,6 +1173,7 @@ export class DirectNonMekAutomationService {
                     hits,
                 });
             }),
+            { interactive },
         );
     }
 

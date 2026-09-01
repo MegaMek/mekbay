@@ -5,7 +5,7 @@ import type { CBTRuleset } from './cbt-ruleset.model';
 import type { BaseEntity } from './entity/base-entity';
 import type { MekEntity } from './entity/entities/mek/mek-entity';
 import type { NativeUnitSourceHandle } from './native-unit-source-handle';
-import type { SavedEntityIdentity } from './persisted-unit-state';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type { CrewAssignment } from './runtime/crew-assignment';
 import type { CBTUnitQueryPort, CBTUnitRuntimeIndex, CBTUnitRuntimeState } from './runtime/cbt-unit-runtime';
 import type { NonMekRuntimeIndex } from './runtime/non-mek-runtime-index';
@@ -17,9 +17,9 @@ import type { MekUnitRuntimeState } from './runtime/runtime-state';
 /** Complete immutable read model for any force-owned CBT BaseEntity. */
 export interface CBTUnitSnapshot {
     readonly instanceId: string;
+    readonly uuid: UnitUuid;
     readonly entity: BaseEntity;
     readonly index: CBTUnitRuntimeIndex;
-    readonly sourceRef: SavedEntityIdentity;
     readonly nativeSource?: NativeUnitSourceHandle;
     readonly ruleset: CBTRuleset;
     readonly crewAssignment: CrewAssignment;

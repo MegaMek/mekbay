@@ -945,9 +945,9 @@ export class SearchForceGeneratorDialogComponent {
             currentForce.members(),
             {},
             member => {
-                const identity = member.force.getUnitSourceIdentity(member.id);
-                return identity
-                    ? this.dataService.getUnitByIdentity(identity.provider, identity.uuid)
+                const uuid = member.force.getUnitUuid(member.id);
+                return uuid
+                    ? this.dataService.getUnitByUuid(uuid)
                     : undefined;
             },
         );

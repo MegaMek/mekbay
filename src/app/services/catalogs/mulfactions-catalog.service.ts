@@ -34,7 +34,7 @@ export class FactionsCatalogService extends CatalogBaseService<MULFactions | Raw
     }
 
     protected override get remoteUrl(): string {
-        return 'online-assets/generated/factions.json';
+        return 'online-assets/static/factions.json';
     }
 
     protected override get repositoryAssetPath(): string { return this.remoteUrl; }

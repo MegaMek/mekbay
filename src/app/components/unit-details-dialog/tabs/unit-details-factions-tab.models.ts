@@ -50,6 +50,7 @@ export interface FactionAvailabilityItem {
 export interface FactionAvailability {
     eraId: number;
     eraName: string;
+    eraShortName?: string;
     eraIcon?: string;
     eraImg?: string;
     eraYearFrom?: number;

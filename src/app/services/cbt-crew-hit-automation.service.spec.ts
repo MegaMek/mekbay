@@ -100,6 +100,19 @@ describe('CBTCrewHitAutomationService', () => {
         }])).toBeNull();
     });
 
+    it('keeps every consciousness stage interactive for badge-driven parent work', async () => {
+        spyOn(Math, 'random').and.returnValue(0.99);
+
+        await service.resolve('Atlas', 'total-warfare', 'event', [{
+            id: 'pilot', wounds: 0, unconscious: false, unavailable: false, hits: 2,
+        }], { interactive: true });
+
+        expect(resolveChecks.calls.allArgs().map(args => args[2])).toEqual([
+            jasmine.objectContaining({ interactive: true }),
+            jasmine.objectContaining({ interactive: true }),
+        ]);
+    });
+
     it('supports different hit counts for each crew position in one grouped dialog', async () => {
         spyOn(Math, 'random').and.returnValue(0.99);
 

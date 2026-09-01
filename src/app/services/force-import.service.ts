@@ -348,11 +348,11 @@ export class ForceImportService {
                 if (isCBTForceMember(sourceUnit)
                     && targetForce instanceof CBTForce
                     && !needsConversion) {
-                    const identity = sourceUnit.force.getUnitSourceIdentity(sourceUnit.id);
-                    if (identity) {
-                        created = await this.admission.admitCBTIdentity({
+                    const uuid = sourceUnit.force.getUnitUuid(sourceUnit.id);
+                    if (uuid) {
+                        created = await this.admission.admitCBT({
                             force: targetForce,
-                            identity,
+                            uuid,
                             group: newGroup,
                             commander: forceMemberCommander(sourceUnit),
                         });
@@ -360,7 +360,7 @@ export class ForceImportService {
                 } else {
                     const unitData = resolveForceMemberCatalogSummary(
                         sourceUnit,
-                        (provider, uuid) => this.dataService.getUnitByIdentity(provider, uuid),
+                        uuid => this.dataService.getUnitByUuid(uuid),
                     );
                     if (unitData) {
                         created = await this.admission.admit({

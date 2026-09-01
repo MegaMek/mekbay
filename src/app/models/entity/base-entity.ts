@@ -93,6 +93,7 @@ import {
   TechRatingSource,
 } from './types';
 import { uuidv7 } from '../../utils/uuid.util';
+import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import type { SupportVehicle } from './entities/support-vehicle';
 import type { UnitSubtype, UnitType } from './types';
 import { EquipmentRegistry } from '../equipment-lookup';
@@ -317,7 +318,7 @@ export abstract class BaseEntity implements EntityTechnology {
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ── Identity ──
-  readonly uuid = signal<string>(uuidv7());
+  readonly uuid = signal<UnitUuid>(asUnitUuid(uuidv7()));
   readonly chassis = signal<string>('');
   readonly model = signal<string>('');
   readonly clanName = signal<string>('');

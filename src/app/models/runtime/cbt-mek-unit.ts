@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import type { SavedEntityIdentity } from '../persisted-unit-state';
 import { buildMekRuntimeIndex, type MekRuntimeIndex } from './mek-runtime-index';
-import type { UnitProviderId, UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { jsonValuesEqual } from '../../utils/json-value.util';
@@ -19,7 +18,6 @@ import {
 import type {
     SerializedCBTUnitV2,
     SerializedDeploymentConfigurationV2,
-    SerializedUnitRestorationMetadataV2,
 } from './persistence-v2';
 import {
     buildSavedBlueprintReferenceTableV2,
@@ -47,7 +45,7 @@ import type {
 import type { EquipmentRowOrderGroup } from './equipment-row-order';
 
 export interface CreateCBTMekUnitRequest {
-    readonly identity: { readonly provider: UnitProviderId; readonly uuid: UnitUuid };
+    readonly uuid: UnitUuid;
     readonly instanceId: string;
     readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
 }
@@ -56,23 +54,20 @@ export interface CreateCBTMekUnitRequest {
 export class CBTMekUnit implements CBTUnit {
     public readonly instanceId: string;
     private readonly entity: MekEntity;
-    private readonly sourceRef: SavedEntityIdentity;
     private readonly runtime: CBTUnitInstance;
     private readonly baselineRef: InstanceBaselineRef;
 
     public constructor(
         entity: MekEntity,
-        sourceRef: SavedEntityIdentity,
+        public readonly uuid: UnitUuid,
         instance: CBTUnitInstance,
         private readonly deployment: SerializedDeploymentConfigurationV2,
         private readonly nativeSource?: NativeUnitSourceHandle,
-        private readonly restorationSidecar?: SerializedUnitRestorationMetadataV2,
     ) {
-        if (sourceRef.uuid !== entity.uuid()) {
+        if (uuid !== entity.uuid()) {
             throw new Error('Ready Mek source identity does not match the entity UUID');
         }
         this.entity = entity;
-        this.sourceRef = Object.freeze({ ...sourceRef });
         this.instanceId = instance.id;
         this.baselineRef = instance.baselineRef;
         this.runtime = instance;
@@ -155,10 +150,6 @@ export class CBTMekUnit implements CBTUnit {
         });
     }
 
-    public getSourceRef(): SavedEntityIdentity {
-        return this.sourceRef;
-    }
-
     /** Detached exact MTF/BLK bytes retained with this operational unit. */
     public getNativeSource(): NativeUnitSourceHandle | undefined {
         return this.nativeSource === undefined
@@ -175,16 +166,16 @@ export class CBTMekUnit implements CBTUnit {
         return this.runtime.query().crewAssignment();
     }
 
-    /** Exact standalone current-format snapshot, including passive conversion diagnostics. */
+    /** Exact standalone current-format snapshot. */
     public serialize(): SerializedCBTUnitV2 {
         return serializeCBTUnitStateV2({
             entity: this.entity,
             index: this.runtime.getIndex(),
             instanceId: this.instanceId,
+            sourceHashCanary: this.nativeSource?.sourceHashCanary,
             baselineRef: this.baselineRef,
             state: this.runtime.snapshot(),
             deployment: this.deployment,
-            ...(this.restorationSidecar ? { restoration: this.restorationSidecar } : {}),
         });
     }
 
@@ -212,7 +203,6 @@ export class CBTMekUnit implements CBTUnit {
     /**
      * Rebuilds only the immutable deployment baseline of an unstarted V2 unit.
      * The exact entity, instance ID, scenario digest, runtime state, and
-     * restoration evidence are retained. The caller installs the returned
      * wrapper atomically only after this method has completed successfully.
      */
     public static async redeployPreCombat(
@@ -226,18 +216,18 @@ export class CBTMekUnit implements CBTUnit {
         }
 
         const entity = current.getUnit();
-        const sourceRef = current.getSourceRef();
+        const uuid = current.uuid;
         const instanceId = current.instanceId;
         const saved = current.serialize();
         const state = runtime.snapshot();
         const nativeSource = current.getNativeSource();
         const runtimeIndex = buildMekRuntimeIndex(entity);
-        const initialized = initializeUnitState(entity, runtimeIndex, sourceRef, options);
+        const initialized = initializeUnitState(entity, runtimeIndex, uuid, options);
         if (runtime.revision() !== 0 || runtime.snapshot() !== state) {
             throw new Error('The V2 runtime changed while redeployment was being prepared');
         }
-        if (!jsonValuesEqual(saved.baselineRefAtSave.entity, sourceRef)
-            || !jsonValuesEqual(initialized.baselineRef.entity, sourceRef)
+        if (!jsonValuesEqual(saved.baselineRefAtSave.entity, uuid)
+            || !jsonValuesEqual(initialized.baselineRef.entity, uuid)
             || initialized.baselineRef.ruleset !== saved.baselineRefAtSave.ruleset) {
             throw new Error('Redeployment cannot change the entity identity or ruleset');
         }
@@ -284,11 +274,10 @@ export class CBTMekUnit implements CBTUnit {
         });
         return new CBTMekUnit(
             entity,
-            sourceRef,
+            uuid,
             instance,
             deployment,
             nativeSource,
-            saved.restoration,
         );
     }
 
@@ -305,7 +294,7 @@ export class CBTMekUnit implements CBTUnit {
 
         const saved = current.serialize();
         const entity = current.getUnit();
-        const sourceRef = current.getSourceRef();
+        const uuid = current.uuid;
         const nativeSource = current.getNativeSource();
         const options = captureInitializeOptions({
             initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
@@ -314,7 +303,7 @@ export class CBTMekUnit implements CBTUnit {
             scenario,
         });
         const runtimeIndex = buildMekRuntimeIndex(entity);
-        const initialized = initializeUnitState(entity, runtimeIndex, sourceRef, options);
+        const initialized = initializeUnitState(entity, runtimeIndex, uuid, options);
         if (!jsonValuesEqual(initialized.baselineRef, saved.baselineRefAtSave)) {
             throw new Error('Repair cannot change the unit baseline');
         }
@@ -353,11 +342,10 @@ export class CBTMekUnit implements CBTUnit {
         });
         return new CBTMekUnit(
             entity,
-            sourceRef,
+            uuid,
             instance,
             deployment,
             nativeSource,
-            saved.restoration,
         );
     }
 
@@ -371,7 +359,7 @@ export class CBTMekUnit implements CBTUnit {
         return CBTMekUnit.restoreFromEntity(
             saved,
             current.getUnit(),
-            current.getSourceRef(),
+            current.uuid,
             {
                 initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
                 profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
@@ -390,14 +378,13 @@ export class CBTMekUnit implements CBTUnit {
     ): Promise<CBTMekUnit> {
         scenario = captureValue(scenario);
         if (saved.instanceId !== current.instanceId
-            || saved.entity.provider !== current.getSourceRef().provider
-            || saved.entity.uuid !== current.getSourceRef().uuid) {
+            || saved.entity !== current.uuid) {
             throw new Error('Runtime checkpoint does not match its retained Mek owner');
         }
         return CBTMekUnit.restoreFromEntity(
             saved,
             current.getUnit(),
-            current.getSourceRef(),
+            current.uuid,
             {
                 initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
                 profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
@@ -412,19 +399,17 @@ export class CBTMekUnit implements CBTUnit {
     public static async createFromEntity(
         request: CreateCBTMekUnitRequest,
         entity: MekEntity,
-        sourceRef: SavedEntityIdentity,
+        uuid: UnitUuid,
         options: InitializeUnitStateOptions,
         nativeSource?: NativeUnitSourceHandle,
     ): Promise<CBTMekUnit> {
         request = captureValue(request);
-        sourceRef = captureValue(sourceRef);
+        uuid = captureValue(uuid);
         options = captureInitializeOptions(options);
-        if (sourceRef.provider !== request.identity.provider
-            || sourceRef.uuid !== request.identity.uuid
-            || sourceRef.uuid !== entity.uuid()) {
-            throw new Error('Entity does not match the requested provider/UUID');
+        if (uuid !== request.uuid || uuid !== entity.uuid()) {
+            throw new Error('Entity does not match the requested UUID');
         }
-        nativeSource = verifyNativeSource(sourceRef, nativeSource);
+        nativeSource = verifyNativeSource(nativeSource);
         const runtimeIndex = buildMekRuntimeIndex(entity);
         if (request.crewSkills) {
             options = {
@@ -442,7 +427,7 @@ export class CBTMekUnit implements CBTUnit {
                 },
             };
         }
-        const initialized = initializeUnitState(entity, runtimeIndex, sourceRef, options);
+        const initialized = initializeUnitState(entity, runtimeIndex, uuid, options);
         const instance = new CBTUnitInstance(
             request.instanceId,
             initialized.baselineRef,
@@ -470,7 +455,7 @@ export class CBTMekUnit implements CBTUnit {
         });
         return new CBTMekUnit(
             entity,
-            sourceRef,
+            uuid,
             instance,
             deployment,
             nativeSource,
@@ -485,19 +470,17 @@ export class CBTMekUnit implements CBTUnit {
     public static async restoreFromEntity(
         saved: SerializedCBTUnitV2,
         entity: MekEntity,
-        sourceRef: SavedEntityIdentity,
+        uuid: UnitUuid,
         options: InitializeUnitStateOptions,
         nativeSource?: NativeUnitSourceHandle,
     ): Promise<CBTMekUnit> {
         saved = captureValue(saved);
-        sourceRef = captureValue(sourceRef);
+        uuid = captureValue(uuid);
         options = captureInitializeOptions(options);
-        if (sourceRef.provider !== saved.entity.provider
-            || sourceRef.uuid !== saved.entity.uuid
-            || sourceRef.uuid !== entity.uuid()) {
-            throw new Error('Entity does not match the persisted V2 provider/UUID');
+        if (uuid !== saved.entity || uuid !== entity.uuid()) {
+            throw new Error('Entity does not match the persisted V2 UUID');
         }
-        nativeSource = verifyNativeSource(sourceRef, nativeSource);
+        nativeSource = verifyNativeSource(nativeSource);
         const runtimeIndex = buildMekRuntimeIndex(entity);
         const storedCrew = saved.deployment.values.crewAssignment;
         const crewAssignment = storedCrew.positions.length === 0
@@ -512,7 +495,7 @@ export class CBTMekUnit implements CBTUnit {
                 deployment: Object.freeze({ ...saved.deployment, values: deploymentValues }),
             });
         }
-        const initialized = initializeUnitState(entity, runtimeIndex, sourceRef, {
+        const initialized = initializeUnitState(entity, runtimeIndex, uuid, {
             ...options,
             deployment: deploymentValues,
         });
@@ -551,39 +534,20 @@ export class CBTMekUnit implements CBTUnit {
             schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
             values: initialized.deployment,
         });
-        const restoration = saved.restoration !== undefined
-            || restored.metadata.sourceChanged
-            || restored.metadata.warnings.length > 0
-            || restored.metadata.unresolved.length > 0
-            || restored.metadata.acceptedAliases.length > 0
-            || restored.metadata.ignoredRecovery !== undefined
-            || restored.metadata.heatRecovery !== undefined
-            ? restored.metadata
-            : undefined;
         return new CBTMekUnit(
             entity,
-            sourceRef,
+            uuid,
             instance,
             deployment,
             nativeSource,
-            restoration,
         );
     }
 
 }
 
-function verifyNativeSource(
-    identity: SavedEntityIdentity,
-    source?: NativeUnitSourceHandle,
-): NativeUnitSourceHandle | undefined {
-    if (identity.sourceFormat === 'blk') {
-        throw new Error('A Mek runtime requires an MTF source');
-    }
+function verifyNativeSource(source?: NativeUnitSourceHandle): NativeUnitSourceHandle | undefined {
     if (source === undefined) return undefined;
-    if ((identity.sourceFormat !== undefined && source.format !== identity.sourceFormat)
-        || (identity.sourceHashAtSave !== undefined && source.sourceHash !== identity.sourceHashAtSave)) {
-        throw new Error('Retained MTF source does not match the entity identity');
-    }
+    if (source.format !== 'mtf') throw new Error('A Mek runtime requires an MTF source');
     return cloneNativeUnitSourceHandle(source);
 }
 

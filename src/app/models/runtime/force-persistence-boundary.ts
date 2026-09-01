@@ -292,12 +292,10 @@ function captureCBTUnits(
             )
             ? previousEntry.unit
             : ready.serialize();
-        const sourceRef = ready.getSourceRef();
         if (serialized.instanceId !== ready.instanceId || serialized.stateRevision !== revision) {
             throw new Error(`Ready runtime ${ready.instanceId} serialized a different identity or revision`);
         }
-        if (serialized.entity.provider !== sourceRef.provider
-            || serialized.entity.uuid !== sourceRef.uuid) {
+        if (serialized.entity !== ready.uuid) {
             throw new Error(`Ready runtime ${ready.instanceId} serialized a different native source`);
         }
         if (ids.has(ready.instanceId)) throw new Error(`Duplicate ready runtime ${ready.instanceId}`);

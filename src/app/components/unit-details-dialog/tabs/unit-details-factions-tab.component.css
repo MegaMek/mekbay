@@ -20,52 +20,8 @@
     display: flex;
     flex: 0 0 auto;
     padding: 8px 14px 0;
-    justify-content: flex-end;
-}
-
-.view-switch {
-    display: inline-flex;
-    padding: 2px;
-    border: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
-    border-radius: 5px;
-    background: color-mix(in srgb, var(--background-color-light) 60%, #111);
-}
-
-.view-switch-button {
-    display: inline-flex;
-    min-height: 28px;
-    padding: 4px 9px;
-    border: 0;
-    border-radius: 3px;
     align-items: center;
     justify-content: center;
-    gap: 5px;
-    background: transparent;
-    color: var(--text-color-secondary);
-    font: inherit;
-    font-size: 0.75rem;
-    font-weight: 650;
-    line-height: 1;
-    cursor: pointer;
-}
-
-.view-switch-button svg {
-    width: 14px;
-    height: 14px;
-}
-
-.view-switch-button:hover {
-    color: var(--text-color);
-}
-
-.view-switch-button.active {
-    background: var(--bt-yellow);
-    color: #171717;
-}
-
-.view-switch-button:focus-visible {
-    outline: 2px solid var(--bt-yellow);
-    outline-offset: 2px;
 }
 
 .availability-source-disclaimer {

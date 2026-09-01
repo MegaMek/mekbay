@@ -51,6 +51,21 @@ describe('CBTAutomationService', () => {
         expect([...(result ?? [])]).toEqual(['one']);
     });
 
+    it('opens manual rule work instead of discarding it when its mode is no', async () => {
+        mode = 'no';
+        review.and.resolveTo(new Set(['two']));
+
+        const result = await service.resolve('criticalHitChanceCheck', events, {
+            title: 'Review Critical Hit',
+            manualResolution: true,
+        });
+
+        expect(review).toHaveBeenCalledOnceWith(events, jasmine.objectContaining({
+            manualResolution: true,
+        }));
+        expect([...(result ?? [])]).toEqual(['two']);
+    });
+
     it('coalesces concurrent compatible family reviews and returns only each caller\'s ids', async () => {
         mode = 'ask';
         review.and.callFake(async (combined: readonly AutomationReviewEvent[]) =>

@@ -12,13 +12,9 @@ import {
     type PreparedCoreCatalogActivation,
 } from '../unit-catalog/core-unit-catalog.service';
 import {
-    asUnitProviderId,
-    asUnitUuid,
-    encodeDesignIdentity,
-    MM_DATA_UNIT_PROVIDER_ID,
     type CatalogActivationId,
     type StoredCoreContent,
-    type UnitProviderId,
+    type UnitUuid,
 } from '../unit-catalog/unit-catalog.types';
 
 export interface UnitsCatalogSnapshot {
@@ -27,7 +23,7 @@ export interface UnitsCatalogSnapshot {
     readonly coreActivationId?: CatalogActivationId;
     readonly summaries: readonly UnitSummary[];
     readonly units: UnitSummary[];
-    readonly summariesByIdentity: ReadonlyMap<string, UnitSummary>;
+    readonly summariesByUuid: ReadonlyMap<UnitUuid, UnitSummary>;
 }
 
 export interface PreparedUnitsCatalogActivation {
@@ -55,7 +51,7 @@ export class UnitsCatalogService {
         coreRevision: 0,
         summaries: Object.freeze([]),
         units: [],
-        summariesByIdentity: new Map<string, UnitSummary>(),
+        summariesByUuid: new Map<UnitUuid, UnitSummary>(),
     }));
     public readonly catalogSnapshot = this.snapshotValue.asReadonly();
     public readonly catalogRevision = computed(() => this.snapshotValue().revision);
@@ -95,31 +91,17 @@ export class UnitsCatalogService {
         return this.snapshotValue().summaries;
     }
 
-    public getCoreSummaryByIdentity(
-        provider: UnitProviderId,
-        uuid: string,
-    ): UnitSummary | undefined {
-        try {
-            return this.snapshotValue().summariesByIdentity.get(encodeDesignIdentity({
-                provider: asUnitProviderId(provider),
-                uuid: asUnitUuid(uuid),
-            }));
-        } catch {
-            return undefined;
-        }
+    public getCoreSummaryByUuid(uuid: UnitUuid): UnitSummary | undefined {
+        return this.snapshotValue().summariesByUuid.get(uuid);
     }
 
-    public async readNativeUnitSource(
-        provider: UnitProviderId,
-        uuid: string,
-    ): Promise<StoredCoreContent | undefined> {
-        if (provider !== MM_DATA_UNIT_PROVIDER_ID) return undefined;
+    public async readNativeUnitSource(uuid: UnitUuid): Promise<StoredCoreContent | undefined> {
         const snapshot = this.core.catalogSnapshot();
         const activationId = snapshot.generation?.activationId;
         const loadKey = `${snapshot.revision}\0${activationId ?? ''}\0${uuid}`;
         let loading = this.nativeSourceLoads.get(loadKey);
         if (!loading) {
-            loading = this.loadNativeUnitSource(provider, uuid, snapshot.revision, activationId)
+            loading = this.loadNativeUnitSource(uuid, snapshot.revision, activationId)
                 .finally(() => this.nativeSourceLoads.delete(loadKey));
             this.nativeSourceLoads.set(loadKey, loading);
         }
@@ -196,21 +178,21 @@ export class UnitsCatalogService {
             }
         }
 
-        const summariesByIdentity = new Map<string, UnitSummary>();
+        const summariesByUuid = new Map<UnitUuid, UnitSummary>();
         for (const summary of summaries) {
-            summariesByIdentity.set(encodeDesignIdentity(summary), summary);
+            summariesByUuid.set(summary.uuid, summary);
         }
 
-        const previousUnitsByIdentity = new Map<string, UnitSummary>();
+        const previousUnitsByUuid = new Map<UnitUuid, UnitSummary>();
         const current = this.snapshotValue();
         for (let index = 0; index < current.units.length; index += 1) {
             const summary = current.summaries[index];
             const unit = current.units[index];
-            if (summary && unit) previousUnitsByIdentity.set(encodeDesignIdentity(summary), unit);
+            if (summary && unit) previousUnitsByUuid.set(summary.uuid, unit);
         }
         const units = summaries.map(summary => {
             const unit = materializeUnitSummaryView(summary);
-            const previous = previousUnitsByIdentity.get(encodeDesignIdentity(summary));
+            const previous = previousUnitsByUuid.get(summary.uuid);
             if (previous) preserveTransientUnitOverlays(previous, unit);
             return unit;
         });
@@ -223,13 +205,12 @@ export class UnitsCatalogService {
                 : {}),
             summaries,
             units,
-            summariesByIdentity,
+            summariesByUuid,
         });
     }
 
     private async loadNativeUnitSource(
-        provider: UnitProviderId,
-        uuid: string,
+        uuid: UnitUuid,
         coreRevision: number,
         activationId: CatalogActivationId | undefined,
     ): Promise<StoredCoreContent | undefined> {
@@ -240,10 +221,10 @@ export class UnitsCatalogService {
             || current.generation?.activationId !== activationId) {
             throw new Error('Core catalog generation changed while opening the native unit source');
         }
-        const summary = this.getCoreSummaryByIdentity(provider, uuid);
+        const summary = this.snapshotValue().summaries.find(unit => unit.uuid === uuid);
         const unitLabel = summary ? ` for unit "${summary.name}"` : '';
         this.logger.info(
-            `Opening native ${loaded.format.toUpperCase()} unit file "${loaded.file}"${unitLabel} (${provider}/${uuid}).`,
+            `Opening native ${loaded.format.toUpperCase()} unit file "${loaded.file}"${unitLabel} (${uuid}).`,
         );
         return cloneStoredCoreContent(loaded);
     }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import type { SavedEntityIdentity } from '../persisted-unit-state';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import {
     CORE_2026_RULESET,
     isCBTRuleset,
@@ -72,12 +72,11 @@ export interface InitializedUnitState {
 export function initializeUnitState(
     entity: MekEntity,
     index: MekRuntimeIndex,
-    identity: SavedEntityIdentity,
+    identity: UnitUuid,
     options: InitializeUnitStateOptions,
 ): InitializedUnitState {
     options = structuredClone(options);
-    identity = Object.freeze({ ...identity });
-    if (identity.uuid !== entity.uuid()) {
+    if (identity !== entity.uuid()) {
         throw new Error('Entity UUID does not match the baseline identity');
     }
     if (!Number.isSafeInteger(options.initializerRevision) || options.initializerRevision < 1) {

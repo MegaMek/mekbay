@@ -89,7 +89,6 @@ describe('ForceWorkspaceCommandsService first-unit work bounds', () => {
                 return forceUnit;
             },
             setName: jasmine.createSpy('setName'),
-            getUnitSourceIdentity: () => ({ provider: unit.provider, uuid: unit.uuid }),
             getRosterGroupId: () => 'group-1',
             queryCanonicalRoster: () => ({
                 kind: 'available',

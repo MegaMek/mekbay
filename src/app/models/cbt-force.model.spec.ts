@@ -115,11 +115,11 @@ async function readyCloneForce(): Promise<{
     const firstId = 'unit:clone:first';
     const secondId = 'unit:clone:second';
     const first = await CBTMekUnit.createFromEntity({
-        identity: fixture.identity,
+        uuid: fixture.identity,
         instanceId: firstId,
     }, fixture.entity, fixture.identity, initializeOptions);
     const second = await CBTMekUnit.createFromEntity({
-        identity: fixture.identity,
+        uuid: fixture.identity,
         instanceId: secondId,
     }, fixture.entity, fixture.identity, initializeOptions);
     const armorFaceId = [...fixture.index.armorFaces.keys()][0]!;
@@ -184,14 +184,14 @@ async function readyCloneForce(): Promise<{
         name: 'Direct Fixture DF-1',
         chassis: 'Direct Fixture',
         model: 'DF-1',
-        provider: fixture.identity.provider,
-        uuid: fixture.identity.uuid,
+        provider: MM_DATA_UNIT_PROVIDER_ID,
+        uuid: fixture.identity,
         entityType: 'Mek',
     } as unknown as UnitSummary;
     const localData = {
         getFactionById: () => null,
         getEraById: () => null,
-        getUnitByIdentity: () => summary,
+        getUnitByUuid: () => summary,
     } as unknown as DataService;
     const cbtUnits = {
         restore: (saved: SerializedCBTUnitV2) =>
@@ -245,16 +245,11 @@ async function readyEntityForce(options: Readonly<{
     const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2');
     entity.uuid.set(uuid);
     entity.setTonnage(20);
-    const identity = Object.freeze({
-        origin: 'megamek' as const,
-        provider: MM_DATA_UNIT_PROVIDER_ID,
-        uuid,
-        sourceFormat: 'blk' as const,
-    });
+    const identity = uuid;
     const instanceId = 'unit:entity:tank';
     const ready = CBTNonMekUnit.create(entity, {
         instanceId,
-        identity,
+        uuid: identity,
         deployment: { id: 'default' },
         scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
         initialStateProfileId: 'pristine-non-mek-v1',
@@ -284,7 +279,7 @@ async function readyEntityForce(options: Readonly<{
         name: entity.displayName(),
         chassis: entity.chassis(),
         model: '',
-        provider: identity.provider,
+        provider: MM_DATA_UNIT_PROVIDER_ID,
         uuid,
         entityType: entity.entityType,
         bv: 0,
@@ -292,7 +287,7 @@ async function readyEntityForce(options: Readonly<{
     const localData = {
         getFactionById: () => null,
         getEraById: () => null,
-        getUnitByIdentity: () => summary,
+        getUnitByUuid: () => summary,
     } as unknown as DataService;
     const cbtUnits = jasmine.createSpyObj<CBTUnitService>(
         'CBTUnitService',
@@ -308,7 +303,7 @@ async function readyEntityForce(options: Readonly<{
             request: Parameters<CBTUnitService['create']>[0],
         ) => Promise.resolve(CBTNonMekUnit.create(entity, {
             instanceId: request.instanceId,
-            identity,
+            uuid: identity,
             deployment: request.deployment,
             scenario: request.scenario,
             initialStateProfileId: request.initialStateProfileId ?? 'pristine-non-mek-v1',
@@ -372,17 +367,12 @@ async function readyEntityC3Force(
     const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e3');
     entity.uuid.set(uuid);
     entity.setTonnage(20);
-    const identity = Object.freeze({
-        origin: 'megamek' as const,
-        provider: MM_DATA_UNIT_PROVIDER_ID,
-        uuid,
-        sourceFormat: 'blk' as const,
-    });
+    const identity = uuid;
     const firstId = 'unit:entity:c3:first';
     const secondId = 'unit:entity:c3:second';
     const create = (instanceId: string) => CBTNonMekUnit.create(entity, {
         instanceId,
-        identity,
+        uuid: identity,
         deployment: { id: 'default' },
         scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
         initialStateProfileId: 'pristine-non-mek-v1',
@@ -417,12 +407,12 @@ async function readyEntityC3Force(
     };
     const summary = {
         name: entity.displayName(), chassis: entity.chassis(), model: '',
-        provider: identity.provider, uuid, entityType: entity.entityType, bv: 0,
+        provider: MM_DATA_UNIT_PROVIDER_ID, uuid, entityType: entity.entityType, bv: 0,
     } as unknown as UnitSummary;
     const localData = {
         getFactionById: () => null,
         getEraById: () => null,
-        getUnitByIdentity: () => summary,
+        getUnitByUuid: () => summary,
     } as unknown as DataService;
     const cbtUnits = {
         restore: (saved: SerializedNonMekUnit) =>
@@ -474,19 +464,19 @@ async function readyC3Force(owned = true): Promise<{
         scenario: { id: 'megamek', ruleset: 'core-2026' as const },
     };
     const master = await CBTMekUnit.createFromEntity(
-        { identity: masterFixture.identity, instanceId: masterId },
+        { uuid: masterFixture.identity, instanceId: masterId },
         masterFixture.entity,
         masterFixture.identity,
         initializeOptions,
     );
     const emergency = await CBTMekUnit.createFromEntity(
-        { identity: emergencyFixture.identity, instanceId: emergencyId },
+        { uuid: emergencyFixture.identity, instanceId: emergencyId },
         emergencyFixture.entity,
         emergencyFixture.identity,
         initializeOptions,
     );
     const member = await CBTMekUnit.createFromEntity(
-        { identity: memberFixture.identity, instanceId: memberId },
+        { uuid: memberFixture.identity, instanceId: memberId },
         memberFixture.entity,
         memberFixture.identity,
         initializeOptions,
@@ -561,13 +551,13 @@ async function readyC3Force(owned = true): Promise<{
         name: 'Direct Fixture DF-1',
         chassis: 'Direct Fixture',
         model: 'DF-1',
-        provider: masterFixture.identity.provider,
-        uuid: masterFixture.identity.uuid,
+        provider: MM_DATA_UNIT_PROVIDER_ID,
+        uuid: masterFixture.identity,
     } as unknown as UnitSummary;
     const localData = {
         getFactionById: () => null,
         getEraById: () => null,
-        getUnitByIdentity: () => summary,
+        getUnitByUuid: () => summary,
         getEquipmentRegistry: () => emergencyFixture.equipment,
     } as unknown as DataService;
     const cbtUnits = {

@@ -10,7 +10,6 @@ import { nonMekDamageTrackId } from './non-mek-damage-track-rules';
 import { TestProtoMekEntity } from '../entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
 import {
-    MM_DATA_UNIT_PROVIDER_ID,
     asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
 import { NonMekUnitInstance } from '../runtime/non-mek-unit-instance';
@@ -165,12 +164,7 @@ const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
 function baseline(ruleset: CBTRuleset): InstanceBaselineRef {
     return Object.freeze({
-        entity: Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid: UUID,
-            sourceFormat: 'blk' as const,
-        }),
+        entity: UUID,
         ruleset,
         initialStateProfile: Object.freeze({
             schemaVersion: 1 as const,

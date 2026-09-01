@@ -1,8 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { LegacyUnitSourceV1, JsonObject, JsonValue, SavedEntityIdentity } from '../persisted-unit-state';
-import { asSourceHash, asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import type { LegacyUnitSourceV1, JsonObject, JsonValue } from '../persisted-unit-state';
+import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { restoreLegacyUnitState, StateRestoreIdentityError } from './state-restorer';
 import {
     createDirectEscalatingFailureRuntimeFixture,
@@ -15,11 +15,8 @@ describe('V1 unit-state ingress', () => {
     it('converts legacy facts once into sparse V2 state over the direct entity', async () => {
         const fixture = createDirectMekRuntimeFixture();
         const center = [...fixture.index.locations.values()].find(location => location.code === 'CT')!;
-        const savedIdentity: SavedEntityIdentity = {
-            ...fixture.identity,
-            sourceHashAtSave: asSourceHash('B'.repeat(26) + 'A'),
-        };
-        const restored = await restoreLegacyUnitState(record(savedIdentity, {
+        const savedUuid = fixture.identity;
+        const restored = await restoreLegacyUnitState(record(savedUuid, {
             destroyed: true,
             conditions: ['prone'],
             heat: { current: 4, previous: 2, next: 7, heatsinksOff: 1 },
@@ -33,19 +30,15 @@ describe('V1 unit-state ingress', () => {
             current: 4, previous: 2, pendingOverride: 7, heatsinksOff: 1,
         });
         expect(restored.state.locations.get(center.id)?.internalDamage).toBe(2);
-        expect(restored.metadata.savedIdentity).toEqual(savedIdentity);
+        expect(restored.metadata.savedIdentity).toEqual(savedUuid);
         expect(restored.metadata.targetEntity).toEqual(fixture.identity);
-        expect(restored.metadata.warnings.map(warning => warning.code))
-            .toContain('SOURCE_REVISION_CHANGED');
+        expect(restored.metadata.warnings).toEqual([]);
         expect(Object.prototype.hasOwnProperty.call(restored.metadata, 'targetPublished')).toBeFalse();
     });
 
     it('never applies legacy state to another entity UUID', async () => {
         const fixture = createDirectMekRuntimeFixture();
-        const foreign: SavedEntityIdentity = {
-            ...fixture.identity,
-            uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2'),
-        };
+        const foreign = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2');
         await expectAsync(restoreLegacyUnitState(record(foreign, {}), fixture.entity, fixture.initialized))
             .toBeRejectedWithError(StateRestoreIdentityError);
     });
@@ -165,7 +158,7 @@ describe('V1 unit-state ingress', () => {
 });
 
 function record(
-    identity: SavedEntityIdentity,
+    identity: UnitUuid,
     state: JsonObject,
     inventory: readonly JsonValue[] = [],
     criticals: readonly JsonValue[] = [],
@@ -178,6 +171,6 @@ function record(
                 ...(criticals.length === 0 ? {} : { crits: [...criticals] }),
             },
         },
-        identity: { kind: 'resolved', savedIdentity: identity },
+        identity: { kind: 'resolved', uuid: identity },
     };
 }

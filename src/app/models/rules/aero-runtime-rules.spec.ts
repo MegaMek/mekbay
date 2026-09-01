@@ -11,7 +11,7 @@ import {
     TestSpaceStationEntity,
     TestWarShipEntity,
 } from '../entity/testing/test-entities';
-import { asUnitUuid, MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { NonMekUnitInstance } from '../runtime/non-mek-unit-instance';
 import { type InstanceBaselineRef } from '../runtime/runtime-state';
 import { nonMekDamageTrackId } from './non-mek-damage-track-rules';
@@ -155,12 +155,7 @@ function aero(entity: AeroEntity, id: string): NonMekUnitInstance {
 
 function baseline(): InstanceBaselineRef {
     return Object.freeze({
-        entity: Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid: UUID,
-            sourceFormat: 'blk' as const,
-        }),
+        entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
             schemaVersion: 1 as const,

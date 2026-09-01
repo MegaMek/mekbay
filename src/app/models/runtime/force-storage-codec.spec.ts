@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { GameSystem } from '../common.model';
-import type { ASSerializedForce, SerializedCBTForce } from '../force-serialization';
+import type { ASSerializedForce, SerializedCBTForce, SerializedForce } from '../force-serialization';
 import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -22,10 +22,8 @@ import {
 import { TestAeroSpaceFighterEntity, TestTankEntity } from '../entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
 import { componentIdForMount } from './non-mek-runtime-index';
-import {
-    MM_DATA_UNIT_PROVIDER_ID,
-    asUnitUuid,
-} from '../../services/unit-catalog/unit-catalog.types';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { asSourceHashCanary } from '../source-hash-canary';
 import {
     decodeForceFromStorage,
     encodeForceForStorage,
@@ -63,6 +61,7 @@ describe('compact force storage codec', () => {
                 units: [{
                     id: firstId,
                     uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2'),
+                    sourceHashCanary: asSourceHashCanary('k8zQ'),
                     alias: 'Lead',
                     updatedTs: 42,
                     skill: 3,
@@ -103,6 +102,7 @@ describe('compact force storage codec', () => {
         const group = (compact['g'] as Record<string, unknown>[])[0]!;
         const unit = (group['u'] as Record<string, unknown>[])[0]!;
         expect(unit['u']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
+        expect(unit['h']).toBe('k8zQ');
         expect((unit['x'] as Record<string, unknown>)['d']).toBe(1);
         expect(byteLength(stored)).toBeLessThan(byteLength(force) * 0.75);
 
@@ -152,6 +152,7 @@ describe('compact force storage codec', () => {
         expect(compact['encounter']).toBeUndefined();
 
         const unit = (compact['u'] as Record<string, unknown>[])[0]!;
+        expect(unit['h']).toBe('k8zQ');
         expect(unit['q']).toBeUndefined();
         expect(unit['baselineRefAtSave']).toBeUndefined();
         expect(unit['blueprintReferences']).toBeUndefined();
@@ -312,33 +313,13 @@ describe('compact force storage codec', () => {
         expect(decoded.cbt!.history).toEqual(history);
         expect(decoded.cbt!.roster.groups[0]!.groupId).toBe(groupId);
         expect(decoded.cbt!.units[0]!.instanceId).toBe(instanceId);
-        expect(decoded.cbt!.units[0]!.unit.entity.uuid).toBe(originalEntry.unit.entity.uuid);
-        expect(decoded.cbt!.units[0]!.unit.entity.sourceHashAtSave).toBeUndefined();
-    });
-
-    it('loads the previous compact CBT identity wrapper without retaining its hash', () => {
-        const force = damagedForce();
-        const stored = structuredClone(encodeForceForStorage(force)) as Record<string, unknown>;
-        const compact = stored['cbt'] as Record<string, unknown>;
-        const compactUnit = (compact['u'] as Record<string, unknown>[])[0]!;
-        const savedIdentity = force.cbt!.units[0]!.unit.entity;
-        stored['timestamp'] = force.timestamp;
-        compactUnit['k'] = 'm';
-        compactUnit['e'] = {
-            u: String(savedIdentity.uuid),
-            h: savedIdentity.sourceHashAtSave,
-        };
-
-        const decoded = decodeForceFromStorage(stored);
-        expect(decoded.timestamp).toBe(force.timestamp);
-        expect(decoded.cbt!.units[0]!.unit.entity.uuid).toBe(savedIdentity.uuid);
-        expect(decoded.cbt!.units[0]!.unit.entity.sourceHashAtSave).toBeUndefined();
+        expect(decoded.cbt!.units[0]!.unit.entity).toBe(originalEntry.unit.entity);
     });
 
     it('stores production defaults implicitly and roster membership by unit index', async () => {
         const fixture = createDirectMekRuntimeFixture();
         const ready = await CBTMekUnit.createFromEntity({
-            identity: fixture.identity,
+            uuid: fixture.identity,
             instanceId: 'unit:implicit-defaults',
         }, fixture.entity, fixture.identity, {
                 initializerRevision: UNIT_STATE_INITIALIZER_REVISION,
@@ -460,15 +441,10 @@ describe('compact force storage codec', () => {
             ['F_MASC', 'S_SUPERCHARGER'],
             { location: entity.locationOrder[0] },
         ));
-        const identity = Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid,
-            sourceFormat: 'blk' as const,
-        });
+        const identity = uuid;
         const ready = CBTNonMekUnit.create(entity, {
             instanceId: 'unit:compact-tank',
-            identity,
+            uuid: identity,
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
             initialStateProfileId: 'pristine-non-mek-v1',
@@ -546,15 +522,10 @@ describe('compact force storage codec', () => {
         const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e3');
         entity.uuid.set(uuid);
         entity.heatSinkCount.set(10);
-        const identity = Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid,
-            sourceFormat: 'blk' as const,
-        });
+        const identity = uuid;
         const ready = CBTNonMekUnit.create(entity, {
             instanceId: 'unit:compact-aero-heat',
-            identity,
+            uuid: identity,
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
             initialStateProfileId: 'pristine-non-mek-v1',
@@ -564,7 +535,7 @@ describe('compact force storage codec', () => {
             'force:compact-aero-pristine',
             'Compact pristine aero',
         ));
-        expect(((pristine['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!['h'])
+        expect(((pristine['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!['z'])
             .toBeUndefined();
 
         const runtime = ready.getInstance();
@@ -609,7 +580,7 @@ describe('compact force storage codec', () => {
             'Compact aero heat',
         ));
         const compactUnit = ((stored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
-        expect(compactUnit['h']).toEqual({ o: 19, s: 2 });
+        expect(compactUnit['z']).toEqual({ o: 19, s: 2 });
         expect((compactUnit['v'] as unknown[])[7]).toEqual([1, 0]);
         expect(compactUnit['w']).toEqual([[pilotId, 1, 1, 1]]);
 
@@ -624,9 +595,17 @@ describe('compact force storage codec', () => {
         expect(CBTNonMekUnit.restore(entry.unit, entity, identity).serialize()).toEqual(unit);
     });
 
-    it('accepts the canonical expanded V2 record without repacking it', () => {
-        const force = damagedForce();
-        expect(decodeForceFromStorage(force)).toEqual(force);
+    it('keeps V1 as the sole compatibility load format', () => {
+        const force: SerializedForce = {
+            version: 1,
+            timestamp: '2026-09-01T12:00:00.000Z',
+            instanceId: 'force:v1',
+            type: GameSystem.CBT,
+            name: 'Legacy force',
+            groups: [],
+        };
+
+        expect(decodeForceFromStorage(JSON.parse(JSON.stringify(force)))).toEqual(force);
     });
 
     it('keeps pending and committed Mek crew death distinct on the compact wire', () => {
@@ -717,7 +696,10 @@ function damagedForce(): SerializedCBTForce {
         fixture.instance,
         { schemaVersion: 2, values: fixture.initialized.deployment },
     );
-    const unit = ready.serialize();
+    const unit: SerializedCBTUnitV2 = {
+        ...ready.serialize(),
+        sourceHashCanary: asSourceHashCanary('k8zQ'),
+    };
     return forceWithUnit(unit, 'force:compact-storage', 'Compact storage');
 }
 

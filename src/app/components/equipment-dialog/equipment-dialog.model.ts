@@ -9,9 +9,9 @@ import type {
     PickerChoiceColors,
     PickerChoiceSelectionTone,
     PickerDisplayType,
-    PickerTooltipType,
     PickerValue,
 } from '../picker/picker.interface';
+import type { TooltipType } from '../tooltip/tooltip.component';
 
 export type EquipmentDialogTab = 'weapons' | 'ammo';
 
@@ -36,7 +36,7 @@ export interface EquipmentDialogChoice {
     readonly keepOpen?: boolean;
     readonly displayType?: PickerDisplayType;
     readonly choices?: readonly EquipmentDialogDropdownChoice[];
-    readonly tooltipType?: PickerTooltipType;
+    readonly tooltipType?: TooltipType;
     readonly failureTarget?: number;
 }
 

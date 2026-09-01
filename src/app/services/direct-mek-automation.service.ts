@@ -65,7 +65,11 @@ import { isModularArmorEquipment } from '../models/modular-armor.model';
 import type { MekHitLocationTable } from '../utils/record-sheet-reference-table';
 import { buildHeatSummaryRows } from '../utils/heat-summary.util';
 import { CBTAutomationService } from './cbt-automation.service';
-import { automationCheckEvidenceDice, CBTAutomationCheckService } from './cbt-automation-check.service';
+import {
+    automationCheckEvidenceDice,
+    CBTAutomationCheckService,
+    resolveAutomationChecksAutomatically,
+} from './cbt-automation-check.service';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
 import {
     automaticConsciousnessNotifications,
@@ -122,6 +126,7 @@ export interface PreparedDirectMekEndTurnAutomation {
 
 export interface DirectMekAutomationReviewOptions {
     readonly interactive?: boolean;
+    readonly phaseWork?: 'all' | 'unit-checks' | 'pilot-checks';
 }
 
 interface DirectCriticalChanceContext {
@@ -171,6 +176,7 @@ interface PreparedMekHeatEffects {
     readonly staged: ResolvedMekHeatEffects;
     readonly applyEffects: boolean;
     readonly applyPilotHits: boolean;
+    readonly interactive: boolean;
 }
 
 interface AppliedMekLifeSupportDamage {
@@ -225,6 +231,7 @@ interface PreparedMekFall {
     }>[];
     readonly applyPilotHits: boolean;
     readonly forceSeatbeltFailure: boolean;
+    readonly interactive: boolean;
     /** Eligible crew positions; targets and rolls use the post-fall runtime. */
     readonly seatbelts: readonly Readonly<{
         positionId: CrewPositionId;
@@ -257,6 +264,7 @@ interface StagedMekPhaseBoundaryReview {
 }
 
 interface PreparedMekPhaseBoundary {
+    readonly work: 'all' | 'unit-checks' | 'pilot-checks';
     readonly checks: readonly PreparedMekPilotCheck[];
     readonly ruleCheck: PreparedMekRuleCheck | null;
     readonly acceptedCheckIds: ReadonlySet<string>;
@@ -279,7 +287,7 @@ export class DirectMekAutomationService {
     private readonly crewHitAutomation = inject(CBTCrewHitAutomationService);
     private readonly fallingAutomation = inject(MekFallingAutomationService);
     private readonly options = inject(OptionsService);
-    private readonly resolvingCriticalEvents = new WeakMap<CBTForce, Set<string>>();
+    private readonly resolvingCriticalEvents = new WeakMap<CBTForce, Map<string, boolean>>();
 
     async prepareCommand(
         force: CBTForce,
@@ -364,17 +372,11 @@ export class DirectMekAutomationService {
         const applyExplosion = explosionAccepted.has(event.id);
         const potentialPilotHits = plan.explosion?.pilotHits
             ?? gameRulesFor(snapshot.ruleset).getMekInternalExplosionPilotHits();
-        const reviewedPilotHits = applyExplosion
-            ? await this.reviewPilotHits(
-                snapshot,
-                potentialPilotHits,
-                `pilot:${reviewId}`,
-                true,
-            )
-            : 0;
-        if (reviewedPilotHits === null) {
-            return Object.freeze({ command, deferredPilotHits: 0, cancelled: true });
-        }
+        // origin/next treats the explosion decision as the authority for its
+        // intrinsic pilot hits. The pilot-hit setting controls the resulting
+        // consciousness checks, not whether an accepted explosion wounds the
+        // crew in the first place.
+        const reviewedPilotHits = applyExplosion ? potentialPilotHits : 0;
         return Object.freeze({
             command: {
                 ...command,
@@ -488,7 +490,7 @@ export class DirectMekAutomationService {
                     applyEffects: selected,
                     applyPilotHits: selected && pilotHitsMode !== 'no',
                 } satisfies MekEndTurnDecision);
-            }));
+            }), review.interactive);
         }
 
         const acceptedHeat = await this.automation.resolve(
@@ -595,7 +597,7 @@ export class DirectMekAutomationService {
             heatAccepted: row.heatAccepted,
             applyEffects: row.staged !== null && acceptedEffects.has(row.staged.id),
             applyPilotHits: acceptedPilotHits.has(this.pilotHitEventId(row.request)),
-        } satisfies MekEndTurnDecision)));
+        } satisfies MekEndTurnDecision)), review.interactive);
     }
 
     /** Applies the reviewed heat/consequence chain before the turn reset. */
@@ -611,7 +613,9 @@ export class DirectMekAutomationService {
             dispatch,
         );
         if (resumedFall === false) return null;
-        if (!await this.resumePendingCriticalEvents(force, instanceId, dispatch, false)) {
+        const phaseWork = prepared.phaseBoundary?.work;
+        if (phaseWork !== 'unit-checks'
+            && !await this.resumePendingCriticalEvents(force, instanceId, dispatch, false)) {
             return null;
         }
         if (prepared.command.type === 'end-phase' && prepared.phaseBoundary) {
@@ -622,6 +626,12 @@ export class DirectMekAutomationService {
                 dispatch,
                 resumedFall ?? undefined,
             )) return null;
+            // A fall or other phase consequence can create a critical chain
+            // after the opening drain. Never commit the phase over that work.
+            if (phaseWork !== 'unit-checks'
+                && !await this.resumePendingCriticalEvents(force, instanceId, dispatch, false)) {
+                return null;
+            }
             const settled = this.snapshot(force, instanceId);
             if (!settled) return null;
             return Object.freeze({
@@ -747,6 +757,7 @@ export class DirectMekAutomationService {
                 prepared.criticalPlan,
                 command.target,
                 dispatch,
+                this.resolvingCriticalEvents.get(force)?.get(instanceId) === true,
             );
         }
         return true;
@@ -758,6 +769,15 @@ export class DirectMekAutomationService {
         requests: readonly DirectMekEndPhaseAutomationRequest[],
         review: DirectMekAutomationReviewOptions = {},
     ): Promise<readonly PreparedDirectMekEndPhaseAutomation[] | null> {
+        const phaseWork = review.phaseWork ?? 'all';
+        const includeRecoveries = phaseWork !== 'pilot-checks';
+        const includePilotChecks = phaseWork !== 'unit-checks';
+        const pilotSkillMode = this.options.cbtAutomationMode('pilotSkillCheck');
+        // As in origin/next, disabled PSRs remain informational when their badge is
+        // opened. Only the actual phase boundary is allowed to dismiss them.
+        const resolvePilotChecks = includePilotChecks
+            && !(review.interactive === true
+                && pilotSkillMode === 'no');
         const rows = requests.map(request => {
             const snapshot = this.snapshot(force, request.instanceId);
             return Object.freeze({
@@ -767,7 +787,7 @@ export class DirectMekAutomationService {
         });
         // Origin/next resolves every eligible recovery before presenting PSRs.
         // Project that ordering during preflight so cancellation remains atomic.
-        const recoveryCandidates = rows.flatMap(row =>
+        const recoveryCandidates = includeRecoveries ? rows.flatMap(row =>
             row.staged?.recoveries.map(recovery => {
                 const assignment = row.staged!.snapshot.crewAssignment.positions.find(position =>
                     position.positionId === recovery.positionId);
@@ -779,7 +799,7 @@ export class DirectMekAutomationService {
                     }),
                     targetNumber: recovery.targetNumber,
                 } satisfies AutomationCheck);
-            }) ?? []);
+            }) ?? []) : [];
         const recoveryResults = await this.automationChecks.resolve(
             'pilotHitsAndConsciousnessCheck',
             recoveryCandidates,
@@ -789,11 +809,16 @@ export class DirectMekAutomationService {
         const recoveryById = new Map(recoveryResults.map(result => [result.id, result]));
 
         const initiallyFailedGroups = new Set<string>();
-        const checkCandidates = rows.flatMap(row => {
+        const automaticallyResolvedChecks: AutomationCheckResolution[] = [];
+        const checkCandidates = resolvePilotChecks ? rows.flatMap(row => {
             const staged = row.staged;
             if (!staged) return [];
             const fallGroup = `fall:${row.request.instanceId}`;
-            if (staged.hadAutomaticFall) initiallyFailedGroups.add(fallGroup);
+            const rowInitiallyFailedGroups = new Set<string>();
+            if (staged.hadAutomaticFall) {
+                rowInitiallyFailedGroups.add(fallGroup);
+                initiallyFailedGroups.add(fallGroup);
+            }
             const recoveredPositions = new Set(staged.recoveries
                 .filter(recovery => recoveryById.get(recovery.eventId)?.outcome === 'success')
                 .map(recovery => recovery.positionId));
@@ -808,7 +833,8 @@ export class DirectMekAutomationService {
                 description: 'Check whether the Mek becomes crippled.',
                 failureOutcome: 'Mek becomes crippled',
                 targetNumber: staged.ruleCheck.targetNumber,
-                ...(!pilotCanControl || staged.ruleCheck.targetNumber > 12
+                ...(!pilotCanControl
+                    || staged.snapshot.query.hasCondition('shutdown')
                     ? { automaticOutcome: 'failed' as const }
                     : {}),
             }));
@@ -826,15 +852,26 @@ export class DirectMekAutomationService {
                         cascadeFailureLabel: 'FAILED — PREVIOUS FALL CHECK FAILED',
                     }),
                 ...(!pilotCanControl
-                    || check.targetNumber > 12
                     || staged.snapshot.query.hasCondition('shutdown')
                         && check.triggerKind !== 'shutdown'
                     ? { automaticOutcome: 'failed' as const }
                     : {}),
             } satisfies AutomationCheck)));
+            // origin/next bypasses the PSR panel when a unit has no rollable
+            // checks (no active pilot, shutdown, or an already-forced fall).
+            // Resolve that unit now so other units' actionable rows can still
+            // share one force-wide dialog without displaying automatic-only rows.
+            if (pilotSkillMode !== 'no'
+                && automationCheckBatchIsFullyAutomatic(result, rowInitiallyFailedGroups)) {
+                automaticallyResolvedChecks.push(...resolveAutomationChecksAutomatically(
+                    result,
+                    rowInitiallyFailedGroups,
+                ));
+                return [];
+            }
             return result;
-        });
-        const checkResults = await this.automationChecks.resolve(
+        }) : [];
+        const reviewedCheckResults = await this.automationChecks.resolve(
             'pilotSkillCheck',
             checkCandidates,
             {
@@ -843,12 +880,18 @@ export class DirectMekAutomationService {
                 interactive: review.interactive,
             },
         );
-        if (checkResults === null) return null;
+        if (reviewedCheckResults === null) return null;
+        const checkResults = Object.freeze([
+            ...automaticallyResolvedChecks,
+            ...reviewedCheckResults,
+        ]);
         const checkById = new Map(checkResults.map(result => [result.id, result]));
         const acceptedCheckIds = new Set(checkResults.map(result => result.id));
 
         const falls = new Map<string, PreparedMekFall | null>();
-        for (const row of rows) {
+        // Disabled PSRs pass the boundary and are discarded; even a rules-level
+        // automatic fall must not force the falling workflow in `no` mode.
+        for (const row of resolvePilotChecks && pilotSkillMode !== 'no' ? rows : []) {
             const staged = row.staged;
             if (!staged) continue;
             const failedCheck = staged.checks.find(check =>
@@ -859,6 +902,8 @@ export class DirectMekAutomationService {
                 staged.snapshot,
                 failedCheck?.reason ?? 'Automatic fall',
                 true,
+                false,
+                review.interactive === true,
             );
             if (fall === null) return null;
             falls.set(row.request.instanceId, fall);
@@ -876,22 +921,26 @@ export class DirectMekAutomationService {
                     command: request.command,
                     deferredPilotHits: 0,
                     phaseBoundary: Object.freeze({
-                        checks: Object.freeze(staged.checks.map(check => {
+                        work: phaseWork,
+                        checks: Object.freeze((resolvePilotChecks ? staged.checks : []).map(check => {
                             const resolution = checkById.get(check.checkId);
                             return resolution
                                 ? this.resolvedPilotCheck(check, resolution)
                                 : this.skippedPilotCheck(check);
                         })),
-                        ruleCheck: staged.ruleCheck && checkById.has(staged.ruleCheck.eventId)
+                        ruleCheck: resolvePilotChecks && staged.ruleCheck
+                            && checkById.has(staged.ruleCheck.eventId)
                             ? this.resolvedRuleCheck(
                                 staged.ruleCheck,
                                 checkById.get(staged.ruleCheck.eventId)!,
                             )
-                            : staged.ruleCheck ? this.skippedRuleCheck(staged.ruleCheck) : null,
+                            : resolvePilotChecks && staged.ruleCheck
+                                ? this.skippedRuleCheck(staged.ruleCheck)
+                                : null,
                         acceptedCheckIds: new Set(acceptedCheckIds),
-                        hadAutomaticFall: staged.hadAutomaticFall,
+                        hadAutomaticFall: resolvePilotChecks && staged.hadAutomaticFall,
                         fall: falls.get(request.instanceId) ?? null,
-                        recoveries: Object.freeze(staged.recoveries.map(recovery => {
+                        recoveries: Object.freeze((includeRecoveries ? staged.recoveries : []).map(recovery => {
                             const resolution = recoveryById.get(recovery.eventId);
                             const dice = resolution
                                 ? automationCheckEvidenceDice(resolution, recovery.targetNumber)
@@ -905,9 +954,11 @@ export class DirectMekAutomationService {
                                 accepted: resolution !== undefined,
                             } satisfies PreparedMekConsciousnessRecovery);
                         })),
-                        needsSettlement: staged.checks.length > 0
+                        needsSettlement: resolvePilotChecks && (
+                            staged.checks.length > 0
                             || staged.ruleCheck !== null
-                            || staged.hadAutomaticFall,
+                            || staged.hadAutomaticFall
+                        ),
                     }),
                 }),
             });
@@ -1087,13 +1138,21 @@ export class DirectMekAutomationService {
                 );
             }
         }
-        if (prepared.fall?.accepted && prepared.fall.eventId !== resumedFallEventId) {
-            if (!await this.applyPreparedFall(
-                force,
-                instanceId,
-                prepared.fall,
-                dispatch,
-            )) return false;
+        if (prepared.fall) {
+            // A manual failed roll makes the reducer prone itself. Automatic
+            // failures and rules-level automatic falls have no dice command,
+            // so establish the same state before resolving (or skipping) damage.
+            const prone = await dispatch({
+                type: 'set-condition', condition: 'prone', active: true,
+            }, false);
+            if (!prone.accepted) return false;
+            if (prepared.fall.accepted && prepared.fall.eventId !== resumedFallEventId
+                && !await this.applyPreparedFall(
+                    force,
+                    instanceId,
+                    prepared.fall,
+                    dispatch,
+                )) return false;
         }
         if (prepared.hadAutomaticFall) {
             const result = await dispatch({
@@ -1163,7 +1222,13 @@ export class DirectMekAutomationService {
         target: 'committed' | 'pending',
         context: DirectCriticalChanceContext,
         dispatch: DirectMekAutomationDispatch,
+        interactive = false,
     ): Promise<void> {
+        // Match origin/next's queue boundary: disabling critical automation
+        // prevents rules-generated chances from becoming pending work at all.
+        // A chance that was already persisted is still manually resumable via
+        // resumePendingCriticalChance (for example after changing the option).
+        if (this.options.cbtAutomationMode('criticalHitChanceCheck') === 'no') return;
         let snapshot = this.snapshot(force, instanceId);
         if (!snapshot) return;
         let locationId = sourceLocationId;
@@ -1233,7 +1298,7 @@ export class DirectMekAutomationService {
                 : []),
         });
         if (!await this.appendPendingCriticalEvent(force, instanceId, pending, dispatch)) return;
-        await this.resumePendingCriticalEvents(force, instanceId, dispatch, false);
+        await this.resumePendingCriticalEvents(force, instanceId, dispatch, interactive);
     }
 
     /** Resumes the ordered durable critical chain advertised by the unit badge. */
@@ -1246,6 +1311,21 @@ export class DirectMekAutomationService {
         return this.resumePendingCriticalEvents(force, instanceId, dispatch, interactive);
     }
 
+    /** Resumes durable fall consequences before lower-priority badge work. */
+    async resumePendingFallAutomation(
+        force: CBTForce,
+        instanceId: string,
+        dispatch: DirectMekAutomationDispatch,
+        interactive = true,
+    ): Promise<boolean> {
+        return (await this.resumePendingFallConsequences(
+            force,
+            instanceId,
+            dispatch,
+            interactive,
+        )) !== false;
+    }
+
     private async resumePendingCriticalEvents(
         force: CBTForce,
         instanceId: string,
@@ -1254,11 +1334,11 @@ export class DirectMekAutomationService {
     ): Promise<boolean> {
         let active = this.resolvingCriticalEvents.get(force);
         if (!active) {
-            active = new Set<string>();
+            active = new Map<string, boolean>();
             this.resolvingCriticalEvents.set(force, active);
         }
         if (active.has(instanceId)) return true;
-        active.add(instanceId);
+        active.set(instanceId, interactive);
         try {
             while (true) {
                 const pending = this.snapshot(force, instanceId)
@@ -1268,7 +1348,9 @@ export class DirectMekAutomationService {
                     ? await this.resumePendingCriticalChance(
                         force, instanceId, pending, dispatch, interactive,
                     )
-                    : await this.resumePendingCriticalHit(force, instanceId, pending, dispatch);
+                    : await this.resumePendingCriticalHit(
+                        force, instanceId, pending, dispatch, interactive,
+                    );
                 if (!advanced) return false;
             }
         } finally {
@@ -1301,7 +1383,15 @@ export class DirectMekAutomationService {
         const accepted = await this.automation.resolve(
             'criticalHitChanceCheck',
             [event],
-            { title: 'Review Critical Hit Chance', interactive },
+            {
+                title: 'Review Critical Hit Chance',
+                interactive,
+                // origin/next treats "no" as the manual critical workflow,
+                // never as permission to throw the queued chance away.
+                manualResolution: this.options.cbtAutomationMode(
+                    'criticalHitChanceCheck',
+                ) === 'no',
+            },
         );
         if (accepted === null) return false;
         if (!accepted.has(event.id) || pending.result === 'none') {
@@ -1333,6 +1423,7 @@ export class DirectMekAutomationService {
         instanceId: string,
         pending: MekPendingCriticalHitV2,
         dispatch: DirectMekAutomationDispatch,
+        interactive: boolean,
     ): Promise<boolean> {
         if (pending.caseIIDiscards[0]) {
             return this.consumePendingCriticalHit(force, instanceId, pending, dispatch);
@@ -1365,6 +1456,52 @@ export class DirectMekAutomationService {
                     roll: results,
                 }, dispatch);
             }
+        }
+        const plan = snapshot.query.mekCriticalRoll(pending.locationId, results, pending.target);
+        if (plan.kind !== 'applied') {
+            return this.consumePendingCriticalHit(force, instanceId, {
+                ...pending,
+                roll: results,
+            }, dispatch);
+        }
+        const targetLabel = getMekLocationLabel(plan.targetLocationCode)
+            ?? plan.targetLocationCode;
+        const event: AutomationReviewEvent = Object.freeze({
+            id: `${pending.eventId}:hit:${pending.remainingHits}`,
+            subject: this.subject(snapshot),
+            event: 'Critical Hit',
+            description: `${targetLabel} · roll ${results.join(', ')} · slot ${plan.slotNumber}: ${plan.equipment}`,
+            effects: Object.freeze([
+                plan.armoredAbsorption
+                    ? 'Component armor absorbs the critical hit'
+                    : 'Critical slot is destroyed',
+                plan.explosion
+                    ? `${plan.explosion.equipment} explodes for ${plan.explosion.rawDamage} damage`
+                    : undefined,
+                plan.pendingExplosion
+                    ? `${plan.pendingExplosion.equipment} explosion is pending until phase end`
+                    : undefined,
+            ].filter((effect): effect is string => effect !== undefined)),
+        });
+        const accepted = await this.automation.resolve(
+            'criticalHitChanceCheck',
+            [event],
+            {
+                title: 'Review Critical Hit',
+                interactive,
+                manualResolution: this.options.cbtAutomationMode(
+                    'criticalHitChanceCheck',
+                ) === 'no',
+            },
+        );
+        // Closing retains both the cursor and its exact dice. Skipping consumes
+        // only this hit so a multi-hit sequence can continue in order.
+        if (accepted === null) return false;
+        if (!accepted.has(event.id)) {
+            return this.consumePendingCriticalHit(force, instanceId, {
+                ...pending,
+                roll: results,
+            }, dispatch);
         }
         const result = await dispatch({
             type: 'apply-mek-critical-roll',
@@ -1485,6 +1622,9 @@ export class DirectMekAutomationService {
         target: 'committed' | 'pending',
         dispatch: DirectMekAutomationDispatch,
     ): Promise<void> {
+        // Disabled breach automation must not even consume a hidden dice roll;
+        // origin/next leaves the whole check to the tabletop workflow.
+        if (this.options.cbtAutomationMode('breachAndFloodCheck') === 'no') return;
         const snapshot = this.snapshot(force, instanceId);
         const location = snapshot?.index.locations.get(locationId);
         if (!snapshot || !location || !this.locationUnderwater(snapshot, location.code)) return;
@@ -1532,6 +1672,7 @@ export class DirectMekAutomationService {
         plan: Extract<MekCriticalRollPlanV2, { readonly kind: 'applied' }>,
         target: 'committed' | 'pending',
         dispatch: DirectMekAutomationDispatch,
+        interactive = false,
     ): Promise<void> {
         const after = this.snapshot(force, instanceId);
         if (!after) return;
@@ -1576,6 +1717,7 @@ export class DirectMekAutomationService {
                     ) === 0,
                 },
                 dispatch,
+                interactive,
             );
             if (!armorDamagedLocations.has(location.id)) {
                 await this.resolveBreachOrFloodLocation(
@@ -1587,6 +1729,7 @@ export class DirectMekAutomationService {
 
     private async resolveMekEndTurnDecisions(
         decisions: readonly MekEndTurnDecision[],
+        interactive?: boolean,
     ): Promise<readonly PreparedDirectMekEndTurnAutomation[] | null> {
         const checks = orderedAutomationChecks(decisions.flatMap(decision => {
             if (!decision.snapshot || !decision.staged || !decision.applyEffects) return [];
@@ -1617,7 +1760,7 @@ export class DirectMekAutomationService {
         const resolutions = await this.automationChecks.resolve(
             'heatEffectsCheck',
             checks,
-            { title: 'Resolve Pending Checks' },
+            { title: 'Resolve Pending Checks', interactive },
         );
         if (resolutions === null) return null;
         const resolutionById = new Map(resolutions.map(result => [result.id, result]));
@@ -1660,6 +1803,7 @@ export class DirectMekAutomationService {
                 staged,
                 decision.applyEffects,
                 decision.applyPilotHits,
+                interactive === true,
             );
         }));
     }
@@ -1670,6 +1814,7 @@ export class DirectMekAutomationService {
         staged: ResolvedMekHeatEffects | null,
         applyEffects: boolean,
         applyPilotHits: boolean,
+        interactive: boolean,
     ): PreparedDirectMekEndTurnAutomation {
         return Object.freeze({
             instanceId: request.instanceId,
@@ -1680,7 +1825,12 @@ export class DirectMekAutomationService {
                 }),
                 deferredPilotHits: 0,
                 ...(staged === null ? {} : {
-                    heatEffects: Object.freeze({ staged, applyEffects, applyPilotHits }),
+                    heatEffects: Object.freeze({
+                        staged,
+                        applyEffects,
+                        applyPilotHits,
+                        interactive,
+                    }),
                 }),
             }),
         });
@@ -1754,7 +1904,12 @@ export class DirectMekAutomationService {
             if (row.check.kind === 'shutdown' && row.outcome === 'failed') {
                 const wasShutdown = snapshot.query.hasCondition('shutdown');
                 if (!wasShutdown && snapshot.ruleset === 'total-warfare'
-                    && !await this.resolveShutdownFall(force, instanceId, dispatch)) {
+                    && !await this.resolveShutdownFall(
+                        force,
+                        instanceId,
+                        dispatch,
+                        prepared.interactive,
+                    )) {
                     return false;
                 }
                 const result = await dispatch({
@@ -1773,6 +1928,7 @@ export class DirectMekAutomationService {
                     instanceId,
                     prepared.staged.ammoComponentId,
                     dispatch,
+                    prepared.interactive,
                 );
                 if (explosion === null) return false;
                 appliedEffect = explosion;
@@ -1797,6 +1953,7 @@ export class DirectMekAutomationService {
                 instanceId,
                 prepared.staged,
                 dispatch,
+                prepared.interactive,
             );
             if (applied === null) return false;
             const settled = this.snapshot(force, instanceId);
@@ -1821,6 +1978,7 @@ export class DirectMekAutomationService {
         force: CBTForce,
         instanceId: string,
         dispatch: DirectMekAutomationDispatch,
+        interactive = false,
     ): Promise<boolean> {
         const snapshot = this.snapshot(force, instanceId);
         const movement = snapshot?.query.mekMovementPsr();
@@ -1837,7 +1995,7 @@ export class DirectMekAutomationService {
         const resolutions = await this.automationChecks.resolve(
             'pilotSkillCheck',
             [check],
-            { title: 'Piloting Skill Rolls' },
+            { title: 'Piloting Skill Rolls', interactive },
         );
         if (resolutions === null) return false;
         const resolution = resolutions[0];
@@ -1853,13 +2011,19 @@ export class DirectMekAutomationService {
             );
         }
         if (resolution.outcome !== 'failed') return true;
-        const fall = await this.prepareFall(snapshot, 'Involuntary shutdown', true, true);
+        const fall = await this.prepareFall(
+            snapshot,
+            'Involuntary shutdown',
+            true,
+            true,
+            interactive,
+        );
         if (fall === null) return false;
-        if (!fall.accepted) return true;
         const prone = await dispatch({
             type: 'set-condition', condition: 'prone', active: true,
         }, false);
         if (!prone.accepted) return false;
+        if (!fall.accepted) return true;
         return this.applyPreparedFall(force, instanceId, fall, dispatch);
     }
 
@@ -1883,6 +2047,7 @@ export class DirectMekAutomationService {
         reason: string,
         allowCancel: boolean,
         forceSeatbeltFailure = false,
+        interactive = false,
     ): Promise<PreparedMekFall | null> {
         const waterDepth = coverWaterDepth(snapshot.query.turnState().cover);
         const table = hitLocationTable(snapshot);
@@ -1903,7 +2068,7 @@ export class DirectMekAutomationService {
                 snapshot.entity.armorAt(location).type === 'IMPACT_RESISTANT')
                 ? { armorNote: 'Impact-Resistant Armor is resolved against the armor in each struck location.' }
                 : {}),
-        }));
+        }), { interactive });
         if (result === null || result.action === 'close') return null;
         const applyFall = result.action === 'accept';
         const damage = applyFall
@@ -1939,6 +2104,7 @@ export class DirectMekAutomationService {
             locations: Object.freeze(locations),
             applyPilotHits: reviewedPilotHits > 0,
             forceSeatbeltFailure,
+            interactive,
             seatbelts,
         });
     }
@@ -1972,6 +2138,7 @@ export class DirectMekAutomationService {
                 prepared.orientation.hitArc,
                 row.result.critical,
                 dispatch,
+                prepared.interactive,
             );
             if (row.result.location === 'HD' && applied) headHits += 1;
         }
@@ -1992,7 +2159,12 @@ export class DirectMekAutomationService {
         if (!await this.setPendingFallConsequences(force, instanceId, pending, dispatch)) {
             return false;
         }
-        return (await this.resumePendingFallConsequences(force, instanceId, dispatch)) !== false;
+        return (await this.resumePendingFallConsequences(
+            force,
+            instanceId,
+            dispatch,
+            prepared.interactive,
+        )) !== false;
     }
 
     /** Continues only the unapplied post-fall stage after CLOSE/reopen. */
@@ -2000,6 +2172,7 @@ export class DirectMekAutomationService {
         force: CBTForce,
         instanceId: string,
         dispatch: DirectMekAutomationDispatch,
+        interactive = false,
     ): Promise<string | null | false> {
         let snapshot = this.snapshot(force, instanceId);
         let pending = snapshot?.state.turn.pendingFallConsequences;
@@ -2009,7 +2182,13 @@ export class DirectMekAutomationService {
             if (snapshot.ruleset === 'total-warfare'
                 && pending.applyPilotHits
                 && headHits > 0
-                && !await this.applyPilotHits(force, instanceId, headHits, dispatch)) return false;
+                && !await this.applyPilotHits(
+                    force,
+                    instanceId,
+                    headHits,
+                    dispatch,
+                    interactive,
+                )) return false;
             pending = Object.freeze({ ...pending, stage: 'seatbelts' });
             if (!await this.setPendingFallConsequences(force, instanceId, pending, dispatch)) {
                 return false;
@@ -2021,6 +2200,7 @@ export class DirectMekAutomationService {
                 instanceId,
                 pending.seatbeltPositionIds.map(positionId => ({ positionId })),
                 pending.forceSeatbeltFailure,
+                interactive,
             );
             if (seatbeltFailures === null) return false;
             pending = Object.freeze({
@@ -2046,6 +2226,7 @@ export class DirectMekAutomationService {
             hitsByPosition,
             dispatch,
             `fall:${instanceId}:${snapshot.query.stateRevision}`,
+            interactive,
         )) return false;
 
         if (!await this.setPendingFallConsequences(force, instanceId, null, dispatch)) return false;
@@ -2087,6 +2268,7 @@ export class DirectMekAutomationService {
         instanceId: string,
         seatbelts: PreparedMekFall['seatbelts'],
         forceFailure: boolean,
+        interactive = false,
     ): Promise<ReadonlySet<CrewPositionId> | null> {
         const snapshot = this.snapshot(force, instanceId);
         if (!snapshot || seatbelts.length === 0) return new Set<CrewPositionId>();
@@ -2123,7 +2305,7 @@ export class DirectMekAutomationService {
         const resolutions = await this.automationChecks.resolve(
             'pilotHitsAndConsciousnessCheck',
             checks,
-            { title: 'Resolve Pending Checks' },
+            { title: 'Resolve Pending Checks', interactive },
         );
         if (resolutions === null) return null;
         return new Set(resolutions.flatMap(result => {
@@ -2141,6 +2323,7 @@ export class DirectMekAutomationService {
         hitArc: MekHitArcV2,
         throughArmorCritical: boolean,
         dispatch: DirectMekAutomationDispatch,
+        interactive = false,
     ): Promise<boolean> {
         let damage = incomingDamage;
         let code: string | null = sourceCode;
@@ -2239,6 +2422,7 @@ export class DirectMekAutomationService {
                         'committed',
                         { hardenedArmorApplies },
                         dispatch,
+                        interactive,
                     );
                 }
             }
@@ -2269,6 +2453,7 @@ export class DirectMekAutomationService {
                         hardenedArmorApplies: initialArmorType === 'HARDENED' && initialArmor > 0,
                     },
                     dispatch,
+                    interactive,
                 );
             }
         }
@@ -2306,6 +2491,7 @@ export class DirectMekAutomationService {
         hits: number,
         eventId: string,
         allowCancel = false,
+        interactive = false,
     ): Promise<number | null> {
         if (hits <= 0) return 0;
         const event: AutomationReviewEvent = Object.freeze({
@@ -2318,7 +2504,7 @@ export class DirectMekAutomationService {
         const accepted = await this.automation.resolve(
             'pilotHitsAndConsciousnessCheck',
             [event],
-            { title: 'Review Pilot Injury', allowCancel },
+            { title: 'Review Pilot Injury', allowCancel, interactive },
         );
         if (accepted === null) return null;
         return accepted?.has(event.id) ? hits : 0;
@@ -2329,6 +2515,7 @@ export class DirectMekAutomationService {
         instanceId: string,
         hits: number,
         dispatch: DirectMekAutomationDispatch,
+        interactive = false,
     ): Promise<boolean> {
         if (hits <= 0) return true;
         const snapshot = this.snapshot(force, instanceId);
@@ -2339,6 +2526,7 @@ export class DirectMekAutomationService {
             new Map(this.crewPositions(snapshot).map(position => [position.id, hits])),
             dispatch,
             `pilot-hits:${instanceId}:${snapshot.query.stateRevision}`,
+            interactive,
         );
     }
 
@@ -2352,6 +2540,7 @@ export class DirectMekAutomationService {
         instanceId: string,
         staged: ResolvedMekHeatEffects,
         dispatch: DirectMekAutomationDispatch,
+        interactive = false,
     ): Promise<readonly AppliedMekLifeSupportDamage[] | null> {
         const initial = this.snapshot(force, instanceId);
         if (!initial) return null;
@@ -2379,6 +2568,7 @@ export class DirectMekAutomationService {
                 new Map(this.crewPositions(initial).map(position => [position.id, hits])),
                 `life-support:${eventKind}:${instanceId}:${initial.query.stateRevision}`,
                 projected,
+                interactive,
             );
             if (resolved === null) return null;
             const appliedHits = resolved.reduce((total, plan) => total + Math.max(
@@ -2415,11 +2605,18 @@ export class DirectMekAutomationService {
         hitsByPosition: ReadonlyMap<CrewPositionId, number>,
         dispatch: DirectMekAutomationDispatch,
         eventPrefix: string,
+        interactive = false,
     ): Promise<boolean> {
         if (![...hitsByPosition.values()].some(hits => hits > 0)) return true;
         const initial = this.snapshot(force, instanceId);
         if (!initial) return false;
-        const resolved = await this.resolveCrewHits(initial, hitsByPosition, eventPrefix);
+        const resolved = await this.resolveCrewHits(
+            initial,
+            hitsByPosition,
+            eventPrefix,
+            undefined,
+            interactive,
+        );
         if (resolved === null) return false;
         if (!await this.applyResolvedCrewHits(
             force,
@@ -2440,6 +2637,7 @@ export class DirectMekAutomationService {
             readonly wounds: number;
             readonly unconscious: boolean;
         }>>,
+        interactive = false,
     ): Promise<readonly ResolvedCrewHits[] | null> {
         const positions = this.crewPositions(initial);
         return this.crewHitAutomation.resolve(
@@ -2465,6 +2663,7 @@ export class DirectMekAutomationService {
                     hits,
                 })];
             }),
+            { interactive },
         );
     }
 
@@ -2581,6 +2780,7 @@ export class DirectMekAutomationService {
         instanceId: string,
         componentId: ComponentId,
         dispatch: DirectMekAutomationDispatch,
+        interactive = false,
     ): Promise<string | null> {
         const initial = this.snapshot(force, instanceId);
         if (!initial) return null;
@@ -2607,6 +2807,8 @@ export class DirectMekAutomationService {
             initial,
             new Map(this.crewPositions(initial).map(position => [position.id, pilotHits])),
             `heat-ammo:${instanceId}:${initial.query.stateRevision}`,
+            undefined,
+            interactive,
         );
         if (resolvedCrew === null) return null;
 
@@ -2635,6 +2837,7 @@ export class DirectMekAutomationService {
             plan,
             'committed',
             dispatch,
+            interactive,
         );
 
         const explosion = plan.explosion;
@@ -2765,6 +2968,27 @@ export class DirectMekAutomationService {
             type,
         );
     }
+}
+
+/** True when applying the batch cannot require dice or a manual outcome. */
+function automationCheckBatchIsFullyAutomatic(
+    checks: readonly AutomationCheck[],
+    initiallyFailedGroups: ReadonlySet<string>,
+): boolean {
+    if (checks.length === 0) return false;
+    const failedGroups = new Set(initiallyFailedGroups);
+    for (const check of checks) {
+        const cascaded = check.failureGroup !== undefined
+            && failedGroups.has(check.failureGroup);
+        if (!cascaded
+            && check.automaticOutcome === undefined
+            && check.targetNumber !== undefined) return false;
+        const outcome = cascaded ? 'failed' : check.automaticOutcome ?? 'failed';
+        if (outcome === 'failed' && check.failureGroup) {
+            failedGroups.add(check.failureGroup);
+        }
+    }
+    return true;
 }
 
 function describeCriticalChance(result: MekCriticalChanceResult): string {

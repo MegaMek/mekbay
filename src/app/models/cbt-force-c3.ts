@@ -3,7 +3,7 @@
 
 import { C3EmergencyMasterActivationTracker, isC3EmergencyMasterEquipment } from './c3-emergency-master.model';
 import type { C3State } from './cbt-force.types';
-import { C3NetworkType, C3Role, projectNonMekC3Components, type C3Component } from './c3-network.model';
+import { C3Role, projectNonMekC3Components, type C3Component } from './c3-network.model';
 import {
     projectEncounterC3Components,
     validateEncounterNetworks,
@@ -320,7 +320,7 @@ export function projectReadyC3Components(unit: CBTUnit): readonly C3Component[] 
     if (projected.kind !== 'supported') return Object.freeze([]);
     return Object.freeze(projected.endpoints.map((endpoint, index) => Object.freeze({
         componentId: endpoint.componentId,
-        networkType: endpoint.family as C3NetworkType,
+        networkType: endpoint.family,
         role: endpoint.role === 'master'
             ? C3Role.MASTER
             : endpoint.role === 'peer' ? C3Role.PEER : C3Role.SLAVE,

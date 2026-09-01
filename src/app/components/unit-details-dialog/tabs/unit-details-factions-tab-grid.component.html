@@ -111,20 +111,18 @@
 </ng-template>
 
 <div class="faction-availability-matrix-scroll allow-select">
-    @if (matrix.rows.length === 0) {
-        <div class="no-factions">No faction availability information for this unit.</div>
-    } @else {
-        <table class="faction-availability-matrix">
-            <caption class="visually-hidden">Faction availability by era</caption>
-            <thead>
-                <tr>
-                    <th class="faction-column-heading" scope="col">Faction</th>
-                    @for (era of matrix.eras; track era.eraId) {
-                        <th class="era-column-heading" scope="col" [attr.title]="era.eraName">
-                            @if (era.eraIcon) {
-                                <img [src]="era.eraIcon" class="era-icon" alt="" aria-hidden="true" />
+    <table class="faction-availability-matrix">
+        <caption class="visually-hidden">Faction availability by era</caption>
+        <thead>
+            <tr>
+                <th class="faction-column-heading" scope="col">Factions</th>
+                @for (era of matrix.eras; track era.eraId) {
+                    <th class="era-column-heading" scope="col" [attr.title]="era.eraName">
+                        <div class="era-heading-content">
+                            @if (era.eraImg) {
+                                <img [src]="era.eraImg" class="era-icon" alt="" aria-hidden="true" />
                             }
-                            <span class="era-name">{{ era.eraName }}</span>
+                            <span class="era-name">{{ era.eraShortName ?? era.eraName }}</span>
                             <span class="era-years">
                                 @if (era.eraYearTo) {
                                     {{ era.eraYearFrom ?? '?' }}–{{ era.eraYearTo }}
@@ -132,11 +130,19 @@
                                     {{ era.eraYearFrom ?? '?' }}+
                                 }
                             </span>
-                        </th>
-                    }
+                        </div>
+                    </th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @if (matrix.rows.length === 0) {
+                <tr>
+                    <td class="no-factions-cell" [attr.colspan]="matrix.eras.length + 1">
+                        <div class="no-factions">No faction availability information for this unit.</div>
+                    </td>
                 </tr>
-            </thead>
-            <tbody>
+            } @else {
                 @for (row of matrix.rows; track row.id) {
                     <ng-container
                         [ngTemplateOutlet]="factionRow"
@@ -151,7 +157,7 @@
                         }
                     }
                 }
-            </tbody>
-        </table>
-    }
+            }
+        </tbody>
+    </table>
 </div>

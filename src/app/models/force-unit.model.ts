@@ -11,7 +11,6 @@ import type { ForceUnitState } from './force-unit-state.model';
 import type { ConditionData } from './force-unit-state.model';
 import { uuidv7 } from '../utils/uuid.util';
 import type { C3Component } from './c3-network.model';
-import type { UnitDefinitionResolutionWitness } from './persisted-unit-state';
 import type { UnitTagEcmCapabilitySummary } from './unit-capability-summary.model';
 import type { UnitConditionKey } from './unit-condition.model';
 
@@ -24,9 +23,6 @@ export abstract class ForceUnit {
     protected readonly _formationCommander = signal<boolean>(false);
     id: string;
     updatedTs: number = 0;
-    /** Compatibility witness from UUID-first catalog resolution; source drift is diagnostic, never rejection. */
-    definitionResolution?: UnitDefinitionResolutionWitness;
-
     /**
      * The force this unit belongs to.
      * Backed by a signal so that computed properties (e.g. readOnly)

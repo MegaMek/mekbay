@@ -15,6 +15,7 @@ import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { EntityTechBase, MekLocation } from '../entity/types';
 import { MiscEquipment } from '../equipment.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import type { UnitConditionKey } from '../unit-condition.model';
 import type { MekHeatAutomationPolicyV2, MekHeatProjectionResultV2, MekHeatStateV2 } from './mek-heat-state-v2';
 import type { MekMovementPsrProjectionResultV2, MekMovementPsrStateV2 } from './mek-movement-psr-v2';
@@ -150,7 +151,7 @@ export interface MekUnitStatusSnapshot {
  * these facts; no sheet attribute or text node participates in this model.
  */
 export interface MekRecordSheetSnapshot {
-    readonly entityUuid: string;
+    readonly entityUuid: UnitUuid;
     readonly ruleset: CBTRuleset;
     readonly stateRevision: number;
     readonly identity: Readonly<{

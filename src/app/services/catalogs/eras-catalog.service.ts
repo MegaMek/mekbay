@@ -30,7 +30,7 @@ export class ErasCatalogService extends CatalogBaseService<Eras, Eras> {
     }
 
     protected override get remoteUrl(): string {
-        return 'online-assets/generated/eras.json';
+        return 'online-assets/static/eras.json';
     }
 
     protected override get repositoryAssetPath(): string { return this.remoteUrl; }

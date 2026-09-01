@@ -36,6 +36,7 @@ const deletedPaths = [
     'src/app/models/runtime/mek-crew-profile.ts',
     'src/app/models/cbt-force-unit.model.ts',
     'src/app/models/cbt-force-unit-state.model.ts',
+    'src/app/models/cbt-force-api.ts',
     'src/app/utils/java-string-compat.ts',
     'src/app/services/entity-editor-session.service.ts',
     'src/app/services/mek-editor-workspace.service.ts',
@@ -44,6 +45,12 @@ const deletedPaths = [
     'src/app/models/rules/vehicle-motive-hit.util.ts',
     'src/app/models/runtime/entity-unit-instance.ts',
     'src/app/models/runtime/ready-entity-unit.ts',
+    'src/app/models/runtime/ready-classic-unit.ts',
+    'src/app/models/runtime/ready-non-mek-unit.ts',
+    'src/app/models/runtime/ready-unit-factory.ts',
+    'src/app/models/runtime/mek-interaction-command-token.ts',
+    'src/app/models/runtime/classic-unit-runtime.ts',
+    'src/app/models/runtime/c3-operational-network.ts',
     'src/app/models/runtime/entity-runtime-index.ts',
     'src/app/models/runtime/component-bap.ts',
     'scripts/audit-v1-force-corpus.ts',
@@ -65,7 +72,7 @@ assert.deepEqual(
     'production must not recreate the discarded published/blueprint/canonicalization layers',
 );
 
-const readyUnit = source(join(app, 'models', 'runtime', 'ready-unit-factory.ts'));
+const readyUnit = source(join(app, 'models', 'runtime', 'cbt-mek-unit.ts'));
 assert.match(readyUnit, /private readonly entity: MekEntity;/u);
 assert.match(readyUnit, /public getUnit\(\): MekEntity\s*\{\s*return this\.entity;/u);
 
@@ -76,7 +83,7 @@ assert.doesNotMatch(unitInstance, /MountedEquipment|SVGElement|querySelector|doc
 assert.doesNotMatch(unitInstance, /legacy|Legacy|migrateLegacy|recovery evidence/u);
 
 const baseline = source(join(app, 'models', 'runtime', 'runtime-state.ts'));
-assert.match(baseline, /readonly entity: SavedEntityIdentity;/u);
+assert.match(baseline, /readonly entity: UnitUuid;/u);
 assert.doesNotMatch(baseline, /readonly published:/u);
 
 const force = source(join(app, 'models', 'force.model.ts'));
@@ -104,7 +111,7 @@ assert.match(force, /setC3ConfigurationIfOwnerRevisionCurrent\([\s\S]*ForceOwner
 assert.doesNotMatch(force, /setC3ConfigurationIfWholeOwnerAuthorityCurrent/u);
 
 const asForce = source(join(app, 'models', 'as-force.model.ts'));
-assert.match(asForce, /private populateFromSerialized\(data: ASSerializedForce\): void/u);
+assert.match(asForce, /private populateFromSerialized\(data: ASSerializedForce\): readonly string\[\]/u);
 assert.doesNotMatch(
     asForce,
     /deserializeForceUnit|sanitizeForceData|populateFromGroupedSerialized|deferredUnitDescriptors|addDeferredUnitDescriptor|getDeferredUnitDescriptors/u,
@@ -112,15 +119,15 @@ assert.doesNotMatch(
 );
 
 const cbtForce = source(join(app, 'models', 'cbt-force.model.ts'));
-const cbtAuthority = source(join(app, 'models', 'cbt-force-authority.ts'));
+const cbtUnitStore = source(join(app, 'models', 'cbt-unit-store.ts'));
 const cbtC3 = source(join(app, 'models', 'cbt-force-c3.ts'));
 const memberRegistry = source(join(app, 'models', 'runtime', 'cbt-force-member-registry.ts'));
 const runtimeJournal = source(join(app, 'models', 'runtime', 'cbt-force-runtime-journal.ts'));
-assert.match(cbtAuthority, /interface CBTForceAuthorityState\s*\{\s*readonly envelope: SerializedCBTForceV2;/u);
-assert.match(cbtForce, /private readonly authority = new CBTForceAuthority\(\);/u);
+assert.match(cbtUnitStore, /interface CBTUnitStoreState\s*\{\s*readonly envelope: SerializedCBTForceV2;/u);
+assert.match(cbtForce, /private readonly unitStore = new CBTUnitStore\(\);/u);
 assert.match(cbtForce, /private readonly memberRegistry = new CBTForceMemberRegistry/u);
 assert.match(cbtForce, /private readonly runtimeJournal = new CBTForceRuntimeJournal/u);
-assert.match(cbtForce, /return this\.authority\.envelope\(\);/u);
+assert.match(cbtForce, /return this\.unitStore\.envelope\(\);/u);
 assert.doesNotMatch(cbtForce, /CBTForceUnitStore|memberProjection|runtimeCommands/u);
 assert.match(cbtForce, /export class CBTForce extends Force<never>/u);
 assert.doesNotMatch(
@@ -135,7 +142,7 @@ assert.doesNotMatch(
 );
 assert.match(cbtForce, /replaceC3EncounterNetworksIfOwnerRevisionCurrent\([\s\S]*ForceOwnerRevisionFence/u);
 assert.doesNotMatch(cbtForce, /public replaceC3EncounterNetworks\(/u);
-assert.match(cbtForce, /public getRuntimeInstanceIds\(\): readonly UnitInstanceId\[\]/u);
+assert.match(cbtForce, /public getRuntimeInstanceIds\(\): readonly string\[\]/u);
 assert.match(cbtForce, /public async admitRetainedUnit\(/u);
 assert.doesNotMatch(
     cbtForce,
@@ -143,13 +150,13 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(cbtForce, /CBT_SERIALIZED_FORCE_SCHEMA|Sanitizer\.sanitize/u);
 assert.ok(cbtForce.split(/\r?\n/u).length < 2600, 'CBTForce must not regrow into a 5000-line god class');
-assert.ok(cbtAuthority.split(/\r?\n/u).length < 1700, 'CBTForceAuthority must remain focused');
+assert.ok(cbtUnitStore.split(/\r?\n/u).length < 1700, 'CBTUnitStore must remain focused');
 assert.match(cbtC3, /export class CBTForceC3/u);
 assert.match(memberRegistry, /no BV result/u);
 assert.match(runtimeJournal, /Sole owner of session-only checkpoints/u);
 assert.doesNotMatch(runtimeJournal, /encounter|Encounter/u, 'C3 topology must stay outside runtime undo');
 assert.doesNotMatch(
-    [cbtForce, cbtAuthority, cbtC3, memberRegistry].join('\n'),
+    [cbtForce, cbtUnitStore, cbtC3, memberRegistry].join('\n'),
     /UnitBattleValueCacheEntry|TagBattleValueCache|WeakMap/u,
     'force BV must not grow cache entries or object-key caches',
 );
@@ -158,21 +165,19 @@ assert.doesNotMatch(
     /groups:\s*_legacyGroups|c3Networks:\s*_legacyNetworks/u,
     'the current Classic writer must not strip V1 topology after serialization',
 );
-const cbtForceApi = source(join(app, 'models', 'cbt-force-api.ts'));
-const mekInteractionTokens = source(join(app, 'models', 'runtime', 'mek-interaction-command-token.ts'));
 assert.doesNotMatch(
-    [cbtForce, cbtAuthority, cbtForceApi, mekInteractionTokens].join('\n'),
+    [cbtForce, cbtUnitStore].join('\n'),
     /MekHeatCommand|MekHeatInteraction|HeatCommandToken|dispatchHeatCommand|heatInteractions/u,
     'the disconnected heat-command facade and its token DTOs must not return',
 );
 
-const readyClassic = source(join(app, 'models', 'runtime', 'ready-classic-unit.ts'));
-assert.match(readyClassic, /export interface ReadyClassicUnit/u);
+const readyClassic = source(join(app, 'models', 'runtime', 'cbt-unit.ts'));
+assert.match(readyClassic, /export interface CBTUnit/u);
 assert.doesNotMatch(readyClassic, /endTurn\([^)]*MekHeatAutomationPolicyV2/u);
-const readyMek = source(join(app, 'models', 'runtime', 'ready-unit-factory.ts'));
-const readyNonMek = source(join(app, 'models', 'runtime', 'ready-non-mek-unit.ts'));
-assert.match(readyMek, /class ReadyMekUnit implements ReadyClassicUnit/u);
-assert.match(readyNonMek, /class ReadyNonMekUnit implements ReadyClassicUnit/u);
+const readyMek = source(join(app, 'models', 'runtime', 'cbt-mek-unit.ts'));
+const readyNonMek = source(join(app, 'models', 'runtime', 'cbt-non-mek-unit.ts'));
+assert.match(readyMek, /class CBTMekUnit implements CBTUnit/u);
+assert.match(readyNonMek, /class CBTNonMekUnit implements CBTUnit/u);
 const nonMekRuntime = source(join(app, 'models', 'runtime', 'non-mek-unit-instance.ts'));
 assert.match(nonMekRuntime, /NonMekEntityType = Exclude<EntityType, 'Mek'>/u);
 assert.match(nonMekRuntime, /export class NonMekUnitInstance/u);
@@ -199,18 +204,16 @@ assert.doesNotMatch(
 );
 
 const unitSnapshot = source(join(app, 'models', 'cbt-unit-snapshot.ts'));
-const classicRuntime = source(join(app, 'models', 'runtime', 'classic-unit-runtime.ts'));
+const classicRuntime = source(join(app, 'models', 'runtime', 'cbt-unit-runtime.ts'));
 assert.match(unitSnapshot, /export interface CBTUnitSnapshot/u);
-assert.doesNotMatch(unitSnapshot, /CBTMekUnitSnapshot|CBTEntityUnitSnapshot|readonly kind:/u);
+assert.doesNotMatch(unitSnapshot, /export interface CBTMekUnitSnapshot|CBTEntityUnitSnapshot|readonly kind:/u);
 assert.match(unitSnapshot, /entity: BaseEntity/u);
 assert.match(unitSnapshot, /Critical slots and critical-hit state[\s\S]*hasMekRuntime/u);
 assert.doesNotMatch(classicRuntime, /CriticalSlotId|readonly slots:|readonly destroyed:/u);
 assert.match(nonMekRuntime, /readonly explicitlyDestroyed: boolean/u);
 assert.doesNotMatch(nonMekRuntime, /readonly slots:|readonly criticalHits:/u);
 
-const operationalC3 = source(join(app, 'models', 'runtime', 'c3-operational-network.ts'));
 const forceBv = source(join(app, 'models', 'cbt-force-battle-value.ts'));
-assert.match(operationalC3, /export function projectOperationalC3Networks/u);
 assert.match(cbtC3, /projectOperationalC3Networks\(/u);
 assert.doesNotMatch(
     forceBv,

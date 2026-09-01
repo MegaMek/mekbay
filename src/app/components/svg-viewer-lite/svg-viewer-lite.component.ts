@@ -82,7 +82,7 @@ export class SvgViewerLiteComponent {
 
             (async () => {
                 try {
-                    const loaded = await this.nativeEntities.load({ provider: u.provider, uuid: u.uuid });
+                    const loaded = await this.nativeEntities.load(u.uuid);
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;
                     const sheets = await this.recordSheets.load(loaded.entity, {}, {
                         design: { provider: u.provider, uuid: u.uuid },

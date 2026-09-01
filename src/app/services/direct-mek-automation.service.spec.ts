@@ -4,6 +4,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import { resolveAutomaticFallingDamage } from '../components/falling-damage-dialog/falling-damage-dialog.component';
+import { projectRuntimeUnitNotifications } from '../components/unit-notification-badges/unit-notification-runtime.util';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import type { CBTUnitCommand } from '../models/runtime/unit-instance';
@@ -16,7 +17,11 @@ import {
 import { CBTAutomationService } from './cbt-automation.service';
 import { CBTAutomationCheckService, resolveAutomationChecksAutomatically } from './cbt-automation-check.service';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
-import { DirectMekAutomationService, type DirectMekAutomationDispatch } from './direct-mek-automation.service';
+import {
+    DirectMekAutomationService,
+    type DirectMekAutomationDispatch,
+    type PreparedDirectMekAutomationCommand,
+} from './direct-mek-automation.service';
 import { OptionsService } from './options.service';
 import { MekFallingAutomationService } from './mek-falling-automation.service';
 
@@ -272,6 +277,30 @@ describe('DirectMekAutomationService', () => {
         );
     });
 
+    it('keeps badge-driven end-turn heat checks interactive through the inner rolls', async () => {
+        const harness = createHarness();
+        expect(harness.fixture.instance.dispatch({
+            type: 'set-heat',
+            heat: 40,
+        }).accepted).toBeTrue();
+
+        const prepared = await service.prepareEndTurnCommands(
+            harness.force,
+            [{
+                instanceId: harness.instanceId,
+                command: { type: 'end-turn', policy: 'automatic' },
+            }],
+            { interactive: true },
+        );
+
+        expect(prepared).not.toBeNull();
+        expect(resolveChecksAutomation).toHaveBeenCalledWith(
+            'heatEffectsCheck',
+            jasmine.any(Array),
+            jasmine.objectContaining({ interactive: true }),
+        );
+    });
+
     it('does not turn a manual shutdown toggle into a Piloting Skill Roll', async () => {
         const harness = createHarness('total-warfare');
         const command: CBTUnitCommand = {
@@ -436,6 +465,41 @@ describe('DirectMekAutomationService', () => {
         expect(pilotSkillChecks).toContain(jasmine.objectContaining({
             label: 'Piloting Skill Check',
             description: 'Involuntary shutdown.',
+        }));
+    });
+
+    it('keeps a shutdown PSR interactive when end-turn work was opened from its badge', async () => {
+        const harness = createHarness('total-warfare');
+        automationModes['heatEffectsCheck'] = 'yes';
+        automationModes['pilotSkillCheck'] = 'yes';
+        expect(harness.fixture.instance.dispatch({
+            type: 'set-heat',
+            heat: 40,
+        }).accepted).toBeTrue();
+        spyOn(Math, 'random').and.returnValue(0.99);
+        const rows = await service.prepareEndTurnCommands(
+            harness.force,
+            [{
+                instanceId: harness.instanceId,
+                command: { type: 'end-turn', policy: 'automatic' },
+            }],
+            { interactive: true },
+        );
+
+        expect(rows).not.toBeNull();
+        expect(await service.settleBeforeCommand(
+            harness.force,
+            harness.instanceId,
+            rows![0]!.prepared,
+            harness.dispatch,
+        )).not.toBeNull();
+
+        const shutdownPsr = resolveChecksAutomation.calls.allArgs().find(args =>
+            args[0] === 'pilotSkillCheck'
+            && (args[1] as readonly { readonly description: string }[])
+                .some(check => check.description === 'Involuntary shutdown.'));
+        expect(shutdownPsr?.[2]).toEqual(jasmine.objectContaining({
+            interactive: true,
         }));
     });
 
@@ -933,8 +997,16 @@ describe('DirectMekAutomationService', () => {
         expect(shutdown?.automaticOutcome).toBeUndefined();
     });
 
-    it('reviews an ammunition explosion and applies pilot hits as separate typed commands', async () => {
+    it('applies accepted explosion pilot hits even when consciousness automation is disabled', async () => {
         const harness = createHarness('total-warfare');
+        automationModes['pilotHitsAndConsciousnessCheck'] = 'no';
+        resolveChecksAutomation.and.callFake(async (
+            key: string,
+            checks: Parameters<typeof resolveAutomationChecksAutomatically>[0],
+            options: { readonly initiallyFailedGroups?: ReadonlySet<string> },
+        ) => key === 'pilotHitsAndConsciousnessCheck'
+            ? []
+            : resolveAutomationChecksAutomatically(checks, options.initiallyFailedGroups));
         const critical = explosiveCriticalCommand(harness.fixture);
         const before = harness.snapshot();
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, critical);
@@ -963,7 +1035,10 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.query().crewState(pilotId).wounds)
             .toBe(prepared.deferredPilotHits);
         expect(resolveAutomation.calls.allArgs().map(args => args[0])).toContain('internalExplosionsCheck');
-        expect(resolveAutomation.calls.allArgs().map(args => args[0])).toContain('pilotHitsAndConsciousnessCheck');
+        expect(resolveAutomation.calls.allArgs().map(args => args[0]))
+            .not.toContain('pilotHitsAndConsciousnessCheck');
+        expect(resolveChecksAutomation.calls.allArgs().map(args => args[0]))
+            .toContain('pilotHitsAndConsciousnessCheck');
     });
 
     it('cancels an ammunition explosion review before applying the critical roll', async () => {
@@ -1100,6 +1175,51 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.query().crewState(pilotId).wounds).toBe(3);
     });
 
+    it('does not roll or flood when breach automation is disabled', async () => {
+        const harness = createHarness();
+        automationModes['breachAndFloodCheck'] = 'no';
+        expect(harness.fixture.instance.dispatch({
+            type: 'replace-turn-state',
+            turn: {
+                ...harness.fixture.instance.query().turnState(),
+                cover: 'underwater-depth-1',
+            },
+        }).accepted).toBeTrue();
+        const location = [...harness.fixture.index.locations.values()]
+            .find(candidate => candidate.code === 'LL')!;
+        const face = [...harness.fixture.index.armorFaces.values()]
+            .find(candidate => candidate.locationId === location.id
+                && candidate.maximumPoints > 1)!;
+        const before = harness.snapshot();
+        const command: CBTUnitCommand = {
+            type: 'damage-armor',
+            faceId: face.id,
+            amount: 1,
+            target: 'committed',
+        };
+        const random = spyOn(Math, 'random');
+        const result = harness.fixture.instance.dispatch(command);
+        expect(result.accepted).toBeTrue();
+
+        expect(await service.afterCommand(
+            harness.force,
+            harness.instanceId,
+            before,
+            { command, deferredPilotHits: 0 },
+            result,
+            harness.dispatch,
+        )).toBeTrue();
+
+        expect(random).not.toHaveBeenCalled();
+        expect(harness.fixture.instance.query().locationCondition(
+            location.id,
+            'flooded',
+            'committed',
+        )).toBe(0);
+        expect(resolveAutomation.calls.allArgs().map(args => args[0]))
+            .not.toContain('breachAndFloodCheck');
+    });
+
     it('settles reviewed heat consequences before resetting the turn', async () => {
         const harness = createHarness();
         expect(harness.fixture.instance.dispatch({
@@ -1166,6 +1286,7 @@ describe('DirectMekAutomationService', () => {
 
     it('dismisses disabled phase PSRs and completes the boundary', async () => {
         const harness = createHarness('total-warfare');
+        automationModes['pilotSkillCheck'] = 'no';
         resolveChecksAutomation.and.resolveTo([]);
         const slot = [...harness.fixture.index.slots.values()].find(candidate =>
             harness.fixture.index.locations.get(candidate.locationId)?.code === 'LL'
@@ -1203,6 +1324,130 @@ describe('DirectMekAutomationService', () => {
         expect(phaseResult.accepted).toBeTrue();
         expect(harness.fixture.instance.query().mekPilotChecks()).toEqual([]);
         expect(resolveChecksAutomation.calls.allArgs().map(args => args[0])).toContain('pilotSkillCheck');
+    });
+
+    it('keeps disabled phase PSRs pending when their badge is opened', async () => {
+        const harness = createHarness('total-warfare');
+        automationModes['pilotSkillCheck'] = 'no';
+        const slot = [...harness.fixture.index.slots.values()].find(candidate =>
+            harness.fixture.index.locations.get(candidate.locationId)?.code === 'LL'
+            && candidate.componentIds.some(componentId => {
+                const component = harness.fixture.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Foot Actuator';
+            }))!;
+        expect(harness.fixture.instance.dispatch({
+            type: 'hit-critical',
+            slotId: slot.id,
+            hits: 1,
+            target: 'pending',
+        }).accepted).toBeTrue();
+        const revisionBefore = harness.fixture.instance.query().stateRevision;
+        const previewBefore = harness.fixture.instance.query().previewEndPhase();
+        expect(previewBefore.accepted).toBeTrue();
+        if (!previewBefore.accepted) return;
+        expect(previewBefore.state.movementPsr.checks.some(check =>
+            check.status === 'pending')).toBeTrue();
+
+        const rows = await service.prepareEndPhaseCommands(
+            harness.force,
+            [{ instanceId: harness.instanceId, command: { type: 'end-phase' } }],
+            { interactive: true, phaseWork: 'pilot-checks' },
+        );
+        const settled = rows?.[0] && await service.settleBeforeCommand(
+            harness.force,
+            harness.instanceId,
+            rows[0].prepared,
+            harness.dispatch,
+        );
+
+        expect(settled).not.toBeNull();
+        expect(harness.fixture.instance.query().stateRevision).toBe(revisionBefore);
+        expect(harness.fixture.instance.query().hasPendingCombat()).toBeTrue();
+        const previewAfter = harness.fixture.instance.query().previewEndPhase();
+        expect(previewAfter.accepted).toBeTrue();
+        if (!previewAfter.accepted) return;
+        expect(previewAfter.state.movementPsr.checks.some(check =>
+            check.status === 'pending')).toBeTrue();
+        const review = resolveChecksAutomation.calls.allArgs()
+            .find(args => args[0] === 'pilotSkillCheck');
+        expect(review?.[1]).toEqual([]);
+    });
+
+    it('bypasses the PSR roll dialog when every pending check fails automatically', async () => {
+        const harness = createHarness('total-warfare');
+        const pilotId = [...harness.fixture.index.crewPositions.keys()][0]!;
+        expect(harness.fixture.instance.dispatch({
+            type: 'set-crew-state',
+            positionId: pilotId,
+            wounds: 0,
+            unconscious: false,
+            ejected: true,
+        }).accepted).toBeTrue();
+        const foot = [...harness.fixture.index.slots.values()].find(candidate =>
+            harness.fixture.index.locations.get(candidate.locationId)?.code === 'LL'
+            && candidate.componentIds.some(componentId => {
+                const component = harness.fixture.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Foot Actuator';
+            }))!;
+        expect(harness.fixture.instance.dispatch({
+            type: 'hit-critical',
+            slotId: foot.id,
+            hits: 1,
+            target: 'pending',
+        }).accepted).toBeTrue();
+
+        const rows = await service.prepareEndPhaseCommands(
+            harness.force,
+            [{ instanceId: harness.instanceId, command: { type: 'end-phase' } }],
+            { interactive: true, phaseWork: 'pilot-checks' },
+        );
+        const settled = rows?.[0] && await service.settleBeforeCommand(
+            harness.force,
+            harness.instanceId,
+            rows[0].prepared,
+            harness.dispatch,
+        );
+
+        expect(settled).not.toBeNull();
+        const psrReview = resolveChecksAutomation.calls.allArgs()
+            .find(args => args[0] === 'pilotSkillCheck');
+        expect(psrReview?.[1]).toEqual([]);
+        expect(resolveFalling).toHaveBeenCalled();
+        expect(harness.fixture.instance.query().hasCondition('prone')).toBeTrue();
+    });
+
+    it('discards an automatic fall without applying it when PSR automation is disabled', async () => {
+        const harness = createHarness('total-warfare');
+        automationModes['pilotSkillCheck'] = 'no';
+        resolveChecksAutomation.and.resolveTo([]);
+        const leg = [...harness.fixture.index.locations.values()]
+            .find(location => location.code === 'LL')!;
+        expect(harness.fixture.instance.dispatch({
+            type: 'damage-internal',
+            locationId: leg.id,
+            amount: leg.internalPoints,
+            target: 'committed',
+        }).accepted).toBeTrue();
+        expect(harness.fixture.instance.query().mekMovementPsrState().automaticFalls.length)
+            .toBeGreaterThan(0);
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+            type: 'end-phase',
+        });
+        const settled = await service.settleBeforeCommand(
+            harness.force,
+            harness.instanceId,
+            prepared,
+            harness.dispatch,
+        );
+
+        expect(settled).not.toBeNull();
+        expect(resolveFalling).not.toHaveBeenCalled();
+        expect(harness.fixture.instance.query().hasCondition('prone')).toBeFalse();
+        expect(harness.fixture.instance.query().mekPilotChecks()).toEqual([]);
+        expect(harness.fixture.instance.query().mekMovementPsrState().automaticFalls).toEqual([]);
+        expect(harness.fixture.instance.dispatch(settled!.command).accepted).toBeTrue();
+        expect(harness.fixture.instance.query().hasCondition('prone')).toBeFalse();
     });
 
     it('keeps pending combat uncommitted when the phase PSR review is cancelled', async () => {
@@ -1477,6 +1722,271 @@ describe('DirectMekAutomationService', () => {
             .not.toContain('criticalHitChanceCheck');
     });
 
+    it('does not queue rules-generated critical chances when automation is disabled', async () => {
+        const harness = createHarness();
+        automationModes['criticalHitChanceCheck'] = 'no';
+        const location = [...harness.fixture.index.locations.values()]
+            .find(candidate => harness.fixture.instance.query().mekCriticalRollProfile(
+                candidate.id,
+                'committed',
+            ).validRolls.length > 0)!;
+        const before = harness.snapshot();
+        const command: CBTUnitCommand = {
+            type: 'damage-internal',
+            locationId: location.id,
+            amount: 1,
+            target: 'committed',
+        };
+        const result = harness.fixture.instance.dispatch(command);
+        expect(result.accepted).toBeTrue();
+
+        expect(await service.afterCommand(
+            harness.force,
+            harness.instanceId,
+            before,
+            { command, deferredPilotHits: 0 },
+            result,
+            harness.dispatch,
+        )).toBeTrue();
+
+        expect(harness.fixture.instance.query().turnState().pendingCriticalEvents)
+            .toBeUndefined();
+        expect(resolveAutomation.calls.allArgs().map(args => args[0]))
+            .not.toContain('criticalHitChanceCheck');
+    });
+
+    it('retains and resumes the exact critical chance when its review is closed', async () => {
+        const harness = createHarness();
+        automationModes['criticalHitChanceCheck'] = 'ask';
+        const location = [...harness.fixture.index.locations.values()]
+            .find(candidate => harness.fixture.instance.query().mekCriticalRollProfile(
+                candidate.id,
+                'committed',
+            ).validRolls.length > 0)!;
+        const before = harness.snapshot();
+        const command: CBTUnitCommand = {
+            type: 'damage-internal',
+            locationId: location.id,
+            amount: 1,
+            target: 'committed',
+        };
+        spyOn(Math, 'random').and.returnValue(0);
+        resolveAutomation.and.callFake(async (
+            key: string,
+            events: readonly { readonly id: string }[],
+        ) => key === 'criticalHitChanceCheck'
+            ? null
+            : new Set(events.map(event => event.id)));
+        const result = harness.fixture.instance.dispatch(command);
+        expect(result.accepted).toBeTrue();
+
+        await service.afterCommand(
+            harness.force,
+            harness.instanceId,
+            before,
+            { command, deferredPilotHits: 0 },
+            result,
+            harness.dispatch,
+        );
+
+        const pending = harness.fixture.instance.query().turnState().pendingCriticalEvents?.[0];
+        expect(pending).toEqual(jasmine.objectContaining({
+            type: 'critical-chance',
+            locationId: location.id,
+            roll: [1, 1],
+            result: 'none',
+        }));
+        const notification = projectRuntimeUnitNotifications(harness.snapshot(), {
+            pilotSkillCheck: 'ask',
+            pilotHitsAndConsciousnessCheck: 'ask',
+            heatAndDissipationResolution: 'yes',
+            heatEffectsCheck: 'ask',
+        });
+        expect(notification?.pendingEvents).toContain(jasmine.objectContaining({
+            kind: 'critical-chance',
+            count: 1,
+        }));
+        const firstReview = resolveAutomation.calls.allArgs()
+            .find(args => args[0] === 'criticalHitChanceCheck');
+        expect(firstReview?.[2]).toEqual(jasmine.objectContaining({
+            manualResolution: false,
+        }));
+
+        // Turning automation off later must not discard work that was already
+        // serialized while ASK was active.
+        automationModes['criticalHitChanceCheck'] = 'no';
+        resolveAutomation.and.callFake(async (
+            _key: string,
+            events: readonly { readonly id: string }[],
+        ) => new Set(events.map(event => event.id)));
+        expect(await service.resumePendingAutomation(
+            harness.force,
+            harness.instanceId,
+            harness.dispatch,
+            true,
+        )).toBeTrue();
+
+        expect(harness.fixture.instance.query().turnState().pendingCriticalEvents).toBeUndefined();
+        const reviews = resolveAutomation.calls.allArgs()
+            .filter(args => args[0] === 'criticalHitChanceCheck');
+        expect(reviews).toHaveSize(2);
+        expect(reviews[1]?.[1]).toEqual(firstReview?.[1]);
+        expect(reviews[1]?.[2]).toEqual(jasmine.objectContaining({
+            interactive: true,
+            manualResolution: true,
+        }));
+    });
+
+    it('retains the exact critical slot roll when manual review is closed', async () => {
+        const harness = createHarness();
+        automationModes['criticalHitChanceCheck'] = 'no';
+        const location = [...harness.fixture.index.locations.values()]
+            .find(candidate => harness.fixture.instance.query().mekCriticalRollProfile(
+                candidate.id,
+                'committed',
+            ).validRolls.length > 0)!;
+        const turn = harness.fixture.instance.query().turnState();
+        expect(harness.fixture.instance.dispatch({
+            type: 'replace-turn-state',
+            turn: {
+                ...turn,
+                pendingCriticalEvents: [{
+                    type: 'critical-hit',
+                    eventId: 'critical:manual-slot-review',
+                    locationId: location.id,
+                    target: 'committed',
+                    remainingHits: 1,
+                    caseIIDiscards: [false],
+                }],
+            },
+        }).accepted).toBeTrue();
+        spyOn(Math, 'random').and.returnValue(0);
+        resolveAutomation.and.resolveTo(null);
+        const criticalHits = () => [...harness.fixture.index.slots.values()].reduce(
+            (total, slot) => total
+                + harness.fixture.instance.query().criticalHits(slot.id, 'committed'),
+            0,
+        );
+        const hitsBefore = criticalHits();
+
+        expect(await service.resumePendingAutomation(
+            harness.force,
+            harness.instanceId,
+            harness.dispatch,
+            false,
+        )).toBeFalse();
+
+        const pending = harness.fixture.instance.query().turnState().pendingCriticalEvents?.[0];
+        expect(pending).toEqual(jasmine.objectContaining({
+            type: 'critical-hit',
+            eventId: 'critical:manual-slot-review',
+            remainingHits: 1,
+            roll: jasmine.any(Array),
+        }));
+        const firstReview = resolveAutomation.calls.allArgs()
+            .find(args => (args[1] as readonly { readonly event: string }[])[0]?.event
+                === 'Critical Hit');
+        expect(firstReview?.[2]).toEqual(jasmine.objectContaining({
+            manualResolution: true,
+        }));
+
+        resolveAutomation.and.callFake(async (
+            _key: string,
+            events: readonly { readonly id: string }[],
+        ) => new Set(events.map(event => event.id)));
+        expect(await service.resumePendingAutomation(
+            harness.force,
+            harness.instanceId,
+            harness.dispatch,
+            true,
+        )).toBeTrue();
+
+        expect(harness.fixture.instance.query().turnState().pendingCriticalEvents).toBeUndefined();
+        expect(criticalHits()).toBeGreaterThan(hitsBefore);
+        const reviews = resolveAutomation.calls.allArgs()
+            .filter(args => (args[1] as readonly { readonly event: string }[])[0]?.event
+                === 'Critical Hit');
+        expect(reviews).toHaveSize(2);
+        expect(reviews[1]?.[1]).toEqual(reviews[0]?.[1]);
+    });
+
+    it('keeps child criticals interactive without overriding nested explosion modes', async () => {
+        const instanceId = 'unit:automation:interactive-critical-chain';
+        const fixture = createDirectExplosionRuntimeFixture('core-2026', {}, instanceId);
+        const harness = createHarnessForFixture(fixture, 'core-2026', instanceId);
+        automationModes['criticalHitChanceCheck'] = 'yes';
+        const critical = explosiveCriticalCommand(fixture);
+        if (critical.type !== 'apply-mek-critical-roll') {
+            throw new Error('Expected an explosive critical-roll command');
+        }
+        expect(fixture.instance.dispatch({
+            type: 'replace-turn-state',
+            turn: {
+                ...fixture.instance.query().turnState(),
+                pendingCriticalEvents: [{
+                    type: 'critical-hit',
+                    eventId: 'critical:interactive-chain',
+                    locationId: critical.locationId,
+                    target: critical.target,
+                    remainingHits: 1,
+                    caseIIDiscards: [false],
+                    roll: critical.results,
+                }],
+            },
+        }).accepted).toBeTrue();
+        resolveAutomation.and.callFake(async (
+            _key: string,
+            events: readonly { readonly id: string; readonly event: string }[],
+        ) => events[0]?.event === 'Critical Hit Chance'
+            ? null
+            : new Set(events.map(event => event.id)));
+        let dispatch: DirectMekAutomationDispatch;
+        dispatch = async (command, automate = true) => {
+            const before = harness.snapshot();
+            const prepared: PreparedDirectMekAutomationCommand = automate
+                ? await service.prepareCommand(harness.force, instanceId, command)
+                : { command, deferredPilotHits: 0 };
+            if (prepared.cancelled) throw new Error('Unexpected nested automation cancellation');
+            const result = fixture.instance.dispatch(prepared.command);
+            if (automate) {
+                await service.afterCommand(
+                    harness.force,
+                    instanceId,
+                    before,
+                    prepared,
+                    result,
+                    dispatch,
+                );
+            }
+            return result;
+        };
+
+        expect(await service.resumePendingAutomation(
+            harness.force,
+            instanceId,
+            dispatch,
+            true,
+        )).toBeFalse();
+
+        expect(fixture.instance.query().turnState().pendingCriticalEvents?.[0])
+            .toEqual(jasmine.objectContaining({ type: 'critical-chance' }));
+        const childChance = resolveAutomation.calls.allArgs().find(args =>
+            (args[1] as readonly { readonly event: string }[])[0]?.event
+                === 'Critical Hit Chance');
+        expect(childChance?.[2]).toEqual(jasmine.objectContaining({
+            interactive: true,
+        }));
+        const internalExplosion = resolveAutomation.calls.allArgs().find(args =>
+            args[0] === 'internalExplosionsCheck');
+        expect((internalExplosion?.[2] as { readonly interactive?: boolean } | undefined)
+            ?.interactive).toBeUndefined();
+        const consciousness = resolveChecksAutomation.calls.allArgs().find(args =>
+            args[0] === 'pilotHitsAndConsciousnessCheck');
+        expect(consciousness?.[2]).toEqual(jasmine.objectContaining({
+            interactive: false,
+        }));
+    });
+
     it('consumes a destroyed-location critical that rolls a non-explosive slot', async () => {
         const instanceId = 'unit:automation:destroyed-explosive-location';
         const fixture = createDirectExplosionRuntimeFixture('core-2026', {}, instanceId);
@@ -1546,7 +2056,7 @@ function createHarnessForFixture(
         instanceId,
         entity: fixture.entity,
         index: fixture.index,
-        sourceRef: fixture.identity,
+        uuid: fixture.identity,
         ruleset,
         crewAssignment: fixture.instance.query().crewAssignment(),
         state: fixture.instance.snapshot(),

@@ -63,7 +63,7 @@ describe('direct runtime unit notifications', () => {
         ]);
     });
 
-    it('reads pending-combat PSRs from the exact End Phase preview', () => {
+    it('keeps disabled PSRs visible from the exact End Phase preview', () => {
         const fixture = createDirectMekRuntimeFixture('total-warfare');
         const foot = [...fixture.index.slots.values()].find(candidate =>
             fixture.index.locations.get(candidate.locationId)?.code === 'LL'
@@ -81,15 +81,49 @@ describe('direct runtime unit notifications', () => {
 
         const projected = projectRuntimeUnitNotifications(
             unitSnapshot(fixture),
-            { pilotHitsAndConsciousnessCheck: 'ask' },
+            { pilotSkillCheck: 'no', pilotHitsAndConsciousnessCheck: 'ask' },
         );
 
         expect(projectRuntimePendingNotification(projected)).toEqual({
             kind: 'psr',
             count: 1,
-            tooltip: [{ label: 'Leg Actuator hit', value: 'Target 5+' }],
+            tooltip: [{ label: 'Leg Actuator hit', value: 'Target 6+' }],
         });
         expect(fixture.instance.query().mekPilotChecks()).toEqual([]);
+    });
+
+    it('projects an automatically failed PSR as a fall warning, not a numbered roll', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const pilot = [...fixture.index.crewPositions.keys()][0]!;
+        expect(fixture.instance.dispatch({
+            type: 'set-crew-state',
+            positionId: pilot,
+            wounds: 0,
+            unconscious: false,
+            ejected: true,
+        }).accepted).toBeTrue();
+        const foot = [...fixture.index.slots.values()].find(candidate =>
+            fixture.index.locations.get(candidate.locationId)?.code === 'LL'
+            && candidate.componentIds.some(componentId => {
+                const component = fixture.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Foot Actuator';
+            }))!;
+        expect(fixture.instance.dispatch({
+            type: 'hit-critical',
+            slotId: foot.id,
+            hits: 1,
+            target: 'pending',
+        }).accepted).toBeTrue();
+
+        const projected = projectRuntimeUnitNotifications(
+            unitSnapshot(fixture),
+            { pilotSkillCheck: 'ask', pilotHitsAndConsciousnessCheck: 'ask' },
+        );
+
+        expect(projectRuntimePendingNotification(projected)).toBeNull();
+        expect(projectRuntimeFallTooltip(projected)).toEqual([
+            { label: 'Leg Actuator hit', value: 'Automatic fall' },
+        ]);
     });
 
     it('renders the numbered warning used by both badge hosts', async () => {
@@ -144,7 +178,7 @@ function unitSnapshot(
         instanceId: 'unit:direct-fixture',
         entity: fixture.entity,
         index: fixture.index,
-        sourceRef: fixture.identity,
+        uuid: fixture.identity,
         ruleset: fixture.instance.ruleset(),
         crewAssignment: fixture.instance.query().crewAssignment(),
         state: fixture.instance.snapshot(),

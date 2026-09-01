@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 
 import { TooltipDirective } from '../../../directives/tooltip.directive';
 import {
@@ -21,6 +21,7 @@ import type { FactionAvailability } from './unit-details-factions-tab.models';
 })
 export class UnitDetailsFactionsTabListComponent {
     readonly availability = input.required<readonly FactionAvailability[]>();
+    readonly availableEras = computed(() => this.availability().filter((era) => era.factions.length > 0));
 
     readonly megaMekRequisitionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
     readonly megaMekSalvageIconPath = MEGAMEK_SALVAGE_ICON_PATH;

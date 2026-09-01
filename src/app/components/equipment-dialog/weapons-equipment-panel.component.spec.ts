@@ -4,9 +4,11 @@
 import { TestBed } from '@angular/core/testing';
 
 import { asComponentId, asLocationId } from '../../models/entity/entity-identifiers';
+import type { CBTEquipmentInteraction } from '../../models/cbt-force.types';
 import type { EquipmentPanelComponent, MekPhysicalAttackRow } from '../../models/runtime/equipment-panel';
 import type { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
 import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 const ZERO_HIT = Object.freeze({
     profile: Object.freeze([0]),
@@ -109,16 +111,22 @@ function createRuntime() {
     const reorderEquipmentRows = jasmine.createSpy('reorderEquipmentRows').and.resolveTo();
     const interaction = {
         componentId: weaponId,
+        componentLabel: 'Large Laser',
         choices: [{
-            token: 'choice:laser-mode',
-            handlerId: 'inventory-mode',
+            command: {
+                instanceId: 'unit:1',
+                entityUuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'),
+                componentId: weaponId,
+                handlerId: 'inventory-mode-handler',
+                value: 'Pulse',
+            },
+            interactionKind: 'inventory-mode',
             label: 'Pulse',
-            value: 'Pulse',
             active: false,
             disabled: false,
             displayType: 'button',
         }],
-    } as const;
+    } as const satisfies CBTEquipmentInteraction;
     const snapshot = {
         displayName: 'Crab CRB-20',
         unitType: 'Mek',

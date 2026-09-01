@@ -32,6 +32,11 @@ export interface ResolvedCrewHits {
     readonly checks: readonly ResolvedCrewConsciousnessCheck[];
 }
 
+export interface CrewHitAutomationOptions {
+    /** Badge-driven parent work keeps every resulting consciousness stage interactive. */
+    readonly interactive?: boolean;
+}
+
 export interface AutomaticCrewCheckNotification {
     readonly message: string;
     readonly type: 'success' | 'error';
@@ -113,6 +118,7 @@ export class CBTCrewHitAutomationService {
         ruleset: CBTRuleset,
         eventPrefix: string,
         recipients: readonly CrewHitRecipient[],
+        options: CrewHitAutomationOptions = {},
     ): Promise<readonly ResolvedCrewHits[] | null> {
         const planned = recipients.map(recipient => {
             const appliedHits = Math.max(0, Math.trunc(recipient.hits));
@@ -167,7 +173,7 @@ export class CBTCrewHitAutomationService {
             const resolutions = await this.automationChecks.resolve(
                 'pilotHitsAndConsciousnessCheck',
                 stageChecks,
-                { title: 'Consciousness Rolls' },
+                { title: 'Consciousness Rolls', interactive: options.interactive },
             );
             if (resolutions === null) return null;
             for (const resolution of resolutions) {

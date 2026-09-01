@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { provideZonelessChangeDetection, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import type { CBTForce } from '../../models/cbt-force.model';
@@ -15,18 +15,23 @@ import { addTestEquipment } from '../../models/entity/testing/test-mounted-equip
 import { createEquipment, WeaponEquipment } from '../../models/equipment.model';
 import type { ForceUnit } from '../../models/force-unit.model';
 import { buildMekRuntimeIndex } from '../../models/runtime/mek-runtime-index';
+import { createDirectMekRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
 import { createUnitTagEcmCapabilitySummary } from '../../models/unit-capability-summary.model';
 import { OptionsService } from '../../services/options.service';
+import { projectRuntimePendingNotification } from '../unit-notification-badges/unit-notification-badges.component';
 import { UnitBlockComponent } from './unit-block.component';
 
 describe('UnitBlockComponent capability badges', () => {
+    let runtimeOptions: WritableSignal<{ readonly trackPhaseAndTurn: boolean }>;
+
     beforeEach(async () => {
+        runtimeOptions = signal({ trackPhaseAndTurn: true });
         await TestBed.configureTestingModule({
             imports: [UnitBlockComponent],
             providers: [
                 provideZonelessChangeDetection(),
                 { provide: OptionsService, useValue: {
-                    options: signal({ trackPhaseAndTurn: true }),
+                    options: runtimeOptions,
                     cbtAutomationMode: () => 'ask',
                 } },
             ],
@@ -95,6 +100,45 @@ describe('UnitBlockComponent capability badges', () => {
         expect(fixture.componentInstance.tagDisplay()).toEqual({ label: 'LTAG', unavailable: false });
         expect(fixture.componentInstance.ecmDisplay()).toEqual({ mode: 'ecm', unavailable: false });
         expect(getUnitSnapshot).toHaveBeenCalledWith(member.id);
+        fixture.destroy();
+    });
+
+    it('projects pending End Phase PSRs into the unit-card badge host', () => {
+        runtimeOptions.set({ trackPhaseAndTurn: false });
+        const runtime = createDirectMekRuntimeFixture('total-warfare');
+        const foot = [...runtime.index.slots.values()].find(candidate =>
+            runtime.index.locations.get(candidate.locationId)?.code === 'LL'
+            && candidate.componentIds.some(componentId => {
+                const component = runtime.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Foot Actuator';
+            }))!;
+        expect(runtime.instance.dispatch({
+            type: 'hit-critical',
+            slotId: foot.id,
+            hits: 1,
+            target: 'pending',
+        }).accepted).toBeTrue();
+        const changed = new Subject<void>();
+        const force = {
+            changed,
+            getUnitSnapshot: (instanceId: string) => ({
+                instanceId,
+                entity: runtime.entity,
+                index: runtime.index,
+                sourceRef: runtime.identity,
+                ruleset: runtime.instance.ruleset(),
+                crewAssignment: runtime.instance.query().crewAssignment(),
+                state: runtime.instance.snapshot(),
+                query: runtime.instance.query(),
+            }),
+        } as unknown as CBTForce;
+        const member = new CBTForceMember('unit:pending-card', force, runtime.entity);
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', member);
+
+        expect(projectRuntimePendingNotification(
+            fixture.componentInstance.notificationSnapshot(),
+        )).toEqual(jasmine.objectContaining({ kind: 'psr', count: 1 }));
         fixture.destroy();
     });
 

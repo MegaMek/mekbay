@@ -6,9 +6,7 @@ import { UNIT_SUMMARY_VERSION, type UnitSummary } from '../../models/unit-summar
 import {
     asCatalogActivationId,
     type CatalogActivationId,
-    type CatalogEntryKey,
     type CoreCatalogEntryKey,
-    encodeCatalogEntryKey,
     type SourceHash,
 } from './unit-catalog.types';
 import type { SummaryDependencyHashes } from './unit-catalog-database';
@@ -18,31 +16,8 @@ export interface BuiltCoreCatalogGeneration {
     readonly summaries: readonly UnitSummary[];
 }
 
-export function catalogEntryKeyForSummary(summary: UnitSummary): CatalogEntryKey {
-    return {
-        origin: summary.origin,
-        design: { provider: summary.provider, uuid: summary.uuid },
-        sourceRevision: summary.hash,
-    };
-}
-
-export function compareCatalogEntryKeys(left: CatalogEntryKey, right: CatalogEntryKey): number {
-    const leftParts = encodeCatalogEntryKey(left);
-    const rightParts = encodeCatalogEntryKey(right);
-    for (let index = 0; index < leftParts.length; index += 1) {
-        const comparison = compareText(leftParts[index], rightParts[index]);
-        if (comparison !== 0) return comparison;
-    }
-    return 0;
-}
-
-export function catalogEntryReuseKey(entryKey: CatalogEntryKey): string {
-    return encodeCatalogEntryKey(entryKey).map(part => `${part.length}:${part}`).join('');
-}
-
 export function isReusableCoreSummary(summary: UnitSummary, desiredEntry: CoreCatalogEntryKey): boolean {
     return summary.origin === 'megamek'
-        && summary.provider === desiredEntry.design.provider
         && summary.uuid === desiredEntry.design.uuid
         && summary.hash === desiredEntry.sourceRevision
         && summary.summaryVersion === UNIT_SUMMARY_VERSION;
@@ -62,15 +37,7 @@ export function isUnitSummaryArray(value: unknown): value is readonly UnitSummar
 }
 
 export function prepareUnitSummaryArray(units: readonly UnitSummary[]): readonly UnitSummary[] {
-    const sorted = [...units].sort((left, right) => (
-        compareCatalogEntryKeys(catalogEntryKeyForSummary(left), catalogEntryKeyForSummary(right))
-    ));
-    const seenEntries = new Set<string>();
-    for (const unit of sorted) {
-        const key = catalogEntryReuseKey(catalogEntryKeyForSummary(unit));
-        if (seenEntries.has(key)) throw new Error(`Duplicate catalog summary entry: ${unit.provider}/${unit.uuid}`);
-        seenEntries.add(key);
-    }
+    const sorted = [...units].sort((left, right) => compareText(left.uuid, right.uuid));
     return Object.freeze(sorted);
 }
 

@@ -8,6 +8,7 @@ import { isEcmEquipment } from '../models/ecm-mode.model';
 import { isBapEquipment } from '../models/bap-equipment.model';
 import { CBT_WEIGHT_CLASS_ORDINALS, type UnitSummary } from '../models/unit-summary.model';
 import { isGroundMovementMode } from './as-common.util';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 const CBT_LIGHT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Light') ?? 1;
 const CBT_MEDIUM_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Medium') ?? 2;
@@ -16,7 +17,7 @@ const CBT_ASSAULT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Assault') ?? 4;
 
 export interface FormationUnitFacts {
     readonly forceUnit: FormationUnitLike;
-    readonly uuid: string;
+    readonly uuid: UnitUuid;
     readonly name: string;
     readonly chassis: string;
     readonly role: string;
@@ -173,7 +174,7 @@ export function compileFormationUnitFacts(forceUnit: FormationUnitLike): Formati
 
     return {
         forceUnit,
-        uuid: entity?.uuid() ?? summary!.uuid,
+        uuid: entity === undefined ? summary!.uuid : entity.uuid(),
         name: entity?.displayName() ?? summary!.name,
         chassis: entity?.chassis() ?? summary!.chassis,
         role: entity?.role() ?? summary!.role,

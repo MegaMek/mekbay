@@ -18,7 +18,7 @@ import { DataService } from '../../services/data.service';
 import { ForcePersistenceService } from '../../services/force-persistence.service';
 import { OrganizationStorageService } from '../../services/organization-storage.service';
 import type { ForceAlignment } from '../../models/force-slot.model';
-import { CdkMenuModule, CdkMenuTrigger, MenuTracker } from '@angular/cdk/menu';
+import { CdkMenuModule, CdkMenuTrigger } from '@angular/cdk/menu';
 import { CompactModeService } from '../../services/compact-mode.service';
 import { C3Capabilities } from '../../models/c3-network.model';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
@@ -30,6 +30,7 @@ import { getFactionImg } from '../../models/factions.model';
 import { GameSystem } from '../../models/common.model';
 import { AppUpdateService } from '../../services/app-update.service';
 import { ForceOperationService } from '../../services/force-operation.service';
+import { closeCdkMenus } from '../../utils/cdk-menu.util';
 import { LobbyService } from '../../services/lobby.service';
 import { isCBTForceMember, isCBTMekForceMember } from '../../models/force-member.model';
 import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
@@ -409,30 +410,6 @@ export class SidebarFooterComponent {
     }
 
     closeAllMenus(): void {
-        const menuTriggers = this.menuTriggers();
-        if (!menuTriggers) { return; }
-        menuTriggers.forEach(t => {
-            try {
-                if (t.isOpen()) {
-                    t.close();
-                }
-                // Workaround for CDK bug: MenuTracker never clears _openMenuTrigger,
-                // causing memory leaks when menu triggers are destroyed.
-                this.clearMenuTrackerReference(t);
-            } catch(ignored) {}
-        });
-    }
-
-    /**
-     * CDK's MenuTracker holds a static reference to the last opened trigger forever.
-     * This causes memory leaks when components with menu triggers are destroyed.
-     * This is a workaround until CDK provides a proper cleanup API.
-     * Thank you Angular team for not making this public API.
-     */
-    private clearMenuTrackerReference(trigger: CdkMenuTrigger): void {
-        const tracker = MenuTracker as unknown as { _openMenuTrigger?: CdkMenuTrigger };
-        if (tracker._openMenuTrigger === trigger) {
-            tracker._openMenuTrigger = undefined;
-        }
+        closeCdkMenus(this.menuTriggers());
     }
 }

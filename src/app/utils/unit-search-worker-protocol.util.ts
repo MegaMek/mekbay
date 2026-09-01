@@ -6,6 +6,7 @@ import type { GameSystem } from '../models/common.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { UnitSearchNormalization, UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
 import type { SearchTelemetryStage } from '../services/unit-search-filters.model';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 export type UnitSearchWorkerCorpusVersion = string;
 
@@ -81,7 +82,7 @@ export type UnitSearchRecord = UnitSummary | UnitSearchWorkerUnit;
 export interface UnitSearchWorkerIndexSnapshot {
     [filterKey: string]: {
         /** Unit UUIDs. */
-        [value: string]: string[];
+        [value: string]: UnitUuid[];
     };
 }
 
@@ -96,7 +97,7 @@ export interface UnitSearchWorkerIndexSnapshot {
  */
 export interface UnitSearchWorkerFactionEraSnapshot {
     readonly unitUuidsByMulId: {
-        readonly [mulId: string]: readonly string[];
+        readonly [mulId: string]: readonly UnitUuid[];
     };
     readonly referenceIdsByEraAndFaction: {
         readonly [eraName: string]: {
@@ -128,7 +129,7 @@ export interface UnitSearchWorkerQueryRequest {
 }
 
 export interface UnitSearchWorkerResultEntry {
-    unitUuid: string;
+    unitUuid: UnitUuid;
     match?: UnitSearchNormalizationMatch;
 }
 

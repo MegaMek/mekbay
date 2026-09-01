@@ -3,8 +3,8 @@
 
 import type { BaseEntity } from '../entity/base-entity';
 import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
-import type { SavedEntityIdentity } from '../persisted-unit-state';
 import type { NativeUnitSourceHandle } from '../native-unit-source-handle';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { cloneNativeUnitSourceHandle } from '../native-unit-source-handle';
 import type { CrewAssignment } from './crew-assignment';
 import { canonicalizeCrewAssignment, createDefaultCrewAssignment } from './crew-assignment';
@@ -12,13 +12,11 @@ import { buildNonMekRuntimeIndex, type NonMekRuntimeIndex } from './non-mek-runt
 import { createPristineNonMekUnitState, NonMekUnitInstance } from './non-mek-unit-instance';
 import {
     NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
-    canonicalizeNonMekUnitRestoration,
     restoreNonMekUnit,
     serializeNonMekUnit,
     type NonMekDeploymentConfiguration,
     type SerializedNonMekDeployment,
     type SerializedNonMekUnit,
-    type SerializedNonMekUnitRestoration,
 } from './non-mek-unit-persistence';
 import { scenarioRuleset, type ScenarioRules } from './unit-state-initializer';
 import { captureCBTUnitRuntime, type CBTUnitRuntimeReadModel } from './cbt-unit-runtime';
@@ -39,7 +37,7 @@ export interface NonMekUnitDeploymentInput {
 
 export interface CreateCBTNonMekUnitRequest {
     readonly instanceId: string;
-    readonly identity: SavedEntityIdentity;
+    readonly uuid: UnitUuid;
     readonly deployment: NonMekUnitDeploymentInput;
     readonly scenario: ScenarioRules;
     readonly initialStateProfileId: string;
@@ -52,25 +50,20 @@ export class CBTNonMekUnit implements CBTUnit {
 
     public constructor(
         private readonly entity: BaseEntity,
-        private readonly sourceRef: SavedEntityIdentity,
+        public readonly uuid: UnitUuid,
         private readonly runtime: NonMekUnitInstance,
         private readonly deployment: SerializedNonMekDeployment,
         private readonly nativeSource?: NativeUnitSourceHandle,
-        private readonly restoration?: SerializedNonMekUnitRestoration,
     ) {
         if (entity.entityType === 'Mek') throw new Error('CBTNonMekUnit accepts non-Mek entities only');
-        if (sourceRef.uuid !== entity.uuid() || !runtime.matchesEntity(entity)) {
+        if (uuid !== entity.uuid() || !runtime.matchesEntity(entity)) {
             throw new Error('Ready entity identity does not match its runtime');
         }
         this.instanceId = runtime.id;
-        this.sourceRef = Object.freeze({ ...sourceRef });
         this.deployment = freezeDeployment(deployment);
         this.nativeSource = nativeSource === undefined
             ? undefined
             : cloneNativeUnitSourceHandle(nativeSource);
-        this.restoration = restoration === undefined
-            ? undefined
-            : canonicalizeNonMekUnitRestoration(restoration);
         Object.freeze(this);
     }
 
@@ -148,10 +141,6 @@ export class CBTNonMekUnit implements CBTUnit {
         });
     }
 
-    public getSourceRef(): SavedEntityIdentity {
-        return this.sourceRef;
-    }
-
     public getCrewAssignment(): CrewAssignment {
         return this.deployment.values.crewAssignment;
     }
@@ -169,9 +158,9 @@ export class CBTNonMekUnit implements CBTUnit {
     public serialize(): SerializedNonMekUnit {
         return serializeNonMekUnit({
             instance: this.runtime,
-            sourceRef: this.sourceRef,
+            uuid: this.uuid,
+            sourceHashCanary: this.nativeSource?.sourceHashCanary,
             deployment: this.deployment,
-            ...(this.restoration === undefined ? {} : { restoration: this.restoration }),
         });
     }
 
@@ -180,7 +169,7 @@ export class CBTNonMekUnit implements CBTUnit {
         request: CreateCBTNonMekUnitRequest,
         nativeSource?: NativeUnitSourceHandle,
     ): CBTNonMekUnit {
-        verifySource(entity, request.identity, nativeSource);
+        verifySource(entity, request.uuid, nativeSource);
         const index = buildNonMekRuntimeIndex(entity);
         const crewAssignment = request.crewSkills
             ? {
@@ -196,7 +185,7 @@ export class CBTNonMekUnit implements CBTUnit {
             : canonicalizeCrewAssignment(index.crewPositions, request.deployment.crewAssignment);
         const ruleset = scenarioRuleset(request.scenario);
         const baseline = Object.freeze({
-            entity: Object.freeze({ ...request.identity }),
+            entity: request.uuid,
             ruleset,
             initialStateProfile: Object.freeze({
                 schemaVersion: 1 as const,
@@ -218,17 +207,17 @@ export class CBTNonMekUnit implements CBTUnit {
                 crewAssignment,
             }),
         });
-        return new CBTNonMekUnit(entity, request.identity, runtime, deployment, nativeSource);
+        return new CBTNonMekUnit(entity, request.uuid, runtime, deployment, nativeSource);
     }
 
     public static restore(
         saved: SerializedNonMekUnit,
         entity: BaseEntity,
-        sourceRef: SavedEntityIdentity,
+        uuid: UnitUuid,
         nativeSource?: NativeUnitSourceHandle,
     ): CBTNonMekUnit {
-        verifySource(entity, sourceRef, nativeSource);
-        if (saved.entity.provider !== sourceRef.provider || saved.entity.uuid !== sourceRef.uuid) {
+        verifySource(entity, uuid, nativeSource);
+        if (saved.entity !== uuid) {
             throw new Error('Persisted entity source does not match the loaded source');
         }
         const storedCrew = saved.deployment.values.crewAssignment;
@@ -247,11 +236,10 @@ export class CBTNonMekUnit implements CBTUnit {
         const runtime = restoreNonMekUnit(saved, entity);
         return new CBTNonMekUnit(
             entity,
-            sourceRef,
+            uuid,
             runtime,
             saved.deployment,
             nativeSource,
-            saved.restoration,
         );
     }
 
@@ -276,11 +264,10 @@ export class CBTNonMekUnit implements CBTUnit {
         );
         return new CBTNonMekUnit(
             current.getUnit(),
-            current.getSourceRef(),
+            current.uuid,
             replacement,
             current.deployment,
             current.getNativeSource(),
-            current.restoration,
         );
     }
 
@@ -294,7 +281,7 @@ export class CBTNonMekUnit implements CBTUnit {
         );
         return new CBTNonMekUnit(
             current.entity,
-            current.sourceRef,
+            current.uuid,
             current.runtime,
             {
                 ...current.deployment,
@@ -304,25 +291,18 @@ export class CBTNonMekUnit implements CBTUnit {
                 }),
             },
             current.nativeSource,
-            current.restoration,
         );
     }
 }
 
 function verifySource(
     entity: BaseEntity,
-    identity: SavedEntityIdentity,
+    uuid: UnitUuid,
     source?: NativeUnitSourceHandle,
 ): void {
     if (entity.entityType === 'Mek') throw new Error('Non-Mek readiness requires a BLK entity');
-    if (entity.uuid() !== identity.uuid) throw new Error('Entity UUID does not match its source identity');
-    if (identity.sourceFormat !== undefined && identity.sourceFormat !== 'blk') {
-        throw new Error('Non-Mek runtime requires a BLK source');
-    }
-    if (source !== undefined && (source.format !== 'blk'
-        || (identity.sourceHashAtSave !== undefined && source.sourceHash !== identity.sourceHashAtSave))) {
-        throw new Error('Retained BLK source does not match the entity identity');
-    }
+    if (entity.uuid() !== uuid) throw new Error('Entity UUID does not match its source identity');
+    if (source !== undefined && source.format !== 'blk') throw new Error('Non-Mek runtime requires a BLK source');
 }
 
 function freezeDeployment(value: SerializedNonMekDeployment): SerializedNonMekDeployment {

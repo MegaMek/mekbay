@@ -36,7 +36,9 @@ export class CBTAutomationService {
     ): Promise<ReadonlySet<string> | null> {
         if (events.length === 0) return new Set<string>();
         const configured = this.options.cbtAutomationMode(key);
-        const mode = options.interactive && configured === 'yes' ? 'ask' : configured;
+        const mode = options.manualResolution
+            ? 'ask'
+            : options.interactive && configured === 'yes' ? 'ask' : configured;
         switch (mode) {
             case 'yes': return new Set(events.map(event => event.id));
             case 'no': return new Set<string>();
@@ -104,5 +106,6 @@ function automationReviewBatchKey(
         options.message ?? '',
         options.allowCancel ?? false,
         options.interactive ?? false,
+        options.manualResolution ?? false,
     ]);
 }

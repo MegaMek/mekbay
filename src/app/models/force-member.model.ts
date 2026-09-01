@@ -6,7 +6,7 @@ import type { CBTForce } from './cbt-force.model';
 import type { ASForceUnit } from './as-force-unit.model';
 import type { BaseEntity } from './entity/base-entity';
 import type { UnitSummary } from './unit-summary.model';
-import type { UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type { ForceViewerBVPVDisplayDamage } from './options.model';
 import type { NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
 
@@ -203,11 +203,11 @@ export function forceMemberPresentationUnit(value: ForceMember): ForceMemberPres
  */
 export function resolveForceMemberCatalogSummary(
     value: ForceMember,
-    resolve: (provider: UnitProviderId, uuid: UnitUuid) => UnitSummary | undefined,
+    resolve: (uuid: UnitUuid) => UnitSummary | undefined,
 ): UnitSummary | undefined {
     if (!isCBTForceMember(value)) return value.getSummary();
-    const identity = value.force.getUnitSourceIdentity(value.id);
-    return identity ? resolve(identity.provider, identity.uuid) : undefined;
+    const uuid = value.force.getUnitUuid(value.id);
+    return uuid ? resolve(uuid) : undefined;
 }
 
 export function forceMemberDisplayName(value: ForceMember): string {

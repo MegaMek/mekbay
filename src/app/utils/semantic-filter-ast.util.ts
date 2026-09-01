@@ -42,6 +42,7 @@ import {
     type CompiledASSpecialQuery,
     type ParsedASSpecials,
 } from './as-special-filter.util';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 // ============================================================================
 // Helpers
@@ -1081,7 +1082,7 @@ export interface EvaluatorContext<TUnit extends object = object> {
     /** Get a property value from a unit by key path (e.g., 'as.PV', 'bv') */
     getProperty: (unit: TUnit, key: string) => unknown;
     /** Get the unit UUID used by indexed candidate postings. */
-    getUnitId: (unit: TUnit) => string;
+    getUnitId: (unit: TUnit) => UnitUuid;
     /** Get adjusted BV for a unit (with pilot skill modifiers) */
     getAdjustedBV?: (unit: TUnit) => number;
     /** Get adjusted PV for a unit (with pilot skill modifiers) */
@@ -1133,11 +1134,11 @@ export interface EvaluatorContext<TUnit extends object = object> {
      */
     getDisplayName?: (filterKey: string, value: string) => string | undefined;
     /** Get indexed unit UUIDs for an exact stored filter value. */
-    getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<string> | undefined;
+    getIndexedUnitIds?: (filterKey: string, value: string, scope?: AvailabilityFilterScope) => ReadonlySet<UnitUuid> | undefined;
     /** Get all stored values available in an index for a filter key. */
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
     /** Get pre-parsed Alpha Strike special tuples for a unit. */
-    getIndexedASSpecials?: (unitUuid: string) => ParsedASSpecials | undefined;
+    getIndexedASSpecials?: (unitUuid: UnitUuid) => ParsedASSpecials | undefined;
 }
 
 type ParsedRangeValue =

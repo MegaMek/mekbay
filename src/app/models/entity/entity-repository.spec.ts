@@ -4,7 +4,6 @@
 import { WeaponEquipment } from '../equipment.model';
 import { createTestEquipmentRegistry } from './testing/test-equipment-registry';
 import {
-    MM_DATA_UNIT_PROVIDER_ID,
     asSourceHash,
     asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
@@ -27,8 +26,8 @@ describe('EntityRepository', () => {
             registry(),
         );
 
-        const first = await repository.load({ provider: MM_DATA_UNIT_PROVIDER_ID, uuid: UUID });
-        const second = await repository.load({ provider: MM_DATA_UNIT_PROVIDER_ID, uuid: UUID });
+        const first = await repository.load({ uuid: UUID });
+        const second = await repository.load({ uuid: UUID });
 
         expect(first.entity).toBeInstanceOf(MekEntity);
         expect(second.entity).toBe(first.entity);
@@ -37,7 +36,7 @@ describe('EntityRepository', () => {
         expect(first.entity.loadIssues()).toEqual(jasmine.any(Array));
 
         source = nativeMtfSource(OTHER_HASH);
-        expect((await repository.load({ provider: MM_DATA_UNIT_PROVIDER_ID, uuid: UUID })).entity)
+        expect((await repository.load({ uuid: UUID })).entity)
             .not.toBe(first.entity);
     });
 
@@ -47,7 +46,7 @@ describe('EntityRepository', () => {
             registry(),
         );
 
-        const loaded = await repository.load({ provider: MM_DATA_UNIT_PROVIDER_ID, uuid: UUID });
+        const loaded = await repository.load({ uuid: UUID });
 
         expect(loaded.entity).toBeInstanceOf(VehicleEntity);
         expect(loaded.entity.uuid()).toBe(UUID);
@@ -64,7 +63,6 @@ describe('EntityRepository', () => {
             registry(),
         );
         const identity = {
-            provider: MM_DATA_UNIT_PROVIDER_ID,
             uuid: UUID,
             sourceHash: HASH,
         } as const;
@@ -79,8 +77,6 @@ describe('EntityRepository', () => {
 
 function nativeMtfSource(sourceHash: typeof HASH | typeof OTHER_HASH): NativeEntitySource {
     return {
-        origin: 'megamek',
-        provider: MM_DATA_UNIT_PROVIDER_ID,
         uuid: UUID,
         format: 'mtf',
         sourceHash,
@@ -90,8 +86,6 @@ function nativeMtfSource(sourceHash: typeof HASH | typeof OTHER_HASH): NativeEnt
 
 function nativeBlkSource(sourceHash: typeof HASH): NativeEntitySource {
     return {
-        origin: 'megamek',
-        provider: MM_DATA_UNIT_PROVIDER_ID,
         uuid: UUID,
         format: 'blk',
         sourceHash,

@@ -1,32 +1,14 @@
 <!-- Factions Tab Content -->
 <div class="tab-content">
     <div class="view-switch-toolbar">
-        <div class="view-switch" role="group" aria-label="Faction availability view">
-            <button
-                type="button"
-                class="view-switch-button"
-                [class.active]="selectedView() === 'list'"
-                [attr.aria-pressed]="selectedView() === 'list'"
-                (click)="selectView('list')"
-            >
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                    <path d="M2.5 3.5h2v2h-2zm4 0h7v2h-7zm-4 4h2v2h-2zm4 0h7v2h-7zm-4 4h2v2h-2zm4 0h7v2h-7z" fill="currentColor" />
-                </svg>
-                <span>List</span>
-            </button>
-            <button
-                type="button"
-                class="view-switch-button"
-                [class.active]="selectedView() === 'grid'"
-                [attr.aria-pressed]="selectedView() === 'grid'"
-                (click)="selectView('grid')"
-            >
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                    <path d="M2 2h12v12H2zm1.5 1.5v3h3v-3zm4.5 0v3h4.5v-3zm-4.5 4.5v4.5h3V8zM8 8v4.5h4.5V8z" fill="currentColor" fill-rule="evenodd" />
-                </svg>
-                <span>Grid</span>
-            </button>
-        </div>
+        <mode-switch
+            leftLabel="List"
+            rightLabel="Grid"
+            [selectedRight]="selectedView() === 'grid'"
+            ariaLabel="Faction availability view"
+            switchAriaLabel="Toggle faction availability view"
+            (selectedRightChange)="setGridView($event)"
+        />
     </div>
 
     @if (selectedView() === 'list') {

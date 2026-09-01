@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { TestTankEntity } from '../entity/testing/test-entities';
-import {
-    MM_DATA_UNIT_PROVIDER_ID,
-    asUnitUuid,
-} from '../../services/unit-catalog/unit-catalog.types';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { CBTNonMekUnit } from './cbt-non-mek-unit';
 import { entityTargetRosterRow } from './cbt-force-target-roster';
 
@@ -18,12 +15,7 @@ describe('CBT force target roster', () => {
         entity.originalWalkMP.set(4);
         const ready = CBTNonMekUnit.create(entity, {
             instanceId: 'unit:target-roster-tank',
-            identity: Object.freeze({
-                origin: 'megamek' as const,
-                provider: MM_DATA_UNIT_PROVIDER_ID,
-                uuid,
-                sourceFormat: 'blk' as const,
-            }),
+            uuid,
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
             initialStateProfileId: 'pristine-non-mek-v1',

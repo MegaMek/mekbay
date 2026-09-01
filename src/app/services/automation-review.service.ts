@@ -18,6 +18,8 @@ export interface AutomationReviewOptions {
     readonly allowCancel?: boolean;
     /** Badge-driven resume keeps disabled work disabled, but opens configured automatic work. */
     readonly interactive?: boolean;
+    /** Some rules use "no" to select manual resolution rather than to discard the event. */
+    readonly manualResolution?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })

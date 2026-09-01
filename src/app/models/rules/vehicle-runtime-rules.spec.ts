@@ -12,7 +12,6 @@ import {
 } from '../entity/testing/test-mounted-equipment';
 import { createEquipment } from '../equipment.model';
 import {
-    MM_DATA_UNIT_PROVIDER_ID,
     asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
 import {
@@ -366,12 +365,7 @@ function setCrewState(runtime: NonMekUnitInstance, state: 'killed' | 'stunned'):
 
 function baseline(ruleset: CBTRuleset = CORE_2026_RULESET): InstanceBaselineRef {
     return Object.freeze({
-        entity: Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid: UUID,
-            sourceFormat: 'blk' as const,
-        }),
+        entity: UUID,
         ruleset,
         initialStateProfile: Object.freeze({
             schemaVersion: 1 as const,

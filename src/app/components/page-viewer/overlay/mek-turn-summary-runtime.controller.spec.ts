@@ -14,6 +14,7 @@ import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-pane
 import type { OptionsService } from '../../../services/options.service';
 import type { ToastService } from '../../../services/toast.service';
 import { MekTurnSummaryRuntimeController } from './mek-turn-summary-runtime.controller';
+import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
 
 function snapshot(revision: number): MekTurnPanelSnapshot {
     return {
@@ -271,7 +272,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         });
         const command = {
             instanceId: 'mek-1',
-            entityUuid: 'entity-1',
+            entityUuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'),
             componentId: 'component:masc' as ComponentId,
             handlerId: 'masc-handler',
             value: 0,

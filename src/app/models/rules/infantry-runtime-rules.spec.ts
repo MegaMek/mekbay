@@ -8,7 +8,7 @@ import {
     TestInfantryEntity,
 } from '../entity/testing/test-entities';
 import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
-import { asUnitUuid, MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { componentIdForMount } from '../runtime/non-mek-runtime-index';
 import { NonMekUnitInstance, projectNonMekMovementCapabilities } from '../runtime/non-mek-unit-instance';
 import { type InstanceBaselineRef } from '../runtime/runtime-state';
@@ -152,12 +152,7 @@ function instance(
 
 function baseline(): InstanceBaselineRef {
     return Object.freeze({
-        entity: Object.freeze({
-            origin: 'megamek' as const,
-            provider: MM_DATA_UNIT_PROVIDER_ID,
-            uuid: UUID,
-            sourceFormat: 'blk' as const,
-        }),
+        entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
             schemaVersion: 1 as const,

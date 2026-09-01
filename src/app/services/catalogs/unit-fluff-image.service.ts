@@ -8,8 +8,6 @@ import type { BaseEntity } from '../../models/entity/base-entity';
 import type { FluffImageAssetRef } from '../../models/presentation-catalog.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import {
-  asUnitProviderId,
-  asUnitUuid,
   MM_DATA_UNIT_PROVIDER_ID,
   type DesignIdentity,
 } from '../unit-catalog/unit-catalog.types';
@@ -40,15 +38,10 @@ export class UnitFluffImageService {
   }
 
   resolveEntityUrl(entity: BaseEntity, design?: DesignIdentity): string | null {
-    let identity: DesignIdentity;
-    try {
-      identity = design ?? {
-        provider: MM_DATA_UNIT_PROVIDER_ID,
-        uuid: asUnitUuid(entity.uuid()),
-      };
-    } catch {
-      return null;
-    }
+    const identity: DesignIdentity = design ?? {
+      provider: MM_DATA_UNIT_PROVIDER_ID,
+      uuid: entity.uuid(),
+    };
     const resolution = this.catalog.resolveUnitImage(identity, {
       entityType: entity.entityType,
       baseChassis: entity.chassis(),
@@ -59,15 +52,10 @@ export class UnitFluffImageService {
   }
 
   private resolveCatalogUrl(unit: PresentationUnit): string | null {
-    let design: DesignIdentity;
-    try {
-      design = {
-        provider: unit.provider ? asUnitProviderId(unit.provider) : MM_DATA_UNIT_PROVIDER_ID,
-        uuid: asUnitUuid(unit.uuid),
-      };
-    } catch {
-      return null;
-    }
+    const design: DesignIdentity = {
+      provider: unit.provider ?? MM_DATA_UNIT_PROVIDER_ID,
+      uuid: unit.uuid,
+    };
 
     const entityType = unit.entityType ?? legacyEntityType(unit);
     if (!entityType) return null;

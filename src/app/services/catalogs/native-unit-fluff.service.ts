@@ -8,13 +8,12 @@ import type { UnitFluff } from '../../models/unit-fluff.model';
 import { parseNativeEntityFluff } from '../../models/entity/parsers/entity-fluff-parser';
 import { entityFluffToUnitFluff } from '../../utils/entity-fluff-to-unit-fluff';
 import {
-  MM_DATA_UNIT_PROVIDER_ID,
   asSourceHash,
   makeUnitFileName,
   type NativeUnitFormat,
   type SourceHash,
   type UnitFileName,
-  type UnitProviderId,
+  type UnitUuid,
 } from '../unit-catalog/unit-catalog.types';
 import { UnitsCatalogService } from './units-catalog.service';
 
@@ -33,8 +32,7 @@ export class NativeUnitFluffLoadError extends Error {
 }
 
 interface NativeFluffIdentity {
-  readonly provider: UnitProviderId;
-  readonly uuid: string;
+  readonly uuid: UnitUuid;
   readonly format: NativeUnitFormat;
   readonly sourceHash: SourceHash;
   readonly file: UnitFileName;
@@ -51,7 +49,7 @@ export class NativeUnitFluffService {
 
   public async load(unit: UnitSummary): Promise<UnitFluff | undefined> {
     const identity = captureNativeFluffIdentity(unit);
-    const source = await this.catalog.readNativeUnitSource(identity.provider, identity.uuid);
+    const source = await this.catalog.readNativeUnitSource(identity.uuid);
     if (!source) {
       throw new NativeUnitFluffLoadError('source-unavailable', 'The native unit source is unavailable');
     }
@@ -85,10 +83,10 @@ export class NativeUnitFluffService {
 }
 
 function captureNativeFluffIdentity(unit: UnitSummary): NativeFluffIdentity {
-  if (unit.provider !== MM_DATA_UNIT_PROVIDER_ID || unit.origin !== 'megamek') {
+  if (unit.origin !== 'megamek') {
     throw new NativeUnitFluffLoadError(
       'unsupported-source',
-      'This unit provider does not expose an authoritative native source',
+      'This unit does not expose an authoritative native source',
     );
   }
 
@@ -101,8 +99,7 @@ function captureNativeFluffIdentity(unit: UnitSummary): NativeFluffIdentity {
   }
 
   return Object.freeze({
-    provider: MM_DATA_UNIT_PROVIDER_ID,
-    uuid: String(unit.uuid),
+    uuid: unit.uuid,
     format,
     sourceHash,
     file: makeUnitFileName(unit.uuid, format),

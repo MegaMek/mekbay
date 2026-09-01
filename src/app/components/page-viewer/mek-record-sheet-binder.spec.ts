@@ -6,6 +6,7 @@ import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-she
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../models/mek-sheet-binding';
 import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { asComponentId, asCriticalSlotId, asLocationId } from '../../models/entity/entity-identifiers';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 describe('Mek record-sheet binder', () => {
     it('renders pristine pips from the entity projection and damage only from runtime overlay values', () => {
@@ -1250,7 +1251,7 @@ describe('Mek record-sheet binder', () => {
         const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, snapshot());
         expect(() => binding.render({
             ...snapshot(),
-            entityUuid: 'another-entity',
+            entityUuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2'),
         })).toThrowError(/cannot change its entity/);
     });
 
@@ -1351,7 +1352,7 @@ function equipmentHit(value: number) {
 
 function snapshot(): MekRecordSheetSnapshot {
     return {
-        entityUuid: 'atlas',
+        entityUuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'),
         ruleset: 'core-2026',
         stateRevision: 7 as MekRecordSheetSnapshot['stateRevision'],
         identity: {

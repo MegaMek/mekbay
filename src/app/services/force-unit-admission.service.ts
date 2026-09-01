@@ -12,8 +12,6 @@ import type { UnitSummary } from '../models/unit-summary.model';
 import { DEFAULT_FORCE_DEPLOYMENT_ID } from '../models/runtime/unit-state-initializer';
 import {
     MM_DATA_UNIT_PROVIDER_ID,
-    asSourceHash,
-    type UnitProviderId,
     type UnitUuid,
 } from './unit-catalog/unit-catalog.types';
 import { type CBTForceMember, type ForceMember } from '../models/force-member.model';
@@ -33,9 +31,9 @@ export interface ForceUnitAdmissionRequest {
     readonly instanceId?: string;
 }
 
-export interface CBTUnitIdentityAdmissionRequest {
+export interface CBTUnitAdmissionRequest {
     readonly force: CBTForce;
-    readonly identity: Readonly<{ readonly provider: UnitProviderId; readonly uuid: UnitUuid }>;
+    readonly uuid: UnitUuid;
     readonly group?: UnitGroup;
     readonly rosterGroupId?: string;
     readonly rosterMemberIndex?: number;
@@ -54,32 +52,29 @@ export class ForceUnitAdmissionService {
     private readonly options = inject(OptionsService);
 
     async admit(request: ForceUnitAdmissionRequest): Promise<ForceMember> {
-        if (request.force instanceof CBTForce) return this.admitCBTUnit(request);
+        if (request.force instanceof CBTForce) return this.admitCBTSummary(request);
         const unit = await this.createAlphaStrikeUnit(request);
-        this.applyRequestedSkills(unit, request);
+        this.applyRequestedPilotData(unit, request);
         return unit;
     }
 
-    private async admitCBTUnit(
+    private async admitCBTSummary(
         request: ForceUnitAdmissionRequest,
     ): Promise<CBTForceMember> {
         if (!(request.force instanceof CBTForce) || !isNativeCBTSummary(request.summary)) {
             throw new Error(`CBT runtime is not available for "${request.summary.name}"`);
         }
 
-        return this.admitCBTIdentity({
+        return this.admitCBT({
             ...request,
             force: request.force,
-            identity: Object.freeze({
-                provider: request.summary.provider,
-                uuid: request.summary.uuid,
-            }),
+            uuid: request.summary.uuid,
         });
     }
 
     /** Entity-native admission used when a loaded CBT member is cloned or transferred. */
-    async admitCBTIdentity(
-        request: CBTUnitIdentityAdmissionRequest,
+    async admitCBT(
+        request: CBTUnitAdmissionRequest,
     ): Promise<CBTForceMember> {
 
         let rosterGroupId = request.rosterGroupId ?? request.group?.id;
@@ -91,7 +86,7 @@ export class ForceUnitAdmissionService {
         }
 
         const result: CBTDirectUnitAdmissionResult = await request.force.admitRetainedUnit({
-            identity: request.identity,
+            uuid: request.uuid,
             deployment: Object.freeze({ id: DEFAULT_FORCE_DEPLOYMENT_ID }),
             scenario: Object.freeze({
                 id: 'megamek',
@@ -138,12 +133,15 @@ export class ForceUnitAdmissionService {
         return request.force.addUnit(request.summary, targetGroup);
     }
 
-    private applyRequestedSkills(unit: ASForceUnit, request: ForceUnitAdmissionRequest): void {
-        if (request.gunnerySkill === undefined && request.pilotingSkill === undefined) return;
+    private applyRequestedPilotData(unit: ASForceUnit, request: ForceUnitAdmissionRequest): void {
+        if (request.gunnerySkill === undefined && request.commander === undefined) return;
         unit.disabledSaving = true;
         try {
             if (request.gunnerySkill !== undefined) {
                 unit.setPilotSkill(request.gunnerySkill);
+            }
+            if (request.commander !== undefined) {
+                unit.setFormationCommander(request.commander);
             }
         } finally {
             unit.disabledSaving = false;
@@ -152,11 +150,5 @@ export class ForceUnitAdmissionService {
 }
 
 function isNativeCBTSummary(unit: UnitSummary): boolean {
-    if (unit.origin !== 'megamek' || unit.provider !== MM_DATA_UNIT_PROVIDER_ID) return false;
-    try {
-        asSourceHash(unit.hash);
-        return true;
-    } catch {
-        return false;
-    }
+    return unit.origin === 'megamek' && unit.provider === MM_DATA_UNIT_PROVIDER_ID;
 }

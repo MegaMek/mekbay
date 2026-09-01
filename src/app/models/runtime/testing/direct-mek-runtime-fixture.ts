@@ -11,12 +11,7 @@ import type { MekEntity } from '../../entity/entities/mek/mek-entity';
 import type { GyroType } from '../../entity/components/gyro-data';
 import type { CockpitType } from '../../entity/types/cockpit';
 import type { EngineType } from '../../entity/types';
-import type { SavedEntityIdentity } from '../../persisted-unit-state';
-import {
-    asSourceHash,
-    asUnitProviderId,
-    asUnitUuid,
-} from '../../../services/unit-catalog/unit-catalog.types';
+import { asUnitUuid, type UnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET, type CBTRuleset } from '../../cbt-ruleset.model';
 import {
     buildMekRuntimeIndex,
@@ -37,7 +32,7 @@ export interface DirectMekRuntimeFixture {
     readonly entity: MekEntity;
     readonly index: MekRuntimeIndex;
     readonly equipment: EquipmentRegistry;
-    readonly identity: SavedEntityIdentity;
+    readonly identity: UnitUuid;
     readonly initialized: InitializedUnitState;
     readonly instance: CBTUnitInstance;
     equipmentComponent(equipmentId: string): MekIndexedEquipment;
@@ -493,13 +488,7 @@ function createFixture(
     );
     entity.reconcileEquipmentRelationships();
     const index = buildMekRuntimeIndex(entity);
-    const identity: SavedEntityIdentity = Object.freeze({
-        origin: 'megamek',
-        provider: asUnitProviderId('mm-data'),
-        uuid: UUID,
-        sourceHashAtSave: asSourceHash('A'.repeat(27)),
-        sourceFormat: 'mtf',
-    });
+    const identity: UnitUuid = UUID;
     const initialized = initializeUnitState(entity, index, identity, {
         initializerRevision: 1,
         profileId: 'pristine',

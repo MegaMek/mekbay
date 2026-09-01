@@ -495,7 +495,7 @@ describe('SpriteStorageService direct assets-manifest cache', () => {
             types: {
                 mek: {
                     ...TEST_MANIFEST.types['mek'],
-                    url: 'https://db.mekbay.com/sprites/mek.png',
+                    url: 'https://assets.example.test/sprites/mek.png',
                 },
             },
         } satisfies SpriteManifest;
@@ -511,7 +511,7 @@ describe('SpriteStorageService direct assets-manifest cache', () => {
         expect(await service.getVerifiedAssignmentContext(MM_DATA_UNIT_PROVIDER_ID)).toBeNull();
         expect(db.spriteStore.has(SPRITE_MANIFEST_CACHE_KEY)).toBeFalse();
         expect(repositoryAssets.descriptor.calls.allArgs().some(
-            args => args[0] === 'https://db.mekbay.com/sprites/mek.png',
+            args => args[0] === 'https://assets.example.test/sprites/mek.png',
         )).toBeFalse();
     });
 });

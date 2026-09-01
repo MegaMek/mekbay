@@ -52,6 +52,7 @@ import {
   resolveMtfArmorEquipment,
 } from './mtf-codec';
 import { decodeMotiveType } from './motive-type-codec';
+import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
 
 // ============================================================================
 // Location normalization - raw MTF strings → canonical location IDs
@@ -204,7 +205,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   const entity = createMekEntity(header.config, ctx.equipmentRegistry);
 
   // ── Identity & tech ──
-  if (header.uuid) entity.uuid.set(header.uuid);
+  if (header.uuid) entity.uuid.set(asUnitUuid(header.uuid));
   entity.chassis.set(header.chassis);
   entity.model.set(header.model);
   entity.mulId.set(header.mulId);

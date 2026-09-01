@@ -13,7 +13,7 @@ describe('directAutomationSubject', () => {
             instanceId: fixture.instance.id,
             entity: fixture.entity,
             index: fixture.index,
-            sourceRef: fixture.identity,
+            uuid: fixture.identity,
             ruleset: fixture.instance.ruleset(),
             crewAssignment: Object.freeze({
                 ...assignment,

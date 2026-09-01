@@ -7,7 +7,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import { GameSystem } from '../../models/common.model';
 import { getForcePreviewResolvedUnits, type ForcePreviewEntry } from '../../models/force-preview.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
-import { DataService, DOES_NOT_TRACK, type MinMaxStatsRange } from '../../services/data.service';
+import { DOES_NOT_TRACK, UnitSearchIndexService, type MinMaxStatsRange } from '../../services/unit-search-index.service';
 
 type RadarStatKey =
     | 'armor'
@@ -344,10 +344,10 @@ function buildRadarAxis(
     };
 }
 
-function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem, unit: UnitSummary): MinMaxStatsRange {
+function getUnitBucketMaxStats(searchIndex: UnitSearchIndexService, gameSystem: GameSystem, unit: UnitSummary): MinMaxStatsRange {
     return gameSystem === GameSystem.AS
-        ? dataService.getASUnitTypeMaxStats(unit.as?.TP ?? '')
-        : dataService.getUnitSubtypeMaxStats(unit.subtype);
+        ? searchIndex.getASUnitTypeMaxStats(unit.as?.TP ?? '')
+        : searchIndex.getUnitSubtypeMaxStats(unit.subtype);
 }
 
 @Component({
@@ -551,7 +551,7 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
     `],
 })
 export class ForceRadarPanelComponent {
-    private readonly dataService = inject(DataService);
+    private readonly searchIndex = inject(UnitSearchIndexService);
 
     readonly centerX = RADAR_CENTER_X;
     readonly centerY = RADAR_CENTER_Y;
@@ -583,8 +583,8 @@ export class ForceRadarPanelComponent {
 
         for (const unit of this.units()) {
             const maxStats = gameSystem === GameSystem.AS
-                ? this.dataService.getASUnitTypeMaxStats(unit.as?.TP ?? '')
-                : this.dataService.getUnitSubtypeMaxStats(unit.subtype);
+                ? this.searchIndex.getASUnitTypeMaxStats(unit.as?.TP ?? '')
+                : this.searchIndex.getUnitSubtypeMaxStats(unit.subtype);
 
             for (const total of totals) {
                 const contribution = total.definition.getContribution(unit, maxStats);
@@ -645,6 +645,6 @@ export class ForceRadarPanelComponent {
     });
 
     private getUnitBucketMaxStats(unit: UnitSummary): MinMaxStatsRange {
-        return getUnitBucketMaxStats(this.dataService, this.force().type, unit);
+        return getUnitBucketMaxStats(this.searchIndex, this.force().type, unit);
     }
 }
