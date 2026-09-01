@@ -35,7 +35,6 @@ import {
 import type { ScenarioRules } from './unit-state-initializer';
 import { createMekMechanicsContextV2, type MekMechanicsContextV2 } from './mek-mechanics-context-v2';
 import { cloneNativeUnitSourceHandle, type NativeUnitSourceHandle } from '../native-unit-source-handle';
-import type { SourceHashCanary } from '../source-hash-canary';
 import { captureCBTUnitRuntime, type CBTUnitRuntimeReadModel } from './cbt-unit-runtime';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import type {
@@ -52,9 +51,8 @@ export interface CreateCBTMekUnitRequest {
     readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
 }
 
-/** One-load diagnostics forwarded to the force UI and never persisted with the unit. */
+/** One-load codec diagnostics returned to the caller and never persisted with the unit. */
 export interface RestoreCBTMekUnitDiagnostics {
-    readonly currentSourceHashCanary?: SourceHashCanary;
     readonly onWarning?: (warning: V2StateRestoreWarning) => void;
 }
 
@@ -522,7 +520,6 @@ export class CBTMekUnit implements CBTUnit {
             entity,
             runtimeIndex,
             initialized,
-            diagnostics.currentSourceHashCanary ?? nativeSource?.sourceHashCanary,
         );
         const instance = new CBTUnitInstance(
             saved.instanceId,

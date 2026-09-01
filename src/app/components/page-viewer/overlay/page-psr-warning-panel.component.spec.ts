@@ -59,6 +59,7 @@ describe('psrRollOutcome', () => {
         expect(psrRollOutcome(7, 8)).toBe('failed');
         expect(psrRollOutcome(8, 8)).toBe('success');
         expect(psrRollOutcome(12, 8)).toBe('success');
+        expect(psrRollOutcome(12, 13)).toBe('failed');
     });
 });
 
@@ -173,6 +174,35 @@ describe('PagePsrWarningPanelComponent', () => {
             evidence: { dice: [6, 2], claimedOutcome: 'success' },
         }));
         expect(fixture.nativeElement.querySelector('.psr-result')?.textContent.trim()).toBe('success');
+    });
+
+    it('keeps target 13+ checks actionable instead of declaring an automatic failure', () => {
+        const changed = new Subject<void>();
+        const check = pilotCheck('hard-check', 'leg-destroyed', 'Difficult fall check', 13);
+        const snapshot = panelSnapshot({ automaticFalls: [], checks: [check] });
+        const member = {
+            id: 'mek-1',
+            force: {
+                changed,
+                getMekTurnPanelSnapshot: () => snapshot,
+            },
+        } as unknown as CBTMekForceMember;
+
+        TestBed.configureTestingModule({
+            imports: [PagePsrWarningPanelComponent],
+            providers: [
+                { provide: PAGE_TURN_MEMBER, useValue: member },
+                { provide: OptionsService, useValue: { cbtAutomationMode: () => 'no' } },
+                { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
+                { provide: OverlayManagerService, useValue: { closeManagedOverlay: jasmine.createSpy('closeManagedOverlay') } },
+            ],
+        });
+        const fixture = TestBed.createComponent(PagePsrWarningPanelComponent);
+        fixture.detectChanges();
+
+        expect(fixture.nativeElement.querySelector('.psr-target')?.textContent).toContain('13');
+        expect(fixture.nativeElement.querySelector('.psr-resolution-actions')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.automatic-failure')).toBeNull();
     });
 
     it('stages rolled dice and cascades later fall checks until ACCEPT', async () => {

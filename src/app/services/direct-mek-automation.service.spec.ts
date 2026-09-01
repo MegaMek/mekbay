@@ -1373,6 +1373,48 @@ describe('DirectMekAutomationService', () => {
         expect(review?.[1]).toEqual([]);
     });
 
+    it('keeps the Mek prone when falling automation skips damage after a failed PSR', async () => {
+        const harness = createHarness('total-warfare');
+        automationModes['pilotSkillCheck'] = 'yes';
+        automationModes['fallingCheck'] = 'no';
+        resolveFalling.and.resolveTo({ action: 'skip' });
+        const foot = [...harness.fixture.index.slots.values()].find(candidate =>
+            harness.fixture.index.locations.get(candidate.locationId)?.code === 'LL'
+            && candidate.componentIds.some(componentId => {
+                const component = harness.fixture.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Foot Actuator';
+            }))!;
+        expect(harness.fixture.instance.dispatch({
+            type: 'hit-critical',
+            slotId: foot.id,
+            hits: 1,
+            target: 'pending',
+        }).accepted).toBeTrue();
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+            type: 'end-phase',
+        });
+        const settled = await service.settleBeforeCommand(
+            harness.force,
+            harness.instanceId,
+            prepared,
+            harness.dispatch,
+        );
+
+        expect(settled).not.toBeNull();
+        expect(resolveFalling).toHaveBeenCalled();
+        expect(harness.fixture.instance.query().hasCondition('prone')).toBeTrue();
+        expect(harness.fixture.instance.query().mekPilotChecks()).toEqual([
+            jasmine.objectContaining({ status: 'failed' }),
+        ]);
+        expect(harness.fixture.instance.query().turnState().pendingFallConsequences)
+            .toBeUndefined();
+        expect(harness.fixture.instance.dispatch(settled!.command).accepted).toBeTrue();
+        expect(harness.fixture.instance.query().hasCondition('prone')).toBeTrue();
+        expect(harness.fixture.instance.query().mekPilotChecks()).toEqual([]);
+    });
+
     it('bypasses the PSR roll dialog when every pending check fails automatically', async () => {
         const harness = createHarness('total-warfare');
         const pilotId = [...harness.fixture.index.crewPositions.keys()][0]!;

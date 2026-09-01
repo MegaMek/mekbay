@@ -126,11 +126,13 @@ export class CBTUnitStore {
         const warnings = new Set<string>();
         const restored = await Promise.all(entries.map(async entry => {
             try {
+                const result = await cbtUnits.restore(entry.unit, scenario);
+                for (const warning of result.warnings) {
+                    warnings.add(`Unit "${warning.unitName}": ${warning.message}`);
+                }
                 return {
                     entry,
-                    unit: await cbtUnits.restore(entry.unit, scenario, warning => {
-                        warnings.add(warning);
-                    }),
+                    unit: result.unit,
                 };
             } catch {
                 invalidStateUnitIds.add(entry.instanceId);

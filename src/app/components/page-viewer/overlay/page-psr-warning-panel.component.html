@@ -27,9 +27,8 @@
                 </div>
             }
             @for (check of psrChecks(); let i = $index; track check.checkId) {
-                    <div class="psr-item" [class.resolved]="!isAutomaticFailure(check) && outcome(check)"
+                    <div class="psr-item" [class.resolved]="outcome(check)"
                         [class.failed]="outcome(check) === 'failed'"
-                        [class.automatic-failure]="isAutomaticFailure(check)"
                         [class.cascade-failure]="isCascadedFailure(check)">
                         <div class="psr-check-header">
                             <div class="psr-number">{{ automaticFalls().length + i + 1 }}</div>
@@ -43,7 +42,7 @@
                                     <span>Failure: <span class="psr-failure-value">{{ failureLabel(check) }}</span></span>
                                 </div>
                             </div>
-                            @if (!isAutomaticFailure(check) && outcome(check); as result) {
+                            @if (outcome(check); as result) {
                                 @if (diceFor(check); as dice) {
                                     <dice-roller class="psr-saved-dice" [diceCount]="2"
                                         [initialResults]="dice" [showSum]="false" [small]="true" />
@@ -51,9 +50,7 @@
                                 <div class="psr-result" [class.failed]="result === 'failed'">{{ result }}</div>
                             }
                         </div>
-                        @if (isAutomaticFailure(check)) {
-                            <div class="psr-automatic-failure">AUTOMATIC FAILURE</div>
-                        } @else if (isCascadedFailure(check)) {
+                        @if (isCascadedFailure(check)) {
                             <div class="psr-cascade-failure">FAILED — PREVIOUS FALL CHECK FAILED</div>
                         } @else if (canEditOutcome(check)) {
                             <div class="psr-resolution-actions" role="radiogroup"

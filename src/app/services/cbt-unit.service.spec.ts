@@ -54,17 +54,18 @@ describe('CBTUnitService restore warnings', () => {
         expect(saved.sourceHashCanary).toBe(asSourceHashCanary('AAAA'));
 
         currentHash = asSourceHash(`${'B'.repeat(26)}A`);
-        const warn = jasmine.createSpy('warn');
-        const restored = await service.restore(saved, scenario, warn);
+        const restored = await service.restore(saved, scenario);
 
-        expect(restored.instanceId).toBe(saved.instanceId);
-        expect(warn).toHaveBeenCalledOnceWith(
-            'Unit "Vedette Medium Tank": The source file has changed since this unit state was saved.',
-        );
-        expect(restored.serialize().sourceHashCanary).toBe(asSourceHashCanary('BBBB'));
+        expect(restored.unit.instanceId).toBe(saved.instanceId);
+        expect(restored.warnings).toEqual([{
+            unitName: 'Vedette Medium Tank',
+            code: 'SOURCE_REVISION_CHANGED',
+            message: 'The source file has changed since this unit state was saved.',
+        }]);
+        expect(restored.unit.serialize().sourceHashCanary).toBe(asSourceHashCanary('BBBB'));
     });
 
-    it('surfaces every Mek codec warning without blocking restoration', async () => {
+    it('returns the common source warning alongside Mek codec warnings', async () => {
         const fixture = createDirectMekRuntimeFixture();
         let currentHash = asSourceHash('AAAAAAAAAAAAAAAAAAAAAAAAAAA');
         const entities = jasmine.createSpyObj<NativeEntityService>('NativeEntityService', ['load']);
@@ -95,21 +96,27 @@ describe('CBTUnitService restore warnings', () => {
         });
         const saved = created.serialize();
         currentHash = asSourceHash(`${'B'.repeat(26)}A`);
-        const warn = jasmine.createSpy('warn');
 
         const restored = await service.restore(
             saved,
             { id: 'megamek', ruleset: 'total-warfare' },
-            warn,
         );
 
         const unitName = fixture.entity.displayName();
-        expect(restored.instanceId).toBe(saved.instanceId);
-        expect(warn.calls.allArgs()).toEqual([
-            [`Unit "${unitName}": The source file has changed since this unit state was saved.`],
-            [`Unit "${unitName}": The unit state was translated from ruleset core-2026 to total-warfare.`],
+        expect(restored.unit.instanceId).toBe(saved.instanceId);
+        expect(restored.warnings).toEqual([
+            {
+                unitName,
+                code: 'SOURCE_REVISION_CHANGED',
+                message: 'The source file has changed since this unit state was saved.',
+            },
+            {
+                unitName,
+                code: 'RULESET_CHANGED',
+                message: 'The unit state was translated from ruleset core-2026 to total-warfare.',
+            },
         ]);
-        expect(restored.serialize().sourceHashCanary).toBe(asSourceHashCanary('BBBB'));
-        expect(restored.serialize().baselineRefAtSave.ruleset).toBe('total-warfare');
+        expect(restored.unit.serialize().sourceHashCanary).toBe(asSourceHashCanary('BBBB'));
+        expect(restored.unit.serialize().baselineRefAtSave.ruleset).toBe('total-warfare');
     });
 });

@@ -14,7 +14,6 @@ import {
     createDirectModularArmorRuntimeFixture,
     createDirectShieldRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
-import { asSourceHashCanary } from '../source-hash-canary';
 
 describe('direct Mek V2 state codec', () => {
     it('persists only an explicit destruction override, not derived destruction', () => {
@@ -68,12 +67,9 @@ describe('direct Mek V2 state codec', () => {
         expect(replay.snapshot().locations.size).toBe(0);
     });
 
-    it('reports source revision and ruleset changes with precise warning codes', async () => {
+    it('reports ruleset changes with a precise warning code', async () => {
         const fixture = createDirectMekRuntimeFixture();
-        const saved = {
-            ...serialize(fixture),
-            sourceHashCanary: asSourceHashCanary('AAAA'),
-        };
+        const saved = serialize(fixture);
         const initialized = {
             ...fixture.initialized,
             baselineRef: Object.freeze({
@@ -87,14 +83,8 @@ describe('direct Mek V2 state codec', () => {
             fixture.entity,
             fixture.index,
             initialized,
-            asSourceHashCanary('BBBB'),
         );
 
-        expect(restored.warnings).toContain(jasmine.objectContaining({
-            code: 'SOURCE_REVISION_CHANGED',
-            saved: { sourceHashCanary: 'AAAA' },
-            current: { sourceHashCanary: 'BBBB' },
-        }));
         expect(restored.warnings).toContain(jasmine.objectContaining({
             code: 'RULESET_CHANGED',
             saved: { ruleset: 'core-2026' },

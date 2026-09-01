@@ -5,7 +5,8 @@ import { Overlay } from '@angular/cdk/overlay';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import type { CBTUnitSnapshot } from '../../models/cbt-unit-snapshot';
+import type { CBTMekUnitSnapshot } from '../../models/cbt-unit-snapshot';
+import type { MekPilotCheckV2 } from '../../models/runtime/mek-movement-psr-v2';
 import { createDirectMekRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
 import type { RuntimeUnitNotificationSnapshot } from './unit-notification-runtime.util';
 import { projectRuntimeUnitNotifications } from './unit-notification-runtime.util';
@@ -126,6 +127,56 @@ describe('direct runtime unit notifications', () => {
         ]);
     });
 
+    it('keeps an independent shutdown PSR visible beside an automatic fall', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const base = unitSnapshot(fixture);
+        const shutdownCheck: MekPilotCheckV2 = Object.freeze({
+            checkId: 'shutdown-check',
+            source: Object.freeze({
+                sourceKind: 'action',
+                triggerKind: 'shutdown',
+                witness: '{}',
+                criticalSlotIds: Object.freeze([]),
+                locationIds: Object.freeze([]),
+                baseTarget: 8,
+                triggerModifier: 0,
+            }),
+            producingRevision: 1,
+            ordinal: 0,
+            targetNumber: 8,
+            reason: 'Shutdown attempt',
+            status: 'pending',
+        });
+        const snapshot: CBTMekUnitSnapshot = Object.freeze({
+            ...base,
+            state: Object.freeze({
+                ...base.state,
+                movementPsr: Object.freeze({
+                    ...base.state.movementPsr,
+                    automaticFalls: Object.freeze([Object.freeze({
+                        triggerKind: 'gyro-destroyed',
+                        locationIds: Object.freeze([]),
+                    })]),
+                    checks: Object.freeze([shutdownCheck]),
+                }),
+            }),
+        });
+
+        const projected = projectRuntimeUnitNotifications(
+            snapshot,
+            { pilotSkillCheck: 'ask', pilotHitsAndConsciousnessCheck: 'ask' },
+        );
+
+        expect(projectRuntimePendingNotification(projected)).toEqual({
+            kind: 'psr',
+            count: 1,
+            tooltip: [{ label: 'Shutdown attempt', value: 'Target 8+' }],
+        });
+        expect(projectRuntimeFallTooltip(projected)).toEqual([
+            { label: 'Automatic fall', value: 'Gyro destroyed' },
+        ]);
+    });
+
     it('renders the numbered warning used by both badge hosts', async () => {
         await TestBed.configureTestingModule({
             imports: [UnitNotificationBadgesComponent],
@@ -173,7 +224,7 @@ function notificationSnapshot(
 
 function unitSnapshot(
     fixture: ReturnType<typeof createDirectMekRuntimeFixture>,
-): CBTUnitSnapshot {
+): CBTMekUnitSnapshot {
     return Object.freeze({
         instanceId: 'unit:direct-fixture',
         entity: fixture.entity,

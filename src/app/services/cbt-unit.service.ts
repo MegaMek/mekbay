@@ -10,6 +10,7 @@ import type { CBTUnit } from '../models/runtime/cbt-unit';
 import { CBTNonMekUnit } from '../models/runtime/cbt-non-mek-unit';
 import { CBTMekUnit } from '../models/runtime/cbt-mek-unit';
 import type { SerializedCBTUnitV2 } from '../models/runtime/persistence-v2';
+import type { V2StateRestoreWarningCode } from '../models/runtime/runtime-state-codec-v2';
 import {
     DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
     DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID,
@@ -18,7 +19,7 @@ import {
     type ScenarioRules,
 } from '../models/runtime/unit-state-initializer';
 import type { UnitUuid } from './unit-catalog/unit-catalog.types';
-import { sourceHashCanary, sourceHashCanaryChanged } from '../models/source-hash-canary';
+import { sourceHashCanaryChanged } from '../models/source-hash-canary';
 import {
     NativeEntityService,
     nativeSourceHandleForLoadedEntity,
@@ -31,6 +32,22 @@ export interface CreateCBTUnitRequest {
     readonly scenario: ScenarioRules;
     readonly initialStateProfileId?: string;
     readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
+}
+
+export type CBTUnitRestoreWarningCode =
+    | 'SOURCE_REVISION_CHANGED'
+    | V2StateRestoreWarningCode;
+
+/** One transient restore diagnostic, independent of the source unit's file format. */
+export interface CBTUnitRestoreWarning {
+    readonly unitName: string;
+    readonly code: CBTUnitRestoreWarningCode;
+    readonly message: string;
+}
+
+export interface CBTUnitRestoreResult {
+    readonly unit: CBTUnit;
+    readonly warnings: readonly CBTUnitRestoreWarning[];
 }
 
 /** Loads one native entity once, then creates or restores its CBT runtime aggregate. */
@@ -71,21 +88,25 @@ export class CBTUnitService {
     public async restore(
         saved: SerializedCBTUnitV2 | SerializedNonMekUnit,
         scenario: ScenarioRules,
-        onRestoreWarning?: (warning: string) => void,
-    ): Promise<CBTUnit> {
+    ): Promise<CBTUnitRestoreResult> {
         const loaded = await this.entities.load(saved.entity);
         const uuid = loaded.source.uuid;
         const nativeSource = nativeSourceHandleForLoadedEntity(loaded);
-        const warn = (message: string): void => {
-            onRestoreWarning?.(`Unit "${loaded.entity.displayName()}": ${message}`);
+        const unitName = loaded.entity.displayName();
+        const warnings: CBTUnitRestoreWarning[] = [];
+        const warn = (code: CBTUnitRestoreWarningCode, message: string): void => {
+            warnings.push(Object.freeze({ unitName, code, message }));
         };
+        if (sourceHashCanaryChanged(saved.sourceHashCanary, loaded.source.sourceHash)) {
+            warn(
+                'SOURCE_REVISION_CHANGED',
+                'The source file has changed since this unit state was saved.',
+            );
+        }
         let unit: CBTUnit;
         if (isSerializedNonMekUnit(saved)) {
             if (loaded.entity instanceof MekEntity) {
                 throw new Error('A persisted non-Mek runtime resolved to a Mek entity');
-            }
-            if (sourceHashCanaryChanged(saved.sourceHashCanary, loaded.source.sourceHash)) {
-                warn('The source file has changed since this unit state was saved.');
             }
             unit = CBTNonMekUnit.restore(saved, loaded.entity, uuid, nativeSource);
         } else {
@@ -98,10 +119,9 @@ export class CBTUnitService {
                 deployment: saved.deployment.values,
                 scenario,
             }, nativeSource, {
-                currentSourceHashCanary: sourceHashCanary(loaded.source.sourceHash),
-                onWarning: warning => warn(warning.message),
+                onWarning: warning => warn(warning.code, warning.message),
             });
         }
-        return unit;
+        return Object.freeze({ unit, warnings: Object.freeze(warnings) });
     }
 }

@@ -5,7 +5,7 @@
 import type { Injector } from '@angular/core';
 import type { DataService } from '../services/data.service';
 import { LoggerService } from '../services/logger.service';
-import { CBTUnitService } from '../services/cbt-unit.service';
+import { CBTUnitService, type CBTUnitRestoreWarning } from '../services/cbt-unit.service';
 import { ToastService } from '../services/toast.service';
 import { DialogsService } from '../services/dialogs.service';
 import { ForceDialogsService } from '../services/force-dialogs.service';
@@ -194,13 +194,15 @@ async function readyCloneForce(): Promise<{
         getUnitByUuid: () => summary,
     } as unknown as DataService;
     const cbtUnits = {
-        restore: (saved: SerializedCBTUnitV2) =>
-            CBTMekUnit.restoreFromEntity(
+        restore: async (saved: SerializedCBTUnitV2) => ({
+            unit: await CBTMekUnit.restoreFromEntity(
                 saved,
                 fixture.entity,
                 fixture.identity,
                 initializeOptions,
             ),
+            warnings: [],
+        }),
     } as unknown as CBTUnitService;
     const localInjector = {
         get: (token: unknown) => token === CBTUnitService
@@ -232,7 +234,7 @@ async function readyCloneForce(): Promise<{
 async function readyEntityForce(options: Readonly<{
     readonly supportsAirborne?: boolean;
     readonly entity?: BaseEntity;
-    readonly restoreWarning?: string;
+    readonly restoreWarning?: CBTUnitRestoreWarning;
 }> = {}): Promise<{
     readonly force: CBTForce;
     readonly instanceId: string;
@@ -298,11 +300,14 @@ async function readyEntityForce(options: Readonly<{
         (
             saved: SerializedCBTUnitV2 | SerializedNonMekUnit,
             _scenario: Parameters<CBTUnitService['restore']>[1],
-            onRestoreWarning?: Parameters<CBTUnitService['restore']>[2],
         ) => {
             if (!isSerializedNonMekUnit(saved)) throw new Error('Expected a non-Mek fixture');
-            if (options.restoreWarning !== undefined) onRestoreWarning?.(options.restoreWarning);
-            return Promise.resolve(CBTNonMekUnit.restore(saved, entity, identity));
+            return Promise.resolve({
+                unit: CBTNonMekUnit.restore(saved, entity, identity),
+                warnings: options.restoreWarning === undefined
+                    ? []
+                    : [options.restoreWarning],
+            });
         },
     );
     cbtUnits.create.and.callFake((
@@ -422,7 +427,10 @@ async function readyEntityC3Force(
     } as unknown as DataService;
     const cbtUnits = {
         restore: (saved: SerializedNonMekUnit) =>
-            Promise.resolve(CBTNonMekUnit.restore(saved, entity, identity)),
+            Promise.resolve({
+                unit: CBTNonMekUnit.restore(saved, entity, identity),
+                warnings: [],
+            }),
     } as unknown as CBTUnitService;
     const dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['showNotice']);
     dialogs.showNotice.and.resolveTo();
@@ -567,15 +575,18 @@ async function readyC3Force(owned = true): Promise<{
         getEquipmentRegistry: () => emergencyFixture.equipment,
     } as unknown as DataService;
     const cbtUnits = {
-        restore: (saved: SerializedCBTUnitV2) => {
+        restore: async (saved: SerializedCBTUnitV2) => {
             const entry = readyById.get(saved.instanceId);
             if (!entry) throw new Error(`Unknown C3 fixture ${saved.instanceId}`);
-            return CBTMekUnit.restoreFromEntity(
-                saved,
-                entry.fixture.entity,
-                entry.fixture.identity,
-                initializeOptions,
-            );
+            return {
+                unit: await CBTMekUnit.restoreFromEntity(
+                    saved,
+                    entry.fixture.entity,
+                    entry.fixture.identity,
+                    initializeOptions,
+                ),
+                warnings: [],
+            };
         },
     } as unknown as CBTUnitService;
     const toast = jasmine.createSpyObj<ToastService>('ToastService', ['showToast']);
@@ -659,11 +670,15 @@ function updateTarget(
 
 describe('CBTForce V2 encounter persistence', () => {
     it('shows transient unit restoration warnings after loading succeeds', async () => {
-        const warning = 'Unit "Vedette": The source file changed.';
+        const warning: CBTUnitRestoreWarning = {
+            unitName: 'Vedette',
+            code: 'SOURCE_REVISION_CHANGED',
+            message: 'The source file changed.',
+        };
         const { dialogs } = await readyEntityForce({ restoreWarning: warning });
 
         expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
-            `• ${warning}`,
+            `• Unit "${warning.unitName}": ${warning.message}`,
             'Save Loaded with Warnings',
         );
     });

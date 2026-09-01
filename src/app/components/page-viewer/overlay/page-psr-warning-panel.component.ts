@@ -26,7 +26,7 @@ import {
     PAGE_TURN_MEMBER,
 } from './page-turn-summary.util';
 
-type PsrOutcomeSource = 'committed' | 'selected' | 'cascade' | 'automatic';
+type PsrOutcomeSource = 'committed' | 'selected' | 'cascade';
 
 interface PsrOutcomeState {
     readonly outcome: MekPilotCheckOutcomeV2;
@@ -128,11 +128,6 @@ export class PagePsrWarningPanelComponent {
                 if (check.status === 'failed' && isCascadeFallPilotCheck(check)) priorFallFailed = true;
                 continue;
             }
-            if (check.targetNumber > 12) {
-                states.set(check.checkId, { outcome: 'failed', source: 'automatic' });
-                if (isCascadeFallPilotCheck(check)) priorFallFailed = true;
-                continue;
-            }
             if (priorFallFailed && isCascadeFallPilotCheck(check)) {
                 states.set(check.checkId, { outcome: 'failed', source: 'cascade' });
                 continue;
@@ -144,13 +139,7 @@ export class PagePsrWarningPanelComponent {
         }
         return states;
     });
-    readonly allChecksAutomaticFailure = computed(() => {
-        const checks = this.psrChecks();
-        return this.automaticFalls().length + checks.length > 0
-            && checks.every(check => this.isAutomaticFailure(check));
-    });
-    readonly showRollDetails = computed(() => this.psrChecks().length > 0
-        && !this.allChecksAutomaticFailure());
+    readonly showRollDetails = computed(() => this.psrChecks().length > 0);
     readonly canAccept = computed(() => {
         const checks = this.psrChecks();
         const states = this.resolutionStates();
@@ -223,10 +212,6 @@ export class PagePsrWarningPanelComponent {
 
     isCascadedFailure(check: MekPilotCheckV2): boolean {
         return this.resolutionStates().get(check.checkId)?.source === 'cascade';
-    }
-
-    isAutomaticFailure(check: MekPilotCheckV2): boolean {
-        return check.status === 'pending' && check.targetNumber > 12;
     }
 
     failureLabel(check: MekPilotCheckV2): string {

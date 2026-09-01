@@ -462,6 +462,8 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     override readonly priority = 10;
 
     override choices(input: EquipmentInteractionInput): readonly EquipmentInteractionChoice[] {
+        const equipment = equipmentForComponent(input.index, input.componentId);
+        if (!isEscalatingFailureEquipment(equipment, input.ruleset)) return [];
         const definition = componentEscalatingFailureDefinition(
             input.index,
             input.componentId,
@@ -477,6 +479,8 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
         choice: PickerChoice,
         context: EquipmentInteractionCommandContext,
     ): boolean {
+        const equipment = equipmentForComponent(input.index, input.componentId);
+        if (!isEscalatingFailureEquipment(equipment, input.ruleset)) return false;
         const definition = componentEscalatingFailureDefinition(
             input.index,
             input.componentId,

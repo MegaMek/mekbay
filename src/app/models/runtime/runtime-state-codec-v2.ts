@@ -150,7 +150,6 @@ export class V2StateCodecError extends Error {
 }
 
 export type V2StateRestoreWarningCode =
-    | 'SOURCE_REVISION_CHANGED'
     | 'RULESET_CHANGED'
     | 'SLOT_OCCUPANT_MISMATCH'
     | 'TARGET_REKEYED'
@@ -1068,14 +1067,14 @@ function restoreSavedMekRuleChecks(
 
 /**
  * Restores explicit saved deviations over the current initialized baseline. UUID is the
- * compatibility gate; source-revision and ruleset drift are diagnostics rather than refusal.
+ * compatibility gate; ruleset drift is diagnostic rather than refusal. Source provenance is
+ * checked at the format-agnostic unit-service boundary.
  */
 export async function restoreSerializedCBTUnitV2(
     savedInput: SerializedCBTUnitV2,
     entity: MekEntity,
     index: MekRuntimeIndex,
     initialized: { readonly baselineRef: InstanceBaselineRef; readonly state: MekUnitRuntimeState },
-    currentSourceHashCanary?: SourceHashCanary,
 ): Promise<RestoreSerializedCBTUnitV2Result> {
     // The initializer projection is caller-owned too. Capture its structural baseline and clone
     // every runtime collection before restoration work yields; keep entity by reference.
@@ -1128,16 +1127,6 @@ export async function restoreSerializedCBTUnitV2(
     };
     const restoredMovement = restoreSavedMekMovementPsr(saved, accumulator);
 
-    if (saved.sourceHashCanary !== undefined
-        && currentSourceHashCanary !== undefined
-        && saved.sourceHashCanary !== currentSourceHashCanary) {
-        warn(accumulator, {
-            code: 'SOURCE_REVISION_CHANGED',
-            message: 'The source file has changed since this unit state was saved.',
-            saved: { sourceHashCanary: saved.sourceHashCanary },
-            current: { sourceHashCanary: currentSourceHashCanary },
-        });
-    }
     if (saved.baselineRefAtSave.ruleset !== initialized.baselineRef.ruleset) {
         warn(accumulator, {
             code: 'RULESET_CHANGED',

@@ -23,6 +23,7 @@ import { projectMekLifeSupportPilotDamage } from '../../models/runtime/mek-life-
 import type { MekAutomaticFallV2, MekPilotCheckV2 } from '../../models/runtime/mek-movement-psr-v2';
 import { projectNonMekEndTurnHeat } from '../../models/runtime/non-mek-unit-instance';
 import { MAX_MEK_CREW_WOUNDS } from '../../models/runtime/runtime-state';
+import { actionableMekPilotChecks } from '../page-viewer/overlay/page-turn-summary.util';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 
 export type RuntimeUnitNotificationKind =
@@ -132,12 +133,14 @@ function projectMekNotifications(
             && state.wounds < MAX_MEK_CREW_WOUNDS;
     }) || movement.kind === 'supported' && movement.controlledByDrone;
     const pendingChecks = movementState.checks.filter(check => check.status === 'pending');
+    const actionableChecks = actionableMekPilotChecks(pendingChecks, automaticFall);
+    const actionableCheckIds = new Set(actionableChecks.map(check => check.checkId));
     const automaticallyFallingChecks = pendingChecks.filter(check =>
         check.source.triggerKind !== 'get-up'
-        && (automaticFall || pilotCheckAutomaticallyFails(snapshot, check, pilotCanControl)));
-    const checks = pendingChecks.filter(check =>
-        !pilotCheckAutomaticallyFails(snapshot, check, pilotCanControl)
-        && (!automaticFall || check.source.triggerKind === 'get-up'));
+        && (pilotCheckAutomaticallyFails(snapshot, check, pilotCanControl)
+            || !actionableCheckIds.has(check.checkId)));
+    const checks = actionableChecks.filter(check =>
+        !pilotCheckAutomaticallyFails(snapshot, check, pilotCanControl));
     const torsoCheck = phaseState.ruleChecks.get(MEK_TORSO_CRIPPLING_RULE_CHECK_KEY);
     const ruleCheckIsAutomatic = !pilotCanControl
         || snapshot.query.hasCondition('shutdown');

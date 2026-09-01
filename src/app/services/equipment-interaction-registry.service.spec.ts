@@ -3,8 +3,12 @@
 
 import { InventoryModeHandler } from '../models/runtime/component-inventory-mode';
 import { UACJammingHandler } from '../models/runtime/component-rapid-fire-autocannon';
+import { RiscViralJammerHandler } from '../models/runtime/component-escalating-failure';
 import { emptyCBTEncounterSnapshot } from '../models/runtime/encounter-runtime';
-import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import {
+    createDirectEscalatingFailureRuntimeFixture,
+    createDirectMekRuntimeFixture,
+} from '../models/runtime/testing/direct-mek-runtime-fixture';
 import { TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
 import { EquipmentInteractionRegistry } from './equipment-interaction-registry.service';
 import type {
@@ -65,6 +69,28 @@ describe('EquipmentInteractionRegistry direct V2 boundary', () => {
         const registry = new EquipmentInteractionRegistry();
         registry.register(new UACJammingHandler());
         expect(() => registry.register(new UACJammingHandler())).toThrowError(/already registered/u);
+    });
+
+    it('offers viral-jammer choices only for viral-jammer equipment', () => {
+        const fixture = createDirectEscalatingFailureRuntimeFixture(TOTAL_WARFARE_RULESET);
+        const registry = new EquipmentInteractionRegistry();
+        registry.register(new RiscViralJammerHandler());
+
+        const choices = registry.choices(
+            fixture.instance,
+            fixture.entity,
+            fixture.index,
+            fixture.instance.ruleset(),
+            { instanceId: fixture.instance.id, encounter: emptyCBTEncounterSnapshot },
+            {},
+        );
+
+        expect(choices.length).toBeGreaterThan(0);
+        expect(choices.every(choice => {
+            const component = fixture.index.components.get(choice.componentId);
+            return component?.kind === 'equipment'
+                && component.mount.equipmentId === 'Test RISC Viral Jammer';
+        })).toBeTrue();
     });
 });
 
