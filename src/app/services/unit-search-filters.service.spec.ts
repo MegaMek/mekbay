@@ -4783,6 +4783,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const params = new URLSearchParams();
         params.set('filters', 'source:src-a|faction:test faction|era:succession wars');
         const { service } = createService(bundle, { initialParams: params });
+        TestBed.tick();
 
         expect(service.filterState()['source']?.value).toEqual({
             'SRC-A': {
@@ -4854,6 +4855,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         params.set('filters', `as.specials:${special}`);
         const { service, gameServiceStub } = createService(bundle, { initialParams: params });
         gameServiceStub.currentGameSystem.set(GameSystem.AS);
+        TestBed.tick();
 
         expect(service.filterState()['as.specials']?.value).toEqual({
             [special]: {

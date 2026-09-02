@@ -1371,7 +1371,7 @@ describe('ForceBuilderService production V2 unit selection', () => {
             kind: 'cbt', id: instanceId, force, entity: member.entity,
         }));
         expect(admit).toHaveBeenCalledOnceWith(jasmine.objectContaining({
-            identity: { provider: unit.provider, uuid: unit.uuid },
+            uuid: unit.uuid,
             deployment: { id: 'force-builder-default' },
             scenario: jasmine.objectContaining({
                 id: 'megamek',
@@ -1379,6 +1379,7 @@ describe('ForceBuilderService production V2 unit selection', () => {
                 options: { forcedWithdrawal: false, sprinting: false },
             }),
             crewSkills: { gunnery: 3, piloting: 4 },
+            targetRosterGroupId: force.groups()[0].id,
         }));
         expect(selectedUnit()).toBe(result);
         expect(service.layoutService.openMenu).toHaveBeenCalledTimes(1);
