@@ -468,13 +468,11 @@
     }
 
     .faction-row-heading,
-    .availability-cell {
-        height: 50px;
-    }
-
+    .availability-cell,
     .faction-identity,
     .availability-cell-content {
-        min-height: 50px;
+        min-height: 42px;
+        height: 42px;
     }
 
     .faction-identity {
@@ -500,7 +498,7 @@
     }
 
     .faction-megamek-availability-badges {    
-        margin-top: 25px;
+        margin-top: 18px;
     }
 
     .cell-faction-logo {
