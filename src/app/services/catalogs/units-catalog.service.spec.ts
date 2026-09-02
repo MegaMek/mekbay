@@ -97,8 +97,8 @@ describe('UnitsCatalogService custom servers', () => {
             etag: '',
             units: [
                 createEmptyUnit({ id: 0, name: 'Shared Unit' }), // collides with primary -> dropped
-                createEmptyUnit({ id: 500, name: 'Custom Alpha' }),
-                createEmptyUnit({ id: 0, name: 'Custom Beta' }), // null-ish id -> reassigned
+                createEmptyUnit({ id: 500, uuid: '', name: 'Custom Alpha' }),
+                createEmptyUnit({ id: 0, uuid: '', name: 'Custom Beta' }), // null-ish id -> reassigned
             ],
         };
 
@@ -128,6 +128,12 @@ describe('UnitsCatalogService custom servers', () => {
 
         expect(byName.get('Custom Alpha')?.serverHost).toBe(CUSTOM_SERVER);
         expect(byName.get('Custom Beta')?.serverHost).toBe(CUSTOM_SERVER);
+
+        // Older/custom exporters may omit UUIDs. The loader supplies stable, distinct
+        // server-scoped identities so UUID-based search indexes do not collapse them.
+        const customUuids = [byName.get('Custom Alpha')?.uuid, byName.get('Custom Beta')?.uuid];
+        expect(customUuids.every(uuid => uuid?.startsWith(`custom:${encodeURIComponent(CUSTOM_SERVER)}:`))).toBeTrue();
+        expect(new Set(customUuids).size).toBe(2);
 
         // Collision: primary wins, only one Shared Unit, no serverHost.
         expect(units.filter(u => u.name === 'Shared Unit').length).toBe(1);
