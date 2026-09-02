@@ -5,7 +5,6 @@ import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asComponentId } from '../entity/entity-identifiers';
 import {
     ForceEnvelopeValidationError,
-    CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
@@ -606,7 +605,6 @@ function mixedForce(): SerializedCBTForceV2 {
     const other = v2Entry('unit:other', UUID_C);
     return {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId: asForceId('force:test'),
         forceRevision: 4,
         history: emptyRuntimeHistory(),

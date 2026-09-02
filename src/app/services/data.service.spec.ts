@@ -2065,7 +2065,6 @@ describe('DataService', () => {
             ...base,
             cbt: {
                 schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION + 1,
-                minimumWriterVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION + 1,
             } as any,
         })).toBeRejected();
         expect(dbServiceMock.saveForce).toHaveBeenCalledTimes(1);

@@ -38,7 +38,6 @@ import type {
     SerializedForceUnitEntryV2,
 } from './persistence-v2';
 import {
-    CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
@@ -626,7 +625,6 @@ function unpackForce(value: Record<string, unknown>, forceId: string): Serialize
         unpackUnitEntry(entry, `force.cbt.u[${index}]`));
     return {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId: asForceId(forceId),
         forceRevision: revision,
         history: value['h'] === undefined

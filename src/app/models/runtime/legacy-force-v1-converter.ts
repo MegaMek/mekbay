@@ -27,7 +27,6 @@ import {
 } from '../persisted-unit-state';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import {
-    CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     emptyRuntimeHistory,
     asForceId,
@@ -1456,7 +1455,6 @@ async function materializeResolvedUnits(
 
     return validateSerializedCBTForceV2({
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: stateRevision,
         history: emptyRuntimeHistory(),

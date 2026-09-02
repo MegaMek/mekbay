@@ -74,7 +74,6 @@ import { freezeEquipmentRowOrder, type EquipmentRowOrderState } from './equipmen
 export type { SerializedMekTurnStateV2 } from './mek-turn-state-v2';
 
 export const CBT_FORCE_PERSISTENCE_SCHEMA_VERSION = 16 as const;
-export const CBT_FORCE_MINIMUM_WRITER_VERSION = 17 as const;
 export const CBT_UNIT_PERSISTENCE_SCHEMA_VERSION = 10 as const;
 export const MAX_SERIALIZED_ENCOUNTER_FACTS = 1024;
 export const MAX_SERIALIZED_ENCOUNTER_TARGETS = 12;
@@ -649,7 +648,6 @@ export interface SerializedForceEncounterEntryV2 {
 
 export interface SerializedCBTForceV2 {
     readonly schemaVersion: typeof CBT_FORCE_PERSISTENCE_SCHEMA_VERSION;
-    readonly minimumWriterVersion: typeof CBT_FORCE_MINIMUM_WRITER_VERSION;
     readonly forceId: ForceId;
     readonly forceRevision: number;
     readonly history: SerializedRuntimeHistory;
@@ -701,7 +699,6 @@ export async function validateSerializedCBTForceV2(value: unknown): Promise<Seri
     }
     const root: Record<string, unknown> = {
         schemaVersion: source['schemaVersion'],
-        minimumWriterVersion: source['minimumWriterVersion'],
         forceId: source['forceId'],
         forceRevision: source['forceRevision'],
         history: source['history'],
@@ -716,9 +713,8 @@ export async function validateSerializedCBTForceV2(value: unknown): Promise<Seri
 function validateForceEnvelope(
     root: Record<string, unknown>,
 ): asserts root is Record<string, unknown> & SerializedCBTForceV2 {
-    if (root['schemaVersion'] !== CBT_FORCE_PERSISTENCE_SCHEMA_VERSION
-        || root['minimumWriterVersion'] !== CBT_FORCE_MINIMUM_WRITER_VERSION) {
-        fail('INVALID_SHAPE', '$', 'unsupported persistence or writer version');
+    if (root['schemaVersion'] !== CBT_FORCE_PERSISTENCE_SCHEMA_VERSION) {
+        fail('INVALID_SHAPE', '$.schemaVersion', 'unsupported persistence version');
     }
     validateId(root['forceId'], '$.forceId', asForceId);
     validateRevision(root['forceRevision'], '$.forceRevision');

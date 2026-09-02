@@ -4,7 +4,6 @@
 import { GameSystem } from '../common.model';
 import type { ASSerializedForce, SerializedCBTForce, SerializedForce } from '../force-serialization';
 import {
-    CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
     emptyRuntimeHistory,
@@ -146,7 +145,6 @@ describe('compact force storage codec', () => {
 
         const compact = stored['cbt'] as Record<string, unknown>;
         expect(compact['schemaVersion']).toBeUndefined();
-        expect(compact['minimumWriterVersion']).toBeUndefined();
         expect(compact['forceId']).toBeUndefined();
         expect(compact['history']).toBeUndefined();
         expect(compact['encounter']).toBeUndefined();
@@ -728,7 +726,6 @@ function forceWithUnit(
     const forceId = asForceId(forceIdText);
     const cbt: SerializedCBTForceV2 = {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: unit.stateRevision,
         history: emptyRuntimeHistory(),

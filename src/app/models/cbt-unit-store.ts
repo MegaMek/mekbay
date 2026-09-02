@@ -8,7 +8,6 @@ import {
     type TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
 import {
-    CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     emptyRuntimeHistory,
     validateSerializedCBTForceV2,
@@ -221,7 +220,6 @@ export class CBTUnitStore {
         let hydratedEnvelope = await validateSerializedCBTForceV2({
             ...envelope,
             schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-            minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
             units: hydratedUnits,
             roster,
             encounter: removedUnitIds.size === 0

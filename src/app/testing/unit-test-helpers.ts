@@ -4,7 +4,6 @@
 
 import { UNIT_SUMMARY_VERSION, type UnitSummary } from '../models/unit-summary.model';
 import {
-    CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
     emptyRuntimeHistory,
@@ -36,7 +35,6 @@ export function createEmptyCBTForceForTest(
     const stateRevision = revision;
     return {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId: asForceId(forceId),
         forceRevision: stateRevision,
         history: emptyRuntimeHistory(),

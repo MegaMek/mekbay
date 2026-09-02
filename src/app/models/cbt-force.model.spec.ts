@@ -16,7 +16,6 @@ import { GameSystem } from './common.model';
 import { CBTForce } from './cbt-force.model';
 import type { SerializedCBTForce } from './force-serialization';
 import {
-    CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
     emptyRuntimeHistory,
@@ -78,7 +77,6 @@ function directForceRecord(): SerializedCBTForce {
     const forceId = asForceId('force:encounter');
     const cbt: SerializedCBTForceV2 = {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: 0,
         history: emptyRuntimeHistory(),
@@ -151,7 +149,6 @@ async function readyCloneForce(): Promise<{
     const forceId = asForceId('force:ready-clone');
     const cbt: SerializedCBTForceV2 = {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: 7,
         history: emptyRuntimeHistory(),
@@ -275,7 +272,6 @@ async function readyEntityForce(options: Readonly<{
     const forceId = asForceId('force:ready-entity');
     const cbt: SerializedCBTForceV2 = {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: 0,
         history: emptyRuntimeHistory(),
@@ -408,7 +404,6 @@ async function readyEntityC3Force(
     const forceId = asForceId('force:ready-entity-c3');
     const cbt: SerializedCBTForceV2 = {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: 0,
         history: emptyRuntimeHistory(),
@@ -537,7 +532,6 @@ async function readyC3Force(owned = true): Promise<{
     });
     const cbt: SerializedCBTForceV2 = {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-        minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: 0,
         history: emptyRuntimeHistory(),

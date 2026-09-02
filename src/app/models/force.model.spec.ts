@@ -1070,7 +1070,6 @@ describe('Force CBT V2 persistence boundary', () => {
         const forwardVersion = CBT_FORCE_PERSISTENCE_SCHEMA_VERSION + 1;
         const forwardValue = {
             schemaVersion: forwardVersion,
-            minimumWriterVersion: forwardVersion,
             future: true,
         } as unknown as SerializedCBTForceV2;
         const forwardData = { ...persisted, cbt: forwardValue };

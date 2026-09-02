@@ -3,7 +3,6 @@
 import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 import { CBTMekUnit } from './cbt-mek-unit';
 import {
-    CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
     validateSerializedCBTForceV2,
@@ -80,7 +79,6 @@ describe('compact runtime persistence', () => {
         });
         const force: SerializedCBTForceV2 = {
             schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-            minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
             forceId: asForceId('019f6767-0dcb-7bb8-992f-999999999999'),
             forceRevision: 0,
             history,
