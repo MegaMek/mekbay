@@ -21,6 +21,18 @@ export function normalizeNullMulUnitIds(units: readonly UnitSummary[]): UnitSumm
         : { ...unit, id: nextNullMulId-- });
 }
 
+function createCustomUnitUuid(server: string, nameKey: string, usedUuids: ReadonlySet<string>): string {
+    const baseUuid = `custom:${encodeURIComponent(server)}:${encodeURIComponent(nameKey)}`;
+    let uuid = baseUuid;
+    let suffix = 2;
+
+    while (usedUuids.has(uuid)) {
+        uuid = `${baseUuid}:${suffix++}`;
+    }
+
+    return uuid;
+}
+
 @Injectable({
     providedIn: 'root'
 })
@@ -100,6 +112,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
 
         const usedNames = new Set(this.units.map(unit => unit.name.toLowerCase()));
         const usedIds = new Set(this.units.map(unit => unit.id));
+        const usedUuids = new Set(this.units.map(unit => unit.uuid));
         let nextSyntheticId = this.units.reduce((min, unit) => Math.min(min, unit.id), 0) - 1;
 
         const customUnits: UnitSummary[] = [];
@@ -130,7 +143,13 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
                 }
                 usedIds.add(id);
 
-                customUnits.push({ ...rawUnit, id, serverHost: server });
+                let uuid = typeof rawUnit.uuid === 'string' ? rawUnit.uuid.trim() : '';
+                if (!uuid || usedUuids.has(uuid)) {
+                    uuid = createCustomUnitUuid(server, nameKey, usedUuids);
+                }
+                usedUuids.add(uuid);
+
+                customUnits.push({ ...rawUnit, id, uuid, serverHost: server });
                 added++;
             }
             this.logger.info(`Loaded ${added} additional unit(s) from ${server}.`);
