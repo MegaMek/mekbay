@@ -274,7 +274,6 @@ export function projectMekBlowOffV2(
 }
 
 export function projectMekCriticalRollProfileV2(
-    entity: MekEntity,
     index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     runtime: MekCriticalRuntimeViewV2,
@@ -339,7 +338,6 @@ export function projectMekCriticalRollV2(
         : undefined;
     const explosion = sourceExplosion !== null && pendingExplosion === undefined
         ? resolveExplosionPlan(
-            entity,
             index,
             ruleset,
             runtime,
@@ -381,7 +379,6 @@ export function projectPendingMekCriticalExplosionV2(
         return Object.freeze({
             key: candidate.key,
             explosion: resolveExplosionPlan(
-                entity,
                 index,
                 ruleset,
                 runtime,
@@ -672,7 +669,6 @@ function isDelayedCriticalExplosion(source: ExplosionSource): boolean {
 }
 
 function resolveExplosionPlan(
-    entity: MekEntity,
     index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     runtime: MekCriticalRuntimeViewV2,

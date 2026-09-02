@@ -10,13 +10,7 @@ import { BombastLaserHandler, TwBombastLaserHandler } from './component-bombast-
 import { C3Handler } from './component-c3-configuration';
 import { C3EmergencyMasterHandler } from './component-c3-emergency-master';
 import { ECMHandler } from './component-ecm-mode';
-import {
-    BlueShieldHandler,
-    MascHandler,
-    RadicalHeatSinkHandler,
-    RiscEmergencyCoolantSystemHandler,
-    RiscViralJammerHandler,
-} from './component-escalating-failure';
+import { EscalatingFailureHandler } from './component-escalating-failure';
 import { FlamerHandler } from './component-flamer';
 import { HagHandler } from './component-hag-mode';
 import { InventoryModeHandler } from './component-inventory-mode';
@@ -49,11 +43,7 @@ export function registerAllEquipmentBehaviors(
         new VibrobladeHandler(),
         new RiscLaserPulseModuleHandler(),
         new HagHandler(),
-        new MascHandler(),
-        new RadicalHeatSinkHandler(),
-        new BlueShieldHandler(),
-        new RiscEmergencyCoolantSystemHandler(),
-        new RiscViralJammerHandler(),
+        new EscalatingFailureHandler(),
         new C3EmergencyMasterHandler(),
         new C3Handler(),
         new PpcCapacitorHandler(),

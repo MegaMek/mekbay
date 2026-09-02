@@ -17,7 +17,7 @@ import type { ForcePreviewEntry } from '../models/force-preview.model';
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { DataService } from './data.service';
-import type { ForceGenerationContext } from './force-generator.service';
+import type { ForceGenerationContext, ForceGenerationPreview } from './force-generator.service';
 import {
     ForceGeneratorService,
     getGeneratedCBTCrewSkill,
@@ -28,6 +28,15 @@ import { OptionsService } from './options.service';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
+
+function createForceEntry(
+    service: ForceGeneratorService,
+    preview: ForceGenerationPreview,
+    name?: string,
+) {
+    const previewEntry = service.createForcePreviewEntry(preview, name);
+    return previewEntry ? service.createForceEntryFromPreviewEntry(previewEntry) : null;
+}
 
 describe('generated CBT crew normalization', () => {
     it('creates every LAM crew member with matching ground and aerospace skills', () => {
@@ -3605,7 +3614,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Expensive Mek']);
         expect(preview.totalCost).toBe(6);
         expect(preview.explanationLines.some((line) => line.includes('lowest-total force in the requested unit-count range was returned'))).toBeTrue();
-        expect(service.createForceEntry(preview)).not.toBeNull();
+        expect(createForceEntry(service, preview)).not.toBeNull();
     });
 
     it('keeps the requested unit-count range when every possible force is above the maximum budget', () => {
@@ -3637,7 +3646,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Unit 1', 'Unit 1', 'Unit 1', 'Unit 1']);
         expect(preview.totalCost).toBe(16);
         expect(preview.explanationLines.some((line) => line.includes('lowest-total force in the requested unit-count range was returned'))).toBeTrue();
-        expect(service.createForceEntry(preview)).not.toBeNull();
+        expect(createForceEntry(service, preview)).not.toBeNull();
     });
 
     it('treats a 0/0 budget request as the first compatible result', () => {
@@ -3690,7 +3699,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.totalCost).toBe(6);
         expect(preview.explanationLines.some((line) => line.includes('Budget 0/0 requested'))).toBeTrue();
         expect(buildSelectionSpy.calls.count()).toBe(1);
-        const entry = service.createForceEntry(preview);
+        const entry = createForceEntry(service, preview);
         expect(entry).not.toBeNull();
         expect(entry!.groups[0].units[0].commander).toBeUndefined();
     });
@@ -3730,7 +3739,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units[0].lockKey).toBe('locked-atlas');
         expect(preview.explanationLines.some((line) => line.includes('locked'))).toBeTrue();
 
-        const entry = service.createForceEntry(preview);
+        const entry = createForceEntry(service, preview);
         expect(entry).not.toBeNull();
         expect(entry!.groups[0].units[0].alias).toBe('Ace Atlas');
         expect(entry!.groups[0].units[0].commander).toBeTrue();
@@ -3778,7 +3787,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.units[0].crew).toEqual(crew);
         expect(preview.units[0].crew).not.toBe(crew);
 
-        const entry = service.createForceEntry(preview);
+        const entry = createForceEntry(service, preview);
         expect(entry!.groups[0].units[0].crew).toEqual(crew);
         expect(entry!.groups[0].units[0].crew).not.toBe(preview.units[0].crew);
     });
@@ -3794,7 +3803,7 @@ describe('ForceGeneratorService', () => {
         ];
         const skills = [[4, 5], [4, 3], [3, 4], [3, 3]] as const;
 
-        const entry = service.createForceEntry({
+        const entry = createForceEntry(service, {
             gameSystem: GameSystem.CBT,
             units: units.map((unit, index) => ({
                 unit,
@@ -4555,7 +4564,7 @@ describe('ForceGeneratorService', () => {
             explanationLines: ['Need at least 2 units.'],
         };
 
-        expect(service.createForceEntry(preview)).not.toBeNull();
+        expect(createForceEntry(service, preview)).not.toBeNull();
     });
 
     it('creates a load entry from an already-rendered preview entry without rebuilding groups', () => {
@@ -4661,7 +4670,7 @@ describe('ForceGeneratorService', () => {
             return [{ definition: supportFormation, requirementsFiltered: false }];
         });
 
-        const entry = service.createForceEntry({
+        const entry = createForceEntry(service, {
             gameSystem: GameSystem.AS,
             units: previewUnits.map((unit, index) => ({
                 unit,
@@ -4750,7 +4759,7 @@ describe('ForceGeneratorService', () => {
             return [{ definition: supportFormation, requirementsFiltered: false }];
         });
 
-        const entry = service.createForceEntry({
+        const entry = createForceEntry(service, {
             gameSystem: GameSystem.AS,
             units: previewUnits.map((unit, index) => ({
                 unit,
@@ -4800,7 +4809,7 @@ describe('ForceGeneratorService', () => {
 
         expect(preview.error).toBeNull();
         expect(preview.units.length).toBe(2);
-        expect(service.createForceEntry(preview)).not.toBeNull();
+        expect(createForceEntry(service, preview)).not.toBeNull();
         expect(buildSelectionSpy.calls.count()).toBeGreaterThan(0);
         expect(buildSelectionSpy.calls.count()).toBeLessThan(16);
     });
@@ -4866,7 +4875,7 @@ describe('ForceGeneratorService', () => {
             'Count Match D',
         ]);
         expect(preview.totalCost).toBe(16);
-        const entry = service.createForceEntry(preview);
+        const entry = createForceEntry(service, preview);
         expect(entry).not.toBeNull();
         for (const group of entry!.groups) {
             expect(group.units.filter((unit) => unit.commander)).toHaveSize(1);
@@ -4926,7 +4935,7 @@ describe('ForceGeneratorService', () => {
         expect(preview.error).toBeNull();
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Under Target']);
         expect(preview.totalCost).toBe(5890);
-        expect(service.createForceEntry(preview)).not.toBeNull();
+        expect(createForceEntry(service, preview)).not.toBeNull();
     });
 
     it('uses ruleset preferences to bias additional unit selection', () => {

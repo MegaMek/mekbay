@@ -26,7 +26,6 @@ import type { MekTurnStateV2 } from './mek-turn-state-v2';
 import { MEK_TORSO_CRIPPLING_RULE_CHECK_KEY, type MekRuleCheckStateV2 } from './mek-destruction-state-v2';
 import { isUnitBuildingLevel, resolveUnitBuildingCoverState, type UnitBuildingCoverState } from '../unit-cover.model';
 import { mekUnitHeight, resolveMekUnitWaterState } from './mek-targeting-rules';
-import { MAX_MEK_CREW_WOUNDS } from './runtime-state';
 import { getMekLocationLabel } from '../entity/types';
 import type { UnitConditionKey } from '../unit-condition.model';
 import { isCrewDeathCommitted } from './cbt-unit-runtime';

@@ -305,7 +305,6 @@ describe('DataService', () => {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
         hydrateFromCache: jasmine.createSpy('hydrateFromCache').and.resolveTo(false),
         getCatalogRevision: jasmine.createSpy('getCatalogRevision').and.returnValue('unversioned'),
-        getRecords: jasmine.createSpy('getRecords').and.returnValue([]),
         getRecordForUnit: jasmine.createSpy('getRecordForUnit').and.returnValue(undefined),
     };
     const megaMekFactionsCatalogMock = {
@@ -313,11 +312,9 @@ describe('DataService', () => {
         getFactions: jasmine.createSpy('getFactions').and.returnValue({}),
         getFactionByKey: jasmine.createSpy('getFactionByKey').and.returnValue(undefined),
         getFactionsByMulId: jasmine.createSpy('getFactionsByMulId').and.returnValue([]),
-        getFactionAffiliation: jasmine.createSpy('getFactionAffiliation').and.returnValue('Other'),
     };
     const megaMekRulesetsCatalogMock = {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
-        getRulesets: jasmine.createSpy('getRulesets').and.returnValue([]),
         getRulesetByFactionKey: jasmine.createSpy('getRulesetByFactionKey').and.returnValue(undefined),
     };
     const quirksCatalogMock = {
@@ -365,7 +362,6 @@ describe('DataService', () => {
                 coreRevision: revision,
                 summaries: [],
                 units,
-                summariesByUuid: new Map(),
             },
             core: {
                 revision,
@@ -492,8 +488,6 @@ describe('DataService', () => {
         megaMekAvailabilityCatalogMock.hydrateFromCache.and.resolveTo(false);
         megaMekAvailabilityCatalogMock.getCatalogRevision.calls.reset();
         megaMekAvailabilityCatalogMock.getCatalogRevision.and.returnValue('unversioned');
-        megaMekAvailabilityCatalogMock.getRecords.calls.reset();
-        megaMekAvailabilityCatalogMock.getRecords.and.returnValue([]);
         megaMekAvailabilityCatalogMock.getRecordForUnit.calls.reset();
         megaMekAvailabilityCatalogMock.getRecordForUnit.and.returnValue(undefined);
         megaMekFactionsCatalogMock.initialize.calls.reset();
@@ -504,12 +498,8 @@ describe('DataService', () => {
         megaMekFactionsCatalogMock.getFactionByKey.and.returnValue(undefined);
         megaMekFactionsCatalogMock.getFactionsByMulId.calls.reset();
         megaMekFactionsCatalogMock.getFactionsByMulId.and.returnValue([]);
-        megaMekFactionsCatalogMock.getFactionAffiliation.calls.reset();
-        megaMekFactionsCatalogMock.getFactionAffiliation.and.returnValue('Other');
         megaMekRulesetsCatalogMock.initialize.calls.reset();
         megaMekRulesetsCatalogMock.initialize.and.resolveTo(undefined);
-        megaMekRulesetsCatalogMock.getRulesets.calls.reset();
-        megaMekRulesetsCatalogMock.getRulesets.and.returnValue([]);
         megaMekRulesetsCatalogMock.getRulesetByFactionKey.calls.reset();
         megaMekRulesetsCatalogMock.getRulesetByFactionKey.and.returnValue(undefined);
         quirksCatalogMock.initialize.calls.reset();

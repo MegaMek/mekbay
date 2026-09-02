@@ -12,16 +12,9 @@ import {
     VIRAL_JAMMER_DECOY_FLAG,
     VIRAL_JAMMER_HOMING_FLAG,
     VIRAL_JAMMER_OPERATING_HEAT,
-    escalatingFailureCriticalExplosionDamage,
-    isBattleArmorMyomerBoosterEquipment,
-    isBlueShieldEquipment,
     isEmergencyCoolantSystemEquipment,
-    isJetBoosterEquipment,
-    isMascEquipment,
     isRadicalHeatSinkEquipment,
-    isSuperchargerEquipment,
     isViralJammerEquipment,
-    movementBoosterUsableWhile,
 } from '../escalating-equipment.model';
 
 export {
@@ -62,11 +55,6 @@ import {
 
 export const ESCALATING_FAILURE_HANDLER_ID = 'escalating-failure-handler';
 export const ESCALATING_FAILURE_DISABLED_CHOICE_VALUE = 'escalating-failure-disabled';
-export const MASC_HANDLER_ID = 'masc-handler';
-export const RADICAL_HEAT_SINK_HANDLER_ID = 'radical-heat-sink-handler';
-export const BLUE_SHIELD_HANDLER_ID = 'blue-shield-handler';
-export const RISC_EMERGENCY_COOLANT_SYSTEM_HANDLER_ID = 'risc-emergency-coolant-system-handler';
-export const RISC_VIRAL_JAMMER_HANDLER_ID = 'risc-viral-jammer-handler';
 
 export type ComponentEscalatingFailureKind =
     | 'masc'
@@ -257,19 +245,6 @@ export function canUseEscalatingFailure(
     return !definition.jetBooster || airborne === true;
 }
 
-export function escalatingFailureMovementMultiplierBonus(
-    runtime: CBTUnitInstance,
-    definition: ComponentEscalatingFailureDefinition,
-    airborne: boolean | null,
-    canProvidePassiveEffect: boolean,
-): number {
-    return componentEscalatingFailureFacts(runtime, definition).active
-        && canProvidePassiveEffect
-        && canUseEscalatingFailure(definition, airborne)
-        ? 0.5
-        : 0;
-}
-
 export function selectComponentEscalatingFailureSequence(
     runtime: CBTUnitInstance,
     definition: ComponentEscalatingFailureDefinition,
@@ -454,7 +429,7 @@ function replaceEscalatingFailureComponent(
     return new ImmutableIndex(components);
 }
 
-/** Shared lifecycle interaction; concrete equipment classes select one owned profile. */
+/** One lifecycle interaction for every component with an escalating-failure profile. */
 export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     readonly id: EquipmentInteractionHandlerId = ESCALATING_FAILURE_HANDLER_ID;
     readonly kind = 'escalating-failure';
@@ -469,9 +444,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
             input.componentId,
             input.ruleset,
         );
-        return this.applicableToComponentEscalatingFailure(definition)
-            ? this.getComponentEscalatingFailureChoices(input.runtime, definition, input.context)
-            : [];
+        return this.getComponentEscalatingFailureChoices(input.runtime, definition, input.context);
     }
 
     override select(
@@ -486,12 +459,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
             input.componentId,
             input.ruleset,
         );
-        return this.applicableToComponentEscalatingFailure(definition)
-            && this.handleComponentEscalatingFailureSelection(input.runtime, definition, choice, context);
-    }
-
-    applicableToComponentEscalatingFailure(_definition: ComponentEscalatingFailureDefinition): boolean {
-        return true;
+        return this.handleComponentEscalatingFailureSelection(input.runtime, definition, choice, context);
     }
 
     getComponentEscalatingFailureChoices(
@@ -538,72 +506,6 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
         return true;
     }
 
-    getComponentEscalatingFailureRunMovementMultiplierBonus(
-        _runtime: CBTUnitInstance,
-        _definition: ComponentEscalatingFailureDefinition,
-        _airborne: boolean | null,
-        _canProvidePassiveEffect: boolean,
-    ): number {
-        return 0;
-    }
-}
-
-export class MascHandler extends EscalatingFailureHandler {
-    override readonly id = MASC_HANDLER_ID;
-    override readonly flags = [MASC_FLAG] as const;
-
-    override applicableToComponentEscalatingFailure(definition: ComponentEscalatingFailureDefinition): boolean {
-        return definition.kind === 'masc';
-    }
-
-    override getComponentEscalatingFailureRunMovementMultiplierBonus(
-        runtime: CBTUnitInstance,
-        definition: ComponentEscalatingFailureDefinition,
-        airborne: boolean | null,
-        canProvidePassiveEffect: boolean,
-    ): number {
-        return escalatingFailureMovementMultiplierBonus(
-            runtime,
-            definition,
-            airborne,
-            canProvidePassiveEffect,
-        );
-    }
-}
-
-export class RadicalHeatSinkHandler extends EscalatingFailureHandler {
-    override readonly id = RADICAL_HEAT_SINK_HANDLER_ID;
-    override readonly flags = [RADICAL_HEAT_SINK_FLAG] as const;
-
-    override applicableToComponentEscalatingFailure(definition: ComponentEscalatingFailureDefinition): boolean {
-        return definition.kind === 'radical-heat-sink';
-    }
-}
-
-export class BlueShieldHandler extends EscalatingFailureHandler {
-    override readonly id = BLUE_SHIELD_HANDLER_ID;
-    override readonly flags = [BLUE_SHIELD_FLAG] as const;
-
-    override applicableToComponentEscalatingFailure(definition: ComponentEscalatingFailureDefinition): boolean {
-        return definition.kind === 'blue-shield';
-    }
-}
-
-export class RiscEmergencyCoolantSystemHandler extends EscalatingFailureHandler {
-    override readonly id = RISC_EMERGENCY_COOLANT_SYSTEM_HANDLER_ID;
-    override readonly flags = [EMERGENCY_COOLANT_SYSTEM_FLAG] as const;
-
-    override applicableToComponentEscalatingFailure(definition: ComponentEscalatingFailureDefinition): boolean {
-        return definition.kind === 'risc-emergency-coolant-system';
-    }
-}
-
-export class RiscViralJammerHandler extends EscalatingFailureHandler {
-    override readonly id = RISC_VIRAL_JAMMER_HANDLER_ID;
-
-    override applicableToComponentEscalatingFailure(definition: ComponentEscalatingFailureDefinition): boolean {
-        return definition.kind === 'risc-viral-jammer';
-    }
 }
 
 function isEscalatingFailureSequenceIndex(value: unknown): value is number {

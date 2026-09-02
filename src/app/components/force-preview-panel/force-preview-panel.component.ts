@@ -249,7 +249,7 @@ export interface ForcePreviewUnitMenuActionEvent {
                                             aria-label="Unit options"
                                             [cdkMenuTriggerFor]="unitMenu"
                                             #unitMenuTrigger="cdkMenuTriggerFor"
-                                            (click)="onUnitMenuClick($event, unitEntry)">
+                                            (click)="onUnitMenuClick($event)">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
                                         </button>
                                         <ng-template #unitMenu>
@@ -1069,7 +1069,7 @@ export class ForcePreviewPanelComponent {
         this.lockToggle()?.(loadForceUnit);
     }
 
-    onUnitMenuClick(event: Event, loadForceUnit: ForcePreviewUnit): void {
+    onUnitMenuClick(event: Event): void {
         event.stopPropagation();
     }
 

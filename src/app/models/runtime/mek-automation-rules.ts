@@ -76,10 +76,6 @@ export function twoD6Total(dice: readonly [number, number]): number {
     return dice[0] + dice[1];
 }
 
-export function succeedsOnTarget(total: number, target: number): boolean {
-    return Number.isInteger(total) && Number.isInteger(target) && total >= target;
-}
-
 /** Target to remain conscious after the current cumulative wound count. */
 export function mekConsciousnessTarget(wounds: number): number | undefined {
     const normalized = Math.max(0, Math.trunc(wounds));

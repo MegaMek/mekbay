@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { GameSystem, Rulebook, type RulesReference } from './common.model';
+import { Rulebook, type RulesReference } from './common.model';
 
 // ── Special Command Abilities (SCAs) ─────────────────────────────────────────
 

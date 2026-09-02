@@ -35,10 +35,13 @@ function createCatalogUnit(
     return unit;
 }
 
+function activateRuntimeCatalog(service: UnitRuntimeService, units: UnitSummary[]): void {
+    service.commitPreparedRuntimeCatalog(service.prepareRuntimeCatalog(units));
+}
+
 describe('UnitRuntimeService', () => {
     let service: UnitRuntimeService;
     const unitSearchIndexServiceMock = {
-        prepareUnits: jasmine.createSpy('prepareUnits'),
         rebuildTagSearchIndex: jasmine.createSpy('rebuildTagSearchIndex'),
     };
     const tagsServiceMock = {
@@ -49,7 +52,6 @@ describe('UnitRuntimeService', () => {
 
     beforeEach(() => {
         TestBed.resetTestingModule();
-        unitSearchIndexServiceMock.prepareUnits.calls.reset();
         unitSearchIndexServiceMock.rebuildTagSearchIndex.calls.reset();
         tagsServiceMock.getTagData.calls.reset();
         tagsServiceMock.migrateChassisTagsToVariantGroups.calls.reset();
@@ -73,7 +75,7 @@ describe('UnitRuntimeService', () => {
     it('retrieves units by name without matching case exactly', () => {
         const unit = createUnit('Mad Cat Prime');
 
-        service.preprocessUnits([unit]);
+        activateRuntimeCatalog(service, [unit]);
 
         expect(service.getUnitByName('Mad Cat Prime')).toBe(unit);
         expect(service.getUnitByName('mad cat prime')).toBe(unit);
@@ -84,7 +86,7 @@ describe('UnitRuntimeService', () => {
         const first = createCatalogUnit('Duplicate Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
         const second = createCatalogUnit('Duplicate Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d35678');
 
-        service.preprocessUnits([first, second]);
+        activateRuntimeCatalog(service, [first, second]);
 
         expect(service.getUnitsByName('duplicate name')).toEqual([first, second]);
         expect(service.getUnitByName('Duplicate Name')).toBeUndefined();
@@ -95,7 +97,7 @@ describe('UnitRuntimeService', () => {
     it('resolves a V1 UUID before a conflicting legacy name', () => {
         const requested = createCatalogUnit('Shared Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
         const collision = createCatalogUnit('Shared Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d35678');
-        service.preprocessUnits([collision, requested]);
+        activateRuntimeCatalog(service, [collision, requested]);
 
         const resolution = service.resolveUnitReference({
             unit: 'A stale legacy name is only evidence',
@@ -113,7 +115,7 @@ describe('UnitRuntimeService', () => {
     it('indexes summaries by UUID without a readiness facade', () => {
         const catalogOnly = createCatalogUnit('Static Emplacement', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
         const gameplayReady = createUnit('Gameplay Ready');
-        service.preprocessUnits([catalogOnly, gameplayReady]);
+        activateRuntimeCatalog(service, [catalogOnly, gameplayReady]);
 
         expect(service.getUnitByUuid(catalogOnly.uuid)).toBe(catalogOnly);
         expect(Object.prototype.hasOwnProperty.call(catalogOnly, 'readiness')).toBeFalse();
@@ -122,7 +124,7 @@ describe('UnitRuntimeService', () => {
 
     it('uses a legacy name only when it has exactly one catalog match', () => {
         const unique = createCatalogUnit('Unique Legacy Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
-        service.preprocessUnits([unique]);
+        activateRuntimeCatalog(service, [unique]);
 
         const resolution = service.resolveUnitReference({ unit: 'unique legacy name' });
 
@@ -136,7 +138,7 @@ describe('UnitRuntimeService', () => {
     it('defers ambiguous name-only state instead of selecting the first match', () => {
         const first = createCatalogUnit('Duplicate Legacy Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
         const second = createCatalogUnit('Duplicate Legacy Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d35678');
-        service.preprocessUnits([first, second]);
+        activateRuntimeCatalog(service, [first, second]);
 
         const resolution = service.resolveUnitReference({ unit: 'Duplicate Legacy Name' });
 
@@ -151,7 +153,7 @@ describe('UnitRuntimeService', () => {
         const sameNameWrongDesign = createCatalogUnit('Expected Name', '01890f3a-9d5b-7c24-8b2e-6f8a10d35678');
         const missing = createCatalogUnit('Missing', '01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
         const missingIdentity = { uuid: missing.uuid };
-        service.preprocessUnits([sameNameWrongDesign]);
+        activateRuntimeCatalog(service, [sameNameWrongDesign]);
 
         const resolution = service.resolveUnitReference({ unit: 'Expected Name', entityIdentity: missingIdentity });
 
@@ -170,7 +172,7 @@ describe('UnitRuntimeService', () => {
             '01890f3a-9d5b-7c24-8b2e-6f8a10d31234',
             asSourceHash('E'.repeat(27)),
         );
-        service.preprocessUnits([current]);
+        activateRuntimeCatalog(service, [current]);
 
         const resolution = service.resolveUnitReference({
             unit: 'Old Name',
@@ -196,7 +198,7 @@ describe('UnitRuntimeService', () => {
         ];
         units[0]._techBaseDisplay = 'Mixed (Clan)';
 
-        service.preprocessUnits(units);
+        activateRuntimeCatalog(service, units);
 
         expect(units.map(unit => unit._techBaseDisplay)).toEqual([
             'Inner Sphere',
@@ -204,7 +206,6 @@ describe('UnitRuntimeService', () => {
             'Mixed (Inner Sphere)',
             'Mixed (Clan)',
         ]);
-        expect(unitSearchIndexServiceMock.prepareUnits).toHaveBeenCalledOnceWith(units);
     });
 
     it('keeps exported source and published arrays available to search helpers', () => {
@@ -212,12 +213,11 @@ describe('UnitRuntimeService', () => {
         unit.source = ['TR:3039', 'TR:SW'];
         unit.published = ['RSFP:Wave 2', 'RS:Gothic'];
 
-        service.preprocessUnits([unit]);
+        activateRuntimeCatalog(service, [unit]);
 
         expect(unit.source).toEqual(['TR:3039', 'TR:SW']);
         expect(unit.published).toEqual(['RSFP:Wave 2', 'RS:Gothic']);
         expect(getProperty(unit, 'source')).toEqual(['TR:3039', 'TR:SW', 'RSFP:Wave 2', 'RS:Gothic']);
-        expect(unitSearchIndexServiceMock.prepareUnits).toHaveBeenCalledOnceWith([unit]);
     });
 
     it('links equipment recursively through canonical registry aliases', () => {

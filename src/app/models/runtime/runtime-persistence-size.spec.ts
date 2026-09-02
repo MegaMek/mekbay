@@ -6,9 +6,9 @@ import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
-    emptySerializedEncounterV2,
     validateSerializedCBTForceV2,
     type SerializedCBTForceV2,
+    type SerializedForceEncounterEntryV2,
 } from './persistence-v2';
 import { RUNTIME_HISTORY_MESSAGE, type SerializedRuntimeHistory } from './runtime-history';
 import { CBTNonMekUnit } from './cbt-non-mek-unit';
@@ -16,6 +16,13 @@ import { TestTankEntity } from '../entity/testing/test-entities';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { GameSystem } from '../common.model';
 import { encodeForceForStorage } from './force-storage-codec';
+
+function emptySerializedEncounterV2(): SerializedForceEncounterEntryV2 {
+    return {
+        encounterRevision: 0,
+        state: { schemaVersion: 2, encounterRevision: 0, facts: [] },
+    };
+}
 
 describe('compact runtime persistence', () => {
     it('does not copy pristine Mek topology into sparse state', async () => {

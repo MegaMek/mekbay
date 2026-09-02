@@ -3,9 +3,8 @@
 // Author: Drake
 
 import type { MountedArmor } from '../components/armor';
-import type { GyroType } from '../components/gyro-data';
-import type { AeroCockpitType, AeroDesignType, DriveCoreType, DropShipCollarType, CockpitType, ArmorType, EngineType } from '../types';
-import { createCompoundTechLevel, type ComponentTechLevel, type CompoundTechLevel, type EntityTechBase, type TechRating } from '../types/tech';
+import type { AeroCockpitType, AeroDesignType, DriveCoreType, DropShipCollarType, ArmorType, EngineType } from '../types';
+import type { ComponentTechLevel, CompoundTechLevel, EntityTechBase, TechRating } from '../types/tech';
 import type { HeatSinkType } from '../types/heat-sink';
 
 export interface BlkTechLevel {
@@ -24,7 +23,7 @@ export function decodeBlkTechRating(code: number): TechRating {
   return TECH_RATING_FROM_BLK_CODE[code] ?? 'C';
 }
 
-export function encodeBlkCompoundTechLevel(
+function encodeBlkCompoundTechLevel(
   technology: CompoundTechLevel,
 ): number {
   if (technology.scope === 'Allowed All') return -2;
@@ -109,13 +108,6 @@ export function encodeBlkTechLevel(techLevel: BlkTechLevel): string {
   return `${techLevel.techBase === 'Clan' ? 'Clan' : 'IS'} Level ${techLevel.rulesLevel}`;
 }
 
-export function encodeBlkRulesLevel(rulesLevel: number, isClan: boolean): number {
-  return encodeBlkCompoundTechLevel(createCompoundTechLevel(
-    componentTechLevelFromRulesLevel(rulesLevel),
-    isClan ? 'Clan' : 'IS',
-  ));
-}
-
 const HEAT_SINK_TYPE_FROM_BLK_CODE: Readonly<Record<number, HeatSinkType>> = {
   0: 'Single',
   1: 'Double',
@@ -157,19 +149,6 @@ const ENGINE_TYPE_TO_BLK_CODE: Readonly<Record<EngineType, number>> = {
   Fission: 7, None: 8, Maglev: 9, Steam: 10, Battery: 11, Solar: 12, External: 13,
 };
 
-const COCKPIT_TYPE_TO_BLK_CODE: Readonly<Record<CockpitType, number>> = {
-  Standard: 0, Small: 1, 'Command Console': 2, 'Torso-Mounted': 3, Dual: 4,
-  Industrial: 5, Primitive: 6, 'Primitive Industrial': 7, Superheavy: 8,
-  'Superheavy Tripod': 9, Tripod: 10, Interface: 11,
-  'Virtual Reality Piloting Pod': 12, QuadVee: 13, 'Superheavy Industrial': 14,
-  'Superheavy Command Console': 15, 'Small Command Console': 16,
-  'Tripod Industrial': 17, 'Superheavy Tripod Industrial': 18,
-};
-
-const GYRO_TYPE_TO_BLK_CODE: Readonly<Record<GyroType, number>> = {
-  Standard: 0, XL: 1, Compact: 2, 'Heavy Duty': 3, None: 4, Superheavy: 5,
-};
-
 const DRIVE_CORE_TYPE_TO_BLK_CODE: Readonly<Record<DriveCoreType, number>> = {
   Standard: 0, Compact: 1, Subcompact: 2, None: 3, Primitive: 4,
 };
@@ -187,14 +166,12 @@ function invertCodeMap<T extends string>(
 }
 
 export const ENGINE_TYPE_FROM_BLK_CODE = invertCodeMap(ENGINE_TYPE_TO_BLK_CODE);
-const COCKPIT_TYPE_FROM_BLK_CODE = invertCodeMap(COCKPIT_TYPE_TO_BLK_CODE);
 const AERO_COCKPIT_TYPE_FROM_BLK_CODE: Readonly<Record<number, AeroCockpitType>> = {
   0: 'Standard', 1: 'Small', 2: 'Command Console', 3: 'Primitive',
 };
 const AERO_COCKPIT_TYPE_TO_BLK_CODE: Readonly<Record<AeroCockpitType, number>> = {
   Standard: 0, Small: 1, 'Command Console': 2, Primitive: 3,
 };
-const GYRO_TYPE_FROM_BLK_CODE = invertCodeMap(GYRO_TYPE_TO_BLK_CODE);
 const DRIVE_CORE_TYPE_FROM_BLK_CODE = invertCodeMap(DRIVE_CORE_TYPE_TO_BLK_CODE);
 const DROP_SHIP_COLLAR_TYPE_FROM_BLK_CODE = invertCodeMap(DROP_SHIP_COLLAR_TYPE_TO_BLK_CODE);
 
@@ -226,22 +203,6 @@ export function encodeBlkEngineType(type: EngineType): number {
   return ENGINE_TYPE_TO_BLK_CODE[type] ?? 0;
 }
 
-export function decodeBlkCockpitType(code: number): CockpitType {
-  return COCKPIT_TYPE_FROM_BLK_CODE[code] ?? 'Standard';
-}
-
-export function encodeBlkCockpitType(type: CockpitType): number {
-  return COCKPIT_TYPE_TO_BLK_CODE[type] ?? 0;
-}
-
-export function decodeBlkGyroType(code: number): GyroType {
-  return GYRO_TYPE_FROM_BLK_CODE[code] ?? 'Standard';
-}
-
-export function encodeBlkGyroType(type: GyroType): number {
-  return GYRO_TYPE_TO_BLK_CODE[type] ?? 0;
-}
-
 export function decodeBlkAeroDesignType(code: number): AeroDesignType {
   return code === 1 ? 'Military' : 'Civilian';
 }
@@ -264,18 +225,6 @@ export function decodeBlkDropShipCollarType(code: number): DropShipCollarType {
 
 export function encodeBlkDropShipCollarType(type: DropShipCollarType): number {
   return DROP_SHIP_COLLAR_TYPE_TO_BLK_CODE[type] ?? -1;
-}
-
-export function getBlkMekHeatSinkEquipmentId(
-  type: HeatSinkType,
-  techBase: EntityTechBase,
-): string {
-  switch (type) {
-    case 'Double': return techBase === 'Clan' ? 'CLDoubleHeatSink' : 'ISDoubleHeatSink';
-    case 'Compact': return '1 Compact Heat Sink';
-    case 'Laser': return 'Laser Heat Sink';
-    default: return 'Heat Sink';
-  }
 }
 
 export function encodeBlkArmorType(armor: MountedArmor | ArmorType): number {

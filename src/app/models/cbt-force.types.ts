@@ -15,10 +15,7 @@ import type {
     EquipmentInteractionHandlerId,
     EquipmentInteractionKind,
 } from './runtime/equipment-interaction';
-import type {
-    EncounterTargetId,
-    TargetRegistrySnapshot,
-} from './runtime/encounter-runtime';
+import type { EncounterTargetId } from './runtime/encounter-runtime';
 import type { SerializedEncounterTargetCalculatorV2 } from './runtime/persistence-v2';
 import type { MekUnitRuntimeState } from './runtime/runtime-state';
 import type { NonMekUnitRuntimeState } from './runtime/non-mek-unit-instance';

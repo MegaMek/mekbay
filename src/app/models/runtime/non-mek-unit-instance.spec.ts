@@ -15,7 +15,7 @@ import {
 import {
     asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
-import { CORE_2026_RULESET } from '../cbt-ruleset.model';
+import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../cbt-ruleset.model';
 import type { BaseEntity } from '../entity/base-entity';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
@@ -1070,6 +1070,44 @@ describe('NonMekUnitInstance', () => {
             UMU: 0,
             VTOL: 0,
         });
+    });
+
+    it('preserves the Total Warfare Blue Shield exemption for aerospace fighters', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        const blueShield = addTestEquipmentWithFlags(fighter, 'F_BLUE_SHIELD', { location: 'Nose' });
+        const componentId = componentIdForMount(blueShield);
+        const totalWarfare = new NonMekUnitInstance(
+            'unit:tw-blue-shield',
+            Object.freeze({ ...baseline(), ruleset: TOTAL_WARFARE_RULESET }),
+            fighter,
+            TOTAL_WARFARE_RULESET,
+        );
+
+        expect(projectNonMekEscalatingFailureInteractions(
+            fighter,
+            totalWarfare.getIndex(),
+            totalWarfare.snapshot(),
+            TOTAL_WARFARE_RULESET,
+        )).toEqual([]);
+        expect(totalWarfare.dispatch({
+            kind: 'edit-escalating-failure',
+            componentId,
+            edit: { kind: 'select-sequence', index: 0 },
+        }).changed).toBeFalse();
+
+        const core = new NonMekUnitInstance(
+            'unit:core-blue-shield',
+            baseline(),
+            fighter,
+            CORE_2026_RULESET,
+        );
+        expect(projectNonMekEscalatingFailureInteractions(
+            fighter,
+            core.getIndex(),
+            core.snapshot(),
+            CORE_2026_RULESET,
+        ).length).toBe(1);
     });
 
     it('keeps component hits pending and configures compatible non-Mek ammunition atomically', () => {

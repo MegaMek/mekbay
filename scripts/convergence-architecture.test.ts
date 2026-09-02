@@ -62,6 +62,16 @@ for (const path of deletedPaths) {
     assert.equal(existsSync(join(root, path)), false, `${path} must stay deleted`);
 }
 
+const requiredCompatibilityAndOraclePaths = [
+    'scripts/compare-entity-output.ts',
+    'scripts/compare-unit-output.ts',
+    'scripts/verify-entity-roundtrip.ts',
+    'src/app/models/runtime/legacy-force-v1-converter.ts',
+];
+for (const path of requiredCompatibilityAndOraclePaths) {
+    assert.equal(existsSync(join(root, path)), true, `${path} is a required compatibility/oracle surface`);
+}
+
 const production = filesBelow(app).filter(path => !path.endsWith('.spec.ts'));
 const facadeFiles = production.filter(path =>
     /(?:^|[-_.])facade(?:[-_.]|$)/iu.test(display(path)));

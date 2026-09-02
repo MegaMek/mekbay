@@ -16,7 +16,6 @@ import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { ForceBuilderService } from './force-builder.service';
 import { ForceImportService } from './force-import.service';
 import { ForceWorkspaceCommandsService } from './force-workspace-commands.service';
-import { ForceUrlStateService } from './force-url-state.service';
 import { ForceDialogsService } from './force-dialogs.service';
 import { ForceRemoteSyncService } from './force-remote-sync.service';
 import { ForceSlotLifecycleService } from './force-slot-lifecycle.service';
@@ -1251,35 +1250,6 @@ describe('ForceBuilderService remote force updates', () => {
             'The force could not be saved. It was not removed.',
             'error',
         );
-    });
-
-    it('does not load URL force parameters when replacement clearing is cancelled', async () => {
-        const service = Object.create(ForceUrlStateService.prototype) as any;
-        service.workspace = { clear: jasmine.createSpy('clear').and.resolveTo(false) };
-        service.loadForceParamsCore = jasmine.createSpy('loadForceParamsCore').and.resolveTo(true);
-
-        expect(await service.loadForceFromUrlParams(
-            new URLSearchParams('instance=force-from-url'),
-            'replace',
-        )).toBeFalse();
-
-        expect(service.loadForceParamsCore).not.toHaveBeenCalled();
-    });
-
-    it('detaches URL force parameters before awaiting replacement clearing', async () => {
-        const service = Object.create(ForceUrlStateService.prototype) as any;
-        const clearGate = deferred<boolean>();
-        service.workspace = { clear: jasmine.createSpy('clear').and.returnValue(clearGate.promise) };
-        service.loadForceParamsCore = jasmine.createSpy('loadForceParamsCore').and.resolveTo(true);
-        const params = new URLSearchParams('instance=submitted-force');
-
-        const load = service.loadForceFromUrlParams(params, 'replace');
-        params.set('instance', 'mutated-force');
-        clearGate.resolve(true);
-        expect(await load).toBeTrue();
-
-        const submitted = service.loadForceParamsCore.calls.mostRecent().args[0] as URLSearchParams;
-        expect(submitted.get('instance')).toBe('submitted-force');
     });
 
 });

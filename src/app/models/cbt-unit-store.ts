@@ -15,7 +15,6 @@ import {
     type SerializedCBTForceV2,
     type SerializedCBTUnitV2,
 } from './runtime/persistence-v2';
-import { type MekUnitRuntimeState } from './runtime/runtime-state';
 import { CBTUnitService } from '../services/cbt-unit.service';
 import { CBTMekUnit } from './runtime/cbt-mek-unit';
 import { isCBTNonMekUnit, isCBTMekUnit, type CBTTargetingReconciliation, type CBTUnit } from './runtime/cbt-unit';
@@ -32,8 +31,6 @@ import {
     type CrewAssignment,
     type CrewAssignmentPosition,
 } from './runtime/crew-assignment';
-import type { ComponentId } from './entity/entity-identifiers';
-import type { MekEntity } from './entity/entities/mek/mek-entity';
 import {
     projectNonMekEscalatingFailureInteractions,
     type NonMekUnitCommand,
@@ -68,7 +65,6 @@ import type {
     CBTForceEndTurnAllResult,
     CBTForceEndTurnUnitResult,
     CBTMekUnitCommandResult,
-    C3State,
     InventoryControlTargetRosterRow,
     CBTEquipmentChoice,
     CBTEquipmentChoiceCommand,

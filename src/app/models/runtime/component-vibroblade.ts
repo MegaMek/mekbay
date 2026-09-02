@@ -5,7 +5,6 @@ import type { PickerChoice } from '../../components/picker/picker.interface';
 import { getVibrobladeProfileFromFlags } from '../rules/vibroblade-rules';
 import {
     isVibrobladeMode,
-    VIBROBLADE_MODES,
     VIBROBLADE_OFF_MODE,
     VIBROBLADE_ON_MODE,
 } from '../vibroblade-mode.model';

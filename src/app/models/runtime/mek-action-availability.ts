@@ -105,7 +105,7 @@ export function canPerformMekAction(
             case 'physical-attack':
                 if (!isPhysicalTarget(resolved)) return true;
                 if (physicalMovementUnavailable(runtime, resolved)) return false;
-                return physicalTargetAvailable(entity, index, runtime, resolved);
+                return physicalTargetAvailable(index, runtime, resolved);
             case 'activate':
             case 'change-mode':
             case 'provide-passive-effect':
@@ -198,7 +198,6 @@ function physicalMovementUnavailable(runtime: MekActionRuntimePort, target: Reso
 }
 
 function physicalTargetAvailable(
-    entity: MekEntity,
     index: MekRuntimeIndex,
     runtime: MekActionRuntimePort,
     target: ResolvedTarget,
@@ -376,5 +375,3 @@ function componentBayFirePermission(
     if (bay.kind === 'weapon-bay') return false;
     return controllerStatus !== 'available' || controllerMode === 'Off';
 }
-
-export const mekActionAvailabilityInternals = Object.freeze({ mekCanFire });

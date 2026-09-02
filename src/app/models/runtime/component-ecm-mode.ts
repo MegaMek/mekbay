@@ -5,11 +5,9 @@ import { ECMMode } from '../common.model';
 import {
     ANGEL_ECM_FLAG,
     ECM_FLAG,
-    ecmEquipmentModes,
     ecmModeLabel,
     ecmModes,
     isECMMode,
-    isEcmEquipment,
 } from '../ecm-mode.model';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import type { ComponentId } from '../entity/entity-identifiers';
@@ -21,7 +19,6 @@ import {
     type EquipmentInteractionChoice,
     type EquipmentInteractionCommandContext,
     type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 import type { CBTUnitInstance } from './unit-instance';
 import { effectiveEcmMode, isNovaCewsFlags } from './component-electronic-suite';
@@ -79,10 +76,6 @@ export function componentEcmModeDefinition(
     });
 }
 
-export function componentEcmActive(mode: ECMMode): boolean {
-    return mode !== ECMMode.OFF;
-}
-
 export { ecmEquipmentModes, isEcmEquipment } from '../ecm-mode.model';
 
 function sameModes(actual: readonly string[], expected: readonly ECMMode[]): boolean {
@@ -118,16 +111,6 @@ export class ECMHandler extends EquipmentInteractionHandler {
     applicableToComponentEcmMode(definition: ComponentEcmModeDefinition): boolean {
         return definition.flags.has(ECM_FLAG)
             && !isNovaCewsFlags(definition.flags);
-    }
-
-    getComponentEcmModeChoices(
-        runtime: CBTUnitInstance,
-        definition: ComponentEcmModeDefinition,
-        _context: EquipmentInteractionQueryContext,
-    ): EquipmentInteractionChoice[] {
-        const mode = runtime.query().componentMode(definition.componentId);
-        if (!isECMMode(mode) || !definition.modes.includes(mode)) return [];
-        return this.choicesForMode(definition, mode);
     }
 
     private choicesForMode(

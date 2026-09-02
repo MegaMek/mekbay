@@ -159,7 +159,6 @@ describe('DbService blocked database upgrade', () => {
 
         resolveChoice('continue');
         await ready;
-        expect(service.isDegraded()).toBeTrue();
     });
 });
 

@@ -27,7 +27,6 @@ import {
     type C3EmergencyMasterOperatingTurns,
     type C3EmergencyMasterRuntimeState,
     type ComponentRuntimeState,
-    type CriticalSlotRuntimeState,
     type EscalatingFailureRuntimeState,
     type InstanceBaselineRef,
     type LocationRuntimeState,
@@ -220,7 +219,6 @@ import {
     createMekTorsoCripplingRuleCheckTokenV2,
     MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
     type MekDamageStateViewV2,
-    type MekDestructionFactsV2,
     type MekRuleCheckKeyV2,
     type MekRuleCheckOutcomeV2,
     type MekRuleCheckStateV2,
@@ -966,7 +964,6 @@ export class CBTUnitInstance {
                 locationId: LocationId,
                 target: 'committed' | 'pending',
             ) => projectMekCriticalRollProfileV2(
-                unit.entity,
                 unit.index,
                 unit.ruleset,
                 criticalView(),

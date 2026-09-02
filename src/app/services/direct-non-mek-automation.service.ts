@@ -539,8 +539,6 @@ export class DirectNonMekAutomationService {
         if (command.kind === 'set-crew-state'
             && before && hasNonMekRuntime(before) && after
             && !await this.recordCrewRecoveryTransition(
-                force,
-                instanceId,
                 before as NonMekSnapshot,
                 after,
                 command.positionId,
@@ -563,7 +561,7 @@ export class DirectNonMekAutomationService {
         const rows = requests.map(request => {
             const snapshot = this.nonMekSnapshot(force, request.instanceId);
             const recoveries = snapshot
-                ? this.stageCrewRecoveries(snapshot, request.command)
+                ? this.stageCrewRecoveries(snapshot)
                 : Object.freeze([]);
             return Object.freeze({ request, snapshot, recoveries });
         });
@@ -596,7 +594,6 @@ export class DirectNonMekAutomationService {
             const control = this.stageControlRecovery(
                 force,
                 row.snapshot as AeroSnapshot,
-                row.request.command,
                 recoveredPositions,
             );
             if (!control) return [];
@@ -677,7 +674,6 @@ export class DirectNonMekAutomationService {
 
     private stageCrewRecoveries(
         snapshot: NonMekSnapshot,
-        command: Extract<NonMekUnitCommand, { readonly kind: 'end-phase' }>,
     ): readonly StagedNonMekCrewRecovery[] {
         const positions = [...snapshot.index.crewPositions.values()]
             .sort((left, right) => left.occurrence - right.occurrence);
@@ -711,7 +707,6 @@ export class DirectNonMekAutomationService {
     private stageControlRecovery(
         force: CBTForce,
         snapshot: AeroSnapshot,
-        command: Extract<NonMekUnitCommand, { readonly kind: 'end-phase' }>,
         recoveredPositions: ReadonlySet<CrewPositionId>,
     ): StagedNonMekControlRecovery | null {
         const workflow = snapshot.state.turn.controlRecovery;
@@ -1260,8 +1255,6 @@ export class DirectNonMekAutomationService {
     }
 
     private async recordCrewRecoveryTransition(
-        force: CBTForce,
-        instanceId: string,
         before: NonMekSnapshot,
         after: NonMekSnapshot,
         positionId: CrewPositionId,

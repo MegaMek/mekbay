@@ -527,11 +527,6 @@ export const ADVANCED_FILTERS: AdvFilterConfig[] = [
 
 export const MEGAMEK_RARITY_PRODUCTION_SORT_KEY = 'mmRarityRequisition';
 export const MEGAMEK_RARITY_SALVAGE_SORT_KEY = 'mmRaritySalvage';
-export const MEGAMEK_RARITY_SORT_KEYS = [
-    MEGAMEK_RARITY_PRODUCTION_SORT_KEY,
-    MEGAMEK_RARITY_SALVAGE_SORT_KEY,
-] as const;
-
 export function isMegaMekRaritySortKey(key: string | null | undefined): key is MegaMekRaritySortKey {
     return key === MEGAMEK_RARITY_PRODUCTION_SORT_KEY || key === MEGAMEK_RARITY_SALVAGE_SORT_KEY;
 }

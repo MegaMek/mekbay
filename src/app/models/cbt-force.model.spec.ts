@@ -19,11 +19,11 @@ import {
     CBT_FORCE_MINIMUM_WRITER_VERSION,
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
-    emptySerializedEncounterV2,
     emptyRuntimeHistory,
     encounterNetworkFactId,
     type SerializedCBTUnitV2,
     type SerializedCBTForceV2,
+    type SerializedForceEncounterEntryV2,
 } from './runtime/persistence-v2';
 import { asEncounterNetworkId, asEncounterTargetId, type EncounterNetwork } from './runtime/encounter-runtime';
 import { RUNTIME_HISTORY_MESSAGE } from './runtime/runtime-history';
@@ -56,6 +56,13 @@ const dataService = {
 const injector = {
     get: () => jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
 } as unknown as Injector;
+
+function emptySerializedEncounterV2(): SerializedForceEncounterEntryV2 {
+    return {
+        encounterRevision: 0,
+        state: { schemaVersion: 2, encounterRevision: 0, facts: [] },
+    };
+}
 
 function directForceRecord(): SerializedCBTForce {
     const forceId = asForceId('force:encounter');

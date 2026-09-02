@@ -3,7 +3,7 @@
 
 import { InventoryModeHandler } from '../models/runtime/component-inventory-mode';
 import { UACJammingHandler } from '../models/runtime/component-rapid-fire-autocannon';
-import { RiscViralJammerHandler } from '../models/runtime/component-escalating-failure';
+import { EscalatingFailureHandler } from '../models/runtime/component-escalating-failure';
 import { emptyCBTEncounterSnapshot } from '../models/runtime/encounter-runtime';
 import {
     createDirectEscalatingFailureRuntimeFixture,
@@ -71,10 +71,10 @@ describe('EquipmentInteractionRegistry direct V2 boundary', () => {
         expect(() => registry.register(new UACJammingHandler())).toThrowError(/already registered/u);
     });
 
-    it('offers viral-jammer choices only for viral-jammer equipment', () => {
+    it('offers every escalating-failure family through one registered behavior', () => {
         const fixture = createDirectEscalatingFailureRuntimeFixture(TOTAL_WARFARE_RULESET);
         const registry = new EquipmentInteractionRegistry();
-        registry.register(new RiscViralJammerHandler());
+        registry.register(new EscalatingFailureHandler());
 
         const choices = registry.choices(
             fixture.instance,
@@ -85,12 +85,17 @@ describe('EquipmentInteractionRegistry direct V2 boundary', () => {
             {},
         );
 
-        expect(choices.length).toBeGreaterThan(0);
-        expect(choices.every(choice => {
+        const equipmentIds = new Set(choices.flatMap(choice => {
             const component = fixture.index.components.get(choice.componentId);
-            return component?.kind === 'equipment'
-                && component.mount.equipmentId === 'Test RISC Viral Jammer';
-        })).toBeTrue();
+            return component?.kind === 'equipment' ? [component.mount.equipmentId] : [];
+        }));
+        expect(equipmentIds).toEqual(new Set([
+            'Test MASC',
+            'Test Radical Heat Sink',
+            'Test Blue Shield',
+            'Test RISC Emergency Coolant',
+            'Test RISC Viral Jammer',
+        ]));
     });
 });
 

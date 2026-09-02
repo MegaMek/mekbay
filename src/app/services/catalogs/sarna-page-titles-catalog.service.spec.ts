@@ -119,6 +119,5 @@ describe('SarnaPageTitlesCatalogService', () => {
         await initializeFromCache();
 
         expect(service.getPageTitleForUnit({ chassis: 'Not A Sarna Page', type: 'Mek' })).toBeUndefined();
-        expect(service.hasPageForUnit({ chassis: 'Not A Sarna Page', type: 'Mek' })).toBeFalse();
     });
 });

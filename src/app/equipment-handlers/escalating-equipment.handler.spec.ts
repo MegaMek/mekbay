@@ -18,11 +18,7 @@ import type {
     EquipmentInteractionQueryContext,
 } from '../models/runtime/equipment-interaction';
 import {
-    BlueShieldHandler,
     EscalatingFailureHandler,
-    RadicalHeatSinkHandler,
-    RiscEmergencyCoolantSystemHandler,
-    RiscViralJammerHandler,
 } from '../models/runtime/component-escalating-failure';
 
 describe('additional escalating-failure handlers with direct V2 runtime', () => {
@@ -30,22 +26,22 @@ describe('additional escalating-failure handlers with direct V2 runtime', () => 
         const core = createDirectEscalatingFailureRuntimeFixture('core-2026');
         const tw = createDirectEscalatingFailureRuntimeFixture('total-warfare');
 
-        expect(labels(core, 'Test Radical Heat Sink', new RadicalHeatSinkHandler()))
+        expect(labels(core, 'Test Radical Heat Sink', new EscalatingFailureHandler()))
             .toEqual(['3+', '5+', '7+', '10+', '11+']);
-        expect(labels(tw, 'Test Radical Heat Sink', new RadicalHeatSinkHandler()))
+        expect(labels(tw, 'Test Radical Heat Sink', new EscalatingFailureHandler()))
             .toEqual(['3+', '5+', '7+', '10+', '11+', '!!']);
-        expect(labels(core, 'Test Blue Shield', new BlueShieldHandler()))
+        expect(labels(core, 'Test Blue Shield', new EscalatingFailureHandler()))
             .toEqual(['1', '2', '3', '4', '5', '3+', '5+', '7+', '10+', '11+']);
-        expect(labels(tw, 'Test Blue Shield', new BlueShieldHandler()).length).toBe(17);
-        expect(labels(tw, 'Test RISC Emergency Coolant', new RiscEmergencyCoolantSystemHandler()))
+        expect(labels(tw, 'Test Blue Shield', new EscalatingFailureHandler()).length).toBe(17);
+        expect(labels(tw, 'Test RISC Emergency Coolant', new EscalatingFailureHandler()))
             .toEqual(['3+', '5+', '7+', '10+', '!!']);
-        expect(labels(tw, 'Test RISC Viral Jammer', new RiscViralJammerHandler()))
+        expect(labels(tw, 'Test RISC Viral Jammer', new EscalatingFailureHandler()))
             .toEqual(['4+', '5+', '6+', '7+', '8+', '9+', '10+', '11+', '12+', '!!']);
     });
 
     it('reuses the final target and applies recovery only to systems that recover', () => {
         const fixture = createDirectEscalatingFailureRuntimeFixture();
-        const blue = setup(fixture, 'Test Blue Shield', new BlueShieldHandler());
+        const blue = setup(fixture, 'Test Blue Shield', new EscalatingFailureHandler());
         for (let index = 0; index < blue.definition.targets.length; index += 1) {
             expect(selectComponentEscalatingFailureSequence(blue.runtime, blue.definition, index).accepted).toBeTrue();
         }
@@ -59,7 +55,7 @@ describe('additional escalating-failure handlers with direct V2 runtime', () => 
         endTurn(blue, 'blue:no-recovery');
         expect(componentEscalatingFailureFacts(blue.runtime, blue.definition).sequence).toBe(10);
 
-        const coolant = setup(fixture, 'Test RISC Emergency Coolant', new RiscEmergencyCoolantSystemHandler());
+        const coolant = setup(fixture, 'Test RISC Emergency Coolant', new EscalatingFailureHandler());
         expect(selectComponentEscalatingFailureSequence(coolant.runtime, coolant.definition, 0).accepted).toBeTrue();
         expect(selectComponentEscalatingFailureSequence(coolant.runtime, coolant.definition, 0).accepted).toBeTrue();
         expect(endTurn(coolant, 'coolant:recovery')).toBeTrue();
@@ -68,7 +64,7 @@ describe('additional escalating-failure handlers with direct V2 runtime', () => 
 
     it('adds active Radical Heat Sink cooling in the heat kernel', () => {
         const fixture = createDirectEscalatingFailureRuntimeFixture();
-        const radical = setup(fixture, 'Test Radical Heat Sink', new RadicalHeatSinkHandler());
+        const radical = setup(fixture, 'Test Radical Heat Sink', new EscalatingFailureHandler());
         const before = fixture.instance.query().heatProjection('automatic');
         expect(before.kind).toBe('supported');
 
@@ -89,7 +85,7 @@ describe('additional escalating-failure handlers with direct V2 runtime', () => 
 
     it('adds committed coolant leaks for movement and selected weapons', () => {
         const fixture = createDirectEscalatingFailureRuntimeFixture();
-        const coolant = setup(fixture, 'Test RISC Emergency Coolant', new RiscEmergencyCoolantSystemHandler());
+        const coolant = setup(fixture, 'Test RISC Emergency Coolant', new EscalatingFailureHandler());
         expect(setComponentEscalatingFailureStatus(coolant.runtime, coolant.definition, 'disabled').accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'declare-mek-movement',
@@ -120,7 +116,7 @@ describe('additional escalating-failure handlers with direct V2 runtime', () => 
 
     it('adds active Viral Jammer heat and retains its sequence when unused', () => {
         const fixture = createDirectEscalatingFailureRuntimeFixture();
-        const viral = setup(fixture, 'Test RISC Viral Jammer', new RiscViralJammerHandler());
+        const viral = setup(fixture, 'Test RISC Viral Jammer', new EscalatingFailureHandler());
         expect(selectComponentEscalatingFailureSequence(viral.runtime, viral.definition, 0).accepted).toBeTrue();
 
         const projection = fixture.instance.query().heatProjection('automatic');

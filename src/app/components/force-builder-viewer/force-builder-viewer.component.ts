@@ -18,7 +18,7 @@ import { OptionsService } from '../../services/options.service';
 import { buildEraWarningMessage, type Force, UnitGroup } from '../../models/force.model';
 import type { ForceSlot } from '../../models/force-slot.model';
 import type { ForceUnit } from '../../models/force-unit.model';
-import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop'
+import { DragDropModule, type CdkDragDrop } from '@angular/cdk/drag-drop'
 import { DialogsService } from '../../services/dialogs.service';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { UnitBlockComponent, type UnitBlockPilotEditEvent } from '../unit-block/unit-block.component';
@@ -34,9 +34,7 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
 import { MULFACTION_EXTINCT } from '../../models/mulfactions.model';
 import {
     isCBTForceMember,
-    isCBTMekForceMember,
     type CBTForceMember,
-    type CBTMekForceMember,
     type ForceMember,
 } from '../../models/force-member.model';
 import { CBTForce } from '../../models/cbt-force.model';
@@ -75,6 +73,7 @@ export class ForceBuilderViewerComponent {
     protected readonly lobbyService = inject(LobbyService);
     private unitAvailabilitySource = inject(UnitAvailabilitySourceService);
     private scrollableContent = viewChild<ElementRef<HTMLDivElement>>('scrollableContent');
+    protected readonly newGroupDropData: ForceMember[] = [];
 
     forceUnitItems = viewChildren<ElementRef<HTMLElement>>('forceUnitItem');
     private forceSlotHeaders = viewChildren<ElementRef<HTMLElement>>('forceSlotHeader');
@@ -345,7 +344,7 @@ export class ForceBuilderViewerComponent {
         const unitList = force.units();
         if (!unitList) return;
         const unitIndex = unitList.findIndex(u => u.id === unit.id);
-        const ref = this.dialogsService.createDialog(UnitDetailsDialogComponent, {
+        this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
                 unitList: force.units,
                 unitIndex: unitIndex
@@ -391,7 +390,7 @@ export class ForceBuilderViewerComponent {
         });
     }
 
-    onUnitDragMoved(event: CdkDragMove<unknown>) {
+    onUnitDragMoved() {
         const scrollRef = this.scrollableContent?.();
         if (!scrollRef) {
             this.stopAutoScrollLoop();
@@ -743,7 +742,7 @@ export class ForceBuilderViewerComponent {
         return ids;
     });
 
-    async dropForNewGroup(event: CdkDragDrop<any, any, any>) {
+    async dropForNewGroup(event: CdkDragDrop<ForceMember[], ForceMember[], unknown>) {
         // Determine target force from the per-force dropzone container ID
         const containerId = event.container.id;
         const prefix = 'new-group-dropzone-';

@@ -13,7 +13,6 @@ export type SourceHash = Branded<string, 'SourceHash'>;
 export type UnitFileName = Branded<string, 'UnitFileName'>;
 export type DesignIdentityKey = Branded<string, 'DesignIdentityKey'>;
 export type CatalogActivationId = Branded<string, 'CatalogActivationId'>;
-export type CatalogCandidateId = Branded<string, 'CatalogCandidateId'>;
 
 export type NativeUnitFormat = 'mtf' | 'blk';
 export type CatalogEntryOrigin = 'megamek' | 'user';
@@ -92,13 +91,6 @@ export function asCatalogActivationId(value: string): CatalogActivationId {
     return value as CatalogActivationId;
 }
 
-export function asCatalogCandidateId(value: string): CatalogCandidateId {
-    if (!/^[A-Za-z0-9_-]{1,128}$/u.test(value)) {
-        throw new Error(`Invalid catalog candidate ID: ${value}`);
-    }
-    return value as CatalogCandidateId;
-}
-
 export function parseUnitFileName(value: string): {
     readonly file: UnitFileName;
     readonly uuid: UnitUuid;
@@ -125,37 +117,6 @@ export function encodeDesignIdentity(identity: DesignIdentity): DesignIdentityKe
     return `${provider.length}:${provider}${uuid.length}:${uuid}` as DesignIdentityKey;
 }
 
-export function decodeDesignIdentityKey(key: string): DesignIdentity {
-    let cursor = 0;
-    const readPart = (): string => {
-        const separator = key.indexOf(':', cursor);
-        if (separator <= cursor) {
-            throw new Error('Invalid length-prefixed design identity key');
-        }
-        const lengthText = key.slice(cursor, separator);
-        if (!/^(?:0|[1-9][0-9]*)$/u.test(lengthText)) {
-            throw new Error('Invalid design identity key length');
-        }
-        const length = Number(lengthText);
-        const start = separator + 1;
-        const end = start + length;
-        if (!Number.isSafeInteger(length) || end > key.length) {
-            throw new Error('Invalid design identity key bounds');
-        }
-        cursor = end;
-        return key.slice(start, end);
-    };
-
-    const identity: DesignIdentity = {
-        provider: asUnitProviderId(readPart()),
-        uuid: asUnitUuid(readPart()),
-    };
-    if (cursor !== key.length || encodeDesignIdentity(identity) !== key) {
-        throw new Error('Non-canonical design identity key');
-    }
-    return identity;
-}
-
 export function encodeCatalogEntryKey(entryKey: CatalogEntryKey): CatalogEntryDbKey {
     if (entryKey.origin !== 'megamek' && entryKey.origin !== 'user') {
         throw new Error(`Invalid catalog entry origin: ${String(entryKey.origin)}`);
@@ -166,29 +127,6 @@ export function encodeCatalogEntryKey(entryKey: CatalogEntryKey): CatalogEntryDb
         ? asSourceHash(entryKey.sourceRevision)
         : requireSourceRevision(entryKey.sourceRevision);
     return [entryKey.origin, provider, uuid, sourceRevision];
-}
-
-export function decodeCatalogEntryDbKey(value: IDBValidKey): CatalogEntryKey {
-    if (!Array.isArray(value) || value.length !== 4 || value.some((part) => typeof part !== 'string')) {
-        throw new Error('Invalid catalog entry IndexedDB key');
-    }
-    const [origin, provider, uuid, revision] = value as string[];
-    if (origin !== 'megamek' && origin !== 'user') {
-        throw new Error(`Invalid catalog entry origin: ${origin}`);
-    }
-    const entryKey: CatalogEntryKey = {
-        origin,
-        design: {
-            provider: asUnitProviderId(provider),
-            uuid: asUnitUuid(uuid),
-        },
-        sourceRevision: origin === 'megamek' ? asSourceHash(revision) : requireSourceRevision(revision),
-    };
-    const encoded = encodeCatalogEntryKey(entryKey);
-    if (encoded.some((part, index) => part !== value[index])) {
-        throw new Error('Non-canonical catalog entry IndexedDB key');
-    }
-    return entryKey;
 }
 
 function requireSourceRevision(value: string): string {

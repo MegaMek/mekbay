@@ -209,9 +209,6 @@ export class DbService {
     private logger = inject(LoggerService);
     private dialogsService = inject(DialogsService);
     
-    /** Whether the database is in a degraded state (failed to initialize) */
-    private degradedMode = false;
-    
     /** Whether blob storage is unavailable (iOS Safari Private Mode) */
     private blobStorageUnavailable = false;
 
@@ -282,13 +279,11 @@ export class DbService {
                     'Failed to reset the database. Continuing without local storage.',
                     'Reset Failed'
                 );
-                this.degradedMode = true;
                 return null;
             }
         }
 
         // choice === 'continue'
-        this.degradedMode = true;
         return null;
     }
 
@@ -392,11 +387,6 @@ export class DbService {
 
     public async waitForDbReady(): Promise<void> {
         await this.dbPromise;
-    }
-
-    /** Check if database is in degraded mode (no storage available) */
-    public isDegraded(): boolean {
-        return this.degradedMode;
     }
 
     private async getDataFromGeneralStore<T>(key: string): Promise<T | null> {

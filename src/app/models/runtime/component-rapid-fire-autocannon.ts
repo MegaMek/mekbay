@@ -124,10 +124,6 @@ export class UACJammingHandler extends EquipmentInteractionHandler {
             && this.handleComponentJamSelection(input.runtime, definition, choice, context);
     }
 
-    applicableToComponentJam(definition: ComponentJamDefinition): boolean {
-        return definition.supportsJamming;
-    }
-
     getComponentJamChoices(
         runtime: CBTUnitInstance,
         definition: ComponentJamDefinition,

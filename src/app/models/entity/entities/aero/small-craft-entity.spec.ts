@@ -6,7 +6,7 @@ import { createEquipment, WeaponEquipment } from '../../../equipment.model';
 import { SmallCraftEntity } from './small-craft-entity';
 import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
 import { addTestEquipment } from '../../testing/test-mounted-equipment';
-import { calculateMountedEquipmentCost } from '../../utils/cost';
+import { calculateMountedEquipmentCost } from '../../utils/cost/equipment-total';
 import { EquipmentFlag } from '../../../equipment-flags.type';
 
 describe('SmallCraftEntity implicit equipment', () => {

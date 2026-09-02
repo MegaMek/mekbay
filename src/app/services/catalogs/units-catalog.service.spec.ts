@@ -140,8 +140,6 @@ describe('UnitsCatalogService native core projection', () => {
         expect(initializeCore).toHaveBeenCalledTimes(1);
         expect(service.getUnits().map(unit => unit.name)).toEqual(['Alpha', 'Beta']);
         expect(service.getCoreSummaries().map(unit => unit.name)).toEqual(['Alpha', 'Beta']);
-        expect(service.getCoreSummaryByUuid(UUIDS[0])?.name)
-            .toBe('Alpha');
         expect(service.getUnits().every(unit => !Object.hasOwn(unit, 'fluff'))).toBeTrue();
     });
 

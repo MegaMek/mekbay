@@ -91,7 +91,7 @@ assert.deepEqual(
 const behaviors = source(equipmentBehaviorsPath);
 assert.doesNotMatch(behaviors, /(?:switch\s*\(|\.hasFlag\(|\bF_[A-Z0-9_]+\b)/u);
 const concreteInteractionClasses = componentModules.flatMap(path => [...source(path).matchAll(
-  /export\s+class\s+([A-Za-z0-9_]+)\s+extends\s+(?:EquipmentInteractionHandler|ComponentModeHandler|ToggleHandler|EscalatingFailureHandler)/gu,
+  /export\s+class\s+([A-Za-z0-9_]+)\s+extends\s+(?:EquipmentInteractionHandler|ComponentModeHandler|EscalatingFailureHandler)/gu,
 )].map(match => ({ name: match[1], path })));
 for (const handler of concreteInteractionClasses.filter(candidate => candidate.name !== 'EscalatingFailureHandler')) {
   assert.match(

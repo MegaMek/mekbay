@@ -19,11 +19,10 @@ import {
     asLocationId,
     type ComponentId,
     type CrewPositionId,
-    type LocationId,
 } from '../entity/entity-identifiers';
 import { isCBTRuleset, type CBTRuleset } from '../cbt-ruleset.model';
 import { isC3NetworkRole, isC3NetworkType, type C3NetworkRole, type C3NetworkType } from '../c3-network.model';
-import { isRecord, jsonValuesEqual } from '../../utils/json-value.util';
+import { isRecord } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import type { JsonValue } from '../persisted-unit-state';
 import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
@@ -44,7 +43,6 @@ import { MAX_MEK_HEATSINKS_OFF_V2, MAX_MEK_HEAT_VALUE_V2 } from './mek-heat-stat
 import {
     CBT_FORCE_ROSTER_SCHEMA_VERSION,
     CBT_FORCE_UNASSIGNED_GROUP_ID,
-    CBTForceRosterValidationError,
     MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
     type SerializedCBTForceRosterV1,
 } from './cbt-force-roster';
@@ -707,15 +705,6 @@ export class ForceEnvelopeValidationError extends Error {
         super(`${path}: ${message}`);
         this.name = 'ForceEnvelopeValidationError';
     }
-}
-
-/** The encounter is present even before any cross-unit state exists. */
-export function emptySerializedEncounterV2(): SerializedForceEncounterEntryV2 {
-    const revision = 0;
-    return Object.freeze({
-        encounterRevision: revision,
-        state: Object.freeze({ schemaVersion: 2, encounterRevision: revision, facts: Object.freeze([]) }),
-    });
 }
 
 export function emptyRuntimeHistory(): SerializedRuntimeHistory {
@@ -2165,6 +2154,13 @@ function validateEncounterEndpoint(
     let ref = '';
     if (endpoint['target'] !== undefined) {
         ref = validateId(endpoint['target'], `${path}.target`, asSavedTargetRef);
+        if (!targets.get(instance)?.has(ref)) {
+            fail(
+                'ENCOUNTER_ENDPOINT_INVALID',
+                `${path}.target`,
+                'encounter endpoint target is not owned by its force unit',
+            );
+        }
     }
     return `${instance}\0${ref}`;
 }
@@ -2183,15 +2179,6 @@ function validateOptionalNonnegative(record: Record<string, unknown>, path: stri
 
 function validateStringArray(value: unknown, path: string): void {
     requireArray(value, path).forEach((entry, index) => validateId(entry, `${path}[${index}]`));
-}
-
-function validateUniqueSortedStrings(value: unknown, path: string): void {
-    let previous: string | undefined;
-    requireArray(value, path).forEach((entry, index) => {
-        const current = validateId(entry, `${path}[${index}]`);
-        if (previous !== undefined && previous >= current) fail('INVALID_SHAPE', `${path}[${index}]`, 'values must be unique and sorted');
-        previous = current;
-    });
 }
 
 function validateUniqueSortedUnitConditions(value: unknown, path: string): void {

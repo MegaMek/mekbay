@@ -21,7 +21,7 @@ import {
 } from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
 import { TestBipedMekEntity, TestHandheldWeaponEntity } from '../testing/test-entities';
-import { calculateMountedEquipmentCost } from './cost';
+import { calculateMountedEquipmentCost } from './cost/equipment-total';
 import { calculateEntityCost, calculateEntityCostDetails } from './cost/entity-cost';
 import { amount, buildCostReport, multiplier } from './cost/cost-report';
 import { EquipmentFlag } from '../../equipment-flags.type';

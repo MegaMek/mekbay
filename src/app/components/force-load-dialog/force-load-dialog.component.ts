@@ -1351,11 +1351,6 @@ export class ForceLoadDialogComponent {
         return force.groups.reduce((sum, group) => sum + group.units.length, 0);
     }
 
-    private matchesGameTypeFilter(item: { type?: GameSystem }, typeFilter: 'all' | GameSystem.CBT | GameSystem.AS): boolean {
-        const itemType = item.type || GameSystem.CBT;
-        return typeFilter === 'all' || itemType === typeFilter;
-    }
-
     private matchesHangarSearch(force: LoadForceEntry, tokens: readonly string[]): boolean {
         if (tokens.length === 0) {
             return true;

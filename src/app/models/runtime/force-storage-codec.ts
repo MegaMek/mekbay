@@ -2092,10 +2092,6 @@ function text(value: unknown, path: string): string {
     return value;
 }
 
-function optionalText(value: unknown, path: string): string | undefined {
-    return value === undefined || value === null ? undefined : text(value, path);
-}
-
 function integer(value: unknown, path: string): number {
     if (!Number.isSafeInteger(value)) throw new Error(`${path} must be a safe integer`);
     return value as number;

@@ -65,11 +65,6 @@ export class UnitRuntimeService {
         return name.toLowerCase();
     }
 
-    public preprocessUnits(units: UnitSummary[]): void {
-        this.commitPreparedRuntimeCatalog(this.prepareRuntimeCatalog(units));
-        this.unitSearchIndexService.prepareUnits(units);
-    }
-
     /** Builds lookup maps and unit-local display fields without changing live lookup state. */
     public prepareRuntimeCatalog(units: UnitSummary[]): PreparedUnitRuntimeCatalog {
         const unitNameMap = new Map<string, UnitSummary[]>();

@@ -3,13 +3,11 @@
 
 import type { EquipmentStatus } from '../equipment-status.model';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
-import { isObjectLiteralRecord, jsonValuesEqual } from '../../utils/json-value.util';
+import { isObjectLiteralRecord } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import {
     asComponentId,
-    asCriticalSlotId,
-    asCrewPositionId,
     asLocationId,
     type ArmorFaceId,
     ComponentId,
@@ -18,15 +16,12 @@ import {
     LocationId,
 } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import type { EntityMountedEquipment } from '../entity/types';
 import {
     asOneBasedCriticalSlotOrdinal,
     asSavedTargetRef,
     createSavedTargetRef,
     CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
     savedTargetReferenceClosureV2,
-    validateSavedBlueprintReferenceTableV2,
-    type OneBasedCriticalSlotOrdinal,
     type SavedBlueprintReferenceTableV2,
     type SavedSlotCoordinateV2,
     type SavedStateTargetV2,
@@ -62,7 +57,6 @@ import {
     MAX_MEK_CREW_WOUNDS,
     MAX_MEK_LOCATION_CONDITION_VALUE,
 } from './runtime-state';
-import type { CBTCrewRuntimeState } from './cbt-unit-runtime';
 import { ppcCapacitorWeaponId } from './component-ppc-capacitor';
 import { componentEscalatingFailureProfile } from './component-escalating-failure';
 import { isCoreBombastLaserComponent } from './component-bombast-laser';
@@ -110,7 +104,6 @@ import {
     createMekTorsoCripplingRuleCheckTokenV2,
     freezeRuleChecks,
     MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
-    type MekRuleChecksV2,
     type MekRuleCheckStateV2,
 } from './mek-destruction-state-v2';
 import { assertCanonicalCrewAssignment, type CrewTopology } from './crew-assignment';
@@ -1684,7 +1677,7 @@ function movementPsrIdResolvers(
     return Object.freeze({
         componentId: (sourceId: ComponentId) => {
             const candidates = new Set<ComponentId>();
-            for (const [sourceRef, target] of sourceRows) {
+            for (const [, target] of sourceRows) {
                 if ((target.kind !== 'component' && target.kind !== 'intrinsic-system')
                     || target.savedComponentId !== sourceId) continue;
                 for (const id of movementComponentCandidates(target, accumulator)) {
@@ -3603,34 +3596,6 @@ function componentSlotCoordinates(index: MekRuntimeIndex, componentId: Component
             slot: asOneBasedCriticalSlotOrdinal(slot.slotIndex + 1),
         }))
         .sort((left, right) => compareText(slotCoordinate(left.location, left.slot), slotCoordinate(right.location, right.slot))));
-}
-
-function isCurrentComponent(
-    target: CurrentTarget,
-): target is CurrentComponentTarget {
-    return target.target.kind === 'component' || target.target.kind === 'intrinsic-system';
-}
-
-function isCurrentLocation(
-    target: CurrentTarget,
-): target is CurrentLocationTarget {
-    return target.target.kind === 'location-section';
-}
-
-function isCurrentSlot(
-    target: CurrentTarget,
-): target is CurrentSlotTarget {
-    return target.target.kind === 'critical-slot';
-}
-
-function isCurrentAmmo(
-    target: CurrentTarget,
-): target is CurrentAmmoTarget {
-    return target.target.kind === 'ammo-source';
-}
-
-function isCurrentCrew(target: CurrentTarget): target is CurrentCrewTarget {
-    return target.target.kind === 'crew-position';
 }
 
 function assertSerializedIdentity(

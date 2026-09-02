@@ -19,8 +19,6 @@ import {
 } from './equipment-interaction';
 import type { CBTUnitInstance } from './unit-instance';
 
-export type BinaryComponentMode = 'enabled' | 'disabled';
-
 /** Immutable entity and selected-rules facts required by a binary mode control. */
 export interface ComponentModeDefinition {
     readonly componentId: ComponentId;
@@ -136,66 +134,5 @@ export abstract class ComponentModeHandler extends EquipmentInteractionHandler {
 
     private definition(input: EquipmentInteractionInput): ComponentModeDefinition {
         return componentModeDefinition(input.entity, input.index, input.componentId, input.ruleset);
-    }
-}
-
-/** Shared mechanics for truly binary On/Off equipment. */
-export abstract class ToggleHandler extends ComponentModeHandler {
-    protected readonly enabledLabel: string = 'Enable';
-    protected readonly disabledLabel: string = 'Disable';
-    protected readonly enabledToastVerb: string = 'enabled';
-    protected readonly disabledToastVerb: string = 'disabled';
-
-    applicableToComponent(_definition: ComponentModeDefinition): boolean {
-        return true;
-    }
-
-    getComponentModeChoices(
-        runtime: CBTUnitInstance,
-        definition: ComponentModeDefinition,
-        _context: EquipmentInteractionQueryContext,
-    ): PickerChoice[] {
-        const currentState = this.mode(runtime, definition);
-        const nextState = currentState === 'enabled' ? 'disabled' : 'enabled';
-        return [{
-            label: currentState === 'enabled' ? this.enabledLabel : this.disabledLabel,
-            value: nextState,
-            active: currentState === 'enabled',
-            displayType: 'toggle',
-        }];
-    }
-
-    handleComponentModeSelection(
-        runtime: CBTUnitInstance,
-        definition: ComponentModeDefinition,
-        choice: PickerChoice,
-        context: EquipmentInteractionCommandContext,
-    ): boolean {
-        if (choice.value !== 'enabled' && choice.value !== 'disabled') return false;
-        const modes = binaryComponentModes(definition);
-        const selectedMode = choice.value === 'enabled' ? modes.enabled : modes.disabled;
-        if (runtime.query().componentMode(definition.componentId) === selectedMode) return true;
-        const result = runtime.dispatch({
-            type: 'set-component-mode',
-            componentId: definition.componentId,
-            mode: selectedMode,
-        });
-        if (result.accepted && result.changed) {
-            context.toastService.showToast(
-                `${definition.displayName} is ${choice.value === 'enabled'
-                    ? this.enabledToastVerb
-                    : this.disabledToastVerb}`,
-                'info',
-            );
-        }
-        return result.accepted;
-    }
-
-    private mode(runtime: CBTUnitInstance, definition: ComponentModeDefinition): BinaryComponentMode {
-        const modes = binaryComponentModes(definition);
-        const current = runtime.query().componentMode(definition.componentId);
-        if (current === modes.enabled) return 'enabled';
-        if (current === modes.disabled) return 'disabled';
-        throw new Error(`Unexpected component mode ${String(current)} for ${definition.componentId}`);
     }
 }

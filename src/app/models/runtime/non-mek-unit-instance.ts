@@ -43,7 +43,7 @@ import { projectVehicleRuntimeRules, type VehicleRuntimeRulesProjection } from '
 import { projectProtoMekRuntimeRules, type ProtoMekRuntimeRulesProjection } from '../rules/protomek-runtime-rules';
 import { projectInfantryRuntimeRules, type InfantryRuntimeRulesProjection } from '../rules/infantry-runtime-rules';
 import { projectAeroRuntimeRules, type AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
-import { type AmmoRuntimeState, type ComponentRuntimeState, type InstanceBaselineRef } from './runtime-state';
+import { type ComponentRuntimeState, type InstanceBaselineRef } from './runtime-state';
 import { buildNonMekRuntimeIndex, type NonMekRuntimeIndex } from './non-mek-runtime-index';
 import type { NonMekDamageTrackDefinition } from '../rules/non-mek-damage-track-rules';
 import { projectNonMekComponentStatuses, type NonMekComponentStatuses } from './non-mek-component-status';
@@ -514,7 +514,7 @@ export function projectNonMekEscalatingFailureInteractions(
 ): readonly NonMekEscalatingFailureInteraction[] {
     const interactions = [...index.components.values()].flatMap(component => {
         const definition = nonMekEscalatingFailureDefinition(component.id, component.mount.equipment, ruleset);
-        if (!definition) return [];
+        if (!definition || !canUseNonMekEscalatingFailure(entity, definition)) return [];
         const status = entityComponentStatus(
             entity,
             index,
@@ -859,16 +859,6 @@ export class NonMekUnitInstance {
         return perspective === 'committed'
             ? committed
             : committed + (this.state.pendingCombat.damageTrackHits.get(damageTrackId)?.hitDelta ?? 0);
-    }
-
-    public damageTrackTimeline(perspective: 'committed' | 'preview' = 'committed'): readonly Readonly<{
-        readonly damageTrackId: SystemDamageTrackId;
-        readonly timestamp: number;
-    }>[] {
-        return Object.freeze([...this.index.damageTracks.keys()]
-            .flatMap(damageTrackId => damageTrackTimestamps(this.state, damageTrackId, perspective)
-                .map(timestamp => Object.freeze({ damageTrackId, timestamp })))
-            .sort((left, right) => left.timestamp - right.timestamp));
     }
 
     public componentStatus(
@@ -1373,15 +1363,6 @@ function projectedHasCondition(
     return projectedComputedConditions(projection).includes(condition);
 }
 
-function entityConditions(
-    entity: BaseEntity,
-    index: NonMekRuntimeIndex,
-    state: NonMekUnitRuntimeState,
-    ruleset: CBTRuleset,
-): readonly UnitConditionKey[] {
-    return projectedConditions(entity, state, projectNonMekRuntime(entity, index, state, ruleset));
-}
-
 function projectedConditions(
     entity: BaseEntity,
     state: NonMekUnitRuntimeState,
@@ -1824,7 +1805,9 @@ function reduceNonMekUnitState(
                     ruleset,
                 )
                 : null;
-            if (!definition || !canUseEscalatingFailure(definition, state.turn.airborne)) {
+            if (!definition
+                || !canUseNonMekEscalatingFailure(entity, definition)
+                || !canUseEscalatingFailure(definition, state.turn.airborne)) {
                 throw new Error('Invalid escalating-failure component');
             }
             let components: ReadonlyMap<ComponentId, ComponentRuntimeState> | null;
@@ -2167,7 +2150,7 @@ function reduceNonMekUnitState(
                     },
                 };
             }
-            committed = settleNonMekEscalatingFailures(index, committed, ruleset);
+            committed = settleNonMekEscalatingFailures(entity, index, committed, ruleset);
             committed = settleNonMekMobileHpgs(entity, index, committed);
             committed = settleNonMekElectronicSuites(entity, index, committed, ruleset);
             committed = commitCrewDeaths(committed);
@@ -2435,6 +2418,7 @@ function buildNonMekMobileHpgFacts(
 }
 
 function settleNonMekEscalatingFailures(
+    entity: BaseEntity,
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
@@ -2446,7 +2430,7 @@ function settleNonMekEscalatingFailures(
             component.mount.equipment,
             ruleset,
         );
-        if (!definition) continue;
+        if (!definition || !canUseNonMekEscalatingFailure(entity, definition)) continue;
         components = settleEscalatingFailureComponentState(components, definition) ?? components;
     }
     return components === state.components ? state : { ...state, components };
@@ -2571,6 +2555,17 @@ function nonMekEscalatingFailureDefinition(
         flags: equipment.flags,
         ruleset,
     });
+}
+
+function canUseNonMekEscalatingFailure(
+    entity: BaseEntity,
+    definition: ComponentEscalatingFailureDefinition,
+): boolean {
+    // Legacy TO:AUE explicitly exempts aerospace fighters from Blue Shield
+    // failure checks. Other aerospace families and Core 2026 still use them.
+    return definition.kind !== 'blue-shield'
+        || definition.ruleset !== 'total-warfare'
+        || entity.entityType !== 'Aero';
 }
 
 function setComponentStatus(
@@ -3054,20 +3049,6 @@ function validateState(
         canonical = { ...canonical, turn: { ...canonical.turn, airborne: canonicalAirborne } };
     }
     return freezeNonMekUnitState(canonical);
-}
-
-function damageTrackTimestamps(
-    state: NonMekUnitRuntimeState,
-    damageTrackId: SystemDamageTrackId,
-    perspective: 'committed' | 'preview',
-): readonly number[] {
-    const committed = state.damageTracks.get(damageTrackId)?.hitTimestamps ?? [];
-    if (perspective === 'committed') return committed;
-    const pending = state.pendingCombat.damageTrackHits.get(damageTrackId);
-    if (!pending || pending.hitDelta === 0) return committed;
-    return pending.hitDelta > 0
-        ? [...committed, ...pending.hitTimestamps].sort(compareNumbers)
-        : committed.slice(0, committed.length + pending.hitDelta);
 }
 
 function armorDamage(

@@ -14,11 +14,7 @@ import {
     type ForcePreviewUnit,
 } from './force-preview.model';
 import type { SerializedForce } from './force-serialization';
-import type {
-    RemoteLoadForceEntry,
-    RemoteLoadForceGroup,
-    RemoteLoadForceUnit,
-} from './remote-load-force-entry.model';
+import type { RemoteLoadForceEntry } from './remote-load-force-entry.model';
 
 export type {
     RemoteLoadForceEntry,

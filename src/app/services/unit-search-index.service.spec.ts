@@ -37,6 +37,10 @@ function createUnit(overrides: TestUnitOverrides): UnitSummary {
     });
 }
 
+function prepareCatalog(service: UnitSearchIndexService, units: UnitSummary[]): void {
+    service.commitPreparedCatalogIndexes(service.prepareCatalogIndexes(units, [], []));
+}
+
 describe('UnitSearchIndexService', () => {
     it('uses UUID postings while expanding duplicate MUL ids for era and faction membership', () => {
         const service = new UnitSearchIndexService();
@@ -151,7 +155,7 @@ describe('UnitSearchIndexService', () => {
             },
         });
 
-        service.prepareUnits([unit]);
+        prepareCatalog(service, [unit]);
 
         expect(unit.as.dmg._dmgS).toBe(0.5);
         expect(unit.as.dmg._dmgM).toBe(1);
@@ -163,7 +167,7 @@ describe('UnitSearchIndexService', () => {
     it('tracks min, max, and average stats by subtype and alpha strike type', () => {
         const service = new UnitSearchIndexService();
 
-        service.prepareUnits([
+        prepareCatalog(service, [
             createUnit({
                 id: 1,
                 name: 'Mek A',

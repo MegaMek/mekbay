@@ -15,7 +15,7 @@
             [class.enemy]="showAlignment && slot.alignment === 'enemy'" [class.mini-mode]="miniMode()" [class.read-only]="isReadOnly"
             cdkDrag [cdkDragDisabled]="forceDragDisabled()"
             (cdkDragStarted)="onForceDragStart()"
-            (cdkDragMoved)="onUnitDragMoved($event)"
+            (cdkDragMoved)="onUnitDragMoved()"
             (cdkDragEnded)="onForceDragEnd()"
             cdkDragLockAxis="y"
             [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
@@ -77,7 +77,7 @@
                 <div class="group-container" cdkDrag 
                     [cdkDragDisabled]="isReadOnly || groupsDragDisabled()"
                     (cdkDragStarted)="onGroupDragStart(slotForce)"
-                    (cdkDragMoved)="onUnitDragMoved($event)" 
+                    (cdkDragMoved)="onUnitDragMoved()" 
                     (cdkDragEnded)="onGroupDragEnd(slotForce)"
                     cdkDragLockAxis="y"
                     [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
@@ -154,7 +154,7 @@
                         <div #forceUnitItem [id]="'unit-'+member.id" class="force-unit-item" (click)="selectUnit(member)"
                             tabindex="0" (keydown)="onUnitKeydown($event, i)" cdkDrag
                             [cdkDragDisabled]="isReadOnly" (cdkDragStarted)="onUnitDragStart(slotForce)"
-                            (cdkDragMoved)="onUnitDragMoved($event)" (cdkDragEnded)="onUnitDragEnd(slotForce)"
+                            (cdkDragMoved)="onUnitDragMoved()" (cdkDragEnded)="onUnitDragEnd(slotForce)"
                             cdkDragLockAxis="y" cdkDragBoundary=".scrollable-content"
                             [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                             <unit-block class="selectable" [forceUnit]="member" [compactMode]="compactMode() || miniMode()"
@@ -185,7 +185,7 @@
                     class="group-container new-group-dropzone" 
                     cdkDropList 
                     [cdkDropListConnectedTo]="connectedDropLists()" 
-                    [cdkDropListData]="[]"
+                    [cdkDropListData]="newGroupDropData"
                     [class.visible]="isUnitDragging() && !slotForce.hasEmptyGroups() && !slotForce.hasMaxGroups()"
                     [cdkDropListAutoScrollDisabled]="true"
                     (cdkDropListDropped)="dropForNewGroup($event)">

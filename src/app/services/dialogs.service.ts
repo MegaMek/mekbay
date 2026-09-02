@@ -6,7 +6,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../components/confirm-dialog/confirm-dialog.component';
 import { InputDialogComponent, type InputDialogData } from '../components/input-dialog/input-dialog.component';
-import { Dialog, type DialogRef as CdkDialogRef, type DIALOG_DATA } from '@angular/cdk/dialog';
+import { Dialog, type DialogRef as CdkDialogRef } from '@angular/cdk/dialog';
 import type { ComponentType } from '@angular/cdk/portal';
 
 export type PromptOptions = Pick<InputDialogData,
@@ -39,7 +39,7 @@ export class DialogsService {
     private dialog = inject(Dialog);
 
     // Generic dialog creator using CDK Overlay, compatible with components expecting CDK Dialog
-    public createDialog<R = any, T = any, D = unknown>(
+    public createDialog<R = unknown, T = unknown, D = unknown>(
         component: ComponentType<T>,
         opts?: DialogOptions<D>
     ): DialogRef<T, R> {

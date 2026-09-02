@@ -7,13 +7,13 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 
 
-export interface ConfirmDialogButton<T = any> {
+export interface ConfirmDialogButton<T = unknown> {
     label: string;
     value: T;
     class?: string; // e.g. 'primary', 'warn', etc.
 }
 
-export interface ConfirmDialogData<T = any> {
+export interface ConfirmDialogData<T = unknown> {
     title: string;
     message?: string;
     messageHtml?: string;
@@ -83,7 +83,7 @@ export interface ConfirmDialogData<T = any> {
         }
     `]
 })
-export class ConfirmDialogComponent<T = any> {
+export class ConfirmDialogComponent<T = unknown> {
     public dialogRef = inject<DialogRef<T, ConfirmDialogComponent<T>>>(DialogRef);
     readonly data: ConfirmDialogData<T> = inject(DIALOG_DATA);
     private sanitizer = inject(DomSanitizer);

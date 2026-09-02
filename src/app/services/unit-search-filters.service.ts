@@ -418,7 +418,6 @@ export class UnitSearchFiltersService {
                 FORMATION_TARGET_FILTER_KEY,
                 semanticValue ? [semanticValue] : [],
                 !!semanticValue,
-                conf,
             );
             return;
         }
@@ -2647,8 +2646,8 @@ export class UnitSearchFiltersService {
             this.invalidateTagsCache();
         });
         effect(() => {
-            const gunnery = this.pilotGunnerySkill();
-            const piloting = this.pilotPilotingSkill();
+            this.pilotGunnerySkill();
+            this.pilotPilotingSkill();
 
             if (this.isDataReady()) {
                 this.recalculateBVRange();
@@ -3901,22 +3900,7 @@ export class UnitSearchFiltersService {
     }
 
     /**
-     * Apply search/filter parameters from a URLSearchParams object.
-     * Used for in-app URL handling when the PWA receives a captured link
-     * while already open. Resets current filters before applying new ones.
-     *
-     * @param params The URLSearchParams to read from
-     * @param opts Options controlling behavior
-     */
-    public applySearchParamsFromUrl(params: URLSearchParams, opts: { expandView?: boolean } = {}): void {
-        this.clearFilters();
-        this.applyParamsCore(params, opts);
-        this.processPendingForeignTags();
-    }
-
-    /**
-     * Core logic for applying search/filter params from a URLSearchParams.
-     * Shared between startup initialization and in-app URL handling.
+     * Core logic for applying startup search/filter parameters.
      */
     private applyParamsCore(
         params: URLSearchParams,
@@ -4080,7 +4064,7 @@ export class UnitSearchFiltersService {
 
         if (shouldSyncToText) {
             // Update the semantic text for this specific filter
-            this.updateSemanticTextForFilter(key, filterValue, interacted, conf);
+            this.updateSemanticTextForFilter(key, filterValue, interacted);
         } else {
             // Just update filterState (UI-only filter)
             this.filterState.update(current => ({
@@ -4112,7 +4096,7 @@ export class UnitSearchFiltersService {
                 : conf.type === AdvFilterType.BOOLEAN
                     ? null
                     : [];
-            this.updateSemanticTextForFilter(key, resetValue, false, conf);
+            this.updateSemanticTextForFilter(key, resetValue, false);
         } else {
             // Remove from filterState
             this.filterState.update(current => {
@@ -4128,7 +4112,7 @@ export class UnitSearchFiltersService {
      * Update the semantic text to reflect a filter value change.
      * This replaces/adds/removes the token for the specified filter key.
      */
-    private updateSemanticTextForFilter(key: string, value: unknown, interacted: boolean, conf: AdvFilterConfig): void {
+    private updateSemanticTextForFilter(key: string, value: unknown, interacted: boolean): void {
         if (this.isSyncingToText) return; // Prevent re-entry
 
         this.isSyncingToText = true;

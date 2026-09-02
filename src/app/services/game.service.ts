@@ -90,10 +90,6 @@ export class GameService {
         });
     }
 
-    setOverride(gameSystem: GameSystem | null): void {
-        this.gameSystemOverride.set(gameSystem);
-    }
-
     setMode(gameSystem: GameSystem): void {
         this.gameSystemOverride.set(null); // Clear any temporary override
         this.optionsService.setOption('gameSystem', gameSystem);

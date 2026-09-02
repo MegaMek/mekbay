@@ -1311,7 +1311,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
     /** Subclasses restore their complete CBT state before it is installed. */
     protected async restoreCBTForce(
-        envelope: import('./runtime/persistence-v2').SerializedCBTForceV2,
+        _envelope: import('./runtime/persistence-v2').SerializedCBTForceV2,
     ): Promise<RestoredCBTForce> {
         return Object.freeze({
             install: () => undefined,

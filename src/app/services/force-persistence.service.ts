@@ -1425,7 +1425,7 @@ export class ForcePersistenceService {
         if (uniqueIds.length === 0) return 0;
 
         const localRawForces = await Promise.all(uniqueIds.map((instanceId) => this.dbService.getForce(instanceId)));
-        const missingIds = uniqueIds.filter((instanceId, index) => !localRawForces[index]);
+        const missingIds = uniqueIds.filter((_, index) => !localRawForces[index]);
         if (missingIds.length === 0) return 0;
 
         const cloudForces = await this.getForcesCloudRawByIds(missingIds);
@@ -1883,7 +1883,6 @@ export class ForcePersistenceService {
                 force,
                 serialized,
                 expected,
-                instanceId,
                 fence,
             );
         };
@@ -1918,7 +1917,6 @@ export class ForcePersistenceService {
         force: Force,
         serialized: SerializedForce,
         expectedCloudRevision: number | null | undefined,
-        instanceId: string,
         fence: ForceSaveFence,
     ): Promise<number | null | undefined> {
         const ws = await this.canUseCloud();

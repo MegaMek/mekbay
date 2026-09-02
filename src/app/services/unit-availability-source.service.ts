@@ -1396,19 +1396,6 @@ export class UnitAvailabilitySourceService {
         });
     }
 
-    private matchesMegaMekAvailabilityPredicate(
-        entries: readonly MegaMekUnitAvailabilityEntry[],
-        context: MegaMekAvailabilityFilterContext | undefined,
-        predicate: (entry: MegaMekUnitAvailabilityEntry) => boolean,
-    ): boolean {
-        return this.matchesMegaMekScope(context, {
-            pair: (eraId, factionId) => this.matchesMegaMekAvailabilityForPair(entries, eraId, factionId, predicate),
-            era: (eraId) => this.matchesMegaMekAvailabilityForEra(entries, eraId, predicate),
-            faction: (factionId) => this.matchesMegaMekAvailabilityForFaction(entries, factionId, predicate),
-            any: () => entries.some(predicate),
-        });
-    }
-
     private matchesMegaMekAvailabilityForPair(
         entries: readonly MegaMekUnitAvailabilityEntry[],
         eraId: number,
@@ -1445,58 +1432,6 @@ export class UnitAvailabilitySourceService {
         }
 
         return entries.some((entry) => entry.factionId === factionId && predicate(entry));
-    }
-
-    private matchesMegaMekUnavailable(
-        unitKey: AvailabilityUnitKey,
-        entries: readonly MegaMekUnitAvailabilityEntry[],
-        context: MegaMekAvailabilityFilterContext | undefined,
-        availabilityFrom: readonly MegaMekAvailabilityFrom[],
-    ): boolean {
-        return this.matchesMegaMekScope(context, {
-            pair: (eraId, factionId) => this.isMegaMekUnavailableForPair(entries, eraId, factionId, availabilityFrom),
-            era: (eraId) => this.isMegaMekUnavailableForEra(entries, eraId, availabilityFrom),
-            faction: (factionId) => this.isMegaMekUnavailableForFaction(entries, factionId, availabilityFrom),
-            any: () => !entries.some((entry) => this.entryHasSelectedAvailability(entry, availabilityFrom)),
-        });
-    }
-
-    private isMegaMekUnavailableForPair(
-        entries: readonly MegaMekUnitAvailabilityEntry[],
-        eraId: number,
-        factionId: number,
-        availabilityFrom: readonly MegaMekAvailabilityFrom[],
-    ): boolean {
-        if (factionId === MULFACTION_EXTINCT) {
-            return false;
-        }
-
-        const entry = entries.find((candidate) => candidate.eraId === eraId && candidate.factionId === factionId);
-        return !entry || !this.entryHasSelectedAvailability(entry, availabilityFrom);
-    }
-
-    private isMegaMekUnavailableForEra(
-        entries: readonly MegaMekUnitAvailabilityEntry[],
-        eraId: number,
-        availabilityFrom: readonly MegaMekAvailabilityFrom[],
-    ): boolean {
-        return !entries.some((entry) => (
-            entry.eraId === eraId && this.entryHasSelectedAvailability(entry, availabilityFrom)
-        ));
-    }
-
-    private isMegaMekUnavailableForFaction(
-        entries: readonly MegaMekUnitAvailabilityEntry[],
-        factionId: number,
-        availabilityFrom: readonly MegaMekAvailabilityFrom[],
-    ): boolean {
-        if (factionId === MULFACTION_EXTINCT) {
-            return false;
-        }
-
-        return !entries.some((entry) => (
-            entry.factionId === factionId && this.entryHasSelectedAvailability(entry, availabilityFrom)
-        ));
     }
 
     private getRequestedAvailabilitySources(

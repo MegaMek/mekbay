@@ -1072,7 +1072,3 @@ function compareProfileBlockers(
         || compareText(left.feature, right.feature)
         || compareText(left.componentIds.join('\0'), right.componentIds.join('\0'));
 }
-
-function hasOwn(value: object, key: PropertyKey): boolean {
-    return Object.prototype.hasOwnProperty.call(value, key);
-}

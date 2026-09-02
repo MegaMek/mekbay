@@ -22,8 +22,6 @@ export const MAX_UNIT_FETCH_RETRIES = 2;
 export const MAX_UNIT_SOURCE_BYTES = 256 * 1_024;
 export const MAX_CORE_UNITS_MANIFEST_BYTES = 4 * 1_024 * 1_024;
 export const MAX_CORE_UNIT_COUNT = 100_000;
-export const MAX_ARCHIVE_BYTES = 128 * 1_024 * 1_024;
-
 export interface CoreUnitManifestEntry {
     readonly file: UnitFileName;
     readonly hash: SourceHash;

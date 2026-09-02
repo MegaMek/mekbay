@@ -328,10 +328,6 @@ export function settleElectronicMode(
     return state.pending ? state.next : state.current;
 }
 
-export function electronicOffMode(equipment: Equipment): string {
-    return isPowerControlledEquipment(equipment) ? POWER_DISABLED_MODE : ECMMode.OFF;
-}
-
 /**
  * Validate one delayed electronic selection and return its complete atomic mode update.
  * Competing startups are cancelled here so both Mek and non-Mek runtimes share the same

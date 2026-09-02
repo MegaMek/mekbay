@@ -5,10 +5,7 @@
 import { compareText } from '../../utils/string.util';
 import { isPlainRecord } from '../../utils/json-value.util';
 import type { InventoryControlRuntimeTargetId } from '../inventory-control-runtime-state.model';
-import {
-    INVENTORY_CONTROL_TARGET_COLORS,
-    INVENTORY_CONTROL_TARGET_MAX_COUNT,
-} from '../inventory-control-runtime-state.model';
+import { INVENTORY_CONTROL_TARGET_MAX_COUNT } from '../inventory-control-runtime-state.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { asComponentId } from '../entity/entity-identifiers';
 import { isC3NetworkRole, isC3NetworkType, type C3NetworkRole, type C3NetworkType } from '../c3-network.model';

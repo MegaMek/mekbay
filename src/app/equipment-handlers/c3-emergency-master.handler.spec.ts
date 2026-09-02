@@ -5,6 +5,7 @@ import {
     componentC3EmergencyMasterDefinition,
     componentC3EmergencyMasterFacts,
     selectComponentC3EmergencyMasterOperatingTurns,
+    settleComponentC3EmergencyMasterEndTurn,
     syncComponentC3EmergencyMasterEncounter,
 } from '../models/runtime/component-c3-emergency-master';
 import {
@@ -128,16 +129,10 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
         expect(selectComponentC3EmergencyMasterOperatingTurns(
             master.runtime, master.definition, 6,
         ).accepted).toBeTrue();
-        master.handler.onComponentC3EmergencyMasterEndTurn(
-            master.runtime,
-            master.definition,
-            master.runtimeContext,
-            master.notifications,
-        );
+        settleEndTurn(master);
         expect(componentC3EmergencyMasterFacts(
             master.runtime, master.definition, master.runtimeContext,
         )).toEqual(jasmine.objectContaining({ status: 'fried', operatingTurns: 7 }));
-        expect(master.notifications.showToast).toHaveBeenCalled();
 
         const member = directC3Setup('member');
         expect(member.handler.handleComponentC3EmergencyMasterSelection(
@@ -150,16 +145,10 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
         expect(componentC3EmergencyMasterFacts(
             member.runtime, member.definition, member.runtimeContext,
         )).toEqual(jasmine.objectContaining({ status: 'standby', operatingTurns: 1 }));
-        member.handler.onComponentC3EmergencyMasterEndTurn(
-            member.runtime,
-            member.definition,
-            member.runtimeContext,
-            member.notifications,
-        );
+        settleEndTurn(member);
         expect(componentC3EmergencyMasterFacts(
             member.runtime, member.definition, member.runtimeContext,
         ).operatingTurns).toBe(1);
-        expect(member.notifications.showToast).not.toHaveBeenCalled();
     });
 
     it('retains consumed turns across manual Emergency overrides', () => {
@@ -184,23 +173,13 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
             mode: 'on', status: 'standby', operatingTurns: 1,
         }));
 
-        setup.handler.onComponentC3EmergencyMasterEndTurn(
-            setup.runtime,
-            setup.definition,
-            setup.runtimeContext,
-            setup.notifications,
-        );
+        settleEndTurn(setup);
         expect(componentC3EmergencyMasterFacts(
             setup.runtime, setup.definition, setup.runtimeContext,
         ).operatingTurns).toBe(1);
 
         setup.setRole('master');
-        setup.handler.onComponentC3EmergencyMasterEndTurn(
-            setup.runtime,
-            setup.definition,
-            setup.runtimeContext,
-            setup.notifications,
-        );
+        settleEndTurn(setup);
         expect(componentC3EmergencyMasterFacts(
             setup.runtime, setup.definition, setup.runtimeContext,
         ).operatingTurns).toBe(2);
@@ -225,19 +204,9 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
             setup.runtime, setup.definition, setup.runtimeContext,
         ).accepted).toBeTrue();
 
-        setup.handler.onComponentC3EmergencyMasterEndTurn(
-            setup.runtime,
-            setup.definition,
-            setup.runtimeContext,
-            setup.notifications,
-        );
+        settleEndTurn(setup);
         setup.setRole(null);
-        setup.handler.onComponentC3EmergencyMasterEndTurn(
-            setup.runtime,
-            setup.definition,
-            setup.runtimeContext,
-            setup.notifications,
-        );
+        settleEndTurn(setup);
         expect(componentC3EmergencyMasterFacts(
             setup.runtime, setup.definition, setup.runtimeContext,
         ).operatingTurns).toBe(2);
@@ -251,12 +220,7 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
             status: 'destroyed',
             target: 'committed',
         }).accepted).toBeTrue();
-        setup.handler.onComponentC3EmergencyMasterEndTurn(
-            setup.runtime,
-            setup.definition,
-            setup.runtimeContext,
-            setup.notifications,
-        );
+        settleEndTurn(setup);
         expect(componentC3EmergencyMasterFacts(
             setup.runtime, setup.definition, setup.runtimeContext,
         )).toEqual(jasmine.objectContaining({ status: 'unavailable', operatingTurns: 2 }));
@@ -269,12 +233,7 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
             status: 'available',
             target: 'committed',
         }).accepted).toBeTrue();
-        setup.handler.onComponentC3EmergencyMasterEndTurn(
-            setup.runtime,
-            setup.definition,
-            setup.runtimeContext,
-            setup.notifications,
-        );
+        settleEndTurn(setup);
         expect(componentC3EmergencyMasterFacts(
             setup.runtime, setup.definition, setup.runtimeContext,
         )).toEqual(jasmine.objectContaining({ status: 'active', operatingTurns: 3 }));
@@ -288,12 +247,7 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
             6,
         ).accepted).toBeTrue();
 
-        setup.handler.onComponentC3EmergencyMasterEndTurn(
-            setup.runtime,
-            setup.definition,
-            setup.runtimeContext,
-            setup.notifications,
-        );
+        settleEndTurn(setup);
         let choices = setup.handler.getComponentC3EmergencyMasterChoices(
             setup.runtime,
             setup.definition,
@@ -434,12 +388,17 @@ function directC3Setup(initialRole: C3EndpointRole | null) {
         setRole: (nextRole: C3EndpointRole | null) => { role = nextRole; },
         handler: new C3EmergencyMasterHandler(),
         toast,
-        notifications: {
-            showToast: jasmine.createSpy('showToast'),
-        } as EquipmentInteractionNotifications & { showToast: jasmine.Spy },
         queryContext: {},
         commandContext: { toastService: toast, dialogsService: dialogsService() },
     };
+}
+
+function settleEndTurn(setup: ReturnType<typeof directC3Setup>): void {
+    settleComponentC3EmergencyMasterEndTurn(
+        setup.runtime,
+        setup.definition,
+        setup.runtimeContext,
+    );
 }
 
 function toastService(): EquipmentInteractionNotifications & { showToast: jasmine.Spy } {

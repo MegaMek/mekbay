@@ -78,10 +78,6 @@ export class MegaMekRulesetsCatalogService extends CatalogBaseService<MegaMekRul
 
     protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
-    public getRulesets(): readonly MegaMekRulesetRecord[] {
-        return this.rulesets;
-    }
-
     public getRulesetByFactionKey(factionKey: string): MegaMekRulesetRecord | undefined {
         return this.rulesetsByFactionKey.get(factionKey);
     }

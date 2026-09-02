@@ -18,10 +18,10 @@ import type {
 } from '../models/runtime/equipment-interaction';
 import {
     ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
-    MascHandler,
+    EscalatingFailureHandler,
 } from '../models/runtime/component-escalating-failure';
 
-describe('MascHandler direct V2 runtime', () => {
+describe('MASC escalating-failure interaction with direct V2 runtime', () => {
     it('uses the Core sequence and advances only through unlocked choices', () => {
         const setup = directMascSetup('core-2026');
         const initial = setup.handler.getComponentEscalatingFailureChoices(
@@ -49,9 +49,6 @@ describe('MascHandler direct V2 runtime', () => {
         )).toBeTrue();
         expect(componentEscalatingFailureFacts(setup.runtime, setup.definition))
             .toEqual(jasmine.objectContaining({ sequence: 1, active: true }));
-        expect(setup.handler.getComponentEscalatingFailureRunMovementMultiplierBonus(
-            setup.runtime, setup.definition, null, true,
-        )).toBe(0.5);
         const advanced = setup.handler.getComponentEscalatingFailureChoices(
             setup.runtime, setup.definition, setup.queryContext,
         );
@@ -110,10 +107,6 @@ describe('MascHandler direct V2 runtime', () => {
         )).toBeTrue();
         expect(componentEscalatingFailureFacts(setup.runtime, setup.definition))
             .toEqual(jasmine.objectContaining({ status: 'disabled', active: false }));
-        expect(setup.handler.getComponentEscalatingFailureRunMovementMultiplierBonus(
-            setup.runtime, setup.definition, null, false,
-        )).toBe(0);
-
         const enable = setup.handler.getComponentEscalatingFailureChoices(
             setup.runtime, setup.definition, setup.queryContext,
         ).at(-1)!;
@@ -149,7 +142,7 @@ function directMascSetup(ruleset: CBTRuleset) {
         component,
         runtime,
         definition,
-        handler: new MascHandler(),
+        handler: new EscalatingFailureHandler(),
         queryContext: { choiceSurface: 'inventory' } satisfies EquipmentInteractionQueryContext,
         commandContext: { toastService: toast, dialogsService: dialogsService() },
     };

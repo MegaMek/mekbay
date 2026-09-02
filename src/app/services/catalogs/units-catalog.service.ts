@@ -23,7 +23,6 @@ export interface UnitsCatalogSnapshot {
     readonly coreActivationId?: CatalogActivationId;
     readonly summaries: readonly UnitSummary[];
     readonly units: UnitSummary[];
-    readonly summariesByUuid: ReadonlyMap<UnitUuid, UnitSummary>;
 }
 
 export interface PreparedUnitsCatalogActivation {
@@ -51,7 +50,6 @@ export class UnitsCatalogService {
         coreRevision: 0,
         summaries: Object.freeze([]),
         units: [],
-        summariesByUuid: new Map<UnitUuid, UnitSummary>(),
     }));
     public readonly catalogSnapshot = this.snapshotValue.asReadonly();
     public readonly catalogRevision = computed(() => this.snapshotValue().revision);
@@ -89,10 +87,6 @@ export class UnitsCatalogService {
 
     public getCoreSummaries(): readonly UnitSummary[] {
         return this.snapshotValue().summaries;
-    }
-
-    public getCoreSummaryByUuid(uuid: UnitUuid): UnitSummary | undefined {
-        return this.snapshotValue().summariesByUuid.get(uuid);
     }
 
     public async readNativeUnitSource(uuid: UnitUuid): Promise<StoredCoreContent | undefined> {
@@ -178,11 +172,6 @@ export class UnitsCatalogService {
             }
         }
 
-        const summariesByUuid = new Map<UnitUuid, UnitSummary>();
-        for (const summary of summaries) {
-            summariesByUuid.set(summary.uuid, summary);
-        }
-
         const previousUnitsByUuid = new Map<UnitUuid, UnitSummary>();
         const current = this.snapshotValue();
         for (let index = 0; index < current.units.length; index += 1) {
@@ -205,7 +194,6 @@ export class UnitsCatalogService {
                 : {}),
             summaries,
             units,
-            summariesByUuid,
         });
     }
 

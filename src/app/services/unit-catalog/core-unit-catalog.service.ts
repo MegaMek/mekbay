@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
-import { UNIT_SUMMARY_VERSION, type UnitSummary } from '../../models/unit-summary.model';
+import type { UnitSummary } from '../../models/unit-summary.model';
 import { CORE_CATALOG_ARCHIVE_WORKER_FACTORY } from '../../utils/core-catalog-archive-worker-factory.util';
 import { CatalogDownloadTrackerService } from '../catalogs/catalog-base.service';
 import { RepositoryAssetManifestService } from '../catalogs/repository-asset-manifest.service';
@@ -32,7 +32,6 @@ import {
 } from './unit-catalog-database';
 import {
     asUnitUuid,
-    MM_DATA_UNIT_PROVIDER_ID,
     type CatalogActivationId,
     type StoredCoreContent,
 } from './unit-catalog.types';
@@ -124,7 +123,6 @@ export class CoreUnitCatalogService {
     private synchronizer?: CoreCatalogSynchronizer;
     private activeDependencies?: PreparedApplicationCatalogDependencies;
     private initialization?: Promise<void>;
-    private refreshSettlement: Promise<void> = Promise.resolve();
     private nextPendingRevision = 1;
     private destroyed = false;
     private refreshAfterInitialCommit = false;
@@ -156,10 +154,6 @@ export class CoreUnitCatalogService {
         if (this.initialization) return this.initialization;
         this.initialization = this.performInitialize();
         return this.initialization;
-    }
-
-    public whenRefreshSettled(): Promise<void> {
-        return this.refreshSettlement;
     }
 
     public async finalizePendingActivation(revision: number): Promise<boolean> {
@@ -254,7 +248,7 @@ export class CoreUnitCatalogService {
 
     private startBackgroundRefresh(): void {
         if (this.destroyed) return;
-        const work = this.performRefresh().catch(error => {
+        void this.performRefresh().catch(error => {
             if (this.destroyed || this.abortController.signal.aborted) return;
             const snapshot = this.snapshotValue();
             if (isConnectivityUnavailable(error)) {
@@ -266,7 +260,6 @@ export class CoreUnitCatalogService {
             this.logger.warn(`Catalog refresh failed; retaining active local data: ${message}`);
             this.stateValue.set({ status: 'error', availableUnits: snapshot.summaries.length, error: message });
         });
-        this.refreshSettlement = work;
     }
 
     private async performRefresh(): Promise<void> {

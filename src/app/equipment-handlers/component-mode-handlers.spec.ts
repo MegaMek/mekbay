@@ -3,7 +3,6 @@
 
 import { ECMMode } from '../models/common.model';
 import {
-    componentEcmActive,
     componentEcmModeDefinition,
 } from '../models/runtime/component-ecm-mode';
 import {
@@ -286,7 +285,6 @@ describe('direct V2 component-mode handlers', () => {
             ECMMode.ECM, ECMMode.ECCM, ECMMode.GHOST, ECMMode.OFF,
         ]);
         expect(setup.runtime.query().componentMode(setup.component.id)).toBe(ECMMode.ECM);
-        expect(componentEcmActive(ECMMode.ECM)).toBeTrue();
         expect(setup.runtime.dispatch({
             type: 'set-component-mode',
             
@@ -309,7 +307,6 @@ describe('direct V2 component-mode handlers', () => {
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(setup.runtime.query().componentMode(setup.component.id)).toBe(ECMMode.OFF);
-        expect(componentEcmActive(ECMMode.OFF)).toBeFalse();
     });
 
     it('exposes the three additional simultaneous Angel ECM modes', () => {
@@ -326,7 +323,7 @@ describe('direct V2 component-mode handlers', () => {
             ECMMode.ECCM_GHOST,
             ECMMode.OFF,
         ]);
-        expect(handler.getComponentEcmModeChoices(setup.runtime, definition, setup.queryContext)[0].choices)
+        expect(handler.choices(interactionInput(setup))[0].choices)
             .toContain(jasmine.objectContaining({ label: 'ECM+ECCM', value: ECMMode.ECM_ECCM }));
     });
 });

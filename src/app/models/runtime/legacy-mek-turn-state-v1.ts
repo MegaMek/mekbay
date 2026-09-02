@@ -317,10 +317,6 @@ export function deserializeLegacyMekTurnStateV1(value: unknown): LegacyMekTurnSt
     });
 }
 
-export function legacyMekTurnStatesEqualV1(left: LegacyMekTurnStateV1, right: LegacyMekTurnStateV1): boolean {
-    return JSON.stringify(serializeLegacyMekTurnStateV1(left)) === JSON.stringify(serializeLegacyMekTurnStateV1(right));
-}
-
 /** Tolerant, field-by-field migration from the old SerializedTurnState object. */
 export function parseLegacyMekTurnStateV1(value: unknown): LegacyMekTurnStateParseResultV1 {
     if (value === undefined) return { state: createPristineLegacyMekTurnStateV1(), appliedFacts: 0 };

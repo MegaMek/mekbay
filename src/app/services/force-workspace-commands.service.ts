@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { inject, Injectable, Injector } from '@angular/core';
-import { firstValueFrom, filter } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 
 import { ASForce } from '../models/as-force.model';
 import type { ASForceUnit } from '../models/as-force-unit.model';
@@ -17,9 +17,7 @@ import {
 import {
     forceMemberCommander,
     isCBTForceMember,
-    isCBTMekForceMember,
     type CBTForceMember,
-    type CBTMekForceMember,
     type ForceMember,
     resolveForceMemberCatalogSummary,
 } from '../models/force-member.model';

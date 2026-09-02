@@ -7,7 +7,6 @@ import type { ASForceUnit } from './as-force-unit.model';
 import {
     type ASSerializedState,
     type ASCriticalHit,
-    type C3_POSITION_SCHEMA,
     AS_SERIALIZED_STATE_SCHEMA,
     conditionFromSerialized,
     conditionsForSerialization,

@@ -45,7 +45,6 @@ import {
 } from '../jump-equipment.model';
 import {
     equipmentForComponent,
-    mountedEquipmentForComponent,
     type MekRuntimeIndex,
     type MekIndexedComponent,
 } from './mek-runtime-index';

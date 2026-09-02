@@ -566,6 +566,26 @@ describe('V2 force persistence', () => {
         await expectCode(validateSerializedCBTForceV2(asForce(localRange)), 'INVALID_SHAPE');
 
     });
+
+    it('rejects encounter endpoints that name a target outside their unit witness table', async () => {
+        const valid = clone(mixedForce());
+        const unit = valid.units[0];
+        const target = Object.keys(unit.unit.blueprintReferences.targets)[0];
+        valid.encounter.state.facts = [{
+            kind: 'cross-unit-effect',
+            factId: 'effect:target-witness',
+            effectKey: 'test-effect',
+            target: { instanceId: unit.instanceId, target },
+        }];
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        valid.encounter.state.facts[0].target.target = 'missing-target';
+        await expectCode(
+            validateSerializedCBTForceV2(asForce(valid)),
+            'ENCOUNTER_ENDPOINT_INVALID',
+            /not owned by its force unit/u,
+        );
+    });
 });
 
 function mixedForce(): SerializedCBTForceV2 {

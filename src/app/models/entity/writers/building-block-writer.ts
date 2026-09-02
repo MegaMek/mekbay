@@ -7,7 +7,6 @@ import {
   encodeBlkArmorTechLevel,
   encodeBlkArmorTechRating,
   encodeBlkArmorType,
-  encodeBlkTechRating,
   encodeBlkEngineType,
   encodeBlkTechLevel,
 } from '../parsers/blk-codec';

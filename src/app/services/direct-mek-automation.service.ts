@@ -698,8 +698,6 @@ export class DirectMekAutomationService {
         if (command.type === 'set-crew-state' && before && hasMekRuntime(before)) {
             const after = this.snapshot(force, instanceId);
             if (after && !await this.recordCrewRecoveryTransition(
-                force,
-                instanceId,
                 before as MekSnapshot,
                 after,
                 command.positionId,
@@ -2027,21 +2025,6 @@ export class DirectMekAutomationService {
         return this.applyPreparedFall(force, instanceId, fall, dispatch);
     }
 
-    private async resolveFall(
-        force: CBTForce,
-        instanceId: string,
-        reason: string,
-        dispatch: DirectMekAutomationDispatch,
-        allowCancel = false,
-    ): Promise<boolean> {
-        const snapshot = this.snapshot(force, instanceId);
-        if (!snapshot) return false;
-        const prepared = await this.prepareFall(snapshot, reason, allowCancel);
-        if (prepared === null) return false;
-        return !prepared.accepted
-            || this.applyPreparedFall(force, instanceId, prepared, dispatch);
-    }
-
     private async prepareFall(
         snapshot: MekSnapshot,
         reason: string,
@@ -2586,8 +2569,6 @@ export class DirectMekAutomationService {
         }
         const finalPlans = resolvedGroups.at(-1)?.resolved ?? [];
         if (!await this.applyResolvedCrewHits(
-            force,
-            instanceId,
             initial,
             finalPlans,
             dispatch,
@@ -2619,8 +2600,6 @@ export class DirectMekAutomationService {
         );
         if (resolved === null) return false;
         if (!await this.applyResolvedCrewHits(
-            force,
-            instanceId,
             initial,
             resolved,
             dispatch,
@@ -2668,8 +2647,6 @@ export class DirectMekAutomationService {
     }
 
     private async applyResolvedCrewHits(
-        force: CBTForce,
-        instanceId: string,
         initial: MekSnapshot,
         resolved: readonly ResolvedCrewHits[],
         dispatch: DirectMekAutomationDispatch,
@@ -2723,8 +2700,6 @@ export class DirectMekAutomationService {
     }
 
     private async recordCrewRecoveryTransition(
-        force: CBTForce,
-        instanceId: string,
         before: MekSnapshot,
         after: MekSnapshot,
         positionId: CrewPositionId,
@@ -2823,8 +2798,6 @@ export class DirectMekAutomationService {
         }, false);
         if (!result.accepted) return null;
         if (!await this.applyResolvedCrewHits(
-            force,
-            instanceId,
             initial,
             resolvedCrew,
             dispatch,

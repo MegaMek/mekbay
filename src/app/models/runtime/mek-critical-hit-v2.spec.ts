@@ -60,7 +60,6 @@ describe('direct Mek critical-hit rules', () => {
         const fixture = createDirectMekRuntimeFixture();
         const arm = [...fixture.index.locations.values()].find(location => location.code === 'LA')!;
         const profile = projectMekCriticalRollProfileV2(
-            fixture.entity,
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),

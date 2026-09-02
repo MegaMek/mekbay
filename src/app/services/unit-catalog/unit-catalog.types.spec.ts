@@ -5,8 +5,6 @@ import {
     asSourceHash,
     asUnitProviderId,
     asUnitUuid,
-    decodeCatalogEntryDbKey,
-    decodeDesignIdentityKey,
     encodeCatalogEntryKey,
     encodeDesignIdentity,
     makeUnitFileName,
@@ -17,23 +15,18 @@ describe('unit catalog identity', () => {
     const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
     const hash = asSourceHash('AAAAAAAAAAAAAAAAAAAAAAAAAAA');
 
-    it('round-trips a provider and UUID without delimiter ambiguity', () => {
+    it('encodes a provider and UUID without delimiter ambiguity', () => {
         const identity = { provider: asUnitProviderId('custom:server-1'), uuid };
-        const encoded = encodeDesignIdentity(identity);
-
-        expect(decodeDesignIdentityKey(encoded)).toEqual(identity);
-        expect(() => decodeDesignIdentityKey(`${encoded}junk`)).toThrowError(/identity key/u);
+        expect(encodeDesignIdentity(identity)).toBe(`15:custom:server-1${uuid.length}:${uuid}`);
     });
 
-    it('round-trips the flat IndexedDB key', () => {
+    it('encodes the flat IndexedDB key', () => {
         const entry = {
             origin: 'megamek' as const,
             design: { provider: asUnitProviderId('mm-data'), uuid },
             sourceRevision: hash,
         };
-        const encoded = encodeCatalogEntryKey(entry);
-
-        expect(decodeCatalogEntryDbKey(encoded as unknown as IDBValidKey)).toEqual(entry);
+        expect(encodeCatalogEntryKey(entry)).toEqual(['megamek', 'mm-data', uuid, hash]);
     });
 
     it('derives and parses UUID filenames without a content-key abstraction', () => {

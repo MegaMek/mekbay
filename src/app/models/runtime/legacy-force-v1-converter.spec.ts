@@ -336,13 +336,6 @@ describe('CBT V1 force converter', () => {
         expect(restored.damageTrackHits(rotor, 'preview')).toBe(3);
         expect(restored.damageTrackHits(motive, 'committed')).toBe(3);
         expect(restored.damageTrackHits(motive, 'preview')).toBe(2);
-        expect(restored.damageTrackTimeline('preview')).toEqual([
-            { damageTrackId: rotor, timestamp: 10 },
-            { damageTrackId: rotor, timestamp: 20 },
-            { damageTrackId: rotor, timestamp: 30 },
-            { damageTrackId: motive, timestamp: 40 },
-            { damageTrackId: motive, timestamp: 50 },
-        ]);
     });
 });
 

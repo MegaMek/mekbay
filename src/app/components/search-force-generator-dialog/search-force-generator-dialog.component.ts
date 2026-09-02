@@ -1792,7 +1792,6 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private pickPreviewSlotRerollUnit(unitEntry: ForcePreviewUnit): UnitSummary | null {
-        const lockKey = unitEntry.lockKey;
         const preview = this.preview();
         const previewUnitIndex = this.findPreviewUnitIndex(preview.units, unitEntry);
         if (previewUnitIndex < 0) {
@@ -1826,7 +1825,6 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private pickPreviewSlotRerollUnitAndPilot(unitEntry: ForcePreviewUnit): GeneratedForceUnit | null {
-        const lockKey = unitEntry.lockKey;
         const preview = this.preview();
         const previewUnitIndex = this.findPreviewUnitIndex(preview.units, unitEntry);
         if (previewUnitIndex < 0) {

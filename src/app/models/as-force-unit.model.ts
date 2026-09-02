@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { computed, type Injector, signal, type Signal } from '@angular/core';
+import { computed, type Injector, signal } from '@angular/core';
 import type { UnitSummary } from './unit-summary.model';
 import { AsAbilityLookupService } from '../services/as-ability-lookup.service';
 import {

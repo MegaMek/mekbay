@@ -1,8 +1,0 @@
-// Copyright (C) 2026 The MegaMek Team
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
-
-export interface InventoryControlPhysicalDamageEffect {
-    readonly baseDamage: number;
-    readonly ignoreMyomer: boolean;
-}

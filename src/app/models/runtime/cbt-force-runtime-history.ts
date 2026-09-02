@@ -7,7 +7,6 @@ import type { JsonValue } from '../persisted-unit-state';
 import type { MotiveModes } from '../motiveModes.model';
 import { createSavedTargetRef, parseSavedTargetRef, type SerializedCBTUnitV2 } from './persistence-v2';
 import {
-    MAX_MEK_CREW_WOUNDS,
     type MekUnitRuntimeState,
     type MekLocationConditionKey,
 } from './runtime-state';

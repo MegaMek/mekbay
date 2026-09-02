@@ -219,10 +219,6 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
         return tokenCandidates?.length ? this.selectBestCandidate(tokenCandidates, unit) : undefined;
     }
 
-    public hasPageForUnit(unit: SarnaLookupUnit | null | undefined): boolean {
-        return this.getPageTitleForUnit(unit) !== undefined;
-    }
-
     protected override hasHydratedData(): boolean {
         return this.titleCount > 0;
     }

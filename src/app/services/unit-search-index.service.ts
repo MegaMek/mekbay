@@ -281,7 +281,7 @@ export class UnitSearchIndexService {
         });
     }
 
-    public prepareUnits(units: UnitSummary[]): void {
+    private prepareUnits(units: UnitSummary[]): void {
         this.unitSubtypeMaxStats = {};
         this.unitAsTypeMaxStats = {};
 

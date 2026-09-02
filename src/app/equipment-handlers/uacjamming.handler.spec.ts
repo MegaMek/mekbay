@@ -36,7 +36,6 @@ describe('direct UAC jamming handler', () => {
         const queryContext = {};
         const commandContext = { toastService: toast, dialogsService: dialogs };
 
-        expect(handler.applicableToComponentJam(definition)).toBeTrue();
         const jam = handler.getComponentJamChoices(runtime, definition, queryContext)[0]!;
         expect(jam).toEqual(jasmine.objectContaining({
             label: 'Jam',
@@ -73,7 +72,7 @@ describe('direct UAC jamming handler', () => {
             supportsJamming: rapidFireAutocannonSupportsJamming(fixture.index, component.id, CORE_2026_RULESET),
         });
 
-        expect(handler.applicableToComponentJam(definition)).toBeFalse();
+        expect(definition.supportsJamming).toBeFalse();
         expect(runtime.dispatch({
             type: 'set-component-jammed',
             

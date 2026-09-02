@@ -4,7 +4,6 @@
 
 import { MountedArmor } from '../components/armor';
 import { ArmorEquipment, createEquipment } from '../../equipment.model';
-import type { GyroType } from '../components/gyro-data';
 import {
   type AeroDesignType,
   type DriveCoreType,
@@ -13,17 +12,14 @@ import {
   type HeatSinkType,
   VALID_TECH_BASE_STRINGS,
 } from '../types';
-import type { CockpitType } from '../types/cockpit';
 import {
   encodeBlkAeroCockpitType,
   decodeBlkAeroDesignType,
   decodeBlkAeroCockpitType,
   decodeBlkArmorType,
-  decodeBlkCockpitType,
   decodeBlkDriveCoreType,
   decodeBlkDropShipCollarType,
   decodeBlkEngineType,
-  decodeBlkGyroType,
   decodeBlkHeatSinkType,
   decodeBlkCompoundTechBase,
   decodeBlkCompoundTechLevel,
@@ -31,16 +27,11 @@ import {
   encodeBlkArmorTechLevel,
   encodeBlkArmorTechRating,
   encodeBlkArmorType,
-  encodeBlkCockpitType,
   encodeBlkDriveCoreType,
   encodeBlkDropShipCollarType,
   encodeBlkEngineType,
-  encodeBlkGyroType,
   encodeBlkHeatSinkType,
-  encodeBlkCompoundTechLevel,
-  encodeBlkRulesLevel,
   encodeBlkTechLevel,
-  getBlkMekHeatSinkEquipmentId,
   parseBlkTechLevel,
 } from './blk-codec';
 
@@ -48,14 +39,6 @@ const ENGINE_TYPES: readonly EngineType[] = [
   'Fusion', 'ICE', 'XL', 'XXL', 'Light', 'Compact', 'Fuel Cell', 'Fission',
   'None', 'Maglev', 'Steam', 'Battery', 'Solar', 'External',
 ];
-const COCKPIT_TYPES: readonly CockpitType[] = [
-  'Standard', 'Small', 'Command Console', 'Torso-Mounted', 'Dual', 'Industrial',
-  'Primitive', 'Primitive Industrial', 'Superheavy', 'Superheavy Tripod', 'Tripod',
-  'Interface', 'Virtual Reality Piloting Pod', 'QuadVee', 'Superheavy Industrial',
-  'Superheavy Command Console', 'Small Command Console', 'Tripod Industrial',
-  'Superheavy Tripod Industrial',
-];
-const GYRO_TYPES: readonly GyroType[] = ['Standard', 'XL', 'Compact', 'Heavy Duty', 'None', 'Superheavy'];
 const HEAT_SINK_TYPES: readonly HeatSinkType[] = ['Single', 'Double', 'Compact', 'Laser'];
 const DESIGN_TYPES: readonly AeroDesignType[] = ['Civilian', 'Military'];
 const DRIVE_CORE_TYPES: readonly DriveCoreType[] = ['Standard', 'Compact', 'Subcompact', 'None', 'Primitive'];
@@ -69,10 +52,8 @@ describe('BLK codec', () => {
     expect(encodeBlkAeroCockpitType('Primitive')).toBe(3);
   });
 
-  it('round trips every engine, cockpit, gyro, and heat-sink code', () => {
+  it('round trips every live engine and heat-sink code', () => {
     for (const type of ENGINE_TYPES) expect(decodeBlkEngineType(encodeBlkEngineType(type))).toBe(type);
-    for (const type of COCKPIT_TYPES) expect(decodeBlkCockpitType(encodeBlkCockpitType(type))).toBe(type);
-    for (const type of GYRO_TYPES) expect(decodeBlkGyroType(encodeBlkGyroType(type))).toBe(type);
     for (const type of HEAT_SINK_TYPES) expect(decodeBlkHeatSinkType(encodeBlkHeatSinkType(type))).toBe(type);
   });
 
@@ -90,18 +71,8 @@ describe('BLK codec', () => {
   it('uses canonical defaults for unknown codes', () => {
     expect(decodeBlkArmorType(999)).toBe('STANDARD');
     expect(decodeBlkEngineType(999)).toBe('Fusion');
-    expect(decodeBlkCockpitType(999)).toBe('Standard');
-    expect(decodeBlkGyroType(999)).toBe('Standard');
     expect(decodeBlkDriveCoreType(999)).toBe('Standard');
     expect(decodeBlkDropShipCollarType(999)).toBe('Unspecified');
-  });
-
-  it('resolves Mek heat-sink equipment IDs by type and tech base', () => {
-    expect(getBlkMekHeatSinkEquipmentId('Double', 'IS')).toBe('ISDoubleHeatSink');
-    expect(getBlkMekHeatSinkEquipmentId('Double', 'Clan')).toBe('CLDoubleHeatSink');
-    expect(getBlkMekHeatSinkEquipmentId('Compact', 'IS')).toBe('1 Compact Heat Sink');
-    expect(getBlkMekHeatSinkEquipmentId('Laser', 'Clan')).toBe('Laser Heat Sink');
-    expect(getBlkMekHeatSinkEquipmentId('Single', 'IS')).toBe('Heat Sink');
   });
 
   it('encodes armor type and structured BLK values', () => {
@@ -134,25 +105,6 @@ describe('BLK codec', () => {
     });
     const armor = new MountedArmor({ armor: equipment, techBase: 'IS' });
     expect(encodeBlkArmorTechLevel(armor)).toBe(0);
-  });
-
-  it('maps entity rules levels to Java compound tech levels', () => {
-    expect(encodeBlkRulesLevel(1, false)).toBe(0);
-    expect(encodeBlkRulesLevel(2, false)).toBe(1);
-    expect(encodeBlkRulesLevel(2, true)).toBe(2);
-    expect(encodeBlkRulesLevel(3, false)).toBe(5);
-    expect(encodeBlkRulesLevel(3, true)).toBe(6);
-    expect(encodeBlkRulesLevel(4, false)).toBe(7);
-    expect(encodeBlkRulesLevel(4, true)).toBe(8);
-    expect(encodeBlkRulesLevel(5, false)).toBe(9);
-    expect(encodeBlkRulesLevel(5, true)).toBe(10);
-  });
-
-  it('encodes every component level as a MegaMek compound tech level', () => {
-    const codes = [-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
-    for (const code of codes) {
-      expect(encodeBlkCompoundTechLevel(decodeBlkCompoundTechLevel(code))).toBe(code);
-    }
   });
 
   it('decodes compound tech codes only into domain tech bases', () => {

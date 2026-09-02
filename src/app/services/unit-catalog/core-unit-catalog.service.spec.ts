@@ -156,6 +156,10 @@ function synchronization(
     };
 }
 
+async function flushBackgroundRefresh(): Promise<void> {
+    for (let index = 0; index < 12; index += 1) await Promise.resolve();
+}
+
 describe('CoreUnitCatalogService', () => {
     let database: jasmine.SpyObj<UnitCatalogDatabase>;
     let synchronizer: jasmine.SpyObj<CoreCatalogSynchronizer>;
@@ -256,7 +260,7 @@ describe('CoreUnitCatalogService', () => {
 
         await service.initialize();
         service.commitPendingActivation(service.pendingActivation()!.revision);
-        await service.whenRefreshSettled();
+        await flushBackgroundRefresh();
 
         expect(service.catalogSnapshot().generation).toBe(local);
         expect(service.state()).toEqual({ status: 'ready', availableUnits: 1 });
@@ -274,7 +278,7 @@ describe('CoreUnitCatalogService', () => {
 
         await service.initialize();
         service.commitPendingActivation(service.pendingActivation()!.revision);
-        await service.whenRefreshSettled();
+        await flushBackgroundRefresh();
 
         expect(service.catalogSnapshot().generation).toBe(local);
         expect(service.state()).toEqual(jasmine.objectContaining({
@@ -311,7 +315,7 @@ describe('CoreUnitCatalogService', () => {
 
         await service.initialize();
         service.commitPendingActivation(service.pendingActivation()!.revision);
-        await service.whenRefreshSettled();
+        await flushBackgroundRefresh();
 
         expect(service.catalogSnapshot().generation).toBe(local);
         expect(service.pendingActivation()?.generation).toBe(remote);

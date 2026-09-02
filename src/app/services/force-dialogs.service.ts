@@ -21,7 +21,6 @@ import { ASForce } from '../models/as-force.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { GameSystem } from '../models/common.model';
 import type { Force, UnitGroup } from '../models/force.model';
-import type { ForceSlot } from '../models/force-slot.model';
 import type { PrintAllOptions } from '../models/print-options.model';
 import { ASPrintUtil } from '../utils/asprint.util';
 import { ASSummaryPrintUtil } from '../utils/as-summary-print.util';

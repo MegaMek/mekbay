@@ -217,9 +217,6 @@ export class UnitCatalogDatabase {
         return row?.unitsManifestHash === unitsManifestHash ? row.blob : undefined;
     }
 
-    public async readActiveCatalogActivationId(): Promise<CatalogActivationId | undefined> {
-        return (await this.readActiveCatalog())?.activationId;
-    }
 }
 
 function assertGeneration(generation: PublishedCatalogGeneration): void {

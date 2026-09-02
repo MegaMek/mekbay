@@ -45,6 +45,7 @@ import { GameSystem } from './models/common.model';
 import { Router, RouterOutlet } from '@angular/router';
 import { UrlService } from './services/url.service';
 import { CBTUnitViewModeService } from './services/cbt-unit-view-mode.service';
+import { SeoService } from './services/seo.service';
 
 const ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY = 'mekbayAndroidPwaBackExit';
 const ANDROID_PWA_BACK_RESTORE_GUARD_MS = 1000;
@@ -110,6 +111,7 @@ export class App {
     private accountProtectionService = inject(AccountProtectionService);
     private router = inject(Router);
     private urlService = inject(UrlService);
+    private readonly seoService = inject(SeoService);
     protected readonly cbtUnitViewMode = inject(CBTUnitViewModeService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
@@ -164,6 +166,7 @@ export class App {
     protected unitSearchPortalForceBuilder = signal<DomPortal<HTMLElement> | undefined>(undefined);
 
     constructor() {
+        this.seoService.initialize();
         afterNextRender(() => {
             const viewport = this.applicationViewport().nativeElement;
             const container = this.overlayContainer.getContainerElement();

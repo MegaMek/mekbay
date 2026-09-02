@@ -102,10 +102,6 @@ class TestUnitsCatalog {
         return this.units;
     }
 
-    public getCoreSummaryByUuid(): undefined {
-        return undefined;
-    }
-
     public readNativeUnitSource(): Promise<undefined> {
         return Promise.resolve(undefined);
     }
@@ -130,7 +126,8 @@ function refreshSearchCorpusForTest(dataService: DataService): void {
 
     internals.runtimeSearchIndexesReady.set(false);
     internals.invalidateForcePackCaches();
-    TestBed.inject(UnitRuntimeService).preprocessUnits(units);
+    const runtime = TestBed.inject(UnitRuntimeService);
+    runtime.commitPreparedRuntimeCatalog(runtime.prepareRuntimeCatalog(units));
     internals.applyNoneFactionMemberships(units, eras, factions);
     TestBed.inject(UnitRuntimeService).postprocessUnits(units, eras);
     TestBed.inject(UnitSearchIndexService).rebuildIndexes(
@@ -630,6 +627,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             workerFactory?: (() => SearchWorkerLike) | null;
             automaticallyConvertFiltersToSemantic?: boolean;
             initialParams?: URLSearchParams;
+            unitSearchViewMode?: UnitSearchViewMode;
         }
     ) {
         const dbServiceStub = {
@@ -641,7 +639,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
                 automaticallyConvertFiltersToSemantic: options?.automaticallyConvertFiltersToSemantic ?? false,
                 availabilitySource: 'mul' as AvailabilitySource,
                 megaMekAvailabilityFiltersUseAllScopedOptions: true,
-                unitSearchViewMode: 'list' as UnitSearchViewMode,
+                unitSearchViewMode: options?.unitSearchViewMode ?? 'list',
             }),
             initialized: signal(true),
         };
@@ -4782,11 +4780,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
             },
         }];
 
-        const { service } = createService(bundle);
         const params = new URLSearchParams();
         params.set('filters', 'source:src-a|faction:test faction|era:succession wars');
-
-        service.applySearchParamsFromUrl(params, { expandView: false });
+        const { service } = createService(bundle, { initialParams: params });
 
         expect(service.filterState()['source']?.value).toEqual({
             'SRC-A': {
@@ -4817,10 +4813,10 @@ describe('UnitSearchFiltersService search telemetry', () => {
             return;
         }
 
-        const { service, optionsServiceStub } = createService(buildSmallBundle(benchmarkBundle));
-        optionsServiceStub.options.update(options => ({ ...options, unitSearchViewMode: 'chassis' }));
-
-        service.applySearchParamsFromUrl(new URLSearchParams('view=table'), { expandView: false });
+        const { service, optionsServiceStub } = createService(buildSmallBundle(benchmarkBundle), {
+            initialParams: new URLSearchParams('view=table'),
+            unitSearchViewMode: 'chassis',
+        });
 
         expect(service.viewMode()).toBe('list');
         expect(service.expandedView()).toBeFalse();
@@ -4833,33 +4829,14 @@ describe('UnitSearchFiltersService search telemetry', () => {
             return;
         }
 
-        const { service, optionsServiceStub } = createService(buildSmallBundle(benchmarkBundle));
-        optionsServiceStub.options.update(options => ({ ...options, unitSearchViewMode: 'chassis' }));
-
-        service.applySearchParamsFromUrl(
-            new URLSearchParams('view=table&expanded=true'),
-            { expandView: false },
-        );
+        const { service, optionsServiceStub } = createService(buildSmallBundle(benchmarkBundle), {
+            initialParams: new URLSearchParams('view=table&expanded=true'),
+            unitSearchViewMode: 'chassis',
+        });
 
         expect(service.viewMode()).toBe('table');
         expect(service.expandedView()).toBeTrue();
         expect(optionsServiceStub.options().unitSearchViewMode).toBe('chassis');
-    });
-
-    it('replaces stale expanded and view state when applying a compact URL', () => {
-        if (!benchmarkBundle) {
-            pending('Real unit data could not be loaded for the URL view test.');
-            return;
-        }
-
-        const { service } = createService(buildSmallBundle(benchmarkBundle));
-        service.expandedView.set(true);
-        service.setViewMode('table');
-
-        service.applySearchParamsFromUrl(new URLSearchParams(), { expandView: false });
-
-        expect(service.expandedView()).toBeFalse();
-        expect(service.viewMode()).toBe('list');
     });
 
     it('loads legacy comma-containing Alpha Strike specials from URL params end to end', () => {
@@ -4873,13 +4850,10 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[0].as.specials = ['IF2'];
         bundle.units.units[1].as.specials = [special];
 
-        const { service, gameServiceStub } = createService(bundle);
-        gameServiceStub.currentGameSystem.set(GameSystem.AS);
-
         const params = new URLSearchParams();
         params.set('filters', `as.specials:${special}`);
-
-        service.applySearchParamsFromUrl(params, { expandView: false });
+        const { service, gameServiceStub } = createService(bundle, { initialParams: params });
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
 
         expect(service.filterState()['as.specials']?.value).toEqual({
             [special]: {

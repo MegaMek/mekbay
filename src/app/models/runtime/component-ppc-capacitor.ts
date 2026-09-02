@@ -11,7 +11,6 @@ import {
     PPC_CAPACITOR_COMPATIBLE_FLAG,
     PPC_CAPACITOR_DAMAGE_BONUS,
     PPC_CAPACITOR_FLAG,
-    PPC_CAPACITOR_HEAT_BONUS,
     PPC_FLAG,
     isPpcCapacitorCompatibleWeapon,
     isPpcCapacitorEquipment,

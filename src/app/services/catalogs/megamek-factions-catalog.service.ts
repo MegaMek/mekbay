@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 import {
     hydrateMegaMekFactionRecord,
-    type MegaMekFactionAffiliation,
     type MegaMekFactionRecord,
     type MegaMekFactionRecordData,
     type MegaMekFactions,
     type MegaMekFactionsData,
     resolveMegaMekFactionRecord,
 } from '../../models/megamek/factions.model';
-import { FactionsCatalogService } from './mulfactions-catalog.service';
 import { CatalogBaseService } from './catalog-base.service';
 
 function isMegaMekFactionsData(data: MegaMekFactionsData | Record<string, MegaMekFactionRecordData>): data is MegaMekFactionsData {
@@ -23,28 +21,10 @@ function isMegaMekFactionsData(data: MegaMekFactionsData | Record<string, MegaMe
     return typeof data.assetHash === 'string' && typeof data.factions === 'object' && data.factions !== null && !Array.isArray(data.factions);
 }
 
-function mapMulFactionAffiliation(group: string | undefined): MegaMekFactionAffiliation {
-    switch (group) {
-        case 'IS Clan':
-        case 'HW Clan':
-            return 'Clan';
-        case 'Inner Sphere':
-            return 'Inner Sphere';
-        case 'Periphery':
-            return 'Periphery';
-        case 'Mercenary':
-            return 'Mercenary';
-        default:
-            return 'Other';
-    }
-}
-
 @Injectable({
     providedIn: 'root'
 })
 export class MegaMekFactionsCatalogService extends CatalogBaseService<MegaMekFactionsData | MegaMekFactions, MegaMekFactionsData, MegaMekFactionsData | Record<string, MegaMekFactionRecordData>> {
-    private readonly factionsCatalog = inject(FactionsCatalogService);
-
     private factions = new Map<string, MegaMekFactionRecord>();
     private factionsByMulId = new Map<number, MegaMekFactionRecord[]>();
 
@@ -72,34 +52,6 @@ export class MegaMekFactionsCatalogService extends CatalogBaseService<MegaMekFac
 
     public getFactionsByMulId(mulId: number): MegaMekFactionRecord[] {
         return this.factionsByMulId.get(mulId) ?? [];
-    }
-
-    public getFactionAffiliation(factionKey: string): MegaMekFactionAffiliation {
-        const faction = this.getFactionByKey(factionKey);
-        if (!faction) {
-            return 'Other';
-        }
-
-        const affiliations = faction.mulId
-            .map((mulId) => mapMulFactionAffiliation(this.factionsCatalog.getFactionById(mulId)?.group));
-
-        if (affiliations.includes('Mercenary')) {
-            return 'Mercenary';
-        }
-
-        if (affiliations.includes('Clan')) {
-            return 'Clan';
-        }
-
-        if (affiliations.includes('Inner Sphere')) {
-            return 'Inner Sphere';
-        }
-
-        if (affiliations.includes('Periphery')) {
-            return 'Periphery';
-        }
-
-        return 'Other';
     }
 
     protected override hasHydratedData(): boolean {

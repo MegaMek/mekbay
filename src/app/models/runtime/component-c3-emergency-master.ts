@@ -31,7 +31,6 @@ import {
     type EquipmentInteractionChoice,
     type EquipmentInteractionCommandContext,
     type EquipmentInteractionInput,
-    type EquipmentInteractionNotifications,
     type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 
@@ -387,25 +386,6 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
                 : 'info',
         );
         return true;
-    }
-
-    onComponentC3EmergencyMasterEndTurn(
-        runtime: CBTUnitInstance,
-        definition: ComponentC3EmergencyMasterDefinition,
-        runtimeContext: ComponentC3EmergencyMasterContext,
-        notifications: EquipmentInteractionNotifications,
-    ): void {
-        const result = settleComponentC3EmergencyMasterEndTurn(runtime, definition, runtimeContext);
-        if (!result.accepted || !result.changed) return;
-        const facts = componentC3EmergencyMasterFacts(runtime, definition, runtimeContext);
-        notifications.showToast(
-            `${definition.unitDisplayName}: ${definition.displayName} ${this.statusLabel(
-                runtime,
-                definition,
-                runtimeContext,
-            )}`,
-            facts.operatingTurns === C3EM_FRIED_SEQUENCE_VALUE ? 'error' : 'info',
-        );
     }
 
     private statusLabel(

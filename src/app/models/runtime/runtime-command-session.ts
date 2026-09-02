@@ -7,7 +7,6 @@ import type {
     RuntimeHistoryEventInput,
     SerializedRuntimeHistory,
     SerializedRuntimeHistoryMessage,
-    SerializedRuntimeHistoryTurn,
 } from './runtime-history';
 import {
     appendSerializedRuntimeHistoryTurn,

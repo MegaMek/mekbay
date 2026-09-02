@@ -55,7 +55,7 @@ describe('UnitCatalogDatabase', () => {
         }));
         expect(await database.readActiveCatalog()).toEqual(generation);
         expect((await database.readSourceArchive(hash))?.size).toBe(archive.size);
-        expect(await database.readActiveCatalogActivationId()).toBe(generation.activationId);
+        expect((await database.readActiveCatalog())?.activationId).toBe(generation.activationId);
     });
 
     it('updates summaries without rewriting an unchanged source ZIP', async () => {
@@ -71,7 +71,7 @@ describe('UnitCatalogDatabase', () => {
         }, new Blob(['a different complete archive that must not replace the first one']));
 
         expect((await database.readSourceArchive(hash))?.size).toBe(firstArchive.size);
-        expect(await database.readActiveCatalogActivationId()).toBe(nextActivationId);
+        expect((await database.readActiveCatalog())?.activationId).toBe(nextActivationId);
     });
 
     it('does not return the ZIP for another units-manifest hash', async () => {

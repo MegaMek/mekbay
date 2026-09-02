@@ -4,7 +4,6 @@
 
 import { computed, signal, type Injector } from '@angular/core';
 import type { DataService } from '../services/data.service';
-import type { UnitSummary } from './unit-summary.model';
 import { forceMemberAdjustedValue, type CBTForceMember, type ForceMember } from './force-member.model';
 import type { SerializedCBTForce, SerializedForce } from './force-serialization';
 import { GameSystem } from './common.model';
@@ -23,7 +22,6 @@ import {
     CBTEncounterRuntime,
     reduceTargetRegistry,
     type EncounterNetwork,
-    type EncounterTargetId,
     type TargetRegistryCommand,
     type TargetRegistryCommandResult,
     type TargetRegistrySnapshot,
@@ -37,7 +35,7 @@ import {
 import { createUnitInstanceId } from './runtime/runtime-state';
 import { CBTUnitService } from '../services/cbt-unit.service';
 import { CBTMekUnit } from './runtime/cbt-mek-unit';
-import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit, type CBTTargetingReconciliation } from './runtime/cbt-unit';
+import { isCBTMekUnit, type CBTUnit } from './runtime/cbt-unit';
 import { jsonValuesEqual } from '../utils/json-value.util';
 import type { JsonValue } from './persisted-unit-state';
 import {
@@ -47,17 +45,15 @@ import {
 } from './runtime/force-persistence-boundary';
 import { scenarioRuleset, type DeploymentConfiguration, type ScenarioRules } from './runtime/unit-state-initializer';
 import type { ComponentId } from './entity/entity-identifiers';
-import type { NonMekUnitCommand, NonMekUnitRuntimeState } from './runtime/non-mek-unit-instance';
+import type { NonMekUnitCommand } from './runtime/non-mek-unit-instance';
 import type {
     CBTUnitAttackerTargetingCommand,
     CBTUnitCommand,
     CBTUnitSelectedWeaponFireCommand,
 } from './runtime/unit-instance';
-import type { AttackerTargetingState } from './runtime/attacker-targeting-state';
-import type { MekRuntimeCapabilityDecision } from './runtime/mek-runtime-capability';
 import { evaluateCBTMekRuntimeCapability } from './runtime/cbt-unit-validation';
 import { type CrewAssignment, type CrewAssignmentPosition } from './runtime/crew-assignment';
-import type { UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { uuidv7 } from '../utils/uuid.util';
 import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
 import type { EquipmentInteractionQueryContext } from './runtime/equipment-interaction';
@@ -66,7 +62,6 @@ import { DialogsService } from '../services/dialogs.service';
 import { OptionsService } from '../services/options.service';
 import type { CBTOptionalRules } from './options.model';
 import type { MekHeatAutomationPolicyV2 } from './runtime/mek-heat-state-v2';
-import type { TnTargetUnitType } from './target-number-calculator.model';
 import {
     prepareCBTForceRosterMutationPlan,
     type CBTForceRosterQueryResult,
@@ -1754,11 +1749,6 @@ export class CBTForce extends Force<never> {
         const mode = this.injector.get(OptionsService, null, { optional: true })
             ?.cbtAutomationMode('heatAndDissipationResolution') ?? 'yes';
         return mode === 'yes' ? 'automatic' : 'manual';
-    }
-
-    private trackPhaseAndTurn(): boolean {
-        return this.injector.get(OptionsService, null, { optional: true })
-            ?.options().trackPhaseAndTurn ?? true;
     }
 
     protected override reconcileCBTForceV2Projection(): void {

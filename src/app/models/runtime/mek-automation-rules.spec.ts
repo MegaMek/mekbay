@@ -7,7 +7,6 @@ import {
     mekHeatAutomationChecks,
     mekHeatShutdownTarget,
     roll2D6,
-    succeedsOnTarget,
 } from './mek-automation-rules';
 
 describe('direct Mek automation rules', () => {
@@ -47,7 +46,5 @@ describe('direct Mek automation rules', () => {
             .toEqual([undefined, 3, 5, 7, 10, 11, undefined]);
         expect(roll2D6(() => 0)).toEqual([1, 1]);
         expect(roll2D6(() => 0.999)).toEqual([6, 6]);
-        expect(succeedsOnTarget(8, 8)).toBeTrue();
-        expect(succeedsOnTarget(7, 8)).toBeFalse();
     });
 });

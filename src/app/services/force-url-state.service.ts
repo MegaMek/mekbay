@@ -124,17 +124,6 @@ export class ForceUrlStateService {
         });
     }
 
-    async loadForceFromUrlParams(
-        params: URLSearchParams,
-        mode: 'replace' | 'add' = 'replace',
-        alignment: ForceAlignment = 'friendly',
-    ): Promise<boolean> {
-        const submittedParams = new URLSearchParams(params.toString());
-        const workspace = this.requireWorkspace();
-        if (mode === 'replace' && !await workspace.clear()) return false;
-        return this.loadForceParamsCore(submittedParams, alignment);
-    }
-
     private async initializeFromUrl(): Promise<void> {
         const params = new URLSearchParams(this.urlService.initialParams.toString());
         try {

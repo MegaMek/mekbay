@@ -35,10 +35,6 @@ export class MegaMekAvailabilityCatalogService extends CatalogBaseService<MegaMe
 
     protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
-    public getRecords(): readonly MegaMekWeightedAvailabilityRecord[] {
-        return this.records;
-    }
-
     public getRecordForUnit(unit: Pick<UnitSummary, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
         return this.recordsByUnitName.get(unit.name);
     }

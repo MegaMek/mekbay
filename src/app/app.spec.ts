@@ -90,7 +90,6 @@ describe('App', () => {
       hasForces: jasmine.createSpy('hasForces').and.returnValue(false),
       allLoadedUnits: signal([]),
       loadedForces: jasmine.createSpy('loadedForces').and.returnValue([]),
-      loadForceFromUrlParams: jasmine.createSpy('loadForceFromUrlParams').and.resolveTo(undefined),
       showForceOrgDialog: jasmine.createSpy('showForceOrgDialog').and.resolveTo(undefined),
       showLoadForceDialog: jasmine.createSpy('showLoadForceDialog'),
       showForceGeneratorDialog: jasmine.createSpy('showForceGeneratorDialog').and.resolveTo(undefined),
@@ -131,11 +130,9 @@ describe('App', () => {
       workerCatalogProgress: signal({ status: 'idle' }),
       setForeignTagDialogCallback: jasmine.createSpy('setForeignTagDialogCallback'),
       processPendingForeignTags: jasmine.createSpy('processPendingForeignTags'),
-      applySearchParamsFromUrl: jasmine.createSpy('applySearchParamsFromUrl'),
     };
     gameServiceMock = {
       isAlphaStrike: jasmine.createSpy('isAlphaStrike').and.returnValue(false),
-      setOverride: jasmine.createSpy('setOverride'),
       setMode: jasmine.createSpy('setMode'),
       currentGameSystem: jasmine.createSpy('currentGameSystem').and.returnValue(GameSystem.CBT),
     };

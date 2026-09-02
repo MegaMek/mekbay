@@ -17,8 +17,7 @@ import type {
     LocationId,
 } from '../entity/entity-identifiers';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
-import { jsonValuesEqual } from '../../utils/json-value.util';
-import type { UnitProviderId, UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import {
     freezeRuntimeState,
     type AmmoRuntimeState,
@@ -74,10 +73,8 @@ import {
 } from './component-c3-emergency-master';
 import {
     buildMekRuntimeIndex,
-    equipmentForComponent,
     type MekRuntimeIndex,
     type MekIndexedComponent,
-    type MekIndexedEquipment,
 } from './mek-runtime-index';
 import {
     mekAmmoCapacity,
@@ -128,37 +125,6 @@ export interface UnresolvedStateRecoveryEntry {
     readonly kind: 'critical' | 'inventory' | 'location' | 'unit-family';
     readonly reason: string;
     readonly raw: JsonValue;
-}
-
-export interface SavedBlueprintTargetTable {
-    readonly schemaVersion: 1;
-    readonly locations: readonly {
-        readonly id: LocationId;
-        readonly code: string;
-        readonly armorFaceIds: readonly ArmorFaceId[];
-    }[];
-    readonly armorFaces: readonly {
-        readonly id: ArmorFaceId;
-        readonly locationId: LocationId;
-        readonly face: 'front' | 'rear';
-    }[];
-    readonly components: readonly {
-        readonly id: ComponentId;
-        readonly kind: 'equipment' | 'system';
-        readonly equipmentKey?: string;
-        readonly locations: readonly LocationId[];
-        readonly slots: readonly { readonly locationCode: string; readonly slotIndex: number }[];
-    }[];
-    readonly slots: readonly {
-        readonly id: CriticalSlotId;
-        readonly locationCode: string;
-        readonly slotIndex: number;
-        readonly componentIds: readonly ComponentId[];
-    }[];
-    readonly ammoSources: readonly {
-        readonly componentId: ComponentId;
-        readonly capacity: number;
-    }[];
 }
 
 export interface UnitRestorationMetadata {
@@ -226,7 +192,6 @@ export async function restoreLegacyUnitState(
         ruleset: initialized.baselineRef.ruleset,
     });
 
-    const targetTable = buildSavedBlueprintTargetTable(unit);
     const warnings: StateRestoreWarning[] = [];
     const unresolved: UnresolvedStateRecoveryEntry[] = [];
     let recoverySequence = 0;
@@ -786,46 +751,6 @@ function translatedCriticalSlotId(
     return translated !== undefined && unit.index.slots.has(translated as CriticalSlotId)
         ? translated
         : savedId;
-}
-
-function buildSavedBlueprintTargetTable(unit: MekRestoreUnit): SavedBlueprintTargetTable {
-    const locations = [...unit.index.locations.values()].map(location => ({
-        id: location.id,
-        code: location.code,
-        armorFaceIds: location.armorFaceIds,
-    }));
-    const armorFaces = [...unit.index.armorFaces.values()].map(face => ({
-        id: face.id,
-        locationId: face.locationId,
-        face: face.face,
-    }));
-    const components = [...unit.index.components].map(([id, component]) => {
-        const slots = [...unit.index.slots.values()].filter(slot => slot.componentIds.includes(id));
-        const locations = componentLocations(unit.index, component);
-        return {
-            id,
-            kind: component.kind,
-            ...(component.kind === 'equipment'
-                ? { equipmentKey: component.mount.equipment?.id ?? component.mount.equipmentId }
-                : {}),
-            locations,
-            slots: slots.map(slot => ({
-                locationCode: unit.index.locations.get(slot.locationId)!.code,
-                slotIndex: slot.slotIndex,
-            })),
-        };
-    });
-    const slots = [...unit.index.slots.values()].map(slot => ({
-        id: slot.id,
-        locationCode: unit.index.locations.get(slot.locationId)!.code,
-        slotIndex: slot.slotIndex,
-        componentIds: slot.componentIds,
-    }));
-    const ammoSources = [...unit.index.components.keys()].flatMap(componentId => {
-        const capacity = mekAmmoCapacity(unit.entity, unit.index, componentId, unit.ruleset);
-        return capacity === null ? [] : [{ componentId, capacity }];
-    });
-    return Object.freeze({ schemaVersion: 1 as const, locations, armorFaces, components, slots, ammoSources });
 }
 
 function criticalCoordinate(raw: JsonObject, unit: MekRestoreUnit) {
