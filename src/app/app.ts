@@ -135,10 +135,6 @@ export class App {
     protected showInstallButton = signal(false);
     protected homeActionsPanelOpen = signal(false);
     private deferredPrompt: BeforeInstallPromptEvent | null = null;
-    private urlAtLastBlur = this.getCurrentAppUrl();
-    private lastHandledCapturedUrl: string | null = null;
-    private lastHandledCapturedUrlAt = 0;
-    private readonly capturedUrlDedupWindowMs = 2000;
     private focusLostAt: number | null = document.visibilityState === 'hidden' ? Date.now() : null;
     private androidPwaBackExitEnabled = false;
     private androidPwaBackRestoring = false;
@@ -181,7 +177,7 @@ export class App {
         
         // Set up foreign tag import dialog callback
         this.unitSearchFiltersService.setForeignTagDialogCallback(
-            (publicId, tagNames) => this.showForeignTagImportDialog(tagNames)
+            (_publicId, tagNames) => this.showForeignTagImportDialog(tagNames)
         );
 
         // iOS doesn't fire beforeinstallprompt, so we check manually
@@ -396,13 +392,6 @@ export class App {
         }
     }
 
-    private replaceCurrentHistoryState(url: string): void {
-        const state = this.androidPwaBackExitEnabled
-            ? this.withAndroidPwaBackExitState(window.history.state)
-            : null;
-        window.history.replaceState(state, '', url);
-    }
-
     private withAndroidPwaBackExitState(state: unknown): Record<string, unknown> {
         const stateObject = state && typeof state === 'object' && !Array.isArray(state)
             ? state as Record<string, unknown>
@@ -467,7 +456,6 @@ export class App {
     }
 
     private onBlur = () => {
-        this.urlAtLastBlur = this.getCurrentAppUrl();
         this.markFocusLost();
     };
 
@@ -498,10 +486,6 @@ export class App {
 
     private markFocusLost(): void {
         this.focusLostAt ??= Date.now();
-    }
-
-    private getCurrentAppUrl(): string {
-        return `${window.location.pathname}${window.location.search}`;
     }
 
     private scheduleInitialServicesAfterFirstPaint(): void {
@@ -538,18 +522,6 @@ export class App {
             window.clearTimeout(this.initialServicesTimeoutId);
             this.initialServicesTimeoutId = null;
         }
-    }
-
-    private shouldSkipDuplicateCapturedUrl(parsed: URL): boolean {
-        const normalizedUrl = `${parsed.pathname}${parsed.search}`;
-        const now = Date.now();
-        if (this.lastHandledCapturedUrl === normalizedUrl && (now - this.lastHandledCapturedUrlAt) < this.capturedUrlDedupWindowMs) {
-            this.logger.info('[PWA] Skipping duplicate captured URL: ' + normalizedUrl);
-            return true;
-        }
-        this.lastHandledCapturedUrl = normalizedUrl;
-        this.lastHandledCapturedUrlAt = now;
-        return false;
     }
 
     private scheduleUpdateCheckTimer(): void {
