@@ -484,8 +484,8 @@ function unpackASUnit(value: unknown, path: string): ASSerializedUnit {
             text(unit[AS_UNIT_FIELD.instanceId], `${path}.${AS_UNIT_FIELD.instanceId}`),
             `${path}.${AS_UNIT_FIELD.instanceId}`,
         ),
-        uuid: unpackUuid(
-            text(unit[AS_UNIT_FIELD.catalogUuid], `${path}.${AS_UNIT_FIELD.catalogUuid}`),
+        uuid: unpackUnitUuid(
+            unit[AS_UNIT_FIELD.catalogUuid],
             `${path}.${AS_UNIT_FIELD.catalogUuid}`,
         ),
         ...(unit[AS_UNIT_FIELD.sourceHashCanary] === undefined ? {} : {
@@ -712,7 +712,7 @@ function unpackTimestamp(value: unknown, path: string): string {
 }
 
 function packUuid(value: string): string {
-    if (!UUID_PATTERN.test(value)) throw new Error('Unit UUID is invalid');
+    if (!UUID_PATTERN.test(value)) throw new Error('UUID is invalid');
     const hex = value.replaceAll('-', '').toLowerCase();
     let bytes = '';
     for (let index = 0; index < hex.length; index += 2) {
@@ -721,7 +721,7 @@ function packUuid(value: string): string {
     return btoa(bytes).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
 }
 
-function unpackUuid(value: string, path: string) {
+function unpackCanonicalUuid(value: string, path: string): string {
     if (!COMPACT_UUID_PATTERN.test(value)) throw new Error(`${path} is not a compact UUID`);
     let bytes: string;
     try {
@@ -731,10 +731,10 @@ function unpackUuid(value: string, path: string) {
     }
     if (bytes.length !== 16) throw new Error(`${path} is not a compact UUID`);
     const hex = Array.from(bytes, byte => byte.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-    return asUnitUuid([
+    return [
         hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16),
         hex.slice(16, 20), hex.slice(20),
-    ].join('-'));
+    ].join('-');
 }
 
 function packOpaqueId(value: string): string {
@@ -746,7 +746,7 @@ function unpackOpaqueId(value: string, path: string): string {
     if (!value.startsWith('~')) return value;
     if (value.startsWith('~~')) return value.slice(1);
     return COMPACT_UUID_PATTERN.test(value.slice(1))
-        ? unpackUuid(value.slice(1), path)
+        ? unpackCanonicalUuid(value.slice(1), path)
         : value;
 }
 
@@ -763,7 +763,7 @@ function unpackUnitInstanceId(value: string, path: string): string {
         ? value.slice(COMPACT_UNIT_INSTANCE_ID_PREFIX.length)
         : null;
     return compactUuid !== null && COMPACT_UUID_PATTERN.test(compactUuid)
-        ? `${UNIT_INSTANCE_ID_PREFIX}${unpackUuid(compactUuid, path)}`
+        ? `${UNIT_INSTANCE_ID_PREFIX}${unpackCanonicalUuid(compactUuid, path)}`
         : unpackOpaqueId(value, path);
 }
 
@@ -1741,7 +1741,7 @@ function packUnitUuid(uuid: UnitUuid): CompactUnitUuid {
 }
 
 function unpackUnitUuid(value: unknown, path: string): UnitUuid {
-    return unpackUuid(text(value, path), path);
+    return asUnitUuid(unpackCanonicalUuid(text(value, path), path));
 }
 
 function unpackSourceHashCanary(value: unknown, path: string) {

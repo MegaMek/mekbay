@@ -30,10 +30,10 @@ export interface MegaMekUnitFileMetadata {
     bfsAssetType?: 'Vehicle' | 'Conventional Infantry' | 'Battle Armor';
 }
 
-export const UUID_V7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-export function isUuidV7(value: string | undefined): value is string {
-    return value !== undefined && UUID_V7_PATTERN.test(value);
+export function isCanonicalUuid(value: string | undefined): value is string {
+    return value !== undefined && UUID_PATTERN.test(value);
 }
 
 function parseYear(value: unknown): number | undefined {

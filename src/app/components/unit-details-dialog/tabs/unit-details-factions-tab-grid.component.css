@@ -74,9 +74,9 @@
 
 .faction-availability-matrix.faction-column-collapsed .faction-column-heading,
 .faction-availability-matrix.faction-column-collapsed .faction-row-heading {
-    width: 52px;
-    min-width: 52px;
-    max-width: 52px;
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
 }
 
 .faction-column-collapsed .faction-column-heading {
@@ -461,6 +461,10 @@
 
     .era-years {
         font-size: 0.45rem;
+    }
+    
+    .faction-name {
+        font-size: 0.8em;
     }
 
     .faction-row-heading,

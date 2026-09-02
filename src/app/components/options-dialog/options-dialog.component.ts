@@ -111,7 +111,7 @@ const FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS = 300;
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS = 10_000;
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS = 100;
 const CBT_AUTOMATION_MODES: ReadonlyArray<{ readonly value: AutomationMode; readonly label: string }> = [
-    { value: 'yes', label: 'Yes' },
+    { value: 'yes', label: 'Auto' },
     { value: 'ask', label: 'Ask' },
     { value: 'no', label: 'No' },
 ];

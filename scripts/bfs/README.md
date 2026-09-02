@@ -11,8 +11,8 @@ The generator does not infer fields that the Java model cannot represent.
 ## YAML structure and order
 
 ```yaml
-uuid: "<asset UUIDv7>"
-linkedUnitId: "<base MTF/BLK UUIDv7>" # linked assets only
+uuid: "<asset UUID>"
+linkedUnitId: "<base MTF/BLK UUID>" # linked assets only
 chassis: "<base or standalone chassis>"
 model: "<base or standalone model>"
 assetType: "Vehicle | Conventional Infantry | Battle Armor | Emplacement"
@@ -66,7 +66,7 @@ reviewed manifest.
 Each linked `.bfs` is placed beside its base and normally has the same filename stem. A
 reviewed `outputFile` may preserve a historical BFS filename while remaining in the same
 directory (currently the Elemental Battle Armor entry). Each asset
-has its own UUIDv7 and must never reuse its base UUID.
+has its own UUID and must never reuse its base UUID.
 
 ## Standalone emplacements
 

@@ -2495,6 +2495,9 @@ function pilotCheckTriggerStillActive(
     state: MekMovementPsrStateV2,
     check: MekPilotCheckV2,
 ): boolean {
+    // As in origin/next, an already-prone Mek cannot fall again. Reconcile the
+    // pending fall-check ledger while retaining damage-derived PSR modifiers.
+    if (facts.conditions.has('prone')) return false;
     const source = check.source;
     switch (source.triggerKind) {
         case 'damage-total-20':

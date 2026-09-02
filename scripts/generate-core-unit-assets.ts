@@ -55,7 +55,7 @@ import {
 import { createUnitSpriteAssignmentContextFromManifestText } from '../src/app/utils/unit-sprite-assignment-resolver';
 import { createUnitIconResolver } from '../src/app/utils/unit-sprite-resolver';
 import { UnitSummaryBuilder } from '../src/app/utils/unit-summary-builder';
-import { isUuidV7, parseMegaMekUnitFileMetadata } from './lib/megamek-unit-file-metadata';
+import { isCanonicalUuid, parseMegaMekUnitFileMetadata } from './lib/megamek-unit-file-metadata';
 import { listUnitFilesRecursive } from './lib/unit-file-discovery';
 
 const {
@@ -154,7 +154,7 @@ function discoverArtifacts(
         const metadata = parseMegaMekUnitFileMetadata(bytes.toString('utf8'), filePath, unitFilesRoot);
         const rawUuid = metadata?.uuid?.trim().toLowerCase();
 
-        if (!metadata || !isUuidV7(rawUuid)) {
+        if (!metadata || !isCanonicalUuid(rawUuid)) {
             const relativePath = path.relative(unitFilesRoot, filePath).split(path.sep).join('/');
             skippedFiles.push(relativePath);
             warn(`[Core Units] Skipping ${relativePath}: missing or invalid UUID`);

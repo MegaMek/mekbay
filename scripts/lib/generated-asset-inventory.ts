@@ -30,7 +30,7 @@ export const GENERATED_ASSET_FILES: readonly GeneratedAssetFileInventoryEntry[] 
 export const GENERATED_ASSET_PATTERNS: readonly GeneratedAssetPatternInventoryEntry[] = Object.freeze([
   {
     directory: 'units',
-    pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:mtf|blk)$/u,
+    pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:mtf|blk)$/u,
     required: true,
     producer: 'scripts/generate-core-unit-assets.ts',
   },

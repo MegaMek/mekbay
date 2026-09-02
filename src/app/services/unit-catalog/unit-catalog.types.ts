@@ -21,12 +21,12 @@ export type SourceRevision = string;
 
 export const MM_DATA_UNIT_PROVIDER_ID = 'mm-data' as UnitProviderId;
 
-const UUID_V7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 // A 20-byte SHA-1 encodes to 27 unpadded base64url characters. The final character has
 // four data bits, so its two unused bits must be zero; accepting other spellings is non-canonical.
 const SHA1_BASE64URL_PATTERN = /^[A-Za-z0-9_-]{26}[AEIMQUYcgkosw048]$/u;
 const PROVIDER_ID_PATTERN = /^[a-z0-9](?:[a-z0-9._:-]{0,127})$/u;
-const UNIT_FILE_PATTERN = /^([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.(mtf|blk)$/u;
+const UNIT_FILE_PATTERN = /^([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.(mtf|blk)$/u;
 
 export interface DesignIdentity {
     readonly provider: UnitProviderId;
@@ -71,8 +71,8 @@ export function asUnitProviderId(value: string): UnitProviderId {
 }
 
 export function asUnitUuid(value: string): UnitUuid {
-    if (!UUID_V7_PATTERN.test(value)) {
-        throw new Error(`Invalid canonical UUIDv7: ${value}`);
+    if (!UUID_PATTERN.test(value)) {
+        throw new Error(`Invalid canonical UUID: ${value}`);
     }
     return value as UnitUuid;
 }

@@ -16,7 +16,7 @@ import {
 import { buildBfsGenerationPlan, readBfsManifest, writeBfsGenerationPlan } from './lib/bfs-generation';
 import { BFS_LICENSE_HEADER, parseRenderedBfs, renderBfsYaml, validateBfsDocument } from './lib/bfs-yaml';
 import { parseCsv, parseCsvRows, requireCsvColumnCount, requireCsvHeader } from './lib/csv';
-import { isUuidV7, parseMegaMekUnitFileMetadata } from './lib/megamek-unit-file-metadata';
+import { isCanonicalUuid, parseMegaMekUnitFileMetadata } from './lib/megamek-unit-file-metadata';
 import { listUnitFilesRecursive, normalizeRelativePath } from './lib/unit-file-discovery';
 
 const { resolveMmDataRoot } = require('./lib/script-paths') as typeof import('./lib/script-paths');
@@ -109,7 +109,7 @@ try {
     assert.ok(rendered.indexOf('movement:') < rendered.indexOf('range:'));
     assert.ok(rendered.indexOf('range:') < rendered.indexOf('skill:'));
     assert.ok(rendered.indexOf('damage:') < rendered.indexOf('cost:'));
-    assert.throws(() => validateBfsDocument({ ...fixtureDocument(), uuid: 'bad' }), /UUIDv7/);
+    assert.throws(() => validateBfsDocument({ ...fixtureDocument(), uuid: 'bad' }), /UUID/);
     assert.throws(() => validateBfsDocument({ ...fixtureDocument(), range: [-1, 2, 3] }), /range/);
     assert.throws(() => validateBfsDocument({
         ...fixtureDocument(), damage: { perHit: 5, hits: 0 },
@@ -134,7 +134,7 @@ try {
     assert.equal(blkMetadata.role, 'MISSILE_BOAT');
     assert.equal(blkMetadata.movementMode, 'HOVER');
     assert.equal(blkMetadata.bfsAssetType, 'Vehicle');
-    assert.ok(isUuidV7(blkMetadata.uuid));
+    assert.ok(isCanonicalUuid(blkMetadata.uuid));
 
     const mtf = 'Version:1.0\nuuid:019f583e-d705-7a89-aa1a-b1554faebbd2\nChassis:Stinger LAM\nModel:STG-A5\nEra:2686\nTechBase:Inner Sphere\nSource:TR:3085\nRole:Interceptor\n';
     const mtfMetadata = parseMegaMekUnitFileMetadata(mtf, path.join(unitFilesRoot, 'meks', 'LAMS', 'Stinger.mtf'), unitFilesRoot)!;
@@ -183,7 +183,7 @@ try {
     assert.equal(new Set(plan.files.map((file) => file.document.uuid)).size, 160);
     assert.equal(plan.files.filter((file) => file.document.linkedUnitId).length, 119);
     assert.equal(plan.files.filter((file) => !file.document.linkedUnitId).length, 41);
-    assert.ok(plan.files.every((file) => isUuidV7(file.document.uuid)));
+    assert.ok(plan.files.every((file) => isCanonicalUuid(file.document.uuid)));
     assert.ok(plan.files.every((file) => parseRenderedBfs(file.content).uuid === file.document.uuid));
     assert.match(plan.reportContent, /Supported definitions: \*\*160\*\*/);
     assert.match(plan.reportContent, /Aerospace rows blocked[^\n]+\*\*141\*\*/);

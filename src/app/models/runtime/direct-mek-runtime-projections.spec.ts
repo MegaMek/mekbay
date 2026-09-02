@@ -2224,6 +2224,74 @@ describe('direct Mek entity/runtime projections', () => {
         ]));
     });
 
+    it('suppresses hip-hit fall PSRs while prone but retains the permanent modifier', () => {
+        for (const [ruleset, expectedModifier] of [
+            ['core-2026', 1],
+            ['total-warfare', 2],
+        ] as const) {
+            const fixture = createDirectMekRuntimeFixture(
+                ruleset,
+                `unit:${ruleset}:prone-hip-hit`,
+            );
+            const hip = [...fixture.index.slots.values()].find(slot =>
+                fixture.index.locations.get(slot.locationId)?.code === 'LL'
+                && slot.componentIds.some(componentId => {
+                    const component = fixture.index.components.get(componentId);
+                    return component?.kind === 'system' && component.systemType === 'Hip';
+                }))!;
+            expect(fixture.instance.dispatch({
+                type: 'set-condition', condition: 'prone', active: true,
+            }).accepted).toBeTrue();
+
+            expect(fixture.instance.dispatch({
+                type: 'hit-critical',
+                slotId: hip.id,
+                hits: 1,
+                target: 'committed',
+            }).accepted).toBeTrue();
+
+            expect(fixture.instance.query().mekPilotChecks()).toEqual([]);
+            const projection = fixture.instance.query().mekMovementPsr();
+            expect(projection.kind).toBe('supported');
+            if (projection.kind !== 'supported') continue;
+            expect(projection.permanentPsrModifier).toBe(expectedModifier);
+            expect(projection.permanentPsrModifiers).toContain(jasmine.objectContaining({
+                modifier: expectedModifier,
+                reason: 'Hip Destroyed',
+                locationId: hip.locationId,
+            }));
+        }
+    });
+
+    it('removes a pending hip-hit fall PSR when the Mek becomes prone', () => {
+        const fixture = createDirectMekRuntimeFixture(
+            'total-warfare',
+            'unit:tw-standing-then-prone-hip-hit',
+        );
+        const hip = [...fixture.index.slots.values()].find(slot =>
+            fixture.index.locations.get(slot.locationId)?.code === 'LL'
+            && slot.componentIds.some(componentId => {
+                const component = fixture.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Hip';
+            }))!;
+        expect(fixture.instance.dispatch({
+            type: 'hit-critical',
+            slotId: hip.id,
+            hits: 1,
+            target: 'committed',
+        }).accepted).toBeTrue();
+        expect(fixture.instance.query().mekPilotChecks()).toEqual([
+            jasmine.objectContaining({ reason: 'Hip hit', status: 'pending' }),
+        ]);
+
+        expect(fixture.instance.dispatch({
+            type: 'set-condition', condition: 'prone', active: true,
+        }).accepted).toBeTrue();
+
+        expect(fixture.instance.query().mekPilotChecks()).toEqual([]);
+        expect(fixture.instance.query().mekMovementPsrState().checks).toEqual([]);
+    });
+
     it('consolidates Core hip and leg-actuator checks per leg, including jump damage', () => {
         const slotFor = (
             fixture: ReturnType<typeof createDirectMekRuntimeFixture>,

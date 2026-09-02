@@ -1,6 +1,6 @@
 import { load } from 'js-yaml';
 import type { BfsDocument, ValueProfile } from './bfs-converter';
-import { isUuidV7 } from './megamek-unit-file-metadata';
+import { isCanonicalUuid } from './megamek-unit-file-metadata';
 
 const TOP_LEVEL_FIELDS = new Set([
     'uuid', 'linkedUnitId', 'chassis', 'model', 'assetType', 'cardTitle', 'cardSubtitle', 'year', 'techBase',
@@ -148,13 +148,13 @@ export function validateBfsDocument(document: BfsDocument): void {
     const record = requireObject(document, 'The .bfs document root');
     requireExactKeys(record, TOP_LEVEL_FIELDS, 'BFS');
     assertString(document.uuid, 'uuid');
-    if (!isUuidV7(document.uuid)) {
-        throw new Error(`uuid must be an RFC variant-2 UUIDv7; received '${document.uuid}'.`);
+    if (!isCanonicalUuid(document.uuid)) {
+        throw new Error(`uuid must be a canonical RFC UUID; received '${document.uuid}'.`);
     }
     if (document.linkedUnitId !== undefined) {
         assertString(document.linkedUnitId, 'linkedUnitId');
-        if (!isUuidV7(document.linkedUnitId)) {
-            throw new Error(`linkedUnitId must be an RFC variant-2 UUIDv7; received '${document.linkedUnitId}'.`);
+        if (!isCanonicalUuid(document.linkedUnitId)) {
+            throw new Error(`linkedUnitId must be a canonical RFC UUID; received '${document.linkedUnitId}'.`);
         }
     }
     assertString(document.chassis, 'chassis');
