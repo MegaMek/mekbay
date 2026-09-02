@@ -981,6 +981,36 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(label?.getAttribute('font-family')).toBe('Roboto Condensed');
     }
 
+    it('rounds base BV only after applying the full custom-ammo variation', () => {
+        const baseAmmo = new AmmoEquipment({
+            id: 'Clan Ultra AC/20 Ammo',
+            name: 'Clan Ultra AC/20 Ammo',
+            type: 'ammo',
+            stats: { bv: 10 },
+            ammo: { type: 'AC_ULTRA', rackSize: 20, shots: 5 },
+        });
+        const customAmmo = new AmmoEquipment({
+            id: 'Clan Ultra AC/20 Precision Ammo',
+            name: 'Clan Ultra AC/20 Precision Ammo',
+            type: 'ammo',
+            stats: { bv: 10.5 },
+            ammo: { type: 'AC_ULTRA', rackSize: 20, shots: 4 },
+        });
+        equipment[baseAmmo.internalName] = baseAmmo;
+        equipment[customAmmo.internalName] = customAmmo;
+        const vehicle = createVehicleUnit(equipment);
+        vehicle.bv = 1000.4;
+        vehicle.offSpeedFactor = 0.4;
+        const forceUnit = createForceUnit(vehicle);
+        initialize(forceUnit);
+        const ammoEntry = forceUnit.getInventory().find(entry => entry.equipment instanceof AmmoEquipment)!;
+        ammoEntry.ammo = customAmmo.internalName;
+        forceUnit.setInventoryEntry(ammoEntry);
+
+        expect(forceUnit.customAmmoBvVariation()).toBeCloseTo(0.2, 10);
+        expect(forceUnit.getBaseBv()).toBe(1001);
+    });
+
     it('exposes live Extreme Range option state', () => {
         const forceUnit = createForceUnit();
 

@@ -37,18 +37,31 @@ export class BVCalculatorUtil {
     }
 
     /**
-     * Calculate adjusted Battle Value based on pilot skills
+     * Calculate the unrounded Battle Value added or removed by pilot skills.
+     * Final BV rounding is intentionally excluded from this component.
+     */
+    static calculatePilotBV(unit: UnitSummary, baseBv: number, gunnerySkill: number, pilotingSkill: number): number {
+        return this.calculateUnroundedAdjustedBV(unit, baseBv, gunnerySkill, pilotingSkill) - baseBv;
+    }
+
+    /**
+     * Calculate adjusted Battle Value based on pilot skills.
      * @param unit - Unit object containing base Battle Value
      * @param gunnerySkill - Gunnery skill level (0-8+)
      * @param pilotingSkill - Piloting skill level (0-8+)
      * @returns Adjusted Battle Value rounded to nearest integer
      */
     static calculateAdjustedBV(unit: UnitSummary, baseBv: number, gunnerySkill: number, pilotingSkill: number): number {
-        pilotingSkill = getEffectivePilotingSkill(unit, pilotingSkill);
-        const multiplier = this.getSkillMultiplier(gunnerySkill, pilotingSkill);
-        if (multiplier === 1.0) {
-            return baseBv;
-        }
-        return Math.round(baseBv * multiplier);
+        return Math.round(this.calculateUnroundedAdjustedBV(unit, baseBv, gunnerySkill, pilotingSkill));
+    }
+
+    private static calculateUnroundedAdjustedBV(
+        unit: UnitSummary,
+        baseBv: number,
+        gunnerySkill: number,
+        pilotingSkill: number,
+    ): number {
+        const effectivePilotingSkill = getEffectivePilotingSkill(unit, pilotingSkill);
+        return baseBv * this.getSkillMultiplier(gunnerySkill, effectivePilotingSkill);
     }
 }

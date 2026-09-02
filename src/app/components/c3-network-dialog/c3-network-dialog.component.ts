@@ -30,6 +30,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { FormatBvPipe } from '../../pipes/format-bv.pipe';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
@@ -101,17 +102,17 @@ interface SidebarMemberVm {
     node: C3Node | null;
     network?: SerializedC3NetworkGroup;
     networkVm?: SidebarNetworkVm;
-    /** Base BV (pilot adjusted) */
+    /** Rounded base BV, including custom ammo. */
     baseBv?: number;
-    /** Tag BV for this unit */
+    /** Unrounded TAG BV for this unit. */
     tagBv?: number;
-    /** C³ BV for this unit */
+    /** Unrounded C³ BV for this unit. */
     c3Bv?: number;
     /** External Stores BV for this unit */
     externalStoresBv?: number;
-    /** Pilot Skills BV for this unit */
+    /** Unrounded pilot-skill BV, excluding final rounding. */
     pilotBv?: number;
-    /** Adjusted BV for this unit */
+    /** Final rounded BV for this unit. */
     adjustedBv?: number;
 }
 
@@ -123,7 +124,7 @@ interface Vec2 {
 @Component({
     selector: 'c3-network-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [NgTemplateOutlet],
+    imports: [NgTemplateOutlet, FormatBvPipe],
     host: {
         class: 'fullscreen-dialog-host fullheight tv-fade',
         '[class.read-only]': 'data.readOnly'
@@ -613,7 +614,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const externalStoresBv = cbtUnit.externalStoresBv();
             const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
             const adjustedBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
-            const pilotBv = adjustedBv - preSkillAdjustedBv;
+            const pilotBv = BVCalculatorUtil.calculatePilotBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
             return { baseBv: baseBv, tagBv, c3Bv, externalStoresBv, pilotBv, adjustedBv };
         };
 
@@ -777,11 +778,12 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             const externalStoresBv = cbtUnit.externalStoresBv();
             const preSkillAdjustedBv = baseBv + tagBv + c3Bv + externalStoresBv;
             const finalBv = BVCalculatorUtil.calculateAdjustedBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
+            const pilotBv = BVCalculatorUtil.calculatePilotBV(unit, preSkillAdjustedBv, cbtUnit.gunnerySkill(), cbtUnit.pilotingSkill());
             totalBaseBv += baseBv;
             totalTagBv += tagBv;
             totalC3Bv += c3Bv;
             totalExternalStoresBv += externalStoresBv;
-            totalPilotSkillsBv += finalBv - baseBv - tagBv - c3Bv - externalStoresBv;
+            totalPilotSkillsBv += pilotBv;
             grandTotal += finalBv;
         }
         

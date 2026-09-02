@@ -354,33 +354,33 @@
             <div class="bv-totals">
                 <div class="bv-totals-row">
                     <span>Total Units BV:</span>
-                    <span class="bv-value">{{ totals.totalBaseBv }}</span>
+                    <span class="bv-value">{{ totals.totalBaseBv | formatBv }}</span>
                 </div>
                 @if (totals.totalTagBv > 0) {
                 <div class="bv-totals-row">
                     <span>Total TAG BV:</span>
-                    <span class="bv-value">+{{ totals.totalTagBv }}</span>
+                    <span class="bv-value">+{{ totals.totalTagBv | formatBv }}</span>
                 </div>
                 }
                 <div class="bv-totals-row">
                     <span>Total C³ BV:</span>
-                    <span class="bv-value tax">+{{ totals.totalC3Bv }}</span>
+                    <span class="bv-value tax">+{{ totals.totalC3Bv | formatBv }}</span>
                 </div>
                 @if (totals.totalExternalStoresBv > 0) {
                 <div class="bv-totals-row">
                     <span>Total External Store BV:</span>
-                    <span class="bv-value">+{{ totals.totalExternalStoresBv }}</span>
+                    <span class="bv-value">+{{ totals.totalExternalStoresBv | formatBv }}</span>
                 </div>
                 }
                 @if (totals.totalPilotSkillsBv !== 0) {
                 <div class="bv-totals-row">
                     <span>Total Pilot Skills BV:</span>
-                    <span class="bv-value">+{{ totals.totalPilotSkillsBv }}</span>
+                    <span class="bv-value">{{ totals.totalPilotSkillsBv > 0 ? '+' : '' }}{{ totals.totalPilotSkillsBv | formatBv }}</span>
                 </div>
                 }
                 <div class="bv-totals-row grand-total">
                     <span>Grand Total:</span>
-                    <span class="bv-value">{{ totals.grandTotal }}</span>
+                    <span class="bv-value">{{ totals.grandTotal | formatBv }}</span>
                 </div>
             </div>
             }
@@ -409,7 +409,7 @@
             <span class="network-type">
                 {{ vm.displayName }}
                 @if (vm.showBv && showBvDetails() && depth === 0 && vm.networkTax !== undefined) {
-                    <span class="network-tax">Tax: +{{ vm.networkTax }}</span>
+                    <span class="network-tax">Tax: +{{ vm.networkTax | formatBv }}</span>
                 }
             </span>
             @if (vm.canRemoveNetwork) {
@@ -450,12 +450,12 @@
                 </div>
                 @if (vm.showBv && showBvDetails() && !member.isSelfConnection && member.baseBv !== undefined) {
                 <div class="member-bv-details">
-                    <span title="Base BV">BV: {{ member.baseBv }}</span>
-                    @if (member.tagBv > 0) { <span title="Tag BV">+ {{ member.tagBv }}</span> }
-                    <span class="tax" title="C3 BV">+ {{ member.c3Bv ?? 0 }}</span>
-                    @if (member.externalStoresBv > 0) { <span title="External Stores BV">+ {{ member.externalStoresBv }}</span> }
-                    @if (member.pilotBv > 0) { <span title="Pilot Skills BV">+ {{ member.pilotBv }}</span> }
-                    <span class="total" title="Total Adjusted BV">= {{ member.adjustedBv }}</span>
+                    <span title="Base BV">BV: {{ member.baseBv | formatBv }}</span>
+                    @if (member.tagBv > 0) { <span title="Tag BV">+ {{ member.tagBv | formatBv }}</span> }
+                    <span class="tax" title="C3 BV">+ {{ (member.c3Bv ?? 0) | formatBv }}</span>
+                    @if (member.externalStoresBv > 0) { <span title="External Stores BV">+ {{ member.externalStoresBv | formatBv }}</span> }
+                    @if (member.pilotBv !== 0) { <span title="Pilot Skills BV">{{ member.pilotBv > 0 ? '+' : '' }}{{ member.pilotBv | formatBv }}</span> }
+                    <span class="total" title="Total Adjusted BV">= {{ member.adjustedBv | formatBv }}</span>
                 </div>
                 }
             </div>
@@ -488,12 +488,12 @@
                 </div>
                 @if (vm.showBv && showBvDetails() && !member.isSelfConnection && member.baseBv !== undefined) {
                 <div class="member-bv-details">
-                    <span title="Base BV">BV: {{ member.baseBv }}</span>
-                    @if (member.tagBv > 0) { <span title="Tag BV">+ {{ member.tagBv }}</span> }
-                    <span class="tax" title="C3 BV">+ {{ member.c3Bv ?? 0 }}</span>
-                    @if (member.externalStoresBv > 0) { <span title="External Stores BV">+ {{ member.externalStoresBv }}</span> }
-                    @if (member.pilotBv > 0) { <span title="Pilot Skills BV">+ {{ member.pilotBv }}</span> }
-                    <span class="total" title="Total Adjusted BV">= {{ member.adjustedBv }}</span>
+                    <span title="Base BV">BV: {{ member.baseBv | formatBv }}</span>
+                    @if (member.tagBv > 0) { <span title="Tag BV">+ {{ member.tagBv | formatBv }}</span> }
+                    <span class="tax" title="C3 BV">+ {{ (member.c3Bv ?? 0) | formatBv }}</span>
+                    @if (member.externalStoresBv > 0) { <span title="External Stores BV">+ {{ member.externalStoresBv | formatBv }}</span> }
+                    @if (member.pilotBv !== 0) { <span title="Pilot Skills BV">{{ member.pilotBv > 0 ? '+' : '' }}{{ member.pilotBv | formatBv }}</span> }
+                    <span class="total" title="Total Adjusted BV">= {{ member.adjustedBv | formatBv }}</span>
                 </div>
                 }
                 <div>

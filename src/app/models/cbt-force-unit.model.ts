@@ -1886,7 +1886,7 @@ export class CBTForceUnit extends ForceUnit {
             }
         }
         const offSpeedFactor = this.getUnit().offSpeedFactor || 1;
-        return Math.round(bvVariation * offSpeedFactor);
+        return bvVariation * offSpeedFactor;
     });
 
     public getBaseBv = computed<number>(() => {
@@ -1928,7 +1928,12 @@ export class CBTForceUnit extends ForceUnit {
     });
 
     public pilotBV = computed<number>(() => {
-        return this.getBv() - this.getPreSkillBv();
+        return BVCalculatorUtil.calculatePilotBV(
+            this.getUnit(),
+            this.getPreSkillBv(),
+            this.gunnerySkill(),
+            this.pilotingSkill()
+        );
     });
 
     getBv = computed<number>(() => {
