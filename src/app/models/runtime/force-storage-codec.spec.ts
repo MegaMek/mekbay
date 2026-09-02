@@ -514,7 +514,7 @@ describe('compact force storage codec', () => {
         expect(compactUnit['attackerTargeting']).toBeUndefined();
         expect(compactUnit['q']).toBeUndefined();
         expect(compactUnit['p']).toBeDefined();
-        expect(compactUnit['w']).toEqual([[crewPositionId, 0, 1]]);
+        expect(compactUnit['w']).toEqual([[crewPositionId, 0, { unconscious: true }]]);
         expect(compactUnit['v']).toEqual([0, 0, ['run', 5], 0, 2, 1, 1, undefined, 1]);
         expect(compactUnit['y']).toEqual({ p: [1, 0] });
         expect(compactUnit['c']).toEqual([[boosterId, { e: [1, 1] }]]);
@@ -583,7 +583,7 @@ describe('compact force storage codec', () => {
         const compactUnit = ((stored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
         expect(compactUnit['z']).toEqual({ o: 19, s: 2 });
         expect((compactUnit['v'] as unknown[])[7]).toEqual([1, 0]);
-        expect(compactUnit['w']).toEqual([[pilotId, 1, 1, 1]]);
+        expect(compactUnit['w']).toEqual([[pilotId, 1, { unconscious: true }, 1]]);
 
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
         const entry = decoded.cbt!.units[0]!;
@@ -656,7 +656,7 @@ describe('compact force storage codec', () => {
             'Committed crew death',
         ));
         const committedUnit = ((committedStored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
-        expect((committedUnit['w'] as unknown[][])[0]?.slice(1)).toEqual([6, 4]);
+        expect((committedUnit['w'] as unknown[][])[0]?.slice(1)).toEqual([6, { dead: true }]);
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(committedStored)));
         expect((decoded.cbt!.units[0]!.unit as SerializedCBTUnitV2).crew.positions[0]?.dead).toBeTrue();
     });

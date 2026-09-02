@@ -702,7 +702,7 @@ function packMekUnit(unit: SerializedCBTUnitV2): unknown {
         w: packRows(unit.crew.positions, row => tuple(
             row.target,
             row.wounds,
-            packedCrewState(row),
+            packCrewState(row),
             row.recoveryReadyTurn,
         )),
         z: heatIsPristine ? undefined : packHeat(unit.heat),
@@ -776,16 +776,13 @@ function unpackMekUnit(value: Record<string, unknown>, path: string): Serialized
         crew: {
             schemaVersion: 1,
             positions: value['w'] === undefined ? [] : unpackRows(value['w'], `${path}.w`, (row, rowPath) => {
-                const state = row[2] === undefined ? 0 : rowInteger(row, 2, rowPath);
-                if (state < 0 || (state & ~MEK_CREW_STATE_MASK) !== 0) {
-                    throw new Error(`${rowPath}[2] is not a Mek crew state`);
-                }
+                const state = unpackCrewState(row[2], `${rowPath}[2]`);
                 return {
                     target: asSavedTargetRef(rowText(row, 0, rowPath)),
                     wounds: rowInteger(row, 1, rowPath),
-                    unconscious: (state & CREW_UNCONSCIOUS) !== 0,
-                    ...((state & CREW_EJECTED) !== 0 ? { ejected: true as const } : {}),
-                    ...((state & CREW_DEAD) !== 0 ? { dead: true as const } : {}),
+                    unconscious: state.unconscious,
+                    ...(state.ejected ? { ejected: true as const } : {}),
+                    ...(state.dead ? { dead: true as const } : {}),
                     ...(row[3] === undefined
                         ? {}
                         : {
@@ -850,7 +847,7 @@ function packNonMekUnit(unit: SerializedNonMekUnit): unknown {
         w: packRows(unit.crewState, row => tuple(
             row.positionId,
             row.wounds,
-            packedCrewState(row),
+            packCrewState(row),
             row.recoveryReadyTurn,
         )),
         o: unit.conditions?.length ? unit.conditions : undefined,
@@ -1076,23 +1073,49 @@ function unpackNonMekMovement(
     };
 }
 
-const CREW_UNCONSCIOUS = 1;
-const CREW_EJECTED = 2;
-const CREW_DEAD = 4;
-const MEK_CREW_STATE_MASK = CREW_UNCONSCIOUS | CREW_EJECTED | CREW_DEAD;
-const NON_MEK_CREW_STATE_MASK = MEK_CREW_STATE_MASK;
+type CompactCrewState = Readonly<{
+    unconscious?: true;
+    ejected?: true;
+    dead?: true;
+}>;
 
-function packedCrewState(
+interface DecodedCrewState {
+    readonly unconscious: boolean;
+    readonly ejected: boolean;
+    readonly dead: boolean;
+}
+
+function packCrewState(
     row: Readonly<{
         readonly unconscious: boolean;
         readonly ejected?: boolean;
         readonly dead?: true;
     }>,
-): number | undefined {
-    const state = (row.unconscious ? CREW_UNCONSCIOUS : 0)
-        | (row.ejected ? CREW_EJECTED : 0)
-        | (row.dead ? CREW_DEAD : 0);
-    return state === 0 ? undefined : state;
+): CompactCrewState | undefined {
+    if (!row.unconscious && !row.ejected && !row.dead) return undefined;
+    return Object.freeze({
+        ...(row.unconscious ? { unconscious: true as const } : {}),
+        ...(row.ejected ? { ejected: true as const } : {}),
+        ...(row.dead ? { dead: true as const } : {}),
+    });
+}
+
+function unpackCrewState(value: unknown, path: string): DecodedCrewState {
+    if (value === undefined || value === null) {
+        return { unconscious: false, ejected: false, dead: false };
+    }
+    const state = record(value, path);
+    exactKeys(state, ['unconscious', 'ejected', 'dead'], path);
+    for (const key of ['unconscious', 'ejected', 'dead'] as const) {
+        if (state[key] !== undefined && state[key] !== true) {
+            throw new Error(`${path}.${key} must be true when present`);
+        }
+    }
+    return {
+        unconscious: state['unconscious'] === true,
+        ejected: state['ejected'] === true,
+        dead: state['dead'] === true,
+    };
 }
 
 function unpackNonMekCrewState(
@@ -1100,16 +1123,13 @@ function unpackNonMekCrewState(
     path: string,
 ): NonNullable<SerializedNonMekUnit['crewState']>[number] {
     if (row.length < 2 || row.length > 4) throw new Error(`${path} is not a compact non-Mek crew row`);
-    const state = row[2] === undefined ? 0 : rowInteger(row, 2, path);
-    if (state < 0 || (state & ~NON_MEK_CREW_STATE_MASK) !== 0) {
-        throw new Error(`${path}[2] is not a non-Mek crew state`);
-    }
+    const state = unpackCrewState(row[2], `${path}[2]`);
     return {
         positionId: asCrewPositionId(rowText(row, 0, path)),
         wounds: rowInteger(row, 1, path),
-        unconscious: (state & CREW_UNCONSCIOUS) !== 0,
-        ejected: (state & CREW_EJECTED) !== 0,
-        ...((state & CREW_DEAD) !== 0 ? { dead: true as const } : {}),
+        unconscious: state.unconscious,
+        ejected: state.ejected,
+        ...(state.dead ? { dead: true as const } : {}),
         ...(row[3] === undefined
             ? {}
             : {
