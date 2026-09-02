@@ -6,13 +6,14 @@ import {
     type RuntimeEquipmentCommittedState,
     type RuntimeEquipmentStatusTopology,
 } from './equipment-status-kernel';
+import type { EquipmentFlag } from '../equipment-flags.type';
 
-function topology(flags: readonly string[] = ['F_AC']): RuntimeEquipmentStatusTopology {
+function topology(flags: readonly EquipmentFlag[] = ['F_AC']): RuntimeEquipmentStatusTopology {
     return {
         components: new Map([
             ['weapon', {
                 id: 'weapon',
-                flags: new Set(flags),
+                flags: new Set<EquipmentFlag>(flags),
                 locationIds: ['LT', 'RT'],
                 criticalSlotIds: ['LT:3', 'RT:4'],
             }],

@@ -8,7 +8,7 @@ export function rapidFireAutocannonComponentModes(
     equipment: unknown,
 ): Readonly<{ readonly modes: readonly string[]; readonly defaultMode?: string }> | null {
     if (!(equipment instanceof WeaponEquipment)
-        || !equipment.hasWeaponTrait('autocannon')
+        || !equipment.hasFlag('F_AC')
         || !['AC_ROTARY', 'AC_ULTRA', 'AC_ULTRA_THB'].includes(equipment.ammoType)) {
         return null;
     }

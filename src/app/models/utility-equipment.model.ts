@@ -26,7 +26,7 @@ export type UtilityEquipmentKind =
 export function utilityEquipmentKind(
   equipment: Equipment | null | undefined,
 ): UtilityEquipmentKind | null {
-  if (equipment?.hasWeaponTrait('anti-personnel-pod') === true) return 'anti-personnel-pod';
+  if (equipment?.hasFlag('F_AP_POD') === true) return 'anti-personnel-pod';
   if (equipment?.hasFlag('F_BULLDOZER') === true) return 'bulldozer';
   if (equipment?.hasFlag('F_CHAFF_POD') === true) return 'chaff-pod';
   if (equipment?.hasFlag('F_DAMAGE_INTERRUPT_CIRCUIT') === true) return 'damage-interrupt-circuit';

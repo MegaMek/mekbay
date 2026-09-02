@@ -122,7 +122,7 @@ function calculateExtraSlotWeight(entity: JumpShipEntity): number {
         && (usesLargeCraftAerospaceSupportSlot(equipment)
           || usesLargeCraftSensorSlot(equipment)))) continue;
     const arc = arcs.get(mount.location) ?? { slots: 0, tonnage: 0 };
-    arc.slots += equipment.hasWeaponTrait('mass-driver') ? 10 : 1;
+    arc.slots += equipment.hasFlag('F_MASS_DRIVER') ? 10 : 1;
     arc.tonnage += requireTonnage(entity, mount);
     arcs.set(mount.location, arc);
   }

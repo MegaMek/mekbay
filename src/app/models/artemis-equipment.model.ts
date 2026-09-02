@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { EquipmentFlag } from './equipment-flags.type';
-import { hasWeaponTrait } from './weapon-traits-kernel';
 import type { Equipment } from './equipment.model';
 
 const ARTEMIS_IV_FLAG = 'F_ARTEMIS' as const;
@@ -84,7 +83,7 @@ export function usesArtemisIVDamageTable(
 export function artemisReferenceNoteFromFlags(
   flags: ReadonlySet<EquipmentFlag>,
 ): 'artemisIV' | 'artemisV' | 'artemisProto' | null {
-  if (flags.has(ARTEMIS_IV_FLAG) || hasWeaponTrait(flags, 'atm')) return 'artemisIV';
+  if (flags.has(ARTEMIS_IV_FLAG) || flags.has('F_ATM')) return 'artemisIV';
   if (flags.has(ARTEMIS_V_FLAG)) return 'artemisV';
   if (flags.has(ARTEMIS_PROTOTYPE_FLAG)) return 'artemisProto';
   return null;

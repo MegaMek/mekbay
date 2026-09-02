@@ -93,7 +93,7 @@ function calculateArc(
     if (metadata.primaryClass) addDamage(vectors.get(metadata.primaryClass)!, damage);
     if (metadata.flak) addDamage(vectors.get('FLK')!, damage);
     if (metadata.pointDefense) {
-      addDamage(vectors.get('PNT')!, weapon.hasWeaponTrait('anti-missile')
+      addDamage(vectors.get('PNT')!, weapon.hasFlag('F_AMS')
         ? [0.3 * damageMultiplier * heatFactor, 0, 0, 0]
         : damage);
     }

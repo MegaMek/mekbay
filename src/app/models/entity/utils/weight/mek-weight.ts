@@ -137,9 +137,9 @@ function calculateMekPowerAmplifierWeight(entity: MekEntity): number {
   const poweredWeight = entity.equipment().reduce((total, mount) => {
     const equipment = mount.equipment;
     if (!(equipment instanceof WeaponEquipment)) return total;
-    const requiresPower = equipment.hasWeaponTrait('laser')
-      || equipment.hasWeaponTrait('plasma')
-      || equipment.hasWeaponTrait('plasma-mfuk')
+    const requiresPower = equipment.hasFlag('F_LASER')
+      || equipment.hasFlag('F_PLASMA')
+      || equipment.hasFlag('F_PLASMA_MFUK')
       || isPpcEquipment(equipment)
       || flamerRequiresPower(equipment);
     if (!requiresPower) return total;

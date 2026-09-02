@@ -73,7 +73,7 @@ function primaryDamageClass(
 ): AlphaStrikePrimaryDamageClass | null {
   if (hasAlphaStrikeBattleForceClass(weapon, 'TORPEDO')
     || weapon.damage === 'artillery'
-    || (pointDefense && weapon.hasWeaponTrait('anti-missile'))) {
+    || (pointDefense && weapon.hasFlag('F_AMS'))) {
     return null;
   }
   if (hasAlphaStrikeBattleForceClass(weapon, 'CAPITAL_MISSILE')) return 'MSL';
@@ -216,18 +216,18 @@ function nativeBattleForceDamage(
   rangeIndex: AlphaStrikeRangeIndex,
   linked?: { hasFlag(flag: Parameters<WeaponEquipment['hasFlag']>[0]): boolean },
 ): number {
-  if (weapon.hasWeaponTrait('machine-gun-array')) return 0;
+  if (weapon.hasFlag('F_MGA')) return 0;
   if (hasAlphaStrikeBattleForceClass(weapon, 'MML')) return mmlDamage(weapon, rangeIndex, linked);
   const range = RANGE_HEXES[rangeIndex];
   if (range > (weapon.ranges[2] ?? 0)) return 0;
-  if (weapon.hasWeaponTrait('mrm') || weapon.ammoType === 'MRM') {
+  if (weapon.hasFlag('F_MRM') || weapon.ammoType === 'MRM') {
     const roll = isApolloEquipment(linked) ? 6 : 7;
     const multiplier = isApolloEquipment(linked) ? 1 : 0.95;
     return applyMinimumRange(clusterHits(roll, weapon.rackSize) * multiplier, weapon, rangeIndex) / 10;
   }
   if (isClusterMissile(weapon)) {
     const roll = artemisClusterRoll(linked, 7)!;
-    const multiplier = weapon.hasWeaponTrait('srm')
+    const multiplier = weapon.hasFlag('F_SRM')
       || weapon.ammoType === 'SRM'
       || weapon.ammoType === 'SRM_TORPEDO' ? 2 : 1;
     return applyMinimumRange(clusterHits(roll, weapon.rackSize) * multiplier, weapon, rangeIndex) / 10;
@@ -288,7 +288,7 @@ function applyMinimumRange(damage: number, weapon: WeaponEquipment, rangeIndex: 
 
 function isClusterMissile(weapon: WeaponEquipment): boolean {
   return (weapon.damage === 'cluster'
-    && (weapon.hasWeaponTrait('lrm') || weapon.hasWeaponTrait('srm') || weapon.hasWeaponTrait('mml')))
+    && (weapon.hasFlag('F_LRM') || weapon.hasFlag('F_SRM') || weapon.hasFlag('F_MML')))
     || ['LRM', 'SRM', 'MML', 'LRM_PRIMITIVE', 'LRM_IMP', 'SRM_IMP',
       'LRM_TORPEDO', 'SRM_TORPEDO'].includes(weapon.ammoType);
 }

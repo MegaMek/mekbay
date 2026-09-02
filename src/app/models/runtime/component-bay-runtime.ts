@@ -54,12 +54,12 @@ export function mekComponentBayTopologyProblem(entity: MekEntity): string | null
         }
         const controller = bay.controller.equipment;
         if (!(controller instanceof WeaponEquipment)
-            || !controller.hasWeaponTrait('machine-gun-array')) return 'MALFORMED_RELATION';
+            || !controller.hasFlag('F_MGA')) return 'MALFORMED_RELATION';
         for (const member of bay.mounts) {
             const weapon = member.equipment;
             if (!(weapon instanceof WeaponEquipment)
-                || !weapon.hasWeaponTrait('machine-gun')
-                || weapon.hasWeaponTrait('machine-gun-array')
+                || !weapon.hasFlag('F_MG')
+                || weapon.hasFlag('F_MGA')
                 || weapon.rackSize !== controller.rackSize
                 || member.location !== bay.controller.location) return 'MALFORMED_RELATION';
         }

@@ -198,7 +198,7 @@ export class InfantryEntity extends InfantryBaseEntity {
     return this.secondaryCount() > 1
       && !this.augmentations().some(augmentation => augmentation === 'tsm_implant' || augmentation === 'dermal_armor')
       && !this.specializations().has('tag-troops')
-      && !!this.secondaryWeapon()?.hasWeaponTrait('infantry-support');
+      && !!this.secondaryWeapon()?.hasFlag('F_INF_SUPPORT');
   }
 
   private hasFieldArtillery(): boolean {

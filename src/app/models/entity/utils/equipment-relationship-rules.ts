@@ -62,11 +62,11 @@ export function reconcileEquipmentRelationships(entity: BaseEntity): void {
   const machineGunArrays: { controller: EntityMountedEquipment; mounts: EntityMountedEquipment[] }[] = [];
   for (const controller of mounts) {
     const equipment = controller.equipment;
-    if (!(equipment instanceof WeaponEquipment) || !equipment.hasWeaponTrait('machine-gun-array')) continue;
+    if (!(equipment instanceof WeaponEquipment) || !equipment.hasFlag('F_MGA')) continue;
     const members = mounts.filter(candidate => {
       const weapon = candidate.equipment;
       return candidate !== controller && weapon instanceof WeaponEquipment
-        && weapon.hasWeaponTrait('machine-gun') && !weapon.hasWeaponTrait('machine-gun-array')
+        && weapon.hasFlag('F_MG') && !weapon.hasFlag('F_MGA')
         && candidate.location === controller.location && weapon.rackSize === equipment.rackSize
         && !claimedMachineGuns.has(candidate);
     }).slice(0, 4);

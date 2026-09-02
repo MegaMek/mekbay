@@ -22,7 +22,6 @@ import {
   decodeBlkEngineType,
   decodeBlkHeatSinkType,
   decodeBlkCompoundTechBase,
-  decodeBlkCompoundTechLevel,
   encodeBlkAeroDesignType,
   encodeBlkArmorTechLevel,
   encodeBlkArmorTechRating,

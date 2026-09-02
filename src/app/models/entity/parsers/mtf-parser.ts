@@ -523,7 +523,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         // only unambiguous discriminator used by MegaMek's native grammar.
         const rearMarkerIsVglFacing = parsed.rearMounted
           && parsed.facing === undefined
-          && resolved?.hasWeaponTrait('vehicle-grenade-launcher') === true;
+          && resolved?.hasFlag('F_VGL') === true;
 
         const mount = entity.addEquipment({
           equipmentId: parsed.name,

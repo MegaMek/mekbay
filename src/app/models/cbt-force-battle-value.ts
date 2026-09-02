@@ -69,7 +69,7 @@ export function calculateCBTForceBattleValues(
     const rules = gameRulesFor(ruleset);
     const homingArtilleryLauncherCount = inventories.reduce((total, { inventory }) =>
         total + inventory.launchers.filter(launcher =>
-            launcher.hasWeaponTrait('artillery')
+            launcher.hasFlag('F_ARTILLERY')
             && inventory.ammunition.some(ammo =>
                 ammo.hasMunitionType('M_HOMING') && ammoMatchesWeapon(launcher, ammo))).length, 0);
     const guidedAmmoBv = inventories.reduce((total, { inventory }) =>
@@ -154,7 +154,7 @@ function tagBattleValueInventory(unit: CBTUnit): ReadyTagBattleValueInventory {
     const operationalMounts = mounts.filter(mount => operational.has(mount.mountId));
     return Object.freeze({
         operationalTagCount: operationalMounts.filter(mount =>
-            mount.equipment?.hasWeaponTrait('tag')).length,
+            mount.equipment?.hasFlag('F_TAG')).length,
         launchers: Object.freeze(operationalMounts.flatMap(mount =>
             mount.equipment instanceof WeaponEquipment ? [mount.equipment] : [])),
         ammunition: Object.freeze(ammunition),

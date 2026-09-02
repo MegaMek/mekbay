@@ -16,10 +16,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { constants, PerformanceObserver } from 'node:perf_hooks';
 import { platform, release } from 'node:os';
+import type { EquipmentFlag } from '../src/app/models/equipment-flags.type';
 import {
     RuntimeEquipmentStatusKernel,
     type EquipmentStatusUnitFamily,
     type RuntimeEquipmentCommittedState,
+    type RuntimeStatusComponentDefinition,
     type RuntimeEquipmentStatusTopology,
 } from '../src/app/models/runtime/equipment-status-kernel';
 import type { CBTRuleset } from '../src/app/models/cbt-ruleset.model';
@@ -227,12 +229,7 @@ function createFixture(
     family: EquipmentStatusUnitFamily,
     engineHit: boolean,
 ): ProfileFixture {
-    const components = new Map<string, {
-        id: string;
-        flags: ReadonlySet<string>;
-        locationIds: readonly string[];
-        criticalSlotIds: readonly string[];
-    }>();
+    const components = new Map<string, RuntimeStatusComponentDefinition>();
     const criticalSlots = new Map<string, {
         id: string;
         componentIds: readonly string[];
@@ -254,7 +251,7 @@ function createFixture(
         const criticalSlotIds = Array.from({ length: criticalCount }, (_, criticalIndex) =>
             `${unit.uuid}:critical:${componentIndex}:${criticalIndex}`
         );
-        const flags = new Set<string>();
+        const flags = new Set<EquipmentFlag>();
         if (component.t === 'E') flags.add('F_ENERGY');
         if (component.t === 'B') flags.add('F_BALLISTIC');
         if (/autocannon|(?:^|[^a-z])ac(?:[^a-z]|$)/iu.test(`${component.id} ${component.n ?? ''}`)) flags.add('F_AC');

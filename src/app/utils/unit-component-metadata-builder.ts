@@ -336,7 +336,7 @@ function maximumWeaponDamage(
   weapon: WeaponEquipment,
   resolvedMaximum: number,
 ): number {
-  if (weapon.weapon.damage === 'special' || weapon.hasWeaponTrait('machine-gun-array')) return 0;
+  if (weapon.weapon.damage === 'special' || weapon.hasFlag('F_MGA')) return 0;
   if (weapon.ammoType === 'MEK_MORTAR') return weapon.rackSize;
   if (weapon.weapon.damage !== 'cluster') return resolvedMaximum;
   if (weapon.ammoType === 'MML') return weapon.rackSize * 2;
@@ -346,7 +346,7 @@ function maximumWeaponDamage(
       if (!(ammo instanceof AmmoEquipment)
         || ammo.ammoType !== weapon.ammoType
         || ammo.rackSize !== weapon.rackSize
-        || isBattleArmorAmmo(ammo) !== weapon.hasWeaponTrait('battle-armor-weapon')) return maximum;
+        || isBattleArmorAmmo(ammo) !== weapon.hasFlag('F_BA_WEAPON')) return maximum;
       return Math.max(maximum, ammo.damagePerShot);
     }, 2);
     return weapon.rackSize * damagePerMissile;

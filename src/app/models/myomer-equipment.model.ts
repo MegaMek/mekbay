@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { Equipment } from './equipment.model';
+import type { EquipmentFlag } from './equipment-flags.type';
 import { hasAnyPrototypeVariant } from './equipment-variant.model';
 
 export type TripleStrengthMyomerKind = 'standard' | 'prototype' | 'industrial';
@@ -11,7 +12,7 @@ export const INDUSTRIAL_TSM_FLAG = 'F_INDUSTRIAL_TSM' as const;
 export const ACTUATOR_ENHANCEMENT_SYSTEM_FLAG = 'F_ACTUATOR_ENHANCEMENT_SYSTEM' as const;
 
 export function tripleStrengthMyomerKindFromFlags(
-    flags: ReadonlySet<string>,
+    flags: ReadonlySet<EquipmentFlag>,
 ): TripleStrengthMyomerKind | null | undefined {
     const ordinary = flags.has(TSM_FLAG);
     const industrial = flags.has(INDUSTRIAL_TSM_FLAG);
@@ -41,7 +42,7 @@ export function isStandardTripleStrengthMyomerEquipment(equipment: Equipment | u
     return tripleStrengthMyomerKind(equipment) === 'standard';
 }
 
-export function isActuatorEnhancementSystemFlags(flags: ReadonlySet<string>): boolean {
+export function isActuatorEnhancementSystemFlags(flags: ReadonlySet<EquipmentFlag>): boolean {
     return flags.has(ACTUATOR_ENHANCEMENT_SYSTEM_FLAG);
 }
 

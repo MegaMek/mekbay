@@ -2,6 +2,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+export interface EquipmentFlagsView {
+    readonly flags: ReadonlySet<EquipmentFlag>;
+}
+
+export interface EquipmentFlagPredicate {
+    hasFlag(flag: EquipmentFlag): boolean;
+}
+
+export type EquipmentFlagsSource =
+    | ReadonlySet<EquipmentFlag>
+    | EquipmentFlagsView
+    | EquipmentFlagPredicate;
+
 export type EquipmentFlag =
     // Extra flags specific for MekBay
     | "F_TEST_ONLY"

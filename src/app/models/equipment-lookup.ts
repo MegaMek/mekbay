@@ -78,7 +78,7 @@ export class EquipmentRegistry {
     /** Returns catalog ammo matching a weapon's ammo type, rack size, and BA class. */
     getAmmoForWeapon(weapon: WeaponEquipment): readonly AmmoEquipment[] {
         if (weapon.ammoType === 'NA') return [];
-        const battleArmor = weapon.hasWeaponTrait('battle-armor-weapon');
+        const battleArmor = weapon.hasFlag('F_BA_WEAPON');
         if (weapon.rackSize <= 0) return this.#ammoByType.get(ammoTypeKey(weapon.ammoType, battleArmor)) ?? [];
         return this.#ammoByWeapon.get(ammoWeaponKey(weapon.ammoType, weapon.rackSize, battleArmor)) ?? [];
     }

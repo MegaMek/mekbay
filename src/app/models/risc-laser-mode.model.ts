@@ -1,7 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { hasWeaponTrait } from './weapon-traits-kernel';
 import { isWeaponEnhancementEquipment } from './weapon-enhancement.model';
 
 export const RISC_LASER_STANDARD_MODE = 'Standard';
@@ -37,8 +36,8 @@ export function isRiscLaserPulseCompatibleWeapon(
     equipment: RiscLaserEquipmentView | null | undefined,
 ): boolean {
     return equipment != null
-        && hasWeaponTrait(equipment, 'laser')
-        && !hasWeaponTrait(equipment, 'pulse')
+        && equipment.hasFlag('F_LASER')
+        && !equipment.hasFlag('F_PULSE')
         && equipment.techBase !== 'Clan';
 }
 

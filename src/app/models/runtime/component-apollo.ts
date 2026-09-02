@@ -30,7 +30,6 @@ import {
     type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 import type { CBTUnitInstance } from './unit-instance';
-import { hasWeaponTrait } from '../weapon-traits-kernel';
 import { isWeaponEnhancementEquipment } from '../weapon-enhancement.model';
 
 export interface ComponentApolloDefinition {
@@ -182,7 +181,7 @@ export class ApolloHandler extends EquipmentInteractionHandler {
     applicableToComponentApollo(definition: ComponentApolloDefinition): boolean {
         return isWeaponEnhancementEquipment(definition.source.flags)
             && definition.source.flags.has(APOLLO_FLAG)
-            && hasWeaponTrait(definition.parent.flags, 'mrm');
+            && definition.parent.flags.has('F_MRM');
     }
 
     getComponentApolloChoices(

@@ -787,7 +787,7 @@ function insertEquipmentTechSuffix(name: string, suffix: string): string {
 function mekMiscInventoryDamage(mount: EntityMountedEquipment): string {
     const equipment = mount.equipment;
     if (!equipment) return '—';
-    if (equipment.hasWeaponTrait('anti-personnel-pod')) return '[PB,OS,AI]';
+    if (equipment.hasFlag('F_AP_POD')) return '[PB,OS,AI]';
     if (isTargetingComputerEquipment(equipment)) return '[E]';
     const physicalDamage = mount.getPhysicalWeaponDamage();
     return physicalDamage === undefined ? '—' : String(physicalDamage.value);

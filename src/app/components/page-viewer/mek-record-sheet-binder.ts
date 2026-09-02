@@ -1320,7 +1320,7 @@ function miscInventoryDamage(
     equipment: MekRecordSheetSnapshot['equipment'][number]['equipment'],
 ): string {
     if (!equipment) return '—';
-    if (equipment.hasWeaponTrait('anti-personnel-pod')) return '[PB,OS,AI]';
+    if (equipment.hasFlag('F_AP_POD')) return '[PB,OS,AI]';
     return isTargetingComputerEquipment(equipment) ? '[E]' : '—';
 }
 

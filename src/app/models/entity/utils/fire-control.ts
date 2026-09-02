@@ -81,9 +81,9 @@ export function getFireControlWeaponWeight(entity: BaseEntity): number | undefin
     for (const mount of entity.equipment()) {
         const equipment = mount.equipment;
         if (equipment?.type !== 'weapon') continue;
-        if (equipment.hasWeaponTrait('anti-missile')) continue;
-        if (equipment.hasWeaponTrait('infantry-weapon')
-            && !equipment.hasWeaponTrait('infantry-support')) continue;
+        if (equipment.hasFlag('F_AMS')) continue;
+        if (equipment.hasFlag('F_INFANTRY')
+            && !equipment.hasFlag('F_INF_SUPPORT')) continue;
 
         const tonnage = mount.getTonnage(entity);
         if (tonnage === undefined) return undefined;

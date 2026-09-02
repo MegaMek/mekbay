@@ -42,7 +42,7 @@ export function formatRecordSheetWeaponDamageText(
             ...(labels.has('S') ? ['S'] : []),
             ...GENERIC_MML_TYPE_ORDER.filter(label => !['M', 'C', 'S'].includes(label) && labels.has(label)),
         ];
-    } else if (weapon.hasWeaponTrait('artillery') && labels.has('AE') && !labels.has('DB')) {
+    } else if (weapon.hasFlag('F_ARTILLERY') && labels.has('AE') && !labels.has('DB')) {
         ordered = [
             'AE',
             ...(labels.has('S') ? ['S'] : []),

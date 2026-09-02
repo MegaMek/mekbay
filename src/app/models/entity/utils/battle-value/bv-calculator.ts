@@ -240,7 +240,7 @@ export class BVCalculator {
       const before = this.defensiveValue;
       this.defensiveValue += value;
       this.addValueLine(this.equipmentDescriptor(mount), `${value >= 0 ? '+' : '-'} ${this.format(Math.abs(value))}`, before);
-      if (equipment instanceof WeaponEquipment && equipment.hasWeaponTrait('anti-missile')
+      if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_AMS')
         && ['AMS', 'APDS'].includes(equipment.ammoType)) amsWeapons += value;
       if (equipment instanceof WeaponEquipment && equipment.ammoType === 'SCREEN_LAUNCHER') screenWeapons += value;
     }
@@ -262,9 +262,9 @@ export class BVCalculator {
     if (!this.notDestroyed(mount)) return false;
     const equipment = mount.equipment;
     if (equipment instanceof WeaponEquipment) {
-      return equipment.hasWeaponTrait('anti-missile')
-        || equipment.hasWeaponTrait('m-pod')
-        || equipment.hasWeaponTrait('b-pod')
+      return equipment.hasFlag('F_AMS')
+        || equipment.hasFlag('F_M_POD')
+        || equipment.hasFlag('F_B_POD')
         || equipment.ammoType === 'SCREEN_LAUNCHER';
     }
     return equipment instanceof MiscEquipment && (isShieldEquipment(equipment)
@@ -331,14 +331,14 @@ export class BVCalculator {
     if (!this.isWorking(mount)) return false;
     const equipment = mount.equipment;
     if (equipment instanceof WeaponEquipment) {
-      return !equipment.hasWeaponTrait('anti-missile')
-        && !equipment.hasWeaponTrait('b-pod')
-        && !equipment.hasWeaponTrait('m-pod')
+      return !equipment.hasFlag('F_AMS')
+        && !equipment.hasFlag('F_B_POD')
+        && !equipment.hasFlag('F_M_POD')
         && equipment.ammoType !== 'SCREEN_LAUNCHER'
-        && (mount.getBV(this.entity) > 0 || equipment.hasWeaponTrait('machine-gun-array'));
+        && (mount.getBV(this.entity) > 0 || equipment.hasFlag('F_MGA'));
     }
     return equipment instanceof MiscEquipment
-      && (equipment.hasWeaponTrait('vibroclaw') || isMagnetClawEquipment(equipment)
+      && (equipment.hasFlag('F_VIBROCLAW') || isMagnetClawEquipment(equipment)
         || getVibrobladeProfile(equipment) !== null)
       && mount.getBV(this.entity) > 0;
   }
@@ -352,7 +352,7 @@ export class BVCalculator {
     const equipment = mount.equipment;
     if (!equipment) return 0;
     let value = mount.getBV(this.entity);
-    if (equipment.hasWeaponTrait('machine-gun-array')) {
+    if (equipment.hasFlag('F_MGA')) {
       const bay = this.entity.equipmentBays()
         .find(candidate => candidate.kind === 'machine-gun-array' && candidate.controller === mount);
       if (bay) value = bay.mounts.reduce((sum, member) => sum + member.getBV(this.entity), 0) * 0.67;
@@ -373,7 +373,7 @@ export class BVCalculator {
         else if (isRiscLaserPulseModule(system) || isApolloEquipment(system)) value *= 1.15;
       }
       if (isDirectFireEquipment(equipment) && this.hasEquipment(isTargetingComputerEquipment)) value *= 1.25;
-      else if (!equipment.hasWeaponTrait('infantry-weapon')) value *= this.fireControlModifier();
+      else if (!equipment.hasFlag('F_INFANTRY')) value *= this.fireControlModifier();
     }
     return value;
   }
@@ -411,9 +411,9 @@ export class BVCalculator {
 
   protected weaponUsesAmmo(weapon: WeaponEquipment): boolean {
     return weapon.ammoType !== 'NA'
-      && !weapon.hasWeaponTrait('one-shot')
-      && !weapon.hasWeaponTrait('infantry-weapon')
-      && !(weapon.hasWeaponTrait('energy')
+      && !weapon.hasFlag('F_ONE_SHOT')
+      && !weapon.hasFlag('F_INFANTRY')
+      && !(weapon.hasFlag('F_ENERGY')
         && !['PLASMA', 'VEHICLE_FLAMER', 'HEAVY_FLAMER', 'CHEMICAL_LASER'].includes(weapon.ammoType));
   }
 

@@ -261,7 +261,7 @@ export abstract class CBTGameRules {
         selectedAmmo: AmmoEquipment | null,
         context: IndirectFireContext,
     ): boolean {
-        if (!weapon.hasWeaponTrait('indirect-fire')) return false;
+        if (!weapon.hasFlag('F_INDIRECT_FIRE')) return false;
         if (weapon.ammoType === 'MML' && resolveAmmoWeaponProfile(selectedAmmo)?.id !== 'mml-lrm') {
             return false;
         }
@@ -385,9 +385,9 @@ export abstract class CBTGameRules {
         const types = new Set(facts.effectiveWeaponTypes);
         return isDirectFireEquipment(weapon)
             && !isFlamerEquipment(weapon)
-            && !weapon.hasWeaponTrait('taser')
-            && !weapon.hasWeaponTrait('machine-gun')
-            && !weapon.hasWeaponTrait('machine-gun-array')
+            && !weapon.hasFlag('F_TASER')
+            && !weapon.hasFlag('F_MG')
+            && !weapon.hasFlag('F_MGA')
             && (types.has('DB') || types.has('DE') || types.has('P'))
             && !types.has('F')
             && (!types.has('C') || isHagEquipment(weapon));
@@ -554,7 +554,7 @@ export class GameRules extends CBTGameRules {
         if (isClawFlags(equipment.flags)) {
             return [0];
         }
-        if (equipment instanceof WeaponEquipment && equipment.hasWeaponTrait('mrm')) {
+        if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')) {
             return [0];
         }
         return super.getRulesProfile(equipment);
@@ -691,7 +691,7 @@ export class TWGameRules extends CBTGameRules {
         if (isClawFlags(equipment.flags)) {
             return [1];
         }
-        if (equipment instanceof WeaponEquipment && equipment.hasWeaponTrait('mrm')) {
+        if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_MRM')) {
             return [1];
         }
         return super.getRulesProfile(equipment);

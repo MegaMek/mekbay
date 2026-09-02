@@ -51,10 +51,10 @@ export function getEquipmentTonnage(
         return equipment.kgPerShot * capacity / 1000;
     }
     if (entity.entityType === 'ProtoMek' && equipment instanceof WeaponEquipment) {
-        if (equipment.hasWeaponTrait('srm')) {
+        if (equipment.hasFlag('F_SRM')) {
             return equipment.rackSize * (equipment.ammoType === 'SRM_STREAK' ? 0.5 : 0.25);
         }
-        if (equipment.hasWeaponTrait('lrm')) {
+        if (equipment.hasFlag('F_LRM')) {
             return equipment.rackSize * (equipment.ammoType === 'LRM_STREAK' ? 0.4 : 0.2);
         }
     }

@@ -21,7 +21,7 @@ export function calculateProtoMekCostReport(
   }
   const armorCostPerPoint = armor.cost;
   const energyWeaponHeat = entity.mountedWeapons()
-    .filter(mount => mount.equipment.hasWeaponTrait('energy'))
+    .filter(mount => mount.equipment.hasFlag('F_ENERGY'))
     .reduce((heat, mount) => heat + mount.equipment.heat, 0);
   return buildCostReport([
     amount('Cockpit', tonnage >= 10 ? 800000 : 500000), amount('Life Support', 75000),

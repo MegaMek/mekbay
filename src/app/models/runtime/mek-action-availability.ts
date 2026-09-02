@@ -21,7 +21,6 @@ import {
 } from './component-shield-mode';
 import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
 import { mobileHpgBlocksWeaponAttacks } from './component-mobile-hpg';
-import { hasAnyWeaponTrait } from '../weapon-traits-kernel';
 
 /** `configure-network` remains owned by the C3 encounter/runtime boundary. */
 export type MekAction =
@@ -138,10 +137,7 @@ function coreAmsExempt(
     return ruleset === 'core-2026'
         && action === 'fire'
         && target.kind === 'component'
-        && hasAnyWeaponTrait(
-            target.definition.mount.equipment,
-            ['anti-missile', 'anti-missile-bay'],
-        );
+        && target.definition.mount.equipment?.hasAnyFlag(['F_AMS', 'F_AMS_BAY']) === true;
 }
 
 type ResolvedTarget =

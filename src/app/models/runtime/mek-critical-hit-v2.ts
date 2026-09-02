@@ -539,7 +539,7 @@ function criticalExplosionSource(
         if (previousHits > 0) continue;
         if (equipment instanceof WeaponEquipment) {
             if (!weaponExplodes(runtime, componentId, equipment)
-                || (equipment.hasWeaponTrait('heavy-vehicle-autocannon')
+                || (equipment.hasFlag('F_HVAC')
                     && !hasUsableAmmo(index, runtime, equipment))) {
                 continue;
             }
@@ -868,7 +868,7 @@ function explosionSource(equipment: string, rawDamage: number, pilotHits: number
 }
 
 export function ammoRackSize(ammo: AmmoEquipment): number {
-    if (ammo.hasWeaponTrait('capital-missile') || ammo.ammoType === 'SCREEN_LAUNCHER') return 1;
+    if (ammo.hasFlag('F_CAP_MISSILE') || ammo.ammoType === 'SCREEN_LAUNCHER') return 1;
     return Math.max(0, ammo.rackSize);
 }
 

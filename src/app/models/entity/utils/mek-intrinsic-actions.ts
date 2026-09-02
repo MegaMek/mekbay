@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { getMekLegLocations, type MekConfig } from '../types/mek';
+import type { EquipmentFlag } from '../../equipment-flags.type';
 import type {
   IntrinsicWeapon,
   IntrinsicWeaponDamage,
@@ -21,7 +22,7 @@ import {
 export interface MekIntrinsicEquipmentFact {
   /** Primary installation location. This intentionally matches MekEntity's location index. */
   readonly location: string | null;
-  readonly flags: ReadonlySet<string>;
+  readonly flags: ReadonlySet<EquipmentFlag>;
 }
 
 export interface MekIntrinsicActionFacts {

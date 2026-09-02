@@ -413,7 +413,7 @@ export class WeaponTargetsOverlayController {
 
     private indirectFireAvailable(options: WeaponTargetsOverlayOpenOptions): boolean {
         return options.member.force.getEquipmentPanelSnapshot(options.member.id)
-            ?.components.some(row => row.equipment?.hasWeaponTrait('indirect-fire') === true) === true;
+            ?.components.some(row => row.equipment?.hasFlag('F_INDIRECT_FIRE') === true) === true;
     }
 
     private guidanceCapabilities(options: WeaponTargetsOverlayOpenOptions): {

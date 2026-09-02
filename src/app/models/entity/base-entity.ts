@@ -482,7 +482,7 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Static mounted-equipment explosiveness used by BV and implicit Clan CASE. */
   isMountedEquipmentExplosive(mount: EntityMountedEquipment): boolean {
     const equipment = mount.equipment;
-    if (!equipment || equipment.hasWeaponTrait('b-pod') || equipment.hasWeaponTrait('m-pod')) return false;
+    if (!equipment || equipment.hasFlag('F_B_POD') || equipment.hasFlag('F_M_POD')) return false;
     if (equipment instanceof WeaponEquipment && isBombastLaserEquipment(equipment)) return false;
     if (equipment instanceof WeaponEquipment && isPpcEquipment(equipment)) {
       return isPpcCapacitorEquipment(this.getLinkingMount(mount)?.equipment);

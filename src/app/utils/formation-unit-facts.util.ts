@@ -204,16 +204,16 @@ export function compileFormationUnitFacts(forceUnit: FormationUnitLike): Formati
         cbtIsHeavyOrLarger: cbtWeightClass >= CBT_HEAVY_WEIGHT_CLASS,
         cbtIsAssaultOrLarger: cbtWeightClass >= CBT_ASSAULT_WEIGHT_CLASS,
         cbtHasAutocannon: entity
-            ? entity.rangedWeapons().some(mount => mount.equipment.hasWeaponTrait('autocannon'))
+            ? entity.rangedWeapons().some(mount => mount.equipment.hasFlag('F_AC'))
             : cbtHasAutocannon(summary!),
         cbtHasArtillery: entity
-            ? entity.rangedWeapons().some(mount => mount.equipment.hasWeaponTrait('artillery'))
+            ? entity.rangedWeapons().some(mount => mount.equipment.hasFlag('F_ARTILLERY'))
             : cbtHasArtillery(summary!),
         cbtHasLrm: entity
-            ? entity.rangedWeapons().some(mount => mount.equipment.hasWeaponTrait('lrm'))
+            ? entity.rangedWeapons().some(mount => mount.equipment.hasFlag('F_LRM'))
             : summaryComponents.some(component => component.n?.includes('LRM')),
         cbtHasSrm: entity
-            ? entity.rangedWeapons().some(mount => mount.equipment.hasWeaponTrait('srm'))
+            ? entity.rangedWeapons().some(mount => mount.equipment.hasFlag('F_SRM'))
             : summaryComponents.some(component => component.n?.includes('SRM')),
         cbtHasEcm: entity
             ? equipment.some(isEcmEquipment)
@@ -222,8 +222,8 @@ export function compileFormationUnitFacts(forceUnit: FormationUnitLike): Formati
             ? equipment.some(isBapEquipment)
             : summaryComponents.some(component => isBapEquipment(component.eq)),
         cbtHasTag: entity
-            ? entity.rangedWeapons().some(mount => mount.equipment.hasWeaponTrait('tag'))
-            : summaryComponents.some(component => component.eq?.hasWeaponTrait('tag') === true),
+            ? entity.rangedWeapons().some(mount => mount.equipment.hasFlag('F_TAG'))
+            : summaryComponents.some(component => component.eq?.hasFlag('F_TAG') === true),
         cbtQuirks: entity
             ? Object.freeze(entity.quirks().flatMap(quirk => [quirk.quirk.key, quirk.quirk.name]))
             : summary!.quirks,

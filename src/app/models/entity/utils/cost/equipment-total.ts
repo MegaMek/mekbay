@@ -171,7 +171,7 @@ function isExplosiveForConstructionCost(entity: BaseEntity, mount: EntityMounted
       return false;
     }
     if (isPpcEquipment(equipment)) return false;
-    if (equipment.hasWeaponTrait('b-pod') || equipment.hasWeaponTrait('m-pod')) return false;
+    if (equipment.hasFlag('F_B_POD') || equipment.hasFlag('F_M_POD')) return false;
   }
   if (equipment instanceof MiscEquipment) {
     if (isPpcCapacitorEquipment(equipment)) return false;
@@ -190,7 +190,7 @@ function isExplosiveForGeneratedClanCase(entity: BaseEntity, mount: EntityMounte
     if (['AC_ROTARY', 'AC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC', 'LAC'].includes(equipment.ammoType)) {
       return false;
     }
-    if (equipment.hasWeaponTrait('b-pod') || equipment.hasWeaponTrait('m-pod')) return false;
+    if (equipment.hasFlag('F_B_POD') || equipment.hasFlag('F_M_POD')) return false;
     if (isPpcEquipment(equipment)) {
       return isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment);
     }

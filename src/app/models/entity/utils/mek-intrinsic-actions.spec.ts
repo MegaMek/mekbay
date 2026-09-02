@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { MekConfig } from '../types/mek';
+import type { EquipmentFlag } from '../../equipment-flags.type';
 import {
   buildMekIntrinsicActions,
   intrinsicActionBaseDamageText,
@@ -115,6 +116,6 @@ function facts(overrides: Partial<MekIntrinsicActionFacts> = {}): MekIntrinsicAc
   };
 }
 
-function fact(location: string, ...flags: string[]): MekIntrinsicEquipmentFact {
-  return { location, flags: new Set(flags) };
+function fact(location: string, ...flags: EquipmentFlag[]): MekIntrinsicEquipmentFact {
+  return { location, flags: new Set<EquipmentFlag>(flags) };
 }

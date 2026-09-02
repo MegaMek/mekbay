@@ -85,7 +85,7 @@ export function collectAlphaStrikeWeaponSpecials(
   }
   if (entity instanceof InfantryEntity) {
     for (const weapon of [entity.primaryWeapon(), entity.secondaryWeapon()]) {
-      if (weapon?.hasWeaponTrait('tag')) specials.add(weapon.ranges[0] < 5 ? 'LTAG' : 'TAG');
+      if (weapon?.hasFlag('F_TAG')) specials.add(weapon.ranges[0] < 5 ? 'LTAG' : 'TAG');
     }
   }
   addArtillerySpecials(entity, weapons.filter(countsForDiscreteSpecial), specials);
@@ -105,7 +105,7 @@ function addDiscreteWeaponSpecials(
   aerospaceElement: boolean,
 ): void {
   const weapon = mount.equipment;
-  if (weapon.hasWeaponTrait('tag')) {
+  if (weapon.hasFlag('F_TAG')) {
     specials.add(weapon.ranges[0] < 5 ? 'LTAG' : 'TAG');
     const c3Master = c3MasterWeaponAlphaStrikeFacts(weapon);
     if (c3Master.ability !== undefined) {
@@ -115,7 +115,7 @@ function addDiscreteWeaponSpecials(
       addNumericSpecial(specials, 'MHQ', c3Master.mobileHeadquarters);
     }
   }
-  if (weapon.hasWeaponTrait('tsemp') || weapon.hasWeaponTrait('cws')) {
+  if (weapon.hasFlag('F_TSEMP') || weapon.hasFlag('F_CWS')) {
     addNumericSpecial(specials, weapon.oneShotCount ? 'TSEMP-O' : 'TSEMP', 1);
   }
   if (weapon.weapon.atClass === 'TELE_MISSILE') specials.add('TELE');
@@ -128,7 +128,7 @@ function addDiscreteWeaponSpecials(
     addNumericSpecial(specials, battleArmorElement ? 'BTAS' : 'MTAS', 1);
   }
   if (weapon.id === 'ISAPDS' || weapon.id === 'ISBAAPDS' || weapon.ammoType === 'APDS') specials.add('RAMS');
-  else if (weapon.hasWeaponTrait('anti-missile')
+  else if (weapon.hasFlag('F_AMS')
     && !(aerospaceElement && weapon.alphaStrike?.pointDefense === true)) specials.add('AMS');
 }
 
@@ -208,7 +208,7 @@ function sumPointDefenseDamage(
     if (weapon.oneShotCount === 1) multiplier *= 0.1;
     multiplier *= targetingComputerDamageMultiplier(targetingComputer, weapon);
     for (let range = 0; range < 4; range++) {
-      const damage = weapon.hasWeaponTrait('anti-missile')
+      const damage = weapon.hasFlag('F_AMS')
         ? range === 0 ? 0.3 : 0
         : baseBattleForceDamageForWeapon(weapon, range as AlphaStrikeRangeIndex);
       result[range] += damage * multiplier;
@@ -250,7 +250,7 @@ function sumSpecialDamage(
   for (const mount of weapons) {
     const weapon = mount.equipment;
     if (!include(weapon, mount) || weapon.damage === 'artillery'
-      || weapon.hasWeaponTrait('artillery')) continue;
+      || weapon.hasFlag('F_ARTILLERY')) continue;
     const multiplier = alphaStrikeWeaponDamageModifier(
       entity,
       mount,

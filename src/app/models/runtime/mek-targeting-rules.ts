@@ -65,13 +65,13 @@ export function weaponTargetAttackTraits(
     const weapon = equipment instanceof WeaponEquipment ? equipment : null;
     const artilleryCannon = weapon !== null && (
         ARTILLERY_CANNON_AMMO_TYPES.has(weapon.ammoType)
-        || (weapon.hasWeaponTrait('artillery') && isDirectFireEquipment(weapon))
+        || (weapon.hasFlag('F_ARTILLERY') && isDirectFireEquipment(weapon))
     );
-    const artillery = weapon?.hasWeaponTrait('artillery') === true
+    const artillery = weapon?.hasFlag('F_ARTILLERY') === true
         || selectedAmmo?.category === 'Artillery';
     const bomb = (weapon !== null && isBombEquipment(weapon))
         || (selectedAmmo !== null && isBombEquipment(selectedAmmo));
-    const mekMortarAirburst = weapon?.hasWeaponTrait('mek-mortar') === true
+    const mekMortarAirburst = weapon?.hasFlag('F_MEK_MORTAR') === true
         && selectedAmmo?.hasMunitionType('M_AIRBURST') === true;
     return Object.freeze({
         areaEffect: effectiveWeaponTypes.includes('AE') || artillery || bomb || mekMortarAirburst,
@@ -94,10 +94,10 @@ export function weaponTargetDisabledReason(
     if (selectedAmmo?.hasMunitionType('M_THUNDER') === true && target.unitType !== 'terrain') {
         return TARGET_THUNDER_TERRAIN_REASON;
     }
-    if (weapon.hasWeaponTrait('tag') && !rules.allowsTagDesignation(target.unitType)) {
+    if (weapon.hasFlag('F_TAG') && !rules.allowsTagDesignation(target.unitType)) {
         return TARGET_TAG_INFANTRY_REASON;
     }
-    if (weapon.hasWeaponTrait('narc')) {
+    if (weapon.hasFlag('F_NARC')) {
         const restriction = rules.getNarcBeaconAttackRestriction({
             targetInsideBuilding: target.calculator?.buildingCover !== undefined,
             targetIsInfantry: target.unitType === 'infantry' || target.unitType === 'battle-armor',
@@ -118,7 +118,7 @@ export function weaponTargetDisabledReason(
         && (calculator.secondaryTarget === true || calculator.secondaryTargetSideBack === true)) {
         return TARGET_STEALTH_SECONDARY_REASON;
     }
-    if (calculator.indirectFire && !weapon.hasWeaponTrait('indirect-fire')) {
+    if (calculator.indirectFire && !weapon.hasFlag('F_INDIRECT_FIRE')) {
         return TARGET_INDIRECT_WEAPON_REASON;
     }
     const targetWater = resolveTnTargetWaterState({ ...calculator, unitType: target.unitType });

@@ -3,7 +3,6 @@
 
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
-import { hasWeaponTrait } from '../weapon-traits-kernel';
 import type { Equipment } from '../equipment.model';
 import { isWeaponEnhancementEquipment } from '../weapon-enhancement.model';
 import {
@@ -180,8 +179,8 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
     applicableToComponentRiscLaserPulse(definition: ComponentRiscLaserPulseDefinition): boolean {
         return isWeaponEnhancementEquipment(definition.module.flags)
             && definition.module.flags.has(RISC_LASER_PULSE_MODULE_FLAG)
-            && hasWeaponTrait(definition.laser.flags, 'energy')
-            && hasWeaponTrait(definition.laser.flags, 'laser');
+            && definition.laser.flags.has('F_ENERGY')
+            && definition.laser.flags.has('F_LASER');
     }
 
     getComponentRiscLaserPulseChoices(

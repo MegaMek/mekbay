@@ -407,7 +407,7 @@ function compactVehicleInventoryRows(entity: BaseEntity) {
                 name: compactVehicleWeaponName(mount.displayName()),
                 location: compactVehicleLocation(mount.getOccupiedLocations().join('/')),
                 heat: '—',
-                damage: equipment.hasWeaponTrait('anti-personnel-pod') ? '[PB,OS,AI]' : '[E]',
+                damage: equipment.hasFlag('F_AP_POD') ? '[PB,OS,AI]' : '[E]',
                 minimumRange: '—',
                 ranges: Object.freeze(['—', '—', range === undefined ? '—' : String(range)]),
                 componentIds: Object.freeze([mount.mountId]),

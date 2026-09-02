@@ -16,6 +16,7 @@ import * as path from 'path';
 import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
+import type { MekLocation } from '../src/app/models/entity/types/locations';
 import { AeroEntity } from '../src/app/models/entity/entities/aero/aero-entity';
 import { SmallCraftEntity } from '../src/app/models/entity/entities/aero/small-craft-entity';
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
@@ -221,7 +222,7 @@ async function main(): Promise<void> {
     }
     // ── Critical Slot Grid (3-column layout) ──
     const grid = entity.criticalSlotGrid();
-    const LOC_NAMES: Record<string, string> = {
+    const LOC_NAMES: Record<MekLocation, string> = {
       HD: 'Head', LA: 'Left Arm', RA: 'Right Arm',
       LT: 'Left Torso', CT: 'Center Torso', RT: 'Right Torso',
       LL: 'Left Leg', RL: 'Right Leg', CL: 'Center Leg',
@@ -232,21 +233,26 @@ async function main(): Promise<void> {
     // Rows of 3 columns: [Left, Center, Right]
     const hasQuadLegs = grid.has('FLL');
     const hasCenterLeg = grid.has('CL');
-    const LAYOUT: [string, string, string][] = [
+    const LAYOUT: readonly (readonly [
+      MekLocation | null,
+      MekLocation | null,
+      MekLocation | null,
+    ])[] = [
       ...(hasQuadLegs
-        ? [['FLL', 'HD', 'FRL'] as [string, string, string]]
-        : [['LA', 'HD', 'RA'] as [string, string, string]]),
+        ? [['FLL', 'HD', 'FRL'] as const]
+        : [['LA', 'HD', 'RA'] as const]),
       ['LT', 'CT', 'RT'],
       ...(hasQuadLegs
-        ? [['RLL', '', 'RRL'] as [string, string, string]]
+        ? [['RLL', null, 'RRL'] as const]
         : hasCenterLeg
-          ? [['LL', 'CL', 'RL'] as [string, string, string]]
-          : [['LL', '', 'RL'] as [string, string, string]]),
+          ? [['LL', 'CL', 'RL'] as const]
+          : [['LL', null, 'RL'] as const]),
     ];
 
     const COL_W = 32;
 
-    function slotLabel(loc: string, i: number): string {
+    function slotLabel(loc: MekLocation | null, i: number): string {
+      if (loc === null) return '';
       const slots = grid.get(loc);
       if (!slots || i >= slots.length) return '';
       const s = slots[i];
@@ -264,19 +270,27 @@ async function main(): Promise<void> {
       return s.length >= w ? s.substring(0, w) : s + ' '.repeat(w - s.length);
     }
 
+    function slotCount(loc: MekLocation | null): number {
+      return loc === null ? 0 : grid.get(loc)?.length ?? 0;
+    }
+
+    function locationName(loc: MekLocation | null): string {
+      return loc === null ? '' : LOC_NAMES[loc];
+    }
+
     console.log(`\n${'═'.repeat(COL_W * 3 + 8)}`);
     console.log('  CRITICAL TABLE');
     console.log('═'.repeat(COL_W * 3 + 8));
 
     for (const [left, center, right] of LAYOUT) {
       const maxSlots = Math.max(
-        grid.get(left)?.length ?? 0,
-        grid.get(center)?.length ?? 0,
-        grid.get(right)?.length ?? 0,
+        slotCount(left),
+        slotCount(center),
+        slotCount(right),
       );
       // Headers
       console.log(
-        `  ${pad(LOC_NAMES[left] ?? '', COL_W)}  ${pad(LOC_NAMES[center] ?? '', COL_W)}  ${LOC_NAMES[right] ?? ''}`
+        `  ${pad(locationName(left), COL_W)}  ${pad(locationName(center), COL_W)}  ${locationName(right)}`
       );
       console.log(
         `  ${'─'.repeat(COL_W)}  ${'─'.repeat(COL_W)}  ${'─'.repeat(COL_W)}`

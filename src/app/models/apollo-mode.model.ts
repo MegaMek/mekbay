@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTRuleset } from './cbt-ruleset.model';
-import { hasWeaponTrait } from './weapon-traits-kernel';
 import { isWeaponEnhancementEquipment } from './weapon-enhancement.model';
 
 export const APOLLO_STANDARD_MODE = 'Standard';
@@ -33,7 +32,7 @@ export function isApolloEquipment(equipment: ApolloEquipmentView | null | undefi
 }
 
 export function isApolloCompatibleWeapon(equipment: ApolloEquipmentView | null | undefined): boolean {
-    return equipment?.ammoType === 'MRM' || hasWeaponTrait(equipment, 'mrm');
+    return equipment?.ammoType === 'MRM' || equipment?.hasFlag('F_MRM') === true;
 }
 
 export function isApolloLink(

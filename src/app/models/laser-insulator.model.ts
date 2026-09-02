@@ -15,7 +15,7 @@ export function isLaserInsulatorCompatibleWeapon(
     equipment: Equipment | null | undefined,
 ): equipment is WeaponEquipment {
     return equipment instanceof WeaponEquipment
-        && equipment.hasWeaponTrait('laser');
+        && equipment.hasFlag('F_LASER');
 }
 
 export function isLaserInsulatorPair(

@@ -4,7 +4,6 @@
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import { WeaponEquipment } from '../equipment.model';
-import { weaponTraitFlag } from '../weapon-traits-kernel';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import {
@@ -27,7 +26,7 @@ export type MachineGunArrayLifecycleState =
     | typeof MGA_LINKING_MODE
     | typeof MGA_UNLINKING_MODE;
 
-const MACHINE_GUN_ARRAY_FLAG: EquipmentFlag = weaponTraitFlag('machine-gun-array');
+const MACHINE_GUN_ARRAY_FLAG: EquipmentFlag = 'F_MGA';
 const MACHINE_GUN_ARRAY_MODES = Object.freeze<MachineGunArrayLifecycleState[]>([
     MGA_LINKED_MODE,
     MGA_OFF_MODE,
@@ -37,7 +36,7 @@ const MACHINE_GUN_ARRAY_MODES = Object.freeze<MachineGunArrayLifecycleState[]>([
 
 export function isMachineGunArrayEquipment(equipment: unknown): equipment is WeaponEquipment {
     return equipment instanceof WeaponEquipment
-        && equipment.hasWeaponTrait('machine-gun-array');
+        && equipment.hasFlag('F_MGA');
 }
 
 /** Rule-owned modes. Arrays start linked; the two internal values preserve End-Phase transitions. */

@@ -14,12 +14,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { platform, release } from 'node:os';
+import { clearLine, cursorTo } from 'node:readline';
 import { emptyCBTEncounterSnapshot } from '../src/app/models/runtime/encounter-runtime';
 import { projectMekRecordSheet } from '../src/app/models/runtime/mek-record-sheet';
-import {
-    asCommandId,
-    type CommandId,
-} from '../src/app/models/runtime/runtime-state';
+import type { UnitConditionKey } from '../src/app/models/unit-condition.model';
 import {
     createDirectMekRuntimeFixture,
     type DirectMekRuntimeFixture,
@@ -29,10 +27,7 @@ import type {
     CBTUnitInstance,
 } from '../src/app/models/runtime/unit-instance';
 
-type CommandBody<T> = T extends unknown
-    ? Omit<T, 'commandId' | 'expectedRevision'>
-    : never;
-type CBTUnitCommandBody = CommandBody<CBTUnitCommand>;
+type CBTUnitCommandBody = CBTUnitCommand;
 
 interface MutationContext {
     readonly fixture: DirectMekRuntimeFixture;
@@ -53,8 +48,57 @@ interface Measurement {
     readonly sampleCount: number;
     readonly p50Ms: number;
     readonly p95Ms: number;
+    readonly averageMs: number;
     readonly minimumMs: number;
     readonly maximumMs: number;
+}
+
+class BenchmarkProgress {
+    private completedSamples = 0;
+    private lineOpen = false;
+
+    public constructor(private readonly totalSamples: number) {}
+
+    public update(
+        scenario: MutationScenario,
+        path: Measurement['path'],
+        sampleIndex: number,
+        phaseSamples: readonly number[],
+    ): void {
+        this.completedSamples++;
+        const measured = sampleIndex >= warmupSamples;
+        const phaseSample = measured ? sampleIndex - warmupSamples + 1 : sampleIndex + 1;
+        const phaseTotal = measured ? measuredSamples : warmupSamples;
+        const completedFraction = this.completedSamples / this.totalSamples;
+        const barWidth = 12;
+        const completedWidth = Math.floor(completedFraction * barWidth);
+        const minimum = Math.min(...phaseSamples);
+        const maximum = Math.max(...phaseSamples);
+        const average = mean(phaseSamples);
+        const phase = measured ? 'S' : 'W';
+        const compactPath = path === 'runtime reducer' ? 'R' : 'P';
+        const line = `[${'#'.repeat(completedWidth)}${'-'.repeat(barWidth - completedWidth)}] `
+            + `${(completedFraction * 100).toFixed(1).padStart(5)}% `
+            + `${this.completedSamples}/${this.totalSamples} ${compactPath} `
+            + `${phase}${phaseSample}/${phaseTotal} `
+            + `min/avg/max=${minimum.toFixed(4)}/${average.toFixed(4)}/${maximum.toFixed(4)}ms `
+            + scenario.name;
+
+        if (!process.stdout.isTTY) {
+            if (sampleIndex === warmupSamples + measuredSamples - 1) console.log(line);
+            return;
+        }
+        clearLine(process.stdout, 0);
+        cursorTo(process.stdout, 0);
+        process.stdout.write(fitToTerminal(line));
+        this.lineOpen = true;
+    }
+
+    public finish(): void {
+        if (!this.lineOpen) return;
+        process.stdout.write('\n');
+        this.lineOpen = false;
+    }
 }
 
 const args = process.argv.slice(2);
@@ -81,7 +125,6 @@ const ammo = fixture.equipmentComponent('Test Ammo');
 const ammoLoadout = fixture.instance.query().ammoLoadout(ammo.id);
 const encounter = emptyCBTEncounterSnapshot();
 
-let commandSequence = 0;
 let instanceSequence = 0;
 let checksum = 0;
 
@@ -173,9 +216,21 @@ async function main(): Promise<void> {
     if (selectedScenarios.length === 0) {
         throw new Error(`No mutation operation matches ${JSON.stringify(operationFilter)}`);
     }
-    for (const scenario of selectedScenarios) {
-        results.push(measure(scenario, 'runtime reducer', runtimeIterations));
-        results.push(measure(scenario, 'runtime + record-sheet projection', projectedIterations));
+    const progress = new BenchmarkProgress(
+        selectedScenarios.length * 2 * (warmupSamples + measuredSamples),
+    );
+    try {
+        for (const scenario of selectedScenarios) {
+            results.push(measure(scenario, 'runtime reducer', runtimeIterations, progress));
+            results.push(measure(
+                scenario,
+                'runtime + record-sheet projection',
+                projectedIterations,
+                progress,
+            ));
+        }
+    } finally {
+        progress.finish();
     }
     const report = Object.freeze({
         schemaVersion: 1,
@@ -207,6 +262,7 @@ async function main(): Promise<void> {
         path: result.path,
         p50_ms: result.p50Ms.toFixed(4),
         p95_ms: result.p95Ms.toFixed(4),
+        avg_ms: result.averageMs.toFixed(4),
         min_ms: result.minimumMs.toFixed(4),
         max_ms: result.maximumMs.toFixed(4),
     })));
@@ -222,7 +278,9 @@ function measure(
     scenario: MutationScenario,
     path: Measurement['path'],
     iterations: number,
+    progress: BenchmarkProgress,
 ): Measurement {
+    const warmups: number[] = [];
     const samples: number[] = [];
     for (let sample = 0; sample < warmupSamples + measuredSamples; sample++) {
         const context = createContext(scenario);
@@ -236,7 +294,10 @@ function measure(
         }
         const durationPerIteration = measuredDuration / iterations;
         checksum += context.instance.revision();
-        if (sample >= warmupSamples) samples.push(durationPerIteration);
+        const phaseSamples = sample < warmupSamples ? warmups : samples;
+        phaseSamples.push(durationPerIteration);
+        // Keep progress I/O outside the timed mutation and projection window.
+        progress.update(scenario, path, sample, phaseSamples);
     }
     const sorted = [...samples].sort((left, right) => left - right);
     return Object.freeze({
@@ -246,6 +307,7 @@ function measure(
         sampleCount: measuredSamples,
         p50Ms: percentile(sorted, 0.5),
         p95Ms: percentile(sorted, 0.95),
+        averageMs: mean(samples),
         minimumMs: sorted[0]!,
         maximumMs: sorted.at(-1)!,
     });
@@ -261,14 +323,9 @@ function createContext(scenario: MutationScenario): MutationContext {
 }
 
 function dispatch(instance: CBTUnitInstance, body: CBTUnitCommandBody): void {
-    const command = {
-        ...body,
-        commandId: nextCommandId(),
-        expectedRevision: instance.revision(),
-    } as CBTUnitCommand;
-    const result = instance.dispatch(command);
+    const result = instance.dispatch(body);
     if (!result.accepted) {
-        throw new Error(`Benchmark command ${command.type} rejected: ${result.reason}`);
+        throw new Error(`Benchmark command ${body.type} rejected`);
     }
 }
 
@@ -315,7 +372,7 @@ function locationCondition(
         }));
 }
 
-function unitCondition(name: string, condition: string): MutationScenario {
+function unitCondition(name: string, condition: UnitConditionKey): MutationScenario {
     return reversible(name,
         context => dispatch(context.instance, { type: 'set-condition', condition, active: true }),
         context => dispatch(context.instance, { type: 'set-condition', condition, active: false }));
@@ -333,12 +390,18 @@ function movement(mode: 'walk', distance: number): CBTUnitCommandBody {
     };
 }
 
-function nextCommandId(): CommandId {
-    return asCommandId(`runtime-benchmark:${++commandSequence}`);
-}
-
 function percentile(sorted: readonly number[], fraction: number): number {
     return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)]!;
+}
+
+function mean(values: readonly number[]): number {
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function fitToTerminal(line: string): string {
+    const width = process.stdout.columns;
+    if (width === undefined || line.length < width) return line;
+    return `${line.slice(0, Math.max(0, width - 4))}...`;
 }
 
 function argument(name: string): string | undefined {

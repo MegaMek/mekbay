@@ -48,11 +48,6 @@ import { isBattleArmorAmmo } from './equipment-platform.model';
 import { aerospaceSupportOperatingHeat } from './aerospace-support-equipment.model';
 import { c3EquipmentOperatingHeat, isC3MasterEquipment } from './c3-network.model';
 import { isArmorKitEquipment } from './infantry-equipment.model';
-import {
-    hasAnyWeaponTrait,
-    hasWeaponTrait,
-    isDirectFireFlags,
-} from './weapon-traits-kernel';
 
 
 
@@ -543,9 +538,6 @@ export class Equipment {
     hasFlag(flag: EquipmentFlag): boolean { return this.flags.has(flag); }
     hasAnyFlag(flags: readonly EquipmentFlag[]): boolean { return flags.some(f => this.flags.has(f)); }
     hasAllFlags(flags: EquipmentFlag[]): boolean { return flags.every(f => this.flags.has(f)); }
-    hasWeaponTrait(trait: import('./weapon-traits-kernel').WeaponTrait): boolean {
-        return hasWeaponTrait(this, trait);
-    }
     isExplosive() { return this.stats.explosive ?? false; }
     getNumCriticalSlots(entity: BaseEntity, size: number = 1): number | undefined {
         return getNumCriticalSlots(entity, this, size);
@@ -604,7 +596,7 @@ export class WeaponEquipment extends Equipment {
 
     get heat(): number { return this.weapon.heat; }
     get damage(): string | number | Array<number> {
-        return hasAnyWeaponTrait(this, ['tag', 'anti-missile', 'narc']) ? '' : this.weapon.damage;
+        return this.hasAnyFlag(['F_TAG', 'F_AMS', 'F_NARC']) ? '' : this.weapon.damage;
     }
     get rackSize(): number { return this.weapon.rackSize; }
     get ammoType(): AmmoType { return this.weapon.ammoType; }
@@ -617,7 +609,7 @@ export class WeaponEquipment extends Equipment {
     get alphaStrike(): AlphaStrikeWeaponData | undefined { return this.weapon.alphaStrike; }
     /** Resolves the sparse Alpha Strike exception over the general indirect-fire flag. */
     get alphaStrikeIndirectFire(): boolean {
-        return this.alphaStrike?.indirectFire ?? hasWeaponTrait(this, 'indirect-fire');
+        return this.alphaStrike?.indirectFire ?? this.hasFlag('F_INDIRECT_FIRE');
     }
 
     hasNoRange(): boolean {
@@ -625,7 +617,7 @@ export class WeaponEquipment extends Equipment {
     }
 
     isInfantryWeapon(): this is this & { readonly infantry: InfantryData } {
-        return hasWeaponTrait(this, 'infantry-weapon') && this.infantry !== undefined;
+        return this.hasFlag('F_INFANTRY') && this.infantry !== undefined;
     }
 
     getClusterSize(ammo?: AmmoEquipment | null, fallbackProfile?: AmmoWeaponProfile | null): number {
@@ -633,13 +625,13 @@ export class WeaponEquipment extends Equipment {
         const ammoProfile = resolveAmmoWeaponProfile(ammo) ?? fallbackProfile;
         if (ammoProfile) {
             clusterSize = ammoProfile.clusterSize;
-        } else if (hasWeaponTrait(this, 'srm')) {
+        } else if (this.hasFlag('F_SRM')) {
             clusterSize = 2;
-        } else if (hasAnyWeaponTrait(this, ['lrm', 'mrm']) || isHagEquipment(this)) {
+        } else if (this.hasAnyFlag(['F_LRM', 'F_MRM']) || isHagEquipment(this)) {
             clusterSize = 5;
-        } else if (hasWeaponTrait(this, 'atm')) {
+        } else if (this.hasFlag('F_ATM')) {
             clusterSize = 6;
-        } else if (hasWeaponTrait(this, 'm-pod') || this.ammoType === 'SBGAUSS') {
+        } else if (this.hasFlag('F_M_POD') || this.ammoType === 'SBGAUSS') {
             clusterSize = 1;
         }
         return clusterSize;
@@ -659,20 +651,20 @@ export class WeaponEquipment extends Equipment {
         const types = new Set<WeaponType>();
 
         // AE: Area-Effect
-        if ((hasWeaponTrait(this, 'artillery') && !isDirectFireFlags(this.flags))
-            || hasWeaponTrait(this, 'vehicle-grenade-launcher')) types.add('AE');
+        if ((this.hasFlag('F_ARTILLERY') && !this.hasFlag('F_DIRECT_FIRE'))
+            || this.hasFlag('F_VGL')) types.add('AE');
 
         // AI: Anti-Infantry
         if (isFlamerEquipment(this)
-            || hasAnyWeaponTrait(this, ['variable-speed-pulse', 'burst-fire'])
-            || hasAnyWeaponTrait(this, ['machine-gun', 'machine-gun-array'])) {
+            || this.hasAnyFlag(['F_VSP', 'F_BURST_FIRE'])
+            || this.hasAnyFlag(['F_MG', 'F_MGA'])) {
             types.add('AI');
         }
 
         // C: Cluster
         // note: SBGauss has no damage==cluster but the ammo does have M_CLUSTER
-        if ((this.weapon.damage === 'cluster' && !hasAnyWeaponTrait(this, ['large-missile', 'narc']))
-            || isHagEquipment(this) || hasWeaponTrait(this, 'm-pod')) {
+        if ((this.weapon.damage === 'cluster' && !this.hasAnyFlag(['F_LARGE_MISSILE', 'F_NARC']))
+            || isHagEquipment(this) || this.hasFlag('F_M_POD')) {
             types.add('C');
         }
 
@@ -681,26 +673,26 @@ export class WeaponEquipment extends Equipment {
             || this.ammoType === 'SNIPER_CANNON'
             || this.ammoType === 'THUMPER_CANNON'
             || this.ammoType === 'LONG_TOM_CANNON'
-            || (hasWeaponTrait(this, 'ballistic') && isDirectFireFlags(this.flags)
-                && !hasAnyWeaponTrait(this, ['m-pod', 'plasma']))
-            || hasAnyWeaponTrait(this, ['machine-gun', 'machine-gun-array'])) {
+            || (this.hasFlag('F_BALLISTIC') && this.hasFlag('F_DIRECT_FIRE')
+                && !this.hasAnyFlag(['F_M_POD', 'F_PLASMA']))
+            || this.hasAnyFlag(['F_MG', 'F_MGA'])) {
             types.add('DB');
         }
 
         // DE: Direct-Fire Energy
-        if ((isDirectFireFlags(this.flags) && hasAnyWeaponTrait(this, ['energy', 'plasma'])
-            && !hasWeaponTrait(this, 'pulse'))
+        if ((this.hasFlag('F_DIRECT_FIRE') && this.hasAnyFlag(['F_ENERGY', 'F_PLASMA'])
+            && !this.hasFlag('F_PULSE'))
             || isFlamerEquipment(this)) {
             types.add('DE');
         }
 
         // E: Electronics
-        if (hasWeaponTrait(this, 'tag') || isC3MasterEquipment(this)
+        if (this.hasFlag('F_TAG') || isC3MasterEquipment(this)
             || isBapEquipment(this)
             || this.ammoType === 'C3_REMOTE_SENSOR') types.add('E');
 
         // F: Flak
-        if ((hasWeaponTrait(this, 'artillery') && !isDirectFireFlags(this.flags))
+        if ((this.hasFlag('F_ARTILLERY') && !this.hasFlag('F_DIRECT_FIRE'))
             || this.ammoType === 'SBGAUSS'
             || this.ammoType === 'SNIPER_CANNON'
             || this.ammoType === 'THUMPER_CANNON'
@@ -710,20 +702,20 @@ export class WeaponEquipment extends Equipment {
 
         // H: Heat-Causing
         if (isFlamerEquipment(this)
-            || hasWeaponTrait(this, 'plasma')
-            || hasAnyWeaponTrait(this, ['inferno', 'incendiary-needles'])) types.add('H');
+            || this.hasFlag('F_PLASMA')
+            || this.hasAnyFlag(['F_INFERNO', 'F_INCENDIARY_NEEDLES'])) types.add('H');
 
         // M: Missile
-        if (hasWeaponTrait(this, 'missile') || getAmmoCategory(this.ammoType) === 'Missile') types.add('M');
+        if (this.hasFlag('F_MISSILE') || getAmmoCategory(this.ammoType) === 'Missile') types.add('M');
 
         // OS: One-Shot
-        if (hasAnyWeaponTrait(this, ['one-shot', 'double-one-shot'])) types.add('OS');
+        if (this.hasAnyFlag(['F_ONE_SHOT', 'F_DOUBLE_ONE_SHOT'])) types.add('OS');
 
         // P: Pulse
-        if (hasWeaponTrait(this, 'pulse')) types.add('P');
+        if (this.hasFlag('F_PULSE')) types.add('P');
 
         // PB: Point-Blank
-        if (hasAnyWeaponTrait(this, ['anti-missile', 'anti-personnel-pod', 'b-pod'])) types.add('PB');
+        if (this.hasAnyFlag(['F_AMS', 'F_AP_POD', 'F_B_POD'])) types.add('PB');
 
         // R: Rapid-Fire
         if (['AC_ULTRA', 'AC_ULTRA_THB', 'AC_ROTARY'].includes(this.ammoType)) types.add('R');
@@ -732,12 +724,12 @@ export class WeaponEquipment extends Equipment {
         if (this.supportsSwitchableAmmo) types.add('S');
         
         // V: Variable Damage
-        if (Array.isArray(this.damage) || isBombastLaserEquipment(this) || hasWeaponTrait(this, 'm-pod')) types.add('V');
+        if (Array.isArray(this.damage) || isBombastLaserEquipment(this) || this.hasFlag('F_M_POD')) types.add('V');
 
         // X: Explosive
         // Note: had to put AC and PPC in the filter because they have explosive==true and that's an optional rule (they still get clan case thou!)
         if (this.stats.explosive
-            && !hasAnyWeaponTrait(this, ['autocannon', 'b-pod', 'm-pod'])
+            && !this.hasAnyFlag(['F_AC', 'F_B_POD', 'F_M_POD'])
             && !isPpcEquipment(this)) types.add('X');
 
         return orderedWeaponTypes(types);
@@ -748,17 +740,17 @@ export class WeaponEquipment extends Equipment {
     }
 
     get oneShotCount(): 1 | 2 | undefined {
-        if (hasWeaponTrait(this, 'double-one-shot')) return 2;
-        if (hasWeaponTrait(this, 'one-shot')) return 1;
+        if (this.hasFlag('F_DOUBLE_ONE_SHOT')) return 2;
+        if (this.hasFlag('F_ONE_SHOT')) return 1;
         return undefined;
     }
 
     getWeaponCategory(): WeaponCategory {
         const ammoCategory = getAmmoCategory(this.ammoType);
-        if (hasWeaponTrait(this, 'energy') || ammoCategory === 'Energy') return 'energy';
-        if (hasWeaponTrait(this, 'artillery') || ammoCategory === 'Artillery') return 'artillery';
-        if (hasWeaponTrait(this, 'ballistic') || ammoCategory === 'Ballistic') return 'ballistic';
-        if (hasWeaponTrait(this, 'missile') || ammoCategory === 'Missile') return 'missile';
+        if (this.hasFlag('F_ENERGY') || ammoCategory === 'Energy') return 'energy';
+        if (this.hasFlag('F_ARTILLERY') || ammoCategory === 'Artillery') return 'artillery';
+        if (this.hasFlag('F_BALLISTIC') || ammoCategory === 'Ballistic') return 'ballistic';
+        if (this.hasFlag('F_MISSILE') || ammoCategory === 'Missile') return 'missile';
         return 'other';
     }
 
@@ -852,7 +844,7 @@ export function findIntrinsicAmmoForWeapon(
     weapon: WeaponEquipment,
     equipmentRegistry: EquipmentRegistry,
 ): AmmoEquipment | null {
-    if ((!weapon.oneShotCount && !hasWeaponTrait(weapon, 'large-missile')) || weapon.ammoType === 'NA') return null;
+    if ((!weapon.oneShotCount && !weapon.hasFlag('F_LARGE_MISSILE')) || weapon.ammoType === 'NA') return null;
 
     return getAmmoForWeapon(weapon, equipmentRegistry)
         .sort(compareStandardAmmo)[0] ?? null;
@@ -867,7 +859,7 @@ function getAmmoForWeapon(
 
 export function ammoMatchesWeapon(weapon: WeaponEquipment, ammo?: AmmoEquipment | null): ammo is AmmoEquipment {
     if (!ammo || ammo.ammoType !== weapon.ammoType) return false;
-    if (hasWeaponTrait(weapon, 'battle-armor-weapon') !== isBattleArmorAmmo(ammo)) return false;
+    if (weapon.hasFlag('F_BA_WEAPON') !== isBattleArmorAmmo(ammo)) return false;
     return weapon.rackSize <= 0 || ammo.rackSize === weapon.rackSize;
 }
 

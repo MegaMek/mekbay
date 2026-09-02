@@ -5,7 +5,6 @@
 import type { BaseEntity } from '../base-entity';
 import type { Equipment } from '../../equipment.model';
 import { isRiscLaserPulseModule } from '../../risc-laser-mode.model';
-import { isDirectFireFlags } from '../../weapon-traits-kernel';
 
 const TARGETING_COMPUTER_FLAG = 'F_TARGETING_COMPUTER' as const;
 
@@ -14,7 +13,7 @@ export function isTargetingComputerEquipment(equipment: Equipment | null | undef
 }
 
 export function isDirectFireEquipment(equipment: Equipment | null | undefined): boolean {
-    return equipment !== null && equipment !== undefined && isDirectFireFlags(equipment.flags);
+    return equipment?.flags.has('F_DIRECT_FIRE') === true;
 }
 
 export function isTargetingComputerRelevantWeapon(
@@ -22,7 +21,7 @@ export function isTargetingComputerRelevantWeapon(
 ): boolean {
     return equipment?.type === 'weapon'
         && isDirectFireEquipment(equipment)
-        && !equipment.hasWeaponTrait('taser');
+        && !equipment.hasFlag('F_TASER');
 }
 
 export function targetingComputerVariableTonnage(

@@ -1,8 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { hasWeaponTrait } from '../../weapon-traits-kernel';
-
 /** Minimal immutable inputs needed to resolve record-sheet weapon damage. */
 export interface WeaponDamageFacts {
   readonly id: string;
@@ -61,8 +59,8 @@ function resolveClusterDamage(
   weapon: WeaponDamageFacts,
   ammo: AmmoDamageFacts | null,
 ): ResolvedWeaponDamageFacts {
-  if (hasWeaponTrait(weapon.flags, 'large-missile')) return fixedDamage(ammo?.damagePerShot ?? 0);
-  if (hasWeaponTrait(weapon.flags, 'narc')) {
+  if (weapon.flags.has('F_LARGE_MISSILE')) return fixedDamage(ammo?.damagePerShot ?? 0);
+  if (weapon.flags.has('F_NARC')) {
     return { values: [1], maximum: weapon.rackSize, unit: 'missile' };
   }
   if (weapon.ammoType === 'HAG') return fixedDamage(weapon.rackSize);
@@ -70,7 +68,7 @@ function resolveClusterDamage(
     const damagePerMissile = ammo?.damagePerShot ?? 2;
     return { values: [damagePerMissile], maximum: weapon.rackSize * damagePerMissile, unit: 'missile' };
   }
-  if (weapon.ammoType === 'BA_TUBE' || !hasWeaponTrait(weapon.flags, 'missile')) {
+  if (weapon.ammoType === 'BA_TUBE' || !weapon.flags.has('F_MISSILE')) {
     return fixedDamage(weapon.rackSize);
   }
   return {

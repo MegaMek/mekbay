@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { combineEquipmentStatuses, type EquipmentStatus } from '../equipment-status.model';
+import type { EquipmentFlag } from '../equipment-flags.type';
 import { isCBTRuleset, type CBTRuleset } from '../cbt-ruleset.model';
 import { isShieldFlags } from '../entity/utils/physical-weapon-kernel';
-import { hasWeaponTrait } from '../weapon-traits-kernel';
 
 export type EquipmentStatusUnitFamily = 'mek' | 'vehicle' | 'other';
 
 export interface RuntimeStatusComponentDefinition {
     readonly id: string;
-    readonly flags: ReadonlySet<string>;
+    readonly flags: ReadonlySet<EquipmentFlag>;
     readonly locationIds: readonly string[];
     readonly criticalSlotIds: readonly string[];
 }
@@ -136,7 +136,7 @@ export class RuntimeEquipmentStatusKernel {
 
     private mountedCriticalContribution(
         criticalSlotIds: readonly string[],
-        componentFlags: ReadonlySet<string>,
+        componentFlags: ReadonlySet<EquipmentFlag>,
     ): EquipmentStatus {
         if (this.options.family !== 'mek' || criticalSlotIds.length === 0) return 'available';
         const hits = criticalSlotIds.reduce(
@@ -154,7 +154,7 @@ export class RuntimeEquipmentStatusKernel {
     private familyContribution(definition: RuntimeStatusComponentDefinition): EquipmentStatus {
         return this.options.family === 'vehicle'
             && this.committed.engineHit
-            && hasWeaponTrait(definition.flags, 'energy')
+            && definition.flags.has('F_ENERGY')
             ? 'disabled'
             : 'available';
     }
@@ -163,12 +163,12 @@ export class RuntimeEquipmentStatusKernel {
 /** Number of component hits required to destroy mounted Mek equipment. */
 export function mekCriticalDamageThreshold(
     rules: CBTRuleset,
-    componentFlags: ReadonlySet<string>,
+    componentFlags: ReadonlySet<EquipmentFlag>,
 ): number {
     // Shield critical and actuator losses reduce DA/DC tracks; the shield
     // projection owns their operational threshold.
     if (isShieldFlags(componentFlags)) return Number.MAX_SAFE_INTEGER;
-    return rules === 'core-2026' && hasWeaponTrait(componentFlags, 'autocannon') ? 2 : 1;
+    return rules === 'core-2026' && componentFlags.has('F_AC') ? 2 : 1;
 }
 
 function resolution(statuses: readonly EquipmentStatus[]): EquipmentStatusResolution {

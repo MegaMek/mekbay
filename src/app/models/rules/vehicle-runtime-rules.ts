@@ -233,7 +233,7 @@ function componentStatuses(
     const result = new Map<ComponentId, EquipmentStatus>();
     for (const component of index.components.values()) {
         const engineStatus: EquipmentStatus = engineHit
-            && component.mount.equipment?.hasWeaponTrait('energy') === true
+            && component.mount.equipment?.hasFlag('F_ENERGY') === true
             ? 'disabled'
             : 'available';
         result.set(component.id, combineEquipmentStatuses([

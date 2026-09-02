@@ -61,7 +61,7 @@ export function calculateBattleArmorStandardDamage(
     : equipment.some(mount => isAntiPersonnelMountEquipment(mount.equipment)) ? 0.05 : 0;
   const isOperational = options.isOperational ?? (() => true);
   const vibroclawBonus = equipment.filter(mount =>
-    mount.equipment?.hasWeaponTrait('vibroclaw') && isOperational(mount)).length * 0.1;
+    mount.equipment?.hasFlag('F_VIBROCLAW') && isOperational(mount)).length * 0.1;
   const raw: RawDamageVector = [
     (normal[0] + apOrGloveBonus) * troopFactor + squadSupport[0] + vibroclawBonus,
     normal[1] * troopFactor + squadSupport[1],
@@ -112,7 +112,7 @@ function battleArmorAmmoModifier(
   weapons: readonly EntityMountedEquipment[],
   ammo: readonly EntityMountedEquipment[],
 ): number {
-  if (!weapon.hasWeaponTrait('missile') || weapon.oneShotCount) return 1;
+  if (!weapon.hasFlag('F_MISSILE') || weapon.oneShotCount) return 1;
   const weaponCount = weapons.filter(mount =>
     mount.equipment instanceof WeaponEquipment
     && mount.equipment.id === weapon.id

@@ -463,7 +463,7 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
                         `${formatWholeNumber(mount.getAmmoShots() ?? 0)} ${mount.equipment?.shortName ?? mount.displayName()}`);
                     ammoText = ` (${details.join(', ')})`;
                 } else {
-                    const unit = group.equipment.capital && group.equipment.hasWeaponTrait('missile')
+                    const unit = group.equipment.capital && group.equipment.hasFlag('F_MISSILE')
                         ? 'missiles'
                         : 'rounds';
                     ammoText = ` (${formatWholeNumber(matchingAmmo[0].getAmmoShots() ?? 0)} ${unit})`;
@@ -1160,7 +1160,7 @@ function capitalAeroInventoryRows(
                         `${formatWholeNumber(mount.getAmmoShots() ?? 0)} ${mount.equipment?.shortName ?? mount.displayName()}`);
                     ammoText = ` (${details.join(', ')})`;
                 } else {
-                    const unit = group.equipment.capital && group.equipment.hasWeaponTrait('missile')
+                    const unit = group.equipment.capital && group.equipment.hasFlag('F_MISSILE')
                         ? 'missiles'
                         : 'rounds';
                     ammoText = ` (${formatWholeNumber(matchingAmmo[0].getAmmoShots() ?? 0)} ${unit})`;
@@ -1244,9 +1244,9 @@ function capitalAeroEnhancementBonus(
         if (weapon.ammoType === 'MML') {
             if (weapon.rackSize >= 7) return 2;
             if (weapon.rackSize >= 5 || kind === 'v') return 1;
-        } else if (weapon.hasWeaponTrait('lrm')) {
+        } else if (weapon.hasFlag('F_LRM')) {
             return Math.floor(weapon.rackSize / 5);
-        } else if (weapon.hasWeaponTrait('srm')) {
+        } else if (weapon.hasFlag('F_SRM')) {
             return 2;
         }
     } else if (kind === 'prototype' && weapon.rackSize === 2) {

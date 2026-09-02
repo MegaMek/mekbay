@@ -67,9 +67,9 @@ export function calculatePowerAmplifierWeight(entity: BaseEntity): number {
   if (engine.isFusion || engine.isFission || entity.weightClass() === 'Small Support') return 0;
   const tonnage = entity.mountedWeapons().reduce((total, mount) => {
     const weapon = mount.equipment;
-    const requiresPower = (weapon.hasWeaponTrait('laser') && weapon.ammoType === 'NA')
+    const requiresPower = (weapon.hasFlag('F_LASER') && weapon.ammoType === 'NA')
       || isPpcEquipment(weapon)
-      || weapon.hasWeaponTrait('plasma') || weapon.hasWeaponTrait('plasma-mfuk')
+      || weapon.hasFlag('F_PLASMA') || weapon.hasFlag('F_PLASMA_MFUK')
       || flamerRequiresPower(weapon);
     return total + (requiresPower ? mount.getTonnage(entity) ?? 0 : 0);
   }, 0);
@@ -79,9 +79,9 @@ export function calculatePowerAmplifierWeight(entity: BaseEntity): number {
 export function calculateHeatNeutralRequirement(entity: BaseEntity): number {
   const weaponHeat = entity.mountedWeapons().reduce((total, mount) => {
     const weapon = mount.equipment;
-    const producesHeat = (weapon.hasWeaponTrait('laser') && weapon.ammoType === 'NA')
+    const producesHeat = (weapon.hasFlag('F_LASER') && weapon.ammoType === 'NA')
       || isPpcEquipment(weapon)
-      || weapon.hasWeaponTrait('plasma') || weapon.hasWeaponTrait('plasma-mfuk')
+      || weapon.hasFlag('F_PLASMA') || weapon.hasFlag('F_PLASMA_MFUK')
       || flamerRequiresPower(weapon);
     if (!producesHeat) return total;
     const enhancement = entity.getLinkingMount(mount)?.equipment;

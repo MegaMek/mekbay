@@ -1,8 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { EquipmentFlag } from './equipment-flags.type';
-import type { EquipmentFlagsSource } from './weapon-traits-kernel';
+import type { EquipmentFlag, EquipmentFlagsSource } from './equipment-flags.type';
 
 export type EquipmentVariant = 'improved' | 'prototype-subtype' | 'prototype';
 

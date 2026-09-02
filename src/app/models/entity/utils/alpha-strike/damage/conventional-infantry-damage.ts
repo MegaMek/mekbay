@@ -62,7 +62,7 @@ function heatSpecial(
     ? fieldGuns.map(mount => mount.equipment)
     : [entity.rangeWeapon()];
   const hasHeatWeapon = eligibleWeapons.some(weapon =>
-    isFlamerEquipment(weapon) || weapon?.hasWeaponTrait('plasma') === true);
+    isFlamerEquipment(weapon) || weapon?.hasFlag('F_PLASMA') === true);
   const shortDamage = Number.parseInt(standard.dmgS, 10) || 0;
   if (!hasHeatWeapon || shortDamage < 1) return [];
   const heatDamage = Math.min(2, shortDamage);

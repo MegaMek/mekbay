@@ -3,7 +3,6 @@
 
 import type { EquipmentFlag } from './equipment-flags.type';
 import type { Equipment } from './equipment.model';
-import { weaponTraitFlag } from './weapon-traits-kernel';
 
 const HEAT_SINK_FLAG = 'F_HEAT_SINK' as const;
 const DOUBLE_HEAT_SINK_FLAG = 'F_DOUBLE_HEAT_SINK' as const;
@@ -12,7 +11,7 @@ const COMPACT_HEAT_SINK_FLAG = 'F_COMPACT_HEAT_SINK' as const;
 const LASER_HEAT_SINK_FLAG = 'F_LASER_HEAT_SINK' as const;
 
 export const UNSUPPORTED_MEK_HEAT_FLAGS: readonly EquipmentFlag[] = Object.freeze([
-    weaponTraitFlag('vibroclaw'),
+    'F_VIBROCLAW',
 ]);
 
 export function unsupportedMekHeatFlag(equipment: Equipment): EquipmentFlag | undefined {

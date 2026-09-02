@@ -362,7 +362,7 @@ function applyHeatAdjustment(
 
 function countsForAlphaStrikeLongRangeHeat(weapon: WeaponEquipment): boolean {
   return baseBattleForceDamageForWeapon(weapon, 2) > 0
-    || (weapon.techBase === 'Clan' && weapon.hasWeaponTrait('plasma')
+    || (weapon.techBase === 'Clan' && weapon.hasFlag('F_PLASMA')
       && weapon.damage === 'variable');
 }
 

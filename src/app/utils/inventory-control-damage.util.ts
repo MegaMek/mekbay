@@ -141,7 +141,7 @@ function applyExtremeRangeDamageRules(
     let subtraction = 0;
     let multiplier = 1;
 
-    if (weapon.hasWeaponTrait('pulse')) divisor = 2;
+    if (weapon.hasFlag('F_PULSE')) divisor = 2;
     if (damageTypes.includes('DE') || (isGaussEquipment(weapon) && !isHagEquipment(weapon))) {
         subtraction = 1;
     }

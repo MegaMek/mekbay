@@ -1,8 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { hasWeaponTrait } from '../models/weapon-traits-kernel';
-
 const SUSTAINED_TURNS = 10;
 
 // MegaMek stores this table as float[], so preserve binary32 values before
@@ -76,13 +74,13 @@ export function expectedClusterHits(rackSize: number): number {
 /** Exact non-aerospace/non-infantry SVGMassPrinter max-damage rule. */
 export function maximumGroundSustainedWeaponDamage(profile: GroundSustainedWeaponProfile): number {
   // An MGA changes how its linked machine guns resolve; it is not another gun.
-  if (hasWeaponTrait(profile.flags, 'machine-gun-array')) return 0;
+  if (profile.flags.has('F_MGA')) return 0;
   const damage = profile.damage;
   if (damage === '') return 0;
   if (damage === 'cluster') {
     const perMissile = profile.ammoType === 'ATM' || profile.ammoType === 'IATM'
       ? profile.ammoDamagePerShot ?? 2
-      : hasWeaponTrait(profile.flags, 'srm')
+      : profile.flags.has('F_SRM')
         || profile.ammoType === 'SRM_TORPEDO'
         || profile.ammoType === 'MML' ? 2 : 1;
     return profile.rackSize * perMissile;

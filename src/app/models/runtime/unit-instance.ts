@@ -18,6 +18,7 @@ import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.mod
 import {
     RuntimeEquipmentStatusKernel,
     type RuntimeEquipmentCommittedState,
+    type RuntimeStatusComponentDefinition,
     type RuntimeEquipmentStatusTopology,
 } from './equipment-status-kernel';
 import {
@@ -5265,12 +5266,7 @@ function clearNarcFromCommittedPhysicallyDestroyedLocations(
 }
 
 function buildStatusTopology(unit: MekRuntimeSource): RuntimeEquipmentStatusTopology {
-    const components = new Map<string, {
-        id: string;
-        flags: ReadonlySet<string>;
-        locationIds: readonly string[];
-        criticalSlotIds: readonly string[];
-    }>();
+    const components = new Map<string, RuntimeStatusComponentDefinition>();
     for (const [id, component] of unit.index.components) {
         components.set(id, {
             id,

@@ -51,7 +51,7 @@ export function calculateFixedWingSupportCostReport(
   let requiredHeatSinks = 0;
   let amplifierWeaponTonnage = 0;
   for (const mount of entity.mountedWeapons()) {
-    if (!mount.equipment.hasWeaponTrait('laser') && !isPpcEquipment(mount.equipment)) continue;
+    if (!mount.equipment.hasFlag('F_LASER') && !isPpcEquipment(mount.equipment)) continue;
     requiredHeatSinks += mount.equipment.heat;
     amplifierWeaponTonnage += mount.getTonnage(entity) ?? 0;
   }

@@ -303,13 +303,13 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
 
         const reducedWeapon = equipment instanceof WeaponEquipment && (
           isGaussEquipment(equipment)
-          || equipment.hasWeaponTrait('heavy-vehicle-autocannon')
-          || equipment.hasWeaponTrait('hyper')
-          || equipment.hasWeaponTrait('tsemp')
-          || equipment.hasWeaponTrait('b-pod')
-          || equipment.hasWeaponTrait('m-pod')
-          || (equipment.hasWeaponTrait('taser') && equipment.hasWeaponTrait('mek-weapon'))
-          || (equipment.hasWeaponTrait('laser') && hasEquipmentVariant(equipment, 'improved'))
+          || equipment.hasFlag('F_HVAC')
+          || equipment.hasFlag('F_HYPER')
+          || equipment.hasFlag('F_TSEMP')
+          || equipment.hasFlag('F_B_POD')
+          || equipment.hasFlag('F_M_POD')
+          || (equipment.hasFlag('F_TASER') && equipment.hasFlag('F_MEK_WEAPON'))
+          || (equipment.hasFlag('F_LASER') && hasEquipmentVariant(equipment, 'improved'))
           || isPpcEquipment(equipment)
         );
         const reducedMisc = equipment instanceof MiscEquipment && (
@@ -323,7 +323,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
         const placedSlots = mount.placedCriticalSlotCount;
         const requiredSlots = mount.getNumCriticalSlots(this.entity);
         const slots = equipment instanceof WeaponEquipment
-          && equipment.hasWeaponTrait('heavy-vehicle-autocannon')
+          && equipment.hasFlag('F_HVAC')
           && !mount.isSplitAcrossLocations && !this.entity.isSuperHeavy()
           ? 1
           : placedSlots > 0 ? placedSlots
@@ -842,8 +842,8 @@ export class InfantryBVCalculator extends BVCalculator {
     if (typeof secondaryBV === 'number') this.offensiveValue += secondaryBV * secondary;
     if (canMakeAntiMekAttacks(this.entity)) {
       const beforeAntiMek = this.offensiveValue;
-      if (typeof primaryBV === 'number' && !this.entity.primaryWeapon()?.hasWeaponTrait('infantry-archaic')) this.offensiveValue += primaryBV * primary;
-      if (typeof secondaryBV === 'number' && !this.entity.secondaryWeapon()?.hasWeaponTrait('infantry-archaic')) this.offensiveValue += secondaryBV * secondary;
+      if (typeof primaryBV === 'number' && !this.entity.primaryWeapon()?.hasFlag('F_INF_ARCHAIC')) this.offensiveValue += primaryBV * primary;
+      if (typeof secondaryBV === 'number' && !this.entity.secondaryWeapon()?.hasFlag('F_INF_ARCHAIC')) this.offensiveValue += secondaryBV * secondary;
       if (hasProstheticAntiMekBonus(this.entity)) {
         this.offensiveValue += (this.offensiveValue - beforeAntiMek) * 0.2;
       }
@@ -988,7 +988,7 @@ export class BattleArmorBVCalculator extends BVCalculator {
     const troopers = Math.max(1, this.entity.trooperCount());
     for (const mount of this.entity.equipment()) {
       if (mount.equipment instanceof WeaponEquipment
-        && mount.equipment.hasWeaponTrait('anti-missile')) {
+        && mount.equipment.hasFlag('F_AMS')) {
         this.defensiveValue += mount.getBV(this.entity) / (mount.location === 'Squad' ? 1 : troopers);
       }
     }
@@ -1001,7 +1001,7 @@ export class BattleArmorBVCalculator extends BVCalculator {
     // Ordinary squad equipment excludes squad-support weapons and battle claws.
     for (const mount of mounts) {
       const claw = mount.equipment instanceof MiscEquipment
-        && (mount.equipment.hasWeaponTrait('vibroclaw')
+        && (mount.equipment.hasFlag('F_VIBROCLAW')
           || isMagnetClawEquipment(mount.equipment));
       if (mount.location === 'Squad' && !mount.isSSWM && !claw) {
         this.offensiveValue += this.weaponBV(mount, false);
@@ -1011,7 +1011,7 @@ export class BattleArmorBVCalculator extends BVCalculator {
     // Per-trooper and squad-support weapons form a separate Java section.
     for (const mount of mounts) {
       if (!(mount.equipment instanceof WeaponEquipment)
-        || mount.equipment.hasWeaponTrait('infantry-weapon')) continue;
+        || mount.equipment.hasFlag('F_INFANTRY')) continue;
       if (mount.location === trooper || mount.isSSWM) {
         this.offensiveValue += this.weaponBV(mount, false)
           / (mount.isSSWM ? this.entity.trooperCount() : 1);
@@ -1023,11 +1023,11 @@ export class BattleArmorBVCalculator extends BVCalculator {
       if (!this.countsAsOffensiveWeapon(mount)) continue;
       const inTrooperSection = mount.location === 'Squad' || mount.location === trooper;
       const claw = mount.equipment instanceof MiscEquipment
-        && (mount.equipment.hasWeaponTrait('vibroclaw')
+        && (mount.equipment.hasFlag('F_VIBROCLAW')
           || isMagnetClawEquipment(mount.equipment));
       const weapon = mount.equipment instanceof WeaponEquipment
-        && !mount.equipment.hasWeaponTrait('infantry-weapon')
-        && !mount.equipment.hasWeaponTrait('missile')
+        && !mount.equipment.hasFlag('F_INFANTRY')
+        && !mount.equipment.hasFlag('F_MISSILE')
         && mount.baMountLocation !== 'Body';
       if (inTrooperSection && (claw || weapon)) {
         this.offensiveValue += this.weaponBV(mount, false)

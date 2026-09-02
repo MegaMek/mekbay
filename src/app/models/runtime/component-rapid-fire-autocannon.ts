@@ -4,7 +4,6 @@
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import { WeaponEquipment } from '../equipment.model';
 import type { EquipmentFlag } from '../equipment-flags.type';
-import { weaponTraitFlag } from '../weapon-traits-kernel';
 import { gameRulesFor } from '../rules/game-rules';
 import {
     ComponentModeHandler,
@@ -60,7 +59,7 @@ export function rapidFireAutocannonShotCount(
 
 export class UACFiringModeHandler extends ComponentModeHandler {
     readonly id = 'uac-firing-mode-handler';
-    override readonly flags: EquipmentFlag[] = [weaponTraitFlag('autocannon')];
+    override readonly flags: EquipmentFlag[] = ['F_AC'];
     override readonly priority = 105;
 
     applicableToComponent(definition: ComponentModeDefinition): boolean {
@@ -104,7 +103,7 @@ export class UACJammingHandler extends EquipmentInteractionHandler {
     readonly id = 'uac-jamming-handler';
     readonly kind = 'jam';
     readonly scope = 'component' as const;
-    override readonly flags: EquipmentFlag[] = [weaponTraitFlag('autocannon')];
+    override readonly flags: EquipmentFlag[] = ['F_AC'];
     override readonly priority = 10;
 
     override choices(input: EquipmentInteractionInput): readonly EquipmentInteractionChoice[] {

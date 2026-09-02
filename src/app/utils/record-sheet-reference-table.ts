@@ -333,7 +333,7 @@ function clusterTableForEquipment(
             case 'MG':
             case 'MG_HEAVY':
             case 'MG_LIGHT':
-                if (item.hasWeaponTrait('machine-gun-array')) {
+                if (item.hasFlag('F_MGA')) {
                     for (let size = 2; size <= 4; size++) sizes.add(size);
                 }
                 break;
