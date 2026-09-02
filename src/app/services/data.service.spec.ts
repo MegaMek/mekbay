@@ -263,7 +263,6 @@ describe('DataService', () => {
             unitSubtypeMaxStats: {},
             unitAsTypeMaxStats: {},
             searchFilterIndex: new Map(),
-            componentCountIndex: new Map(),
             searchFilterValues: new Map(),
             dropdownOptionUniverse: new Map(),
             factionEraSnapshot: {},
@@ -428,7 +427,6 @@ describe('DataService', () => {
             unitSubtypeMaxStats: {},
             unitAsTypeMaxStats: {},
             searchFilterIndex: new Map(),
-            componentCountIndex: new Map(),
             searchFilterValues: new Map(),
             dropdownOptionUniverse: new Map(),
             factionEraSnapshot: {},
@@ -2543,7 +2541,7 @@ describe('DataService', () => {
             }
             return {
                 unitSubtypeMaxStats: {}, unitAsTypeMaxStats: {}, searchFilterIndex: new Map(),
-                componentCountIndex: new Map(), searchFilterValues: new Map(),
+                searchFilterValues: new Map(),
                 dropdownOptionUniverse: new Map(), factionEraSnapshot: {},
             };
         });
@@ -2642,7 +2640,7 @@ describe('DataService', () => {
             if (units === replacementUnits) throw new Error('index failed');
             return {
                 unitSubtypeMaxStats: {}, unitAsTypeMaxStats: {}, searchFilterIndex: new Map(),
-                componentCountIndex: new Map(), searchFilterValues: new Map(),
+                searchFilterValues: new Map(),
                 dropdownOptionUniverse: new Map(), factionEraSnapshot: {},
             };
         });

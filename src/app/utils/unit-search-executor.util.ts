@@ -19,6 +19,7 @@ import {
     compareUnitsByName,
     compileRelevanceSearchGroups,
     computeRelevanceScore,
+    computeRelevanceScoreFromPrepared,
     naturalCompare,
 } from './sort.util';
 import { removeAccents, wildcardToRegex } from './string.util';
@@ -71,6 +72,38 @@ export interface UnitSearchExecutionResult {
     totalMs: number;
     unitCount: number;
     isComplex: boolean;
+}
+
+function compareUnitsByPreparedName(a: UnitSummary, b: UnitSummary): number {
+    const aRank = a._searchNameRank;
+    const bRank = b._searchNameRank;
+    return aRank !== undefined && bRank !== undefined
+        ? aRank - bRank
+        : compareUnitsByName(a, b);
+}
+
+function computeUnitRelevanceScore(
+    unit: UnitSummary,
+    searchTokens: ReturnType<typeof compileRelevanceSearchGroups>,
+): number {
+    if (
+        unit._searchKey !== undefined
+        && unit._searchKeyAlphanumeric !== undefined
+        && unit._searchChassisLength !== undefined
+        && unit._searchChassisAlphanumericLength !== undefined
+    ) {
+        const modelOffset = unit._searchChassisLength + 1;
+        const modelAlphanumericOffset = unit._searchChassisAlphanumericLength;
+        return computeRelevanceScoreFromPrepared(
+            unit._searchKey.slice(0, unit._searchChassisLength),
+            unit._searchKeyAlphanumeric.slice(0, modelAlphanumericOffset),
+            unit._searchKey.slice(modelOffset),
+            unit._searchKeyAlphanumeric.slice(modelAlphanumericOffset),
+            searchTokens,
+        );
+    }
+
+    return computeRelevanceScore(unit.chassis ?? '', unit.model ?? '', searchTokens);
 }
 
 function getSelectedASMotiveCodes(
@@ -283,7 +316,8 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
 
     const sorted = [...results];
     const compiledSearchTokens = compileRelevanceSearchGroups(request.searchTokens);
-    let relevanceScores: WeakMap<UnitSummary, number> | null = null;
+    let relevanceScores: Float64Array | null = null;
+    let unindexedRelevanceScores: Map<UnitSummary, number> | null = null;
     let megaMekRarityScores: WeakMap<UnitSummary, number> | null = null;
     if (request.sortKey === '' && hasTextSearch) {
         relevanceScores = measureStage(
@@ -291,12 +325,19 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
             'relevance-prep',
             sorted.length,
             () => {
-                const scores = new WeakMap<UnitSummary, number>();
+                const scores = new Float64Array(unitCount);
+                const fallbackScores = new Map<UnitSummary, number>();
+
+                const setScore = (unit: UnitSummary, score: number): void => {
+                    const ordinal = unit._searchOrdinal;
+                    if (ordinal !== undefined && ordinal >= 0 && ordinal < unitCount) {
+                        scores[ordinal] = score;
+                    } else {
+                        fallbackScores.set(unit, score);
+                    }
+                };
 
                 for (const unit of sorted) {
-                    const chassis = (unit.chassis ?? '').toLowerCase();
-                    const model = (unit.model ?? '').toLowerCase();
-
                     if (isComplex) {
                         const matchingTexts = getMatchingTextForUnit(
                             parsedQuery.ast,
@@ -308,7 +349,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                             let bestScore = 0;
                             for (const text of matchingTexts) {
                                 const textTokens = compileRelevanceSearchGroups(parseSearchQuery(text));
-                                const score = computeRelevanceScore(chassis, model, textTokens);
+                                const score = computeUnitRelevanceScore(unit, textTokens);
                                 if (score > bestScore) {
                                     bestScore = score;
                                 }
@@ -316,20 +357,28 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                             const combinedTokens = compileRelevanceSearchGroups(
                                 parseSearchQuery(matchingTexts.join(' ')),
                             );
-                            const combinedScore = computeRelevanceScore(chassis, model, combinedTokens);
-                            scores.set(unit, Math.max(bestScore, combinedScore));
+                            const combinedScore = computeUnitRelevanceScore(unit, combinedTokens);
+                            setScore(unit, Math.max(bestScore, combinedScore));
                         } else {
-                            scores.set(unit, 0);
+                            setScore(unit, 0);
                         }
                     } else {
-                        scores.set(unit, computeRelevanceScore(chassis, model, compiledSearchTokens));
+                        setScore(unit, computeUnitRelevanceScore(unit, compiledSearchTokens));
                     }
                 }
 
+                unindexedRelevanceScores = fallbackScores;
                 return scores;
             }
         );
     }
+
+    const getRelevanceScore = (unit: UnitSummary): number => {
+        const ordinal = unit._searchOrdinal;
+        return ordinal !== undefined && ordinal >= 0 && ordinal < unitCount
+            ? relevanceScores?.[ordinal] ?? 0
+            : unindexedRelevanceScores?.get(unit) ?? 0;
+    };
 
     if (isMegaMekRaritySortKey(request.sortKey) && request.getMegaMekRaritySortScore) {
         megaMekRarityScores = new WeakMap<UnitSummary, number>();
@@ -347,14 +396,14 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                 let comparison = 0;
 
                 if (request.sortKey === '') {
-                    const aScore = relevanceScores?.get(a) ?? 0;
-                    const bScore = relevanceScores?.get(b) ?? 0;
+                    const aScore = getRelevanceScore(a);
+                    const bScore = getRelevanceScore(b);
                     comparison = bScore - aScore;
                     if (comparison === 0) {
-                        comparison = compareUnitsByName(a, b);
+                        comparison = compareUnitsByPreparedName(a, b);
                     }
                 } else if (request.sortKey === 'name') {
-                    comparison = compareUnitsByName(a, b);
+                    comparison = compareUnitsByPreparedName(a, b);
                 } else if (request.sortKey === 'bv') {
                     comparison = getContextualAdjustedBV(a) - getContextualAdjustedBV(b);
                 } else if (request.sortKey === 'as.PV') {
@@ -362,7 +411,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                 } else if (isMegaMekRaritySortKey(request.sortKey)) {
                     comparison = (megaMekRarityScores?.get(a) ?? 0) - (megaMekRarityScores?.get(b) ?? 0);
                     if (comparison === 0) {
-                        comparison = compareUnitsByName(a, b);
+                        comparison = compareUnitsByPreparedName(a, b);
                     }
                 } else {
                     const aValue = getProperty(a, request.sortKey);
@@ -375,7 +424,7 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
                 }
 
                 if (comparison === 0 && request.sortKey !== 'name') {
-                    comparison = compareUnitsByName(a, b);
+                    comparison = compareUnitsByPreparedName(a, b);
                 }
 
                 if (request.sortDirection === 'desc') {

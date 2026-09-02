@@ -1685,47 +1685,57 @@ export class UnitSearchFiltersService {
         selectedFactionIds?: ReadonlySet<number>,
     ): ReadonlySet<number> {
         const availableIds = new Set<number>();
+        const contextUnitIds = new Set(contextUnits.map(unit => unit.id));
         const allFactions = this.dataService.getFactions();
 
-        for (const unit of contextUnits) {
-            if (target === 'faction') {
-                for (const faction of allFactions) {
-                    if (selectedEraIds) {
-                        for (const eraId of selectedEraIds) {
-                            if (this.unitBelongsToMulFactionInEra(unit, faction.id, eraId)) {
-                                availableIds.add(faction.id);
-                            }
-                        }
-                        continue;
-                    }
-
-                    for (const [eraIdText, membership] of Object.entries(faction.eras) as Array<[string, Set<number> | number[]]>) {
-                        const eraId = Number(eraIdText);
-                        if (!Number.isNaN(eraId) && this.membershipContainsUnitId(membership, unit.id)) {
-                            availableIds.add(faction.id);
-                            break;
-                        }
-                    }
+        if (target === 'faction') {
+            for (const faction of allFactions) {
+                const memberships = selectedEraIds
+                    ? Array.from(selectedEraIds, eraId => faction.eras[eraId] as Set<number> | number[] | undefined)
+                    : Object.values(faction.eras) as Array<Set<number> | number[]>;
+                if (memberships.some(membership => this.membershipHasAnyUnitId(membership, contextUnitIds))) {
+                    availableIds.add(faction.id);
                 }
-
-                continue;
             }
+            return availableIds;
+        }
 
-            const factions = selectedFactionIds
-                ? [...selectedFactionIds].map((factionId) => this.dataService.getFactionById(factionId)).filter((faction): faction is NonNullable<typeof faction> => !!faction)
-                : allFactions;
+        const factions = selectedFactionIds
+            ? Array.from(selectedFactionIds, factionId => this.dataService.getFactionById(factionId))
+                .filter((faction): faction is NonNullable<typeof faction> => !!faction)
+            : allFactions;
 
-            for (const faction of factions) {
-                for (const [eraIdText, membership] of Object.entries(faction.eras) as Array<[string, Set<number> | number[]]>) {
-                    const eraId = Number(eraIdText);
-                    if (!Number.isNaN(eraId) && this.membershipContainsUnitId(membership, unit.id)) {
-                        availableIds.add(eraId);
-                    }
+        for (const faction of factions) {
+            for (const [eraIdText, membership] of Object.entries(faction.eras) as Array<[string, Set<number> | number[]]>) {
+                const eraId = Number(eraIdText);
+                if (!Number.isNaN(eraId) && this.membershipHasAnyUnitId(membership, contextUnitIds)) {
+                    availableIds.add(eraId);
                 }
             }
         }
 
         return availableIds;
+    }
+
+    private membershipHasAnyUnitId(
+        membership: Set<number> | number[] | undefined,
+        unitIds: ReadonlySet<number>,
+    ): boolean {
+        if (!membership) {
+            return false;
+        }
+
+        if (membership instanceof Set && membership.size > unitIds.size) {
+            for (const unitId of unitIds) {
+                if (membership.has(unitId)) return true;
+            }
+            return false;
+        }
+
+        for (const unitId of membership) {
+            if (unitIds.has(unitId)) return true;
+        }
+        return false;
     }
 
     private unitBelongsToMulFactionInEra(unit: Pick<UnitSummary, 'id'>, factionId: number, eraId: number): boolean {

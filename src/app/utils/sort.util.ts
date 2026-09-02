@@ -368,10 +368,30 @@ export function computeRelevanceScore(
     modelText: string,
     searchTokens: readonly CompiledRelevanceSearchGroup[],
 ): number {
-    if (!searchTokens || searchTokens.length === 0) return 0;
-
     const chassis = normalizeForRelevance(chassisText ?? '');
     const model = normalizeForRelevance(modelText ?? '');
+
+    return computeRelevanceScoreFromPrepared(
+        chassis.lower,
+        chassis.alphaNum,
+        model.lower,
+        model.alphaNum,
+        searchTokens,
+    );
+}
+
+/** Score catalog-prepared name fields without normalizing every search. */
+export function computeRelevanceScoreFromPrepared(
+    chassisLower: string,
+    chassisAlphaNum: string,
+    modelLower: string,
+    modelAlphaNum: string,
+    searchTokens: readonly CompiledRelevanceSearchGroup[],
+): number {
+    if (!searchTokens || searchTokens.length === 0) return 0;
+
+    const chassis = { lower: chassisLower, alphaNum: chassisAlphaNum };
+    const model = { lower: modelLower, alphaNum: modelAlphaNum };
 
     let best = -Infinity;
     for (const group of searchTokens) {

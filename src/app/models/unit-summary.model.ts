@@ -219,8 +219,14 @@ export interface UnitSummary {
 
   /** Transient presentation/search overlay; never serialized in summary stores. */
   unitFile?: string;
+  /** Stable position in the active search corpus. */
+  _searchOrdinal?: number;
+  /** Stable natural-name order, prepared once per catalog activation. */
+  _searchNameRank?: number;
   _searchKey?: string;
   _searchKeyAlphanumeric?: string;
+  _searchChassisLength?: number;
+  _searchChassisAlphanumericLength?: number;
   _displayType?: string;
   _techBaseDisplay?: UnitTechBaseDisplay;
   _maxRange?: number;

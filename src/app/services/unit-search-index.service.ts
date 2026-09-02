@@ -7,7 +7,7 @@ import type { UnitSummary, UnitComponent, UnitType } from '../models/unit-summar
 import { type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
 import { removeAccents } from '../utils/string.util';
-import { naturalCompare } from '../utils/sort.util';
+import { compareUnitsByName, naturalCompare } from '../utils/sort.util';
 import { getMergedTags, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
 import { calculateWeightedMaxRange, getMaxRangeFromComponents } from '../utils/unit-range.util';
 import { parseASDamageValue } from '../utils/as-damage.util';
@@ -70,13 +70,89 @@ export interface UnitSearchDropdownOption {
     minimumFieldLabels?: readonly string[];
 }
 
-/** Compact MUL membership authority retained by the synchronous search index. */
+export interface UnitOrdinalLookup {
+    readonly unitUuids: readonly UnitUuid[];
+    readonly ordinalsByUnitUuid: ReadonlyMap<UnitUuid, number>;
+}
+
+class IndexedUnitUuidSet implements ReadonlySet<UnitUuid> {
+    public readonly [Symbol.toStringTag] = 'Set';
+
+    public constructor(
+        private readonly ordinals: Uint32Array,
+        private readonly lookup: UnitOrdinalLookup,
+    ) {}
+
+    public get size(): number {
+        return this.ordinals.length;
+    }
+
+    public has(unitUuid: UnitUuid): boolean {
+        const ordinal = this.lookup.ordinalsByUnitUuid.get(unitUuid);
+        return ordinal !== undefined && hasSortedOrdinal(this.ordinals, ordinal);
+    }
+
+    public *values(): SetIterator<UnitUuid> {
+        for (const ordinal of this.ordinals) yield this.lookup.unitUuids[ordinal];
+    }
+
+    public keys(): SetIterator<UnitUuid> {
+        return this.values();
+    }
+
+    public *entries(): SetIterator<[UnitUuid, UnitUuid]> {
+        for (const unitUuid of this.values()) yield [unitUuid, unitUuid];
+    }
+
+    public forEach(
+        callbackfn: (value: UnitUuid, value2: UnitUuid, set: ReadonlySet<UnitUuid>) => void,
+        thisArg?: unknown,
+    ): void {
+        for (const unitUuid of this.values()) callbackfn.call(thisArg, unitUuid, unitUuid, this);
+    }
+
+    public [Symbol.iterator](): SetIterator<UnitUuid> {
+        return this.values();
+    }
+}
+
+function findSortedOrdinal(ordinals: Uint32Array, target: number): number {
+    let low = 0;
+    let high = ordinals.length - 1;
+    while (low <= high) {
+        const middle = (low + high) >>> 1;
+        const value = ordinals[middle];
+        if (value === target) return middle;
+        if (value < target) low = middle + 1;
+        else high = middle - 1;
+    }
+    return -1;
+}
+
+function hasSortedOrdinal(ordinals: Uint32Array, target: number): boolean {
+    return findSortedOrdinal(ordinals, target) !== -1;
+}
+
+function toSortedUniqueOrdinals(values: number[]): Uint32Array {
+    values.sort((left, right) => left - right);
+    let uniqueCount = 0;
+    for (const value of values) {
+        if (uniqueCount === 0 || values[uniqueCount - 1] !== value) {
+            values[uniqueCount++] = value;
+        }
+    }
+    const result = new Uint32Array(uniqueCount);
+    for (let index = 0; index < uniqueCount; index++) result[index] = values[index];
+    return result;
+}
+
+/** MUL membership references retained by the synchronous search index. */
 export interface FactionEraMembershipSnapshot {
-    readonly unitUuidsByMulId: Readonly<Record<string, readonly UnitUuid[]>>;
-    readonly referenceIdsByEraAndFaction: Readonly<Record<
+    readonly unitUuidsByMulId: ReadonlyMap<number, readonly UnitUuid[]>;
+    readonly referenceIdsByEraAndFaction: ReadonlyMap<
         string,
-        Readonly<Record<string, readonly number[]>>
-    >>;
+        ReadonlyMap<string, ReadonlySet<number>>
+    >;
 }
 
 interface ASUnitTypeMaxStats {
@@ -93,12 +169,12 @@ interface ASUnitTypeMaxStats {
 export interface PreparedUnitSearchIndexes {
     readonly unitSubtypeMaxStats: UnitSubtypeMaxStats;
     readonly unitAsTypeMaxStats: ASUnitTypeMaxStats;
-    readonly searchFilterIndex: Map<string, Map<string, Set<UnitUuid>>>;
-    readonly componentCountIndex: Map<string, Map<UnitUuid, number>>;
+    readonly searchFilterIndex: Map<string, Map<string, ReadonlySet<UnitUuid>>>;
+    readonly unitOrdinalLookup: UnitOrdinalLookup;
     readonly searchFilterValues: Map<string, string[]>;
     readonly dropdownOptionUniverse: Map<string, UnitSearchDropdownOption[]>;
     readonly asSpecialFieldCounts: Map<string, number>;
-    readonly asSpecialsByUnit: Map<UnitUuid, ParsedASSpecials>;
+    readonly asSpecialsByUnit: readonly ParsedASSpecials[];
     readonly factionEraSnapshot: FactionEraMembershipSnapshot;
     readonly preparationTimings: {
         readonly unitDerivativesMs: number;
@@ -199,12 +275,16 @@ function createEmptyMinMaxStatsRange(): MinMaxStatsRange {
 export class UnitSearchIndexService {
     private unitSubtypeMaxStats: UnitSubtypeMaxStats = {};
     private unitAsTypeMaxStats: ASUnitTypeMaxStats = {};
-    private searchFilterIndex = new Map<string, Map<string, Set<UnitUuid>>>();
-    private componentCountIndex = new Map<string, Map<UnitUuid, number>>();
+    private searchFilterIndex = new Map<string, Map<string, ReadonlySet<UnitUuid>>>();
+    private unitOrdinalLookup: UnitOrdinalLookup = {
+        unitUuids: [],
+        ordinalsByUnitUuid: new Map(),
+    };
+    private searchFilterIndexBuilder: Map<string, Map<string, number[]>> | null = null;
     private searchFilterValues = new Map<string, string[]>();
     private dropdownOptionUniverse = new Map<string, UnitSearchDropdownOption[]>();
     private asSpecialFieldCounts = new Map<string, number>();
-    private asSpecialsByUnit = new Map<UnitUuid, ParsedASSpecials>();
+    private asSpecialsByUnit: readonly ParsedASSpecials[] = [];
     private indexStats: PreparedUnitSearchIndexes['indexStats'] = Object.freeze({
         filterKeys: 0,
         filterValues: 0,
@@ -221,10 +301,10 @@ export class UnitSearchIndexService {
         factionMembershipsMs: 0,
         finalizationMs: 0,
     });
-    private factionEraSnapshot: FactionEraMembershipSnapshot = Object.freeze({
-        unitUuidsByMulId: Object.freeze({}),
-        referenceIdsByEraAndFaction: Object.freeze({}),
-    });
+    private factionEraSnapshot: FactionEraMembershipSnapshot = {
+        unitUuidsByMulId: new Map(),
+        referenceIdsByEraAndFaction: new Map(),
+    };
     /**
      * Pure-build every search/index derivative without touching live state.
      * A detached service instance is safe here because this builder has no
@@ -263,7 +343,7 @@ export class UnitSearchIndexService {
         this.unitSubtypeMaxStats = candidate.unitSubtypeMaxStats;
         this.unitAsTypeMaxStats = candidate.unitAsTypeMaxStats;
         this.searchFilterIndex = candidate.searchFilterIndex;
-        this.componentCountIndex = candidate.componentCountIndex;
+        this.unitOrdinalLookup = candidate.unitOrdinalLookup;
         this.searchFilterValues = candidate.searchFilterValues;
         this.dropdownOptionUniverse = candidate.dropdownOptionUniverse;
         this.asSpecialFieldCounts = candidate.asSpecialFieldCounts;
@@ -278,7 +358,7 @@ export class UnitSearchIndexService {
             unitSubtypeMaxStats: this.unitSubtypeMaxStats,
             unitAsTypeMaxStats: this.unitAsTypeMaxStats,
             searchFilterIndex: this.searchFilterIndex,
-            componentCountIndex: this.componentCountIndex,
+            unitOrdinalLookup: this.unitOrdinalLookup,
             searchFilterValues: this.searchFilterValues,
             dropdownOptionUniverse: this.dropdownOptionUniverse,
             asSpecialFieldCounts: this.asSpecialFieldCounts,
@@ -386,11 +466,17 @@ export class UnitSearchIndexService {
         const statsBySubtype: { [subtype: string]: ReturnType<typeof createStatsAccumulator> } = {};
         const statsByAsType: { [asUnitType: string]: ReturnType<typeof createStatsAccumulator> } = {};
 
-        for (const unit of units) {
+        for (let unitOrdinal = 0; unitOrdinal < units.length; unitOrdinal++) {
+            const unit = units[unitOrdinal];
             const chassis = removeAccents(unit.chassis?.toLowerCase() || '');
             const model = removeAccents(unit.model?.toLowerCase() || '');
+            const chassisAlphanumeric = chassis.replace(/[^a-z0-9]/g, '');
+            const modelAlphanumeric = model.replace(/[^a-z0-9]/g, '');
+            unit._searchOrdinal = unitOrdinal;
             unit._searchKey = `${chassis} ${model}`;
-            unit._searchKeyAlphanumeric = unit._searchKey.replace(/[^a-z0-9]/g, '');
+            unit._searchKeyAlphanumeric = chassisAlphanumeric + modelAlphanumeric;
+            unit._searchChassisLength = chassis.length;
+            unit._searchChassisAlphanumericLength = chassisAlphanumeric.length;
             unit._displayType = this.formatUnitType(unit.type);
             unit._mdSumNoPhysical = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp) : 0;
             unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
@@ -429,6 +515,11 @@ export class UnitSearchIndexService {
         for (const [asUnitType, stats] of Object.entries(statsByAsType)) {
             this.unitAsTypeMaxStats[asUnitType] = toNormalizedStats(stats);
         }
+
+        const unitsByName = [...units].sort(compareUnitsByName);
+        for (let rank = 0; rank < unitsByName.length; rank++) {
+            unitsByName[rank]._searchNameRank = rank;
+        }
     }
 
     public rebuildIndexes(
@@ -438,15 +529,21 @@ export class UnitSearchIndexService {
         extinctFaction?: Faction,
         equipmentRegistry?: EquipmentRegistry,
     ): void {
-        this.searchFilterIndex = new Map<string, Map<string, Set<UnitUuid>>>();
-        this.componentCountIndex = new Map<string, Map<UnitUuid, number>>();
+        const unitUuids = units.map(unit => unit.uuid);
+        this.unitOrdinalLookup = {
+            unitUuids,
+            ordinalsByUnitUuid: new Map(unitUuids.map((unitUuid, ordinal) => [unitUuid, ordinal])),
+        };
+        this.searchFilterIndexBuilder = new Map<string, Map<string, number[]>>();
+        this.searchFilterIndex = new Map<string, Map<string, ReadonlySet<UnitUuid>>>();
         this.searchFilterValues = new Map<string, string[]>();
         this.asSpecialFieldCounts = new Map<string, number>();
-        this.asSpecialsByUnit = buildASSpecialsByUnitIndex(
+        const parsedSpecialsByUnitUuid = buildASSpecialsByUnitIndex(
             units,
             unit => unit.uuid,
             unit => unit.as?.specials,
         );
+        this.asSpecialsByUnit = units.map(unit => parsedSpecialsByUnitUuid.get(unit.uuid)!);
         const identityMapStartedAt = Date.now();
         const unitUuidsByMulId = this.createUnitUuidsByMulId(units);
         const identityMapMs = Math.max(0, Date.now() - identityMapStartedAt);
@@ -462,7 +559,7 @@ export class UnitSearchIndexService {
             this.addSearchIndexValue('c3', unit.c3, unit.uuid);
             this.addSearchIndexValue('moveType', unit.moveType, unit.uuid);
             this.addSearchIndexValue('as.TP', unit.as?.TP, unit.uuid);
-            this.addASSpecialIndexValues(this.asSpecialsByUnit.get(unit.uuid), unit.uuid);
+            this.addASSpecialIndexValues(this.getIndexedASSpecials(unit.uuid), unit.uuid);
             this.addSearchIndexValues('as._motive', this.getASMotiveDisplayNames(unit), unit.uuid);
             this.addSearchIndexValues('source', getUnitSourceFilterValues(unit), unit.uuid);
             this.addSearchIndexValues('rulesRefs', unit.rulesRefs?.flat() ?? [], unit.uuid);
@@ -511,13 +608,18 @@ export class UnitSearchIndexService {
         const finalizationStartedAt = Date.now();
         let filterValues = 0;
         let memberships = 0;
-        for (const [filterKey, values] of this.searchFilterIndex.entries()) {
-            filterValues += values.size;
-            for (const identityKeys of values.values()) {
-                memberships += identityKeys.size;
+        for (const [filterKey, valueBuilders] of this.searchFilterIndexBuilder.entries()) {
+            const values = new Map<string, ReadonlySet<UnitUuid>>();
+            for (const [value, ordinals] of valueBuilders) {
+                const posting = new IndexedUnitUuidSet(toSortedUniqueOrdinals(ordinals), this.unitOrdinalLookup);
+                values.set(value, posting);
+                memberships += posting.size;
             }
+            filterValues += values.size;
+            this.searchFilterIndex.set(filterKey, values);
             this.searchFilterValues.set(filterKey, Array.from(values.keys()).sort((left, right) => naturalCompare(left, right)));
         }
+        this.searchFilterIndexBuilder = null;
         this.indexStats = Object.freeze({
             filterKeys: this.searchFilterIndex.size,
             filterValues,
@@ -542,19 +644,25 @@ export class UnitSearchIndexService {
             return;
         }
 
-        const tagIndex = new Map<string, Set<UnitUuid>>();
+        const tagOrdinals = new Map<string, number[]>();
         for (const unit of units) {
+            const ordinal = this.unitOrdinalLookup.ordinalsByUnitUuid.get(unit.uuid);
+            if (ordinal === undefined) continue;
             for (const tag of getMergedTags(unit)) {
-                let unitIds = tagIndex.get(tag);
-                if (!unitIds) {
-                    unitIds = new Set<UnitUuid>();
-                    tagIndex.set(tag, unitIds);
-                }
-                unitIds.add(unit.uuid);
+                const ordinals = tagOrdinals.get(tag);
+                if (ordinals) ordinals.push(ordinal);
+                else tagOrdinals.set(tag, [ordinal]);
             }
         }
 
-        if (tagIndex.size > 0) {
+        if (tagOrdinals.size > 0) {
+            const tagIndex = new Map<string, ReadonlySet<UnitUuid>>();
+            for (const [tag, ordinals] of tagOrdinals) {
+                tagIndex.set(tag, new IndexedUnitUuidSet(
+                    toSortedUniqueOrdinals(ordinals),
+                    this.unitOrdinalLookup,
+                ));
+            }
             this.searchFilterIndex.set('_tags', tagIndex);
             const values = Array.from(tagIndex.keys()).sort((left, right) => naturalCompare(left, right));
             this.searchFilterValues.set('_tags', values);
@@ -576,7 +684,8 @@ export class UnitSearchIndexService {
     }
 
     public getIndexedASSpecials(unitUuid: UnitUuid): ParsedASSpecials | undefined {
-        return this.asSpecialsByUnit.get(unitUuid);
+        const ordinal = this.unitOrdinalLookup.ordinalsByUnitUuid.get(unitUuid);
+        return ordinal === undefined ? undefined : this.asSpecialsByUnit[ordinal];
     }
 
     public getFactionEraUnitUuids(
@@ -585,10 +694,10 @@ export class UnitSearchIndexService {
     ): ReadonlySet<UnitUuid> {
         const unitUuids = new Set<UnitUuid>();
         for (const eraName of eraNames) {
-            const factionMap = this.factionEraSnapshot.referenceIdsByEraAndFaction[eraName];
+            const factionMap = this.factionEraSnapshot.referenceIdsByEraAndFaction.get(eraName);
             for (const factionName of factionNames) {
-                for (const referenceId of factionMap?.[factionName] ?? []) {
-                    for (const unitUuid of this.factionEraSnapshot.unitUuidsByMulId[String(referenceId)] ?? []) {
+                for (const referenceId of factionMap?.get(factionName) ?? []) {
+                    for (const unitUuid of this.factionEraSnapshot.unitUuidsByMulId.get(referenceId) ?? []) {
                         unitUuids.add(unitUuid);
                     }
                 }
@@ -599,10 +708,6 @@ export class UnitSearchIndexService {
 
     public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {
         return this.dropdownOptionUniverse.get(filterKey)?.map(option => ({ ...option })) ?? [];
-    }
-
-    public getIndexedComponentUnitCounts(name: string): ReadonlyMap<UnitUuid, number> | undefined {
-        return this.componentCountIndex.get(name.toLowerCase());
     }
 
     public getUnitSubtypeMaxStats(subtype: string): MinMaxStatsRange {
@@ -668,11 +773,11 @@ export class UnitSearchIndexService {
         eras: Era[],
         factions: Faction[],
     ): FactionEraMembershipSnapshot {
-        const referenceIdsByEraAndFaction: Record<string, Record<string, readonly number[]>> = {};
+        const referenceIdsByEraAndFaction = new Map<string, Map<string, ReadonlySet<number>>>();
         const erasById = new Map<number, Era>(eras.map(era => [era.id, era]));
 
         for (const era of eras) {
-            referenceIdsByEraAndFaction[era.name] = {};
+            referenceIdsByEraAndFaction.set(era.name, new Map());
         }
 
         for (const faction of factions) {
@@ -682,27 +787,19 @@ export class UnitSearchIndexService {
                     continue;
                 }
 
-                referenceIdsByEraAndFaction[era.name] ??= {};
-                referenceIdsByEraAndFaction[era.name][faction.name] = Object.freeze(Array.from(referenceIds));
+                let factionMap = referenceIdsByEraAndFaction.get(era.name);
+                if (!factionMap) {
+                    factionMap = new Map();
+                    referenceIdsByEraAndFaction.set(era.name, factionMap);
+                }
+                factionMap.set(faction.name, referenceIds);
             }
         }
 
-        const frozenMemberships = Object.freeze(Object.fromEntries(
-            Object.entries(referenceIdsByEraAndFaction).map(([eraName, factionMap]) => [
-                eraName,
-                Object.freeze(factionMap),
-            ]),
-        ));
-        const frozenUnitUuids = Object.freeze(Object.fromEntries(
-            Array.from(unitUuidsByMulId, ([mulId, unitUuids]) => [
-                String(mulId),
-                Object.freeze([...unitUuids]),
-            ]),
-        ));
-        return Object.freeze({
-            unitUuidsByMulId: frozenUnitUuids,
-            referenceIdsByEraAndFaction: frozenMemberships,
-        });
+        return {
+            unitUuidsByMulId,
+            referenceIdsByEraAndFaction,
+        };
     }
 
     private createUnitUuidsByMulId(units: UnitSummary[]): Map<number, UnitUuid[]> {
@@ -723,20 +820,19 @@ export class UnitSearchIndexService {
             return;
         }
 
+        const ordinal = this.unitOrdinalLookup.ordinalsByUnitUuid.get(unitUuid);
+        if (ordinal === undefined || !this.searchFilterIndexBuilder) return;
+
         const normalizedValue = String(value);
-        let filterIndex = this.searchFilterIndex.get(filterKey);
+        let filterIndex = this.searchFilterIndexBuilder.get(filterKey);
         if (!filterIndex) {
-            filterIndex = new Map<string, Set<UnitUuid>>();
-            this.searchFilterIndex.set(filterKey, filterIndex);
+            filterIndex = new Map<string, number[]>();
+            this.searchFilterIndexBuilder.set(filterKey, filterIndex);
         }
 
-        let unitIds = filterIndex.get(normalizedValue);
-        if (!unitIds) {
-            unitIds = new Set<UnitUuid>();
-            filterIndex.set(normalizedValue, unitIds);
-        }
-
-        unitIds.add(unitUuid);
+        const ordinals = filterIndex.get(normalizedValue);
+        if (ordinals) ordinals.push(ordinal);
+        else filterIndex.set(normalizedValue, [ordinal]);
     }
 
     private addSearchIndexValues(filterKey: string, values: Iterable<string>, unitUuid: UnitUuid): void {
@@ -772,28 +868,15 @@ export class UnitSearchIndexService {
 
         for (const component of unit.comp) {
             this.addSearchIndexValue('componentName', component.n, unitUuid);
-            this.addComponentUnitCount(component.n, unitUuid, component.q);
         }
         for (const name of this.getSyntheticComponentNames(unit)) {
             this.addSearchIndexValue('componentName', name, unitUuid);
-            this.addComponentUnitCount(name, unitUuid, 1);
         }
 
         addWeaponTypes(unit.comp);
         unit._weaponTypeCounts = counts;
         unit._weaponTypes = WEAPON_TYPES.filter(weaponType => (counts[weaponType] ?? 0) > 0);
         this.addSearchIndexValues('weaponType', unit._weaponTypes, unitUuid);
-    }
-
-    private addComponentUnitCount(name: string, unitUuid: UnitUuid, quantity: number): void {
-        const normalizedName = name.toLowerCase();
-        let unitCounts = this.componentCountIndex.get(normalizedName);
-        if (!unitCounts) {
-            unitCounts = new Map<UnitUuid, number>();
-            this.componentCountIndex.set(normalizedName, unitCounts);
-        }
-
-        unitCounts.set(unitUuid, (unitCounts.get(unitUuid) || 0) + quantity);
     }
 
     private getASMotiveDisplayNames(unit: UnitSummary): string[] {

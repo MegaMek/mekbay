@@ -1807,7 +1807,11 @@ function buildIndexedCandidateSetForConfig<TUnit extends object>(
         return buildIndexedBooleanCandidateSet(conf, operator, values, context, activeScope);
     }
 
-    if (conf.type !== AdvFilterType.DROPDOWN || conf.countable) {
+    if (conf.type === AdvFilterType.DROPDOWN && conf.countable) {
+        return buildIndexedCountableCandidateSet(conf, operator, values, context, activeScope);
+    }
+
+    if (conf.type !== AdvFilterType.DROPDOWN) {
         return null;
     }
 
@@ -1874,6 +1878,56 @@ function buildIndexedCandidateSetForConfig<TUnit extends object>(
     }
 
     return null;
+}
+
+function buildIndexedCountableCandidateSet<TUnit extends object>(
+    conf: AdvFilterConfig,
+    operator: SemanticOperator,
+    values: string[],
+    context: EvaluatorContext<TUnit>,
+    activeScope?: AvailabilityFilterScope,
+): Set<string> | null {
+    if (operator !== '=' && operator !== '==' && operator !== '&=') {
+        return null;
+    }
+
+    const indexedValues = context.getIndexedFilterValues?.(conf.key) ?? [];
+    if (indexedValues.length === 0) {
+        return null;
+    }
+
+    const candidatesForValue = (value: string): Set<string> => {
+        const parsed = parseValueWithQuantity(value);
+        const normalizedName = conf.valueNormalizer?.(parsed.name) ?? parsed.name;
+        const candidates = new Set<string>();
+        for (const storedValue of matchIndexedStoredValues(conf.key, normalizedName, context)) {
+            for (const unitId of context.getIndexedUnitIds?.(conf.key, storedValue, activeScope) ?? []) {
+                candidates.add(unitId);
+            }
+        }
+        return candidates;
+    };
+
+    if (operator === '&=') {
+        let candidates: Set<string> | null = null;
+        for (const value of values) {
+            const valueCandidates = candidatesForValue(value);
+            if (candidates === null) {
+                candidates = valueCandidates;
+                continue;
+            }
+            for (const unitId of candidates) {
+                if (!valueCandidates.has(unitId)) candidates.delete(unitId);
+            }
+        }
+        return candidates ?? new Set<string>();
+    }
+
+    const candidates = new Set<string>();
+    for (const value of values) {
+        for (const unitId of candidatesForValue(value)) candidates.add(unitId);
+    }
+    return candidates;
 }
 
 function buildIndexedBooleanCandidateSet<TUnit extends object>(

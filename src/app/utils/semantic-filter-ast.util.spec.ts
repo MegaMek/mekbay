@@ -119,6 +119,39 @@ describe('semantic boolean filters', () => {
     });
 });
 
+describe('semantic countable filters', () => {
+    it('uses the equipment posting as a safe prefilter before checking quantity', () => {
+        const units = [
+            { id: 1, componentName: ['LRM 5'], counts: new Map([['lrm 5', 4]]) },
+            { id: 2, componentName: ['LRM 5'], counts: new Map([['lrm 5', 1]]) },
+            { id: 3, componentName: ['Medium Laser'], counts: new Map([['medium laser', 2]]) },
+        ];
+        const result = parseSemanticQueryAST('equipment="LRM 5:>=2"', GameSystem.CBT);
+        const exactCheckedUnitIds = new Set<number>();
+
+        const filtered = filterUnitsWithAST(units, result.ast, {
+            gameSystem: GameSystem.CBT,
+            getUnitId,
+            getProperty: (unit, key) => unit[key as keyof typeof unit],
+            getCountableValues: unit => {
+                exactCheckedUnitIds.add(unit.id);
+                return unit.counts;
+            },
+            getIndexedFilterValues: filterKey => filterKey === 'componentName'
+                ? ['LRM 5', 'Medium Laser']
+                : [],
+            getIndexedUnitIds: (filterKey, value) => {
+                if (filterKey !== 'componentName') return undefined;
+                return value === 'LRM 5' ? unitIds(1, 2) : unitIds(3);
+            },
+        });
+
+        expect(result.errors).toEqual([]);
+        expect(filtered).toEqual([units[0]]);
+        expect(exactCheckedUnitIds).toEqual(new Set([1, 2]));
+    });
+});
+
 describe('semantic Alpha Strike damage filters', () => {
     const units = [
         { id: 1, name: 'zero-damage', as: { dmg: { _dmgS: 0 } } },
