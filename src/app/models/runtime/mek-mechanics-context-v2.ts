@@ -16,7 +16,7 @@ import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { ComponentId, CrewPositionId } from '../entity/entity-identifiers';
 import type { MekRuntimeIndex } from './mek-runtime-index';
-import { isCrewDeathCommitted, type CBTCrewRuntimeState } from './cbt-unit-runtime';
+import { CrewMember, type CrewMemberRuntimeState } from '../crew-member.model';
 import type { CrewAssignment } from './crew-assignment';
 import type { C3NetworkType, C3Role } from '../c3-network.model';
 import {
@@ -312,7 +312,7 @@ export interface MekMovementRuntimeContextInputV2 {
     readonly currentHeat: number;
     readonly airborne: boolean;
     readonly crewAssignment: CrewAssignment;
-    crewState(positionId: CrewPositionId): CBTCrewRuntimeState;
+    crewState(positionId: CrewPositionId): CrewMemberRuntimeState;
     readonly conditions: ReadonlySet<'shutdown' | 'prone' | 'disconnected'>;
     readonly destruction: MekDestructionFactsV2;
     componentAvailable(componentId: ComponentId): boolean;
@@ -747,9 +747,7 @@ function runtimeCrewPositions(
         const seatAvailable = input.componentAvailable(seat.componentId)
             && seat.criticalSlotIds.every(slotId => !input.criticalSlotUnavailable(slotId))
             && seat.locationIds.every(locationId => !input.locationDestroyed(locationId));
-        const healthy = !runtime.unconscious
-            && !runtime.ejected
-            && !isCrewDeathCommitted(runtime);
+        const healthy = CrewMember.from(runtime).isAvailable();
         return Object.freeze({ position, assigned, healthy, seatAvailable, functional: healthy && seatAvailable });
     });
 }

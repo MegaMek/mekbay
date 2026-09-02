@@ -39,11 +39,6 @@ export function jumpJetCriticalExplosionDamage(equipment: Equipment | undefined)
         : undefined;
 }
 
-export function jumpJetTonnageMultiplier(equipment: Equipment | undefined): 1 | 2 | null {
-    const kind = jumpJetKind(equipment);
-    return kind === null ? null : kind === 'improved' ? 2 : 1;
-}
-
 export function isImprovedJumpJetEquipment(equipment: Equipment | undefined): boolean {
     return isJumpJetEquipment(equipment) && hasEquipmentVariant(equipment, 'improved');
 }

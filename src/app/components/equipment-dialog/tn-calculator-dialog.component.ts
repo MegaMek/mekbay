@@ -5,11 +5,8 @@
 import { ChangeDetectionStrategy, Component, afterNextRender, computed, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import {
-    INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON,
-    type InventoryControlRuntimeTarget,
-    type InventoryControlRuntimeTargetId,
-} from '../../models/inventory-control-runtime-state.model';
+import type { EncounterTargetId } from '../../models/runtime/encounter-runtime';
+import type { TargetingTarget } from '../../models/runtime/targeting-target';
 import { HexSliderComponent } from '../hex-slider/hex-slider.component';
 import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
 import { CoverLevelPickerComponent } from '../cover-level-picker/cover-level-picker.component';
@@ -168,7 +165,7 @@ function formatStealthProfile(profile: TnStealthModifiers | undefined): string |
     return `${signed(profile.short)}/${signed(profile.medium)}/${signed(profile.long)}`;
 }
 export interface TnCalculatorDialogData {
-    target: InventoryControlRuntimeTarget;
+    target: TargetingTarget;
     gameRules: CBTGameRules;
     targetStateReadOnly?: boolean;
     showC3Distance?: boolean;
@@ -177,8 +174,11 @@ export interface TnCalculatorDialogData {
 }
 
 export interface TnCalculatorDialogResult {
-    targetId: InventoryControlRuntimeTargetId;
-    patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>;
+    targetId: EncounterTargetId;
+    patch: Partial<Pick<
+        TargetingTarget,
+        'unitType' | 'distance' | 'c3Distance' | 'useC3' | 'tnModifier' | 'tnCalculator'
+    >>;
 }
 
 @Component({
@@ -1164,7 +1164,7 @@ export interface TnCalculatorDialogResult {
 })
 export class TnCalculatorDialogComponent {
     readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
-    readonly taggedUnavailableReason = INVENTORY_CONTROL_TAG_INFANTRY_TARGET_REASON;
+    readonly taggedUnavailableReason = 'TAG cannot designate infantry';
     readonly MOVEMENT_MIN = 0;
     readonly RANGE_MIN = 0;
     readonly RANGE_MAX = 25;

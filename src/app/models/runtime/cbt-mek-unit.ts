@@ -233,9 +233,8 @@ export class CBTMekUnit implements CBTUnit {
             throw new Error('The V2 runtime changed while redeployment was being prepared');
         }
         if (!jsonValuesEqual(saved.baselineRefAtSave.entity, uuid)
-            || !jsonValuesEqual(initialized.baselineRef.entity, uuid)
-            || initialized.baselineRef.ruleset !== saved.baselineRefAtSave.ruleset) {
-            throw new Error('Redeployment cannot change the entity identity or ruleset');
+            || !jsonValuesEqual(initialized.baselineRef.entity, uuid)) {
+            throw new Error('Redeployment cannot change the entity identity');
         }
         if (initialized.baselineRef.initialStateProfile.initializerRevision
             !== saved.baselineRefAtSave.initialStateProfile.initializerRevision
@@ -310,7 +309,11 @@ export class CBTMekUnit implements CBTUnit {
         });
         const runtimeIndex = buildMekRuntimeIndex(entity);
         const initialized = initializeUnitState(entity, runtimeIndex, uuid, options);
-        if (!jsonValuesEqual(initialized.baselineRef, saved.baselineRefAtSave)) {
+        if (initialized.baselineRef.entity !== saved.baselineRefAtSave.entity
+            || !jsonValuesEqual(
+                initialized.baselineRef.initialStateProfile,
+                saved.baselineRefAtSave.initialStateProfile,
+            )) {
             throw new Error('Repair cannot change the unit baseline');
         }
         const state = Object.freeze({

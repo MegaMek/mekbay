@@ -18,7 +18,11 @@ import {
     type SerializedNonMekDeployment,
     type SerializedNonMekUnit,
 } from './non-mek-unit-persistence';
-import { scenarioRuleset, type ScenarioRules } from './unit-state-initializer';
+import {
+    scenarioRuleset,
+    scenarioUsesForcedWithdrawal,
+    type ScenarioRules,
+} from './unit-state-initializer';
 import { captureCBTUnitRuntime, type CBTUnitRuntimeReadModel } from './cbt-unit-runtime';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import type {
@@ -199,6 +203,7 @@ export class CBTNonMekUnit implements CBTUnit {
             entity,
             ruleset,
             createPristineNonMekUnitState(entity),
+            scenarioUsesForcedWithdrawal(request.scenario),
         );
         const deployment = freezeDeployment({
             schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
@@ -214,6 +219,7 @@ export class CBTNonMekUnit implements CBTUnit {
         saved: SerializedNonMekUnit,
         entity: BaseEntity,
         uuid: UnitUuid,
+        scenario: ScenarioRules,
         nativeSource?: NativeUnitSourceHandle,
     ): CBTNonMekUnit {
         verifySource(entity, uuid, nativeSource);
@@ -233,13 +239,32 @@ export class CBTNonMekUnit implements CBTUnit {
                 });
             }
         }
-        const runtime = restoreNonMekUnit(saved, entity);
+        const runtime = restoreNonMekUnit(
+            saved,
+            entity,
+            scenarioRuleset(scenario),
+            scenarioUsesForcedWithdrawal(scenario),
+        );
         return new CBTNonMekUnit(
             entity,
             uuid,
             runtime,
             saved.deployment,
             nativeSource,
+        );
+    }
+
+    /** Rebinds force-owned scenario options without changing sparse gameplay state. */
+    public static cloneForOwner(
+        current: CBTNonMekUnit,
+        scenario: ScenarioRules,
+    ): CBTNonMekUnit {
+        return CBTNonMekUnit.restore(
+            current.serialize(),
+            current.getUnit(),
+            current.uuid,
+            scenario,
+            current.getNativeSource(),
         );
     }
 
@@ -261,6 +286,7 @@ export class CBTNonMekUnit implements CBTUnit {
             current.getUnit(),
             runtime.ruleset,
             state,
+            runtime.forcedWithdrawal,
         );
         return new CBTNonMekUnit(
             current.getUnit(),

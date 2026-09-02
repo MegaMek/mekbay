@@ -378,9 +378,6 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         const root = model.topLevelNetworks.find(network => network.type === C3NetworkType.C3);
         expect(root).toBeDefined();
         expect(model.treeUnitIds(root!.id).size).toBe(10);
-        expect(model.treeEndpointKeys(root!.id).size).toBe(13);
-        const connectedSlaves = slaves.filter(slave => model.isUnitSlaveConnected(slave.unit.id));
-        expect(connectedSlaves.length).toBe(9);
         expect(slaves.filter(slave => !model.isUnitConnected(slave.unit.id)).length).toBe(0);
     });
 

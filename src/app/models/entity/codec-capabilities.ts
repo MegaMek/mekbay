@@ -99,15 +99,6 @@ export function nativeCapabilityForUnitTypeAlias(alias: string): NativeCodecCapa
   return BY_UNIT_TYPE_ALIAS.get(alias);
 }
 
-export function nativeCapabilityForDialect(
-  dialect: string,
-  version: number,
-): readonly NativeCodecCapability[] {
-  return NATIVE_CODEC_CAPABILITIES.filter(capability =>
-    capability.dialect === dialect && capability.dialectVersion === version
-  );
-}
-
 function capability(
   family: NativeCodecFamily,
   format: NativeSourceFormat,

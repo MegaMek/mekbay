@@ -4,11 +4,14 @@
 import { crewPositionCountForMekCockpit } from '../entity/components/cockpit-data';
 import type { MountedArmor, MountedStructure } from '../entity/components';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import type {
-    EntityMountedEquipment,
-    IntrinsicWeapon,
-    MekLocation,
-    MekSystemType,
+import {
+    getMekLocationParent,
+    getTopologyFor,
+    isMekLocation,
+    type EntityMountedEquipment,
+    type IntrinsicWeapon,
+    type MekLocation,
+    type MekSystemType,
 } from '../entity/types';
 import type { Equipment } from '../equipment.model';
 import { ImmutableIndex } from '../entity/immutable-collections';
@@ -88,8 +91,11 @@ export interface MekIndexedRelationships {
  */
 export interface MekRuntimeIndex extends CBTUnitRuntimeIndex {
     readonly locations: ReadonlyMap<LocationId, MekIndexedLocation>;
+    readonly damageTransferLocationIdByLocation: ReadonlyMap<LocationId, LocationId | null>;
+    readonly destructionParentLocationIdByLocation: ReadonlyMap<LocationId, LocationId | null>;
     readonly armorFaces: ReadonlyMap<ArmorFaceId, CBTRuntimeArmorFace>;
     readonly components: ReadonlyMap<ComponentId, MekIndexedComponent>;
+    readonly locationIdsByComponent: ReadonlyMap<ComponentId, readonly LocationId[]>;
     readonly slots: ReadonlyMap<CriticalSlotId, MekIndexedCriticalSlot>;
     readonly crewPositions: ReadonlyMap<CrewPositionId, CBTRuntimeCrewPosition>;
     readonly intrinsicActions: readonly IntrinsicWeapon[];
@@ -97,6 +103,8 @@ export interface MekRuntimeIndex extends CBTUnitRuntimeIndex {
 }
 
 export { componentIdForMount } from './non-mek-runtime-index';
+
+const EMPTY_LOCATION_IDS: readonly LocationId[] = Object.freeze([]);
 
 export function mountedEquipmentForComponent(
     index: MekRuntimeIndex,
@@ -118,14 +126,7 @@ export function componentLocationIds(
     index: MekRuntimeIndex,
     componentId: ComponentId,
 ): readonly LocationId[] {
-    const component = index.components.get(componentId);
-    if (component === undefined) return Object.freeze([]);
-    const occupied = component.kind === 'system'
-        ? new Set(component.placements.map(placement => placement.locationId))
-        : new Set([...index.locations.values()]
-            .filter(location => component.mount.getOccupiedLocations().includes(location.code))
-            .map(location => location.id));
-    return Object.freeze([...index.locations.keys()].filter(locationId => occupied.has(locationId)));
+    return index.locationIdsByComponent.get(componentId) ?? EMPTY_LOCATION_IDS;
 }
 
 export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
@@ -227,6 +228,39 @@ export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
         }));
     }
 
+    const locationCodes = [...locations.values()].map(location => location.code);
+    const topology = getTopologyFor(locationCodes);
+    const damageTransferLocationIdByLocation = new Map<LocationId, LocationId | null>();
+    const destructionParentLocationIdByLocation = new Map<LocationId, LocationId | null>();
+    for (const location of locations.values()) {
+        const transferCode = isMekLocation(location.code)
+            ? topology[location.code]?.transfersTo ?? null
+            : null;
+        damageTransferLocationIdByLocation.set(
+            location.id,
+            transferCode === null ? null : locationIdByCode.get(transferCode) ?? null,
+        );
+        const destructionParentCode = getMekLocationParent(locationCodes, location.code);
+        destructionParentLocationIdByLocation.set(
+            location.id,
+            destructionParentCode === null ? null : locationIdByCode.get(destructionParentCode) ?? null,
+        );
+    }
+    const locationIdsByComponent = new Map<ComponentId, readonly LocationId[]>();
+    for (const [componentId, component] of components) {
+        let occupiedLocationIds: readonly LocationId[];
+        if (component.kind === 'system') {
+            const occupied = new Set(component.placements.map(placement => placement.locationId));
+            occupiedLocationIds = [...locations.keys()].filter(locationId => occupied.has(locationId));
+        } else {
+            const occupied = new Set(component.mount.getOccupiedLocations());
+            occupiedLocationIds = [...locations.values()]
+                .filter(location => occupied.has(location.code))
+                .map(location => location.id);
+        }
+        locationIdsByComponent.set(componentId, Object.freeze(occupiedLocationIds));
+    }
+
     const linkedTargetBySource = new Map<ComponentId, ComponentId>();
     const linkedSourceByTarget = new Map<ComponentId, ComponentId>();
     for (const source of entity.equipment()) {
@@ -253,8 +287,11 @@ export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
 
     return Object.freeze({
         locations: new ImmutableIndex(locations),
+        damageTransferLocationIdByLocation: new ImmutableIndex(damageTransferLocationIdByLocation),
+        destructionParentLocationIdByLocation: new ImmutableIndex(destructionParentLocationIdByLocation),
         armorFaces: new ImmutableIndex(armorFaces),
         components: new ImmutableIndex(components),
+        locationIdsByComponent: new ImmutableIndex(locationIdsByComponent),
         slots: new ImmutableIndex(slots),
         crewPositions: new ImmutableIndex(crewPositions),
         intrinsicActions: Object.freeze([...entity.intrinsicWeapons()]),

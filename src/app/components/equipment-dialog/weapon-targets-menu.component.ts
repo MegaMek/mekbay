@@ -5,12 +5,11 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { ColorPickerButtonComponent } from '../color-picker-button/color-picker-button.component';
 import {
-    getEffectiveInventoryControlCalculatorState,
-    INVENTORY_CONTROL_TARGET_COLORS,
-    INVENTORY_CONTROL_TARGET_MAX_COUNT,
-    type InventoryControlRuntimeTarget,
-    type InventoryControlRuntimeTargetId
-} from '../../models/inventory-control-runtime-state.model';
+    DEFAULT_ENCOUNTER_TARGET_COLORS,
+    MAX_ENCOUNTER_TARGETS,
+    type EncounterTargetId,
+} from '../../models/runtime/encounter-runtime';
+import { activeTargetCalculator, type TargetingTarget } from '../../models/runtime/targeting-target';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { getUnitConditionDefinition, NARC_CONDITION_COLOR } from '../../models/unit-status-presentation';
 import { CORE_2026_GAME_RULES, type C3DegradationLabel, type CBTGameRules } from '../../models/rules/game-rules';
@@ -49,13 +48,16 @@ const NO_NARC_CAPABLE_WEAPON_LAYERS: NarcCapableWeaponLayers = {
 };
 
 export interface WeaponTargetUpdateRequest {
-    targetId: InventoryControlRuntimeTargetId;
-    patch: Partial<Omit<InventoryControlRuntimeTarget, 'id' | 'letter'>>;
+    targetId: EncounterTargetId;
+    patch: Partial<Pick<
+        TargetingTarget,
+        'name' | 'color' | 'unitType' | 'distance' | 'c3Distance' | 'useC3' | 'tnModifier' | 'tnCalculator'
+    >>;
     manualTnOverride?: boolean;
 }
 
 export interface WeaponTargetCalculatorRequest {
-    targetId: InventoryControlRuntimeTargetId;
+    targetId: EncounterTargetId;
     origin: HTMLElement;
 }
 
@@ -700,9 +702,9 @@ export interface WeaponTargetCalculatorRequest {
 export class WeaponTargetsMenuComponent {
     readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
     readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. Directly editing it creates a complete target-side override.';
-    readonly targets = input<InventoryControlRuntimeTarget[]>([]);
-    readonly colors = input<readonly string[]>(INVENTORY_CONTROL_TARGET_COLORS);
-    readonly maxTargets = input(INVENTORY_CONTROL_TARGET_MAX_COUNT);
+    readonly targets = input<TargetingTarget[]>([]);
+    readonly colors = input<readonly string[]>(DEFAULT_ENCOUNTER_TARGET_COLORS);
+    readonly maxTargets = input(MAX_ENCOUNTER_TARGETS);
     readonly unassignedMovement = input(false);
     readonly showC3Distance = input(false);
     readonly c3Degraded = input(false);
@@ -718,7 +720,7 @@ export class WeaponTargetsMenuComponent {
     readonly opforToggleRequest = output<boolean>();
     readonly resetRequest = output<void>();
     readonly updateRequest = output<WeaponTargetUpdateRequest>();
-    readonly deleteRequest = output<InventoryControlRuntimeTargetId>();
+    readonly deleteRequest = output<EncounterTargetId>();
     readonly calculatorRequest = output<WeaponTargetCalculatorRequest>();
 
     addTarget(): void {
@@ -737,31 +739,31 @@ export class WeaponTargetsMenuComponent {
         if (!this.readOnly()) this.resetRequest.emit();
     }
 
-    deleteTarget(targetId: InventoryControlRuntimeTargetId): void {
+    deleteTarget(targetId: EncounterTargetId): void {
         if (!this.readOnly()) this.deleteRequest.emit(targetId);
     }
 
-    updateName(targetId: InventoryControlRuntimeTargetId, name: string): void {
+    updateName(targetId: EncounterTargetId, name: string): void {
         if (this.readOnly() || this.targetReadOnly(targetId)) return;
         this.updateRequest.emit({ targetId, patch: { name } });
     }
 
-    updateColor(targetId: InventoryControlRuntimeTargetId, color: string): void {
+    updateColor(targetId: EncounterTargetId, color: string): void {
         if (this.readOnly()) return;
         this.updateRequest.emit({ targetId, patch: { color } });
     }
 
-    updateDistance(targetId: InventoryControlRuntimeTargetId, value: string): void {
+    updateDistance(targetId: EncounterTargetId, value: string): void {
         if (this.readOnly()) return;
         this.updateRequest.emit({ targetId, patch: { distance: this.parseNumber(value, 0, true) } });
     }
 
-    updateC3Distance(target: InventoryControlRuntimeTarget, value: string): void {
+    updateC3Distance(target: TargetingTarget, value: string): void {
         if (this.readOnly() || !this.c3Enabled(target)) return;
         this.updateRequest.emit({ targetId: target.id, patch: { c3Distance: this.parseNumber(value, 0, true) } });
     }
 
-    updateUseC3(target: InventoryControlRuntimeTarget, event: Event): void {
+    updateUseC3(target: TargetingTarget, event: Event): void {
         if (this.readOnly() || !this.c3Available(target)) return;
         const checked = (event.target as HTMLInputElement).checked;
         this.updateRequest.emit({
@@ -773,88 +775,88 @@ export class WeaponTargetsMenuComponent {
         });
     }
 
-    updateTnModifier(targetId: InventoryControlRuntimeTargetId, value: string): void {
+    updateTnModifier(targetId: EncounterTargetId, value: string): void {
         if (this.readOnly()) return;
         this.updateRequest.emit({ targetId, patch: { tnModifier: this.parseNumber(value, 0, false) }, manualTnOverride: true });
     }
 
-    removeCustomModifier(targetId: InventoryControlRuntimeTargetId): void {
+    removeCustomModifier(targetId: EncounterTargetId): void {
         if (this.readOnly()) return;
         this.updateRequest.emit({ targetId, patch: { tnCalculator: { customModifier: undefined } } });
     }
 
-    stepDistance(target: InventoryControlRuntimeTarget, delta: number): void {
+    stepDistance(target: TargetingTarget, delta: number): void {
         if (this.readOnly()) return;
         this.updateRequest.emit({ targetId: target.id, patch: { distance: Math.max(0, target.distance + delta) } });
     }
 
-    stepC3Distance(target: InventoryControlRuntimeTarget, delta: number): void {
+    stepC3Distance(target: TargetingTarget, delta: number): void {
         if (this.readOnly() || !this.c3Enabled(target)) return;
         this.updateRequest.emit({ targetId: target.id, patch: { c3Distance: Math.max(0, this.c3DistanceValue(target) + delta) } });
     }
 
-    c3DistanceValue(target: InventoryControlRuntimeTarget): number {
+    c3DistanceValue(target: TargetingTarget): number {
         return target.c3Distance ?? target.distance;
     }
 
-    c3DistanceInputValue(target: InventoryControlRuntimeTarget): number | '' {
+    c3DistanceInputValue(target: TargetingTarget): number | '' {
         return this.c3Enabled(target) ? this.c3DistanceValue(target) : '';
     }
 
-    c3Enabled(target: InventoryControlRuntimeTarget): boolean {
+    c3Enabled(target: TargetingTarget): boolean {
         return this.useC3Checked(target);
     }
 
-    c3Available(target: InventoryControlRuntimeTarget): boolean {
+    c3Available(target: TargetingTarget): boolean {
         return inventoryTargetAllowsC3(target);
     }
 
-    useC3Checked(target: InventoryControlRuntimeTarget): boolean {
+    useC3Checked(target: TargetingTarget): boolean {
         return inventoryTargetUsesC3(target);
     }
 
-    stepTnModifier(target: InventoryControlRuntimeTarget, delta: number): void {
+    stepTnModifier(target: TargetingTarget, delta: number): void {
         if (this.readOnly()) return;
         this.updateRequest.emit({ targetId: target.id, patch: { tnModifier: target.tnModifier + delta }, manualTnOverride: true });
     }
 
-    isTnModifierManual(target: InventoryControlRuntimeTarget): boolean {
+    isTnModifierManual(target: TargetingTarget): boolean {
         return target.manualTnModifier !== undefined;
     }
 
-    tnModifierLabel(target: InventoryControlRuntimeTarget): string {
+    tnModifierLabel(target: TargetingTarget): string {
         return this.isTnModifierManual(target) ? 'TN Override' : 'TN Modifier';
     }
 
-    tnModifierTooltipFor(target: InventoryControlRuntimeTarget): string {
+    tnModifierTooltipFor(target: TargetingTarget): string {
         return this.isTnModifierManual(target)
             ? 'Complete target-side override. Calculator-derived and weapon-specific target effects, including Precision, NARC, and Semi-Guided adjustments, are disabled. Reapply the calculator to restore them.'
             : this.tnModifierTooltip;
     }
 
-    tnModifierAriaLabel(target: InventoryControlRuntimeTarget): string {
+    tnModifierAriaLabel(target: TargetingTarget): string {
         return this.isTnModifierManual(target)
             ? 'TN Modifier (complete manual override)'
             : 'TN Modifier (linked to calculator)';
     }
 
-    tnModifierTitle(target: InventoryControlRuntimeTarget): string {
+    tnModifierTitle(target: TargetingTarget): string {
         return this.isTnModifierManual(target)
             ? 'Complete manual TN override; calculator and weapon-specific target effects are disabled'
             : 'TN Modifier: linked to calculator';
     }
 
-    openTnCalculator(targetId: InventoryControlRuntimeTargetId, event: MouseEvent): void {
+    openTnCalculator(targetId: EncounterTargetId, event: MouseEvent): void {
         if (this.readOnly()) return;
         this.calculatorRequest.emit({ targetId, origin: event.currentTarget as HTMLElement });
     }
 
-    targetModifierPills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
+    targetModifierPills(target: TargetingTarget): TargetModifierPill[] {
         const statePills = [
             ...this.targetGuidancePills(target),
             ...(target.tnCalculator?.stealth ? [{ label: 'Stealth' }] : []),
         ];
-        const calculator = getEffectiveInventoryControlCalculatorState(target);
+        const calculator = activeTargetCalculator(target);
         if (!calculator) return statePills;
         const breakdown = calculateTargetTnModifierBreakdown({
             ...calculator,
@@ -864,7 +866,7 @@ export class WeaponTargetsMenuComponent {
         return [...statePills, ...this.targetBreakdownPills(breakdown, calculator)];
     }
 
-    private targetGuidancePills(target: InventoryControlRuntimeTarget): TargetModifierPill[] {
+    private targetGuidancePills(target: TargetingTarget): TargetModifierPill[] {
         const calculator = target.tnCalculator;
         if (!calculator) return [];
 
@@ -953,7 +955,7 @@ export class WeaponTargetsMenuComponent {
         return clampMinZero ? Math.max(0, parsed) : parsed;
     }
 
-    private targetReadOnly(targetId: InventoryControlRuntimeTargetId): boolean {
+    private targetReadOnly(targetId: EncounterTargetId): boolean {
         return this.targets().find(target => target.id === targetId)?.readOnly === true;
     }
 }

@@ -3,13 +3,14 @@
 // Author: Drake
 
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import type { InventoryControlRuntimeTarget } from '../../models/inventory-control-runtime-state.model';
+import { asEncounterTargetId } from '../../models/runtime/encounter-runtime';
+import type { TargetingTarget } from '../../models/runtime/targeting-target';
 import { TW_GAME_RULES } from '../../models/rules/game-rules';
 import { getUnitConditionDefinition, NARC_CONDITION_COLOR } from '../../models/unit-status-presentation';
 import { WeaponTargetsMenuComponent } from './weapon-targets-menu.component';
 
-const TARGET: InventoryControlRuntimeTarget = {
-    id: 'A',
+const TARGET: TargetingTarget = {
+    id: asEncounterTargetId('A'),
     letter: 'A',
     name: 'Target A',
     color: '#1565C0',
@@ -18,6 +19,7 @@ const TARGET: InventoryControlRuntimeTarget = {
     useC3: true,
     tnModifier: 0
 };
+const OPFOR_TARGET_ID = asEncounterTargetId('opfor:enemy');
 
 describe('WeaponTargetsMenuComponent C3 degradation', () => {
     let fixture: ComponentFixture<WeaponTargetsMenuComponent>;
@@ -552,7 +554,7 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
     });
 
     it('keeps derived OPFOR identity immutable while allowing presentation color changes', () => {
-        fixture.componentRef.setInput('targets', [{ ...TARGET, id: 'opfor:enemy', source: 'opfor', readOnly: true }]);
+        fixture.componentRef.setInput('targets', [{ ...TARGET, id: OPFOR_TARGET_ID, source: 'opfor', readOnly: true }]);
         const updates = jasmine.createSpy('updateRequest');
         component.updateRequest.subscribe(updates);
         fixture.detectChanges();
@@ -565,15 +567,15 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(linkedNameStyle.backgroundImage).toBe('none');
         expect(linkedNameStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
         expect(linkedNameStyle.borderColor).toBe('rgba(0, 0, 0, 0)');
-        component.updateName('opfor:enemy', 'Changed');
-        component.updateColor('opfor:enemy', '#fff');
+        component.updateName(OPFOR_TARGET_ID, 'Changed');
+        component.updateColor(OPFOR_TARGET_ID, '#fff');
         expect(updates).toHaveBeenCalledOnceWith({ targetId: 'opfor:enemy', patch: { color: '#fff' } });
     });
 
     it('offers deletion only for manual targets in mixed lists', () => {
         fixture.componentRef.setInput('targets', [
             TARGET,
-            { ...TARGET, id: 'opfor:enemy', letter: 'B', source: 'opfor', readOnly: true }
+            { ...TARGET, id: OPFOR_TARGET_ID, letter: 'B', source: 'opfor', readOnly: true }
         ]);
         fixture.detectChanges();
 

@@ -99,10 +99,11 @@ describe('SvgExportUtil', () => {
             canvasHeight = this.height;
             callback(pngBlob());
         });
+        const download = spyOn(SvgExportUtil, 'downloadPngBlob').and.stub();
 
-        const blob = await withFakeSvgImage(() => SvgExportUtil.renderPngBlob([makeSvg(), makeSvg(50, 300)]));
+        await withFakeSvgImage(() => SvgExportUtil.downloadPng([makeSvg(), makeSvg(50, 300)], 'record-sheet'));
 
-        expect(blob).toEqual(jasmine.any(Blob));
+        expect(download).toHaveBeenCalledOnceWith(jasmine.any(Blob), 'record-sheet');
         expect(canvasWidth).toBe(450);
         expect(canvasHeight).toBe(900);
         const serializedSvg = await (createObjectUrl.calls.first().args[0] as Blob).text();
@@ -130,8 +131,9 @@ describe('SvgExportUtil', () => {
         const createObjectUrl = spyOn(URL, 'createObjectURL').and.returnValue('blob:svg');
         spyOn(URL, 'revokeObjectURL').and.stub();
         mockCanvasPng();
+        spyOn(SvgExportUtil, 'downloadPngBlob').and.stub();
 
-        await withFakeSvgImage(() => SvgExportUtil.renderPngBlob([svg]));
+        await withFakeSvgImage(() => SvgExportUtil.downloadPng([svg], 'record-sheet'));
 
         const serializedSvg = await (createObjectUrl.calls.first().args[0] as Blob).text();
         const exportedSvg = new DOMParser().parseFromString(serializedSvg, 'image/svg+xml');
@@ -153,8 +155,9 @@ describe('SvgExportUtil', () => {
         const createObjectUrl = spyOn(URL, 'createObjectURL').and.returnValue('blob:svg');
         spyOn(URL, 'revokeObjectURL').and.stub();
         mockCanvasPng();
+        spyOn(SvgExportUtil, 'downloadPngBlob').and.stub();
 
-        await withFakeSvgImage(() => SvgExportUtil.renderPngBlob([svg]));
+        await withFakeSvgImage(() => SvgExportUtil.downloadPng([svg], 'record-sheet'));
 
         const serializedSvg = await (createObjectUrl.calls.first().args[0] as Blob).text();
         const exportedSvg = new DOMParser().parseFromString(serializedSvg, 'image/svg+xml');
@@ -205,37 +208,6 @@ describe('SvgExportUtil', () => {
         expect(canvasHeight).toBe(600);
         expect(open).toHaveBeenCalledWith('blob:png', '_blank', 'noopener');
         expect(revokeObjectUrl).toHaveBeenCalledWith('blob:svg');
-    });
-
-    it('shares rendered SVGs as a 3x PNG file', async () => {
-        mockFontFetch();
-        const originalCanShare = getNavigatorPropertyDescriptor('canShare');
-        const originalShare = getNavigatorPropertyDescriptor('share');
-        const canShare = jasmine.createSpy('canShare').and.returnValue(true);
-        const share = jasmine.createSpy('share').and.resolveTo();
-        Object.defineProperty(navigator, 'canShare', { configurable: true, value: canShare });
-        Object.defineProperty(navigator, 'share', { configurable: true, value: share });
-        spyOn(CanvasRenderingContext2D.prototype, 'drawImage').and.stub();
-        let canvasWidth = 0;
-        let canvasHeight = 0;
-        spyOn(HTMLCanvasElement.prototype, 'toBlob').and.callFake(function (this: HTMLCanvasElement, callback: BlobCallback) {
-            canvasWidth = this.width;
-            canvasHeight = this.height;
-            callback(pngBlob());
-        });
-
-        try {
-            await withFakeSvgImage(() => SvgExportUtil.sharePng([makeSvg()], 'record-sheet'));
-
-            expect(canvasWidth).toBe(300);
-            expect(canvasHeight).toBe(600);
-            expect(canShare).toHaveBeenCalledWith({ files: [jasmine.any(File)] });
-            expect(share).toHaveBeenCalledWith({ files: [jasmine.any(File)], title: 'record-sheet' });
-            expect(share.calls.mostRecent().args[0].files?.[0].name).toBe('record-sheet.png');
-        } finally {
-            restoreNavigatorPropertyDescriptor('canShare', originalCanShare);
-            restoreNavigatorPropertyDescriptor('share', originalShare);
-        }
     });
 
     it('copies rendered SVGs to the clipboard as a 5x PNG', async () => {

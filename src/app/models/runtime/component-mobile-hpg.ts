@@ -188,6 +188,7 @@ export class MobileHpgHandler extends EquipmentInteractionHandler {
     readonly id = 'mobile-hpg-handler';
     readonly kind = 'mobile-hpg';
     readonly scope = 'component' as const;
+    override readonly flags = ['F_MOBILE_HPG'] as const;
     override readonly priority = 20;
 
     override choices(input: EquipmentInteractionInput): readonly EquipmentInteractionChoice[] {

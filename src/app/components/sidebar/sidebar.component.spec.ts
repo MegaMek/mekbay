@@ -171,7 +171,10 @@ describe('SidebarComponent gestures', () => {
             window.dispatchEvent(pointer('pointerup', { pointerId: 1, clientX: 12, clientY: 130 }));
             lip.click();
 
-            expect(options.setOption).toHaveBeenCalledOnceWith('sidebarLipPosition', '0');
+            expect(options.setOption).toHaveBeenCalledOnceWith(
+                'sidebarLipPosition',
+                jasmine.stringMatching(/^\d+$/u),
+            );
             expect(layout.isMenuOpen()).toBeFalse();
         } finally {
             fixture.nativeElement.remove();

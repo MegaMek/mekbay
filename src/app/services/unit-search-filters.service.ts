@@ -74,7 +74,7 @@ import {
     getWorkerCorpusVersion as getUnitSearchWorkerCorpusVersion,
 } from '../utils/unit-search-worker-request.util';
 import { buildWorkerSearchTelemetrySnapshot, hydrateWorkerSearchResult } from '../utils/unit-search-worker-result.util';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { findBvNormalizationMatch, isValidBvNormalizationSettings } from '../utils/bv-normalization.util';
 import { findPvNormalizationMatch, isValidPvNormalizationSettings } from '../utils/pv-normalization.util';

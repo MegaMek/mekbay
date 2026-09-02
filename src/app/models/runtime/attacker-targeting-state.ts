@@ -5,14 +5,13 @@ import { compareText } from '../../utils/string.util';
 import { isPlainRecord } from '../../utils/json-value.util';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import { asComponentId, type ComponentId } from '../entity/entity-identifiers';
-import { asEncounterTargetId, type EncounterTargetId } from './encounter-runtime';
-import { TN_CUSTOM_MODIFIER_MAX, TN_CUSTOM_MODIFIER_MIN } from '../target-number-calculator.model';
+import { asEncounterTargetId, MAX_ENCOUNTER_TARGETS, type EncounterTargetId } from './encounter-runtime';
+import { TN_CUSTOM_MODIFIER_MAX, TN_CUSTOM_MODIFIER_MIN, type TnRangeBracket } from '../target-number-calculator.model';
 
 export const ATTACKER_TARGETING_STATE_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_ATTACKER_TARGET_DISTANCE = 1;
 export const MAX_ATTACKER_TARGETING_COMPONENTS = 1024;
 export const MAX_ATTACKER_TARGETING_ACTIONS = 256;
-export const MAX_ATTACKER_TARGETS = 12;
 export const MAX_ATTACKER_AMMO_SOURCES_PER_WEAPON = 512;
 export const MAX_ATTACKER_MUNITIONS_PER_WEAPON = 512;
 export const MAX_ATTACKER_TARGETING_TEXT_LENGTH = 512;
@@ -24,8 +23,6 @@ export const MAX_ATTACKER_TARGETING_TEXT_LENGTH = 512;
  */
 export const MAX_ATTACKER_TARGET_DISTANCE = Number.MAX_VALUE;
 export const MAX_ATTACKER_MANUAL_TN_MAGNITUDE = Number.MAX_VALUE;
-
-export type AttackerManualRange = 'short' | 'medium' | 'long' | 'extreme';
 
 export type AttackerActionTarget =
     | { readonly kind: 'component'; readonly componentId: ComponentId }
@@ -59,7 +56,7 @@ export interface AttackerManualTnOverride {
 export type AttackerSelection =
     | { readonly kind: 'selected' }
     | { readonly kind: 'target'; readonly targetId: EncounterTargetId }
-    | { readonly kind: 'manual-range'; readonly range: AttackerManualRange };
+    | { readonly kind: 'manual-range'; readonly range: TnRangeBracket };
 
 /** Physical actions have no range-band-only selection state. */
 export type AttackerActionSelection = Exclude<AttackerSelection, { readonly kind: 'manual-range' }>;
@@ -259,7 +256,7 @@ export function freezeAttackerTargetingState(
         || !isReadonlyMap(state.targets)
         || state.components.size > MAX_ATTACKER_TARGETING_COMPONENTS
         || state.actions.size > MAX_ATTACKER_TARGETING_ACTIONS
-        || state.targets.size > MAX_ATTACKER_TARGETS) {
+        || state.targets.size > MAX_ENCOUNTER_TARGETS) {
         throw new Error('Invalid Attacker targeting state');
     }
 
@@ -672,7 +669,7 @@ export function deserializeAttackerTargetingState(
         || !Array.isArray(record['targets'])
         || record['components'].length > MAX_ATTACKER_TARGETING_COMPONENTS
         || record['actions'].length > MAX_ATTACKER_TARGETING_ACTIONS
-        || record['targets'].length > MAX_ATTACKER_TARGETS) {
+        || record['targets'].length > MAX_ENCOUNTER_TARGETS) {
         throw new Error('Invalid attacker-targeting wire state');
     }
 
@@ -760,7 +757,7 @@ function validateContext(context: unknown): {
         || !Array.isArray(context['targets'])
         || !Array.isArray(context['weapons'])
         || !Array.isArray(context['actions'])
-        || context['targets'].length > MAX_ATTACKER_TARGETS
+        || context['targets'].length > MAX_ENCOUNTER_TARGETS
         || context['weapons'].length > MAX_ATTACKER_TARGETING_COMPONENTS
         || context['actions'].length > MAX_ATTACKER_TARGETING_ACTIONS) {
         return { context: empty, reason: 'INVALID_CONTEXT' };
@@ -1137,7 +1134,7 @@ function validManualModifier(value: unknown): value is number {
         && Math.abs(value) <= MAX_ATTACKER_MANUAL_TN_MAGNITUDE;
 }
 
-function validRange(value: unknown): value is AttackerManualRange {
+function validRange(value: unknown): value is TnRangeBracket {
     return value === 'short' || value === 'medium' || value === 'long' || value === 'extreme';
 }
 

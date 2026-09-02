@@ -11,13 +11,10 @@ import type { Subscription } from 'rxjs';
 import type { CBTForce } from '../../models/cbt-force.model';
 import { isCBTMekForceMember, type CBTForceMember } from '../../models/force-member.model';
 import {
-    INVENTORY_CONTROL_TARGET_COLORS,
-    INVENTORY_CONTROL_TARGET_MAX_COUNT,
-    mergeInventoryControlCalculatorState,
-    splitInventoryControlCalculatorState,
-    type InventoryControlRuntimeTarget,
-    type InventoryControlUnitTargetPatch,
-} from '../../models/inventory-control-runtime-state.model';
+    combineTargetCalculator,
+    splitTargetCalculatorByOwner,
+    type TargetingTarget,
+} from '../../models/runtime/targeting-target';
 import type {
     AttackerLocalCalculatorInputs,
     AttackerLocalTargetState,
@@ -30,10 +27,14 @@ import {
 import {
     calculateTargetTnModifier,
     normalizeTargetCustomModifier,
+    type TnTargetNumberCalculatorState,
 } from '../../models/target-number-calculator.model';
 import {
     asEncounterTargetId,
     createEncounterTargetId,
+    DEFAULT_ENCOUNTER_TARGET_COLORS,
+    encounterTargetLetter,
+    MAX_ENCOUNTER_TARGETS,
     reclaimableTargetRegistryOpfor,
     type EncounterTarget,
     type TargetRegistryCommandResult,
@@ -253,19 +254,19 @@ export class WeaponTargetsOverlayController {
         const snapshot = force.queryInventoryControlTargetRegistry();
         const usedLetters = new Set(snapshot.targets.map(target => target.letter));
         let target: EncounterTarget | null = null;
-        for (let index = 0; index < INVENTORY_CONTROL_TARGET_MAX_COUNT; index += 1) {
-            const letter = String.fromCharCode('A'.charCodeAt(0) + index);
+        for (let index = 0; index < MAX_ENCOUNTER_TARGETS; index += 1) {
+            const letter = encounterTargetLetter(index);
             if (usedLetters.has(letter)) continue;
             target = {
                 id: createEncounterTargetId(),
                 letter,
                 name: `Target ${letter}`,
-                color: INVENTORY_CONTROL_TARGET_COLORS[index % INVENTORY_CONTROL_TARGET_COLORS.length],
+                color: DEFAULT_ENCOUNTER_TARGET_COLORS[index % DEFAULT_ENCOUNTER_TARGET_COLORS.length],
                 source: 'manual',
             };
             break;
         }
-        if (!target && snapshot.targets.length >= INVENTORY_CONTROL_TARGET_MAX_COUNT) {
+        if (!target && snapshot.targets.length >= MAX_ENCOUNTER_TARGETS) {
             const reclaimable = reclaimableTargetRegistryOpfor(snapshot.targets);
             if (reclaimable) {
                 target = {
@@ -294,7 +295,7 @@ export class WeaponTargetsOverlayController {
         const force = this.force(options);
         const snapshot = force.queryInventoryControlTargetRegistry();
         const existing = snapshot.targets.find(target => target.id === request.targetId);
-        const calculator = splitInventoryControlCalculatorState(request.patch.tnCalculator);
+        const calculator = splitTargetCalculatorByOwner(request.patch.tnCalculator);
         const sharedPatch: {
             name?: TargetRegistryTargetPatch['name'];
             color?: TargetRegistryTargetPatch['color'];
@@ -310,8 +311,8 @@ export class WeaponTargetsOverlayController {
         if (request.patch.unitType !== undefined && request.patch.unitType !== existing?.unitType) {
             sharedPatch.unitType = request.patch.unitType;
         }
-        if (calculator.shared) {
-            const nextCalculator = { ...existing?.tnCalculator, ...calculator.shared };
+        if (calculator.encounter) {
+            const nextCalculator = { ...existing?.tnCalculator, ...calculator.encounter };
             if (!shallowRecordsEqual(existing?.tnCalculator, nextCalculator)) {
                 sharedPatch.tnCalculator = nextCalculator;
             }
@@ -334,15 +335,13 @@ export class WeaponTargetsOverlayController {
             if (!accepted && existing?.readOnly !== true) return;
         }
 
-        const localPatch: InventoryControlUnitTargetPatch = {
-            ...(request.patch.distance !== undefined && { distance: request.patch.distance }),
-            ...(request.patch.c3Distance !== undefined && { c3Distance: request.patch.c3Distance }),
-            ...(request.patch.useC3 !== undefined && { useC3: request.patch.useC3 }),
-            ...(request.patch.tnModifier !== undefined && { tnModifier: request.patch.tnModifier }),
-            ...(calculator.local && { tnCalculator: calculator.local }),
-        };
-        if (Object.keys(localPatch).length === 0) return;
-        await this.updateAttackerTarget(options.member, request, localPatch);
+        const hasAttackerEdit = request.patch.distance !== undefined
+            || request.patch.c3Distance !== undefined
+            || request.patch.useC3 !== undefined
+            || request.patch.tnModifier !== undefined
+            || calculator.attacker !== undefined;
+        if (!hasAttackerEdit) return;
+        await this.updateAttackerTarget(options.member, request, calculator.attacker);
     }
 
     private deleteTarget(options: WeaponTargetsOverlayOpenOptions, targetId: string): void {
@@ -375,7 +374,7 @@ export class WeaponTargetsOverlayController {
         return options.member.force;
     }
 
-    private targets(options: WeaponTargetsOverlayOpenOptions): InventoryControlRuntimeTarget[] {
+    private targets(options: WeaponTargetsOverlayOpenOptions): TargetingTarget[] {
         const registry = options.member.force.queryInventoryControlTargetRegistry();
         const targeting = options.member.force.getAttackerTargeting(options.member.id);
         if (!targeting) return [];
@@ -383,7 +382,7 @@ export class WeaponTargetsOverlayController {
         return registry.targets.map(target => {
             const local = targeting.state.targets.get(target.id);
             const distance = local?.distance ?? 1;
-            const calculator = mergeInventoryControlCalculatorState(
+            const calculator = combineTargetCalculator(
                 target.tnCalculator,
                 local?.calculator,
             );
@@ -463,7 +462,7 @@ export class WeaponTargetsOverlayController {
     private async updateAttackerTarget(
         member: CBTForceMember,
         request: WeaponTargetUpdateRequest,
-        patch: InventoryControlUnitTargetPatch,
+        attackerCalculator: TnTargetNumberCalculatorState | undefined,
     ): Promise<void> {
         const targeting = member.force.getAttackerTargeting(member.id);
         const current = targeting?.state.targets.get(asEncounterTargetId(request.targetId));
@@ -478,21 +477,20 @@ export class WeaponTargetsOverlayController {
             calculator?: AttackerLocalCalculatorInputs;
             manualTnOverride?: { readonly kind: 'user-manual'; readonly modifier: number };
         } = { ...current };
-        if (patch.distance !== undefined) next.distance = patch.distance;
-        if (patch.c3Distance !== undefined) next.c3Distance = patch.c3Distance;
-        if (patch.useC3 !== undefined) {
-            if (patch.useC3) next.useC3 = true;
+        if (request.patch.distance !== undefined) next.distance = request.patch.distance;
+        if (request.patch.c3Distance !== undefined) next.c3Distance = request.patch.c3Distance;
+        if (request.patch.useC3 !== undefined) {
+            if (request.patch.useC3) next.useC3 = true;
             else delete next.useC3;
         }
         if (request.patch.tnCalculator !== undefined) {
-            const localCalculator = splitInventoryControlCalculatorState(request.patch.tnCalculator).local;
-            const canonical = canonicalCalculator(localCalculator);
+            const canonical = canonicalCalculator(attackerCalculator);
             if (canonical) next.calculator = canonical;
             else delete next.calculator;
         }
-        if (request.manualTnOverride === true && patch.tnModifier !== undefined) {
-            next.manualTnOverride = { kind: 'user-manual', modifier: patch.tnModifier };
-        } else if (patch.tnModifier !== undefined) {
+        if (request.manualTnOverride === true && request.patch.tnModifier !== undefined) {
+            next.manualTnOverride = { kind: 'user-manual', modifier: request.patch.tnModifier };
+        } else if (request.patch.tnModifier !== undefined) {
             delete next.manualTnOverride;
         }
 
@@ -529,7 +527,7 @@ export class WeaponTargetsOverlayController {
 }
 
 function canonicalCalculator(
-    calculator: ReturnType<typeof splitInventoryControlCalculatorState>['local'],
+    calculator: TnTargetNumberCalculatorState | undefined,
 ): AttackerLocalCalculatorInputs | undefined {
     if (!calculator) return undefined;
     const indirectFire = calculator.indirectFire === true;

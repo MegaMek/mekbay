@@ -5,13 +5,14 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { asEncounterTargetId } from '../../models/runtime/encounter-runtime';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
 import { TN_CHAMELEON_MODIFIERS, TN_STANDARD_STEALTH_MODIFIERS } from '../../models/target-number-calculator.model';
 import { TnCalculatorDialogComponent, type TnCalculatorDialogData, type TnCalculatorDialogResult } from './tn-calculator-dialog.component';
 
 const DATA: TnCalculatorDialogData = {
     target: {
-        id: 'A',
+        id: asEncounterTargetId('A'),
         letter: 'A',
         name: 'Target A',
         color: '#1565C0',
@@ -638,7 +639,7 @@ describe('TnCalculatorDialogComponent read-only target identity', () => {
     beforeEach(async () => {
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'opfor:enemy-1',
+                id: asEncounterTargetId('opfor:enemy-1'),
                 letter: 'A',
                 name: 'Achileus Light Battle Armor',
                 color: '#1565C0',
@@ -758,7 +759,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
     it('uses the synchronized target height in live water and building geometry', async () => {
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A', letter: 'A', name: 'Tall target', color: '#1565C0',
+                id: asEncounterTargetId('A'), letter: 'A', name: 'Tall target', color: '#1565C0',
                 unitType: 'vehicle', distance: 5, tnModifier: 0,
                 tnCalculator: { targetHeight: 3 },
             },
@@ -787,7 +788,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A', letter: 'A', name: 'Non-Mek target', color: '#1565C0',
+                id: asEncounterTargetId('A'), letter: 'A', name: 'Non-Mek target', color: '#1565C0',
                 unitType: 'battle-armor', distance: 1, tnModifier: 1,
                 tnCalculator: { waterDepth: 'underwater-depth-2' },
             },
@@ -825,7 +826,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A',
+                id: asEncounterTargetId('A'),
                 letter: 'A',
                 name: 'Target A',
                 color: '#1565C0',
@@ -872,7 +873,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A', letter: 'A', name: 'Target A', color: '#1565C0',
+                id: asEncounterTargetId('A'), letter: 'A', name: 'Target A', color: '#1565C0',
                 unitType: 'mek-biped', distance: 1, tnModifier: 0,
             },
             gameRules: TW_GAME_RULES,
@@ -920,7 +921,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
     it('uses the superheavy depth offset for water partial cover', async () => {
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A', letter: 'A', name: 'Target A', color: '#1565C0',
+                id: asEncounterTargetId('A'), letter: 'A', name: 'Target A', color: '#1565C0',
                 unitType: 'mek-biped', distance: 5, tnModifier: 0,
             },
             gameRules: CORE_2026_GAME_RULES,
@@ -948,7 +949,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
         const close = jasmine.createSpy('close');
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'A',
+                id: asEncounterTargetId('A'),
                 letter: 'A',
                 name: 'Target A',
                 color: '#1565C0',
@@ -996,7 +997,7 @@ describe('TnCalculatorDialogComponent movement and stance', () => {
     it('shows both linked-target stance flags', async () => {
         const data: TnCalculatorDialogData = {
             target: {
-                id: 'opfor:enemy-1',
+                id: asEncounterTargetId('opfor:enemy-1'),
                 letter: 'A',
                 name: 'Enemy',
                 color: '#1565C0',

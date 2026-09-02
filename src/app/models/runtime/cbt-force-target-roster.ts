@@ -9,11 +9,12 @@ import {
     type TnTargetUnitType,
 } from '../target-number-calculator.model';
 import { isUnitBuildingLevel, isUnitWaterDepth } from '../unit-cover.model';
-import { getForceOpforInventoryTargetId } from '../../utils/inventory-control-opfor-target.util';
 import { asEncounterTargetId } from './encounter-runtime';
 import type { CBTNonMekUnit } from './cbt-non-mek-unit';
 import type { CBTMekUnit } from './cbt-mek-unit';
 import type { InventoryControlTargetRosterRow } from '../cbt-force.types';
+
+const OPFOR_TARGET_ID_PREFIX = 'opfor:';
 
 export function mekTargetRosterRow(
     forceInstanceId: string,
@@ -54,7 +55,7 @@ export function mekTargetRosterRow(
     }
     return Object.freeze({
         instanceId: unit.instanceId,
-        targetId: asEncounterTargetId(getForceOpforInventoryTargetId(forceInstanceId, unit.instanceId)),
+        targetId: forceOpforTargetId(forceInstanceId, unit.instanceId),
         name: entity.displayName() || unit.instanceId,
         unitType,
         tnCalculator: Object.freeze({
@@ -112,7 +113,7 @@ export function entityTargetRosterRow(
     const cover = turn.cover;
     return Object.freeze({
         instanceId: unit.instanceId,
-        targetId: asEncounterTargetId(getForceOpforInventoryTargetId(forceInstanceId, unit.instanceId)),
+        targetId: forceOpforTargetId(forceInstanceId, unit.instanceId),
         name: entity.displayName() || unit.instanceId,
         unitType,
         tnCalculator: Object.freeze({
@@ -147,6 +148,12 @@ function effectiveStealthMoveDistance(
     return distance === 0 && mode !== null && mode !== undefined && mode !== 'stationary'
         ? 1
         : distance ?? 0;
+}
+
+function forceOpforTargetId(forceInstanceId: string, unitInstanceId: string) {
+    return asEncounterTargetId(
+        `${OPFOR_TARGET_ID_PREFIX}${forceInstanceId.length}:${forceInstanceId}:${unitInstanceId}`,
+    );
 }
 
 function nonMekTargetUnitType(entity: ReturnType<CBTNonMekUnit['getUnit']>): TnTargetUnitType {

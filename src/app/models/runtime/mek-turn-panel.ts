@@ -28,7 +28,6 @@ import { isUnitBuildingLevel, resolveUnitBuildingCoverState, type UnitBuildingCo
 import { mekUnitHeight, resolveMekUnitWaterState } from './mek-targeting-rules';
 import { getMekLocationLabel } from '../entity/types';
 import type { UnitConditionKey } from '../unit-condition.model';
-import { isCrewDeathCommitted } from './cbt-unit-runtime';
 
 export type MekAttackMovementModifiers = Readonly<Record<MekMovementModeV2, number>>;
 
@@ -260,7 +259,7 @@ export function projectMekSpottingModifier(
         const position = crewByOccurrence.get(occurrence);
         if (!position) return 1;
         const state = query.crewState(position.id);
-        if (state.unconscious || state.ejected || isCrewDeathCommitted(state)) return 1;
+        if (!state.isAvailable()) return 1;
     }
     const cockpit = [...index.components.values()].find(component =>
         component.kind === 'system' && component.systemType === 'Cockpit');

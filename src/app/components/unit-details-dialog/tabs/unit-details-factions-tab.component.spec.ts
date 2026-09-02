@@ -175,8 +175,8 @@ describe('UnitDetailsFactionTabComponent', () => {
 
     it('renders eras as columns and sorts logo-backed faction rows alphabetically', () => {
         const originalFactionCount = factions.length;
-        const originalEraIcon = eras[0].icon;
-        eras[0].icon = TEST_ICON_SRC;
+        const originalEraImage = eras[0].img;
+        eras[0].img = TEST_ICON_SRC;
         factions.push({
             id: 77,
             name: 'Clan Sea Fox',
@@ -213,7 +213,7 @@ describe('UnitDetailsFactionTabComponent', () => {
             expect(eraHeaders[0].textContent).toContain('Clan Invasion');
             expect(eraHeaders[0].querySelector('.era-icon')).toBeTruthy();
             expect(eraHeaders[1].textContent).toContain('ilClan');
-            expect(getComputedStyle(eraHeaders[0]).width).toBe('70px');
+            expect(getComputedStyle(eraHeaders[0]).width).toBe('60px');
             expect(matrix.eras.map((era) => era.eraName)).toEqual(['Clan Invasion', 'ilClan']);
             expect(matrix.rows.map((row) => row.name)).toEqual([
                 'Clan Sea Fox',
@@ -228,7 +228,7 @@ describe('UnitDetailsFactionTabComponent', () => {
             expect(factionHeadings[0].querySelector('.faction-logo')).toBeTruthy();
         } finally {
             factions.length = originalFactionCount;
-            eras[0].icon = originalEraIcon;
+            eras[0].img = originalEraImage;
         }
     });
 

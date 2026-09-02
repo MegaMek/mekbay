@@ -36,10 +36,17 @@ import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-
 import { getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNormalizationMatch } from '../../models/unit-search-result.model';
 import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
 import { UnitDetailsSummaryService } from '../../services/unit-details-summary.service';
+import { DataService } from '../../services/data.service';
+import {
+    CBTForceMember,
+    resolveForceMemberCatalogSummary,
+    type ForceMember,
+} from '../../models/force-member.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 
 
 export interface UnitDetailsDialogData {
-    unitList: UnitSummary[] | Signal<ASForceUnit[]>;
+    unitList: UnitSummary[] | Signal<ForceMember[]>;
     unitIndex: number;
     gunnerySkill?: number;
     pilotingSkill?: number;
@@ -53,6 +60,8 @@ export interface UnitDetailsDialogData {
     /** Override game system when the unit list contains summaries. */
     gameSystem?: GameSystem;
 }
+
+type UnitDetailsListItem = UnitSummary | ForceMember;
 
 export interface UnitDetailsChangeAction {
     originalUnit: UnitSummary;
@@ -89,6 +98,7 @@ export class UnitDetailsDialogComponent {
     private destroyRef = inject(DestroyRef);
     private fluffImages = inject(UnitFluffImageService);
     private detailsSummaries = inject(UnitDetailsSummaryService);
+    private dataService = inject(DataService);
     add = output<UnitSummary>();
     select = output<UnitSummary>();
     change = output<{ oldUnit: ASForceUnit; newUnit: UnitSummary }>();
@@ -114,13 +124,13 @@ export class UnitDetailsDialogComponent {
     });
     activeTab = signal(this.deriveInitialIsAlphaStrike() ? 'Card' : 'General');
 
-    unitList = computed<UnitSummary[] | ASForceUnit[]>(() => {
+    unitList = computed<UnitSummary[] | ForceMember[]>(() => {
         const input = this.data.unitList;
         return isSignal(input) ? input() : input;
     });
     unitIndex = signal(this.data.unitIndex);
     private readonly resolvedActiveUnit = signal<{
-        readonly source: UnitSummary;
+        readonly source: UnitDetailsListItem;
         readonly summary: UnitSummary;
     } | null>(null);
     prevUnit = computed<UnitSummary | null>(() => {
@@ -131,11 +141,11 @@ export class UnitDetailsDialogComponent {
         if (!this.hasNext) return null;
         return this.getUnitAtIndex(this.unitIndex() + 1);
     });
-    /** Derives game system from an Alpha Strike member, otherwise uses the explicit/global context. */
+    /** Derives game system from a force member, otherwise uses the explicit/global context. */
     currentGameSystem = computed<GameSystem>(() => {
         const list = this.unitList();
         const item = list[this.unitIndex()];
-        if (item instanceof ASForceUnit) {
+        if (item instanceof ASForceUnit || item instanceof CBTForceMember) {
             return item.force.gameSystem;
         }
         return this.data.gameSystem ?? this.gameService.currentGameSystem();
@@ -146,17 +156,25 @@ export class UnitDetailsDialogComponent {
     });
     readonly searchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const currentUnit = this.unitList()[this.unitIndex()];
-        const unitUuid = currentUnit instanceof ASForceUnit ? currentUnit.getSummary().uuid : currentUnit?.uuid;
+        const unitUuid = currentUnit ? this.getUnitSummary(currentUnit).uuid : undefined;
         return unitUuid ? this.data.searchResultContexts?.get(unitUuid) ?? null : null;
     });
     gunnerySkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
+        if (currentUnit instanceof CBTForceMember) {
+            return currentUnit.force.getUnitCrewAssignment(currentUnit.id)?.positions[0]?.gunnery
+                ?? DEFAULT_GUNNERY_SKILL;
+        }
         if (currentUnit instanceof ASForceUnit) return currentUnit.getPilotSkill();
         const context = this.searchResultContext();
         return context ? getNormalizationGunnery(context) : this.data.gunnerySkill;
     });
     pilotingSkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
+        if (currentUnit instanceof CBTForceMember) {
+            return currentUnit.force.getUnitCrewAssignment(currentUnit.id)?.positions[0]?.piloting
+                ?? DEFAULT_PILOTING_SKILL;
+        }
         if (currentUnit instanceof ASForceUnit) return currentUnit.getPilotSkill();
         const context = this.searchResultContext();
         return context ? getNormalizationPiloting(context) : this.data.pilotingSkill;
@@ -214,9 +232,9 @@ export class UnitDetailsDialogComponent {
     });
 
     get unit(): UnitSummary {
-        const source = this.getUnitAtIndex(this.unitIndex());
+        const source = this.unitList()[this.unitIndex()];
         const resolved = this.resolvedActiveUnit();
-        return resolved?.source === source ? resolved.summary : source;
+        return resolved?.source === source ? resolved.summary : this.getUnitSummary(source);
     }
 
     /** Reads the game system directly from dialog data (used for field initializers before computeds are available). */
@@ -224,7 +242,7 @@ export class UnitDetailsDialogComponent {
         const input = this.data.unitList;
         const list = isSignal(input) ? input() : input;
         const item = list[this.data.unitIndex];
-        if (item instanceof ASForceUnit) {
+        if (item instanceof ASForceUnit || item instanceof CBTForceMember) {
             return item.force.gameSystem === GameSystem.AS;
         }
         if (this.data.gameSystem) {
@@ -249,7 +267,7 @@ export class UnitDetailsDialogComponent {
             if (current instanceof ASForceUnit) return;
 
             let active = true;
-            void this.detailsSummaries.resolve(current).then(summary => {
+            void this.detailsSummaries.resolve(this.getUnitSummary(current)).then(summary => {
                 if (active) this.resolvedActiveUnit.set({ source: current, summary });
             });
             onCleanup(() => { active = false; });
@@ -316,9 +334,22 @@ export class UnitDetailsDialogComponent {
     }
 
     private getUnitAtIndex(index: number): UnitSummary {
-        const item = this.unitList()[index];
-        if (item instanceof ASForceUnit) {
-            return item.getSummary();
+        return this.getUnitSummary(this.unitList()[index]);
+    }
+
+    private getUnitSummary(item: UnitDetailsListItem): UnitSummary {
+        if (item instanceof ASForceUnit || item instanceof CBTForceMember) {
+            const summary = resolveForceMemberCatalogSummary(
+                item,
+                uuid => this.dataService.getUnitByUuid(uuid),
+            );
+            if (!summary) {
+                const name = item instanceof CBTForceMember
+                    ? item.entity.displayName()
+                    : item.getDisplayName();
+                throw new Error(`Catalog presentation is unavailable for ${name}`);
+            }
+            return summary;
         }
         return item;
     }
@@ -686,8 +717,7 @@ export class UnitDetailsDialogComponent {
         if (incoming) {
             const currentIdx = this.unitIndex();
             const incomingIdx = this.unitList().findIndex(u => {
-                const unit = u instanceof ASForceUnit ? u.getSummary() : u;
-                return unit === incoming;
+                return this.getUnitSummary(u) === incoming;
             });
             if (incomingIdx < currentIdx) {
                 // Was coming from left, animate back to left

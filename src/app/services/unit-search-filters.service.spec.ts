@@ -11,7 +11,7 @@ import type { ForceUnit } from '../models/force-unit.model';
 import type { MULFactions } from '../models/mulfactions.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import type { AvailabilitySource, UnitSearchViewMode } from '../models/options.model';
-import type { UnitSummary, Units } from '../models/unit-summary.model';
+import type { UnitSummary } from '../models/unit-summary.model';
 import { GameSystem } from '../models/common.model';
 import { DataService } from './data.service';
 import { DbService, type TagData } from './db.service';
@@ -45,7 +45,11 @@ const originalJasmineTimeoutInterval = jasmine.DEFAULT_TIMEOUT_INTERVAL;
 jasmine.DEFAULT_TIMEOUT_INTERVAL = 60000;
 
 interface BenchmarkBundle {
-    units: Units;
+    units: {
+        version: string;
+        assetHash: string;
+        units: UnitSummary[];
+    };
     factions: MULFactions;
     eras: Eras;
 }
@@ -90,7 +94,7 @@ class TestUnitsCatalog {
     public readonly pendingActivation = signal(undefined).asReadonly();
     private units: UnitSummary[] = [];
 
-    public replaceUnits(data: Units): void {
+    public replaceUnits(data: BenchmarkBundle['units']): void {
         this.units = cloneUnit(data.units);
     }
 

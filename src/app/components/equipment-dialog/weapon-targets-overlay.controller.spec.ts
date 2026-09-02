@@ -275,13 +275,13 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
 
     it('atomically reclaims an OPFOR slot for a manual target but rejects an all-manual full registry', () => {
         const harness = createHarness();
-        const manual = Array.from({ length: 11 }, (_value, index) => {
+        const manual = Array.from({ length: 23 }, (_value, index) => {
             const letter = String.fromCharCode('A'.charCodeAt(0) + index);
             return sharedTarget({ id: asEncounterTargetId(letter), letter, name: `Target ${letter}` });
         });
         const opfor = sharedTarget({
             id: asEncounterTargetId('opfor:v1:capacity'),
-            letter: 'L',
+            letter: 'X',
             source: 'opfor',
             readOnly: true,
         });
@@ -294,8 +294,8 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
         expect(createCommand).toEqual(jasmine.objectContaining({
             kind: 'create-target',
             target: jasmine.objectContaining({
-                letter: 'L',
-                name: 'Target L',
+                letter: 'X',
+                name: 'Target X',
                 color: opfor.color,
                 source: 'manual',
             }),
@@ -306,7 +306,7 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
         harness.dispatch.calls.reset();
         harness.logger.error.calls.reset();
         harness.toast.showToast.calls.reset();
-        const allManual = [...manual, sharedTarget({ id: asEncounterTargetId('L'), letter: 'L' })];
+        const allManual = [...manual, sharedTarget({ id: asEncounterTargetId('X'), letter: 'X' })];
         harness.query.and.returnValue({ revision: 11, targets: allManual });
         harness.controller.createTarget(harness.options);
 

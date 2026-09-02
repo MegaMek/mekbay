@@ -289,8 +289,8 @@ export class SwipeDirective {
             const direction = this.getSwipeDirection(delta, isHorizontal);
             
             // Calculate velocity (pixels per millisecond)
-            const duration = Date.now() - this.startTime;
-            const velocity = duration > 0 ? distance / duration : 0;
+            const duration = Math.max(1, Date.now() - this.startTime);
+            const velocity = distance / duration;
 
             // Determine success
             const success = this.isSwipeSuccessful(deltaX, isHorizontal, velocity);
@@ -323,8 +323,8 @@ export class SwipeDirective {
             const delta = isHorizontal ? deltaX : deltaY;
             const distance = Math.abs(delta);
             const direction = this.getSwipeDirection(delta, isHorizontal);
-            const duration = Date.now() - this.startTime;
-            const velocity = duration > 0 ? distance / duration : 0;
+            const duration = Math.max(1, Date.now() - this.startTime);
+            const velocity = distance / duration;
             this.swipeend.emit({
                 originalEvent: event,
                 deltaX,

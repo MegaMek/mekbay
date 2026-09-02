@@ -14,7 +14,11 @@ import {
 } from '../../../models/entity/testing/test-entities';
 import { buildNonMekRuntimeIndex } from '../../../models/runtime/non-mek-runtime-index';
 import { componentIdForMount } from '../../../models/runtime/non-mek-runtime-index';
-import { createPristineNonMekUnitState } from '../../../models/runtime/non-mek-unit-instance';
+import {
+    createPristineNonMekUnitState,
+    projectNonMekEscalatingFailureInteractions,
+} from '../../../models/runtime/non-mek-unit-instance';
+import { ESCALATING_FAILURE_HANDLER_ID } from '../../../models/runtime/component-escalating-failure';
 import { addTestEquipmentWithFlags } from '../../../models/entity/testing/test-mounted-equipment';
 import {
     createPristineMekHeatStateV2,
@@ -308,10 +312,12 @@ describe('PageTurnSummaryPanelComponent', () => {
 
         buttons[0]!.click();
 
-        expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', {
-            kind: 'edit-escalating-failure',
+        expect(harness.dispatchEquipmentChoice).toHaveBeenCalledOnceWith({
+            instanceId: 'tank-1',
+            entityUuid: harness.member.entity.uuid(),
             componentId: harness.boosterComponentId,
-            edit: { kind: 'select-sequence', index: 0 },
+            handlerId: ESCALATING_FAILURE_HANDLER_ID,
+            value: 0,
         });
     });
 
@@ -460,7 +466,7 @@ function entityTurnMember(
         entity,
         index,
         sourceRef: {},
-        ruleset: 'core-2026',
+        ruleset: 'core-2026' as const,
         state: { ...pristine, damageTracks },
         query: { hasPendingPhaseChanges: () => false },
     };
@@ -469,15 +475,44 @@ function entityTurnMember(
         changed: true,
         state: snapshot.state,
     });
+    const dispatchEquipmentChoice = jasmine.createSpy('dispatchEquipmentChoice').and.resolveTo({
+        accepted: true,
+        changed: true,
+    });
     let member!: CBTForceMember;
     const force = {
         changed,
         members: () => [member],
         getUnitSnapshot: () => snapshot,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
+        getEquipmentInteractions: (_instanceId: string, choiceSurface?: 'inventory' | 'turn-summary') =>
+            projectNonMekEscalatingFailureInteractions(
+                entity,
+                index,
+                snapshot.state,
+                snapshot.ruleset,
+                choiceSurface,
+            ).map(interaction => ({
+                componentId: interaction.componentId,
+                componentLabel: interaction.componentLabel,
+                choices: interaction.choices.map(choice => ({
+                    ...choice,
+                    command: {
+                        instanceId: 'tank-1',
+                        entityUuid: entity.uuid(),
+                        componentId: interaction.componentId,
+                        handlerId: ESCALATING_FAILURE_HANDLER_ID,
+                        value: choice.value,
+                    },
+                    interactionKind: 'escalating-failure' as const,
+                    active: choice.active === true,
+                    disabled: choice.disabled === true,
+                })),
+            })),
         hasRuntimeHistoryForUnitTurn: () => false,
         hasPendingEndTurnForUnit: () => false,
         dispatchNonMekUnitCommand: dispatch,
+        dispatchEquipmentChoice,
     };
     member = {
         kind: 'cbt',
@@ -488,6 +523,7 @@ function entityTurnMember(
     return {
         member,
         dispatch,
+        dispatchEquipmentChoice,
         boosterComponentId,
     };
 }
@@ -521,6 +557,7 @@ function battleArmorTurnMember() {
         members: () => [member],
         getUnitSnapshot: () => snapshot,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
+        getEquipmentInteractions: () => [],
         hasRuntimeHistoryForUnitTurn: () => false,
         dispatchNonMekUnitCommand: jasmine.createSpy('dispatchNonMekUnitCommand'),
         hasPendingEndTurnForUnit: () => false,
@@ -560,6 +597,7 @@ function aeroTurnMember() {
         members: () => [member],
         getUnitSnapshot: () => snapshot,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
+        getEquipmentInteractions: () => [],
         hasRuntimeHistoryForUnitTurn: () => false,
         hasPendingEndTurnForUnit: () => false,
         dispatchNonMekUnitCommand: jasmine.createSpy('dispatchNonMekUnitCommand'),

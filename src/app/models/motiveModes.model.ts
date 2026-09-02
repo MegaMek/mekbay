@@ -5,8 +5,6 @@
 import type { BaseEntity } from './entity/base-entity';
 import type { UnitSubtype, UnitType } from './entity/types';
 
-export type MotiveState = ''
-
 export type MotiveModes = 'stationary' | 'walk' | 'run' | 'sprint' | 'jump' | 'UMU' | 'VTOL';
 
 export interface MotiveModeOption {
@@ -68,27 +66,6 @@ export function getMotiveModeLabel(mode: MotiveModes, unit: MotiveModeUnitFacts,
             return 'UMU';
         default:
             return mode;
-    }
-}
-
-export function getMotiveModeMaxDistance(mode: MotiveModes, unit: MotiveModeUnitFacts, airborne: boolean = false): number {
-    switch (mode) {
-        case 'stationary':
-            return 0;
-        case 'walk':
-            return Math.max(unit.walk, unit.walk2);
-        case 'run':
-            return Math.max(unit.run, unit.run2);
-        case 'sprint':
-            return Math.max(unit.walk, unit.walk2) * 2;
-        case 'jump':
-            return unit.jump;
-        case 'UMU':
-            return unit.umu;
-        case 'VTOL':
-            return unit.jump; // VTOL MP are stored in the jump field
-        default:
-            return 0;
     }
 }
 

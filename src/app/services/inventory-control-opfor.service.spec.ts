@@ -307,9 +307,9 @@ describe('InventoryControlOpforService', () => {
         ]);
     });
 
-    it('gives manual targets priority, sorts deterministically, and caps the registry at twelve', () => {
+    it('gives manual targets priority, sorts deterministically, and caps the registry at 24', () => {
         const harness = createOpforHarness();
-        harness.setTargets('ABCDEFGHIJK'.split('').map(manualTarget));
+        harness.setTargets('ABCDEFGHIJKLMNOPQRSTUVW'.split('').map(manualTarget));
         const source = harness.force;
         const enemy = createAlignedCBTForce([
             rosterRow('z-enemy', 'Zulu'),
@@ -324,10 +324,10 @@ describe('InventoryControlOpforService', () => {
 
         expect(harness.service.setEnabled(source, true)).toBeTrue();
 
-        expect(harness.targets()).toHaveSize(12);
-        expect(harness.targets().filter(target => target.source !== 'opfor')).toHaveSize(11);
+        expect(harness.targets()).toHaveSize(24);
+        expect(harness.targets().filter(target => target.source !== 'opfor')).toHaveSize(23);
         expect(harness.targets().filter(target => target.source === 'opfor').map(target => String(target.id))).toEqual(['opfor:a-enemy']);
-        expect(harness.targets()[11].letter).toBe('L');
+        expect(harness.targets()[23].letter).toBe('X');
     });
 
     it('includes a detached retained-V2 opponent row', () => {

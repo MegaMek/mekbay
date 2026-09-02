@@ -38,10 +38,6 @@ export function largeCraftEquipmentKind(
   return null;
 }
 
-export function isLargeCraftEquipment(equipment: Equipment | null | undefined): boolean {
-  return largeCraftEquipmentKind(equipment) !== null;
-}
-
 export function isAtacEquipment(equipment: Equipment | null | undefined): boolean {
   return largeCraftEquipmentKind(equipment) === 'atac';
 }

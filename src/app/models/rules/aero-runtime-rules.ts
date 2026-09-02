@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { CrewMemberState } from '../crew.model';
+import type { CrewMemberState } from '../crew-member.model';
 import type { AeroEntity } from '../entity/entities/aero/aero-entity';
 import type { NonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
 import type {

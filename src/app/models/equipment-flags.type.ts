@@ -269,6 +269,7 @@ export type EquipmentFlag =
     | "F_PARTIAL_WING"
     | "F_PD_BAY"
     | "F_PEACEMAKER"
+    | "F_PHYSICAL_WEAPON"
     | "F_PINTLE_TURRET"
     | "F_PLASMA"
     | "F_PLASMA_MFUK"

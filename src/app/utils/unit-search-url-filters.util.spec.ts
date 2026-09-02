@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { UnitSummary } from '../models/unit-summary.model';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { FilterState } from '../services/unit-search-filters.model';
 import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState, parseUnitSearchViewMode, resolveInitialUnitSearchViewMode } from './unit-search-url-filters.util';
 import type { UnitSearchDropdownValuesDependencies } from './unit-search-dropdown-values.util';

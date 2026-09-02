@@ -15,7 +15,8 @@ import {
 import { LayoutService } from '../../services/layout.service';
 import { MultilineDropdownComponent, type MultilineDropdownOption } from '../multiline-dropdown/multiline-dropdown.component';
 import { WeaponTargetChoiceMenuComponent } from '../equipment-dialog/weapon-target-choice-menu.component';
-import type { InventoryControlRuntimeTarget, InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import type { EncounterTargetId } from '../../models/runtime/encounter-runtime';
+import type { TargetingTarget } from '../../models/runtime/targeting-target';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import {
@@ -32,7 +33,7 @@ import type {
 } from '../../models/runtime/equipment-panel';
 import {
     projectWeaponTargetPresentation,
-    equipmentPanelRuntimeTarget,
+    projectTargetingTarget,
 } from '../../models/runtime/equipment-panel';
 import {
     STANDARD_AEROSPACE_RANGE_LIMITS,
@@ -127,7 +128,7 @@ interface SectionSkillDisplay {
 }
 
 interface TargetRowState {
-    target: InventoryControlRuntimeTarget | null;
+    target: TargetingTarget | null;
     invalidTarget: boolean;
     invalidTargetReason?: 'type' | 'out-of-range';
     rangeSelection: InventoryTargetRangeSelection | null;
@@ -248,7 +249,7 @@ export class WeaponsEquipmentPanelComponent {
 
     readonly targets = computed(() => {
         const snapshot = this.runtime().snapshot();
-        return snapshot.targets.map(target => equipmentPanelRuntimeTarget(target, snapshot.ruleset));
+        return snapshot.targets.map(target => projectTargetingTarget(target, snapshot.ruleset));
     });
     readonly hasTargets = computed(() => this.targets().length > 0);
     readonly hasAmmoColumn = computed(() => this.groups().some(group => this.groupTracksAmmo(group)));
@@ -446,7 +447,7 @@ export class WeaponsEquipmentPanelComponent {
         );
     }
 
-    groupTargetSelection(group: EquipmentPanelGroup): InventoryControlRuntimeTarget | null {
+    groupTargetSelection(group: EquipmentPanelGroup): TargetingTarget | null {
         const rows = this.groupActiveSelectableRows(group);
         if (rows.length === 0) return null;
         const first = this.selectedTargetId(rows[0]);
@@ -495,7 +496,7 @@ export class WeaponsEquipmentPanelComponent {
         );
     }
 
-    private setGroupTarget(group: EquipmentPanelGroup, targetId: InventoryControlRuntimeTargetId | null): void {
+    private setGroupTarget(group: EquipmentPanelGroup, targetId: EncounterTargetId | null): void {
         const rows = targetId ? this.groupActiveSelectableRows(group) : this.groupSelectableRows(group);
         const target = targetId ? this.targets().find(candidate => candidate.id === targetId) : null;
         if (target && rows.some(row => this.targetDisabledReason(row, target) !== null)) return;
@@ -506,10 +507,10 @@ export class WeaponsEquipmentPanelComponent {
 
     private openTargetChoiceOverlay(
         anchor: HTMLElement,
-        selectedTargetId: InventoryControlRuntimeTargetId | null,
-        onSelect: (targetId: InventoryControlRuntimeTargetId | null) => void,
-        targetNumberTexts: Readonly<Record<InventoryControlRuntimeTargetId, string>> = {},
-        disabledTargetReasons: Readonly<Record<InventoryControlRuntimeTargetId, string>> = {},
+        selectedTargetId: EncounterTargetId | null,
+        onSelect: (targetId: EncounterTargetId | null) => void,
+        targetNumberTexts: Readonly<Record<EncounterTargetId, string>> = {},
+        disabledTargetReasons: Readonly<Record<EncounterTargetId, string>> = {},
     ): void {
         this.overlayManager.closeManagedOverlay(WEAPON_TARGET_CHOICE_OVERLAY_KEY);
         const portal = new ComponentPortal(WeaponTargetChoiceMenuComponent, null, this.injector);
@@ -709,20 +710,20 @@ export class WeaponsEquipmentPanelComponent {
         return row.rangePresentation.values[range];
     }
 
-    private targetChoiceTargetNumberTexts(row: EquipmentPanelRow): Readonly<Record<InventoryControlRuntimeTargetId, string>> {
+    private targetChoiceTargetNumberTexts(row: EquipmentPanelRow): Readonly<Record<EncounterTargetId, string>> {
         return Object.fromEntries(this.targets()
             .map(target => [target.id, this.targetNumberTextForTarget(row, target)] as const)
             .filter(([, targetNumber]) => targetNumber !== ''));
     }
 
-    private targetNumberTextForTarget(row: EquipmentPanelRow, target: InventoryControlRuntimeTarget | null): string {
+    private targetNumberTextForTarget(row: EquipmentPanelRow, target: TargetingTarget | null): string {
         return this.createTargetState(row, target).targetNumberText;
     }
 
     private targetChoiceDisabledReasons(
         rows: readonly EquipmentPanelRow[],
-    ): Readonly<Record<InventoryControlRuntimeTargetId, string>> {
-        const reasons: Record<InventoryControlRuntimeTargetId, string> = {};
+    ): Readonly<Record<EncounterTargetId, string>> {
+        const reasons: Record<EncounterTargetId, string> = {};
         for (const target of this.targets()) {
             const reason = rows
                 .map(row => this.targetDisabledReason(row, target))
@@ -734,7 +735,7 @@ export class WeaponsEquipmentPanelComponent {
 
     private targetDisabledReason(
         row: EquipmentPanelRow,
-        target: InventoryControlRuntimeTarget,
+        target: TargetingTarget,
     ): string | null {
         return row.component?.weapon?.disabledTargetReasons[target.id] ?? null;
     }
@@ -828,7 +829,7 @@ export class WeaponsEquipmentPanelComponent {
 
     private createTargetState(
         row: EquipmentPanelRow,
-        target: InventoryControlRuntimeTarget | null,
+        target: TargetingTarget | null,
     ): TargetRowState {
         if (row.physical) return this.createPhysicalTargetState(row, target);
         if (!row.component?.weapon) {
@@ -895,7 +896,7 @@ export class WeaponsEquipmentPanelComponent {
 
     private createPhysicalTargetState(
         row: EquipmentPanelRow,
-        target: InventoryControlRuntimeTarget | null,
+        target: TargetingTarget | null,
     ): TargetRowState {
         const modifier = row.physical?.hitModifiers[0];
         const numericModifier = typeof modifier === 'number' ? modifier : 0;
@@ -994,7 +995,7 @@ export class WeaponsEquipmentPanelComponent {
         ];
     }
 
-    private selectedTargetId(row: EquipmentPanelRow): InventoryControlRuntimeTargetId | null {
+    private selectedTargetId(row: EquipmentPanelRow): EncounterTargetId | null {
         const selection = row.component?.weapon?.selection ?? row.physical?.selection;
         return selection?.kind === 'target' ? selection.targetId : null;
     }

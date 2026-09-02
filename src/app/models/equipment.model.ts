@@ -56,7 +56,6 @@ import { isArmorKitEquipment } from './infantry-equipment.model';
 // ============================================================================
 
 export type EquipmentType = 'weapon' | 'ammo' | 'misc' | 'armor' | 'structure';
-export type TechLevel = 'Introductory' | 'Standard' | 'Advanced' | 'Experimental' | 'Unofficial';
 export type RangeBrackets = 'short' | 'medium' | 'long' | 'extreme';
 export type WeaponCategory = 'energy' | 'missile' | 'ballistic' | 'artillery' | 'other';
 

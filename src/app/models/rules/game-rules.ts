@@ -8,7 +8,7 @@ import type { EquipmentRegistry } from '../equipment-lookup';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { IntrinsicWeaponKind } from '../entity/types/weapon';
-import type { InventoryControlRuntimeTarget } from '../inventory-control-runtime-state.model';
+import type { TargetingTarget } from '../runtime/targeting-target';
 import { resolveAmmoWeaponProfile } from '../ammo-weapon-profile.model';
 import type { TnTargetUnitType } from '../target-number-calculator.model';
 import type { WeaponType } from '../weapon-types.model';
@@ -162,7 +162,7 @@ export interface TagBattleValueFacts {
 }
 
 export interface C3TargetingResolution {
-    readonly target: InventoryControlRuntimeTarget;
+    readonly target: TargetingTarget;
     readonly degradationSource: C3DegradationSource;
 }
 
@@ -239,7 +239,7 @@ export abstract class CBTGameRules {
     abstract readonly semiGuidedIgnoresIndirectFireModifier: boolean;
     abstract readonly physicalLocationRows: readonly PhysicalLocationRow[];
 
-    abstract resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution;
+    abstract resolveC3Targeting(target: TargetingTarget, degradationSource: C3DegradationSource): C3TargetingResolution;
     abstract resolveC3TargetingModifier(degradationSource: C3DegradationSource, rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null;
     abstract getSemiGuidedAdjustment(modifierValue: number, source: SemiGuidedAdjustmentSource): number;
     abstract getNarcBeaconAttackRestriction(context: NarcBeaconAttackContext): NarcBeaconAttackRestriction | null;
@@ -475,7 +475,7 @@ export class GameRules extends CBTGameRules {
     readonly semiGuidedIgnoresIndirectFireModifier = false;
     readonly physicalLocationRows = CORE_2026_PHYSICAL_LOCATION_ROWS;
 
-    override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
+    override resolveC3Targeting(target: TargetingTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return { target, degradationSource };
     }
 
@@ -605,7 +605,7 @@ export class TWGameRules extends CBTGameRules {
     readonly semiGuidedIgnoresIndirectFireModifier = true;
     readonly physicalLocationRows = TW_PHYSICAL_LOCATION_ROWS;
 
-    override resolveC3Targeting(target: InventoryControlRuntimeTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
+    override resolveC3Targeting(target: TargetingTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return {
             target: degradationSource === 'none' || target.c3Distance === undefined
                 ? target

@@ -434,14 +434,6 @@ export function compileGroupFacts(
     };
 }
 
-export function compileGroupFactsList(
-    groups: ReadonlyArray<GroupSizeResult>,
-    unitFactsMap?: WeakMap<OrgUnit, UnitFacts>,
-    groupUnitCache?: WeakMap<GroupSizeResult, OrgUnit[]>,
-): GroupFacts[] {
-    return groups.map((group) => compileGroupFacts(group, unitFactsMap, groupUnitCache));
-}
-
 export function createOrgRuleRegistry(
     registry?: Partial<OrgRuleRegistry>,
 ): OrgRuleRegistry {

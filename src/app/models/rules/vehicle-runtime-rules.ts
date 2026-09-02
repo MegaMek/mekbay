@@ -16,7 +16,7 @@ import { projectNonMekComponentStatuses } from '../runtime/non-mek-component-sta
 import type {
     NonMekUnitRuntimeState,
 } from '../runtime/non-mek-unit-instance';
-import type { CrewMemberState } from '../crew.model';
+import { CrewMember, type CrewMemberState } from '../crew-member.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { UnitConditionKey } from '../unit-condition.model';
 import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
@@ -24,7 +24,6 @@ import {
     calculateChargeDamage,
     type ChargeDamageProjection,
 } from './charge-damage';
-import { isCrewDeathCommitted } from '../runtime/cbt-unit-runtime';
 
 export interface VehicleMotiveHit {
     readonly level: number;
@@ -103,12 +102,10 @@ export function projectVehicleRuntimeRules(
     const activeDamageTrackIds = new Set(activeDamageTracks.map(track => track.sheetId));
     const hasDamage = (sheetId: string): boolean => activeDamageTrackIds.has(sheetId);
     const rawCommanderHit = hasDamage('commander_hit');
-    const crewKilled = [...index.crewPositions.keys()].some(positionId => {
-        const crew = state.crew.get(positionId);
-        return crew?.killed === true || (crew !== undefined && isCrewDeathCommitted(crew));
-    });
+    const crewKilled = [...index.crewPositions.keys()].some(positionId =>
+        CrewMember.from(state.crew.get(positionId)).isDeathCommitted());
     const crewStunned = [...index.crewPositions.keys()].some(positionId =>
-        state.crew.get(positionId)?.stunned === true);
+        CrewMember.from(state.crew.get(positionId)).hasState('stunned'));
     const motiveHits = Object.freeze(activeDamageTracks.flatMap(track => {
         if (track.motiveLevel === undefined) return [];
         return (state.damageTracks.get(track.id)?.hitTimestamps ?? [])

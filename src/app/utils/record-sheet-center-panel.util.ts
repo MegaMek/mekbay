@@ -91,22 +91,6 @@ export function isPointInCenterPanel(svg: SVGSVGElement, clientX: number, client
         });
 }
 
-/** Resolves the nearest SVG center panel for an event target and pointer position. */
-export function isCenterPanelEvent(event: Event): boolean {
-    const target = event.target instanceof Element ? event.target : null;
-    const svg = target?.closest('svg');
-    if (!(svg instanceof SVGSVGElement)) return false;
-
-    if (isCenterPanelTarget(svg, target)) return true;
-
-    const pointer = event as MouseEvent;
-    if (Number.isFinite(pointer.clientX) && Number.isFinite(pointer.clientY)) {
-        return isPointInCenterPanel(svg, pointer.clientX, pointer.clientY);
-    }
-
-    return false;
-}
-
 function containsPoint(bounds: DOMRect, clientX: number, clientY: number): boolean {
     return clientX >= bounds.left && clientX <= bounds.right
         && clientY >= bounds.top && clientY <= bounds.bottom;

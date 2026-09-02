@@ -1,20 +1,19 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { CRIPPLED_CREW_HIT_THRESHOLD, type CrewMemberState } from '../crew.model';
+import {
+    CrewMember,
+    type CrewMemberState,
+} from '../crew-member.model';
 import type { LocationId } from '../entity/entity-identifiers';
 import type { ProtoMekEntity } from '../entity/entities/protomek/protomek-entity';
 import type { MotiveModes } from '../motiveModes.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
 import type { NonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
-import type {
-    NonMekCrewRuntimeState,
-    NonMekUnitRuntimeState,
-} from '../runtime/non-mek-unit-instance';
+import type { NonMekUnitRuntimeState } from '../runtime/non-mek-unit-instance';
 import { gameRulesFor } from './game-rules';
 import type { UnitConditionKey } from '../unit-condition.model';
-import { isCrewDeathCommitted } from '../runtime/cbt-unit-runtime';
 
 export interface ProtoMekRuntimeRulesProjection {
     readonly destroyed: boolean;
@@ -31,15 +30,17 @@ export function projectProtoMekRuntimeRules(
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
+    forcedWithdrawal = true,
 ): ProtoMekRuntimeRulesProjection {
     const crew = [...index.crewPositions.keys()]
-        .map(positionId => state.crew.get(positionId));
-    const crewStates = crew.map(protoMekCrewState);
+        .map(positionId => CrewMember.from(state.crew.get(positionId)));
+    const crewStates = crew.map(crewMember => crewMember.effectiveState());
     const abandoned = crewStates.length > 0
         && crewStates.every(crewState => crewState === 'dead');
     const functionalCrew = crewStates.some(crewState => crewState === 'healthy');
-    const crippled = crew.length > 0
-        && crew.every(crewState => (crewState?.wounds ?? 0) >= CRIPPLED_CREW_HIT_THRESHOLD);
+    const crippled = forcedWithdrawal
+        && crew.length > 0
+        && crew.every(crewMember => crewMember.isCrippled());
     const allLimbsDestroyed = ['Left Arm', 'Right Arm', 'Legs'].every(code => {
         const location = [...index.locations.values()].find(row => row.code === code);
         return location === undefined || locationDestroyed(location.id, location.internalPoints, state);
@@ -63,8 +64,8 @@ export function projectProtoMekRuntimeRules(
         destroyed: state.explicitlyDestroyed || torsoDestroyed || torsoDamage,
         computedConditions: Object.freeze(computedConditions),
         conditionControlKeys: Object.freeze(conditionControlKeys),
-        crewStateControlKeys: Object.freeze(['unconscious'] as const),
-        crewStateDisplayKeys: Object.freeze(['unconscious', 'dead'] as const),
+        crewStateControlKeys: Object.freeze(['stunned'] as const),
+        crewStateDisplayKeys: Object.freeze(['stunned', 'killed'] as const),
         attackMovementModifier: getDefaultAttackerMovementModifier(state.turn.movement?.mode),
     });
 }
@@ -76,10 +77,4 @@ function locationDestroyed(
 ): boolean {
     return maximum > 0
         && (state.locations.get(locationId)?.internalDamage ?? 0) >= maximum;
-}
-
-function protoMekCrewState(state: NonMekCrewRuntimeState | undefined): CrewMemberState {
-    if (state !== undefined && isCrewDeathCommitted(state)) return 'dead';
-    if (state?.ejected) return 'ejected';
-    return state?.unconscious ? 'unconscious' : 'healthy';
 }

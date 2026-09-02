@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { signal } from '@angular/core';
+import {
+    C3EM_MAX_OPERATING_TURNS,
+    isC3EmergencyMasterOperatingTurnsFried,
+} from './c3-emergency-master.model';
 import { MiscEquipment } from './equipment.model';
 import {
     TestAeroSpaceFighterEntity,
@@ -192,9 +196,6 @@ describe('C3Network', () => {
         expect(model.topLevelNetworks.map(value => value.id)).toEqual(['parent', 'peer']);
         expect(model.parentOf('child')?.id).toBe('parent');
         expect(model.networksForUnit('sunder').map(value => value.id)).toEqual(['parent', 'child', 'peer']);
-        expect(model.treeEndpointKeys('parent')).toEqual(new Set([
-            'master:sunder:0', 'master:sunder:1', 'slave:atlas', 'slave:akuma',
-        ]));
         expect(C3Network.parseMember('unit:2')).toEqual({ unitId: 'unit', compIndex: 2 });
         expect(C3Network.parseMember('unit:nope')).toEqual({ unitId: 'unit:nope' });
     });
@@ -213,20 +214,65 @@ describe('C3Network', () => {
         expect(build().stateFor('left', C3NetworkType.C3I)).toEqual({ linked: false, degraded: false, color: '#1565C0' });
     });
 
-    it('uses an exact operational emergency endpoint and rejects a fried endpoint', () => {
+    it('fails two C3S slaves over to their C3EM slave until its turn limit expires', () => {
         const master = unit('master', [component(C3NetworkType.C3, C3Role.MASTER)]);
+        const slaveAlpha = unit('slave-alpha', [component(C3NetworkType.C3, C3Role.SLAVE)]);
         const emergency = unit('emergency', [component(C3NetworkType.C3, C3Role.SLAVE, { emergency: true })]);
-        const slave = unit('slave', [component(C3NetworkType.C3, C3Role.SLAVE)]);
-        master.operational.set(false);
+        const slaveBravo = unit('slave-bravo', [component(C3NetworkType.C3, C3Role.SLAVE)]);
+        const units = [master.unit, slaveAlpha.unit, emergency.unit, slaveBravo.unit];
         const networks: SerializedC3NetworkGroup[] = [{
             id: 'network', type: C3NetworkType.C3, color: '#123',
-            masterId: 'master', masterCompIndex: 0, members: ['emergency', 'slave'],
+            masterId: 'master', masterCompIndex: 0,
+            members: ['slave-alpha', 'emergency', 'slave-bravo'],
         }];
-        expect(new C3Network(networks, [master.unit, emergency.unit, slave.unit]).effectiveEmergencyMasterForNetwork('network'))
+        let operatingTurns = 0;
+        const build = () => {
+            emergency.components[0] = {
+                ...emergency.components[0],
+                emergencyFried: isC3EmergencyMasterOperatingTurnsFried(operatingTurns),
+            };
+            return new C3Network(networks, units);
+        };
+
+        expect(build().effectiveEmergencyMasterForNetwork('network')).toBeUndefined();
+
+        master.operational.set(false);
+        operatingTurns = 1;
+        const activated = build();
+        expect(activated.effectiveEmergencyMasterForNetwork('network'))
             .toEqual({ unitId: 'emergency', compIndex: 0 });
-        emergency.components[0] = { ...emergency.components[0], emergencyFried: true };
-        expect(new C3Network(networks, [master.unit, emergency.unit, slave.unit]).effectiveEmergencyMasterForNetwork('network'))
-            .toBeUndefined();
+        expect(activated.linksForNetwork('network').map(link => ({
+            source: link.source,
+            target: link.target,
+            operational: link.operational,
+        }))).toEqual([
+            {
+                source: { unitId: 'emergency', compIndex: 0 },
+                target: { unitId: 'slave-alpha', compIndex: 0 },
+                operational: true,
+            },
+            {
+                source: { unitId: 'emergency', compIndex: 0 },
+                target: { unitId: 'slave-bravo', compIndex: 0 },
+                operational: true,
+            },
+        ]);
+        expect(['emergency', 'slave-alpha', 'slave-bravo'].map(unitId =>
+            activated.stateForNetwork(unitId, 'network').linked)).toEqual([true, true, true]);
+        expect(activated.stateForNetwork('master', 'network').linked).toBeFalse();
+
+        operatingTurns = C3EM_MAX_OPERATING_TURNS;
+        const finalOperatingTurn = build();
+        expect(finalOperatingTurn.effectiveEmergencyMasterForNetwork('network'))
+            .toEqual({ unitId: 'emergency', compIndex: 0 });
+        expect(['slave-alpha', 'slave-bravo'].map(unitId =>
+            finalOperatingTurn.stateForNetwork(unitId, 'network').linked)).toEqual([true, true]);
+
+        operatingTurns += 1;
+        const expired = build();
+        expect(expired.effectiveEmergencyMasterForNetwork('network')).toBeUndefined();
+        expect(['slave-alpha', 'slave-bravo'].map(unitId =>
+            expired.stateForNetwork(unitId, 'network').linked)).toEqual([false, false]);
     });
 });
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { LocationId } from '../entity/entity-identifiers';
-import { getMekLocationParent } from '../entity/types';
 import type { LocationRuntimeState } from './runtime-state';
 interface MekLocationTopology {
     readonly locations: ReadonlyMap<LocationId, Readonly<{
@@ -10,6 +9,7 @@ interface MekLocationTopology {
         readonly code: string;
         readonly internalPoints: number;
     }>>;
+    readonly destructionParentLocationIdByLocation: ReadonlyMap<LocationId, LocationId | null>;
 }
 
 export interface MekLocationPhysicalStateView {
@@ -17,17 +17,14 @@ export interface MekLocationPhysicalStateView {
     blownOff(locationId: LocationId): boolean;
 }
 
-/** Stable entity-topology parent lookup shared by every Mek runtime-state boundary. */
-export function mekLocationParentId(
+/** Stable dependent-destruction lookup shared by every Mek runtime-state boundary. */
+export function mekLocationDestructionParentId(
     index: MekLocationTopology,
     locationId: LocationId,
 ): LocationId | null {
-    const location = index.locations.get(locationId);
-    if (!location) return null;
-    const locations = [...index.locations.values()];
-    const parentCode = getMekLocationParent(locations.map(candidate => candidate.code), location.code);
-    if (parentCode === null) return null;
-    return locations.find(candidate => candidate.code === parentCode)?.id ?? null;
+    return index.locations.has(locationId)
+        ? index.destructionParentLocationIdByLocation.get(locationId) ?? null
+        : null;
 }
 
 /**
@@ -64,6 +61,6 @@ function isPhysicallyDestroyed(
     visited.add(locationId);
     if (view.blownOff(locationId)
         || view.internalDamage(locationId) >= definition.internalPoints) return true;
-    const parentId = mekLocationParentId(index, locationId);
+    const parentId = mekLocationDestructionParentId(index, locationId);
     return parentId !== null && isPhysicallyDestroyed(index, parentId, view, visited);
 }

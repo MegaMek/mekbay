@@ -20,7 +20,6 @@ import { isRiscLaserPulseModule } from '../../risc-laser-mode.model';
 import { supportVariableSizeLabel } from '../../support-equipment.model';
 import { isSponsonTurretEquipment } from '../../turret-equipment.model';
 import { isHarJelEquipment, isMassEquipment } from '../../utility-equipment.model';
-import { isVariableSizeEquipment } from '../../variable-size-equipment.model';
 import { isFireControlEquipment } from './fire-control';
 
 const VARIABLE_SIZE_NUMBER_FORMAT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 });
@@ -48,7 +47,7 @@ export function isPrintableLargeCraftMisc(equipment: MiscEquipment): boolean {
 /** Formats the mount-sensitive short name exported as a large-craft feature. */
 export function largeCraftMiscFeatureName(equipment: MiscEquipment, size: number): string {
   const name = equipment.shortName;
-  if (!isVariableSizeEquipment(equipment)) return name;
+  if (!equipment.hasFlag('F_VARIABLE_SIZE')) return name;
   if (isMechanicalJumpBoosterEquipment(equipment)) return `${name} (${Math.trunc(size)} MP)`;
   const supportLabel = supportVariableSizeLabel(equipment, size);
   if (supportLabel !== null) return supportLabel;

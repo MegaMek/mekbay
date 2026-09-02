@@ -7,8 +7,7 @@ import { WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import type { BaseEntity } from '../models/entity/base-entity';
-import type { MekRecordSheetSnapshot } from '../models/runtime/mek-record-sheet';
-import { CORE_2026_GAME_RULES, TW_GAME_RULES, type PhysicalLocationRow } from '../models/rules/game-rules';
+import { TW_GAME_RULES, type PhysicalLocationRow } from '../models/rules/game-rules';
 import { clusterHits } from './cluster-hit-table';
 import { isHagEquipment } from '../models/hag-mode.model';
 import { isApolloEquipment } from '../models/apollo-mode.model';
@@ -162,8 +161,6 @@ const RECORD_SHEET_PHYSICAL_ROWS: Readonly<Record<MekHitLocationTable, readonly 
     tripod: TRIPOD_RECORD_SHEET_PHYSICAL_ROWS,
 };
 
-export const PHYSICAL_LOCATION_ROWS: readonly PhysicalLocationRow[] = CORE_2026_GAME_RULES.physicalLocationRows;
-
 const NOTE_TEXT: Readonly<Record<string, string>> = {
     tripodLeg: '† For a tripod, apply the indicated modifier when determining the leg hit.',
     artemisIV: 'Artemis IV ammunition modifies the cluster-hit roll as described by the rules.',
@@ -257,19 +254,6 @@ export function clusterTableForUnit(unit: Pick<UnitSummary, 'type' | 'subtype' |
             : unit.subtype.startsWith('Quad') ? 'quad' : 'biped'
         : undefined;
     return clusterTableForEquipment(hitLocationTable, equipment);
-}
-
-/** Derives reference-table facts from the detached record-sheet projection. */
-export function clusterTableForMekRecordSheet(
-    snapshot: MekRecordSheetSnapshot,
-): ClusterTableData {
-    return clusterTableForEquipment(
-        snapshot.identity.form === 'tripod' ? 'tripod'
-            : snapshot.identity.form === 'quad' || snapshot.identity.form === 'quadvee' ? 'quad' : 'biped',
-        snapshot.equipment
-            .map(component => component.equipment)
-            .filter((equipment): equipment is Equipment => equipment !== undefined),
-    );
 }
 
 /** Derives the printed hit-location and cluster columns directly from a live Mek. */

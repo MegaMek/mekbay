@@ -21,10 +21,10 @@ import type {
     SystemDamageTrackId,
 } from '../entity/entity-identifiers';
 import { getMekLocationLabel } from '../entity/types/mek';
-import type { NonMekCrewRuntimeState, NonMekUnitCommand, NonMekUnitRuntimeState } from './non-mek-unit-instance';
+import type { NonMekUnitCommand, NonMekUnitRuntimeState } from './non-mek-unit-instance';
 import type { CBTUnitCommand } from './unit-instance';
 import type { CrewAssignment } from './crew-assignment';
-import { isCrewDeathCommitted, type CBTCrewRuntimeState } from './cbt-unit-runtime';
+import { CrewMember, type CrewMemberRuntimeState } from '../crew-member.model';
 import { serializeUnitCover } from '../unit-cover.model';
 import type { EquipmentRowOrderState } from './equipment-row-order';
 import {
@@ -91,20 +91,21 @@ function componentHistoryTarget(componentId: ComponentId): string {
     return createSavedTargetRef('component', componentId);
 }
 
-function crewStateCode(state: CBTCrewRuntimeState | NonMekCrewRuntimeState): number {
-    return (state.unconscious ? 1 : 0)
-        | (state.ejected ? 2 : 0)
-        | (isCrewDeathCommitted(state) ? 4 : 0)
-        | ('killed' in state && state.killed ? 8 : 0)
-        | ('stunned' in state && state.stunned ? 16 : 0);
+function crewStateCode(unit: CBTUnit, state: CrewMemberRuntimeState): number {
+    switch (CrewMember.from(state).effectiveState()) {
+        case 'dead': return isCBTNonMekUnit(unit) ? 4 : 3;
+        case 'ejected': return 2;
+        case 'unconscious': return isCBTNonMekUnit(unit) ? 5 : 1;
+        default: return 0;
+    }
 }
 
 function crewRuntimeHistory(
     instanceId: string,
     unit: CBTUnit,
     positionId: CrewPositionId,
-    before: CBTCrewRuntimeState | NonMekCrewRuntimeState,
-    after: CBTCrewRuntimeState | NonMekCrewRuntimeState,
+    before: CrewMemberRuntimeState,
+    after: CrewMemberRuntimeState,
 ): RuntimeHistoryEventInput {
     const occurrence = unit.getIndex().crewPositions.get(positionId)?.occurrence ?? 0;
     return unitHistory(
@@ -113,8 +114,8 @@ function crewRuntimeHistory(
         occurrence,
         before.wounds,
         after.wounds,
-        crewStateCode(before),
-        crewStateCode(after),
+        crewStateCode(unit, before),
+        crewStateCode(unit, after),
     );
 }
 

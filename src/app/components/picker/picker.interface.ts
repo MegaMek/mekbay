@@ -173,8 +173,3 @@ export type PickerInstance = ChoicePickerInstance | NumericPickerInstance;
 export function isChoicePickerInstance(instance: PickerInstance): instance is ChoicePickerInstance {
     return 'values' in instance.component;
 }
-
-/** Type guard to check if an instance is a NumericPickerInstance */
-export function isNumericPickerInstance(instance: PickerInstance): instance is NumericPickerInstance {
-    return 'min' in instance.component && 'max' in instance.component;
-}

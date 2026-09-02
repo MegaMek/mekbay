@@ -6,11 +6,12 @@ import { CBTForce } from '../models/cbt-force.model';
 import type { InventoryControlTargetRosterRow } from '../models/cbt-force.types';
 import type { ForceSlot } from '../models/force-slot.model';
 import {
-    INVENTORY_CONTROL_TARGET_COLORS,
-    INVENTORY_CONTROL_TARGET_MAX_COUNT,
-    getInventoryControlTargetLetter,
-} from '../models/inventory-control-runtime-state.model';
-import type { EncounterTarget, TargetRegistryCommandResult } from '../models/runtime/encounter-runtime';
+    DEFAULT_ENCOUNTER_TARGET_COLORS,
+    encounterTargetLetter,
+    MAX_ENCOUNTER_TARGETS,
+    type EncounterTarget,
+    type TargetRegistryCommandResult,
+} from '../models/runtime/encounter-runtime';
 import { LoggerService } from './logger.service';
 import { ToastService } from './toast.service';
 
@@ -107,7 +108,7 @@ export class InventoryControlOpforService {
         const existingById = new Map(currentTargets.map(target => [target.id, target]));
         const usedLetters = new Set(manualTargets.map(target => target.letter));
         const manualTargetIds = new Set(manualTargets.map(target => target.id));
-        const capacity = Math.max(0, INVENTORY_CONTROL_TARGET_MAX_COUNT - manualTargets.length);
+        const capacity = Math.max(0, MAX_ENCOUNTER_TARGETS - manualTargets.length);
         const opforTargets = (enabled
             ? enemyRoster.filter(row => !manualTargetIds.has(row.targetId)).slice(0, capacity)
             : [])
@@ -122,7 +123,7 @@ export class InventoryControlOpforService {
                     letter,
                     name: row.name,
                     color: existing?.color
-                        ?? INVENTORY_CONTROL_TARGET_COLORS[enemyIndex % INVENTORY_CONTROL_TARGET_COLORS.length],
+                        ?? DEFAULT_ENCOUNTER_TARGET_COLORS[enemyIndex % DEFAULT_ENCOUNTER_TARGET_COLORS.length],
                     source: 'opfor',
                     readOnly: true,
                     unitType: row.unitType,
@@ -141,7 +142,7 @@ export class InventoryControlOpforService {
 
     private firstUnusedLetter(usedLetters: ReadonlySet<string>): string {
         for (let index = 0; ; index++) {
-            const letter = getInventoryControlTargetLetter(index);
+            const letter = encounterTargetLetter(index);
             if (!usedLetters.has(letter)) return letter;
         }
     }

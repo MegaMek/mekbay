@@ -48,7 +48,7 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
 import { FORCE_NOTE_MAX_LENGTH } from '../../models/force-serialization';
 import { naturalCompare } from '../../utils/sort.util';
 import { formatForceMembersBvPv } from '../../utils/force-viewer-bv-pv-display.util';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import { CBTForce } from '../../models/cbt-force.model';
 import { GameSystem } from '../../models/common.model';
 import { LongPressDirective } from '../../directives/long-press.directive';

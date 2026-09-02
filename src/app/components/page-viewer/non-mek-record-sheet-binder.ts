@@ -16,7 +16,7 @@ import type {
 } from '../../models/runtime/non-mek-record-sheet';
 import type { EquipmentPanelComponent, EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
 import {
-    equipmentPanelRuntimeTarget,
+    projectTargetingTarget,
     equipmentWeaponToHitModifier,
     projectWeaponTargetPresentation,
 } from '../../models/runtime/equipment-panel';
@@ -813,7 +813,7 @@ function renderInventorySelections(
             : undefined;
         const runtimeTarget = selectedTarget === undefined
             ? null
-            : equipmentPanelRuntimeTarget(selectedTarget, panel.ruleset);
+            : projectTargetingTarget(selectedTarget, panel.ruleset);
         const presentation = uniformSelection && selection !== undefined
             ? projectWeaponTargetPresentation(
                 weapons[0],

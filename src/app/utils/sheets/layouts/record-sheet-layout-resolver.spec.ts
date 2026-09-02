@@ -21,31 +21,31 @@ import { LargeAeroRecordSheetLayout } from './large-aero-record-sheet-layout';
 import { MekRecordSheetLayout } from './mek-record-sheet-layout';
 import { NavalRecordSheetLayout } from './naval-record-sheet-layout';
 import { ProtoMekRecordSheetLayout } from './protomek-record-sheet-layout';
-import { recordSheetLayoutId } from './record-sheet-layout-resolver';
+import { resolveRecordSheetLayout } from './record-sheet-layout-resolver';
 
 describe('record-sheet layout resolver', () => {
     it('selects the requested family classes', () => {
-        expect(recordSheetLayoutId(new TestBipedMekEntity())).toBe('mek');
-        expect(recordSheetLayoutId(new TestTankEntity())).toBe('combat-vehicle');
-        expect(recordSheetLayoutId(new TestVtolEntity())).toBe('combat-vehicle');
-        expect(recordSheetLayoutId(new TestSupportNavalEntity())).toBe('naval');
-        expect(recordSheetLayoutId(new TestProtoMekEntity())).toBe('protomek');
-        expect(recordSheetLayoutId(new TestBattleArmorEntity())).toBe('battle-armor');
-        expect(recordSheetLayoutId(new TestInfantryEntity())).toBe('conventional-infantry');
-        expect(recordSheetLayoutId(new TestAeroSpaceFighterEntity())).toBe('aero-fighter');
-        expect(recordSheetLayoutId(new TestDropShipEntity())).toBe('large-aero');
+        expect(resolveRecordSheetLayout(new TestBipedMekEntity()).id).toBe('mek');
+        expect(resolveRecordSheetLayout(new TestTankEntity()).id).toBe('combat-vehicle');
+        expect(resolveRecordSheetLayout(new TestVtolEntity()).id).toBe('combat-vehicle');
+        expect(resolveRecordSheetLayout(new TestSupportNavalEntity()).id).toBe('naval');
+        expect(resolveRecordSheetLayout(new TestProtoMekEntity()).id).toBe('protomek');
+        expect(resolveRecordSheetLayout(new TestBattleArmorEntity()).id).toBe('battle-armor');
+        expect(resolveRecordSheetLayout(new TestInfantryEntity()).id).toBe('conventional-infantry');
+        expect(resolveRecordSheetLayout(new TestAeroSpaceFighterEntity()).id).toBe('aero-fighter');
+        expect(resolveRecordSheetLayout(new TestDropShipEntity()).id).toBe('large-aero');
     });
 
     it('routes marine motive types to the naval owner even when parsed as Tanks', () => {
         for (const motiveType of ['Naval', 'Hydrofoil', 'Submarine'] as const) {
             const entity = new TestTankEntity();
             entity.motiveType.set(motiveType);
-            expect(recordSheetLayoutId(entity)).withContext(motiveType).toBe('naval');
+            expect(resolveRecordSheetLayout(entity).id).withContext(motiveType).toBe('naval');
         }
     });
 
     it('retains a safe generic fallback for unsupported entity families', () => {
-        expect(recordSheetLayoutId(new TestHandheldWeaponEntity())).toBe('generic');
+        expect(resolveRecordSheetLayout(new TestHandheldWeaponEntity()).id).toBe('generic');
     });
 
     it('keeps a concrete rendering hook in every supported family owner', () => {

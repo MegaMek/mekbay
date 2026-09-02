@@ -12,7 +12,7 @@ import {
     type CBTNonMekUnitSnapshot,
     type CBTUnitSnapshot,
 } from '../models/cbt-unit-snapshot';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { ArmorFaceId, LocationId } from '../models/entity/entity-identifiers';
 import type { DataService } from '../services/data.service';
@@ -506,8 +506,7 @@ async function applyMulCrew(
             wounds: Math.max(0, Math.min(6, value.hits)),
             unconscious: false,
             ejected: value.ejected,
-            killed: false,
-            stunned: false,
+            dead: false,
         });
     }
 }

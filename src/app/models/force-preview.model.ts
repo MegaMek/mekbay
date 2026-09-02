@@ -24,7 +24,7 @@ import type {
 import type { UnitSummary } from './unit-summary.model';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { uuidv7 } from '../utils/uuid.util';
-import type { CrewMemberDetails } from './crew.model';
+import type { CrewMemberDetails } from './crew-member.model';
 import type { SerializedCBTForceV2 } from './runtime/persistence-v2';
 
 export interface ForcePreviewUnit {

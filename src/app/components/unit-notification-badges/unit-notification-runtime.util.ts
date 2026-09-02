@@ -13,7 +13,7 @@ import {
 import { AmmoEquipment } from '../../models/equipment.model';
 import { getMekLocationLabel } from '../../models/entity/types';
 import { isAeroEntity } from '../../models/entity/utils/entity-type-guards';
-import { isCrewDeathCommitted } from '../../models/runtime/cbt-unit-runtime';
+import { MAX_CREW_WOUNDS } from '../../models/crew-member.model';
 import { projectAeroRuntimeRules } from '../../models/rules/aero-runtime-rules';
 import { projectAeroHeatAutomationChecks } from '../../models/runtime/aero-heat-automation-rules';
 import { MEK_TORSO_CRIPPLING_RULE_CHECK_KEY } from '../../models/runtime/mek-destruction-state-v2';
@@ -22,7 +22,6 @@ import { mekConsciousnessTarget, mekHeatAutomationChecks } from '../../models/ru
 import { projectMekLifeSupportPilotDamage } from '../../models/runtime/mek-life-support';
 import type { MekAutomaticFallV2, MekPilotCheckV2 } from '../../models/runtime/mek-movement-psr-v2';
 import { projectNonMekEndTurnHeat } from '../../models/runtime/non-mek-unit-instance';
-import { MAX_MEK_CREW_WOUNDS } from '../../models/runtime/runtime-state';
 import { actionableMekPilotChecks } from '../page-viewer/overlay/page-turn-summary.util';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 
@@ -130,7 +129,7 @@ function projectMekNotifications(
         const state = snapshot.query.crewState(position.id);
         return !state.ejected
             && !state.unconscious
-            && state.wounds < MAX_MEK_CREW_WOUNDS;
+            && state.wounds < MAX_CREW_WOUNDS;
     }) || movement.kind === 'supported' && movement.controlledByDrone;
     const pendingChecks = movementState.checks.filter(check => check.status === 'pending');
     const actionableChecks = actionableMekPilotChecks(pendingChecks, automaticFall);
@@ -206,7 +205,7 @@ function projectMekEndTurnChecks(
         : automaticHeat;
     const consciousPilot = [...snapshot.index.crewPositions.values()].some(position => {
         const state = snapshot.query.crewState(position.id);
-        return !state.ejected && !state.unconscious && !isCrewDeathCommitted(state);
+        return state.isAvailable();
     });
     const hasExplosiveAmmo = [...snapshot.index.components.entries()].some(([componentId, component]) => {
         const equipment = component.mount?.equipment;
@@ -326,12 +325,10 @@ function projectAeroEndTurnChecks(
     if (!rules.heat.tracked) return Object.freeze([]);
     const activeController = [...snapshot.index.crewPositions.values()].some(position => {
         const common = snapshot.query.crewState(position.id);
-        const crew = snapshot.state.crew.get(position.id);
         return !common.ejected
-            && common.wounds < MAX_MEK_CREW_WOUNDS
+            && common.wounds < MAX_CREW_WOUNDS
             && !common.unconscious
-            && !crew?.killed
-            && !crew?.stunned;
+            && !common.isDeathCommitted();
     });
     const hasExplosiveAmmo = [...snapshot.index.components.values()].some(component => {
         const ammo = component.mount.equipment;
@@ -377,7 +374,7 @@ function dueCrewRecoveries(snapshot: CBTUnitSnapshot): readonly TooltipLine[] {
             const state = snapshot.query.crewState(position.id);
             const target = mekConsciousnessTarget(state.wounds);
             const readyTurn = state.recoveryReadyTurn;
-            if (!state.unconscious || state.ejected || isCrewDeathCommitted(state)
+            if (!state.unconscious || state.ejected || state.isDeathCommitted()
                 || target === undefined || readyTurn === null
                 || readyTurn !== undefined && readyTurn > turn) return [];
             const assignment = snapshot.crewAssignment.positions.find(candidate =>

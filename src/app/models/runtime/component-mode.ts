@@ -80,21 +80,6 @@ export function componentModeDefinition(
     });
 }
 
-export function binaryComponentModes(definition: ComponentModeDefinition): {
-    readonly enabled: string;
-    readonly disabled: string;
-} {
-    const disabled = definition.modes.find(mode => {
-        const value = mode.toLowerCase();
-        return value === 'off' || value === 'disabled';
-    });
-    const enabled = definition.modes.filter(mode => mode !== disabled);
-    if (!disabled || enabled.length !== 1) {
-        throw new Error(`Component ${definition.componentId} is not a binary-mode component`);
-    }
-    return Object.freeze({ enabled: enabled[0], disabled });
-}
-
 /** Generic component-mode plumbing; equipment modules own every actual rule. */
 export abstract class ComponentModeHandler extends EquipmentInteractionHandler {
     readonly kind = 'component-mode';

@@ -35,15 +35,20 @@ import {
 import { createUnitInstanceId } from './runtime/runtime-state';
 import { CBTUnitService } from '../services/cbt-unit.service';
 import { CBTMekUnit } from './runtime/cbt-mek-unit';
-import { isCBTMekUnit, type CBTUnit } from './runtime/cbt-unit';
+import { CBTNonMekUnit } from './runtime/cbt-non-mek-unit';
+import { isCBTMekUnit, isCBTNonMekUnit, type CBTUnit } from './runtime/cbt-unit';
 import { jsonValuesEqual } from '../utils/json-value.util';
-import type { JsonValue } from './persisted-unit-state';
 import {
     prepareCBTForcePersistenceV2 as prepareCurrentCBTForcePersistenceV2,
     prepareDirectUnitAdmission,
     type PreparedCBTForcePersistenceV2,
 } from './runtime/force-persistence-boundary';
-import { scenarioRuleset, type DeploymentConfiguration, type ScenarioRules } from './runtime/unit-state-initializer';
+import {
+    applicationScenarioRules,
+    scenarioRuleset,
+    type DeploymentConfiguration,
+    type ScenarioRules,
+} from './runtime/unit-state-initializer';
 import type { ComponentId } from './entity/entity-identifiers';
 import type { NonMekUnitCommand } from './runtime/non-mek-unit-instance';
 import type {
@@ -91,7 +96,6 @@ import {
     runtimeHistoryMessageUnitId,
     type RuntimeHistoryTargetKind,
 } from './runtime/runtime-history';
-import { scenarioRulesFromPersistence } from './runtime/cbt-force-scenario';
 import {
     captureMekComponentModes,
     changedComponentModeHistory,
@@ -469,7 +473,8 @@ export class CBTForce extends Force<never> {
             const current = context.previous;
             if (!current) return false;
 
-            const previousScenario = scenarioRulesFromPersistence(current.scenarioRules.values);
+            const previousScenario = this.unitStore.scenarioRules();
+            if (!previousScenario) return false;
             const scenario: ScenarioRules = Object.freeze({
                 ...previousScenario,
                 options: Object.freeze({
@@ -477,16 +482,14 @@ export class CBTForce extends Force<never> {
                     ...requested,
                 }),
             });
-            const scenarioValues: JsonValue = Object.freeze({
-                id: scenario.id,
-                ruleset: scenarioRuleset(scenario),
-                options: structuredClone(scenario.options!),
-            });
-            if (jsonValuesEqual(current.scenarioRules.values, scenarioValues)) return false;
+            if (previousScenario.options?.['forcedWithdrawal'] === requested.forcedWithdrawal
+                && previousScenario.options?.['sprinting'] === requested.sprinting) return false;
 
             let replacements: ReadonlyMap<string, CBTUnit>;
             try {
-                const rows = await Promise.all(this.unitStore.liveUnits().flatMap(unit =>
+                const rows = await Promise.all(this.unitStore.liveUnits().flatMap<
+                    Promise<readonly [string, CBTUnit]>
+                >(unit =>
                     isCBTMekUnit(unit)
                         ? [CBTMekUnit.cloneForOwner(unit, scenario).then(candidate => {
                             const movement = candidate.getInstance().query().mekMovementPsr();
@@ -510,33 +513,39 @@ export class CBTForce extends Force<never> {
                             }
                             return [unit.instanceId, candidate] as const;
                         })]
-                        : []));
+                        : isCBTNonMekUnit(unit)
+                            ? [Promise.resolve([
+                                unit.instanceId,
+                                CBTNonMekUnit.cloneForOwner(unit, scenario),
+                            ] as const)]
+                            : []));
                 replacements = new Map(rows);
             } catch {
                 return false;
             }
 
-            let envelope: SerializedCBTForceV2;
+            let envelope = current;
             try {
-                envelope = await validateSerializedCBTForceV2({
-                    ...current,
-                    forceRevision: nextForceRevision(current.forceRevision),
-                    scenarioRules: Object.freeze({
-                        ...current.scenarioRules,
-                        values: scenarioValues,
-                    }),
-                    units: current.units.map(entry => {
-                        const ready = replacements.get(entry.instanceId)
-                            ?? this.unitStore.cbtUnit(entry.instanceId);
-                        if (!ready) throw new Error(`Scenario rebinding lost runtime ${entry.instanceId}`);
-                        const unit = ready.serialize();
-                        return Object.freeze({
+                const units = current.units.map(entry => {
+                    const ready = replacements.get(entry.instanceId)
+                        ?? this.unitStore.cbtUnit(entry.instanceId);
+                    if (!ready) throw new Error(`Scenario rebinding lost runtime ${entry.instanceId}`);
+                    const unit = ready.serialize();
+                    return jsonValuesEqual(unit, entry.unit)
+                        ? entry
+                        : Object.freeze({
                             instanceId: entry.instanceId,
                             stateRevision: unit.stateRevision,
                             unit,
                         });
-                    }),
                 });
+                if (units.some((entry, index) => entry !== current.units[index])) {
+                    envelope = await validateSerializedCBTForceV2({
+                        ...current,
+                        forceRevision: nextForceRevision(current.forceRevision),
+                        units,
+                    });
+                }
             } catch {
                 return false;
             }
@@ -545,7 +554,7 @@ export class CBTForce extends Force<never> {
             this.commitCBTForceMutation(
                 context,
                 prepared,
-                () => this.unitStore.replace(envelope, replacements),
+                () => this.unitStore.replace(envelope, replacements, scenario),
             );
             this.emitChangedFromReservedIntent(Object.freeze([...replacements.keys()]));
             return true;
@@ -668,9 +677,6 @@ export class CBTForce extends Force<never> {
         if (destination.units.some(entry => entry.instanceId === instanceId)) {
             return rejectedUnitTransfer('INSTANCE_ID_COLLISION');
         }
-        if (!jsonValuesEqual(source.scenarioRules, destination.scenarioRules)) {
-            return rejectedUnitTransfer('SCENARIO_MISMATCH');
-        }
         const sourceRosterMember = source.roster.groups
             .flatMap(group => group.members)
             .find(member => member.instanceId === instanceId);
@@ -679,14 +685,15 @@ export class CBTForce extends Force<never> {
             return rejectedUnitTransfer('NOT_READY');
         }
 
+        const destinationScenario = target.unitStore.scenarioRules();
+        if (!destinationScenario) return rejectedUnitTransfer('NOT_READY');
         let candidate: CBTUnit;
         try {
             candidate = isCBTMekUnit(sourceUnit)
-                ? await CBTMekUnit.cloneForOwner(
-                    sourceUnit,
-                    scenarioRulesFromPersistence(destination.scenarioRules.values),
-                )
-                : sourceUnit;
+                ? await CBTMekUnit.cloneForOwner(sourceUnit, destinationScenario)
+                : isCBTNonMekUnit(sourceUnit)
+                    ? CBTNonMekUnit.cloneForOwner(sourceUnit, destinationScenario)
+                    : sourceUnit;
             const targeting = candidate.planTargetingReconciliation(
                 target.queryInventoryControlTargetRegistry(),
             );
@@ -713,7 +720,6 @@ export class CBTForce extends Force<never> {
                 previous: destination,
                 liveUnits: target.unitStore.liveUnits(),
                 candidate,
-                scenarioRules: destination.scenarioRules.values,
                 ...(targetContext.typedEncounterState === undefined
                     ? {}
                     : { typedEncounterState: targetContext.typedEncounterState }),
@@ -747,7 +753,7 @@ export class CBTForce extends Force<never> {
             {
                 mutation: targetContext,
                 prepared: Object.freeze({ envelope: targetEnvelope, reused: false }),
-                install: () => target.unitStore.add(targetEnvelope, candidate),
+                install: () => target.unitStore.add(targetEnvelope, candidate, destinationScenario),
             },
         );
         this.runtimeJournal.prune(new Set(removal.plan.removedInstanceIds ?? [instanceId]));
@@ -914,20 +920,12 @@ export class CBTForce extends Force<never> {
             }
             let scenario: ScenarioRules;
             try {
-                scenario = installed
-                    ? scenarioRulesFromPersistence(installed.scenarioRules.values)
-                    : requestedScenario
-                        ?? (() => { throw new Error('Scenario rules are required for the first V2 force member'); })();
+                scenario = this.unitStore.scenarioRules()
+                    ?? requestedScenario
+                    ?? (() => { throw new Error('Application rules are required for the first V2 force member'); })();
             } catch (error) {
                 return directAdmissionFailure('CANDIDATE_PREPARATION_FAILED', errorMessage(error));
             }
-            const scenarioValues: JsonValue = Object.freeze({
-                id: scenario.id,
-                ruleset: scenarioRuleset(scenario),
-                ...(scenario.options === undefined
-                    ? {}
-                    : { options: structuredClone(scenario.options) }),
-            });
             let candidate: CBTUnit;
             try {
                 candidate = await this.injector.get(CBTUnitService).create({
@@ -973,7 +971,6 @@ export class CBTForce extends Force<never> {
                 previous: context.previous,
                 liveUnits,
                 candidate,
-                scenarioRules: scenarioValues,
                 ...(context.typedEncounterState === undefined
                     ? {}
                     : { typedEncounterState: context.typedEncounterState }),
@@ -1011,7 +1008,7 @@ export class CBTForce extends Force<never> {
             this.commitCBTForceMutation(
                 context,
                 materialized,
-                () => this.unitStore.add(materialized.envelope, candidate),
+                () => this.unitStore.add(materialized.envelope, candidate, scenario),
             );
             this.emitChangedFromReservedIntent();
             return Object.freeze({ kind: 'admitted' as const, instanceId });
@@ -1134,6 +1131,8 @@ export class CBTForce extends Force<never> {
     public getNonMekRecordSheetSnapshot(instanceId: string): NonMekRecordSheetSnapshot | null {
         const unit = this.getUnitSnapshot(instanceId);
         if (!unit || !hasNonMekRuntime(unit)) return null;
+        const owned = this.unitStore.nonMekUnit(instanceId);
+        if (!owned) return null;
         const adjustedBattleValue = this.getUnitAdjustedBattleValue(instanceId);
         const pristineBattleValue = this.getUnitPristineBattleValue(instanceId);
         if (adjustedBattleValue === null || pristineBattleValue === null) {
@@ -1149,6 +1148,7 @@ export class CBTForce extends Force<never> {
             adjustedBattleValue,
             pristineBattleValue,
             crew,
+            owned.getInstance().forcedWithdrawal,
         );
     }
 
@@ -1169,6 +1169,8 @@ export class CBTForce extends Force<never> {
             );
         }
         if (!hasNonMekRuntime(unit)) return null;
+        const owned = this.unitStore.nonMekUnit(instanceId);
+        if (!owned) return null;
         const crew = this.getUnitCrewAssignment(instanceId);
         if (!crew) throw new Error(`Non-Mek runtime ${instanceId} has no crew assignment`);
         return projectNonMekEquipmentPanel(
@@ -1178,6 +1180,7 @@ export class CBTForce extends Force<never> {
             unit.state,
             crew,
             registry,
+            owned.getInstance().forcedWithdrawal,
         );
     }
 
@@ -1795,6 +1798,7 @@ export class CBTForce extends Force<never> {
         const restored = await this.unitStore.restore(
             envelope,
             this.injector.get(CBTUnitService),
+            this.currentApplicationScenario(),
         );
         return Object.freeze({
             ...(restored.envelope === envelope
@@ -1889,7 +1893,11 @@ export class CBTForce extends Force<never> {
     protected override commitPreparedCBTForcePersistenceV2(
         prepared: PreparedCBTForcePersistenceV2,
     ): void {
-        this.unitStore.commit(prepared.envelope);
+        this.unitStore.commit(prepared.envelope, this.currentApplicationScenario());
+    }
+
+    private currentApplicationScenario(): ScenarioRules {
+        return applicationScenarioRules(this.injector.get(OptionsService).options());
     }
 
     protected override restoreCBTEncounterPersistence(entry: SerializedForceEncounterEntryV2): void {

@@ -276,12 +276,3 @@ export function getLayoutForUnitType(unitType: ASUnitTypeCode): UnitTypeLayoutCo
 export function getCardCountForUnitType(unitType: ASUnitTypeCode): number {
     return getLayoutForUnitType(unitType).cards.length;
 }
-
-/**
- * Checks if a unit type requires multiple cards.
- * @param unitType The Alpha Strike unit type code
- * @returns True if the unit type uses more than one card
- */
-export function isMultiCardUnit(unitType: ASUnitTypeCode): boolean {
-    return getCardCountForUnitType(unitType) > 1;
-}

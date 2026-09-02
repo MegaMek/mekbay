@@ -20,6 +20,12 @@ import type { CBTUnitInstance } from './unit-instance';
 
 export class VibrobladeHandler extends ComponentModeHandler {
     readonly id = 'vibroblade-handler';
+    override readonly flags = ['F_PHYSICAL_WEAPON'] as const;
+    override readonly anyFlags = [
+        'S_VIBRO_SMALL',
+        'S_VIBRO_MEDIUM',
+        'S_VIBRO_LARGE',
+    ] as const;
     override readonly priority = 20;
 
     applicableToComponent(definition: ComponentModeDefinition): boolean {

@@ -49,13 +49,6 @@ export class SvgExportUtil {
         this.openPngBlob(renderedPng.blob);
     }
 
-    static async sharePng(svgs: SVGSVGElement[], fileName: string, options: SvgPngRenderOptions = {}): Promise<void> {
-        const renderedPng = await this.generatePng(svgs, options);
-        if (!renderedPng) throw new Error('No PNG data was generated');
-
-        await this.sharePngBlob(renderedPng.blob, fileName);
-    }
-
     static async copyPngToClipboard(svgs: SVGSVGElement[], fileName = 'record-sheet', options: SvgPngRenderOptions = {}): Promise<void> {
         const renderedPng = await this.generatePng(svgs, {
             ...options,
@@ -64,10 +57,6 @@ export class SvgExportUtil {
         if (!renderedPng) throw new Error('No PNG data was generated');
 
         await this.copyPngBlobToClipboard(renderedPng.blob, fileName, renderedPng);
-    }
-
-    static async renderPngBlob(svgs: SVGSVGElement[], options: SvgPngRenderOptions = {}): Promise<Blob | null> {
-        return (await this.generatePng(svgs, options))?.blob ?? null;
     }
 
     static downloadPngBlob(pngBlob: Blob, fileName: string): void {

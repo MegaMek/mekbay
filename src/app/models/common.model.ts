@@ -85,13 +85,3 @@ export const heatLevels = [
     { min: 29, max: 29, class: 'heat29', color: '#FF1100', nightColor: '#F80A00' },
     { min: 30, max: Infinity, class: 'heat30', color: '#FF0000', nightColor: '#FF0000' }
 ];
-
-export const uidTranslations: { [key: string]: string } = {
-    'Engine': 'engine_hit_',
-    'Gyro': 'gyro_hit_',
-    'Sensors': 'sensor_hit_',
-    'Life Support': 'life_support_hit_',
-    'Avionics': 'avionics_hit_',
-    'Landing Gear': 'landing_gear_hit_',
-    'Cockpit': 'cockpit_hit_',
-};

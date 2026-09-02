@@ -18,7 +18,7 @@ import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-inter
 import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
 import type { ASUnitTypeCode } from '../../models/unit-summary.model';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
-import { DEFAULT_GUNNERY_SKILL } from '../../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL } from '../../models/crew-member.model';
 import {
     FormationAbilityAssignmentUtil,
     type FormationAssignmentPreview,

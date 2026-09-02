@@ -37,10 +37,6 @@ export function resolveRecordSheetLayout(entity: BaseEntity): RecordSheetLayout 
     return SPECIALIZED_LAYOUTS.find(layout => layout.matches(entity)) ?? GENERIC_LAYOUT;
 }
 
-export function recordSheetLayoutId(entity: BaseEntity): string {
-    return resolveRecordSheetLayout(entity).id;
-}
-
 /** Family-owned page geometry exposed through the same router as generation. */
 export function recordSheetLayoutProfile(
     entity: BaseEntity,

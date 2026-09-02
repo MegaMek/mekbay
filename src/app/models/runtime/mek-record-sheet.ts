@@ -3,7 +3,7 @@
 
 import { compareText } from '../../utils/string.util';
 import type { EquipmentStatus } from '../equipment-status.model';
-import type { CrewMemberState } from '../crew.model';
+import { CrewMember, type CrewMemberRuntimeState, type CrewMemberState } from '../crew-member.model';
 import type {
     ArmorFaceId,
     ComponentId,
@@ -25,7 +25,6 @@ import {
     type MekLocationConditionKey,
 } from './runtime-state';
 import type { MekUnitQueryPort } from './unit-instance';
-import { isCrewDeathCommitted, type CBTCrewRuntimeState } from './cbt-unit-runtime';
 import {
     projectMekEquipmentComponents,
     type EquipmentPanelComponent,
@@ -38,7 +37,7 @@ import type { TargetRegistrySnapshot } from './encounter-runtime';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import { mekAmmoLoadouts } from './mek-ammo';
 import { mekCriticalSlotHittable, mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
-import { mekLocationParentId } from './mek-location-state-kernel';
+import { mekLocationDestructionParentId } from './mek-location-state-kernel';
 import { projectMekLifeSupportPilotDamage, type MekLifeSupportPilotDamage } from './mek-life-support';
 import { isModularArmorEquipment, MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
 
@@ -130,7 +129,7 @@ export interface MekRecordSheetCrewPosition {
     readonly role: string;
     readonly gunnery: number;
     readonly piloting: number;
-    readonly state: CBTCrewRuntimeState;
+    readonly state: CrewMemberRuntimeState;
     /** Rule-derived display state, including lethal wounds and cockpit loss. */
     readonly effectiveState: Extract<CrewMemberState, 'healthy' | 'ejected' | 'unconscious' | 'dead'>;
 }
@@ -289,7 +288,7 @@ export function projectMekRecordSheet(
                     previewRemaining: query.remainingArmor(faceId, 'preview'),
                 });
             });
-            const parentId = mekLocationParentId(index, location.id);
+            const parentId = mekLocationDestructionParentId(index, location.id);
             const committedParentStatus = parentId === null
                 ? 'available'
                 : query.locationStatus(parentId, 'committed');
@@ -566,11 +565,10 @@ function projectMekUnitStatusFromDestruction(
 function effectiveMekCrewState(
     entity: MekEntity,
     occurrence: number,
-    state: CBTCrewRuntimeState,
+    state: CrewMemberRuntimeState,
     mainCockpitUnavailable: boolean,
     commandConsoleUnavailable: boolean,
 ): MekRecordSheetCrewPosition['effectiveState'] {
-    if (isCrewDeathCommitted(state)) return 'dead';
     const hasCommandConsole = entity.mountedCockpit().hasCommandConsoleBonus;
     const cockpitUnavailable = !hasCommandConsole
         ? mainCockpitUnavailable
@@ -579,10 +577,7 @@ function effectiveMekCrewState(
             : occurrence === 1
                 ? commandConsoleUnavailable
                 : false;
-    if (cockpitUnavailable) return 'dead';
-    if (state.ejected) return 'ejected';
-    if (state.unconscious) return 'unconscious';
-    return 'healthy';
+    return CrewMember.from(state).effectiveState(cockpitUnavailable);
 }
 
 function safeCurrentMekBattleValue(query: MekUnitQueryPort): number | null {

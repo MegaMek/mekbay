@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { CrewMemberState } from './crew.model';
+import type { CrewMemberState } from './crew-member.model';
 import type { MekLocationConditionKey } from './runtime/runtime-state';
 import type { UnitConditionKey } from './unit-condition.model';
 

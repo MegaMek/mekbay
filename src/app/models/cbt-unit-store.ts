@@ -56,7 +56,6 @@ import { currentUnitBaseBattleValue, pristineUnitBattleValue } from './cbt-force
 import type { CBTUnitSnapshot } from './cbt-unit-snapshot';
 import type { EquipmentRowOrderGroup } from './runtime/equipment-row-order';
 import type { RuntimeCommandCheckpoint } from './runtime/runtime-command-session';
-import { scenarioRulesFromPersistence } from './runtime/cbt-force-scenario';
 import { sameCBTUnitGameplayState } from './runtime/cbt-force-runtime-history';
 import type {
     AttackerTargetingCommandResult,
@@ -115,8 +114,8 @@ export class CBTUnitStore {
     public async restore(
         envelope: SerializedCBTForceV2,
         cbtUnits: CBTUnitService,
+        scenario: ScenarioRules,
     ): Promise<RestoredCBTUnits> {
-        const scenario = scenarioRulesFromPersistence(envelope.scenarioRules.values);
         const entries = envelope.units;
         const invalidStateUnitIds = new Set<string>();
         const warnings = new Set<string>();
@@ -298,15 +297,16 @@ export class CBTUnitStore {
         return unit && isCBTNonMekUnit(unit) ? unit : null;
     }
 
-    public commit(envelope: SerializedCBTForceV2): void {
+    public commit(envelope: SerializedCBTForceV2, scenario?: ScenarioRules): void {
         const binding = this.binding;
         const expected = envelope.units;
         if (!binding) {
             if (expected.length > 0) throw new Error('Cannot install ready entries without their runtimes');
+            if (!scenario) throw new Error('Cannot install a CBT owner without application rules');
             this.binding = Object.freeze({
                 envelope,
                 units: new Map(),
-                scenario: scenarioRulesFromPersistence(envelope.scenarioRules.values),
+                scenario,
             });
             return;
         }
@@ -347,6 +347,7 @@ export class CBTUnitStore {
     public add(
         envelope: SerializedCBTForceV2,
         candidate: CBTUnit,
+        scenario: ScenarioRules,
     ): void {
         const existing = this.binding
             ? this.liveUnits()
@@ -359,7 +360,7 @@ export class CBTUnitStore {
             existing.map(unit => [unit.instanceId, unit] as const),
         );
         units.set(candidate.instanceId, candidate);
-        this.setUnits(envelope, units);
+        this.setUnits(envelope, units, scenario);
     }
 
     public remove(
@@ -413,6 +414,7 @@ export class CBTUnitStore {
                     row.unit,
                     current.getUnit(),
                     current.uuid,
+                    binding.scenario,
                     current.getNativeSource(),
                 );
             } else {
@@ -432,6 +434,7 @@ export class CBTUnitStore {
     public replace(
         envelope: SerializedCBTForceV2,
         replacements: ReadonlyMap<string, CBTUnit>,
+        scenario?: ScenarioRules,
     ): void {
         if (!this.binding) throw new Error('The force has no installed V2 unit owner');
         const units = new Map(this.liveUnits().map(unit => [unit.instanceId, unit] as const));
@@ -441,21 +444,24 @@ export class CBTUnitStore {
             }
             units.set(instanceId, replacement);
         }
-        this.setUnits(envelope, units);
+        this.setUnits(envelope, units, scenario);
     }
 
     private setUnits(
         envelope: SerializedCBTForceV2,
         units: ReadonlyMap<string, CBTUnit>,
+        scenario?: ScenarioRules,
     ): void {
         if (envelope.units.length !== units.size
             || envelope.units.some(entry => !units.has(entry.instanceId))) {
             throw new Error('CBT envelope and installed units disagree');
         }
+        const effectiveScenario = scenario ?? this.binding?.scenario;
+        if (!effectiveScenario) throw new Error('CBT runtime owner has no application rules');
         this.binding = Object.freeze({
             envelope,
             units,
-            scenario: scenarioRulesFromPersistence(envelope.scenarioRules.values),
+            scenario: effectiveScenario,
         });
         this.c3.reset();
     }

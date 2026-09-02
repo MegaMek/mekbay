@@ -51,10 +51,8 @@ describe('CBTForceMember record-sheet ownership', () => {
 
         expect(member.recordSheets()).toEqual([front, reverse]);
         expect(member.recordSheet()).toBe(front);
-        expect(member.recordSheetIndex()).toBe(0);
 
         expect(member.showNextRecordSheet()).toBe(reverse);
-        expect(member.recordSheetIndex()).toBe(1);
         expect(member.showNextRecordSheet()).toBe(front);
 
         await member.loadRecordSheets(create);

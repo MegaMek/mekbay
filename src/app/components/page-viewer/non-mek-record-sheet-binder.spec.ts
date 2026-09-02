@@ -630,7 +630,7 @@ function stateSnapshot(wounds: number): NonMekRecordSheetSnapshot {
             role: 'Crew',
             gunnery: 4,
             piloting: 5,
-            state: Object.freeze({ wounds, unconscious: false, ejected: false, killed: true as const }),
+            state: Object.freeze({ wounds, unconscious: false, ejected: false, dead: true as const }),
             effectiveState: 'killed' as const,
         })]),
     });

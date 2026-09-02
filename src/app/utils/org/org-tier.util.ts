@@ -17,11 +17,6 @@ export function getTierDeltaForEquivalentGroupCount(equivalentGroupCount: number
     return Math.log(equivalentGroupCount) / Math.log(ORG_TIER_GROUPING_FACTOR);
 }
 
-export function getTierForRepeatedGroup(baseTier: number, repeatCount: number): number {
-    if (repeatCount <= 1) return baseTier;
-    return baseTier + getTierDeltaForEquivalentGroupCount(repeatCount);
-}
-
 export function getDynamicTierForModifier(
     baseTier: number,
     regularCount: number,

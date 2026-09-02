@@ -3,11 +3,11 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import type { InventoryControlRuntimeTargetId } from '../../models/inventory-control-runtime-state.model';
+import type { EncounterTargetId } from '../../models/runtime/encounter-runtime';
 
 /** Detached presentation row shared by legacy and Entity/runtime target surfaces. */
 export interface WeaponTargetChoiceRow {
-    readonly id: InventoryControlRuntimeTargetId;
+    readonly id: EncounterTargetId;
     readonly letter: string;
     readonly name: string;
     readonly color: string;
@@ -154,16 +154,16 @@ export interface WeaponTargetChoiceRow {
 })
 export class WeaponTargetChoiceMenuComponent {
     readonly targets = input<readonly WeaponTargetChoiceRow[]>([]);
-    readonly selectedTargetId = input<InventoryControlRuntimeTargetId | null>(null);
-    readonly targetNumberTexts = input<Readonly<Record<InventoryControlRuntimeTargetId, string>>>({});
-    readonly disabledTargetReasons = input<Readonly<Record<InventoryControlRuntimeTargetId, string>>>({});
-    readonly selected = output<InventoryControlRuntimeTargetId | null>();
+    readonly selectedTargetId = input<EncounterTargetId | null>(null);
+    readonly targetNumberTexts = input<Readonly<Record<EncounterTargetId, string>>>({});
+    readonly disabledTargetReasons = input<Readonly<Record<EncounterTargetId, string>>>({});
+    readonly selected = output<EncounterTargetId | null>();
 
-    targetNumberText(targetId: InventoryControlRuntimeTargetId): string {
+    targetNumberText(targetId: EncounterTargetId): string {
         return this.targetNumberTexts()[targetId] ?? '';
     }
 
-    targetDisabledReason(targetId: InventoryControlRuntimeTargetId): string | null {
+    targetDisabledReason(targetId: EncounterTargetId): string | null {
         return this.disabledTargetReasons()[targetId] ?? null;
     }
 

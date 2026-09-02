@@ -5,7 +5,6 @@ import { ATM_INVENTORY_MODES, MML_INVENTORY_MODES } from '../ammo-weapon-profile
 import { WeaponEquipment, type AmmoType } from '../equipment.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { MekRuntimeIndex } from './mek-runtime-index';
-import { formatInventoryControlModeName } from '../inventory-control-display';
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import {
     EquipmentInteractionHandler,
@@ -17,6 +16,12 @@ import type { CBTUnitInstance } from './unit-instance';
 
 export const INVENTORY_MODE_HANDLER_ID = 'inventory-mode-handler';
 export const INVENTORY_MODE_CHOICE_LABEL = 'Mode';
+
+const INVENTORY_MODE_DISPLAY_NAMES: Readonly<Record<string, string>> = Object.freeze({
+    Standard: 'STD',
+    'Extended Range': 'ER',
+    'High Explosive': 'HE',
+});
 
 export type MmlInventoryMode = (typeof MML_INVENTORY_MODES)[number];
 export type AtmInventoryMode = (typeof ATM_INVENTORY_MODES)[number];
@@ -138,7 +143,7 @@ export class InventoryModeHandler extends EquipmentInteractionHandler {
             value: mode!,
             displayType: 'dropdown',
             choices: definition.modes.map(value => ({
-                label: formatInventoryControlModeName(value),
+                label: INVENTORY_MODE_DISPLAY_NAMES[value] ?? value,
                 value,
                 disabled: false,
             })),

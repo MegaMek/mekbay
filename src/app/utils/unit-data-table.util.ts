@@ -8,7 +8,6 @@ import type { UnitSummary } from '../models/unit-summary.model';
 import { FormatNumberPipe } from '../pipes/format-number.pipe';
 import type { DataTableCellContext, DataTableColumn } from '../components/data-table/data-table.component';
 import { formatASDamageValue, isASDamageFilterKey } from './as-damage.util';
-import { formatMovement } from './as-common.util';
 
 export const UNIT_DATA_TABLE_SORT_KEY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'as.damage': ['as.dmg._dmgS', 'as.dmg._dmgM', 'as.dmg._dmgL', 'as.dmg._dmgE'],
@@ -173,25 +172,6 @@ export function formatUnitTons(tons: number | undefined): string {
         return `${rounded(tons / 1_000)}k`;
     }
     return `${rounded(tons / 1_000_000)}M`;
-}
-
-export function formatAlphaStrikeUnitMovement(unit: UnitSummary, useHex: boolean): string {
-    const movementModes = unit.as.MVm;
-    if (!movementModes) {
-        return unit.as.MV ?? '';
-    }
-
-    const entries = Object.entries(movementModes)
-        .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && entry[1] > 0)
-        .sort(([firstMode], [secondMode]) => {
-            if (firstMode === '') return -1;
-            if (secondMode === '') return 1;
-            return 0;
-        });
-
-    return entries.length > 0
-        ? entries.map(([mode, inches]) => formatMovement(inches, mode, useHex)).join('/')
-        : unit.as.MV ?? '';
 }
 
 /** Builds the shared AS or CBT unit-stat columns used by search and force overview. */

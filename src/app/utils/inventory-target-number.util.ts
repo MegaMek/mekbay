@@ -5,10 +5,9 @@
 import type { AmmoEquipment } from '../models/equipment.model';
 import { resolveAmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
 import {
-    getEffectiveInventoryControlCalculatorState,
-    type InventoryControlRuntimeRangeKey,
-    type InventoryControlRuntimeTarget,
-} from '../models/inventory-control-runtime-state.model';
+    activeTargetCalculator,
+    type TargetingTarget,
+} from '../models/runtime/targeting-target';
 import { CORE_2026_GAME_RULES, separateHeatFireModifier, SKILL_BREAKDOWN_PRIORITY, type C3DegradationSource, type CBTGameRules, type ToHitResolution } from '../models/rules/game-rules';
 import { modifierTooltipLines, orderHitTargetTooltipLines } from './hit-target-tooltip.util';
 import type { UnitModifierBreakdownEntry } from '../models/combat-modifier';
@@ -18,6 +17,7 @@ import type { ComponentId } from '../models/entity/entity-identifiers';
 import type { EntityWeaponHitModifier } from '../models/entity/types/weapon';
 import type {
     TnTargetNumberCalculatorState,
+    TnRangeBracket,
     TnTargetUnitType,
 } from '../models/target-number-calculator.model';
 
@@ -64,7 +64,7 @@ export function resolveTargetGuidance(
 
 export interface InventoryTargetNumberAerospaceWeaponFacts {
     readonly capital: boolean;
-    readonly maxRangeBracket: InventoryControlRuntimeRangeKey;
+    readonly maxRangeBracket: TnRangeBracket;
 }
 
 /** Immutable component-local input for inventory range and target-number projection. */
@@ -82,8 +82,8 @@ export interface InventoryTargetDisplay {
 }
 
 export interface InventoryTargetRangeSelection {
-    range: InventoryControlRuntimeRangeKey;
-    maximumRange: InventoryControlRuntimeRangeKey;
+    range: TnRangeBracket;
+    maximumRange: TnRangeBracket;
     outOfRange: boolean;
     outOfLongRange: boolean;
     outOfExtremeRange: boolean;
@@ -110,7 +110,7 @@ export interface InventoryTargetNumberInput {
     extremeRange?: number | null;
     allowExtremeRange?: boolean;
     selectedAmmo?: AmmoEquipment | null;
-    target: InventoryControlRuntimeTarget | null;
+    target: TargetingTarget | null;
     gunnerySkill: number;
     pilotingSkill: number;
     missingMovementModifier?: boolean;
@@ -128,11 +128,11 @@ export interface InventoryTargetNumberInput {
     gameRules?: CBTGameRules;
 }
 
-export function inventoryTargetAllowsC3(target: InventoryControlRuntimeTarget): boolean {
-    return getEffectiveInventoryControlCalculatorState(target)?.indirectFire !== true;
+export function inventoryTargetAllowsC3(target: TargetingTarget): boolean {
+    return activeTargetCalculator(target)?.indirectFire !== true;
 }
 
-export function inventoryTargetUsesC3(target: InventoryControlRuntimeTarget): boolean {
+export function inventoryTargetUsesC3(target: TargetingTarget): boolean {
     return target.useC3 === true && inventoryTargetAllowsC3(target);
 }
 
@@ -189,7 +189,7 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
 
 function aerospaceTargetRangeSelection(
     weapon: InventoryTargetNumberAerospaceWeaponFacts,
-    target: InventoryControlRuntimeTarget,
+    target: TargetingTarget,
     selectedAmmo: AmmoEquipment | null,
     c3Distance: number | null
 ): InventoryTargetRangeSelection {
@@ -226,7 +226,7 @@ function aerospaceTargetRangeSelection(
 function aerospaceMaximumRangeBracket(
     weapon: InventoryTargetNumberAerospaceWeaponFacts,
     selectedAmmo: AmmoEquipment | null
-): InventoryControlRuntimeRangeKey {
+): TnRangeBracket {
     return effectiveAerospaceMaximumBracket(weapon, resolveAmmoWeaponProfile(selectedAmmo));
 }
 
@@ -244,10 +244,6 @@ export function inventoryTargetNumberState(
     const breakdown = inventoryTargetNumberBreakdown(input, rangeSelection);
     if (input.missingMovementModifier) return { text: 'M?', breakdown, rangeSelection };
     return { text: breakdown === null ? '' : breakdown.total.toString(), breakdown, rangeSelection };
-}
-
-export function inventoryTargetNumberText(input: InventoryTargetNumberInput): string {
-    return inventoryTargetNumberState(input).text;
 }
 
 export function inventoryTargetNumberBreakdown(
@@ -391,7 +387,7 @@ function c3RangeBracketIndex(selection: InventoryTargetRangeSelection): number {
         : inventoryRangeBracketIndex(selection.range);
 }
 
-function inventoryRangeBracketIndex(range: InventoryControlRuntimeRangeKey): number {
+function inventoryRangeBracketIndex(range: TnRangeBracket): number {
     switch (range) {
         case 'short': return 0;
         case 'medium': return 1;
@@ -400,7 +396,7 @@ function inventoryRangeBracketIndex(range: InventoryControlRuntimeRangeKey): num
     }
 }
 
-function nextInventoryRangeBracket(range: InventoryControlRuntimeRangeKey): InventoryControlRuntimeRangeKey {
+function nextInventoryRangeBracket(range: TnRangeBracket): TnRangeBracket {
     switch (range) {
         case 'short': return 'medium';
         case 'medium': return 'long';
@@ -435,7 +431,7 @@ function inventoryTargetMinimumRangeModifier(minimumRangeText: string, distance:
     return (min - distance) + 1;
 }
 
-function inventoryTargetRangeModifier(range: InventoryControlRuntimeRangeKey): number {
+function inventoryTargetRangeModifier(range: TnRangeBracket): number {
     switch (range) {
         case 'medium': return 2;
         case 'long': return 4;
@@ -444,7 +440,7 @@ function inventoryTargetRangeModifier(range: InventoryControlRuntimeRangeKey): n
     }
 }
 
-function inventoryTargetRangeDisplayName(range: InventoryControlRuntimeRangeKey): string {
+function inventoryTargetRangeDisplayName(range: TnRangeBracket): string {
     switch (range) {
         case 'short': return 'Short';
         case 'medium': return 'Medium';
@@ -452,4 +448,3 @@ function inventoryTargetRangeDisplayName(range: InventoryControlRuntimeRangeKey)
         case 'extreme': return 'Extreme';
     }
 }
-

@@ -1978,10 +1978,9 @@ describe('CBTForce V2 encounter persistence', () => {
 
             positionId,
             wounds: 0,
-            unconscious: false,
+            unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: true,
+            dead: false,
         });
 
         expect(changed.accepted).toBeTrue();
@@ -1994,7 +1993,7 @@ describe('CBTForce V2 encounter persistence', () => {
             0,
             0,
             0,
-            16,
+            5,
         ]));
     });
 
@@ -2010,8 +2009,7 @@ describe('CBTForce V2 encounter persistence', () => {
             wounds: 0,
             unconscious: false,
             ejected: false,
-            killed: true,
-            stunned: false,
+            dead: true,
         })).accepted).toBeTrue();
 
         expect(force.getUnitConditions(instanceId)).toEqual(['abandoned', 'immobile']);

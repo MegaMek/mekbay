@@ -78,10 +78,6 @@ export class CBTForceMember {
         return this.#recordSheets;
     }
 
-    public recordSheetIndex(): number {
-        return this.#recordSheetIndex();
-    }
-
     public loadRecordSheets(
         create: () => Promise<readonly SVGSVGElement[]>,
     ): Promise<readonly SVGSVGElement[]> {
@@ -188,10 +184,6 @@ export function isCBTMekForceMember(value: ForceMember | null | undefined): valu
     return isCBTForceMember(value) && value.entity.entityType === 'Mek';
 }
 
-export function alphaStrikeMemberSummary(value: ASForceUnit): UnitSummary {
-    return value.getSummary();
-}
-
 /** Entity for loaded CBT members; lightweight catalog projection for Alpha Strike. */
 export function forceMemberPresentationUnit(value: ForceMember): ForceMemberPresentationUnit {
     return isCBTForceMember(value) ? value.entity : value.getSummary();
@@ -208,10 +200,6 @@ export function resolveForceMemberCatalogSummary(
     if (!isCBTForceMember(value)) return value.getSummary();
     const uuid = value.force.getUnitUuid(value.id);
     return uuid ? resolve(uuid) : undefined;
-}
-
-export function forceMemberDisplayName(value: ForceMember): string {
-    return isCBTForceMember(value) ? value.entity.displayName() : value.getDisplayName();
 }
 
 export function forceMemberChassis(value: ForceMember): string {

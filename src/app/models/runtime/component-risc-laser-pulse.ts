@@ -157,6 +157,7 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
     readonly id = 'risc-laser-pulse-module-handler';
     readonly kind = 'risc-laser-pulse';
     readonly scope = 'link' as const;
+    override readonly flags = [RISC_LASER_PULSE_MODULE_FLAG] as const;
     override readonly priority = 105;
 
     override choices(input: EquipmentInteractionInput): readonly EquipmentInteractionChoice[] {

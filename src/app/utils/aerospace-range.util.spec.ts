@@ -5,7 +5,6 @@
 import {
     CAPITAL_AEROSPACE_RANGE_LIMITS,
     STANDARD_AEROSPACE_RANGE_LIMITS,
-    aerospaceMaximumDistance,
     aerospaceAttackValues,
     aerospaceRangeBracket,
     aerospaceRangeCaptions,
@@ -45,8 +44,6 @@ describe('aerospace range utilities', () => {
     it('selects capital limits only for capital weapons', () => {
         expect(aerospaceRangeLimits({ capital: false })).toBe(STANDARD_AEROSPACE_RANGE_LIMITS);
         expect(aerospaceRangeLimits({ capital: true })).toBe(CAPITAL_AEROSPACE_RANGE_LIMITS);
-        expect(aerospaceMaximumDistance({ capital: true }, 'extreme')).toBe(50);
-        expect(aerospaceMaximumDistance({ capital: false }, 'long')).toBe(20);
     });
 
     it('compares brackets using their rules order', () => {

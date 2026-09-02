@@ -5,7 +5,7 @@
 import { ASForceUnit } from '../models/as-force-unit.model';
 import { CBTForce } from '../models/cbt-force.model';
 import type { GameSystem } from '../models/common.model';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { FactionId } from '../models/factions.model';
 import type { ForceSlot } from '../models/force-slot.model';
 import type { Force } from '../models/force.model';

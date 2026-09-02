@@ -7,8 +7,6 @@ import { isWeaponEnhancementEquipment } from './weapon-enhancement.model';
 export const APOLLO_STANDARD_MODE = 'Standard';
 export const APOLLO_SATURATION_MODE = 'Saturation';
 export const APOLLO_FLAG = 'F_APOLLO' as const;
-/** Legacy persisted state key; V2 stores the same semantic mode through CBTUnitInstance. */
-export const APOLLO_MODE_STATE = 'apollo_mode';
 export const APOLLO_MODES = Object.freeze([APOLLO_STANDARD_MODE, APOLLO_SATURATION_MODE] as const);
 
 export type ApolloMode = typeof APOLLO_MODES[number];

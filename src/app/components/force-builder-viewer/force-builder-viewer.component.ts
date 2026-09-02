@@ -325,17 +325,14 @@ export class ForceBuilderViewerComponent {
     showUnitInfo(event: MouseEvent, unit: ForceMember) {
         event.stopPropagation();
         if (isCBTForceMember(unit)) {
-            const uuid = unit.force.getUnitUuid(unit.id);
-            const summary = uuid
-                ? this.dataService.getUnitByUuid(uuid)
-                : undefined;
-            if (!summary) return;
+            const unitList = unit.force.members();
+            const unitIndex = unitList.findIndex(member => member.id === unit.id);
+            if (unitIndex < 0) return;
             this.dialogsService.createDialog(UnitDetailsDialogComponent, {
                 data: <UnitDetailsDialogData>{
-                    unitList: [summary],
-                    unitIndex: 0,
+                    unitList: unit.force.members,
+                    unitIndex,
                     hideAddButton: true,
-                    gameSystem: unit.force.gameSystem,
                 },
             });
             return;

@@ -16,7 +16,7 @@ import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.uti
 import { formatMovement, formatMovementWithAlternate } from '../../../utils/as-common.util';
 import { FormationAbilityAssignmentUtil, type FormationWideAbilityDescriptor } from '../../../utils/formation-ability-assignment.util';
 import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
-import { DEFAULT_GUNNERY_SKILL } from '../../../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL } from '../../../models/crew-member.model';
 
 /*
  *

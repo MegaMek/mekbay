@@ -160,6 +160,7 @@ export class ApolloHandler extends EquipmentInteractionHandler {
     readonly id = 'apollo-handler';
     readonly kind = 'apollo';
     readonly scope = 'link' as const;
+    override readonly flags = [APOLLO_FLAG] as const;
 
     override choices(input: EquipmentInteractionInput): readonly EquipmentInteractionChoice[] {
         const definition = this.definition(input);

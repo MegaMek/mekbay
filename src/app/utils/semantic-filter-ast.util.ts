@@ -1012,15 +1012,6 @@ export function tokenizeForHighlight(input: string, gameSystem: GameSystem): Hig
 }
 
 /**
- * Get error ranges for highlighting in UI.
- * Returns array of [start, end] positions that should be colored red.
- */
-export function getErrorRanges(input: string, gameSystem: GameSystem): [number, number][] {
-    const errors = validateSemanticQuery(input, gameSystem);
-    return errors.map(e => [e.start, e.end]);
-}
-
-/**
  * Check if AST contains any OR operators (needs special evaluation).
  */
 export function hasOrOperators(ast: GroupASTNode): boolean {

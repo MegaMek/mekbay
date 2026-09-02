@@ -6,11 +6,11 @@ import type { NonMekRecordSheetCrewPosition } from '../../../models/runtime/non-
 import { nonMekCrewStateCommand } from './page-viewer-non-mek-runtime.service';
 
 describe('PageViewerNonMekRuntimeService crew state command', () => {
-    it('maps the ProtoMek unconscious control without a vehicle state override', () => {
+    it('maps the non-Mek stunned label to canonical unconscious state', () => {
         expect(nonMekCrewStateCommand(
             position('healthy'),
-            ['unconscious'],
-            'unconscious',
+            ['stunned'],
+            'stunned',
         )).toEqual({
             kind: 'set-crew-state',
             
@@ -18,14 +18,13 @@ describe('PageViewerNonMekRuntimeService crew state command', () => {
             wounds: 0,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
+            dead: false,
         });
 
         expect(nonMekCrewStateCommand(
-            position('unconscious'),
-            ['unconscious'],
-            'unconscious',
+            position('stunned'),
+            ['stunned'],
+            'stunned',
         )).toEqual(jasmine.objectContaining({
             unconscious: false,
             ejected: false,
@@ -37,7 +36,7 @@ describe('PageViewerNonMekRuntimeService crew state command', () => {
             position('healthy'),
             ['killed', 'stunned'],
             'killed',
-        )).toEqual(jasmine.objectContaining({ killed: true, stunned: false }));
+        )).toEqual(jasmine.objectContaining({ dead: true, unconscious: false }));
         expect(nonMekCrewStateCommand(
             position('dead'),
             ['unconscious'],
@@ -58,10 +57,9 @@ function position(effectiveState: NonMekRecordSheetCrewPosition['effectiveState'
         piloting: 5,
         state: Object.freeze({
             wounds: effectiveState === 'dead' ? 6 : 0,
-            unconscious: effectiveState === 'unconscious',
+            unconscious: effectiveState === 'unconscious' || effectiveState === 'stunned',
             ejected: false,
-            ...(effectiveState === 'killed' ? { killed: true as const } : {}),
-            ...(effectiveState === 'stunned' ? { stunned: true as const } : {}),
+            ...(effectiveState === 'killed' ? { dead: true as const } : {}),
         }),
         effectiveState,
     });

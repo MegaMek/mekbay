@@ -39,7 +39,6 @@ export function createEmptyCBTForceForTest(
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId: asForceId(forceId),
         forceRevision: stateRevision,
-        scenarioRules: { schemaVersion: 1, values: { id: 'test' } },
         history: emptyRuntimeHistory(),
         units: [],
         roster: { schemaVersion: 1, groups: [] },

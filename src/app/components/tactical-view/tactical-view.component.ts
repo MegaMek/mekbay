@@ -43,13 +43,9 @@ import type {
     NonMekRecordSheetLocation,
     NonMekRecordSheetSnapshot,
 } from '../../models/runtime/non-mek-record-sheet';
-import {
-    hasNonMekCrewState,
-    type NonMekUnitCommand,
-} from '../../models/runtime/non-mek-unit-instance';
+import type { NonMekUnitCommand } from '../../models/runtime/non-mek-unit-instance';
 import type { CBTUnitCommand } from '../../models/runtime/unit-instance';
 import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
-import { MAX_MEK_CREW_WOUNDS } from '../../models/runtime/runtime-state';
 import {
     MEK_CREW_STATE_CONTROLS,
     MEK_UNIT_CONDITION_CONTROLS,
@@ -60,7 +56,7 @@ import {
     unitConditionControls,
     type UnitConditionControl,
 } from '../../models/unit-status-presentation';
-import type { CrewMemberState } from '../../models/crew.model';
+import { CrewMember, MAX_CREW_WOUNDS, type CrewMemberState } from '../../models/crew-member.model';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
@@ -830,7 +826,7 @@ export class TacticalViewComponent {
         const snapshot = this.mekSnapshot();
         const current = snapshot?.crew.find(candidate => candidate.positionId === position.positionId);
         if (!snapshot || !current || !Number.isSafeInteger(wounds)) return;
-        const boundedWounds = Math.max(1, Math.min(MAX_MEK_CREW_WOUNDS, wounds));
+        const boundedWounds = Math.max(1, Math.min(MAX_CREW_WOUNDS, wounds));
         await this.dispatchMekInteraction({
             kind: 'crew-wounds',
             positionId: current.positionId,
@@ -991,8 +987,7 @@ export class TacticalViewComponent {
             wounds: current.state.wounds === boundedWounds ? boundedWounds - 1 : boundedWounds,
             unconscious: current.state.unconscious,
             ejected: current.state.ejected,
-            killed: current.state.killed === true,
-            stunned: current.state.stunned === true,
+            dead: current.state.dead === true,
         });
     }
 
@@ -1007,15 +1002,16 @@ export class TacticalViewComponent {
         const snapshot = this.nonMekSnapshot();
         const current = snapshot?.crew.find(candidate => candidate.positionId === position.positionId);
         if (!snapshot || !current) return;
-        const active = hasNonMekCrewState(current.state, selected);
+        const active = CrewMember.from(current.state).hasState(selected);
         await this.sendNonMekCommand({
             kind: 'set-crew-state',
             positionId: current.positionId,
             wounds: current.state.wounds,
-            unconscious: selected === 'unconscious' ? !active : current.state.unconscious,
+            unconscious: selected === 'unconscious' || selected === 'stunned'
+                ? !active
+                : current.state.unconscious,
             ejected: selected === 'ejected' ? !active : current.state.ejected,
-            killed: selected === 'killed' ? !active : current.state.killed === true,
-            stunned: selected === 'stunned' ? !active : current.state.stunned === true,
+            dead: selected === 'killed' ? !active : current.state.dead === true,
         });
     }
 

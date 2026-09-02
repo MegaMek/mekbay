@@ -45,7 +45,7 @@ import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { GameSystem } from '../../models/common.model';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
 
 const UNIT_TILE_MIN_WIDTH = 86;

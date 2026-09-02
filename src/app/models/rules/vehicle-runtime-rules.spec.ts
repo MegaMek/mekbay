@@ -355,10 +355,9 @@ function setCrewState(runtime: NonMekUnitInstance, state: 'killed' | 'stunned'):
         
         positionId,
         wounds: 0,
-        unconscious: false,
+        unconscious: state === 'stunned',
         ejected: false,
-        killed: state === 'killed',
-        stunned: state === 'stunned',
+        dead: state === 'killed',
     });
     expect(result.accepted).toBeTrue();
 }

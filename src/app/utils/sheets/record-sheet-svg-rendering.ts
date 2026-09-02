@@ -179,30 +179,6 @@ export function compactArmorDisplayName(value: string | undefined, fallback: str
     return compact || fallback;
 }
 
-export function makeHorizontalPips(
-    count: number,
-    startX: number,
-    centerY: number,
-    width: number,
-    preferredRadius: number,
-    type: 'armor' | 'structure',
-    location: string,
-): SVGGElement {
-    const group = svgElement('g');
-    group.setAttribute('class', 'pip-group');
-    const safeCount = Math.max(0, Math.floor(count));
-    const radius = safeCount <= 1
-        ? preferredRadius
-        : Math.min(preferredRadius, width / (safeCount * 2.35));
-    const step = safeCount <= 1 ? 0 : Math.max(radius * 2.15, (width - radius * 2) / (safeCount - 1));
-    for (let index = 0; index < safeCount; index++) {
-        const pip = circle(startX + radius + index * step, centerY, radius, `pip ${type}`);
-        pip.setAttribute('loc', location);
-        group.appendChild(pip);
-    }
-    return group;
-}
-
 export function drawCheckbox(
     parent: SVGElement,
     x: number,
@@ -364,10 +340,6 @@ export function recordSheetAmmoProfile(entity: BaseEntity): readonly string[] {
     return Object.freeze([...totals.entries()]
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([name, shots]) => `(${name}) ${shots}`));
-}
-
-export function formatDamageValue(value: string | number | readonly number[]): string {
-    return Array.isArray(value) ? value.join('/') : String(value);
 }
 
 export function drawIdentityPanel(svg: SVGSVGElement, entity: BaseEntity, box: Box): void {
@@ -1076,48 +1048,6 @@ function clusterHitsFramePath(width: number, height: number, shadow: boolean): s
     return `M ${formatNumber(x)} ${formatNumber(top)} l 5.475 -8.214 `
         + `h ${formatNumber(horizontal)} l 5.475 8.214 v ${formatNumber(vertical)} `
         + `l -5.475 8.214 h ${formatNumber(-horizontal)} l -5.475 -8.214 Z`;
-}
-
-export function drawCompactReferenceTable(
-    svg: SVGSVGElement,
-    title: string,
-    box: Box,
-    headings: readonly string[],
-    rows: readonly (readonly string[])[],
-    note?: string,
-): void {
-    const group = addFrame(svg, title, box, {
-        fullWidthHeader: true,
-        headerFontSize: Math.max(6.3, Math.min(10.6, box.width / Math.max(18, title.length * 0.78))),
-        cornerAngleDegrees: { topLeft: 45, topRight: 45, bottomLeft: 45, bottomRight: 45 },
-    });
-    const left = 6;
-    const width = box.width - left * 2;
-    const columnWidth = width / headings.length;
-    headings.forEach((heading, index) => addText(group, heading, left + (index + 0.5) * columnWidth, 25, {
-        size: Math.max(4.2, Math.min(5.8, columnWidth / Math.max(5, heading.length * 0.5))),
-        weight: 700,
-        anchor: 'middle',
-        maxWidth: columnWidth - 3,
-    }));
-    const noteHeight = note ? Math.min(34, box.height * 0.23) : 7;
-    const tableHeight = Math.max(10, box.height - 32 - noteHeight);
-    const rowHeight = tableHeight / Math.max(1, rows.length);
-    rows.forEach((row, rowIndex) => {
-        const top = 29 + rowIndex * rowHeight;
-        if (rowIndex % 2 === 0) {
-            const shade = svgElement('rect');
-            setAttributes(shade, { x: left, y: top, width, height: rowHeight, fill: '#c7c7c7' });
-            group.appendChild(shade);
-        }
-        row.forEach((value, columnIndex) => addText(group, value, left + (columnIndex + 0.5) * columnWidth,
-            top + rowHeight * 0.72, {
-                size: Math.max(3.4, Math.min(5.4, rowHeight - 1)), anchor: 'middle', maxWidth: columnWidth - 3,
-            }));
-    });
-    if (note) addText(group, note, left, box.height - noteHeight + 7, {
-        size: Math.max(3.8, Math.min(5.1, box.width / 75)), maxWidth: width,
-    });
 }
 
 export function drawGeneratedFooter(

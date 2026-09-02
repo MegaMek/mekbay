@@ -39,12 +39,6 @@ export function isC3NetworkType(value: unknown): value is C3NetworkType {
         || value === C3NetworkType.NOVA;
 }
 
-export function isC3Role(value: unknown): value is C3Role {
-    return value === C3Role.MASTER
-        || value === C3Role.SLAVE
-        || value === C3Role.PEER;
-}
-
 export function isC3NetworkRole(value: unknown): value is C3NetworkRole {
     return value === C3NetworkRole.MASTER
         || value === C3NetworkRole.MEMBER
@@ -122,15 +116,6 @@ export const C3_MASTER_FLAGS = [
 export const C3_SLAVE_FLAGS = [
     C3_FLAGS.C3S,
     C3_FLAGS.C3SBS
-] as const;
-
-/**
- * Peer flags (any unit can be master)
- */
-export const C3_PEER_FLAGS = [
-    C3_FLAGS.C3I,
-    C3_FLAGS.NOVA,
-    C3_FLAGS.NAVAL_C3
 ] as const;
 
 /**
@@ -233,12 +218,6 @@ export function c3MasterWeaponAlphaStrikeFacts(
 
 export function c3EquipmentOperatingHeat(equipment: Equipment | null | undefined): number {
     return isNovaC3Equipment(equipment) ? 2 : 0;
-}
-
-export function unsupportedMekC3HeatFlag(
-    equipment: Equipment | null | undefined,
-): EquipmentFlag | undefined {
-    return isNovaC3Equipment(equipment) ? C3_FLAGS.NOVA : undefined;
 }
 
 export interface C3EquipmentTraits {
@@ -379,14 +358,6 @@ export interface C3Node {
     y: number;
     zIndex: number;
     pinOffsetsX: number[];
-}
-
-/**
- * Visual position for the network editor
- */
-export interface C3NodePosition {
-    x: number;
-    y: number;
 }
 
 /**
@@ -677,9 +648,6 @@ export class C3Network {
                 return parsed.unitId === unitId && parsed.compIndex !== undefined;
             }));
     }
-    isUnitSlaveConnected(unitId: string): boolean {
-        return this.networksForUnit(unitId).some(network => network.members?.includes(unitId) ?? false);
-    }
     networkUnitIds(network: SerializedC3NetworkGroup): readonly string[] {
         const ids = new Set<string>();
         if (network.masterId) ids.add(network.masterId);
@@ -762,26 +730,6 @@ export class C3Network {
             for (const member of network.members ?? []) ids.add(C3Network.parseMember(member).unitId);
         }
         return ids;
-    }
-    /** Participating endpoint identities; distinct Master components on one unit count separately. */
-    treeEndpointKeys(networkId: string): ReadonlySet<string> {
-        const keys = new Set<string>();
-        for (const network of this.treeNetworks(networkId)) {
-            if (network.peerIds) {
-                for (const peerId of network.peerIds) keys.add(`peer:${peerId}`);
-                continue;
-            }
-            if (network.masterId && network.masterCompIndex !== undefined) {
-                keys.add(C3Network.masterEndpointKey(network.masterId, network.masterCompIndex));
-            }
-            for (const member of network.members ?? []) {
-                const endpoint = C3Network.parseMember(member);
-                keys.add(endpoint.compIndex === undefined
-                    ? `slave:${endpoint.unitId}`
-                    : C3Network.masterEndpointKey(endpoint.unitId, endpoint.compIndex));
-            }
-        }
-        return keys;
     }
     static masterEndpointKey(unitId: string, compIndex: number): string {
         return `master:${unitId}:${compIndex}`;

@@ -51,13 +51,6 @@ export function hydrateWorkerSearchResult(
     return { units, normalizationMatchesByUnitUuid };
 }
 
-export function hydrateWorkerResultUnits(
-    result: UnitSearchWorkerResultMessage,
-    getUnitByUuid: (unitUuid: UnitUuid) => UnitSummary | undefined,
-): UnitSummary[] {
-    return hydrateWorkerSearchResult(result, getUnitByUuid).units;
-}
-
 export function buildWorkerSearchTelemetrySnapshot(
     result: UnitSearchWorkerResultMessage,
     context: WorkerResultTelemetryContext,

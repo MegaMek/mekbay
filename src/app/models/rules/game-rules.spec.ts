@@ -6,6 +6,7 @@ import { EquipmentRegistry } from '../equipment-lookup';
 import type { AmmoMunitionFlag } from '../ammo-munition-flags.type';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import { asComponentId } from '../entity/entity-identifiers';
+import { asEncounterTargetId } from '../runtime/encounter-runtime';
 import type { IntrinsicWeaponKind } from '../entity/types/weapon';
 import type { ComponentToHitSubject } from './game-rules';
 import {
@@ -79,7 +80,7 @@ describe('CBT game rules', () => {
 
     describe('C3 degradation', () => {
         const target = {
-            id: 'A', letter: 'A', name: 'Target', color: '#000',
+            id: asEncounterTargetId('A'), letter: 'A', name: 'Target', color: '#000',
             distance: 15, c3Distance: 12, useC3: true, tnModifier: 0,
         } as const;
 

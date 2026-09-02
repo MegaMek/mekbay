@@ -10,7 +10,6 @@ import {
     formatASSpecialMinimumQuery,
     getASSpecialMinimumFieldLabels,
     getASSpecialToken,
-    parseASSpecialAbility,
     parseASSpecialMinimumQuery,
     parseASSpecials,
     unitMatchesASSpecialSelections,
@@ -72,12 +71,12 @@ describe('Alpha Strike special filtering', () => {
     });
 
     it('uses one shared structural parser for simple, parameterized, and nested abilities', () => {
-        expect(parseASSpecialAbility('LAM(6"g/12a)')).toEqual(jasmine.objectContaining({
+        expect(parseASSpecials('LAM(6"g/12a)').abilities[0]).toEqual(jasmine.objectContaining({
             lookupText: 'LAM',
             token: 'LAM',
             children: [],
         }));
-        expect(parseASSpecialAbility('TUR(2/2/1,TUR(1/1/-,TAG))')).toEqual(jasmine.objectContaining({
+        expect(parseASSpecials('TUR(2/2/1,TUR(1/1/-,TAG))').abilities[0]).toEqual(jasmine.objectContaining({
             token: 'TUR',
             children: [jasmine.objectContaining({
                 token: 'TUR',

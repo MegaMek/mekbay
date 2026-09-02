@@ -13,23 +13,20 @@ import type {
     NonMekRecordSheetDamageTrack,
     NonMekRecordSheetSnapshot,
 } from '../../../models/runtime/non-mek-record-sheet';
-import type { CrewMemberState } from '../../../models/crew.model';
+import { CrewMember, type CrewMemberState } from '../../../models/crew-member.model';
 import type { ComponentId } from '../../../models/entity/entity-identifiers';
 import type {
     EquipmentPanelComponent,
     EquipmentPanelSnapshot,
 } from '../../../models/runtime/equipment-panel';
 import {
-    equipmentPanelRuntimeTarget,
+    projectTargetingTarget,
     projectWeaponTargetPresentation,
 } from '../../../models/runtime/equipment-panel';
 import type { AttackerSelection } from '../../../models/runtime/attacker-targeting-state';
 import type { EncounterTargetId } from '../../../models/runtime/encounter-runtime';
 import { isUnitConditionKey, type UnitConditionKey } from '../../../models/unit-condition.model';
-import {
-    hasNonMekCrewState,
-    type NonMekUnitCommand,
-} from '../../../models/runtime/non-mek-unit-instance';
+import type { NonMekUnitCommand } from '../../../models/runtime/non-mek-unit-instance';
 import {
     crewStateDefinitions,
     unitConditionControls,
@@ -318,7 +315,7 @@ export class PageViewerNonMekRuntimeService {
                 target.targetId,
                 projectWeaponTargetPresentation(
                     weapon,
-                    equipmentPanelRuntimeTarget(target, panel.ruleset),
+                    projectTargetingTarget(target, panel.ruleset),
                     panel.crew.gunnery,
                     null,
                     panel.ruleset,
@@ -530,8 +527,7 @@ export class PageViewerNonMekRuntimeService {
             wounds,
             unconscious: position.state.unconscious,
             ejected: position.state.ejected,
-            killed: position.state.killed === true,
-            stunned: position.state.stunned === true,
+            dead: position.state.dead === true,
         });
         if (!result.accepted) this.showRejectedEdit();
     }
@@ -556,7 +552,7 @@ export class PageViewerNonMekRuntimeService {
             key: control.key,
             label: control.label,
             color: control.color,
-            active: hasNonMekCrewState(position.state, control.key),
+            active: CrewMember.from(position.state).hasState(control.key),
         })));
         outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(selected => {
             const current = this.snapshot(member);
@@ -927,15 +923,16 @@ export function nonMekCrewStateCommand(
         && control !== 'ejected'
         && control !== 'killed'
         && control !== 'stunned') return null;
-    const active = hasNonMekCrewState(position.state, control);
+    const active = CrewMember.from(position.state).hasState(control);
     return Object.freeze({
         kind: 'set-crew-state',
         positionId: position.positionId,
         wounds: position.state.wounds,
-        unconscious: control === 'unconscious' ? !active : position.state.unconscious,
+        unconscious: control === 'unconscious' || control === 'stunned'
+            ? !active
+            : position.state.unconscious,
         ejected: control === 'ejected' ? !active : position.state.ejected,
-        killed: control === 'killed' ? !active : position.state.killed === true,
-        stunned: control === 'stunned' ? !active : position.state.stunned === true,
+        dead: control === 'killed' ? !active : position.state.dead === true,
     });
 }
 

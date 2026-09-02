@@ -9,7 +9,7 @@ import {
     EditPilotDialogComponent,
     getSyntheticCrewSkill,
 } from './edit-pilot-dialog.component';
-import type { CrewMemberDetails } from '../../models/crew.model';
+import type { CrewMemberDetails } from '../../models/crew-member.model';
 
 const CREW: CrewMemberDetails[] = [
     { id: 0, name: 'Pilot', gunnery: 4, piloting: 2 },

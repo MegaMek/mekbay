@@ -70,7 +70,8 @@ function commandMayChangeOperationalC3(command: CBTUnitCommand): boolean {
     }
 }
 
-function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolean {
+/** Shared exhaustive classifier for runtime-BV dependency invalidation. */
+export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolean {
     switch (command.type) {
         case 'damage-armor':
         case 'repair-armor':
@@ -97,7 +98,40 @@ function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolean {
         case 'end-turn':
         case 'commit-pending':
             return true;
-        default:
+        case 'set-component-mode':
+        case 'set-stealth-state':
+        case 'toggle-gauss-power':
+        case 'set-component-jammed':
+        case 'set-ppc-capacitor-charge':
+        case 'set-bombast-laser-charge':
+        case 'edit-c3-emergency-master':
+        case 'set-heat':
+        case 'set-pending-heat':
+        case 'set-heatsinks-off':
+        case 'apply-heat':
+        case 'set-condition':
+        case 'set-mek-shutdown-state':
+        case 'resolve-mek-rule-check':
+        case 'set-crew-state':
+        case 'declare-mek-movement':
+        case 'clear-mek-movement':
+        case 'declare-mek-action':
+        case 'clear-mek-action':
+        case 'prepare-mek-stand':
+        case 'resolve-mek-stand-attempt':
+        case 'adjust-mek-stand-attempts':
+        case 'resolve-mek-pilot-check':
+        case 'dismiss-mek-pilot-checks':
+        case 'dismiss-mek-automatic-falls':
+        case 'replace-turn-state':
+        case 'set-pending-fall-consequences':
+        case 'reset-turn-state':
+        case 'mark-end-turn-heat-staged':
+        case 'cancel-pending':
             return false;
+        default: {
+            const exhaustive: never = command;
+            throw new Error(`Unclassified CBT unit command: ${String(exhaustive)}`);
+        }
     }
 }

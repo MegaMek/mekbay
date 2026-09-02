@@ -9,6 +9,7 @@ import {
     type MekRecordSheetCommandSource,
 } from '../mek-record-sheet-interaction.util';
 import { asComponentId } from '../../../models/entity/entity-identifiers';
+import { CrewMember } from '../../../models/crew-member.model';
 
 describe('page-viewer published Mek runtime commands', () => {
     const revision = 9 as MekRecordSheetSnapshot['stateRevision'];
@@ -34,7 +35,7 @@ describe('page-viewer published Mek runtime commands', () => {
     } as unknown as MekRecordSheetSnapshot;
     const source: MekRecordSheetCommandSource = {
         query: {
-            crewState: () => ({ wounds: 1, unconscious: true, ejected: false }),
+            crewState: () => CrewMember.from({ wounds: 1, unconscious: true, ejected: false }),
             hasCondition: condition => snapshot.conditions.includes(condition),
         },
         heatSinkCount: 10,

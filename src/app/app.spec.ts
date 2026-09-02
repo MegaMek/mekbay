@@ -37,7 +37,6 @@ import { LobbyService } from './services/lobby.service';
 class UnitSearchStubComponent {}
 
 describe('App', () => {
-  const reloadHashStorageKey = 'mekbay:sw-update-reload-hash';
   const androidPwaBackExitStateKey = 'mekbayAndroidPwaBackExit';
   let versionUpdates: Subject<any>;
   let fixture: ReturnType<typeof TestBed.createComponent<App>> | null;
@@ -202,7 +201,6 @@ describe('App', () => {
     fixture?.destroy();
     fixture = null;
     document.querySelectorAll('.mekbay-bootstrap-update-screen').forEach((element) => element.remove());
-    localStorage.removeItem(reloadHashStorageKey);
     versionUpdates.complete();
   });
 

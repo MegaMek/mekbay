@@ -50,14 +50,6 @@ export function getPrintRosterLogoUrl(): string {
     return new URL(PRINT_LOGO_PATH, window.location.origin || PRINT_FORCE_BASE_URL).toString();
 }
 
-export function createPrintRosterLogoMarkup(): string {
-    return `
-        <div class="print-roster-logo">
-            <img src="${getPrintRosterLogoUrl()}" alt="MekBay" />
-        </div>
-    `;
-}
-
 export function createPrintRosterHeader(force: Force): HTMLDivElement {
     const heading = getPrintRosterHeading(force);
     const header = document.createElement('div');

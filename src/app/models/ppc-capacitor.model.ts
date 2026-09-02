@@ -32,12 +32,3 @@ export function isPpcCapacitorCompatibleWeapon(
         && equipment.hasFlag(PPC_CAPACITOR_COMPATIBLE_FLAG)
         && !(context && equipment.id === 'CLERPPC' && context.year < 3101);
 }
-
-export function isPpcCapacitorLink(
-    capacitor: PpcEquipmentView | null | undefined,
-    weapon: PpcEquipmentView | null | undefined,
-    context?: PpcCapacitorCompatibilityContext,
-): boolean {
-    return isPpcCapacitorEquipment(capacitor)
-        && isPpcCapacitorCompatibleWeapon(weapon, context);
-}

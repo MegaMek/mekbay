@@ -12,6 +12,7 @@ import { mekLocationId } from '../entity/mek-entity-conventions';
 import {
     buildMekRuntimeIndex,
     componentIdForMount,
+    componentLocationIds,
     type MekIndexedSystem,
     type MekRuntimeIndex,
 } from './mek-runtime-index';
@@ -96,6 +97,43 @@ describe('MekRuntimeIndex', () => {
             controllerId: componentIdForMount(first),
             memberIds: [componentIdForMount(second)],
         })]);
+    });
+
+    it('precomputes stable component locations and distinct Mek topology relations', () => {
+        const entity = new BipedMekEntity();
+        entity.setTonnage(50);
+        const mount = entity.addEquipment({
+            equipmentId: 'Left Arm Test Equipment',
+            allocation: { kind: 'location', location: 'LA' },
+            rearMounted: false,
+            turretMounted: false,
+            omniPodMounted: false,
+            armored: false,
+        });
+        const index = buildMekRuntimeIndex(entity);
+        const componentId = componentIdForMount(mount);
+        const leftArmId = mekLocationId('LA')!;
+        const rightArmId = mekLocationId('RA')!;
+        const leftLegId = mekLocationId('LL')!;
+        const rightLegId = mekLocationId('RL')!;
+        const leftTorsoId = mekLocationId('LT')!;
+        const rightTorsoId = mekLocationId('RT')!;
+        const centerTorsoId = mekLocationId('CT')!;
+
+        expect(componentLocationIds(index, componentId)).toEqual([leftArmId]);
+        expect(componentLocationIds(index, componentId))
+            .toBe(componentLocationIds(index, componentId));
+        expect(index.damageTransferLocationIdByLocation.get(leftArmId)).toBe(leftTorsoId);
+        expect(index.damageTransferLocationIdByLocation.get(leftLegId)).toBe(leftTorsoId);
+        expect(index.damageTransferLocationIdByLocation.get(leftTorsoId)).toBe(centerTorsoId);
+        expect(index.damageTransferLocationIdByLocation.get(rightArmId)).toBe(rightTorsoId);
+        expect(index.damageTransferLocationIdByLocation.get(rightLegId)).toBe(rightTorsoId);
+        expect(index.damageTransferLocationIdByLocation.get(rightTorsoId)).toBe(centerTorsoId);
+        expect(index.damageTransferLocationIdByLocation.get(centerTorsoId)).toBeNull();
+
+        expect(index.destructionParentLocationIdByLocation.get(leftArmId)).toBe(leftTorsoId);
+        expect(index.destructionParentLocationIdByLocation.get(leftLegId)).toBeNull();
+        expect(index.destructionParentLocationIdByLocation.get(leftTorsoId)).toBeNull();
     });
 
     it('groups unit-wide systems while keeping matching actuators location-scoped', () => {

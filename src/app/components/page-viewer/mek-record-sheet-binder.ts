@@ -25,7 +25,7 @@ import { MEK_CREW_STATE_DISPLAYS } from '../../models/mek-record-sheet-controls'
 import { formatPilotingDisplay, UNIT_CONDITION_DEFINITIONS } from '../../models/unit-status-presentation';
 import {
     projectWeaponTargetPresentation,
-    equipmentPanelRuntimeTarget,
+    projectTargetingTarget,
     equipmentWeaponToHitModifier,
 } from '../../models/runtime/equipment-panel';
 import { formatPhysicalHitModifier } from '../../utils/inventory-target-number.util';
@@ -1190,7 +1190,7 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
             : undefined;
         const target = selectedTarget === undefined
             ? null
-            : equipmentPanelRuntimeTarget(selectedTarget, snapshot.ruleset);
+            : projectTargetingTarget(selectedTarget, snapshot.ruleset);
         const targetPresentation = projectWeaponTargetPresentation(
             component,
             target,

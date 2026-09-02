@@ -267,20 +267,6 @@ const NON_INFANTRY_DAMAGE_ROWS = [
     ['Heat Effect Weapons', 'See Heat-Effect Weapons‡'],
 ] as const;
 
-export function referenceTableGroup(groupId: ReferenceTableGroupId): ReferenceTableGroupDefinition {
-    const group = REFERENCE_TABLE_GROUPS.find(candidate => candidate.id === groupId);
-    if (!group) throw new RangeError(`Unknown reference table group: ${groupId}`);
-    return group;
-}
-
-export function referenceTableOption(optionId: ReferenceTableOptionId): ReferenceTableOptionDefinition {
-    for (const group of REFERENCE_TABLE_GROUPS) {
-        const option = group.options.find(candidate => candidate.id === optionId);
-        if (option) return option;
-    }
-    throw new RangeError(`Unknown reference table option: ${optionId}`);
-}
-
 export function referenceTableGroupForOption(optionId: ReferenceTableOptionId): ReferenceTableGroupDefinition {
     const group = REFERENCE_TABLE_GROUPS.find(candidate => candidate.options.some(option => option.id === optionId));
     if (!group) throw new RangeError(`Unknown reference table option: ${optionId}`);
@@ -310,14 +296,6 @@ export function defaultReferenceTableOption(
         return unit.subtype === 'Battle Armor' ? 'infantry-battle-armor' : 'infantry-conventional';
     }
     return 'cluster-full';
-}
-
-export function hasUnitDefaultReferenceTables(unit: Pick<UnitSummary, 'type'>): boolean {
-    return unit.type === 'Mek'
-        || unit.type === 'Tank'
-        || unit.type === 'Naval'
-        || unit.type === 'VTOL'
-        || unit.type === 'Infantry';
 }
 
 export function buildReferenceTableView(

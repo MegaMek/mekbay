@@ -14,6 +14,7 @@ import type {
 } from './mek-mechanics-profile';
 import { ImmutableIndex } from '../entity/immutable-collections';
 import type { MekRuntimeIndex } from './mek-runtime-index';
+import type { CrewMember } from '../crew-member.model';
 
 export const MEK_TORSO_CRIPPLING_RULE_CHECK_KEY = 'core.torso-crippling' as const;
 
@@ -60,11 +61,7 @@ export interface MekDamageStateViewV2 {
     remainingInternal(locationId: LocationId, perspective: MekDamageStatePerspectiveV2): number;
     remainingArmor(faceId: ArmorFaceId, perspective: MekDamageStatePerspectiveV2): number;
     criticalHits(slotId: CriticalSlotId, perspective: MekDamageStatePerspectiveV2): number;
-    crewState(positionId: CrewPositionId): Readonly<{
-        wounds: number;
-        ejected: boolean;
-        fatallyWounded: boolean;
-    }>;
+    crewState(positionId: CrewPositionId): CrewMember;
     locationCondition(
         locationId: LocationId,
         condition: 'blown-off' | 'flooded',
@@ -386,9 +383,9 @@ function allCrewCrippled(
         const cockpit = position.occurrence === 1 && profile.cockpit.commandConsole !== undefined
             ? profile.cockpit.commandConsole
             : profile.cockpit.main;
-        const dead = crew.fatallyWounded
-            || cockpit.criticalSlotIds.some(slotId => committedUnavailable.has(slotId));
-        return !dead && !crew.ejected && crew.wounds >= 4;
+        const cockpitUnavailable = cockpit.criticalSlotIds.some(slotId =>
+            committedUnavailable.has(slotId));
+        return crew.isCrippled(cockpitUnavailable);
     });
 }
 

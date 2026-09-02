@@ -12,8 +12,6 @@ import { TechDate, TechAdvancementDates, techDateYear, formatTechDate } from '..
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { OptionsService } from '../../services/options.service';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
-import { resolveDefaultWeaponDamageText } from '../../utils/inventory-control-damage.util';
-import { formatInventoryControlHeat } from '../../utils/inventory-control-heat.util';
 
 
 @Component({
@@ -122,7 +120,11 @@ export class FloatingCompInfoComponent {
     get heat(): string | null {
         const eq = this.equipment();
         if (eq instanceof WeaponEquipment) {
-            return formatInventoryControlHeat(eq.heat, '', eq.getRapidFireCount());
+            if (eq.heat === 0) return '—';
+            const value = Number.isInteger(eq.heat)
+                ? eq.heat.toString()
+                : eq.heat.toFixed(1).replace(/\.0$/, '');
+            return `${value}${eq.getRapidFireCount() > 0 ? '/s' : ''}`;
         }
         return null;
     }

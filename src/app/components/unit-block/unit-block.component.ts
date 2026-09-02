@@ -58,8 +58,7 @@ interface UnitBlockPresentation {
     readonly tons: number;
 }
 
-const VEHICLE_CREW_STATE_DISPLAYS = crewStateDefinitions(['killed', 'stunned']);
-const PROTOMEK_CREW_STATE_DISPLAYS = crewStateDefinitions(['unconscious', 'dead']);
+const NON_MEK_CREW_STATE_DISPLAYS = crewStateDefinitions(['killed', 'stunned']);
 
 export interface UnitBlockPilotEditEvent {
     event: MouseEvent;
@@ -267,11 +266,10 @@ export class UnitBlockComponent {
         } else if (isCBTForceMember(forceUnit)) {
             forceUnit.force.getUnitConditions(forceUnit.id)?.forEach(condition => conditionKeys.add(condition));
             const sheet = forceUnit.force.getNonMekRecordSheetSnapshot(forceUnit.id);
-            const definitions = sheet?.unitType === 'ProtoMek'
-                ? PROTOMEK_CREW_STATE_DISPLAYS
-                : sheet !== null && ['Tank', 'VTOL', 'Naval'].includes(sheet.unitType)
-                    ? VEHICLE_CREW_STATE_DISPLAYS
-                    : [];
+            const definitions = sheet !== null
+                && ['ProtoMek', 'Tank', 'VTOL', 'Naval'].includes(sheet.unitType)
+                ? NON_MEK_CREW_STATE_DISPLAYS
+                : [];
             const crewStates = new Set(sheet?.crew.map(position => position.effectiveState) ?? []);
             crewConditions = [...crewStates].flatMap(state => {
                 const definition = definitions.find(candidate => candidate.key === state);

@@ -57,7 +57,3 @@ export function heatSinkDissipationRate(equipment: Equipment | null | undefined)
     if (isDoubleHeatSinkEquipment(equipment) || isPrototypeDoubleHeatSinkEquipment(equipment)) return 2;
     return null;
 }
-
-export function isUnsupportedMekHeatEquipment(equipment: Equipment | null | undefined): boolean {
-    return equipment != null && unsupportedMekHeatFlag(equipment) !== undefined;
-}

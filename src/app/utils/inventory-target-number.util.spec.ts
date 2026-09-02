@@ -4,6 +4,7 @@
 
 import { AmmoEquipment } from '../models/equipment.model';
 import { asComponentId } from '../models/entity/entity-identifiers';
+import { asEncounterTargetId } from '../models/runtime/encounter-runtime';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES, type CBTGameRules, type HitModifier, type ToHitModifierBreakdownEntry, type ToHitResolution } from '../models/rules/game-rules';
 import type { InventoryTargetNumberAerospaceWeaponFacts, InventoryTargetNumberComponentFacts, InventoryTargetNumberInput } from './inventory-target-number.util';
 import { inventoryTargetNumberBreakdown, inventoryTargetNumberState, inventoryTargetRangeSelection } from './inventory-target-number.util';
@@ -44,7 +45,7 @@ function artilleryInput(distance: number, gameRules: CBTGameRules = CORE_2026_GA
         targetNumberFacts: targetNumberFacts('arrow'),
         display: { min: '—', short: '10', medium: '20', long: '30' },
         selectedAmmo,
-        target: { id: 'A', letter: 'A', name: 'Target', color: '#000', distance, tnModifier: 0 },
+        target: { id: asEncounterTargetId('A'), letter: 'A', name: 'Target', color: '#000', distance, tnModifier: 0 },
         gunnerySkill: 4,
         pilotingSkill: 5,
         attackModifierBreakdown: [],
@@ -62,7 +63,7 @@ function aeroInput(
     return {
         targetNumberFacts: targetNumberFacts('aero-weapon', false, { capital, maxRangeBracket }),
         display: { min: '—', short: '6', medium: '12', long: '20' },
-        target: { id: 'A', letter: 'A', name: 'Target', color: '#000', unitType: targetUnitType, distance, tnModifier: 0 },
+        target: { id: asEncounterTargetId('A'), letter: 'A', name: 'Target', color: '#000', unitType: targetUnitType, distance, tnModifier: 0 },
         gunnerySkill: 4,
         pilotingSkill: 5,
         attackModifierBreakdown: [],
@@ -75,7 +76,7 @@ function c3LaserInput(actualDistance: number, c3Distance: number, allowExtremeRa
         targetNumberFacts: targetNumberFacts('er-large-laser'),
         display: { min: '—', short: '7', medium: '14', long: '19' },
         extremeRange: 25,
-        target: { id: 'A', letter: 'A', name: 'Target', color: '#000', distance: actualDistance, c3Distance, useC3: true, tnModifier: 0 },
+        target: { id: asEncounterTargetId('A'), letter: 'A', name: 'Target', color: '#000', distance: actualDistance, c3Distance, useC3: true, tnModifier: 0 },
         gunnerySkill: 4,
         pilotingSkill: 5,
         attackModifierBreakdown: [],

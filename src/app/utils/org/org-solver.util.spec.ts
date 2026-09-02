@@ -55,7 +55,6 @@ import {
 } from './definitions';
 import {
     compileGroupFacts,
-    compileGroupFactsList,
     compileUnitFactsList,
     DEFAULT_ORG_RULE_REGISTRY,
 } from './org-facts.util';
@@ -790,7 +789,8 @@ describe('org-solver.util', () => {
             createUnit('Carrier 5', 'Mek', 'BattleMek Omni', true),
         ], 'Clan Test', 'HW Clan');
 
-        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
+        const result = evaluateComposedPatternRule(CLAN_NOVA, [battleArmorStar[0], carrierStar[0]]
+            .map(group => compileGroupFacts(group)));
 
         expect(result.emitted).toHaveSize(1);
         expect(result.emitted[0]).toEqual(jasmine.objectContaining({
@@ -822,7 +822,8 @@ describe('org-solver.util', () => {
         expect(carrierStar[0].name).toBe('Star');
         expect(carrierStar[0].type).toBe('Star');
 
-        const result = materializeComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
+        const result = materializeComposedPatternRule(CLAN_NOVA, [battleArmorStar[0], carrierStar[0]]
+            .map(group => compileGroupFacts(group)));
 
         expect(result.groups).toEqual([
             jasmine.objectContaining({ name: 'Nova', type: 'Nova', modifierKey: '' }),
@@ -856,7 +857,8 @@ describe('org-solver.util', () => {
         expect(battleArmorStar[0].type).toBe('Star');
         expect(carrierStar[0].name).toBe('Star');
         expect(carrierStar[0].type).toBe('Star');
-        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
+        const result = evaluateComposedPatternRule(CLAN_NOVA, [battleArmorStar[0], carrierStar[0]]
+            .map(group => compileGroupFacts(group)));
 
         expect(result.emitted).toEqual([{modifierKey: '', perGroupCount: 2, copies: 1, tier: 1.9, compositionIndex: 0 }]);
         expect(result.leftoverCount).toBe(0);
@@ -888,7 +890,8 @@ describe('org-solver.util', () => {
         expect(carrierStar[0].name).toBe('Star');
         expect(carrierStar[0].type).toBe('Star');
 
-        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
+        const result = evaluateComposedPatternRule(CLAN_NOVA, [battleArmorStar[0], carrierStar[0]]
+            .map(group => compileGroupFacts(group)));
 
         expect(result.emitted).toEqual([]);
         expect(result.leftoverCount).toBe(2);
@@ -918,7 +921,8 @@ describe('org-solver.util', () => {
         expect(battleArmorStar[0].type).toBe('Star');
         expect(carrierStar[0].type).toBe('Star');
 
-        const result = evaluateComposedPatternRule(CLAN_NOVA, compileGroupFactsList([battleArmorStar[0], carrierStar[0]]));
+        const result = evaluateComposedPatternRule(CLAN_NOVA, [battleArmorStar[0], carrierStar[0]]
+            .map(group => compileGroupFacts(group)));
 
         expect(result.emitted).toEqual([]);
         expect(result.leftoverCount).toBe(2);
@@ -3066,12 +3070,12 @@ describe('org-solver.util resolve parity', () => {
     });
 
     it('evaluates an Inner Sphere Platoon from four BA squads', () => {
-        const squadFacts = compileGroupFactsList(materializeLeafCountRule(IS_BA_SQUAD, compileUnitFactsList([
+        const squadFacts = materializeLeafCountRule(IS_BA_SQUAD, compileUnitFactsList([
             createUnit('BA 1', 'Infantry', 'Battle Armor', false, ['MEC'], 1),
             createUnit('BA 2', 'Infantry', 'Battle Armor', false, ['MEC'], 3),
             createUnit('BA 3', 'Infantry', 'Battle Armor', false, ['MEC'], 5),
             createUnit('BA 4', 'Infantry', 'Battle Armor', false, ['MEC'], 6),
-        ])).groups);
+        ])).groups.map(group => compileGroupFacts(group));
 
         const result = evaluateComposedCountRule(IS_BA_PLATOON, squadFacts);
 
@@ -3334,7 +3338,8 @@ describe('org-solver.util resolve parity', () => {
             groups: [...nonVehiclePoints.groups, ...protoPoints.groups, ...vehiclePoints.groups],
         };
 
-        const starEvaluation = evaluateComposedCountRule(CLAN_STAR, compileGroupFactsList(pointMaterialized.groups));
+        const starEvaluation = evaluateComposedCountRule(CLAN_STAR,
+            pointMaterialized.groups.map(group => compileGroupFacts(group)));
 
         expect(starEvaluation.emitted).toHaveSize(4);
         expect(starEvaluation.emitted.every((emission) => emission.perGroupCount === 5)).toBeTrue();

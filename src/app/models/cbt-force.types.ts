@@ -72,7 +72,6 @@ export type CBTUnitTransferResult =
             | 'UNKNOWN_GROUP'
             | 'FORCE_FULL'
             | 'INSTANCE_ID_COLLISION'
-            | 'SCENARIO_MISMATCH'
             | 'FORCE_CHANGED'
             | 'PERSISTENCE_REJECTED';
     }>;

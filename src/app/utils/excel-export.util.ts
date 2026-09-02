@@ -16,7 +16,7 @@ import {
     type ForceMember,
 } from '../models/force-member.model';
 import { GameSystem } from '../models/common.model';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { hasNonMekRuntime } from '../models/cbt-unit-snapshot';
 import type { BaseEntity } from '../models/entity/base-entity';
 

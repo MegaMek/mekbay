@@ -23,7 +23,7 @@ import {
 import type { EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
 import {
     projectWeaponTargetPresentation,
-    equipmentPanelRuntimeTarget,
+    projectTargetingTarget,
 } from '../../../models/runtime/equipment-panel';
 import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
 import type { CBTUnitCommand } from '../../../models/runtime/unit-instance';
@@ -947,7 +947,7 @@ export class PageViewerMekInteractionService {
                 target.targetId,
                 projectWeaponTargetPresentation(
                     component,
-                    equipmentPanelRuntimeTarget(target, panel.ruleset),
+                    projectTargetingTarget(target, panel.ruleset),
                     panel.crew.gunnery,
                     recordSheet.movement.declared.kind === 'supported'
                         ? recordSheet.movement.declared.mode

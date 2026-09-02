@@ -4,7 +4,7 @@
 
 /// <reference lib="webworker" />
 
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './models/crew.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from './models/crew-member.model';
 import { getForcePacks } from './models/forcepacks.model';
 import {
     ADVANCED_FILTERS,

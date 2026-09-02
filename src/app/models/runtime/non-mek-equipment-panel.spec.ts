@@ -18,7 +18,7 @@ import { asComponentId } from '../entity/entity-identifiers';
 import { createDefaultCrewAssignment } from './crew-assignment';
 import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
 import {
-    equipmentPanelRuntimeTarget,
+    projectTargetingTarget,
     projectWeaponTargetPresentation,
 } from './equipment-panel';
 import { NonMekUnitInstance } from './non-mek-unit-instance';
@@ -254,7 +254,7 @@ describe('Entity equipment panel projection', () => {
             .toEqual([standard.id, precision.id]);
         expect(ammoRow.ammo?.remaining).toBe(4);
         expect(snapshot.targets.map(target => target.targetId)).toEqual([targetId]);
-        const target = equipmentPanelRuntimeTarget(snapshot.targets[0], snapshot.ruleset);
+        const target = projectTargetingTarget(snapshot.targets[0], snapshot.ruleset);
         expect(target.tnModifier).toBe(3);
         const presentation = projectWeaponTargetPresentation(
             weaponRow,
@@ -513,8 +513,7 @@ describe('Entity equipment panel projection', () => {
             wounds: 0,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
+            dead: false,
         });
         expect(snapshot().physicalAttacks[0]).toEqual(jasmine.objectContaining({
             label: 'Frenzy',

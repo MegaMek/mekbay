@@ -293,11 +293,6 @@ function extractOccurrenceValues(text: string, token: string): readonly (ASSpeci
     }));
 }
 
-/** Parse one ability into the structural AST used everywhere else. */
-export function parseASSpecialAbility(value: string): ASSpecialAbilityNode | null {
-    return parseASSpecialAbilityInContext(value, createASSpecialParseContext());
-}
-
 function parseASSpecialAbilityInContext(
     value: string,
     context: ASSpecialParseContext,

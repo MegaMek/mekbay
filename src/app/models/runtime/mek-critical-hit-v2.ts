@@ -20,7 +20,6 @@ import type {
 } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import {
-    getTopologyFor,
     LEG_LOCATIONS,
     MEK_TORSO_LOCATIONS,
     type MekLocation,
@@ -447,8 +446,6 @@ function criticalRollLocation(
     sourceLocationId: LocationId,
     target: MekCriticalMutationTarget,
 ): LocationId {
-    const byCode = new Map([...index.locations.values()].map(location => [location.code, location.id] as const));
-    const topology = getTopologyFor([...byCode.keys()]);
     const visited = new Set<LocationId>();
     let current = sourceLocationId;
     while (!visited.has(current)) {
@@ -456,9 +453,8 @@ function criticalRollLocation(
         if (location.code === 'HD' || location.code === 'CT'
             || locationHadApplicableSlotAtPhaseStart(index, ruleset, runtime, current, target)) break;
         visited.add(current);
-        const nextCode = topology[location.code as keyof typeof topology]?.transfersTo;
-        const next = nextCode === null || nextCode === undefined ? undefined : byCode.get(nextCode);
-        if (next === undefined) break;
+        const next = index.damageTransferLocationIdByLocation.get(current) ?? null;
+        if (next === null) break;
         current = next;
     }
     return current;
@@ -678,8 +674,6 @@ function resolveExplosionPlan(
     directHitSlot?: MekIndexedCriticalSlot,
 ): MekEquipmentExplosionPlanV2 {
     const rules = gameRulesFor(ruleset);
-    const byCode = new Map([...index.locations.values()].map(location => [location.code, location.id] as const));
-    const topology = getTopologyFor([...byCode.keys()]);
     const internalDamage = new Map<LocationId, number>();
     const armorDamage = new Map<ArmorFaceId, number>();
     const locations: MekExplosionLocationDamageV2[] = [];
@@ -737,8 +731,7 @@ function resolveExplosionPlan(
         }));
         const overflow = Math.max(0, resolution.internalDamage - appliedInternal / multiplier);
         if (overflow === 0 || resolution.stopsTransfer) break;
-        const nextCode = topology[location.code as keyof typeof topology]?.transfersTo;
-        locationId = nextCode === null || nextCode === undefined ? null : byCode.get(nextCode) ?? null;
+        locationId = index.damageTransferLocationIdByLocation.get(locationId) ?? null;
         damage = overflow;
         directHitSlot = undefined;
     }

@@ -5,6 +5,7 @@ import type { EntityMountedEquipment } from '../entity/types';
 import type { ArmorFaceId, ComponentId, CrewPositionId, LocationId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { AmmoEquipment } from '../equipment.model';
+import { CrewMember, type CrewMemberRuntimeState } from '../crew-member.model';
 import type { UnitConditionKey } from '../unit-condition.model';
 import type { AttackerTargetingState } from './attacker-targeting-state';
 import type { EquipmentRowOrderState } from './equipment-row-order';
@@ -60,21 +61,6 @@ export interface CBTLocationRuntimeState {
     readonly armorDamage: readonly { readonly faceId: ArmorFaceId; readonly damage: number }[];
 }
 
-export interface CBTCrewRuntimeState {
-    readonly wounds: number;
-    readonly unconscious: boolean;
-    readonly ejected: boolean;
-    /** Sparse committed death. Six wounds without this flag remain pending until phase end. */
-    readonly dead?: true;
-    /** Earliest turn for an automated recovery roll; null means no queued recovery. */
-    readonly recoveryReadyTurn?: number | null;
-}
-
-/** A sixth wound is fatal, but origin/next commits that death only at phase end. */
-export function isCrewDeathCommitted(state: CBTCrewRuntimeState): boolean {
-    return state.dead === true;
-}
-
 /** Boundary facts shared by every CBT family runtime. */
 export interface CBTTurnRuntimeState {
     readonly turnCounter: number;
@@ -92,7 +78,7 @@ export interface CBTUnitRuntimeState {
     readonly locations: ReadonlyMap<LocationId, CBTLocationRuntimeState>;
     readonly components: ReadonlyMap<ComponentId, ComponentRuntimeState>;
     readonly ammo: ReadonlyMap<ComponentId, AmmoRuntimeState>;
-    readonly crew: ReadonlyMap<CrewPositionId, CBTCrewRuntimeState>;
+    readonly crew: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>;
     readonly conditions: ReadonlySet<UnitConditionKey>;
     readonly turn: CBTTurnRuntimeState;
     readonly attackerTargeting: AttackerTargetingState;
@@ -128,7 +114,7 @@ export interface CBTUnitQueryPort {
     equipmentRowOrder(): EquipmentRowOrderState | undefined;
     hasCondition(condition: UnitConditionKey): boolean;
     conditions(): readonly UnitConditionKey[];
-    crewState(positionId: CrewPositionId): CBTCrewRuntimeState;
+    crewState(positionId: CrewPositionId): CrewMember;
 }
 
 /** One atomically captured force-facing runtime read model. */

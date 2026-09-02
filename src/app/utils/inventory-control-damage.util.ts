@@ -14,7 +14,7 @@ import { isHagEquipment } from '../models/hag-mode.model';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import type { AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
-import type { InventoryControlRuntimeRangeKey } from '../models/inventory-control-runtime-state.model';
+import type { TnRangeBracket } from '../models/target-number-calculator.model';
 import type { ComponentId } from '../models/entity/entity-identifiers';
 import {
     formatWeaponDamage,
@@ -61,7 +61,7 @@ export interface InventoryControlDamageRules {
 }
 
 export function inventoryControlDamageRange(
-    range: InventoryControlRuntimeRangeKey | null
+    range: TnRangeBracket | null
 ): WeaponDamageRange | null {
     return range === 'short' || range === 'medium' || range === 'long' || range === 'extreme'
         ? range

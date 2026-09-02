@@ -57,14 +57,6 @@ export const MM_DATA_MEK_SHEET_BINDING_MANIFEST: MekSheetBindingManifestV1 =
         },
     });
 
-export function reviewedMekSheetBinding(
-    provider: UnitProviderId,
-): MekSheetBindingManifestV1 | undefined {
-    return provider === MM_DATA_UNIT_PROVIDER_ID
-        ? MM_DATA_MEK_SHEET_BINDING_MANIFEST
-        : undefined;
-}
-
 function deepFreeze<T>(value: T): T {
     if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
     for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);

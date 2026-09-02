@@ -14,7 +14,6 @@ import {
 } from '../../services/unit-catalog/unit-catalog.types';
 import { NonMekUnitInstance } from '../runtime/non-mek-unit-instance';
 import { type InstanceBaselineRef } from '../runtime/runtime-state';
-import { projectProtoMekRuntimeRules } from './protomek-runtime-rules';
 
 describe('ProtoMek runtime rules', () => {
     it('ports the production attack movement modifiers', () => {
@@ -46,11 +45,10 @@ describe('ProtoMek runtime rules', () => {
             wounds: 6,
             unconscious: false,
             ejected: false,
-            killed: false,
-            stunned: false,
+            dead: false,
         }).accepted).toBeTrue();
         dead.runtime.dispatch({ kind: 'end-phase' });
-        expect(project(dead.runtime).computedConditions).toEqual(['abandoned', 'immobile', 'crippled']);
+        expect(project(dead.runtime).computedConditions).toEqual(['abandoned', 'immobile']);
 
         const ejected = harness();
         const ejectedCrew = [...ejected.runtime.getIndex().crewPositions.keys()][0]!;
@@ -61,8 +59,7 @@ describe('ProtoMek runtime rules', () => {
             wounds: 0,
             unconscious: false,
             ejected: true,
-            killed: false,
-            stunned: false,
+            dead: false,
         });
         expect(project(ejected.runtime).computedConditions).toEqual(['immobile']);
 
@@ -75,10 +72,25 @@ describe('ProtoMek runtime rules', () => {
             wounds: 4,
             unconscious: false,
             ejected: false,
-            killed: false,
-            stunned: false,
+            dead: false,
         });
         expect(project(crippled.runtime).computedConditions).toEqual(['crippled']);
+    });
+
+    it('disables the entire crippled system when forced withdrawal is off', () => {
+        const disabled = harness(CORE_2026_RULESET, false);
+        const crew = [...disabled.runtime.getIndex().crewPositions.keys()][0]!;
+        expect(disabled.runtime.dispatch({
+            kind: 'set-crew-state',
+            positionId: crew,
+            wounds: 4,
+            unconscious: false,
+            ejected: false,
+            dead: false,
+        }).accepted).toBeTrue();
+
+        expect(disabled.runtime.query().hasCondition('crippled')).toBeFalse();
+        expect(project(disabled.runtime).computedConditions).not.toContain('crippled');
     });
 
     it('derives immobility and destruction from Entity locations and criticals', () => {
@@ -126,12 +138,15 @@ describe('ProtoMek runtime rules', () => {
         expect(totalWar.conditionControlKeys).toEqual([
             'swarmed', 'tagged', 'ecm-shielded', 'skidding', 'jammed',
         ]);
-        expect(totalWar.crewStateControlKeys).toEqual(['unconscious']);
-        expect(totalWar.crewStateDisplayKeys).toEqual(['unconscious', 'dead']);
+        expect(totalWar.crewStateControlKeys).toEqual(['stunned']);
+        expect(totalWar.crewStateDisplayKeys).toEqual(['stunned', 'killed']);
     });
 });
 
-function harness(ruleset: CBTRuleset = CORE_2026_RULESET): Readonly<{
+function harness(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    forcedWithdrawal = true,
+): Readonly<{
     entity: TestProtoMekEntity;
     runtime: NonMekUnitInstance;
 }> {
@@ -145,19 +160,16 @@ function harness(ruleset: CBTRuleset = CORE_2026_RULESET): Readonly<{
         baseline(ruleset),
         entity,
         ruleset,
+        undefined,
+        forcedWithdrawal,
     );
     return Object.freeze({ entity, runtime });
 }
 
 function project(runtime: NonMekUnitInstance) {
-    const entity = runtime.getUnit();
-    if (!(entity instanceof TestProtoMekEntity)) throw new Error('Expected ProtoMek fixture');
-    return projectProtoMekRuntimeRules(
-        entity,
-        runtime.getIndex(),
-        runtime.snapshot(),
-        runtime.ruleset,
-    );
+    const projection = runtime.protoMekRules();
+    if (projection === null) throw new Error('Expected ProtoMek fixture');
+    return projection;
 }
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');

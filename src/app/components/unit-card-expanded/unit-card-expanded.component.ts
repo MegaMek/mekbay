@@ -38,7 +38,7 @@ import {
     MEGAMEK_RARITY_SALVAGE_SORT_KEY,
     isMegaMekRaritySortKey,
 } from '../../services/unit-search-filters.model';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
 import { getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNormalizationMatch } from '../../models/unit-search-result.model';
 import { caseRecordSheetLabel } from '../../models/case-equipment.model';
 import { formatMovement, isAerospace } from '../../utils/as-common.util';

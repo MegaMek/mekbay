@@ -3,7 +3,7 @@
 
 import type { ComponentId, LocationId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import { getMekLocationParent, type MekLocation } from '../entity/types';
+import type { MekLocation } from '../entity/types';
 import type { IntrinsicWeapon } from '../entity/types/weapon';
 import type { MekUnitQueryPort } from './unit-instance';
 import type { AttackerActionTarget } from './attacker-targeting-state';
@@ -21,6 +21,7 @@ import {
 } from './component-shield-mode';
 import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
 import { mobileHpgBlocksWeaponAttacks } from './component-mobile-hpg';
+import { mekLocationDestructionParentId } from './mek-location-state-kernel';
 
 /** `configure-network` remains owned by the C3 encounter/runtime boundary. */
 export type MekAction =
@@ -306,16 +307,8 @@ function locationUnavailable(
     if (runtime.remainingInternal(locationId, 'committed') <= 0
         || runtime.locationCondition(locationId, 'flooded', 'committed') > 0
         || runtime.locationCondition(locationId, 'blown-off', 'committed') > 0) return true;
-    const parentId = locationParentId(index, locationId);
+    const parentId = mekLocationDestructionParentId(index, locationId);
     return parentId !== null && locationUnavailable(index, runtime, parentId, visited);
-}
-
-function locationParentId(index: MekRuntimeIndex, locationId: LocationId): LocationId | null {
-    const location = index.locations.get(locationId);
-    if (location === undefined) return null;
-    const locations = [...index.locations.values()];
-    const parentCode = getMekLocationParent(locations.map(candidate => candidate.code), location.code);
-    return parentCode === null ? null : locations.find(candidate => candidate.code === parentCode)?.id ?? null;
 }
 
 function slotHasSystem(

@@ -3,13 +3,13 @@
 // Author: Drake
 
 import type { WeaponEquipment } from '../models/equipment.model';
-import type { InventoryControlRuntimeRangeKey } from '../models/inventory-control-runtime-state.model';
 import type { AmmoWeaponProfile } from '../models/ammo-weapon-profile.model';
+import type { TnRangeBracket } from '../models/target-number-calculator.model';
 
 export type AerospaceRangeLimits = readonly [short: number, medium: number, long: number, extreme: number];
 export type AerospaceAttackValues = readonly [short: number, medium: number, long: number, extreme: number];
 
-export const AEROSPACE_RANGE_BRACKETS: readonly InventoryControlRuntimeRangeKey[] = [
+export const AEROSPACE_RANGE_BRACKETS: readonly TnRangeBracket[] = [
     'short',
     'medium',
     'long',
@@ -33,29 +33,22 @@ export function aerospaceRangeLimits(weapon: Pick<WeaponEquipment, 'capital'>): 
 export function aerospaceRangeBracket(
     distance: number,
     limits: AerospaceRangeLimits
-): InventoryControlRuntimeRangeKey | null {
+): TnRangeBracket | null {
     const bracketIndex = limits.findIndex(limit => distance <= limit);
     return bracketIndex < 0 ? null : AEROSPACE_RANGE_BRACKETS[bracketIndex];
 }
 
 export function isRangeBracketWithinMaximum(
-    range: InventoryControlRuntimeRangeKey,
-    maximumRange: InventoryControlRuntimeRangeKey
+    range: TnRangeBracket,
+    maximumRange: TnRangeBracket
 ): boolean {
     return AEROSPACE_RANGE_BRACKETS.indexOf(range) <= AEROSPACE_RANGE_BRACKETS.indexOf(maximumRange);
-}
-
-export function aerospaceMaximumDistance(
-    weapon: Pick<WeaponEquipment, 'capital'>,
-    maximumRange: InventoryControlRuntimeRangeKey
-): number {
-    return aerospaceRangeLimits(weapon)[AEROSPACE_RANGE_BRACKETS.indexOf(maximumRange)];
 }
 
 export function effectiveAerospaceMaximumBracket(
     weapon: Pick<WeaponEquipment, 'maxRangeBracket'>,
     ammoProfile: AmmoWeaponProfile | null
-): InventoryControlRuntimeRangeKey {
+): TnRangeBracket {
     return ammoProfile?.maximumAerospaceBracket ?? weapon.maxRangeBracket;
 }
 
