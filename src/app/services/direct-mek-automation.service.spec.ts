@@ -1326,9 +1326,11 @@ describe('DirectMekAutomationService', () => {
         expect(resolveChecksAutomation.calls.allArgs().map(args => args[0])).toContain('pilotSkillCheck');
     });
 
-    it('keeps disabled phase PSRs pending when their badge is opened', async () => {
+    it('resolves disabled phase PSRs and their consequences when their badge is opened', async () => {
         const harness = createHarness('total-warfare');
         automationModes['pilotSkillCheck'] = 'no';
+        spyOn(Math, 'random').and.returnValue(0);
+        resolveFalling.and.resolveTo({ action: 'skip' });
         const slot = [...harness.fixture.index.slots.values()].find(candidate =>
             harness.fixture.index.locations.get(candidate.locationId)?.code === 'LL'
             && candidate.componentIds.some(componentId => {
@@ -1361,16 +1363,21 @@ describe('DirectMekAutomationService', () => {
         );
 
         expect(settled).not.toBeNull();
-        expect(harness.fixture.instance.query().stateRevision).toBe(revisionBefore);
-        expect(harness.fixture.instance.query().hasPendingCombat()).toBeTrue();
-        const previewAfter = harness.fixture.instance.query().previewEndPhase();
-        expect(previewAfter.accepted).toBeTrue();
-        if (!previewAfter.accepted) return;
-        expect(previewAfter.state.movementPsr.checks.some(check =>
-            check.status === 'pending')).toBeTrue();
+        expect(harness.fixture.instance.query().stateRevision).toBeGreaterThan(revisionBefore);
+        expect(harness.fixture.instance.query().hasPendingCombat()).toBeFalse();
+        expect(harness.fixture.instance.query().mekPilotChecks()).toEqual([
+            jasmine.objectContaining({ status: 'failed' }),
+        ]);
+        expect(resolveFalling).toHaveBeenCalled();
+        expect(harness.fixture.instance.query().hasCondition('prone')).toBeTrue();
+        expect(harness.fixture.instance.query().turnState().endTurnCheckpoint).toBeUndefined();
         const review = resolveChecksAutomation.calls.allArgs()
             .find(args => args[0] === 'pilotSkillCheck');
-        expect(review?.[1]).toEqual([]);
+        expect(review?.[1]).toHaveSize(1);
+        expect(review?.[2]).toEqual(jasmine.objectContaining({
+            interactive: true,
+            manualResolution: true,
+        }));
     });
 
     it('keeps the Mek prone when falling automation skips damage after a failed PSR', async () => {

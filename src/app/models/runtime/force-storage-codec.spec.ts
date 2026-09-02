@@ -30,6 +30,10 @@ import {
 } from './force-storage-codec';
 import { RUNTIME_HISTORY_MESSAGE } from './runtime-history';
 import {
+    CBT_HISTORY_MUTATION_TARGET_CODE,
+} from './force-storage-vocabulary';
+import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from './mek-movement-psr-v2';
+import {
     DEFAULT_FORCE_DEPLOYMENT_ID,
     DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
     UNIT_STATE_INITIALIZER_REVISION,
@@ -300,7 +304,7 @@ describe('compact force storage codec', () => {
 
     it('round-trips current compact history through the IndexedDB record', () => {
         const source = damagedForce();
-        const instanceId = '019f6767-0dcb-7bb8-992f-aef08202f5e4';
+        const instanceId = 'unit:019f6767-0dcb-7bb8-992f-aef08202f5e4';
         const groupId = '019f6767-0dcb-7bb8-992f-aef08202f5e5';
         const originalEntry = source.cbt!.units[0]!;
         const unit = { ...originalEntry.unit, instanceId };
@@ -308,13 +312,22 @@ describe('compact force storage codec', () => {
             u: [instanceId],
             t: [{
                 n: 7,
-                p: [[[
-                    RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR,
-                    0,
-                    'f:la',
-                    2,
-                    'pending',
-                ]]],
+                p: [[
+                    [
+                        RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR,
+                        0,
+                        'f:la',
+                        2,
+                        'pending',
+                    ],
+                    [
+                        RUNTIME_HISTORY_MESSAGE.REPAIR_ARMOR,
+                        0,
+                        'f:la',
+                        1,
+                        'committed',
+                    ],
+                ]],
             }],
         } as const;
         const force: SerializedCBTForce = {
@@ -337,13 +350,26 @@ describe('compact force storage codec', () => {
         const stored = encodeForceForStorage(force);
         const compact = stored['cbt'] as Record<string, unknown>;
         const compactUnit = (compact['u'] as Record<string, unknown>[])[0]!;
-        const compactHistory = compact['h'] as { u: string[] };
+        const compactHistory = compact['h'] as Array<{ p: unknown[][][] }>;
         const compactGroup = (compact['g'] as unknown[][])[0]!;
         expect(stored['timestamp']).toBe(Date.parse(force.timestamp));
         expect(compactUnit['k']).toBeUndefined();
-        expect(compactUnit['i']).toMatch(/^~[A-Za-z0-9_-]{22}$/u);
+        expect(compactUnit['i']).toMatch(/^~u[A-Za-z0-9_-]{22}$/u);
         expect(compactUnit['e']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
-        expect(compactHistory.u[0]).toMatch(/^~[A-Za-z0-9_-]{22}$/u);
+        expect(compactHistory[0]!.p[0]![0]).toEqual([
+            RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR,
+            0,
+            'f:la',
+            2,
+            CBT_HISTORY_MUTATION_TARGET_CODE.pending,
+        ]);
+        expect(compactHistory[0]!.p[0]![1]).toEqual([
+            RUNTIME_HISTORY_MESSAGE.REPAIR_ARMOR,
+            0,
+            'f:la',
+            1,
+            CBT_HISTORY_MUTATION_TARGET_CODE.committed,
+        ]);
         expect(compactGroup[0]).toMatch(/^~[A-Za-z0-9_-]{22}$/u);
 
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
@@ -351,6 +377,102 @@ describe('compact force storage codec', () => {
         expect(decoded.cbt!.roster.groups[0]!.groupId).toBe(groupId);
         expect(decoded.cbt!.units[0]!.instanceId).toBe(instanceId);
         expect(decoded.cbt!.units[0]!.unit.entity).toBe(originalEntry.unit.entity);
+    });
+
+    it('round-trips a compact movement declaration together with its pending PSR', async () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        expect(fixture.instance.dispatch({
+            type: 'declare-mek-movement',
+            declaration: {
+                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
+                mode: 'walk',
+                distance: 3,
+                boosterComponentIds: [],
+            },
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        const footActuator = [...fixture.index.slots.values()].find(slot =>
+            fixture.index.locations.get(slot.locationId)?.code === 'LL'
+            && slot.componentIds.some(componentId => {
+                const component = fixture.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Foot Actuator';
+            }))!;
+        expect(fixture.instance.dispatch({
+            type: 'hit-critical',
+            slotId: footActuator.id,
+            hits: 1,
+            target: 'committed',
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(fixture.instance.query().mekPilotChecks()).toEqual([
+            jasmine.objectContaining({ reason: 'Leg Actuator hit', status: 'pending' }),
+        ]);
+
+        const unit = new CBTMekUnit(
+            fixture.entity,
+            fixture.identity,
+            fixture.instance,
+            { schemaVersion: 2, values: fixture.initialized.deployment },
+        ).serialize();
+        const stored = encodeForceForStorage(forceWithUnit(
+            unit,
+            'force:movement-psr',
+            'Movement and PSR',
+        ));
+        const compactUnit = ((stored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
+        const compactMovement = compactUnit['m'] as Record<string, unknown>;
+        expect(compactMovement['m']).toEqual(['walk', 3]);
+        expect(compactMovement['k']).toEqual(jasmine.any(Array));
+
+        const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
+        const entry = decoded.cbt!.units[0]!;
+        if (isSerializedNonMekUnit(entry.unit)) {
+            throw new Error('Movement/PSR fixture did not decode as a Mek');
+        }
+        expect(entry.unit.movementPsr).toEqual(unit.movementPsr);
+        const restored = await CBTMekUnit.restoreFromEntity(
+            entry.unit,
+            fixture.entity,
+            fixture.identity,
+            {
+                initializerRevision: UNIT_STATE_INITIALIZER_REVISION,
+                profileId: DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
+                deployment: entry.unit.deployment.values,
+                scenario: { id: 'megamek', ruleset: 'total-warfare' },
+            },
+        );
+        expect(restored.getInstance().query().mekPilotChecks()).toEqual(
+            fixture.instance.query().mekPilotChecks(),
+        );
+    });
+
+    it('keeps recent history for a unit that is no longer in the force', () => {
+        const source = damagedForce();
+        const removedInstanceId = 'unit:019f6767-0dcb-7bb8-992f-aef08202f5e4';
+        const history = {
+            u: [removedInstanceId],
+            t: [{
+                n: 1,
+                p: [[[
+                    RUNTIME_HISTORY_MESSAGE.UNIT_ACTION,
+                    0,
+                    'removed',
+                ]]],
+            }],
+        } as const;
+        const force: SerializedCBTForce = {
+            ...source,
+            cbt: {
+                ...source.cbt!,
+                history,
+            },
+        };
+
+        const stored = encodeForceForStorage(force);
+        const compact = stored['cbt'] as Record<string, unknown>;
+        const compactHistory = compact['h'] as Array<{ p: unknown[][][] }>;
+        expect(compactHistory[0]!.p[0]![0]![1]).toMatch(/^~u[A-Za-z0-9_-]{22}$/u);
+
+        const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
+        expect(decoded.cbt!.history).toEqual(history);
     });
 
     it('stores production defaults implicitly and roster membership by unit index', async () => {
@@ -651,6 +773,8 @@ describe('compact force storage codec', () => {
         };
 
         expect(decodeForceFromStorage(JSON.parse(JSON.stringify(force)))).toEqual(force);
+        const { version: _version, ...preVersionForce } = force;
+        expect(decodeForceFromStorage(preVersionForce)).toEqual(force);
     });
 
     it('rejects non-current UUID spellings in V2 storage', () => {

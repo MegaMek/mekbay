@@ -23,7 +23,6 @@ test('generated inventory owns only the stable unit outputs', () => {
   const paths = new Set(GENERATED_ASSET_FILES.map(entry => entry.relativePath));
   assert.equal(paths.has('units-manifest.json'), true);
   assert.equal(paths.has('units.zip'), true);
-  assert.equal(paths.has('eras.json'), false);
   assert.equal(paths.has('factions.json'), false);
   assert.equal([...paths].some(value => value.includes('core-units')), false);
   assert.deepEqual(GENERATED_ASSET_PATTERNS.map(entry => entry.directory), ['units']);

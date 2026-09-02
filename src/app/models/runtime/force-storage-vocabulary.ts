@@ -84,6 +84,12 @@ export const CBT_HISTORY_TURN_FIELD = {
     phases: 'p',
 } as const;
 
+/** Compact replacement for verbose history mutation-target strings. */
+export const CBT_HISTORY_MUTATION_TARGET_CODE = {
+    committed: 0,
+    pending: 1,
+} as const;
+
 export const CBT_ENCOUNTER_NETWORK_INDEX = {
     instanceId: 0,
     type: 1,
@@ -183,6 +189,12 @@ export const CBT_MOVEMENT_FIELD = {
     damageThisPhase: 'd',
     checks: 'k',
     automaticFalls: 'f',
+} as const;
+
+export const CBT_MOVEMENT_DECLARATION_INDEX = {
+    mode: 0,
+    distance: 1,
+    boosterComponentIds: 2,
 } as const;
 
 export const CBT_MOVEMENT_SOURCE_FIELD = {

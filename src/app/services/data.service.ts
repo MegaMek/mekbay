@@ -889,7 +889,7 @@ export class DataService {
      * Starts the single application-catalog bootstrap. Route-scoped services
      * may join this promise, but must never initialize required CatalogBase
      * services on their own: only the atomic bundle coordinator may publish
-     * equipment, quirks, sourcebooks, eras, factions, sheets, and sprites.
+     * equipment, quirks, sourcebooks, factions, and sprites.
      */
     public initialize(): Promise<void> {
         if (this.isDataReady()) return Promise.resolve();

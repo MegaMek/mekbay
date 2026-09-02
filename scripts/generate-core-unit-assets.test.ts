@@ -71,7 +71,7 @@ test('publishes deterministic UUID files, a direct SHA-1 manifest, and one ZIP',
         await zip.file(CORE_UNIT_ARCHIVE_DEPENDENCY_BUNDLE_PATH)!.async('string'),
     ) as Record<string, unknown>;
     assert.deepEqual(Object.keys(dependencies).sort(), [
-        'equipment', 'eras', 'factions', 'quirks', 'sheets', 'sourcebooks', 'spriteManifest',
+        'equipment', 'factions', 'quirks', 'sourcebooks', 'spriteManifest',
     ]);
     assert.equal(fs.existsSync(path.join(output, 'core-unit-manifests')), false);
     assert.equal(fs.existsSync(path.join(output, 'core-units-manifest.json')), false);

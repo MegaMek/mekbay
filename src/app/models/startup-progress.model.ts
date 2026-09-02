@@ -122,7 +122,7 @@ const PHASE: Readonly<Record<Exclude<StartupCoreCatalogPhase, 'complete'>, Phase
     'local-bundle': Object.freeze({
         title: 'Preparing saved catalog members',
         completedLabel: 'saved catalog members ready',
-        zeroDetail: 'Preparing equipment, quirks, sourcebooks, eras, factions, sheets, and sprites.',
+        zeroDetail: 'Preparing equipment, quirks, sourcebooks, factions, and sprites.',
     }),
     'dependency-cache': Object.freeze({
         title: 'Checking saved catalog inputs',
@@ -137,7 +137,7 @@ const PHASE: Readonly<Record<Exclude<StartupCoreCatalogPhase, 'complete'>, Phase
     'dependency-validation': Object.freeze({
         title: 'Preparing catalog members in parallel',
         completedLabel: 'catalog members ready',
-        zeroDetail: 'Preparing equipment, quirks, sourcebooks, eras, factions, sheets, and sprites.',
+        zeroDetail: 'Preparing equipment, quirks, sourcebooks, factions, and sprites.',
     }),
     'dependency-staging': Object.freeze({
         title: 'Staging changed catalogs',

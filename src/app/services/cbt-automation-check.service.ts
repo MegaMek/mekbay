@@ -20,6 +20,8 @@ export interface AutomationCheckOptions {
     readonly initiallyFailedGroups?: ReadonlySet<string>;
     /** Badge-driven resume keeps disabled checks disabled, but opens configured automatic checks. */
     readonly interactive?: boolean;
+    /** Explicit user resolution opens the check dialog regardless of its configured mode. */
+    readonly manualResolution?: boolean;
 }
 
 interface PendingAutomationCheckBatch {
@@ -53,7 +55,9 @@ export class CBTAutomationCheckService {
         const initiallyFailedGroups = options.initiallyFailedGroups ?? new Set<string>();
         const sessionId = automationCheckSessionId(key, checks);
         const configured = this.options.cbtAutomationMode(key);
-        const mode = options.interactive && configured === 'yes' ? 'ask' : configured;
+        const mode = options.manualResolution
+            ? 'ask'
+            : options.interactive && configured === 'yes' ? 'ask' : configured;
         switch (mode) {
             case 'no':
                 this.pendingSelections.delete(sessionId);

@@ -52,7 +52,7 @@ describe('projectCoreCatalogPhaseProgress', () => {
         });
         expect(unknown).toEqual(jasmine.objectContaining({
             mode: 'indeterminate',
-            detail: 'Preparing equipment, quirks, sourcebooks, eras, factions, sheets, and sprites.',
+            detail: 'Preparing equipment, quirks, sourcebooks, factions, and sprites.',
         }));
     });
 

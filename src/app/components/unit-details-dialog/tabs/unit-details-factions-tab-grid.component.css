@@ -441,17 +441,13 @@
 
     .era-column-heading,
     .availability-cell {
-        width: 70px;
-        min-width: 70px;
-        max-width: 70px;
+        width: 50px;
+        min-width: 50px;
+        max-width: 50px;
     }
 
     .faction-availability-matrix thead th {
         height: 74px;
-    }
-
-    .era-heading-content {
-        height: 78px;
     }
 
     .era-icon {
@@ -460,21 +456,21 @@
     }
 
     .era-name {
-        font-size: 0.62rem;
+        font-size: 0.56rem;
     }
 
     .era-years {
-        font-size: 0.56rem;
+        font-size: 0.45rem;
     }
 
     .faction-row-heading,
     .availability-cell {
-        height: 56px;
+        height: 50px;
     }
 
     .faction-identity,
     .availability-cell-content {
-        min-height: 55px;
+        min-height: 50px;
     }
 
     .faction-identity {
@@ -497,6 +493,10 @@
     .row-faction-logo {
         width: 27px;
         height: 27px;
+    }
+
+    .faction-megamek-availability-badges {    
+        margin-top: 25px;
     }
 
     .cell-faction-logo {

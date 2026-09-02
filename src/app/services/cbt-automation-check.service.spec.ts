@@ -72,6 +72,33 @@ describe('CBTAutomationCheckService', () => {
         expect(result).toEqual(applied);
     });
 
+    it('opens disabled checks when the user explicitly resolves their pending badge', async () => {
+        const applied = [{
+            id: 'psr', outcome: 'success' as const, dice: [3, 4] as const, automatic: false,
+        }];
+        const createDialog = jasmine.createSpy('createDialog').and.returnValue({ closed: of(applied) });
+        TestBed.configureTestingModule({
+            providers: [
+                CBTAutomationCheckService,
+                { provide: OptionsService, useValue: { cbtAutomationMode: () => 'no' } },
+                { provide: DialogsService, useValue: { createDialog } },
+            ],
+        });
+
+        const result = await TestBed.inject(CBTAutomationCheckService).resolve(
+            'pilotSkillCheck',
+            [check('psr', 7)],
+            {
+                title: 'Piloting Skill Rolls',
+                interactive: true,
+                manualResolution: true,
+            },
+        );
+
+        expect(createDialog).toHaveBeenCalledTimes(1);
+        expect(result).toEqual(applied);
+    });
+
     it('opens the dedicated pending-check dialog in ask mode and returns CLOSE as cancellation', async () => {
         const createDialog = jasmine.createSpy('createDialog').and.returnValue({ closed: of(undefined) });
         TestBed.configureTestingModule({

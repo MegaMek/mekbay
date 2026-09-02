@@ -772,11 +772,9 @@ export class DirectMekAutomationService {
         const includeRecoveries = phaseWork !== 'pilot-checks';
         const includePilotChecks = phaseWork !== 'unit-checks';
         const pilotSkillMode = this.options.cbtAutomationMode('pilotSkillCheck');
-        // As in origin/next, disabled PSRs remain informational when their badge is
-        // opened. Only the actual phase boundary is allowed to dismiss them.
-        const resolvePilotChecks = includePilotChecks
-            && !(review.interactive === true
-                && pilotSkillMode === 'no');
+        // `no` skips PSRs only at the phase boundary. Clicking their badge is an
+        // explicit request to resolve them and therefore uses the manual workflow.
+        const pilotChecksEnabled = pilotSkillMode !== 'no' || review.interactive === true;
         const rows = requests.map(request => {
             const snapshot = this.snapshot(force, request.instanceId);
             return Object.freeze({
@@ -809,7 +807,7 @@ export class DirectMekAutomationService {
 
         const initiallyFailedGroups = new Set<string>();
         const automaticallyResolvedChecks: AutomationCheckResolution[] = [];
-        const checkCandidates = resolvePilotChecks ? rows.flatMap(row => {
+        const checkCandidates = includePilotChecks ? rows.flatMap(row => {
             const staged = row.staged;
             if (!staged) return [];
             const fallGroup = `fall:${row.request.instanceId}`;
@@ -860,7 +858,7 @@ export class DirectMekAutomationService {
             // checks (no active pilot, shutdown, or an already-forced fall).
             // Resolve that unit now so other units' actionable rows can still
             // share one force-wide dialog without displaying automatic-only rows.
-            if (pilotSkillMode !== 'no'
+            if (pilotChecksEnabled
                 && automationCheckBatchIsFullyAutomatic(result, rowInitiallyFailedGroups)) {
                 automaticallyResolvedChecks.push(...resolveAutomationChecksAutomatically(
                     result,
@@ -877,6 +875,7 @@ export class DirectMekAutomationService {
                 title: 'Piloting Skill Rolls',
                 initiallyFailedGroups,
                 interactive: review.interactive,
+                manualResolution: review.interactive,
             },
         );
         if (reviewedCheckResults === null) return null;
@@ -888,9 +887,9 @@ export class DirectMekAutomationService {
         const acceptedCheckIds = new Set(checkResults.map(result => result.id));
 
         const falls = new Map<string, PreparedMekFall | null>();
-        // Disabled PSRs pass the boundary and are discarded; even a rules-level
-        // automatic fall must not force the falling workflow in `no` mode.
-        for (const row of resolvePilotChecks && pilotSkillMode !== 'no' ? rows : []) {
+        // Disabled PSRs pass the boundary and are discarded; a badge-driven
+        // manual resolution still applies the selected roll and its consequences.
+        for (const row of includePilotChecks && pilotChecksEnabled ? rows : []) {
             const staged = row.staged;
             if (!staged) continue;
             const failedCheck = staged.checks.find(check =>
@@ -921,23 +920,23 @@ export class DirectMekAutomationService {
                     deferredPilotHits: 0,
                     phaseBoundary: Object.freeze({
                         work: phaseWork,
-                        checks: Object.freeze((resolvePilotChecks ? staged.checks : []).map(check => {
+                        checks: Object.freeze((includePilotChecks ? staged.checks : []).map(check => {
                             const resolution = checkById.get(check.checkId);
                             return resolution
                                 ? this.resolvedPilotCheck(check, resolution)
                                 : this.skippedPilotCheck(check);
                         })),
-                        ruleCheck: resolvePilotChecks && staged.ruleCheck
+                        ruleCheck: includePilotChecks && staged.ruleCheck
                             && checkById.has(staged.ruleCheck.eventId)
                             ? this.resolvedRuleCheck(
                                 staged.ruleCheck,
                                 checkById.get(staged.ruleCheck.eventId)!,
                             )
-                            : resolvePilotChecks && staged.ruleCheck
+                            : includePilotChecks && staged.ruleCheck
                                 ? this.skippedRuleCheck(staged.ruleCheck)
                                 : null,
                         acceptedCheckIds: new Set(acceptedCheckIds),
-                        hadAutomaticFall: resolvePilotChecks && staged.hadAutomaticFall,
+                        hadAutomaticFall: includePilotChecks && staged.hadAutomaticFall,
                         fall: falls.get(request.instanceId) ?? null,
                         recoveries: Object.freeze((includeRecoveries ? staged.recoveries : []).map(recovery => {
                             const resolution = recoveryById.get(recovery.eventId);
@@ -953,7 +952,7 @@ export class DirectMekAutomationService {
                                 accepted: resolution !== undefined,
                             } satisfies PreparedMekConsciousnessRecovery);
                         })),
-                        needsSettlement: resolvePilotChecks && (
+                        needsSettlement: includePilotChecks && (
                             staged.checks.length > 0
                             || staged.ruleCheck !== null
                             || staged.hadAutomaticFall

@@ -1757,66 +1757,6 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(namedFactionOptions.find((option) => option.name === 'Clan Sea Fox')).toEqual(jasmine.objectContaining({ available: false }));
     });
 
-    it('keeps era dropdown options in chronological catalog order', () => {
-        const bundle = createStandaloneBundle();
-        bundle.eras.eras = [
-            {
-                id: 2,
-                name: 'Succession Wars',
-                img: '',
-                years: {
-                    from: 2781,
-                    to: 3049,
-                },
-                units: [1, 2],
-                factions: [],
-            },
-            {
-                id: 1,
-                name: 'Age of War',
-                img: '',
-                years: {
-                    from: 2005,
-                    to: 2570,
-                },
-                units: [1],
-                factions: [],
-            },
-            {
-                id: 3,
-                name: 'Clan Invasion',
-                img: '',
-                years: {
-                    from: 3050,
-                    to: 3061,
-                },
-                units: [2],
-                factions: [],
-            },
-        ];
-        bundle.factions.factions = [{
-            id: 1,
-            name: 'Test Faction',
-            group: 'Other',
-            img: '',
-            eras: {
-                1: new Set([1]),
-                2: new Set([1, 2]),
-                3: new Set([2]),
-            },
-        }];
-
-        const { service } = createService(bundle);
-        const eraOptions = service.advOptions()['era']?.options ?? [];
-        const namedEraOptions = eraOptions.filter((option): option is { name: string } => typeof option !== 'number');
-
-        expect(namedEraOptions.map((option) => option.name)).toEqual([
-            'Age of War',
-            'Succession Wars',
-            'Clan Invasion',
-        ]);
-    });
-
     it('scopes MegaMek faction dropdown availability by Available From and Rarity selections', () => {
         if (!benchmarkBundle || benchmarkBundle.units.units.length < 2) {
             pending('Real unit data could not be loaded for the MegaMek availability scope test.');

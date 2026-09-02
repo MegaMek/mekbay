@@ -79,6 +79,8 @@ import {
 } from './runtime-state';
 import {
     deserializeMekMovementPsrStateV2,
+    MEK_ACTION_DECLARATION_SCHEMA_VERSION,
+    MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
     serializeMekMovementPsrStateV2,
     type SerializedMekMovementPsrStateV2,
 } from './mek-movement-psr-v2';
@@ -90,6 +92,13 @@ import {
 import type { EndTurnCheckpoint } from './end-turn-checkpoint';
 import type { EquipmentRowOrderState } from './equipment-row-order';
 import { isSparseMekGaussPowerState, type SparseMekGaussPowerState } from './mek-gauss-power';
+import {
+    isRuntimeHistoryMessageId,
+    RUNTIME_HISTORY_MESSAGE,
+    runtimeHistoryMessageCanReferenceUnit,
+    type SerializedRuntimeHistoryMessage,
+    type SerializedRuntimeHistoryTurn,
+} from './runtime-history';
 import {
     asMekRuleCheckTokenV2,
     isMekRuleCheckKeyV2,
@@ -113,6 +122,9 @@ import {
     CBT_FORCE_FIELD,
     CBT_HEAT_FIELD,
     CBT_HISTORY_FIELD,
+    CBT_HISTORY_MUTATION_TARGET_CODE,
+    CBT_HISTORY_TURN_FIELD,
+    CBT_MOVEMENT_DECLARATION_INDEX,
     CBT_MOVEMENT_FIELD,
     CBT_MOVEMENT_SOURCE_FIELD,
     CBT_NON_MEK_PENDING_COMBAT_FIELD,
@@ -132,36 +144,20 @@ import {
  */
 export type StoredForceRecord = Readonly<Record<string, unknown>>;
 
-export function isCompactStoredForce(value: unknown): boolean {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-    const root = value as Record<string, unknown>;
-    if (root['version'] !== 2 || root['type'] !== GameSystem.CBT) return false;
-    const cbt = root[FORCE_PAYLOAD_FIELD.classicBattleTech];
-    if (cbt === null || typeof cbt !== 'object' || Array.isArray(cbt)) return false;
-    const compact = cbt as Record<string, unknown>;
-    return !('schemaVersion' in compact)
-        && compact[CBT_FORCE_FIELD.formatVersion] === COMPACT_FORCE_FORMAT_VERSION
-        && CBT_FORCE_FIELD.revision in compact
-        && CBT_FORCE_FIELD.units in compact
-        && CBT_FORCE_FIELD.groups in compact;
-}
-
 type CompactUnitUuid = string;
 
 type CompactCrewPosition = readonly unknown[];
 type CompactDeployment = readonly unknown[];
 
 type CompactForce = Readonly<{
-    [CBT_FORCE_FIELD.formatVersion]: 2;
     [CBT_FORCE_FIELD.revision]: number;
     [CBT_FORCE_FIELD.units]: readonly unknown[];
     [CBT_FORCE_FIELD.groups]: readonly unknown[];
-    [CBT_FORCE_FIELD.history]?: SerializedCBTForceV2['history'];
+    [CBT_FORCE_FIELD.history]?: readonly SerializedRuntimeHistoryTurn[];
     [CBT_FORCE_FIELD.encounter]?: unknown;
 }>;
 
 type CompactASForce = Readonly<{
-    [AS_FORCE_FIELD.formatVersion]: 1;
     [AS_FORCE_FIELD.groups]: readonly CompactASGroup[];
     [AS_FORCE_FIELD.networks]?: readonly CompactASNetwork[];
 }>;
@@ -200,10 +196,10 @@ type CompactASNetwork = Readonly<{
     [AS_NETWORK_FIELD.members]?: readonly string[];
 }>;
 
-const COMPACT_FORCE_FORMAT_VERSION = 2;
-const COMPACT_AS_FORMAT_VERSION = 1;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const COMPACT_UUID_PATTERN = /^[A-Za-z0-9_-]{22}$/u;
+const UNIT_INSTANCE_ID_PREFIX = 'unit:';
+const COMPACT_UNIT_INSTANCE_ID_PREFIX = '~u';
 const CBT_MEK_UNIT_FIELDS = [
     CBT_UNIT_FIELD.family,
     CBT_UNIT_FIELD.instanceId,
@@ -293,6 +289,9 @@ export function decodeForceFromStorage(value: unknown): SerializedForce {
     const detached = clone(value);
     const root = record(detached, 'force');
     if (root['version'] === 1) return detached as SerializedForce;
+    if (root['version'] === undefined) {
+        return { ...root, version: 1 } as unknown as SerializedForce;
+    }
     if (root['type'] === GameSystem.AS) {
         const field = FORCE_PAYLOAD_FIELD.alphaStrike;
         return unpackASForce(root, record(root[field], `force.${field}`));
@@ -308,7 +307,6 @@ function packASForce(
     networks: readonly SerializedC3NetworkGroup[] | undefined,
 ): CompactASForce {
     return Object.freeze({
-        [AS_FORCE_FIELD.formatVersion]: COMPACT_AS_FORMAT_VERSION,
         [AS_FORCE_FIELD.groups]: Object.freeze(groups.map(packASGroup)),
         ...(networks === undefined || networks.length === 0
             ? {}
@@ -403,9 +401,6 @@ function unpackASForce(root: Record<string, unknown>, compact: Record<string, un
         throw new Error('Force does not match the current Alpha Strike schema');
     }
     exactKeys(compact, Object.values(AS_FORCE_FIELD), forcePath);
-    if (compact[AS_FORCE_FIELD.formatVersion] !== COMPACT_AS_FORMAT_VERSION) {
-        throw new Error('Unsupported compact Alpha Strike persistence format');
-    }
     const groupsPath = `${forcePath}.${AS_FORCE_FIELD.groups}`;
     const groups = array(compact[AS_FORCE_FIELD.groups], groupsPath).map((value, index) =>
         unpackASGroup(value, `${groupsPath}[${index}]`));
@@ -755,6 +750,23 @@ function unpackOpaqueId(value: string, path: string): string {
         : value;
 }
 
+function packUnitInstanceId(value: string): string {
+    if (value.startsWith(UNIT_INSTANCE_ID_PREFIX)) {
+        const uuid = value.slice(UNIT_INSTANCE_ID_PREFIX.length);
+        if (UUID_PATTERN.test(uuid)) return `${COMPACT_UNIT_INSTANCE_ID_PREFIX}${packUuid(uuid)}`;
+    }
+    return packOpaqueId(value);
+}
+
+function unpackUnitInstanceId(value: string, path: string): string {
+    const compactUuid = value.startsWith(COMPACT_UNIT_INSTANCE_ID_PREFIX)
+        ? value.slice(COMPACT_UNIT_INSTANCE_ID_PREFIX.length)
+        : null;
+    return compactUuid !== null && COMPACT_UUID_PATTERN.test(compactUuid)
+        ? `${UNIT_INSTANCE_ID_PREFIX}${unpackUuid(compactUuid, path)}`
+        : unpackOpaqueId(value, path);
+}
+
 function packNetworkMember(value: string): string {
     const matched = value.match(/^([0-9a-f-]{36}):(\d+)$/iu);
     return matched && UUID_PATTERN.test(matched[1]!)
@@ -815,12 +827,13 @@ function packForce(force: SerializedCBTForceV2): CompactForce {
         (force.encounter.c3Positions ?? []).map(position => [position.unitId, position] as const),
     );
     return Object.freeze({
-        [CBT_FORCE_FIELD.formatVersion]: COMPACT_FORCE_FORMAT_VERSION,
         [CBT_FORCE_FIELD.revision]: force.forceRevision,
         [CBT_FORCE_FIELD.units]: Object.freeze(force.units.map(entry =>
             packUnitEntry(entry, c3Positions.get(entry.instanceId)))),
         [CBT_FORCE_FIELD.groups]: packRoster(force.roster, force.units),
-        ...(historyEmpty ? {} : { [CBT_FORCE_FIELD.history]: packHistory(force.history) }),
+        ...(historyEmpty ? {} : {
+            [CBT_FORCE_FIELD.history]: packHistory(force.history, force.units),
+        }),
         ...(encounterEmpty ? {} : {
             [CBT_FORCE_FIELD.encounter]: packEncounter(force.encounter, force.units),
         }),
@@ -830,9 +843,6 @@ function packForce(force: SerializedCBTForceV2): CompactForce {
 function unpackForce(value: Record<string, unknown>, forceId: string): SerializedCBTForceV2 {
     const forcePath = `force.${FORCE_PAYLOAD_FIELD.classicBattleTech}`;
     exactKeys(value, Object.values(CBT_FORCE_FIELD), forcePath);
-    if (value[CBT_FORCE_FIELD.formatVersion] !== COMPACT_FORCE_FORMAT_VERSION) {
-        throw new Error('Unsupported compact CBT persistence format');
-    }
     const revision = integer(
         value[CBT_FORCE_FIELD.revision],
         `${forcePath}.${CBT_FORCE_FIELD.revision}`,
@@ -876,6 +886,7 @@ function unpackForce(value: Record<string, unknown>, forceId: string): Serialize
             : unpackHistory(
                 value[CBT_FORCE_FIELD.history],
                 `${forcePath}.${CBT_FORCE_FIELD.history}`,
+                units,
             ),
         units,
         roster: unpackRoster(value[CBT_FORCE_FIELD.groups], units),
@@ -883,30 +894,170 @@ function unpackForce(value: Record<string, unknown>, forceId: string): Serialize
     };
 }
 
-function packHistory(history: SerializedCBTForceV2['history']): SerializedCBTForceV2['history'] {
-    return Object.freeze({
-        [CBT_HISTORY_FIELD.unitIds]: Object.freeze(
-            history[CBT_HISTORY_FIELD.unitIds].map(packOpaqueId),
-        ),
-        [CBT_HISTORY_FIELD.turns]: clone(history[CBT_HISTORY_FIELD.turns]),
-    });
+/**
+ * Storage history uses force-unit ordinals directly. A recently removed unit has
+ * no force ordinal, so only that uncommon reference carries its compact ID inline.
+ */
+function packHistory(
+    history: SerializedCBTForceV2['history'],
+    units: readonly SerializedForceUnitEntryV2[],
+): readonly SerializedRuntimeHistoryTurn[] {
+    const forceUnitIndexes = new Map(units.map((unit, index) => [unit.instanceId, index] as const));
+    const historyToStorageReference = history[CBT_HISTORY_FIELD.unitIds].map(instanceId =>
+        forceUnitIndexes.get(instanceId) ?? packUnitInstanceId(instanceId));
+    return mapHistoryTurns(
+        history[CBT_HISTORY_FIELD.turns],
+        (message, messagePath) => packHistoryMutationTarget(remapHistoryUnitReference(
+            message,
+            historyToStorageReference,
+            messagePath,
+        ), messagePath),
+    );
 }
 
-function unpackHistory(value: unknown, path: string): SerializedCBTForceV2['history'] {
-    const history = record(value, path);
-    exactKeys(history, Object.values(CBT_HISTORY_FIELD), path);
-    const unitIdsPath = `${path}.${CBT_HISTORY_FIELD.unitIds}`;
+function unpackHistory(
+    value: unknown,
+    path: string,
+    units: readonly SerializedForceUnitEntryV2[],
+): SerializedCBTForceV2['history'] {
+    const historyUnitIds: string[] = [];
+    const historyIndexByUnitId = new Map<string, number>();
+    const turns = mapHistoryTurns(array(value, path), (compactMessage, messagePath) => {
+        const message = unpackHistoryMutationTarget(compactMessage, messagePath);
+        if (!runtimeHistoryMessageCanReferenceUnit(message[0]) || message.length < 2) {
+            return message;
+        }
+        const rawReference = message[1];
+        const instanceId = typeof rawReference === 'number'
+            ? units[integer(rawReference, `${messagePath}[1]`)]?.instanceId
+            : typeof rawReference === 'string'
+                ? unpackUnitInstanceId(rawReference, `${messagePath}[1]`)
+                : undefined;
+        if (instanceId === undefined) throw new Error(`${messagePath}[1] has no force unit`);
+        let historyIndex = historyIndexByUnitId.get(instanceId);
+        if (historyIndex === undefined) {
+            historyIndex = historyUnitIds.length;
+            historyUnitIds.push(instanceId);
+            historyIndexByUnitId.set(instanceId, historyIndex);
+        }
+        return Object.freeze([
+            message[0],
+            historyIndex,
+            ...message.slice(2),
+        ]) as SerializedRuntimeHistoryMessage;
+    }, path);
     return {
-        [CBT_HISTORY_FIELD.unitIds]: array(
-            history[CBT_HISTORY_FIELD.unitIds],
-            unitIdsPath,
-        ).map((raw, index) =>
-            unpackOpaqueId(text(raw, `${unitIdsPath}[${index}]`), `${unitIdsPath}[${index}]`)),
-        [CBT_HISTORY_FIELD.turns]: clone(array(
-            history[CBT_HISTORY_FIELD.turns],
-            `${path}.${CBT_HISTORY_FIELD.turns}`,
-        )) as SerializedCBTForceV2['history'][typeof CBT_HISTORY_FIELD.turns],
+        [CBT_HISTORY_FIELD.unitIds]: Object.freeze(historyUnitIds),
+        [CBT_HISTORY_FIELD.turns]: turns,
     };
+}
+
+function mapHistoryTurns(
+    value: readonly unknown[],
+    mapMessage: (
+        message: SerializedRuntimeHistoryMessage,
+        path: string,
+    ) => SerializedRuntimeHistoryMessage,
+    path = 'history',
+): readonly SerializedRuntimeHistoryTurn[] {
+    return Object.freeze(value.map((rawTurn, turnIndex) => {
+        const turnPath = `${path}[${turnIndex}]`;
+        const turn = record(rawTurn, turnPath);
+        exactKeys(turn, Object.values(CBT_HISTORY_TURN_FIELD), turnPath);
+        const numberField = CBT_HISTORY_TURN_FIELD.turnNumber;
+        const phasesField = CBT_HISTORY_TURN_FIELD.phases;
+        const turnNumber = integer(turn[numberField], `${turnPath}.${numberField}`);
+        const phases = array(turn[phasesField], `${turnPath}.${phasesField}`).map((rawPhase, phaseIndex) =>
+            Object.freeze(array(rawPhase, `${turnPath}.${phasesField}[${phaseIndex}]`).map((rawMessage, messageIndex) => {
+                const messagePath = `${turnPath}.${phasesField}[${phaseIndex}][${messageIndex}]`;
+                const row = array(rawMessage, messagePath);
+                if (!isRuntimeHistoryMessageId(row[0])) {
+                    throw new Error(`${messagePath}[0] is not a history message ID`);
+                }
+                return mapMessage(
+                    Object.freeze([...row]) as SerializedRuntimeHistoryMessage,
+                    messagePath,
+                );
+            })));
+        return Object.freeze({
+            [numberField]: turnNumber,
+            [phasesField]: Object.freeze(phases),
+        });
+    }));
+}
+
+function remapHistoryUnitReference(
+    message: SerializedRuntimeHistoryMessage,
+    historyToStorageReference: readonly (number | string)[],
+    path: string,
+): SerializedRuntimeHistoryMessage {
+    if (!runtimeHistoryMessageCanReferenceUnit(message[0]) || typeof message[1] !== 'number') {
+        return message;
+    }
+    const storageReference = historyToStorageReference[message[1]];
+    if (storageReference === undefined) throw new Error(`${path} has an invalid unit index`);
+    return Object.freeze([
+        message[0],
+        storageReference,
+        ...message.slice(2),
+    ]) as SerializedRuntimeHistoryMessage;
+}
+
+function packHistoryMutationTarget(
+    message: SerializedRuntimeHistoryMessage,
+    path: string,
+): SerializedRuntimeHistoryMessage {
+    const index = historyMutationTargetIndex(message[0]);
+    if (index === null || message.length <= index) return message;
+    const target = message[index];
+    const code = target === 'committed'
+        ? CBT_HISTORY_MUTATION_TARGET_CODE.committed
+        : target === 'pending'
+            ? CBT_HISTORY_MUTATION_TARGET_CODE.pending
+            : undefined;
+    if (code === undefined) throw new Error(`${path}[${index}] is not a history mutation target`);
+    return Object.freeze([
+        ...message.slice(0, index),
+        code,
+        ...message.slice(index + 1),
+    ]) as SerializedRuntimeHistoryMessage;
+}
+
+function unpackHistoryMutationTarget(
+    message: SerializedRuntimeHistoryMessage,
+    path: string,
+): SerializedRuntimeHistoryMessage {
+    const index = historyMutationTargetIndex(message[0]);
+    if (index === null || message.length <= index) return message;
+    const code = message[index];
+    const target = code === CBT_HISTORY_MUTATION_TARGET_CODE.committed
+        ? 'committed'
+        : code === CBT_HISTORY_MUTATION_TARGET_CODE.pending
+            ? 'pending'
+            : undefined;
+    if (target === undefined) throw new Error(`${path}[${index}] is not a compact history mutation target`);
+    return Object.freeze([
+        ...message.slice(0, index),
+        target,
+        ...message.slice(index + 1),
+    ]) as SerializedRuntimeHistoryMessage;
+}
+
+function historyMutationTargetIndex(messageId: SerializedRuntimeHistoryMessage[0]): 4 | 6 | null {
+    switch (messageId) {
+        case RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR:
+        case RUNTIME_HISTORY_MESSAGE.REPAIR_ARMOR:
+        case RUNTIME_HISTORY_MESSAGE.DAMAGE_INTERNAL:
+        case RUNTIME_HISTORY_MESSAGE.REPAIR_INTERNAL:
+        case RUNTIME_HISTORY_MESSAGE.DAMAGE_CRITICAL:
+        case RUNTIME_HISTORY_MESSAGE.REPAIR_CRITICAL:
+        case RUNTIME_HISTORY_MESSAGE.COMPONENT_STATUS:
+            return 4;
+        case RUNTIME_HISTORY_MESSAGE.LOCATION_CONDITION_CHANGED:
+            return 6;
+        default:
+            return null;
+    }
 }
 
 function packUnitEntry(entry: SerializedForceUnitEntryV2, c3Position: C3UnitPosition | undefined): unknown {
@@ -948,7 +1099,7 @@ function packMekUnit(unit: SerializedCBTUnitV2, c3Position: C3UnitPosition | und
         && unit.heat.pendingOverride === undefined
         && unit.heat.heatsinksOff === undefined;
     return compactObject({
-        [CBT_UNIT_FIELD.instanceId]: packOpaqueId(unit.instanceId),
+        [CBT_UNIT_FIELD.instanceId]: packUnitInstanceId(unit.instanceId),
         [CBT_UNIT_FIELD.catalogUuid]: packUnitUuid(unit.entity),
         [CBT_UNIT_FIELD.sourceHashCanary]: unit.sourceHashCanary,
         [CBT_UNIT_FIELD.deployment]: packDeployment(unit.deployment.values),
@@ -1012,7 +1163,7 @@ function unpackMekUnit(value: Record<string, unknown>, path: string): Serialized
     const pristineHeat = deployment.values.initialHeat ?? 0;
     return {
         schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
-        instanceId: unpackOpaqueId(
+        instanceId: unpackUnitInstanceId(
             text(value[CBT_UNIT_FIELD.instanceId], `${path}.${CBT_UNIT_FIELD.instanceId}`),
             `${path}.${CBT_UNIT_FIELD.instanceId}`,
         ),
@@ -1164,7 +1315,7 @@ function packNonMekUnit(unit: SerializedNonMekUnit, c3Position: C3UnitPosition |
     return compactObject({
         [CBT_UNIT_FIELD.family]: CBT_UNIT_FAMILY.nonMekEntity,
         [CBT_UNIT_FIELD.entityType]: unit.family.entityType,
-        [CBT_UNIT_FIELD.instanceId]: packOpaqueId(unit.instanceId),
+        [CBT_UNIT_FIELD.instanceId]: packUnitInstanceId(unit.instanceId),
         [CBT_UNIT_FIELD.catalogUuid]: packUnitUuid(unit.entity),
         [CBT_UNIT_FIELD.sourceHashCanary]: unit.sourceHashCanary,
         [CBT_UNIT_FIELD.deployment]: packDeployment(unit.deployment.values),
@@ -1223,7 +1374,7 @@ function unpackNonMekUnit(value: Record<string, unknown>, path: string): Seriali
     );
     return {
         schemaVersion: NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
-        instanceId: unpackOpaqueId(
+        instanceId: unpackUnitInstanceId(
             text(value[CBT_UNIT_FIELD.instanceId], `${path}.${CBT_UNIT_FIELD.instanceId}`),
             `${path}.${CBT_UNIT_FIELD.instanceId}`,
         ),
@@ -2000,8 +2151,8 @@ function unpackHeat(value: unknown, path: string): NonNullable<SerializedCBTUnit
 
 function packMovement(value: SerializedMekMovementPsrStateV2): unknown {
     const compact = compactObject({
-        [CBT_MOVEMENT_FIELD.movement]: value.movement,
-        [CBT_MOVEMENT_FIELD.action]: value.action,
+        [CBT_MOVEMENT_FIELD.movement]: packMekMovementDeclaration(value.movement),
+        [CBT_MOVEMENT_FIELD.action]: value.action?.kind,
         [CBT_MOVEMENT_FIELD.standAttempts]: value.standAttempts,
         [CBT_MOVEMENT_FIELD.carefulStand]: value.carefulStand ? 1 : undefined,
         [CBT_MOVEMENT_FIELD.damageThisPhase]: value.damageThisPhase,
@@ -2040,10 +2191,19 @@ function unpackMovement(value: unknown, path: string): SerializedMekMovementPsrS
         schemaVersion: 2,
         movement: movement[CBT_MOVEMENT_FIELD.movement] === undefined
             ? undefined
-            : clone(movement[CBT_MOVEMENT_FIELD.movement]),
+            : unpackMekMovementDeclaration(
+                movement[CBT_MOVEMENT_FIELD.movement],
+                `${path}.${CBT_MOVEMENT_FIELD.movement}`,
+            ),
         action: movement[CBT_MOVEMENT_FIELD.action] === undefined
             ? undefined
-            : clone(movement[CBT_MOVEMENT_FIELD.action]),
+            : {
+                schemaVersion: MEK_ACTION_DECLARATION_SCHEMA_VERSION,
+                kind: text(
+                    movement[CBT_MOVEMENT_FIELD.action],
+                    `${path}.${CBT_MOVEMENT_FIELD.action}`,
+                ),
+            },
         standAttempts: optionalInteger(
             movement[CBT_MOVEMENT_FIELD.standAttempts],
             `${path}.${CBT_MOVEMENT_FIELD.standAttempts}`,
@@ -2112,6 +2272,36 @@ function unpackMovement(value: unknown, path: string): SerializedMekMovementPsrS
             : clone(movement[CBT_MOVEMENT_FIELD.automaticFalls]),
     });
     return serializeMekMovementPsrStateV2(deserializeMekMovementPsrStateV2(expanded));
+}
+
+function packMekMovementDeclaration(
+    value: SerializedMekMovementPsrStateV2['movement'],
+): readonly unknown[] | undefined {
+    if (value === undefined) return undefined;
+    return tuple(
+        value.mode,
+        value.distance,
+        value.boosterComponentIds.length === 0 ? undefined : value.boosterComponentIds,
+    );
+}
+
+function unpackMekMovementDeclaration(value: unknown, path: string): unknown {
+    const declaration = array(value, path);
+    if (declaration.length < 2 || declaration.length > 3) {
+        throw new Error(`${path} is not a compact Mek movement declaration`);
+    }
+    const boosters = declaration[CBT_MOVEMENT_DECLARATION_INDEX.boosterComponentIds] === undefined
+        ? []
+        : unpackTextArray(
+            declaration[CBT_MOVEMENT_DECLARATION_INDEX.boosterComponentIds],
+            `${path}[${CBT_MOVEMENT_DECLARATION_INDEX.boosterComponentIds}]`,
+        ).map(asComponentId);
+    return {
+        schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
+        mode: rowText(declaration, CBT_MOVEMENT_DECLARATION_INDEX.mode, path),
+        distance: rowInteger(declaration, CBT_MOVEMENT_DECLARATION_INDEX.distance, path),
+        boosterComponentIds: boosters,
+    };
 }
 
 function packTurn(value: SerializedMekTurnStateV2): unknown {
