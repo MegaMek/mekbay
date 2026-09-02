@@ -10,14 +10,13 @@ import type {
 import { type BipedArmorValues, type BipedPaperdollPipLayout, BipedPaperdollUtil, type BipedStructureTonnage } from '../biped-paperdoll.util';
 import { CanonPipRenderer } from '../canon-pip-renderer';
 import {
-    type CriticalSlotView,
     type EntityMountedEquipment,
     type IntrinsicWeapon,
 } from '../../../models/entity/types';
+import { getMekLocationLabel } from '../../../models/entity/types/mek';
 import { type MekEntity } from '../../../models/entity/entities/mek/mek-entity';
 import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
-import { isCaseIIEquipment, isStandardCaseEquipment } from '../../../models/case-equipment.model';
 import { isTargetingComputerEquipment } from '../../../models/entity/utils/targeting-computer';
 import { isMekRecordSheetInventorySupport } from '../record-sheet-inventory-equipment';
 import { formatEquipmentLocationCodes } from '../../equipment-location-display.util';
@@ -29,8 +28,8 @@ import {
 } from '../record-sheet-layout';
 import { clusterTableForMekEntity, clusterTableRows, hitLocationRows, recordSheetPhysicalLocationRows, referenceTableNotes } from '../../record-sheet-reference-table';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
-import { recordSheetAmmoName } from '../../record-sheet-ammo.util';
-import { mekCriticalLocationCells } from '../../mek-location-layout.util';
+import { mekCriticalCaseLabel, mekCriticalSlotLabel } from '../../mek-critical-display.util';
+import { mekCriticalLocationCells, mekCriticalTableRowCount } from '../../mek-location-layout.util';
 import {
     type Box,
     addDiagramHeading,
@@ -2383,7 +2382,7 @@ async function drawCanonicalMekCriticalContents(
         criticalGroup.setAttribute('loc', location);
         const heading = addText(
             criticalGroup,
-            mekCriticalLocationHeading(entity, location),
+            getMekLocationLabel(location) ?? entity.componentLocationLabel(location),
             x(locationLayout.headingX),
             y(locationLayout.headingY),
             {
@@ -2421,7 +2420,7 @@ async function drawCanonicalMekCriticalContents(
             );
         }
         const slots = grid.get(location) ?? [];
-        const slotCount = mekCriticalSlotCount(location);
+        const slotCount = mekCriticalTableRowCount(location);
         for (let slotIndex = 0; slotIndex < slotCount; slotIndex++) {
             const slot = slots[slotIndex];
             const secondBlockOffset = slotCount === 12 && slotIndex >= 6 ? 5.15 : 0;
@@ -2459,7 +2458,7 @@ async function drawCanonicalMekCriticalContents(
                     'critSlot-bg-rect',
                 ));
             }
-            addText(slotGroup, criticalSlotLabel(slot, entity), 0, y(locationLayout.step), {
+            addText(slotGroup, mekCriticalSlotLabel(slot, entity), 0, y(locationLayout.step), {
                 size: font(7),
                 weight: hittable ? 700 : undefined,
                 fill: hittable ? undefined : '#3f3f3f',
@@ -2727,86 +2726,6 @@ async function drawVariantDamageTransferDiagram(
             maxWidth: x(70),
         });
     }
-}
-
-function mekCriticalSlotCount(location: string): 6 | 12 {
-    return ['HD', 'LL', 'RL', 'CL', 'FLL', 'FRL', 'RLL', 'RRL'].includes(location) ? 6 : 12;
-}
-
-function mekCriticalLocationHeading(entity: MekEntity, location: string): string {
-    const headings: Readonly<Record<string, string>> = {
-        LA: 'Left Arm', RA: 'Right Arm',
-        LT: 'Left Torso', CT: 'Center Torso', RT: 'Right Torso',
-        LL: 'Left Leg', RL: 'Right Leg', CL: 'Center Leg',
-        FLL: 'Front Left Leg', FRL: 'Front Right Leg',
-        RLL: 'Rear Left Leg', RRL: 'Rear Right Leg',
-        HD: 'Head',
-    };
-    return headings[location] ?? entity.componentLocationLabel(location);
-}
-
-function mekCriticalCaseLabel(entity: MekEntity, location: string): 'CASE' | 'CASE II' | null {
-    const mounts = entity.equipment().filter(mount => mount.getOccupiedLocations().includes(location));
-    if (mounts.some(mount => isCaseIIEquipment(mount.equipment))) return 'CASE II';
-    if (entity.techBase() === 'Clan') {
-        return mounts.some(mount => mount.getAmmoShots() !== undefined) ? 'CASE' : null;
-    }
-    return mounts.some(mount => isStandardCaseEquipment(mount.equipment)) ? 'CASE' : null;
-}
-
-function criticalSlotLabel(slot: CriticalSlotView | undefined, entity?: MekEntity): string {
-    if (!slot || slot.type === 'empty') return 'Roll Again';
-    if (slot.type === 'system') {
-        if (!entity) return slot.systemType;
-        if (slot.systemType === 'Cockpit') {
-            return entity.mountedCockpit().fullName.replace(/^Standard /u, '');
-        }
-        if (slot.systemType === 'Gyro') {
-            return entity.mountedGyro().fullName.replace(/^Standard /u, '');
-        }
-        if (slot.systemType !== 'Engine') return slot.systemType;
-        const engine = entity.mountedEngine();
-        const engineType = engine.type();
-        if (engine.isFusion) {
-            return engineType === 'Fusion'
-                ? 'Fusion Engine'
-                : `${engineType.replace(/ Engine$/u, '')} Fusion Engine`;
-        }
-        return /Engine$/u.test(engineType) ? engineType : `${engineType} Engine`;
-    }
-    const labels = new Map<string, { readonly name: string; shots: number | null }>();
-    slot.mounts.forEach(mount => {
-        const shots = mount.getAmmoShots();
-        const name = shots === undefined
-            ? entity ? mekCriticalMountName(entity, mount) : mount.displayName()
-            : recordSheetAmmoName(mount.displayName());
-        const key = `${shots === undefined ? 'equipment' : 'ammo'}:${name}`;
-        const existing = labels.get(key);
-        labels.set(key, {
-            name,
-            shots: shots === undefined ? null : (existing?.shots ?? 0) + shots,
-        });
-    });
-    return [...labels.values()].map(item => item.shots === null
-        ? item.name
-        : `Ammo (${item.name}) ${item.shots}`).join(' / ');
-}
-
-function mekCriticalMountName(entity: MekEntity, mount: EntityMountedEquipment): string {
-    const equipment = mount.equipment;
-    let name = mount.displayName();
-    if (!equipment) return name;
-    if (!entity.mixedTech()) {
-        return name.replace(/\s*(?:\[Clan\]|\(Clan\))/gu, '').trim();
-    }
-    const suffix = entity.techBase() === 'Clan' && equipment.techBase === 'IS'
-        ? '[IS]'
-        : entity.techBase() === 'IS' && equipment.techBase === 'Clan'
-            ? '[Clan]'
-            : null;
-    if (!suffix || name.includes(suffix)) return name;
-    name = insertEquipmentTechSuffix(name, suffix);
-    return name;
 }
 
 function drawHeatPanel(svg: SVGSVGElement, entity: MekEntity, box: Box): void {
