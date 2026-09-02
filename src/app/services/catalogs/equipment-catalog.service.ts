@@ -6,16 +6,15 @@ import { Injectable, inject } from '@angular/core';
 
 import {
     EMPTY_EQUIPMENT_REGISTRY,
-    EquipmentRegistry,
+    type EquipmentRegistry,
 } from '../../models/equipment-lookup';
-import { type EquipmentMap, type RawEquipmentData, createEquipment } from '../../models/equipment.model';
-import { equipmentCatalogEntriesIncludingSupplements } from '../../models/equipment-catalog-supplements';
+import type { RawEquipmentData } from '../../models/equipment.model';
 import { LoggerService } from '../logger.service';
 import {
     CatalogBaseService,
     type PreparedCatalogTransport,
 } from './catalog-base.service';
-import { isPlaytestEquipment } from './equipment-catalog-policy';
+import { buildEquipmentRegistry } from './equipment-catalog-builder';
 
 export { isPlaytestEquipment } from './equipment-catalog-policy';
 
@@ -120,21 +119,4 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
     protected override getMinimumDatasetSize(): number {
         return 4000;
     }
-}
-
-function buildEquipmentRegistry(
-    data: RawEquipmentData,
-    onInvalidEntry?: (internalName: string, error: unknown) => void,
-): EquipmentRegistry {
-    const equipment: EquipmentMap = {};
-    for (const [internalName, raw] of equipmentCatalogEntriesIncludingSupplements(data.equipment)) {
-        if (isPlaytestEquipment(internalName, raw)) continue;
-        try {
-            equipment[internalName] = createEquipment(raw);
-        } catch (error) {
-            if (!onInvalidEntry) throw new Error(`Invalid equipment catalog entry ${internalName}`, { cause: error });
-            onInvalidEntry(internalName, error);
-        }
-    }
-    return new EquipmentRegistry(equipment);
 }
