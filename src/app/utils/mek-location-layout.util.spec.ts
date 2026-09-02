@@ -3,6 +3,7 @@
 
 import {
     mekCriticalLocationMatrix,
+    mekCriticalTableRowCount,
     mekDamageLocationOrder,
 } from './mek-location-layout.util';
 
@@ -38,5 +39,13 @@ describe('Mek location layout', () => {
         expect(mekDamageLocationOrder('quad')).toEqual([
             'HD', 'FLL', 'RLL', 'LT', 'CT', 'RT', 'RRL', 'FRL',
         ]);
+    });
+
+    it('provides record-sheet critical row counts', () => {
+        expect(mekCriticalTableRowCount('HD')).toBe(6);
+        expect(mekCriticalTableRowCount('CL')).toBe(6);
+        expect(mekCriticalTableRowCount('FLL')).toBe(6);
+        expect(mekCriticalTableRowCount('CT')).toBe(12);
+        expect(mekCriticalTableRowCount('RA')).toBe(12);
     });
 });

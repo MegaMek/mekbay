@@ -374,10 +374,10 @@ describe('NonMekUnitInstance', () => {
 
         expect(internal.accepted).toBeTrue();
         expect(armor.accepted).toBeTrue();
-        expect(runtime.remainingInternal(location.id)).toBe(
+        expect(runtime.query().remainingInternal(location.id)).toBe(
             location.internalPoints - Math.min(1, location.internalPoints),
         );
-        expect(runtime.remainingArmor(face.id)).toBe(
+        expect(runtime.query().remainingArmor(face.id)).toBe(
             face.maximumPoints - Math.min(1, face.maximumPoints),
         );
         expect(runtime.snapshot().locations.size).toBe(1);
@@ -572,7 +572,7 @@ describe('NonMekUnitInstance', () => {
             amount: 2,
             target: 'pending',
         }).accepted).toBeTrue();
-        expect(runtime.remainingArmor(face.id)).toBe(3);
+        expect(runtime.query().remainingArmor(face.id)).toBe(3);
         expect(runtime.snapshot().pendingCombat.armorDamage.get(face.id)).toBe(2);
 
         expect(runtime.dispatch({
@@ -595,8 +595,8 @@ describe('NonMekUnitInstance', () => {
             kind: 'end-phase',
 
         }).accepted).toBeTrue();
-        expect(runtime.remainingArmor(face.id)).toBe(2);
-        expect(runtime.remainingInternal(location.id)).toBe(location.internalPoints - 1);
+        expect(runtime.query().remainingArmor(face.id)).toBe(2);
+        expect(runtime.query().remainingInternal(location.id)).toBe(location.internalPoints - 1);
         expect(runtime.snapshot().pendingCombat.armorDamage.size).toBe(0);
         expect(runtime.snapshot().pendingCombat.locationInternalDamage.size).toBe(0);
         expect(runtime.turnState().endTurnCheckpoint).toBeUndefined();
@@ -1168,7 +1168,7 @@ describe('NonMekUnitInstance', () => {
             shotsSpent: 7,
             munitionOverride: precision.id,
         });
-        expect(runtime.ammoRemaining(componentId)).toBe(3);
+        expect(runtime.query().remainingAmmo(componentId)).toBe(3);
     });
 
     it('ignores catalog-authored modes when no runtime behavior owns them', () => {
@@ -1360,7 +1360,7 @@ describe('NonMekUnitInstance', () => {
             },
         }, fixture.registry, false)).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
 
-        expect(fixture.runtime.attackerTargetingState().components.get(fixture.weaponId)).toEqual({
+        expect(fixture.runtime.query().attackerTargetingState().components.get(fixture.weaponId)).toEqual({
             selection: { kind: 'target', targetId: fixture.targetId },
             ammo: {
                 munitionKey: fixture.ammo.internalName,
@@ -1404,7 +1404,7 @@ describe('NonMekUnitInstance', () => {
             },
         }, registry, false)).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(runtime.revision()).toBe(selectionRevision + 1);
-        expect(componentIds.map(componentId => runtime.attackerTargetingState()
+        expect(componentIds.map(componentId => runtime.query().attackerTargetingState()
             .components.get(componentId)?.selection)).toEqual(Array.from(
                 { length: 4 },
                 () => ({ kind: 'selected' }),
@@ -1454,7 +1454,7 @@ describe('NonMekUnitInstance', () => {
         }, fixture.registry, false, false);
 
         expect(result).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        expect(fixture.runtime.ammoRemaining(fixture.ammoId)).toBe(9);
+        expect(fixture.runtime.query().remainingAmmo(fixture.ammoId)).toBe(9);
         expect(fixture.runtime.turnState().weaponsHeat).toBe(0);
     });
 
@@ -1609,8 +1609,8 @@ describe('NonMekUnitInstance', () => {
         expect(plan).not.toBeNull();
         fixture.runtime.installAttackerTargetingReconciliation(plan!);
         expect(Number(fixture.runtime.revision())).toBe(Number(before) + 1);
-        expect(fixture.runtime.attackerTargetingState().components.has(fixture.weaponId)).toBeFalse();
-        expect(fixture.runtime.attackerTargetingState().targets.has(fixture.targetId)).toBeFalse();
+        expect(fixture.runtime.query().attackerTargetingState().components.has(fixture.weaponId)).toBeFalse();
+        expect(fixture.runtime.query().attackerTargetingState().targets.has(fixture.targetId)).toBeFalse();
     });
 
     it('round-trips Entity targeting through the current force wire format', () => {
@@ -1653,8 +1653,8 @@ describe('NonMekUnitInstance', () => {
 
         expect(inspectSerializedNonMekUnit(saved).instanceId).toBe(fixture.runtime.id);
         const restored = restoreNonMekUnit(saved, fixture.entity);
-        expect(serializeAttackerTargetingState(restored.attackerTargetingState()))
-            .toEqual(serializeAttackerTargetingState(fixture.runtime.attackerTargetingState()));
+        expect(serializeAttackerTargetingState(restored.query().attackerTargetingState()))
+            .toEqual(serializeAttackerTargetingState(fixture.runtime.query().attackerTargetingState()));
     });
 
     it('uses BaseEntity damage topology for Battle Armor and aerospace families', () => {

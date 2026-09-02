@@ -232,7 +232,7 @@ describe('CBT V1 force converter', () => {
             spotting: false,
             phaseStateChanged: false,
         });
-        expect(restored.getInstance().remainingArmor(location.armorFaceIds[0])).toBe(3);
+        expect(restored.getInstance().query().remainingArmor(location.armorFaceIds[0])).toBe(3);
 
         const legacyCrew = (((source.payload as JsonObject)['state'] as JsonObject)
             ['crew'] as JsonObject[])[0];

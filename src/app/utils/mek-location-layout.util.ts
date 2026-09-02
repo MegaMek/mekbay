@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { MekConfig } from '../models/entity/types/mek';
+import { LEG_LOCATIONS, type MekConfig } from '../models/entity/types/mek';
 import type { MekLocation } from '../models/entity/types/locations';
 
 export type MekLocationForm = MekConfig | 'biped' | 'quad' | 'tripod' | 'lam' | 'quadvee';
@@ -47,6 +47,11 @@ export function mekCriticalLocationMatrix(form: MekLocationForm): MekCriticalLoc
 
 export function mekCriticalLocationCells(form: MekLocationForm): readonly (MekLocation | null)[] {
     return mekCriticalLocationMatrix(form).flat();
+}
+
+/** Number of numbered rows rendered for a location in a Mek critical table. */
+export function mekCriticalTableRowCount(location: MekLocation): 6 | 12 {
+    return location === 'HD' || LEG_LOCATIONS.has(location) ? 6 : 12;
 }
 
 /** Head first, then outside-to-inside on the left, center, and inside-to-outside on the right. */

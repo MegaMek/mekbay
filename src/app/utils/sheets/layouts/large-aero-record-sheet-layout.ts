@@ -1257,11 +1257,6 @@ function capitalAeroEnhancementBonus(
     return 0;
 }
 
-function capitalAeroUsesCapitalScale(entity: AeroEntity): boolean {
-    return entity.equipmentBays().some(bay => bay.kind === 'weapon-bay'
-        && bay.weapons.some(mount => mount.equipment.capital || mount.equipment.subCapital));
-}
-
 function capitalAeroInventoryLocation(
     entity: AeroEntity,
     locations: readonly string[],
