@@ -28,4 +28,9 @@ describe('force viewer BV/PV display', () => {
     it('formats zero totals', () => {
         expect(formatBvPv(0, 0, 'both')).toBe('0');
     });
+
+    it('shows pre-skill values with up to two decimal places', () => {
+        expect(formatBvPv(2_501, 2_000.9, 'both')).toBe('2,501 (2,000.9)');
+        expect(formatBvPv(2_501, 2_000.99, 'base')).toBe('2,000.99');
+    });
 });

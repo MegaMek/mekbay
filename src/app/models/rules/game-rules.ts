@@ -756,7 +756,7 @@ export class TWGameRules extends CBTGameRules {
 
         const guidedAmmoBV = unit.force.units().reduce((total, forceUnit) =>
             total + this.calculateGuidedAmmoBV(forceUnit), 0);
-        return Math.round(guidedAmmoBV * tagCount);
+        return guidedAmmoBV * tagCount;
     }
 
     private calculateGuidedAmmoBV(unit: CBTForceUnit): number {

@@ -577,8 +577,18 @@ describe('C3TaxCalculator', () => {
         const unrelated = c3Unit('unrelated', C3_FLAGS.C3I, 100000);
         const calculator = new C3TaxCalculator([], [alpha.unit, bravo.unit, unrelated.unit]);
 
-        expect(calculator.core2026(alpha.unit)).toBe(81);
-        expect(calculator.totalWar(bravo.unit)).toBe(81);
+        expect(calculator.core2026(alpha.unit)).toBeCloseTo(80.9, 10);
+        expect(calculator.totalWar(bravo.unit)).toBeCloseTo(80.9, 10);
         expect(calculator.core2026(unrelated.unit)).toBe(0);
+    });
+
+    it('preserves fractional Core 2026 and Total Warfare taxes', () => {
+        const alpha = c3Unit('alpha', C3_FLAGS.C3I, 1000, 103);
+        const bravo = c3Unit('bravo', C3_FLAGS.C3I, 2000);
+        const units = [alpha.unit, bravo.unit];
+        const calculator = new C3TaxCalculator(peerNetwork([alpha, bravo], C3NetworkType.C3I), units);
+
+        expect(calculator.core2026(alpha.unit)).toBeCloseTo(110.3, 10);
+        expect(calculator.totalWar(alpha.unit)).toBeCloseTo(155.15, 10);
     });
 });

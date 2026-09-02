@@ -568,10 +568,10 @@ describe('game rules', () => {
                 tagCount: 2,
                 baseGuided: false,
                 selectedGuided: true,
-                selectedAmmoBV: 37,
+                selectedAmmoBV: 37.25,
             });
 
-            expect(TW_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(74);
+            expect(TW_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(74.5);
         });
 
         it('does not treat a selected non-guided ammo override as guided', () => {

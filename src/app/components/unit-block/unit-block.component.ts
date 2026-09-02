@@ -22,6 +22,7 @@ import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
 import { UnitNotificationBadgesComponent } from '../unit-notification-badges/unit-notification-badges.component';
 import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
 import { getEcmDisplay, getTagDisplay } from '../../utils/force-viewer-electronics-display.util';
+import { FormatBvPipe } from '../../pipes/format-bv.pipe';
 
 interface UnitConditionDisplay {
     key: string;
@@ -308,28 +309,29 @@ export class UnitBlockComponent {
         const tagBv = forceUnit.tagBV();
         const c3Tax = forceUnit.c3Tax();
         const pilotBv = forceUnit.pilotBV();
+        const formatBv = (value: number) => FormatBvPipe.formatValue(value);
 
         const lines: TooltipLine[] = [];
         if (baseBv > 0) {
-            lines.push({ label: 'Base', value: `${baseBv}` });
+            lines.push({ label: 'Base', value: formatBv(baseBv) });
         }
         if (ammoBvVariation !== 0) {
             const sign = ammoBvVariation > 0 ? '+' : '';
-            lines.push({ label: 'Custom Ammo', value: `${sign}${ammoBvVariation}` });
+            lines.push({ label: 'Custom Ammo', value: `${sign}${formatBv(ammoBvVariation)}` });
         }
         if (tagBv > 0) {
-            lines.push({ label: 'TAG', value: `+${tagBv}` });
+            lines.push({ label: 'TAG', value: `+${formatBv(tagBv)}` });
         }
         if (c3Tax > 0) {
-            lines.push({ label: 'C³', value: `+${c3Tax}` });
+            lines.push({ label: 'C³', value: `+${formatBv(c3Tax)}` });
         }
         if (pilotBv !== 0) {
             const sign = pilotBv > 0 ? '+' : '';
-            lines.push({ label: 'Pilot', value: `${sign}${pilotBv}` });
+            lines.push({ label: 'Pilot', value: `${sign}${formatBv(pilotBv)}` });
         }
         lines.push({ isBreak: true });
         if (tagBv > 0 || c3Tax > 0 || pilotBv !== 0) {
-            lines.push({ label: 'Total', value: `${totalBv}` });
+            lines.push({ label: 'Total', value: formatBv(totalBv) });
         }
 
         return lines.length > 0 ? lines : null;

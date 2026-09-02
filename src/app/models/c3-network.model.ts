@@ -956,7 +956,7 @@ export class C3TaxCalculator {
         if (networked.length < 2) return 0;
         const networkRate = Math.min(0.4, networked.length * C3_TAX_RATE);
         const boosted = this.model.capability(unit.id)?.components.some(component => component.boosted) ?? false;
-        return Math.round((unit.getBaseBv() + unit.tagBV()) * (networkRate + (boosted ? C3_TAX_RATE : 0)));
+        return (unit.getBaseBv() + unit.tagBV()) * (networkRate + (boosted ? C3_TAX_RATE : 0));
     }
 
     totalWar(unit: C3TaxUnit): number {
@@ -966,15 +966,15 @@ export class C3TaxCalculator {
         if (networked.length < 2) return 0;
         const boosted = this.model.capability(unit.id)?.components.some(component => component.boosted) ?? false;
         const rate = boosted ? C3_BOOSTED_TAX_RATE : C3_TAX_RATE;
-        return Math.round(networked.reduce((sum, candidate) =>
-            sum + candidate.getBaseBv() + candidate.tagBV(), 0) * rate);
+        return networked.reduce((sum, candidate) =>
+            sum + candidate.getBaseBv() + candidate.tagBV(), 0) * rate;
     }
 
     private nova(unit: C3TaxUnit): number | null {
         if (!this.model.capability(unit.id)?.has(C3NetworkType.NOVA)) return null;
         if (this.novaUnits.length < 2) return 0;
         const rate = Math.min(this.novaUnits.length * C3_TAX_RATE, NOVA_MAX_TAX_RATE);
-        return Math.round((this.novaBv * rate) / this.novaUnits.length);
+        return (this.novaBv * rate) / this.novaUnits.length;
     }
 
     private networkUnits(unitId: string): C3TaxUnit[] {

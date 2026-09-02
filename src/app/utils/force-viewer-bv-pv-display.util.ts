@@ -3,14 +3,14 @@
 // Author: Drake
 
 import type { ForceViewerBVPVDisplay } from '../models/options.model';
-import { FormatNumberPipe } from '../pipes/format-number.pipe';
+import { FormatBvPipe } from '../pipes/format-bv.pipe';
 
 export function formatBvPv(
     adjusted: number,
     base: number,
     mode: ForceViewerBVPVDisplay,
 ): string {
-    const format = (value: number) => FormatNumberPipe.formatValue(value, true, false);
+    const format = (value: number) => FormatBvPipe.formatValue(value, true);
 
     if (mode === 'base') return format(base);
     if (mode === 'both' && adjusted !== base) return `${format(adjusted)} (${format(base)})`;
