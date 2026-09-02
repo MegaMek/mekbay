@@ -2,133 +2,198 @@
  * Single Unit Loader Script
  *
  * Loads the equipment database and parses a single .mtf / .blk file,
- * then outputs the resulting entity object.
+ * then reports the resulting entity data.
  *
  * Usage:
  *   npx tsx scripts/load-single-unit.ts [--input PATH]
  *
  * Options:
- *   --input  PATH   Path to the unit file (default: ..\..\mm-data\data\mekfiles\meks\3039u\King Crab KGC-0000.mtf)
+ *   --input  PATH   Path to the unit file (default: detected mm-data King Crab KGC-0000)
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
-import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
+import { parseArgs } from 'node:util';
+import type { RawEquipmentData } from '../src/app/models/equipment.model';
+import type { BaseEntity } from '../src/app/models/entity/base-entity';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
+import { getMekLocationLabel } from '../src/app/models/entity/types/mek';
 import type { MekLocation } from '../src/app/models/entity/types/locations';
+import type { EntityMountedEquipment } from '../src/app/models/entity/types';
 import { AeroEntity } from '../src/app/models/entity/entities/aero/aero-entity';
 import { SmallCraftEntity } from '../src/app/models/entity/entities/aero/small-craft-entity';
+import { JumpShipEntity } from '../src/app/models/entity/entities/largecraft/jumpship-entity';
 import { MekEntity } from '../src/app/models/entity/entities/mek/mek-entity';
+import { StaticEmplacementEntity } from '../src/app/models/entity/entities/misc/static-emplacement-entity';
+import {
+  getMotiveModeLabel,
+  motiveModeFactsForEntity,
+} from '../src/app/models/motiveModes.model';
+import { buildEquipmentRegistry } from '../src/app/services/catalogs/equipment-catalog-builder';
+import {
+  mekCriticalCaseLabel,
+  mekCriticalSlotLabel,
+} from '../src/app/utils/mek-critical-display.util';
+import {
+  mekCriticalLocationMatrix,
+  mekCriticalTableRowCount,
+} from '../src/app/utils/mek-location-layout.util';
+import { recordSheetAmmoName } from '../src/app/utils/record-sheet-ammo.util';
 import { loadQuirkResolver } from './quirk-fixture';
+import { resolveMmDataRoot } from './lib/script-paths';
 import { formatBattleValueDetails, formatCostReport, formatDiagnosticNumber } from './unit-diagnostics';
-import { ProtoMekEntity } from '../src/app/models/entity/entities/protomek/protomek-entity';
-import { calculateProtoMekWeightBreakdown } from '../src/app/models/entity/utils/weight/protomek-weight';
-import { calculateMekWeightBreakdown } from '../src/app/models/entity/utils/weight/mek-weight';
-import { VehicleEntity } from '../src/app/models/entity/entities/vehicle/vehicle-entity';
-import { calculateVehicleWeightBreakdown } from '../src/app/models/entity/utils/weight/vehicle-weight';
-import { calculateSupportVehicleWeightBreakdown } from '../src/app/models/entity/utils/weight/support-vehicle-weight';
-import { calculateFighterWeightBreakdown } from '../src/app/models/entity/utils/weight/fighter-weight';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLI argument parsing
 // ═══════════════════════════════════════════════════════════════════════════
 
-const args = process.argv.slice(2);
-function getArg(name: string, defaultValue: string): string {
-  const idx = args.indexOf(`--${name}`);
-  return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : defaultValue;
-}
+function resolveInputFile(): string {
+  const { values } = parseArgs({
+    options: {
+      input: { type: 'string' },
+    },
+  });
+  if (values.input) return path.resolve(values.input);
 
-const INPUT_FILE = path.resolve(
-  getArg('input', String.raw`..\..\mm-data\data\mekfiles\meks\3039u\King Crab KGC-0000.mtf`)
-);
-const quirkResolver = loadQuirkResolver();
+  const projectRoot = path.resolve(__dirname, '..');
+  return path.join(
+    resolveMmDataRoot(projectRoot),
+    'data',
+    'mekfiles',
+    'meks',
+    '3039u',
+    'King Crab KGC-0000.mtf',
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Equipment database loading
 // ═══════════════════════════════════════════════════════════════════════════
 
-function loadEquipmentDb() {
-  const fixturesPath = path.join(__dirname, 'fixtures', 'equipment2.json');
-  if (!fs.existsSync(fixturesPath)) {
-    console.error(`Equipment file not found: ${fixturesPath}`);
-    console.error('Copy equipment2.json into scripts/fixtures/');
-    process.exit(1);
+function loadEquipmentRegistry() {
+  const catalogPath = path.join(__dirname, 'fixtures', 'equipment2.json');
+  if (!fs.existsSync(catalogPath)) {
+    throw new Error(`Equipment file not found: ${catalogPath}. Copy equipment2.json into scripts/fixtures/.`);
   }
 
-  const raw: RawEquipmentData = JSON.parse(fs.readFileSync(fixturesPath, 'utf-8'));
-  const equipmentDb: EquipmentMap = {};
-  let loaded = 0;
-  let failed = 0;
-
-  for (const [internalName, rawEquipment] of Object.entries(raw.equipment)) {
-    try {
-      equipmentDb[internalName] = createEquipment(rawEquipment);
-      loaded++;
-    } catch {
-      failed++;
-    }
-  }
-
-  const registry = new EquipmentRegistry(equipmentDb);
-  console.log(`Equipment DB: ${loaded} loaded, ${failed} failed, ${registry.lookupKeyCount} lookup keys`);
+  const raw: RawEquipmentData = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
+  const registry = buildEquipmentRegistry(raw);
+  console.log(`Equipment DB: ${registry.size} loaded, ${registry.lookupKeyCount} lookup keys`);
   return registry;
+}
+
+function printSection(title: string, width = 104): void {
+  console.log(`\n${'═'.repeat(width)}`);
+  console.log(`  ${title}`);
+  console.log('═'.repeat(width));
+}
+
+function formatEntityLocation(entity: BaseEntity, location: string): string {
+  const label = entity.componentLocationLabel(location);
+  return label === location ? location : `${label} (${location})`;
+}
+
+function formatMovementRate(base: number, maximum: number): string {
+  return base === maximum ? String(base) : `${base} (max ${maximum})`;
+}
+
+function formatMovement(entity: BaseEntity): string {
+  const facts = motiveModeFactsForEntity(entity);
+  const allZero = facts.walk === 0 && facts.run === 0 && facts.jump === 0 && facts.umu === 0;
+  if (allZero && entity.motiveType() === 'None') return '<none>';
+  return [
+    `${getMotiveModeLabel('walk', facts)} ${formatMovementRate(facts.walk, facts.walk2)}`,
+    `${getMotiveModeLabel('run', facts)} ${formatMovementRate(facts.run, facts.run2)}`,
+    `Jump ${formatMovementRate(facts.jump, entity.maxJumpMP())}`,
+    `UMU ${facts.umu}`,
+  ].join(', ');
+}
+
+function mountedEquipmentLabel(mount: EntityMountedEquipment): string {
+  const shots = mount.getAmmoShots();
+  return shots === undefined
+    ? mount.displayName()
+    : `Ammo (${recordSheetAmmoName(mount.displayName())})`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Main
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function main(): Promise<void> {
-  if (!fs.existsSync(INPUT_FILE)) {
-    console.error(`Unit file not found: ${INPUT_FILE}`);
-    process.exit(1);
+function main(): void {
+  const inputFile = resolveInputFile();
+  if (!fs.existsSync(inputFile)) throw new Error(`Unit file not found: ${inputFile}`);
+
+  console.log(`Loading unit: ${inputFile}\n`);
+
+  const equipmentRegistry = loadEquipmentRegistry();
+  const quirkResolver = loadQuirkResolver();
+
+  const fileName = path.basename(inputFile);
+  const content = fs.readFileSync(inputFile, 'utf-8');
+
+  const { entity, diagnostics } = parseEntity(content, fileName, equipmentRegistry, { quirkResolver });
+  if (diagnostics.length > 0) {
+    printSection(`LOAD DIAGNOSTICS (${diagnostics.length})`);
+    for (const issue of diagnostics) {
+      console.log(`  ${issue.severity.toUpperCase()} ${issue.code} [${issue.field}]: ${issue.message}`);
+    }
+    if (diagnostics.some(issue => issue.severity === 'error')) process.exitCode = 1;
   }
 
-  console.log(`Loading unit: ${INPUT_FILE}\n`);
-
-  const equipmentRegistry = loadEquipmentDb();
-
-  const fileName = path.basename(INPUT_FILE);
-  const content = fs.readFileSync(INPUT_FILE, 'utf-8');
-
-  const { entity } = parseEntity(content, fileName, equipmentRegistry, { quirkResolver });
-  const displayName = [entity.chassis(), entity.model()].filter(Boolean).join(' ');
-
-  console.log(`\n${'═'.repeat(104)}`);
-  console.log(`  UNIT SUMMARY: ${displayName}`);
-  console.log('═'.repeat(104));
+  printSection(`UNIT SUMMARY: ${entity.displayName()}`);
   console.log(`  Entity type:       ${entity.entityType}`);
   console.log(`  Unit type:         ${entity.unitType()}`);
   console.log(`  Unit subtype:      ${entity.unitSubtype()}`);
   console.log(`  UUID:              ${entity.uuid()}`);
-  console.log(`  MUL ID:            ${entity.mulId()}`);
-  console.log(`  Year:              ${entity.year()} (original: ${entity.originalBuildYear()})`);
+  console.log(`  MUL ID:            ${entity.mulId() >= 0 ? entity.mulId() : '<none>'}`);
+  const originalYear = entity.originalBuildYear();
+  console.log(
+    `  Year:              ${entity.year()}${originalYear > 0 ? ` (original: ${originalYear})` : ''}`,
+  );
   console.log(`  Tech:              ${entity.techBase()}${entity.mixedTech() ? ' mixed' : ''}, rules level ${entity.rulesLevel()}`);
   console.log(`  Tech rating:       ${entity.techRating()}`);
+  console.log(`  Weight class:      ${entity.weightClass()}`);
   console.log(`  Tonnage:           ${formatDiagnosticNumber(entity.tonnage())}`);
+  if (!(entity instanceof StaticEmplacementEntity)) {
+    console.log(`  Loadout tonnage:   ${formatDiagnosticNumber(entity.loadoutTonnage())}`);
+  }
   console.log(`  Motive type:       ${entity.motiveType()}`);
-  console.log(`  Movement:          walk ${entity.originalWalkMP()}, run ${entity.maxRunMP()}, jump ${entity.jumpMP()}, UMU ${entity.umuMP()}`);
-  console.log(`  Engine:            ${entity.mountedEngine().type()}, rating ${entity.mountedEngine().rating}, ${entity.mountedEngine().techBase}`);
+  console.log(`  Movement:          ${formatMovement(entity)}`);
+  const engine = entity.mountedEngine();
+  if (engine.installed && !(entity instanceof SmallCraftEntity) && !(entity instanceof JumpShipEntity)) {
+    console.log(`  Engine:            ${engine.type()}, rating ${engine.rating}, ${engine.techBase}`);
+  }
   console.log(`  Armor points:      ${entity.totalArmorPoints()}`);
   console.log(`  Internal points:   ${entity.totalInternalPoints()}`);
   console.log(`  Military:          ${entity.isMilitary()}`);
+  console.log(`  Role:              ${entity.role() || '<none>'}`);
+  console.log(`  Canon:             ${entity.canon()}`);
   console.log(`  Source:            ${entity.source().map(source => source.abbrev).join(', ') || '<none>'}`);
+  console.log(`  Published:         ${entity.published().map(source => source.abbrev).join(', ') || '<none>'}`);
+  console.log(
+    `  Quirks:            ${entity.quirks().map(({ quirk, value }) =>
+      `${quirk.name}${value === undefined ? '' : ` (${value})`}`).join(', ') || '<none>'}`,
+  );
+  console.log(
+    `  Weapon quirks:     ${entity.weaponQuirks().map(quirk =>
+      `${quirk.name} (${quirk.weaponName}, ${formatEntityLocation(entity, quirk.location)}, slot ${quirk.slot})`
+    ).join(', ') || '<none>'}`,
+  );
   console.log(`  Implicit systems:  ${entity.implicitSystemEquipment().map(equipment => equipment.name).join(', ') || '<none>'}`);
-  console.log(`  Auto Clan CASE:    ${[...entity.automaticClanCaseLocations()].join(', ') || '<none>'}`);
-  console.log(`  Implicit CASE cost:${[...entity.implicitClanCaseLocations()].join(', ') || ' <none>'}`);
+  console.log(
+    `  Auto Clan CASE:    ${[...entity.automaticClanCaseLocations()]
+      .map(location => formatEntityLocation(entity, location)).join(', ') || '<none>'}`,
+  );
+  console.log(
+    `  Implicit CASE cost: ${[...entity.implicitClanCaseLocations()]
+      .map(location => formatEntityLocation(entity, location)).join(', ') || '<none>'}`,
+  );
 
   if (entity instanceof AeroEntity) {
     console.log('\n  Aerospace construction:');
     console.log(`    fuel=${entity.fuel()} heatSinks=${entity.heatSinkCount()} sinkType=${entity.heatSinkType()}`);
     console.log(`    SI=${entity.structuralIntegrity()} cockpit=${entity.cockpitType()}`);
-    if (entity.entityType === 'Aero' || entity.entityType === 'ConvFighter') {
-      const weight = calculateFighterWeightBreakdown(entity);
-      for (const [category, value] of Object.entries(weight)) {
-        console.log(`    ${category.padEnd(20)} ${formatDiagnosticNumber(value)}`);
-      }
-    }
   }
   if (entity instanceof SmallCraftEntity) {
     console.log(`    design=${entity.designType()}`);
@@ -136,153 +201,137 @@ async function main(): Promise<void> {
     console.log(`    marines=${entity.marines()} battleArmor=${entity.battleArmor()} otherPassengers=${entity.otherPassenger()}`);
     console.log(`    lifeBoats=${entity.lifeboats()} escapePods=${entity.escapePods()}`);
   }
-  if (entity instanceof MekEntity) {
-    const weight = calculateMekWeightBreakdown(entity);
-    console.log('\n  Construction weight:');
-    for (const [category, value] of Object.entries(weight)) {
-      console.log(`    ${category.padEnd(20)} ${formatDiagnosticNumber(value)}`);
-    }
-  }
-  if (entity instanceof ProtoMekEntity) {
-    const weight = calculateProtoMekWeightBreakdown(entity);
-    console.log('\n  Construction weight:');
-    for (const [category, value] of Object.entries(weight)) {
-      console.log(`    ${category.padEnd(20)} ${formatDiagnosticNumber(value)}`);
-    }
-  }
-  if (entity instanceof VehicleEntity) {
-    const weight = entity.isSupportVehicle()
-      ? calculateSupportVehicleWeightBreakdown(entity)
-      : calculateVehicleWeightBreakdown(entity);
-    console.log('\n  Vehicle construction weight:');
-    for (const [category, value] of Object.entries(weight)) {
-      console.log(`    ${category.padEnd(20)} ${formatDiagnosticNumber(value)}`);
+  if (entity.armorValues().size > 0) {
+    console.log('\n  Armor by location:');
+    for (const [location, armor] of entity.armorValues()) {
+      const mountedArmor = entity.armorByLocation().get(location);
+      console.log(
+        `    ${formatEntityLocation(entity, location).padEnd(24)} front=${armor.front} rear=${armor.rear} type=${mountedArmor?.armor.name ?? '<none>'}`,
+      );
     }
   }
 
-  console.log('\n  Armor by location:');
-  for (const [location, armor] of entity.armorValues()) {
-    const mountedArmor = entity.armorByLocation().get(location);
-    console.log(`    ${location.padEnd(12)} front=${armor.front} rear=${armor.rear} type=${mountedArmor?.armor.id ?? '<none>'}`);
+  if (entity.structureByLocation().size > 0) {
+    console.log('\n  Structure by location:');
+    for (const [location, structure] of entity.structureByLocation()) {
+      console.log(
+        `    ${formatEntityLocation(entity, location).padEnd(24)} type=${structure.structure.name} basisTonnage=${formatDiagnosticNumber(structure.tonnage)}`,
+      );
+    }
   }
 
-  console.log('\n  Structure by location:');
-  for (const [location, structure] of entity.structureByLocation()) {
-    console.log(`    ${location.padEnd(12)} type=${structure.structure.id} tonnage=${formatDiagnosticNumber(structure.tonnage)}`);
-  }
-
-  console.log(`\n${'═'.repeat(104)}`);
-  console.log(`  MOUNTED EQUIPMENT (${entity.equipment().length})`);
-  console.log('═'.repeat(104));
+  printSection(`MOUNTED EQUIPMENT (${entity.equipment().length})`);
   for (const mount of entity.equipment()) {
-    const locations = mount.getOccupiedLocations().join(', ') || mount.location || 'Unallocated';
+    const occupiedLocations = mount.getOccupiedLocations();
+    const flags = [
+      mount.rearMounted ? 'rear' : '',
+      mount.turretType ? `${mount.turretType}-turret` : mount.turretMounted ? 'turret' : '',
+      mount.omniPodMounted ? 'omnipod' : '',
+      mount.armored ? 'armored' : '',
+      mount.isSplitAcrossLocations ? 'split' : '',
+      mount.isDWP ? 'dwp' : '',
+      mount.isSSWM ? 'sswm' : '',
+      mount.isAPM ? 'apm' : '',
+    ].filter(Boolean);
     const cost = mount.getCost(entity);
     const bv = mount.getBV(entity);
     const tonnage = mount.getTonnage(entity);
+    const shots = mount.getAmmoShots();
     const linked = entity.getLinkedMount(mount)?.mountId;
     const linking = entity.getLinkingMount(mount)?.mountId;
-    console.log(`  ${mount.mountId}: ${mount.equipment?.name ?? mount.equipmentId}`);
-    console.log(`    location=${locations} size=${mount.size ?? 1} tonnage=${tonnage === undefined ? '<unresolved>' : formatDiagnosticNumber(tonnage)} rear=${mount.rearMounted} omni=${mount.omniPodMounted}`);
+    const attributes = [
+      `type=${mount.equipment?.type ?? '<unresolved>'}`,
+      `location=${formatEntityLocation(entity, mount.location)}`,
+      ...(mount.isSplitAcrossLocations
+        ? [`occupied=[${occupiedLocations.map(location => formatEntityLocation(entity, location)).join(', ')}]`]
+        : []),
+      ...(mount.size === undefined ? [] : [`size=${formatDiagnosticNumber(mount.size)}`]),
+      ...(shots === undefined ? [] : [`shots=${formatDiagnosticNumber(shots)}`]),
+      `tonnage=${tonnage === undefined ? '<unresolved>' : formatDiagnosticNumber(tonnage)}`,
+      ...(mount.facing === undefined ? [] : [`facing=${mount.facing}`]),
+      ...(mount.baMountLocation === undefined ? [] : [`baMount=${mount.baMountLocation}`]),
+      ...(flags.length > 0 ? [`flags=${flags.join(',')}`] : []),
+    ];
+    console.log(`  ${mount.mountId}: ${mountedEquipmentLabel(mount)}`);
+    console.log(`    ${attributes.join(' ')}`);
     console.log(`    cost=${cost === undefined ? '<variable/unresolved>' : formatDiagnosticNumber(cost)} BV=${formatDiagnosticNumber(bv)}`);
     if (linked || linking) console.log(`    linked=${linked ?? '-'} linking=${linking ?? '-'}`);
+    if (entity instanceof MekEntity) {
+      const placements = mount.placements?.map(placement =>
+        `${placement.location}:${placement.slotIndex}`) ?? [mount.location];
+      console.log(
+        `    placements(0-based)=[${placements.join(', ')}] crits=${mount.getNumCriticalSlots(entity) ?? '-'}`,
+      );
+    }
   }
 
-  console.log(`\n${'═'.repeat(104)}`);
-  console.log(`  TRANSPORTERS (${entity.transporters().length})`);
-  console.log('═'.repeat(104));
+  printSection(`TRANSPORTERS (${entity.transporters().length})`);
   if (entity.transporters().length === 0) console.log('  <none>');
   for (const transporter of entity.transporters()) {
     console.log(`  ${JSON.stringify(transporter)}`);
   }
 
-  console.log(`\n${'═'.repeat(104)}`);
-  console.log('  COST DETAILS');
-  console.log('═'.repeat(104));
+  printSection('COST DETAILS');
   for (const line of formatCostReport(entity.costDetails())) console.log(`  ${line}`);
 
-  console.log(`\n${'═'.repeat(104)}`);
-  console.log(`  BV DETAILS — ${formatDiagnosticNumber(entity.battleValue())}`);
-  console.log('═'.repeat(104));
-  for (const line of formatBattleValueDetails(entity.battleValueDetails())) console.log(`  ${line}`);
+  if (entity instanceof StaticEmplacementEntity) {
+    printSection('BV DETAILS — unavailable');
+    console.log('  Battle Value is not calculated for static catalog entities.');
+  } else {
+    printSection(`BV DETAILS — ${formatDiagnosticNumber(entity.battleValue())}`);
+    for (const line of formatBattleValueDetails(entity.battleValueDetails())) console.log(`  ${line}`);
+  }
 
   if (entity instanceof MekEntity) {
-    console.log(`\nParsed Mek: ${entity.displayName()}`);
-    console.log(`Weight Class: ${entity.weightClass()}`);
-    console.log(`\nEquipment:`);
-    for (const m of entity.equipment()) {
-      const locs = m.placements?.map(p => `${p.location}:${p.slotIndex}`) ?? [m.location];
-      const criticalSlots = m.getNumCriticalSlots(entity);
-      console.log(`  ${m.equipmentId}`);
-      console.log(`    locations: [${locs.join(', ')}]  crits: ${criticalSlots ?? '-'}`);
-      if (m.rearMounted) console.log(`    rear-mounted`);
-      if (m.omniPodMounted) console.log(`    omnipod`);
-      if (m.armored) console.log(`    armored`);
-      if (m.isSplitAcrossLocations) console.log(`    split`);
-      if (m.size != null) console.log(`    size: ${m.size}`);
-    }
-    // ── Critical Slot Grid (3-column layout) ──
-    const grid = entity.criticalSlotGrid();
-    const LOC_NAMES: Record<MekLocation, string> = {
-      HD: 'Head', LA: 'Left Arm', RA: 'Right Arm',
-      LT: 'Left Torso', CT: 'Center Torso', RT: 'Right Torso',
-      LL: 'Left Leg', RL: 'Right Leg', CL: 'Center Leg',
-      FLL: 'Front Left Leg', FRL: 'Front Right Leg',
-      RLL: 'Rear Left Leg', RRL: 'Rear Right Leg',
-    };
-
-    // Rows of 3 columns: [Left, Center, Right]
-    const hasQuadLegs = grid.has('FLL');
-    const hasCenterLeg = grid.has('CL');
-    const LAYOUT: readonly (readonly [
-      MekLocation | null,
-      MekLocation | null,
-      MekLocation | null,
-    ])[] = [
-      ...(hasQuadLegs
-        ? [['FLL', 'HD', 'FRL'] as const]
-        : [['LA', 'HD', 'RA'] as const]),
-      ['LT', 'CT', 'RT'],
-      ...(hasQuadLegs
-        ? [['RLL', null, 'RRL'] as const]
-        : hasCenterLeg
-          ? [['LL', 'CL', 'RL'] as const]
-          : [['LL', null, 'RL'] as const]),
-    ];
-
-    const COL_W = 32;
+    const mek = entity;
+    const grid = mek.criticalSlotGrid();
+    const layout = mekCriticalLocationMatrix(mek.chassisConfig);
 
     function slotLabel(loc: MekLocation | null, i: number): string {
       if (loc === null) return '';
+      if (i >= mekCriticalTableRowCount(loc)) return '';
       const slots = grid.get(loc);
       if (!slots || i >= slots.length) return '';
       const s = slots[i];
-      let label: string;
-      if (s.type === 'empty') label = '-Empty-';
-      else if (s.type === 'system') label = s.systemType ?? 'System';
-      else {
-        label = s.mounts.map(mount => mount.equipmentId).join(' | ');
-      }
+      const label = mekCriticalSlotLabel(s, mek);
       const flags = [s.armored ? '(A)' : '', s.omniPod ? '(O)' : ''].filter(Boolean).join('');
-      return `${String(i + 1).padStart(2)}. ${label}${flags ? ' ' + flags : ''}`;
+      const slotNumber = mekCriticalTableRowCount(loc) === 12 ? i % 6 + 1 : i + 1;
+      return `${String(slotNumber).padStart(2)}. ${label}${flags ? ' ' + flags : ''}`;
     }
 
     function pad(s: string, w: number): string {
-      return s.length >= w ? s.substring(0, w) : s + ' '.repeat(w - s.length);
+      return s + ' '.repeat(Math.max(0, w - s.length));
     }
 
     function slotCount(loc: MekLocation | null): number {
-      return loc === null ? 0 : grid.get(loc)?.length ?? 0;
+      return loc === null ? 0 : mekCriticalTableRowCount(loc);
     }
 
     function locationName(loc: MekLocation | null): string {
-      return loc === null ? '' : LOC_NAMES[loc];
+      if (loc === null) return '';
+      const label = getMekLocationLabel(loc) ?? mek.componentLocationLabel(loc);
+      const caseLabel = mekCriticalCaseLabel(mek, loc);
+      return `${label}${caseLabel ? ` (${caseLabel})` : ''}`;
     }
 
-    console.log(`\n${'═'.repeat(COL_W * 3 + 8)}`);
-    console.log('  CRITICAL TABLE');
-    console.log('═'.repeat(COL_W * 3 + 8));
+    const criticalLocations: MekLocation[] = [];
+    for (const row of layout) {
+      for (const location of row) {
+        if (location !== null && !criticalLocations.includes(location)) criticalLocations.push(location);
+      }
+    }
+    const COL_W = Math.max(
+      32,
+      ...criticalLocations.map(location => locationName(location).length),
+      ...criticalLocations.flatMap(location => Array.from(
+        { length: mekCriticalTableRowCount(location) },
+        (_, index) => slotLabel(location, index).length,
+      )),
+    );
 
-    for (const [left, center, right] of LAYOUT) {
+    printSection('CRITICAL TABLE', COL_W * 3 + 8);
+
+    for (const [left, center, right] of layout) {
       const maxSlots = Math.max(
         slotCount(left),
         slotCount(center),
@@ -307,7 +356,9 @@ async function main(): Promise<void> {
   }
 }
 
-void main().catch(error => {
+try {
+  main();
+} catch (error) {
   console.error(error instanceof Error ? error.stack ?? error.message : String(error));
   process.exitCode = 1;
-});
+}
