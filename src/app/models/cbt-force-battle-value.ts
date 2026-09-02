@@ -18,7 +18,7 @@ import type { EncounterNetwork } from './runtime/encounter-runtime';
 import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit } from './runtime/cbt-unit';
 import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { scenarioRuleset } from './runtime/unit-state-initializer';
-import { adjustEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
+import { unroundedEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
 
 export interface CBTForceBattleValueUnit {
     readonly unit: CBTUnit;
@@ -26,10 +26,13 @@ export interface CBTForceBattleValueUnit {
 }
 
 export interface CBTForceBattleValueBreakdown {
+    /** Integer entity/runtime BV after the base-BV rounding boundary. */
     readonly base: number;
+    /** Fractional post-base adjustments retained until final rounding. */
     readonly tag: number;
     readonly c3: number;
     readonly skills: number;
+    /** Integer result after applying every post-base adjustment. */
     readonly adjusted: number;
 }
 
@@ -111,19 +114,21 @@ export function calculateCBTForceBattleValues(
         const c3 = ruleset === 'total-warfare' ? tax.totalWar(view) : tax.core2026(view);
         const preSkill = base + tag + c3;
         const primary = row.unit.getCrewAssignment().positions[0];
-        const adjusted = primary === undefined
+        const unroundedAdjusted = primary === undefined
             ? preSkill
-            : adjustEntityBattleValueForSkills(
+            : unroundedEntityBattleValueForSkills(
                 row.unit.getUnit(),
                 preSkill,
                 primary.gunnery,
                 primary.piloting,
             );
+        const skills = unroundedAdjusted - preSkill;
+        const adjusted = Math.round(unroundedAdjusted);
         return [[row.unit.instanceId, Object.freeze({
             base,
             tag,
             c3,
-            skills: adjusted - preSkill,
+            skills,
             adjusted,
         })] as const];
     }));

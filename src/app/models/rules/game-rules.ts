@@ -684,7 +684,7 @@ export class TWGameRules extends CBTGameRules {
     }
 
     override calculateTagBVCost(facts: TagBattleValueFacts): number {
-        return Math.round(Math.max(0, facts.guidedAmmoBv) * Math.max(0, facts.operationalTagCount));
+        return Math.max(0, facts.guidedAmmoBv) * Math.max(0, facts.operationalTagCount);
     }
 
     protected override getRulesProfile(equipment: Equipment): number[] {

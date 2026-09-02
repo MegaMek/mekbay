@@ -244,6 +244,7 @@ describe('UnitBlockComponent capability badges', () => {
             getUnitPristineBattleValue: () => 0,
             getUnitTagBattleValue: () => 0,
             getUnitC3BattleValue: () => 0,
+            getUnitSkillBattleValue: () => 0,
             getC3State: () => 'none',
             getUnitSnapshot: () => null,
             isUnitCommander: () => false,

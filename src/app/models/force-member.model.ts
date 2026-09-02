@@ -69,6 +69,10 @@ export class CBTForceMember {
         return this.force.getUnitC3BattleValue(this.id);
     }
 
+    public skillBattleValue(): number | null {
+        return this.force.getUnitSkillBattleValue(this.id);
+    }
+
     /** The currently visible page of this member's lazily generated sheet set. */
     public recordSheet(): SVGSVGElement | null {
         return this.#recordSheets[this.#recordSheetIndex()] ?? null;

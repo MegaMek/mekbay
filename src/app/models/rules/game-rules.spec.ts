@@ -346,7 +346,7 @@ describe('CBT game rules', () => {
         } as const;
 
         expect(CORE_2026_GAME_RULES.calculateTagBVCost(facts)).toBe(300);
-        expect(TW_GAME_RULES.calculateTagBVCost(facts)).toBe(95);
+        expect(TW_GAME_RULES.calculateTagBVCost(facts)).toBeCloseTo(94.8, 10);
     });
 
     it('ports ruleset-owned ammo BV and explosion resolution', () => {

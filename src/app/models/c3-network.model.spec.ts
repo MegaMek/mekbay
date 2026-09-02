@@ -311,8 +311,8 @@ describe('C3TaxCalculator', () => {
         const bravo = unit('bravo', [component(C3NetworkType.NOVA, C3Role.PEER)], 809);
         const tax = new C3TaxCalculator([], [alpha.unit, bravo.unit], operational);
 
-        expect(tax.core2026(alpha.unit)).toBe(81);
-        expect(tax.core2026(bravo.unit)).toBe(81);
+        expect(tax.core2026(alpha.unit)).toBeCloseTo(80.9, 10);
+        expect(tax.core2026(bravo.unit)).toBeCloseTo(80.9, 10);
     });
 
     it('caps a Nova-only force at the seven-unit tax rate', () => {
@@ -342,5 +342,18 @@ describe('C3TaxCalculator', () => {
         }], [master.unit, slave.unit], operational);
         expect(c3Tax.core2026(master.unit)).toBe(0);
         expect(c3Tax.core2026(slave.unit)).toBe(0);
+    });
+
+    it('preserves fractional Core 2026 and Total Warfare taxes', () => {
+        const alpha = unit('alpha', [component(C3NetworkType.C3I, C3Role.PEER)], 1000, 103);
+        const bravo = unit('bravo', [component(C3NetworkType.C3I, C3Role.PEER)], 2000);
+        const units = [alpha.unit, bravo.unit];
+        const network: SerializedC3NetworkGroup[] = [{
+            id: 'network', type: C3NetworkType.C3I, color: '#123', peerIds: ['alpha', 'bravo'],
+        }];
+        const tax = new C3TaxCalculator(network, units);
+
+        expect(tax.core2026(alpha.unit)).toBeCloseTo(110.3, 10);
+        expect(tax.totalWar(alpha.unit)).toBeCloseTo(155.15, 10);
     });
 });

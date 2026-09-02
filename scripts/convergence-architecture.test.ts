@@ -236,7 +236,12 @@ assert.doesNotMatch(
 );
 assert.match(forceBv, /new C3TaxCalculator\(/u);
 assert.match(forceBv, /isC3EndpointOperational:[\s\S]*isIntact\(/u);
-assert.match(forceBv, /adjustEntityBattleValueForSkills\(/u);
+assert.match(forceBv, /unroundedEntityBattleValueForSkills\(/u);
+assert.match(
+    forceBv,
+    /const skills = unroundedAdjusted - preSkill;[\s\S]*const adjusted = Math\.round\(unroundedAdjusted\);/u,
+    'force BV must retain the fractional skill component and round only the final adjusted value',
+);
 assert.doesNotMatch(
     forceBv,
     /BVCalculatorUtil|calculateAdjustedBV\(\s*row\.summary/u,

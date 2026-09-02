@@ -43,6 +43,7 @@ import { UnitNotificationBadgesComponent } from '../unit-notification-badges/uni
 import { projectRuntimeUnitNotifications } from '../unit-notification-badges/unit-notification-runtime.util';
 import { projectCBTUnitTagEcmCapabilitySummary } from '../../models/runtime/cbt-unit-capability-projection';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
+import { FormatBvPipe } from '../../pipes/format-bv.pipe';
 
 interface UnitConditionDisplay {
     key: string;
@@ -467,19 +468,24 @@ export class UnitBlockComponent {
             const current = forceUnit.currentBaseBattleValue();
             const tag = forceUnit.tagBattleValue();
             const c3 = forceUnit.c3BattleValue();
+            const skills = forceUnit.skillBattleValue();
             const adjusted = forceUnit.adjustedBattleValue();
-            if (pristine === null || current === null || tag === null || c3 === null || adjusted === null
-                || (current === pristine && adjusted === current)) return null;
-            const lines: TooltipLine[] = [{ label: 'Base', value: `${pristine}` }];
+            if (pristine === null || current === null || tag === null || c3 === null
+                || skills === null || adjusted === null
+                || (current === pristine && tag === 0 && c3 === 0 && skills === 0)) return null;
+            const formatBv = (value: number) => FormatBvPipe.formatValue(value);
+            const lines: TooltipLine[] = [{ label: 'Base', value: formatBv(pristine) }];
             if (current !== pristine) {
                 const damage = current - pristine;
-                lines.push({ label: 'Damage', value: `${damage}` });
+                lines.push({ label: 'Damage', value: formatBv(damage) });
             }
-            if (tag !== 0) lines.push({ label: 'TAG', value: `+${tag}` });
-            if (c3 !== 0) lines.push({ label: 'C3', value: `+${c3}` });
-            const preSkill = current + tag + c3;
-            if (adjusted !== preSkill) lines.push({ label: 'Skills', value: `${adjusted - preSkill}` });
-            lines.push({ isBreak: true }, { label: 'Total', value: `${adjusted}` });
+            if (tag !== 0) lines.push({ label: 'TAG', value: `+${formatBv(tag)}` });
+            if (c3 !== 0) lines.push({ label: 'C³', value: `+${formatBv(c3)}` });
+            if (skills !== 0) {
+                const sign = skills > 0 ? '+' : '';
+                lines.push({ label: 'Skills', value: `${sign}${formatBv(skills)}` });
+            }
+            lines.push({ isBreak: true }, { label: 'Total', value: formatBv(adjusted) });
             return lines;
         }
         return null;

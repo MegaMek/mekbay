@@ -30,6 +30,11 @@ describe('force viewer BV/PV display', () => {
         expect(formatBvPv(0, 0, 'both')).toBe('0');
     });
 
+    it('shows intermediate values with at most two decimal places', () => {
+        expect(formatBvPv(2_501, 2_000.9, 'both')).toBe('2,501 (2,000.9)');
+        expect(formatBvPv(2_501, 2_000.999, 'base')).toBe('2,001');
+    });
+
     it('selects damaged or pristine CBT base and adjusted projections independently', () => {
         const member = {
             kind: 'cbt',

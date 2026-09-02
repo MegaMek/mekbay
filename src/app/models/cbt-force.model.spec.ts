@@ -1380,7 +1380,7 @@ describe('CBTForce V2 encounter persistence', () => {
         const first = force.getCBTMember(firstId)!;
         const second = force.getCBTMember(secondId)!;
         const forceBase = first.currentBaseBattleValue()! + second.currentBaseBattleValue()!;
-        const expectedTax = Math.round(forceBase * 0.05);
+        const expectedTax = forceBase * 0.05;
 
         expect(force.c3EncounterNetworks()).toEqual([]);
         expect(first.c3BattleValue()).toBe(expectedTax);

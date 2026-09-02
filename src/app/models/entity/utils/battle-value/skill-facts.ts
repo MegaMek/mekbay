@@ -7,6 +7,7 @@ import {
   adjustCBTBattleValueForSkills,
   effectiveCBTPilotingSkill,
   fixedCBTPilotingSkill,
+  unroundedCBTBattleValueForSkills,
   type CBTSkillUnitFacts,
 } from './rules';
 
@@ -34,6 +35,21 @@ export function adjustEntityBattleValueForSkills(
   piloting: number,
 ): number {
   return adjustCBTBattleValueForSkills(
+    base,
+    gunnery,
+    piloting,
+    classicSkillFactsForEntity(entity),
+  );
+}
+
+/** Crew-skill-adjusted entity BV before the one final integer rounding boundary. */
+export function unroundedEntityBattleValueForSkills(
+  entity: BaseEntity,
+  base: number,
+  gunnery: number,
+  piloting: number,
+): number {
+  return unroundedCBTBattleValueForSkills(
     base,
     gunnery,
     piloting,

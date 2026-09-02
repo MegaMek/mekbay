@@ -95,11 +95,30 @@ export function effectiveCBTPilotingSkill(
   return fixedCBTPilotingSkill(facts) ?? requested;
 }
 
-/** Total Warfare/Core crew-skill adjustment over a current or pristine Mek BV. */
-export function adjustMekBattleValueForSkills(base: number, gunnery: number, piloting: number): number {
+/** Unrounded Total Warfare/Core crew-skill result over a current or pristine Mek BV. */
+export function unroundedMekBattleValueForSkills(base: number, gunnery: number, piloting: number): number {
   const row = MEK_SKILL_MULTIPLIERS[Math.max(0, Math.min(8, Math.trunc(gunnery)))]!;
   const multiplier = row[Math.max(0, Math.min(8, Math.trunc(piloting)))] ?? 1;
-  return multiplier === 1 ? base : Math.round(base * multiplier);
+  return base * multiplier;
+}
+
+/** Final Total Warfare/Core crew-skill adjustment, rounded only at the BV boundary. */
+export function adjustMekBattleValueForSkills(base: number, gunnery: number, piloting: number): number {
+  return Math.round(unroundedMekBattleValueForSkills(base, gunnery, piloting));
+}
+
+/** Entity/search adapter result before the final BV rounding boundary. */
+export function unroundedCBTBattleValueForSkills(
+  base: number,
+  gunnery: number,
+  piloting: number,
+  facts: CBTSkillUnitFacts,
+): number {
+  return unroundedMekBattleValueForSkills(
+    base,
+    gunnery,
+    effectiveCBTPilotingSkill(facts, piloting),
+  );
 }
 
 /** Entity/search adapters share this rule without making UnitSummary an authority. */
@@ -109,9 +128,5 @@ export function adjustCBTBattleValueForSkills(
   piloting: number,
   facts: CBTSkillUnitFacts,
 ): number {
-  return adjustMekBattleValueForSkills(
-    base,
-    gunnery,
-    effectiveCBTPilotingSkill(facts, piloting),
-  );
+  return Math.round(unroundedCBTBattleValueForSkills(base, gunnery, piloting, facts));
 }
