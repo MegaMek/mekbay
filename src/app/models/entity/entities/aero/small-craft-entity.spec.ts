@@ -6,7 +6,7 @@ import { createEquipment, WeaponEquipment } from '../../../equipment.model';
 import { SmallCraftEntity } from './small-craft-entity';
 import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
 import { addTestEquipment } from '../../testing/test-mounted-equipment';
-import { calculateMountedEquipmentCost } from '../../utils/cost/equipment-total';
+import { calculateMountedEquipmentCostBreakdown } from '../../utils/cost/equipment-total';
 import { EquipmentFlag } from '../../../equipment-flags.type';
 
 describe('SmallCraftEntity implicit equipment', () => {
@@ -54,10 +54,10 @@ describe('SmallCraftEntity implicit equipment', () => {
     }));
 
     addTestEquipment(entity, weapon, { location: 'Nose' });
-    expect(calculateMountedEquipmentCost(entity)).toBe(50000);
+    expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(50000);
 
     addTestEquipment(entity, automaticEcm, { location: 'Nose' });
-    expect(calculateMountedEquipmentCost(entity)).toBe(50000);
+    expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(50000);
   });
 
   it('does not charge automatic ECM for an unarmed civilian Small Craft', () => {
@@ -67,7 +67,7 @@ describe('SmallCraftEntity implicit equipment', () => {
     });
     const entity = new SmallCraftEntity(createTestEquipmentRegistry({ [automaticEcm.id]: automaticEcm }));
 
-    expect(calculateMountedEquipmentCost(entity)).toBe(0);
+    expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(0);
   });
 
   it('rejects an unresolved automatic ECM cost', () => {
@@ -82,7 +82,7 @@ describe('SmallCraftEntity implicit equipment', () => {
     }));
     addTestEquipment(entity, weapon, { location: 'Nose' });
 
-    expect(() => calculateMountedEquipmentCost(entity))
+    expect(() => calculateMountedEquipmentCostBreakdown(entity))
       .toThrowError(/Unable to calculate variable cost for ISSingle-Hex ECM/);
   });
 

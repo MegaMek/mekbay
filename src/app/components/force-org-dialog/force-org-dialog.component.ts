@@ -27,7 +27,6 @@ import { UrlService } from '../../services/url.service';
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import type { GroupSizeResult, OrgSizeResult } from '../../utils/org/org-types';
 import { GameSystem } from '../../models/common.model';
-import { getUnitsAverageTechBase, type TechBase } from '../../models/tech.model';
 import type { LoadedOrganization, SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
 import { ShareForceOrgDialogComponent } from '../share-force-org-dialog/share-force-org-dialog.component';
@@ -1383,20 +1382,6 @@ export class ForceOrgDialogComponent {
 
     private getFactionById(factionId: FactionId | undefined): Faction | undefined {
         return factionId !== undefined ? this.dataService.getFactionById(factionId) : undefined;
-    }
-
-    private computeEntriesTechBaseUncached(entries: LoadForceEntry[], factionName: string): TechBase {
-        if (factionName.includes('ComStar') || factionName.includes('Word of Blake')) {
-            return 'Inner Sphere';
-        }
-
-        const units = entries
-            .flatMap(entry => entry.groups)
-            .flatMap(group => group.units)
-            .map(entry => entry.unit)
-            .filter((unit): unit is NonNullable<typeof unit> => unit !== undefined);
-
-        return getUnitsAverageTechBase(units);
     }
 
     private getForceOrgResults(force: LoadForceEntry): GroupSizeResult[] {

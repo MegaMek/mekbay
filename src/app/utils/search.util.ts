@@ -65,62 +65,6 @@ function crossesWhitespaceBoundary(projection: AlphanumericProjection, start: nu
     return false;
 }
 
-function findTokenRangesInAlphanumericProjection(
-    textToSearch: string,
-    tokens: readonly string[],
-    textIsNormalized = false,
-): Array<[number, number]> | null {
-    const projection = textIsNormalized
-        ? buildAlphanumericProjectionFromNormalized(textToSearch)
-        : buildAlphanumericProjection(textToSearch);
-    if (!projection.collapsed) {
-        return null;
-    }
-
-    const taken: Array<[number, number]> = [];
-
-    for (const rawToken of tokens) {
-        const token = toAlphanumericSearchValue(rawToken);
-        if (!token) {
-            continue;
-        }
-
-        let searchStart = 0;
-        let found = false;
-
-        while (searchStart <= projection.collapsed.length - token.length) {
-            const collapsedIndex = projection.collapsed.indexOf(token, searchStart);
-            if (collapsedIndex === -1) {
-                break;
-            }
-
-            const collapsedEnd = collapsedIndex + token.length;
-            const spansWhitespace = crossesWhitespaceBoundary(projection, collapsedIndex, collapsedEnd);
-            if (spansWhitespace && !projection.startsAfterWhitespace[collapsedIndex]) {
-                searchStart = collapsedIndex + 1;
-                continue;
-            }
-
-            const start = projection.originalIndices[collapsedIndex];
-            const end = projection.originalIndices[collapsedEnd - 1] + 1;
-            const overlaps = taken.some(([takenStart, takenEnd]) => !(end <= takenStart || start >= takenEnd));
-            if (!overlaps) {
-                taken.push([start, end]);
-                found = true;
-                break;
-            }
-
-            searchStart = collapsedIndex + 1;
-        }
-
-        if (!found) {
-            return null;
-        }
-    }
-
-    return taken;
-}
-
 function collectHighlightRanges(text: string, tokens: string[]): Array<[number, number]> {
     const projection = buildAlphanumericProjection(text);
     if (!projection.collapsed) {

@@ -7,7 +7,6 @@ import type { Faction } from '../../models/factions.model';
 import type { ASUnitTypeCode } from '../../models/unit-summary.model';
 import {
     compileGroupFacts,
-    compileGroupFactsList,
     compileUnitFactsList,
     DEFAULT_ORG_RULE_REGISTRY,
     getCIMoveClass,
@@ -37,7 +36,6 @@ import {
     type OrgLeafCountRule,
     type OrgLeafPatternRule,
     type OrgPatternBucketMatcher,
-    type OrgPatternBucketPrefixMatcher,
     type OrgPatternReferenceName,
     type OrgPatternScoreTerm,
     type OrgPatternSpec,
@@ -1749,12 +1747,6 @@ function isPatternBucketListMatcher(
     return Array.isArray(matcher);
 }
 
-function isPatternBucketPrefixMatcher(
-    matcher: OrgPatternBucketMatcher,
-): matcher is OrgPatternBucketPrefixMatcher {
-    return !isPatternBucketListMatcher(matcher);
-}
-
 function getPatternRefTotal(
     ref: OrgPatternReferenceName,
     allocation: ReadonlyMap<string, number>,
@@ -2782,24 +2774,6 @@ function serializeSignatureCounts(counts: readonly number[]): string {
     return counts.join(',');
 }
 
-function compareModifierStepPreference(left: ModifierStep, right: ModifierStep): number {
-    const leftBandScore = left.relativeBand === 'regular' ? 3 : left.relativeBand === 'super-regular' ? 2 : 1;
-    const rightBandScore = right.relativeBand === 'regular' ? 3 : right.relativeBand === 'super-regular' ? 2 : 1;
-    if (leftBandScore !== rightBandScore) {
-        return leftBandScore - rightBandScore;
-    }
-
-    if (left.distanceFromRegular !== right.distanceFromRegular) {
-        return right.distanceFromRegular - left.distanceFromRegular;
-    }
-
-    if (left.count !== right.count) {
-        return left.count - right.count;
-    }
-
-    return left.tier - right.tier;
-}
-
 function getModifierPreferenceBuckets(steps: readonly ModifierStep[]): Array<{ readonly key: string; readonly count: number }> {
     const counts = new Map<string, number>();
 
@@ -3130,20 +3104,6 @@ function planCountedCompositionsFromEntries(
     const result = visit(initialCounts);
     recordComposedPlanMetric(config, 'exact-counted', startedAtMs, result.length);
     return result;
-}
-
-function planCountedCompositions(
-    groups: readonly GroupFacts[],
-    config: CompositionConfig,
-    guard: SolverGuard,
-    allowedModifierKeys?: ReadonlySet<string>,
-): readonly AbstractCompositionCandidate[] {
-    return planCountedCompositionsFromEntries(
-        buildCountedCompositionInventory(groups, config.childRoles).entries,
-        config,
-        guard,
-        allowedModifierKeys,
-    );
 }
 
 function materializeAbstractCompositionPlan(
@@ -4116,13 +4076,6 @@ function attachLeftoverUnits(
     }, ...rest];
 }
 
-function getRuleByType(context: ResolveContext, type: GroupSizeResult['type']): OrgComposedCountRule | undefined {
-    if (!type) {
-        return undefined;
-    }
-    return context.composedCountRuleByType.get(type);
-}
-
 function getAnyRuleByType(
     context: ResolveContext,
     type: GroupSizeResult['type'],
@@ -4301,10 +4254,6 @@ function pickBestResolvedState(
     return best;
 }
 
-function getRuleTierByType(context: ResolveContext, type: GroupSizeResult['type']): number | null {
-    return type ? (context.ruleTierByType.get(type) ?? null) : null;
-}
-
 function getMinimumChildTierForRule(rule: OrgComposedCountRule | OrgComposedPatternRule, context: ResolveContext): number {
     return context.minimumChildTierByRule.get(rule) ?? getMinimumChildTierForComposedRule(rule, context.definition);
 }
@@ -4386,16 +4335,6 @@ function buildPlannedPromotionResult(
     ));
 
     return { usedChildren, producedGroups };
-}
-
-function getCurrentStructuralCount(
-    group: GroupSizeResult,
-    descriptor: RuleModifierDescriptor,
-): number {
-    const step = descriptor.stepsAscending.find((candidate) => candidate.modifierKey === group.modifierKey);
-    const impliedCount = step?.count ?? descriptor.regularStep.count;
-    const explicitCount = group.children?.length ?? 0;
-    return Math.max(impliedCount, explicitCount);
 }
 
 function getCurrentStructuralCountFacts(
@@ -4765,17 +4704,6 @@ function createSuccessorCanonicalGroupPoolState(
         [...remainingGroups, ...producedGroups],
         nextCounts,
     );
-}
-
-function compareGroupPoolStates(
-    left: CanonicalGroupPoolState,
-    right: CanonicalGroupPoolState,
-    context: ResolveContext,
-): number {
-    const leftScore = scoreCanonicalGroupPoolState(left, context);
-    const rightScore = scoreCanonicalGroupPoolState(right, context);
-
-    return compareFinalStateScores(leftScore, rightScore);
 }
 
 function getApplicableComposedRulesForFacts(

@@ -42,10 +42,6 @@ export interface CalculationReportSink {
   addHeader(text: string): this;
   addSubHeader(text: string): this;
   addEmptyLine(): this;
-  startTentativeSection(): void;
-  endTentativeSection(): void;
-  discardTentativeSection(): void;
-  finalizeTentativeSection(keepSection: boolean): void;
 }
 
 /** Java-compatible rounding used by calculation-report numeric result overloads. */
@@ -58,31 +54,15 @@ export function formatRoundedReportResult(prefix: string | null, value: number):
   }).format(value)}`;
 }
 
-/** Formats only necessary decimal places, up to the three used by MegaMek reports. */
-export function formatForReport(value: number): string {
-  assertFinite(value);
-  const timesThousand = javaRound(value * 1000);
-  const digits = timesThousand % 1000 === 0 ? 0
-    : timesThousand % 100 === 0 ? 1
-    : timesThousand % 10 === 0 ? 2
-    : 3;
-  return value.toFixed(digits);
-}
-
-function javaRound(value: number): number {
-  return Math.floor(value + 0.5);
-}
-
 function assertFinite(value: number): void {
   if (!Number.isFinite(value)) {
     throw new RangeError('Calculation report values must be finite.');
   }
 }
 
-/** Stores report events, including Java-compatible tentative sections. */
+/** Stores calculation report events. */
 export class CalculationReportBuilder implements CalculationReportSink {
   private readonly committedEvents: CalculationReportEvent[] = [];
-  private tentativeEvents: CalculationReportEvent[] | null = null;
 
   events(): readonly CalculationReportEvent[] {
     return [...this.committedEvents];
@@ -93,7 +73,7 @@ export class CalculationReportBuilder implements CalculationReportSink {
     calculation: string | null = '',
     result: string | null = '',
   ): this {
-    this.targetEvents().push({
+    this.committedEvents.push({
       kind: 'line',
       type: type ?? '',
       calculation: calculation ?? '',
@@ -116,7 +96,7 @@ export class CalculationReportBuilder implements CalculationReportSink {
     calculation: string | null = '',
     result: string | null = '',
   ): this {
-    this.targetEvents().push({ kind: 'resultSeparator' });
+    this.committedEvents.push({ kind: 'resultSeparator' });
     return this.addLine(type, calculation, result);
   }
 
@@ -130,12 +110,12 @@ export class CalculationReportBuilder implements CalculationReportSink {
   }
 
   addHeader(text: string): this {
-    this.targetEvents().push({ kind: 'header', text });
+    this.committedEvents.push({ kind: 'header', text });
     return this;
   }
 
   addSubHeader(text: string): this {
-    this.targetEvents().push({ kind: 'subHeader', text });
+    this.committedEvents.push({ kind: 'subHeader', text });
     return this;
   }
 
@@ -143,29 +123,6 @@ export class CalculationReportBuilder implements CalculationReportSink {
     return this.addLine();
   }
 
-  startTentativeSection(): void {
-    this.tentativeEvents ??= [];
-  }
-
-  endTentativeSection(): void {
-    if (this.tentativeEvents === null) return;
-    this.committedEvents.push(...this.tentativeEvents);
-    this.tentativeEvents = null;
-  }
-
-  discardTentativeSection(): void {
-    if (this.tentativeEvents === null) return;
-    this.tentativeEvents = null;
-  }
-
-  finalizeTentativeSection(keepSection: boolean): void {
-    if (keepSection) this.endTentativeSection();
-    else this.discardTentativeSection();
-  }
-
-  private targetEvents(): CalculationReportEvent[] {
-    return this.tentativeEvents ?? this.committedEvents;
-  }
 }
 
 /** No-op sink used when callers do not request a report. */
@@ -177,10 +134,6 @@ class NullCalculationReport implements CalculationReportSink {
   addHeader(): this { return this; }
   addSubHeader(): this { return this; }
   addEmptyLine(): this { return this; }
-  startTentativeSection(): void { /* Intentionally empty. */ }
-  endTentativeSection(): void { /* Intentionally empty. */ }
-  discardTentativeSection(): void { /* Intentionally empty. */ }
-  finalizeTentativeSection(): void { /* Intentionally empty. */ }
 }
 
 export const NULL_CALCULATION_REPORT: CalculationReportSink = new NullCalculationReport();

@@ -1719,12 +1719,6 @@ export class TnCalculatorDialogComponent {
         if (!this.largeTargetAvailable()) this.largeTarget.set(false);
     }
 
-    private clearAirborne(): void {
-        if (this.isAirborne()) {
-            this.isAirborne.set(false);
-        }
-    }
-
     private initialTargetMovementDistance(): number {
         const distance = this.initialCalculator?.targetMovementDistance;
         if (distance !== null && distance !== undefined && Number.isFinite(distance)) {

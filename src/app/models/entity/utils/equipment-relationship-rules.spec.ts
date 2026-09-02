@@ -115,7 +115,7 @@ describe('reconcileEquipmentRelationships', () => {
     const secondMachineGun = entity.equipment().find(m => m.mountId === 'mg2')!;
     expect(entity.equipmentBays()[0].mounts).toEqual([secondMachineGun]);
 
-    entity.removeEquipment(entity.equipment().find(m => m.mountId === 'array')!);
+    entity.removeEquipment(entity.equipment().find(mount => mount.mountId === 'array')!);
 
     expect(entity.equipmentBays()).toEqual([]);
   });

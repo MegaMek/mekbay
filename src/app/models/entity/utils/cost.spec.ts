@@ -21,8 +21,8 @@ import {
 } from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
 import { TestBipedMekEntity, TestHandheldWeaponEntity } from '../testing/test-entities';
-import { calculateMountedEquipmentCost } from './cost/equipment-total';
-import { calculateEntityCost, calculateEntityCostDetails } from './cost/entity-cost';
+import { calculateMountedEquipmentCostBreakdown } from './cost/equipment-total';
+import { calculateEntityCostDetails } from './cost/entity-cost';
 import { amount, buildCostReport, multiplier } from './cost/cost-report';
 import { EquipmentFlag } from '../../equipment-flags.type';
 
@@ -57,7 +57,7 @@ describe('entity cost', () => {
         });
     });
 
-    it('keeps the numeric API and report total identical for every modeled family', () => {
+    it('keeps entity cost and report total identical for every modeled family', () => {
         const entities = [
             new SupportTankEntity(), new SmallCraftEntity(),
             new DropShipEntity(), new JumpShipEntity(), new WarShipEntity(),
@@ -66,15 +66,12 @@ describe('entity cost', () => {
         ];
 
         for (const entity of entities) {
-            expect(calculateEntityCost(entity)).withContext(entity.entityType)
-                .toBe(calculateEntityCostDetails(entity).total);
             expect(entity.cost()).withContext(entity.entityType).toBe(entity.costDetails().total);
         }
     });
 
-    it('keeps Mek numeric cost and report total on the entity authority', () => {
+    it('keeps Mek cost and report total on the entity authority', () => {
         const entity = new BipedMekEntity();
-        expect(calculateEntityCost(entity)).toBe(calculateEntityCostDetails(entity).total);
         expect(entity.cost()).toBe(entity.costDetails().total);
     });
 
@@ -82,7 +79,7 @@ describe('entity cost', () => {
     it('applies conventional-fighter VSTOL mass cost before the weight multiplier', () => {
         const entity = new ConvFighterEntity();
         entity.setTonnage(25);
-        const withoutVstol = calculateEntityCost(entity);
+        const withoutVstol = calculateEntityCostDetails(entity).total;
 
         entity.vstol.set(true);
         const withVstol = calculateEntityCostDetails(entity);
@@ -290,7 +287,7 @@ describe('entity cost', () => {
       stats: { cost: 100000 },
     }))]);
 
-    expect(calculateMountedEquipmentCost(entity)).toBe(100000);
+    expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(100000);
   });
 
     it('uses pristine mounted-state explosiveness for implicit Clan CASE cost', () => {
@@ -311,7 +308,7 @@ describe('entity cost', () => {
         ]);
 
         expect(entity.implicitClanCaseLocations()).toEqual(new Set(['RA']));
-        expect(calculateMountedEquipmentCost(entity)).toBe(50000);
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(50000);
     });
 
     it('counts CASE II as equipment but not explicit CASE for implicit CASE cost', () => {
@@ -326,7 +323,7 @@ describe('entity cost', () => {
             })),
         ]);
 
-        expect(calculateMountedEquipmentCost(entity)).toBe(225000);
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(225000);
     });
 
     it('does not charge implicit CASE for B-Pods and M-Pods under Core Rules', () => {
@@ -342,7 +339,7 @@ describe('entity cost', () => {
         })).clone({ allocation: { kind: 'location', location: 'RL' } });
         entity.setEquipment([bPod, mPod]);
 
-        expect(calculateMountedEquipmentCost(entity)).toBe(0);
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(0);
     });
 
     it('subtracts explicit CASE globally from vehicle explosive-location count', () => {
@@ -359,7 +356,7 @@ describe('entity cost', () => {
         })).clone({ allocation: { kind: 'location', location: 'Body' } });
         entity.setEquipment([leftExplosive, rightExplosive, explicitCase]);
 
-        expect(calculateMountedEquipmentCost(entity)).toBe(100000);
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(100000);
     });
 
     it('charges generated Clan CASE only for locations without explicit protection', () => {
@@ -377,7 +374,7 @@ describe('entity cost', () => {
         entity.setEquipment([explosive, protectedExplosive, explicitCase]);
 
         expect(entity.automaticClanCaseLocations()).toEqual(new Set(['RA']));
-        expect(calculateMountedEquipmentCost(entity)).toBe(100000);
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(100000);
     });
 
 
@@ -629,7 +626,7 @@ describe('EntityMountedEquipment.getCost', () => {
         });
         supportTank.setEquipment([mount(infantryWeapon, false, 3)]);
 
-        expect(calculateMountedEquipmentCost(supportTank)).toBe(82);
+        expect(calculateMountedEquipmentCostBreakdown(supportTank).total).toBe(82);
     });
 
     it('resolves IS and Clan MASC cost', () => {

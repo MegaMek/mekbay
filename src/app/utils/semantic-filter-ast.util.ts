@@ -52,13 +52,6 @@ import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 const ESCAPABLE_CHARS = new Set(['(', ')', '=', '>', '<', '!', '&', '"', "'", '\\']);
 
 /**
- * Check if a character at position is escaped (preceded by backslash and is escapable).
- */
-function isEscapedChar(input: string, pos: number): boolean {
-    return pos > 0 && input[pos - 1] === '\\' && ESCAPABLE_CHARS.has(input[pos]);
-}
-
-/**
  * Check if position starts an escape sequence (backslash followed by escapable char).
  */
 function isEscapeSequence(input: string, pos: number): boolean {
@@ -449,10 +442,6 @@ class Parser {
 
     private current(): LexToken {
         return this.tokens[this.pos] || this.tokens[this.tokens.length - 1];
-    }
-
-    private peek(offset: number = 0): LexToken {
-        return this.tokens[this.pos + offset] || this.tokens[this.tokens.length - 1];
     }
 
     private advance(): LexToken {

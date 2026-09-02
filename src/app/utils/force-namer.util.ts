@@ -109,16 +109,8 @@ function getReferenceYear(units: readonly UnitSummary[]): number | null {
     return units.reduce((max, unit) => Math.max(max, unit.year), Number.NEGATIVE_INFINITY);
 }
 
-function getEraStartYear(era: Era): number {
-    return era.years.from ?? Number.NEGATIVE_INFINITY;
-}
-
 function getEraEndYear(era: Era): number {
     return era.years.to ?? Number.POSITIVE_INFINITY;
-}
-
-function doesEraContainYear(era: Era, year: number): boolean {
-    return getEraStartYear(era) <= year && year <= getEraEndYear(era);
 }
 
 function getEligibleEras(eras: Era[], referenceYear: number | null): Era[] {

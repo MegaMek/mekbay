@@ -56,30 +56,6 @@ function getMotiveRollModifier(moveType: MoveType | undefined): number {
 }
 
 /**
- * Get display name for motive type category.
- */
-function getMotiveTypeName(moveType: MoveType | undefined): string {
-    switch (moveType) {
-        case 'Tracked':
-            return 'Tracked';
-        case 'Naval':
-        case 'Submarine':
-        case 'Hydrofoil':
-            return 'Naval';
-        case 'Wheeled':
-            return 'Wheeled';
-        case 'Hover':
-            return 'Hovercraft';
-        case 'VTOL':
-            return 'VTOL';
-        case 'WiGE':
-            return 'WiGE';
-        default:
-            return moveType ?? 'Unknown';
-    }
-}
-
-/**
  * Motive Systems Damage Table.
  */
 const MOTIVE_DAMAGE_TABLE: Record<number, MotiveTableEntry> = {
