@@ -18,6 +18,7 @@ import { structureConstructionKind } from '../models/construction-equipment.mode
 import { AmmoEquipment } from '../models/equipment.model';
 import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import type { ComponentId, CrewPositionId, LocationId } from '../models/entity/entity-identifiers';
+import { MAX_CREW_WOUNDS } from '../models/crew-member.model';
 import { getMekLocationLabel, getTopologyFor, MEK_TORSO_LOCATIONS } from '../models/entity/types';
 import { gameRulesFor, type MekExplosionProtection } from '../models/rules/game-rules';
 import {
@@ -50,7 +51,7 @@ import {
 import { projectMekLifeSupportPilotDamage } from '../models/runtime/mek-life-support';
 import type { MekRuntimeIndex } from '../models/runtime/mek-runtime-index';
 import { resolveMekUnitWaterState } from '../models/runtime/mek-targeting-rules';
-import { MAX_MEK_CREW_WOUNDS, type MekUnitRuntimeState } from '../models/runtime/runtime-state';
+import type { MekUnitRuntimeState } from '../models/runtime/runtime-state';
 import { uuidv4 } from '../utils/uuid.util';
 import { selectedManualEndTurnHeat } from '../models/runtime/end-turn-heat-selection';
 import type {
@@ -2098,7 +2099,7 @@ export class DirectMekAutomationService {
         }
         return Object.freeze(this.crewPositions(snapshot).flatMap(position => {
             const state = snapshot.query.crewState(position.id);
-            if (state.ejected || state.wounds >= MAX_MEK_CREW_WOUNDS) return [];
+            if (state.ejected || state.wounds >= MAX_CREW_WOUNDS) return [];
             return [Object.freeze({ positionId: position.id })];
         }));
     }
@@ -2259,7 +2260,7 @@ export class DirectMekAutomationService {
         const byCheckId = new Map<string, CrewPositionId>();
         const checks = seatbelts.flatMap(seatbelt => {
             const crew = snapshot.query.crewState(seatbelt.positionId);
-            if (crew.ejected || crew.wounds >= MAX_MEK_CREW_WOUNDS) return [];
+            if (crew.ejected || crew.wounds >= MAX_CREW_WOUNDS) return [];
             const assignment = snapshot.crewAssignment.positions.find(position =>
                 position.positionId === seatbelt.positionId);
             const targetNumber = (assignment?.piloting ?? 5)
@@ -2638,7 +2639,7 @@ export class DirectMekAutomationService {
                     ...(name ? { name } : {}),
                     wounds: current.wounds,
                     unconscious: current.unconscious,
-                    unavailable: state.ejected || current.wounds >= MAX_MEK_CREW_WOUNDS,
+                    unavailable: state.ejected || current.wounds >= MAX_CREW_WOUNDS,
                     hits,
                 })];
             }),
@@ -2687,7 +2688,7 @@ export class DirectMekAutomationService {
         const snapshot = this.snapshot(force, instanceId);
         const state = snapshot?.query.crewState(positionId);
         if (!snapshot || !state || !state.unconscious || state.ejected
-            || state.wounds >= MAX_MEK_CREW_WOUNDS) return true;
+            || state.wounds >= MAX_CREW_WOUNDS) return true;
         const result = await dispatch({
             type: 'set-crew-state',
             positionId,
@@ -2708,7 +2709,7 @@ export class DirectMekAutomationService {
         const previous = before.query.crewState(positionId);
         const current = after.query.crewState(positionId);
         if (previous.unconscious || !current.unconscious || current.ejected
-            || current.wounds >= MAX_MEK_CREW_WOUNDS) return true;
+            || current.wounds >= MAX_CREW_WOUNDS) return true;
         const recoveryReadyTurn = this.options.cbtAutomationMode(
             'pilotHitsAndConsciousnessCheck',
         ) === 'no' ? null : before.state.turn.turnCounter + 1;
@@ -2883,7 +2884,7 @@ export class DirectMekAutomationService {
     }> | null {
         const candidates = [...snapshot.index.crewPositions.values()].flatMap(position => {
             const state = snapshot.query.crewState(position.id);
-            if (state.ejected || state.wounds >= MAX_MEK_CREW_WOUNDS
+            if (state.ejected || state.wounds >= MAX_CREW_WOUNDS
                 || state.unconscious && !recoveredPositions.has(position.id)) return [];
             const assignment = snapshot.crewAssignment.positions.find(candidate =>
                 candidate.positionId === position.id);

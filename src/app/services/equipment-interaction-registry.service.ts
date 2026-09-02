@@ -51,7 +51,8 @@ export class EquipmentInteractionRegistry {
             if (component.kind !== 'equipment' || !component.mount.equipment) continue;
             for (const handler of handlers) {
                 if (handler.scope !== 'component'
-                    || !hasRequiredFlags(component.mount.equipment.flags, handler.flags)) continue;
+                    || !hasRequiredFlags(component.mount.equipment.flags, handler.flags)
+                    || !hasAnyFlag(component.mount.equipment.flags, handler.anyFlags)) continue;
                 this.collect(result, handler, {
                     runtime,
                     entity,
@@ -69,7 +70,8 @@ export class EquipmentInteractionRegistry {
             const targetFlags = equipmentForComponent(index, targetId)?.flags;
             for (const handler of handlers) {
                 if (handler.scope !== 'link'
-                    || !hasRequiredLinkFlags(sourceFlags, targetFlags, handler.flags)) continue;
+                    || !hasRequiredLinkFlags(sourceFlags, targetFlags, handler.flags)
+                    || !hasAnyLinkFlag(sourceFlags, targetFlags, handler.anyFlags)) continue;
                 this.collect(result, handler, {
                     runtime,
                     entity,
@@ -144,10 +146,23 @@ function hasRequiredFlags(flags: ReadonlySet<string>, required: readonly string[
     return required.every(flag => flags.has(flag));
 }
 
+function hasAnyFlag(flags: ReadonlySet<string>, alternatives: readonly string[]): boolean {
+    return alternatives.length === 0 || alternatives.some(flag => flags.has(flag));
+}
+
 function hasRequiredLinkFlags(
     source: ReadonlySet<string> | undefined,
     target: ReadonlySet<string> | undefined,
     required: readonly string[],
 ): boolean {
     return required.every(flag => source?.has(flag) === true || target?.has(flag) === true);
+}
+
+function hasAnyLinkFlag(
+    source: ReadonlySet<string> | undefined,
+    target: ReadonlySet<string> | undefined,
+    alternatives: readonly string[],
+): boolean {
+    return alternatives.length === 0
+        || alternatives.some(flag => source?.has(flag) === true || target?.has(flag) === true);
 }

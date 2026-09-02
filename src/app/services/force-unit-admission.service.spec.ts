@@ -33,7 +33,7 @@ describe('ForceUnitAdmissionService', () => {
     });
 
     it('creates and targets the first roster group for a retained CBT Mek', async () => {
-        const force = new CBTForce('Test force', {} as DataService, {} as Injector);
+        const force = new CBTForce('Test force', {} as DataService, createCBTForceInjector());
         const summary = createEmptyUnit({
             name: 'Crab CRB-20',
             uuid: '019f6767-0dcb-7bb8-992f-aef08202f5e1',
@@ -74,7 +74,7 @@ describe('ForceUnitAdmissionService', () => {
     });
 
     it('admits a native BLK family through the same direct CBT member path', async () => {
-        const force = new CBTForce('Vehicle force', {} as DataService, {} as Injector);
+        const force = new CBTForce('Vehicle force', {} as DataService, createCBTForceInjector());
         const summary = createEmptyUnit({
             name: 'Vedette Medium Tank',
             uuid: '019f6767-0dcb-7bb8-992f-aef08202f5e2',
@@ -108,16 +108,19 @@ describe('ForceUnitAdmissionService', () => {
 
 function createAdmissionService(): ForceUnitAdmissionService {
     return Injector.create({
-        providers: [
-            ForceUnitAdmissionService,
-            {
-                provide: OptionsService,
-                useValue: {
-                    options: () => ({
-                        CBTOptionalRules: { forcedWithdrawal: false, sprinting: false },
-                    }),
-                },
-            },
-        ],
+        providers: [ForceUnitAdmissionService],
     }).get(ForceUnitAdmissionService);
+}
+
+const TEST_OPTIONS_SERVICE = Object.freeze({
+    options: () => ({
+        CBTRules: 'total-warfare',
+        CBTOptionalRules: { forcedWithdrawal: false, sprinting: false },
+    }),
+});
+
+function createCBTForceInjector(): Injector {
+    return Injector.create({
+        providers: [{ provide: OptionsService, useValue: TEST_OPTIONS_SERVICE }],
+    });
 }

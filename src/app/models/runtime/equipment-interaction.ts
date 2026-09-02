@@ -99,6 +99,8 @@ export abstract class EquipmentInteractionHandler {
     abstract readonly kind: EquipmentInteractionKind;
     abstract readonly scope: EquipmentInteractionScope;
     readonly flags: readonly EquipmentFlag[] = [];
+    /** When non-empty, at least one of these flags must also be present. */
+    readonly anyFlags: readonly EquipmentFlag[] = [];
     readonly priority: number = 0;
 
     abstract choices(input: EquipmentInteractionInput): readonly EquipmentInteractionChoice[];

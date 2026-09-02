@@ -987,7 +987,6 @@ export class TacticalViewComponent {
             wounds: current.state.wounds === boundedWounds ? boundedWounds - 1 : boundedWounds,
             unconscious: current.state.unconscious,
             ejected: current.state.ejected,
-            dead: current.state.dead === true,
         });
     }
 
@@ -1011,7 +1010,7 @@ export class TacticalViewComponent {
                 ? !active
                 : current.state.unconscious,
             ejected: selected === 'ejected' ? !active : current.state.ejected,
-            dead: selected === 'killed' ? !active : current.state.dead === true,
+            ...(selected === 'killed' ? { dead: !active } : {}),
         });
     }
 

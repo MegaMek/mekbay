@@ -3,7 +3,6 @@
 
 import {
   NATIVE_CODEC_CAPABILITIES,
-  nativeCapabilityForDialect,
   nativeCapabilityForEntityType,
   nativeCapabilityForUnitTypeAlias,
 } from './codec-capabilities';
@@ -36,12 +35,11 @@ describe('native codec capabilities', () => {
     }));
   });
 
-  it('keeps native dialect lookup independent from entity-family lookup', () => {
+  it('keeps native capability metadata explicit', () => {
     const vehicle = nativeCapabilityForEntityType('Naval');
 
     expect(vehicle.decodeEntity).toBeTrue();
     expect('verifiedMegaMekInterop' in vehicle).toBeFalse();
-    expect(nativeCapabilityForDialect('megamek-blk', 2)).toEqual([]);
   });
 
   it('default-denies unknown UnitType values', () => {

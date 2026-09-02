@@ -9,8 +9,7 @@ import {
 
 describe('CrewMember', () => {
     it('projects one effective state while retaining independent stored facts', () => {
-        const crew = CrewMember.healthy.withState({
-            wounds: 2,
+        const crew = CrewMember.healthy.withManualDeath({
             unconscious: true,
             ejected: true,
             dead: true,
@@ -27,7 +26,7 @@ describe('CrewMember', () => {
     });
 
     it('keeps fatal wounds pending until death is committed', () => {
-        const pending = CrewMember.healthy.withState({
+        const pending = CrewMember.healthy.withWoundTrackedState({
             wounds: MAX_CREW_WOUNDS,
             unconscious: true,
             ejected: false,
@@ -36,6 +35,7 @@ describe('CrewMember', () => {
         expect(pending.isFatallyWounded()).toBeTrue();
         expect(pending.isDeathCommitted()).toBeFalse();
         expect(pending.effectiveState()).toBe('unconscious');
+        expect(pending.isAvailable()).toBeFalse();
 
         const committed = pending.commitDeath();
         expect(committed.isDeathCommitted()).toBeTrue();
@@ -43,14 +43,14 @@ describe('CrewMember', () => {
     });
 
     it('marks four-wound crew crippled only while alive and aboard', () => {
-        const crippled = CrewMember.healthy.withState({
+        const crippled = CrewMember.healthy.withWoundTrackedState({
             wounds: CRIPPLED_CREW_WOUND_THRESHOLD,
             unconscious: false,
             ejected: false,
         });
 
         expect(crippled.isCrippled()).toBeTrue();
-        expect(crippled.withState({
+        expect(crippled.withWoundTrackedState({
             wounds: crippled.wounds,
             unconscious: false,
             ejected: true,
@@ -59,18 +59,18 @@ describe('CrewMember', () => {
     });
 
     it('owns recovery scheduling and sparse-state decisions', () => {
-        const unconscious = CrewMember.healthy.withState({
+        const unconscious = CrewMember.healthy.withWoundTrackedState({
             wounds: 1,
             unconscious: true,
             ejected: false,
             recoveryReadyTurn: 3,
         });
-        const rescheduled = unconscious.withState({
+        const rescheduled = unconscious.withWoundTrackedState({
             wounds: 1,
             unconscious: true,
             ejected: false,
         });
-        const recovered = rescheduled.withState({
+        const recovered = rescheduled.withWoundTrackedState({
             wounds: 0,
             unconscious: false,
             ejected: false,
@@ -86,14 +86,14 @@ describe('CrewMember', () => {
         });
     });
 
-    it('drops committed death when fatal wounds are corrected', () => {
-        const committed = CrewMember.healthy.withState({
+    it('drops automatic death when fatal wounds are corrected', () => {
+        const committed = CrewMember.healthy.withWoundTrackedState({
             wounds: MAX_CREW_WOUNDS,
             unconscious: false,
             ejected: false,
         }).commitDeath();
 
-        const corrected = committed.withState({
+        const corrected = committed.withWoundTrackedState({
             wounds: MAX_CREW_WOUNDS - 1,
             unconscious: false,
             ejected: false,
@@ -101,5 +101,24 @@ describe('CrewMember', () => {
 
         expect(corrected.isDeathCommitted()).toBeFalse();
         expect(corrected.effectiveState()).toBe('healthy');
+    });
+
+    it('canonicalizes a manual Killed switch to six or zero wounds', () => {
+        const killed = CrewMember.healthy.withManualDeath({
+            unconscious: false,
+            ejected: false,
+            dead: true,
+        });
+
+        expect(killed.isDeathCommitted()).toBeTrue();
+        expect(killed.wounds).toBe(MAX_CREW_WOUNDS);
+        const restored = killed.withManualDeath({
+            unconscious: false,
+            ejected: false,
+            dead: false,
+        });
+        expect(restored.isDeathCommitted()).toBeFalse();
+        expect(restored.wounds).toBe(0);
+        expect(restored.isPristine()).toBeTrue();
     });
 });

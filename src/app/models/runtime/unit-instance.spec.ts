@@ -17,6 +17,22 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         expect(fixture.instance.getIndex()).toBe(fixture.index);
     });
 
+    it('reuses projections for one immutable state and drops them after mutation', () => {
+        const { instance } = createDirectMekRuntimeFixture();
+        const before = instance.query();
+
+        expect(instance.query()).toBe(before);
+        expect(before.mekCombatModifiers()).toBe(before.mekCombatModifiers());
+
+        expect(instance.dispatch({ type: 'set-heat', heat: 1 }))
+            .toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        const after = instance.query();
+
+        expect(after).not.toBe(before);
+        expect(instance.query()).toBe(after);
+        expect(after.mekCombatModifiers()).toBe(after.mekCombatModifiers());
+    });
+
     it('accepts an empty phase boundary so history can advance independently of damage', () => {
         const { instance } = createDirectMekRuntimeFixture();
 

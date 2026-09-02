@@ -13,6 +13,7 @@ import {
 } from '../entity/testing/test-entities';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
 import {
+    convertPersistedMekUnitV1,
     convertPersistedNonMekUnitV1,
     convertPersistedForceV1,
     type PersistedForceV1ConversionOptions,
@@ -23,14 +24,52 @@ import { nonMekDamageTrackId } from '../rules/non-mek-damage-track-rules';
 import { DEFAULT_FORCE_DEPLOYMENT_ID } from './unit-state-initializer';
 import { C3NetworkType } from '../c3-network.model';
 import { MiscEquipment } from '../equipment.model';
+import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
+import { CBTMekUnit } from './cbt-mek-unit';
 
 const UUID = asUnitUuid('01890f3a-9d5b-7c24-8b2e-6f8a10d31234');
+const SCENARIO = Object.freeze({ id: 'megamek', ruleset: CORE_2026_RULESET });
 const CLASSIC_OPTIONS: PersistedForceV1ConversionOptions = {
     resolveIdentity,
+    scenario: SCENARIO,
     materializeUnit: materializeNonMek,
 };
 
 describe('CBT V1 force converter', () => {
+    it('folds legacy Mek stunned/killed states into its wound-tracked V2 facts', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const fresh = new CBTMekUnit(
+            fixture.entity,
+            fixture.identity,
+            fixture.instance,
+            { schemaVersion: 2, values: fixture.initialized.deployment },
+        );
+        const source: LegacyUnitSourceV1 = {
+            payload: {
+                unit: 'Legacy Mek',
+                state: {
+                    crew: [{ id: 0, hits: 0, state: 5 }],
+                },
+            },
+            identity: { kind: 'resolved', uuid: fixture.identity },
+        };
+
+        const stunned = await convertPersistedMekUnitV1(source, fresh, SCENARIO);
+        expect(stunned.crew.positions[0]).toEqual(jasmine.objectContaining({
+            wounds: 0,
+            unconscious: true,
+        }));
+
+        const legacyCrew = (((source.payload as JsonObject)['state'] as JsonObject)
+            ['crew'] as JsonObject[])[0]!;
+        legacyCrew['state'] = 4;
+        const killed = await convertPersistedMekUnitV1(source, fresh, SCENARIO);
+        expect(killed.crew.positions[0]).toEqual(jasmine.objectContaining({
+            wounds: 6,
+            dead: true,
+        }));
+    });
+
     it('treats a missing legacy game-system discriminator as CBT', async () => {
         const source = { ...v1Force() } as unknown as Record<string, unknown>;
         delete source['type'];
@@ -114,6 +153,7 @@ describe('CBT V1 force converter', () => {
     it('converts valid V1 C3 links to typed encounter facts', async () => {
         const converted = await convertPersistedForceV1(v1Force(), {
             resolveIdentity: resolveAllIdentity,
+            scenario: SCENARIO,
             materializeUnit: materializeC3NonMek,
         });
         const facts = converted.cbt!.encounter.state.facts;
@@ -205,7 +245,7 @@ describe('CBT V1 force converter', () => {
 
         const issues: string[] = [];
         const saved = convertPersistedNonMekUnitV1(source, fresh, issue => issues.push(issue));
-        const restored = CBTNonMekUnit.restore(saved, entity, identity);
+        const restored = CBTNonMekUnit.restore(saved, entity, identity, SCENARIO);
         const state = restored.getInstance().snapshot();
 
         expect(saved.family).toEqual({ kind: 'non-mek', entityType: 'Tank' });
@@ -240,13 +280,16 @@ describe('CBT V1 force converter', () => {
         legacyCrew['state'] = 5;
         const stunnedSaved = convertPersistedNonMekUnitV1(source, fresh);
         const positionId = [...fresh.getIndex().crewPositions.keys()][0];
-        expect(CBTNonMekUnit.restore(stunnedSaved, entity, identity)
-            .getInstance().snapshot().crew.get(positionId)?.stunned).toBeTrue();
+        expect(CBTNonMekUnit.restore(stunnedSaved, entity, identity, SCENARIO)
+            .getInstance().snapshot().crew.get(positionId)?.unconscious).toBeTrue();
 
         legacyCrew['state'] = 4;
         const killedSaved = convertPersistedNonMekUnitV1(source, fresh);
-        expect(CBTNonMekUnit.restore(killedSaved, entity, identity)
-            .getInstance().snapshot().crew.get(positionId)?.killed).toBeTrue();
+        expect(CBTNonMekUnit.restore(killedSaved, entity, identity, SCENARIO)
+            .getInstance().snapshot().crew.get(positionId)).toEqual(jasmine.objectContaining({
+                wounds: 6,
+                dead: true,
+            }));
     });
 
     it('restores the production V1 aerospace heat profile into direct non-Mek state', () => {
@@ -265,6 +308,7 @@ describe('CBT V1 force converter', () => {
             payload: {
                 unit: 'Legacy Aero',
                 state: {
+                    crew: [{ id: 0, hits: 0, state: 4 }],
                     heat: {
                         current: 5,
                         next: 19,
@@ -283,8 +327,12 @@ describe('CBT V1 force converter', () => {
             pendingOverride: 19,
             heatsinksOff: 2,
         });
-        expect(CBTNonMekUnit.restore(saved, entity, identity).getInstance().snapshot().heat)
+        expect(CBTNonMekUnit.restore(saved, entity, identity, SCENARIO).getInstance().snapshot().heat)
             .toEqual(saved.heat!);
+        expect(saved.crewState?.[0]).toEqual(jasmine.objectContaining({
+            wounds: 6,
+            dead: true,
+        }));
     });
 
     it('restores committed and pending non-Mek V1 system damage without treating it as equipment', () => {
@@ -320,7 +368,7 @@ describe('CBT V1 force converter', () => {
         };
 
         const saved = convertPersistedNonMekUnitV1(source, fresh);
-        const restored = CBTNonMekUnit.restore(saved, entity, identity).getInstance();
+        const restored = CBTNonMekUnit.restore(saved, entity, identity, SCENARIO).getInstance();
         const rotor = nonMekDamageTrackId('rotor');
         const motive = nonMekDamageTrackId('motive_system_hit_2');
 

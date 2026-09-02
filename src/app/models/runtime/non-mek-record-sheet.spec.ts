@@ -102,10 +102,8 @@ describe('projectNonMekRecordSheet', () => {
 
             positionId: crewPositionId,
             wounds: 0,
-            unconscious: false,
+            unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: true,
         });
 
         const snapshot = projectNonMekRecordSheet(
@@ -256,8 +254,6 @@ describe('projectNonMekRecordSheet', () => {
             wounds: 0,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
         });
 
         const snapshot = projectNonMekRecordSheet(
@@ -273,9 +269,9 @@ describe('projectNonMekRecordSheet', () => {
         expect(snapshot.conditionControlKeys).toEqual([
             'swarmed', 'tagged', 'ecm-shielded', 'jammed',
         ]);
-        expect(snapshot.crewStateControlKeys).toEqual(['unconscious']);
-        expect(snapshot.crewStateDisplayKeys).toEqual(['unconscious', 'dead']);
-        expect(snapshot.crew[0].effectiveState).toBe('unconscious');
+        expect(snapshot.crewStateControlKeys).toEqual(['stunned']);
+        expect(snapshot.crewStateDisplayKeys).toEqual(['stunned', 'killed']);
+        expect(snapshot.crew[0].effectiveState).toBe('stunned');
         expect(snapshot.movement).toEqual({ walk: 0, run: 0, jump: 0, umu: 0 });
     });
 

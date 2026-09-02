@@ -3,8 +3,7 @@
 
 import { compareText } from '../../utils/string.util';
 import { GameSystem } from '../common.model';
-import { CORE_2026_RULESET } from '../cbt-ruleset.model';
-import { DEFAULT_GUNNERY_SKILL } from '../crew.model';
+import { DEFAULT_GUNNERY_SKILL, MAX_CREW_WOUNDS } from '../crew-member.model';
 import type {
     ASSerializedForce,
     ASSerializedGroup,
@@ -45,7 +44,7 @@ import {
     type SerializedCBTForceRosterGroupV1,
 } from './cbt-force-roster';
 import { freezeRuntimeState, type MekUnitRuntimeState } from './runtime-state';
-import type { CBTCrewRuntimeState } from './cbt-unit-runtime';
+import type { CrewMemberRuntimeState } from '../crew-member.model';
 import type { CBTMekUnit } from './cbt-mek-unit';
 import type { CBTNonMekUnit } from './cbt-non-mek-unit';
 import { isCBTMekUnit, isCBTNonMekUnit, type CBTUnit } from './cbt-unit';
@@ -67,7 +66,10 @@ import { canonicalizeMekTurnStateV2 } from './mek-turn-state-v2';
 import { createMekHeatContextV2, mekHeatSourceSignatureV2 } from './mek-heat-state-v2';
 import { createMekMechanicsContextV2 } from './mek-mechanics-context-v2';
 import { CBTUnitInstance } from './unit-instance';
-import { DEFAULT_FORCE_DEPLOYMENT_ID } from './unit-state-initializer';
+import {
+    DEFAULT_FORCE_DEPLOYMENT_ID,
+    type ScenarioRules,
+} from './unit-state-initializer';
 import { C3NetworkEditor } from '../c3-network-editor';
 import { projectC3EditorNetworksToEncounter, type C3EncounterPresentationUnit } from '../c3-network-presentation';
 import { projectReadyC3Components } from '../cbt-force-c3';
@@ -77,20 +79,16 @@ import { isRecord, jsonValuesEqual } from '../../utils/json-value.util';
 import type { BaseEntity } from '../entity/base-entity';
 import { canonicalNonMekAirborneState } from './non-mek-airborne-state';
 
-const V1_SCENARIO_RULES = Object.freeze({
-    schemaVersion: 1 as const,
-    values: Object.freeze({ id: 'megamek', ruleset: CORE_2026_RULESET }),
-});
-
 const V1_CONVERSION_DEPLOYMENT = Object.freeze({ id: DEFAULT_FORCE_DEPLOYMENT_ID });
 
 export interface PersistedForceV1ConversionOptions {
     readonly resolveIdentity: UnitIdentityResolver;
+    readonly scenario?: ScenarioRules;
     readonly materializeUnit?: (request: {
         readonly source: LegacyUnitSourceV1;
         readonly instanceId: string;
         readonly deployment: typeof V1_CONVERSION_DEPLOYMENT;
-        readonly scenario: typeof V1_SCENARIO_RULES.values;
+        readonly scenario: ScenarioRules;
     }) => Promise<CBTUnit | undefined>;
     readonly onWarning?: (warning: PersistedForceV1ConversionWarning) => void;
 }
@@ -303,19 +301,21 @@ function convertAlphaStrikeV1State(value: JsonValue | undefined): ASSerializedSt
 export async function convertPersistedMekUnitV1(
     source: LegacyUnitSourceV1,
     fresh: CBTMekUnit,
+    scenario: ScenarioRules,
 ): Promise<SerializedCBTUnitV2> {
     const baseline = fresh.serialize();
+    const runtimeBaseline = fresh.getInstance().baselineRef;
     if (baseline.stateRevision !== 0) {
         throw new Error('V1 conversion requires a pristine current Mek baseline');
     }
     const restored = await restoreLegacyUnitState(source, fresh.getUnit(), {
-        baselineRef: baseline.baselineRefAtSave,
+        baselineRef: runtimeBaseline,
         state: fresh.getInstance().snapshot(),
     });
     const restoredState = convertLegacyMovementHeatAcknowledgement(
         restored.state,
         fresh,
-        baseline,
+        scenario,
     );
     const state = freezeRuntimeState({
         ...restoredState,
@@ -329,7 +329,7 @@ export async function convertPersistedMekUnitV1(
         entity: fresh.getUnit(),
         index: fresh.getIndex(),
         instanceId: baseline.instanceId,
-        baselineRef: baseline.baselineRefAtSave,
+        baselineRef: runtimeBaseline,
         state,
         deployment: Object.freeze({
             ...baseline.deployment,
@@ -493,16 +493,18 @@ function restoreLegacyCrewAssignment(
 
 function restoreLegacyCrewRuntime(
     source: LegacyUnitSourceV1,
-    current: ReadonlyMap<CrewPositionId, CBTCrewRuntimeState>,
+    current: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>,
     topology: CrewTopology,
-): ReadonlyMap<CrewPositionId, CBTCrewRuntimeState> {
+): ReadonlyMap<CrewPositionId, CrewMemberRuntimeState> {
     const crew = new Map(current);
     const rows = legacyCrewRows(source);
     for (const position of [...topology.values()].sort((left, right) => left.occurrence - right.occurrence)) {
         const row = legacyCrewRow(rows, position.occurrence);
         if (!row) continue;
         const state = legacyCrewState(row);
-        if (state.wounds === 0 && !state.unconscious && !state.ejected) crew.delete(position.id);
+        if (state.wounds === 0 && !state.unconscious && !state.ejected && !state.dead) {
+            crew.delete(position.id);
+        }
         else crew.set(position.id, state);
     }
     return crew;
@@ -518,8 +520,6 @@ function restoreLegacyNonMekCrewState(
     unconscious: boolean;
     ejected: boolean;
     dead?: true;
-    killed?: true;
-    stunned?: true;
 }>[] {
     const rows = legacyCrewRows(source);
     const restored = [...topology.values()]
@@ -531,9 +531,9 @@ function restoreLegacyNonMekCrewState(
             if (rawState !== null && ![0, 1, 2, 3, 4, 5].includes(rawState)) {
                 issues.push(`Unknown V1 crew state ${rawState} at position ${position.occurrence}.`);
             }
-            const state = legacyNonMekCrewState(row);
+            const state = legacyCrewState(row);
             return state.wounds === 0 && !state.unconscious && !state.ejected
-                && !state.killed && !state.stunned
+                && !state.dead
                 ? []
                 : [Object.freeze({ positionId: position.id, ...state })];
         });
@@ -564,31 +564,11 @@ function legacyCrewState(row: Readonly<Record<string, JsonValue>>): Readonly<{
     const rawState = integer(row['state']);
     return Object.freeze({
         wounds: rawState === 2 || rawState === 4
-            ? 6
-            : Math.min(6, Math.max(0, rawHits ?? 0)),
-        unconscious: rawState === 1,
+            ? MAX_CREW_WOUNDS
+            : Math.min(MAX_CREW_WOUNDS, Math.max(0, rawHits ?? 0)),
+        unconscious: rawState === 1 || rawState === 5,
         ejected: rawState === 3,
         ...(rawState === 2 || rawState === 4 ? { dead: true as const } : {}),
-    });
-}
-
-function legacyNonMekCrewState(row: Readonly<Record<string, JsonValue>>): Readonly<{
-    wounds: number;
-    unconscious: boolean;
-    ejected: boolean;
-    dead?: true;
-    killed?: true;
-    stunned?: true;
-}> {
-    const rawHits = integer(row['hits']);
-    const rawState = integer(row['state']);
-    return Object.freeze({
-        wounds: rawState === 2 ? 6 : Math.min(6, Math.max(0, rawHits ?? 0)),
-        unconscious: rawState === 1,
-        ejected: rawState === 3,
-        ...(rawState === 2 ? { dead: true as const } : {}),
-        ...(rawState === 4 ? { killed: true as const } : {}),
-        ...(rawState === 5 ? { stunned: true as const } : {}),
     });
 }
 
@@ -988,6 +968,10 @@ function restoreLegacyEntityConditions(raw: JsonValue | undefined, issues: strin
             issues.push('An unknown V1 unit condition was skipped.');
             continue;
         }
+        if (key === 'crippled') {
+            issues.push('V1 crippled state was discarded and will be derived from the current rules.');
+            continue;
+        }
         if (record?.['pending'] === true || record?.['value'] !== undefined) {
             issues.push(`V1 condition details for ${key} have no generic family runtime field.`);
             if (record['pending'] === true) continue;
@@ -1205,7 +1189,7 @@ function compareNumbers(left: number, right: number): number {
 function convertLegacyMovementHeatAcknowledgement(
     state: MekUnitRuntimeState,
     fresh: CBTMekUnit,
-    baseline: SerializedCBTUnitV2,
+    scenario: ScenarioRules,
 ): MekUnitRuntimeState {
     const savedSignature = state.turn.acknowledgedHeatSources.get('movement');
     if (savedSignature === undefined) return state;
@@ -1220,18 +1204,19 @@ function convertLegacyMovementHeatAcknowledgement(
         }),
     });
     const entity = fresh.getUnit();
-    const ruleset = baseline.baselineRefAtSave.ruleset;
+    const runtime = fresh.getInstance();
+    const ruleset = runtime.ruleset();
     const index = fresh.getIndex();
     const projectionRuntime = new CBTUnitInstance(
-        baseline.instanceId,
-        baseline.baselineRefAtSave,
+        fresh.instanceId,
+        runtime.baselineRef,
         entity,
         index,
         ruleset,
         projectionState,
         fresh.getCrewAssignment(),
-        createMekHeatContextV2(entity, index, ruleset, V1_SCENARIO_RULES.values),
-        createMekMechanicsContextV2(entity, index, ruleset, V1_SCENARIO_RULES.values),
+        createMekHeatContextV2(entity, index, ruleset, scenario),
+        createMekMechanicsContextV2(entity, index, ruleset, scenario),
     );
     const projected = projectionRuntime.query().heatProjection('manual');
     const movement = projected.kind === 'supported'
@@ -1262,6 +1247,9 @@ async function convertCBTForce(
 ): Promise<SerializedForce> {
     if (!options.materializeUnit) {
         throw new Error('CBT V1 conversion requires the unit catalog');
+    }
+    if (!options.scenario) {
+        throw new Error('CBT V1 conversion requires the current application rules');
     }
     const payload = requireObject(cloneAsJson(force), 'CBT V1 force');
     const rawGroups = payload['groups'];
@@ -1359,6 +1347,7 @@ async function convertCBTForce(
         resolvedUnits,
         rosterGroups,
         options.materializeUnit,
+        options.scenario,
         payload['c3Networks'],
         options.onWarning,
     );
@@ -1387,6 +1376,7 @@ async function materializeResolvedUnits(
     resolvedUnits: readonly ResolvedLegacyCBTUnitV1[],
     rosterGroups: readonly SerializedCBTForceRosterGroupV1[],
     materializeUnit: NonNullable<PersistedForceV1ConversionOptions['materializeUnit']>,
+    scenario: ScenarioRules,
     rawLegacyNetworks: JsonValue | undefined,
     onWarning?: PersistedForceV1ConversionOptions['onWarning'],
 ): Promise<SerializedCBTForceV2> {
@@ -1401,7 +1391,7 @@ async function materializeResolvedUnits(
                 source: entry.source,
                 instanceId: entry.instanceId,
                 deployment: V1_CONVERSION_DEPLOYMENT,
-                scenario: V1_SCENARIO_RULES.values,
+                scenario,
             });
         } catch (error) {
             onWarning?.({
@@ -1429,7 +1419,7 @@ async function materializeResolvedUnits(
         let unit: SerializedCBTUnitV2 | SerializedNonMekUnit;
         try {
             unit = isCBTMekUnit(ready)
-                ? await convertPersistedMekUnitV1(entry.source, ready)
+                ? await convertPersistedMekUnitV1(entry.source, ready, scenario)
                 : isCBTNonMekUnit(ready)
                     ? convertPersistedNonMekUnitV1(entry.source, ready, message => onWarning?.({
                         kind: 'state-partial',
@@ -1469,7 +1459,6 @@ async function materializeResolvedUnits(
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: stateRevision,
-        scenarioRules: V1_SCENARIO_RULES,
         history: emptyRuntimeHistory(),
         units: Object.freeze(units),
         roster: Object.freeze({

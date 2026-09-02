@@ -25,10 +25,10 @@ import {
 } from '../entity/testing/test-mounted-equipment';
 import { asEncounterTargetId, type TargetRegistrySnapshot } from './encounter-runtime';
 import { type InstanceBaselineRef } from './runtime-state';
+import { CrewMember } from '../crew-member.model';
 import {
     canNonMekTakeActiveActions,
     createPristineNonMekUnitState,
-    effectiveNonMekCrewState,
     nonMekAttackMovementModifier,
     NonMekUnitInstance,
     projectNonMekDefenseModifierBreakdown,
@@ -102,11 +102,9 @@ describe('NonMekUnitInstance', () => {
             wounds: 6,
             unconscious: true,
             ejected: true,
-            killed: false,
-            stunned: false,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(runtime.query().hasPendingPhaseChanges()).toBeTrue();
-        expect(effectiveNonMekCrewState(runtime.snapshot().crew.get(positionId))).toBe('ejected');
+        expect(CrewMember.from(runtime.snapshot().crew.get(positionId)).effectiveState()).toBe('ejected');
 
         const pendingSave = serializeNonMekUnit({
             instance: runtime,
@@ -114,14 +112,14 @@ describe('NonMekUnitInstance', () => {
             deployment,
         });
         expect(pendingSave.crewState?.[0]?.dead).toBeUndefined();
-        const pendingRestore = restoreNonMekUnit(pendingSave, entity);
+        const pendingRestore = restoreNonMekUnit(pendingSave, entity, CORE_2026_RULESET);
         const pendingCrew = pendingRestore.query().crewState(positionId);
         expect(pendingCrew).toEqual(jasmine.objectContaining({
             unconscious: true,
             ejected: true,
         }));
         expect(pendingCrew.dead).toBeUndefined();
-        expect(effectiveNonMekCrewState(pendingRestore.snapshot().crew.get(positionId))).toBe('ejected');
+        expect(CrewMember.from(pendingRestore.snapshot().crew.get(positionId)).effectiveState()).toBe('ejected');
 
         expect(pendingRestore.dispatch({ kind: 'end-phase' }))
             .toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
@@ -131,7 +129,7 @@ describe('NonMekUnitInstance', () => {
             ejected: true,
         }));
         expect(pendingRestore.query().hasPendingPhaseChanges()).toBeFalse();
-        expect(effectiveNonMekCrewState(pendingRestore.snapshot().crew.get(positionId))).toBe('dead');
+        expect(CrewMember.from(pendingRestore.snapshot().crew.get(positionId)).effectiveState()).toBe('dead');
 
         const committedSave = serializeNonMekUnit({
             instance: pendingRestore,
@@ -139,7 +137,7 @@ describe('NonMekUnitInstance', () => {
             deployment,
         });
         expect(committedSave.crewState?.[0]?.dead).toBeTrue();
-        const committedRestore = restoreNonMekUnit(committedSave, entity);
+        const committedRestore = restoreNonMekUnit(committedSave, entity, CORE_2026_RULESET);
         expect(committedRestore.query().crewState(positionId).dead).toBeTrue();
         expect(committedRestore.dispatch({
             kind: 'set-crew-state',
@@ -147,8 +145,6 @@ describe('NonMekUnitInstance', () => {
             wounds: 5,
             unconscious: true,
             ejected: true,
-            killed: false,
-            stunned: false,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         const repairedCrew = committedRestore.query().crewState(positionId);
         expect(repairedCrew).toEqual(jasmine.objectContaining({
@@ -383,7 +379,7 @@ describe('NonMekUnitInstance', () => {
         expect(runtime.snapshot().locations.size).toBe(1);
     });
 
-    it('stores and round-trips vehicle killed/stunned crew state sparsely', () => {
+    it('stores vehicle killed/stunned controls as canonical crew facts', () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
         const runtime = new NonMekUnitInstance(
@@ -399,13 +395,11 @@ describe('NonMekUnitInstance', () => {
 
             positionId,
             wounds: 0,
-            unconscious: false,
+            unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: true,
         }).accepted).toBeTrue();
         expect(runtime.query().hasPendingPhaseChanges()).toBeTrue();
-        expect(effectiveNonMekCrewState(runtime.snapshot().crew.get(positionId))).toBe('stunned');
+        expect(CrewMember.from(runtime.snapshot().crew.get(positionId)).hasState('stunned')).toBeTrue();
 
         const saved = serializeNonMekUnit({
             instance: runtime,
@@ -421,33 +415,47 @@ describe('NonMekUnitInstance', () => {
         expect(saved.crewState).toEqual([{
             positionId,
             wounds: 0,
-            unconscious: false,
+            unconscious: true,
             ejected: false,
-            stunned: true,
         }]);
-        const restored = restoreNonMekUnit(saved, entity);
-        expect(restored.snapshot().crew.get(positionId)?.stunned).toBeTrue();
+        const restored = restoreNonMekUnit(saved, entity, CORE_2026_RULESET);
+        expect(restored.snapshot().crew.get(positionId)?.unconscious).toBeTrue();
 
         expect(restored.dispatch({
             kind: 'set-crew-state',
             positionId,
             wounds: 0,
-            unconscious: false,
+            unconscious: true,
             ejected: false,
-            killed: true,
-            stunned: true,
+            dead: true,
         }).accepted).toBeTrue();
-        expect(effectiveNonMekCrewState(restored.snapshot().crew.get(positionId))).toBe('killed');
+        expect(CrewMember.from(restored.snapshot().crew.get(positionId))).toEqual(jasmine.objectContaining({
+            wounds: 6,
+            dead: true,
+        }));
+        expect(serializeNonMekUnit({
+            instance: restored,
+            uuid: baseline().entity,
+            deployment: saved.deployment,
+        }).crewState).toEqual([{
+            positionId,
+            wounds: 6,
+            unconscious: true,
+            ejected: false,
+            dead: true,
+        }]);
         expect(restored.dispatch({
             kind: 'set-crew-state',
             positionId,
             wounds: 0,
-            unconscious: false,
+            unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: true,
+            dead: false,
         }).accepted).toBeTrue();
-        expect(effectiveNonMekCrewState(restored.snapshot().crew.get(positionId))).toBe('stunned');
+        expect(CrewMember.from(restored.snapshot().crew.get(positionId))).toEqual(jasmine.objectContaining({
+            wounds: 0,
+            unconscious: true,
+        }));
 
         const reset = restored.dispatch({
             kind: 'set-crew-state',
@@ -456,8 +464,6 @@ describe('NonMekUnitInstance', () => {
             wounds: 0,
             unconscious: false,
             ejected: false,
-            killed: false,
-            stunned: false,
         });
         expect(reset).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(restored.snapshot().crew.has(positionId)).toBeFalse();
@@ -468,11 +474,45 @@ describe('NonMekUnitInstance', () => {
             wounds: 0,
             unconscious: false,
             ejected: false,
-            killed: false,
-            stunned: false,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(restored.dispatch({ kind: 'end-phase' }).accepted).toBeTrue();
         expect(restored.query().hasPendingPhaseChanges()).toBeFalse();
+    });
+
+    it('preserves a wound-tracking pilot after reassignment to a vehicle', () => {
+        const entity = new TestTankEntity();
+        entity.uuid.set(UUID);
+        const runtime = new NonMekUnitInstance(
+            'unit:transferred-pilot',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+        const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
+
+        expect(runtime.dispatch({
+            kind: 'set-crew-state',
+            positionId,
+            wounds: 3,
+            unconscious: true,
+            ejected: false,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(runtime.query().crewState(positionId).wounds).toBe(3);
+
+        expect(runtime.dispatch({
+            kind: 'set-crew-state',
+            positionId,
+            wounds: 6,
+            unconscious: false,
+            ejected: false,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(runtime.query().crewState(positionId).isDeathCommitted()).toBeFalse();
+
+        runtime.dispatch({ kind: 'end-phase' });
+        expect(runtime.query().crewState(positionId)).toEqual(jasmine.objectContaining({
+            wounds: 6,
+            dead: true,
+        }));
     });
 
     it('exposes effective vehicle rules through the direct runtime query surface', () => {
@@ -493,8 +533,7 @@ describe('NonMekUnitInstance', () => {
             wounds: 0,
             unconscious: false,
             ejected: false,
-            killed: true,
-            stunned: false,
+            dead: true,
         });
 
         expect(runtime.conditions()).toEqual(['abandoned', 'immobile']);
@@ -508,8 +547,7 @@ describe('NonMekUnitInstance', () => {
             wounds: 0,
             unconscious: false,
             ejected: false,
-            killed: false,
-            stunned: false,
+            dead: false,
         });
         runtime.dispatch({
             kind: 'damage-track',
@@ -662,7 +700,7 @@ describe('NonMekUnitInstance', () => {
         expect(saved.turn).toEqual({
             movement: { mode: 'run', distance: 16, boosterComponentIds: [boosterComponentId] },
         });
-        const restored = restoreNonMekUnit(saved, entity);
+        const restored = restoreNonMekUnit(saved, entity, CORE_2026_RULESET);
         expect(restored.turnState()).toEqual(runtime.turnState());
 
         expect(restored.dispatch({
@@ -742,7 +780,7 @@ describe('NonMekUnitInstance', () => {
             spotting: true,
             phaseStateChanged: true,
         });
-        expect(restoreNonMekUnit(saved, entity).turnState()).toEqual(runtime.turnState());
+        expect(restoreNonMekUnit(saved, entity, CORE_2026_RULESET).turnState()).toEqual(runtime.turnState());
 
         expect(runtime.dispatch({
             kind: 'end-turn',
@@ -787,7 +825,7 @@ describe('NonMekUnitInstance', () => {
             },
         });
         expect(saved.turn).toEqual({ endTurnCheckpoint: 'heat-staged' });
-        const restored = restoreNonMekUnit(saved, entity);
+        const restored = restoreNonMekUnit(saved, entity, CORE_2026_RULESET);
         expect(restored.turnState().endTurnCheckpoint).toBe('heat-staged');
         expect(restored.dispatch({
             kind: 'end-turn',
@@ -826,8 +864,6 @@ describe('NonMekUnitInstance', () => {
             wounds: 1,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
             recoveryReadyTurn: 1,
         }).accepted).toBeTrue();
 
@@ -848,7 +884,7 @@ describe('NonMekUnitInstance', () => {
         });
         expect(saved.crewState?.[0]?.recoveryReadyTurn).toBe(1);
 
-        const restored = restoreNonMekUnit(saved, entity);
+        const restored = restoreNonMekUnit(saved, entity, CORE_2026_RULESET);
         expect(restored.turnState().controlRecovery).toEqual(saved.turn?.controlRecovery);
         expect(restored.query().crewState(pilotId).recoveryReadyTurn).toBe(1);
         for (let turn = 1; turn <= 2; turn += 1) {
@@ -895,8 +931,7 @@ describe('NonMekUnitInstance', () => {
             wounds: 0,
             unconscious: false,
             ejected: false,
-            killed: true,
-            stunned: false,
+            dead: true,
         }).accepted).toBeTrue();
         expect(canNonMekTakeActiveActions(
             entity,
@@ -942,8 +977,7 @@ describe('NonMekUnitInstance', () => {
             wounds: 0,
             unconscious: false,
             ejected: false,
-            killed: true,
-            stunned: false,
+            dead: true,
         }).accepted).toBeTrue();
         expect(canNonMekTakeActiveActions(
             droneEntity,
@@ -1052,8 +1086,6 @@ describe('NonMekUnitInstance', () => {
             wounds: 0,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
         });
         capabilities = projectNonMekMovementCapabilities(
             entity,
@@ -1212,7 +1244,7 @@ describe('NonMekUnitInstance', () => {
         const restored = restoreNonMekUnit({
             ...saved,
             componentState: Object.freeze([Object.freeze({ componentId, mode: 'Rapid' })]),
-        }, entity);
+        }, entity, CORE_2026_RULESET);
         expect(restored.componentMode(componentId)).toBeUndefined();
         expect(restored.snapshot().components.has(componentId)).toBeFalse();
     });
@@ -1652,7 +1684,7 @@ describe('NonMekUnitInstance', () => {
         });
 
         expect(inspectSerializedNonMekUnit(saved).instanceId).toBe(fixture.runtime.id);
-        const restored = restoreNonMekUnit(saved, fixture.entity);
+        const restored = restoreNonMekUnit(saved, fixture.entity, CORE_2026_RULESET);
         expect(serializeAttackerTargetingState(restored.query().attackerTargetingState()))
             .toEqual(serializeAttackerTargetingState(fixture.runtime.query().attackerTargetingState()));
     });
@@ -1754,7 +1786,7 @@ describe('NonMekUnitInstance', () => {
             pendingOverride: 19,
             heatsinksOff: 2,
         });
-        expect(restoreNonMekUnit(saved, fighter).snapshot().heat).toEqual(saved.heat!);
+        expect(restoreNonMekUnit(saved, fighter, CORE_2026_RULESET).snapshot().heat).toEqual(saved.heat!);
     });
 
     it('applies Nova CEWS heat to aerospace units using the committed power state', () => {

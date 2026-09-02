@@ -506,7 +506,6 @@ async function applyMulCrew(
             wounds: Math.max(0, Math.min(6, value.hits)),
             unconscious: false,
             ejected: value.ejected,
-            dead: false,
         });
     }
 }

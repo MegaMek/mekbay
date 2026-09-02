@@ -4,8 +4,6 @@
 
 import { compareText } from '../../utils/string.util';
 import { isPlainRecord } from '../../utils/json-value.util';
-import type { InventoryControlRuntimeTargetId } from '../inventory-control-runtime-state.model';
-import { INVENTORY_CONTROL_TARGET_MAX_COUNT } from '../inventory-control-runtime-state.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { asComponentId } from '../entity/entity-identifiers';
 import { isC3NetworkRole, isC3NetworkType, type C3NetworkRole, type C3NetworkType } from '../c3-network.model';
@@ -21,8 +19,24 @@ import {
     type SerializedEncounterTargetV2,
 } from './persistence-v2';
 
+export const MAX_ENCOUNTER_TARGETS = 24;
+export const DEFAULT_ENCOUNTER_TARGET_COLORS = [
+    '#c0f7ff',
+    '#ffebca',
+    '#c6ffe1',
+    '#ecc6ff',
+    '#ddffc0',
+    '#ffc6c6',
+    '#6fb3bd',
+    '#eacc80',
+    '#8ed2ad',
+    '#ab77c6',
+    '#a9d087',
+    '#d5a790',
+] as const;
+
 export type EncounterNetworkId = string & { readonly __encounterNetworkId: unique symbol };
-export type EncounterTargetId = InventoryControlRuntimeTargetId & { readonly __encounterTargetId: unique symbol };
+export type EncounterTargetId = string & { readonly __encounterTargetId: unique symbol };
 
 export interface EncounterTarget {
     readonly id: EncounterTargetId;
@@ -126,7 +140,7 @@ export function reduceTargetRegistry(
             const target = tryFreezeTarget(command.target, false);
             if (!target || !validTargetOrigin(target)) return unchangedTargetRegistry(snapshot);
             let retained = snapshot.targets;
-            if (snapshot.targets.length >= INVENTORY_CONTROL_TARGET_MAX_COUNT) {
+            if (snapshot.targets.length >= MAX_ENCOUNTER_TARGETS) {
                 const reclaimable = target.source === 'opfor'
                     ? null
                     : reclaimableTargetRegistryOpfor(snapshot.targets);
@@ -172,7 +186,7 @@ export function reduceTargetRegistry(
         case 'replace-targets': {
             if (!Array.isArray(command.targets)) return unchangedTargetRegistry(snapshot);
             const replacement = canonicalTargetList(command.targets);
-            if (!replacement || replacement.length > INVENTORY_CONTROL_TARGET_MAX_COUNT) {
+            if (!replacement || replacement.length > MAX_ENCOUNTER_TARGETS) {
                 return unchangedTargetRegistry(snapshot);
             }
             if (targetListsEqual(snapshot.targets, replacement)) return unchangedTargetRegistry(snapshot);
@@ -253,6 +267,17 @@ export function asEncounterNetworkId(value: string): EncounterNetworkId {
 /** Manual target identity is opaque; its letter is presentation only. */
 export function createEncounterTargetId(): EncounterTargetId {
     return asEncounterTargetId(`target:${uuidv4()}`);
+}
+
+export function encounterTargetLetter(index: number): string {
+    let value = index + 1;
+    let label = '';
+    while (value > 0) {
+        value--;
+        label = String.fromCharCode('A'.charCodeAt(0) + value % 26) + label;
+        value = Math.floor(value / 26);
+    }
+    return label;
 }
 
 export function asEncounterTargetId(value: string): EncounterTargetId {

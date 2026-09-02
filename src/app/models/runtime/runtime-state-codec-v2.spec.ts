@@ -67,7 +67,7 @@ describe('direct Mek V2 state codec', () => {
         expect(replay.snapshot().locations.size).toBe(0);
     });
 
-    it('reports ruleset changes with a precise warning code', async () => {
+    it('restores under the current application rules without persisting a ruleset', async () => {
         const fixture = createDirectMekRuntimeFixture();
         const saved = serialize(fixture);
         const initialized = {
@@ -85,11 +85,8 @@ describe('direct Mek V2 state codec', () => {
             initialized,
         );
 
-        expect(restored.warnings).toContain(jasmine.objectContaining({
-            code: 'RULESET_CHANGED',
-            saved: { ruleset: 'core-2026' },
-            current: { ruleset: 'total-warfare' },
-        }));
+        expect('ruleset' in saved.baselineRefAtSave).toBeFalse();
+        expect(restored.warnings).toEqual([]);
     });
 
     it('round-trips pending and committed crew death distinctly', async () => {

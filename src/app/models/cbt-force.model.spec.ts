@@ -47,14 +47,24 @@ import { CORE_2026_RULESET } from './cbt-ruleset.model';
 import { MM_DATA_UNIT_PROVIDER_ID, asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type { UnitCover } from './unit-cover.model';
 import { hasNonMekRuntime, hasMekRuntime } from './cbt-unit-snapshot';
+import { OptionsService } from '../services/options.service';
 
 const dataService = {
     getFactionById: () => null,
     getEraById: () => null,
 } as unknown as DataService;
 
+const optionsService = {
+    options: () => ({
+        CBTRules: CORE_2026_RULESET,
+        CBTOptionalRules: { forcedWithdrawal: true, sprinting: false },
+    }),
+} as unknown as OptionsService;
+
 const injector = {
-    get: () => jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
+    get: (token: unknown) => token === OptionsService
+        ? optionsService
+        : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
 } as unknown as Injector;
 
 function emptySerializedEncounterV2(): SerializedForceEncounterEntryV2 {
@@ -71,10 +81,6 @@ function directForceRecord(): SerializedCBTForce {
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: 0,
-        scenarioRules: {
-            schemaVersion: 1,
-            values: { id: 'default', ruleset: 'core-2026' },
-        },
         history: emptyRuntimeHistory(),
         units: [],
         roster: { schemaVersion: 1, groups: [] },
@@ -148,7 +154,6 @@ async function readyCloneForce(): Promise<{
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: 7,
-        scenarioRules: { schemaVersion: 1, values: { id: 'megamek', ruleset: 'core-2026' } },
         history: emptyRuntimeHistory(),
         units: [
             { instanceId: firstId, stateRevision: firstUnit.stateRevision, unit: firstUnit },
@@ -214,6 +219,8 @@ async function readyCloneForce(): Promise<{
     const localInjector = {
         get: (token: unknown) => token === CBTUnitService
             ? cbtUnits
+            : token === OptionsService
+                ? optionsService
             : token === ToastService
                 ? jasmine.createSpyObj<ToastService>('ToastService', ['showToast'])
                 : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
@@ -271,7 +278,6 @@ async function readyEntityForce(options: Readonly<{
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: 0,
-        scenarioRules: { schemaVersion: 1, values: { id: 'megamek', ruleset: CORE_2026_RULESET } },
         history: emptyRuntimeHistory(),
         units: [{ instanceId, stateRevision: serialized.stateRevision, unit: serialized }],
         roster: {
@@ -310,7 +316,7 @@ async function readyEntityForce(options: Readonly<{
         ) => {
             if (!isSerializedNonMekUnit(saved)) throw new Error('Expected a non-Mek fixture');
             return Promise.resolve({
-                unit: CBTNonMekUnit.restore(saved, entity, identity),
+                unit: CBTNonMekUnit.restore(saved, entity, identity, _scenario),
                 warnings: options.restoreWarning === undefined
                     ? []
                     : [options.restoreWarning],
@@ -331,6 +337,8 @@ async function readyEntityForce(options: Readonly<{
     const localInjector = {
         get: (token: unknown) => token === CBTUnitService
             ? cbtUnits
+            : token === OptionsService
+                ? optionsService
             : token === DialogsService
                 ? dialogs
                 : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
@@ -403,7 +411,6 @@ async function readyEntityC3Force(
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: 0,
-        scenarioRules: { schemaVersion: 1, values: { id: 'megamek', ruleset: CORE_2026_RULESET } },
         history: emptyRuntimeHistory(),
         units: [
             { instanceId: firstId, stateRevision: first.stateRevision, unit: first },
@@ -433,9 +440,9 @@ async function readyEntityC3Force(
         getUnitByUuid: () => summary,
     } as unknown as DataService;
     const cbtUnits = {
-        restore: (saved: SerializedNonMekUnit) =>
+        restore: (saved: SerializedNonMekUnit, scenario: Parameters<CBTUnitService['restore']>[1]) =>
             Promise.resolve({
-                unit: CBTNonMekUnit.restore(saved, entity, identity),
+                unit: CBTNonMekUnit.restore(saved, entity, identity, scenario),
                 warnings: [],
             }),
     } as unknown as CBTUnitService;
@@ -444,6 +451,8 @@ async function readyEntityC3Force(
     const localInjector = {
         get: (token: unknown) => token === CBTUnitService
             ? cbtUnits
+            : token === OptionsService
+                ? optionsService
             : token === DialogsService
                 ? dialogs
             : token === ToastService
@@ -531,7 +540,6 @@ async function readyC3Force(owned = true): Promise<{
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: 0,
-        scenarioRules: { schemaVersion: 1, values: { id: 'megamek', ruleset: 'core-2026' } },
         history: emptyRuntimeHistory(),
         units,
         roster: {
@@ -611,6 +619,8 @@ async function readyC3Force(owned = true): Promise<{
     const localInjector = {
         get: (token: unknown) => token === CBTUnitService
             ? cbtUnits
+            : token === OptionsService
+                ? optionsService
             : token === ToastService
                 ? toast
                 : token === DialogsService
@@ -715,7 +725,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(JSON.stringify(rewritten)).not.toContain('not-a-condition');
         expect(JSON.stringify(rewritten)).not.toContain('"state":"killed"');
         expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
-            `• Unit "${instanceId}" had invalid saved state; that state was ignored.`,
+            '• 1 unit had unreadable saved state and was reset to pristine.',
             'Save Loaded with Warnings',
         );
     });
@@ -742,7 +752,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(rewritten.cbt!.roster.groups[0].members).toEqual([]);
         expect(rewritten.cbt!.history).toEqual({ u: [], t: [] });
         expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
-            `• Unit "${instanceId}" could not be identified and was skipped.`,
+            '• 1 unit was not found in the catalog and was skipped.',
             'Save Loaded with Warnings',
         );
     });
@@ -761,7 +771,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(restored.getUnitSnapshot(instanceId)).not.toBeNull();
         expect(rewritten.cbt!.units.map(entry => entry.instanceId)).toEqual([instanceId]);
         expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
-            `• Unit "${instanceId}" had invalid saved state; that state was ignored.`,
+            '• 1 unit had unreadable saved state and was reset to pristine.',
             'Save Loaded with Warnings',
         );
     });
@@ -785,8 +795,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(removed.accepted).toBeTrue();
 
         const saved = await force.serializeForPersistence();
-        expect(JSON.stringify(saved.cbt?.scenarioRules.values))
-            .toBe(JSON.stringify({ id: 'megamek', ruleset: 'core-2026' }));
+        expect('scenarioRules' in saved.cbt!).toBeFalse();
         expect(saved.cbt?.roster.groups.map(group => [group.groupId, group.name])).toEqual([
             [beta.id, 'Beta Lance'],
         ]);
@@ -1688,11 +1697,7 @@ describe('CBTForce V2 encounter persistence', () => {
             jasmine.objectContaining({ legal: true, ordinaryMaximumMp: 10 }),
         );
         expect(enabled.query.heatProjection('manual').kind).toBe('supported');
-        expect(JSON.stringify((await force.serializeForPersistence()).cbt!.scenarioRules.values)).toBe(JSON.stringify({
-            id: 'megamek',
-            ruleset: 'core-2026',
-            options: { forcedWithdrawal: true, sprinting: true },
-        }));
+        expect('scenarioRules' in (await force.serializeForPersistence()).cbt!).toBeFalse();
         expect(await force.synchronizeOptionalRules({
             forcedWithdrawal: true,
             sprinting: true,
@@ -1723,11 +1728,7 @@ describe('CBTForce V2 encounter persistence', () => {
             sprinting: false,
         })).toBeTrue();
         expect(mekRuntimeSnapshot(force, instanceId).state.movementPsr.movement).toBeNull();
-        expect(JSON.stringify((await force.serializeForPersistence()).cbt!.scenarioRules.values)).toBe(JSON.stringify({
-            id: 'megamek',
-            ruleset: 'core-2026',
-            options: { forcedWithdrawal: true, sprinting: false },
-        }));
+        expect('scenarioRules' in (await force.serializeForPersistence()).cbt!).toBeFalse();
     });
 
     it('transfers a ready Mek between V2 owners in one paired transaction', async () => {
@@ -1980,7 +1981,6 @@ describe('CBTForce V2 encounter persistence', () => {
             wounds: 0,
             unconscious: true,
             ejected: false,
-            dead: false,
         });
 
         expect(changed.accepted).toBeTrue();

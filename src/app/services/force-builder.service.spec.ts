@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { signal } from '@angular/core';
+import { Injector, signal } from '@angular/core';
 import { of, Subject } from 'rxjs';
 import { GameSystem } from '../models/common.model';
 import type { Faction } from '../models/factions.model';
@@ -25,6 +25,7 @@ import { CBTForce } from '../models/cbt-force.model';
 import { CBTForceMember } from '../models/force-member.model';
 import type { SerializedForce } from '../models/force-serialization';
 import { createEmptyCBTForceForTest, createTestMekEntity } from '../testing/unit-test-helpers';
+import { OptionsService } from './options.service';
 
 function createFaction(id: number, name: string): Faction {
     return {
@@ -757,7 +758,10 @@ describe('ForceBuilderService remote force updates', () => {
             const base = createEmptyCBTForceForTest('force-1');
             return {
                 ...base,
-                scenarioRules: { ...base.scenarioRules, values: { marker } },
+                roster: {
+                    schemaVersion: 1 as const,
+                    groups: [{ groupId: `group:${marker}`, order: 0, members: [] }],
+                },
             };
         };
         const local = createSerializedForce({
@@ -1324,7 +1328,17 @@ describe('ForceBuilderService production V2 unit selection', () => {
             hash: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
         } as unknown as UnitSummary;
         const instanceId = 'unit:production-v2';
-        const force = new CBTForce('Force', {} as never, {} as never);
+        const force = new CBTForce('Force', {} as never, Injector.create({
+            providers: [{
+                provide: OptionsService,
+                useValue: {
+                    options: () => ({
+                        CBTRules: 'core-2026',
+                        CBTOptionalRules: { forcedWithdrawal: false, sprinting: false },
+                    }),
+                },
+            }],
+        }));
         const admit = spyOn(force, 'admitRetainedUnit').and.resolveTo({ kind: 'admitted', instanceId });
         const member = new CBTForceMember(instanceId, force, createTestMekEntity({
             uuid: unit.uuid,
@@ -1353,11 +1367,6 @@ describe('ForceBuilderService production V2 unit selection', () => {
         service.logger = jasmine.createSpyObj('LoggerService', ['info', 'error']);
         service.toastService = jasmine.createSpyObj('ToastService', ['showToast']);
         const unitAdmission = Object.create(ForceUnitAdmissionService.prototype) as any;
-        unitAdmission.options = {
-            options: () => ({
-                CBTOptionalRules: { forcedWithdrawal: false, sprinting: false },
-            }),
-        };
         service.unitAdmission = unitAdmission;
         service.formations = {
             generateFactionAndForceNameIfNeeded: jasmine.createSpy('generateFactionAndForceNameIfNeeded'),
@@ -1373,11 +1382,6 @@ describe('ForceBuilderService production V2 unit selection', () => {
         expect(admit).toHaveBeenCalledOnceWith(jasmine.objectContaining({
             uuid: unit.uuid,
             deployment: { id: 'force-builder-default' },
-            scenario: jasmine.objectContaining({
-                id: 'megamek',
-                ruleset: 'core-2026',
-                options: { forcedWithdrawal: false, sprinting: false },
-            }),
             crewSkills: { gunnery: 3, piloting: 4 },
             targetRosterGroupId: force.groups()[0].id,
         }));

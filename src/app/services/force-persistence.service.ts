@@ -50,6 +50,8 @@ import { LoggerService } from './logger.service';
 import { UserStateService } from './userState.service';
 import { UnitRuntimeService } from './unit-runtime.service';
 import { CBTUnitService } from './cbt-unit.service';
+import { OptionsService } from './options.service';
+import { scenarioRulesFromOptions } from '../models/runtime/unit-state-initializer';
 import {
     FORCE_PERSISTENCE_REVISION,
     WsService,
@@ -247,7 +249,17 @@ export class ForcePersistenceService {
             readonly warning: PersistedForceV1ConversionWarning;
             count: number;
         }>();
+        let skippedUnitCount = 0;
+        let resetUnitStateCount = 0;
         const warn = (warning: PersistedForceV1ConversionWarning): void => {
+            if (warning.kind === 'unit-skipped') {
+                skippedUnitCount += 1;
+                return;
+            }
+            if (warning.kind === 'state-reset') {
+                resetUnitStateCount += 1;
+                return;
+            }
             const current = warnings.get(warning.message);
             if (current) {
                 current.count += 1;
@@ -271,6 +283,7 @@ export class ForcePersistenceService {
         };
 
         const converted = await convertPersistedForceV1(raw, {
+            scenario: scenarioRulesFromOptions(this.injector.get(OptionsService).options()),
             resolveIdentity: unit => this.unitRuntimeService.resolvePersistedUnitIdentity({
                 unit: typeof unit['unit'] === 'string' ? unit['unit'] : '',
                 chassis: typeof unit['chassis'] === 'string' ? unit['chassis'] : undefined,
@@ -281,10 +294,22 @@ export class ForcePersistenceService {
             materializeUnit,
             onWarning: warn,
         });
-        if (notifyWarnings && warnings.size > 0) {
+        if (notifyWarnings && (warnings.size > 0 || skippedUnitCount > 0 || resetUnitStateCount > 0)) {
+            const notices: string[] = [];
+            if (skippedUnitCount > 0) {
+                notices.push(skippedUnitCount === 1
+                    ? '1 unit was not found in the catalog and was skipped.'
+                    : `${skippedUnitCount} units were not found in the catalog and were skipped.`);
+            }
+            if (resetUnitStateCount > 0) {
+                notices.push(resetUnitStateCount === 1
+                    ? '1 unit had unreadable saved state and was reset to pristine.'
+                    : `${resetUnitStateCount} units had unreadable saved state and were reset to pristine.`);
+            }
+            notices.push(...[...warnings.values()].map(({ warning, count }) =>
+                `${warning.message}${count === 1 ? '' : ` (${count} occurrences)`}`));
             await this.injector.get(DialogsService).showNotice(
-                [...warnings.values()].map(({ warning, count }) =>
-                    `• ${warning.message}${count === 1 ? '' : ` (${count} occurrences)`}`).join('\n'),
+                notices.map(message => `• ${message}`).join('\n'),
                 'V1 Save Loaded with Warnings',
             );
         }

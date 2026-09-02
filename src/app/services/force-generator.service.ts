@@ -39,7 +39,7 @@ import { collectGroupUnits } from '../utils/org/org-facts.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType, OrgUnit } from '../utils/org/org-types';
 import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { getEffectivePilotingSkill, getFixedPilotingSkill } from '../utils/cbt-common.util';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type CrewMemberDetails } from '../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type CrewMemberDetails } from '../models/crew-member.model';
 import { getPositiveDropdownNamesFromFilter, resolveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
 import { ForceNamerUtil } from '../utils/force-namer.util';
 import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';

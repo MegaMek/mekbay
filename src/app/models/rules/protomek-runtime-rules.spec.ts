@@ -45,7 +45,6 @@ describe('ProtoMek runtime rules', () => {
             wounds: 6,
             unconscious: false,
             ejected: false,
-            dead: false,
         }).accepted).toBeTrue();
         dead.runtime.dispatch({ kind: 'end-phase' });
         expect(project(dead.runtime).computedConditions).toEqual(['abandoned', 'immobile']);
@@ -59,7 +58,6 @@ describe('ProtoMek runtime rules', () => {
             wounds: 0,
             unconscious: false,
             ejected: true,
-            dead: false,
         });
         expect(project(ejected.runtime).computedConditions).toEqual(['immobile']);
 
@@ -72,7 +70,6 @@ describe('ProtoMek runtime rules', () => {
             wounds: 4,
             unconscious: false,
             ejected: false,
-            dead: false,
         });
         expect(project(crippled.runtime).computedConditions).toEqual(['crippled']);
     });
@@ -86,11 +83,16 @@ describe('ProtoMek runtime rules', () => {
             wounds: 4,
             unconscious: false,
             ejected: false,
-            dead: false,
         }).accepted).toBeTrue();
 
         expect(disabled.runtime.query().hasCondition('crippled')).toBeFalse();
         expect(project(disabled.runtime).computedConditions).not.toContain('crippled');
+        expect(disabled.runtime.dispatch({
+            kind: 'set-condition',
+            condition: 'crippled',
+            active: true,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+        expect(disabled.runtime.query().hasCondition('crippled')).toBeFalse();
     });
 
     it('derives immobility and destruction from Entity locations and criticals', () => {

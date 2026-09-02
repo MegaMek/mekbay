@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { SerializedForce } from '../force-serialization';
-import type { JsonValue } from '../persisted-unit-state';
 import { jsonValuesEqual } from '../../utils/json-value.util';
 import { appendCBTForceRosterMember, appendUnassignedCBTForceRosterMember } from './cbt-force-roster';
 import {
@@ -15,17 +14,10 @@ import {
     type SerializedCBTForceV2,
     type SerializedForceEncounterEntryV2,
     type SerializedForceUnitEntryV2,
-    type SerializedScenarioRulesV2,
 } from './persistence-v2';
 import type { SerializedCBTUnitV2 } from './persistence-v2';
 import type { SerializedNonMekUnit } from './non-mek-unit-persistence';
 import type { CBTUnit } from './cbt-unit';
-import { CORE_2026_RULESET } from '../cbt-ruleset.model';
-
-const DEFAULT_SCENARIO_RULES: JsonValue = Object.freeze({
-    id: 'megamek',
-    ruleset: CORE_2026_RULESET,
-});
 
 export interface PreparedCBTForcePersistenceV2 {
     readonly envelope: SerializedCBTForceV2;
@@ -42,7 +34,6 @@ export type CBTForcePersistenceFailureCode =
     | 'ENCOUNTER_REVISION_REGRESSION'
     | 'ENCOUNTER_UNREVISIONED_CHANGE'
     | 'INSTANCE_ID_COLLISION'
-    | 'CANDIDATE_SCENARIO_MISMATCH'
     | 'MATERIALIZED_ENVELOPE_INVALID';
 
 export type CBTForcePersistenceResultV2 =
@@ -120,7 +111,6 @@ export async function prepareDirectUnitAdmission(input: {
     readonly previous?: SerializedCBTForceV2;
     readonly liveUnits: readonly CBTUnit[];
     readonly candidate: CBTUnit;
-    readonly scenarioRules: JsonValue;
     readonly typedEncounterState?: SerializedCBTEncounterStateV2;
     readonly targetRosterGroupId?: string;
     readonly targetRosterMemberIndex?: number;
@@ -152,10 +142,7 @@ export async function prepareDirectUnitAdmission(input: {
         base = { ...base, units: materialized.units, encounter: encounter.entry };
     } else {
         try {
-            base = await createEmptyCBTForceV2(
-                asForceId(input.forceId),
-                Object.freeze({ schemaVersion: 1, values: structuredClone(input.scenarioRules) }),
-            );
+            base = await createEmptyCBTForceV2(asForceId(input.forceId));
             if (input.typedEncounterState) {
                 base = await validateSerializedCBTForceV2({
                     ...base,
@@ -170,9 +157,6 @@ export async function prepareDirectUnitAdmission(input: {
         }
     }
 
-    if (!jsonValuesEqual(base.scenarioRules.values, input.scenarioRules)) {
-        return readOnly('CANDIDATE_SCENARIO_MISMATCH', 'The candidate scenario differs from the force scenario');
-    }
     if (base.units.some(entry => entry.instanceId === candidate.instanceId)
         || live.some(entry => entry.instanceId === candidate.instanceId)) {
         return readOnly('INSTANCE_ID_COLLISION', `Force instance ${candidate.instanceId} is already owned`);
@@ -224,12 +208,9 @@ export async function prepareDirectUnitAdmission(input: {
 /** Creates the empty current CBT owner used before the first admission. */
 export async function prepareInitialCBTForceV2(input: {
     readonly forceId: string;
-    readonly initialScenarioRules?: SerializedScenarioRulesV2;
     readonly typedEncounterState?: SerializedCBTEncounterStateV2;
 }): Promise<PreparedCBTForcePersistenceV2> {
-    const scenarioRules = input.initialScenarioRules
-        ?? Object.freeze({ schemaVersion: 1 as const, values: DEFAULT_SCENARIO_RULES });
-    let envelope = await createEmptyCBTForceV2(asForceId(input.forceId), scenarioRules);
+    let envelope = await createEmptyCBTForceV2(asForceId(input.forceId));
     if (input.typedEncounterState) {
         envelope = await validateSerializedCBTForceV2({
             ...envelope,
@@ -247,7 +228,6 @@ export async function prepareInitialCBTForceV2(input: {
 
 async function createEmptyCBTForceV2(
     forceId: ReturnType<typeof asForceId>,
-    scenarioRules: SerializedScenarioRulesV2,
 ): Promise<SerializedCBTForceV2> {
     const revision = 0;
     return validateSerializedCBTForceV2({
@@ -255,7 +235,6 @@ async function createEmptyCBTForceV2(
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: revision,
-        scenarioRules,
         history: emptyRuntimeHistory(),
         units: [],
         roster: { schemaVersion: 1, groups: [] },

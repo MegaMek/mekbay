@@ -100,6 +100,7 @@ export function projectNonMekEquipmentPanel(
     state: NonMekUnitRuntimeState,
     crew: CrewAssignment,
     registry: TargetRegistrySnapshot,
+    forcedWithdrawal = true,
 ): EquipmentPanelSnapshot {
     if (entity.entityType === 'Mek') throw new Error('Meks require the Mek equipment projection');
     const targets = projectEquipmentTargets(state.attackerTargeting, registry);
@@ -107,7 +108,7 @@ export function projectNonMekEquipmentPanel(
         ? projectVehicleRuntimeRules(entity, index, state, ruleset)
         : null;
     const protoMekRules = isProtoMekEntity(entity)
-        ? projectProtoMekRuntimeRules(entity, index, state, ruleset)
+        ? projectProtoMekRuntimeRules(entity, index, state, ruleset, forcedWithdrawal)
         : null;
     const infantryRules = isInfantryFamilyEntity(entity)
         ? projectInfantryRuntimeRules(entity, index, state)

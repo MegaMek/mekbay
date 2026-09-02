@@ -18,7 +18,6 @@ describe('PageViewerNonMekRuntimeService crew state command', () => {
             wounds: 0,
             unconscious: true,
             ejected: false,
-            dead: false,
         });
 
         expect(nonMekCrewStateCommand(
@@ -56,10 +55,12 @@ function position(effectiveState: NonMekRecordSheetCrewPosition['effectiveState'
         gunnery: 4,
         piloting: 5,
         state: Object.freeze({
-            wounds: effectiveState === 'dead' ? 6 : 0,
+            wounds: effectiveState === 'dead' || effectiveState === 'killed' ? 6 : 0,
             unconscious: effectiveState === 'unconscious' || effectiveState === 'stunned',
             ejected: false,
-            ...(effectiveState === 'killed' ? { dead: true as const } : {}),
+            ...(effectiveState === 'dead' || effectiveState === 'killed'
+                ? { dead: true as const }
+                : {}),
         }),
         effectiveState,
     });

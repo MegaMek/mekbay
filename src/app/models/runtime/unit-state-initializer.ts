@@ -23,6 +23,7 @@ import {
     type CrewAssignment,
 } from './crew-assignment';
 import type { MekRuntimeIndex } from './mek-runtime-index';
+import type { Options } from '../options.model';
 
 export const UNIT_STATE_INITIALIZER_SCHEMA_VERSION = 7 as const;
 export const UNIT_STATE_INITIALIZER_REVISION = 1 as const;
@@ -49,10 +50,34 @@ export interface ScenarioRules {
     readonly options?: Readonly<Record<string, string | number | boolean>>;
 }
 
+export type CBTApplicationOptions = Pick<Options, 'CBTRules' | 'CBTOptionalRules'>;
+
+/** Captures the global CBT rules needed to construct one runtime owner. */
+export function scenarioRulesFromOptions(options: CBTApplicationOptions): ScenarioRules {
+    return Object.freeze({
+        id: 'megamek',
+        ruleset: options.CBTRules,
+        options: Object.freeze({
+            forcedWithdrawal: options.CBTOptionalRules.forcedWithdrawal,
+            sprinting: options.CBTOptionalRules.sprinting,
+        }),
+    });
+}
+
 export function scenarioRuleset(scenario: ScenarioRules): CBTRuleset {
     if (scenario.ruleset === undefined) return CORE_2026_RULESET;
     if (!isCBTRuleset(scenario.ruleset)) throw new Error(`Unsupported CBT ruleset ${String(scenario.ruleset)}`);
     return scenario.ruleset;
+}
+
+/** Global gate for the forced-withdrawal/crippled rules system. */
+export function scenarioUsesForcedWithdrawal(scenario: ScenarioRules): boolean {
+    const value = scenario.options?.['forcedWithdrawal'];
+    if (value === undefined) return true;
+    if (typeof value !== 'boolean') {
+        throw new Error('Scenario option forcedWithdrawal must be a boolean');
+    }
+    return value;
 }
 
 export interface InitializeUnitStateOptions {

@@ -7,8 +7,8 @@ import type {
     AutomationCheckResolution,
 } from '../models/automation-check.model';
 import type { CBTRuleset } from '../models/cbt-ruleset.model';
+import { MAX_CREW_WOUNDS } from '../models/crew-member.model';
 import { mekConsciousnessTarget } from '../models/runtime/mek-automation-rules';
-import { MAX_MEK_CREW_WOUNDS } from '../models/runtime/runtime-state';
 import { CBTAutomationCheckService } from './cbt-automation-check.service';
 
 export interface CrewHitRecipient {
@@ -124,7 +124,7 @@ export class CBTCrewHitAutomationService {
             const appliedHits = Math.max(0, Math.trunc(recipient.hits));
             const wounds = recipient.unavailable
                 ? recipient.wounds
-                : Math.min(MAX_MEK_CREW_WOUNDS, recipient.wounds + appliedHits);
+                : Math.min(MAX_CREW_WOUNDS, recipient.wounds + appliedHits);
             const woundLevels = this.consciousnessWoundLevels(
                 ruleset,
                 recipient,
@@ -206,7 +206,7 @@ export class CBTCrewHitAutomationService {
         finalWounds: number,
     ): readonly number[] {
         if (recipient.unavailable || recipient.unconscious
-            || finalWounds <= recipient.wounds || finalWounds >= MAX_MEK_CREW_WOUNDS) return [];
+            || finalWounds <= recipient.wounds || finalWounds >= MAX_CREW_WOUNDS) return [];
         if (ruleset === 'core-2026') return [finalWounds];
         return Array.from(
             { length: finalWounds - recipient.wounds },

@@ -1,12 +1,12 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { inject, Injectable } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { ASForceUnit } from '../models/as-force-unit.model';
 import { ASForce } from '../models/as-force.model';
 import { CBTForce } from '../models/cbt-force.model';
 import type { CBTDirectUnitAdmissionResult } from '../models/cbt-force.types';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { Force, UnitGroup } from '../models/force.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { DEFAULT_FORCE_DEPLOYMENT_ID } from '../models/runtime/unit-state-initializer';
@@ -15,8 +15,6 @@ import {
     type UnitUuid,
 } from './unit-catalog/unit-catalog.types';
 import { type CBTForceMember, type ForceMember } from '../models/force-member.model';
-import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
-import { OptionsService } from './options.service';
 
 
 export interface ForceUnitAdmissionRequest {
@@ -49,8 +47,6 @@ export interface CBTUnitAdmissionRequest {
  */
 @Injectable({ providedIn: 'root' })
 export class ForceUnitAdmissionService {
-    private readonly options = inject(OptionsService);
-
     async admit(request: ForceUnitAdmissionRequest): Promise<ForceMember> {
         if (request.force instanceof CBTForce) return this.admitCBTSummary(request);
         const unit = await this.createAlphaStrikeUnit(request);
@@ -88,14 +84,6 @@ export class ForceUnitAdmissionService {
         const result: CBTDirectUnitAdmissionResult = await request.force.admitRetainedUnit({
             uuid: request.uuid,
             deployment: Object.freeze({ id: DEFAULT_FORCE_DEPLOYMENT_ID }),
-            scenario: Object.freeze({
-                id: 'megamek',
-                ruleset: CORE_2026_RULESET,
-                options: Object.freeze({
-                    forcedWithdrawal: this.options.options().CBTOptionalRules.forcedWithdrawal,
-                    sprinting: this.options.options().CBTOptionalRules.sprinting,
-                }),
-            }),
             crewSkills: Object.freeze({
                 gunnery: request.gunnerySkill ?? DEFAULT_GUNNERY_SKILL,
                 piloting: request.pilotingSkill ?? DEFAULT_PILOTING_SKILL,

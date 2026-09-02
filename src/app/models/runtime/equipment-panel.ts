@@ -32,11 +32,7 @@ import type { WeaponType } from '../weapon-types.model';
 import type { UnitType } from '../entity/types';
 import { canPerformMekAction } from './mek-action-availability';
 import type { MekPhysicalAttackEffectV2 } from './mek-physical-attack-v2';
-import type {
-    InventoryControlRuntimeTarget,
-    InventoryControlRuntimeRangeKey,
-} from '../inventory-control-runtime-state.model';
-import { getEffectiveInventoryControlCalculatorState } from '../inventory-control-runtime-state.model';
+import { activeTargetCalculator, type TargetingTarget } from './targeting-target';
 import {
     calculateTargetTnModifierBreakdown,
     calculateTargetTnModifier,
@@ -149,7 +145,7 @@ export interface EquipmentPanelWeapon {
     readonly selectable: boolean;
     readonly damage: WeaponEquipment['damage'];
     readonly damageText: string;
-    readonly damageTextByRange: Readonly<Record<InventoryControlRuntimeRangeKey, string>>;
+    readonly damageTextByRange: Readonly<Record<TnRangeBracket, string>>;
     /** Exact rules-owned hit resolution; the UI never rebuilds equipment rules. */
     readonly hit: EquipmentPanelHitResolution;
     readonly toHitModifier: WeaponEquipment['toHitModifier'];
@@ -162,7 +158,7 @@ export interface EquipmentPanelWeapon {
     readonly aerospace?: Readonly<{
         readonly attackValues: readonly [number, number, number, number];
         readonly rangeLimits: AerospaceRangeLimits;
-        readonly maximumBracket: InventoryControlRuntimeRangeKey;
+        readonly maximumBracket: TnRangeBracket;
         readonly capital: boolean;
     }>;
     readonly selection?: AttackerSelection;
@@ -178,8 +174,8 @@ export interface EquipmentPanelWeapon {
 
 export interface EquipmentPanelHitResolution {
     readonly default: ToHitResolution;
-    readonly byRange: Readonly<Record<InventoryControlRuntimeRangeKey, ToHitResolution>>;
-    readonly indirectByRange: Readonly<Record<InventoryControlRuntimeRangeKey, ToHitResolution>>;
+    readonly byRange: Readonly<Record<TnRangeBracket, ToHitResolution>>;
+    readonly indirectByRange: Readonly<Record<TnRangeBracket, ToHitResolution>>;
 }
 
 export interface EquipmentPanelModifier {
@@ -189,7 +185,7 @@ export interface EquipmentPanelModifier {
 
 export interface EquipmentPanelWeaponDamage {
     readonly default: string;
-    readonly byRange: Readonly<Record<InventoryControlRuntimeRangeKey, string>>;
+    readonly byRange: Readonly<Record<TnRangeBracket, string>>;
 }
 
 export interface EquipmentPanelAttackMember {
@@ -276,10 +272,10 @@ export interface WeaponTargetPresentationOptions {
 }
 
 /** Converts the force target row into the detached target facts shared by sheet and panel UI. */
-export function equipmentPanelRuntimeTarget(
+export function projectTargetingTarget(
     target: EquipmentPanelTarget,
     ruleset: CBTRuleset,
-): InventoryControlRuntimeTarget {
+): TargetingTarget {
     const distance = target.local?.distance ?? 1;
     return Object.freeze({
         id: target.targetId,
@@ -309,7 +305,7 @@ export function equipmentPanelRuntimeTarget(
 /** One authoritative Entity + runtime calculation for sheet and equipment target presentation. */
 export function projectWeaponTargetPresentation(
     row: EquipmentPanelComponent,
-    target: InventoryControlRuntimeTarget | null,
+    target: TargetingTarget | null,
     crewGunnery: number,
     attackerMoveMode: Parameters<typeof getDefaultAttackerMovementModifier>[0],
     ruleset: CBTRuleset,
@@ -368,7 +364,7 @@ export function projectWeaponTargetPresentation(
     const hitResolution = equipmentPanelHitAtRange(
         weapon.hit,
         weaponRuleRange,
-        target !== null && getEffectiveInventoryControlCalculatorState(target)?.indirectFire === true,
+        target !== null && activeTargetCalculator(target)?.indirectFire === true,
     );
     const attackModifierBreakdown = options.attackModifierBreakdown
         ?? defaultAttackMovementBreakdown(attackerMoveMode);
@@ -470,7 +466,7 @@ export function projectEquipmentPanelWeaponDamage(
             }),
         }),
     } as const;
-    const damageAt = (range: InventoryControlRuntimeRangeKey | null): string =>
+    const damageAt = (range: TnRangeBracket | null): string =>
         resolveInventoryControlDamageText(component, {
             ...context,
             selectedRange: inventoryControlDamageRange(range),
@@ -480,7 +476,7 @@ export function projectEquipmentPanelWeaponDamage(
         byRange: Object.freeze(Object.fromEntries(AEROSPACE_RANGE_BRACKETS.map(range => [
             range,
             damageAt(range),
-        ])) as Record<InventoryControlRuntimeRangeKey, string>),
+        ])) as Record<TnRangeBracket, string>),
     });
 }
 
@@ -488,16 +484,16 @@ function resolveEquipmentPanelHitsByRange(
     rules: CBTGameRules,
     request: ToHitRequest,
     adjustments: readonly ToHitAdjustment[] | undefined,
-): Readonly<Record<InventoryControlRuntimeRangeKey, ToHitResolution>> {
+): Readonly<Record<TnRangeBracket, ToHitResolution>> {
     return Object.freeze(Object.fromEntries(AEROSPACE_RANGE_BRACKETS.map(range => [
         range,
         Object.freeze(rules.resolveToHit({ ...request, range, adjustments })),
-    ])) as Record<InventoryControlRuntimeRangeKey, ToHitResolution>);
+    ])) as Record<TnRangeBracket, ToHitResolution>);
 }
 
 function equipmentPanelHitAtRange(
     hit: EquipmentPanelHitResolution,
-    range: InventoryControlRuntimeRangeKey | null,
+    range: TnRangeBracket | null,
     indirect: boolean,
 ): ToHitResolution {
     if (range === null) return hit.default;
@@ -519,7 +515,7 @@ function weaponTargetDisplay(weapon: EquipmentPanelWeapon): Readonly<{
     });
 }
 
-function stripC3Distance(target: InventoryControlRuntimeTarget): InventoryControlRuntimeTarget {
+function stripC3Distance(target: TargetingTarget): TargetingTarget {
     const { c3Distance: _c3Distance, useC3: _useC3, ...withoutC3 } = target;
     return Object.freeze(withoutC3);
 }
@@ -598,12 +594,12 @@ const PRECISION_AMMO_TYPES = new Set<AmmoType>(['AC', 'LAC', 'AC_IMP', 'PAC']);
 
 function effectiveWeaponTargetModifier(
     row: EquipmentPanelComponent,
-    target: InventoryControlRuntimeTarget,
+    target: TargetingTarget,
     ruleset: CBTRuleset,
     rangeBracket?: TnRangeBracket,
 ): EffectiveWeaponTargetProjection {
     const weapon = row.weapon;
-    const calculator = getEffectiveInventoryControlCalculatorState(target);
+    const calculator = activeTargetCalculator(target);
     const selectedAmmo = selectedAmmoEquipment(weapon?.ammoSources ?? [], weapon?.ammoSelection);
     if (!calculator) return Object.freeze({ modifier: target.tnModifier, breakdown: null });
     const rules = gameRulesFor(ruleset);
@@ -685,7 +681,7 @@ function effectiveWeaponTargetModifier(
 }
 
 function targetModifierProjection(
-    target: InventoryControlRuntimeTarget,
+    target: TargetingTarget,
     raw: readonly TnTargetModifierBreakdownEntry[],
     effective: readonly EffectiveTargetModifier[],
 ): EffectiveWeaponTargetProjection {
@@ -755,12 +751,12 @@ export function selectedAmmoEquipment(
 
 export function equipmentWeaponToHitModifier(
     row: EquipmentPanelComponent,
-    target: InventoryControlRuntimeTarget | null = null,
-    range: InventoryControlRuntimeRangeKey | null = null,
+    target: TargetingTarget | null = null,
+    range: TnRangeBracket | null = null,
 ): number {
     if (row.weapon?.hit !== undefined) {
         const indirect = target !== null
-            && getEffectiveInventoryControlCalculatorState(target)?.indirectFire === true;
+            && activeTargetCalculator(target)?.indirectFire === true;
         const value = equipmentPanelHitAtRange(row.weapon.hit, range, indirect).value;
         return typeof value === 'number' ? value : 0;
     }
@@ -773,7 +769,7 @@ export function equipmentWeaponToHitModifier(
                 ?? 0
             : 0;
     const indirect = target !== null
-        && getEffectiveInventoryControlCalculatorState(target)?.indirectFire === true;
+        && activeTargetCalculator(target)?.indirectFire === true;
     return indirect ? base - (row.weapon?.artemisVModifier ?? 0) : base;
 }
 

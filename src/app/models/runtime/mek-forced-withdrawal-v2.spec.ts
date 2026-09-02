@@ -111,6 +111,12 @@ describe('direct Mek forced-withdrawal rules', () => {
         const disabledFixture = createDirectNoForcedWithdrawalRuntimeFixture(TOTAL_WARFARE_RULESET);
         destroyInternal(disabledFixture, 'LT');
         expect(disabledFixture.instance.query().hasCondition('crippled')).toBeFalse();
+        expect(disabledFixture.instance.dispatch({
+            type: 'set-condition',
+            condition: 'crippled',
+            active: true,
+        })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+        expect(disabledFixture.instance.query().hasCondition('crippled')).toBeFalse();
     });
 });
 

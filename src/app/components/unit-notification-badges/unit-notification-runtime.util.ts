@@ -13,7 +13,6 @@ import {
 import { AmmoEquipment } from '../../models/equipment.model';
 import { getMekLocationLabel } from '../../models/entity/types';
 import { isAeroEntity } from '../../models/entity/utils/entity-type-guards';
-import { MAX_CREW_WOUNDS } from '../../models/crew-member.model';
 import { projectAeroRuntimeRules } from '../../models/rules/aero-runtime-rules';
 import { projectAeroHeatAutomationChecks } from '../../models/runtime/aero-heat-automation-rules';
 import { MEK_TORSO_CRIPPLING_RULE_CHECK_KEY } from '../../models/runtime/mek-destruction-state-v2';
@@ -127,9 +126,7 @@ function projectMekNotifications(
     const movement = snapshot.query.mekMovementPsr();
     const pilotCanControl = [...snapshot.index.crewPositions.values()].some(position => {
         const state = snapshot.query.crewState(position.id);
-        return !state.ejected
-            && !state.unconscious
-            && state.wounds < MAX_CREW_WOUNDS;
+        return state.isAvailable();
     }) || movement.kind === 'supported' && movement.controlledByDrone;
     const pendingChecks = movementState.checks.filter(check => check.status === 'pending');
     const actionableChecks = actionableMekPilotChecks(pendingChecks, automaticFall);
@@ -325,10 +322,7 @@ function projectAeroEndTurnChecks(
     if (!rules.heat.tracked) return Object.freeze([]);
     const activeController = [...snapshot.index.crewPositions.values()].some(position => {
         const common = snapshot.query.crewState(position.id);
-        return !common.ejected
-            && common.wounds < MAX_CREW_WOUNDS
-            && !common.unconscious
-            && !common.isDeathCommitted();
+        return common.isAvailable();
     });
     const hasExplosiveAmmo = [...snapshot.index.components.values()].some(component => {
         const ammo = component.mount.equipment;

@@ -71,6 +71,18 @@ describe('V2 force persistence', () => {
         });
     });
 
+    it('ignores transient scenario rules instead of loading them from a force', async () => {
+        const source = clone(mixedForce()) as unknown as Record<string, unknown>;
+        source['scenarioRules'] = {
+            ruleset: 'total-warfare',
+            options: { forcedWithdrawal: false },
+        };
+
+        const restored = await validateSerializedCBTForceV2(source);
+
+        expect('scenarioRules' in restored).toBeFalse();
+    });
+
     it('snapshots force validation before any async mutation window', async () => {
         const sealed = await validateSerializedCBTForceV2(mixedForce());
         const mutable = clone(sealed);
@@ -597,7 +609,6 @@ function mixedForce(): SerializedCBTForceV2 {
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId: asForceId('force:test'),
         forceRevision: 4,
-        scenarioRules: { schemaVersion: 1, values: {} },
         history: emptyRuntimeHistory(),
         units: [mek, vehicle, other],
         roster: {
@@ -641,7 +652,6 @@ function v2Unit(instanceId: string, uuid: typeof UUID_A): SerializedCBTUnitV2 {
         entity,
         baselineRefAtSave: {
             entity,
-            ruleset: 'core-2026',
             initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine' },
         },
         blueprintReferences: {

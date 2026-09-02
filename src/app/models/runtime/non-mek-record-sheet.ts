@@ -20,13 +20,9 @@ import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { STANDARD_MOVEMENT_CALCULATION, type EntityTechBase } from '../entity/types';
 import type { UnitType } from '../unit-summary.model';
-import type { CrewMemberState } from '../crew.model';
+import { CrewMember, type CrewMemberRuntimeState, type CrewMemberState } from '../crew-member.model';
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
-import {
-    effectiveNonMekCrewState,
-    type NonMekCrewRuntimeState,
-    type NonMekUnitRuntimeState,
-} from './non-mek-unit-instance';
+import type { NonMekUnitRuntimeState } from './non-mek-unit-instance';
 import type { CrewAssignment } from './crew-assignment';
 import { entityAmmoLoadout } from './mek-ammo';
 import { projectVehicleRuntimeRules } from '../rules/vehicle-runtime-rules';
@@ -91,7 +87,7 @@ export interface NonMekRecordSheetCrewPosition {
     readonly role: string;
     readonly gunnery: number;
     readonly piloting: number;
-    readonly state: NonMekCrewRuntimeState;
+    readonly state: CrewMemberRuntimeState;
     readonly effectiveState: CrewMemberState;
 }
 
@@ -147,13 +143,14 @@ export function projectNonMekRecordSheet(
     currentBattleValue: number,
     pristineBattleValue: number,
     crewAssignment?: CrewAssignment,
+    forcedWithdrawal = true,
 ): NonMekRecordSheetSnapshot {
     if (entity.entityType === 'Mek') throw new Error('Meks require the Mek record-sheet projection');
     const vehicleRules = isVehicleEntity(entity)
         ? projectVehicleRuntimeRules(entity, index, state, ruleset)
         : null;
     const protoMekRules = isProtoMekEntity(entity)
-        ? projectProtoMekRuntimeRules(entity, index, state, ruleset)
+        ? projectProtoMekRuntimeRules(entity, index, state, ruleset, forcedWithdrawal)
         : null;
     const infantryRules = isInfantryFamilyEntity(entity)
         ? projectInfantryRuntimeRules(entity, index, state)
@@ -252,10 +249,8 @@ export function projectNonMekRecordSheet(
         .map(position => {
             const runtimeState = state.crew.get(position.id);
             const assignment = crewAssignment?.positions.find(candidate => candidate.positionId === position.id);
-            const crewState = Object.freeze(runtimeState === undefined
-                ? { wounds: 0, unconscious: false, ejected: false }
-                : { ...runtimeState });
-            const effectiveState = effectiveNonMekCrewState(runtimeState);
+            const member = CrewMember.from(runtimeState);
+            const effectiveState = member.effectiveState();
             return Object.freeze({
                 positionId: position.id,
                 occurrence: position.occurrence,
@@ -263,13 +258,16 @@ export function projectNonMekRecordSheet(
                 role: assignment?.role ?? '',
                 gunnery: assignment?.gunnery ?? 4,
                 piloting: assignment?.piloting ?? 5,
-                state: crewState,
-                effectiveState: vehicleRules && effectiveState === 'dead'
+                state: member.toRuntimeState(),
+                effectiveState: effectiveState === 'dead'
                     ? 'killed'
-                    : effectiveState,
+                    : effectiveState === 'unconscious'
+                        ? 'stunned'
+                        : effectiveState,
             });
         });
     const conditions = new Set(state.conditions);
+    conditions.delete('crippled');
     vehicleRules?.computedConditions.forEach(condition => conditions.add(condition));
     protoMekRules?.computedConditions.forEach(condition => conditions.add(condition));
     aeroRules?.computedConditions.forEach(condition => conditions.add(condition));

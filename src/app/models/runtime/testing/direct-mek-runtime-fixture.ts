@@ -821,11 +821,11 @@ function directMekEquipmentRegistry() {
     });
     const vibroblade = new MiscEquipment({
         id: 'Test Small Vibroblade', name: 'Vibroblade (Small)', type: 'misc',
-        flags: ['F_CLUB', 'S_VIBRO_SMALL'], stats: { criticalSlots: 1 },
+        flags: ['F_PHYSICAL_WEAPON', 'F_CLUB', 'S_VIBRO_SMALL'], stats: { criticalSlots: 1 },
     });
     const spotWelder = new MiscEquipment({
         id: 'Test Spot Welder', name: 'Spot Welder', type: 'misc',
-        flags: ['F_CLUB', 'S_SPOT_WELDER'], stats: { criticalSlots: 1 },
+        flags: ['F_PHYSICAL_WEAPON', 'F_CLUB', 'S_SPOT_WELDER'], stats: { criticalSlots: 1 },
     });
     const supercharger = new MiscEquipment({
         id: 'Test Supercharger', name: 'Supercharger', type: 'misc',

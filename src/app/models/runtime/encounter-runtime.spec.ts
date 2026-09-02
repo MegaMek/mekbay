@@ -249,15 +249,15 @@ describe('force-shared target registry kernel', () => {
     });
 
     it('treats create and whole-registry replacement overflow as no-ops', () => {
-        const fullTargets = Array.from({ length: 12 }, (_value, index) =>
+        const fullTargets = Array.from({ length: 24 }, (_value, index) =>
             registryTarget(String.fromCharCode('A'.charCodeAt(0) + index)));
         const full = queryTargetRegistry({ revision: 4, targets: fullTargets });
         const createOverflow = reduceTargetRegistry(full, {
-            kind: 'create-target', target: registryTarget('M'),
+            kind: 'create-target', target: registryTarget('Y'),
         });
         const replaceOverflow = reduceTargetRegistry(queryTargetRegistry(emptyCBTEncounterSnapshot()), {
             kind: 'replace-targets',
-            targets: [...fullTargets, registryTarget('M')],
+            targets: [...fullTargets, registryTarget('Y')],
         });
 
         expect(createOverflow).toEqual(jasmine.objectContaining({
@@ -271,9 +271,9 @@ describe('force-shared target registry kernel', () => {
     });
 
     it('atomically gives a new manual target priority over the last reclaimable OPFOR row', () => {
-        const manual = Array.from({ length: 11 }, (_value, index) =>
+        const manual = Array.from({ length: 23 }, (_value, index) =>
             registryTarget(String.fromCharCode('A'.charCodeAt(0) + index)));
-        const opfor = registryTarget('L', {
+        const opfor = registryTarget('X', {
             id: asEncounterTargetId('opfor:v1:capacity'),
             source: 'opfor',
             readOnly: true,
@@ -286,7 +286,7 @@ describe('force-shared target registry kernel', () => {
         const created = reduceTargetRegistry(full, {
             kind: 'create-target',
 
-            target: registryTarget('L'),
+            target: registryTarget('X'),
         });
 
         expect(created).toEqual(jasmine.objectContaining({
@@ -294,10 +294,11 @@ describe('force-shared target registry kernel', () => {
             changed: true,
         }));
         expect(created.snapshot.revision).toBe(9);
-        expect(created.snapshot.targets).toHaveSize(12);
+        expect(created.snapshot.targets).toHaveSize(24);
         expect(created.snapshot.targets.filter(target => target.source === 'opfor')).toEqual([]);
         expect(created.snapshot.targets.map(target => target.letter)).toEqual([
             'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
+            'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
         ]);
     });
 

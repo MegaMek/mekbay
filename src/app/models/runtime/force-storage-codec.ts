@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { GameSystem } from '../common.model';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../crew.model';
-import {
-    CORE_2026_RULESET,
-    isCBTRuleset,
-    type CBTRuleset,
-} from '../cbt-ruleset.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../crew-member.model';
 import type {
     ASSerializedForce,
     ASSerializedGroup,
@@ -18,7 +13,6 @@ import type {
     SerializedForce,
 } from '../force-serialization';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
-import type { JsonValue } from '../persisted-unit-state';
 import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asSourceHashCanary } from '../source-hash-canary';
 import {
@@ -134,7 +128,6 @@ type CompactDeployment = readonly unknown[];
 type CompactForce = Readonly<{
     v: 2;
     r: number;
-    s: JsonValue;
     u: readonly unknown[];
     g: readonly unknown[];
     h?: SerializedCBTForceV2['history'];
@@ -545,12 +538,6 @@ function unpackUuid(value: string, path: string) {
     ].join('-'));
 }
 
-function unpackStoredUuid(value: string, path: string) {
-    if (COMPACT_UUID_PATTERN.test(value)) return unpackUuid(value, path);
-    if (UUID_PATTERN.test(value)) return asUnitUuid(value);
-    throw new Error(`${path} is not a stored UUID`);
-}
-
 function packOpaqueId(value: string): string {
     if (UUID_PATTERN.test(value)) return `~${packUuid(value)}`;
     return value.startsWith('~') ? `~${value}` : value;
@@ -619,12 +606,10 @@ function packForce(force: SerializedCBTForceV2): CompactForce {
     const historyEmpty = force.history.u.length === 0 && force.history.t.length === 0;
     const encounterEmpty = force.encounter.encounterRevision === 0
         && force.encounter.state.facts.length === 0;
-    const ruleset = rulesetFromScenario(force.scenarioRules.values);
     return Object.freeze({
         v: COMPACT_FORCE_FORMAT_VERSION,
         r: force.forceRevision,
-        s: clone(force.scenarioRules.values),
-        u: Object.freeze(force.units.map(entry => packUnitEntry(entry, ruleset))),
+        u: Object.freeze(force.units.map(packUnitEntry)),
         g: packRoster(force.roster, force.units),
         ...(historyEmpty ? {} : { h: packHistory(force.history) }),
         ...(encounterEmpty ? {} : { e: packEncounter(force.encounter) }),
@@ -632,21 +617,18 @@ function packForce(force: SerializedCBTForceV2): CompactForce {
 }
 
 function unpackForce(value: Record<string, unknown>, forceId: string): SerializedCBTForceV2 {
-    exactKeys(value, ['v', 'r', 's', 'u', 'g', 'h', 'e'], 'force.cbt');
+    exactKeys(value, ['v', 'r', 'u', 'g', 'h', 'e'], 'force.cbt');
     if (value['v'] !== COMPACT_FORCE_FORMAT_VERSION) {
         throw new Error('Unsupported compact CBT persistence format');
     }
     const revision = integer(value['r'], 'force.cbt.r');
-    const scenario = clone(value['s']) as JsonValue;
-    const ruleset = rulesetFromScenario(scenario);
     const units = array(value['u'], 'force.cbt.u').map((entry, index) =>
-        unpackUnitEntry(entry, ruleset, `force.cbt.u[${index}]`));
+        unpackUnitEntry(entry, `force.cbt.u[${index}]`));
     return {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId: asForceId(forceId),
         forceRevision: revision,
-        scenarioRules: { schemaVersion: 1, values: scenario },
         history: value['h'] === undefined
             ? { u: [], t: [] }
             : unpackHistory(value['h'], 'force.cbt.h'),
@@ -675,12 +657,12 @@ function unpackHistory(value: unknown, path: string): SerializedCBTForceV2['hist
     };
 }
 
-function packUnitEntry(entry: SerializedForceUnitEntryV2, ruleset: CBTRuleset): unknown {
-    return packUnit(entry.unit, ruleset);
+function packUnitEntry(entry: SerializedForceUnitEntryV2): unknown {
+    return packUnit(entry.unit);
 }
 
-function unpackUnitEntry(value: unknown, ruleset: CBTRuleset, path: string): SerializedForceUnitEntryV2 {
-    const unit = unpackUnit(value, ruleset, path);
+function unpackUnitEntry(value: unknown, path: string): SerializedForceUnitEntryV2 {
+    const unit = unpackUnit(value, path);
     return {
         instanceId: unit.instanceId,
         stateRevision: unit.stateRevision,
@@ -688,21 +670,20 @@ function unpackUnitEntry(value: unknown, ruleset: CBTRuleset, path: string): Ser
     };
 }
 
-function packUnit(unit: SerializedCBTUnitV2 | SerializedNonMekUnit, ruleset: CBTRuleset): unknown {
-    return isSerializedNonMekUnit(unit) ? packNonMekUnit(unit, ruleset) : packMekUnit(unit, ruleset);
+function packUnit(unit: SerializedCBTUnitV2 | SerializedNonMekUnit): unknown {
+    return isSerializedNonMekUnit(unit) ? packNonMekUnit(unit) : packMekUnit(unit);
 }
 
-function unpackUnit(value: unknown, ruleset: CBTRuleset, path: string): SerializedCBTUnitV2 | SerializedNonMekUnit {
+function unpackUnit(value: unknown, path: string): SerializedCBTUnitV2 | SerializedNonMekUnit {
     const compact = record(value, path);
     return compact['k'] === undefined || compact['k'] === MEK
-        ? unpackMekUnit(compact, ruleset, path)
+        ? unpackMekUnit(compact, path)
         : compact['k'] === ENTITY
-            ? unpackNonMekUnit(compact, ruleset, path)
+            ? unpackNonMekUnit(compact, path)
             : fail(`${path}.k is not a current unit family`);
 }
 
-function packMekUnit(unit: SerializedCBTUnitV2, ruleset: CBTRuleset): unknown {
-    assertUnitRuleset(unit, ruleset);
+function packMekUnit(unit: SerializedCBTUnitV2): unknown {
     const pristineHeat = unit.deployment.values.initialHeat ?? 0;
     const heatIsPristine = unit.heat?.heat === pristineHeat
         && unit.heat.previous === undefined
@@ -739,14 +720,14 @@ function packMekUnit(unit: SerializedCBTUnitV2, ruleset: CBTRuleset): unknown {
     });
 }
 
-function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path: string): SerializedCBTUnitV2 {
+function unpackMekUnit(value: Record<string, unknown>, path: string): SerializedCBTUnitV2 {
     exactKeys(value, [
         'k', 'i', 'e', 'd', 'r', 'x', 'l', 'n', 's', 'c', 'a', 'w',
         'h', 'z', 'rC', 'm', 'tA', 'y', 'o', 't', 'p',
     ], path);
     const entity = unpackUnitUuid(value['e'], `${path}.e`);
     const baseline = defaultBaseline(
-        entity, ruleset, UNIT_STATE_INITIALIZER_REVISION, DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
+        entity, UNIT_STATE_INITIALIZER_REVISION, DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
     );
     const deployment = unpackDeployment(value['d'], `${path}.d`);
     const pristineHeat = deployment.values.initialHeat ?? 0;
@@ -844,8 +825,7 @@ function unpackMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path
     };
 }
 
-function packNonMekUnit(unit: SerializedNonMekUnit, ruleset: CBTRuleset): unknown {
-    assertUnitRuleset(unit, ruleset);
+function packNonMekUnit(unit: SerializedNonMekUnit): unknown {
     return compactObject({
         k: ENTITY,
         t: unit.family.entityType,
@@ -884,10 +864,10 @@ function packNonMekUnit(unit: SerializedNonMekUnit, ruleset: CBTRuleset): unknow
     });
 }
 
-function unpackNonMekUnit(value: Record<string, unknown>, ruleset: CBTRuleset, path: string): SerializedNonMekUnit {
+function unpackNonMekUnit(value: Record<string, unknown>, path: string): SerializedNonMekUnit {
     exactKeys(value, ['k', 't', 'i', 'e', 'h', 'd', 'r', 'x', 'l', 'c', 'q', 'a', 'w', 'o', 'z', 'v', 'tA', 'y', 'p'], path);
     const entity = unpackUnitUuid(value['e'], `${path}.e`);
-    const baseline = defaultBaseline(entity, ruleset, 1, DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID);
+    const baseline = defaultBaseline(entity, 1, DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID);
     const deployment = unpackNonMekDeployment(value['d'], `${path}.d`);
     return {
         schemaVersion: NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
@@ -1101,25 +1081,19 @@ function unpackNonMekMovement(
 const CREW_UNCONSCIOUS = 1;
 const CREW_EJECTED = 2;
 const CREW_DEAD = 4;
-const CREW_KILLED = 8;
-const CREW_STUNNED = 16;
 const MEK_CREW_STATE_MASK = CREW_UNCONSCIOUS | CREW_EJECTED | CREW_DEAD;
-const NON_MEK_CREW_STATE_MASK = MEK_CREW_STATE_MASK | CREW_KILLED | CREW_STUNNED;
+const NON_MEK_CREW_STATE_MASK = MEK_CREW_STATE_MASK;
 
 function packedCrewState(
     row: Readonly<{
         readonly unconscious: boolean;
         readonly ejected?: boolean;
         readonly dead?: true;
-        readonly killed?: true;
-        readonly stunned?: true;
     }>,
 ): number | undefined {
     const state = (row.unconscious ? CREW_UNCONSCIOUS : 0)
         | (row.ejected ? CREW_EJECTED : 0)
-        | (row.dead ? CREW_DEAD : 0)
-        | (row.killed ? CREW_KILLED : 0)
-        | (row.stunned ? CREW_STUNNED : 0);
+        | (row.dead ? CREW_DEAD : 0);
     return state === 0 ? undefined : state;
 }
 
@@ -1138,8 +1112,6 @@ function unpackNonMekCrewState(
         unconscious: (state & CREW_UNCONSCIOUS) !== 0,
         ejected: (state & CREW_EJECTED) !== 0,
         ...((state & CREW_DEAD) !== 0 ? { dead: true as const } : {}),
-        ...((state & CREW_KILLED) !== 0 ? { killed: true as const } : {}),
-        ...((state & CREW_STUNNED) !== 0 ? { stunned: true as const } : {}),
         ...(row[3] === undefined
             ? {}
             : {
@@ -1155,7 +1127,7 @@ function packUnitUuid(uuid: UnitUuid): CompactUnitUuid {
 }
 
 function unpackUnitUuid(value: unknown, path: string): UnitUuid {
-    return unpackStoredUuid(text(value, path), path);
+    return unpackUuid(text(value, path), path);
 }
 
 function unpackSourceHashCanary(value: unknown, path: string) {
@@ -1166,24 +1138,13 @@ function unpackSourceHashCanary(value: unknown, path: string) {
     }
 }
 
-function assertUnitRuleset(
-    unit: Pick<SerializedCBTUnitV2 | SerializedNonMekUnit, 'baselineRefAtSave'>,
-    ruleset: CBTRuleset,
-): void {
-    if (unit.baselineRefAtSave.ruleset !== ruleset) {
-        throw new Error('A unit baseline cannot use a different ruleset from its force');
-    }
-}
-
 function defaultBaseline(
     entity: UnitUuid,
-    ruleset: CBTRuleset,
     defaultRevision: number,
     defaultProfileId: string,
 ): SerializedCBTUnitV2['baselineRefAtSave'] {
     return {
         entity,
-        ruleset,
         initialStateProfile: {
             schemaVersion: 1,
             initializerRevision: defaultRevision,
@@ -1932,16 +1893,6 @@ function unpackEncounter(value: unknown, path: string): SerializedForceEncounter
 function emptyEncounter(): SerializedForceEncounterEntryV2 {
     const revision = 0;
     return { encounterRevision: revision, state: { schemaVersion: 2, encounterRevision: revision, facts: [] } };
-}
-
-function rulesetFromScenario(value: JsonValue): CBTRuleset {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-        throw new Error('CBT scenario rules must be an object');
-    }
-    const ruleset = value['ruleset'];
-    if (ruleset === undefined) return CORE_2026_RULESET;
-    if (!isCBTRuleset(ruleset)) throw new Error(`Unsupported CBT ruleset ${String(ruleset)}`);
-    return ruleset;
 }
 
 function packRows<T>(value: readonly T[] | undefined, map: (row: T) => unknown): readonly unknown[] | undefined {

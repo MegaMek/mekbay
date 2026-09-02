@@ -87,7 +87,7 @@ import { pruneRemovedUnitsFromEncounter } from './runtime/cbt-force-persistence-
 interface CBTUnitStoreState {
     readonly envelope: SerializedCBTForceV2;
     readonly units: ReadonlyMap<string, CBTUnit>;
-    readonly scenario: ScenarioRules;
+    readonly scenarioRules: ScenarioRules;
 }
 
 export interface RestoredCBTUnits {
@@ -114,14 +114,14 @@ export class CBTUnitStore {
     public async restore(
         envelope: SerializedCBTForceV2,
         cbtUnits: CBTUnitService,
-        scenario: ScenarioRules,
+        scenarioRules: ScenarioRules,
     ): Promise<RestoredCBTUnits> {
         const entries = envelope.units;
         const invalidStateUnitIds = new Set<string>();
         const warnings = new Set<string>();
         const restored = await Promise.all(entries.map(async entry => {
             try {
-                const result = await cbtUnits.restore(entry.unit, scenario);
+                const result = await cbtUnits.restore(entry.unit, scenarioRules);
                 for (const warning of result.warnings) {
                     warnings.add(`Unit "${warning.unitName}": ${warning.message}`);
                 }
@@ -140,7 +140,7 @@ export class CBTUnitStore {
                         uuid: identity,
                         instanceId: entry.instanceId,
                         deployment,
-                        scenario,
+                        scenario: scenarioRules,
                     }) };
                 } catch {
                     try {
@@ -149,10 +149,9 @@ export class CBTUnitStore {
                             uuid: identity,
                             instanceId: entry.instanceId,
                             deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
-                            scenario,
+                            scenario: scenarioRules,
                         }) };
                     } catch {
-                        warnings.add(`Unit "${entry.instanceId}" could not be identified and was skipped.`);
                         return { entry, unit: null };
                     }
                 }
@@ -163,11 +162,9 @@ export class CBTUnitStore {
         restored.forEach(({ entry, unit }) => {
             if (unit === null) return;
             if (unit.instanceId !== entry.instanceId) {
-                warnings.add(`Unit "${entry.instanceId}" resolved with an invalid identity and was skipped.`);
                 return;
             }
             if (units.has(unit.instanceId)) {
-                warnings.add(`Duplicate unit "${unit.instanceId}" was skipped.`);
                 return;
             }
             units.set(unit.instanceId, unit);
@@ -202,10 +199,17 @@ export class CBTUnitStore {
             stateRevision: serializedUnits.get(entry.instanceId)!.stateRevision,
             unit: serializedUnits.get(entry.instanceId)!,
         }));
-        for (const instanceId of invalidStateUnitIds) {
-            if (!removedUnitIds.has(instanceId)) {
-                warnings.add(`Unit "${instanceId}" had invalid saved state; that state was ignored.`);
-            }
+        const resetUnitStateCount = [...invalidStateUnitIds]
+            .filter(instanceId => !removedUnitIds.has(instanceId)).length;
+        if (resetUnitStateCount > 0) {
+            warnings.add(resetUnitStateCount === 1
+                ? '1 unit had unreadable saved state and was reset to pristine.'
+                : `${resetUnitStateCount} units had unreadable saved state and were reset to pristine.`);
+        }
+        if (removedUnitIds.size > 0) {
+            warnings.add(removedUnitIds.size === 1
+                ? '1 unit was not found in the catalog and was skipped.'
+                : `${removedUnitIds.size} units were not found in the catalog and were skipped.`);
         }
         const roster = Object.freeze({
             ...envelope.roster,
@@ -244,7 +248,7 @@ export class CBTUnitStore {
         const nextBinding: CBTUnitStoreState = Object.freeze({
             envelope: hydratedEnvelope,
             units,
-            scenario,
+            scenarioRules,
         });
         return Object.freeze({
             envelope: hydratedEnvelope,
@@ -297,16 +301,16 @@ export class CBTUnitStore {
         return unit && isCBTNonMekUnit(unit) ? unit : null;
     }
 
-    public commit(envelope: SerializedCBTForceV2, scenario?: ScenarioRules): void {
+    public commit(envelope: SerializedCBTForceV2, scenarioRules?: ScenarioRules): void {
         const binding = this.binding;
         const expected = envelope.units;
         if (!binding) {
             if (expected.length > 0) throw new Error('Cannot install ready entries without their runtimes');
-            if (!scenario) throw new Error('Cannot install a CBT owner without application rules');
+            if (!scenarioRules) throw new Error('Cannot install a CBT owner without scenario rules');
             this.binding = Object.freeze({
                 envelope,
                 units: new Map(),
-                scenario,
+                scenarioRules,
             });
             return;
         }
@@ -347,7 +351,7 @@ export class CBTUnitStore {
     public add(
         envelope: SerializedCBTForceV2,
         candidate: CBTUnit,
-        scenario: ScenarioRules,
+        scenarioRules: ScenarioRules,
     ): void {
         const existing = this.binding
             ? this.liveUnits()
@@ -360,7 +364,7 @@ export class CBTUnitStore {
             existing.map(unit => [unit.instanceId, unit] as const),
         );
         units.set(candidate.instanceId, candidate);
-        this.setUnits(envelope, units, scenario);
+        this.setUnits(envelope, units, scenarioRules);
     }
 
     public remove(
@@ -385,7 +389,7 @@ export class CBTUnitStore {
             const current = units.get(instanceId);
             if (!current) throw new Error(`Ready V2 runtime ${instanceId} is not owned`);
             const candidate = isCBTMekUnit(current)
-                ? await CBTMekUnit.repair(current, binding.scenario)
+                ? await CBTMekUnit.repair(current, binding.scenarioRules)
                 : isCBTNonMekUnit(current)
                     ? CBTNonMekUnit.repair(current)
                     : null;
@@ -414,14 +418,14 @@ export class CBTUnitStore {
                     row.unit,
                     current.getUnit(),
                     current.uuid,
-                    binding.scenario,
+                    binding.scenarioRules,
                     current.getNativeSource(),
                 );
             } else {
                 if (!isCBTMekUnit(current)) {
                     throw new Error(`Undo checkpoint family changed for ${row.instanceId}`);
                 }
-                candidate = await CBTMekUnit.restoreSnapshot(current, row.unit, binding.scenario);
+                candidate = await CBTMekUnit.restoreSnapshot(current, row.unit, binding.scenarioRules);
             }
             if (!jsonValuesEqual(candidate.serialize(), row.unit)) {
                 throw new Error(`Undo checkpoint could not be restored exactly for ${row.instanceId}`);
@@ -434,7 +438,7 @@ export class CBTUnitStore {
     public replace(
         envelope: SerializedCBTForceV2,
         replacements: ReadonlyMap<string, CBTUnit>,
-        scenario?: ScenarioRules,
+        scenarioRules?: ScenarioRules,
     ): void {
         if (!this.binding) throw new Error('The force has no installed V2 unit owner');
         const units = new Map(this.liveUnits().map(unit => [unit.instanceId, unit] as const));
@@ -444,24 +448,24 @@ export class CBTUnitStore {
             }
             units.set(instanceId, replacement);
         }
-        this.setUnits(envelope, units, scenario);
+        this.setUnits(envelope, units, scenarioRules);
     }
 
     private setUnits(
         envelope: SerializedCBTForceV2,
         units: ReadonlyMap<string, CBTUnit>,
-        scenario?: ScenarioRules,
+        scenarioRules?: ScenarioRules,
     ): void {
         if (envelope.units.length !== units.size
             || envelope.units.some(entry => !units.has(entry.instanceId))) {
             throw new Error('CBT envelope and installed units disagree');
         }
-        const effectiveScenario = scenario ?? this.binding?.scenario;
-        if (!effectiveScenario) throw new Error('CBT runtime owner has no application rules');
+        const effectiveRules = scenarioRules ?? this.binding?.scenarioRules;
+        if (!effectiveRules) throw new Error('CBT runtime owner has no scenario rules');
         this.binding = Object.freeze({
             envelope,
             units,
-            scenario: effectiveScenario,
+            scenarioRules: effectiveRules,
         });
         this.c3.reset();
     }
@@ -473,12 +477,12 @@ export class CBTUnitStore {
     public ruleset(instanceId: string): CBTRuleset | null {
         const binding = this.binding;
         return binding?.units.has(instanceId) === true
-            ? scenarioRuleset(binding.scenario)
+            ? scenarioRuleset(binding.scenarioRules)
             : null;
     }
 
     public scenarioRules(): ScenarioRules | null {
-        return this.binding?.scenario ?? null;
+        return this.binding?.scenarioRules ?? null;
     }
 
     public unitDestroyed(instanceId: string): boolean | null {
@@ -709,7 +713,7 @@ export class CBTUnitStore {
                 replacement = await CBTMekUnit.redeployCrew(
                     current,
                     assignment,
-                    binding.scenario,
+                    binding.scenarioRules,
                 );
             } else if (isCBTNonMekUnit(current)) {
                 replacement = CBTNonMekUnit.redeploy(current, assignment);
@@ -804,7 +808,7 @@ export class CBTUnitStore {
             runtime,
             mekEntity,
             unit.getIndex(),
-            scenarioRuleset(owner.scenario),
+            scenarioRuleset(owner.scenarioRules),
             {
                 instanceId,
                 encounter: () => effectiveEncounterSnapshot,
@@ -983,7 +987,7 @@ export class CBTUnitStore {
             runtime,
             mekEntity,
             unit.getIndex(),
-            scenarioRuleset(owner.scenario),
+            scenarioRuleset(owner.scenarioRules),
             { instanceId: selected.instanceId, encounter: () => effectiveEncounter },
             queryContext,
         ).flatMap(expandEquipmentDropdownBinding)
@@ -1035,7 +1039,7 @@ export class CBTUnitStore {
                 runtime,
                 mekEntity,
                 unit.getIndex(),
-                scenarioRuleset(owner.scenario),
+                scenarioRuleset(owner.scenarioRules),
                 { instanceId: selected.instanceId, encounter: () => effectiveEncounter },
                 interaction,
                 queryContext,

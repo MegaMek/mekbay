@@ -527,7 +527,6 @@ export class PageViewerNonMekRuntimeService {
             wounds,
             unconscious: position.state.unconscious,
             ejected: position.state.ejected,
-            dead: position.state.dead === true,
         });
         if (!result.accepted) this.showRejectedEdit();
     }
@@ -932,7 +931,7 @@ export function nonMekCrewStateCommand(
             ? !active
             : position.state.unconscious,
         ejected: control === 'ejected' ? !active : position.state.ejected,
-        dead: control === 'killed' ? !active : position.state.dead === true,
+        ...(control === 'killed' ? { dead: !active } : {}),
     });
 }
 

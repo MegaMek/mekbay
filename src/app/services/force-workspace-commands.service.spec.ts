@@ -23,6 +23,7 @@ import { ForceWorkspaceCommandsService } from './force-workspace-commands.servic
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { LayoutService } from './layout.service';
 import { LoggerService } from './logger.service';
+import { OptionsService } from './options.service';
 import { ToastService } from './toast.service';
 
 describe('ForceWorkspaceCommandsService force conversion', () => {
@@ -223,6 +224,15 @@ function createHarness() {
             { provide: LoggerService, useValue: jasmine.createSpyObj('LoggerService', ['info', 'error']) },
             { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['showToast']) },
             { provide: AsAbilityLookupService, useValue: {} },
+            {
+                provide: OptionsService,
+                useValue: {
+                    options: () => ({
+                        CBTRules: 'core-2026',
+                        CBTOptionalRules: { forcedWithdrawal: true, sprinting: false },
+                    }),
+                },
+            },
         ],
     });
     return {

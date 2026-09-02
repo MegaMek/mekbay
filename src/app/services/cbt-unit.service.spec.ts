@@ -10,6 +10,7 @@ import type { ScenarioRules } from '../models/runtime/unit-state-initializer';
 import { asSourceHashCanary } from '../models/source-hash-canary';
 import { NativeEntityService } from './native-entity.service';
 import { CBTUnitService } from './cbt-unit.service';
+import { isCBTMekUnit } from '../models/runtime/cbt-unit';
 import {
     asSourceHash,
     asUnitUuid,
@@ -110,13 +111,12 @@ describe('CBTUnitService restore warnings', () => {
                 code: 'SOURCE_REVISION_CHANGED',
                 message: 'The source file has changed since this unit state was saved.',
             },
-            {
-                unitName,
-                code: 'RULESET_CHANGED',
-                message: 'The unit state was translated from ruleset core-2026 to total-warfare.',
-            },
         ]);
         expect(restored.unit.serialize().sourceHashCanary).toBe(asSourceHashCanary('BBBB'));
-        expect(restored.unit.serialize().baselineRefAtSave.ruleset).toBe('total-warfare');
+        expect('ruleset' in restored.unit.serialize().baselineRefAtSave).toBeFalse();
+        expect(isCBTMekUnit(restored.unit)).toBeTrue();
+        if (isCBTMekUnit(restored.unit)) {
+            expect(restored.unit.getInstance().ruleset()).toBe('total-warfare');
+        }
     });
 });

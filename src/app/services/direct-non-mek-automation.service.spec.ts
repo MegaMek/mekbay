@@ -278,8 +278,6 @@ describe('DirectNonMekAutomationService', () => {
             wounds: 1,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
         }).accepted).toBeTrue();
         spyOn(Math, 'random').and.returnValue(0.99);
         const command: NonMekUnitCommand = {
@@ -326,8 +324,6 @@ describe('DirectNonMekAutomationService', () => {
             wounds: 1,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
         };
         const result = await harness.dispatch(command);
         expect(result.accepted).toBeTrue();
@@ -386,8 +382,6 @@ describe('DirectNonMekAutomationService', () => {
             wounds: 1,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
         };
         const result = await harness.dispatch(command);
         expect(result.accepted).toBeTrue();
@@ -463,8 +457,6 @@ describe('DirectNonMekAutomationService', () => {
             wounds: 1,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
         }).accepted).toBeTrue();
         const revision = harness.runtime.revision();
         resolveChecksAutomation.and.resolveTo(null);
@@ -496,8 +488,6 @@ describe('DirectNonMekAutomationService', () => {
                 wounds: 1,
                 unconscious: true,
                 ejected: false,
-                killed: false,
-                stunned: false,
             }).accepted).toBeTrue();
         }
         const force = {
@@ -642,8 +632,6 @@ describe('DirectNonMekAutomationService', () => {
             wounds: 1,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
         }).accepted).toBeTrue();
         setHeat(harness.runtime, 14);
         spyOn(Math, 'random').and.returnValue(0.99);
@@ -775,8 +763,6 @@ describe('DirectNonMekAutomationService', () => {
             wounds: 0,
             unconscious: false,
             ejected: true,
-            killed: false,
-            stunned: false,
         })).accepted).toBeTrue();
 
         resolveChecksAutomation.calls.reset();
@@ -906,8 +892,6 @@ describe('DirectNonMekAutomationService', () => {
             wounds: 1,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
         }).accepted).toBeTrue();
         automationModes['pilotHitsAndConsciousnessCheck'] = 'yes';
         setHeat(harness.runtime, 19);

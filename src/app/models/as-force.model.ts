@@ -165,6 +165,8 @@ export class ASForce extends Force<ASForceUnit> {
 
         const sanitizedData = Sanitizer.sanitize(data, AS_SERIALIZED_FORCE_SCHEMA);
         const warnings = new Set<string>();
+        let skippedUnitCount = 0;
+        let resetUnitStateCount = 0;
         this.loading = true;
         try {
             this.populateSerializedMetadata(sanitizedData);
@@ -195,14 +197,14 @@ export class ASForce extends Force<ASForceUnit> {
                             : '';
                         const summary = uuid ? this.dataService.getUnitByUuid(uuid) : undefined;
                         if (!summary) {
-                            warnings.add(`Unit UUID "${uuid || 'unknown'}" is not installed and was skipped.`);
+                            skippedUnitCount += 1;
                             return [];
                         }
                         const unit = this.createForceUnit(captureUnitForAdmission(summary));
                         if (typeof serializedUnit.id === 'string' && serializedUnit.id) {
                             unit.id = serializedUnit.id;
                         }
-                        warnings.add(`Unit "${summary.name}" had invalid saved data; its state was ignored.`);
+                        resetUnitStateCount += 1;
                         return [unit];
                     }
                 });
@@ -242,6 +244,16 @@ export class ASForce extends Force<ASForceUnit> {
             } catch {
                 this.setNetwork([]);
                 warnings.add('C3 network data was invalid and was ignored.');
+            }
+            if (skippedUnitCount > 0) {
+                warnings.add(skippedUnitCount === 1
+                    ? '1 unit was not found in the catalog and was skipped.'
+                    : `${skippedUnitCount} units were not found in the catalog and were skipped.`);
+            }
+            if (resetUnitStateCount > 0) {
+                warnings.add(resetUnitStateCount === 1
+                    ? '1 unit had unreadable saved state and was reset to pristine.'
+                    : `${resetUnitStateCount} units had unreadable saved state and were reset to pristine.`);
             }
         } finally {
             this.loading = false;

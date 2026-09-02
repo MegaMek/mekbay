@@ -20,7 +20,7 @@ import type { SerializedEncounterTargetCalculatorV2 } from './runtime/persistenc
 import type { MekUnitRuntimeState } from './runtime/runtime-state';
 import type { NonMekUnitRuntimeState } from './runtime/non-mek-unit-instance';
 import type { CBTUnitCommandResult, CBTUnitRuntimeState } from './runtime/cbt-unit-runtime';
-import type { DeploymentConfiguration, ScenarioRules } from './runtime/unit-state-initializer';
+import type { DeploymentConfiguration } from './runtime/unit-state-initializer';
 import type { MekRuntimeCapabilityDecision } from './runtime/mek-runtime-capability';
 import type { AttackerTargetingState } from './runtime/attacker-targeting-state';
 import type { RuntimeCommandEntry } from './runtime/runtime-command-session';
@@ -80,7 +80,6 @@ export interface CBTDirectUnitAdmissionRequest {
     readonly uuid: UnitUuid;
     readonly deployment: DeploymentConfiguration;
     readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
-    readonly scenario?: ScenarioRules;
     readonly instanceId?: string;
     readonly initialStateProfileId?: string;
     readonly targetRosterGroupId?: string;

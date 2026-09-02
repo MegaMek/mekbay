@@ -14,6 +14,7 @@ import type {
 import { asComponentId } from '../entity/entity-identifiers';
 import type { EntityStateView } from '../entity/entity-state-view';
 import type { EquipmentStatus } from '../equipment-status.model';
+import { CrewMember, MAX_CREW_WOUNDS, type CrewMemberRuntimeState } from '../crew-member.model';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import {
     RuntimeEquipmentStatusKernel,
@@ -37,7 +38,6 @@ import {
     type PpcCapacitorRuntimeState,
     freezeRuntimeState,
     isMekLocationConditionKey,
-    MAX_MEK_CREW_WOUNDS,
     MAX_MEK_LOCATION_CONDITION_VALUE,
 } from './runtime-state';
 import type { MekShieldTrack } from './mek-shield-rules';
@@ -116,7 +116,7 @@ import { canonicalizeCrewAssignment, createDefaultCrewAssignment, type CrewAssig
 import {
     isMekLocationPhysicallyDestroyed,
     isMekLocationPhysicallyDestroyedFromView,
-    mekLocationParentId,
+    mekLocationDestructionParentId,
 } from './mek-location-state-kernel';
 import {
     applyMekWeaponFirePlanV2,
@@ -303,8 +303,6 @@ import {
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { MekSystemType } from '../entity/types';
 import {
-    isCrewDeathCommitted,
-    type CBTCrewRuntimeState,
     type CBTUnitCommandResult,
     type CBTUnitQueryPort,
     type RuntimeStatePerspective,
@@ -703,6 +701,10 @@ export class CBTUnitInstance {
     readonly #crewAssignment: CrewAssignment;
     readonly #heatContext: MekHeatRuntimeContextV2;
     readonly #mechanicsContext: MekMechanicsContextV2;
+    #queryCache: Readonly<{
+        state: MekUnitRuntimeState;
+        query: MekUnitQueryPort;
+    }> | undefined;
     #state: MekUnitRuntimeState;
 
     public constructor(
@@ -774,6 +776,7 @@ export class CBTUnitInstance {
 
     public query(): MekUnitQueryPort {
         const state = this.#state;
+        if (this.#queryCache?.state === state) return this.#queryCache.query;
         const unit = this.#source;
         const statusTopology = this.#statusTopology;
         let committedStatus: RuntimeEquipmentStatusKernel | undefined;
@@ -826,27 +829,24 @@ export class CBTUnitInstance {
         const hasDroneOperatingSystem = droneOperatingSystemIds.length > 0;
         const hasAirGroundSelection = canChangeAirborneGround(motiveModeFactsForEntity(unit.entity));
         const storedDisplayConditions = new ImmutableSet<UnitConditionKey>([...state.conditions].filter(condition =>
-            condition !== 'airborne' && condition !== 'grounded'));
+            condition !== 'airborne' && condition !== 'grounded' && condition !== 'crippled'));
         const effectiveCrewState = (positionId: CrewPositionId): 'healthy' | 'ejected' | 'unconscious' | 'dead' => {
             const position = unit.index.crewPositions.get(positionId);
             if (!position) throw new Error(`Unknown crew position ${positionId}`);
-            const crew = state.crew.get(positionId) ?? HEALTHY_CREW_STATE;
-            if (isCrewDeathCommitted(crew)) return 'dead';
+            const crew = CrewMember.from(state.crew.get(positionId));
+            let cockpitDestroyed = false;
             const destruction = mechanicsProjection();
             if (destruction.kind === 'supported') {
                 const hasCommandConsole = this.unit.mountedCockpit().hasCommandConsoleBonus;
-                const cockpitDestroyed = !hasCommandConsole
+                cockpitDestroyed = !hasCommandConsole
                     ? destruction.facts.committed.mainCockpitUnavailable
                     : position.occurrence === 0
                         ? destruction.facts.committed.mainCockpitUnavailable
                         : position.occurrence === 1
                             ? destruction.facts.committed.commandConsoleUnavailable
                             : false;
-                if (cockpitDestroyed) return 'dead';
             }
-            if (crew.ejected) return 'ejected';
-            if (crew.unconscious) return 'unconscious';
-            return 'healthy';
+            return crew.effectiveState(cockpitDestroyed);
         };
         let projectedDerivedConditions: ReadonlySet<UnitConditionKey> | undefined;
         const derivedConditions = (): ReadonlySet<UnitConditionKey> => {
@@ -900,7 +900,17 @@ export class CBTUnitInstance {
             this.#mechanicsContext,
             projectionContext(),
         );
-        return Object.freeze({
+        let combatModifierResult: MekCombatModifierProjectionResult | undefined;
+        const combatModifierProjection = (): MekCombatModifierProjectionResult =>
+            combatModifierResult ??= projectRuntimeMekCombatModifiers(
+                unit,
+                state,
+                statusTopology,
+                this.#crewAssignment,
+                this.#mechanicsContext,
+                projectionContext(),
+            );
+        const query: MekUnitQueryPort = Object.freeze({
             stateRevision: state.stateRevision,
             hasPendingPhaseChanges: () => hasPendingMekPhaseChanges(state),
             hasPendingCombat: () => hasPending(state.pendingCombat),
@@ -939,14 +949,7 @@ export class CBTUnitInstance {
                 perspective,
                 statusKernel(perspective),
             ),
-            mekCombatModifiers: () => projectRuntimeMekCombatModifiers(
-                unit,
-                state,
-                statusTopology,
-                this.#crewAssignment,
-                this.#mechanicsContext,
-                projectionContext(),
-            ),
+            mekCombatModifiers: combatModifierProjection,
             mekCriticalChance: (locationId: LocationId, target: 'committed' | 'pending') => projectMekCriticalChanceV2(
                 unit.entity,
                 unit.index,
@@ -1198,7 +1201,7 @@ export class CBTUnitInstance {
                 if (!unit.index.crewPositions.has(positionId)) {
                     throw new Error(`Unknown crew position ${positionId}`);
                 }
-                return state.crew.get(positionId) ?? HEALTHY_CREW_STATE;
+                return CrewMember.from(state.crew.get(positionId));
             },
             turnState: () => state.turn,
             previewEndPhase: () => this.preview({
@@ -1217,6 +1220,8 @@ export class CBTUnitInstance {
                 this.unit,
             ),
         });
+        this.#queryCache = Object.freeze({ state, query });
+        return query;
     }
 
     private preview(command: CBTUnitCommand): MekUnitCommandResult {
@@ -2466,7 +2471,9 @@ function reduce(
             if (!isUnitConditionKey(command.condition) || typeof command.active !== 'boolean') {
                 return unchanged(state);
             }
-            if (command.condition === 'airborne' || command.condition === 'grounded') {
+            if (command.condition === 'airborne'
+                || command.condition === 'grounded'
+                || command.condition === 'crippled') {
                 return unchanged(state);
             }
             // Shutdown is owned by typed shutdown/startup actions. Generic
@@ -2546,7 +2553,7 @@ function reduce(
             }
             if (!Number.isSafeInteger(command.wounds)
                 || command.wounds < 0
-                || command.wounds > MAX_MEK_CREW_WOUNDS
+                || command.wounds > MAX_CREW_WOUNDS
                 || typeof command.unconscious !== 'boolean'
                 || typeof command.ejected !== 'boolean'
                 || (command.recoveryReadyTurn !== undefined
@@ -3055,12 +3062,7 @@ function mekDamageStateView(
         },
         crewState: (positionId: CrewPositionId) => {
             if (!unit.index.crewPositions.has(positionId)) throw new Error(`Unknown crew position ${positionId}`);
-            const crew = state.crew.get(positionId) ?? HEALTHY_CREW_STATE;
-            return Object.freeze({
-                wounds: crew.wounds,
-                ejected: crew.ejected,
-                fatallyWounded: isCrewDeathCommitted(crew),
-            });
+            return CrewMember.from(state.crew.get(positionId));
         },
         locationCondition: (
             locationId: LocationId,
@@ -3412,7 +3414,7 @@ function createMovementRuntimeInput(
         currentHeat: state.heat.current,
         airborne: state.turn.airborne === true,
         crewAssignment,
-        crewState: (positionId: CrewPositionId) => state.crew.get(positionId) ?? HEALTHY_CREW_STATE,
+        crewState: (positionId: CrewPositionId) => CrewMember.from(state.crew.get(positionId)),
         conditions: new ImmutableSet(conditions),
         destruction: destruction.facts,
         componentAvailable: (componentId: ComponentId) =>
@@ -3940,11 +3942,11 @@ function applyMekEquipmentExplosionPlan(
         const pilot = [...unit.index.crewPositions.values()]
             .sort((left, right) => left.occurrence - right.occurrence)[0];
         if (pilot) {
-            const current = next.crew.get(pilot.id) ?? HEALTHY_CREW_STATE;
+            const current = CrewMember.from(next.crew.get(pilot.id));
             next = withCrewState(
                 next,
                 pilot.id,
-                Math.min(MAX_MEK_CREW_WOUNDS, current.wounds + explosion.pilotHits),
+                Math.min(MAX_CREW_WOUNDS, current.wounds + explosion.pilotHits),
                 current.unconscious,
                 current.ejected,
             ) ?? next;
@@ -4747,8 +4749,6 @@ function withAmmoConfiguration(
     return { ...state, ammo: new ImmutableIndex(ammo) };
 }
 
-const HEALTHY_CREW_STATE: CBTCrewRuntimeState = Object.freeze({ wounds: 0, unconscious: false, ejected: false });
-
 function withCrewState(
     state: MekUnitRuntimeState,
     positionId: CrewPositionId,
@@ -4757,27 +4757,17 @@ function withCrewState(
     ejected: boolean,
     requestedRecoveryReadyTurn?: number | null,
 ): MekUnitRuntimeState | null {
-    const current = state.crew.get(positionId) ?? HEALTHY_CREW_STATE;
-    const dead = wounds >= MAX_MEK_CREW_WOUNDS ? current.dead : undefined;
-    const recoveryReadyTurn = !unconscious
-        ? undefined
-        : requestedRecoveryReadyTurn !== undefined
-            ? requestedRecoveryReadyTurn
-            : current.recoveryReadyTurn;
-    if (current.wounds === wounds
-        && current.unconscious === unconscious
-        && current.ejected === ejected
-        && current.dead === dead
-        && current.recoveryReadyTurn === recoveryReadyTurn) return null;
-    const crew = new Map(state.crew);
-    if (wounds === 0 && !unconscious && !ejected) crew.delete(positionId);
-    else crew.set(positionId, Object.freeze({
+    const current = CrewMember.from(state.crew.get(positionId));
+    const next = current.withWoundTrackedState({
         wounds,
         unconscious,
         ejected,
-        ...(dead ? { dead: true as const } : {}),
-        ...(recoveryReadyTurn === undefined ? {} : { recoveryReadyTurn }),
-    }));
+        recoveryReadyTurn: requestedRecoveryReadyTurn,
+    });
+    if (current.equals(next)) return null;
+    const crew = new Map(state.crew);
+    if (next.isPristine()) crew.delete(positionId);
+    else crew.set(positionId, next.toRuntimeState());
     return {
         ...state,
         crew: new ImmutableIndex(crew),
@@ -4786,11 +4776,13 @@ function withCrewState(
 }
 
 function commitCrewDeaths(state: MekUnitRuntimeState): MekUnitRuntimeState {
-    let crew: Map<CrewPositionId, CBTCrewRuntimeState> | undefined;
+    let crew: Map<CrewPositionId, CrewMemberRuntimeState> | undefined;
     for (const [positionId, current] of state.crew) {
-        if (current.wounds < MAX_MEK_CREW_WOUNDS || current.dead === true) continue;
+        const member = CrewMember.from(current);
+        const committed = member.commitDeath();
+        if (committed === member) continue;
         crew ??= new Map(state.crew);
-        crew.set(positionId, Object.freeze({ ...current, dead: true }));
+        crew.set(positionId, committed.toRuntimeState());
     }
     return crew === undefined ? state : { ...state, crew: new ImmutableIndex(crew) };
 }
@@ -5236,7 +5228,7 @@ function runtimeLocationStatus(
 ): EquipmentStatus {
     if (isRuntimeLocationPhysicallyDestroyed(unit, state, locationId, perspective)) return 'destroyed';
     if (locationConditionValue(state, locationId, 'flooded', perspective) > 0) return 'disabled';
-    const parentId = mekLocationParentId(unit.index, locationId);
+    const parentId = mekLocationDestructionParentId(unit.index, locationId);
     return parentId === null ? 'available' : runtimeLocationStatus(unit, state, parentId, perspective);
 }
 
@@ -5529,11 +5521,11 @@ function validateState(
         if (!unit.index.crewPositions.has(id)) throw new Error(`Unknown crew position ${id}`);
         if (!Number.isSafeInteger(crew.wounds)
             || crew.wounds < 0
-            || crew.wounds > MAX_MEK_CREW_WOUNDS
+            || crew.wounds > MAX_CREW_WOUNDS
             || typeof crew.unconscious !== 'boolean'
             || typeof crew.ejected !== 'boolean'
             || (crew.dead !== undefined && crew.dead !== true)
-            || (crew.dead === true && crew.wounds < MAX_MEK_CREW_WOUNDS)
+            || (crew.dead === true && crew.wounds < MAX_CREW_WOUNDS)
             || (crew.recoveryReadyTurn !== undefined
                 && crew.recoveryReadyTurn !== null
                 && (!Number.isSafeInteger(crew.recoveryReadyTurn)

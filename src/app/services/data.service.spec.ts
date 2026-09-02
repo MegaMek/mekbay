@@ -38,6 +38,7 @@ import { MULFACTION_NONE } from '../models/mulfactions.model';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MiscEquipment } from '../models/equipment.model';
 import { PresentationCatalogSyncService } from './catalogs/presentation-catalog-sync.service';
+import { OptionsService } from './options.service';
 import { CBT_FORCE_PERSISTENCE_SCHEMA_VERSION } from '../models/runtime/persistence-v2';
 import { encodeForceForStorage } from '../models/runtime/force-storage-codec';
 
@@ -556,6 +557,15 @@ describe('DataService', () => {
                 { provide: TagsService, useValue: tagsServiceMock },
                 { provide: PublicTagsService, useValue: publicTagsServiceMock },
                 { provide: LoggerService, useValue: loggerServiceMock },
+                {
+                    provide: OptionsService,
+                    useValue: {
+                        options: () => ({
+                            CBTRules: 'total-warfare',
+                            CBTOptionalRules: { forcedWithdrawal: true, sprinting: false },
+                        }),
+                    },
+                },
             ],
         });
 
@@ -1024,11 +1034,7 @@ describe('DataService', () => {
         const atlas = createUnit('Atlas');
         unitRuntimeServiceMock.resolvePersistedUnitIdentity.and.returnValue({
             kind: 'resolved',
-            savedIdentity: {
-                origin: atlas.origin,
-                provider: atlas.provider,
-                uuid: atlas.uuid,
-            },
+            uuid: atlas.uuid,
         });
         unitRuntimeServiceMock.getUnitByUuid.and.returnValue(atlas);
         const legacy: SerializedForce = {
@@ -1121,7 +1127,7 @@ describe('DataService', () => {
 
     it('loads a remote force without touching local storage when requested', async () => {
         wsServiceMock.sendAndWaitForResponse.and.resolveTo({
-            data: {
+            data: encodeForceForStorage({
                 version: 2,
                 instanceId: 'remote-force',
                 timestamp: '2026-04-05T00:00:00Z',
@@ -1129,7 +1135,7 @@ describe('DataService', () => {
                 name: 'Remote Force',
                 owned: false,
                 groups: [],
-            },
+            }),
         });
         spyOn<any>(forcePersistence, 'canUseCloud').and.returnValue(Promise.resolve({} as WebSocket));
 

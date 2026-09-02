@@ -8,7 +8,7 @@ import {
 } from './encounter-runtime';
 import { TARGET_INDIRECT_WEAPON_REASON } from './mek-targeting-rules';
 import {
-    equipmentPanelRuntimeTarget,
+    projectTargetingTarget,
     projectMekEquipmentPanel,
     projectWeaponTargetPresentation,
 } from './equipment-panel';
@@ -1571,7 +1571,7 @@ describe('direct Mek entity/runtime projections', () => {
             ordinary.entity, ordinary.index, ordinary.instance.ruleset(), ordinary.instance.query(), registry,
         );
         const row = panel.components.find(component => component.componentId === ordinaryLauncher.id)!;
-        const target = equipmentPanelRuntimeTarget(panel.targets[0]!, panel.ruleset);
+        const target = projectTargetingTarget(panel.targets[0]!, panel.ruleset);
         expect(projectWeaponTargetPresentation(
             row, target, panel.crew.gunnery, null, panel.ruleset,
         ).weaponToHitModifier).toBe(0);
@@ -1643,7 +1643,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.query(), registry,
         );
         const row = panel.components.find(component => component.componentId === launcher.id)!;
-        const target = equipmentPanelRuntimeTarget(panel.targets[0], panel.ruleset);
+        const target = projectTargetingTarget(panel.targets[0], panel.ruleset);
         expect(target.tnModifier).toBe(3);
         expect(projectWeaponTargetPresentation(
             row, target, panel.crew.gunnery, null, panel.ruleset,

@@ -9,9 +9,6 @@ import {
   isPhysicalWeaponFlags,
   isBackhoeFlags,
   isClubOrHandWeaponFlags,
-  isFlailFlags,
-  isHandClawFlags,
-  isImprovisedClawFlags,
   isPhysicalEngineeringToolFlags,
   isPhysicalSawFlags,
   isProtoMekMeleeFlags,
@@ -21,15 +18,12 @@ import {
   isTalonFlags,
   physicalEquipmentBattleValueFromFlags,
   physicalEquipmentCriticalSlotsFromFlags,
-  physicalEquipmentKindFromFlags,
-  physicalEquipmentOperatingHeatFromFlags,
   physicalEquipmentVariableCostFromFlags,
   physicalEquipmentVariableTonnageFromFlags,
   resolvePhysicalWeaponDamageFromFlags,
   resolveShieldProfileFromFlags,
   resolveShieldSizeFromFlags,
   type ShieldProfile,
-  type PhysicalEquipmentKind,
 } from './physical-weapon-kernel';
 
 export type { ShieldProfile } from './physical-weapon-kernel';
@@ -44,22 +38,12 @@ export function isPhysicalWeaponEquipment(equipment?: Equipment): boolean {
   return !!equipment && isPhysicalWeaponFlags(equipment.flags);
 }
 
-export function isEntityMountedPhysicalWeapon(
-  mount: EntityMountedEquipment,
-): mount is EntityMountedPhysicalWeapon {
-  return isPhysicalWeaponEquipment(mount.equipment);
-}
-
 /** Static record-sheet damage, excluding combat state, modes, myomer, and target effects. */
 export function resolvePhysicalWeaponDamage(
   equipment: Equipment,
   entityTonnage: number,
 ): FixedPhysicalDamage {
   return { kind: 'fixed', value: resolvePhysicalWeaponDamageFromFlags(equipment.flags, entityTonnage) };
-}
-
-export function physicalEquipmentKind(equipment?: Equipment): PhysicalEquipmentKind | null {
-  return equipment ? physicalEquipmentKindFromFlags(equipment.flags) : null;
 }
 
 export function isClubOrHandWeaponEquipment(equipment?: Equipment): boolean {
@@ -103,10 +87,6 @@ export function physicalEquipmentBattleValue(
     : null;
 }
 
-export function physicalEquipmentOperatingHeat(equipment?: Equipment): number {
-  return equipment ? physicalEquipmentOperatingHeatFromFlags(equipment.flags) : 0;
-}
-
 export function isPhysicalSawEquipment(equipment?: Equipment): boolean {
   return equipment !== undefined && isPhysicalSawFlags(equipment.flags);
 }
@@ -119,20 +99,8 @@ export function isBackhoeEquipment(equipment?: Equipment): boolean {
   return equipment !== undefined && isBackhoeFlags(equipment.flags);
 }
 
-export function isHandClawEquipment(equipment?: Equipment): boolean {
-  return equipment !== undefined && isHandClawFlags(equipment.flags);
-}
-
-export function isImprovisedClawEquipment(equipment?: Equipment): boolean {
-  return equipment !== undefined && isImprovisedClawFlags(equipment.flags);
-}
-
 export function isTalonEquipment(equipment?: Equipment): boolean {
   return equipment !== undefined && isTalonFlags(equipment.flags);
-}
-
-export function isFlailEquipment(equipment?: Equipment): boolean {
-  return equipment !== undefined && isFlailFlags(equipment.flags);
 }
 
 export function isSpotWelderEquipment(equipment?: Equipment): boolean {

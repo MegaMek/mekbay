@@ -513,7 +513,6 @@ describe('Entity equipment panel projection', () => {
             wounds: 0,
             unconscious: true,
             ejected: false,
-            dead: false,
         });
         expect(snapshot().physicalAttacks[0]).toEqual(jasmine.objectContaining({
             label: 'Frenzy',

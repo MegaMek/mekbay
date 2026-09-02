@@ -83,7 +83,6 @@ describe('compact runtime persistence', () => {
             minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
             forceId: asForceId('019f6767-0dcb-7bb8-992f-999999999999'),
             forceRevision: 0,
-            scenarioRules: { schemaVersion: 1, values: { id: 'megamek', ruleset: 'core-2026' } },
             history,
             units,
             roster: {

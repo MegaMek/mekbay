@@ -24,19 +24,25 @@ export interface CrewMemberRuntimeState {
     readonly wounds: number;
     readonly unconscious: boolean;
     readonly ejected: boolean;
-    /** Committed death; fatal Mek wounds remain pending until phase end. */
+    /** One stored fact, presented as Dead for wound tracks or Killed for manual switches. */
     readonly dead?: true;
     /** Earliest turn for an automated recovery roll; null means no queued recovery. */
     readonly recoveryReadyTurn?: number | null;
 }
 
-export interface CrewMemberStateUpdate {
-    readonly wounds: number;
+interface CrewMemberStatusUpdate {
     readonly unconscious: boolean;
     readonly ejected: boolean;
-    readonly dead?: boolean;
     /** Omitted preserves a pending schedule; null explicitly means none. */
     readonly recoveryReadyTurn?: number | null;
+}
+
+export interface CrewMemberStateUpdate extends CrewMemberStatusUpdate {
+    readonly wounds: number;
+}
+
+export interface ManualCrewDeathUpdate extends CrewMemberStatusUpdate {
+    readonly dead: boolean;
 }
 
 const HEALTHY_CREW_STATE: CrewMemberRuntimeState = Object.freeze({
@@ -95,7 +101,8 @@ export class CrewMember implements CrewMemberRuntimeState {
     }
 
     isAvailable(derivedDead = false): boolean {
-        return this.effectiveState(derivedDead) === 'healthy';
+        return !this.isFatallyWounded()
+            && this.effectiveState(derivedDead) === 'healthy';
     }
 
     isAboard(derivedDead = false): boolean {
@@ -116,15 +123,27 @@ export class CrewMember implements CrewMemberRuntimeState {
         return this.dead === true;
     }
 
-    withState(update: CrewMemberStateUpdate): CrewMember {
+    /** Updates crew whose death follows the six-wound track. */
+    withWoundTrackedState(update: CrewMemberStateUpdate): CrewMember {
+        const correctingAutomaticDeath = this.isFatallyWounded()
+            && update.wounds < MAX_CREW_WOUNDS;
+        return this.updated(update, this.dead === true && !correctingAutomaticDeath);
+    }
+
+    /** A manual Killed switch uses the same canonical facts as six-wound death. */
+    withManualDeath(update: ManualCrewDeathUpdate): CrewMember {
+        return this.updated({
+            ...update,
+            wounds: update.dead ? MAX_CREW_WOUNDS : 0,
+        }, update.dead);
+    }
+
+    private updated(update: CrewMemberStateUpdate, dead: boolean): CrewMember {
         const recoveryReadyTurn = !update.unconscious
             ? undefined
             : update.recoveryReadyTurn !== undefined
                 ? update.recoveryReadyTurn
                 : this.recoveryReadyTurn;
-        const dead = update.dead !== undefined
-            ? update.dead
-            : this.dead === true && update.wounds >= MAX_CREW_WOUNDS;
         return new CrewMember({
             wounds: update.wounds,
             unconscious: update.unconscious,

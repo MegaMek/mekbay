@@ -480,7 +480,7 @@ describe('compact force storage codec', () => {
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
             kind: 'set-crew-state', positionId: crewPositionId,
-            wounds: 0, unconscious: false, ejected: false, killed: false, stunned: true,
+            wounds: 0, unconscious: true, ejected: false,
         }).accepted).toBeTrue();
         expect(runtime.setEquipmentRowOrder(
             'physical', [1, 0], 2, false,
@@ -502,7 +502,12 @@ describe('compact force storage codec', () => {
                 escalatingFailure: { sequence: 1, active: true },
             }),
         ]));
-        expect(CBTNonMekUnit.restore(entry.unit, entity, identity).serialize()).toEqual(unit);
+        expect(CBTNonMekUnit.restore(
+            entry.unit,
+            entity,
+            identity,
+            { id: 'megamek', ruleset: 'core-2026' },
+        ).serialize()).toEqual(unit);
         expect(entry.unit.pendingCombat?.damageTrackHits?.[0]?.hitTimestamps).toEqual([17]);
 
         const compact = stored['cbt'] as Record<string, unknown>;
@@ -511,7 +516,7 @@ describe('compact force storage codec', () => {
         expect(compactUnit['attackerTargeting']).toBeUndefined();
         expect(compactUnit['q']).toBeUndefined();
         expect(compactUnit['p']).toBeDefined();
-        expect(compactUnit['w']).toEqual([[crewPositionId, 0, 16]]);
+        expect(compactUnit['w']).toEqual([[crewPositionId, 0, 1]]);
         expect(compactUnit['v']).toEqual([0, 0, ['run', 5], 0, 2, 1, 1, undefined, 1]);
         expect(compactUnit['y']).toEqual({ p: [1, 0] });
         expect(compactUnit['c']).toEqual([[boosterId, { e: [1, 1] }]]);
@@ -569,8 +574,6 @@ describe('compact force storage codec', () => {
             wounds: 1,
             unconscious: true,
             ejected: false,
-            killed: false,
-            stunned: false,
             recoveryReadyTurn: 1,
         });
         const unit = ready.serialize();
@@ -592,7 +595,12 @@ describe('compact force storage codec', () => {
         expect(entry.unit.heat).toEqual(unit.heat);
         expect(entry.unit.turn?.controlRecovery).toEqual(unit.turn?.controlRecovery);
         expect(entry.unit.crewState?.[0]?.recoveryReadyTurn).toBe(1);
-        expect(CBTNonMekUnit.restore(entry.unit, entity, identity).serialize()).toEqual(unit);
+        expect(CBTNonMekUnit.restore(
+            entry.unit,
+            entity,
+            identity,
+            { id: 'megamek', ruleset: 'core-2026' },
+        ).serialize()).toEqual(unit);
     });
 
     it('keeps V1 as the sole compatibility load format', () => {
@@ -606,6 +614,15 @@ describe('compact force storage codec', () => {
         };
 
         expect(decodeForceFromStorage(JSON.parse(JSON.stringify(force)))).toEqual(force);
+    });
+
+    it('rejects non-current UUID spellings in V2 storage', () => {
+        const force = damagedForce();
+        const stored = structuredClone(encodeForceForStorage(force));
+        const compactUnit = ((stored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
+        compactUnit['e'] = force.cbt.units[0]!.unit.entity;
+
+        expect(() => decodeForceFromStorage(stored)).toThrowError(/compact UUID/u);
     });
 
     it('keeps pending and committed Mek crew death distinct on the compact wire', () => {
@@ -714,7 +731,6 @@ function forceWithUnit(
         minimumWriterVersion: CBT_FORCE_MINIMUM_WRITER_VERSION,
         forceId,
         forceRevision: unit.stateRevision,
-        scenarioRules: { schemaVersion: 1, values: { id: 'megamek', ruleset: 'core-2026' } },
         history: emptyRuntimeHistory(),
         units: [{ instanceId: unit.instanceId, stateRevision: unit.stateRevision, unit }],
         roster: {

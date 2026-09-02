@@ -11,7 +11,7 @@ import type {
     MekLocationConditionKey,
     PpcCapacitorRuntimeState,
 } from './runtime-state';
-import { isMekLocationConditionKey, MAX_MEK_CREW_WOUNDS, MAX_MEK_LOCATION_CONDITION_VALUE } from './runtime-state';
+import { isMekLocationConditionKey, MAX_MEK_LOCATION_CONDITION_VALUE } from './runtime-state';
 import {
     asComponentId,
     asCriticalSlotId,
@@ -20,14 +20,14 @@ import {
     type ComponentId,
     type CrewPositionId,
 } from '../entity/entity-identifiers';
-import { isCBTRuleset, type CBTRuleset } from '../cbt-ruleset.model';
 import { isC3NetworkRole, isC3NetworkType, type C3NetworkRole, type C3NetworkType } from '../c3-network.model';
 import { isRecord } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import type { JsonValue } from '../persisted-unit-state';
 import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { MAX_CREW_WOUNDS } from '../crew-member.model';
 import { asSourceHashCanary, type SourceHashCanary } from '../source-hash-canary';
-import { type InstanceBaselineRef } from './runtime-state';
+import { type SerializedInstanceBaselineRef } from './runtime-state';
 import { deserializeMekTurnStateV2, type SerializedMekTurnStateV2 } from './mek-turn-state-v2';
 import {
     deserializeMekMovementPsrStateV2,
@@ -236,12 +236,6 @@ export type SavedStateTargetV2 =
         readonly slot: OneBasedCriticalSlotOrdinal;
         readonly expectedSystemId?: string;
         readonly expectedEquipmentName?: string;
-        readonly expectedOriginalName?: string;
-        readonly expectedDisplayName?: string;
-        readonly expectedAmmoRole?: string;
-        readonly legacyId?: string;
-        readonly rawLegacyLocation?: string;
-        readonly rawLegacySlot?: number;
     }
     | {
         readonly kind: 'location-section';
@@ -255,9 +249,6 @@ export type SavedStateTargetV2 =
         readonly locations: readonly string[];
         readonly criticalSlots: readonly SavedSlotCoordinateV2[];
         readonly occurrence?: number;
-        readonly capacity?: number;
-        readonly legacySummaryComponentIndex?: number;
-        readonly legacyBinIndex?: number;
     }
     | {
         readonly kind: 'ammo-source';
@@ -278,15 +269,11 @@ export type SavedStateTargetV2 =
         readonly occurrence?: number;
         readonly capacityAtSave?: number;
         readonly munitionAtSave?: string;
-        readonly legacySummaryComponentIndex?: number;
-        readonly legacyBinIndex?: number;
     }
     | {
         readonly kind: 'intrinsic-system';
         readonly savedComponentId?: string;
-        readonly legacySystemId?: string;
         readonly systemKey: string;
-        readonly aliases?: readonly string[];
         readonly locations: readonly string[];
         readonly criticalSlots: readonly SavedSlotCoordinateV2[];
     }
@@ -294,7 +281,6 @@ export type SavedStateTargetV2 =
         readonly kind: 'crew-position';
         readonly savedCrewPositionId?: string;
         readonly positionKey: string;
-        readonly aliases?: readonly string[];
         readonly occurrence?: number;
     };
 
@@ -536,7 +522,7 @@ export interface SerializedCBTUnitV2 {
     readonly instanceId: string;
     readonly entity: UnitUuid;
     readonly sourceHashCanary?: SourceHashCanary;
-    readonly baselineRefAtSave: InstanceBaselineRef;
+    readonly baselineRefAtSave: SerializedInstanceBaselineRef;
     readonly blueprintReferences: SavedBlueprintReferenceTableV2;
     readonly deployment: SerializedDeploymentConfigurationV2;
     readonly stateRevision: number;
@@ -661,17 +647,11 @@ export interface SerializedForceEncounterEntryV2 {
     readonly state: SerializedCBTEncounterStateV2;
 }
 
-export interface SerializedScenarioRulesV2 {
-    readonly schemaVersion: 1;
-    readonly values: JsonValue;
-}
-
 export interface SerializedCBTForceV2 {
     readonly schemaVersion: typeof CBT_FORCE_PERSISTENCE_SCHEMA_VERSION;
     readonly minimumWriterVersion: typeof CBT_FORCE_MINIMUM_WRITER_VERSION;
     readonly forceId: ForceId;
     readonly forceRevision: number;
-    readonly scenarioRules: SerializedScenarioRulesV2;
     readonly history: SerializedRuntimeHistory;
     readonly units: readonly SerializedForceUnitEntryV2[];
     readonly roster: SerializedCBTForceRosterV1;
@@ -713,12 +693,22 @@ export function emptyRuntimeHistory(): SerializedRuntimeHistory {
 
 /** Validates structure, ownership, and identity; failures never partially load. */
 export async function validateSerializedCBTForceV2(value: unknown): Promise<SerializedCBTForceV2> {
-    let root: Record<string, unknown>;
+    let source: Record<string, unknown>;
     try {
-        root = requireRecord(structuredClone(value), '$');
+        source = requireRecord(structuredClone(value), '$');
     } catch (error) {
         throw validationError('INVALID_SHAPE', error, '$');
     }
+    const root: Record<string, unknown> = {
+        schemaVersion: source['schemaVersion'],
+        minimumWriterVersion: source['minimumWriterVersion'],
+        forceId: source['forceId'],
+        forceRevision: source['forceRevision'],
+        history: source['history'],
+        units: source['units'],
+        roster: source['roster'],
+        encounter: source['encounter'],
+    };
     validateForceEnvelope(root);
     return deepFreeze(root);
 }
@@ -726,18 +716,12 @@ export async function validateSerializedCBTForceV2(value: unknown): Promise<Seri
 function validateForceEnvelope(
     root: Record<string, unknown>,
 ): asserts root is Record<string, unknown> & SerializedCBTForceV2 {
-    exactKeys(root, [
-        'schemaVersion', 'minimumWriterVersion', 'forceId', 'forceRevision', 'scenarioRules',
-        'history', 'units', 'roster', 'encounter',
-    ], '$');
     if (root['schemaVersion'] !== CBT_FORCE_PERSISTENCE_SCHEMA_VERSION
         || root['minimumWriterVersion'] !== CBT_FORCE_MINIMUM_WRITER_VERSION) {
         fail('INVALID_SHAPE', '$', 'unsupported persistence or writer version');
     }
     validateId(root['forceId'], '$.forceId', asForceId);
     validateRevision(root['forceRevision'], '$.forceRevision');
-    validateScenarioRules(root['scenarioRules']);
-
     const units = requireArray(root['units'], '$.units');
     const instanceIds = new Set<string>();
     const unitTargets = new Map<string, ReadonlySet<string>>();
@@ -932,13 +916,6 @@ function validateSparseRosterTrue(
     if (record[key] !== undefined && record[key] !== true) {
         fail('INVALID_SHAPE', `${path}.${key}`, 'sparse organizational flag must be true when present');
     }
-}
-
-function validateScenarioRules(value: unknown): void {
-    const record = requireRecord(value, '$.scenarioRules');
-    exactKeys(record, ['schemaVersion', 'values'], '$.scenarioRules');
-    if (record['schemaVersion'] !== 1) fail('INVALID_SHAPE', '$.scenarioRules.schemaVersion', 'must be 1');
-    assertJson(record['values'], '$.scenarioRules.values');
 }
 
 interface ValidatedUnitEntry {
@@ -1227,16 +1204,12 @@ function collectSavedComponentIds(
 interface ValidatedBaseline {
     readonly uuid: string;
     readonly entity: UnitUuid;
-    readonly ruleset: CBTRuleset;
 }
 
 function validateBaseline(value: unknown, path: string): ValidatedBaseline {
     const record = requireRecord(value, path);
-    exactKeys(record, ['entity', 'ruleset', 'initialStateProfile'], path);
+    exactKeys(record, ['entity', 'initialStateProfile'], path);
     const entity = validateSavedIdentity(record['entity'], `${path}.entity`);
-    if (!isCBTRuleset(record['ruleset'])) {
-        fail('INVALID_SHAPE', `${path}.ruleset`, 'must be a supported CBT ruleset');
-    }
     const profile = requireRecord(record['initialStateProfile'], `${path}.initialStateProfile`);
     exactKeys(profile, ['schemaVersion', 'initializerRevision', 'profileId'], `${path}.initialStateProfile`);
     if (profile['schemaVersion'] !== 1) fail('INVALID_SHAPE', `${path}.initialStateProfile.schemaVersion`, 'must be 1');
@@ -1245,7 +1218,6 @@ function validateBaseline(value: unknown, path: string): ValidatedBaseline {
     return {
         uuid: entity,
         entity,
-        ruleset: record['ruleset'],
     };
 }
 
@@ -1277,11 +1249,10 @@ function validateSavedTarget(value: unknown, path: string, table: Record<string,
     const target = requireRecord(value, path);
     switch (target['kind']) {
         case 'critical-slot':
-            exactKeys(target, ['kind', 'savedSlotId', 'location', 'slot', 'expectedSystemId', 'expectedEquipmentName', 'expectedOriginalName', 'expectedDisplayName', 'expectedAmmoRole', 'legacyId', 'rawLegacyLocation', 'rawLegacySlot'], path);
+            exactKeys(target, ['kind', 'savedSlotId', 'location', 'slot', 'expectedSystemId', 'expectedEquipmentName'], path);
             validateId(target['location'], `${path}.location`);
             validateOrdinal(target['slot'], `${path}.slot`);
-            validateOptionalStringFields(target, path, ['savedSlotId', 'expectedSystemId', 'expectedEquipmentName', 'expectedOriginalName', 'expectedDisplayName', 'expectedAmmoRole', 'legacyId', 'rawLegacyLocation']);
-            if (target['rawLegacySlot'] !== undefined) requireSafeNonnegative(target['rawLegacySlot'], `${path}.rawLegacySlot`);
+            validateOptionalStringFields(target, path, ['savedSlotId', 'expectedSystemId', 'expectedEquipmentName']);
             return;
         case 'location-section':
             exactKeys(target, ['kind', 'location', 'section'], path);
@@ -1289,15 +1260,15 @@ function validateSavedTarget(value: unknown, path: string, table: Record<string,
             if (!['internal', 'front-armor', 'rear-armor'].includes(String(target['section']))) fail('INVALID_SHAPE', `${path}.section`, 'invalid section');
             return;
         case 'component':
-            exactKeys(target, ['kind', 'savedComponentId', 'equipmentName', 'locations', 'criticalSlots', 'occurrence', 'capacity', 'legacySummaryComponentIndex', 'legacyBinIndex'], path);
+            exactKeys(target, ['kind', 'savedComponentId', 'equipmentName', 'locations', 'criticalSlots', 'occurrence'], path);
             validateId(target['equipmentName'], `${path}.equipmentName`);
             validateOptionalStringFields(target, path, ['savedComponentId']);
             validateStringArray(target['locations'], `${path}.locations`);
             validateSlotCoordinates(target['criticalSlots'], `${path}.criticalSlots`);
-            validateOptionalNonnegative(target, path, ['occurrence', 'capacity', 'legacySummaryComponentIndex', 'legacyBinIndex']);
+            validateOptionalNonnegative(target, path, ['occurrence']);
             return;
         case 'ammo-source': {
-            exactKeys(target, ['kind', 'savedAmmoSourceId', 'source', 'location', 'criticalSlots', 'occurrence', 'capacityAtSave', 'munitionAtSave', 'legacySummaryComponentIndex', 'legacyBinIndex'], path);
+            exactKeys(target, ['kind', 'savedAmmoSourceId', 'source', 'location', 'criticalSlots', 'occurrence', 'capacityAtSave', 'munitionAtSave'], path);
             const source = requireRecord(target['source'], `${path}.source`);
             if (source['kind'] === 'installed-bin') {
                 exactKeys(source, ['kind', 'savedComponentId', 'equipmentName'], `${path}.source`);
@@ -1314,21 +1285,19 @@ function validateSavedTarget(value: unknown, path: string, table: Record<string,
             if (target['location'] !== undefined) validateId(target['location'], `${path}.location`);
             validateSlotCoordinates(target['criticalSlots'], `${path}.criticalSlots`);
             validateOptionalStringFields(target, path, ['savedAmmoSourceId', 'location', 'munitionAtSave']);
-            validateOptionalNonnegative(target, path, ['occurrence', 'capacityAtSave', 'legacySummaryComponentIndex', 'legacyBinIndex']);
+            validateOptionalNonnegative(target, path, ['occurrence', 'capacityAtSave']);
             return;
         }
         case 'intrinsic-system':
-            exactKeys(target, ['kind', 'savedComponentId', 'legacySystemId', 'systemKey', 'aliases', 'locations', 'criticalSlots'], path);
+            exactKeys(target, ['kind', 'savedComponentId', 'systemKey', 'locations', 'criticalSlots'], path);
             validateId(target['systemKey'], `${path}.systemKey`);
-            if (target['aliases'] !== undefined) validateStringArray(target['aliases'], `${path}.aliases`);
             validateStringArray(target['locations'], `${path}.locations`);
             validateSlotCoordinates(target['criticalSlots'], `${path}.criticalSlots`);
-            validateOptionalStringFields(target, path, ['savedComponentId', 'legacySystemId']);
+            validateOptionalStringFields(target, path, ['savedComponentId']);
             return;
         case 'crew-position':
-            exactKeys(target, ['kind', 'savedCrewPositionId', 'positionKey', 'aliases', 'occurrence'], path);
+            exactKeys(target, ['kind', 'savedCrewPositionId', 'positionKey', 'occurrence'], path);
             validateId(target['positionKey'], `${path}.positionKey`);
-            if (target['aliases'] !== undefined) validateStringArray(target['aliases'], `${path}.aliases`);
             validateOptionalStringFields(target, path, ['savedCrewPositionId']);
             validateOptionalNonnegative(target, path, ['occurrence']);
             return;
@@ -1737,7 +1706,7 @@ function validateCrew(value: unknown, path: string, targets: Record<string, Save
         if (entry['ejected'] !== undefined && entry['ejected'] !== true) {
             fail('INVALID_SHAPE', `${entryPath}.ejected`, 'sparse ejected state must be true');
         }
-        if (entry['dead'] === true && wounds < MAX_MEK_CREW_WOUNDS) {
+        if (entry['dead'] === true && wounds < MAX_CREW_WOUNDS) {
             fail('INVALID_SHAPE', entryPath, 'committed crew death requires fatal wounds');
         }
         if (entry['recoveryReadyTurn'] !== undefined

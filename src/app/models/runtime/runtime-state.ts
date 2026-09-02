@@ -41,13 +41,10 @@ import {
     freezeEquipmentRowOrder,
 } from './equipment-row-order';
 import type {
-    CBTCrewRuntimeState,
     CBTLocationRuntimeState,
     CBTUnitRuntimeState,
 } from './cbt-unit-runtime';
-
-/** A sixth wound is fatal under the supported Mek rules profile. */
-export const MAX_MEK_CREW_WOUNDS = 6;
+import type { CrewMemberRuntimeState } from '../crew-member.model';
 
 /** Closed Mek location state vocabulary owned by the runtime contract. */
 export const MEK_LOCATION_CONDITION_KEYS = Object.freeze([
@@ -74,6 +71,21 @@ export interface InstanceBaselineRef {
     readonly entity: UnitUuid;
     readonly ruleset: CBTRuleset;
     readonly initialStateProfile: InitialStateProfileRef;
+}
+
+/** Persisted baseline identity; application rule settings are deliberately runtime-only. */
+export interface SerializedInstanceBaselineRef {
+    readonly entity: UnitUuid;
+    readonly initialStateProfile: InitialStateProfileRef;
+}
+
+export function serializeInstanceBaselineRef(
+    baseline: InstanceBaselineRef,
+): SerializedInstanceBaselineRef {
+    return Object.freeze({
+        entity: baseline.entity,
+        initialStateProfile: Object.freeze({ ...baseline.initialStateProfile }),
+    });
 }
 
 export interface LocationRuntimeState extends CBTLocationRuntimeState {
@@ -226,7 +238,7 @@ export function createPristineMekState(): MekUnitRuntimeState {
         slots: new ImmutableIndex<CriticalSlotId, CriticalSlotRuntimeState>([]),
         components: new ImmutableIndex<ComponentId, ComponentRuntimeState>([]),
         ammo: new ImmutableIndex<ComponentId, AmmoRuntimeState>([]),
-        crew: new ImmutableIndex<CrewPositionId, CBTCrewRuntimeState>([]),
+        crew: new ImmutableIndex<CrewPositionId, CrewMemberRuntimeState>([]),
         heat: createPristineMekHeatStateV2(),
         conditions: new ImmutableSet([]),
         ruleChecks: new ImmutableIndex([]),

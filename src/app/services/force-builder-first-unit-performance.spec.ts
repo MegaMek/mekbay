@@ -89,6 +89,7 @@ describe('ForceWorkspaceCommandsService first-unit work bounds', () => {
                 return forceUnit;
             },
             setName: jasmine.createSpy('setName'),
+            getUnitUuid: () => unit.uuid,
             getRosterGroupId: () => 'group-1',
             queryCanonicalRoster: () => ({
                 kind: 'available',
@@ -121,6 +122,7 @@ describe('ForceWorkspaceCommandsService first-unit work bounds', () => {
             getEras: () => [era],
             getFactions: () => [faction],
             getForceNameWords: () => createEmptyForceNameWords(),
+            getUnitByUuid: () => unit,
             getUnitByIdentity: () => unit,
         };
         service.unitAvailabilitySource = TestBed.inject(UnitAvailabilitySourceService);

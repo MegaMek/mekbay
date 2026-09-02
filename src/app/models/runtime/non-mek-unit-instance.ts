@@ -19,7 +19,7 @@ import { AmmoEquipment, WeaponEquipment, type Equipment } from '../equipment.mod
 import { MML_INVENTORY_MODES } from '../ammo-weapon-profile.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { UnitModifierBreakdownEntry } from '../combat-modifier';
-import type { CrewMemberState } from '../crew.model';
+import { CrewMember, MAX_CREW_WOUNDS, type CrewMemberRuntimeState } from '../crew-member.model';
 import type { MotiveModes } from '../motiveModes.model';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import { isUnitCover, type UnitCover } from '../unit-cover.model';
@@ -128,8 +128,6 @@ import {
     type PrototypeLaserHeatResult,
 } from '../prototype-laser-heat.model';
 import {
-    isCrewDeathCommitted,
-    type CBTCrewRuntimeState,
     type CBTUnitCommandResult,
     type CBTUnitQueryPort,
     type CBTUnitRuntimeState,
@@ -211,44 +209,6 @@ export function effectiveNonMekComponentMode(
     return nonMekComponentModes(entity, equipment, ruleset).defaultMode;
 }
 
-/** Non-Mek-only conditions remain independent so terminal states only hide, never erase, others. */
-export interface NonMekCrewRuntimeState extends CBTCrewRuntimeState {
-    readonly killed?: true;
-    readonly stunned?: true;
-}
-
-const PRISTINE_NON_MEK_CREW_STATE: NonMekCrewRuntimeState = Object.freeze({
-    wounds: 0,
-    unconscious: false,
-    ejected: false,
-});
-
-export function effectiveNonMekCrewState(
-    state: NonMekCrewRuntimeState | undefined,
-): CrewMemberState {
-    const current = state ?? PRISTINE_NON_MEK_CREW_STATE;
-    if (isCrewDeathCommitted(current)) return 'dead';
-    if (current.killed) return 'killed';
-    if (current.ejected) return 'ejected';
-    if (current.unconscious) return 'unconscious';
-    return current.stunned ? 'stunned' : 'healthy';
-}
-
-export function hasNonMekCrewState(
-    state: NonMekCrewRuntimeState,
-    key: CrewMemberState,
-): boolean {
-    switch (key) {
-        case 'dead': return state.dead === true;
-        case 'killed': return state.killed === true;
-        case 'ejected': return state.ejected;
-        case 'unconscious': return state.unconscious;
-        case 'stunned': return state.stunned === true;
-        case 'healthy': return effectiveNonMekCrewState(state) === 'healthy';
-    }
-}
-
-
 export interface NonMekDamageTrackRuntimeState {
     readonly hits: number;
     readonly hitTimestamps: readonly number[];
@@ -315,7 +275,7 @@ export interface NonMekUnitRuntimeState extends CBTUnitRuntimeState {
     /** Explicit user/import override; use query.destroyed() for effective destruction. */
     readonly explicitlyDestroyed: boolean;
     readonly damageTracks: ReadonlyMap<SystemDamageTrackId, NonMekDamageTrackRuntimeState>;
-    readonly crew: ReadonlyMap<CrewPositionId, NonMekCrewRuntimeState>;
+    readonly crew: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>;
     readonly heat: NonMekHeatRuntimeState;
     readonly turn: NonMekTurnRuntimeState;
     readonly pendingCombat: NonMekPendingCombatState;
@@ -457,7 +417,7 @@ export function canNonMekTakeActiveActions(
     if ([...index.components.values()].some(component =>
         isDroneOperatingSystemEquipment(component.mount.equipment))) return true;
     return [...index.crewPositions.keys()].some(positionId =>
-        effectiveNonMekCrewState(state.crew.get(positionId)) === 'healthy');
+        CrewMember.from(state.crew.get(positionId)).isAvailable());
 }
 
 /** Origin/next attacker badges, derived from the loaded Entity family. */
@@ -631,8 +591,8 @@ export type NonMekUnitCommand =
         readonly wounds: number;
         readonly unconscious: boolean;
         readonly ejected: boolean;
-        readonly killed: boolean;
-        readonly stunned: boolean;
+        /** Used only by families with a manual Killed switch. */
+        readonly dead?: boolean;
         readonly recoveryReadyTurn?: number | null;
     }>
     | Readonly<{ readonly kind: 'set-condition'; readonly condition: UnitConditionKey; readonly active: boolean }>
@@ -773,12 +733,14 @@ export class NonMekUnitInstance {
         private readonly entity: BaseEntity,
         public readonly ruleset: CBTRuleset,
         initialState: NonMekUnitRuntimeState = createPristineNonMekUnitState(entity),
+        public readonly forcedWithdrawal = true,
     ) {
         if (entity.entityType === 'Mek') throw new Error('Meks require CBTUnitInstance');
         if (baselineRef.entity !== entity.uuid()) {
             throw new Error('Runtime baseline does not match the entity UUID');
         }
         if (baselineRef.ruleset !== ruleset) throw new Error('Runtime ruleset does not match its baseline');
+        if (typeof forcedWithdrawal !== 'boolean') throw new Error('Forced withdrawal gate must be boolean');
         this.index = buildNonMekRuntimeIndex(entity);
         this.state = validateState(initialState, this.index, entity, ruleset);
     }
@@ -805,7 +767,13 @@ export class NonMekUnitInstance {
 
     /** Immutable, state-captured reads shared with the force-level snapshot. */
     public query(): CBTUnitQueryPort {
-        return createNonMekUnitQuery(this.entity, this.index, this.state, this.ruleset);
+        return createNonMekUnitQuery(
+            this.entity,
+            this.index,
+            this.state,
+            this.ruleset,
+            this.forcedWithdrawal,
+        );
     }
 
     public turnState(): NonMekTurnRuntimeState {
@@ -831,7 +799,13 @@ export class NonMekUnitInstance {
 
     public protoMekRules(): ProtoMekRuntimeRulesProjection | null {
         if (!isProtoMekEntity(this.entity)) return null;
-        return projectProtoMekRuntimeRules(this.entity, this.index, this.state, this.ruleset);
+        return projectProtoMekRuntimeRules(
+            this.entity,
+            this.index,
+            this.state,
+            this.ruleset,
+            this.forcedWithdrawal,
+        );
     }
 
     public infantryRules(): InfantryRuntimeRulesProjection | null {
@@ -1198,12 +1172,13 @@ function projectNonMekRuntime(
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
+    forcedWithdrawal = true,
 ): ProjectedNonMekRuntime {
     const vehicle = isVehicleEntity(entity)
         ? projectVehicleRuntimeRules(entity, index, state, ruleset)
         : null;
     const protoMek = isProtoMekEntity(entity)
-        ? projectProtoMekRuntimeRules(entity, index, state, ruleset)
+        ? projectProtoMekRuntimeRules(entity, index, state, ruleset, forcedWithdrawal)
         : null;
     const infantry = isInfantryFamilyEntity(entity)
         ? projectInfantryRuntimeRules(entity, index, state)
@@ -1235,10 +1210,17 @@ function createNonMekUnitQuery(
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
+    forcedWithdrawal: boolean,
 ): CBTUnitQueryPort {
     let runtimeProjection: ProjectedNonMekRuntime | undefined;
     const projection = (): ProjectedNonMekRuntime =>
-        runtimeProjection ??= projectNonMekRuntime(entity, index, state, ruleset);
+        runtimeProjection ??= projectNonMekRuntime(
+            entity,
+            index,
+            state,
+            ruleset,
+            forcedWithdrawal,
+        );
     let projectedStateView: EntityStateView | undefined;
     const stateView = (): EntityStateView =>
         projectedStateView ??= projectNonMekStateViewFromProjection(
@@ -1302,7 +1284,7 @@ function createNonMekUnitQuery(
             if (!index.crewPositions.has(positionId)) {
                 throw new Error(`Unknown entity crew position ${positionId}`);
             }
-            return state.crew.get(positionId) ?? PRISTINE_NON_MEK_CREW_STATE;
+            return CrewMember.from(state.crew.get(positionId));
         },
     });
 }
@@ -1353,6 +1335,7 @@ function projectedConditions(
     projection: ProjectedNonMekRuntime,
 ): readonly UnitConditionKey[] {
     const conditions = new Set(state.conditions);
+    conditions.delete('crippled');
     projectedComputedConditions(projection).forEach(condition => conditions.add(condition));
     conditions.delete('airborne');
     conditions.delete('grounded');
@@ -1892,9 +1875,8 @@ function reduceNonMekUnitState(
         }
         case 'set-crew-state': {
             if (!index.crewPositions.has(command.positionId)
-                || !Number.isSafeInteger(command.wounds) || command.wounds < 0 || command.wounds > 6
-                || typeof command.killed !== 'boolean'
-                || typeof command.stunned !== 'boolean'
+                || !Number.isSafeInteger(command.wounds) || command.wounds < 0 || command.wounds > MAX_CREW_WOUNDS
+                || (command.dead !== undefined && typeof command.dead !== 'boolean')
                 || (command.recoveryReadyTurn !== undefined
                     && command.recoveryReadyTurn !== null
                     && (!Number.isSafeInteger(command.recoveryReadyTurn)
@@ -1902,33 +1884,26 @@ function reduceNonMekUnitState(
                 || (command.recoveryReadyTurn !== undefined && !command.unconscious)) {
                 throw new Error('Invalid crew state');
             }
-            const current = state.crew.get(command.positionId) ?? PRISTINE_NON_MEK_CREW_STATE;
-            const dead = command.wounds >= 6 ? current.dead : undefined;
-            const recoveryReadyTurn = !command.unconscious
-                ? undefined
-                : command.recoveryReadyTurn !== undefined
-                    ? command.recoveryReadyTurn
-                    : current.recoveryReadyTurn;
-            const nextCrew = Object.freeze({
+            const current = CrewMember.from(state.crew.get(command.positionId));
+            const shared = {
                 wounds: command.wounds,
                 unconscious: command.unconscious,
                 ejected: command.ejected,
-                ...(dead ? { dead: true as const } : {}),
-                ...(command.killed ? { killed: true as const } : {}),
-                ...(command.stunned ? { stunned: true as const } : {}),
-                ...(recoveryReadyTurn === undefined ? {} : { recoveryReadyTurn }),
-            });
-            if (current.wounds === nextCrew.wounds
-                && current.unconscious === nextCrew.unconscious
-                && current.ejected === nextCrew.ejected
-                && current.dead === nextCrew.dead
-                && current.killed === nextCrew.killed
-                && current.stunned === nextCrew.stunned
-                && current.recoveryReadyTurn === nextCrew.recoveryReadyTurn) return null;
+                recoveryReadyTurn: command.recoveryReadyTurn,
+            };
+            // `dead` is present only for an explicit Killed toggle.
+            const nextCrew = command.dead !== undefined
+                ? current.withManualDeath({
+                    unconscious: command.unconscious,
+                    ejected: command.ejected,
+                    recoveryReadyTurn: command.recoveryReadyTurn,
+                    dead: command.dead,
+                })
+                : current.withWoundTrackedState(shared);
+            if (current.equals(nextCrew)) return null;
             const crew = new Map(state.crew);
-            if (nextCrew.wounds === 0 && !nextCrew.unconscious && !nextCrew.ejected
-                && !nextCrew.killed && !nextCrew.stunned) crew.delete(command.positionId);
-            else crew.set(command.positionId, nextCrew);
+            if (nextCrew.isPristine()) crew.delete(command.positionId);
+            else crew.set(command.positionId, nextCrew.toRuntimeState());
             candidate = {
                 ...state,
                 crew,
@@ -1938,6 +1913,7 @@ function reduceNonMekUnitState(
         }
         case 'set-condition': {
             const condition = command.condition;
+            if (condition === 'crippled') return null;
             if (condition === 'airborne' || condition === 'grounded') {
                 throw new Error('Airborne state requires the typed airborne command');
             }
@@ -2280,11 +2256,13 @@ function commitPendingNonMekChanges(
 }
 
 function commitCrewDeaths(state: NonMekUnitRuntimeState): NonMekUnitRuntimeState {
-    let crew: Map<CrewPositionId, NonMekCrewRuntimeState> | undefined;
+    let crew: Map<CrewPositionId, CrewMemberRuntimeState> | undefined;
     for (const [positionId, current] of state.crew) {
-        if (current.wounds < 6 || current.dead === true) continue;
+        const member = CrewMember.from(current);
+        const committed = member.commitDeath();
+        if (committed === member) continue;
         crew ??= new Map(state.crew);
-        crew.set(positionId, Object.freeze({ ...current, dead: true }));
+        crew.set(positionId, committed.toRuntimeState());
     }
     return crew === undefined ? state : { ...state, crew: new ImmutableIndex(crew) };
 }
@@ -2915,12 +2893,10 @@ function validateState(
     }
     for (const [positionId, crew] of state.crew) {
         if (!index.crewPositions.has(positionId)) throw new Error(`Runtime references unknown crew position ${positionId}`);
-        if (!Number.isSafeInteger(crew.wounds) || crew.wounds < 0 || crew.wounds > 6
+        if (!Number.isSafeInteger(crew.wounds) || crew.wounds < 0 || crew.wounds > MAX_CREW_WOUNDS
             || typeof crew.unconscious !== 'boolean' || typeof crew.ejected !== 'boolean'
             || (crew.dead !== undefined && crew.dead !== true)
-            || (crew.dead === true && crew.wounds < 6)
-            || (crew.killed !== undefined && crew.killed !== true)
-            || (crew.stunned !== undefined && crew.stunned !== true)
+            || (crew.dead === true && crew.wounds < MAX_CREW_WOUNDS)
             || (crew.recoveryReadyTurn !== undefined
                 && crew.recoveryReadyTurn !== null
                 && (!Number.isSafeInteger(crew.recoveryReadyTurn)

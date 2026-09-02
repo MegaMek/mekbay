@@ -59,4 +59,48 @@ describe('ASForce source hash canary', () => {
             'Save Loaded with Warnings',
         );
     });
+
+    it('skips unavailable catalog units and reports the count after loading', () => {
+        const dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['showNotice']);
+        dialogs.showNotice.and.resolveTo();
+        TestBed.configureTestingModule({
+            providers: [
+                provideZonelessChangeDetection(),
+                { provide: DialogsService, useValue: dialogs },
+            ],
+        });
+        const saved: ASSerializedForce = {
+            version: 2,
+            timestamp: '2026-09-01T00:00:00.000Z',
+            instanceId: 'force:missing-as-units',
+            type: GameSystem.AS,
+            name: 'Missing AS units',
+            groups: [{
+                id: 'group:missing-as-units',
+                units: [
+                    {
+                        id: 'unit:missing-as-one',
+                        uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'),
+                    },
+                    {
+                        id: 'unit:missing-as-two',
+                        uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2'),
+                    },
+                ],
+            }],
+        };
+        const data = {
+            getUnitByUuid: () => undefined,
+            getFactionById: () => undefined,
+            getEraById: () => undefined,
+        } as unknown as DataService;
+
+        const force = ASForce.deserialize(saved, data, TestBed.inject(Injector));
+
+        expect(force.units()).toEqual([]);
+        expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
+            '• 2 units were not found in the catalog and were skipped.',
+            'Save Loaded with Warnings',
+        );
+    });
 });

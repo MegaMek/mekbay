@@ -108,7 +108,7 @@ export class CBTUnitService {
             if (loaded.entity instanceof MekEntity) {
                 throw new Error('A persisted non-Mek runtime resolved to a Mek entity');
             }
-            unit = CBTNonMekUnit.restore(saved, loaded.entity, uuid, nativeSource);
+            unit = CBTNonMekUnit.restore(saved, loaded.entity, uuid, scenario, nativeSource);
         } else {
             if (!(loaded.entity instanceof MekEntity)) {
                 throw new Error('A persisted Mek runtime resolved to a non-Mek entity');

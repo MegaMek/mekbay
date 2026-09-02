@@ -44,7 +44,7 @@ import {
     type PreparedCBTForcePersistenceV2,
 } from './runtime/force-persistence-boundary';
 import {
-    applicationScenarioRules,
+    scenarioRulesFromOptions,
     scenarioRuleset,
     type DeploymentConfiguration,
     type ScenarioRules,
@@ -860,7 +860,6 @@ export class CBTForce extends Force<never> {
         }
         let uuid: CBTDirectUnitAdmissionRequest['uuid'];
         let deployment: DeploymentConfiguration;
-        let requestedScenario: ScenarioRules | undefined;
         let crewSkills: CBTDirectUnitAdmissionRequest['crewSkills'];
         let initialStateProfileId: string | undefined;
         let instanceId: string;
@@ -870,9 +869,6 @@ export class CBTForce extends Force<never> {
         try {
             uuid = request.uuid;
             deployment = structuredClone(request.deployment);
-            requestedScenario = request.scenario === undefined
-                ? undefined
-                : structuredClone(request.scenario);
             crewSkills = request.crewSkills === undefined
                 ? undefined
                 : Object.freeze({
@@ -920,9 +916,7 @@ export class CBTForce extends Force<never> {
             }
             let scenario: ScenarioRules;
             try {
-                scenario = this.unitStore.scenarioRules()
-                    ?? requestedScenario
-                    ?? (() => { throw new Error('Application rules are required for the first V2 force member'); })();
+                scenario = this.currentScenarioRules();
             } catch (error) {
                 return directAdmissionFailure('CANDIDATE_PREPARATION_FAILED', errorMessage(error));
             }
@@ -1798,7 +1792,7 @@ export class CBTForce extends Force<never> {
         const restored = await this.unitStore.restore(
             envelope,
             this.injector.get(CBTUnitService),
-            this.currentApplicationScenario(),
+            this.currentScenarioRules(),
         );
         return Object.freeze({
             ...(restored.envelope === envelope
@@ -1893,11 +1887,12 @@ export class CBTForce extends Force<never> {
     protected override commitPreparedCBTForcePersistenceV2(
         prepared: PreparedCBTForcePersistenceV2,
     ): void {
-        this.unitStore.commit(prepared.envelope, this.currentApplicationScenario());
+        this.unitStore.commit(prepared.envelope, this.currentScenarioRules());
     }
 
-    private currentApplicationScenario(): ScenarioRules {
-        return applicationScenarioRules(this.injector.get(OptionsService).options());
+    private currentScenarioRules(): ScenarioRules {
+        return this.unitStore.scenarioRules()
+            ?? scenarioRulesFromOptions(this.injector.get(OptionsService).options());
     }
 
     protected override restoreCBTEncounterPersistence(entry: SerializedForceEncounterEntryV2): void {

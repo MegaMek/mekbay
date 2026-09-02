@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { EquipmentStatus } from '../equipment-status.model';
+import { MAX_CREW_WOUNDS } from '../crew-member.model';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import { isObjectLiteralRecord } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
@@ -41,6 +42,7 @@ import {
 } from './persistence-v2';
 import {
     freezeRuntimeState,
+    serializeInstanceBaselineRef,
     type AmmoRuntimeState,
     type BombastLaserRuntimeState,
     type C3EmergencyMasterRuntimeState,
@@ -54,7 +56,6 @@ import {
     type PendingCombatOverlay,
     type PpcCapacitorRuntimeState,
     isMekLocationConditionKey,
-    MAX_MEK_CREW_WOUNDS,
     MAX_MEK_LOCATION_CONDITION_VALUE,
 } from './runtime-state';
 import { ppcCapacitorWeaponId } from './component-ppc-capacitor';
@@ -136,7 +137,6 @@ export class V2StateCodecError extends Error {
 }
 
 export type V2StateRestoreWarningCode =
-    | 'RULESET_CHANGED'
     | 'SLOT_OCCUPANT_MISMATCH'
     | 'TARGET_REKEYED'
     | 'DAMAGE_CLAMPED'
@@ -716,7 +716,7 @@ export function serializeCBTUnitStateV2(
         const target = current.crewById.get(positionId);
         if (!target) codecFail('INVALID_RUNTIME_STATE', '$.state.crew', `unknown crew position ${positionId}`);
         const wounds = requireNonnegativeInteger(value.wounds, `$.state.crew.${positionId}.wounds`);
-        if (wounds > MAX_MEK_CREW_WOUNDS) {
+        if (wounds > MAX_CREW_WOUNDS) {
             codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}.wounds`, 'exceeds the Mek crew wound limit');
         }
         if (typeof value.unconscious !== 'boolean') {
@@ -728,7 +728,7 @@ export function serializeCBTUnitStateV2(
         if (typeof value.ejected !== 'boolean') {
             codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}.ejected`, 'must be boolean');
         }
-        if (value.dead === true && wounds < MAX_MEK_CREW_WOUNDS) {
+        if (value.dead === true && wounds < MAX_CREW_WOUNDS) {
             codecFail(
                 'INVALID_RUNTIME_STATE',
                 `$.state.crew.${positionId}.dead`,
@@ -767,12 +767,14 @@ export function serializeCBTUnitStateV2(
         });
     }
 
-    const conditions = [...input.state.conditions].map((condition, index): UnitConditionKey => {
-        if (!isUnitConditionKey(condition)) {
-            codecFail('INVALID_RUNTIME_STATE', `$.state.conditions[${index}]`, 'unknown unit condition');
-        }
-        return condition;
-    }).sort(compareText);
+    const conditions = [...input.state.conditions]
+        .filter(condition => condition !== 'crippled')
+        .map((condition, index): UnitConditionKey => {
+            if (!isUnitConditionKey(condition)) {
+                codecFail('INVALID_RUNTIME_STATE', `$.state.conditions[${index}]`, 'unknown unit condition');
+            }
+            return condition;
+        }).sort(compareText);
     if (new Set(conditions).size !== conditions.length) {
         codecFail('INVALID_RUNTIME_STATE', '$.state.conditions', 'conditions must be unique');
     }
@@ -814,7 +816,7 @@ export function serializeCBTUnitStateV2(
         instanceId: input.instanceId,
         entity: input.baselineRef.entity,
         ...(input.sourceHashCanary === undefined ? {} : { sourceHashCanary: input.sourceHashCanary }),
-        baselineRefAtSave: input.baselineRef,
+        baselineRefAtSave: serializeInstanceBaselineRef(input.baselineRef),
         blueprintReferences: current.table,
         deployment: input.deployment,
         stateRevision: input.state.stateRevision,
@@ -1112,15 +1114,6 @@ export async function restoreSerializedCBTUnitV2(
         appliedWithWarning: 0,
     };
     const restoredMovement = restoreSavedMekMovementPsr(saved, accumulator);
-
-    if (saved.baselineRefAtSave.ruleset !== initialized.baselineRef.ruleset) {
-        warn(accumulator, {
-            code: 'RULESET_CHANGED',
-            message: `The unit state was translated from ruleset ${saved.baselineRefAtSave.ruleset} to ${initialized.baselineRef.ruleset}.`,
-            saved: { ruleset: saved.baselineRefAtSave.ruleset },
-            current: { ruleset: initialized.baselineRef.ruleset },
-        });
-    }
 
     const locations = new Map(initialized.state.locations);
     const slots = new Map(initialized.state.slots);
@@ -1441,7 +1434,7 @@ export async function restoreSerializedCBTUnitV2(
         if (entry.ejected !== undefined && !ejected) {
             codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions.ejected', 'sparse ejected state must be true');
         }
-        if (dead && requested < MAX_MEK_CREW_WOUNDS) {
+        if (dead && requested < MAX_CREW_WOUNDS) {
             codecFail(
                 'INVALID_SERIALIZED_STATE',
                 '$.crew.positions.dead',
@@ -1477,17 +1470,17 @@ export async function restoreSerializedCBTUnitV2(
         };
         const currentTarget = resolveCrewTarget(target, accumulator);
         if (!currentTarget) return unresolved(accumulator, entry.target, target, fact, 'CREW_POSITION_NOT_FOUND');
-        const effective = Math.min(requested, MAX_MEK_CREW_WOUNDS);
+        const effective = Math.min(requested, MAX_CREW_WOUNDS);
         let warned = false;
         if (effective !== requested) {
             warned = true;
             warn(accumulator, {
                 code: 'DAMAGE_CLAMPED',
-                message: `Saved crew wounds ${requested} exceed the current limit ${MAX_MEK_CREW_WOUNDS}.`,
+                message: `Saved crew wounds ${requested} exceed the current limit ${MAX_CREW_WOUNDS}.`,
                 sourceTargetRef: entry.target,
                 currentTargetRef: currentTarget.ref,
                 saved: { wounds: requested },
-                current: { maximumWounds: MAX_MEK_CREW_WOUNDS, effectiveWounds: effective },
+                current: { maximumWounds: MAX_CREW_WOUNDS, effectiveWounds: effective },
             });
             unresolved(accumulator, entry.target, target, fact, 'CREW_WOUNDS_EXCEED_CURRENT_LIMIT');
         }
@@ -1553,7 +1546,7 @@ export async function restoreSerializedCBTUnitV2(
                 );
             }
             return condition;
-        }));
+        }).filter(condition => condition !== 'crippled'));
     let heat = initialized.state.heat;
     if (saved.heat !== undefined) {
         const current = requireNonnegativeFinite(saved.heat.heat, '$.heat.heat');
@@ -1980,9 +1973,6 @@ function buildCurrentTargetIndex(
                 locations,
                 criticalSlots,
                 occurrence: occurrences.get(componentId)!,
-                ...(equipment?.type === 'ammo' && ammoCapacity !== null
-                    ? { capacity: ammoCapacity }
-                    : {}),
             })
             : Object.freeze({
                 kind: 'intrinsic-system',
@@ -2084,8 +2074,6 @@ function buildCurrentTargetIndex(
             slot: asOneBasedCriticalSlotOrdinal(slot.slotIndex + 1),
             ...(occupant?.kind === 'equipment' ? {
                 expectedEquipmentName: occupant.mount.equipment?.id ?? occupant.mount.equipmentId,
-                ...(occupant.mount.equipment?.id ? { expectedOriginalName: occupant.mount.equipment.id } : {}),
-                ...(occupant.mount.equipment?.name ? { expectedDisplayName: occupant.mount.equipment.name } : {}),
             } : {}),
             ...(occupant?.kind === 'system' ? { expectedSystemId: occupant.systemType } : {}),
         });
@@ -3511,17 +3499,8 @@ function componentsCompatible(
     return source.kind === 'component' && current.kind === 'component'
         ? equipmentKeyMatches(source.equipmentName, current.equipmentName)
         : source.kind === 'intrinsic-system' && current.kind === 'intrinsic-system'
-            ? systemKeyMatches(source, current)
+            ? equipmentKeyMatches(source.systemKey, current.systemKey)
             : false;
-}
-
-function systemKeyMatches(
-    source: Extract<SavedStateTargetV2, { kind: 'intrinsic-system' }>,
-    current: Extract<SavedStateTargetV2, { kind: 'intrinsic-system' }>,
-): boolean {
-    const sourceKeys = [source.systemKey, ...(source.aliases ?? [])];
-    const currentKeys = [current.systemKey, ...(current.aliases ?? [])];
-    return sourceKeys.some(left => currentKeys.some(right => equipmentKeyMatches(left, right)));
 }
 
 function ammoCompatible(

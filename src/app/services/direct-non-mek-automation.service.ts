@@ -23,6 +23,7 @@ import { AmmoEquipment } from '../models/equipment.model';
 import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import type { BaseEntity } from '../models/entity/base-entity';
 import type { ComponentId, CrewPositionId } from '../models/entity/entity-identifiers';
+import { MAX_CREW_WOUNDS } from '../models/crew-member.model';
 import type { UnitConditionKey } from '../models/unit-condition.model';
 import { isAeroEntity } from '../models/entity/utils/entity-type-guards';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
@@ -40,7 +41,6 @@ import {
     type NonMekUnitCommand,
     type NonMekUnitRuntimeState,
 } from '../models/runtime/non-mek-unit-instance';
-import { MAX_MEK_CREW_WOUNDS } from '../models/runtime/runtime-state';
 import { selectedManualEndTurnHeat } from '../models/runtime/end-turn-heat-selection';
 import { CBTAutomationService } from './cbt-automation.service';
 import { automationCheckEvidenceDice, CBTAutomationCheckService } from './cbt-automation-check.service';
@@ -682,10 +682,9 @@ export class DirectNonMekAutomationService {
         }
         return Object.freeze(positions.flatMap(position => {
             const state = snapshot.query.crewState(position.id);
-            const crewState = snapshot.state.crew.get(position.id);
             const target = mekConsciousnessTarget(state.wounds);
             const readyTurn = state.recoveryReadyTurn;
-            if (!state.unconscious || state.ejected || crewState?.killed
+            if (!state.unconscious || state.ejected || state.isDeathCommitted()
                 || target === undefined || readyTurn === null
                 || readyTurn !== undefined && readyTurn > snapshot.state.turn.turnCounter) return [];
             const eventId = `consciousness:${snapshot.instanceId}:${snapshot.query.stateRevision}:${position.id}`;
@@ -762,17 +761,14 @@ export class DirectNonMekAutomationService {
             }
             const snapshot = this.nonMekSnapshot(force, instanceId);
             const state = snapshot?.query.crewState(recovery.positionId);
-            const crewState = snapshot?.state.crew.get(recovery.positionId);
             if (!snapshot || !state || state.ejected || !state.unconscious
-                || crewState?.killed) continue;
+                || state.isDeathCommitted()) continue;
             const result = await dispatch({
                 kind: 'set-crew-state',
                 positionId: recovery.positionId,
                 wounds: state.wounds,
                 unconscious: false,
                 ejected: state.ejected,
-                killed: crewState?.killed === true,
-                stunned: crewState?.stunned === true,
             }, false);
             if (!result.accepted) return false;
         }
@@ -1152,7 +1148,6 @@ export class DirectNonMekAutomationService {
             `crew-hits:${initial.instanceId}:${initial.query.stateRevision}`,
             positions.map(position => {
                 const state = initial.query.crewState(position.id);
-                const crewState = initial.state.crew.get(position.id);
                 const assignment = initial.crewAssignment.positions.find(candidate =>
                     candidate.positionId === position.id);
                 const name = positions.length > 1
@@ -1163,8 +1158,8 @@ export class DirectNonMekAutomationService {
                     ...(name ? { name } : {}),
                     wounds: state.wounds,
                     unconscious: state.unconscious,
-                    unavailable: state.ejected || crewState?.killed === true
-                        || state.wounds >= MAX_MEK_CREW_WOUNDS,
+                    unavailable: state.ejected || state.isDeathCommitted()
+                        || state.wounds >= MAX_CREW_WOUNDS,
                     hits,
                 });
             }),
@@ -1186,8 +1181,7 @@ export class DirectNonMekAutomationService {
         for (const position of positions) {
             const plan = resolved.find(candidate => candidate.id === position.id);
             const state = initial.query.crewState(position.id);
-            const crewState = initial.state.crew.get(position.id);
-            if (!plan || state.ejected || crewState?.killed
+            if (!plan || state.ejected || state.isDeathCommitted()
                 || (plan.wounds === state.wounds
                     && plan.unconscious === state.unconscious)) continue;
             const result = await dispatch({
@@ -1196,8 +1190,6 @@ export class DirectNonMekAutomationService {
                 wounds: plan.wounds,
                 unconscious: plan.unconscious,
                 ejected: state.ejected,
-                killed: crewState?.killed === true,
-                stunned: crewState?.stunned === true,
                 ...(plan.unconscious && !state.unconscious
                     ? {
                         recoveryReadyTurn: this.options.cbtAutomationMode(
@@ -1238,17 +1230,14 @@ export class DirectNonMekAutomationService {
     ): Promise<boolean> {
         const snapshot = this.nonMekSnapshot(force, instanceId);
         const state = snapshot?.query.crewState(positionId);
-        const crewState = snapshot?.state.crew.get(positionId);
         if (!snapshot || !state || !state.unconscious || state.ejected
-            || crewState?.killed || state.wounds >= MAX_MEK_CREW_WOUNDS) return true;
+            || state.isDeathCommitted() || state.wounds >= MAX_CREW_WOUNDS) return true;
         const result = await dispatch({
             kind: 'set-crew-state',
             positionId,
             wounds: state.wounds,
             unconscious: true,
             ejected: state.ejected,
-            killed: crewState?.killed === true,
-            stunned: crewState?.stunned === true,
             recoveryReadyTurn: currentTurn + 1,
         }, false);
         return result.accepted;
@@ -1262,9 +1251,8 @@ export class DirectNonMekAutomationService {
     ): Promise<boolean> {
         const previous = before.query.crewState(positionId);
         const current = after.query.crewState(positionId);
-        const crewState = after.state.crew.get(positionId);
         if (previous.unconscious || !current.unconscious || current.ejected
-            || crewState?.killed || current.wounds >= MAX_MEK_CREW_WOUNDS) return true;
+            || current.isDeathCommitted() || current.wounds >= MAX_CREW_WOUNDS) return true;
         const recoveryReadyTurn = this.options.cbtAutomationMode(
             'pilotHitsAndConsciousnessCheck',
         ) === 'no' ? null : before.state.turn.turnCounter + 1;
@@ -1275,8 +1263,6 @@ export class DirectNonMekAutomationService {
             wounds: current.wounds,
             unconscious: true,
             ejected: current.ejected,
-            killed: crewState?.killed === true,
-            stunned: crewState?.stunned === true,
             recoveryReadyTurn,
         }, false);
         return result.accepted;
@@ -1340,9 +1326,8 @@ export class DirectNonMekAutomationService {
     ) {
         const candidates = [...snapshot.index.crewPositions.values()].flatMap(position => {
             const common = snapshot.query.crewState(position.id);
-            const crewState = snapshot.state.crew.get(position.id);
-            if (common.ejected || common.wounds >= MAX_MEK_CREW_WOUNDS
-                || crewState?.killed || crewState?.stunned
+            if (common.ejected || common.wounds >= MAX_CREW_WOUNDS
+                || common.isDeathCommitted()
                 || common.unconscious && !recoveredPositions.has(position.id)) return [];
             const assignment = snapshot.crewAssignment.positions.find(candidate =>
                 candidate.positionId === position.id);
@@ -1364,9 +1349,7 @@ export class DirectNonMekAutomationService {
     private hasPotentialController(snapshot: AeroSnapshot): boolean {
         return [...snapshot.index.crewPositions.keys()].some(positionId => {
             const common = snapshot.query.crewState(positionId);
-            const crewState = snapshot.state.crew.get(positionId);
-            return !common.ejected && common.wounds < MAX_MEK_CREW_WOUNDS
-                && !crewState?.killed;
+            return common.isAboard() && common.wounds < MAX_CREW_WOUNDS;
         });
     }
 

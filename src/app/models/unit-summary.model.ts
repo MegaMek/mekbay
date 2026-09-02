@@ -235,19 +235,3 @@ export interface UnitSummary {
   _chassisTags?: UnitTagEntry[];
   _publicTags?: PublicTagInfo[];
 }
-
-export type UnitHeight = 1 | 2 | 3;
-
-export function getUnitHeight(unit: Pick<UnitSummary, 'type' | 'tons'>, prone = false): UnitHeight {
-  const standingHeight: UnitHeight = unit.type !== 'Mek' ? 1 : unit.tons > 100 ? 3 : 2;
-  return prone && standingHeight > 1
-    ? (standingHeight - 1) as UnitHeight
-    : standingHeight;
-}
-
-/** Untrusted additional-provider transport; converted to validated UnitSummary rows at ingress. */
-export interface Units {
-  version: string;
-  assetHash: string;
-  units: UnitSummary[];
-}

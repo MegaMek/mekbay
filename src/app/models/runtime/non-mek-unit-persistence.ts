@@ -24,8 +24,12 @@ import { deserializeUnitCover, serializeUnitCover, type SerializedUnitCover } fr
 import type { CrewAssignment } from './crew-assignment';
 import { assertCanonicalCrewAssignment } from './crew-assignment';
 import type { BaseEntity } from '../entity/base-entity';
-import { isCBTRuleset } from '../cbt-ruleset.model';
-import type { ComponentRuntimeState, InstanceBaselineRef } from './runtime-state';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import {
+    serializeInstanceBaselineRef,
+    type ComponentRuntimeState,
+    type SerializedInstanceBaselineRef,
+} from './runtime-state';
 import {
     NonMekUnitInstance,
     freezeNonMekUnitState,
@@ -61,7 +65,7 @@ export interface SerializedNonMekUnit {
     readonly instanceId: string;
     readonly entity: UnitUuid;
     readonly sourceHashCanary?: SourceHashCanary;
-    readonly baselineRefAtSave: InstanceBaselineRef;
+    readonly baselineRefAtSave: SerializedInstanceBaselineRef;
     readonly deployment: SerializedNonMekDeployment;
     readonly family: Readonly<{ readonly kind: 'non-mek'; readonly entityType: NonMekEntityType }>;
     readonly stateRevision: number;
@@ -97,8 +101,6 @@ export interface SerializedNonMekUnit {
         readonly unconscious: boolean;
         readonly ejected: boolean;
         readonly dead?: true;
-        readonly killed?: true;
-        readonly stunned?: true;
         readonly recoveryReadyTurn?: number | null;
     }>[];
     readonly conditions?: readonly UnitConditionKey[];
@@ -171,7 +173,6 @@ export function inspectSerializedNonMekUnit(value: unknown): SerializedNonMekUni
     if (baselineEntity !== entity) {
         throw new Error('Non-Mek unit baseline identity does not match its source');
     }
-    if (!isCBTRuleset(baseline['ruleset'])) throw new Error('Non-Mek unit baseline ruleset is invalid');
     const family = requireRecord(record['family'], 'family');
     if (family['kind'] !== 'non-mek' || !isNativeEntityType(family['entityType'])
         || family['entityType'] === 'Mek') {
@@ -241,7 +242,9 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
     const crewState = [...state.crew]
         .sort(([left], [right]) => compareText(left, right))
         .map(([positionId, crew]) => Object.freeze({ positionId, ...crew }));
-    const conditions = [...state.conditions].sort(compareText);
+    const conditions = [...state.conditions]
+        .filter(condition => condition !== 'crippled')
+        .sort(compareText);
     const turn = serializeNonMekTurn(state);
     const pendingCombat = serializePendingCombat(state);
     const equipmentRowOrder = freezeEquipmentRowOrder(state.equipmentRowOrder);
@@ -251,7 +254,7 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
         instanceId: input.instance.id,
         entity: input.uuid,
         ...(input.sourceHashCanary === undefined ? {} : { sourceHashCanary: input.sourceHashCanary }),
-        baselineRefAtSave: freezeBaseline(input.instance.baselineRef),
+        baselineRefAtSave: serializeInstanceBaselineRef(input.instance.baselineRef),
         deployment: freezeDeployment(input.deployment),
         family: Object.freeze({ kind: 'non-mek', entityType: entity.entityType }),
         stateRevision: state.stateRevision,
@@ -273,6 +276,8 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
 export function restoreNonMekUnit(
     saved: SerializedNonMekUnit,
     entity: BaseEntity,
+    ruleset: CBTRuleset,
+    forcedWithdrawal = true,
 ): NonMekUnitInstance {
     if (saved.schemaVersion !== NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION) {
         throw new Error(`Unsupported non-Mek unit schema ${String(saved.schemaVersion)}`);
@@ -285,8 +290,6 @@ export function restoreNonMekUnit(
         || saved.baselineRefAtSave.entity !== entity.uuid()) {
         throw new Error('Persisted runtime identity does not match the entity');
     }
-    const ruleset = saved.baselineRefAtSave.ruleset;
-    if (ruleset === undefined) throw new Error('Persisted runtime has no ruleset');
     const index = buildNonMekRuntimeIndex(entity);
     assertCanonicalCrewAssignment(index.crewPositions, saved.deployment.values.crewAssignment);
 
@@ -354,15 +357,16 @@ export function restoreNonMekUnit(
             unconscious: entry.unconscious,
             ejected: entry.ejected,
             ...(entry.dead ? { dead: true as const } : {}),
-            ...(entry.killed ? { killed: true as const } : {}),
-            ...(entry.stunned ? { stunned: true as const } : {}),
             ...(entry.recoveryReadyTurn === undefined
                 ? {}
                 : { recoveryReadyTurn: entry.recoveryReadyTurn }),
         }));
     }
-    const conditions = new Set((saved.conditions ?? []).map(requireUnitConditionKey));
-    if (conditions.size !== (saved.conditions?.length ?? 0)) throw new Error('Duplicate persisted condition');
+    const persistedConditions = (saved.conditions ?? []).map(requireUnitConditionKey);
+    if (new Set(persistedConditions).size !== persistedConditions.length) {
+        throw new Error('Duplicate persisted condition');
+    }
+    const conditions = new Set(persistedConditions.filter(condition => condition !== 'crippled'));
     const equipmentRowOrder = freezeEquipmentRowOrder(saved.equipmentRowOrder);
     const state = freezeNonMekUnitState({
         stateRevision: saved.stateRevision,
@@ -388,10 +392,15 @@ export function restoreNonMekUnit(
     });
     return new NonMekUnitInstance(
         saved.instanceId,
-        freezeBaseline(saved.baselineRefAtSave),
+        Object.freeze({
+            ...saved.baselineRefAtSave,
+            ruleset,
+            initialStateProfile: Object.freeze({ ...saved.baselineRefAtSave.initialStateProfile }),
+        }),
         entity,
         ruleset,
         state,
+        forcedWithdrawal,
     );
 }
 
@@ -563,14 +572,6 @@ function restorePendingCombat(saved: SerializedNonMekUnit): NonMekUnitRuntimeSta
                 hitTimestamps: Object.freeze([...entry.hitTimestamps]),
             }),
         ])),
-    });
-}
-
-function freezeBaseline(value: InstanceBaselineRef): InstanceBaselineRef {
-    return Object.freeze({
-        entity: value.entity,
-        ruleset: value.ruleset,
-        initialStateProfile: Object.freeze({ ...value.initialStateProfile }),
     });
 }
 
