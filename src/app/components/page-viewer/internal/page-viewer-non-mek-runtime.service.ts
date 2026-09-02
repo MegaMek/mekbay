@@ -4,7 +4,7 @@
 import { Injectable, Injector, inject } from '@angular/core';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable } from '@angular/core/rxjs-interop';
-import { firstValueFrom, takeUntil } from 'rxjs';
+import { firstValueFrom, merge, takeUntil } from 'rxjs';
 
 import type { CBTForceMember } from '../../../models/force-member.model';
 import { isCBTMekForceMember } from '../../../models/force-member.model';
@@ -119,7 +119,7 @@ export class PageViewerNonMekRuntimeService {
             current = {
                 member,
                 pages: new Map(),
-                subscription: member.force.changed.subscribe(changedUnitIds => {
+                subscription: merge(member.force.changed, member.force.sessionChanged).subscribe(changedUnitIds => {
                     if (changedUnitIds?.includes(member.id) ?? true) this.render(member);
                 }),
             };

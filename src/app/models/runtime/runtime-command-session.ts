@@ -14,12 +14,16 @@ import {
     RUNTIME_HISTORY_MESSAGE,
     runtimeHistoryMessageUnitId,
 } from './runtime-history';
+import { CBT_HISTORY_FIELD, CBT_HISTORY_TURN_FIELD } from './force-storage-vocabulary';
+import type { AttackerTargetingState } from './attacker-targeting-state';
 
 /** Session-only restoration data. It is never part of force persistence. */
 export interface RuntimeCommandCheckpoint {
     readonly units: readonly Readonly<{
         readonly instanceId: string;
         readonly unit: SerializedCBTUnitV2 | SerializedNonMekUnit;
+        /** Session-only targeting that must survive gameplay undo/redo. */
+        readonly attackerTargeting: AttackerTargetingState;
     }>[];
 }
 
@@ -149,14 +153,18 @@ export function runtimeHistoryRows(
     includePhaseBoundaries = false,
 ): readonly Readonly<{ readonly event: RuntimeHistoryEvent; readonly applied: boolean }>[] {
     const rows: Readonly<{ readonly event: RuntimeHistoryEvent; readonly applied: boolean }>[] = [];
-    durable.t.forEach(turn => turn.p.forEach((phase, phaseIndex) => phase.forEach(message => rows.push(Object.freeze({
-        event: Object.freeze({
-            turn: turn.n,
-            phase: phaseIndex + 1,
-            message: expandSerializedRuntimeHistoryMessage(durable, message),
-        }),
-        applied: true,
-    })))));
+    durable[CBT_HISTORY_FIELD.turns].forEach(turn => {
+        turn[CBT_HISTORY_TURN_FIELD.phases].forEach((phase, phaseIndex) => {
+            phase.forEach(message => rows.push(Object.freeze({
+                event: Object.freeze({
+                    turn: turn[CBT_HISTORY_TURN_FIELD.turnNumber],
+                    phase: phaseIndex + 1,
+                    message: expandSerializedRuntimeHistoryMessage(durable, message),
+                }),
+                applied: true,
+            })));
+        });
+    });
     session.entries.forEach((entry, index) => {
         entry.events.forEach(event => rows.push(Object.freeze({ event, applied: index < session.cursor })));
     });
@@ -175,13 +183,17 @@ export function serializeRuntimeHistory(
     session: RuntimeCommandSession,
 ): SerializedRuntimeHistory {
     const events: RuntimeHistoryEvent[] = [];
-    durable.t.forEach(turn => turn.p.forEach((phase, phaseIndex) => phase.forEach(message => {
-        events.push(Object.freeze({
-            turn: turn.n,
-            phase: phaseIndex + 1,
-            message: expandSerializedRuntimeHistoryMessage(durable, message),
-        }));
-    })));
+    durable[CBT_HISTORY_FIELD.turns].forEach(turn => {
+        turn[CBT_HISTORY_TURN_FIELD.phases].forEach((phase, phaseIndex) => {
+            phase.forEach(message => {
+                events.push(Object.freeze({
+                    turn: turn[CBT_HISTORY_TURN_FIELD.turnNumber],
+                    phase: phaseIndex + 1,
+                    message: expandSerializedRuntimeHistoryMessage(durable, message),
+                }));
+            });
+        });
+    });
     events.push(...appliedRuntimeHistoryEvents(session));
     const effectiveEvents = settleCommittedPendingRows(coalesceRuntimeHistoryRows(events.map(event => Object.freeze({
         event,
@@ -206,15 +218,15 @@ export function serializeRuntimeHistory(
     }
 
     let serialized: SerializedRuntimeHistory = Object.freeze({
-        u: Object.freeze([]),
-        t: Object.freeze([]),
+        [CBT_HISTORY_FIELD.unitIds]: Object.freeze([]),
+        [CBT_HISTORY_FIELD.turns]: Object.freeze([]),
     });
     for (const turn of retainedTurns) {
         const phases = grouped.get(turn);
         if (!phases) continue;
         serialized = appendSerializedRuntimeHistoryTurn(serialized, Object.freeze({
-            n: turn,
-            p: Object.freeze([...phases]
+            [CBT_HISTORY_TURN_FIELD.turnNumber]: turn,
+            [CBT_HISTORY_TURN_FIELD.phases]: Object.freeze([...phases]
                 .sort(([left], [right]) => left - right)
                 .map(([, messages]) => Object.freeze(messages))),
         }));

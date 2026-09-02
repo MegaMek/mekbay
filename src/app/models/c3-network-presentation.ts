@@ -43,7 +43,7 @@ export function projectEncounterC3Components(
 }
 
 /**
- * Validates stable encounter facts by round-tripping them through the one
+ * Validates stable encounter networks by round-tripping them through the one
  * canonical C3 rule utility. This layer owns identity projection, not rules.
  */
 export function validateEncounterNetworks(

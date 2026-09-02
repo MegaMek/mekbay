@@ -35,7 +35,6 @@ describe('UnitSearchComponent card virtualization', () => {
     const filteredUnitsSignal = signal<UnitSummary[]>([]);
     const currentGameSystemSignal = signal(GameSystem.AS);
     const closePanelsRequestSignal = signal({ requestId: 0, exitExpandedView: false });
-    const isSearchSettledSignal = signal(true);
     const interactionReadySignal = signal(true);
     const advOptionsSignal = signal<Record<string, any>>({});
     const budgetModeSignal = signal<'force-limit' | 'bv-normalization' | null>(null);
@@ -75,7 +74,6 @@ describe('UnitSearchComponent card virtualization', () => {
         viewMode: signal<'list' | 'card' | 'chassis' | 'table'>('list'),
         closePanelsRequest: closePanelsRequestSignal,
         filteredUnits: () => filteredUnitsSignal(),
-        isSearchSettled: () => isSearchSettledSignal(),
         isDataReady: () => true,
         isInteractionReady: () => interactionReadySignal(),
         searchTokens: () => [],
@@ -206,7 +204,6 @@ describe('UnitSearchComponent card virtualization', () => {
         filtersServiceStub.advOpen.set(false);
         filtersServiceStub.searchText.set('');
         advOptionsSignal.set({});
-        isSearchSettledSignal.set(true);
         interactionReadySignal.set(true);
         filtersServiceStub.budgetMode.set(null);
         filtersServiceStub.classicBvNormalizationSettings.set({
@@ -1126,7 +1123,7 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(scrollToMakeVisible).toHaveBeenCalledWith(2, 'auto');
     });
 
-    it('queues Enter until a debounced search commits before opening a result', async () => {
+    it('commits a debounced search before Enter opens its first result', async () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;
         const previousUnit = createUnit('Atlas');
@@ -1135,7 +1132,7 @@ describe('UnitSearchComponent card virtualization', () => {
         dialogsServiceStub.createDialog.and.returnValue({ closed: NEVER });
         filtersServiceStub.setSearchText.and.callFake((text: string) => {
             filtersServiceStub.searchText.set(text);
-            isSearchSettledSignal.set(false);
+            filteredUnitsSignal.set([nextUnit]);
             return text;
         });
         filtersServiceStub.searchText.set('atlas');
@@ -1150,42 +1147,9 @@ describe('UnitSearchComponent card virtualization', () => {
         expect(event.defaultPrevented).toBeTrue();
         expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
 
-        filteredUnitsSignal.set([nextUnit]);
-        isSearchSettledSignal.set(true);
-        fixture.detectChanges();
         await waitForDialogOpen();
 
         expect(filtersServiceStub.setSearchText).toHaveBeenCalledWith('catapult');
-        expect(dialogsServiceStub.createDialog).toHaveBeenCalledTimes(1);
-        const dialogConfig = dialogsServiceStub.createDialog.calls.mostRecent().args[1] as any;
-        expect(dialogConfig.data.unitList).toEqual([nextUnit]);
-        expect(dialogConfig.data.unitIndex).toBe(0);
-    });
-
-    it('queues Enter until worker results settle before opening a result', async () => {
-        const fixture = TestBed.createComponent(UnitSearchComponent);
-        const component = fixture.componentInstance;
-        const previousUnit = createUnit('Atlas');
-        const nextUnit = createUnit('Catapult');
-
-        dialogsServiceStub.createDialog.and.returnValue({ closed: NEVER });
-        filtersServiceStub.searchText.set('atlas');
-        filteredUnitsSignal.set([previousUnit]);
-        isSearchSettledSignal.set(false);
-        fixture.detectChanges();
-        await import('../unit-details-dialog/unit-details-dialog.component');
-
-        const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
-        component.onKeydown(event);
-
-        expect(event.defaultPrevented).toBeTrue();
-        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
-
-        filteredUnitsSignal.set([nextUnit]);
-        isSearchSettledSignal.set(true);
-        fixture.detectChanges();
-        await waitForDialogOpen();
-
         expect(dialogsServiceStub.createDialog).toHaveBeenCalledTimes(1);
         const dialogConfig = dialogsServiceStub.createDialog.calls.mostRecent().args[1] as any;
         expect(dialogConfig.data.unitList).toEqual([nextUnit]);

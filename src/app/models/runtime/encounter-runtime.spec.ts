@@ -5,16 +5,24 @@ import { asComponentId } from '../entity/entity-identifiers';
 import {
     asEncounterNetworkId,
     asEncounterTargetId,
-    CBTEncounterRuntime,
+    CBTEncounterC3State,
     createEncounterTargetId,
     decodeCBTEncounterStateV2,
-    emptyCBTEncounterSnapshot,
     encodeCBTEncounterStateV2,
     queryTargetRegistry,
     reduceTargetRegistry,
     type EncounterTarget,
+    type CBTEncounterSnapshot,
 } from './encounter-runtime';
-import { encounterTargetFactId } from './persistence-v2';
+import { CBTForceSession } from './cbt-force-session';
+
+function forceSession(): CBTForceSession {
+    return new CBTForceSession({} as never);
+}
+
+function emptyCBTEncounterSnapshot(): CBTEncounterSnapshot {
+    return { revision: 0, targets: [], networks: [], c3Positions: [] };
+}
 
 function registryTarget(letter: string, overrides: Partial<EncounterTarget> = {}): EncounterTarget {
     return {
@@ -27,43 +35,43 @@ function registryTarget(letter: string, overrides: Partial<EncounterTarget> = {}
     };
 }
 
-describe('CBT encounter runtime', () => {
+describe('CBT force session and durable encounter C3 state', () => {
     it('owns immutable, revisioned force targets behind explicit CAS commands', () => {
-        const runtime = new CBTEncounterRuntime();
+        const session = forceSession();
         const first = { ...registryTarget('A'), id: createEncounterTargetId() };
         const second = { ...registryTarget('B'), id: createEncounterTargetId() };
-        expect(runtime.dispatchTargetRegistry({
+        expect(session.dispatchTargetRegistry({
             kind: 'create-target', target: first,
         }).accepted).toBeTrue();
-        expect(runtime.dispatchTargetRegistry({
+        expect(session.dispatchTargetRegistry({
             kind: 'create-target', target: second,
         }).accepted).toBeTrue();
 
         expect(String(first.id)).toMatch(/^target:[0-9a-f-]{36}$/u);
         expect(String(second.id)).toMatch(/^target:[0-9a-f-]{36}$/u);
         expect(first.id).not.toBe(second.id);
-        expect(runtime.snapshot().revision).toBe(2);
-        expect(Object.isFrozen(runtime.snapshot().targets)).toBeTrue();
+        expect(session.targetRegistry().revision).toBe(2);
+        expect(Object.isFrozen(session.targetRegistry().targets)).toBeTrue();
 
         const firstId = first.id;
         const secondId = second.id;
-        expect(Object.isFrozen(runtime.targetRegistry().targets[0])).toBeTrue();
+        expect(Object.isFrozen(session.targetRegistry().targets[0])).toBeTrue();
 
-        runtime.dispatchTargetRegistry({
+        session.dispatchTargetRegistry({
             kind: 'update-target',
             targetId: firstId, patch: { name: 'Primary' },
         });
-        expect(runtime.targetRegistry().targets.find(target => target.id === firstId)).toEqual(jasmine.objectContaining({
+        expect(session.targetRegistry().targets.find(target => target.id === firstId)).toEqual(jasmine.objectContaining({
             name: 'Primary',
         }));
-        runtime.dispatchTargetRegistry({
+        session.dispatchTargetRegistry({
             kind: 'delete-target', targetId: secondId,
         });
-        expect(runtime.targetRegistry().targets.map(target => target.id)).toEqual([firstId]);
+        expect(session.targetRegistry().targets.map(target => target.id)).toEqual([firstId]);
     });
 
-    it('stores detached network facts without reimplementing C3 rule validation', () => {
-        const runtime = new CBTEncounterRuntime();
+    it('stores detached networks without reimplementing C3 rule validation', () => {
+        const c3 = new CBTEncounterC3State();
         const network = {
             id: asEncounterNetworkId('network:c3:internal-master'),
             networkType: 'c3' as const,
@@ -81,84 +89,57 @@ describe('CBT encounter runtime', () => {
                 },
             ],
         };
-        runtime.replaceNetworks([network]);
+        c3.replaceC3Configuration([network], [{ unitId: 'instance-1', x: 203, y: 392 }]);
         network.color = '#abcdef';
         network.endpoints[0].componentId = asComponentId('caller-mutation');
 
-        expect(runtime.snapshot().networks[0]).toEqual(jasmine.objectContaining({
+        expect(c3.snapshot().networks[0]).toEqual(jasmine.objectContaining({
             color: '#123456',
             endpoints: [
                 jasmine.objectContaining({ componentId: asComponentId('component:c3-master-a') }),
                 jasmine.objectContaining({ componentId: asComponentId('component:c3-master-b') }),
             ],
         }));
+        expect(c3.snapshot().c3Positions).toEqual([{ unitId: 'instance-1', x: 203, y: 392 }]);
 
         // Domain-invalid topology is deliberately not rejected here. Admission
         // belongs to C3NetworkEditor/projectC3EditorNetworksToEncounter.
-        runtime.replaceNetworks([...runtime.snapshot().networks, {
+        c3.replaceC3Configuration([...c3.snapshot().networks, {
             id: asEncounterNetworkId('network:opaque-fact'),
             networkType: 'c3',
             color: '#123456',
             endpoints: [],
-        }]);
+        }], c3.snapshot().c3Positions);
 
-        const restored = decodeCBTEncounterStateV2(encodeCBTEncounterStateV2(runtime.snapshot(), []));
-        expect(restored.snapshot.networks
+        const restored = decodeCBTEncounterStateV2(encodeCBTEncounterStateV2(c3.snapshot()));
+        expect(restored.networks
             .find(candidate => candidate.id === asEncounterNetworkId('network:c3:internal-master'))
             ?.endpoints.map(endpoint => endpoint.componentId)).toEqual([
             asComponentId('component:c3-master-a'),
             asComponentId('component:c3-master-b'),
         ]);
+        expect(restored.c3Positions).toEqual([{ unitId: 'instance-1', x: 203, y: 392 }]);
     });
 
-    it('round-trips owned facts and preserves unknown typed facts without adopting them', () => {
-        const runtime = new CBTEncounterRuntime();
+    it('keeps targets session-only while round-tripping durable C3 state', () => {
+        const session = forceSession();
+        const c3 = new CBTEncounterC3State();
         const created = { ...registryTarget('A'), id: createEncounterTargetId() };
-        runtime.dispatchTargetRegistry({
+        session.dispatchTargetRegistry({
             kind: 'create-target', target: created,
         });
-        const preserved = {
-            kind: 'cross-unit-effect' as const,
-            factId: 'effect:tagged',
-            effectKey: 'tagged',
-            target: { instanceId: 'unit:target' },
-        };
+        const encoded = encodeCBTEncounterStateV2(c3.snapshot());
+        const restoredC3 = new CBTEncounterC3State();
+        const restoredSession = forceSession();
+        restoredC3.restoreSerialized(encoded);
 
-        const encoded = encodeCBTEncounterStateV2(runtime.snapshot(), [preserved]);
-        const decoded = decodeCBTEncounterStateV2(encoded);
-        const restored = new CBTEncounterRuntime();
-        restored.restoreSerialized(encoded);
-
-        expect(decoded.preservedFacts).toEqual([preserved]);
-        expect(restored.targetRegistry().targets.map(target => target.id)).toEqual([created.id]);
-        expect(restored.serializedState().facts).toEqual(encoded.facts);
-    });
-
-    it('rejects invalid persisted target origin ownership before restoring runtime state', () => {
-        const invalid = {
-            schemaVersion: 2 as const,
-            encounterRevision: 1,
-            facts: [{
-                kind: 'target' as const,
-                factId: encounterTargetFactId('opfor:v1:invalid-origin'),
-                target: {
-                    id: 'opfor:v1:invalid-origin',
-                    letter: 'A',
-                    name: 'Invalid OPFOR target',
-                    color: '#fff',
-                    source: 'opfor' as const,
-                    readOnly: false,
-                },
-            }],
-        };
-        const runtime = new CBTEncounterRuntime();
-
-        expect(() => decodeCBTEncounterStateV2(invalid)).toThrow();
-        expect(() => runtime.restoreSerialized(invalid)).toThrow();
-        expect(runtime.targetRegistry()).toEqual({
-            revision: 0,
-            targets: [],
+        expect(encoded).toEqual({ networks: [] });
+        expect(session.targetRegistry()).toEqual({
+            revision: 1,
+            targets: [jasmine.objectContaining({ id: created.id })],
         });
+        expect(restoredSession.targetRegistry()).toEqual({ revision: 0, targets: [] });
+        expect(restoredC3.snapshot()).toEqual({ networks: [], c3Positions: [] });
     });
 
 });
@@ -182,18 +163,18 @@ describe('force-shared target registry kernel', () => {
     });
 
     it('accepts semantic no-ops without advancing the revision', () => {
-        const runtime = new CBTEncounterRuntime();
-        const emptyReset = runtime.dispatchTargetRegistry({
+        const session = forceSession();
+        const emptyReset = session.dispatchTargetRegistry({
             kind: 'reset-targets',
         });
-        const created = runtime.dispatchTargetRegistry({
+        const created = session.dispatchTargetRegistry({
             kind: 'create-target', target: registryTarget('A'),
         });
-        const unchangedUpdate = runtime.dispatchTargetRegistry({
+        const unchangedUpdate = session.dispatchTargetRegistry({
             kind: 'update-target',
             targetId: asEncounterTargetId('target:A'), patch: { name: 'Target A' },
         });
-        const unchangedReplace = runtime.dispatchTargetRegistry({
+        const unchangedReplace = session.dispatchTargetRegistry({
             kind: 'replace-targets', targets: [registryTarget('A')],
         });
 
@@ -201,12 +182,12 @@ describe('force-shared target registry kernel', () => {
         expect(created).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(unchangedUpdate).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(unchangedReplace).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
-        expect(runtime.targetRegistry().revision).toBe(1);
+        expect(session.targetRegistry().revision).toBe(1);
     });
 
     it('returns deeply immutable queries detached from runtime state and later queries', () => {
-        const runtime = new CBTEncounterRuntime();
-        runtime.dispatchTargetRegistry({
+        const session = forceSession();
+        session.dispatchTargetRegistry({
             kind: 'create-target',
             target: registryTarget('A', {
                 tnCalculator: {
@@ -223,7 +204,7 @@ describe('force-shared target registry kernel', () => {
                 },
             }),
         });
-        const first = runtime.targetRegistry();
+        const first = session.targetRegistry();
 
         expect(Object.isFrozen(first)).toBeTrue();
         expect(Object.isFrozen(first.targets)).toBeTrue();
@@ -233,16 +214,16 @@ describe('force-shared target registry kernel', () => {
         const stealth = first.targets[0].tnCalculator?.stealth;
         expect(typeof stealth === 'object'
             && Object.isFrozen(stealth.conventionalInfantry)).toBeTrue();
-        expect(first.targets[0]).not.toBe(runtime.snapshot().targets[0]);
+        expect(first.targets[0]).not.toBe(session.targetRegistry().targets[0]);
         expect(() => {
             (first.targets[0] as { name: string }).name = 'escaped mutation';
         }).toThrow();
 
-        runtime.dispatchTargetRegistry({
+        session.dispatchTargetRegistry({
             kind: 'update-target',
             targetId: first.targets[0].id, patch: { color: '#abcdef' },
         });
-        const second = runtime.targetRegistry();
+        const second = session.targetRegistry();
         expect(first.targets[0].color).toBe('#123456');
         expect(second.targets[0].color).toBe('#abcdef');
         expect(second.targets[0]).not.toBe(first.targets[0]);

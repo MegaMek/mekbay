@@ -87,7 +87,11 @@ describe('PagePsrWarningPanelComponent', () => {
             heatProjection: { kind: 'unsupported', blockers: ['fixture'] },
             conditions: [],
         } as unknown as MekTurnPanelSnapshot;
-        const force = { changed, getMekTurnPanelSnapshot: () => snapshot };
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            getMekTurnPanelSnapshot: () => snapshot,
+        };
         const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
 
         TestBed.configureTestingModule({
@@ -136,6 +140,7 @@ describe('PagePsrWarningPanelComponent', () => {
             id: 'mek-1',
             force: {
                 changed,
+                sessionChanged: new Subject<void>(),
                 getMekTurnPanelSnapshot: () => current,
                 dispatchMekUnitCommand: dispatch,
             },
@@ -184,6 +189,7 @@ describe('PagePsrWarningPanelComponent', () => {
             id: 'mek-1',
             force: {
                 changed,
+                sessionChanged: new Subject<void>(),
                 getMekTurnPanelSnapshot: () => snapshot,
             },
         } as unknown as CBTMekForceMember;
@@ -236,6 +242,7 @@ describe('PagePsrWarningPanelComponent', () => {
             id: 'mek-1',
             force: {
                 changed,
+                sessionChanged: new Subject<void>(),
                 getMekTurnPanelSnapshot: () => current,
                 dispatchMekUnitCommand: dispatch,
             },

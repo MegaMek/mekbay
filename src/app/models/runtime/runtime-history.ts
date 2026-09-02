@@ -2,6 +2,7 @@
 
 import type { JsonValue } from '../persisted-unit-state';
 import { isMekLocationConditionKey } from './runtime-state';
+import { CBT_HISTORY_FIELD, CBT_HISTORY_TURN_FIELD } from './force-storage-vocabulary';
 
 /** Stable wire IDs. Existing numeric meanings must never be reassigned. */
 export const RUNTIME_HISTORY_MESSAGE = Object.freeze({
@@ -53,9 +54,9 @@ export type SerializedRuntimeHistoryMessage = readonly [
 
 export interface SerializedRuntimeHistoryTurn {
     /** Turn number. */
-    readonly n: number;
+    readonly [CBT_HISTORY_TURN_FIELD.turnNumber]: number;
     /** Ordered phases containing ordered compact messages. */
-    readonly p: readonly (readonly SerializedRuntimeHistoryMessage[])[];
+    readonly [CBT_HISTORY_TURN_FIELD.phases]: readonly (readonly SerializedRuntimeHistoryMessage[])[];
 }
 
 /**
@@ -63,8 +64,8 @@ export interface SerializedRuntimeHistoryTurn {
  * corresponding numeric index as their first payload value.
  */
 export interface SerializedRuntimeHistory {
-    readonly u: readonly string[];
-    readonly t: readonly SerializedRuntimeHistoryTurn[];
+    readonly [CBT_HISTORY_FIELD.unitIds]: readonly string[];
+    readonly [CBT_HISTORY_FIELD.turns]: readonly SerializedRuntimeHistoryTurn[];
 }
 
 export interface RuntimeHistoryEvent {
@@ -98,9 +99,9 @@ export function appendSerializedRuntimeHistoryTurn(
     history: SerializedRuntimeHistory,
     turn: SerializedRuntimeHistoryTurn,
 ): SerializedRuntimeHistory {
-    const units = [...history.u];
+    const units = [...history[CBT_HISTORY_FIELD.unitIds]];
     const unitIndexes = new Map(units.map((instanceId, index) => [instanceId, index] as const));
-    const phases = turn.p.map(phase => Object.freeze(phase.map(message => {
+    const phases = turn[CBT_HISTORY_TURN_FIELD.phases].map(phase => Object.freeze(phase.map(message => {
         if (!runtimeHistoryMessageCanReferenceUnit(message[0]) || typeof message[1] !== 'string') {
             return message;
         }
@@ -117,8 +118,14 @@ export function appendSerializedRuntimeHistoryTurn(
         ]) as SerializedRuntimeHistoryMessage;
     })));
     return Object.freeze({
-        u: Object.freeze(units),
-        t: Object.freeze([...history.t, Object.freeze({ n: turn.n, p: Object.freeze(phases) })]),
+        [CBT_HISTORY_FIELD.unitIds]: Object.freeze(units),
+        [CBT_HISTORY_FIELD.turns]: Object.freeze([
+            ...history[CBT_HISTORY_FIELD.turns],
+            Object.freeze({
+                [CBT_HISTORY_TURN_FIELD.turnNumber]: turn[CBT_HISTORY_TURN_FIELD.turnNumber],
+                [CBT_HISTORY_TURN_FIELD.phases]: Object.freeze(phases),
+            }),
+        ]),
     });
 }
 
@@ -129,7 +136,7 @@ export function expandSerializedRuntimeHistoryMessage(
     if (!runtimeHistoryMessageCanReferenceUnit(message[0]) || typeof message[1] !== 'number') {
         return message;
     }
-    const instanceId = history.u[message[1]];
+    const instanceId = history[CBT_HISTORY_FIELD.unitIds][message[1]];
     if (instanceId === undefined) return message;
     return Object.freeze([
         message[0],

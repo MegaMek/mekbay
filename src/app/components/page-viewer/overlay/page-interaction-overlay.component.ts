@@ -16,9 +16,9 @@ import {
 } from '@angular/core';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { merge } from 'rxjs';
 import { OptionsService } from '../../../services/options.service';
 import { DialogsService } from '../../../services/dialogs.service';
-import { LoggerService } from '../../../services/logger.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
 import type { CBTForce } from '../../../models/cbt-force.model';
@@ -72,7 +72,6 @@ const PAGE_RUNTIME_HISTORY_OVERLAY_PREFIX = 'page-viewer-runtime-history';
     styleUrl: './page-interaction-overlay.component.scss'
 })
 export class PageInteractionOverlayComponent {
-    private logger = inject(LoggerService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
     private dialogsService = inject(DialogsService);
@@ -212,7 +211,7 @@ export class PageInteractionOverlayComponent {
         effect(onCleanup => {
             const member = this.member();
             if (!member) return;
-            const subscription = member.force.changed.subscribe(changedUnitIds => {
+            const subscription = merge(member.force.changed, member.force.sessionChanged).subscribe(changedUnitIds => {
                 if (changedUnitIds?.includes(member.id) ?? true) {
                     this.runtimeVersion.update(value => value + 1);
                 }

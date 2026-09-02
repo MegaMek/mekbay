@@ -4,9 +4,11 @@ import {
     ApolloHandler,
     componentApolloDefinition,
 } from '../models/runtime/component-apollo';
-import { emptyCBTEncounterSnapshot } from '../models/runtime/encounter-runtime';
 import { projectMekEquipmentPanel } from '../models/runtime/equipment-panel';
-import { createDirectApolloRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import {
+    createDirectApolloRuntimeFixture,
+    emptyCBTEncounterSnapshot,
+} from '../models/runtime/testing/direct-mek-runtime-fixture';
 import {
     APOLLO_SATURATION_MODE,
     APOLLO_STANDARD_MODE,

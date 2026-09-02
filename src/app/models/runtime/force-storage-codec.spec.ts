@@ -21,6 +21,7 @@ import {
 import { TestAeroSpaceFighterEntity, TestTankEntity } from '../entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
 import { componentIdForMount } from './non-mek-runtime-index';
+import { asComponentId } from '../entity/entity-identifiers';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asSourceHashCanary } from '../source-hash-canary';
 import {
@@ -102,7 +103,9 @@ describe('compact force storage codec', () => {
         const unit = (group['u'] as Record<string, unknown>[])[0]!;
         expect(unit['u']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
         expect(unit['h']).toBe('k8zQ');
+        expect(unit['c3']).toEqual([12, -4]);
         expect((unit['x'] as Record<string, unknown>)['d']).toBe(1);
+        expect((unit['x'] as Record<string, unknown>)['p']).toBeUndefined();
         expect(byteLength(stored)).toBeLessThan(byteLength(force) * 0.75);
 
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
@@ -151,6 +154,7 @@ describe('compact force storage codec', () => {
 
         const unit = (compact['u'] as Record<string, unknown>[])[0]!;
         expect(unit['h']).toBe('k8zQ');
+        expect(unit['c3']).toEqual([203, 392]);
         expect(unit['q']).toBeUndefined();
         expect(unit['baselineRefAtSave']).toBeUndefined();
         expect(unit['blueprintReferences']).toBeUndefined();
@@ -162,6 +166,41 @@ describe('compact force storage codec', () => {
         expect(((unit['s'] as unknown[][])[0]![0] as string)).toMatch(/^s:/u);
         expect(JSON.stringify(unit)).not.toMatch(/(?:location|armor|slot|critical|mek):/u);
         expect(byteLength(stored)).toBeLessThan(byteLength(force) * 0.55);
+    });
+
+    it('stores C3 networks as unit-indexed encounter tuples', () => {
+        const source = damagedForce();
+        const instanceId = source.cbt!.units[0].instanceId;
+        const force: SerializedCBTForce = {
+            ...source,
+            cbt: {
+                ...source.cbt!,
+                encounter: {
+                    ...source.cbt!.encounter,
+                    networks: [{
+                        id: 'network:compact',
+                        networkType: 'c3',
+                        color: '#123456',
+                        endpoints: [{
+                            instanceId,
+                            componentId: asComponentId('component:c3-master'),
+                            role: 'master',
+                        }],
+                    }],
+                },
+            },
+        };
+
+        const stored = encodeForceForStorage(force);
+        expect((stored['cbt'] as Record<string, unknown>)['e']).toEqual([[
+            'network:compact',
+            'c3',
+            '#123456',
+            [[0, 'component:c3-master', 'master']],
+        ]]);
+
+        const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
+        expect(decoded.cbt!.encounter).toEqual(force.cbt!.encounter);
     });
 
     it('persists an ordered critical continuation cursor through compact storage', async () => {
@@ -715,13 +754,14 @@ function damagedForce(): SerializedCBTForce {
         ...ready.serialize(),
         sourceHashCanary: asSourceHashCanary('k8zQ'),
     };
-    return forceWithUnit(unit, 'force:compact-storage', 'Compact storage');
+    return forceWithUnit(unit, 'force:compact-storage', 'Compact storage', { x: 203, y: 392 });
 }
 
 function forceWithUnit(
     unit: SerializedCBTUnitV2 | SerializedNonMekUnit,
     forceIdText: string,
     name: string,
+    c3Position?: Readonly<{ x: number; y: number }>,
 ): SerializedCBTForce {
     const forceId = asForceId(forceIdText);
     const cbt: SerializedCBTForceV2 = {
@@ -739,8 +779,10 @@ function forceWithUnit(
             }],
         },
         encounter: {
-            encounterRevision: 0,
-            state: { schemaVersion: 2, encounterRevision: 0, facts: [] },
+            networks: [],
+            ...(c3Position === undefined ? {} : {
+                c3Positions: [{ unitId: unit.instanceId, ...c3Position }],
+            }),
         },
     };
     return {

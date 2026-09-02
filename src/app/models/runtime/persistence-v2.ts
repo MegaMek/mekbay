@@ -20,7 +20,13 @@ import {
     type ComponentId,
     type CrewPositionId,
 } from '../entity/entity-identifiers';
-import { isC3NetworkRole, isC3NetworkType, type C3NetworkRole, type C3NetworkType } from '../c3-network.model';
+import {
+    isC3NetworkRole,
+    isC3NetworkType,
+    type C3NetworkRole,
+    type C3NetworkType,
+    type C3UnitPosition,
+} from '../c3-network.model';
 import { isRecord } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import type { JsonValue } from '../persisted-unit-state';
@@ -46,22 +52,7 @@ import {
     MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
     type SerializedCBTForceRosterV1,
 } from './cbt-force-roster';
-import type {
-    TnTargetMovementBracketId,
-    TnTargetNumberCalculatorState,
-    TnTargetHexCover,
-    TnTargetUnitType,
-} from '../target-number-calculator.model';
 import type { MekRuleCheckKeyV2, MekRuleCheckStatusV2, MekRuleCheckTokenV2 } from './mek-destruction-state-v2';
-import {
-    freezeAttackerTargetingState,
-    attackerActionTargetKey,
-    type AttackerActionSelection,
-    type AttackerActionState,
-    AttackerSelection,
-    AttackerLocalTargetState,
-} from './attacker-targeting-state';
-import { asEncounterTargetId } from './encounter-runtime';
 import { inspectSerializedNonMekUnit, type SerializedNonMekUnit } from './non-mek-unit-persistence';
 import {
     isRuntimeHistoryMessageId,
@@ -69,15 +60,15 @@ import {
     runtimeHistoryMessageRequiresUnit,
     type SerializedRuntimeHistory,
 } from './runtime-history';
+import { CBT_HISTORY_FIELD, CBT_HISTORY_TURN_FIELD } from './force-storage-vocabulary';
 import { freezeEquipmentRowOrder, type EquipmentRowOrderState } from './equipment-row-order';
 
 export type { SerializedMekTurnStateV2 } from './mek-turn-state-v2';
 
 export const CBT_FORCE_PERSISTENCE_SCHEMA_VERSION = 16 as const;
 export const CBT_UNIT_PERSISTENCE_SCHEMA_VERSION = 10 as const;
-export const MAX_SERIALIZED_ENCOUNTER_FACTS = 1024;
-export const MAX_SERIALIZED_ENCOUNTER_TARGETS = 12;
 export const MAX_SERIALIZED_ENCOUNTER_NETWORKS = 100;
+export const MAX_SERIALIZED_ENCOUNTER_NETWORK_ENDPOINTS = 1024;
 
 declare const persistenceBrand: unique symbol;
 export type ForceId = string & { readonly [persistenceBrand]: 'ForceId' };
@@ -488,34 +479,6 @@ export interface SerializedMekRuleChecksV1 {
     readonly entries: readonly SerializedMekRuleCheckEntryV1[];
 }
 
-/** Blueprint-local IDs use the unit's existing SavedBlueprintReferenceTableV2. */
-export interface SavedAttackerTargetingState {
-    readonly schemaVersion: 1;
-    readonly components: readonly {
-        readonly target: SavedTargetRef;
-        readonly selection?: AttackerSelection;
-        readonly ammo?: {
-            readonly munitionKey: string;
-            readonly preferredSourceTarget?: SavedTargetRef;
-        };
-    }[];
-    readonly actions: readonly (
-        | {
-            readonly kind: 'intrinsic';
-            readonly actionId: string;
-            readonly selection: AttackerSelection;
-        }
-        | {
-            readonly kind: 'component';
-            readonly target: SavedTargetRef;
-            readonly selection: AttackerSelection;
-        }
-    )[];
-    readonly targets: readonly ({
-        readonly targetId: string;
-    } & AttackerLocalTargetState)[];
-}
-
 export interface SerializedCBTUnitV2 {
     readonly schemaVersion: typeof CBT_UNIT_PERSISTENCE_SCHEMA_VERSION;
     readonly instanceId: string;
@@ -538,8 +501,6 @@ export interface SerializedCBTUnitV2 {
     readonly ruleChecks: SerializedMekRuleChecksV1;
     /** Required sole durable movement/PSR owner. */
     readonly movementPsr: SerializedMekMovementPsrStateV2;
-    /** Required sole durable attacker-local targeting owner. */
-    readonly attackerTargeting: SavedAttackerTargetingState;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
     readonly conditions?: SerializedCommonConditionStateV2;
     readonly turn: SerializedMekTurnStateV2;
@@ -550,42 +511,6 @@ export interface SerializedForceUnitEntryV2 {
     readonly instanceId: string;
     readonly stateRevision: number;
     readonly unit: SerializedCBTUnitV2 | SerializedNonMekUnit;
-}
-
-export interface SerializedEncounterEndpointV2 {
-    readonly instanceId: string;
-    readonly target?: SavedTargetRef;
-}
-
-export type SerializedEncounterTargetCalculatorV2 = Pick<TnTargetNumberCalculatorState,
-    | 'isAirborne'
-    | 'targetMovementBracket'
-    | 'targetMovementDistance'
-    | 'skidding'
-    | 'prone'
-    | 'immobile'
-    | 'targetHexCover'
-    | 'waterDepth'
-    | 'buildingCover'
-    | 'targetHeight'
-    | 'largeTarget'
-    | 'narcAboveWater'
-    | 'narcUnderwater'
-    | 'tagged'
-    | 'ecmShielded'
-    | 'stealth'
-    | 'stealthSystem'>;
-
-/** Force-shared target definition. Attacker-local range, C3 use, and TN deltas belong to each unit. */
-export interface SerializedEncounterTargetV2 {
-    readonly id: string;
-    readonly letter: string;
-    readonly name: string;
-    readonly color: string;
-    readonly source?: 'manual' | 'opfor';
-    readonly readOnly?: boolean;
-    readonly unitType?: TnTargetUnitType;
-    readonly tnCalculator?: SerializedEncounterTargetCalculatorV2;
 }
 
 export interface SerializedEncounterNetworkEndpointV2 {
@@ -602,48 +527,9 @@ export interface SerializedEncounterNetworkV2 {
     readonly endpoints: readonly SerializedEncounterNetworkEndpointV2[];
 }
 
-export function encounterTargetFactId(targetId: string): string {
-    return `target:${targetId.length}:${targetId}`;
-}
-
-export function encounterNetworkFactId(networkId: string): string {
-    return `network:${networkId.length}:${networkId}`;
-}
-
-export type SerializedEncounterFactV2 =
-    | {
-        readonly kind: 'target';
-        readonly factId: string;
-        readonly target: SerializedEncounterTargetV2;
-    }
-    | {
-        readonly kind: 'network';
-        readonly factId: string;
-        readonly network: SerializedEncounterNetworkV2;
-    }
-    | {
-        readonly kind: 'network-link';
-        readonly factId: string;
-        readonly networkType: string;
-        readonly endpoints: readonly SerializedEncounterEndpointV2[];
-    }
-    | {
-        readonly kind: 'cross-unit-effect';
-        readonly factId: string;
-        readonly effectKey: string;
-        readonly source?: SerializedEncounterEndpointV2;
-        readonly target: SerializedEncounterEndpointV2;
-    };
-
 export interface SerializedCBTEncounterStateV2 {
-    readonly schemaVersion: 2;
-    readonly encounterRevision: number;
-    readonly facts: readonly SerializedEncounterFactV2[];
-}
-
-export interface SerializedForceEncounterEntryV2 {
-    readonly encounterRevision: number;
-    readonly state: SerializedCBTEncounterStateV2;
+    readonly networks: readonly SerializedEncounterNetworkV2[];
+    readonly c3Positions?: readonly C3UnitPosition[];
 }
 
 export interface SerializedCBTForceV2 {
@@ -653,7 +539,7 @@ export interface SerializedCBTForceV2 {
     readonly history: SerializedRuntimeHistory;
     readonly units: readonly SerializedForceUnitEntryV2[];
     readonly roster: SerializedCBTForceRosterV1;
-    readonly encounter: SerializedForceEncounterEntryV2;
+    readonly encounter: SerializedCBTEncounterStateV2;
 }
 
 export type ForceEnvelopeValidationCode =
@@ -686,7 +572,10 @@ export class ForceEnvelopeValidationError extends Error {
 }
 
 export function emptyRuntimeHistory(): SerializedRuntimeHistory {
-    return Object.freeze({ u: Object.freeze([]), t: Object.freeze([]) });
+    return Object.freeze({
+        [CBT_HISTORY_FIELD.unitIds]: Object.freeze([]),
+        [CBT_HISTORY_FIELD.turns]: Object.freeze([]),
+    });
 }
 
 /** Validates structure, ownership, and identity; failures never partially load. */
@@ -720,45 +609,47 @@ function validateForceEnvelope(
     validateRevision(root['forceRevision'], '$.forceRevision');
     const units = requireArray(root['units'], '$.units');
     const instanceIds = new Set<string>();
-    const unitTargets = new Map<string, ReadonlySet<string>>();
     units.forEach((entry, index) => {
         const result = validateUnitEntry(entry, index);
         if (instanceIds.has(result.instanceId)) {
             fail('DUPLICATE_INSTANCE_ID', `$.units[${index}].instanceId`, `duplicate instance ${result.instanceId}`);
         }
         instanceIds.add(result.instanceId);
-        if (result.targets) unitTargets.set(result.instanceId, result.targets);
     });
 
     validateRoster(root['roster'], instanceIds);
-    validateEncounter(root['encounter'], instanceIds, unitTargets);
+    validateEncounter(root['encounter'], instanceIds);
     validateRuntimeHistory(root['history']);
 }
 
 function validateRuntimeHistory(value: unknown): void {
     const history = requireRecord(value, '$.history');
-    exactKeys(history, ['u', 't'], '$.history');
-    const unitIds = requireArray(history['u'], '$.history.u').map((unitId, index) =>
-        validateId(unitId, `$.history.u[${index}]`));
+    exactKeys(history, Object.values(CBT_HISTORY_FIELD), '$.history');
+    const unitIdsPath = `$.history.${CBT_HISTORY_FIELD.unitIds}`;
+    const unitIds = requireArray(history[CBT_HISTORY_FIELD.unitIds], unitIdsPath).map((unitId, index) =>
+        validateId(unitId, `${unitIdsPath}[${index}]`));
     if (new Set(unitIds).size !== unitIds.length) {
-        fail('INVALID_SHAPE', '$.history.u', 'unit IDs must be unique');
+        fail('INVALID_SHAPE', unitIdsPath, 'unit IDs must be unique');
     }
-    const turns = requireArray(history['t'], '$.history.t');
+    const turnsPath = `$.history.${CBT_HISTORY_FIELD.turns}`;
+    const turns = requireArray(history[CBT_HISTORY_FIELD.turns], turnsPath);
     if (turns.length > 2) {
-        fail('INVALID_SHAPE', '$.history.t', 'history retains at most the current and previous turn');
+        fail('INVALID_SHAPE', turnsPath, 'history retains at most the current and previous turn');
     }
     let previousTurn = 0;
     turns.forEach((rawTurn, turnIndex) => {
-        const path = `$.history.t[${turnIndex}]`;
+        const path = `${turnsPath}[${turnIndex}]`;
         const turn = requireRecord(rawTurn, path);
-        exactKeys(turn, ['n', 'p'], path);
-        const number = requirePositiveInteger(turn['n'], `${path}.n`);
-        if (number <= previousTurn) fail('INVALID_SHAPE', `${path}.n`, 'turns must be strictly ordered');
+        exactKeys(turn, Object.values(CBT_HISTORY_TURN_FIELD), path);
+        const turnNumberPath = `${path}.${CBT_HISTORY_TURN_FIELD.turnNumber}`;
+        const number = requirePositiveInteger(turn[CBT_HISTORY_TURN_FIELD.turnNumber], turnNumberPath);
+        if (number <= previousTurn) fail('INVALID_SHAPE', turnNumberPath, 'turns must be strictly ordered');
         previousTurn = number;
-        const phases = requireArray(turn['p'], `${path}.p`);
-        if (phases.length === 0) fail('INVALID_SHAPE', `${path}.p`, 'history turn requires a phase');
+        const phasesPath = `${path}.${CBT_HISTORY_TURN_FIELD.phases}`;
+        const phases = requireArray(turn[CBT_HISTORY_TURN_FIELD.phases], phasesPath);
+        if (phases.length === 0) fail('INVALID_SHAPE', phasesPath, 'history turn requires a phase');
         phases.forEach((rawPhase, phaseIndex) => {
-            const phasePath = `${path}.p[${phaseIndex}]`;
+            const phasePath = `${phasesPath}[${phaseIndex}]`;
             const messages = requireArray(rawPhase, phasePath);
             if (messages.length === 0) fail('INVALID_SHAPE', phasePath, 'history phases cannot be empty');
             messages.forEach((rawMessage, messageIndex) => {
@@ -916,8 +807,6 @@ function validateSparseRosterTrue(
 
 interface ValidatedUnitEntry {
     readonly instanceId: string;
-    readonly targets?: ReadonlySet<string>;
-    readonly components?: ReadonlySet<string>;
 }
 
 function validateUnitEntry(
@@ -940,7 +829,7 @@ function validateUnitEntry(
     if (result.revision !== revision) {
         fail('REVISION_MISMATCH', `${path}.unit.stateRevision`, 'outer and unit revisions differ');
     }
-    return { instanceId, targets: result.targets, components: result.components };
+    return { instanceId };
 }
 
 function validateNonMekUnit(
@@ -949,16 +838,12 @@ function validateNonMekUnit(
 ): {
     readonly instanceId: string;
     readonly revision: number;
-    readonly targets: ReadonlySet<string>;
-    readonly components: ReadonlySet<string>;
 } {
     try {
         const inspected = inspectSerializedNonMekUnit(value);
         return {
             instanceId: inspected.instanceId,
             revision: inspected.stateRevision,
-            targets: new Set(),
-            components: new Set(),
         };
     } catch (error) {
         fail(
@@ -975,14 +860,12 @@ function validateV2Unit(
 ): {
     readonly instanceId: string;
     readonly revision: number;
-    readonly targets: ReadonlySet<string>;
-    readonly components: ReadonlySet<string>;
 } {
     const record = requireRecord(value, path);
     exactKeys(record, [
         'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
         'stateRevision', 'destroyed', 'locationState', 'locationConditions', 'slotState', 'componentState', 'ammoState', 'crew', 'heat',
-        'family', 'ruleChecks', 'movementPsr', 'attackerTargeting',
+        'family', 'ruleChecks', 'movementPsr',
         'equipmentRowOrder', 'conditions', 'turn', 'pendingCombat',
     ], path);
     if (record['schemaVersion'] !== CBT_UNIT_PERSISTENCE_SCHEMA_VERSION) {
@@ -1079,11 +962,6 @@ function validateV2Unit(
                 `${path}.movementPsr`,
             );
         }
-        validateAttackerTargeting(
-            record['attackerTargeting'],
-            `${path}.attackerTargeting`,
-            targets,
-        );
     }
     if (record['equipmentRowOrder'] !== undefined) {
         const order = requireRecord(record['equipmentRowOrder'], `${path}.equipmentRowOrder`);
@@ -1115,8 +993,6 @@ function validateV2Unit(
     return {
         instanceId,
         revision,
-        targets: new Set(Object.keys(targets)),
-        components: collectSavedComponentIds(targets, `${path}.blueprintReferences.targets`),
     };
 }
 
@@ -1173,28 +1049,6 @@ function validateDeployment(
             error instanceof Error ? error.message : 'invalid crew assignment',
         );
     }
-}
-
-function collectSavedComponentIds(
-    targets: Readonly<Record<string, SavedStateTargetV2>>,
-    path: string,
-): ReadonlySet<string> {
-    const components = new Set<string>();
-    for (const [targetRef, target] of Object.entries(targets)) {
-        if (target.kind !== 'component' && target.kind !== 'intrinsic-system') continue;
-        if (target.savedComponentId === undefined) continue;
-        let componentId: string;
-        try {
-            componentId = asComponentId(target.savedComponentId);
-        } catch (error) {
-            throw validationError('INVALID_SHAPE', error, `${path}.${targetRef}.savedComponentId`);
-        }
-        if (components.has(componentId)) {
-            fail('INVALID_SHAPE', `${path}.${targetRef}.savedComponentId`, 'duplicate saved component ID');
-        }
-        components.add(componentId);
-    }
-    return components;
 }
 
 interface ValidatedBaseline {
@@ -1367,133 +1221,6 @@ function validateMekRuleChecks(
             fail('INVALID_SHAPE', `${entryPath}.status`, 'unknown Mek rule-check status');
         }
     });
-}
-
-function validateAttackerTargeting(
-    value: unknown,
-    path: string,
-    targets: Record<string, SavedStateTargetV2>,
-): void {
-    const record = requireRecord(value, path);
-    exactKeys(record, ['schemaVersion', 'components', 'actions', 'targets'], path);
-    if (record['schemaVersion'] !== 1) fail('INVALID_SHAPE', `${path}.schemaVersion`, 'must be 1');
-
-    const components = new Map<ComponentId, {
-        readonly selection?: AttackerSelection;
-        readonly ammo?: { readonly munitionKey: string; readonly preferredSourceId?: ComponentId };
-    }>();
-    let previousComponentRef: string | undefined;
-    requireArray(record['components'], `${path}.components`).forEach((raw, index) => {
-        const rowPath = `${path}.components[${index}]`;
-        const row = requireRecord(raw, rowPath);
-        exactKeys(row, ['target', 'selection', 'ammo'], rowPath);
-        const ref = validateId(row['target'], `${rowPath}.target`, asSavedTargetRef);
-        if (previousComponentRef !== undefined && previousComponentRef >= ref) {
-            fail('INVALID_SHAPE', `${rowPath}.target`, 'targeting components must be unique and sorted');
-        }
-        previousComponentRef = ref;
-        if (targets[ref]?.kind !== 'component') {
-            fail('TARGET_KIND_MISMATCH', `${rowPath}.target`, 'targeting weapon must reference a component');
-        }
-
-        let ammo: { readonly munitionKey: string; readonly preferredSourceId?: ComponentId } | undefined;
-        if (row['ammo'] !== undefined) {
-            const ammoRow = requireRecord(row['ammo'], `${rowPath}.ammo`);
-            exactKeys(ammoRow, ['munitionKey', 'preferredSourceTarget'], `${rowPath}.ammo`);
-            const munitionKey = validateId(ammoRow['munitionKey'], `${rowPath}.ammo.munitionKey`);
-            let preferredSourceId: ComponentId | undefined;
-            if (ammoRow['preferredSourceTarget'] !== undefined) {
-                const sourceRef = validateId(
-                    ammoRow['preferredSourceTarget'],
-                    `${rowPath}.ammo.preferredSourceTarget`,
-                    asSavedTargetRef,
-                );
-                if (targets[sourceRef]?.kind !== 'ammo-source') {
-                    fail(
-                        'TARGET_KIND_MISMATCH',
-                        `${rowPath}.ammo.preferredSourceTarget`,
-                        'preferred source must reference an ammo source',
-                    );
-                }
-                preferredSourceId = asComponentId(sourceRef);
-            }
-            ammo = Object.freeze({
-                munitionKey,
-                ...(preferredSourceId === undefined ? {} : { preferredSourceId }),
-            });
-        }
-        components.set(asComponentId(ref), Object.freeze({
-            ...(row['selection'] === undefined
-                ? {}
-                : { selection: row['selection'] as AttackerSelection }),
-            ...(ammo === undefined ? {} : { ammo }),
-        }));
-    });
-
-    const actions = new Map<string, AttackerActionState>();
-    let previousActionKey: string | undefined;
-    requireArray(record['actions'], `${path}.actions`).forEach((raw, index) => {
-        const rowPath = `${path}.actions[${index}]`;
-        const row = requireRecord(raw, rowPath);
-        let target: AttackerActionState['target'];
-        if (row['kind'] === 'intrinsic') {
-            exactKeys(row, ['kind', 'actionId', 'selection'], rowPath);
-            target = Object.freeze({
-                kind: 'intrinsic',
-                actionId: validateId(row['actionId'], `${rowPath}.actionId`),
-            });
-        } else if (row['kind'] === 'component') {
-            exactKeys(row, ['kind', 'target', 'selection'], rowPath);
-            const ref = validateId(row['target'], `${rowPath}.target`, asSavedTargetRef);
-            if (targets[ref]?.kind !== 'component') {
-                fail('TARGET_KIND_MISMATCH', `${rowPath}.target`, 'physical action must reference a component');
-            }
-            target = Object.freeze({ kind: 'component', componentId: asComponentId(ref) });
-        } else {
-            fail('INVALID_SHAPE', `${rowPath}.kind`, 'unknown targeting action kind');
-        }
-        const key = attackerActionTargetKey(target);
-        if (previousActionKey !== undefined && previousActionKey >= key) {
-            fail('INVALID_SHAPE', rowPath, 'targeting actions must be unique and sorted');
-        }
-        previousActionKey = key;
-        actions.set(key, Object.freeze({
-            target,
-            selection: row['selection'] as AttackerActionSelection,
-        }));
-    });
-
-    const localTargets = new Map<ReturnType<typeof asEncounterTargetId>, AttackerLocalTargetState>();
-    let previousTargetId: string | undefined;
-    requireArray(record['targets'], `${path}.targets`).forEach((raw, index) => {
-        const rowPath = `${path}.targets[${index}]`;
-        const row = requireRecord(raw, rowPath);
-        exactKeys(row, [
-            'targetId', 'distance', 'c3Distance', 'useC3', 'calculator', 'manualTnOverride',
-        ], rowPath);
-        const targetId = validateId(row['targetId'], `${rowPath}.targetId`, asEncounterTargetId);
-        if (previousTargetId !== undefined && previousTargetId >= targetId) {
-            fail('INVALID_SHAPE', `${rowPath}.targetId`, 'attacker-local targets must be unique and sorted');
-        }
-        previousTargetId = targetId;
-        const { targetId: _targetId, ...facts } = row;
-        localTargets.set(asEncounterTargetId(targetId), facts as AttackerLocalTargetState);
-    });
-
-    try {
-        freezeAttackerTargetingState({
-            schemaVersion: 1,
-            components,
-            actions,
-            targets: localTargets,
-        });
-    } catch (error) {
-        fail(
-            'INVALID_SHAPE',
-            path,
-            error instanceof Error ? error.message : 'invalid attacker-targeting state',
-        );
-    }
 }
 
 function validateLocationState(entry: Record<string, unknown>, path: string): void {
@@ -1802,244 +1529,71 @@ function assertMovementPsrIdsOwnedByReferences(
 function validateEncounter(
     value: unknown,
     instances: ReadonlySet<string>,
-    targets: ReadonlyMap<string, ReadonlySet<string>>,
 ): void {
     const encounter = requireRecord(value, '$.encounter');
-    exactKeys(encounter, ['encounterRevision', 'state'], '$.encounter');
-    const outerRevision = validateRevision(encounter['encounterRevision'], '$.encounter.encounterRevision');
-    const stateRevision = validateEncounterState(encounter['state'], '$.encounter.state', instances, targets);
-    if (stateRevision !== outerRevision) {
-        fail('REVISION_MISMATCH', '$.encounter.state.encounterRevision', 'outer and encounter revisions differ');
-    }
-}
-
-function validateEncounterState(
-    value: unknown,
-    path: string,
-    instances: ReadonlySet<string>,
-    targets: ReadonlyMap<string, ReadonlySet<string>>,
-): number {
-    const state = requireRecord(value, path);
-    exactKeys(state, ['schemaVersion', 'encounterRevision', 'facts'], path);
-    if (state['schemaVersion'] !== 2) fail('INVALID_SHAPE', `${path}.schemaVersion`, 'must be 2');
-    const revision = validateRevision(state['encounterRevision'], `${path}.encounterRevision`);
-    const facts = requireArray(state['facts'], `${path}.facts`);
-    if (facts.length > MAX_SERIALIZED_ENCOUNTER_FACTS) {
-        fail('INVALID_SHAPE', `${path}.facts`, `cannot contain more than ${MAX_SERIALIZED_ENCOUNTER_FACTS} facts`);
-    }
-    const factIds = new Set<string>();
-    const targetIds = new Set<string>();
-    const targetLetters = new Set<string>();
-    const networkIds = new Set<string>();
-    let previous: string | undefined;
-    facts.forEach((raw, index) => {
-        const factPath = `${path}.facts[${index}]`;
-        const fact = requireRecord(raw, factPath);
-        const factId = validateId(fact['factId'], `${factPath}.factId`);
-        if (factIds.has(factId)) fail('INVALID_SHAPE', `${factPath}.factId`, 'duplicate encounter fact ID');
-        if (previous !== undefined && previous >= factId) fail('INVALID_SHAPE', `${factPath}.factId`, 'encounter facts must be sorted by ID');
-        previous = factId;
-        factIds.add(factId);
-        if (fact['kind'] === 'target') {
-            exactKeys(fact, ['kind', 'factId', 'target'], factPath);
-            const target = validateEncounterTargetFact(
-                fact['target'], `${factPath}.target`, targetIds, targetLetters,
-            );
-            if (factId !== encounterTargetFactId(target.id)) {
-                fail('INVALID_SHAPE', `${factPath}.factId`, 'target fact ID must be derived from its stable target ID');
-            }
-        } else if (fact['kind'] === 'network') {
-            exactKeys(fact, ['kind', 'factId', 'network'], factPath);
-            const networkId = validateEncounterNetworkFact(
-                fact['network'], `${factPath}.network`, instances, networkIds,
-            );
-            if (factId !== encounterNetworkFactId(networkId)) {
-                fail('INVALID_SHAPE', `${factPath}.factId`, 'network fact ID must be derived from its stable network ID');
-            }
-        } else if (fact['kind'] === 'network-link') {
-            exactKeys(fact, ['kind', 'factId', 'networkType', 'endpoints'], factPath);
-            validateId(fact['networkType'], `${factPath}.networkType`);
-            const endpointKeys = new Set<string>();
-            const endpoints = requireArray(fact['endpoints'], `${factPath}.endpoints`);
-            if (endpoints.length < 2) fail('ENCOUNTER_ENDPOINT_INVALID', `${factPath}.endpoints`, 'a network needs at least two endpoints');
-            endpoints.forEach((endpoint, endpointIndex) => {
-                const key = validateEncounterEndpoint(endpoint, `${factPath}.endpoints[${endpointIndex}]`, instances, targets);
-                if (endpointKeys.has(key)) fail('ENCOUNTER_ENDPOINT_INVALID', `${factPath}.endpoints[${endpointIndex}]`, 'duplicate endpoint');
-                endpointKeys.add(key);
-            });
-        } else if (fact['kind'] === 'cross-unit-effect') {
-            exactKeys(fact, ['kind', 'factId', 'effectKey', 'source', 'target'], factPath);
-            validateId(fact['effectKey'], `${factPath}.effectKey`);
-            if (fact['source'] !== undefined) validateEncounterEndpoint(fact['source'], `${factPath}.source`, instances, targets);
-            validateEncounterEndpoint(fact['target'], `${factPath}.target`, instances, targets);
-        } else fail('INVALID_SHAPE', `${factPath}.kind`, 'unknown encounter fact');
-    });
-    if (targetIds.size > MAX_SERIALIZED_ENCOUNTER_TARGETS) {
-        fail('INVALID_SHAPE', `${path}.facts`, `cannot contain more than ${MAX_SERIALIZED_ENCOUNTER_TARGETS} targets`);
-    }
-    if (networkIds.size > MAX_SERIALIZED_ENCOUNTER_NETWORKS) {
-        fail('INVALID_SHAPE', `${path}.facts`, `cannot contain more than ${MAX_SERIALIZED_ENCOUNTER_NETWORKS} networks`);
-    }
-    return revision;
-}
-
-function validateEncounterTargetFact(
-    value: unknown,
-    path: string,
-    targetIds: Set<string>,
-    targetLetters: Set<string>,
-): { readonly id: string } {
-    const target = requireRecord(value, path);
-    exactKeys(target, [
-        'id', 'letter', 'name', 'color', 'source', 'readOnly', 'unitType', 'tnCalculator',
-    ], path);
-    const id = validateEncounterStableId(target['id'], `${path}.id`, 'target ID');
-    if (targetIds.has(id)) fail('INVALID_SHAPE', `${path}.id`, 'duplicate encounter target ID');
-    targetIds.add(id);
-    const letter = validateBoundedText(target['letter'], `${path}.letter`, 1, 4);
-    if (!/^[A-Z]+$/.test(letter)) fail('INVALID_SHAPE', `${path}.letter`, 'must contain only uppercase ASCII letters');
-    if (targetLetters.has(letter)) fail('INVALID_SHAPE', `${path}.letter`, 'duplicate encounter target letter');
-    targetLetters.add(letter);
-    validateBoundedText(target['name'], `${path}.name`, 1, 160);
-    validateEncounterColor(target['color'], `${path}.color`);
-    if (target['source'] !== undefined && target['source'] !== 'manual' && target['source'] !== 'opfor') {
-        fail('INVALID_SHAPE', `${path}.source`, 'must be manual or opfor');
-    }
-    if (target['readOnly'] !== undefined && typeof target['readOnly'] !== 'boolean') {
-        fail('INVALID_SHAPE', `${path}.readOnly`, 'must be a boolean');
-    }
-    if ((target['source'] === 'opfor') !== (target['readOnly'] === true)) {
+    exactKeys(encounter, ['networks', 'c3Positions'], '$.encounter');
+    validateEncounterC3Positions(encounter['c3Positions'], '$.encounter.c3Positions', instances);
+    const networks = requireArray(encounter['networks'], '$.encounter.networks');
+    if (networks.length > MAX_SERIALIZED_ENCOUNTER_NETWORKS) {
         fail(
             'INVALID_SHAPE',
-            path,
-            'opfor targets must be read-only and only opfor targets may be read-only',
+            '$.encounter.networks',
+            `cannot contain more than ${MAX_SERIALIZED_ENCOUNTER_NETWORKS} networks`,
         );
     }
-    if (target['unitType'] !== undefined && !ENCOUNTER_TARGET_UNIT_TYPES.has(String(target['unitType']))) {
-        fail('INVALID_SHAPE', `${path}.unitType`, 'unknown target unit type');
-    }
-    if (target['tnCalculator'] !== undefined) {
-        validateEncounterTargetCalculator(target['tnCalculator'], `${path}.tnCalculator`);
-    }
-    return { id };
-}
-
-const ENCOUNTER_TARGET_UNIT_TYPES = new Set<string>([
-    'mek-biped', 'mek-quad', 'mek-tripod', 'battle-armor', 'vehicle', 'vtol-wige',
-    'infantry', 'protoMek', 'aero', 'terrain', 'building',
-] satisfies readonly TnTargetUnitType[]);
-const ENCOUNTER_MOVEMENT_BRACKETS = new Set<string>([
-    '0-2', '3-4', '5-6', '7-9', '10-17', '18-24', '25+',
-] satisfies readonly TnTargetMovementBracketId[]);
-const ENCOUNTER_TARGET_COVERS = new Set<string>([
-    'none', 'light', 'heavy',
-] satisfies readonly TnTargetHexCover[]);
-const ENCOUNTER_TARGET_WATER_DEPTHS = new Set([
-    'underwater-depth-1', 'underwater-depth-2', 'underwater-depth-3',
-]);
-const ENCOUNTER_TARGET_BUILDING_LEVELS = new Set([
-    'building-1', 'building-2', 'building-3',
-]);
-const ENCOUNTER_STEALTH_SYSTEMS = new Set([
-    'stealth-armor', 'null-signature', 'chameleon', 'chameleon-null',
-    'ba-basic', 'ba-standard', 'ba-improved', 'mimetic', 'simple-camo',
-]);
-
-function validateEncounterNonNegativeInteger(value: unknown, path: string): void {
-    if (!Number.isSafeInteger(value) || Number(value) < 0) {
-        fail('INVALID_SHAPE', path, 'must be a non-negative integer');
-    }
-}
-
-function validateEncounterRangeModifiers(value: unknown, path: string): void {
-    const modifiers = requireRecord(value, path);
-    exactKeys(modifiers, ['short', 'medium', 'long'], path);
-    for (const key of ['short', 'medium', 'long'] as const) {
-        if (!Number.isSafeInteger(modifiers[key])) {
-            fail('INVALID_SHAPE', `${path}.${key}`, 'must be an integer');
+    const networkIds = new Set<string>();
+    let previous: string | undefined;
+    networks.forEach((network, index) => {
+        const path = `$.encounter.networks[${index}]`;
+        const networkId = validateEncounterNetwork(network, path, instances);
+        if (networkIds.has(networkId)) fail('INVALID_SHAPE', `${path}.id`, 'duplicate encounter network ID');
+        if (previous !== undefined && previous >= networkId) {
+            fail('INVALID_SHAPE', `${path}.id`, 'encounter networks must be sorted by ID');
         }
-    }
+        networkIds.add(networkId);
+        previous = networkId;
+    });
 }
 
-function validateEncounterStealth(value: unknown, path: string): void {
-    if (value === undefined || typeof value === 'boolean') return;
-    const stealth = requireRecord(value, path);
-    exactKeys(stealth, [
-        'short', 'medium', 'long', 'conventionalInfantry', 'secondaryTargetRestricted',
-    ], path);
-    validateEncounterRangeModifiers({
-        short: stealth['short'],
-        medium: stealth['medium'],
-        long: stealth['long'],
-    }, path);
-    if (stealth['conventionalInfantry'] !== undefined) {
-        validateEncounterRangeModifiers(stealth['conventionalInfantry'], `${path}.conventionalInfantry`);
-    }
-    if (stealth['secondaryTargetRestricted'] !== undefined
-        && typeof stealth['secondaryTargetRestricted'] !== 'boolean') {
-        fail('INVALID_SHAPE', `${path}.secondaryTargetRestricted`, 'must be a boolean');
-    }
-}
-
-function validateEncounterTargetCalculator(value: unknown, path: string): void {
-    const calculator = requireRecord(value, path);
-    exactKeys(calculator, [
-        'isAirborne', 'targetMovementBracket', 'targetMovementDistance', 'skidding', 'prone', 'immobile',
-        'targetHexCover', 'waterDepth', 'buildingCover', 'targetHeight', 'largeTarget',
-        'narcAboveWater', 'narcUnderwater', 'tagged', 'ecmShielded', 'stealth', 'stealthSystem',
-    ], path);
-    for (const key of [
-        'isAirborne', 'skidding', 'prone', 'immobile', 'largeTarget',
-        'narcAboveWater', 'narcUnderwater', 'tagged', 'ecmShielded',
-    ] as const) {
-        if (calculator[key] !== undefined && typeof calculator[key] !== 'boolean') {
-            fail('INVALID_SHAPE', `${path}.${key}`, 'must be a boolean');
-        }
-    }
-    if (calculator['targetMovementBracket'] !== undefined
-        && calculator['targetMovementBracket'] !== null
-        && !ENCOUNTER_MOVEMENT_BRACKETS.has(String(calculator['targetMovementBracket']))) {
-        fail('INVALID_SHAPE', `${path}.targetMovementBracket`, 'unknown movement bracket');
-    }
-    if (calculator['targetMovementDistance'] !== undefined
-        && calculator['targetMovementDistance'] !== null) {
-        validateEncounterNonNegativeInteger(calculator['targetMovementDistance'], `${path}.targetMovementDistance`);
-    }
-    if (calculator['targetHexCover'] !== undefined && !ENCOUNTER_TARGET_COVERS.has(String(calculator['targetHexCover']))) {
-        fail('INVALID_SHAPE', `${path}.targetHexCover`, 'unknown target cover');
-    }
-    if (calculator['waterDepth'] !== undefined
-        && !ENCOUNTER_TARGET_WATER_DEPTHS.has(String(calculator['waterDepth']))) {
-        fail('INVALID_SHAPE', `${path}.waterDepth`, 'unknown target water depth');
-    }
-    if (calculator['buildingCover'] !== undefined
-        && !ENCOUNTER_TARGET_BUILDING_LEVELS.has(String(calculator['buildingCover']))) {
-        fail('INVALID_SHAPE', `${path}.buildingCover`, 'unknown target building cover');
-    }
-    if (calculator['targetHeight'] !== undefined
-        && calculator['targetHeight'] !== 1
-        && calculator['targetHeight'] !== 2
-        && calculator['targetHeight'] !== 3) {
-        fail('INVALID_SHAPE', `${path}.targetHeight`, 'must be 1, 2, or 3');
-    }
-    validateEncounterStealth(calculator['stealth'], `${path}.stealth`);
-    if (calculator['stealthSystem'] !== undefined
-        && !ENCOUNTER_STEALTH_SYSTEMS.has(String(calculator['stealthSystem']))) {
-        fail('INVALID_SHAPE', `${path}.stealthSystem`, 'unknown stealth system');
-    }
-}
-
-function validateEncounterNetworkFact(
+function validateEncounterC3Positions(
     value: unknown,
     path: string,
     instances: ReadonlySet<string>,
-    networkIds: Set<string>,
+): void {
+    if (value === undefined) return;
+    const positions = requireArray(value, path);
+    if (positions.length > instances.size) {
+        fail('INVALID_SHAPE', path, 'cannot contain more positions than force units');
+    }
+    const unitIds = new Set<string>();
+    let previous: string | undefined;
+    positions.forEach((raw, index) => {
+        const positionPath = `${path}[${index}]`;
+        const position = requireRecord(raw, positionPath);
+        exactKeys(position, ['unitId', 'x', 'y'], positionPath);
+        const unitId = validateId(position['unitId'], `${positionPath}.unitId`);
+        if (!instances.has(unitId)) {
+            fail('DANGLING_TARGET_REF', `${positionPath}.unitId`, `references unknown unit ${unitId}`);
+        }
+        if (unitIds.has(unitId)) fail('INVALID_SHAPE', `${positionPath}.unitId`, 'duplicate C3 position');
+        if (previous !== undefined && compareText(previous, unitId) >= 0) {
+            fail('INVALID_SHAPE', `${positionPath}.unitId`, 'C3 positions must be sorted by unit ID');
+        }
+        requireFiniteNumber(position['x'], `${positionPath}.x`);
+        requireFiniteNumber(position['y'], `${positionPath}.y`);
+        unitIds.add(unitId);
+        previous = unitId;
+    });
+}
+
+function validateEncounterNetwork(
+    value: unknown,
+    path: string,
+    instances: ReadonlySet<string>,
 ): string {
     const network = requireRecord(value, path);
     exactKeys(network, ['id', 'networkType', 'color', 'endpoints'], path);
     const networkId = validateEncounterStableId(network['id'], `${path}.id`, 'network ID');
-    if (networkIds.has(networkId)) fail('INVALID_SHAPE', `${path}.id`, 'duplicate encounter network ID');
-    networkIds.add(networkId);
     const networkType = network['networkType'];
     if (!isC3NetworkType(networkType)) {
         fail('INVALID_SHAPE', `${path}.networkType`, 'unknown C3 network type');
@@ -2048,11 +1602,11 @@ function validateEncounterNetworkFact(
     const endpoints = requireArray(network['endpoints'], `${path}.endpoints`);
     // Persistence owns only shape and resource bounds. C3 topology is validated
     // once, after unit hydration, by C3NetworkEditor through the force boundary.
-    if (endpoints.length > MAX_SERIALIZED_ENCOUNTER_FACTS) {
+    if (endpoints.length > MAX_SERIALIZED_ENCOUNTER_NETWORK_ENDPOINTS) {
         fail(
             'INVALID_SHAPE',
             `${path}.endpoints`,
-            `cannot contain more than ${MAX_SERIALIZED_ENCOUNTER_FACTS} endpoints`,
+            `cannot contain more than ${MAX_SERIALIZED_ENCOUNTER_NETWORK_ENDPOINTS} endpoints`,
         );
     }
     const endpointKeys = new Set<string>();
@@ -2102,32 +1656,6 @@ function validateEncounterColor(value: unknown, path: string): void {
         || !/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)) {
         fail('INVALID_SHAPE', path, 'must be a three- or six-digit hexadecimal color');
     }
-}
-
-function validateEncounterEndpoint(
-    value: unknown,
-    path: string,
-    instances: ReadonlySet<string>,
-    targets: ReadonlyMap<string, ReadonlySet<string>>,
-): string {
-    const endpoint = requireRecord(value, path);
-    exactKeys(endpoint, ['instanceId', 'target'], path);
-    const instance = validateId(endpoint['instanceId'], `${path}.instanceId`);
-    if (!instances.has(instance)) {
-        fail('ENCOUNTER_ENDPOINT_INVALID', `${path}.instanceId`, 'encounter endpoint has no force unit');
-    }
-    let ref = '';
-    if (endpoint['target'] !== undefined) {
-        ref = validateId(endpoint['target'], `${path}.target`, asSavedTargetRef);
-        if (!targets.get(instance)?.has(ref)) {
-            fail(
-                'ENCOUNTER_ENDPOINT_INVALID',
-                `${path}.target`,
-                'encounter endpoint target is not owned by its force unit',
-            );
-        }
-    }
-    return `${instance}\0${ref}`;
 }
 
 function validateOptionalStringFields(record: Record<string, unknown>, path: string, keys: readonly string[]): void {

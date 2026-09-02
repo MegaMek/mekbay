@@ -1,8 +1,10 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { emptyCBTEncounterSnapshot } from '../models/runtime/encounter-runtime';
-import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import {
+    createDirectMekRuntimeFixture,
+    emptyCBTEncounterSnapshot,
+} from '../models/runtime/testing/direct-mek-runtime-fixture';
 import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
 import type {
     EquipmentInteractionDialogsService,

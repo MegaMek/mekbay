@@ -77,6 +77,7 @@ function createMembers(definitions: readonly MemberFixture[]): CBTMekForceMember
     const byId = new Map(definitions.map(definition => [definition.id, definition] as const));
     const force = {
         changed,
+        sessionChanged: new Subject<void>(),
         members: () => members,
         readOnly: () => false,
         getEquipmentPanelSnapshot: (id: string) => {
@@ -131,6 +132,7 @@ function createTankMember(): CBTForceMember {
     let member: CBTForceMember;
     const force = {
         changed,
+        sessionChanged: new Subject<void>(),
         members: () => [member],
         readOnly: () => false,
         getEquipmentPanelSnapshot: () => ({

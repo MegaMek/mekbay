@@ -12,8 +12,6 @@ import {
     createSavedTargetRef,
     emptyRuntimeHistory,
     validateSerializedCBTForceV2,
-    encounterNetworkFactId,
-    encounterTargetFactId,
     type ForceEnvelopeValidationCode,
     type SerializedCBTUnitV2,
     type SerializedForceUnitEntryV2,
@@ -209,7 +207,7 @@ describe('V2 force persistence', () => {
         ]);
     });
 
-    it('fails closed on duplicate and mismatched instance IDs and revisions', async () => {
+    it('fails closed on duplicate and mismatched unit identities and revisions', async () => {
         const duplicate = clone(mixedForce());
         duplicate.units = [duplicate.units[0], duplicate.units[0]];
         await expectCode(validateSerializedCBTForceV2(asForce(duplicate)), 'DUPLICATE_INSTANCE_ID');
@@ -222,13 +220,42 @@ describe('V2 force persistence', () => {
         wrongUnitRevision.units[0].stateRevision = 99;
         await expectCode(validateSerializedCBTForceV2(asForce(wrongUnitRevision)), 'REVISION_MISMATCH');
 
-        const wrongEncounterRevision = clone(mixedForce());
-        wrongEncounterRevision.encounter.encounterRevision = 1;
-        await expectCode(validateSerializedCBTForceV2(asForce(wrongEncounterRevision)), 'REVISION_MISMATCH');
+        const obsoleteEncounterRevision = clone(mixedForce());
+        Reflect.set(obsoleteEncounterRevision.encounter, 'encounterRevision', 1);
+        await expectCode(validateSerializedCBTForceV2(asForce(obsoleteEncounterRevision)), 'INVALID_SHAPE');
 
         const missingEncounter = clone(mixedForce());
         delete missingEncounter.encounter;
         await expectCode(validateSerializedCBTForceV2(asForce(missingEncounter)), 'INVALID_SHAPE');
+    });
+
+    it('accepts only canonical C3 layout positions owned by this force', async () => {
+        const valid = clone(mixedForce());
+        valid.encounter.c3Positions = [
+            { unitId: 'unit:mek', x: 203, y: 392 },
+            { unitId: 'unit:vehicle', x: 87.5, y: 144 },
+        ];
+        const sealed = await validateSerializedCBTForceV2(asForce(valid));
+        expect(sealed.encounter.c3Positions).toEqual(valid.encounter.c3Positions);
+        expect(Object.isFrozen(sealed.encounter.c3Positions)).toBeTrue();
+
+        const duplicate = clone(valid);
+        duplicate.encounter.c3Positions![1].unitId = 'unit:mek';
+        await expectCode(validateSerializedCBTForceV2(asForce(duplicate)), 'INVALID_SHAPE');
+
+        const dangling = clone(valid);
+        dangling.encounter.c3Positions![1].unitId = 'unit:missing';
+        await expectCode(validateSerializedCBTForceV2(asForce(dangling)), 'DANGLING_TARGET_REF');
+
+        const unsorted = clone(valid);
+        unsorted.encounter.c3Positions!.reverse();
+        await expectCode(validateSerializedCBTForceV2(asForce(unsorted)), 'INVALID_SHAPE');
+
+        for (const coordinate of [Number.POSITIVE_INFINITY, Number.NaN, -0]) {
+            const nonCanonical = clone(valid);
+            nonCanonical.encounter.c3Positions![0].x = coordinate;
+            await expectCode(validateSerializedCBTForceV2(asForce(nonCanonical)), 'INVALID_SHAPE');
+        }
     });
 
     it('validates compact retained-turn history groups and message tuples', async () => {
@@ -501,100 +528,41 @@ describe('V2 force persistence', () => {
         }
     });
 
-    it('rejects sealed encounter candidates whose target source and read-only ownership disagree', async () => {
-        const targetFact = (source: 'manual' | 'opfor', readOnly: boolean) => ({
-            kind: 'target',
-            factId: encounterTargetFactId('target:origin-policy'),
-            target: {
-                id: 'target:origin-policy',
-                letter: 'A',
-                name: 'Origin policy target',
-                color: '#fff',
-                source,
-                readOnly,
-            },
-        });
-        for (const [source, readOnly] of [
-            ['opfor', false],
-            ['manual', true],
-        ] as const) {
-            const tampered = clone(mixedForce());
-            tampered.encounter.state.facts = [targetFact(source, readOnly)];
-            await expectCode(validateSerializedCBTForceV2(asForce(tampered)), 'INVALID_SHAPE');
-        }
-
-        const valid = clone(mixedForce());
-        valid.encounter.state.facts = [targetFact('opfor', true)];
-        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
-
-        valid.encounter.state.facts[0].target.tnCalculator = {
-            targetMovementDistance: 2,
-            targetHeight: 3,
-            stealth: {
-                short: 0,
-                medium: 1,
-                long: 2,
-                conventionalInfantry: { short: 0, medium: 0, long: 0 },
-                secondaryTargetRestricted: true,
-            },
-            stealthSystem: 'stealth-armor',
-        };
-        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
-
-        const invalidStealth = clone(valid);
-        invalidStealth.encounter.state.facts[0].target.tnCalculator.stealthSystem = 'unknown';
-        await expectCode(validateSerializedCBTForceV2(asForce(invalidStealth)), 'INVALID_SHAPE');
-    });
-
     it('validates C3 structure without requiring copied component topology', async () => {
         const valid = clone(mixedForce());
         const unit = valid.units[0].unit;
-        const targetFact = {
-            kind: 'target',
-            factId: encounterTargetFactId('target:alpha'),
-            target: { id: 'target:alpha', letter: 'A', name: 'Alpha', color: '#fff' },
-        };
-        const networkFact = {
-            kind: 'network',
-            factId: encounterNetworkFactId('network:alpha'),
-            network: {
-                id: 'network:alpha', networkType: 'c3', color: '#123456',
-                endpoints: [
-                    { instanceId: unit.instanceId, componentId: asComponentId('component:c3-master'), role: 'master' },
-                    { instanceId: unit.instanceId, componentId: asComponentId('component:c3-slave'), role: 'member' },
-                ],
-            },
-        };
-        valid.encounter.state.facts = [networkFact, targetFact];
-        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
-
-        const entityValidated = clone(valid);
-        entityValidated.encounter.state.facts[0].network.endpoints[1].componentId = 'component:loaded-later';
-        await expectAsync(validateSerializedCBTForceV2(asForce(entityValidated))).toBeResolved();
-
-        const localRange = clone(valid);
-        localRange.encounter.state.facts[1].target.distance = 7;
-        await expectCode(validateSerializedCBTForceV2(asForce(localRange)), 'INVALID_SHAPE');
-
-    });
-
-    it('rejects encounter endpoints that name a target outside their unit witness table', async () => {
-        const valid = clone(mixedForce());
-        const unit = valid.units[0];
-        const target = Object.keys(unit.unit.blueprintReferences.targets)[0];
-        valid.encounter.state.facts = [{
-            kind: 'cross-unit-effect',
-            factId: 'effect:target-witness',
-            effectKey: 'test-effect',
-            target: { instanceId: unit.instanceId, target },
+        valid.encounter.networks = [{
+            id: 'network:alpha', networkType: 'c3', color: '#123456',
+            endpoints: [
+                { instanceId: unit.instanceId, componentId: asComponentId('component:c3-master'), role: 'master' },
+                { instanceId: unit.instanceId, componentId: asComponentId('component:c3-slave'), role: 'member' },
+            ],
         }];
         await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
 
-        valid.encounter.state.facts[0].target.target = 'missing-target';
+        const entityValidated = clone(valid);
+        entityValidated.encounter.networks[0].endpoints[1].componentId = asComponentId('component:loaded-later');
+        await expectAsync(validateSerializedCBTForceV2(asForce(entityValidated))).toBeResolved();
+    });
+
+    it('rejects C3 endpoints that name a unit outside the force', async () => {
+        const valid = clone(mixedForce());
+        const unit = valid.units[0];
+        valid.encounter.networks = [{
+            id: 'network:alpha', networkType: 'c3', color: '#123456',
+            endpoints: [{
+                instanceId: unit.instanceId,
+                componentId: asComponentId('component:c3-master'),
+                role: 'master',
+            }],
+        }];
+        await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
+
+        valid.encounter.networks[0].endpoints[0].instanceId = 'unit:missing';
         await expectCode(
             validateSerializedCBTForceV2(asForce(valid)),
             'ENCOUNTER_ENDPOINT_INVALID',
-            /not owned by its force unit/u,
+            /has no force unit/u,
         );
     });
 });
@@ -625,10 +593,7 @@ function mixedForce(): SerializedCBTForceV2 {
                 ],
             }],
         },
-        encounter: {
-            encounterRevision: 0,
-            state: { schemaVersion: 2, encounterRevision: 0, facts: [] },
-        },
+        encounter: { networks: [] },
     };
 }
 
@@ -663,7 +628,6 @@ function v2Unit(instanceId: string, uuid: typeof UUID_A): SerializedCBTUnitV2 {
         stateRevision: 3,
         ruleChecks: { schemaVersion: 1, entries: [] },
         movementPsr: { schemaVersion: 2 },
-        attackerTargeting: { schemaVersion: 1, components: [], actions: [], targets: [] },
         locationState: [{ target, damage: 2 }],
         crew: { schemaVersion: 1, positions: [] },
         family: { kind: 'mek' },

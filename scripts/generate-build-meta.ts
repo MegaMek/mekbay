@@ -35,15 +35,11 @@ import child from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
+const APP_VERSION = '0.7';
+
 const root = path.resolve(__dirname, '..'); // app/ folder
 const versionFile = path.join(root, 'src', 'app', 'version.constant.ts');
 const buildMetaFile = path.join(root, 'src', 'app', 'build-meta.ts');
-
-function readVersion(): string {
-  const content = fs.readFileSync(versionFile, 'utf8');
-  const m = content.match(/export\s+const\s+APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
-  return m?.[1] ?? '0.0';
-}
 
 function git(cmd: string): string | null {
   try {
@@ -90,8 +86,6 @@ export const APP_VERSION_STRING = '${versionString}';
 
 (function main() {
   try {
-    const version = readVersion();
-
     // commit count (number of commits reachable from HEAD)
     // TODO: reimplement it with an API call to GitHub so we don't have to use depth: 0 in checkout
     const commitNumber = parseInt(git('git rev-list --count HEAD') || '0', 10);
@@ -102,7 +96,7 @@ export const APP_VERSION_STRING = '${versionString}';
 
     const timestamp = new Date().toISOString();
 
-    const generated = writeBuildMeta(version, commitNumber || 0, commitHash, branch, timestamp);
+    const generated = writeBuildMeta(APP_VERSION, commitNumber || 0, commitHash, branch, timestamp);
     console.log('Build meta generated:', generated);
   } catch (err) {
     console.error('Failed to generate build meta:', err);

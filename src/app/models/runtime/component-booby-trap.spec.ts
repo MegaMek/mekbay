@@ -11,8 +11,10 @@ import {
     BOOBY_TRAP_DETONATED_MODE,
     BoobyTrapHandler,
 } from './component-booby-trap';
-import { emptyCBTEncounterSnapshot } from './encounter-runtime';
-import { createDirectBoobyTrapRuntimeFixture } from './testing/direct-mek-runtime-fixture';
+import {
+    createDirectBoobyTrapRuntimeFixture,
+    emptyCBTEncounterSnapshot,
+} from './testing/direct-mek-runtime-fixture';
 
 describe('direct Booby Trap runtime', () => {
     it('rejects generic mode mutation and leaves cancellation completely unchanged', async () => {

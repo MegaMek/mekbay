@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    CBTEncounterRuntime,
     decodeCBTEncounterStateV2,
+    type CBTEncounterSnapshot,
     type EncounterNetwork,
     type TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
@@ -227,19 +227,14 @@ export class CBTUnitStore {
                 : pruneRemovedUnitsFromEncounter(envelope.encounter, removedUnitIds),
             history: removedUnitIds.size === 0 ? envelope.history : emptyRuntimeHistory(),
         });
-        const encounter = decodeCBTEncounterStateV2(hydratedEnvelope.encounter.state).snapshot;
+        const encounter = decodeCBTEncounterStateV2(hydratedEnvelope.encounter);
         if (!validateCBTEncounterNetworks(encounter.networks, units)) {
             warnings.add('C3 network data was invalid and was ignored.');
             hydratedEnvelope = await validateSerializedCBTForceV2({
                 ...hydratedEnvelope,
                 encounter: Object.freeze({
                     ...hydratedEnvelope.encounter,
-                    state: Object.freeze({
-                        ...hydratedEnvelope.encounter.state,
-                        facts: Object.freeze(hydratedEnvelope.encounter.state.facts.filter(
-                            fact => fact.kind !== 'network',
-                        )),
-                    }),
+                    networks: Object.freeze([]),
                 }),
             });
         }
@@ -425,6 +420,7 @@ export class CBTUnitStore {
                 }
                 candidate = await CBTMekUnit.restoreSnapshot(current, row.unit, binding.scenarioRules);
             }
+            candidate.installAttackerTargetingSessionState(row.attackerTargeting);
             if (!jsonValuesEqual(candidate.serialize(), row.unit)) {
                 throw new Error(`Undo checkpoint could not be restored exactly for ${row.instanceId}`);
             }
@@ -754,7 +750,7 @@ export class CBTUnitStore {
         instanceId: string,
         registry: EquipmentInteractionRegistry,
         context: EquipmentInteractionQueryContext,
-        encounter: () => ReturnType<CBTEncounterRuntime['snapshot']>,
+        encounter: () => CBTEncounterSnapshot,
         readOnly: boolean,
     ): readonly CBTEquipmentInteraction[] {
         const owner = this.binding;
@@ -885,7 +881,7 @@ export class CBTUnitStore {
         registry: EquipmentInteractionRegistry,
         queryContext: EquipmentInteractionQueryContext,
         commandContext: EquipmentInteractionCommandContext,
-        encounter: () => ReturnType<CBTEncounterRuntime['snapshot']>,
+        encounter: () => CBTEncounterSnapshot,
         isReadOnly: () => boolean,
         isOwnerCurrent: () => boolean,
         publishChanged: () => void,
@@ -914,7 +910,7 @@ export class CBTUnitStore {
         registry: EquipmentInteractionRegistry,
         queryContext: EquipmentInteractionQueryContext,
         commandContext: EquipmentInteractionCommandContext,
-        encounter: () => ReturnType<CBTEncounterRuntime['snapshot']>,
+        encounter: () => CBTEncounterSnapshot,
         isReadOnly: () => boolean,
         isOwnerCurrent: () => boolean,
     ): CBTEquipmentChoiceDispatchResult | Promise<CBTEquipmentChoiceDispatchResult> {

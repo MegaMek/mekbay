@@ -19,6 +19,7 @@ import type { TargetRegistrySnapshot } from './encounter-runtime';
 import type { EquipmentRowOrderGroup } from './equipment-row-order';
 import type { CBTUnitAttackerTargetingCommand, CBTUnitSelectedWeaponFireCommand } from './unit-instance';
 import type { PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
+import type { AttackerTargetingState } from './attacker-targeting-state';
 
 export type CBTTargetingReconciliation = () => void;
 
@@ -55,6 +56,7 @@ export interface CBTUnit {
         registry: TargetRegistrySnapshot,
         forceReadOnly: boolean,
     ): CBTUnitDispatchResult;
+    installAttackerTargetingSessionState(targeting: AttackerTargetingState): void;
     serialize(): SerializedCBTUnitV2 | SerializedNonMekUnit;
 }
 

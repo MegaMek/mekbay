@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, signal, computed, effect, inject, untracked, DestroyRef } from '@angular/core';
+import { Injectable, signal, computed, effect, inject, untracked } from '@angular/core';
 import type { Era } from '../models/eras.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import {
@@ -45,7 +45,7 @@ import { getSnapshotForcePackNames, type AdvOptionsContextSnapshot } from '../ut
 import { buildUnitSearchAdvOptions } from '../utils/unit-search-adv-options-builder.util';
 import type { UnitSearchDropdownValuesDependencies } from '../utils/unit-search-dropdown-values.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from '../utils/unit-filter-kernel.util';
-import { getAdvancedFilterConfigByKey, getAdvancedFilterConfigBySemanticField, isFilterAvailableForAvailabilitySource, normalizeUnitSearchPropertyKey } from '../utils/unit-search-filter-config.util';
+import { getAdvancedFilterConfigByKey, isFilterAvailableForAvailabilitySource, normalizeUnitSearchPropertyKey } from '../utils/unit-search-filter-config.util';
 import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl, parseUnitSearchScalarUrlState, resolveInitialUnitSearchViewMode } from '../utils/unit-search-url-filters.util';
 import type { UnitSearchViewMode } from '../models/options.model';
 import { generatePublicTagsParam, mergePublicTagReferences, parsePublicTagsParam } from '../utils/unit-search-public-tags-url.util';
@@ -58,26 +58,16 @@ import {
 } from '../utils/unit-search-semantic-state.util';
 import {
     getProperty,
-    getMergedTags,
     getSelectedPositiveDropdownNames,
     getUnitCountableFilterData,
     measureStage,
     normalizeMultiStateSelection,
 } from '../utils/unit-search-shared.util';
 import { executeUnitSearch, type UnitSearchExecutionResult } from '../utils/unit-search-executor.util';
-import { UnitSearchWorkerClient } from '../utils/unit-search-worker-client.util';
-import { SEARCH_WORKER_FACTORY } from '../utils/unit-search-worker-factory.util';
-import {
-    buildWorkerExecutionQuery,
-    buildWorkerSearchRequest as buildUnitSearchWorkerRequest,
-    getWorkerCorpusSnapshot as getCachedWorkerCorpusSnapshot,
-    getWorkerCorpusVersion as getUnitSearchWorkerCorpusVersion,
-} from '../utils/unit-search-worker-request.util';
-import { buildWorkerSearchTelemetrySnapshot, hydrateWorkerSearchResult } from '../utils/unit-search-worker-result.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
-import { findBvNormalizationMatch, isValidBvNormalizationSettings } from '../utils/bv-normalization.util';
-import { findPvNormalizationMatch, isValidPvNormalizationSettings } from '../utils/pv-normalization.util';
+import { isValidBvNormalizationSettings } from '../utils/bv-normalization.util';
+import { isValidPvNormalizationSettings } from '../utils/pv-normalization.util';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 import { FormationRequirementEngine } from '../utils/formation-requirement-engine.util';
 import type { FormationSearchTarget } from '../utils/formation-requirement.model';
@@ -97,14 +87,6 @@ import {
 } from '../utils/filter-name-resolution.util';
 import { sortDropdownOptionObjects } from '../utils/unit-search-dropdown-sort.util';
 import { compileASSpecialSelections, unitMatchesASSpecialSelections } from '../utils/as-special-filter.util';
-import { compareUnitsByName } from '../utils/sort.util';
-import type {
-    UnitSearchWorkerCorpusSnapshot,
-    UnitSearchWorkerQueryRequest,
-    UnitSearchWorkerResultMessage,
-} from '../utils/unit-search-worker-protocol.util';
-import type { UnitSearchWorkerProgressMessage } from '../utils/unit-search-worker-protocol.util';
-import type { RuntimeCatalogProgressState } from '../models/startup-progress.model';
 import {
     ADVANCED_FILTERS,
     type AvailabilityFilterScope,
@@ -142,10 +124,6 @@ function getUsedJsHeapMiB(): number | null {
 
 const AVAILABILITY_CASCADE_FILTER_KEYS = new Set(['era', 'faction', 'availabilityFrom', 'availabilityRarity']);
 const FORCE_PACK_OPTION_UNIVERSE = getForcePacks().map(pack => ({ name: pack.name }));
-const MEGAMEK_WORKER_CONTEXT_FILTER_KEYS = new Set(['era', 'faction']);
-const MEGAMEK_WORKER_AVAILABILITY_FILTER_KEYS = new Set(['availabilityFrom', 'availabilityRarity']);
-const MEGAMEK_WORKER_AVAILABILITY_SEMANTIC_FIELDS = new Set(['from', 'rarity']);
-const MEGAMEK_WORKER_SEMANTIC_FIELDS = new Set(['era', 'faction', 'from', 'rarity']);
 const FORMATION_TARGET_SEMANTIC_FIELDS = new Set(['formation']);
 
 /** Check if any element in sourceSet exists in targetSet. */
@@ -180,7 +158,6 @@ export class UnitSearchFiltersService {
     optionsService = inject(OptionsService);
     gameService = inject(GameService);
     logger = inject(LoggerService);
-    private readonly searchWorkerFactory = inject(SEARCH_WORKER_FACTORY);
     private urlService = inject(UrlService);
     private readonly initialUrlViewMode = resolveInitialUnitSearchViewMode(
         this.urlService.initialParams,
@@ -329,10 +306,6 @@ export class UnitSearchFiltersService {
     readonly searchTelemetry = this.searchTelemetryState.asReadonly();
     private readonly advOptionsTelemetryState = signal<AdvOptionsTelemetrySnapshot | null>(null);
     readonly advOptionsTelemetry = this.advOptionsTelemetryState.asReadonly();
-    private readonly workerSearchEnabled = signal(this.canUseSearchWorker());
-    readonly workerCatalogProgress = signal<RuntimeCatalogProgressState>({ status: 'idle' });
-    private readonly rawWorkerResultUnitsState = signal<UnitSummary[]>([]);
-    private readonly workerNormalizationMatchesByUnitUuid = signal<ReadonlyMap<UnitUuid, UnitSearchNormalizationMatch>>(new Map());
     private readonly formationTargetExistingUnitsState = signal<readonly FormationUnitLike[]>([]);
     readonly formationTarget = computed<FormationSearchTarget | null>(() => {
         if (this.hasSemanticFormationTarget()) {
@@ -352,23 +325,8 @@ export class UnitSearchFiltersService {
     private lastSearchTelemetryLogKey = '';
     private hasLoggedNonEmptySearchTelemetry = false;
     private readonly slowSearchTelemetryThresholdMs = 75;
-    private searchWorkerClient: UnitSearchWorkerClient | null = null;
-    private cachedWorkerCorpusVersion: string | null = null;
-    private cachedWorkerCorpusSnapshot: UnitSearchWorkerCorpusSnapshot | null = null;
-    private workerCatalogStartedAt?: number;
-    private workerProgressCorpusVersion: string | null = null;
-    private searchRequestRevision = 0;
-    private lastWorkerSearchExecutionKey: string | null = null;
     private readonly availabilitySelectionScopePartsCache = new WeakMap<FilterState, AvailabilitySelectionScopeParts>();
     private readonly availabilityFilterContextCache = new WeakMap<AvailabilityFilterScope, MegaMekAvailabilityFilterContext | null>();
-    private readonly workerRequestRevision = signal(0);
-    private readonly workerResultRevision = signal(0);
-    private readonly workerReadyCorpusVersion = signal<string | null>(null);
-    private readonly workerSearchActive = computed(() => {
-        return this.workerSearchEnabled()
-            && this.dataService.runtimeSearchIndexesReady()
-            && !this.shouldForceMegaMekSyncSearch();
-    });
 
     requestClosePanels(options: { exitExpandedView?: boolean } = {}): void {
         const currentRequest = this.closePanelsRequestState();
@@ -395,7 +353,6 @@ export class UnitSearchFiltersService {
             }
             return updated;
         });
-        this.refreshWorkerSearchIfNeeded();
     }
 
     setFormationTargetExistingUnits(existingUnits: readonly FormationUnitLike[]): void {
@@ -426,39 +383,19 @@ export class UnitSearchFiltersService {
     }
 
     /**
-     * True when filtered results match the latest search request.
-     * False while a worker search is in-flight and results are stale.
-     * Mode-agnostic: when the worker is disabled (sync fallback), revisions
-     * are synced in disableWorkerSearch() so this stays true.
-     */
-    readonly isSearchSettled = computed(() => {
-        return !this.workerSearchActive() || this.workerResultRevision() === this.workerRequestRevision();
-    });
-
-    /**
-     * Initial interaction readiness is stricter than catalog readiness: URL
-     * filters must have been parsed against the complete local dependencies,
-     * and the worker must have published one result for that exact corpus.
-     * Once unlocked, ordinary query changes keep showing the previous result
-     * while the next worker request settles.
+     * Search becomes interactive only after URL filters have been parsed
+     * against the complete local catalog indexes.
      */
     readonly isInteractionReady = computed(() => {
-        if (!this.isDataReady()
-            || !this.dataService.runtimeSearchIndexesReady()
-            || !this.urlStateInitialized()) {
-            return false;
-        }
-        return !this.workerSearchActive()
-            || this.workerReadyCorpusVersion() === this.getWorkerCorpusVersion();
+        return this.isDataReady()
+            && this.dataService.runtimeSearchIndexesReady()
+            && this.urlStateInitialized();
     });
 
     /** Signal that changes when unit tags are updated. Used to trigger reactivity in tag-dependent components. */
     readonly tagsVersion = signal(0);
 
-    private invalidateCorpusCaches(): void {
-        this.cachedWorkerCorpusVersion = null;
-        this.cachedWorkerCorpusSnapshot = null;
-        this.workerReadyCorpusVersion.set(null);
+    private resetSearchTelemetry(): void {
         this.searchTelemetryState.set(null);
         this.advOptionsTelemetryState.set(null);
         this.advOptionsTelemetryPublishVersion = 0;
@@ -627,84 +564,6 @@ export class UnitSearchFiltersService {
         }
 
         return applicableState;
-    }
-
-    private shouldForceMegaMekSyncSearch(): boolean {
-        if (this.hasSemanticFormationTarget()) {
-            return true;
-        }
-
-        const availabilitySource = this.optionsService.options().availabilitySource;
-
-        if (this.isComplexQuery()) {
-            const hasComplexWorkerExcludedSemanticFilters = this.semanticParsedAST().tokens.some((token) => (
-                MEGAMEK_WORKER_AVAILABILITY_SEMANTIC_FIELDS.has(token.field)
-                || (
-                    availabilitySource === 'megamek'
-                    && MEGAMEK_WORKER_SEMANTIC_FIELDS.has(token.field)
-                )
-            ));
-            if (hasComplexWorkerExcludedSemanticFilters) {
-                return true;
-            }
-        }
-
-        if (availabilitySource !== 'megamek') {
-            return false;
-        }
-
-        const workerFilterState = this.getWorkerFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
-        return this.effectiveTextSearch().trim().length === 0 && Object.keys(workerFilterState).length === 0;
-    }
-
-    private shouldStripFilterFromWorker(key: string): boolean {
-        return MEGAMEK_WORKER_AVAILABILITY_FILTER_KEYS.has(key)
-            || (
-                this.optionsService.options().availabilitySource === 'megamek'
-                && MEGAMEK_WORKER_CONTEXT_FILTER_KEYS.has(key)
-            );
-    }
-
-    private getWorkerFilterState(state: FilterState): FilterState {
-        const workerState: FilterState = this.stripFormationTargetFilterState(state);
-        for (const key of Object.keys(workerState)) {
-            if (this.shouldStripFilterFromWorker(key)) {
-                delete workerState[key];
-            }
-        }
-
-        return workerState;
-    }
-
-    private getWorkerPostFilterState(state: FilterState): FilterState {
-        const postFilterState: FilterState = {};
-        for (const [key, filterState] of Object.entries(state)) {
-            if (filterState && this.shouldStripFilterFromWorker(key)) {
-                postFilterState[key] = filterState;
-            }
-        }
-
-        const needsMulAvailabilityScope = !this.unitAvailabilitySource.useMegaMekAvailability()
-            && (
-                postFilterState['availabilityFrom']?.interactedWith
-                || postFilterState['availabilityRarity']?.interactedWith
-            );
-        if (needsMulAvailabilityScope) {
-            if (state['era']?.interactedWith) {
-                postFilterState['era'] = state['era'];
-            }
-            if (state['faction']?.interactedWith) {
-                postFilterState['faction'] = state['faction'];
-            }
-        }
-
-        return postFilterState;
-    }
-
-    private getWorkerSortKey(): string {
-        return isMegaMekRaritySortKey(this.selectedSort())
-            ? ''
-            : this.selectedSort();
     }
 
     private getSelectedRegularDropdownNames(filterStateEntry?: FilterState[string]): string[] {
@@ -1914,8 +1773,6 @@ export class UnitSearchFiltersService {
             });
         }
 
-        this.refreshWorkerSearchIfNeeded();
-
         return next.text;
     }
 
@@ -2010,105 +1867,6 @@ export class UnitSearchFiltersService {
         return result;
     });
 
-    private canUseSearchWorker(): boolean {
-        return typeof this.searchWorkerFactory === 'function';
-    }
-
-    private disableWorkerSearch(message: string, expected = false): void {
-        if (!this.workerSearchEnabled()) {
-            return;
-        }
-
-        this.workerSearchEnabled.set(false);
-        this.searchWorkerClient?.dispose();
-        this.searchWorkerClient = null;
-        this.workerResultRevision.set(this.workerRequestRevision());
-        this.setWorkerCatalogProgress({ status: 'error', detail: message });
-        const detail = `Unit search worker unavailable; using main-thread execution: ${message}`;
-        if (expected) this.logger.info(detail);
-        else this.logger.warn(detail);
-    }
-
-    private submitWorkerSearchRequest(): void {
-        const workerSearchExecutionState = this.workerSearchExecutionState();
-        if (!workerSearchExecutionState) {
-            return;
-        }
-        const executionKey = JSON.stringify(workerSearchExecutionState);
-        if (executionKey === this.lastWorkerSearchExecutionKey) {
-            return;
-        }
-
-        const corpusVersion = workerSearchExecutionState.corpusVersion;
-        const request = this.buildWorkerSearchRequest(corpusVersion);
-        const needsCorpus = !this.searchWorkerClient?.isReadyFor(corpusVersion);
-        if (needsCorpus && this.workerProgressCorpusVersion !== corpusVersion) {
-            this.workerProgressCorpusVersion = corpusVersion;
-            this.workerCatalogStartedAt = Date.now();
-            this.logger.info(
-                `[Background:unit-search] Started for ${this.summaries.length.toLocaleString()} summaries.`,
-            );
-            this.setWorkerCatalogProgress({
-                status: 'running',
-                completed: 0,
-                total: 4,
-                detail: `Projecting ${this.summaries.length.toLocaleString()} stored unit summaries for search`,
-            });
-        }
-        const snapshot = needsCorpus ? this.getWorkerCorpusSnapshot(corpusVersion) : null;
-
-        try {
-            this.workerRequestRevision.set(request.revision);
-            this.searchWorkerClient?.submit(snapshot, request);
-            this.lastWorkerSearchExecutionKey = executionKey;
-        } catch (error) {
-            this.disableWorkerSearch(error instanceof Error ? error.message : 'Search worker submission failed');
-        }
-    }
-
-    private refreshWorkerSearchIfNeeded(): void {
-        if (!this.searchWorkerClient
-            || !this.workerSearchEnabled()
-            || !this.isDataReady()
-            || !this.dataService.runtimeSearchIndexesReady()
-            || !this.workerSearchActive()) {
-            return;
-        }
-
-        untracked(() => {
-            this.submitWorkerSearchRequest();
-        });
-    }
-
-    private getWorkerCorpusVersion(): string {
-        return getUnitSearchWorkerCorpusVersion(this.dataService.searchCorpusVersion(), this.tagsVersion());
-    }
-
-    private getWorkerCorpusSnapshot(corpusVersion: string): UnitSearchWorkerCorpusSnapshot {
-        const result = getCachedWorkerCorpusSnapshot(
-            {
-                version: this.cachedWorkerCorpusVersion,
-                snapshot: this.cachedWorkerCorpusSnapshot,
-            },
-            corpusVersion,
-            this.summaries,
-            summary => {
-                const transient = this.dataService.getUnitByUuid(summary.uuid);
-                return {
-                    tags: transient ? getMergedTags(transient) : [],
-                    weaponTypes: transient?._weaponTypes ?? [],
-                    weaponTypeCounts: transient?._weaponTypeCounts ?? {},
-                };
-            },
-            this.searchIndex.getSearchWorkerIndexSnapshot(),
-            this.searchIndex.getSearchWorkerFactionEraSnapshot(),
-        );
-
-        this.cachedWorkerCorpusVersion = result.cache.version;
-        this.cachedWorkerCorpusSnapshot = result.cache.snapshot;
-        return result.snapshot;
-    }
-
     private getUiOnlyFilterState(manualState: FilterState, semanticKeys: Set<string>): FilterState {
         const result: FilterState = {};
 
@@ -2125,43 +1883,6 @@ export class UnitSearchFiltersService {
         const stripped = { ...state };
         delete stripped[FORMATION_TARGET_FILTER_KEY];
         return stripped;
-    }
-
-    private buildWorkerSearchRequest(corpusVersion: string): UnitSearchWorkerQueryRequest {
-        const gameSystem = this.gameService.currentGameSystem();
-        const workerFilterState = this.getWorkerFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
-        const workerUiOnlyFilterState = this.getUiOnlyFilterState(workerFilterState, this.semanticFilterKeys());
-        const workerSemanticTokenTexts = getCommittedSemanticTokens(this.semanticParsedAST().tokens)
-            .filter(token => {
-                const conf = getAdvancedFilterConfigBySemanticField(token.field);
-                return !conf || !this.shouldStripFilterFromWorker(conf.key);
-            })
-            .map(token => token.rawText);
-        const executionQuery = buildWorkerExecutionQuery({
-            effectiveFilterState: workerUiOnlyFilterState,
-            effectiveTextSearch: this.effectiveTextSearch(),
-            semanticTokenTexts: workerSemanticTokenTexts,
-            preservedQuery: this.isComplexQuery() ? this.searchText() : undefined,
-            gameSystem,
-            totalRangesCache: this.totalRangesCache,
-        });
-
-        this.searchRequestRevision += 1;
-
-        return buildUnitSearchWorkerRequest({
-            revision: this.searchRequestRevision,
-            corpusVersion,
-            executionQuery,
-            telemetryQuery: this.searchText().trim(),
-            gameSystem,
-            sortKey: this.getWorkerSortKey(),
-            sortDirection: this.selectedSortDirection(),
-            bvPvLimit: 0,
-            forceTotalBvPv: 0,
-            pilotGunnerySkill: this.pilotGunnerySkill(),
-            pilotPilotingSkill: this.pilotPilotingSkill(),
-            normalization: this.activeNormalization(),
-        });
     }
 
     private applyRemainingBudgetLimit(units: readonly UnitSummary[], telemetryStages?: SearchTelemetryStage[]): UnitSummary[] {
@@ -2195,112 +1916,6 @@ export class UnitSearchFiltersService {
             'budget-filter',
             units.length,
             filterUnits,
-            (value) => value.length,
-        );
-    }
-
-    private applyWorkerSearchResult(result: UnitSearchWorkerResultMessage): boolean {
-        if (!this.workerSearchActive()) {
-            return false;
-        }
-
-        if (result.corpusVersion !== this.getWorkerCorpusVersion()) {
-            return false;
-        }
-
-        const hydrated = hydrateWorkerSearchResult(
-            result,
-            uuid => this.dataService.getUnitByUuid(uuid),
-        );
-        const normalization = this.activeNormalization();
-        const normalizationMatches = new Map(hydrated.normalizationMatchesByUnitUuid);
-        const hydratedResults = normalization
-            ? hydrated.units.filter(unit => {
-                const workerMatch = normalizationMatches.get(unit.uuid);
-                const match = workerMatch?.kind === normalization.kind
-                    ? workerMatch
-                    : this.findNormalizationMatch(unit, normalization);
-                if (!match) {
-                    normalizationMatches.delete(unit.uuid);
-                    return false;
-                }
-                normalizationMatches.set(unit.uuid, match);
-                return true;
-            })
-            : hydrated.units;
-        const telemetryStages = [...result.stages];
-        const stageCountBeforePostProcessing = telemetryStages.length;
-        const postFilteredResults = this.applyWorkerPostFilters(hydratedResults, telemetryStages);
-        const formationFilteredResults = this.applyFormationTargetFilter(postFilteredResults, telemetryStages);
-        const sortedResults = this.sortHydratedWorkerResults(formationFilteredResults, telemetryStages);
-        const cappedResults = this.applyRemainingBudgetLimit(sortedResults, telemetryStages);
-        const addedTelemetryMs = telemetryStages
-            .slice(stageCountBeforePostProcessing)
-            .reduce((totalMs, stage) => totalMs + stage.durationMs, 0);
-
-        this.rawWorkerResultUnitsState.set(hydratedResults);
-        this.workerNormalizationMatchesByUnitUuid.set(normalizationMatches);
-        this.workerResultRevision.set(result.revision);
-        this.workerReadyCorpusVersion.set(result.corpusVersion);
-        this.updateSearchTelemetry(buildWorkerSearchTelemetrySnapshot(result, {
-            timestamp: Date.now(),
-            gameSystem: this.gameService.currentGameSystem(),
-            sortKey: this.selectedSort(),
-            sortDirection: this.selectedSortDirection(),
-            resultCount: cappedResults.length,
-            stages: telemetryStages,
-            totalMs: result.totalMs + addedTelemetryMs,
-        }));
-        return true;
-    }
-
-    private updateWorkerCatalogProgress(progress: UnitSearchWorkerProgressMessage): void {
-        if (progress.corpusVersion !== this.getWorkerCorpusVersion()) return;
-        this.workerProgressCorpusVersion = progress.corpusVersion;
-        this.setWorkerCatalogProgress({
-            status: 'running',
-            completed: progress.completed,
-            total: progress.total,
-            detail: progress.detail,
-        });
-    }
-
-    private setWorkerCatalogProgress(progress: RuntimeCatalogProgressState): void {
-        this.workerCatalogProgress.set(progress);
-    }
-
-    private completeWorkerCorpus(corpusVersion: string): void {
-        if (corpusVersion !== this.getWorkerCorpusVersion()) return;
-        this.setWorkerCatalogProgress({ status: 'idle' });
-        if (this.workerCatalogStartedAt !== undefined) {
-            this.logger.info(
-                `[Background:unit-search] Finished in ${Math.max(0, Date.now() - this.workerCatalogStartedAt)} ms.`,
-            );
-            this.workerCatalogStartedAt = undefined;
-        }
-    }
-
-    private applyWorkerPostFilters(units: UnitSummary[], telemetryStages?: SearchTelemetryStage[]): UnitSummary[] {
-        const postFilterState = this.getWorkerPostFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
-        if (Object.keys(postFilterState).length === 0) {
-            return units;
-        }
-
-        const applyPostFilters = () => applyFilterStateToUnits({
-            units,
-            state: postFilterState,
-            dependencies: this.getUnitFilterKernelDependencies(),
-        });
-
-        if (!telemetryStages) {
-            return applyPostFilters();
-        }
-
-        return measureStage(
-            telemetryStages,
-            'megamek-post-filter',
-            units.length,
-            applyPostFilters,
             (value) => value.length,
         );
     }
@@ -2466,178 +2081,11 @@ export class UnitSearchFiltersService {
         ).allowed;
     }
 
-    private getPendingWorkerFallbackUnits(): UnitSummary[] | null {
-        if (this.isSearchSettled()) {
-            return null;
-        }
-        const postFilterState = this.getWorkerPostFilterState(
-            this.getApplicableFilterState(this.effectiveFilterState()),
-        );
-        if (!this.activeNormalization() && Object.keys(postFilterState).length === 0) {
-            return null;
-        }
-        return this.uncappedSyncSearch().execution.results;
-    }
-
-    private sortHydratedWorkerResults(units: UnitSummary[], telemetryStages?: SearchTelemetryStage[]): UnitSummary[] {
-        if (!isMegaMekRaritySortKey(this.selectedSort())) {
-            return units;
-        }
-
-        const context = this.megaMekRaritySortContext();
-        if (context === null) {
-            return units;
-        }
-
-        const scoreResolver = this.unitAvailabilitySource.getMegaMekAvailabilityScoreResolver(context);
-        const scores = new Map<string, number>();
-        for (const unit of units) {
-            scores.set(unit.uuid, scoreResolver(unit));
-        }
-
-        const sortResults = () => {
-            const sorted = [...units];
-            sorted.sort((left, right) => {
-                let comparison = (scores.get(left.uuid) ?? 0) - (scores.get(right.uuid) ?? 0);
-                if (comparison === 0) {
-                    comparison = compareUnitsByName(left, right);
-                }
-
-                return this.selectedSortDirection() === 'desc' ? -comparison : comparison;
-            });
-
-            return sorted;
-        };
-
-        if (!telemetryStages) {
-            return sortResults();
-        }
-
-        return measureStage(
-            telemetryStages,
-            'megamek-post-sort',
-            units.length,
-            sortResults,
-            (value) => value.length,
-        );
-    }
-
-    private readonly workerSearchExecutionState = computed(() => {
-        if (!this.workerSearchEnabled()) {
-            return null;
-        }
-
-        const availabilitySource = this.optionsService.options().availabilitySource;
-        const selectedSort = this.selectedSort();
-        const workerFilterState = this.getWorkerFilterState(this.getApplicableFilterState(this.effectiveFilterState()));
-
-        return {
-            workerSearchActive: !this.shouldForceMegaMekSyncSearch(),
-            isDataReady: this.isDataReady(),
-            indexesReady: this.dataService.runtimeSearchIndexesReady(),
-            corpusVersion: this.getWorkerCorpusVersion(),
-            searchText: this.searchText(),
-            effectiveTextSearch: this.effectiveTextSearch(),
-            workerFilterState,
-            gameSystem: this.gameService.currentGameSystem(),
-            sortKey: this.getWorkerSortKey(),
-            sortDirection: this.selectedSortDirection(),
-            pilotGunnerySkill: this.pilotGunnerySkill(),
-            pilotPilotingSkill: this.pilotPilotingSkill(),
-            normalization: this.activeNormalization(),
-            megaMekAvailabilityVersion: availabilitySource === 'megamek' || isMegaMekRaritySortKey(selectedSort)
-                ? this.dataService.megaMekAvailabilityVersion()
-                : 0,
-        };
-    });
-
-    private setupWorkerSearchExecution(): void {
-        effect(() => {
-            const workerSearchExecutionState = this.workerSearchExecutionState();
-            if (!workerSearchExecutionState) {
-                return;
-            }
-
-            if (!workerSearchExecutionState.isDataReady || !workerSearchExecutionState.indexesReady) {
-                if (workerSearchExecutionState.workerSearchActive) {
-                    this.rawWorkerResultUnitsState.set([]);
-                }
-                return;
-            }
-
-            if (!workerSearchExecutionState.workerSearchActive) {
-                if (workerSearchExecutionState.isDataReady && workerSearchExecutionState.indexesReady) {
-                    this.setWorkerCatalogProgress({ status: 'idle' });
-                }
-                return;
-            }
-
-            untracked(() => {
-                this.submitWorkerSearchRequest();
-            });
-        });
-    }
-
-    private setupMegaMekAvailabilityOptionRefresh(): void {
-        let previousMode = this.useAllScopedMegaMekAvailabilityOptions();
-        let initialized = false;
-
-        effect(() => {
-            const currentMode = this.useAllScopedMegaMekAvailabilityOptions();
-
-            if (!initialized) {
-                initialized = true;
-                previousMode = currentMode;
-                return;
-            }
-
-            if (currentMode === previousMode) {
-                return;
-            }
-
-            previousMode = currentMode;
-
-            if (!this.workerSearchActive()
-                || !this.isDataReady()
-                || !this.dataService.runtimeSearchIndexesReady()
-                || !this.searchWorkerClient) {
-                return;
-            }
-
-            untracked(() => {
-                this.submitWorkerSearchRequest();
-            });
-        });
-    }
-
     constructor() {
-        if (this.workerSearchEnabled()) {
-            this.searchWorkerClient = new UnitSearchWorkerClient({
-                createWorker: () => this.searchWorkerFactory!(),
-                onResult: result => {
-                    if (this.applyWorkerSearchResult(result)) this.completeWorkerCorpus(result.corpusVersion);
-                },
-                onError: message => this.disableWorkerSearch(message),
-                onProgress: progress => this.updateWorkerCatalogProgress(progress),
-                onReady: corpusVersion => {
-                    if (this.cachedWorkerCorpusVersion === corpusVersion) {
-                        this.cachedWorkerCorpusVersion = null;
-                        this.cachedWorkerCorpusSnapshot = null;
-                    }
-                    this.setWorkerCatalogProgress({
-                        status: 'running', completed: 3, total: 4,
-                        detail: 'Running the initial unit search',
-                    });
-                },
-            });
-        }
-        inject(DestroyRef).onDestroy(() => {
-            this.searchWorkerClient?.dispose();
-        });
         effect(() => {
             this.dataService.searchCorpusVersion();
             if (this.isDataReady()) {
-                this.invalidateCorpusCaches();
+                this.resetSearchTelemetry();
                 this.calculateTotalRanges();
             }
         });
@@ -2675,8 +2123,6 @@ export class UnitSearchFiltersService {
         // When query becomes complex, convert UI-only filters to semantic text
         // This ensures filters aren't silently applied without being visible
         this.setupComplexQueryFilterConversion();
-        this.setupWorkerSearchExecution();
-        this.setupMegaMekAvailabilityOptionRefresh();
         this.loadFiltersFromUrlOnStartup();
         this.updateUrlOnFiltersChange();
     }
@@ -2884,12 +2330,10 @@ export class UnitSearchFiltersService {
 
     public setSortOrder(key: string) {
         this.selectedSort.set(normalizeUnitSearchPropertyKey(key));
-        this.refreshWorkerSearchIfNeeded();
     }
 
     public setSortDirection(direction: 'asc' | 'desc') {
         this.selectedSortDirection.set(direction);
-        this.refreshWorkerSearchIfNeeded();
     }
 
     private updateSearchTelemetry(snapshot: SearchTelemetrySnapshot): void {
@@ -3646,7 +3090,7 @@ export class UnitSearchFiltersService {
     }
 
     private executeSyncSearch(options: { ignoreFormationTarget?: boolean; ignoreNormalization?: boolean } = {}): {
-        execution: UnitSearchExecutionResult<UnitSummary>;
+        execution: UnitSearchExecutionResult;
         parseTelemetry: SearchTelemetryStage[];
     } {
         this.dataService.searchCorpusVersion();
@@ -3765,45 +3209,11 @@ export class UnitSearchFiltersService {
         if (this.activeNormalization()) {
             return this.uncappedSyncSearchIgnoringDirectSearchConstraints().execution.results;
         }
-        if (this.workerSearchActive()) {
-            const pendingFallback = this.getPendingWorkerFallbackUnits();
-            if (pendingFallback) {
-                return pendingFallback;
-            }
-
-            return this.uncappedWorkerEligibleUnits();
-        }
-
         return this.hasSemanticFormationTarget()
             ? this.uncappedSyncSearchIgnoringFormationTarget().execution.results
             : this.uncappedSyncSearch().execution.results;
     });
-
-    private readonly uncappedWorkerEligibleUnits = computed(() => {
-        const hydratedResults = this.rawWorkerResultUnitsState();
-        const postFilteredResults = this.applyWorkerPostFilters(hydratedResults);
-        return this.sortHydratedWorkerResults(postFilteredResults);
-    });
-
-    private readonly uncappedWorkerFilteredUnits = computed(() => {
-        const hydratedResults = this.rawWorkerResultUnitsState();
-        const postFilteredResults = this.applyWorkerPostFilters(hydratedResults);
-        const formationFilteredResults = this.applyFormationTargetFilter(postFilteredResults);
-        return this.sortHydratedWorkerResults(formationFilteredResults);
-    });
-
-    filteredUnits = computed(() => {
-        if (!this.workerSearchActive()) {
-            return this.syncFilteredUnits();
-        }
-
-        const pendingFallback = this.getPendingWorkerFallbackUnits();
-        if (pendingFallback) {
-            return this.applyRemainingBudgetLimit(this.applyFormationTargetFilter(pendingFallback));
-        }
-
-        return this.applyRemainingBudgetLimit(this.uncappedWorkerFilteredUnits());
-    });
+    readonly filteredUnits = this.syncFilteredUnits;
 
     // Advanced filter options
     advOptions = computed(() => {
@@ -4071,7 +3481,6 @@ export class UnitSearchFiltersService {
                 ...current,
                 [key]: { value: filterValue, interactedWith: interacted }
             }));
-            this.refreshWorkerSearchIfNeeded();
         }
     }
 
@@ -4104,7 +3513,6 @@ export class UnitSearchFiltersService {
                 delete updated[key];
                 return updated;
             });
-            this.refreshWorkerSearchIfNeeded();
         }
     }
 
@@ -4155,7 +3563,6 @@ export class UnitSearchFiltersService {
                 delete updated[key];
                 return updated;
             });
-            this.refreshWorkerSearchIfNeeded();
         } finally {
             this.isSyncingToText = false;
         }
@@ -4184,8 +3591,6 @@ export class UnitSearchFiltersService {
             targetPv: { min: 0, max: DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX },
             skill: { min: 0, max: 8 },
         });
-        this.workerNormalizationMatchesByUnitUuid.set(new Map());
-        this.refreshWorkerSearchIfNeeded();
     }
 
     /**
@@ -4326,31 +3731,24 @@ export class UnitSearchFiltersService {
     setPilotSkills(gunnery: number, piloting: number) {
         this.pilotGunnerySkill.set(gunnery);
         this.pilotPilotingSkill.set(piloting);
-        this.refreshWorkerSearchIfNeeded();
     }
 
     setBudgetMode(mode: UnitSearchBudgetMode): void {
         this.budgetMode.set(mode);
-        this.refreshWorkerSearchIfNeeded();
     }
 
     setBvNormalizationSettings(settings: BvNormalizationSettings): void {
         this.classicBvNormalizationSettings.set(settings);
-        this.refreshWorkerSearchIfNeeded();
     }
 
     setPvNormalizationSettings(settings: PvNormalizationSettings): void {
         this.alphaStrikePvNormalizationSettings.set(settings);
-        this.refreshWorkerSearchIfNeeded();
     }
 
     getSearchResultPilotContext(unit: UnitSummary): UnitSearchNormalizationMatch {
         const normalization = this.activeNormalization();
         const normalizedMatch = normalization
-            ? !this.workerSearchActive() || !this.isSearchSettled()
-                ? this.uncappedSyncSearch().execution.normalizationMatchesByUnitUuid.get(unit.uuid)
-                : this.workerNormalizationMatchesByUnitUuid().get(unit.uuid)
-                    ?? this.findNormalizationMatch(unit, normalization)
+            ? this.uncappedSyncSearch().execution.normalizationMatchesByUnitUuid.get(unit.uuid)
             : null;
         if (normalizedMatch) {
             return normalizedMatch;
@@ -4364,15 +3762,6 @@ export class UnitSearchFiltersService {
         return this.gameService.isAlphaStrike()
             ? { kind: 'pv', adjustedValue: this.getAdjustedPV(unit), skill: gunnery }
             : { kind: 'bv', adjustedValue: this.getAdjustedBV(unit), gunnery, piloting };
-    }
-
-    private findNormalizationMatch(
-        unit: UnitSummary,
-        normalization: UnitSearchNormalization,
-    ): UnitSearchNormalizationMatch | null {
-        return normalization.kind === 'bv'
-            ? findBvNormalizationMatch(unit, normalization.settings)
-            : findPvNormalizationMatch(unit, normalization.settings);
     }
 
     getAdjustedBV(unit: UnitSummary): number {

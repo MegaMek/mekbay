@@ -145,6 +145,7 @@ function standingMember(initialAttempts = 0): {
     });
     const force = {
         changed,
+        sessionChanged: new Subject<void>(),
         getMekTurnPanelSnapshot: () => current,
         dispatchMekUnitCommand: dispatch,
     };

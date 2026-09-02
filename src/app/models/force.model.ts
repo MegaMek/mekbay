@@ -24,7 +24,7 @@ import { MULFACTION_EXTINCT } from './mulfactions.model';
 import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from '../utils/force-availability.util';
 import { uuidv7 } from '../utils/uuid.util';
 import { jsonValuesEqual } from '../utils/json-value.util';
-import { C3Network } from './c3-network.model';
+import { C3Network, type C3UnitPosition } from './c3-network.model';
 import {
     prepareInitialCBTForceV2,
     type PreparedCBTForcePersistenceV2,
@@ -32,7 +32,6 @@ import {
 import {
     type SerializedCBTEncounterStateV2,
     type SerializedCBTForceV2,
-    type SerializedForceEncounterEntryV2,
 } from './runtime/persistence-v2';
 import {
     formationUnitTechBaseFacts,
@@ -157,12 +156,6 @@ export interface ForcePersistenceRevisionSnapshotAuthority {
 /** Export/replacement snapshot with the additional full persistent-graph witness. */
 export interface ForcePersistenceSnapshotAuthority extends ForcePersistenceRevisionSnapshotAuthority {
     readonly authorityFingerprint: ForceOwnerAuthorityFingerprint;
-}
-
-export interface ForceC3UnitPosition {
-    readonly unitId: string;
-    readonly x: number;
-    readonly y: number;
 }
 
 export interface ForceGroupPatch {
@@ -1049,7 +1042,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         install: () => void,
     ): void {
         install();
-        this.restoreCBTEncounterPersistence(prepared.envelope.encounter);
+        this.installCBTEncounterPersistence(prepared.envelope.encounter);
         if (this.getSupportedCBTForceV2Envelope() !== prepared.envelope) {
             throw new Error('CBT unit store did not publish its prepared envelope');
         }
@@ -1067,8 +1060,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         if (other === this) throw new Error('Cannot transfer a unit to the same force');
         own.install();
         peer.install();
-        this.restoreCBTEncounterPersistence(own.prepared.envelope.encounter);
-        other.restoreCBTEncounterPersistence(peer.prepared.envelope.encounter);
+        this.installCBTEncounterPersistence(own.prepared.envelope.encounter);
+        other.installCBTEncounterPersistence(peer.prepared.envelope.encounter);
         this.reserveForceOwnerMutationIntent();
         other.reserveForceOwnerMutationIntent();
         this._instanceId.set(own.mutation.metadata.instanceId);
@@ -1297,7 +1290,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 }
                 this._instanceId.set(candidateMetadata.instanceId);
                 this.timestamp = candidateMetadata.timestamp;
-                this.restoreCBTEncounterPersistence(prepared.envelope.encounter);
+                this.installCBTEncounterPersistence(prepared.envelope.encounter);
                 this.reconcileCBTForceV2Projection();
                 this.advanceForceOwnerGeneration();
             }
@@ -1357,7 +1350,12 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return undefined;
     }
 
-    protected restoreCBTEncounterPersistence(_entry: SerializedForceEncounterEntryV2): void {
+    protected restoreCBTEncounterPersistence(_state: SerializedCBTEncounterStateV2): void {
+        // Base/Alpha Strike forces have no typed CBT encounter runtime.
+    }
+
+    /** Applies an internal durable update without resetting per-force session data. */
+    protected installCBTEncounterPersistence(_state: SerializedCBTEncounterStateV2): void {
         // Base/Alpha Strike forces have no typed CBT encounter runtime.
     }
 
@@ -1831,13 +1829,13 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     public setC3ConfigurationIfOwnerRevisionCurrent(
         revisionFence: ForceOwnerRevisionFence,
         networks: readonly SerializedC3NetworkGroup[],
-        positions: readonly ForceC3UnitPosition[],
+        positions: readonly C3UnitPosition[],
     ): boolean {
         if (!this.isWholeOwnerActive()
             || this.readOnly()
             || !this.isForceOwnerRevisionFenceCurrent(revisionFence)) return false;
         let normalizedNetworks: SerializedC3NetworkGroup[];
-        let normalizedPositions: ForceC3UnitPosition[];
+        let normalizedPositions: C3UnitPosition[];
         try {
             normalizedNetworks = Sanitizer.sanitizeArray(
                 structuredClone(networks) as SerializedC3NetworkGroup[],
@@ -2068,29 +2066,12 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
      */
     protected abstract deserializeFrom(serialized: SerializedForce): Promise<Force>;
 
-    /**
-     * Async clone boundary for the completed force-target registry. Retained
-     * V2 units and typed cross-unit facts require a full identity remapper and
-     * fail closed; target facts are restored into a fresh runtime and resealed
-     * against the clone's fresh force/unit/bridge identities.
-     */
+    /** Legacy graph clone; concrete current-format owners replace this boundary. */
     public async cloneForPersistence(): Promise<Force> {
         if ((this.getSupportedCBTForceV2Envelope()?.units.length ?? 0) > 0) {
             throw new Error('Retained V2 force members cannot be cloned without a complete identity remap');
         }
-        const encounter = this.getCBTEncounterStateForPersistence();
-        if (encounter?.facts.some(fact => fact.kind !== 'target')) {
-            throw new Error('Typed cross-unit encounter facts cannot be cloned without a complete identity remap');
-        }
-        const cloned = await this.cloneLegacyGraph();
-        if (encounter && encounter.facts.length > 0) {
-            cloned.restoreCBTEncounterPersistence(Object.freeze({
-                encounterRevision: encounter.encounterRevision,
-                state: encounter,
-            }));
-            await cloned.serializeForPersistence();
-        }
-        return cloned;
+        return this.cloneLegacyGraph();
     }
 
     private cloneLegacyGraph(): Promise<Force> {

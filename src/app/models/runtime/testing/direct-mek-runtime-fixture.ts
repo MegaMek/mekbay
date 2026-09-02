@@ -25,8 +25,18 @@ import {
 } from '../mek-mechanics-context-v2';
 import { initializeUnitState, type InitializedUnitState } from '../unit-state-initializer';
 import { CBTUnitInstance } from '../unit-instance';
+import type { CBTEncounterSnapshot } from '../encounter-runtime';
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+
+export function emptyCBTEncounterSnapshot(): CBTEncounterSnapshot {
+    return Object.freeze({
+        revision: 0,
+        targets: Object.freeze([]),
+        networks: Object.freeze([]),
+        c3Positions: Object.freeze([]),
+    });
+}
 
 export interface DirectMekRuntimeFixture {
     readonly entity: MekEntity;

@@ -6,17 +6,18 @@ import { compareText } from '../../utils/string.util';
 import { isPlainRecord } from '../../utils/json-value.util';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { asComponentId } from '../entity/entity-identifiers';
-import { isC3NetworkRole, isC3NetworkType, type C3NetworkRole, type C3NetworkType } from '../c3-network.model';
-import type { TnTargetUnitType } from '../target-number-calculator.model';
+import {
+    isC3NetworkRole,
+    isC3NetworkType,
+    type C3NetworkRole,
+    type C3NetworkType,
+    type C3UnitPosition,
+} from '../c3-network.model';
+import type { TnTargetNumberCalculatorState, TnTargetUnitType } from '../target-number-calculator.model';
 import { uuidv4 } from '../../utils/uuid.util';
 import {
-    encounterNetworkFactId,
-    encounterTargetFactId,
     type SerializedCBTEncounterStateV2,
-    type SerializedEncounterFactV2,
     type SerializedEncounterNetworkV2,
-    type SerializedEncounterTargetCalculatorV2,
-    type SerializedEncounterTargetV2,
 } from './persistence-v2';
 
 export const MAX_ENCOUNTER_TARGETS = 24;
@@ -38,6 +39,25 @@ export const DEFAULT_ENCOUNTER_TARGET_COLORS = [
 export type EncounterNetworkId = string & { readonly __encounterNetworkId: unique symbol };
 export type EncounterTargetId = string & { readonly __encounterTargetId: unique symbol };
 
+export type EncounterTargetCalculatorState = Pick<TnTargetNumberCalculatorState,
+    | 'isAirborne'
+    | 'targetMovementBracket'
+    | 'targetMovementDistance'
+    | 'skidding'
+    | 'prone'
+    | 'immobile'
+    | 'targetHexCover'
+    | 'waterDepth'
+    | 'buildingCover'
+    | 'targetHeight'
+    | 'largeTarget'
+    | 'narcAboveWater'
+    | 'narcUnderwater'
+    | 'tagged'
+    | 'ecmShielded'
+    | 'stealth'
+    | 'stealthSystem'>;
+
 export interface EncounterTarget {
     readonly id: EncounterTargetId;
     readonly letter: string;
@@ -46,7 +66,7 @@ export interface EncounterTarget {
     readonly source?: 'manual' | 'opfor';
     readonly readOnly?: boolean;
     readonly unitType?: TnTargetUnitType;
-    readonly tnCalculator?: SerializedEncounterTargetCalculatorV2;
+    readonly tnCalculator?: EncounterTargetCalculatorState;
 }
 
 export interface EncounterNetworkEndpoint {
@@ -63,10 +83,14 @@ export interface EncounterNetwork {
 }
 
 export interface CBTEncounterSnapshot {
+    /** Session-only CAS revision for target-registry commands. */
     readonly revision: number;
     readonly targets: readonly EncounterTarget[];
     readonly networks: readonly EncounterNetwork[];
+    readonly c3Positions: readonly C3UnitPosition[];
 }
+
+export type CBTEncounterC3Snapshot = Pick<CBTEncounterSnapshot, 'networks' | 'c3Positions'>;
 
 /** Detached force-shared target query. It never contains attacker-local target state. */
 export interface TargetRegistrySnapshot {
@@ -81,7 +105,7 @@ export interface TargetRegistryTargetPatch {
     /** `null` explicitly clears an optional shared target fact. */
     readonly unitType?: TnTargetUnitType | null;
     /** `null` explicitly clears an optional shared target fact. */
-    readonly tnCalculator?: SerializedEncounterTargetCalculatorV2 | null;
+    readonly tnCalculator?: EncounterTargetCalculatorState | null;
 }
 
 export type TargetRegistryCommand =
@@ -111,7 +135,10 @@ export type TargetRegistryCommandResult =
 export function queryTargetRegistry(
     current: Pick<CBTEncounterSnapshot, 'revision' | 'targets'>,
 ): TargetRegistrySnapshot {
-    return freezeTargetRegistrySnapshot(current);
+    return freezeTargetRegistrySnapshot({
+        revision: current.revision,
+        targets: current.targets,
+    });
 }
 
 /** Last canonical OPFOR row whose letter can become the conventional manual ID. */
@@ -201,60 +228,37 @@ export function reduceTargetRegistry(
     }
 }
 
-/** Stateful owner around the explicit query/dispatch encounter contract. */
-export class CBTEncounterRuntime {
-    #snapshot: CBTEncounterSnapshot;
-    #preservedFacts: readonly SerializedEncounterFactV2[] = Object.freeze([]);
+/** Per-force owner of the durable C3 graph and editor layout. */
+export class CBTEncounterC3State {
+    #snapshot: CBTEncounterC3Snapshot;
 
-    public constructor(initial: CBTEncounterSnapshot = emptyCBTEncounterSnapshot()) {
-        this.#snapshot = freezeSnapshot(initial);
+    public constructor(initial: CBTEncounterC3Snapshot = emptyCBTEncounterC3Snapshot()) {
+        this.#snapshot = freezeC3Snapshot(initial);
     }
 
-    public snapshot(): CBTEncounterSnapshot {
+    public snapshot(): CBTEncounterC3Snapshot {
         return this.#snapshot;
     }
 
-    public targetRegistry(): TargetRegistrySnapshot {
-        return queryTargetRegistry(this.#snapshot);
-    }
-
-    public dispatchTargetRegistry(command: TargetRegistryCommand): TargetRegistryCommandResult {
-        const result = reduceTargetRegistry(this.targetRegistry(), command);
-        if (result.accepted && result.changed) {
-            this.#snapshot = freezeSnapshot({
-                revision: result.snapshot.revision,
-                targets: result.snapshot.targets,
-                networks: this.#snapshot.networks,
-            });
-        }
-        return result;
-    }
-
     public serializedState(): SerializedCBTEncounterStateV2 {
-        return encodeCBTEncounterStateV2(this.#snapshot, this.#preservedFacts);
+        return encodeCBTEncounterStateV2(this.#snapshot);
     }
 
-    /** Stores an already-canonical graph; C3 admission belongs to the network utility boundary. */
-    public replaceNetworks(networks: readonly EncounterNetwork[]): void {
-        if (Number(this.#snapshot.revision) >= Number.MAX_SAFE_INTEGER) {
-            throw new Error('Encounter revision exhausted');
-        }
-        this.#snapshot = freezeSnapshot({
-            revision: Number(this.#snapshot.revision) + 1,
-            targets: this.#snapshot.targets,
-            networks,
-        });
+    /** Stores an already-canonical graph and its visual layout as one encounter edit. */
+    public replaceC3Configuration(
+        networks: readonly EncounterNetwork[],
+        c3Positions: readonly C3UnitPosition[],
+    ): void {
+        this.#snapshot = freezeC3Snapshot({ networks, c3Positions });
     }
 
     public restoreSerialized(state: SerializedCBTEncounterStateV2): void {
-        const decoded = decodeCBTEncounterStateV2(state);
-        this.#snapshot = decoded.snapshot;
-        this.#preservedFacts = decoded.preservedFacts;
+        this.#snapshot = decodeCBTEncounterStateV2(state);
     }
 }
 
-export function emptyCBTEncounterSnapshot(): CBTEncounterSnapshot {
-    return freezeSnapshot({ revision: 0, targets: [], networks: [] });
+export function emptyCBTEncounterC3Snapshot(): CBTEncounterC3Snapshot {
+    return freezeC3Snapshot({ networks: [], c3Positions: [] });
 }
 
 export function asEncounterNetworkId(value: string): EncounterNetworkId {
@@ -287,99 +291,22 @@ export function asEncounterTargetId(value: string): EncounterTargetId {
     return value as EncounterTargetId;
 }
 
-export interface DecodedCBTEncounterStateV2 {
-    readonly snapshot: CBTEncounterSnapshot;
-    /** Typed facts not owned by this target/network reducer remain byte-equivalent facts. */
-    readonly preservedFacts: readonly SerializedEncounterFactV2[];
-}
-
 export function decodeCBTEncounterStateV2(
     state: SerializedCBTEncounterStateV2,
-): DecodedCBTEncounterStateV2 {
-    if (state.schemaVersion !== 2) throw new Error('Unsupported encounter state schema');
-    const targets: EncounterTarget[] = [];
-    const networks: EncounterNetwork[] = [];
-    const preservedFacts: SerializedEncounterFactV2[] = [];
-    for (const fact of state.facts) {
-        if (fact.kind === 'target') {
-            if (fact.factId !== encounterTargetFactId(fact.target.id)) throw new Error('Invalid target fact identity');
-            targets.push(encounterTargetFromSerialized(fact.target));
-        } else if (fact.kind === 'network') {
-            if (fact.factId !== encounterNetworkFactId(fact.network.id)) throw new Error('Invalid network fact identity');
-            networks.push(encounterNetworkFromSerialized(fact.network));
-        } else {
-            preservedFacts.push(fact);
-        }
-    }
-    return Object.freeze({
-        snapshot: freezeSnapshot({
-            revision: state.encounterRevision,
-            targets,
-            networks,
-        }),
-        preservedFacts: Object.freeze([...preservedFacts]),
+): CBTEncounterC3Snapshot {
+    return freezeC3Snapshot({
+        networks: state.networks.map(encounterNetworkFromSerialized),
+        c3Positions: state.c3Positions ?? [],
     });
 }
 
 export function encodeCBTEncounterStateV2(
-    snapshot: CBTEncounterSnapshot,
-    preservedFacts: readonly SerializedEncounterFactV2[] = [],
+    snapshot: CBTEncounterC3Snapshot,
 ): SerializedCBTEncounterStateV2 {
-    const canonical = freezeSnapshot(snapshot);
-    if (preservedFacts.some(fact => fact.kind === 'target' || fact.kind === 'network')) {
-        throw new Error('Owned target/network facts cannot be supplied as preserved facts');
-    }
-    const facts: SerializedEncounterFactV2[] = [
-        ...preservedFacts,
-        ...canonical.targets.map(target => Object.freeze({
-            kind: 'target' as const,
-            factId: encounterTargetFactId(target.id),
-            target: serializedEncounterTarget(target),
-        })),
-        ...canonical.networks.map(network => Object.freeze({
-            kind: 'network' as const,
-            factId: encounterNetworkFactId(network.id),
-            network: serializedEncounterNetwork(network),
-        })),
-    ];
-    facts.sort((left, right) => compareText(left.factId, right.factId));
-    for (let index = 1; index < facts.length; index += 1) {
-        if (facts[index - 1].factId === facts[index].factId) throw new Error('Duplicate encounter fact ID');
-    }
+    const canonical = freezeC3Snapshot(snapshot);
     return Object.freeze({
-        schemaVersion: 2,
-        encounterRevision: canonical.revision,
-        facts: Object.freeze(facts),
-    });
-}
-
-function serializedEncounterTarget(target: EncounterTarget): SerializedEncounterTargetV2 {
-    return Object.freeze({
-        id: target.id,
-        letter: target.letter,
-        name: target.name,
-        color: target.color,
-        ...(target.source !== undefined && { source: target.source }),
-        ...(target.readOnly !== undefined && { readOnly: target.readOnly }),
-        ...(target.unitType !== undefined && { unitType: target.unitType }),
-        ...(target.tnCalculator && { tnCalculator: freezeTargetCalculator(target.tnCalculator) }),
-    });
-}
-
-function encounterTargetFromSerialized(target: SerializedEncounterTargetV2): EncounterTarget {
-    const record = requirePlainRecord(target, 'encounter target');
-    exactOperationKeys(record, ['id', 'letter', 'name', 'color', 'source', 'readOnly', 'unitType', 'tnCalculator']);
-    return freezeTarget({
-        id: asEncounterTargetId(requireText(record['id'])),
-        letter: requireText(record['letter']),
-        name: requireText(record['name']),
-        color: requireText(record['color']),
-        ...(record['source'] !== undefined && { source: record['source'] as 'manual' | 'opfor' }),
-        ...(record['readOnly'] !== undefined && { readOnly: record['readOnly'] as boolean }),
-        ...(record['unitType'] !== undefined && { unitType: record['unitType'] as TnTargetUnitType }),
-        ...(record['tnCalculator'] !== undefined && {
-            tnCalculator: freezeTargetCalculator(record['tnCalculator'] as SerializedEncounterTargetCalculatorV2),
-        }),
+        networks: Object.freeze(canonical.networks.map(serializedEncounterNetwork)),
+        ...(canonical.c3Positions.length === 0 ? {} : { c3Positions: canonical.c3Positions }),
     });
 }
 
@@ -402,8 +329,8 @@ function copyStealth<T extends {
 }
 
 function copyTargetCalculator(
-    calculator: SerializedEncounterTargetCalculatorV2,
-): SerializedEncounterTargetCalculatorV2 {
+    calculator: EncounterTargetCalculatorState,
+): EncounterTargetCalculatorState {
     return {
         ...calculator,
         ...(calculator.stealth === undefined || typeof calculator.stealth === 'boolean'
@@ -413,8 +340,8 @@ function copyTargetCalculator(
 }
 
 function freezeTargetCalculator(
-    calculator: SerializedEncounterTargetCalculatorV2,
-): SerializedEncounterTargetCalculatorV2 {
+    calculator: EncounterTargetCalculatorState,
+): EncounterTargetCalculatorState {
     const copy = copyTargetCalculator(calculator);
     if (copy.stealth !== undefined && typeof copy.stealth !== 'boolean') {
         if (copy.stealth.conventionalInfantry !== undefined) {
@@ -556,7 +483,7 @@ function patchedTarget(
         source?: 'manual' | 'opfor';
         readOnly?: boolean;
         unitType?: TnTargetUnitType;
-        tnCalculator?: SerializedEncounterTargetCalculatorV2;
+        tnCalculator?: EncounterTargetCalculatorState;
     } = { ...existing };
     if (Object.prototype.hasOwnProperty.call(patch, 'letter')) candidate.letter = patch.letter as string;
     if (Object.prototype.hasOwnProperty.call(patch, 'name')) candidate.name = patch.name as string;
@@ -611,8 +538,8 @@ function targetsEqual(left: EncounterTarget, right: EncounterTarget): boolean {
 }
 
 function sharedTargetCalculatorsEqual(
-    left: SerializedEncounterTargetCalculatorV2 | undefined,
-    right: SerializedEncounterTargetCalculatorV2 | undefined,
+    left: EncounterTargetCalculatorState | undefined,
+    right: EncounterTargetCalculatorState | undefined,
 ): boolean {
     if (left === undefined || right === undefined) return left === right;
     return left.isAirborne === right.isAirborne
@@ -635,14 +562,37 @@ function hasExactKeys(value: object, allowed: readonly string[]): boolean {
     return Object.keys(value).every(key => allowedKeys.has(key));
 }
 
-function freezeSnapshot(snapshot: CBTEncounterSnapshot): CBTEncounterSnapshot {
+function freezeC3Snapshot(snapshot: CBTEncounterC3Snapshot): CBTEncounterC3Snapshot {
     return Object.freeze({
-        revision: snapshot.revision,
-        targets: Object.freeze(snapshot.targets.map(target => freezeTarget(target))
-            .sort((left, right) => compareText(left.letter, right.letter) || compareText(left.id, right.id))),
         networks: Object.freeze(snapshot.networks.map(freezeNetwork)
             .sort((left, right) => compareText(left.id, right.id))),
+        c3Positions: freezeC3Positions(snapshot.c3Positions),
     });
+}
+
+function freezeC3Positions(positions: readonly C3UnitPosition[]): readonly C3UnitPosition[] {
+    const unitIds = new Set<string>();
+    const frozen = positions.map(position => {
+        if (typeof position.unitId !== 'string'
+            || position.unitId.trim() !== position.unitId
+            || !position.unitId
+            || position.unitId.length > 512
+            || position.unitId.includes('\0')
+            || typeof position.x !== 'number'
+            || !Number.isFinite(position.x)
+            || typeof position.y !== 'number'
+            || !Number.isFinite(position.y)
+            || unitIds.has(position.unitId)) {
+            throw new EncounterInputError('invalid-c3-position');
+        }
+        unitIds.add(position.unitId);
+        return Object.freeze({
+            unitId: position.unitId,
+            x: Object.is(position.x, -0) ? 0 : position.x,
+            y: Object.is(position.y, -0) ? 0 : position.y,
+        });
+    });
+    return Object.freeze(frozen.sort((left, right) => compareText(left.unitId, right.unitId)));
 }
 
 function freezeTarget(target: EncounterTarget, validateOrigin = true): EncounterTarget {
@@ -705,13 +655,13 @@ function validTargetUnitType(value: unknown): value is TnTargetUnitType {
     ].includes(value);
 }
 
-function validSharedTargetCalculator(value: unknown): value is SerializedEncounterTargetCalculatorV2 {
+function validSharedTargetCalculator(value: unknown): value is EncounterTargetCalculatorState {
     if (!isPlainRecord(value) || !hasExactKeys(value, [
         'isAirborne', 'targetMovementBracket', 'targetMovementDistance', 'skidding', 'prone', 'immobile',
         'targetHexCover', 'waterDepth', 'buildingCover', 'targetHeight', 'largeTarget',
         'narcAboveWater', 'narcUnderwater', 'tagged', 'ecmShielded', 'stealth', 'stealthSystem',
     ])) return false;
-    const calculator = value as SerializedEncounterTargetCalculatorV2;
+    const calculator = value as EncounterTargetCalculatorState;
     for (const property of [
         'isAirborne', 'skidding', 'prone', 'immobile', 'largeTarget',
         'narcAboveWater', 'narcUnderwater', 'tagged', 'ecmShielded',
@@ -770,7 +720,7 @@ function freezeNetwork(network: EncounterNetwork): EncounterNetwork {
 }
 
 class EncounterInputError extends Error {
-    public constructor(public readonly reason: 'invalid-target') {
+    public constructor(public readonly reason: 'invalid-target' | 'invalid-c3-position') {
         super(reason);
     }
 }

@@ -1,7 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { emptyCBTEncounterSnapshot } from '../models/runtime/encounter-runtime';
 import {
     GAUSS_POWERED_DOWN,
     GAUSS_POWERED_UP,
@@ -10,7 +9,10 @@ import {
     mekGaussPowerDefinition,
 } from '../models/runtime/mek-gauss-power';
 import { projectMekEquipmentPanel } from '../models/runtime/equipment-panel';
-import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import {
+    createDirectMekRuntimeFixture,
+    emptyCBTEncounterSnapshot,
+} from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { CBTUnitInstance } from '../models/runtime/unit-instance';
 import type {
     EquipmentInteractionDialogsService,

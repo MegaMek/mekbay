@@ -136,11 +136,11 @@ const cbtForce = source(join(app, 'models', 'cbt-force.model.ts'));
 const cbtUnitStore = source(join(app, 'models', 'cbt-unit-store.ts'));
 const cbtC3 = source(join(app, 'models', 'cbt-force-c3.ts'));
 const memberRegistry = source(join(app, 'models', 'runtime', 'cbt-force-member-registry.ts'));
-const runtimeJournal = source(join(app, 'models', 'runtime', 'cbt-force-runtime-journal.ts'));
+const forceSession = source(join(app, 'models', 'runtime', 'cbt-force-session.ts'));
 assert.match(cbtUnitStore, /interface CBTUnitStoreState\s*\{\s*readonly envelope: SerializedCBTForceV2;/u);
 assert.match(cbtForce, /private readonly unitStore = new CBTUnitStore\(\);/u);
 assert.match(cbtForce, /private readonly memberRegistry = new CBTForceMemberRegistry/u);
-assert.match(cbtForce, /private readonly runtimeJournal = new CBTForceRuntimeJournal/u);
+assert.match(cbtForce, /private readonly session = new CBTForceSession\(this\.unitStore\)/u);
 assert.match(cbtForce, /return this\.unitStore\.envelope\(\);/u);
 assert.doesNotMatch(cbtForce, /CBTForceUnitStore|memberProjection|runtimeCommands/u);
 assert.match(cbtForce, /export class CBTForce extends Force<never>/u);
@@ -154,7 +154,7 @@ assert.doesNotMatch(
     /deserializeForceUnit|sanitizeForceData|populateFromGroupedSerialized|getDeferredUnitDescriptors/u,
     'current Classic forces must not expose grouped-force deserialization hooks',
 );
-assert.match(cbtForce, /replaceC3EncounterNetworksIfOwnerRevisionCurrent\([\s\S]*ForceOwnerRevisionFence/u);
+assert.match(cbtForce, /replaceC3EncounterConfigurationIfOwnerRevisionCurrent\([\s\S]*ForceOwnerRevisionFence/u);
 assert.doesNotMatch(cbtForce, /public replaceC3EncounterNetworks\(/u);
 assert.match(cbtForce, /public getRuntimeInstanceIds\(\): readonly string\[\]/u);
 assert.match(cbtForce, /public async admitRetainedUnit\(/u);
@@ -167,8 +167,9 @@ assert.ok(cbtForce.split(/\r?\n/u).length < 2600, 'CBTForce must not regrow into
 assert.ok(cbtUnitStore.split(/\r?\n/u).length < 1700, 'CBTUnitStore must remain focused');
 assert.match(cbtC3, /export class CBTForceC3/u);
 assert.match(memberRegistry, /no BV result/u);
-assert.match(runtimeJournal, /Sole owner of session-only checkpoints/u);
-assert.doesNotMatch(runtimeJournal, /encounter|Encounter/u, 'C3 topology must stay outside runtime undo');
+assert.match(forceSession, /Per-force owner of data that exists only for the lifetime of the loaded force/u);
+assert.match(forceSession, /private targetRegistryState: TargetRegistrySnapshot/u);
+assert.doesNotMatch(forceSession, /EncounterNetwork|c3Positions/u, 'durable C3 state must stay outside the force session');
 assert.doesNotMatch(
     [cbtForce, cbtUnitStore, cbtC3, memberRegistry].join('\n'),
     /UnitBattleValueCacheEntry|TagBattleValueCache|WeakMap/u,
@@ -196,7 +197,12 @@ const nonMekRuntime = source(join(app, 'models', 'runtime', 'non-mek-unit-instan
 assert.match(nonMekRuntime, /NonMekEntityType = Exclude<EntityType, 'Mek'>/u);
 assert.match(nonMekRuntime, /export class NonMekUnitInstance/u);
 assert.match(nonMekRuntime, /private readonly entity: BaseEntity/u);
-assert.match(nonMekRuntime, /this\.entity\.battleValueFor\(this\.stateView\(\), this\.ruleset\)/u);
+assert.match(nonMekRuntime, /currentBaseBattleValue: \(\) => entity\.battleValueFor\(stateView\(\), ruleset\)/u);
+assert.doesNotMatch(
+    nonMekRuntime,
+    /public (?:conditions|protoMekRules|aeroRules|damageTrackHits|battleValue|stateView)\(/u,
+    'NonMekUnitInstance must not regrow public projection wrappers used only by tests',
+);
 assert.doesNotMatch(nonMekRuntime, /ForceUnit|Facade|Published/u);
 
 const directCatalogModeReaders = production
@@ -461,8 +467,20 @@ assert.deepEqual(
 );
 
 const storageCodec = source(join(app, 'models', 'runtime', 'force-storage-codec.ts'));
+const currentPersistence = source(join(app, 'models', 'runtime', 'persistence-v2.ts'));
+const attackerTargeting = source(join(app, 'models', 'runtime', 'attacker-targeting-state.ts'));
 assert.match(storageCodec, /force\.version === 1[\s\S]{0,100}return Object\.freeze/u);
 assert.doesNotMatch(storageCodec, /CBTSerialized|CBT_SERIALIZED|convertPersistedForceV1/u);
+assert.doesNotMatch(
+    [storageCodec, currentPersistence].join('\n'),
+    /attackerTargeting/u,
+    'the current V2 schema and encoder must not serialize targeting session state',
+);
+assert.doesNotMatch(
+    attackerTargeting,
+    /SerializedAttackerTargetingState|serializeAttackerTargetingState|deserializeAttackerTargetingState/u,
+    'session-only targeting must not expose a test-only wire codec',
+);
 const nonMekPersistence = source(join(app, 'models', 'runtime', 'non-mek-unit-persistence.ts'));
 assert.match(
     nonMekPersistence,

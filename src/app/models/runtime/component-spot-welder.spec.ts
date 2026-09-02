@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { AttackerActionTarget } from './attacker-targeting-state';
-import { emptyCBTEncounterSnapshot } from './encounter-runtime';
 import {
     projectMekEquipmentPanel,
     selectedWeaponHeat,
 } from './equipment-panel';
 import {
     createDirectSpotWelderRuntimeFixture,
+    emptyCBTEncounterSnapshot,
     type DirectMekRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 

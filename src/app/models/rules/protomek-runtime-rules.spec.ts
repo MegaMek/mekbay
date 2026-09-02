@@ -14,11 +14,13 @@ import {
 } from '../../services/unit-catalog/unit-catalog.types';
 import { NonMekUnitInstance } from '../runtime/non-mek-unit-instance';
 import { type InstanceBaselineRef } from '../runtime/runtime-state';
+import { isProtoMekEntity } from '../entity/utils/entity-type-guards';
+import { projectProtoMekRuntimeRules } from './protomek-runtime-rules';
 
 describe('ProtoMek runtime rules', () => {
     it('ports the production attack movement modifiers', () => {
         const { entity, runtime } = harness();
-        expect(runtime.battleValue()).toBe(entity.battleValue());
+        expect(runtime.query().currentBaseBattleValue()).toBe(entity.battleValue());
         const expected = [
             ['stationary', 0, 0],
             ['walk', 1, 1],
@@ -169,9 +171,15 @@ function harness(
 }
 
 function project(runtime: NonMekUnitInstance) {
-    const projection = runtime.protoMekRules();
-    if (projection === null) throw new Error('Expected ProtoMek fixture');
-    return projection;
+    const entity = runtime.getUnit();
+    if (!isProtoMekEntity(entity)) throw new Error('Expected ProtoMek fixture');
+    return projectProtoMekRuntimeRules(
+        entity,
+        runtime.getIndex(),
+        runtime.snapshot(),
+        runtime.ruleset,
+        runtime.forcedWithdrawal,
+    );
 }
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');

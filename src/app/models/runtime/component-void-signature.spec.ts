@@ -5,11 +5,11 @@ import { ECMMode } from '../common.model';
 import { componentModeDefinition } from './component-mode';
 import { StealthHandler } from './component-stealth';
 import { mekTargetRosterRow } from './cbt-force-target-roster';
-import { emptyCBTEncounterSnapshot } from './encounter-runtime';
 import { projectMekEquipmentPanel } from './equipment-panel';
 import { CBTMekUnit } from './cbt-mek-unit';
 import {
     createDirectVoidSignatureRuntimeFixture,
+    emptyCBTEncounterSnapshot,
     type DirectMekRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 

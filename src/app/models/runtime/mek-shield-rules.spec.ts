@@ -1,12 +1,12 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { emptyCBTEncounterSnapshot } from './encounter-runtime';
 import { projectMekEquipmentPanel } from './equipment-panel';
 import { projectMekRecordSheet } from './mek-record-sheet';
 import type { MekShieldProjectionV2, MekShieldTrack } from './mek-shield-rules';
 import {
     createDirectShieldRuntimeFixture,
+    emptyCBTEncounterSnapshot,
     type DirectMekRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 

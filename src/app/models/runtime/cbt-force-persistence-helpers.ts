@@ -3,15 +3,15 @@
 // Author: Drake
 
 import { uuidv7 } from '../../utils/uuid.util';
+import { compareText } from '../../utils/string.util';
 import { CBT_FORCE_UNASSIGNED_GROUP_ID } from './cbt-force-roster';
 import {
     asForceId,
     emptyRuntimeHistory,
     validateSerializedCBTForceV2,
+    type SerializedCBTEncounterStateV2,
     type SerializedCBTForceV2,
-    type SerializedEncounterEndpointV2,
-    type SerializedEncounterFactV2,
-    type SerializedForceEncounterEntryV2,
+    type SerializedEncounterNetworkV2,
 } from './persistence-v2';
 
 export function nextForceRevision(revision: number): number {
@@ -50,10 +50,16 @@ export async function remapCBTForceCloneEnvelope(
     };
     const encounter = {
         ...source.encounter,
-        state: {
-            ...source.encounter.state,
-            facts: source.encounter.state.facts.map(fact => remapEncounterFact(fact, remapInstanceId)),
-        },
+        networks: source.encounter.networks.map(network =>
+            remapEncounterNetwork(network, remapInstanceId)),
+        ...(source.encounter.c3Positions === undefined ? {} : {
+            c3Positions: source.encounter.c3Positions
+                .map(position => Object.freeze({
+                    ...position,
+                    unitId: remapInstanceId(position.unitId),
+                }))
+                .sort((left, right) => compareText(left.unitId, right.unitId)),
+        }),
     };
     return validateSerializedCBTForceV2({
         ...source,
@@ -67,82 +73,51 @@ export async function remapCBTForceCloneEnvelope(
 }
 
 export function pruneRemovedUnitsFromEncounter(
-    encounter: SerializedForceEncounterEntryV2,
-    instanceIds: ReadonlySet<string>,
-): SerializedForceEncounterEntryV2 {
-    const facts = encounter.state.facts.flatMap(fact => {
-        const retained = pruneEncounterFact(fact, instanceIds);
+    encounter: SerializedCBTEncounterStateV2,
+    removedInstanceIds: ReadonlySet<string>,
+): SerializedCBTEncounterStateV2 {
+    const networks = encounter.networks.flatMap(network => {
+        const retained = pruneEncounterNetwork(network, removedInstanceIds);
         return retained === null ? [] : [retained];
     });
-    if (facts.length === encounter.state.facts.length
-        && facts.every((fact, index) => fact === encounter.state.facts[index])) {
+    const c3Positions = encounter.c3Positions
+        ?.filter(position => !removedInstanceIds.has(position.unitId));
+    if (networks.length === encounter.networks.length
+        && networks.every((network, index) => network === encounter.networks[index])
+        && c3Positions?.length === encounter.c3Positions?.length) {
         return encounter;
     }
-    const encounterRevision = nextForceRevision(encounter.encounterRevision);
     return Object.freeze({
-        encounterRevision,
-        state: Object.freeze({
-            schemaVersion: 2 as const,
-            encounterRevision,
-            facts: Object.freeze(facts),
-        }),
+        networks: Object.freeze(networks),
+        ...(c3Positions === undefined || c3Positions.length === 0
+            ? {}
+            : { c3Positions: Object.freeze(c3Positions) }),
     });
 }
 
-function remapEncounterFact(
-    fact: SerializedEncounterFactV2,
+function remapEncounterNetwork(
+    network: SerializedEncounterNetworkV2,
     remapInstanceId: (instanceId: string) => string,
-): SerializedEncounterFactV2 {
-    const remapEndpoint = (endpoint: SerializedEncounterEndpointV2): SerializedEncounterEndpointV2 => ({
-        ...endpoint,
-        instanceId: remapInstanceId(endpoint.instanceId),
-    });
-    if (fact.kind === 'target') return fact;
-    if (fact.kind === 'cross-unit-effect') {
-        return {
-            ...fact,
-            ...(fact.source === undefined ? {} : { source: remapEndpoint(fact.source) }),
-            target: remapEndpoint(fact.target),
-        };
-    }
-    if (fact.kind === 'network-link') {
-        return { ...fact, endpoints: fact.endpoints.map(remapEndpoint) };
-    }
-    const endpoints = fact.network.endpoints
+): SerializedEncounterNetworkV2 {
+    const endpoints = network.endpoints
         .map(endpoint => ({ ...endpoint, instanceId: remapInstanceId(endpoint.instanceId) }))
         .sort((left, right) => {
             const leftKey = `${left.instanceId}\0${left.componentId}`;
             const rightKey = `${right.instanceId}\0${right.componentId}`;
             return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
         });
-    return { ...fact, network: { ...fact.network, endpoints } };
+    return { ...network, endpoints };
 }
 
-function pruneEncounterFact(
-    fact: SerializedEncounterFactV2,
+function pruneEncounterNetwork(
+    network: SerializedEncounterNetworkV2,
     instanceIds: ReadonlySet<string>,
-): SerializedEncounterFactV2 | null {
-    if (fact.kind === 'target') return fact;
-    if (fact.kind === 'cross-unit-effect') {
-        return instanceIds.has(fact.target.instanceId)
-            || (fact.source !== undefined && instanceIds.has(fact.source.instanceId))
-            ? null
-            : fact;
-    }
-    if (fact.kind === 'network-link') {
-        const endpoints = fact.endpoints.filter(endpoint => !instanceIds.has(endpoint.instanceId));
-        if (endpoints.length === fact.endpoints.length) return fact;
-        if (endpoints.length < 2) return null;
-        return Object.freeze({ ...fact, endpoints: Object.freeze(endpoints) });
-    }
-    const endpoints = fact.network.endpoints.filter(endpoint => !instanceIds.has(endpoint.instanceId));
-    if (endpoints.length === fact.network.endpoints.length) return fact;
+): SerializedEncounterNetworkV2 | null {
+    const endpoints = network.endpoints.filter(endpoint => !instanceIds.has(endpoint.instanceId));
+    if (endpoints.length === network.endpoints.length) return network;
     if (endpoints.length < 2
-        || (fact.network.networkType === 'c3' && !endpoints.some(endpoint => endpoint.role === 'master'))) {
+        || (network.networkType === 'c3' && !endpoints.some(endpoint => endpoint.role === 'master'))) {
         return null;
     }
-    return Object.freeze({
-        ...fact,
-        network: Object.freeze({ ...fact.network, endpoints: Object.freeze(endpoints) }),
-    });
+    return Object.freeze({ ...network, endpoints: Object.freeze(endpoints) });
 }

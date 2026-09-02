@@ -56,7 +56,6 @@ describe('Infantry runtime rules', () => {
 
         expect(runtime.snapshot().explicitlyDestroyed).toBeFalse();
         expect(runtime.destroyed()).toBeTrue();
-        expect(runtime.stateView().destroyed).toBeTrue();
         expect(projectNonMekMovementCapabilities(
             entity,
             runtime.getIndex(),

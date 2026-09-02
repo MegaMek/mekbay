@@ -6,13 +6,13 @@ import { MobileHpgHandler } from '../models/runtime/component-mobile-hpg';
 import { UACJammingHandler } from '../models/runtime/component-rapid-fire-autocannon';
 import { VibrobladeHandler } from '../models/runtime/component-vibroblade';
 import { EscalatingFailureHandler } from '../models/runtime/component-escalating-failure';
-import { emptyCBTEncounterSnapshot } from '../models/runtime/encounter-runtime';
 import {
     createDirectEscalatingFailureRuntimeFixture,
     createDirectMekRuntimeFixture,
     createDirectMobileHpgRuntimeFixture,
     createDirectSpotWelderRuntimeFixture,
     createDirectVibrobladeRuntimeFixture,
+    emptyCBTEncounterSnapshot,
 } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import { TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
 import { registerAllEquipmentBehaviors } from '../models/runtime/equipment-behaviors';

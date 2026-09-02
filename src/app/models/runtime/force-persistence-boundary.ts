@@ -11,7 +11,6 @@ import {
     validateSerializedCBTForceV2,
     type SerializedCBTEncounterStateV2,
     type SerializedCBTForceV2,
-    type SerializedForceEncounterEntryV2,
     type SerializedForceUnitEntryV2,
 } from './persistence-v2';
 import type { SerializedCBTUnitV2 } from './persistence-v2';
@@ -30,8 +29,6 @@ export type CBTForcePersistenceFailureCode =
     | 'READY_RUNTIME_SERIALIZATION_FAILED'
     | 'READY_RUNTIME_IDENTITY_MISMATCH'
     | 'READY_RUNTIME_REVISION_REGRESSION'
-    | 'ENCOUNTER_REVISION_REGRESSION'
-    | 'ENCOUNTER_UNREVISIONED_CHANGE'
     | 'INSTANCE_ID_COLLISION'
     | 'MATERIALIZED_ENVELOPE_INVALID';
 
@@ -75,7 +72,6 @@ export async function prepareCBTForcePersistenceV2(input: {
     if (materialized.kind === 'read-only') return materialized;
 
     const encounter = materializeEncounter(previous.encounter, input.encounterState);
-    if (encounter.kind === 'read-only') return encounter;
 
     if (!materialized.changed && !encounter.changed) {
         return Object.freeze({
@@ -89,7 +85,7 @@ export async function prepareCBTForcePersistenceV2(input: {
             ...previous,
             forceRevision: nextRevision(previous.forceRevision),
             units: materialized.units,
-            encounter: encounter.entry,
+            encounter: encounter.state,
         });
         if (!capturesAreCurrent(captures)) {
             return readOnly('READY_RUNTIME_SERIALIZATION_FAILED', 'A ready runtime changed while persistence was prepared');
@@ -137,18 +133,14 @@ export async function prepareDirectUnitAdmission(input: {
         const materialized = materializeReadyEntries(base, live);
         if (materialized.kind === 'read-only') return materialized;
         const encounter = materializeEncounter(base.encounter, input.typedEncounterState);
-        if (encounter.kind === 'read-only') return encounter;
-        base = { ...base, units: materialized.units, encounter: encounter.entry };
+        base = { ...base, units: materialized.units, encounter: encounter.state };
     } else {
         try {
             base = await createEmptyCBTForceV2(asForceId(input.forceId));
             if (input.typedEncounterState) {
                 base = await validateSerializedCBTForceV2({
                     ...base,
-                    encounter: Object.freeze({
-                        encounterRevision: input.typedEncounterState.encounterRevision,
-                        state: input.typedEncounterState,
-                    }),
+                    encounter: input.typedEncounterState,
                 });
             }
         } catch (error) {
@@ -213,10 +205,7 @@ export async function prepareInitialCBTForceV2(input: {
     if (input.typedEncounterState) {
         envelope = await validateSerializedCBTForceV2({
             ...envelope,
-            encounter: Object.freeze({
-                encounterRevision: input.typedEncounterState.encounterRevision,
-                state: input.typedEncounterState,
-            }),
+            encounter: input.typedEncounterState,
         });
     }
     return Object.freeze({
@@ -228,18 +217,14 @@ export async function prepareInitialCBTForceV2(input: {
 async function createEmptyCBTForceV2(
     forceId: ReturnType<typeof asForceId>,
 ): Promise<SerializedCBTForceV2> {
-    const revision = 0;
     return validateSerializedCBTForceV2({
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId,
-        forceRevision: revision,
+        forceRevision: 0,
         history: emptyRuntimeHistory(),
         units: [],
         roster: { schemaVersion: 1, groups: [] },
-        encounter: {
-            encounterRevision: revision,
-            state: { schemaVersion: 2, encounterRevision: revision, facts: [] },
-        },
+        encounter: { networks: [] },
     });
 }
 
@@ -338,33 +323,17 @@ function materializeReadyEntries(
 }
 
 function materializeEncounter(
-    previous: SerializedForceEncounterEntryV2,
+    previous: SerializedCBTEncounterStateV2,
     next: SerializedCBTEncounterStateV2 | undefined,
 ): {
-    readonly kind: 'ready';
-    readonly entry: SerializedForceEncounterEntryV2;
+    readonly state: SerializedCBTEncounterStateV2;
     readonly changed: boolean;
-}
-    | Extract<CBTForcePersistenceResultV2, { readonly kind: 'read-only' }> {
-    if (!next || next === previous.state) {
-        return Object.freeze({ kind: 'ready' as const, entry: previous, changed: false });
-    }
-    if (next.encounterRevision < previous.encounterRevision) {
-        return readOnly('ENCOUNTER_REVISION_REGRESSION', 'The encounter revision regressed');
-    }
-    if (next.encounterRevision === previous.encounterRevision
-        && !jsonValuesEqual(next, previous.state)) {
-        return readOnly('ENCOUNTER_UNREVISIONED_CHANGE', 'The encounter changed without advancing its revision');
-    }
-    if (next.encounterRevision === previous.encounterRevision) {
-        return Object.freeze({ kind: 'ready' as const, entry: previous, changed: false });
+} {
+    if (!next || next === previous || jsonValuesEqual(next, previous)) {
+        return Object.freeze({ state: previous, changed: false });
     }
     return Object.freeze({
-        kind: 'ready' as const,
-        entry: Object.freeze({
-            encounterRevision: next.encounterRevision,
-            state: next,
-        }),
+        state: next,
         changed: true,
     });
 }

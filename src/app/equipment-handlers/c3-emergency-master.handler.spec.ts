@@ -10,11 +10,13 @@ import {
 } from '../models/runtime/component-c3-emergency-master';
 import {
     asEncounterNetworkId,
-    emptyCBTEncounterSnapshot,
     type CBTEncounterSnapshot,
     type EncounterNetworkEndpoint,
 } from '../models/runtime/encounter-runtime';
-import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import {
+    createDirectMekRuntimeFixture,
+    emptyCBTEncounterSnapshot,
+} from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type {
     EquipmentInteractionDialogsService,
     EquipmentInteractionNotifications,

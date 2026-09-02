@@ -32,6 +32,7 @@ import type {
     CBTUnitDispatchResult,
 } from './cbt-unit';
 import type { EquipmentRowOrderGroup } from './equipment-row-order';
+import type { AttackerTargetingState } from './attacker-targeting-state';
 import type { CBTUnitAttackerTargetingCommand, CBTUnitSelectedWeaponFireCommand } from './unit-instance';
 
 export interface NonMekUnitDeploymentInput {
@@ -143,6 +144,10 @@ export class CBTNonMekUnit implements CBTUnit {
         return this.runtime.dispatch({
             kind: 'end-turn',
         });
+    }
+
+    public installAttackerTargetingSessionState(targeting: AttackerTargetingState): void {
+        this.runtime.installAttackerTargetingSessionState(targeting);
     }
 
     public getCrewAssignment(): CrewAssignment {
@@ -259,13 +264,17 @@ export class CBTNonMekUnit implements CBTUnit {
         current: CBTNonMekUnit,
         scenario: ScenarioRules,
     ): CBTNonMekUnit {
-        return CBTNonMekUnit.restore(
+        const candidate = CBTNonMekUnit.restore(
             current.serialize(),
             current.getUnit(),
             current.uuid,
             scenario,
             current.getNativeSource(),
         );
+        candidate.installAttackerTargetingSessionState(
+            current.captureRuntime().query.attackerTargetingState(),
+        );
+        return candidate;
     }
 
     public static repair(current: CBTNonMekUnit): CBTNonMekUnit {
@@ -276,6 +285,7 @@ export class CBTNonMekUnit implements CBTUnit {
         const state = Object.freeze({
             ...createPristineNonMekUnitState(current.getUnit()),
             stateRevision: revision + 1,
+            attackerTargeting: currentState.attackerTargeting,
             ...(currentState.equipmentRowOrder === undefined
                 ? {}
                 : { equipmentRowOrder: currentState.equipmentRowOrder }),

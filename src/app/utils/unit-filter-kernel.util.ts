@@ -4,7 +4,6 @@
 
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { UnitSummary } from '../models/unit-summary.model';
-import type { UnitSearchRecord } from './unit-search-worker-protocol.util';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import {
     ADVANCED_FILTERS,
@@ -34,12 +33,10 @@ import {
     type ParsedASSpecials,
 } from './as-special-filter.util';
 
-export interface UnitFilterKernelDependencies<
-    TUnit extends UnitSearchRecord = UnitSummary,
-> {
-    getProperty: (unit: TUnit, key?: string) => unknown;
-    getAdjustedBV: (unit: TUnit) => number;
-    getAdjustedPV: (unit: TUnit) => number;
+export interface UnitFilterKernelDependencies {
+    getProperty: (unit: UnitSummary, key?: string) => unknown;
+    getAdjustedBV: (unit: UnitSummary) => number;
+    getAdjustedPV: (unit: UnitSummary) => number;
     getUnitIdsForExternalFilters: (
         eraFilterState?: FilterState[string],
         factionFilterState?: FilterState[string],
@@ -48,30 +45,30 @@ export interface UnitFilterKernelDependencies<
         selectedFactionEntries: MultiStateSelection,
         wildcardPatterns?: WildcardPattern[],
     ) => string[];
-    unitMatchesAvailabilityFrom: (unit: TUnit, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitMatchesAvailabilityRarity: (unit: TUnit, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityFrom: (unit: UnitSummary, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityRarity: (unit: UnitSummary, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
     getForcePackLookupSet: (packName: string) => ReadonlySet<string> | undefined;
-    getAvailabilityLookupKey: (unit: TUnit) => string;
+    getAvailabilityLookupKey: (unit: UnitSummary) => string;
     getIndexedUnitIds?: (filterKey: string, value: string) => ReadonlySet<UnitUuid> | undefined;
     getIndexedASSpecials?: (unitUuid: UnitUuid) => ParsedASSpecials | undefined;
 }
 
-interface ApplyUnitFilterStateRequest<TUnit extends UnitSearchRecord> {
-    units: TUnit[];
+interface ApplyUnitFilterStateRequest {
+    units: UnitSummary[];
     state: FilterState;
-    dependencies: UnitFilterKernelDependencies<TUnit>;
+    dependencies: UnitFilterKernelDependencies;
     skipKey?: string;
 }
 
 const ADVANCED_FILTER_CONFIG_BY_KEY = new Map(ADVANCED_FILTERS.map(conf => [conf.key, conf]));
 
-function filterUnitsByMultiState<TUnit extends UnitSearchRecord>(
-    units: TUnit[],
+function filterUnitsByMultiState(
+    units: UnitSummary[],
     key: string,
     selection: MultiStateSelection,
-    getProperty: UnitFilterKernelDependencies<TUnit>['getProperty'],
+    getProperty: UnitFilterKernelDependencies['getProperty'],
     wildcardPatterns?: WildcardPattern[],
-): TUnit[] {
+): UnitSummary[] {
     const orList: MultiStateOption[] = [];
     const andList: MultiStateOption[] = [];
     const notList: MultiStateOption[] = [];
@@ -211,9 +208,7 @@ function filterUnitsByMultiState<TUnit extends UnitSearchRecord>(
     });
 }
 
-export function applyFilterStateToUnits<TUnit extends UnitSearchRecord>(
-    request: ApplyUnitFilterStateRequest<TUnit>,
-): TUnit[] {
+export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): UnitSummary[] {
     const { units, state, dependencies, skipKey } = request;
     let results = units;
     const activeFilters: Record<string, unknown> = {};

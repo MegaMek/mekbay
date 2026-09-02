@@ -1061,7 +1061,7 @@ describe('Force CBT V2 persistence boundary', () => {
         reloaded.setName('Changed Force');
         const changed = await reloaded.serializeForPersistence();
         expect(Number(changed.cbt!.forceRevision)).toBe(0);
-        expect(Number(changed.cbt!.encounter.encounterRevision)).toBe(0);
+        expect(changed.cbt!.encounter).toEqual({ networks: [] });
     });
 
     it('refuses unsupported V2 envelopes instead of installing a compatibility wrapper', async () => {

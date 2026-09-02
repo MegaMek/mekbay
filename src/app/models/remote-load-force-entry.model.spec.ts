@@ -14,7 +14,7 @@ describe('remote force-list wire decoder', () => {
             1,
             'Alpha',
             [[
-                [['AZ9nZw3Le7iZL67wggL14g', { a: 'Lead', x: 3 }]],
+                [['AZ9nZw3Le7iZL67wggL14g', { a: 'Lead', c: 1, d: 1 }]],
                 { n: 'Lance', f: 'battle-lance' },
             ]],
             { n: 'Note', t: ['Cloud'], f: 5, e: 3150, p: 42, o: 0 },

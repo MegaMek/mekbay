@@ -3,7 +3,6 @@
 
 import {
     asEncounterTargetId,
-    emptyCBTEncounterSnapshot,
     type TargetRegistrySnapshot,
 } from './encounter-runtime';
 import { TARGET_INDIRECT_WEAPON_REASON } from './mek-targeting-rules';
@@ -50,6 +49,7 @@ import {
     createDirectTripodRuntimeFixture,
     createDirectVibrobladeRuntimeFixture,
     createDirectVspRuntimeFixture,
+    emptyCBTEncounterSnapshot,
 } from './testing/direct-mek-runtime-fixture';
 
 describe('direct Mek entity/runtime projections', () => {

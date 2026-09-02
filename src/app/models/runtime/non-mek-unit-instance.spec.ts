@@ -43,7 +43,6 @@ import {
     restoreNonMekUnit,
     serializeNonMekUnit,
 } from './non-mek-unit-persistence';
-import { serializeAttackerTargetingState } from './attacker-targeting-state';
 import { nonMekDamageTrackId } from '../rules/non-mek-damage-track-rules';
 import { componentIdForMount } from './non-mek-runtime-index';
 import { MountedEngine } from '../entity/components/engine';
@@ -164,8 +163,8 @@ describe('NonMekUnitInstance', () => {
             CORE_2026_RULESET,
         );
 
-        expect(runtime.conditions()).not.toContain('airborne');
-        expect(runtime.conditions()).not.toContain('grounded');
+        expect(runtime.query().conditions()).not.toContain('airborne');
+        expect(runtime.query().conditions()).not.toContain('grounded');
         expect(runtime.dispatch({
             kind: 'set-airborne',
 
@@ -197,8 +196,8 @@ describe('NonMekUnitInstance', () => {
             CORE_2026_RULESET,
         );
         expect(spaceOnly.turnState().airborne).toBeTrue();
-        expect(spaceOnly.conditions()).not.toContain('airborne');
-        expect(spaceOnly.conditions()).not.toContain('grounded');
+        expect(spaceOnly.query().conditions()).not.toContain('airborne');
+        expect(spaceOnly.query().conditions()).not.toContain('grounded');
 
         const tank = new TestTankEntity();
         tank.uuid.set(UUID);
@@ -209,8 +208,8 @@ describe('NonMekUnitInstance', () => {
             CORE_2026_RULESET,
         );
         expect(groundOnly.turnState().airborne).toBeNull();
-        expect(groundOnly.conditions()).not.toContain('airborne');
-        expect(groundOnly.conditions()).not.toContain('grounded');
+        expect(groundOnly.query().conditions()).not.toContain('airborne');
+        expect(groundOnly.query().conditions()).not.toContain('grounded');
         expect(groundOnly.dispatch({
             kind: 'set-airborne',
 
@@ -536,9 +535,9 @@ describe('NonMekUnitInstance', () => {
             dead: true,
         });
 
-        expect(runtime.conditions()).toEqual(['abandoned', 'immobile']);
+        expect(runtime.query().conditions()).toEqual(['abandoned', 'immobile']);
         expect(runtime.hasCondition('immobile')).toBeTrue();
-        expect(runtime.stateView().movement).toEqual(jasmine.objectContaining({ walk: 0, run: 0 }));
+        expect(runtime.vehicleRules()?.movement).toEqual(jasmine.objectContaining({ walk: 0, maxRun: 0 }));
 
         runtime.dispatch({
             kind: 'set-crew-state',
@@ -558,10 +557,10 @@ describe('NonMekUnitInstance', () => {
             timestamp: 1,
         });
 
-        expect(runtime.conditions()).toEqual([]);
-        expect(runtime.stateView()).toEqual(jasmine.objectContaining({
-            engineHits: 1,
-            movement: jasmine.objectContaining({ walk: 0, run: 0 }),
+        expect(runtime.query().conditions()).toEqual([]);
+        expect(runtime.vehicleRules()).toEqual(jasmine.objectContaining({
+            systems: jasmine.objectContaining({ engineHit: true }),
+            movement: jasmine.objectContaining({ walk: 0, maxRun: 0 }),
         }));
     });
 
@@ -1367,6 +1366,7 @@ describe('NonMekUnitInstance', () => {
 
     it('owns vehicle weapon targeting and exact ammunition preference in sparse runtime state', () => {
         const fixture = targetingFixture('unit:tank-targeting');
+        const durableRevision = fixture.runtime.revision();
 
         expect(fixture.runtime.dispatchAttackerTargeting({
             kind: 'edit-attacker-targeting',
@@ -1399,9 +1399,10 @@ describe('NonMekUnitInstance', () => {
                 preferredSourceId: fixture.ammoId,
             },
         });
+        expect(fixture.runtime.revision()).toBe(durableRevision);
     });
 
-    it('applies grouped weapon selection and damage in one revision each', () => {
+    it('keeps grouped weapon selection transient while damage advances one revision', () => {
         const weapon = new WeaponEquipment({
             id: 'GroupedEnergyWeapon',
             name: 'Grouped Energy Weapon',
@@ -1435,7 +1436,7 @@ describe('NonMekUnitInstance', () => {
                 selection: { kind: 'selected' },
             },
         }, registry, false)).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        expect(runtime.revision()).toBe(selectionRevision + 1);
+        expect(runtime.revision()).toBe(selectionRevision);
         expect(componentIds.map(componentId => runtime.query().attackerTargetingState()
             .components.get(componentId)?.selection)).toEqual(Array.from(
                 { length: 4 },
@@ -1640,12 +1641,12 @@ describe('NonMekUnitInstance', () => {
 
         expect(plan).not.toBeNull();
         fixture.runtime.installAttackerTargetingReconciliation(plan!);
-        expect(Number(fixture.runtime.revision())).toBe(Number(before) + 1);
+        expect(fixture.runtime.revision()).toBe(before);
         expect(fixture.runtime.query().attackerTargetingState().components.has(fixture.weaponId)).toBeFalse();
         expect(fixture.runtime.query().attackerTargetingState().targets.has(fixture.targetId)).toBeFalse();
     });
 
-    it('round-trips Entity targeting through the current force wire format', () => {
+    it('resets session targeting instead of writing it to the Entity force format', () => {
         const fixture = targetingFixture('unit:tank-targeting-persistence');
         for (const edit of [{
             kind: 'set-component-selection' as const,
@@ -1684,9 +1685,11 @@ describe('NonMekUnitInstance', () => {
         });
 
         expect(inspectSerializedNonMekUnit(saved).instanceId).toBe(fixture.runtime.id);
+        expect('attackerTargeting' in saved).toBeFalse();
         const restored = restoreNonMekUnit(saved, fixture.entity, CORE_2026_RULESET);
-        expect(serializeAttackerTargetingState(restored.query().attackerTargetingState()))
-            .toEqual(serializeAttackerTargetingState(fixture.runtime.query().attackerTargetingState()));
+        expect(restored.query().attackerTargetingState().components.size).toBe(0);
+        expect(restored.query().attackerTargetingState().actions.size).toBe(0);
+        expect(restored.query().attackerTargetingState().targets.size).toBe(0);
     });
 
     it('uses BaseEntity damage topology for Battle Armor and aerospace families', () => {
@@ -2070,7 +2073,7 @@ describe('NonMekUnitInstance', () => {
             fighter,
             CORE_2026_RULESET,
         );
-        const fighterPristineBV = fighterRuntime.battleValue();
+        const fighterPristineBV = fighterRuntime.query().currentBaseBattleValue()!;
         const si = [...fighterRuntime.getIndex().locations.values()]
             .find(location => location.code === 'SI')!;
         expect(fighterRuntime.dispatch({
@@ -2079,7 +2082,7 @@ describe('NonMekUnitInstance', () => {
             locationId: si.id,
             damage: 1,
         }).accepted).toBeTrue();
-        expect(fighterRuntime.battleValue()).toBeLessThan(fighterPristineBV);
+        expect(fighterRuntime.query().currentBaseBattleValue()!).toBeLessThan(fighterPristineBV);
         expect(fighter.structuralIntegrity()).toBe(10);
 
         const battleArmor = new TestBattleArmorEntity();
@@ -2092,7 +2095,7 @@ describe('NonMekUnitInstance', () => {
             battleArmor,
             CORE_2026_RULESET,
         );
-        const pristineBattleArmorBV = battleArmorRuntime.battleValue();
+        const pristineBattleArmorBV = battleArmorRuntime.query().currentBaseBattleValue()!;
         const firstTrooper = [...battleArmorRuntime.getIndex().locations.values()][0];
         expect(battleArmorRuntime.dispatch({
             kind: 'set-internal-damage',
@@ -2100,7 +2103,7 @@ describe('NonMekUnitInstance', () => {
             locationId: firstTrooper.id,
             damage: 1,
         }).accepted).toBeTrue();
-        expect(battleArmorRuntime.battleValue()).toBeLessThan(pristineBattleArmorBV);
+        expect(battleArmorRuntime.query().currentBaseBattleValue()!).toBeLessThan(pristineBattleArmorBV);
         expect(battleArmor.trooperCount()).toBe(4);
     });
 
@@ -2126,7 +2129,7 @@ describe('NonMekUnitInstance', () => {
         const componentId = componentIdForMount(mount);
         const arm = [...runtime.getIndex().locations.values()]
             .find(location => location.code === 'Left Arm')!;
-        const pristine = runtime.battleValue();
+        const pristine = runtime.query().currentBaseBattleValue()!;
         expect(pristine).toBe(entity.battleValue());
 
         expect(runtime.dispatch({
@@ -2144,7 +2147,7 @@ describe('NonMekUnitInstance', () => {
 
         }).accepted).toBeTrue();
         expect(runtime.componentStatus(componentId)).toBe('destroyed');
-        expect(runtime.battleValue()).toBeLessThan(pristine);
+        expect(runtime.query().currentBaseBattleValue()!).toBeLessThan(pristine);
     });
 
     it('rejects Meks because their concrete runtime owns Mek mechanics', () => {

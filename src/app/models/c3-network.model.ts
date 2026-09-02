@@ -340,6 +340,13 @@ export interface C3CapabilityView {
     getC3Specials?(): readonly string[];
 }
 
+/** Durable visual-editor position for one force unit. */
+export interface C3UnitPosition {
+    readonly unitId: string;
+    readonly x: number;
+    readonly y: number;
+}
+
 /** Narrow presentation/query surface; no force-unit mechanics owner is required. */
 export interface C3UnitView extends C3CapabilityView {
     readonly id: string;

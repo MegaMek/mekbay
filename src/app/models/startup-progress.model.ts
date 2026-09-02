@@ -56,7 +56,6 @@ export interface BackgroundCatalogProgressInput {
     readonly dataReady: boolean;
     readonly coreCatalog: StartupCoreCatalogState;
     readonly runtimeCatalog?: RuntimeCatalogProgressState;
-    readonly searchWorker?: RuntimeCatalogProgressState;
     readonly auxiliaryCatalog?: RuntimeCatalogProgressState;
 }
 
@@ -257,7 +256,6 @@ export function projectBackgroundCatalogProgress(
 ): BackgroundCatalogProgressView {
     const activeTask = [
         { state: input.runtimeCatalog, title: 'Preparing unit indexes' },
-        { state: input.searchWorker, title: 'Preparing unit search' },
         { state: input.auxiliaryCatalog, title: 'Preparing auxiliary catalogs' },
     ].find(task => task.state?.status === 'running');
     const runtime = activeTask?.state;
@@ -286,7 +284,7 @@ export function projectBackgroundCatalogProgress(
             ariaValueText: `${runtime.detail} (${runtime.completed} of ${runtime.total})`,
         });
     }
-    const failedTask = [input.runtimeCatalog, input.searchWorker, input.auxiliaryCatalog]
+    const failedTask = [input.runtimeCatalog, input.auxiliaryCatalog]
         .find(state => state?.status === 'error');
     if (failedTask?.status === 'error') {
         return Object.freeze({

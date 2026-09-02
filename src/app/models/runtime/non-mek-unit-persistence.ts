@@ -40,15 +40,20 @@ import {
 } from './non-mek-unit-instance';
 import { buildNonMekRuntimeIndex } from './non-mek-runtime-index';
 import {
-    deserializeAttackerTargetingState,
-    serializeAttackerTargetingState,
-    type SerializedAttackerTargetingState,
+    createPristineAttackerTargetingState,
 } from './attacker-targeting-state';
 import { freezeEquipmentRowOrder, type EquipmentRowOrderState } from './equipment-row-order';
 import { isEndTurnCheckpoint, type EndTurnCheckpoint } from './end-turn-checkpoint';
 
 export const NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION = 7 as const;
 export const NON_MEK_DEPLOYMENT_SCHEMA_VERSION = 1 as const;
+const SERIALIZED_NON_MEK_UNIT_KEYS = new Set([
+    'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary',
+    'baselineRefAtSave', 'deployment', 'family', 'stateRevision',
+    'destroyed', 'locationState', 'componentState', 'damageTrackState',
+    'ammoState', 'crewState', 'conditions', 'heat', 'turn',
+    'equipmentRowOrder', 'pendingCombat',
+]);
 
 export interface NonMekDeploymentConfiguration {
     readonly id: string;
@@ -121,7 +126,6 @@ export interface SerializedNonMekUnit {
         readonly endTurnCheckpoint?: EndTurnCheckpoint;
         readonly controlRecovery?: NonMekUnitRuntimeState['turn']['controlRecovery'];
     }>;
-    readonly attackerTargeting: SerializedAttackerTargetingState;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
     readonly pendingCombat?: Readonly<{
         readonly internalDamage?: readonly Readonly<{
@@ -159,6 +163,8 @@ export interface SerializedNonMekUnitInspection {
 /** Small wire guard used before a current force installs a non-Mek runtime. */
 export function inspectSerializedNonMekUnit(value: unknown): SerializedNonMekUnitInspection {
     const record = requireRecord(value, 'non-Mek unit');
+    const unknownKey = Object.keys(record).find(key => !SERIALIZED_NON_MEK_UNIT_KEYS.has(key));
+    if (unknownKey !== undefined) throw new Error(`Unknown non-Mek unit field ${unknownKey}`);
     if (record['schemaVersion'] !== NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION) {
         throw new Error(`Unsupported non-Mek unit schema ${String(record['schemaVersion'])}`);
     }
@@ -178,7 +184,6 @@ export function inspectSerializedNonMekUnit(value: unknown): SerializedNonMekUni
         || family['entityType'] === 'Mek') {
         throw new Error('Non-Mek unit family is invalid');
     }
-    deserializeAttackerTargetingState(record['attackerTargeting']);
     if (record['equipmentRowOrder'] !== undefined) {
         freezeEquipmentRowOrder(
             requireRecord(record['equipmentRowOrder'], 'equipmentRowOrder') as EquipmentRowOrderState,
@@ -267,7 +272,6 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
         ...(conditions.length === 0 ? {} : { conditions: Object.freeze(conditions) }),
         ...(isPristineHeat(state.heat) ? {} : { heat: Object.freeze({ ...state.heat }) }),
         ...(turn === undefined ? {} : { turn }),
-        attackerTargeting: serializeAttackerTargetingState(state.attackerTargeting),
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         ...(pendingCombat === undefined ? {} : { pendingCombat }),
     });
@@ -386,7 +390,7 @@ export function restoreNonMekUnit(
             heatsinksOff: saved.heat?.heatsinksOff ?? 0,
         }),
         turn: restoreNonMekTurn(saved),
-        attackerTargeting: deserializeAttackerTargetingState(saved.attackerTargeting),
+        attackerTargeting: createPristineAttackerTargetingState(),
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         pendingCombat: restorePendingCombat(saved),
     });

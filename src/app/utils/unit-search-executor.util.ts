@@ -6,7 +6,7 @@ import type { UnitSummary } from '../models/unit-summary.model';
 import { GameSystem } from '../models/common.model';
 import type { UnitSearchNormalization, UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
 import { getForcePacks } from '../models/forcepacks.model';
-import { ADVANCED_FILTERS, AS_MOVEMENT_MODE_DISPLAY_NAMES, AdvFilterType, isMegaMekRaritySortKey, normalizeMotiveValue, type FilterState, type SearchTelemetryStage } from '../services/unit-search-filters.model';
+import { AS_MOVEMENT_MODE_DISPLAY_NAMES, isMegaMekRaritySortKey, normalizeMotiveValue, type FilterState, type SearchTelemetryStage } from '../services/unit-search-filters.model';
 import {
     filterUnitsWithAST,
     getMatchingTextForUnit,
@@ -28,32 +28,29 @@ import type { AvailabilityFilterScope } from '../services/unit-search-filters.mo
 import { findBvNormalizationMatch } from './bv-normalization.util';
 import { findPvNormalizationMatch } from './pv-normalization.util';
 import type { ParsedASSpecials } from './as-special-filter.util';
-import type { UnitSearchRecord } from './unit-search-worker-protocol.util';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
-export interface UnitSearchExecutionRequest<
-    TUnit extends UnitSearchRecord = UnitSummary,
-> {
-    units: TUnit[];
+export interface UnitSearchExecutionRequest {
+    units: UnitSummary[];
     parsedQuery: ParseResult;
     searchTokens: SearchTokensGroup[];
     uiOnlyFilterState?: FilterState;
-    uiOnlyFilterDependencies?: UnitFilterKernelDependencies<NoInfer<TUnit>>;
+    uiOnlyFilterDependencies?: UnitFilterKernelDependencies;
     initialAvailabilityScope?: AvailabilityFilterScope;
     gameSystem: GameSystem;
     sortKey: string;
     sortDirection: 'asc' | 'desc';
     bvPvLimit: number;
     forceTotalBvPv: number;
-    getAdjustedBV: (unit: NoInfer<TUnit>) => number;
-    getAdjustedPV: (unit: NoInfer<TUnit>) => number;
+    getAdjustedBV: (unit: UnitSummary) => number;
+    getAdjustedPV: (unit: UnitSummary) => number;
     normalization?: UnitSearchNormalization | null;
-    unitBelongsToEra: (unit: NoInfer<TUnit>, eraName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitBelongsToFaction: (unit: NoInfer<TUnit>, factionName: string, eraNames?: readonly string[]) => boolean;
-    unitMatchesAvailabilityFrom?: (unit: NoInfer<TUnit>, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitMatchesAvailabilityRarity?: (unit: NoInfer<TUnit>, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
-    unitBelongsToForcePack: (unit: NoInfer<TUnit>, packName: string) => boolean;
-    unitMatchesFormationTarget?: (unit: NoInfer<TUnit>, formationName: string) => boolean;
+    unitBelongsToEra: (unit: UnitSummary, eraName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitBelongsToFaction: (unit: UnitSummary, factionName: string, eraNames?: readonly string[]) => boolean;
+    unitMatchesAvailabilityFrom?: (unit: UnitSummary, availabilityFromName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitMatchesAvailabilityRarity?: (unit: UnitSummary, rarityName: string, scope?: AvailabilityFilterScope) => boolean;
+    unitBelongsToForcePack: (unit: UnitSummary, packName: string) => boolean;
+    unitMatchesFormationTarget?: (unit: UnitSummary, formationName: string) => boolean;
     getAllEraNames: () => string[];
     getAllFactionNames: () => string[];
     getAllAvailabilityFromNames?: () => string[];
@@ -64,13 +61,11 @@ export interface UnitSearchExecutionRequest<
     getIndexedFilterValues?: (filterKey: string) => readonly string[];
     getIndexedASSpecials?: (unitUuid: UnitUuid) => ParsedASSpecials | undefined;
     availabilitySortScope?: AvailabilityFilterScope;
-    getMegaMekRaritySortScore?: (unit: NoInfer<TUnit>, scope?: AvailabilityFilterScope) => number;
+    getMegaMekRaritySortScore?: (unit: UnitSummary, scope?: AvailabilityFilterScope) => number;
 }
 
-export interface UnitSearchExecutionResult<
-    TUnit extends UnitSearchRecord = UnitSummary,
-> {
-    results: TUnit[];
+export interface UnitSearchExecutionResult {
+    results: UnitSummary[];
     normalizationMatchesByUnitUuid: ReadonlyMap<UnitUuid, UnitSearchNormalizationMatch>;
     telemetryStages: SearchTelemetryStage[];
     totalMs: number;
@@ -131,9 +126,7 @@ function getSelectedASMotiveCodes(
     return selectedCodes.size > 0 ? selectedCodes : null;
 }
 
-export function executeUnitSearch<TUnit extends UnitSearchRecord>(
-    request: UnitSearchExecutionRequest<TUnit>,
-): UnitSearchExecutionResult<TUnit> {
+export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSearchExecutionResult {
     const telemetryStages: SearchTelemetryStage[] = [];
     const searchStartedAt = getNowMs();
     const allUnits = request.units;
@@ -161,7 +154,7 @@ export function executeUnitSearch<TUnit extends UnitSearchRecord>(
         && ((normalization.kind === 'bv' && request.gameSystem === GameSystem.CBT)
             || (normalization.kind === 'pv' && request.gameSystem === GameSystem.AS));
     const normalizationMatchCache = new Map<string, UnitSearchNormalizationMatch | null>();
-    const resolveNormalizationMatch = (unit: TUnit): UnitSearchNormalizationMatch | null => {
+    const resolveNormalizationMatch = (unit: UnitSummary): UnitSearchNormalizationMatch | null => {
         if (!normalizationEnabled) {
             return null;
         }
@@ -174,25 +167,25 @@ export function executeUnitSearch<TUnit extends UnitSearchRecord>(
         }
         return normalizationMatchCache.get(unit.uuid) ?? null;
     };
-    const getContextualAdjustedBV = (unit: TUnit): number => {
+    const getContextualAdjustedBV = (unit: UnitSummary): number => {
         return resolveNormalizationMatch(unit)?.adjustedValue ?? request.getAdjustedBV(unit);
     };
-    const getContextualAdjustedPV = (unit: TUnit): number => {
+    const getContextualAdjustedPV = (unit: UnitSummary): number => {
         return resolveNormalizationMatch(unit)?.adjustedValue ?? request.getAdjustedPV(unit);
     };
 
-    const context: EvaluatorContext<TUnit> = {
+    const context: EvaluatorContext<UnitSummary> = {
         getProperty,
         getUnitId: unit => unit.uuid,
         getAdjustedBV: getContextualAdjustedBV,
         getAdjustedPV: getContextualAdjustedPV,
         gameSystem: request.gameSystem,
-        matchesText: (unit: TUnit, text: string) => {
+        matchesText: (unit: UnitSummary, text: string) => {
             const searchableText = unit._searchKey
                 || removeAccents(`${unit.chassis ?? ''} ${unit.model ?? ''}`.toLowerCase());
             return getSearchMatcher(text)(searchableText, unit._searchKeyAlphanumeric);
         },
-        getCountableValues: (unit: TUnit, filterKey: string) => {
+        getCountableValues: (unit: UnitSummary, filterKey: string) => {
             switch (filterKey) {
                 case 'componentName':
                 case 'weaponType':
@@ -213,7 +206,7 @@ export function executeUnitSearch<TUnit extends UnitSearchRecord>(
         getAllAvailabilityRarityNames: request.getAllAvailabilityRarityNames,
         getAllFormationNames: request.getAllFormationNames,
         getAllForcePackNames: () => getForcePacks().map(pack => pack.name),
-        getASMovementValues: (unit: TUnit) => {
+        getASMovementValues: (unit: UnitSummary) => {
             const mvm = unit.as?.MVm;
             if (!mvm) return [];
             if (selectedMotiveCodes === null) {
@@ -290,15 +283,15 @@ export function executeUnitSearch<TUnit extends UnitSearchRecord>(
 
     const sorted = [...results];
     const compiledSearchTokens = compileRelevanceSearchGroups(request.searchTokens);
-    let relevanceScores: WeakMap<TUnit, number> | null = null;
-    let megaMekRarityScores: WeakMap<TUnit, number> | null = null;
+    let relevanceScores: WeakMap<UnitSummary, number> | null = null;
+    let megaMekRarityScores: WeakMap<UnitSummary, number> | null = null;
     if (request.sortKey === '' && hasTextSearch) {
         relevanceScores = measureStage(
             telemetryStages,
             'relevance-prep',
             sorted.length,
             () => {
-                const scores = new WeakMap<TUnit, number>();
+                const scores = new WeakMap<UnitSummary, number>();
 
                 for (const unit of sorted) {
                     const chassis = (unit.chassis ?? '').toLowerCase();
@@ -339,7 +332,7 @@ export function executeUnitSearch<TUnit extends UnitSearchRecord>(
     }
 
     if (isMegaMekRaritySortKey(request.sortKey) && request.getMegaMekRaritySortScore) {
-        megaMekRarityScores = new WeakMap<TUnit, number>();
+        megaMekRarityScores = new WeakMap<UnitSummary, number>();
         for (const unit of sorted) {
             megaMekRarityScores.set(unit, request.getMegaMekRaritySortScore(unit, request.availabilitySortScope));
         }

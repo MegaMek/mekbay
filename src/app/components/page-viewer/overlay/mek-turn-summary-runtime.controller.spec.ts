@@ -37,7 +37,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         const first = snapshot(0);
         const second = snapshot(1);
         const getSnapshot = jasmine.createSpy('getMekTurnPanelSnapshot').and.returnValues(first, second);
-        const force = { changed, getMekTurnPanelSnapshot: getSnapshot };
+        const force = { changed, sessionChanged: new Subject<void>(), getMekTurnPanelSnapshot: getSnapshot };
         const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
         const destroyRef = {
             onDestroy: (callback: () => void) => {
@@ -98,6 +98,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         });
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => current,
             dispatchMekUnitCommand: dispatch,
         };
@@ -155,6 +156,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         } as unknown as MekTurnPanelSnapshot;
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => current,
         };
         const controller = new MekTurnSummaryRuntimeController(
@@ -187,6 +189,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         });
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => current,
             dispatchMekUnitCommand: dispatch,
         };
@@ -240,6 +243,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         });
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => current,
             dispatchMekUnitCommand: dispatch,
         };
@@ -288,6 +292,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         };
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => current,
             dispatchMekUnitCommand: dispatchUnit,
             dispatchEquipmentChoice: dispatchEquipment,
@@ -321,6 +326,7 @@ describe('MekTurnSummaryRuntimeController', () => {
         });
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => current,
             dispatchMekUnitCommand: dispatch,
         };

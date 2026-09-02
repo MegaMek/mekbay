@@ -126,7 +126,6 @@ describe('App', () => {
     unitSearchFiltersServiceMock = {
       expandedView: jasmine.createSpy('expandedView').and.returnValue(false),
       advOpen: signal(false),
-      workerCatalogProgress: signal({ status: 'idle' }),
       setForeignTagDialogCallback: jasmine.createSpy('setForeignTagDialogCallback'),
       processPendingForeignTags: jasmine.createSpy('processPendingForeignTags'),
     };

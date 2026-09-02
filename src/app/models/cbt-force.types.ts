@@ -15,8 +15,10 @@ import type {
     EquipmentInteractionHandlerId,
     EquipmentInteractionKind,
 } from './runtime/equipment-interaction';
-import type { EncounterTargetId } from './runtime/encounter-runtime';
-import type { SerializedEncounterTargetCalculatorV2 } from './runtime/persistence-v2';
+import type {
+    EncounterTargetCalculatorState,
+    EncounterTargetId,
+} from './runtime/encounter-runtime';
 import type { MekUnitRuntimeState } from './runtime/runtime-state';
 import type { NonMekUnitRuntimeState } from './runtime/non-mek-unit-instance';
 import type { CBTUnitCommandResult, CBTUnitRuntimeState } from './runtime/cbt-unit-runtime';
@@ -34,7 +36,7 @@ export interface InventoryControlTargetRosterRow {
     readonly targetId: EncounterTargetId;
     readonly name: string;
     readonly unitType: TnTargetUnitType;
-    readonly tnCalculator: SerializedEncounterTargetCalculatorV2;
+    readonly tnCalculator: EncounterTargetCalculatorState;
     readonly projection: 'v2';
 }
 

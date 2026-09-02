@@ -238,9 +238,10 @@ export class ForceDialogsService {
         let changed = false;
         if (force instanceof CBTForce && result.authority === 'cbt') {
             changed = workspace.getForceSlot(force) === expectedSlot
-                && force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+                && force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
                     ownerRevisionFence,
                     result.networks,
+                    result.positions,
                 );
         } else if (!(force instanceof CBTForce) && result.authority === 'alpha-strike') {
             changed = workspace.getForceSlot(force) === expectedSlot

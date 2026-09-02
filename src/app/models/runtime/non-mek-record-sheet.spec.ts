@@ -37,7 +37,7 @@ describe('projectNonMekRecordSheet', () => {
             fighterRuntime.getIndex(),
             fighterRuntime.snapshot(),
             CORE_2026_RULESET,
-            fighterRuntime.battleValue(),
+            fighterRuntime.query().currentBaseBattleValue()!,
             fighter.battleValue(),
         );
         expect(grounded.conditions).toContain('grounded');
@@ -56,7 +56,7 @@ describe('projectNonMekRecordSheet', () => {
             jumpShipRuntime.getIndex(),
             jumpShipRuntime.snapshot(),
             CORE_2026_RULESET,
-            jumpShipRuntime.battleValue(),
+            jumpShipRuntime.query().currentBaseBattleValue()!,
             jumpShip.battleValue(),
         );
         expect(spaceOnly.conditions).not.toContain('airborne');
@@ -155,7 +155,7 @@ describe('projectNonMekRecordSheet', () => {
             runtime.getIndex(),
             runtime.snapshot(),
             CORE_2026_RULESET,
-            runtime.battleValue(),
+            runtime.query().currentBaseBattleValue()!,
             entity.battleValue(),
         );
 
@@ -199,7 +199,7 @@ describe('projectNonMekRecordSheet', () => {
             runtime.getIndex(),
             runtime.snapshot(),
             CORE_2026_RULESET,
-            runtime.battleValue(),
+            runtime.query().currentBaseBattleValue()!,
             entity.battleValue(),
         );
 
@@ -224,7 +224,7 @@ describe('projectNonMekRecordSheet', () => {
             runtime.getIndex(),
             runtime.snapshot(),
             CORE_2026_RULESET,
-            runtime.battleValue(),
+            runtime.query().currentBaseBattleValue()!,
             entity.battleValue(),
         );
 
@@ -261,7 +261,7 @@ describe('projectNonMekRecordSheet', () => {
             runtime.getIndex(),
             runtime.snapshot(),
             CORE_2026_RULESET,
-            runtime.battleValue(),
+            runtime.query().currentBaseBattleValue()!,
             entity.battleValue(),
         );
 
@@ -303,7 +303,7 @@ describe('projectNonMekRecordSheet', () => {
             runtime.getIndex(),
             runtime.snapshot(),
             CORE_2026_RULESET,
-            runtime.battleValue(),
+            runtime.query().currentBaseBattleValue()!,
             entity.battleValue(),
         );
 

@@ -21,7 +21,7 @@ import { DEFAULT_CLASSIC_BV_NORMALIZATION_MAX, DEFAULT_ALPHA_STRIKE_PV_NORMALIZA
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
 import { ForceImportService } from '../../services/force-import.service';
-import { Overlay, OverlayModule, type ConnectedPosition, type OverlayRef } from '@angular/cdk/overlay';
+import { Overlay, OverlayModule, type ConnectedPosition } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import type { UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { firstValueFrom } from 'rxjs';
@@ -282,8 +282,6 @@ export class UnitSearchComponent {
     private favoritesDialogActive = false;
     /** Immediate input value for instant highlighting (not debounced). */
     readonly immediateSearchText = signal('');
-    private readonly searchCommitPending = signal(false);
-    private readonly pendingResultOpenRequest = signal(false);
 
     syntaxInput = viewChild<SyntaxInputComponent>('syntaxInput');
     private readonly searchbarContainer = viewChild<ElementRef<HTMLElement>>('searchbarContainer');
@@ -1002,7 +1000,7 @@ export class UnitSearchComponent {
 
     /** Style for the expanded results wrapper when advanced panel is docked */
     expandedWrapperStyle = computed(() => {
-        const { top: safeTop, bottom: safeBottom, right: safeRight } = this.layoutService.getSafeAreaInsets();
+        const { top: safeTop, bottom: safeBottom } = this.layoutService.getSafeAreaInsets();
         const gap = 4;
         const top = safeTop + 4 + 40 + gap; // top margin + searchbar height + gap
         const bottom = Math.max(4, safeBottom);
@@ -1032,13 +1030,6 @@ export class UnitSearchComponent {
         return this.advOpen() || this.resultsVisible();
     });
 
-    /**
-     * Non-reactive flag tracking whether the results panel was visible on the last check.
-     * Used to avoid flickering: when the panel is already visible, we keep showing
-     * (possibly stale) results while the worker processes instead of hiding/showing.
-     */
-    private wasResultsVisible = false;
-
     public readonly resultsVisible = computed(() => {
         if (this.expandedView()) {
             return true;
@@ -1048,11 +1039,7 @@ export class UnitSearchComponent {
         }
         const wantsVisible = (this.focused() || this.advOpen() || this.unitDetailsDialogOpen()) &&
             (this.filtersService.searchText() || this.isAdvActive() || this.activeVariantGroupFilter());
-        if (!wantsVisible) return false;
-        // If search results are current, show immediately
-        if (this.filtersService.isSearchSettled()) return true;
-        // Search pending: only show if panel was already visible (avoid flash on first show)
-        return this.wasResultsVisible;
+        return !!wantsVisible;
     });
 
     /**
@@ -1111,11 +1098,6 @@ export class UnitSearchComponent {
             handle: (event) => this.handleSearchResultsShortcutKeyDown(event),
         }, this.destroyRef);
 
-        // Track panel visibility for flicker prevention (must be a plain boolean, not a signal,
-        // so the computed reads it as a snapshot without creating a reactive dependency)
-        effect(() => {
-            this.wasResultsVisible = this.resultsVisible();
-        });
         effect(() => {
             const currentGameSystem = this.gameSystem();
             untracked(() => this.advPanelFilterGameSystem.set(currentGameSystem));
@@ -1127,7 +1109,6 @@ export class UnitSearchComponent {
             untracked(() => {
                 if (this.pendingSearchText !== null) {
                     this.cancelPendingSearchCommit();
-                    this.pendingResultOpenRequest.set(false);
                 }
                 if (this.immediateSearchText() !== text) {
                     this.immediateSearchText.set(text);
@@ -1163,16 +1144,6 @@ export class UnitSearchComponent {
                 if (closeRequest.exitExpandedView) {
                     this.expandedView.set(false);
                 }
-            });
-        });
-        effect(() => {
-            if (!this.pendingResultOpenRequest()) return;
-            if (this.isResultOpenBlockedByPendingSearch()) return;
-
-            const items = this.displayedUnits();
-            untracked(() => {
-                this.pendingResultOpenRequest.set(false);
-                this.openCurrentSearchResult(items);
             });
         });
         // Keep the filters service in sync with the current force total BV/PV
@@ -1421,7 +1392,6 @@ export class UnitSearchComponent {
     }
 
     public closeAllPanels() {
-        this.pendingResultOpenRequest.set(false);
         this.focused.set(false);
         this.advOpen.set(false);
         this.viewModeMenuOpen.set(false);
@@ -1434,7 +1404,7 @@ export class UnitSearchComponent {
         this.closeAllPanels();
     }
 
-    trackByUnitId(index: number, unit: UnitSummary) {
+    trackByUnitId(index: number) {
         // Track by index to force position-based recycling in virtual scroll
         // Tracking by unit.name causes orphaned DOM nodes for who knows what reason...
         return index;
@@ -1460,13 +1430,11 @@ export class UnitSearchComponent {
         // Update immediately for instant highlighting
         this.immediateSearchText.set(val);
         this.activeIndex.set(null);
-        this.pendingResultOpenRequest.set(false);
         // Debounce the actual search/filtering
         if (this.searchDebounceTimer) {
             clearTimeout(this.searchDebounceTimer);
         }
         this.pendingSearchText = val;
-        this.searchCommitPending.set(true);
         this.searchDebounceTimer = setTimeout(() => this.flushPendingSearch(), this.SEARCH_DEBOUNCE_MS);
     }
 
@@ -1476,7 +1444,6 @@ export class UnitSearchComponent {
             this.searchDebounceTimer = undefined;
         }
         this.pendingSearchText = null;
-        this.searchCommitPending.set(false);
     }
 
     private flushPendingSearch() {
@@ -1486,7 +1453,6 @@ export class UnitSearchComponent {
         }
 
         if (this.pendingSearchText === null) {
-            this.searchCommitPending.set(false);
             return;
         }
 
@@ -1494,7 +1460,6 @@ export class UnitSearchComponent {
         this.pendingSearchText = null;
         this.filtersService.setSearchText(nextSearchText);
         this.activeIndex.set(null);
-        this.searchCommitPending.set(false);
     }
 
     closeAdvPanel() {
@@ -1703,7 +1668,6 @@ export class UnitSearchComponent {
         }
         if (event.key === 'Escape') {
             event.stopPropagation();
-            this.pendingResultOpenRequest.set(false);
             if (this.viewModeMenuOpen()) {
                 this.closeViewModeMenu();
                 return;
@@ -1723,7 +1687,8 @@ export class UnitSearchComponent {
         }
         if (event.key === 'Enter') {
             if (this.isResultNavigationBlockedForTarget(event.target)) return;
-            if (this.requestOpenCurrentSearchResult()) {
+            this.flushPendingSearch();
+            if (this.openCurrentSearchResult()) {
                 event.preventDefault();
             }
             return;
@@ -1752,21 +1717,6 @@ export class UnitSearchComponent {
         if (!interactiveElement) return false;
 
         return !(interactiveElement.matches('input.syntax-input') && interactiveElement.closest('syntax-input'));
-    }
-
-    private isResultOpenBlockedByPendingSearch(): boolean {
-        return this.searchCommitPending() || !this.filtersService.isSearchSettled();
-    }
-
-    private requestOpenCurrentSearchResult(): boolean {
-        this.flushPendingSearch();
-
-        if (this.isResultOpenBlockedByPendingSearch()) {
-            this.pendingResultOpenRequest.set(true);
-            return true;
-        }
-
-        return this.openCurrentSearchResult();
     }
 
     private openCurrentSearchResult(items = this.displayedUnits()): boolean {
@@ -2738,7 +2688,6 @@ export class UnitSearchComponent {
 
     clearSearch() {
         this.cancelPendingSearchCommit();
-        this.pendingResultOpenRequest.set(false);
         this.immediateSearchText.set('');
         this.filtersService.setSearchText('');
         this.activeIndex.set(null);

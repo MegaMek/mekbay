@@ -4,6 +4,16 @@
 
 import { GameSystem } from './common.model';
 import { asUnitUuid, type UnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import {
+    FORCE_LIST_ENTRY_INDEX,
+    FORCE_LIST_FORMAT_VERSION,
+    FORCE_LIST_GROUP_INDEX,
+    FORCE_LIST_GROUP_METADATA_FIELD,
+    FORCE_LIST_METADATA_FIELD,
+    FORCE_LIST_SYSTEM_CODE,
+    FORCE_LIST_UNIT_INDEX,
+    FORCE_LIST_UNIT_METADATA_FIELD,
+} from './runtime/force-storage-vocabulary';
 
 export interface RemoteLoadForceUnit {
     unit?: string;
@@ -46,43 +56,75 @@ export function decodeRemoteLoadForceEntry(value: RemoteLoadForceWireEntry): Rem
         const entry = value as RemoteLoadForceEntry;
         return { ...entry, version: entry.version ?? 1 };
     }
-    if (value[0] !== 2 || typeof value[1] !== 'string'
-        || (typeof value[2] !== 'number' && typeof value[2] !== 'string')
-        || (value[3] !== 0 && value[3] !== 1)
-        || typeof value[4] !== 'string'
-        || !Array.isArray(value[5])) {
+    if (value[FORCE_LIST_ENTRY_INDEX.revision] !== FORCE_LIST_FORMAT_VERSION
+        || typeof value[FORCE_LIST_ENTRY_INDEX.instanceId] !== 'string'
+        || (typeof value[FORCE_LIST_ENTRY_INDEX.timestamp] !== 'number'
+            && typeof value[FORCE_LIST_ENTRY_INDEX.timestamp] !== 'string')
+        || (value[FORCE_LIST_ENTRY_INDEX.system] !== FORCE_LIST_SYSTEM_CODE.classicBattleTech
+            && value[FORCE_LIST_ENTRY_INDEX.system] !== FORCE_LIST_SYSTEM_CODE.alphaStrike)
+        || typeof value[FORCE_LIST_ENTRY_INDEX.name] !== 'string'
+        || !Array.isArray(value[FORCE_LIST_ENTRY_INDEX.groups])) {
         throw new Error('Invalid compact force-list entry');
     }
-    const system = value[3] === 0 ? GameSystem.CBT : GameSystem.AS;
-    const metadata = optionalRecord(value[6], 'force-list metadata');
+    const instanceId = value[FORCE_LIST_ENTRY_INDEX.instanceId] as string;
+    const rawTimestamp = value[FORCE_LIST_ENTRY_INDEX.timestamp] as string | number;
+    const name = value[FORCE_LIST_ENTRY_INDEX.name] as string;
+    const rawGroups = value[FORCE_LIST_ENTRY_INDEX.groups] as unknown[];
+    const system = value[FORCE_LIST_ENTRY_INDEX.system] === FORCE_LIST_SYSTEM_CODE.classicBattleTech
+        ? GameSystem.CBT
+        : GameSystem.AS;
+    const metadata = optionalRecord(
+        value[FORCE_LIST_ENTRY_INDEX.metadata],
+        'force-list metadata',
+    );
+    const note = metadata?.[FORCE_LIST_METADATA_FIELD.note];
+    const tags = metadata?.[FORCE_LIST_METADATA_FIELD.tags];
+    const factionId = metadata?.[FORCE_LIST_METADATA_FIELD.factionId];
+    const eraId = metadata?.[FORCE_LIST_METADATA_FIELD.eraId];
+    const battleValue = metadata?.[FORCE_LIST_METADATA_FIELD.battleValue];
+    const pointValue = metadata?.[FORCE_LIST_METADATA_FIELD.pointValue];
+    const owned = metadata?.[FORCE_LIST_METADATA_FIELD.owned];
     return {
-        version: 2,
-        instanceId: value[1],
-        timestamp: typeof value[2] === 'number' ? new Date(value[2]).toISOString() : value[2],
+        version: FORCE_LIST_FORMAT_VERSION,
+        instanceId,
+        timestamp: typeof rawTimestamp === 'number'
+            ? new Date(rawTimestamp).toISOString()
+            : rawTimestamp,
         type: system,
-        name: value[4],
-        ...(typeof metadata?.['n'] === 'string' ? { note: metadata['n'] } : {}),
-        ...(Array.isArray(metadata?.['t']) ? {
-            tags: metadata['t'].filter((tag): tag is string => typeof tag === 'string'),
+        name,
+        ...(typeof note === 'string' ? { note } : {}),
+        ...(Array.isArray(tags) ? {
+            tags: tags.filter((tag): tag is string => typeof tag === 'string'),
         } : {}),
-        ...(typeof metadata?.['f'] === 'number' ? { factionId: metadata['f'] } : {}),
-        ...(typeof metadata?.['e'] === 'number' ? { eraId: metadata['e'] } : {}),
-        ...(typeof metadata?.['b'] === 'number' ? { bv: metadata['b'] } : {}),
-        ...(typeof metadata?.['p'] === 'number' ? { pv: metadata['p'] } : {}),
-        ...(metadata?.['o'] === 0 ? { owned: false } : metadata?.['o'] === 1 ? { owned: true } : {}),
-        groups: value[5].map((group, index) => decodeCompactGroup(group, system, index)),
+        ...(typeof factionId === 'number' ? { factionId } : {}),
+        ...(typeof eraId === 'number' ? { eraId } : {}),
+        ...(typeof battleValue === 'number' ? { bv: battleValue } : {}),
+        ...(typeof pointValue === 'number' ? { pv: pointValue } : {}),
+        ...(owned === 0
+            ? { owned: false }
+            : owned === 1
+                ? { owned: true }
+                : {}),
+        groups: rawGroups.map((group, index) => decodeCompactGroup(group, system, index)),
     };
 }
 
 function decodeCompactGroup(value: unknown, system: GameSystem, index: number): RemoteLoadForceGroup {
-    if (!Array.isArray(value) || !Array.isArray(value[0])) {
+    if (!Array.isArray(value) || !Array.isArray(value[FORCE_LIST_GROUP_INDEX.units])) {
         throw new Error(`Invalid compact force-list group ${index}`);
     }
-    const metadata = optionalRecord(value[1], `force-list group ${index} metadata`);
+    const rawUnits = value[FORCE_LIST_GROUP_INDEX.units] as unknown[];
+    const metadata = optionalRecord(
+        value[FORCE_LIST_GROUP_INDEX.metadata],
+        `force-list group ${index} metadata`,
+    );
+    const name = metadata?.[FORCE_LIST_GROUP_METADATA_FIELD.name];
+    const formationId = metadata?.[FORCE_LIST_GROUP_METADATA_FIELD.formationId];
     return {
-        ...(typeof metadata?.['n'] === 'string' ? { name: metadata['n'] } : {}),
-        ...(typeof metadata?.['f'] === 'string' ? { formationId: metadata['f'] } : {}),
-        units: value[0].map((unit, unitIndex) => decodeCompactUnit(unit, system, index, unitIndex)),
+        ...(typeof name === 'string' ? { name } : {}),
+        ...(typeof formationId === 'string' ? { formationId } : {}),
+        units: rawUnits.map((unit, unitIndex) =>
+            decodeCompactUnit(unit, system, index, unitIndex)),
     };
 }
 
@@ -92,22 +134,53 @@ function decodeCompactUnit(
     groupIndex: number,
     unitIndex: number,
 ): RemoteLoadForceUnit {
-    if (!Array.isArray(value) || typeof value[0] !== 'string') {
+    if (!Array.isArray(value) || typeof value[FORCE_LIST_UNIT_INDEX.catalogUuid] !== 'string') {
         throw new Error(`Invalid compact force-list unit ${groupIndex}:${unitIndex}`);
     }
-    const metadata = optionalRecord(value[1], `force-list unit ${groupIndex}:${unitIndex} metadata`);
-    const flags = typeof metadata?.['x'] === 'number' ? metadata['x'] : 0;
+    const catalogUuid = value[FORCE_LIST_UNIT_INDEX.catalogUuid] as string;
+    const metadataPath = `force-list unit ${groupIndex}:${unitIndex} metadata`;
+    const metadata = optionalRecord(value[FORCE_LIST_UNIT_INDEX.metadata], metadataPath);
+    exactOptionalKeys(metadata, Object.values(FORCE_LIST_UNIT_METADATA_FIELD), metadataPath);
+    const alias = metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.alias];
+    const skill = metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.alphaStrikeSkill];
+    const gunnery = metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.gunnery];
+    const piloting = metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.piloting];
     return {
-        uuid: expandCompactUuid(value[0]),
-        ...(typeof metadata?.['a'] === 'string' ? { alias: metadata['a'] } : {}),
-        ...(typeof metadata?.['s'] === 'number'
-            ? { skill: metadata['s'] }
+        uuid: expandCompactUuid(catalogUuid),
+        ...(typeof alias === 'string' ? { alias } : {}),
+        ...(typeof skill === 'number'
+            ? { skill }
             : system === GameSystem.AS ? { skill: 4 } : {}),
-        ...(typeof metadata?.['g'] === 'number' ? { g: metadata['g'] } : {}),
-        ...(typeof metadata?.['p'] === 'number' ? { p: metadata['p'] } : {}),
-        ...((flags & 1) !== 0 ? { commander: true } : {}),
-        state: { destroyed: (flags & 2) !== 0 },
+        ...(typeof gunnery === 'number' ? { g: gunnery } : {}),
+        ...(typeof piloting === 'number' ? { p: piloting } : {}),
+        ...(compactTrue(
+            metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.commander],
+            `${metadataPath}.${FORCE_LIST_UNIT_METADATA_FIELD.commander}`,
+        ) ? { commander: true } : {}),
+        state: {
+            destroyed: compactTrue(
+                metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.destroyed],
+                `${metadataPath}.${FORCE_LIST_UNIT_METADATA_FIELD.destroyed}`,
+            ),
+        },
     };
+}
+
+function compactTrue(value: unknown, path: string): boolean {
+    if (value === undefined) return false;
+    if (value !== 1) throw new Error(`Invalid ${path}`);
+    return true;
+}
+
+function exactOptionalKeys(
+    value: Record<string, unknown> | undefined,
+    allowed: readonly string[],
+    path: string,
+): void {
+    if (value === undefined) return;
+    const allowedKeys = new Set(allowed);
+    const unknown = Object.keys(value).find(key => !allowedKeys.has(key));
+    if (unknown !== undefined) throw new Error(`Invalid ${path}.${unknown}`);
 }
 
 function optionalRecord(value: unknown, path: string): Record<string, unknown> | undefined {

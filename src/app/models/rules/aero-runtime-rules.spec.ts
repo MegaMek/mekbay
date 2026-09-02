@@ -15,7 +15,8 @@ import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { NonMekUnitInstance } from '../runtime/non-mek-unit-instance';
 import { type InstanceBaselineRef } from '../runtime/runtime-state';
 import { nonMekDamageTrackId } from './non-mek-damage-track-rules';
-import { aeroHeatEffects } from './aero-runtime-rules';
+import { aeroHeatEffects, projectAeroRuntimeRules } from './aero-runtime-rules';
+import { isAeroEntity } from '../entity/utils/entity-type-guards';
 
 describe('Aero runtime rules', () => {
     it('ports the production aerospace heat scale', () => {
@@ -51,7 +52,7 @@ describe('Aero runtime rules', () => {
             pendingOverride: 24,
             heatsinksOff: 0,
         });
-        expect(runtime.aeroRules()!.heat.effects.fireModifier).toBe(0);
+        expect(project(runtime).heat.effects.fireModifier).toBe(0);
 
         expect(runtime.dispatch({
             kind: 'set-heatsinks-off',
@@ -63,7 +64,7 @@ describe('Aero runtime rules', () => {
             
         }).accepted).toBeTrue();
 
-        const projection = runtime.aeroRules()!;
+        const projection = project(runtime);
         expect(runtime.snapshot().heat).toEqual({
             current: 24,
             previous: 0,
@@ -117,7 +118,7 @@ describe('Aero runtime rules', () => {
             entity.structuralIntegrity.set(4);
             entity.heatSinkCount.set(10);
             const runtime = aero(entity, `unit:aero-family-${index}`);
-            expect(runtime.aeroRules()!.heat.tracked)
+            expect(project(runtime).heat.tracked)
                 .withContext(entity.entityType).toBe(entity.tracksHeat());
 
             const si = [...runtime.getIndex().locations.values()]
@@ -151,6 +152,12 @@ function aero(entity: AeroEntity, id: string): NonMekUnitInstance {
         entity,
         CORE_2026_RULESET,
     );
+}
+
+function project(runtime: NonMekUnitInstance) {
+    const entity = runtime.getUnit();
+    if (!isAeroEntity(entity)) throw new Error('Expected aerospace fixture');
+    return projectAeroRuntimeRules(entity, runtime.getIndex(), runtime.snapshot(), runtime.ruleset);
 }
 
 function baseline(): InstanceBaselineRef {

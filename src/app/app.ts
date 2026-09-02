@@ -122,7 +122,6 @@ export class App {
         dataReady: this.dataService.isDataReady(),
         coreCatalog: this.dataService.unitCatalogState(),
         runtimeCatalog: this.dataService.runtimeCatalogProgress(),
-        searchWorker: this.unitSearchFiltersService.workerCatalogProgress(),
         auxiliaryCatalog: this.dataService.auxiliaryCatalogProgress(),
     }));
 

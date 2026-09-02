@@ -44,6 +44,7 @@ import type {
     CBTUnitDispatchResult,
 } from './cbt-unit';
 import type { EquipmentRowOrderGroup } from './equipment-row-order';
+import type { AttackerTargetingState } from './attacker-targeting-state';
 
 export interface CreateCBTMekUnitRequest {
     readonly uuid: UnitUuid;
@@ -147,6 +148,10 @@ export class CBTMekUnit implements CBTUnit {
         forceReadOnly: boolean,
     ): CBTUnitDispatchResult {
         return this.runtime.dispatchAttackerTargeting(command, registry, forceReadOnly);
+    }
+
+    public installAttackerTargetingSessionState(targeting: AttackerTargetingState): void {
+        this.runtime.installAttackerTargetingSessionState(targeting);
     }
 
     public endTurn(policy: MekHeatAutomationPolicyV2): CBTUnitDispatchResult {
@@ -319,6 +324,7 @@ export class CBTMekUnit implements CBTUnit {
         const state = Object.freeze({
             ...initialized.state,
             stateRevision: currentRevision + 1,
+            attackerTargeting: currentState.attackerTargeting,
             ...(currentState.equipmentRowOrder === undefined
                 ? {}
                 : { equipmentRowOrder: currentState.equipmentRowOrder }),
@@ -376,7 +382,12 @@ export class CBTMekUnit implements CBTUnit {
                 scenario,
             },
             current.getNativeSource(),
-        );
+        ).then(candidate => {
+            candidate.installAttackerTargetingSessionState(
+                current.captureRuntime().query.attackerTargetingState(),
+            );
+            return candidate;
+        });
     }
 
     /** Restores one session undo checkpoint against the exact retained entity owner. */

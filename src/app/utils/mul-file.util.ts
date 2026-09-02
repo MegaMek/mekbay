@@ -10,7 +10,6 @@ import {
     hasNonMekRuntime,
     hasMekRuntime,
     type CBTNonMekUnitSnapshot,
-    type CBTUnitSnapshot,
 } from '../models/cbt-unit-snapshot';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { UnitSummary } from '../models/unit-summary.model';
@@ -25,7 +24,6 @@ import {
 } from '../models/force-member.model';
 import type {
     MekRecordSheetCriticalSlot,
-    MekRecordSheetCrewPosition,
     MekRecordSheetLocation,
     MekRecordSheetSnapshot,
 } from '../models/runtime/mek-record-sheet';
@@ -707,7 +705,7 @@ async function dispatchEntity(
     member: CBTForceMember,
     command: NonMekUnitCommand,
 ): Promise<void> {
-    const snapshot = requiredEntitySnapshot(force, member);
+    requiredEntitySnapshot(force, member);
     const result = await force.dispatchNonMekUnitCommand(member.id, {
         ...command,
     } as NonMekUnitCommand);

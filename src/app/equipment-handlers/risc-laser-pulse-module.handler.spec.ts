@@ -1,8 +1,10 @@
 
 import { componentRiscLaserPulseDefinition } from '../models/runtime/component-risc-laser-pulse';
-import { emptyCBTEncounterSnapshot } from '../models/runtime/encounter-runtime';
 import { projectMekEquipmentPanel } from '../models/runtime/equipment-panel';
-import { createDirectRiscLaserPulseRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import {
+    createDirectRiscLaserPulseRuntimeFixture,
+    emptyCBTEncounterSnapshot,
+} from '../models/runtime/testing/direct-mek-runtime-fixture';
 import {
     RISC_LASER_PULSE_MODE,
     RISC_LASER_STANDARD_MODE,

@@ -4,7 +4,7 @@
 import { asComponentId } from './entity/entity-identifiers';
 import {
     asEncounterNetworkId,
-    CBTEncounterRuntime,
+    CBTEncounterC3State,
     type EncounterNetwork,
 } from './runtime/encounter-runtime';
 import { C3NetworkType, C3Role, type C3Component } from './c3-network.model';
@@ -178,10 +178,10 @@ describe('C3 encounter/editor presentation', () => {
         }];
 
         const networks = projectC3EditorNetworksToEncounter(visual, units);
-        const runtime = new CBTEncounterRuntime();
+        const runtime = new CBTEncounterC3State();
 
         expect(validateEncounterNetworks(networks, units)).toBeTrue();
-        runtime.replaceNetworks(networks);
+        runtime.replaceC3Configuration(networks, []);
         expect(projectEncounterNetworksToC3Editor(runtime.snapshot().networks, units)).toEqual(visual);
     });
 

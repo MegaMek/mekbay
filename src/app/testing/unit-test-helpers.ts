@@ -32,18 +32,14 @@ export function createEmptyCBTForceForTest(
     forceId: string = 'force:test',
     revision: number = 0,
 ): SerializedCBTForceV2 {
-    const stateRevision = revision;
     return {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId: asForceId(forceId),
-        forceRevision: stateRevision,
+        forceRevision: revision,
         history: emptyRuntimeHistory(),
         units: [],
         roster: { schemaVersion: 1, groups: [] },
-        encounter: {
-            encounterRevision: stateRevision,
-            state: { schemaVersion: 2, encounterRevision: stateRevision, facts: [] },
-        },
+        encounter: { networks: [] },
     };
 }
 

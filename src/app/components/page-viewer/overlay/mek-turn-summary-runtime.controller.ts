@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { DestroyRef, computed, signal, type Signal, type WritableSignal } from '@angular/core';
+import { merge } from 'rxjs';
 
 import type { CBTMekForceMember } from '../../../models/force-member.model';
 import type { CBTEquipmentChoice } from '../../../models/cbt-force.types';
@@ -80,7 +81,8 @@ export class MekTurnSummaryRuntimeController {
             return current && preview?.mode === current.mode ? preview.value : current?.distance ?? 0;
         });
         this.currentAction = computed(() => this.snapshot().movementState.action);
-        const subscription = member.force.changed.subscribe(() => this.refresh());
+        const subscription = merge(member.force.changed, member.force.sessionChanged)
+            .subscribe(() => this.refresh());
         destroyRef.onDestroy(() => {
             subscription.unsubscribe();
             this.movementDistancePreview.set(null);

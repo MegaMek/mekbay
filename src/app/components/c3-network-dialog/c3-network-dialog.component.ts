@@ -306,7 +306,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         walk: member.entity.walkMP(),
                     }),
                     alias: () => '',
-                    c3Position: () => null,
+                    c3Position: () => member.force.c3EncounterPosition(member.id),
                     isC3Jammed: () => member.force.getUnitConditions(member.id)?.includes('jammed') === true,
                     isC3EndpointOperational: (_index: number, endpoint: C3Component) => endpoint.componentId !== undefined
                         && endpoint.emergencyFried !== true
@@ -720,7 +720,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     });
 
     protected sidebarNetworks = computed<SidebarNetworkVm[]>(() => {
-        const networks = this.networks();
         const nodesById = this.nodesById();
         const runtimeGraph = this.networkModel();
         const topology = runtimeGraph;
@@ -872,7 +871,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     protected bvTotals = computed(() => {
         if (!this.isCBTGame()) return null;
         const nodes = this.nodes();
-        const networks = this.networks();
         let totalBaseBv = 0;
         let totalTagBv = 0;
         let totalC3Bv = 0;
@@ -897,7 +895,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     protected pinConnectionState = computed(() => {
         const state = new Map<string, { connected: boolean; disabled: boolean; color: string | null, roleLabel: string }>();
-        const networks = this.networks();
         const topology = this.networkModel();
 
         for (const node of this.nodes()) {
@@ -2107,8 +2104,6 @@ export class C3NetworkDialogComponent implements AfterViewInit {
         // If it does, prompt the user before applying.
 
         const preCrossGroupNetworks = networks.map(n => ({ ...n, members: n.members ? [...n.members] : undefined, peerIds: n.peerIds ? [...n.peerIds] : undefined }));
-        const preCrossGroupSlaves = new Set(connectedSlaves);
-
         // --- Cross-group linking function (operates on the live `networks` variable) ---
         const runCrossGroupPass = () => {
             // (a) Orphan slaves to cross-group masters with existing networks

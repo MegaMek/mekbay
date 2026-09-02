@@ -77,6 +77,7 @@ import { Sanitizer } from '../../utils/sanitizer.util';
 import { isRecord, jsonValuesEqual } from '../../utils/json-value.util';
 import type { BaseEntity } from '../entity/base-entity';
 import { canonicalNonMekAirborneState } from './non-mek-airborne-state';
+import type { C3UnitPosition } from '../c3-network.model';
 
 const V1_CONVERSION_DEPLOYMENT = Object.freeze({ id: DEFAULT_FORCE_DEPLOYMENT_ID });
 
@@ -272,7 +273,7 @@ function convertAlphaStrikeV1State(value: JsonValue | undefined): ASSerializedSt
     if (modified !== undefined && typeof modified !== 'boolean') throw new Error('modified state is invalid');
     if (destroyed !== undefined && typeof destroyed !== 'boolean') throw new Error('destroyed state is invalid');
     const conditions = convertAlphaStrikeV1Conditions(state['conditions']);
-    const c3Position = convertAlphaStrikeV1Position(state['c3Position']);
+    const c3Position = convertV1C3Position(state['c3Position']);
     const heat = convertAlphaStrikeV1Track(state['heat'], 'heat');
     const armor = convertAlphaStrikeV1Track(state['armor'], 'armor');
     const internal = convertAlphaStrikeV1Track(state['internal'], 'internal');
@@ -1382,6 +1383,7 @@ async function materializeResolvedUnits(
     const materializedIds = new Set<string>();
     const units: SerializedForceUnitEntryV2[] = [];
     const presentations: C3EncounterPresentationUnit[] = [];
+    const c3Positions: C3UnitPosition[] = [];
     for (const entry of resolvedUnits) {
         const legacyName = legacyUnitName(entry.source);
         let ready: CBTUnit | undefined;
@@ -1413,6 +1415,22 @@ async function materializeResolvedUnits(
         if (ready.instanceId !== entry.instanceId
             || readyIdentity !== identity) {
             throw new Error(`Converted V1 unit ${entry.instanceId} changed identity`);
+        }
+
+        const rawState = readLegacyUnitStateV1(entry.source).rawUnitAndFamilyState;
+        try {
+            const position = convertV1C3Position(
+                isRecord(rawState) ? rawState['c3Position'] : undefined,
+            );
+            if (position !== undefined) {
+                c3Positions.push(Object.freeze({ unitId: entry.instanceId, ...position }));
+            }
+        } catch (error) {
+            onWarning?.({
+                kind: 'state-partial',
+                unit: legacyName,
+                message: `Unit "${legacyName}" loaded without its saved C3 editor position: ${errorMessage(error)}`,
+            });
         }
 
         let unit: SerializedCBTUnitV2 | SerializedNonMekUnit;
@@ -1449,7 +1467,7 @@ async function materializeResolvedUnits(
     const encounterState = convertLegacyC3Networks(
         rawLegacyNetworks,
         presentations,
-        stateRevision,
+        c3Positions,
         onWarning,
     );
 
@@ -1471,10 +1489,7 @@ async function materializeResolvedUnits(
                     }))),
             }))),
         }),
-        encounter: Object.freeze({
-            encounterRevision: stateRevision,
-            state: encounterState,
-        }),
+        encounter: encounterState,
     });
 }
 
@@ -1549,11 +1564,11 @@ function convertAlphaStrikeV1Conditions(value: JsonValue | undefined): Serialize
     });
 }
 
-function convertAlphaStrikeV1Position(
+function convertV1C3Position(
     value: JsonValue | undefined,
 ): { x: number; y: number } | undefined {
     if (value === undefined) return undefined;
-    const position = requireObject(value, 'Alpha Strike V1 C3 position');
+    const position = requireObject(value, 'V1 C3 position');
     const x = position['x'];
     const y = position['y'];
     if (typeof x !== 'number' || !Number.isFinite(x)
@@ -1639,11 +1654,14 @@ function buildLegacyUnitSourceV1(
 function convertLegacyC3Networks(
     raw: JsonValue | undefined,
     units: readonly C3EncounterPresentationUnit[],
-    revision: number,
+    c3Positions: readonly C3UnitPosition[],
     onWarning?: PersistedForceV1ConversionOptions['onWarning'],
 ): ReturnType<typeof encodeCBTEncounterStateV2> {
     if (raw === undefined) {
-        return encodeCBTEncounterStateV2({ revision, targets: [], networks: [] });
+        return encodeCBTEncounterStateV2({
+            networks: [],
+            c3Positions,
+        });
     }
 
     const sanitized = Sanitizer.sanitizeArray<SerializedC3NetworkGroup>(
@@ -1667,7 +1685,10 @@ function convertLegacyC3Networks(
             message: 'Invalid or unavailable V1 C3 network links were skipped.',
         });
     }
-    return encodeCBTEncounterStateV2({ revision, targets: [], networks });
+    return encodeCBTEncounterStateV2({
+        networks,
+        c3Positions,
+    });
 }
 
 function legacyUnitName(source: LegacyUnitSourceV1): string {

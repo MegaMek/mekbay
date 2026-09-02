@@ -7,7 +7,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { type ConnectedPosition, type Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import type { Subscription } from 'rxjs';
+import { merge, type Subscription } from 'rxjs';
 import type { CBTForce } from '../../models/cbt-force.model';
 import { isCBTMekForceMember, type CBTForceMember } from '../../models/force-member.model';
 import {
@@ -17,7 +17,6 @@ import {
 } from '../../models/runtime/targeting-target';
 import type {
     AttackerLocalCalculatorInputs,
-    AttackerLocalTargetState,
 } from '../../models/runtime/attacker-targeting-state';
 import {
     CORE_2026_GAME_RULES,
@@ -122,7 +121,10 @@ export class WeaponTargetsOverlayController {
         });
         this.targetsCompRef = componentRef;
         this.syncInputs(options);
-        this.targetsSyncSubscription = options.member.force.changed.subscribe(() => this.syncInputs(options));
+        this.targetsSyncSubscription = merge(
+            options.member.force.changed,
+            options.member.force.sessionChanged,
+        ).subscribe(() => this.syncInputs(options));
 
         outputToObservable(componentRef.instance.addRequest).pipe(takeUntilDestroyed(this.deps.destroyRef)).subscribe(() => {
             this.createTarget(options);

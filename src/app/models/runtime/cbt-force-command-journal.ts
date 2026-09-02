@@ -54,7 +54,11 @@ export function captureRuntimeCommandMutation(
         const unit = authority.cbtUnit(instanceId);
         if (!unit) throw new Error(`Cannot capture unknown runtime ${instanceId}`);
         openingWitnesses.set(instanceId, Object.freeze({ unit, revision: unit.revision() }));
-        return Object.freeze({ instanceId, unit: unit.serialize() });
+        return Object.freeze({
+            instanceId,
+            unit: unit.serialize(),
+            attackerTargeting: unit.captureRuntime().query.attackerTargetingState(),
+        });
     }));
     return Object.freeze({
         checkpoint: Object.freeze({ units }),
@@ -89,7 +93,11 @@ export function recordRuntimeCommandMutation(
         units: Object.freeze(changedUnitIds.map(instanceId => {
             const unit = authority.cbtUnit(instanceId);
             if (!unit) throw new Error(`Cannot record unknown runtime ${instanceId}`);
-            return Object.freeze({ instanceId, unit: unit.serialize() });
+            return Object.freeze({
+                instanceId,
+                unit: unit.serialize(),
+                attackerTargeting: unit.captureRuntime().query.attackerTargetingState(),
+            });
         })),
     });
     const positionedHistory = positionRuntimeHistory(

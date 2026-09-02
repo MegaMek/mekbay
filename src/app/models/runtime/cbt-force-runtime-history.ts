@@ -670,18 +670,15 @@ export function serializedUnitTurnCounter(unit: SerializedCBTUnitV2 | Serialized
         : unit.turn.turnCounter ?? 0;
 }
 
-export function preserveOperationalUnitState<T extends Readonly<{
-    readonly attackerTargeting: unknown;
+export function preserveEquipmentRowOrder<T extends Readonly<{
     readonly equipmentRowOrder?: EquipmentRowOrderState;
 }>>(checkpoint: T, current: T): T {
     const {
-        attackerTargeting: _targeting,
         equipmentRowOrder: _rowOrder,
         ...gameplay
     } = checkpoint;
     return Object.freeze({
         ...gameplay,
-        attackerTargeting: current.attackerTargeting,
         ...(current.equipmentRowOrder === undefined
             ? {}
             : { equipmentRowOrder: current.equipmentRowOrder }),

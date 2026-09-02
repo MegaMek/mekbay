@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { EquipmentInteractionRegistry } from '../../services/equipment-interaction-registry.service';
-import { emptyCBTEncounterSnapshot } from './encounter-runtime';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { projectMekEquipmentPanel } from './equipment-panel';
 import {
@@ -14,6 +13,7 @@ import {
 import {
     createDirectDualShieldRuntimeFixture,
     createDirectShieldRuntimeFixture,
+    emptyCBTEncounterSnapshot,
     type DirectMekRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 

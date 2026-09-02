@@ -211,19 +211,6 @@ export type AttackerTargetingReduction =
         readonly state: AttackerTargetingState;
     };
 
-export interface SerializedAttackerTargetingState {
-    readonly schemaVersion: typeof ATTACKER_TARGETING_STATE_SCHEMA_VERSION;
-    readonly components: readonly {
-        readonly componentId: ComponentId;
-        readonly selection?: AttackerSelection;
-        readonly ammo?: AttackerAmmoSelection;
-    }[];
-    readonly actions: readonly AttackerActionState[];
-    readonly targets: readonly ({
-        readonly targetId: EncounterTargetId;
-    } & AttackerLocalTargetState)[];
-}
-
 interface ValidatedContext {
     readonly targetIds: ReadonlySet<EncounterTargetId>;
     readonly weapons: ReadonlyMap<ComponentId, ValidatedWeapon>;
@@ -634,10 +621,9 @@ export function reconcileAttackerTargetingState(
     });
 }
 
-/** Stable array wire shape for later persistence integration and digest tests. */
-export function serializeAttackerTargetingState(
+function canonicalTargetingState(
     state: AttackerTargetingState,
-): SerializedAttackerTargetingState {
+): object {
     const frozen = freezeAttackerTargetingState(state);
     return Object.freeze({
         schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
@@ -654,90 +640,6 @@ export function serializeAttackerTargetingState(
             targetId,
             ...cloneTargetFacts(facts),
         }))),
-    });
-}
-
-export function deserializeAttackerTargetingState(
-    value: unknown,
-): AttackerTargetingState {
-    if (!isPlainRecord(value)) throw new Error('Invalid attacker-targeting wire state');
-    const record = value as Record<string, unknown>;
-    if (!hasExactKeys(record, ['schemaVersion', 'components', 'actions', 'targets'])
-        || record['schemaVersion'] !== ATTACKER_TARGETING_STATE_SCHEMA_VERSION
-        || !Array.isArray(record['components'])
-        || !Array.isArray(record['actions'])
-        || !Array.isArray(record['targets'])
-        || record['components'].length > MAX_ATTACKER_TARGETING_COMPONENTS
-        || record['actions'].length > MAX_ATTACKER_TARGETING_ACTIONS
-        || record['targets'].length > MAX_ENCOUNTER_TARGETS) {
-        throw new Error('Invalid attacker-targeting wire state');
-    }
-
-    const components = new Map<ComponentId, AttackerComponentState>();
-    for (const raw of record['components']) {
-        if (!isPlainRecord(raw)) throw new Error('Invalid attacker-targeting component');
-        const row = raw as Record<string, unknown>;
-        if (!hasExactKeys(row, ['componentId', 'selection', 'ammo'])
-            || !validId(row['componentId'])) {
-            throw new Error('Invalid attacker-targeting component');
-        }
-        const componentId = asComponentId(row['componentId']);
-        const component = canonicalComponentState({
-            selection: row['selection'],
-            ammo: row['ammo'],
-        } as AttackerComponentState);
-        if (component === null) throw new Error('Invalid attacker-targeting component');
-        if (components.has(componentId)) throw new Error('Duplicate attacker-targeting entry');
-        components.set(componentId, component);
-    }
-
-    const actions = new Map<string, AttackerActionState>();
-    for (const raw of record['actions']) {
-        if (!isPlainRecord(raw)) throw new Error('Invalid attacker-targeting action');
-        const row = raw as Record<string, unknown>;
-        if (!hasExactKeys(row, ['target', 'selection'])) {
-            throw new Error('Invalid attacker-targeting action');
-        }
-        const target = canonicalActionTarget(row['target'] as AttackerActionTarget);
-        const selectionResult = canonicalSelection(row['selection'] as AttackerSelection);
-        const selection = selectionResult.selection;
-        if (selectionResult.reason || selection === undefined || selection.kind === 'manual-range') {
-            throw new Error('Invalid attacker-targeting action selection');
-        }
-        const key = attackerActionTargetKey(target);
-        if (actions.has(key)) throw new Error('Duplicate attacker-targeting action');
-        actions.set(key, Object.freeze({ target, selection }));
-    }
-
-    const targets = new Map<EncounterTargetId, AttackerLocalTargetState>();
-    for (const raw of record['targets']) {
-        if (!isPlainRecord(raw)) throw new Error('Invalid attacker-targeting target');
-        const row = raw as Record<string, unknown>;
-        if (!hasExactKeys(row, [
-                'targetId', 'distance', 'c3Distance', 'useC3', 'calculator', 'manualTnOverride',
-            ])
-            || !validId(row['targetId'])) {
-            throw new Error('Invalid attacker-targeting target');
-        }
-        const targetId = row['targetId'] as EncounterTargetId;
-        const facts = canonicalTargetFacts({
-            distance: row['distance'],
-            c3Distance: row['c3Distance'],
-            useC3: row['useC3'],
-            calculator: row['calculator'],
-            manualTnOverride: row['manualTnOverride'],
-        } as AttackerLocalTargetState);
-        if (facts === null || targets.has(targetId)) {
-            throw new Error('Invalid or duplicate attacker-targeting target');
-        }
-        targets.set(targetId, facts);
-    }
-
-    return freezeAttackerTargetingState({
-        schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
-        components,
-        actions,
-        targets,
     });
 }
 
@@ -1101,7 +1003,7 @@ function rejectedReduction(
 }
 
 function canonicalStateJson(state: AttackerTargetingState): string {
-    return JSON.stringify(serializeAttackerTargetingState(state));
+    return JSON.stringify(canonicalTargetingState(state));
 }
 
 function sortedEntries<K extends string, V>(values: ReadonlyMap<K, V>): readonly (readonly [K, V])[] {

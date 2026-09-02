@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
-import type { Subscription } from 'rxjs';
+import { merge, type Subscription } from 'rxjs';
 
 import {
     isCBTMekForceMember,
@@ -153,7 +153,8 @@ export class EquipmentDialogRuntimeController {
                 && actionable.has(row.componentId));
         });
         this.ammo = computed(() => this.snapshot().components.filter(row => row.ammo !== undefined));
-        this.forceChanges = member.force.changed.subscribe(() => this.refresh());
+        this.forceChanges = merge(member.force.changed, member.force.sessionChanged)
+            .subscribe(() => this.refresh());
     }
 
     /** Releases the one force subscription owned by this dialog adapter. */
@@ -616,7 +617,6 @@ export class EquipmentDialogRuntimeController {
     private async dispatchTargeting(
         edit: Parameters<CBTForceMember['force']['dispatchAttackerTargeting']>[1]['edit'],
     ): Promise<void> {
-        const current = this.snapshot();
         this.busy.set(true);
         try {
             const result = await this.member.force.dispatchAttackerTargeting(this.member.id, {

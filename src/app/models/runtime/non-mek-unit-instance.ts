@@ -788,43 +788,14 @@ export class NonMekUnitInstance {
         return this.query().hasCondition(condition);
     }
 
-    public conditions(): readonly UnitConditionKey[] {
-        return this.query().conditions();
-    }
-
     public vehicleRules(): VehicleRuntimeRulesProjection | null {
         if (!isVehicleEntity(this.entity)) return null;
         return projectVehicleRuntimeRules(this.entity, this.index, this.state, this.ruleset);
     }
 
-    public protoMekRules(): ProtoMekRuntimeRulesProjection | null {
-        if (!isProtoMekEntity(this.entity)) return null;
-        return projectProtoMekRuntimeRules(
-            this.entity,
-            this.index,
-            this.state,
-            this.ruleset,
-            this.forcedWithdrawal,
-        );
-    }
-
     public infantryRules(): InfantryRuntimeRulesProjection | null {
         if (!isInfantryFamilyEntity(this.entity)) return null;
         return projectInfantryRuntimeRules(this.entity, this.index, this.state);
-    }
-
-    public aeroRules(): AeroRuntimeRulesProjection | null {
-        if (!isAeroEntity(this.entity)) return null;
-        return projectAeroRuntimeRules(this.entity, this.index, this.state, this.ruleset);
-    }
-
-    public damageTrackHits(damageTrackId: SystemDamageTrackId, perspective: 'committed' | 'preview' = 'committed'): number {
-        const definition = this.index.damageTracks.get(damageTrackId);
-        if (!definition) throw new Error(`Unknown non-Mek damage track ${damageTrackId}`);
-        const committed = this.state.damageTracks.get(damageTrackId)?.hits ?? 0;
-        return perspective === 'committed'
-            ? committed
-            : committed + (this.state.pendingCombat.damageTrackHits.get(damageTrackId)?.hitDelta ?? 0);
     }
 
     public componentStatus(
@@ -933,7 +904,6 @@ export class NonMekUnitInstance {
         }
         this.state = freezeNonMekUnitState({
             ...this.state,
-            stateRevision: nextRevision(this.state.stateRevision),
             attackerTargeting: reduced.state,
         });
         return Object.freeze({ accepted: true, changed: true, state: this.state });
@@ -1131,17 +1101,13 @@ export class NonMekUnitInstance {
     ): void {
         this.state = freezeNonMekUnitState({
             ...this.state,
-            stateRevision: nextRevision(this.state.stateRevision),
             attackerTargeting: plan.nextTargeting,
         });
     }
 
-    public stateView(): EntityStateView {
-        return projectNonMekStateView(this.entity, this.index, this.state, this.ruleset);
-    }
-
-    public battleValue(): number {
-        return this.entity.battleValueFor(this.stateView(), this.ruleset);
+    /** Replaces force-session targeting without changing durable unit authority. */
+    public installAttackerTargetingSessionState(targeting: AttackerTargetingState): void {
+        this.state = freezeNonMekUnitState({ ...this.state, attackerTargeting: targeting });
     }
 
     public dispatch(command: NonMekUnitCommand): NonMekUnitCommandResult {
@@ -1409,21 +1375,6 @@ function projectedComponentStatus(
     const statuses = projection.componentStatuses();
     return (perspective === 'preview' ? statuses.preview : statuses.committed)
         .get(componentId) ?? 'available';
-}
-
-function projectNonMekStateView(
-    entity: BaseEntity,
-    index: NonMekRuntimeIndex,
-    state: NonMekUnitRuntimeState,
-    ruleset: CBTRuleset,
-): EntityStateView {
-    return projectNonMekStateViewFromProjection(
-        entity,
-        index,
-        state,
-        ruleset,
-        projectNonMekRuntime(entity, index, state, ruleset),
-    );
 }
 
 function projectNonMekStateViewFromProjection(

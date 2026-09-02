@@ -45,6 +45,7 @@ describe('EquipmentDialogRuntimeController', () => {
         const getSnapshot = jasmine.createSpy('getEquipmentPanelSnapshot').and.returnValues(first, second);
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getEquipmentPanelSnapshot: getSnapshot,
             getEquipmentInteractions: () => [],
         };
@@ -113,6 +114,7 @@ describe('EquipmentDialogRuntimeController', () => {
             .and.returnValue(interactions);
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getEquipmentPanelSnapshot: () => panel,
             getEquipmentInteractions: getInteractions,
         };
@@ -186,6 +188,7 @@ describe('EquipmentDialogRuntimeController', () => {
         });
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getEquipmentPanelSnapshot: () => panel,
             getUnitSnapshot: () => null,
             getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
@@ -264,6 +267,7 @@ describe('EquipmentDialogRuntimeController', () => {
         });
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getEquipmentPanelSnapshot: () => snapshot('Test Supercharger Tank'),
             getEquipmentInteractions: getInteractions,
             dispatchEquipmentChoice: dispatch,
@@ -314,6 +318,7 @@ describe('EquipmentDialogRuntimeController', () => {
         });
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getEquipmentPanelSnapshot: () => panel,
             getUnitSnapshot: () => null,
             getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
@@ -415,6 +420,7 @@ describe('EquipmentDialogRuntimeController', () => {
         });
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getEquipmentPanelSnapshot: () => panel,
             getUnitSnapshot: () => null,
             getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
@@ -513,6 +519,7 @@ describe('EquipmentDialogRuntimeController', () => {
         });
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getEquipmentPanelSnapshot: () => panel,
             getUnitSnapshot: () => null,
             getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
@@ -581,6 +588,7 @@ describe('EquipmentDialogRuntimeController', () => {
         const toast = jasmine.createSpyObj<ToastService>('ToastService', ['showToast']);
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getEquipmentPanelSnapshot: () => panel,
             getEquipmentInteractions: () => [],
             fireSelectedWeapons: fire,
@@ -619,6 +627,7 @@ describe('EquipmentDialogRuntimeController', () => {
         const dispatchMekUnitCommand = jasmine.createSpy('dispatchMekUnitCommand');
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getEquipmentPanelSnapshot: () => panel,
             getEquipmentInteractions: () => [],
             dispatchEquipmentRowOrder,

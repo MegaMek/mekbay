@@ -502,14 +502,6 @@ describe('UnitSearchIndexService', () => {
         expect(service.getIndexedUnitIds('_tags', 'custom-only')).toEqual(new Set([customKey]));
         expect(service.getIndexedUnitIds('era', era.name)).toEqual(new Set([unitKey]));
         expect(service.getIndexedUnitIds('faction', faction.name)).toEqual(new Set([unitKey]));
-        expect(service.getSearchWorkerFactionEraSnapshot()).toEqual({
-            unitUuidsByMulId: {
-                [String(unitSummary.id)]: [unitKey],
-                [String(custom.id)]: [customKey],
-            },
-            referenceIdsByEraAndFaction: {
-                [era.name]: { [faction.name]: [unitSummary.id] },
-            },
-        });
+        expect(service.getFactionEraUnitUuids([era.name], [faction.name])).toEqual(new Set([unitKey]));
     });
 });

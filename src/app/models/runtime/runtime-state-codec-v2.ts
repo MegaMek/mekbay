@@ -4,7 +4,6 @@
 import type { EquipmentStatus } from '../equipment-status.model';
 import { MAX_CREW_WOUNDS } from '../crew-member.model';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
-import { isObjectLiteralRecord } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import {
@@ -34,7 +33,6 @@ import {
     type SerializedDeploymentConfigurationV2,
     type SerializedLocationConditionStateEntryV2,
     type SerializedLocationStateEntryV2,
-    type SavedAttackerTargetingState,
     type SerializedPendingCombatStateV2,
     type SerializedRecoverableStateFactV2,
     type SerializedSlotStateEntryV2,
@@ -68,7 +66,7 @@ import {
     STEALTH_DISABLING_MODE,
     STEALTH_ENABLING_MODE,
 } from '../stealth-equipment.model';
-import { equipmentForComponent, type MekRuntimeIndex, type MekIndexedComponent } from './mek-runtime-index';
+import { type MekRuntimeIndex, type MekIndexedComponent } from './mek-runtime-index';
 import { mekAmmoCapacity, mekAmmoDefaultMunitionKey, mekAmmoLoadout, mekIntrinsicMagazine } from './mek-ammo';
 import { mekComponentModes, type MekComponentModes } from './mek-component-rules';
 import { rapidFireAutocannonSupportsJamming } from './component-rapid-fire-autocannon';
@@ -90,17 +88,9 @@ import {
     type MekMovementPsrStateV2,
 } from './mek-movement-psr-v2';
 import { freezeEquipmentRowOrder, type EquipmentRowOrderState } from './equipment-row-order';
-import {
-    freezeAttackerTargetingState,
-    attackerActionTargetKey,
-    type AttackerActionState,
-    type AttackerComponentState,
-    type AttackerLocalTargetState,
-    type AttackerTargetingState,
-} from './attacker-targeting-state';
-import { isPhysicalWeaponFlags, resolveShieldProfileFromFlags } from '../entity/utils/physical-weapon-kernel';
+import { createPristineAttackerTargetingState } from './attacker-targeting-state';
+import { resolveShieldProfileFromFlags } from '../entity/utils/physical-weapon-kernel';
 import { isShieldEquipment } from '../entity/utils/physical-weapon';
-import { asEncounterTargetId } from './encounter-runtime';
 import {
     createMekTorsoCripplingRuleCheckTokenV2,
     freezeRuleChecks,
@@ -277,286 +267,6 @@ export function buildSavedBlueprintReferenceTableV2(
     return buildCurrentTargetIndex(codecUnit(entity, index, ruleset)).table;
 }
 
-function serializeAttackerTargeting(
-    state: AttackerTargetingState,
-    current: CurrentTargetIndex,
-    unit: MekCodecUnit,
-): SavedAttackerTargetingState {
-    let frozen: AttackerTargetingState;
-    try {
-        frozen = freezeAttackerTargetingState(state);
-    } catch (error) {
-        codecFail(
-            'INVALID_RUNTIME_STATE',
-            '$.state.attackerTargeting',
-            error instanceof Error ? error.message : 'invalid attacker-targeting state',
-        );
-    }
-
-    const components = [...frozen.components].map(([componentId, component]) => {
-        const target = current.componentById.get(componentId);
-        if (!target || equipmentForComponent(unit.index, componentId)?.type !== 'weapon') {
-            codecFail(
-                'INVALID_RUNTIME_STATE',
-                `$.state.attackerTargeting.components.${componentId}`,
-                'targeting state references a non-weapon component',
-            );
-        }
-        const preferredSourceTarget = component.ammo?.preferredSourceId === undefined
-            ? undefined
-            : current.ammoById.get(component.ammo.preferredSourceId)?.ref;
-        if (component.ammo?.preferredSourceId !== undefined && preferredSourceTarget === undefined) {
-            codecFail(
-                'INVALID_RUNTIME_STATE',
-                `$.state.attackerTargeting.components.${componentId}.ammo.preferredSourceId`,
-                'targeting state references an unknown ammo source',
-            );
-        }
-        return Object.freeze({
-            target: target.ref,
-            ...(component.selection === undefined
-                ? {}
-                : { selection: canonicalClone(component.selection) }),
-            ...(component.ammo === undefined
-                ? {}
-                : {
-                    ammo: Object.freeze({
-                        munitionKey: component.ammo.munitionKey,
-                        ...(preferredSourceTarget === undefined ? {} : { preferredSourceTarget }),
-                    }),
-                }),
-        });
-    }).sort(compareTargetEntry);
-    const targets = [...frozen.targets].map(([targetId, facts]) => Object.freeze({
-        targetId,
-        ...canonicalClone(facts),
-    }));
-    const actions = [...frozen.actions].map(([, action]) => {
-        if (action.target.kind === 'intrinsic') {
-            const target = action.target;
-            const matches = unit.index.intrinsicActions
-                .filter(candidate => candidate.id === target.actionId);
-            if (matches.length !== 1) {
-                codecFail(
-                    'INVALID_RUNTIME_STATE',
-                    `$.state.attackerTargeting.actions.${target.actionId}`,
-                    'targeting state references an unknown intrinsic action',
-                );
-            }
-            return Object.freeze({
-                kind: 'intrinsic' as const,
-                actionId: target.actionId,
-                selection: canonicalClone(action.selection),
-            });
-        }
-        const equipment = equipmentForComponent(unit.index, action.target.componentId);
-        const target = current.componentById.get(action.target.componentId);
-        if (!target || !isPhysicalWeaponFlags(equipment?.flags ?? new Set())) {
-            codecFail(
-                'INVALID_RUNTIME_STATE',
-                `$.state.attackerTargeting.actions.${action.target.componentId}`,
-                'targeting state references a non-physical component action',
-            );
-        }
-        return Object.freeze({
-            kind: 'component' as const,
-            target: target.ref,
-            selection: canonicalClone(action.selection),
-        });
-    }).sort((left, right) => {
-        const leftKey = left.kind === 'component' ? `component\u0000${left.target}` : `intrinsic\u0000${left.actionId}`;
-        const rightKey = right.kind === 'component' ? `component\u0000${right.target}` : `intrinsic\u0000${right.actionId}`;
-        return compareText(leftKey, rightKey);
-    });
-    return Object.freeze({
-        schemaVersion: 1,
-        components: Object.freeze(components),
-        actions: Object.freeze(actions),
-        targets: Object.freeze(targets),
-    });
-}
-
-function restoreAttackerTargeting(
-    value: SavedAttackerTargetingState,
-    accumulator: RestoreAccumulator,
-): AttackerTargetingState {
-    if (!isObjectLiteralRecord(value)
-        || !hasExactObjectKeys(value, ['schemaVersion', 'components', 'actions', 'targets'])
-        || value.schemaVersion !== 1
-        || !Array.isArray(value.components)
-        || !Array.isArray(value.actions)
-        || !Array.isArray(value.targets)) {
-        codecFail('INVALID_SERIALIZED_STATE', '$.attackerTargeting', 'invalid targeting wire shape');
-    }
-
-    const actions = new Map<string, AttackerActionState>();
-    for (let index = 0; index < value.actions.length; index += 1) {
-        const row = value.actions[index];
-        const path = `$.attackerTargeting.actions[${index}]`;
-        if (!isObjectLiteralRecord(row) || typeof row['kind'] !== 'string') {
-            codecFail('INVALID_SERIALIZED_STATE', path, 'invalid targeting action row');
-        }
-        let target: AttackerActionState['target'];
-        if (row['kind'] === 'intrinsic') {
-            if (!hasExactObjectKeys(row, ['kind', 'actionId', 'selection'])
-                || typeof row['actionId'] !== 'string') {
-                codecFail('INVALID_SERIALIZED_STATE', path, 'invalid intrinsic targeting action');
-            }
-            const actionId = canonicalBoundedText(row['actionId'], `${path}.actionId`);
-            if (accumulator.unit.index.intrinsicActions
-                .filter(candidate => candidate.id === actionId).length !== 1) {
-                codecFail('INVALID_SERIALIZED_STATE', `${path}.actionId`, 'unknown intrinsic targeting action');
-            }
-            target = Object.freeze({ kind: 'intrinsic', actionId });
-        } else if (row['kind'] === 'component') {
-            if (!hasExactObjectKeys(row, ['kind', 'target', 'selection'])
-                || typeof row['target'] !== 'string') {
-                codecFail('INVALID_SERIALIZED_STATE', path, 'invalid component targeting action');
-            }
-            const ref = asSavedTargetRef(canonicalBoundedText(row['target'], `${path}.target`));
-            const source = sourceTarget(accumulator, ref, ['component'], path);
-            const current = resolveComponentTarget(source, accumulator);
-            if (!current || !isPhysicalWeaponFlags(
-                equipmentForComponent(accumulator.unit.index, current.componentId)?.flags ?? new Set(),
-            )) {
-                codecFail('INVALID_SERIALIZED_STATE', `${path}.target`, 'physical component action does not resolve uniquely');
-            }
-            target = Object.freeze({ kind: 'component', componentId: current.componentId });
-        } else {
-            codecFail('INVALID_SERIALIZED_STATE', `${path}.kind`, 'unknown targeting action kind');
-        }
-        const key = attackerActionTargetKey(target);
-        if (actions.has(key)) codecFail('INVALID_SERIALIZED_STATE', path, 'duplicate targeting action');
-        actions.set(key, Object.freeze({
-            target,
-            selection: canonicalClone(row['selection']) as AttackerActionState['selection'],
-        }));
-    }
-
-    const components = new Map<ComponentId, AttackerComponentState>();
-    for (let index = 0; index < value.components.length; index += 1) {
-        const row = value.components[index];
-        const path = `$.attackerTargeting.components[${index}]`;
-        if (!isObjectLiteralRecord(row)
-            || !hasExactObjectKeys(row, ['target', 'selection', 'ammo'])) {
-            codecFail('INVALID_SERIALIZED_STATE', path, 'invalid targeting component row');
-        }
-        if (typeof row['target'] !== 'string') {
-            codecFail('INVALID_SERIALIZED_STATE', `${path}.target`, 'must be a string');
-        }
-        const ref = asSavedTargetRef(canonicalBoundedText(row['target'], `${path}.target`));
-        const source = sourceTarget(accumulator, ref, ['component'], path);
-        const current = resolveComponentTarget(source, accumulator);
-        if (!current
-            || equipmentForComponent(accumulator.unit.index, current.componentId)?.type !== 'weapon') {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                `${path}.target`,
-                'saved targeting weapon does not resolve uniquely to a current weapon',
-            );
-        }
-        if (components.has(current.componentId)) {
-            codecFail('INVALID_SERIALIZED_STATE', path, 'duplicate resolved targeting weapon');
-        }
-
-        let ammo: AttackerComponentState['ammo'];
-        const ammoValue = row['ammo'];
-        if (ammoValue !== undefined) {
-            if (!isObjectLiteralRecord(ammoValue)
-                || !hasExactObjectKeys(ammoValue, ['munitionKey', 'preferredSourceTarget'])
-                || typeof ammoValue['munitionKey'] !== 'string') {
-                codecFail('INVALID_SERIALIZED_STATE', `${path}.ammo`, 'invalid targeting ammo row');
-            }
-            const munitionKey = canonicalBoundedText(ammoValue['munitionKey'], `${path}.ammo.munitionKey`);
-            let preferredSourceId: ComponentId | undefined;
-            if (ammoValue['preferredSourceTarget'] !== undefined) {
-                if (typeof ammoValue['preferredSourceTarget'] !== 'string') {
-                    codecFail(
-                        'INVALID_SERIALIZED_STATE',
-                        `${path}.ammo.preferredSourceTarget`,
-                        'must be a string',
-                    );
-                }
-                const sourceRef = asSavedTargetRef(canonicalBoundedText(
-                    ammoValue['preferredSourceTarget'],
-                    `${path}.ammo.preferredSourceTarget`,
-                ));
-                const sourceTargetValue = sourceTarget(
-                    accumulator,
-                    sourceRef,
-                    ['ammo-source'],
-                    `${path}.ammo.preferredSourceTarget`,
-                );
-                const resolvedSource = resolveAmmoTarget(sourceTargetValue, accumulator);
-                if (!resolvedSource) {
-                    codecFail(
-                        'INVALID_SERIALIZED_STATE',
-                        `${path}.ammo.preferredSourceTarget`,
-                        'saved preferred ammo source does not resolve uniquely',
-                    );
-                }
-                preferredSourceId = resolvedSource.componentId;
-            }
-            ammo = Object.freeze({
-                munitionKey,
-                ...(preferredSourceId === undefined ? {} : { preferredSourceId }),
-            });
-        }
-        const selection = row['selection'] === undefined
-            ? undefined
-            : canonicalClone(row['selection']) as AttackerComponentState['selection'];
-        components.set(current.componentId, Object.freeze({
-            ...(selection === undefined ? {} : { selection }),
-            ...(ammo === undefined ? {} : { ammo }),
-        }));
-    }
-
-    const targets = new Map<ReturnType<typeof asEncounterTargetId>, AttackerLocalTargetState>();
-    for (let index = 0; index < value.targets.length; index += 1) {
-        const row = value.targets[index];
-        const path = `$.attackerTargeting.targets[${index}]`;
-        if (!isObjectLiteralRecord(row)
-            || !hasExactObjectKeys(row, [
-                'targetId', 'distance', 'c3Distance', 'useC3', 'calculator', 'manualTnOverride',
-            ])) {
-            codecFail('INVALID_SERIALIZED_STATE', path, 'invalid attacker-local target row');
-        }
-        if (typeof row['targetId'] !== 'string') {
-            codecFail('INVALID_SERIALIZED_STATE', `${path}.targetId`, 'must be a string');
-        }
-        const targetId = asEncounterTargetId(canonicalBoundedText(row['targetId'], `${path}.targetId`));
-        if (targets.has(targetId)) {
-            codecFail('INVALID_SERIALIZED_STATE', `${path}.targetId`, 'duplicate attacker-local target');
-        }
-        const facts: AttackerLocalTargetState = {
-            ...(row['distance'] === undefined ? {} : { distance: row['distance'] as number }),
-            ...(row['c3Distance'] === undefined ? {} : { c3Distance: row['c3Distance'] as number }),
-            ...(row['useC3'] === undefined ? {} : { useC3: row['useC3'] as true }),
-            ...(row['calculator'] === undefined
-                ? {}
-                : { calculator: canonicalClone(row['calculator']) as AttackerLocalTargetState['calculator'] }),
-            ...(row['manualTnOverride'] === undefined
-                ? {}
-                : { manualTnOverride: canonicalClone(row['manualTnOverride']) as AttackerLocalTargetState['manualTnOverride'] }),
-        };
-        targets.set(targetId, facts);
-    }
-
-    try {
-        return freezeAttackerTargetingState({ schemaVersion: 1, components, actions, targets });
-    } catch (error) {
-        codecFail(
-            'INVALID_SERIALIZED_STATE',
-            '$.attackerTargeting',
-            error instanceof Error ? error.message : 'invalid attacker-targeting state',
-        );
-    }
-}
-
-function hasExactObjectKeys(value: object, allowed: readonly string[]): boolean {
-    const allowedSet = new Set(allowed);
-    return Object.keys(value).every(key => allowedSet.has(key));
-}
 
 /** Serializes one exact runtime snapshot without persisting baseline facts or map insertion order. */
 export function serializeCBTUnitStateV2(
@@ -801,7 +511,6 @@ export function serializeCBTUnitStateV2(
         input.state.stateRevision,
     );
     const movementPsr = serializeMekMovementPsrStateV2(input.state.movementPsr);
-    const attackerTargeting = serializeAttackerTargeting(input.state.attackerTargeting, current, unit);
     const equipmentRowOrder = freezeEquipmentRowOrder(input.state.equipmentRowOrder);
 
     locationState.sort(compareTargetEntry);
@@ -838,7 +547,6 @@ export function serializeCBTUnitStateV2(
         family: { kind: 'mek' },
         ruleChecks,
         movementPsr,
-        attackerTargeting,
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         ...(conditions.length === 0 ? {} : { conditions: { values: conditions } }),
         turn,
@@ -869,7 +577,6 @@ function compactActiveBlueprintReferences(
         value.crew,
         value.ruleChecks,
         value.movementPsr,
-        value.attackerTargeting,
         value.turn,
         value.pendingCombat,
     ]) collectNestedStrings(part, strings);
@@ -1580,7 +1287,6 @@ export async function restoreSerializedCBTUnitV2(
             );
         }
     }
-    const attackerTargeting = restoreAttackerTargeting(saved.attackerTargeting, accumulator);
     let equipmentRowOrder: EquipmentRowOrderState | undefined;
     try {
         equipmentRowOrder = freezeEquipmentRowOrder(saved.equipmentRowOrder);
@@ -1606,7 +1312,7 @@ export async function restoreSerializedCBTUnitV2(
         conditions,
         heat,
         movementPsr: restoredMovement,
-        attackerTargeting,
+        attackerTargeting: createPristineAttackerTargetingState(),
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         turn,
         pendingCombat,
@@ -3612,7 +3318,7 @@ function assertExactSerializedUnitKeys(
         'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
         'stateRevision', 'destroyed', 'locationState', 'locationConditions', 'slotState', 'componentState',
         'ammoState', 'crew', 'heat', 'family',
-        'ruleChecks', 'movementPsr', 'attackerTargeting',
+        'ruleChecks', 'movementPsr',
         'equipmentRowOrder', 'conditions', 'turn', 'pendingCombat',
     ]);
     for (const key of Object.keys(saved)) if (!allowed.has(key)) {
@@ -3624,10 +3330,6 @@ function assertExactSerializedUnitKeys(
     if (saved.schemaVersion === CBT_UNIT_PERSISTENCE_SCHEMA_VERSION
         && !Object.prototype.hasOwnProperty.call(saved, 'movementPsr')) {
         codecFail('INVALID_SERIALIZED_STATE', '$.movementPsr', 'current unit schema requires movement/PSR state');
-    }
-    if (saved.schemaVersion === CBT_UNIT_PERSISTENCE_SCHEMA_VERSION
-        && !Object.prototype.hasOwnProperty.call(saved, 'attackerTargeting')) {
-        codecFail('INVALID_SERIALIZED_STATE', '$.attackerTargeting', 'current unit schema requires attacker targeting');
     }
 }
 

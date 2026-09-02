@@ -15,22 +15,17 @@ import {
     serializeRuntimeHistory,
     type RuntimeCommandCheckpoint,
 } from './runtime-command-session';
+import { createPristineAttackerTargetingState } from './attacker-targeting-state';
 
 const BEFORE = Object.freeze({ units: Object.freeze([]) }) satisfies RuntimeCommandCheckpoint;
-const AFTER = Object.freeze({
-    units: Object.freeze([]),
-    encounter: Object.freeze({
-        schemaVersion: 2 as const,
-        encounterRevision: 1,
-        facts: Object.freeze([]),
-    }),
-}) satisfies RuntimeCommandCheckpoint;
+const AFTER = Object.freeze({ units: Object.freeze([]) }) satisfies RuntimeCommandCheckpoint;
 
 function unitCheckpoint(instanceId: string): RuntimeCommandCheckpoint {
     return Object.freeze({
         units: Object.freeze([Object.freeze({
             instanceId: instanceId,
             unit: Object.freeze({}) as never,
+            attackerTargeting: createPristineAttackerTargetingState(),
         })]),
     });
 }

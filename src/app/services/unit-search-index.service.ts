@@ -12,7 +12,6 @@ import { getMergedTags, getUnitSourceFilterValues } from '../utils/unit-search-s
 import { calculateWeightedMaxRange, getMaxRangeFromComponents } from '../utils/unit-range.util';
 import { parseASDamageValue } from '../utils/as-damage.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, BOOLEAN_FILTERS, getBooleanFilterUnitValue } from './unit-search-filters.model';
-import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { WeaponEquipment } from '../models/equipment.model';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
@@ -71,6 +70,15 @@ export interface UnitSearchDropdownOption {
     minimumFieldLabels?: readonly string[];
 }
 
+/** Compact MUL membership authority retained by the synchronous search index. */
+export interface FactionEraMembershipSnapshot {
+    readonly unitUuidsByMulId: Readonly<Record<string, readonly UnitUuid[]>>;
+    readonly referenceIdsByEraAndFaction: Readonly<Record<
+        string,
+        Readonly<Record<string, readonly number[]>>
+    >>;
+}
+
 interface ASUnitTypeMaxStats {
     [asUnitType: string]: MinMaxStatsRange;
 }
@@ -91,7 +99,7 @@ export interface PreparedUnitSearchIndexes {
     readonly dropdownOptionUniverse: Map<string, UnitSearchDropdownOption[]>;
     readonly asSpecialFieldCounts: Map<string, number>;
     readonly asSpecialsByUnit: Map<UnitUuid, ParsedASSpecials>;
-    readonly factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot;
+    readonly factionEraSnapshot: FactionEraMembershipSnapshot;
     readonly preparationTimings: {
         readonly unitDerivativesMs: number;
         readonly filterIndexesMs: number;
@@ -213,7 +221,7 @@ export class UnitSearchIndexService {
         factionMembershipsMs: 0,
         finalizationMs: 0,
     });
-    private factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot = Object.freeze({
+    private factionEraSnapshot: FactionEraMembershipSnapshot = Object.freeze({
         unitUuidsByMulId: Object.freeze({}),
         referenceIdsByEraAndFaction: Object.freeze({}),
     });
@@ -571,23 +579,6 @@ export class UnitSearchIndexService {
         return this.asSpecialsByUnit.get(unitUuid);
     }
 
-    public getSearchWorkerIndexSnapshot(): UnitSearchWorkerIndexSnapshot {
-        const snapshot: UnitSearchWorkerIndexSnapshot = {};
-
-        for (const [filterKey, valueMap] of this.searchFilterIndex.entries()) {
-            snapshot[filterKey] = {};
-            for (const [value, unitUuids] of valueMap.entries()) {
-                snapshot[filterKey][value] = Array.from(unitUuids);
-            }
-        }
-
-        return snapshot;
-    }
-
-    public getSearchWorkerFactionEraSnapshot(): UnitSearchWorkerFactionEraSnapshot {
-        return this.factionEraSnapshot;
-    }
-
     public getFactionEraUnitUuids(
         eraNames: readonly string[],
         factionNames: readonly string[],
@@ -676,7 +667,7 @@ export class UnitSearchIndexService {
         unitUuidsByMulId: Map<number, UnitUuid[]>,
         eras: Era[],
         factions: Faction[],
-    ): UnitSearchWorkerFactionEraSnapshot {
+    ): FactionEraMembershipSnapshot {
         const referenceIdsByEraAndFaction: Record<string, Record<string, readonly number[]>> = {};
         const erasById = new Map<number, Era>(eras.map(era => [era.id, era]));
 

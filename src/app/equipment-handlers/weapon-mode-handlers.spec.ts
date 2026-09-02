@@ -3,7 +3,6 @@
 
 import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
 import { componentModeDefinition } from '../models/runtime/component-mode';
-import { emptyCBTEncounterSnapshot } from '../models/runtime/encounter-runtime';
 import {
     FlamerHandler,
 } from '../models/runtime/component-flamer';
@@ -12,6 +11,7 @@ import { projectMekEquipmentPanel } from '../models/runtime/equipment-panel';
 import {
     createDirectFlamerRuntimeFixture,
     createDirectMekRuntimeFixture,
+    emptyCBTEncounterSnapshot,
     type DirectMekRuntimeFixture,
 } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type {

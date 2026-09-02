@@ -13,6 +13,11 @@ import type {
     SerializedForce,
 } from '../force-serialization';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
+import {
+    isC3NetworkRole,
+    isC3NetworkType,
+    type C3UnitPosition,
+} from '../c3-network.model';
 import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asSourceHashCanary } from '../source-hash-canary';
 import {
@@ -30,11 +35,10 @@ import {
     type UnavailableEquipmentStatus,
 } from '../equipment-status.model';
 import type {
-    SavedAttackerTargetingState,
     SerializedCBTEncounterStateV2,
     SerializedCBTForceV2,
     SerializedCBTUnitV2,
-    SerializedForceEncounterEntryV2,
+    SerializedEncounterNetworkV2,
     SerializedForceUnitEntryV2,
 } from './persistence-v2';
 import {
@@ -84,12 +88,6 @@ import {
     type SerializedMekTurnStateV2,
 } from './mek-turn-state-v2';
 import type { EndTurnCheckpoint } from './end-turn-checkpoint';
-import {
-    ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
-    deserializeAttackerTargetingState,
-    serializeAttackerTargetingState,
-    type SerializedAttackerTargetingState,
-} from './attacker-targeting-state';
 import type { EquipmentRowOrderState } from './equipment-row-order';
 import { isSparseMekGaussPowerState, type SparseMekGaussPowerState } from './mek-gauss-power';
 import {
@@ -99,6 +97,33 @@ import {
     type MekRuleCheckKeyV2,
     type MekRuleCheckStatusV2,
 } from './mek-destruction-state-v2';
+import {
+    AS_FORCE_FIELD,
+    AS_GROUP_FIELD,
+    AS_NETWORK_FIELD,
+    AS_STATE_FIELD,
+    AS_UNIT_FIELD,
+    CBT_BOMBAST_LASER_FIELD,
+    CBT_C3_EMERGENCY_MASTER_FIELD,
+    CBT_COMPONENT_STATE_FIELD,
+    CBT_DEPLOYMENT_METADATA_FIELD,
+    CBT_ENCOUNTER_ENDPOINT_INDEX,
+    CBT_ENCOUNTER_NETWORK_INDEX,
+    CBT_EQUIPMENT_ROW_ORDER_FIELD,
+    CBT_FORCE_FIELD,
+    CBT_HEAT_FIELD,
+    CBT_HISTORY_FIELD,
+    CBT_MOVEMENT_FIELD,
+    CBT_MOVEMENT_SOURCE_FIELD,
+    CBT_NON_MEK_PENDING_COMBAT_FIELD,
+    CBT_PENDING_COMBAT_FIELD,
+    CBT_PPC_CAPACITOR_FIELD,
+    CBT_ROSTER_GROUP_METADATA_FIELD,
+    CBT_TURN_FIELD,
+    CBT_UNIT_FAMILY,
+    CBT_UNIT_FIELD,
+    FORCE_PAYLOAD_FIELD,
+} from './force-storage-vocabulary';
 
 /**
  * The sole current CBT storage wire. The domain snapshot deliberately keeps
@@ -111,12 +136,14 @@ export function isCompactStoredForce(value: unknown): boolean {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
     const root = value as Record<string, unknown>;
     if (root['version'] !== 2 || root['type'] !== GameSystem.CBT) return false;
-    const cbt = root['cbt'];
+    const cbt = root[FORCE_PAYLOAD_FIELD.classicBattleTech];
     if (cbt === null || typeof cbt !== 'object' || Array.isArray(cbt)) return false;
     const compact = cbt as Record<string, unknown>;
     return !('schemaVersion' in compact)
-        && compact['v'] === COMPACT_FORCE_FORMAT_VERSION
-        && 'r' in compact && 'u' in compact && 'g' in compact;
+        && compact[CBT_FORCE_FIELD.formatVersion] === COMPACT_FORCE_FORMAT_VERSION
+        && CBT_FORCE_FIELD.revision in compact
+        && CBT_FORCE_FIELD.units in compact
+        && CBT_FORCE_FIELD.groups in compact;
 }
 
 type CompactUnitUuid = string;
@@ -125,59 +152,102 @@ type CompactCrewPosition = readonly unknown[];
 type CompactDeployment = readonly unknown[];
 
 type CompactForce = Readonly<{
-    v: 2;
-    r: number;
-    u: readonly unknown[];
-    g: readonly unknown[];
-    h?: SerializedCBTForceV2['history'];
-    e?: unknown;
+    [CBT_FORCE_FIELD.formatVersion]: 2;
+    [CBT_FORCE_FIELD.revision]: number;
+    [CBT_FORCE_FIELD.units]: readonly unknown[];
+    [CBT_FORCE_FIELD.groups]: readonly unknown[];
+    [CBT_FORCE_FIELD.history]?: SerializedCBTForceV2['history'];
+    [CBT_FORCE_FIELD.encounter]?: unknown;
 }>;
 
 type CompactASForce = Readonly<{
-    v: 1;
-    g: readonly CompactASGroup[];
-    n?: readonly CompactASNetwork[];
+    [AS_FORCE_FIELD.formatVersion]: 1;
+    [AS_FORCE_FIELD.groups]: readonly CompactASGroup[];
+    [AS_FORCE_FIELD.networks]?: readonly CompactASNetwork[];
 }>;
 
 type CompactASGroup = Readonly<{
-    i: string;
-    n?: string;
-    c?: string;
-    f?: string;
-    l?: 1;
-    t?: string;
-    u: readonly CompactASUnit[];
+    [AS_GROUP_FIELD.instanceId]: string;
+    [AS_GROUP_FIELD.name]?: string;
+    [AS_GROUP_FIELD.color]?: string;
+    [AS_GROUP_FIELD.formationId]?: string;
+    [AS_GROUP_FIELD.formationLock]?: 1;
+    [AS_GROUP_FIELD.formationTargetGroupId]?: string;
+    [AS_GROUP_FIELD.units]: readonly CompactASUnit[];
 }>;
 
 type CompactASUnit = Readonly<{
-    i: string;
-    u: string;
-    h?: string;
-    a?: string;
-    t?: number;
-    s?: number;
-    b?: ASSerializedUnit['abilities'];
-    f?: string[];
-    c?: 1;
-    x?: Readonly<Record<string, unknown>>;
+    [AS_UNIT_FIELD.instanceId]: string;
+    [AS_UNIT_FIELD.catalogUuid]: string;
+    [AS_UNIT_FIELD.sourceHashCanary]?: string;
+    [AS_UNIT_FIELD.alias]?: string;
+    [AS_UNIT_FIELD.updatedTimestamp]?: number;
+    [AS_UNIT_FIELD.skill]?: number;
+    [AS_UNIT_FIELD.abilities]?: ASSerializedUnit['abilities'];
+    [AS_UNIT_FIELD.formationAbilities]?: string[];
+    [AS_UNIT_FIELD.commander]?: 1;
+    [AS_UNIT_FIELD.c3Position]?: readonly [number, number];
+    [AS_UNIT_FIELD.state]?: Readonly<Record<string, unknown>>;
 }>;
 
 type CompactASNetwork = Readonly<{
-    i: string;
-    y: string;
-    c: string;
-    p?: readonly string[];
-    m?: string;
-    x?: number;
-    r?: readonly string[];
+    [AS_NETWORK_FIELD.instanceId]: string;
+    [AS_NETWORK_FIELD.type]: string;
+    [AS_NETWORK_FIELD.color]: string;
+    [AS_NETWORK_FIELD.peerIds]?: readonly string[];
+    [AS_NETWORK_FIELD.masterId]?: string;
+    [AS_NETWORK_FIELD.masterComponentIndex]?: number;
+    [AS_NETWORK_FIELD.members]?: readonly string[];
 }>;
 
-const MEK = 'm';
-const ENTITY = 'e';
 const COMPACT_FORCE_FORMAT_VERSION = 2;
 const COMPACT_AS_FORMAT_VERSION = 1;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const COMPACT_UUID_PATTERN = /^[A-Za-z0-9_-]{22}$/u;
+const CBT_MEK_UNIT_FIELDS = [
+    CBT_UNIT_FIELD.family,
+    CBT_UNIT_FIELD.instanceId,
+    CBT_UNIT_FIELD.catalogUuid,
+    CBT_UNIT_FIELD.sourceHashCanary,
+    CBT_UNIT_FIELD.deployment,
+    CBT_UNIT_FIELD.stateRevision,
+    CBT_UNIT_FIELD.destroyed,
+    CBT_UNIT_FIELD.locationState,
+    CBT_UNIT_FIELD.locationConditions,
+    CBT_UNIT_FIELD.slotState,
+    CBT_UNIT_FIELD.componentState,
+    CBT_UNIT_FIELD.ammoState,
+    CBT_UNIT_FIELD.crewState,
+    CBT_UNIT_FIELD.heat,
+    CBT_UNIT_FIELD.ruleChecks,
+    CBT_UNIT_FIELD.movementPsr,
+    CBT_UNIT_FIELD.equipmentRowOrder,
+    CBT_UNIT_FIELD.conditions,
+    CBT_UNIT_FIELD.c3Position,
+    CBT_UNIT_FIELD.mekTurn,
+    CBT_UNIT_FIELD.pendingCombat,
+] as const;
+const CBT_NON_MEK_UNIT_FIELDS = [
+    CBT_UNIT_FIELD.family,
+    CBT_UNIT_FIELD.entityType,
+    CBT_UNIT_FIELD.instanceId,
+    CBT_UNIT_FIELD.catalogUuid,
+    CBT_UNIT_FIELD.sourceHashCanary,
+    CBT_UNIT_FIELD.deployment,
+    CBT_UNIT_FIELD.stateRevision,
+    CBT_UNIT_FIELD.destroyed,
+    CBT_UNIT_FIELD.locationState,
+    CBT_UNIT_FIELD.componentState,
+    CBT_UNIT_FIELD.damageTrackState,
+    CBT_UNIT_FIELD.ammoState,
+    CBT_UNIT_FIELD.crewState,
+    CBT_UNIT_FIELD.conditions,
+    CBT_UNIT_FIELD.heat,
+    CBT_UNIT_FIELD.nonMekTurn,
+    CBT_UNIT_FIELD.equipmentRowOrder,
+    CBT_UNIT_FIELD.c3Position,
+    CBT_UNIT_FIELD.pendingCombat,
+] as const;
 
 export function encodeForceForStorage(force: SerializedForce): StoredForceRecord {
     const detached = clone(force);
@@ -196,7 +266,10 @@ export function encodeForceForStorage(force: SerializedForce): StoredForceRecord
         return Object.freeze({
             ...current,
             timestamp: packTimestamp(force.timestamp),
-            a: packASForce(force.groups as ASSerializedGroup[], force.c3Networks),
+            [FORCE_PAYLOAD_FIELD.alphaStrike]: packASForce(
+                force.groups as ASSerializedGroup[],
+                force.c3Networks,
+            ),
         });
     }
     if (force.type !== GameSystem.CBT) throw new Error('Unsupported force game system');
@@ -212,7 +285,7 @@ export function encodeForceForStorage(force: SerializedForce): StoredForceRecord
     return Object.freeze({
         ...current,
         timestamp: packTimestamp(force.timestamp),
-        cbt: packForce(force.cbt),
+        [FORCE_PAYLOAD_FIELD.classicBattleTech]: packForce(force.cbt),
     });
 }
 
@@ -221,9 +294,11 @@ export function decodeForceFromStorage(value: unknown): SerializedForce {
     const root = record(detached, 'force');
     if (root['version'] === 1) return detached as SerializedForce;
     if (root['type'] === GameSystem.AS) {
-        return unpackASForce(root, record(root['a'], 'force.a'));
+        const field = FORCE_PAYLOAD_FIELD.alphaStrike;
+        return unpackASForce(root, record(root[field], `force.${field}`));
     }
-    const compact = record(root['cbt'], 'force.cbt');
+    const field = FORCE_PAYLOAD_FIELD.classicBattleTech;
+    const compact = record(root[field], `force.${field}`);
     const instanceId = text(root['instanceId'], 'force.instanceId');
     return unpackCBTForce(root, instanceId, unpackForce(compact, instanceId));
 }
@@ -233,57 +308,63 @@ function packASForce(
     networks: readonly SerializedC3NetworkGroup[] | undefined,
 ): CompactASForce {
     return Object.freeze({
-        v: COMPACT_AS_FORMAT_VERSION,
-        g: Object.freeze(groups.map(packASGroup)),
+        [AS_FORCE_FIELD.formatVersion]: COMPACT_AS_FORMAT_VERSION,
+        [AS_FORCE_FIELD.groups]: Object.freeze(groups.map(packASGroup)),
         ...(networks === undefined || networks.length === 0
             ? {}
-            : { n: Object.freeze(networks.map(packASNetwork)) }),
+            : { [AS_FORCE_FIELD.networks]: Object.freeze(networks.map(packASNetwork)) }),
     });
 }
 
 function packASGroup(group: ASSerializedGroup): CompactASGroup {
     return compactObject({
-        i: packOpaqueId(group.id),
-        n: group.name,
-        c: group.color,
-        f: group.formationId,
-        l: group.formationLock ? 1 : undefined,
-        t: group.formationTargetGroupId === undefined
+        [AS_GROUP_FIELD.instanceId]: packOpaqueId(group.id),
+        [AS_GROUP_FIELD.name]: group.name,
+        [AS_GROUP_FIELD.color]: group.color,
+        [AS_GROUP_FIELD.formationId]: group.formationId,
+        [AS_GROUP_FIELD.formationLock]: group.formationLock ? 1 : undefined,
+        [AS_GROUP_FIELD.formationTargetGroupId]: group.formationTargetGroupId === undefined
             ? undefined
             : packOpaqueId(group.formationTargetGroupId),
-        u: Object.freeze(group.units.map(packASUnit)),
+        [AS_GROUP_FIELD.units]: Object.freeze(group.units.map(packASUnit)),
     }) as CompactASGroup;
 }
 
 function packASUnit(unit: ASSerializedUnit): CompactASUnit {
     return compactObject({
-        i: packOpaqueId(unit.id),
-        u: packUuid(unit.uuid),
-        h: unit.sourceHashCanary,
-        a: unit.alias,
-        t: unit.updatedTs,
-        s: unit.skill,
-        b: unit.abilities === undefined ? undefined : clone(unit.abilities),
-        f: unit.formationAbilities === undefined ? undefined : [...unit.formationAbilities],
-        c: unit.commander ? 1 : undefined,
-        x: packASState(unit.state),
+        [AS_UNIT_FIELD.instanceId]: packOpaqueId(unit.id),
+        [AS_UNIT_FIELD.catalogUuid]: packUuid(unit.uuid),
+        [AS_UNIT_FIELD.sourceHashCanary]: unit.sourceHashCanary,
+        [AS_UNIT_FIELD.alias]: unit.alias,
+        [AS_UNIT_FIELD.updatedTimestamp]: unit.updatedTs,
+        [AS_UNIT_FIELD.skill]: unit.skill,
+        [AS_UNIT_FIELD.abilities]: unit.abilities === undefined ? undefined : clone(unit.abilities),
+        [AS_UNIT_FIELD.formationAbilities]: unit.formationAbilities === undefined
+            ? undefined
+            : [...unit.formationAbilities],
+        [AS_UNIT_FIELD.commander]: unit.commander ? 1 : undefined,
+        [AS_UNIT_FIELD.c3Position]: unit.state?.c3Position === undefined
+            ? undefined
+            : [unit.state.c3Position.x, unit.state.c3Position.y],
+        [AS_UNIT_FIELD.state]: packASState(unit.state),
     }) as CompactASUnit;
 }
 
 function packASState(state: ASSerializedState | undefined): Readonly<Record<string, unknown>> | undefined {
     if (state === undefined) return undefined;
     const packed = compactObject({
-        m: state.modified ? 1 : undefined,
-        d: state.destroyed ? 1 : undefined,
-        c: state.conditions === undefined ? undefined : state.conditions.map(packASCondition),
-        p: state.c3Position === undefined ? undefined : [state.c3Position.x, state.c3Position.y],
-        h: state.heat,
-        a: state.armor,
-        i: state.internal,
-        r: state.crits,
-        q: state.pCrits,
-        u: state.consumed,
-        e: state.exhausted,
+        [AS_STATE_FIELD.modified]: state.modified ? 1 : undefined,
+        [AS_STATE_FIELD.destroyed]: state.destroyed ? 1 : undefined,
+        [AS_STATE_FIELD.conditions]: state.conditions === undefined
+            ? undefined
+            : state.conditions.map(packASCondition),
+        [AS_STATE_FIELD.heat]: state.heat,
+        [AS_STATE_FIELD.armor]: state.armor,
+        [AS_STATE_FIELD.internal]: state.internal,
+        [AS_STATE_FIELD.criticals]: state.crits,
+        [AS_STATE_FIELD.physicalCriticals]: state.pCrits,
+        [AS_STATE_FIELD.consumed]: state.consumed,
+        [AS_STATE_FIELD.exhausted]: state.exhausted,
     });
     return Object.keys(packed).length === 0 ? undefined : packed;
 }
@@ -299,34 +380,40 @@ function packASCondition(condition: SerializedCondition): unknown {
 
 function packASNetwork(network: SerializedC3NetworkGroup): CompactASNetwork {
     return compactObject({
-        i: packOpaqueId(network.id),
-        y: network.type,
-        c: network.color,
-        p: network.peerIds?.map(packOpaqueId),
-        m: network.masterId === undefined ? undefined : packOpaqueId(network.masterId),
-        x: network.masterCompIndex,
-        r: network.members?.map(packNetworkMember),
+        [AS_NETWORK_FIELD.instanceId]: packOpaqueId(network.id),
+        [AS_NETWORK_FIELD.type]: network.type,
+        [AS_NETWORK_FIELD.color]: network.color,
+        [AS_NETWORK_FIELD.peerIds]: network.peerIds?.map(packOpaqueId),
+        [AS_NETWORK_FIELD.masterId]: network.masterId === undefined
+            ? undefined
+            : packOpaqueId(network.masterId),
+        [AS_NETWORK_FIELD.masterComponentIndex]: network.masterCompIndex,
+        [AS_NETWORK_FIELD.members]: network.members?.map(packNetworkMember),
     }) as CompactASNetwork;
 }
 
 function unpackASForce(root: Record<string, unknown>, compact: Record<string, unknown>): ASSerializedForce {
+    const forcePath = `force.${FORCE_PAYLOAD_FIELD.alphaStrike}`;
     exactKeys(root, [
         'version', 'timestamp', 'instanceId', 'type', 'name', 'note', 'tags',
-        'factionId', 'factionLock', 'eraId', 'eraLock', 'bv', 'pv', 'owned', 'a',
+        'factionId', 'factionLock', 'eraId', 'eraLock', 'bv', 'pv', 'owned',
+        FORCE_PAYLOAD_FIELD.alphaStrike,
     ], 'force');
     if (root['version'] !== 2 || root['type'] !== GameSystem.AS) {
         throw new Error('Force does not match the current Alpha Strike schema');
     }
-    exactKeys(compact, ['v', 'g', 'n'], 'force.a');
-    if (compact['v'] !== COMPACT_AS_FORMAT_VERSION) {
+    exactKeys(compact, Object.values(AS_FORCE_FIELD), forcePath);
+    if (compact[AS_FORCE_FIELD.formatVersion] !== COMPACT_AS_FORMAT_VERSION) {
         throw new Error('Unsupported compact Alpha Strike persistence format');
     }
-    const groups = array(compact['g'], 'force.a.g').map((value, index) =>
-        unpackASGroup(value, `force.a.g[${index}]`));
-    const networks = compact['n'] === undefined
+    const groupsPath = `${forcePath}.${AS_FORCE_FIELD.groups}`;
+    const groups = array(compact[AS_FORCE_FIELD.groups], groupsPath).map((value, index) =>
+        unpackASGroup(value, `${groupsPath}[${index}]`));
+    const networksPath = `${forcePath}.${AS_FORCE_FIELD.networks}`;
+    const networks = compact[AS_FORCE_FIELD.networks] === undefined
         ? undefined
-        : array(compact['n'], 'force.a.n').map((value, index) =>
-            unpackASNetwork(value, `force.a.n[${index}]`));
+        : array(compact[AS_FORCE_FIELD.networks], networksPath).map((value, index) =>
+            unpackASNetwork(value, `${networksPath}[${index}]`));
     return {
         version: 2,
         timestamp: unpackTimestamp(root['timestamp'], 'force.timestamp'),
@@ -355,64 +442,160 @@ function unpackASForce(root: Record<string, unknown>, compact: Record<string, un
 
 function unpackASGroup(value: unknown, path: string): ASSerializedGroup {
     const group = record(value, path);
-    exactKeys(group, ['i', 'n', 'c', 'f', 'l', 't', 'u'], path);
+    exactKeys(group, Object.values(AS_GROUP_FIELD), path);
+    const idField = AS_GROUP_FIELD.instanceId;
+    const nameField = AS_GROUP_FIELD.name;
+    const colorField = AS_GROUP_FIELD.color;
+    const formationField = AS_GROUP_FIELD.formationId;
+    const lockField = AS_GROUP_FIELD.formationLock;
+    const targetField = AS_GROUP_FIELD.formationTargetGroupId;
+    const unitsField = AS_GROUP_FIELD.units;
     return {
-        id: unpackOpaqueId(text(group['i'], `${path}.i`), `${path}.i`),
-        ...(group['n'] === undefined ? {} : { name: text(group['n'], `${path}.n`) }),
-        ...(group['c'] === undefined ? {} : { color: text(group['c'], `${path}.c`) }),
-        ...(group['f'] === undefined ? {} : { formationId: text(group['f'], `${path}.f`) }),
-        ...(group['l'] === undefined ? {} : { formationLock: truthyOne(group['l'], `${path}.l`) }),
-        ...(group['t'] === undefined ? {} : {
-            formationTargetGroupId: unpackOpaqueId(text(group['t'], `${path}.t`), `${path}.t`),
+        id: unpackOpaqueId(text(group[idField], `${path}.${idField}`), `${path}.${idField}`),
+        ...(group[nameField] === undefined
+            ? {}
+            : { name: text(group[nameField], `${path}.${nameField}`) }),
+        ...(group[colorField] === undefined
+            ? {}
+            : { color: text(group[colorField], `${path}.${colorField}`) }),
+        ...(group[formationField] === undefined
+            ? {}
+            : { formationId: text(group[formationField], `${path}.${formationField}`) }),
+        ...(group[lockField] === undefined
+            ? {}
+            : { formationLock: truthyOne(group[lockField], `${path}.${lockField}`) }),
+        ...(group[targetField] === undefined ? {} : {
+            formationTargetGroupId: unpackOpaqueId(
+                text(group[targetField], `${path}.${targetField}`),
+                `${path}.${targetField}`,
+            ),
         }),
-        units: array(group['u'], `${path}.u`).map((unit, index) =>
-            unpackASUnit(unit, `${path}.u[${index}]`)),
+        units: array(group[unitsField], `${path}.${unitsField}`).map((unit, index) =>
+            unpackASUnit(unit, `${path}.${unitsField}[${index}]`)),
     };
 }
 
 function unpackASUnit(value: unknown, path: string): ASSerializedUnit {
     const unit = record(value, path);
-    exactKeys(unit, ['i', 'u', 'h', 'a', 't', 's', 'b', 'f', 'c', 'x'], path);
+    exactKeys(unit, Object.values(AS_UNIT_FIELD), path);
+    const mutableState = unit[AS_UNIT_FIELD.state] === undefined
+        ? {}
+        : unpackASState(unit[AS_UNIT_FIELD.state], `${path}.${AS_UNIT_FIELD.state}`);
+    const c3Position = unit[AS_UNIT_FIELD.c3Position] === undefined
+        ? undefined
+        : unpackC3Position(unit[AS_UNIT_FIELD.c3Position], `${path}.${AS_UNIT_FIELD.c3Position}`);
     return {
-        id: unpackOpaqueId(text(unit['i'], `${path}.i`), `${path}.i`),
-        uuid: unpackUuid(text(unit['u'], `${path}.u`), `${path}.u`),
-        ...(unit['h'] === undefined ? {} : {
-            sourceHashCanary: unpackSourceHashCanary(unit['h'], `${path}.h`),
+        id: unpackOpaqueId(
+            text(unit[AS_UNIT_FIELD.instanceId], `${path}.${AS_UNIT_FIELD.instanceId}`),
+            `${path}.${AS_UNIT_FIELD.instanceId}`,
+        ),
+        uuid: unpackUuid(
+            text(unit[AS_UNIT_FIELD.catalogUuid], `${path}.${AS_UNIT_FIELD.catalogUuid}`),
+            `${path}.${AS_UNIT_FIELD.catalogUuid}`,
+        ),
+        ...(unit[AS_UNIT_FIELD.sourceHashCanary] === undefined ? {} : {
+            sourceHashCanary: unpackSourceHashCanary(
+                unit[AS_UNIT_FIELD.sourceHashCanary],
+                `${path}.${AS_UNIT_FIELD.sourceHashCanary}`,
+            ),
         }),
-        ...(unit['a'] === undefined ? {} : { alias: text(unit['a'], `${path}.a`) }),
-        ...(unit['t'] === undefined ? {} : { updatedTs: finiteNumber(unit['t'], `${path}.t`) }),
-        ...(unit['s'] === undefined ? {} : { skill: finiteNumber(unit['s'], `${path}.s`) }),
-        ...(unit['b'] === undefined ? {} : {
-            abilities: clone(array(unit['b'], `${path}.b`)) as ASSerializedUnit['abilities'],
+        ...(unit[AS_UNIT_FIELD.alias] === undefined ? {} : {
+            alias: text(unit[AS_UNIT_FIELD.alias], `${path}.${AS_UNIT_FIELD.alias}`),
         }),
-        ...(unit['f'] === undefined ? {} : {
-            formationAbilities: unpackTextArray(unit['f'], `${path}.f`),
+        ...(unit[AS_UNIT_FIELD.updatedTimestamp] === undefined ? {} : {
+            updatedTs: finiteNumber(
+                unit[AS_UNIT_FIELD.updatedTimestamp],
+                `${path}.${AS_UNIT_FIELD.updatedTimestamp}`,
+            ),
         }),
-        ...(unit['c'] === undefined ? {} : { commander: truthyOne(unit['c'], `${path}.c`) }),
-        ...(unit['x'] === undefined ? {} : { state: unpackASState(unit['x'], `${path}.x`) }),
+        ...(unit[AS_UNIT_FIELD.skill] === undefined ? {} : {
+            skill: finiteNumber(unit[AS_UNIT_FIELD.skill], `${path}.${AS_UNIT_FIELD.skill}`),
+        }),
+        ...(unit[AS_UNIT_FIELD.abilities] === undefined ? {} : {
+            abilities: clone(array(
+                unit[AS_UNIT_FIELD.abilities],
+                `${path}.${AS_UNIT_FIELD.abilities}`,
+            )) as ASSerializedUnit['abilities'],
+        }),
+        ...(unit[AS_UNIT_FIELD.formationAbilities] === undefined ? {} : {
+            formationAbilities: unpackTextArray(
+                unit[AS_UNIT_FIELD.formationAbilities],
+                `${path}.${AS_UNIT_FIELD.formationAbilities}`,
+            ),
+        }),
+        ...(unit[AS_UNIT_FIELD.commander] === undefined ? {} : {
+            commander: truthyOne(
+                unit[AS_UNIT_FIELD.commander],
+                `${path}.${AS_UNIT_FIELD.commander}`,
+            ),
+        }),
+        ...(unit[AS_UNIT_FIELD.state] === undefined && c3Position === undefined
+            ? {}
+            : { state: { ...mutableState, ...(c3Position === undefined ? {} : { c3Position }) } }),
     };
 }
 
 function unpackASState(value: unknown, path: string): ASSerializedState {
     const state = record(value, path);
-    exactKeys(state, ['m', 'd', 'c', 'p', 'h', 'a', 'i', 'r', 'q', 'u', 'e'], path);
+    exactKeys(state, Object.values(AS_STATE_FIELD), path);
     return {
-        ...(state['m'] === undefined ? {} : { modified: truthyOne(state['m'], `${path}.m`) }),
-        ...(state['d'] === undefined ? {} : { destroyed: truthyOne(state['d'], `${path}.d`) }),
-        ...(state['c'] === undefined ? {} : {
-            conditions: array(state['c'], `${path}.c`).map((condition, index) =>
-                unpackASCondition(condition, `${path}.c[${index}]`)),
+        ...(state[AS_STATE_FIELD.modified] === undefined ? {} : {
+            modified: truthyOne(
+                state[AS_STATE_FIELD.modified],
+                `${path}.${AS_STATE_FIELD.modified}`,
+            ),
         }),
-        ...(state['p'] === undefined ? {} : {
-            c3Position: unpackASPosition(state['p'], `${path}.p`),
+        ...(state[AS_STATE_FIELD.destroyed] === undefined ? {} : {
+            destroyed: truthyOne(
+                state[AS_STATE_FIELD.destroyed],
+                `${path}.${AS_STATE_FIELD.destroyed}`,
+            ),
         }),
-        ...(state['h'] === undefined ? {} : { heat: unpackASPair(state['h'], `${path}.h`) }),
-        ...(state['a'] === undefined ? {} : { armor: unpackASPair(state['a'], `${path}.a`) }),
-        ...(state['i'] === undefined ? {} : { internal: unpackASPair(state['i'], `${path}.i`) }),
-        ...(state['r'] === undefined ? {} : { crits: unpackASCriticalRows(state['r'], `${path}.r`) }),
-        ...(state['q'] === undefined ? {} : { pCrits: unpackASCriticalRows(state['q'], `${path}.q`) }),
-        ...(state['u'] === undefined ? {} : { consumed: unpackASConsumed(state['u'], `${path}.u`) }),
-        ...(state['e'] === undefined ? {} : { exhausted: unpackASExhausted(state['e'], `${path}.e`) }),
+        ...(state[AS_STATE_FIELD.conditions] === undefined ? {} : {
+            conditions: array(
+                state[AS_STATE_FIELD.conditions],
+                `${path}.${AS_STATE_FIELD.conditions}`,
+            ).map((condition, index) => unpackASCondition(
+                condition,
+                `${path}.${AS_STATE_FIELD.conditions}[${index}]`,
+            )),
+        }),
+        ...(state[AS_STATE_FIELD.heat] === undefined ? {} : {
+            heat: unpackASPair(state[AS_STATE_FIELD.heat], `${path}.${AS_STATE_FIELD.heat}`),
+        }),
+        ...(state[AS_STATE_FIELD.armor] === undefined ? {} : {
+            armor: unpackASPair(state[AS_STATE_FIELD.armor], `${path}.${AS_STATE_FIELD.armor}`),
+        }),
+        ...(state[AS_STATE_FIELD.internal] === undefined ? {} : {
+            internal: unpackASPair(
+                state[AS_STATE_FIELD.internal],
+                `${path}.${AS_STATE_FIELD.internal}`,
+            ),
+        }),
+        ...(state[AS_STATE_FIELD.criticals] === undefined ? {} : {
+            crits: unpackASCriticalRows(
+                state[AS_STATE_FIELD.criticals],
+                `${path}.${AS_STATE_FIELD.criticals}`,
+            ),
+        }),
+        ...(state[AS_STATE_FIELD.physicalCriticals] === undefined ? {} : {
+            pCrits: unpackASCriticalRows(
+                state[AS_STATE_FIELD.physicalCriticals],
+                `${path}.${AS_STATE_FIELD.physicalCriticals}`,
+            ),
+        }),
+        ...(state[AS_STATE_FIELD.consumed] === undefined ? {} : {
+            consumed: unpackASConsumed(
+                state[AS_STATE_FIELD.consumed],
+                `${path}.${AS_STATE_FIELD.consumed}`,
+            ),
+        }),
+        ...(state[AS_STATE_FIELD.exhausted] === undefined ? {} : {
+            exhausted: unpackASExhausted(
+                state[AS_STATE_FIELD.exhausted],
+                `${path}.${AS_STATE_FIELD.exhausted}`,
+            ),
+        }),
     };
 }
 
@@ -435,9 +618,9 @@ function unpackASCondition(value: unknown, path: string): SerializedCondition {
     };
 }
 
-function unpackASPosition(value: unknown, path: string): { x: number; y: number } {
+function unpackC3Position(value: unknown, path: string): { x: number; y: number } {
     const row = array(value, path);
-    if (row.length !== 2) throw new Error(`${path} is not an Alpha Strike position`);
+    if (row.length !== 2) throw new Error(`${path} is not a C3 position`);
     return { x: finiteNumber(row[0], `${path}[0]`), y: finiteNumber(row[1], `${path}[1]`) };
 }
 
@@ -476,24 +659,46 @@ function unpackASExhausted(value: unknown, path: string): [string[], string[], s
 
 function unpackASNetwork(value: unknown, path: string): SerializedC3NetworkGroup {
     const network = record(value, path);
-    exactKeys(network, ['i', 'y', 'c', 'p', 'm', 'x', 'r'], path);
+    exactKeys(network, Object.values(AS_NETWORK_FIELD), path);
     return {
-        id: unpackOpaqueId(text(network['i'], `${path}.i`), `${path}.i`),
-        type: text(network['y'], `${path}.y`) as SerializedC3NetworkGroup['type'],
-        color: text(network['c'], `${path}.c`),
-        ...(network['p'] === undefined ? {} : {
-            peerIds: unpackTextArray(network['p'], `${path}.p`).map((id, index) =>
-                unpackOpaqueId(id, `${path}.p[${index}]`)),
+        id: unpackOpaqueId(
+            text(network[AS_NETWORK_FIELD.instanceId], `${path}.${AS_NETWORK_FIELD.instanceId}`),
+            `${path}.${AS_NETWORK_FIELD.instanceId}`,
+        ),
+        type: text(
+            network[AS_NETWORK_FIELD.type],
+            `${path}.${AS_NETWORK_FIELD.type}`,
+        ) as SerializedC3NetworkGroup['type'],
+        color: text(network[AS_NETWORK_FIELD.color], `${path}.${AS_NETWORK_FIELD.color}`),
+        ...(network[AS_NETWORK_FIELD.peerIds] === undefined ? {} : {
+            peerIds: unpackTextArray(
+                network[AS_NETWORK_FIELD.peerIds],
+                `${path}.${AS_NETWORK_FIELD.peerIds}`,
+            ).map((id, index) => unpackOpaqueId(
+                id,
+                `${path}.${AS_NETWORK_FIELD.peerIds}[${index}]`,
+            )),
         }),
-        ...(network['m'] === undefined ? {} : {
-            masterId: unpackOpaqueId(text(network['m'], `${path}.m`), `${path}.m`),
+        ...(network[AS_NETWORK_FIELD.masterId] === undefined ? {} : {
+            masterId: unpackOpaqueId(
+                text(network[AS_NETWORK_FIELD.masterId], `${path}.${AS_NETWORK_FIELD.masterId}`),
+                `${path}.${AS_NETWORK_FIELD.masterId}`,
+            ),
         }),
-        ...(network['x'] === undefined ? {} : {
-            masterCompIndex: integer(network['x'], `${path}.x`),
+        ...(network[AS_NETWORK_FIELD.masterComponentIndex] === undefined ? {} : {
+            masterCompIndex: integer(
+                network[AS_NETWORK_FIELD.masterComponentIndex],
+                `${path}.${AS_NETWORK_FIELD.masterComponentIndex}`,
+            ),
         }),
-        ...(network['r'] === undefined ? {} : {
-            members: unpackTextArray(network['r'], `${path}.r`).map((member, index) =>
-                unpackNetworkMember(member, `${path}.r[${index}]`)),
+        ...(network[AS_NETWORK_FIELD.members] === undefined ? {} : {
+            members: unpackTextArray(
+                network[AS_NETWORK_FIELD.members],
+                `${path}.${AS_NETWORK_FIELD.members}`,
+            ).map((member, index) => unpackNetworkMember(
+                member,
+                `${path}.${AS_NETWORK_FIELD.members}[${index}]`,
+            )),
         }),
     };
 }
@@ -571,7 +776,8 @@ function unpackCBTForce(
 ): SerializedForce {
     exactKeys(root, [
         'version', 'timestamp', 'instanceId', 'type', 'name', 'note', 'tags',
-        'factionId', 'factionLock', 'eraId', 'eraLock', 'bv', 'pv', 'owned', 'cbt',
+        'factionId', 'factionLock', 'eraId', 'eraLock', 'bv', 'pv', 'owned',
+        FORCE_PAYLOAD_FIELD.classicBattleTech,
     ], 'force');
     if (root['version'] !== 2 || root['type'] !== GameSystem.CBT) {
         throw new Error('Force does not match the current CBT schema');
@@ -602,61 +808,109 @@ function unpackCBTForce(
 }
 
 function packForce(force: SerializedCBTForceV2): CompactForce {
-    const historyEmpty = force.history.u.length === 0 && force.history.t.length === 0;
-    const encounterEmpty = force.encounter.encounterRevision === 0
-        && force.encounter.state.facts.length === 0;
+    const historyEmpty = force.history[CBT_HISTORY_FIELD.unitIds].length === 0
+        && force.history[CBT_HISTORY_FIELD.turns].length === 0;
+    const encounterEmpty = force.encounter.networks.length === 0;
+    const c3Positions = new Map(
+        (force.encounter.c3Positions ?? []).map(position => [position.unitId, position] as const),
+    );
     return Object.freeze({
-        v: COMPACT_FORCE_FORMAT_VERSION,
-        r: force.forceRevision,
-        u: Object.freeze(force.units.map(packUnitEntry)),
-        g: packRoster(force.roster, force.units),
-        ...(historyEmpty ? {} : { h: packHistory(force.history) }),
-        ...(encounterEmpty ? {} : { e: packEncounter(force.encounter) }),
+        [CBT_FORCE_FIELD.formatVersion]: COMPACT_FORCE_FORMAT_VERSION,
+        [CBT_FORCE_FIELD.revision]: force.forceRevision,
+        [CBT_FORCE_FIELD.units]: Object.freeze(force.units.map(entry =>
+            packUnitEntry(entry, c3Positions.get(entry.instanceId)))),
+        [CBT_FORCE_FIELD.groups]: packRoster(force.roster, force.units),
+        ...(historyEmpty ? {} : { [CBT_FORCE_FIELD.history]: packHistory(force.history) }),
+        ...(encounterEmpty ? {} : {
+            [CBT_FORCE_FIELD.encounter]: packEncounter(force.encounter, force.units),
+        }),
     });
 }
 
 function unpackForce(value: Record<string, unknown>, forceId: string): SerializedCBTForceV2 {
-    exactKeys(value, ['v', 'r', 'u', 'g', 'h', 'e'], 'force.cbt');
-    if (value['v'] !== COMPACT_FORCE_FORMAT_VERSION) {
+    const forcePath = `force.${FORCE_PAYLOAD_FIELD.classicBattleTech}`;
+    exactKeys(value, Object.values(CBT_FORCE_FIELD), forcePath);
+    if (value[CBT_FORCE_FIELD.formatVersion] !== COMPACT_FORCE_FORMAT_VERSION) {
         throw new Error('Unsupported compact CBT persistence format');
     }
-    const revision = integer(value['r'], 'force.cbt.r');
-    const units = array(value['u'], 'force.cbt.u').map((entry, index) =>
-        unpackUnitEntry(entry, `force.cbt.u[${index}]`));
+    const revision = integer(
+        value[CBT_FORCE_FIELD.revision],
+        `${forcePath}.${CBT_FORCE_FIELD.revision}`,
+    );
+    const unitsPath = `${forcePath}.${CBT_FORCE_FIELD.units}`;
+    const compactUnits = array(value[CBT_FORCE_FIELD.units], unitsPath);
+    const units = compactUnits.map((entry, index) =>
+        unpackUnitEntry(entry, `${unitsPath}[${index}]`));
+    const c3Positions = compactUnits.flatMap((entry, index): C3UnitPosition[] => {
+        const unitPath = `${unitsPath}[${index}]`;
+        const compactUnit = record(entry, unitPath);
+        if (compactUnit[CBT_UNIT_FIELD.c3Position] === undefined) return [];
+        return [{
+            unitId: units[index]!.instanceId,
+            ...unpackC3Position(
+                compactUnit[CBT_UNIT_FIELD.c3Position],
+                `${unitPath}.${CBT_UNIT_FIELD.c3Position}`,
+            ),
+        }];
+    }).sort((left, right) => left.unitId < right.unitId ? -1 : left.unitId > right.unitId ? 1 : 0);
+    const unpackedEncounter = value[CBT_FORCE_FIELD.encounter] === undefined
+        ? emptyEncounter()
+        : unpackEncounter(
+            value[CBT_FORCE_FIELD.encounter],
+            `${forcePath}.${CBT_FORCE_FIELD.encounter}`,
+            units,
+        );
+    const encounter = c3Positions.length === 0 ? unpackedEncounter : {
+        ...unpackedEncounter,
+        c3Positions,
+    };
     return {
         schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId: asForceId(forceId),
         forceRevision: revision,
-        history: value['h'] === undefined
-            ? { u: [], t: [] }
-            : unpackHistory(value['h'], 'force.cbt.h'),
+        history: value[CBT_FORCE_FIELD.history] === undefined
+            ? {
+                [CBT_HISTORY_FIELD.unitIds]: [],
+                [CBT_HISTORY_FIELD.turns]: [],
+            }
+            : unpackHistory(
+                value[CBT_FORCE_FIELD.history],
+                `${forcePath}.${CBT_FORCE_FIELD.history}`,
+            ),
         units,
-        roster: unpackRoster(value['g'], units),
-        encounter: value['e'] === undefined
-            ? emptyEncounter()
-            : unpackEncounter(value['e'], 'force.cbt.e'),
+        roster: unpackRoster(value[CBT_FORCE_FIELD.groups], units),
+        encounter,
     };
 }
 
 function packHistory(history: SerializedCBTForceV2['history']): SerializedCBTForceV2['history'] {
     return Object.freeze({
-        u: Object.freeze(history.u.map(packOpaqueId)),
-        t: clone(history.t),
+        [CBT_HISTORY_FIELD.unitIds]: Object.freeze(
+            history[CBT_HISTORY_FIELD.unitIds].map(packOpaqueId),
+        ),
+        [CBT_HISTORY_FIELD.turns]: clone(history[CBT_HISTORY_FIELD.turns]),
     });
 }
 
 function unpackHistory(value: unknown, path: string): SerializedCBTForceV2['history'] {
     const history = record(value, path);
-    exactKeys(history, ['u', 't'], path);
+    exactKeys(history, Object.values(CBT_HISTORY_FIELD), path);
+    const unitIdsPath = `${path}.${CBT_HISTORY_FIELD.unitIds}`;
     return {
-        u: array(history['u'], `${path}.u`).map((raw, index) =>
-            unpackOpaqueId(text(raw, `${path}.u[${index}]`), `${path}.u[${index}]`)),
-        t: clone(array(history['t'], `${path}.t`)) as SerializedCBTForceV2['history']['t'],
+        [CBT_HISTORY_FIELD.unitIds]: array(
+            history[CBT_HISTORY_FIELD.unitIds],
+            unitIdsPath,
+        ).map((raw, index) =>
+            unpackOpaqueId(text(raw, `${unitIdsPath}[${index}]`), `${unitIdsPath}[${index}]`)),
+        [CBT_HISTORY_FIELD.turns]: clone(array(
+            history[CBT_HISTORY_FIELD.turns],
+            `${path}.${CBT_HISTORY_FIELD.turns}`,
+        )) as SerializedCBTForceV2['history'][typeof CBT_HISTORY_FIELD.turns],
     };
 }
 
-function packUnitEntry(entry: SerializedForceUnitEntryV2): unknown {
-    return packUnit(entry.unit);
+function packUnitEntry(entry: SerializedForceUnitEntryV2, c3Position: C3UnitPosition | undefined): unknown {
+    return packUnit(entry.unit, c3Position);
 }
 
 function unpackUnitEntry(value: unknown, path: string): SerializedForceUnitEntryV2 {
@@ -668,114 +922,180 @@ function unpackUnitEntry(value: unknown, path: string): SerializedForceUnitEntry
     };
 }
 
-function packUnit(unit: SerializedCBTUnitV2 | SerializedNonMekUnit): unknown {
-    return isSerializedNonMekUnit(unit) ? packNonMekUnit(unit) : packMekUnit(unit);
+function packUnit(
+    unit: SerializedCBTUnitV2 | SerializedNonMekUnit,
+    c3Position: C3UnitPosition | undefined,
+): unknown {
+    return isSerializedNonMekUnit(unit)
+        ? packNonMekUnit(unit, c3Position)
+        : packMekUnit(unit, c3Position);
 }
 
 function unpackUnit(value: unknown, path: string): SerializedCBTUnitV2 | SerializedNonMekUnit {
     const compact = record(value, path);
-    return compact['k'] === undefined || compact['k'] === MEK
+    return compact[CBT_UNIT_FIELD.family] === undefined
+        || compact[CBT_UNIT_FIELD.family] === CBT_UNIT_FAMILY.mek
         ? unpackMekUnit(compact, path)
-        : compact['k'] === ENTITY
+        : compact[CBT_UNIT_FIELD.family] === CBT_UNIT_FAMILY.nonMekEntity
             ? unpackNonMekUnit(compact, path)
-            : fail(`${path}.k is not a current unit family`);
+            : fail(`${path}.${CBT_UNIT_FIELD.family} is not a current unit family`);
 }
 
-function packMekUnit(unit: SerializedCBTUnitV2): unknown {
+function packMekUnit(unit: SerializedCBTUnitV2, c3Position: C3UnitPosition | undefined): unknown {
     const pristineHeat = unit.deployment.values.initialHeat ?? 0;
     const heatIsPristine = unit.heat?.heat === pristineHeat
         && unit.heat.previous === undefined
         && unit.heat.pendingOverride === undefined
         && unit.heat.heatsinksOff === undefined;
     return compactObject({
-        i: packOpaqueId(unit.instanceId),
-        e: packUnitUuid(unit.entity),
-        h: unit.sourceHashCanary,
-        d: packDeployment(unit.deployment.values),
-        r: unit.stateRevision === 0 ? undefined : unit.stateRevision,
-        x: unit.destroyed ? 1 : undefined,
-        l: packRows(unit.locationState, row => [row.target, row.damage]),
-        n: packRows(unit.locationConditions, row => [row.target, row.condition, row.value]),
-        s: packRows(unit.slotState, row => tuple(row.target, row.hits, row.destroyedTurn)),
-        c: packRows(unit.componentState, packComponentState),
-        a: packRows(unit.ammoState, row => tuple(row.target, row.shotsSpent, row.munitionOverride)),
-        w: packRows(unit.crew.positions, row => tuple(
+        [CBT_UNIT_FIELD.instanceId]: packOpaqueId(unit.instanceId),
+        [CBT_UNIT_FIELD.catalogUuid]: packUnitUuid(unit.entity),
+        [CBT_UNIT_FIELD.sourceHashCanary]: unit.sourceHashCanary,
+        [CBT_UNIT_FIELD.deployment]: packDeployment(unit.deployment.values),
+        [CBT_UNIT_FIELD.stateRevision]: unit.stateRevision === 0 ? undefined : unit.stateRevision,
+        [CBT_UNIT_FIELD.destroyed]: unit.destroyed ? 1 : undefined,
+        [CBT_UNIT_FIELD.locationState]: packRows(
+            unit.locationState,
+            row => [row.target, row.damage],
+        ),
+        [CBT_UNIT_FIELD.locationConditions]: packRows(
+            unit.locationConditions,
+            row => [row.target, row.condition, row.value],
+        ),
+        [CBT_UNIT_FIELD.slotState]: packRows(
+            unit.slotState,
+            row => tuple(row.target, row.hits, row.destroyedTurn),
+        ),
+        [CBT_UNIT_FIELD.componentState]: packRows(unit.componentState, packComponentState),
+        [CBT_UNIT_FIELD.ammoState]: packRows(
+            unit.ammoState,
+            row => tuple(row.target, row.shotsSpent, row.munitionOverride),
+        ),
+        [CBT_UNIT_FIELD.crewState]: packRows(unit.crew.positions, row => tuple(
             row.target,
             row.wounds,
             packCrewState(row),
             row.recoveryReadyTurn,
         )),
-        z: heatIsPristine ? undefined : packHeat(unit.heat),
-        rC: unit.ruleChecks.entries.length === 0 ? undefined : unit.ruleChecks.entries.map(row => [
-            row.key, row.token, row.trigger, row.openedRevision, row.status,
-        ]),
-        m: packMovement(unit.movementPsr),
-        tA: packTargeting(unit.attackerTargeting),
-        y: packEquipmentRowOrder(unit.equipmentRowOrder),
-        o: unit.conditions?.values.length ? unit.conditions.values : undefined,
-        t: packTurn(unit.turn),
-        p: packPending(unit.pendingCombat),
+        [CBT_UNIT_FIELD.heat]: heatIsPristine ? undefined : packHeat(unit.heat),
+        [CBT_UNIT_FIELD.ruleChecks]: unit.ruleChecks.entries.length === 0
+            ? undefined
+            : unit.ruleChecks.entries.map(row => [
+                row.key, row.token, row.trigger, row.openedRevision, row.status,
+            ]),
+        [CBT_UNIT_FIELD.movementPsr]: packMovement(unit.movementPsr),
+        [CBT_UNIT_FIELD.equipmentRowOrder]: packEquipmentRowOrder(unit.equipmentRowOrder),
+        [CBT_UNIT_FIELD.conditions]: unit.conditions?.values.length
+            ? unit.conditions.values
+            : undefined,
+        [CBT_UNIT_FIELD.c3Position]: c3Position === undefined
+            ? undefined
+            : [c3Position.x, c3Position.y],
+        [CBT_UNIT_FIELD.mekTurn]: packTurn(unit.turn),
+        [CBT_UNIT_FIELD.pendingCombat]: packPending(unit.pendingCombat),
     });
 }
 
 function unpackMekUnit(value: Record<string, unknown>, path: string): SerializedCBTUnitV2 {
-    exactKeys(value, [
-        'k', 'i', 'e', 'd', 'r', 'x', 'l', 'n', 's', 'c', 'a', 'w',
-        'h', 'z', 'rC', 'm', 'tA', 'y', 'o', 't', 'p',
-    ], path);
-    const entity = unpackUnitUuid(value['e'], `${path}.e`);
+    exactKeys(value, CBT_MEK_UNIT_FIELDS, path);
+    const entity = unpackUnitUuid(
+        value[CBT_UNIT_FIELD.catalogUuid],
+        `${path}.${CBT_UNIT_FIELD.catalogUuid}`,
+    );
     const baseline = defaultBaseline(
         entity, UNIT_STATE_INITIALIZER_REVISION, DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
     );
-    const deployment = unpackDeployment(value['d'], `${path}.d`);
+    const deployment = unpackDeployment(
+        value[CBT_UNIT_FIELD.deployment],
+        `${path}.${CBT_UNIT_FIELD.deployment}`,
+    );
     const pristineHeat = deployment.values.initialHeat ?? 0;
     return {
         schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
-        instanceId: unpackOpaqueId(text(value['i'], `${path}.i`), `${path}.i`),
+        instanceId: unpackOpaqueId(
+            text(value[CBT_UNIT_FIELD.instanceId], `${path}.${CBT_UNIT_FIELD.instanceId}`),
+            `${path}.${CBT_UNIT_FIELD.instanceId}`,
+        ),
         entity,
-        ...(value['h'] === undefined ? {} : {
-            sourceHashCanary: unpackSourceHashCanary(value['h'], `${path}.h`),
+        ...(value[CBT_UNIT_FIELD.sourceHashCanary] === undefined ? {} : {
+            sourceHashCanary: unpackSourceHashCanary(
+                value[CBT_UNIT_FIELD.sourceHashCanary],
+                `${path}.${CBT_UNIT_FIELD.sourceHashCanary}`,
+            ),
         }),
         baselineRefAtSave: baseline,
         // BaseEntity topology is rebuilt after the exact native source is loaded.
         // The storage wire never carries a copied blueprint reference catalog.
         blueprintReferences: { schemaVersion: 1, targets: {} },
         deployment,
-        stateRevision: value['r'] === undefined ? 0 : integer(value['r'], `${path}.r`),
-        ...(value['x'] === undefined ? {} : { destroyed: truthyOne(value['x'], `${path}.x`) }),
-        ...(value['l'] === undefined ? {} : {
-            locationState: unpackRows(value['l'], `${path}.l`, (row, rowPath) => ({
+        stateRevision: value[CBT_UNIT_FIELD.stateRevision] === undefined
+            ? 0
+            : integer(
+                value[CBT_UNIT_FIELD.stateRevision],
+                `${path}.${CBT_UNIT_FIELD.stateRevision}`,
+            ),
+        ...(value[CBT_UNIT_FIELD.destroyed] === undefined ? {} : {
+            destroyed: truthyOne(
+                value[CBT_UNIT_FIELD.destroyed],
+                `${path}.${CBT_UNIT_FIELD.destroyed}`,
+            ),
+        }),
+        ...(value[CBT_UNIT_FIELD.locationState] === undefined ? {} : {
+            locationState: unpackRows(
+                value[CBT_UNIT_FIELD.locationState],
+                `${path}.${CBT_UNIT_FIELD.locationState}`,
+                (row, rowPath) => ({
                 target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 damage: rowInteger(row, 1, rowPath),
-            })),
+                }),
+            ),
         }),
-        ...(value['n'] === undefined ? {} : {
-            locationConditions: unpackRows(value['n'], `${path}.n`, (row, rowPath) => ({
+        ...(value[CBT_UNIT_FIELD.locationConditions] === undefined ? {} : {
+            locationConditions: unpackRows(
+                value[CBT_UNIT_FIELD.locationConditions],
+                `${path}.${CBT_UNIT_FIELD.locationConditions}`,
+                (row, rowPath) => ({
                 target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 condition: unpackMekLocationCondition(row[1], `${rowPath}[1]`),
                 value: rowInteger(row, 2, rowPath),
-            })),
+                }),
+            ),
         }),
-        ...(value['s'] === undefined ? {} : {
-            slotState: unpackRows(value['s'], `${path}.s`, (row, rowPath) => ({
+        ...(value[CBT_UNIT_FIELD.slotState] === undefined ? {} : {
+            slotState: unpackRows(
+                value[CBT_UNIT_FIELD.slotState],
+                `${path}.${CBT_UNIT_FIELD.slotState}`,
+                (row, rowPath) => ({
                 target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 hits: rowInteger(row, 1, rowPath),
                 ...(row[2] === undefined ? {} : { destroyedTurn: rowInteger(row, 2, rowPath) }),
-            })),
+                }),
+            ),
         }),
-        ...(value['c'] === undefined ? {} : {
-            componentState: unpackRows(value['c'], `${path}.c`, unpackComponentState),
+        ...(value[CBT_UNIT_FIELD.componentState] === undefined ? {} : {
+            componentState: unpackRows(
+                value[CBT_UNIT_FIELD.componentState],
+                `${path}.${CBT_UNIT_FIELD.componentState}`,
+                unpackComponentState,
+            ),
         }),
-        ...(value['a'] === undefined ? {} : {
-            ammoState: unpackRows(value['a'], `${path}.a`, (row, rowPath) => ({
+        ...(value[CBT_UNIT_FIELD.ammoState] === undefined ? {} : {
+            ammoState: unpackRows(
+                value[CBT_UNIT_FIELD.ammoState],
+                `${path}.${CBT_UNIT_FIELD.ammoState}`,
+                (row, rowPath) => ({
                 target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 shotsSpent: rowInteger(row, 1, rowPath),
                 ...(row[2] === undefined ? {} : { munitionOverride: rowText(row, 2, rowPath) }),
-            })),
+                }),
+            ),
         }),
         crew: {
             schemaVersion: 1,
-            positions: value['w'] === undefined ? [] : unpackRows(value['w'], `${path}.w`, (row, rowPath) => {
+            positions: value[CBT_UNIT_FIELD.crewState] === undefined ? [] : unpackRows(
+                value[CBT_UNIT_FIELD.crewState],
+                `${path}.${CBT_UNIT_FIELD.crewState}`,
+                (row, rowPath) => {
                 const state = unpackCrewState(row[2], `${rowPath}[2]`);
                 return {
                     target: asSavedTargetRef(rowText(row, 0, rowPath)),
@@ -791,93 +1111,155 @@ function unpackMekUnit(value: Record<string, unknown>, path: string): Serialized
                                 : rowInteger(row, 3, rowPath),
                         }),
                 };
-            }),
+                },
+            ),
         },
-        heat: value['z'] === undefined
+        heat: value[CBT_UNIT_FIELD.heat] === undefined
             ? { heat: pristineHeat }
-            : unpackHeat(value['z'], `${path}.z`),
+            : unpackHeat(value[CBT_UNIT_FIELD.heat], `${path}.${CBT_UNIT_FIELD.heat}`),
         family: { kind: 'mek' },
         ruleChecks: {
             schemaVersion: 1,
-            entries: value['rC'] === undefined ? [] : unpackRows(value['rC'], `${path}.rC`, (row, rowPath) => ({
+            entries: value[CBT_UNIT_FIELD.ruleChecks] === undefined ? [] : unpackRows(
+                value[CBT_UNIT_FIELD.ruleChecks],
+                `${path}.${CBT_UNIT_FIELD.ruleChecks}`,
+                (row, rowPath) => ({
                 key: unpackMekRuleCheckKey(row[0], `${rowPath}[0]`),
                 token: asMekRuleCheckTokenV2(rowText(row, 1, rowPath)),
                 trigger: asSavedTargetRef(rowText(row, 2, rowPath)),
                 openedRevision: rowInteger(row, 3, rowPath),
                 status: unpackMekRuleCheckStatus(row[4], `${rowPath}[4]`),
-            })),
+                }),
+            ),
         },
-        movementPsr: unpackMovement(value['m'], `${path}.m`),
-        attackerTargeting: unpackSavedTargeting(value['tA'], `${path}.tA`),
-        ...(value['y'] === undefined ? {} : {
-            equipmentRowOrder: unpackEquipmentRowOrder(value['y'], `${path}.y`),
+        movementPsr: unpackMovement(
+            value[CBT_UNIT_FIELD.movementPsr],
+            `${path}.${CBT_UNIT_FIELD.movementPsr}`,
+        ),
+        ...(value[CBT_UNIT_FIELD.equipmentRowOrder] === undefined ? {} : {
+            equipmentRowOrder: unpackEquipmentRowOrder(
+                value[CBT_UNIT_FIELD.equipmentRowOrder],
+                `${path}.${CBT_UNIT_FIELD.equipmentRowOrder}`,
+            ),
         }),
-        ...(value['o'] === undefined ? {} : {
-            conditions: { values: unpackUnitConditions(value['o'], `${path}.o`) },
+        ...(value[CBT_UNIT_FIELD.conditions] === undefined ? {} : {
+            conditions: {
+                values: unpackUnitConditions(
+                    value[CBT_UNIT_FIELD.conditions],
+                    `${path}.${CBT_UNIT_FIELD.conditions}`,
+                ),
+            },
         }),
-        turn: unpackTurn(value['t'], `${path}.t`),
-        ...(value['p'] === undefined ? {} : { pendingCombat: unpackPending(value['p'], `${path}.p`) }),
+        turn: unpackTurn(value[CBT_UNIT_FIELD.mekTurn], `${path}.${CBT_UNIT_FIELD.mekTurn}`),
+        ...(value[CBT_UNIT_FIELD.pendingCombat] === undefined ? {} : {
+            pendingCombat: unpackPending(
+                value[CBT_UNIT_FIELD.pendingCombat],
+                `${path}.${CBT_UNIT_FIELD.pendingCombat}`,
+            ),
+        }),
     };
 }
 
-function packNonMekUnit(unit: SerializedNonMekUnit): unknown {
+function packNonMekUnit(unit: SerializedNonMekUnit, c3Position: C3UnitPosition | undefined): unknown {
     return compactObject({
-        k: ENTITY,
-        t: unit.family.entityType,
-        i: packOpaqueId(unit.instanceId),
-        e: packUnitUuid(unit.entity),
-        h: unit.sourceHashCanary,
-        d: packDeployment(unit.deployment.values),
-        r: unit.stateRevision === 0 ? undefined : unit.stateRevision,
-        x: unit.destroyed ? 1 : undefined,
-        l: packRows(unit.locationState, row => tuple(
+        [CBT_UNIT_FIELD.family]: CBT_UNIT_FAMILY.nonMekEntity,
+        [CBT_UNIT_FIELD.entityType]: unit.family.entityType,
+        [CBT_UNIT_FIELD.instanceId]: packOpaqueId(unit.instanceId),
+        [CBT_UNIT_FIELD.catalogUuid]: packUnitUuid(unit.entity),
+        [CBT_UNIT_FIELD.sourceHashCanary]: unit.sourceHashCanary,
+        [CBT_UNIT_FIELD.deployment]: packDeployment(unit.deployment.values),
+        [CBT_UNIT_FIELD.stateRevision]: unit.stateRevision === 0 ? undefined : unit.stateRevision,
+        [CBT_UNIT_FIELD.destroyed]: unit.destroyed ? 1 : undefined,
+        [CBT_UNIT_FIELD.locationState]: packRows(unit.locationState, row => tuple(
             row.locationId,
             row.internalDamage ?? 0,
             row.armorDamage?.map(armor => [armor.faceId, armor.damage]),
         )),
-        c: packRows(unit.componentState, row => [row.componentId, compactObject({
-            s: row.status,
-            m: row.mode,
-            j: row.jammed ? 1 : undefined,
-            e: row.escalatingFailure
+        [CBT_UNIT_FIELD.componentState]: packRows(unit.componentState, row => [
+            row.componentId,
+            compactObject({
+            [CBT_COMPONENT_STATE_FIELD.status]: row.status,
+            [CBT_COMPONENT_STATE_FIELD.mode]: row.mode,
+            [CBT_COMPONENT_STATE_FIELD.jammed]: row.jammed ? 1 : undefined,
+            [CBT_COMPONENT_STATE_FIELD.escalatingFailure]: row.escalatingFailure
                 && [row.escalatingFailure.sequence, row.escalatingFailure.active ? 1 : 0],
-        })]),
-        q: packRows(unit.damageTrackState, row => [row.damageTrackId, row.hits, row.hitTimestamps]),
-        a: packRows(unit.ammoState, row => tuple(row.componentId, row.shotsSpent, row.munitionOverride)),
-        w: packRows(unit.crewState, row => tuple(
+            }),
+        ]),
+        [CBT_UNIT_FIELD.damageTrackState]: packRows(
+            unit.damageTrackState,
+            row => [row.damageTrackId, row.hits, row.hitTimestamps],
+        ),
+        [CBT_UNIT_FIELD.ammoState]: packRows(
+            unit.ammoState,
+            row => tuple(row.componentId, row.shotsSpent, row.munitionOverride),
+        ),
+        [CBT_UNIT_FIELD.crewState]: packRows(unit.crewState, row => tuple(
             row.positionId,
             row.wounds,
             packCrewState(row),
             row.recoveryReadyTurn,
         )),
-        o: unit.conditions?.length ? unit.conditions : undefined,
-        z: packNonMekHeat(unit.heat),
-        v: packNonMekTurn(unit.turn),
-        tA: packDirectTargeting(unit.attackerTargeting),
-        y: packEquipmentRowOrder(unit.equipmentRowOrder),
-        p: packNonMekPending(unit.pendingCombat),
+        [CBT_UNIT_FIELD.conditions]: unit.conditions?.length ? unit.conditions : undefined,
+        [CBT_UNIT_FIELD.heat]: packNonMekHeat(unit.heat),
+        [CBT_UNIT_FIELD.nonMekTurn]: packNonMekTurn(unit.turn),
+        [CBT_UNIT_FIELD.equipmentRowOrder]: packEquipmentRowOrder(unit.equipmentRowOrder),
+        [CBT_UNIT_FIELD.c3Position]: c3Position === undefined
+            ? undefined
+            : [c3Position.x, c3Position.y],
+        [CBT_UNIT_FIELD.pendingCombat]: packNonMekPending(unit.pendingCombat),
     });
 }
 
 function unpackNonMekUnit(value: Record<string, unknown>, path: string): SerializedNonMekUnit {
-    exactKeys(value, ['k', 't', 'i', 'e', 'h', 'd', 'r', 'x', 'l', 'c', 'q', 'a', 'w', 'o', 'z', 'v', 'tA', 'y', 'p'], path);
-    const entity = unpackUnitUuid(value['e'], `${path}.e`);
+    exactKeys(value, CBT_NON_MEK_UNIT_FIELDS, path);
+    const entity = unpackUnitUuid(
+        value[CBT_UNIT_FIELD.catalogUuid],
+        `${path}.${CBT_UNIT_FIELD.catalogUuid}`,
+    );
     const baseline = defaultBaseline(entity, 1, DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID);
-    const deployment = unpackNonMekDeployment(value['d'], `${path}.d`);
+    const deployment = unpackNonMekDeployment(
+        value[CBT_UNIT_FIELD.deployment],
+        `${path}.${CBT_UNIT_FIELD.deployment}`,
+    );
     return {
         schemaVersion: NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
-        instanceId: unpackOpaqueId(text(value['i'], `${path}.i`), `${path}.i`),
+        instanceId: unpackOpaqueId(
+            text(value[CBT_UNIT_FIELD.instanceId], `${path}.${CBT_UNIT_FIELD.instanceId}`),
+            `${path}.${CBT_UNIT_FIELD.instanceId}`,
+        ),
         entity,
-        ...(value['h'] === undefined ? {} : {
-            sourceHashCanary: unpackSourceHashCanary(value['h'], `${path}.h`),
+        ...(value[CBT_UNIT_FIELD.sourceHashCanary] === undefined ? {} : {
+            sourceHashCanary: unpackSourceHashCanary(
+                value[CBT_UNIT_FIELD.sourceHashCanary],
+                `${path}.${CBT_UNIT_FIELD.sourceHashCanary}`,
+            ),
         }),
         baselineRefAtSave: baseline,
         deployment,
-        family: { kind: 'non-mek', entityType: unpackNonMekEntityType(value['t'], `${path}.t`) },
-        stateRevision: value['r'] === undefined ? 0 : integer(value['r'], `${path}.r`),
-        ...(value['x'] === undefined ? {} : { destroyed: truthyOne(value['x'], `${path}.x`) }),
-        ...(value['l'] === undefined ? {} : {
-            locationState: unpackRows(value['l'], `${path}.l`, (row, rowPath) => ({
+        family: {
+            kind: 'non-mek',
+            entityType: unpackNonMekEntityType(
+                value[CBT_UNIT_FIELD.entityType],
+                `${path}.${CBT_UNIT_FIELD.entityType}`,
+            ),
+        },
+        stateRevision: value[CBT_UNIT_FIELD.stateRevision] === undefined
+            ? 0
+            : integer(
+                value[CBT_UNIT_FIELD.stateRevision],
+                `${path}.${CBT_UNIT_FIELD.stateRevision}`,
+            ),
+        ...(value[CBT_UNIT_FIELD.destroyed] === undefined ? {} : {
+            destroyed: truthyOne(
+                value[CBT_UNIT_FIELD.destroyed],
+                `${path}.${CBT_UNIT_FIELD.destroyed}`,
+            ),
+        }),
+        ...(value[CBT_UNIT_FIELD.locationState] === undefined ? {} : {
+            locationState: unpackRows(
+                value[CBT_UNIT_FIELD.locationState],
+                `${path}.${CBT_UNIT_FIELD.locationState}`,
+                (row, rowPath) => ({
                 locationId: asLocationId(rowText(row, 0, rowPath)),
                 ...(rowInteger(row, 1, rowPath) === 0 ? {} : { internalDamage: rowInteger(row, 1, rowPath) }),
                 ...(row[2] === undefined ? {} : {
@@ -886,84 +1268,147 @@ function unpackNonMekUnit(value: Record<string, unknown>, path: string): Seriali
                         damage: rowInteger(armor, 1, armorPath),
                     })),
                 }),
-            })),
+                }),
+            ),
         }),
-        ...(value['c'] === undefined ? {} : {
-            componentState: unpackRows(value['c'], `${path}.c`, (row, rowPath) => {
+        ...(value[CBT_UNIT_FIELD.componentState] === undefined ? {} : {
+            componentState: unpackRows(
+                value[CBT_UNIT_FIELD.componentState],
+                `${path}.${CBT_UNIT_FIELD.componentState}`,
+                (row, rowPath) => {
                 const state = record(row[1], `${rowPath}[1]`);
-                exactKeys(state, ['s', 'm', 'j', 'e'], `${rowPath}[1]`);
-                const escalating = state['e'] === undefined
+                const nonMekFields = [
+                    CBT_COMPONENT_STATE_FIELD.status,
+                    CBT_COMPONENT_STATE_FIELD.mode,
+                    CBT_COMPONENT_STATE_FIELD.jammed,
+                    CBT_COMPONENT_STATE_FIELD.escalatingFailure,
+                ];
+                exactKeys(state, nonMekFields, `${rowPath}[1]`);
+                const escalating = state[CBT_COMPONENT_STATE_FIELD.escalatingFailure] === undefined
                     ? undefined
-                    : array(state['e'], `${rowPath}[1].e`);
+                    : array(
+                        state[CBT_COMPONENT_STATE_FIELD.escalatingFailure],
+                        `${rowPath}[1].${CBT_COMPONENT_STATE_FIELD.escalatingFailure}`,
+                    );
                 return {
                     componentId: asComponentId(rowText(row, 0, rowPath)),
-                    ...(state['s'] === undefined ? {} : {
-                        status: unpackUnavailableEquipmentStatus(state['s'], `${rowPath}[1].s`),
+                    ...(state[CBT_COMPONENT_STATE_FIELD.status] === undefined ? {} : {
+                        status: unpackUnavailableEquipmentStatus(
+                            state[CBT_COMPONENT_STATE_FIELD.status],
+                            `${rowPath}[1].${CBT_COMPONENT_STATE_FIELD.status}`,
+                        ),
                     }),
-                    ...(state['m'] === undefined ? {} : { mode: text(state['m'], `${rowPath}[1].m`) }),
-                    ...(state['j'] === undefined ? {} : { jammed: truthyOne(state['j'], `${rowPath}[1].j`) }),
+                    ...(state[CBT_COMPONENT_STATE_FIELD.mode] === undefined ? {} : {
+                        mode: text(
+                            state[CBT_COMPONENT_STATE_FIELD.mode],
+                            `${rowPath}[1].${CBT_COMPONENT_STATE_FIELD.mode}`,
+                        ),
+                    }),
+                    ...(state[CBT_COMPONENT_STATE_FIELD.jammed] === undefined ? {} : {
+                        jammed: truthyOne(
+                            state[CBT_COMPONENT_STATE_FIELD.jammed],
+                            `${rowPath}[1].${CBT_COMPONENT_STATE_FIELD.jammed}`,
+                        ),
+                    }),
                     ...(escalating === undefined ? {} : {
                         escalatingFailure: {
                             sequence: rowInteger(
                                 escalating,
                                 0,
-                                `${rowPath}[1].e`,
+                                `${rowPath}[1].${CBT_COMPONENT_STATE_FIELD.escalatingFailure}`,
                             ),
-                            ...(rowBit(escalating, 1, `${rowPath}[1].e`)
+                            ...(rowBit(
+                                escalating,
+                                1,
+                                `${rowPath}[1].${CBT_COMPONENT_STATE_FIELD.escalatingFailure}`,
+                            )
                                 ? { active: true as const }
                                 : {}),
                         },
                     }),
                 };
-            }),
+                },
+            ),
         }),
-        ...(value['q'] === undefined ? {} : {
-            damageTrackState: unpackRows(value['q'], `${path}.q`, (row, rowPath) => ({
+        ...(value[CBT_UNIT_FIELD.damageTrackState] === undefined ? {} : {
+            damageTrackState: unpackRows(
+                value[CBT_UNIT_FIELD.damageTrackState],
+                `${path}.${CBT_UNIT_FIELD.damageTrackState}`,
+                (row, rowPath) => ({
                 damageTrackId: asSystemDamageTrackId(rowText(row, 0, rowPath)),
                 hits: rowInteger(row, 1, rowPath),
                 hitTimestamps: unpackIntegerArray(row[2], `${rowPath}[2]`),
-            })),
+                }),
+            ),
         }),
-        ...(value['a'] === undefined ? {} : {
-            ammoState: unpackRows(value['a'], `${path}.a`, (row, rowPath) => ({
+        ...(value[CBT_UNIT_FIELD.ammoState] === undefined ? {} : {
+            ammoState: unpackRows(
+                value[CBT_UNIT_FIELD.ammoState],
+                `${path}.${CBT_UNIT_FIELD.ammoState}`,
+                (row, rowPath) => ({
                 componentId: asComponentId(rowText(row, 0, rowPath)),
                 shotsSpent: rowInteger(row, 1, rowPath),
                 ...(row[2] === undefined ? {} : { munitionOverride: rowText(row, 2, rowPath) }),
-            })),
+                }),
+            ),
         }),
-        ...(value['w'] === undefined ? {} : {
-            crewState: unpackRows(value['w'], `${path}.w`, unpackNonMekCrewState),
+        ...(value[CBT_UNIT_FIELD.crewState] === undefined ? {} : {
+            crewState: unpackRows(
+                value[CBT_UNIT_FIELD.crewState],
+                `${path}.${CBT_UNIT_FIELD.crewState}`,
+                unpackNonMekCrewState,
+            ),
         }),
-        ...(value['o'] === undefined ? {} : {
-            conditions: unpackUnitConditions(value['o'], `${path}.o`),
+        ...(value[CBT_UNIT_FIELD.conditions] === undefined ? {} : {
+            conditions: unpackUnitConditions(
+                value[CBT_UNIT_FIELD.conditions],
+                `${path}.${CBT_UNIT_FIELD.conditions}`,
+            ),
         }),
-        ...(value['z'] === undefined ? {} : { heat: unpackNonMekHeat(value['z'], `${path}.z`) }),
-        ...(value['v'] === undefined ? {} : { turn: unpackNonMekTurn(value['v'], `${path}.v`) }),
-        attackerTargeting: unpackDirectTargeting(value['tA'], `${path}.tA`),
-        ...(value['y'] === undefined ? {} : {
-            equipmentRowOrder: unpackEquipmentRowOrder(value['y'], `${path}.y`),
+        ...(value[CBT_UNIT_FIELD.heat] === undefined ? {} : {
+            heat: unpackNonMekHeat(
+                value[CBT_UNIT_FIELD.heat],
+                `${path}.${CBT_UNIT_FIELD.heat}`,
+            ),
         }),
-        ...(value['p'] === undefined ? {} : { pendingCombat: unpackNonMekPending(value['p'], `${path}.p`) }),
+        ...(value[CBT_UNIT_FIELD.nonMekTurn] === undefined ? {} : {
+            turn: unpackNonMekTurn(
+                value[CBT_UNIT_FIELD.nonMekTurn],
+                `${path}.${CBT_UNIT_FIELD.nonMekTurn}`,
+            ),
+        }),
+        ...(value[CBT_UNIT_FIELD.equipmentRowOrder] === undefined ? {} : {
+            equipmentRowOrder: unpackEquipmentRowOrder(
+                value[CBT_UNIT_FIELD.equipmentRowOrder],
+                `${path}.${CBT_UNIT_FIELD.equipmentRowOrder}`,
+            ),
+        }),
+        ...(value[CBT_UNIT_FIELD.pendingCombat] === undefined ? {} : {
+            pendingCombat: unpackNonMekPending(
+                value[CBT_UNIT_FIELD.pendingCombat],
+                `${path}.${CBT_UNIT_FIELD.pendingCombat}`,
+            ),
+        }),
     };
 }
 
 function packEquipmentRowOrder(value: EquipmentRowOrderState | undefined): unknown {
     if (value === undefined) return undefined;
     return compactObject({
-        r: value.ranged,
-        p: value.physical,
+        [CBT_EQUIPMENT_ROW_ORDER_FIELD.ranged]: value.ranged,
+        [CBT_EQUIPMENT_ROW_ORDER_FIELD.physical]: value.physical,
     });
 }
 
 function unpackEquipmentRowOrder(value: unknown, path: string): EquipmentRowOrderState {
     const order = record(value, path);
-    exactKeys(order, ['r', 'p'], path);
-    const read = (key: 'r' | 'p'): readonly number[] | undefined => order[key] === undefined
+    exactKeys(order, Object.values(CBT_EQUIPMENT_ROW_ORDER_FIELD), path);
+    const read = (key: typeof CBT_EQUIPMENT_ROW_ORDER_FIELD[keyof typeof CBT_EQUIPMENT_ROW_ORDER_FIELD]): readonly number[] | undefined => order[key] === undefined
         ? undefined
         : Object.freeze(array(order[key], `${path}.${key}`).map((entry, index) =>
             integer(entry, `${path}.${key}[${index}]`)));
-    const ranged = read('r');
-    const physical = read('p');
+    const ranged = read(CBT_EQUIPMENT_ROW_ORDER_FIELD.ranged);
+    const physical = read(CBT_EQUIPMENT_ROW_ORDER_FIELD.physical);
     return Object.freeze({
         ...(ranged === undefined ? {} : { ranged }),
         ...(physical === undefined ? {} : { physical }),
@@ -1178,8 +1623,10 @@ function packDeployment(values: { readonly id: string; readonly initialHeat?: nu
         && positions.every(position => position.length === 1);
     if (pristine) return undefined;
     const metadata = compactObject({
-        i: values.id === DEFAULT_FORCE_DEPLOYMENT_ID ? undefined : values.id,
-        h: values.initialHeat,
+        [CBT_DEPLOYMENT_METADATA_FIELD.id]: values.id === DEFAULT_FORCE_DEPLOYMENT_ID
+            ? undefined
+            : values.id,
+        [CBT_DEPLOYMENT_METADATA_FIELD.initialHeat]: values.initialHeat,
     });
     return tuple(
         Object.freeze(positions),
@@ -1217,10 +1664,20 @@ function unpackDeploymentValues(value: unknown, path: string) {
     const row = array(value, path);
     if (row.length < 1 || row.length > 2) throw new Error(`${path} is not a compact deployment`);
     const metadata = row[1] === undefined ? {} : record(row[1], `${path}[1]`);
-    exactKeys(metadata, ['i', 'h'], `${path}[1]`);
+    exactKeys(metadata, Object.values(CBT_DEPLOYMENT_METADATA_FIELD), `${path}[1]`);
     return {
-        id: metadata['i'] === undefined ? DEFAULT_FORCE_DEPLOYMENT_ID : text(metadata['i'], `${path}[1].i`),
-        ...(metadata['h'] === undefined ? {} : { initialHeat: integer(metadata['h'], `${path}[1].h`) }),
+        id: metadata[CBT_DEPLOYMENT_METADATA_FIELD.id] === undefined
+            ? DEFAULT_FORCE_DEPLOYMENT_ID
+            : text(
+                metadata[CBT_DEPLOYMENT_METADATA_FIELD.id],
+                `${path}[1].${CBT_DEPLOYMENT_METADATA_FIELD.id}`,
+            ),
+        ...(metadata[CBT_DEPLOYMENT_METADATA_FIELD.initialHeat] === undefined ? {} : {
+            initialHeat: integer(
+                metadata[CBT_DEPLOYMENT_METADATA_FIELD.initialHeat],
+                `${path}[1].${CBT_DEPLOYMENT_METADATA_FIELD.initialHeat}`,
+            ),
+        }),
         crewAssignment: unpackCrewAssignment(row[0], `${path}[0]`),
     };
 }
@@ -1267,81 +1724,171 @@ function unpackCrewAssignment(value: unknown, path: string) {
 
 function packComponentState(row: NonNullable<SerializedCBTUnitV2['componentState']>[number]): unknown {
     return [row.target, compactObject({
-        s: row.statusOverride,
-        m: row.mode,
-        j: row.jammed ? 1 : undefined,
-        e: row.escalatingFailure && [row.escalatingFailure.sequence, row.escalatingFailure.active ? 1 : 0],
-        p: row.ppcCapacitor && compactObject({
-            w: row.ppcCapacitor.weaponId,
-            c: row.ppcCapacitor.chargeState,
-            f: row.ppcCapacitor.firedThisTurn ? 1 : undefined,
+        [CBT_COMPONENT_STATE_FIELD.status]: row.statusOverride,
+        [CBT_COMPONENT_STATE_FIELD.mode]: row.mode,
+        [CBT_COMPONENT_STATE_FIELD.jammed]: row.jammed ? 1 : undefined,
+        [CBT_COMPONENT_STATE_FIELD.escalatingFailure]: row.escalatingFailure
+            && [row.escalatingFailure.sequence, row.escalatingFailure.active ? 1 : 0],
+        [CBT_COMPONENT_STATE_FIELD.ppcCapacitor]: row.ppcCapacitor && compactObject({
+            [CBT_PPC_CAPACITOR_FIELD.weaponId]: row.ppcCapacitor.weaponId,
+            [CBT_PPC_CAPACITOR_FIELD.chargeState]: row.ppcCapacitor.chargeState,
+            [CBT_PPC_CAPACITOR_FIELD.firedThisTurn]: row.ppcCapacitor.firedThisTurn
+                ? 1
+                : undefined,
         }),
-        b: row.bombastLaser && compactObject({
-            c: row.bombastLaser.chargeState,
-            f: row.bombastLaser.firedThisTurn ? 1 : undefined,
+        [CBT_COMPONENT_STATE_FIELD.bombastLaser]: row.bombastLaser && compactObject({
+            [CBT_BOMBAST_LASER_FIELD.chargeState]: row.bombastLaser.chargeState,
+            [CBT_BOMBAST_LASER_FIELD.firedThisTurn]: row.bombastLaser.firedThisTurn
+                ? 1
+                : undefined,
         }),
-        c: row.c3EmergencyMaster && compactObject({
-            m: row.c3EmergencyMaster.mode,
-            t: row.c3EmergencyMaster.operatingTurns,
+        [CBT_COMPONENT_STATE_FIELD.c3EmergencyMaster]: row.c3EmergencyMaster && compactObject({
+            [CBT_C3_EMERGENCY_MASTER_FIELD.mode]: row.c3EmergencyMaster.mode,
+            [CBT_C3_EMERGENCY_MASTER_FIELD.operatingTurns]: row.c3EmergencyMaster.operatingTurns,
         }),
-        g: row.gaussPower,
-        h: row.shieldDamage && [row.shieldDamage.absorptionDamage, row.shieldDamage.capacityDamage],
-        r: row.modularArmorDamage,
+        [CBT_COMPONENT_STATE_FIELD.gaussPower]: row.gaussPower,
+        [CBT_COMPONENT_STATE_FIELD.shieldDamage]: row.shieldDamage
+            && [row.shieldDamage.absorptionDamage, row.shieldDamage.capacityDamage],
+        [CBT_COMPONENT_STATE_FIELD.modularArmorDamage]: row.modularArmorDamage,
     })];
 }
 
 function unpackComponentState(row: readonly unknown[], path: string): NonNullable<SerializedCBTUnitV2['componentState']>[number] {
     const state = record(row[1], `${path}[1]`);
-    exactKeys(state, ['s', 'm', 'j', 'e', 'p', 'b', 'c', 'g', 'h', 'r'], `${path}[1]`);
-    const escalating = state['e'] === undefined ? undefined : array(state['e'], `${path}[1].e`);
-    const ppc = state['p'] === undefined ? undefined : record(state['p'], `${path}[1].p`);
-    const bombast = state['b'] === undefined ? undefined : record(state['b'], `${path}[1].b`);
-    const emergency = state['c'] === undefined ? undefined : record(state['c'], `${path}[1].c`);
-    const shield = state['h'] === undefined ? undefined : array(state['h'], `${path}[1].h`);
-    if (ppc !== undefined) exactKeys(ppc, ['w', 'c', 'f'], `${path}[1].p`);
-    if (bombast !== undefined) exactKeys(bombast, ['c', 'f'], `${path}[1].b`);
-    if (emergency !== undefined) exactKeys(emergency, ['m', 't'], `${path}[1].c`);
+    exactKeys(state, Object.values(CBT_COMPONENT_STATE_FIELD), `${path}[1]`);
+    const escalating = state[CBT_COMPONENT_STATE_FIELD.escalatingFailure] === undefined
+        ? undefined
+        : array(
+            state[CBT_COMPONENT_STATE_FIELD.escalatingFailure],
+            `${path}[1].${CBT_COMPONENT_STATE_FIELD.escalatingFailure}`,
+        );
+    const ppc = state[CBT_COMPONENT_STATE_FIELD.ppcCapacitor] === undefined
+        ? undefined
+        : record(
+            state[CBT_COMPONENT_STATE_FIELD.ppcCapacitor],
+            `${path}[1].${CBT_COMPONENT_STATE_FIELD.ppcCapacitor}`,
+        );
+    const bombast = state[CBT_COMPONENT_STATE_FIELD.bombastLaser] === undefined
+        ? undefined
+        : record(
+            state[CBT_COMPONENT_STATE_FIELD.bombastLaser],
+            `${path}[1].${CBT_COMPONENT_STATE_FIELD.bombastLaser}`,
+        );
+    const emergency = state[CBT_COMPONENT_STATE_FIELD.c3EmergencyMaster] === undefined
+        ? undefined
+        : record(
+            state[CBT_COMPONENT_STATE_FIELD.c3EmergencyMaster],
+            `${path}[1].${CBT_COMPONENT_STATE_FIELD.c3EmergencyMaster}`,
+        );
+    const shield = state[CBT_COMPONENT_STATE_FIELD.shieldDamage] === undefined
+        ? undefined
+        : array(
+            state[CBT_COMPONENT_STATE_FIELD.shieldDamage],
+            `${path}[1].${CBT_COMPONENT_STATE_FIELD.shieldDamage}`,
+        );
+    if (ppc !== undefined) {
+        exactKeys(ppc, Object.values(CBT_PPC_CAPACITOR_FIELD), `${path}[1].${CBT_COMPONENT_STATE_FIELD.ppcCapacitor}`);
+    }
+    if (bombast !== undefined) {
+        exactKeys(
+            bombast,
+            Object.values(CBT_BOMBAST_LASER_FIELD),
+            `${path}[1].${CBT_COMPONENT_STATE_FIELD.bombastLaser}`,
+        );
+    }
+    if (emergency !== undefined) {
+        exactKeys(
+            emergency,
+            Object.values(CBT_C3_EMERGENCY_MASTER_FIELD),
+            `${path}[1].${CBT_COMPONENT_STATE_FIELD.c3EmergencyMaster}`,
+        );
+    }
 
-    const statusOverride = optionalUnavailableEquipmentStatus(state['s'], `${path}[1].s`);
+    const statusOverride = optionalUnavailableEquipmentStatus(
+        state[CBT_COMPONENT_STATE_FIELD.status],
+        `${path}[1].${CBT_COMPONENT_STATE_FIELD.status}`,
+    );
     const chargeState = ppc === undefined
         ? undefined
-        : optionalPpcChargeState(ppc['c'], `${path}[1].p.c`);
+        : optionalPpcChargeState(
+            ppc[CBT_PPC_CAPACITOR_FIELD.chargeState],
+            `${path}[1].${CBT_COMPONENT_STATE_FIELD.ppcCapacitor}.${CBT_PPC_CAPACITOR_FIELD.chargeState}`,
+        );
     const bombastChargeState = bombast === undefined
         ? undefined
-        : optionalBombastChargeState(bombast['c'], `${path}[1].b.c`);
+        : optionalBombastChargeState(
+            bombast[CBT_BOMBAST_LASER_FIELD.chargeState],
+            `${path}[1].${CBT_COMPONENT_STATE_FIELD.bombastLaser}.${CBT_BOMBAST_LASER_FIELD.chargeState}`,
+        );
     const emergencyMode = emergency === undefined
         ? undefined
-        : optionalC3EmergencyMasterMode(emergency['m'], `${path}[1].c.m`);
+        : optionalC3EmergencyMasterMode(
+            emergency[CBT_C3_EMERGENCY_MASTER_FIELD.mode],
+            `${path}[1].${CBT_COMPONENT_STATE_FIELD.c3EmergencyMaster}.${CBT_C3_EMERGENCY_MASTER_FIELD.mode}`,
+        );
     const operatingTurns = emergency === undefined
         ? undefined
-        : optionalC3EmergencyMasterOperatingTurns(emergency['t'], `${path}[1].c.t`);
-    const gaussPower = optionalSparseMekGaussPower(state['g'], `${path}[1].g`);
+        : optionalC3EmergencyMasterOperatingTurns(
+            emergency[CBT_C3_EMERGENCY_MASTER_FIELD.operatingTurns],
+            `${path}[1].${CBT_COMPONENT_STATE_FIELD.c3EmergencyMaster}.${CBT_C3_EMERGENCY_MASTER_FIELD.operatingTurns}`,
+        );
+    const gaussPower = optionalSparseMekGaussPower(
+        state[CBT_COMPONENT_STATE_FIELD.gaussPower],
+        `${path}[1].${CBT_COMPONENT_STATE_FIELD.gaussPower}`,
+    );
 
     return {
         target: asSavedTargetRef(rowText(row, 0, path)),
         ...(statusOverride === undefined ? {} : { statusOverride }),
-        ...(state['m'] === undefined ? {} : { mode: text(state['m'], `${path}[1].m`) }),
-        ...(state['j'] === undefined ? {} : { jammed: truthyOne(state['j'], `${path}[1].j`) }),
+        ...(state[CBT_COMPONENT_STATE_FIELD.mode] === undefined ? {} : {
+            mode: text(
+                state[CBT_COMPONENT_STATE_FIELD.mode],
+                `${path}[1].${CBT_COMPONENT_STATE_FIELD.mode}`,
+            ),
+        }),
+        ...(state[CBT_COMPONENT_STATE_FIELD.jammed] === undefined ? {} : {
+            jammed: truthyOne(
+                state[CBT_COMPONENT_STATE_FIELD.jammed],
+                `${path}[1].${CBT_COMPONENT_STATE_FIELD.jammed}`,
+            ),
+        }),
         ...(escalating === undefined ? {} : {
             escalatingFailure: {
-                sequence: rowInteger(escalating, 0, `${path}[1].e`),
-                ...(rowBit(escalating, 1, `${path}[1].e`) ? { active: true as const } : {}),
+                sequence: rowInteger(
+                    escalating,
+                    0,
+                    `${path}[1].${CBT_COMPONENT_STATE_FIELD.escalatingFailure}`,
+                ),
+                ...(rowBit(
+                    escalating,
+                    1,
+                    `${path}[1].${CBT_COMPONENT_STATE_FIELD.escalatingFailure}`,
+                ) ? { active: true as const } : {}),
             },
         }),
         ...(ppc === undefined ? {} : {
             ppcCapacitor: {
-                weaponId: asComponentId(text(ppc['w'], `${path}[1].p.w`)),
+                weaponId: asComponentId(text(
+                    ppc[CBT_PPC_CAPACITOR_FIELD.weaponId],
+                    `${path}[1].${CBT_COMPONENT_STATE_FIELD.ppcCapacitor}.${CBT_PPC_CAPACITOR_FIELD.weaponId}`,
+                )),
                 ...(chargeState === undefined ? {} : { chargeState }),
-                ...(ppc['f'] === undefined ? {} : {
-                    firedThisTurn: truthyOne(ppc['f'], `${path}[1].p.f`),
+                ...(ppc[CBT_PPC_CAPACITOR_FIELD.firedThisTurn] === undefined ? {} : {
+                    firedThisTurn: truthyOne(
+                        ppc[CBT_PPC_CAPACITOR_FIELD.firedThisTurn],
+                        `${path}[1].${CBT_COMPONENT_STATE_FIELD.ppcCapacitor}.${CBT_PPC_CAPACITOR_FIELD.firedThisTurn}`,
+                    ),
                 }),
             },
         }),
         ...(bombast === undefined ? {} : {
             bombastLaser: {
                 ...(bombastChargeState === undefined ? {} : { chargeState: bombastChargeState }),
-                ...(bombast['f'] === undefined ? {} : {
-                    firedThisTurn: truthyOne(bombast['f'], `${path}[1].b.f`),
+                ...(bombast[CBT_BOMBAST_LASER_FIELD.firedThisTurn] === undefined ? {} : {
+                    firedThisTurn: truthyOne(
+                        bombast[CBT_BOMBAST_LASER_FIELD.firedThisTurn],
+                        `${path}[1].${CBT_COMPONENT_STATE_FIELD.bombastLaser}.${CBT_BOMBAST_LASER_FIELD.firedThisTurn}`,
+                    ),
                 }),
             },
         }),
@@ -1354,28 +1901,44 @@ function unpackComponentState(row: readonly unknown[], path: string): NonNullabl
         ...(gaussPower === undefined ? {} : { gaussPower }),
         ...(shield === undefined ? {} : {
             shieldDamage: {
-                absorptionDamage: rowInteger(shield, 0, `${path}[1].h`),
-                capacityDamage: rowInteger(shield, 1, `${path}[1].h`),
+                absorptionDamage: rowInteger(
+                    shield,
+                    0,
+                    `${path}[1].${CBT_COMPONENT_STATE_FIELD.shieldDamage}`,
+                ),
+                capacityDamage: rowInteger(
+                    shield,
+                    1,
+                    `${path}[1].${CBT_COMPONENT_STATE_FIELD.shieldDamage}`,
+                ),
             },
         }),
-        ...(state['r'] === undefined ? {} : {
-            modularArmorDamage: integer(state['r'], `${path}[1].r`),
+        ...(state[CBT_COMPONENT_STATE_FIELD.modularArmorDamage] === undefined ? {} : {
+            modularArmorDamage: integer(
+                state[CBT_COMPONENT_STATE_FIELD.modularArmorDamage],
+                `${path}[1].${CBT_COMPONENT_STATE_FIELD.modularArmorDamage}`,
+            ),
         }),
     };
 }
 
 function packHeat(value: SerializedCBTUnitV2['heat']): unknown {
     if (value === undefined) return undefined;
-    return compactObject({ c: value.heat, p: value.previous, o: value.pendingOverride, s: value.heatsinksOff });
+    return compactObject({
+        [CBT_HEAT_FIELD.current]: value.heat,
+        [CBT_HEAT_FIELD.previous]: value.previous,
+        [CBT_HEAT_FIELD.pendingOverride]: value.pendingOverride,
+        [CBT_HEAT_FIELD.heatsinksOff]: value.heatsinksOff,
+    });
 }
 
 function packNonMekHeat(value: SerializedNonMekUnit['heat']): unknown {
     if (value === undefined) return undefined;
     return compactObject({
-        c: value.current || undefined,
-        p: value.previous || undefined,
-        o: value.pendingOverride,
-        s: value.heatsinksOff || undefined,
+        [CBT_HEAT_FIELD.current]: value.current || undefined,
+        [CBT_HEAT_FIELD.previous]: value.previous || undefined,
+        [CBT_HEAT_FIELD.pendingOverride]: value.pendingOverride,
+        [CBT_HEAT_FIELD.heatsinksOff]: value.heatsinksOff || undefined,
     });
 }
 
@@ -1384,47 +1947,78 @@ function unpackNonMekHeat(
     path: string,
 ): NonNullable<SerializedNonMekUnit['heat']> {
     const heat = record(value, path);
-    exactKeys(heat, ['c', 'p', 'o', 's'], path);
+    exactKeys(heat, Object.values(CBT_HEAT_FIELD), path);
     return {
-        current: optionalInteger(heat['c'], `${path}.c`) ?? 0,
-        previous: optionalInteger(heat['p'], `${path}.p`) ?? 0,
-        ...(heat['o'] === undefined
+        current: optionalInteger(
+            heat[CBT_HEAT_FIELD.current],
+            `${path}.${CBT_HEAT_FIELD.current}`,
+        ) ?? 0,
+        previous: optionalInteger(
+            heat[CBT_HEAT_FIELD.previous],
+            `${path}.${CBT_HEAT_FIELD.previous}`,
+        ) ?? 0,
+        ...(heat[CBT_HEAT_FIELD.pendingOverride] === undefined
             ? {}
-            : { pendingOverride: integer(heat['o'], `${path}.o`) }),
-        heatsinksOff: optionalInteger(heat['s'], `${path}.s`) ?? 0,
+            : {
+                pendingOverride: integer(
+                    heat[CBT_HEAT_FIELD.pendingOverride],
+                    `${path}.${CBT_HEAT_FIELD.pendingOverride}`,
+                ),
+            }),
+        heatsinksOff: optionalInteger(
+            heat[CBT_HEAT_FIELD.heatsinksOff],
+            `${path}.${CBT_HEAT_FIELD.heatsinksOff}`,
+        ) ?? 0,
     };
 }
 
 function unpackHeat(value: unknown, path: string): NonNullable<SerializedCBTUnitV2['heat']> {
     const heat = record(value, path);
-    exactKeys(heat, ['c', 'p', 'o', 's'], path);
+    exactKeys(heat, Object.values(CBT_HEAT_FIELD), path);
     return {
-        heat: integer(heat['c'], `${path}.c`),
-        ...(heat['p'] === undefined ? {} : { previous: integer(heat['p'], `${path}.p`) }),
-        ...(heat['o'] === undefined ? {} : {
-            pendingOverride: integer(heat['o'], `${path}.o`),
+        heat: integer(heat[CBT_HEAT_FIELD.current], `${path}.${CBT_HEAT_FIELD.current}`),
+        ...(heat[CBT_HEAT_FIELD.previous] === undefined ? {} : {
+            previous: integer(
+                heat[CBT_HEAT_FIELD.previous],
+                `${path}.${CBT_HEAT_FIELD.previous}`,
+            ),
         }),
-        ...(heat['s'] === undefined ? {} : { heatsinksOff: integer(heat['s'], `${path}.s`) }),
+        ...(heat[CBT_HEAT_FIELD.pendingOverride] === undefined ? {} : {
+            pendingOverride: integer(
+                heat[CBT_HEAT_FIELD.pendingOverride],
+                `${path}.${CBT_HEAT_FIELD.pendingOverride}`,
+            ),
+        }),
+        ...(heat[CBT_HEAT_FIELD.heatsinksOff] === undefined ? {} : {
+            heatsinksOff: integer(
+                heat[CBT_HEAT_FIELD.heatsinksOff],
+                `${path}.${CBT_HEAT_FIELD.heatsinksOff}`,
+            ),
+        }),
     };
 }
 
 function packMovement(value: SerializedMekMovementPsrStateV2): unknown {
     const compact = compactObject({
-        m: value.movement,
-        a: value.action,
-        s: value.standAttempts,
-        c: value.carefulStand ? 1 : undefined,
-        d: value.damageThisPhase,
-        k: value.checks?.map(check => tuple(
+        [CBT_MOVEMENT_FIELD.movement]: value.movement,
+        [CBT_MOVEMENT_FIELD.action]: value.action,
+        [CBT_MOVEMENT_FIELD.standAttempts]: value.standAttempts,
+        [CBT_MOVEMENT_FIELD.carefulStand]: value.carefulStand ? 1 : undefined,
+        [CBT_MOVEMENT_FIELD.damageThisPhase]: value.damageThisPhase,
+        [CBT_MOVEMENT_FIELD.checks]: value.checks?.map(check => tuple(
             check.checkId,
             compactObject({
-                s: check.source.sourceKind,
-                t: check.source.triggerKind,
-                w: check.source.witness,
-                c: check.source.criticalSlotIds.length ? check.source.criticalSlotIds : undefined,
-                l: check.source.locationIds.length ? check.source.locationIds : undefined,
-                b: check.source.baseTarget,
-                m: check.source.triggerModifier,
+                [CBT_MOVEMENT_SOURCE_FIELD.sourceKind]: check.source.sourceKind,
+                [CBT_MOVEMENT_SOURCE_FIELD.triggerKind]: check.source.triggerKind,
+                [CBT_MOVEMENT_SOURCE_FIELD.witness]: check.source.witness,
+                [CBT_MOVEMENT_SOURCE_FIELD.criticalSlotIds]: check.source.criticalSlotIds.length
+                    ? check.source.criticalSlotIds
+                    : undefined,
+                [CBT_MOVEMENT_SOURCE_FIELD.locationIds]: check.source.locationIds.length
+                    ? check.source.locationIds
+                    : undefined,
+                [CBT_MOVEMENT_SOURCE_FIELD.baseTarget]: check.source.baseTarget,
+                [CBT_MOVEMENT_SOURCE_FIELD.triggerModifier]: check.source.triggerModifier,
             }),
             check.producingRevision,
             check.ordinal,
@@ -1433,7 +2027,7 @@ function packMovement(value: SerializedMekMovementPsrStateV2): unknown {
             check.status,
             check.resolution && [check.resolution.dice, check.resolution.total],
         )),
-        f: value.automaticFalls,
+        [CBT_MOVEMENT_FIELD.automaticFalls]: value.automaticFalls,
     });
     return Object.keys(compact).length === 0 ? undefined : compact;
 }
@@ -1441,27 +2035,66 @@ function packMovement(value: SerializedMekMovementPsrStateV2): unknown {
 function unpackMovement(value: unknown, path: string): SerializedMekMovementPsrStateV2 {
     if (value === undefined) return { schemaVersion: 2 };
     const movement = record(value, path);
-    exactKeys(movement, ['m', 'a', 's', 'c', 'd', 'k', 'f'], path);
+    exactKeys(movement, Object.values(CBT_MOVEMENT_FIELD), path);
     const expanded = compactObject({
         schemaVersion: 2,
-        movement: movement['m'] === undefined ? undefined : clone(movement['m']),
-        action: movement['a'] === undefined ? undefined : clone(movement['a']),
-        standAttempts: optionalInteger(movement['s'], `${path}.s`),
-        carefulStand: movement['c'] === undefined ? undefined : truthyOne(movement['c'], `${path}.c`),
-        damageThisPhase: optionalInteger(movement['d'], `${path}.d`),
-        checks: movement['k'] === undefined ? undefined : unpackRows(movement['k'], `${path}.k`, (row, rowPath) => {
+        movement: movement[CBT_MOVEMENT_FIELD.movement] === undefined
+            ? undefined
+            : clone(movement[CBT_MOVEMENT_FIELD.movement]),
+        action: movement[CBT_MOVEMENT_FIELD.action] === undefined
+            ? undefined
+            : clone(movement[CBT_MOVEMENT_FIELD.action]),
+        standAttempts: optionalInteger(
+            movement[CBT_MOVEMENT_FIELD.standAttempts],
+            `${path}.${CBT_MOVEMENT_FIELD.standAttempts}`,
+        ),
+        carefulStand: movement[CBT_MOVEMENT_FIELD.carefulStand] === undefined
+            ? undefined
+            : truthyOne(
+                movement[CBT_MOVEMENT_FIELD.carefulStand],
+                `${path}.${CBT_MOVEMENT_FIELD.carefulStand}`,
+            ),
+        damageThisPhase: optionalInteger(
+            movement[CBT_MOVEMENT_FIELD.damageThisPhase],
+            `${path}.${CBT_MOVEMENT_FIELD.damageThisPhase}`,
+        ),
+        checks: movement[CBT_MOVEMENT_FIELD.checks] === undefined ? undefined : unpackRows(
+            movement[CBT_MOVEMENT_FIELD.checks],
+            `${path}.${CBT_MOVEMENT_FIELD.checks}`,
+            (row, rowPath) => {
             const source = record(row[1], `${rowPath}[1]`);
             const resolution = row[7] === undefined ? undefined : array(row[7], `${rowPath}[7]`);
             return compactObject({
                 checkId: rowText(row, 0, rowPath),
                 source: {
-                    sourceKind: text(source['s'], `${rowPath}[1].s`),
-                    triggerKind: text(source['t'], `${rowPath}[1].t`),
-                    witness: text(source['w'], `${rowPath}[1].w`),
-                    criticalSlotIds: unpackTextArray(source['c'] ?? [], `${rowPath}[1].c`),
-                    locationIds: unpackTextArray(source['l'] ?? [], `${rowPath}[1].l`),
-                    baseTarget: integer(source['b'], `${rowPath}[1].b`),
-                    triggerModifier: integer(source['m'], `${rowPath}[1].m`),
+                    sourceKind: text(
+                        source[CBT_MOVEMENT_SOURCE_FIELD.sourceKind],
+                        `${rowPath}[1].${CBT_MOVEMENT_SOURCE_FIELD.sourceKind}`,
+                    ),
+                    triggerKind: text(
+                        source[CBT_MOVEMENT_SOURCE_FIELD.triggerKind],
+                        `${rowPath}[1].${CBT_MOVEMENT_SOURCE_FIELD.triggerKind}`,
+                    ),
+                    witness: text(
+                        source[CBT_MOVEMENT_SOURCE_FIELD.witness],
+                        `${rowPath}[1].${CBT_MOVEMENT_SOURCE_FIELD.witness}`,
+                    ),
+                    criticalSlotIds: unpackTextArray(
+                        source[CBT_MOVEMENT_SOURCE_FIELD.criticalSlotIds] ?? [],
+                        `${rowPath}[1].${CBT_MOVEMENT_SOURCE_FIELD.criticalSlotIds}`,
+                    ),
+                    locationIds: unpackTextArray(
+                        source[CBT_MOVEMENT_SOURCE_FIELD.locationIds] ?? [],
+                        `${rowPath}[1].${CBT_MOVEMENT_SOURCE_FIELD.locationIds}`,
+                    ),
+                    baseTarget: integer(
+                        source[CBT_MOVEMENT_SOURCE_FIELD.baseTarget],
+                        `${rowPath}[1].${CBT_MOVEMENT_SOURCE_FIELD.baseTarget}`,
+                    ),
+                    triggerModifier: integer(
+                        source[CBT_MOVEMENT_SOURCE_FIELD.triggerModifier],
+                        `${rowPath}[1].${CBT_MOVEMENT_SOURCE_FIELD.triggerModifier}`,
+                    ),
                 },
                 producingRevision: rowInteger(row, 2, rowPath),
                 ordinal: rowInteger(row, 3, rowPath),
@@ -1472,24 +2105,28 @@ function unpackMovement(value: unknown, path: string): SerializedMekMovementPsrS
                     dice: clone(resolution[0]), total: rowInteger(resolution, 1, `${rowPath}[7]`),
                 },
             });
-        }),
-        automaticFalls: movement['f'] === undefined ? undefined : clone(movement['f']),
+            },
+        ),
+        automaticFalls: movement[CBT_MOVEMENT_FIELD.automaticFalls] === undefined
+            ? undefined
+            : clone(movement[CBT_MOVEMENT_FIELD.automaticFalls]),
     });
     return serializeMekMovementPsrStateV2(deserializeMekMovementPsrStateV2(expanded));
 }
 
 function packTurn(value: SerializedMekTurnStateV2): unknown {
     const compact = compactObject({
-        n: value.turnCounter,
-        a: value.airborne,
-        c: value.cover,
-        w: value.weaponsHeat,
-        h: value.acknowledgedHeatSources?.map(row => [row.sourceId, row.signature]),
-        d: value.heatDissipationConsumed,
-        s: value.spotting ? 1 : undefined,
-        e: value.phaseStateChanged ? 1 : undefined,
-        p: packEndTurnCheckpoint(value.endTurnCheckpoint),
-        f: value.pendingFallConsequences === undefined
+        [CBT_TURN_FIELD.turnCounter]: value.turnCounter,
+        [CBT_TURN_FIELD.airborne]: value.airborne,
+        [CBT_TURN_FIELD.cover]: value.cover,
+        [CBT_TURN_FIELD.weaponsHeat]: value.weaponsHeat,
+        [CBT_TURN_FIELD.acknowledgedHeatSources]: value.acknowledgedHeatSources
+            ?.map(row => [row.sourceId, row.signature]),
+        [CBT_TURN_FIELD.heatDissipationConsumed]: value.heatDissipationConsumed,
+        [CBT_TURN_FIELD.spotting]: value.spotting ? 1 : undefined,
+        [CBT_TURN_FIELD.phaseStateChanged]: value.phaseStateChanged ? 1 : undefined,
+        [CBT_TURN_FIELD.endTurnCheckpoint]: packEndTurnCheckpoint(value.endTurnCheckpoint),
+        [CBT_TURN_FIELD.pendingFallConsequences]: value.pendingFallConsequences === undefined
             ? undefined
             : tuple(
                 value.pendingFallConsequences.eventId,
@@ -1503,7 +2140,7 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
                     : value.pendingFallConsequences.stage === 'seatbelts' ? 1 : 2,
                 value.pendingFallConsequences.seatbeltFailures,
             ),
-        q: value.pendingCriticalEvents === undefined
+        [CBT_TURN_FIELD.pendingCriticalEvents]: value.pendingCriticalEvents === undefined
             ? undefined
             : clone(value.pendingCriticalEvents),
     });
@@ -1513,28 +2150,61 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
 function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
     if (value === undefined) return { schemaVersion: 1 };
     const turn = record(value, path);
-    exactKeys(turn, ['n', 'a', 'c', 'w', 'h', 'd', 's', 'e', 'p', 'f', 'q'], path);
+    exactKeys(turn, Object.values(CBT_TURN_FIELD), path);
     const expanded = compactObject({
         schemaVersion: 1,
-        turnCounter: optionalInteger(turn['n'], `${path}.n`),
-        airborne: turn['a'] as boolean | undefined,
-        cover: turn['c'] === undefined ? undefined : clone(turn['c']),
-        weaponsHeat: optionalInteger(turn['w'], `${path}.w`),
-        acknowledgedHeatSources: turn['h'] === undefined ? undefined : unpackRows(turn['h'], `${path}.h`, (row, rowPath) => ({
-            sourceId: rowText(row, 0, rowPath), signature: rowText(row, 1, rowPath),
-        })),
-        heatDissipationConsumed: optionalInteger(turn['d'], `${path}.d`),
-        spotting: turn['s'] === undefined ? undefined : truthyOne(turn['s'], `${path}.s`),
-        phaseStateChanged: turn['e'] === undefined ? undefined : truthyOne(turn['e'], `${path}.e`),
-        endTurnCheckpoint: turn['p'] === undefined
+        turnCounter: optionalInteger(
+            turn[CBT_TURN_FIELD.turnCounter],
+            `${path}.${CBT_TURN_FIELD.turnCounter}`,
+        ),
+        airborne: turn[CBT_TURN_FIELD.airborne] as boolean | undefined,
+        cover: turn[CBT_TURN_FIELD.cover] === undefined
             ? undefined
-            : unpackEndTurnCheckpoint(turn['p'], `${path}.p`),
-        pendingFallConsequences: turn['f'] === undefined
+            : clone(turn[CBT_TURN_FIELD.cover]),
+        weaponsHeat: optionalInteger(
+            turn[CBT_TURN_FIELD.weaponsHeat],
+            `${path}.${CBT_TURN_FIELD.weaponsHeat}`,
+        ),
+        acknowledgedHeatSources: turn[CBT_TURN_FIELD.acknowledgedHeatSources] === undefined
             ? undefined
-            : unpackPendingFallConsequences(turn['f'], `${path}.f`),
-        pendingCriticalEvents: turn['q'] === undefined
+            : unpackRows(
+                turn[CBT_TURN_FIELD.acknowledgedHeatSources],
+                `${path}.${CBT_TURN_FIELD.acknowledgedHeatSources}`,
+                (row, rowPath) => ({
+                    sourceId: rowText(row, 0, rowPath),
+                    signature: rowText(row, 1, rowPath),
+                }),
+            ),
+        heatDissipationConsumed: optionalInteger(
+            turn[CBT_TURN_FIELD.heatDissipationConsumed],
+            `${path}.${CBT_TURN_FIELD.heatDissipationConsumed}`,
+        ),
+        spotting: turn[CBT_TURN_FIELD.spotting] === undefined
             ? undefined
-            : clone(turn['q']) as SerializedMekTurnStateV2['pendingCriticalEvents'],
+            : truthyOne(turn[CBT_TURN_FIELD.spotting], `${path}.${CBT_TURN_FIELD.spotting}`),
+        phaseStateChanged: turn[CBT_TURN_FIELD.phaseStateChanged] === undefined
+            ? undefined
+            : truthyOne(
+                turn[CBT_TURN_FIELD.phaseStateChanged],
+                `${path}.${CBT_TURN_FIELD.phaseStateChanged}`,
+            ),
+        endTurnCheckpoint: turn[CBT_TURN_FIELD.endTurnCheckpoint] === undefined
+            ? undefined
+            : unpackEndTurnCheckpoint(
+                turn[CBT_TURN_FIELD.endTurnCheckpoint],
+                `${path}.${CBT_TURN_FIELD.endTurnCheckpoint}`,
+            ),
+        pendingFallConsequences: turn[CBT_TURN_FIELD.pendingFallConsequences] === undefined
+            ? undefined
+            : unpackPendingFallConsequences(
+                turn[CBT_TURN_FIELD.pendingFallConsequences],
+                `${path}.${CBT_TURN_FIELD.pendingFallConsequences}`,
+            ),
+        pendingCriticalEvents: turn[CBT_TURN_FIELD.pendingCriticalEvents] === undefined
+            ? undefined
+            : clone(
+                turn[CBT_TURN_FIELD.pendingCriticalEvents],
+            ) as SerializedMekTurnStateV2['pendingCriticalEvents'],
     });
     return serializeMekTurnStateV2(deserializeMekTurnStateV2(expanded));
 }
@@ -1578,193 +2248,101 @@ function unpackEndTurnCheckpoint(value: unknown, path: string): EndTurnCheckpoin
     throw new Error(`${path} is not an End Turn checkpoint`);
 }
 
-function packTargeting(value: SavedAttackerTargetingState): unknown {
-    if (value.components.length === 0 && value.actions.length === 0 && value.targets.length === 0) return undefined;
-    return compactObject({
-        c: value.components.length ? value.components.map(row => [row.target, compactObject({
-            s: row.selection,
-            a: row.ammo,
-        })]) : undefined,
-        a: value.actions.length ? value.actions : undefined,
-        t: value.targets.length ? value.targets : undefined,
-    });
-}
-
-function unpackSavedTargeting(value: unknown, path: string): SavedAttackerTargetingState {
-    if (value === undefined) return { schemaVersion: 1, components: [], actions: [], targets: [] };
-    const targeting = record(value, path);
-    exactKeys(targeting, ['c', 'a', 't'], path);
-    const directComponents = targeting['c'] === undefined
-        ? []
-        : unpackRows(targeting['c'], `${path}.c`, (row, rowPath) => {
-            const state = record(row[1], `${rowPath}[1]`);
-            exactKeys(state, ['s', 'a'], `${rowPath}[1]`);
-            let ammo: Readonly<Record<string, unknown>> | undefined;
-            if (state['a'] !== undefined) {
-                const savedAmmo = record(state['a'], `${rowPath}[1].a`);
-                exactKeys(savedAmmo, ['munitionKey', 'preferredSourceTarget'], `${rowPath}[1].a`);
-                ammo = compactObject({
-                    munitionKey: text(savedAmmo['munitionKey'], `${rowPath}[1].a.munitionKey`),
-                    preferredSourceId: savedAmmo['preferredSourceTarget'] === undefined
-                        ? undefined
-                        : asComponentId(text(
-                            savedAmmo['preferredSourceTarget'],
-                            `${rowPath}[1].a.preferredSourceTarget`,
-                        )),
-                });
-            }
-            return compactObject({
-                componentId: asComponentId(rowText(row, 0, rowPath)),
-                selection: state['s'] === undefined ? undefined : clone(state['s']),
-                ammo,
-            });
-        });
-    const directActions = array(targeting['a'] ?? [], `${path}.a`).map((raw, index) => {
-        const actionPath = `${path}.a[${index}]`;
-        const action = record(raw, actionPath);
-        if (action['kind'] === 'intrinsic') {
-            exactKeys(action, ['kind', 'actionId', 'selection'], actionPath);
-            return {
-                target: { kind: 'intrinsic' as const, actionId: text(action['actionId'], `${actionPath}.actionId`) },
-                selection: clone(action['selection']),
-            };
-        }
-        if (action['kind'] === 'component') {
-            exactKeys(action, ['kind', 'target', 'selection'], actionPath);
-            return {
-                target: {
-                    kind: 'component' as const,
-                    componentId: asComponentId(text(action['target'], `${actionPath}.target`)),
-                },
-                selection: clone(action['selection']),
-            };
-        }
-        throw new Error(`${actionPath}.kind is not an attacker action kind`);
-    });
-    const canonical = serializeAttackerTargetingState(deserializeAttackerTargetingState({
-        schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
-        components: directComponents,
-        actions: directActions,
-        targets: clone(array(targeting['t'] ?? [], `${path}.t`)),
-    }));
-    return {
-        schemaVersion: 1,
-        components: canonical.components.map(component => ({
-            target: asSavedTargetRef(component.componentId),
-            ...(component.selection === undefined ? {} : { selection: component.selection }),
-            ...(component.ammo === undefined ? {} : {
-                ammo: {
-                    munitionKey: component.ammo.munitionKey,
-                    ...(component.ammo.preferredSourceId === undefined ? {} : {
-                        preferredSourceTarget: asSavedTargetRef(component.ammo.preferredSourceId),
-                    }),
-                },
-            }),
-        })),
-        actions: canonical.actions.map(action => action.target.kind === 'intrinsic'
-            ? {
-                kind: 'intrinsic' as const,
-                actionId: action.target.actionId,
-                selection: action.selection,
-            }
-            : {
-                kind: 'component' as const,
-                target: asSavedTargetRef(action.target.componentId),
-                selection: action.selection,
-            }),
-        targets: canonical.targets,
-    };
-}
-
-function packDirectTargeting(value: SerializedAttackerTargetingState): unknown {
-    if (value.components.length === 0 && value.actions.length === 0 && value.targets.length === 0) return undefined;
-    return compactObject({
-        c: value.components.length ? value.components.map(row => [row.componentId, compactObject({
-            s: row.selection,
-            a: row.ammo,
-        })]) : undefined,
-        a: value.actions.length ? value.actions : undefined,
-        t: value.targets.length ? value.targets : undefined,
-    });
-}
-
-function unpackDirectTargeting(value: unknown, path: string): SerializedAttackerTargetingState {
-    if (value === undefined) return {
-        schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
-        components: [], actions: [], targets: [],
-    };
-    const targeting = record(value, path);
-    exactKeys(targeting, ['c', 'a', 't'], path);
-    const expanded = {
-        schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
-        components: targeting['c'] === undefined ? [] : unpackRows(targeting['c'], `${path}.c`, (row, rowPath) => {
-            const state = record(row[1], `${rowPath}[1]`);
-            exactKeys(state, ['s', 'a'], `${rowPath}[1]`);
-            return compactObject({
-                componentId: asComponentId(rowText(row, 0, rowPath)),
-                selection: state['s'] === undefined ? undefined : clone(state['s']),
-                ammo: state['a'] === undefined ? undefined : clone(state['a']),
-            });
-        }),
-        actions: clone(targeting['a'] ?? []),
-        targets: clone(targeting['t'] ?? []),
-    };
-    return serializeAttackerTargetingState(deserializeAttackerTargetingState(expanded));
-}
-
 function packPending(value: SerializedCBTUnitV2['pendingCombat']): unknown {
     if (value === undefined) return undefined;
     return compactObject({
-        l: packRows(value.locationDamage, row => [row.target, row.damage]),
-        n: packRows(value.locationConditions, row => [row.target, row.condition, row.value]),
-        s: packRows(value.slotHits, row => [row.target, row.hits]),
-        c: packRows(value.componentStatus, row => [row.target, row.status]),
-        h: packRows(value.shieldDamage, row => [row.target, row.absorptionDamage, row.capacityDamage]),
-        m: packRows(value.modularArmorDamage, row => [row.target, row.damage]),
+        [CBT_PENDING_COMBAT_FIELD.locationDamage]: packRows(
+            value.locationDamage,
+            row => [row.target, row.damage],
+        ),
+        [CBT_PENDING_COMBAT_FIELD.locationConditions]: packRows(
+            value.locationConditions,
+            row => [row.target, row.condition, row.value],
+        ),
+        [CBT_PENDING_COMBAT_FIELD.slotHits]: packRows(
+            value.slotHits,
+            row => [row.target, row.hits],
+        ),
+        [CBT_PENDING_COMBAT_FIELD.componentStatus]: packRows(
+            value.componentStatus,
+            row => [row.target, row.status],
+        ),
+        [CBT_PENDING_COMBAT_FIELD.shieldDamage]: packRows(
+            value.shieldDamage,
+            row => [row.target, row.absorptionDamage, row.capacityDamage],
+        ),
+        [CBT_PENDING_COMBAT_FIELD.modularArmorDamage]: packRows(
+            value.modularArmorDamage,
+            row => [row.target, row.damage],
+        ),
     });
 }
 
 function unpackPending(value: unknown, path: string): NonNullable<SerializedCBTUnitV2['pendingCombat']> {
     const pending = record(value, path);
-    exactKeys(pending, ['l', 'n', 's', 'c', 'h', 'm'], path);
+    exactKeys(pending, Object.values(CBT_PENDING_COMBAT_FIELD), path);
     return {
-        ...(pending['l'] === undefined ? {} : {
-            locationDamage: unpackRows(pending['l'], `${path}.l`, (row, rowPath) => ({
+        ...(pending[CBT_PENDING_COMBAT_FIELD.locationDamage] === undefined ? {} : {
+            locationDamage: unpackRows(
+                pending[CBT_PENDING_COMBAT_FIELD.locationDamage],
+                `${path}.${CBT_PENDING_COMBAT_FIELD.locationDamage}`,
+                (row, rowPath) => ({
                 target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 damage: rowInteger(row, 1, rowPath),
-            })),
+                }),
+            ),
         }),
-        ...(pending['n'] === undefined ? {} : {
-            locationConditions: unpackRows(pending['n'], `${path}.n`, (row, rowPath) => ({
+        ...(pending[CBT_PENDING_COMBAT_FIELD.locationConditions] === undefined ? {} : {
+            locationConditions: unpackRows(
+                pending[CBT_PENDING_COMBAT_FIELD.locationConditions],
+                `${path}.${CBT_PENDING_COMBAT_FIELD.locationConditions}`,
+                (row, rowPath) => ({
                 target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 condition: unpackMekLocationCondition(row[1], `${rowPath}[1]`),
                 value: rowInteger(row, 2, rowPath),
-            })),
+                }),
+            ),
         }),
-        ...(pending['s'] === undefined ? {} : {
-            slotHits: unpackRows(pending['s'], `${path}.s`, (row, rowPath) => ({
+        ...(pending[CBT_PENDING_COMBAT_FIELD.slotHits] === undefined ? {} : {
+            slotHits: unpackRows(
+                pending[CBT_PENDING_COMBAT_FIELD.slotHits],
+                `${path}.${CBT_PENDING_COMBAT_FIELD.slotHits}`,
+                (row, rowPath) => ({
                 target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 hits: rowInteger(row, 1, rowPath),
-            })),
+                }),
+            ),
         }),
-        ...(pending['c'] === undefined ? {} : {
-            componentStatus: unpackRows(pending['c'], `${path}.c`, (row, rowPath) => ({
+        ...(pending[CBT_PENDING_COMBAT_FIELD.componentStatus] === undefined ? {} : {
+            componentStatus: unpackRows(
+                pending[CBT_PENDING_COMBAT_FIELD.componentStatus],
+                `${path}.${CBT_PENDING_COMBAT_FIELD.componentStatus}`,
+                (row, rowPath) => ({
                 target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 status: unpackEquipmentStatus(row[1], `${rowPath}[1]`),
-            })),
+                }),
+            ),
         }),
-        ...(pending['h'] === undefined ? {} : {
-            shieldDamage: unpackRows(pending['h'], `${path}.h`, (row, rowPath) => ({
+        ...(pending[CBT_PENDING_COMBAT_FIELD.shieldDamage] === undefined ? {} : {
+            shieldDamage: unpackRows(
+                pending[CBT_PENDING_COMBAT_FIELD.shieldDamage],
+                `${path}.${CBT_PENDING_COMBAT_FIELD.shieldDamage}`,
+                (row, rowPath) => ({
                 target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 absorptionDamage: rowInteger(row, 1, rowPath),
                 capacityDamage: rowInteger(row, 2, rowPath),
-            })),
+                }),
+            ),
         }),
-        ...(pending['m'] === undefined ? {} : {
-            modularArmorDamage: unpackRows(pending['m'], `${path}.m`, (row, rowPath) => ({
+        ...(pending[CBT_PENDING_COMBAT_FIELD.modularArmorDamage] === undefined ? {} : {
+            modularArmorDamage: unpackRows(
+                pending[CBT_PENDING_COMBAT_FIELD.modularArmorDamage],
+                `${path}.${CBT_PENDING_COMBAT_FIELD.modularArmorDamage}`,
+                (row, rowPath) => ({
                 target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 damage: rowInteger(row, 1, rowPath),
-            })),
+                }),
+            ),
         }),
     };
 }
@@ -1772,41 +2350,69 @@ function unpackPending(value: unknown, path: string): NonNullable<SerializedCBTU
 function packNonMekPending(value: SerializedNonMekUnit['pendingCombat']): unknown {
     if (value === undefined) return undefined;
     return compactObject({
-        l: packRows(value.internalDamage, row => [row.locationId, row.damage]),
-        a: packRows(value.armorDamage, row => [row.faceId, row.damage]),
-        c: packRows(value.componentStatus, row => [row.componentId, row.status]),
-        q: packRows(value.damageTrackHits, row => [row.damageTrackId, row.hitDelta, row.hitTimestamps]),
+        [CBT_NON_MEK_PENDING_COMBAT_FIELD.internalDamage]: packRows(
+            value.internalDamage,
+            row => [row.locationId, row.damage],
+        ),
+        [CBT_NON_MEK_PENDING_COMBAT_FIELD.armorDamage]: packRows(
+            value.armorDamage,
+            row => [row.faceId, row.damage],
+        ),
+        [CBT_NON_MEK_PENDING_COMBAT_FIELD.componentStatus]: packRows(
+            value.componentStatus,
+            row => [row.componentId, row.status],
+        ),
+        [CBT_NON_MEK_PENDING_COMBAT_FIELD.damageTrackHits]: packRows(
+            value.damageTrackHits,
+            row => [row.damageTrackId, row.hitDelta, row.hitTimestamps],
+        ),
     });
 }
 
 function unpackNonMekPending(value: unknown, path: string): NonNullable<SerializedNonMekUnit['pendingCombat']> {
     const pending = record(value, path);
-    exactKeys(pending, ['l', 'a', 'c', 'q'], path);
+    exactKeys(pending, Object.values(CBT_NON_MEK_PENDING_COMBAT_FIELD), path);
     return {
-        ...(pending['l'] === undefined ? {} : {
-            internalDamage: unpackRows(pending['l'], `${path}.l`, (row, rowPath) => ({
+        ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.internalDamage] === undefined ? {} : {
+            internalDamage: unpackRows(
+                pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.internalDamage],
+                `${path}.${CBT_NON_MEK_PENDING_COMBAT_FIELD.internalDamage}`,
+                (row, rowPath) => ({
                 locationId: asLocationId(rowText(row, 0, rowPath)),
                 damage: rowInteger(row, 1, rowPath),
-            })),
+                }),
+            ),
         }),
-        ...(pending['a'] === undefined ? {} : {
-            armorDamage: unpackRows(pending['a'], `${path}.a`, (row, rowPath) => ({
+        ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.armorDamage] === undefined ? {} : {
+            armorDamage: unpackRows(
+                pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.armorDamage],
+                `${path}.${CBT_NON_MEK_PENDING_COMBAT_FIELD.armorDamage}`,
+                (row, rowPath) => ({
                 faceId: asArmorFaceId(rowText(row, 0, rowPath)),
                 damage: rowInteger(row, 1, rowPath),
-            })),
+                }),
+            ),
         }),
-        ...(pending['c'] === undefined ? {} : {
-            componentStatus: unpackRows(pending['c'], `${path}.c`, (row, rowPath) => ({
+        ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.componentStatus] === undefined ? {} : {
+            componentStatus: unpackRows(
+                pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.componentStatus],
+                `${path}.${CBT_NON_MEK_PENDING_COMBAT_FIELD.componentStatus}`,
+                (row, rowPath) => ({
                 componentId: asComponentId(rowText(row, 0, rowPath)),
                 status: unpackEquipmentStatus(row[1], `${rowPath}[1]`),
-            })),
+                }),
+            ),
         }),
-        ...(pending['q'] === undefined ? {} : {
-            damageTrackHits: unpackRows(pending['q'], `${path}.q`, (row, rowPath) => ({
+        ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.damageTrackHits] === undefined ? {} : {
+            damageTrackHits: unpackRows(
+                pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.damageTrackHits],
+                `${path}.${CBT_NON_MEK_PENDING_COMBAT_FIELD.damageTrackHits}`,
+                (row, rowPath) => ({
                 damageTrackId: asSystemDamageTrackId(rowText(row, 0, rowPath)),
                 hitDelta: rowInteger(row, 1, rowPath),
                 hitTimestamps: unpackIntegerArray(row[2], `${rowPath}[2]`),
-            })),
+                }),
+            ),
         }),
     };
 }
@@ -1825,11 +2431,11 @@ function packRoster(
             throw new Error(`Roster formation target ${group.formationTargetGroupId} has no force group`);
         }
         const metadata = compactObject({
-            n: group.name,
-            c: group.color,
-            f: group.formationId,
-            t: targetGroupIndex,
-            l: group.formationLock ? 1 : undefined,
+            [CBT_ROSTER_GROUP_METADATA_FIELD.name]: group.name,
+            [CBT_ROSTER_GROUP_METADATA_FIELD.color]: group.color,
+            [CBT_ROSTER_GROUP_METADATA_FIELD.formationId]: group.formationId,
+            [CBT_ROSTER_GROUP_METADATA_FIELD.targetGroupIndex]: targetGroupIndex,
+            [CBT_ROSTER_GROUP_METADATA_FIELD.formationLock]: group.formationLock ? 1 : undefined,
         });
         return tuple(
             packOpaqueId(group.groupId),
@@ -1844,17 +2450,21 @@ function packRoster(
 }
 
 function unpackRoster(value: unknown, units: readonly SerializedForceUnitEntryV2[]): SerializedCBTForceRosterV1 {
-    const packedGroups = array(value, 'force.cbt.g');
+    const groupsPath = `force.${FORCE_PAYLOAD_FIELD.classicBattleTech}.${CBT_FORCE_FIELD.groups}`;
+    const packedGroups = array(value, groupsPath);
     const groupIds = packedGroups.map((raw, index) => {
-        const path = `force.cbt.g[${index}]`;
+        const path = `${groupsPath}[${index}]`;
         return unpackOpaqueId(rowText(array(raw, path), 0, path), `${path}[0]`);
     });
     return {
         schemaVersion: CBT_FORCE_ROSTER_SCHEMA_VERSION,
-        groups: unpackRows(packedGroups, 'force.cbt.g', (row, path, groupOrder) => {
+        groups: unpackRows(packedGroups, groupsPath, (row, path, groupOrder) => {
             const metadata = row[2] === undefined ? {} : record(row[2], `${path}[2]`);
-            exactKeys(metadata, ['n', 'c', 'f', 't', 'l'], `${path}[2]`);
-            const targetGroupIndex = optionalInteger(metadata['t'], `${path}[2].t`);
+            exactKeys(metadata, Object.values(CBT_ROSTER_GROUP_METADATA_FIELD), `${path}[2]`);
+            const targetGroupIndex = optionalInteger(
+                metadata[CBT_ROSTER_GROUP_METADATA_FIELD.targetGroupIndex],
+                `${path}[2].${CBT_ROSTER_GROUP_METADATA_FIELD.targetGroupIndex}`,
+            );
             const formationTargetGroupId = targetGroupIndex === undefined
                 ? undefined
                 : groupIds[targetGroupIndex];
@@ -1864,13 +2474,33 @@ function unpackRoster(value: unknown, units: readonly SerializedForceUnitEntryV2
             return {
             groupId: groupIds[groupOrder]!,
             order: groupOrder,
-            ...(metadata['n'] === undefined ? {} : { name: text(metadata['n'], `${path}[2].n`) }),
-            ...(metadata['c'] === undefined ? {} : { color: text(metadata['c'], `${path}[2].c`) }),
-            ...(metadata['f'] === undefined ? {} : { formationId: text(metadata['f'], `${path}[2].f`) }),
+            ...(metadata[CBT_ROSTER_GROUP_METADATA_FIELD.name] === undefined ? {} : {
+                name: text(
+                    metadata[CBT_ROSTER_GROUP_METADATA_FIELD.name],
+                    `${path}[2].${CBT_ROSTER_GROUP_METADATA_FIELD.name}`,
+                ),
+            }),
+            ...(metadata[CBT_ROSTER_GROUP_METADATA_FIELD.color] === undefined ? {} : {
+                color: text(
+                    metadata[CBT_ROSTER_GROUP_METADATA_FIELD.color],
+                    `${path}[2].${CBT_ROSTER_GROUP_METADATA_FIELD.color}`,
+                ),
+            }),
+            ...(metadata[CBT_ROSTER_GROUP_METADATA_FIELD.formationId] === undefined ? {} : {
+                formationId: text(
+                    metadata[CBT_ROSTER_GROUP_METADATA_FIELD.formationId],
+                    `${path}[2].${CBT_ROSTER_GROUP_METADATA_FIELD.formationId}`,
+                ),
+            }),
             ...(formationTargetGroupId === undefined
                 ? {}
                 : { formationTargetGroupId }),
-            ...(metadata['l'] === undefined ? {} : { formationLock: truthyOne(metadata['l'], `${path}[2].l`) }),
+            ...(metadata[CBT_ROSTER_GROUP_METADATA_FIELD.formationLock] === undefined ? {} : {
+                formationLock: truthyOne(
+                    metadata[CBT_ROSTER_GROUP_METADATA_FIELD.formationLock],
+                    `${path}[2].${CBT_ROSTER_GROUP_METADATA_FIELD.formationLock}`,
+                ),
+            }),
             members: unpackRows(row[1], `${path}[1]`, (member, memberPath, order) => {
                 const unitIndex = rowInteger(member, 0, memberPath);
                 const unit = units[unitIndex];
@@ -1889,28 +2519,90 @@ function unpackRoster(value: unknown, units: readonly SerializedForceUnitEntryV2
     };
 }
 
-function packEncounter(encounter: SerializedForceEncounterEntryV2): unknown {
-    return tuple(encounter.encounterRevision, encounter.state.facts);
+function packEncounter(
+    encounter: SerializedCBTEncounterStateV2,
+    units: readonly SerializedForceUnitEntryV2[],
+): unknown {
+    const unitIndexes = new Map(units.map((unit, index) => [unit.instanceId, index] as const));
+    return Object.freeze(encounter.networks.map(network => tuple(
+        packOpaqueId(network.id),
+        network.networkType,
+        network.color,
+        Object.freeze(network.endpoints.map(endpoint => {
+            const unitIndex = unitIndexes.get(endpoint.instanceId);
+            if (unitIndex === undefined) {
+                throw new Error(`Encounter network endpoint ${endpoint.instanceId} has no force unit`);
+            }
+            return tuple(
+                unitIndex,
+                packOpaqueId(endpoint.componentId),
+                endpoint.role,
+            );
+        })),
+    )));
 }
 
-function unpackEncounter(value: unknown, path: string): SerializedForceEncounterEntryV2 {
-    const row = array(value, path);
-    if (row.length !== 2) throw new Error(`${path} is not a compact encounter`);
-    const revision = rowInteger(row, 0, path);
-    const state: SerializedCBTEncounterStateV2 = {
-        schemaVersion: 2,
-        encounterRevision: revision,
-        facts: clone(row[1]) as SerializedCBTEncounterStateV2['facts'],
-    };
-    return {
-        encounterRevision: revision,
-        state,
-    };
+function unpackEncounter(
+    value: unknown,
+    path: string,
+    units: readonly SerializedForceUnitEntryV2[],
+): SerializedCBTEncounterStateV2 {
+    const networks = unpackRows(value, path, (row, networkPath): SerializedEncounterNetworkV2 => {
+        if (row.length !== 4) throw new Error(`${networkPath} is not a compact encounter network`);
+        const networkType = rowText(row, CBT_ENCOUNTER_NETWORK_INDEX.type, networkPath);
+        if (!isC3NetworkType(networkType)) {
+            throw new Error(`${networkPath}[${CBT_ENCOUNTER_NETWORK_INDEX.type}] is not a C3 network type`);
+        }
+        const endpointsPath = `${networkPath}[${CBT_ENCOUNTER_NETWORK_INDEX.endpoints}]`;
+        const endpoints = unpackRows(
+            row[CBT_ENCOUNTER_NETWORK_INDEX.endpoints],
+            endpointsPath,
+            (endpoint, endpointPath) => {
+                if (endpoint.length !== 3) {
+                    throw new Error(`${endpointPath} is not a compact encounter network endpoint`);
+                }
+                const unitIndex = rowInteger(
+                    endpoint,
+                    CBT_ENCOUNTER_ENDPOINT_INDEX.unit,
+                    endpointPath,
+                );
+                const unit = units[unitIndex];
+                if (unit === undefined) {
+                    throw new Error(
+                        `${endpointPath}[${CBT_ENCOUNTER_ENDPOINT_INDEX.unit}] has no force unit`,
+                    );
+                }
+                const role = rowText(endpoint, CBT_ENCOUNTER_ENDPOINT_INDEX.role, endpointPath);
+                if (!isC3NetworkRole(role)) {
+                    throw new Error(
+                        `${endpointPath}[${CBT_ENCOUNTER_ENDPOINT_INDEX.role}] is not a C3 network role`,
+                    );
+                }
+                return {
+                    instanceId: unit.instanceId,
+                    componentId: asComponentId(unpackOpaqueId(
+                        rowText(endpoint, CBT_ENCOUNTER_ENDPOINT_INDEX.componentId, endpointPath),
+                        `${endpointPath}[${CBT_ENCOUNTER_ENDPOINT_INDEX.componentId}]`,
+                    )),
+                    role,
+                };
+            },
+        );
+        return {
+            id: unpackOpaqueId(
+                rowText(row, CBT_ENCOUNTER_NETWORK_INDEX.instanceId, networkPath),
+                `${networkPath}[${CBT_ENCOUNTER_NETWORK_INDEX.instanceId}]`,
+            ),
+            networkType,
+            color: rowText(row, CBT_ENCOUNTER_NETWORK_INDEX.color, networkPath),
+            endpoints,
+        };
+    });
+    return { networks };
 }
 
-function emptyEncounter(): SerializedForceEncounterEntryV2 {
-    const revision = 0;
-    return { encounterRevision: revision, state: { schemaVersion: 2, encounterRevision: revision, facts: [] } };
+function emptyEncounter(): SerializedCBTEncounterStateV2 {
+    return { networks: [] };
 }
 
 function packRows<T>(value: readonly T[] | undefined, map: (row: T) => unknown): readonly unknown[] | undefined {

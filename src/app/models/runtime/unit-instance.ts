@@ -1355,12 +1355,15 @@ export class CBTUnitInstance {
     public installAttackerTargetingReconciliation(
         plan: CBTUnitAttackerTargetingReconciliationPlan,
     ): void {
-        const nextRevision = this.#state.stateRevision + 1;
         this.#state = freezeRuntimeState({
             ...this.#state,
-            stateRevision: nextRevision,
             attackerTargeting: plan.nextTargeting,
         });
+    }
+
+    /** Replaces force-session targeting without changing durable unit authority. */
+    public installAttackerTargetingSessionState(targeting: AttackerTargetingState): void {
+        this.#state = freezeRuntimeState({ ...this.#state, attackerTargeting: targeting });
     }
 
     private dispatchOwned(
@@ -1424,10 +1427,8 @@ function reduceAttackerTargeting(
     const nextTargeting = reconcileMekWeaponTargetPolicies(
         unit, index, runtime, registry, planned.state,
     );
-    const nextRevision = state.stateRevision + 1;
     const nextState = freezeRuntimeState({
         ...state,
-        stateRevision: nextRevision,
         attackerTargeting: nextTargeting,
     });
     return Object.freeze({

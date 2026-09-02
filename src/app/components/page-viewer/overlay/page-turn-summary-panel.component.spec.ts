@@ -482,6 +482,7 @@ function entityTurnMember(
     let member!: CBTForceMember;
     const force = {
         changed,
+        sessionChanged: new Subject<void>(),
         members: () => [member],
         getUnitSnapshot: () => snapshot,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
@@ -554,6 +555,7 @@ function battleArmorTurnMember() {
     let member!: CBTForceMember;
     const force = {
         changed,
+        sessionChanged: new Subject<void>(),
         members: () => [member],
         getUnitSnapshot: () => snapshot,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
@@ -594,6 +596,7 @@ function aeroTurnMember() {
     let member!: CBTForceMember;
     const force = {
         changed,
+        sessionChanged: new Subject<void>(),
         members: () => [member],
         getUnitSnapshot: () => snapshot,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
@@ -636,6 +639,7 @@ function turnMember(initial: MekTurnPanelSnapshot) {
     let member!: CBTMekForceMember;
     const force = {
         changed,
+        sessionChanged: new Subject<void>(),
         members: () => [member],
         getMekTurnPanelSnapshot: () => current,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),

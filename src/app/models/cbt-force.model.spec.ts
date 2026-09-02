@@ -19,10 +19,9 @@ import {
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
     emptyRuntimeHistory,
-    encounterNetworkFactId,
+    type SerializedCBTEncounterStateV2,
     type SerializedCBTUnitV2,
     type SerializedCBTForceV2,
-    type SerializedForceEncounterEntryV2,
 } from './runtime/persistence-v2';
 import { asEncounterNetworkId, asEncounterTargetId, type EncounterNetwork } from './runtime/encounter-runtime';
 import { RUNTIME_HISTORY_MESSAGE } from './runtime/runtime-history';
@@ -66,11 +65,8 @@ const injector = {
         : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
 } as unknown as Injector;
 
-function emptySerializedEncounterV2(): SerializedForceEncounterEntryV2 {
-    return {
-        encounterRevision: 0,
-        state: { schemaVersion: 2, encounterRevision: 0, facts: [] },
-    };
+function emptySerializedEncounterV2(): SerializedCBTEncounterStateV2 {
+    return { networks: [] };
 }
 
 function directForceRecord(): SerializedCBTForce {
@@ -169,24 +165,19 @@ async function readyCloneForce(): Promise<{
             }],
         },
         encounter: {
-            encounterRevision: 3,
-            state: {
-                schemaVersion: 2,
-                encounterRevision: 3,
-                facts: [{
-                    kind: 'network',
-                    factId: encounterNetworkFactId('network:clone-source'),
-                    network: {
-                        id: 'network:clone-source',
-                        networkType: 'c3',
-                        color: '#123456',
-                        endpoints: [
-                            { instanceId: firstId, componentId, role: 'master' },
-                            { instanceId: secondId, componentId, role: 'member' },
-                        ],
-                    },
-                }],
-            },
+            networks: [{
+                id: 'network:clone-source',
+                networkType: 'c3',
+                color: '#123456',
+                endpoints: [
+                    { instanceId: firstId, componentId, role: 'master' },
+                    { instanceId: secondId, componentId, role: 'member' },
+                ],
+            }],
+            c3Positions: [
+                { unitId: firstId, x: 203, y: 392 },
+                { unitId: secondId, x: 407, y: 392 },
+            ],
         },
     };
     const summary = {
@@ -549,25 +540,16 @@ async function readyC3Force(owned = true): Promise<{
             }],
         },
         encounter: {
-            encounterRevision: 0,
-            state: {
-                schemaVersion: 2,
-                encounterRevision: 0,
-                facts: [{
-                    kind: 'network',
-                    factId: encounterNetworkFactId('network:c3-runtime'),
-                    network: {
-                        id: 'network:c3-runtime',
-                        networkType: 'c3',
-                        color: '#123456',
-                        endpoints: [
-                            { instanceId: emergencyId, componentId: emergencyComponentId, role: 'member' },
-                            { instanceId: masterId, componentId: masterComponentId, role: 'master' },
-                            { instanceId: memberId, componentId: memberComponentId, role: 'member' },
-                        ],
-                    },
-                }],
-            },
+            networks: [{
+                id: 'network:c3-runtime',
+                networkType: 'c3',
+                color: '#123456',
+                endpoints: [
+                    { instanceId: emergencyId, componentId: emergencyComponentId, role: 'member' },
+                    { instanceId: masterId, componentId: masterComponentId, role: 'master' },
+                    { instanceId: memberId, componentId: memberComponentId, role: 'member' },
+                ],
+            }],
         },
     };
     const summary = {
@@ -734,6 +716,9 @@ describe('CBTForce V2 encounter persistence', () => {
         } = await readyEntityForce();
         const saved = structuredClone(await force.serializeForPersistence()) as SerializedCBTForce;
         Reflect.set(saved.cbt!, 'history', { u: [instanceId], t: [] });
+        Reflect.set(saved.cbt!.encounter, 'c3Positions', [
+            { unitId: instanceId, x: 203, y: 392 },
+        ]);
         dialogs.showNotice.calls.reset();
         cbtUnits.restore.and.rejectWith(new Error('Unit not found'));
         cbtUnits.create.and.rejectWith(new Error('Unit not found'));
@@ -745,6 +730,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(rewritten.cbt!.units).toEqual([]);
         expect(rewritten.cbt!.roster.groups[0].members).toEqual([]);
         expect(rewritten.cbt!.history).toEqual({ u: [], t: [] });
+        expect(rewritten.cbt!.encounter.c3Positions).toBeUndefined();
         expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
             '• 1 unit was not found in the catalog and was skipped.',
             'Save Loaded with Warnings',
@@ -796,19 +782,76 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(force.groups()).toEqual([beta]);
     });
 
-    it('round-trips the typed target registry', async () => {
+    it('keeps target-registry edits session-only and outside force dirty state', async () => {
         const force = await loadForce();
+        const baseline = await force.serializeForPersistence();
+        let changeCount = 0;
+        const subscription = force.changed.subscribe(() => { changeCount += 1; });
         createTarget(force);
         const targetId = force.queryInventoryControlTargetRegistry().targets[0].id;
         updateTarget(force, targetId, { name: 'Primary' });
 
         const saved = await force.serializeForPersistence();
-        expect(saved.cbt?.encounter.state.facts.map(fact => fact.kind)).toEqual(['target']);
+        expect(saved.timestamp).toBe(baseline.timestamp);
+        expect(saved.cbt?.forceRevision).toBe(baseline.cbt?.forceRevision);
+        expect(saved.cbt?.encounter).toEqual({ networks: [] });
+        expect(changeCount).toBe(0);
 
         const reloaded = await loadForce(saved as SerializedCBTForce);
-        expect(reloaded.queryInventoryControlTargetRegistry().targets
-            .find(candidate => candidate.id === targetId)?.name).toBe('Primary');
+        expect(force.queryInventoryControlTargetRegistry().targets[0].name).toBe('Primary');
+        expect(reloaded.queryInventoryControlTargetRegistry().targets).toEqual([]);
         expect(reloaded.c3EncounterNetworks()).toEqual([]);
+        subscription.unsubscribe();
+    });
+
+    it('retains attacker-local target edits in this force session without persisting them', async () => {
+        const { force, instanceId, reload } = await readyEntityForce();
+        const baseline = await force.serializeForPersistence() as SerializedCBTForce;
+        const durableRevision = force.getUnitSnapshot(instanceId)!.state.stateRevision;
+        let durableChanges = 0;
+        let sessionChanges = 0;
+        const durableSubscription = force.changed.subscribe(() => { durableChanges += 1; });
+        const sessionSubscription = force.sessionChanged.subscribe(() => { sessionChanges += 1; });
+
+        createTarget(force);
+        const targetId = force.queryInventoryControlTargetRegistry().targets[0]!.id;
+        const result = await force.dispatchAttackerTargeting(instanceId, {
+            type: 'edit-attacker-targeting',
+            edit: {
+                kind: 'set-target-facts',
+                targetId,
+                facts: {
+                    distance: 6,
+                    manualTnOverride: { kind: 'user-manual', modifier: 2 },
+                },
+            },
+        });
+
+        expect(result).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(force.getUnitSnapshot(instanceId)!.state.stateRevision).toBe(durableRevision);
+        expect(force.getAttackerTargeting(instanceId)?.state.targets.get(targetId))
+            .toEqual({ distance: 6, manualTnOverride: { kind: 'user-manual', modifier: 2 } });
+
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const savedUnit = saved.cbt!.units.find(row => row.instanceId === instanceId)!.unit;
+        expect(saved.timestamp).toBe(baseline.timestamp);
+        expect(saved.cbt!.forceRevision).toBe(baseline.cbt!.forceRevision);
+        expect('attackerTargeting' in savedUnit).toBeFalse();
+        expect(force.queryInventoryControlTargetRegistry().targets.map(target => target.id)).toEqual([targetId]);
+        expect(durableChanges).toBe(0);
+        expect(sessionChanges).toBeGreaterThanOrEqual(2);
+
+        const restored = await reload(saved);
+        expect(restored.queryInventoryControlTargetRegistry().targets).toEqual([]);
+        expect(restored.getAttackerTargeting(instanceId)?.state.targets.size).toBe(0);
+
+        expect(force.dispatchInventoryControlTargetRegistry({ kind: 'delete-target', targetId }).accepted)
+            .toBeTrue();
+        expect(force.queryInventoryControlTargetRegistry().targets).toEqual([]);
+        expect(force.getAttackerTargeting(instanceId)?.state.targets.size).toBe(0);
+        expect(durableChanges).toBe(0);
+        durableSubscription.unsubscribe();
+        sessionSubscription.unsubscribe();
     });
 
     it('keeps target-registry editing outside runtime undo and semantic history', async () => {
@@ -840,8 +883,9 @@ describe('CBTForce V2 encounter persistence', () => {
 
         const loading = force.loadCBTForceV2Persistence(saved);
         await preparationEntered;
-        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
             force.captureForceOwnerRevisionFence(),
+            [],
             [],
         )).toBeFalse();
         release();
@@ -849,9 +893,8 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(await loading).toBeTrue();
     });
 
-    it('derives the OPFOR-enabled session flag from restored registry facts', async () => {
+    it('does not persist the OPFOR target registry or its session flag', async () => {
         const force = await loadForce();
-        const snapshot = force.queryInventoryControlTargetRegistry();
         const installed = force.dispatchInventoryControlTargetRegistry({
             kind: 'replace-targets',
 
@@ -865,16 +908,15 @@ describe('CBTForce V2 encounter persistence', () => {
             }],
         }, 'opfor-sync');
         expect(installed.accepted).toBeTrue();
+        expect(force.inventoryControlOpforEnabled()).toBeFalse();
 
         const reloaded = await loadForce(await force.serializeForPersistence() as SerializedCBTForce);
-        expect(reloaded.inventoryControlOpforEnabled()).toBeTrue();
-        expect(reloaded.queryInventoryControlTargetRegistry().targets.map(target => target.source))
-            .toEqual(['opfor']);
+        expect(reloaded.inventoryControlOpforEnabled()).toBeFalse();
+        expect(reloaded.queryInventoryControlTargetRegistry().targets).toEqual([]);
     });
 
     it('retries an in-flight save so concurrent accepted edits are included', async () => {
         const force = await loadForce();
-        createTarget(force);
 
         let entered!: () => void;
         const preparationEntered = new Promise<void>(resolve => entered = resolve);
@@ -894,16 +936,13 @@ describe('CBTForce V2 encounter persistence', () => {
 
         const saving = force.serializeForPersistence();
         await preparationEntered;
-        createTarget(force);
-        force._name.set('Edited during persistence');
+        force.setName('Edited during persistence');
         release();
 
         const saved = await saving;
         expect(invocation).toBeGreaterThan(1);
         expect(saved.name).toBe('Edited during persistence');
-        expect(saved.cbt?.encounter.state.facts
-            .filter(fact => fact.kind === 'target').map(fact => fact.target.letter).sort())
-            .toEqual(['A', 'B']);
+        expect(saved.cbt?.encounter).toEqual({ networks: [] });
     });
 
     it('reuses validated persistence entries and serializes only changed runtimes', async () => {
@@ -939,7 +978,7 @@ describe('CBTForce V2 encounter persistence', () => {
             .toEqual({ schemaVersion: 1, kind: 'shutdown' });
     });
 
-    it('detaches the target registry when cloning a non-owned force', async () => {
+    it('does not copy the session-only target registry when cloning a force', async () => {
         const force = await loadForce();
         createTarget(force);
         const targetId = force.queryInventoryControlTargetRegistry().targets[0].id;
@@ -955,18 +994,8 @@ describe('CBTForce V2 encounter persistence', () => {
 
         expect(cloned.instanceId()).not.toBe(force.instanceId());
         expect(cloned.owned()).toBeTrue();
-        expect(copied).toEqual(original);
-        expect(copied).not.toBe(original);
-        expect(copied.targets[0]).not.toBe(original.targets[0]);
-
-        const edited = cloned.dispatchInventoryControlTargetRegistry({
-            kind: 'update-target',
-
-            targetId: copied.targets[0].id,
-            patch: { name: 'Clone only' },
-        });
-        expect(edited.accepted).toBeTrue();
-        expect(cloned.queryInventoryControlTargetRegistry().targets[0].name).toBe('Clone only');
+        expect(original.targets[0].name).toBe('Primary');
+        expect(copied).toEqual({ revision: 0, targets: [] });
         expect(force.queryInventoryControlTargetRegistry().targets[0].name).toBe('Primary');
     });
 
@@ -987,11 +1016,17 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(copied.cbt!.roster.groups[0].members.map(member => member.instanceId))
             .toEqual(copiedIds);
 
-        const network = copied.cbt!.encounter.state.facts.find(fact => fact.kind === 'network');
-        if (network?.kind !== 'network') throw new Error('Cloned network is missing');
-        expect(network.network.endpoints.map(endpoint => endpoint.instanceId).sort())
+        const network = copied.cbt!.encounter.networks[0];
+        if (!network) throw new Error('Cloned network is missing');
+        expect(network.endpoints.map(endpoint => endpoint.instanceId).sort())
             .toEqual([...copiedIds].sort());
-        expect(network.network.endpoints.some(endpoint => sourceIds.has(endpoint.instanceId))).toBeFalse();
+        expect(network.endpoints.some(endpoint => sourceIds.has(endpoint.instanceId))).toBeFalse();
+        expect(copied.cbt!.encounter.c3Positions).toEqual([
+            { unitId: copiedIds[0], x: 203, y: 392 },
+            { unitId: copiedIds[1], x: 407, y: 392 },
+        ].sort((left, right) => left.unitId < right.unitId ? -1 : left.unitId > right.unitId ? 1 : 0));
+        expect(copied.cbt!.encounter.c3Positions
+            ?.some(position => sourceIds.has(position.unitId))).toBeFalse();
 
         const copiedFirst = copied.cbt!.roster.groups[0].members[0].instanceId;
         const sourceFirst = source.cbt!.roster.groups[0].members[0].instanceId;
@@ -1401,7 +1436,7 @@ describe('CBTForce V2 encounter persistence', () => {
 
     it('evaluates non-Mek Entity C3 endpoints from sparse runtime state', async () => {
         const { force, firstId, secondId, componentId } = await readyEntityC3Force();
-        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
             force.captureForceOwnerRevisionFence(),
             [{
                 id: asEncounterNetworkId('network:entity-c3i'),
@@ -1412,6 +1447,7 @@ describe('CBTForce V2 encounter persistence', () => {
                     { instanceId: secondId, componentId, role: 'peer' },
                 ],
             }],
+            [],
         )).toBeTrue();
         expect(force.getC3State(firstId)).toBe('operational');
         expect(force.getC3State(secondId)).toBe('operational');
@@ -1466,9 +1502,10 @@ describe('CBTForce V2 encounter persistence', () => {
             endpoints: [{ instanceId: firstId, componentId, role: 'peer' }],
         };
 
-        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
             force.captureForceOwnerRevisionFence(),
             [invalid],
+            [],
         )).toBeFalse();
         expect(force.c3EncounterNetworks()).toEqual([]);
     });
@@ -1482,17 +1519,19 @@ describe('CBTForce V2 encounter persistence', () => {
             endpoints: [{ instanceId: firstId, componentId, role: 'peer' }],
         };
         const seam = force as unknown as {
-            encounterRuntime: { replaceNetworks(networks: readonly EncounterNetwork[]): void };
+            c3Encounter: {
+                replaceC3Configuration(networks: readonly EncounterNetwork[], positions: readonly []): void;
+            };
         };
-        seam.encounterRuntime.replaceNetworks([invalid]);
+        seam.c3Encounter.replaceC3Configuration([invalid], []);
 
         await expectAsync(force.serializeForPersistence())
-            .toBeRejectedWithError(/Cannot persist non-canonical C3 network facts/u);
+            .toBeRejectedWithError(/Cannot persist non-canonical C3 networks/u);
     });
 
     it('ignores invalid encounter networks while hydrating a V2 load', async () => {
         const { force, firstId, secondId, componentId, dialogs } = await readyEntityC3Force();
-        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
             force.captureForceOwnerRevisionFence(),
             [{
                 id: asEncounterNetworkId('network:invalid-load'),
@@ -1503,11 +1542,11 @@ describe('CBTForce V2 encounter persistence', () => {
                     { instanceId: secondId, componentId, role: 'peer' },
                 ],
             }],
+            [],
         )).toBeTrue();
         const tampered = structuredClone(await force.serializeForPersistence()) as any;
-        const fact = tampered.cbt.encounter.state.facts.find((candidate: { kind: string }) =>
-            candidate.kind === 'network');
-        fact.network.endpoints = [fact.network.endpoints[0]];
+        const network = tampered.cbt.encounter.networks[0];
+        network.endpoints = [network.endpoints[0]];
 
         dialogs.showNotice.calls.reset();
         await expectAsync(force.loadCBTForceV2Persistence(tampered)).toBeResolvedTo(true);
@@ -1529,7 +1568,7 @@ describe('CBTForce V2 encounter persistence', () => {
 
         expect(force.isWholeOwnerAuthorityFingerprintCurrent(persistenceFingerprint)).toBeFalse();
         expect(force.isForceOwnerRevisionFenceCurrent(editorFence)).toBeTrue();
-        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(editorFence, [{
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(editorFence, [{
             id: asEncounterNetworkId('network:cloud-ack'),
             networkType: 'c3i',
             color: '#1565C0',
@@ -1537,12 +1576,28 @@ describe('CBTForce V2 encounter persistence', () => {
                 { instanceId: firstId, componentId, role: 'peer' },
                 { instanceId: secondId, componentId, role: 'peer' },
             ],
-        }])).toBeTrue();
+        }], [
+            { unitId: firstId, x: 203, y: 392 },
+            { unitId: secondId, x: 407, y: 392 },
+        ])).toBeTrue();
         expect(changedUnitIds).toEqual([firstId, secondId]);
 
         const saved = await force.serializeForPersistence();
-        expect(saved.cbt!.encounter.state.facts.some(fact =>
-            fact.kind === 'network' && fact.network.id === 'network:cloud-ack')).toBeTrue();
+        expect(saved.cbt!.encounter.networks.some(network =>
+            network.id === 'network:cloud-ack')).toBeTrue();
+        expect(saved.cbt!.encounter.c3Positions).toEqual([
+            { unitId: firstId, x: 203, y: 392 },
+            { unitId: secondId, x: 407, y: 392 },
+        ]);
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
+            force.captureForceOwnerRevisionFence(),
+            force.c3EncounterNetworks(),
+            [],
+        )).toBeTrue();
+        expect(force.c3EncounterPosition(firstId)).toBeNull();
+        expect(await force.loadCBTForceV2Persistence(saved)).toBeTrue();
+        expect(force.c3EncounterPosition(firstId)).toEqual(jasmine.objectContaining({ x: 203, y: 392 }));
+        expect(force.c3EncounterPosition(secondId)).toEqual(jasmine.objectContaining({ x: 407, y: 392 }));
         subscription.unsubscribe();
     });
 
@@ -1567,9 +1622,10 @@ describe('CBTForce V2 encounter persistence', () => {
             ],
         };
 
-        expect(force.replaceC3EncounterNetworksIfOwnerRevisionCurrent(
+        expect(force.replaceC3EncounterConfigurationIfOwnerRevisionCurrent(
             force.captureForceOwnerRevisionFence(),
             [network],
+            [],
         )).toBeTrue();
         expect(force.getRuntimeUndoState()).toEqual(undoBeforeNetwork);
         expect(force.getRuntimeHistory()).toEqual(historyBeforeNetwork);
@@ -1834,16 +1890,25 @@ describe('CBTForce V2 encounter persistence', () => {
             edit: {
                 kind: 'set-target-facts',
                 targetId,
-                facts: { distance: 6 },
+                facts: {
+                    distance: 6,
+                    manualTnOverride: { kind: 'user-manual', modifier: 2 },
+                },
             },
         })).accepted).toBeTrue();
+        expect(target.queryInventoryControlTargetRegistry().targets.map(row => row.id))
+            .toEqual([targetId]);
         expect(target.getAttackerTargeting(instanceId)?.state.targets.get(targetId)?.distance).toBe(6);
         const entry = (await target.serializeForPersistence()).cbt!.units
             .find(unit => unit.instanceId === instanceId);
         expect(entry !== undefined
             && isSerializedNonMekUnit(entry.unit)
             && entry.unit.conditions?.includes('immobile')
-            && entry.unit.attackerTargeting.targets[0]?.targetId === targetId).toBeTrue();
+            && !('attackerTargeting' in entry.unit)).toBeTrue();
+        expect(target.queryInventoryControlTargetRegistry().targets.map(row => row.id))
+            .toEqual([targetId]);
+        expect(target.getAttackerTargeting(instanceId)?.state.targets.get(targetId)?.manualTnOverride)
+            .toEqual({ kind: 'user-manual', modifier: 2 });
         const beforeDelete = target.queryInventoryControlTargetRegistry();
         expect(target.dispatchInventoryControlTargetRegistry({
             kind: 'delete-target',

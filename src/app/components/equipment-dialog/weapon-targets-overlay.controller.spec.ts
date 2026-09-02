@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { Injector, signal } from '@angular/core';
+import { Subject } from 'rxjs';
 import type { CBTForce } from '../../models/cbt-force.model';
 import { CBTForceMember, type CBTMekForceMember } from '../../models/force-member.model';
 import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
@@ -59,6 +60,8 @@ function createHarness(readOnly = false) {
     const dispatchTargeting = jasmine.createSpy('dispatchAttackerTargeting')
         .and.resolveTo({ accepted: true, idempotent: false, currentRevision: 3 });
     const force = {
+        changed: new Subject<void>(),
+        sessionChanged: new Subject<void>(),
         queryInventoryControlTargetRegistry: query,
         dispatchInventoryControlTargetRegistry: dispatch,
         targetRegistryVersion: signal(0).asReadonly(),

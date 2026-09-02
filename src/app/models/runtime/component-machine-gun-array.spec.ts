@@ -6,7 +6,6 @@ import type {
     EquipmentInteractionDialogsService,
     EquipmentInteractionNotifications,
 } from './equipment-interaction';
-import { emptyCBTEncounterSnapshot } from './encounter-runtime';
 import { projectMekEquipmentPanel } from './equipment-panel';
 import {
     MachineGunArrayHandler,
@@ -15,7 +14,10 @@ import {
     MGA_OFF_MODE,
     MGA_UNLINKING_MODE,
 } from './component-machine-gun-array';
-import { createDirectMachineGunArrayRuntimeFixture } from './testing/direct-mek-runtime-fixture';
+import {
+    createDirectMachineGunArrayRuntimeFixture,
+    emptyCBTEncounterSnapshot,
+} from './testing/direct-mek-runtime-fixture';
 
 describe('direct machine-gun-array runtime', () => {
     it('projects immutable controller/member topology from the Entity and keeps linking in runtime state', () => {

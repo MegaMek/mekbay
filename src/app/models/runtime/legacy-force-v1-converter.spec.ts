@@ -105,10 +105,9 @@ describe('CBT V1 force converter', () => {
                 ],
             }],
         });
-        expect(envelope.encounter.state).toEqual({
-            schemaVersion: 2,
-            encounterRevision: 0,
-            facts: [],
+        expect(envelope.encounter).toEqual({
+            networks: [],
+            c3Positions: [{ unitId: 'unit:a', x: 203, y: 392 }],
         });
         expect(JSON.stringify(converted)).not.toContain('"payload"');
         expect(warnings.some(warning => warning.kind === 'unit-skipped' && warning.unit === 'Vehicle B')).toBeTrue();
@@ -150,21 +149,23 @@ describe('CBT V1 force converter', () => {
             .toBeRejectedWithError(/at most one commander/u);
     });
 
-    it('converts valid V1 C3 links to typed encounter facts', async () => {
+    it('converts valid V1 C3 links to durable encounter networks', async () => {
         const converted = await convertPersistedForceV1(v1Force(), {
             resolveIdentity: resolveAllIdentity,
             scenario: SCENARIO,
             materializeUnit: materializeC3NonMek,
         });
-        const facts = converted.cbt!.encounter.state.facts;
+        const networks = converted.cbt!.encounter.networks;
 
-        expect(facts.length).toBe(1);
-        expect(facts[0]).toEqual(jasmine.objectContaining({ kind: 'network' }));
-        if (facts[0].kind !== 'network') return;
-        expect(facts[0].network.networkType).toBe(C3NetworkType.C3I);
-        expect(facts[0].network.endpoints.map(endpoint => endpoint.instanceId)).toEqual([
+        expect(networks.length).toBe(1);
+        expect(networks[0].networkType).toBe(C3NetworkType.C3I);
+        expect(networks[0].endpoints.map(endpoint => endpoint.instanceId)).toEqual([
             'unit:a',
             'unit:b',
+        ]);
+        expect(converted.cbt!.encounter.c3Positions).toEqual([
+            { unitId: 'unit:a', x: 203, y: 392 },
+            { unitId: 'unit:b', x: 407, y: 392 },
         ]);
     });
 
@@ -380,10 +381,12 @@ describe('CBT V1 force converter', () => {
             { damageTrackId: motive, hitDelta: -1, hitTimestamps: [] },
             { damageTrackId: rotor, hitDelta: 1, hitTimestamps: [30] },
         ]);
-        expect(restored.damageTrackHits(rotor, 'committed')).toBe(2);
-        expect(restored.damageTrackHits(rotor, 'preview')).toBe(3);
-        expect(restored.damageTrackHits(motive, 'committed')).toBe(3);
-        expect(restored.damageTrackHits(motive, 'preview')).toBe(2);
+        expect(restored.snapshot().damageTracks.get(rotor)?.hits).toBe(2);
+        expect((restored.snapshot().damageTracks.get(rotor)?.hits ?? 0)
+            + (restored.snapshot().pendingCombat.damageTrackHits.get(rotor)?.hitDelta ?? 0)).toBe(3);
+        expect(restored.snapshot().damageTracks.get(motive)?.hits).toBe(3);
+        expect((restored.snapshot().damageTracks.get(motive)?.hits ?? 0)
+            + (restored.snapshot().pendingCombat.damageTrackHits.get(motive)?.hitDelta ?? 0)).toBe(2);
     });
 });
 
@@ -529,12 +532,22 @@ function v1Force(): SerializedForce {
                     id: 'unit:a',
                     unit: 'Mek A',
                     commander: true,
-                    state: { modified: true, destroyed: false, heat: 1 },
+                    state: {
+                        modified: true,
+                        destroyed: false,
+                        heat: 1,
+                        c3Position: { x: 203, y: 392 },
+                    },
                 },
                 {
                     id: 'unit:b',
                     unit: 'Vehicle B',
-                    state: { modified: true, destroyed: false, motive: 2 },
+                    state: {
+                        modified: true,
+                        destroyed: false,
+                        motive: 2,
+                        c3Position: { x: 407, y: 392 },
+                    },
                 },
             ],
         }],

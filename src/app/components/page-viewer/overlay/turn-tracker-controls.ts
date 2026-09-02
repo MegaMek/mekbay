@@ -4,6 +4,7 @@
 
 import { computed, DestroyRef, Directive, effect, inject, Injector, input, signal } from '@angular/core';
 import { Overlay } from '@angular/cdk/overlay';
+import { merge } from 'rxjs';
 
 import {
     canChangeAirborneGround,
@@ -123,7 +124,7 @@ export abstract class TurnTrackerControls {
         effect(onCleanup => {
             const member = this.member();
             if (!member) return;
-            const subscription = member.force.changed.subscribe(() => {
+            const subscription = merge(member.force.changed, member.force.sessionChanged).subscribe(() => {
                 if (!isCBTMekForceMember(member)) {
                     this.entityMovementDistancePreview.set(null);
                 }

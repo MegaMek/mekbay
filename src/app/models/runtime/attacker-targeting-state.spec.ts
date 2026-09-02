@@ -7,13 +7,11 @@ import {
     MAX_ATTACKER_MANUAL_TN_MAGNITUDE,
     MAX_ATTACKER_TARGET_DISTANCE,
     createPristineAttackerTargetingState,
-    deserializeAttackerTargetingState,
     freezeAttackerTargetingState,
     attackerActionSelection,
     planAttackerTargetingCommand,
     reconcileAttackerTargetingState,
     reduceAttackerTargetingCommand,
-    serializeAttackerTargetingState,
     type AttackerTargetingCommand,
     type AttackerTargetingState,
     type AttackerTargetingValidationContext,
@@ -116,22 +114,6 @@ describe('attacker-local targeting state', () => {
         expect(state.components.size).toBe(0);
     });
 
-    it('round-trips the exact wire state and rejects malformed or duplicate entries', () => {
-        const state = apply(createPristineAttackerTargetingState(), command({
-            kind: 'set-component-selection',
-            componentId: WEAPON_ALPHA,
-            selection: { kind: 'target', targetId: TARGET_ALPHA },
-        }));
-        const wire = serializeAttackerTargetingState(state);
-
-        expect(serializeAttackerTargetingState(deserializeAttackerTargetingState(wire))).toEqual(wire);
-        expect(() => deserializeAttackerTargetingState({})).toThrowError(/wire state/u);
-        expect(() => deserializeAttackerTargetingState({
-            ...wire,
-            components: [wire.components[0], wire.components[0]],
-        })).toThrowError(/Duplicate attacker-targeting entry/u);
-    });
-
     it('cannot represent shared target identity/calculator facts or a cached derived TN', () => {
         let state = createPristineAttackerTargetingState();
         state = apply(state, command({
@@ -153,15 +135,16 @@ describe('attacker-local targeting state', () => {
             },
         }));
 
-        const json = JSON.stringify(serializeAttackerTargetingState(state));
-        for (const forbidden of [
-            'name', 'color', 'unitType', 'source', 'readOnly', 'tnModifier',
-            'calculatedModifier', 'targetMovementBracket', 'targetHexCover',
-            'largeTarget', 'isAirborne', 'prone', 'immobile', 'skidding',
-        ]) {
-            expect(json).not.toContain(`\"${forbidden}\"`);
-        }
-        expect(json).toContain('"manualTnOverride":{"kind":"user-manual","modifier":-2}');
+        const target = state.targets.get(TARGET_ALPHA)!;
+        expect(target).toEqual({
+            distance: 9,
+            calculator: {
+                interveningWoods: 'light2',
+                partialCover: true,
+                secondaryTarget: true,
+            },
+            manualTnOverride: { kind: 'user-manual', modifier: -2 },
+        });
 
         const injectedSharedFact = {
             distance: 2,
@@ -189,8 +172,7 @@ describe('attacker-local targeting state', () => {
             changed: false,
             reason: 'STALE_REGISTRY',
         }));
-        expect(serializeAttackerTargetingState(result.state))
-            .toEqual(serializeAttackerTargetingState(state));
+        expect(result.state).toEqual(state);
     });
 
     it('rejects a target from another registry and a source outside the weapon compatibility set', () => {
@@ -401,14 +383,13 @@ describe('attacker-local targeting state', () => {
         expect(planned).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(Object.isFrozen(planned)).toBeTrue();
         if (planned.accepted) {
-            expect(serializeAttackerTargetingState(planned.nextState))
-                .toEqual(serializeAttackerTargetingState(state));
+            expect(planned.nextState).toEqual(state);
         } else {
             fail('expected an accepted no-op');
         }
     });
 
-    it('sorts both indexes and produces byte-stable canonical serialization', () => {
+    it('sorts every index canonically', () => {
         const left = freezeAttackerTargetingState({
             schemaVersion: 1,
             components: new Map([
@@ -430,8 +411,9 @@ describe('attacker-local targeting state', () => {
 
         expect([...left.components.keys()]).toEqual([WEAPON_ALPHA, WEAPON_BETA]);
         expect([...left.targets.keys()]).toEqual([TARGET_ALPHA, TARGET_BETA]);
-        expect(JSON.stringify(serializeAttackerTargetingState(left)))
-            .toBe(JSON.stringify(serializeAttackerTargetingState(right)));
+        expect([...right.components]).toEqual([...left.components]);
+        expect([...right.actions]).toEqual([...left.actions]);
+        expect([...right.targets]).toEqual([...left.targets]);
     });
 
     it('owns intrinsic and component physical-action selections without treating them as weapon components', () => {

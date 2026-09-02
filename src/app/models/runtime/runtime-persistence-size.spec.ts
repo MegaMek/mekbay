@@ -6,8 +6,8 @@ import {
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
     validateSerializedCBTForceV2,
+    type SerializedCBTEncounterStateV2,
     type SerializedCBTForceV2,
-    type SerializedForceEncounterEntryV2,
 } from './persistence-v2';
 import { RUNTIME_HISTORY_MESSAGE, type SerializedRuntimeHistory } from './runtime-history';
 import { CBTNonMekUnit } from './cbt-non-mek-unit';
@@ -17,11 +17,8 @@ import { GameSystem } from '../common.model';
 import { encodeForceForStorage } from './force-storage-codec';
 import type { ASSerializedForce, ASSerializedState, ASSerializedUnit } from '../force-serialization';
 
-function emptySerializedEncounterV2(): SerializedForceEncounterEntryV2 {
-    return {
-        encounterRevision: 0,
-        state: { schemaVersion: 2, encounterRevision: 0, facts: [] },
-    };
+function emptySerializedEncounterV2(): SerializedCBTEncounterStateV2 {
+    return { networks: [] };
 }
 
 describe('compact runtime persistence', () => {
@@ -66,7 +63,6 @@ describe('compact runtime persistence', () => {
         };
 
         const stored = encodeForceForStorage(force);
-        console.info(`AS_MIXED_100_BYTES=${byteLength(stored)}`);
         expect(byteLength(stored)).toBeLessThan(40_000);
     });
 
@@ -130,7 +126,6 @@ describe('compact runtime persistence', () => {
             name: 'Maximum size budget',
             cbt: force,
         });
-        console.info(`CBT_MIXED_100_BYTES=${byteLength(stored)}`);
         expect(byteLength(stored)).toBeLessThan(120_000);
     });
 });

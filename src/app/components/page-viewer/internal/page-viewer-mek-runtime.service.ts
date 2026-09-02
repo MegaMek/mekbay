@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { Injectable, inject } from '@angular/core';
+import { merge } from 'rxjs';
 
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../../models/mek-sheet-binding';
 import type { CBTMekForceMember } from '../../../models/force-member.model';
@@ -45,7 +46,7 @@ export class PageViewerMekRuntimeService {
                 ? undefined
                 : (interaction, event) => this.interactions.handle(member, interaction, event),
         );
-        const subscription = member.force.changed.subscribe(changedUnitIds => {
+        const subscription = merge(member.force.changed, member.force.sessionChanged).subscribe(changedUnitIds => {
             if (changedUnitIds?.includes(member.id) ?? true) this.render(member);
         });
         this.bound.set(member.id, { member, svg, binding, subscription });
