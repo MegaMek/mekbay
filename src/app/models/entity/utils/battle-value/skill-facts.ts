@@ -6,6 +6,7 @@ import { InfantryBaseEntity } from '../../entities/infantry/infantry-base-entity
 import {
   adjustCBTBattleValueForSkills,
   effectiveCBTPilotingSkill,
+  fixedCBTPilotingSkill,
   type CBTSkillUnitFacts,
 } from './rules';
 
@@ -20,6 +21,10 @@ export function classicSkillFactsForEntity(entity: BaseEntity): CBTSkillUnitFact
 
 export function effectiveEntityPilotingSkill(entity: BaseEntity, requested: number): number {
   return effectiveCBTPilotingSkill(classicSkillFactsForEntity(entity), requested);
+}
+
+export function fixedEntityPilotingSkill(entity: BaseEntity): number | null {
+  return fixedCBTPilotingSkill(classicSkillFactsForEntity(entity));
 }
 
 export function adjustEntityBattleValueForSkills(

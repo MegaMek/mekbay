@@ -67,6 +67,7 @@ describe('ForceUnitAdmissionService', () => {
             targetRosterGroupId: force.groups()[0].id,
             targetRosterMemberIndex: 0,
             commander: true,
+            crewSkills: { gunnery: 4, piloting: 5 },
         }));
         expect(isCBTMekForceMember(member)).toBeTrue();
         expect(member).toBe(ownedMember);

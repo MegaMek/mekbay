@@ -10,13 +10,13 @@
  */
 import { DOCUMENT } from '@angular/common';
 import { DestroyRef, Injectable, inject } from '@angular/core';
-import { Dialog, type DialogRef } from '@angular/cdk/dialog';
+import { Dialog } from '@angular/cdk/dialog';
 
 export interface KeyboardShortcutScope {
     id: string;
     priority?: number;
     allowInTextEntry?: boolean;
-    dialogRef?: DialogRef<any, any>;
+    dialogRef?: object;
     active?: () => boolean;
     handle: (event: KeyboardEvent) => boolean | void;
 }
@@ -81,14 +81,14 @@ export class KeyboardShortcutService {
         }
     }
 
-    private getTopDialogRef(): DialogRef<any, any> | null {
+    private getTopDialogRef(): object | null {
         const openDialogs = this.dialog?.openDialogs ?? [];
         return openDialogs.length > 0
-            ? openDialogs[openDialogs.length - 1] as DialogRef<any, any>
+            ? openDialogs[openDialogs.length - 1]
             : null;
     }
 
-    private isScopeEligible(scope: RegisteredKeyboardShortcutScope, topDialogRef: DialogRef<any, any> | null): boolean {
+    private isScopeEligible(scope: RegisteredKeyboardShortcutScope, topDialogRef: object | null): boolean {
         if (topDialogRef) {
             return scope.dialogRef === topDialogRef && scope.active?.() !== false;
         }

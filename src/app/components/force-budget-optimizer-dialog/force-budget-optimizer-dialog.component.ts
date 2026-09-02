@@ -17,6 +17,7 @@ import type { BaseEntity } from '../../models/entity/base-entity';
 import {
     adjustEntityBattleValueForSkills,
     effectiveEntityPilotingSkill,
+    fixedEntityPilotingSkill,
 } from '../../models/entity/utils/battle-value/skill-facts';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { OptionsService } from '../../services/options.service';
@@ -283,11 +284,12 @@ export class ForceBudgetOptimizerDialogComponent {
         const [minGunnery, maxGunnery] = this.gunnerySkillRange();
         const [minPiloting, maxPiloting] = this.pilotingSkillRange();
         const maxDelta = this.maxPilotSkillDelta();
+        const hasFixedPiloting = fixedEntityPilotingSkill(entity) !== null;
 
         for (let gunnery = minGunnery; gunnery <= maxGunnery; gunnery += 1) {
             for (let requestedPiloting = minPiloting; requestedPiloting <= maxPiloting; requestedPiloting += 1) {
                 const piloting = effectiveEntityPilotingSkill(entity, requestedPiloting);
-                if (Math.abs(gunnery - piloting) > maxDelta) {
+                if (!hasFixedPiloting && Math.abs(gunnery - piloting) > maxDelta) {
                     continue;
                 }
                 const cost = Math.max(0, adjustEntityBattleValueForSkills(

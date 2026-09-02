@@ -5,7 +5,7 @@ import { InfantryEntity } from '../../entities/infantry/infantry-entity';
 import { BipedMekEntity } from '../../entities/mek/biped-mek-entity';
 import { ProtoMekEntity } from '../../entities/protomek/protomek-entity';
 import { createTestEquipmentRegistry } from '../../testing/test-equipment-registry';
-import { effectiveEntityPilotingSkill } from './skill-facts';
+import { effectiveEntityPilotingSkill, fixedEntityPilotingSkill } from './skill-facts';
 
 describe('Entity crew-skill facts', () => {
   it('uses the loaded Entity family instead of catalog-summary fields', () => {
@@ -14,9 +14,11 @@ describe('Entity crew-skill facts', () => {
     expect(effectiveEntityPilotingSkill(new ProtoMekEntity(registry), 2)).toBe(5);
 
     const conventional = new InfantryEntity(registry);
+    expect(fixedEntityPilotingSkill(conventional)).toBe(8);
     expect(effectiveEntityPilotingSkill(conventional, 2)).toBe(8);
 
     conventional.motiveType.set('Tracked');
+    expect(fixedEntityPilotingSkill(conventional)).toBe(5);
     expect(effectiveEntityPilotingSkill(conventional, 2)).toBe(5);
   });
 });

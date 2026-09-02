@@ -7,6 +7,8 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
+import { InfantryEntity } from '../../models/entity/entities/infantry/infantry-entity';
+import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
 import { TestBipedMekEntity, TestTankEntity } from '../../models/entity/testing/test-entities';
 import type { Force } from '../../models/force.model';
 import { OptionsService } from '../../services/options.service';
@@ -21,9 +23,20 @@ interface CBTSkillPrioritiesTestApi {
 
 interface ForceBudgetOptimizerDialogTestApi {
     targetBudget(): number;
+    createCBTOptions(member: CBTOptionsMemberTestApi): readonly CBTOptimizationChoiceTestApi[];
     getCBTSkillPriorities(entity: BaseEntity): CBTSkillPrioritiesTestApi;
     getCBTSmartScore(priorities: CBTSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
     selectBestAffordableState(states: readonly OptimizationStateTestApi[], targetBudget: number): OptimizationStateTestApi | null;
+}
+
+interface CBTOptionsMemberTestApi {
+    readonly entity: BaseEntity;
+    currentBaseBattleValue(): number | null;
+}
+
+interface CBTOptimizationChoiceTestApi {
+    readonly gunnery?: number;
+    readonly piloting?: number;
 }
 
 interface OptimizationStateTestApi {
@@ -34,7 +47,11 @@ interface OptimizationStateTestApi {
 }
 
 describe('ForceBudgetOptimizerDialogComponent', () => {
-    async function createComponent(forceTotal = 0, bvPvLimit = 0): Promise<ForceBudgetOptimizerDialogTestApi> {
+    async function createComponent(
+        forceTotal = 0,
+        bvPvLimit = 0,
+        maxDelta = 8,
+    ): Promise<ForceBudgetOptimizerDialogTestApi> {
         const force = {
             gameSystem: GameSystem.CBT,
             totalBv: jasmine.createSpy('totalBv').and.returnValue(forceTotal),
@@ -51,7 +68,7 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
                     gunnery: { min: 2, max: 6 },
                     piloting: { min: 2, max: 6 },
                     skill: { min: 2, max: 6 },
-                    maxDelta: 8,
+                    maxDelta,
                 },
             }),
             setOption: jasmine.createSpy('setOption').and.resolveTo(undefined),
@@ -134,6 +151,19 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
         expect(priorities.gunnery).toBe(31);
         expect(priorities.piloting).toBe(1);
         expect(gunneryFocusedScore).toBeGreaterThan(pilotingFocusedScore);
+    });
+
+    it('does not reject fixed-piloting units through the configurable skill-delta filter', async () => {
+        const component = await createComponent(0, 0, 0);
+        const entity = new InfantryEntity(createTestEquipmentRegistry());
+
+        const choices = component.createCBTOptions({
+            entity,
+            currentBaseBattleValue: () => 100,
+        });
+
+        expect(choices.length).toBeGreaterThan(0);
+        expect(choices.every(choice => choice.piloting === 8)).toBeTrue();
     });
 
     it('selects the nearest result without exceeding the target budget', async () => {

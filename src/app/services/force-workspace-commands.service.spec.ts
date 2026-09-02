@@ -147,6 +147,33 @@ describe('ForceWorkspaceCommandsService force conversion', () => {
     });
 });
 
+describe('ForceWorkspaceCommandsService unit cloning', () => {
+    it('routes a unit-block CBT clone through canonical unit admission', async () => {
+        const harness = createHarness();
+        const { admission, dataService, injector, service, workspace } = harness;
+        const force = new CBTForce('Clone test', dataService, injector);
+        const group = await force.addGroup();
+        const entity = createTestMekEntity();
+        const source = new CBTForceMember('source-unit', force, entity);
+        const clone = new CBTForceMember('cloned-unit', force, entity);
+        spyOn(force, 'getUnitUuid').and.returnValue(entity.uuid());
+        spyOn(force, 'getRosterGroupId').and.returnValue(group.id);
+        spyOn(force, 'membersInGroup').and.returnValue([source]);
+        admission.admitCBT.and.resolveTo(clone);
+
+        const result = await service.cloneUnit(source);
+
+        expect(result).toBe(clone);
+        expect(admission.admitCBT).toHaveBeenCalledOnceWith({
+            force,
+            uuid: entity.uuid(),
+            rosterGroupId: group.id,
+            rosterMemberIndex: 1,
+        });
+        expect(workspace.selectUnit).toHaveBeenCalledOnceWith(clone);
+    });
+});
+
 function createHarness() {
     const dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByUuid']);
     const builder = jasmine.createSpyObj<ForceBuilderService>(
@@ -157,7 +184,7 @@ function createHarness() {
     builder.addLoadedForce.and.returnValue(true);
     const workspace = jasmine.createSpyObj<ForceWorkspaceStateService>(
         'ForceWorkspaceStateService',
-        ['getForceSlot'],
+        ['getForceSlot', 'selectUnit'],
     );
     const dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog']);
     dialogs.createDialog.and.returnValue({ closed: of('convert') } as never);
@@ -168,7 +195,7 @@ function createHarness() {
     persistence.saveForceAndWaitForCloud.and.resolveTo();
     const admission = jasmine.createSpyObj<ForceUnitAdmissionService>(
         'ForceUnitAdmissionService',
-        ['admit'],
+        ['admit', 'admitCBT'],
     );
     const crewTransfers = jasmine.createSpyObj<ForceCrewTransferService>(
         'ForceCrewTransferService',

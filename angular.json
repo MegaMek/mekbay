@@ -150,6 +150,8 @@
             "styles": [
               "src/styles.scss"
             ],
+            "karmaConfig": ".karma-no-gpu.cjs",
+            "browsers": "ChromeHeadlessNoGpu",
             "assets": [
               {
                 "glob": "**/*",
