@@ -844,14 +844,6 @@ export class NonMekUnitInstance {
         return projectAeroRuntimeRules(this.entity, this.index, this.state, this.ruleset);
     }
 
-    public remainingInternal(locationId: LocationId): number {
-        return this.query().remainingInternal(locationId);
-    }
-
-    public remainingArmor(faceId: ArmorFaceId): number {
-        return this.query().remainingArmor(faceId);
-    }
-
     public damageTrackHits(damageTrackId: SystemDamageTrackId, perspective: 'committed' | 'preview' = 'committed'): number {
         const definition = this.index.damageTracks.get(damageTrackId);
         if (!definition) throw new Error(`Unknown non-Mek damage track ${damageTrackId}`);
@@ -870,14 +862,6 @@ export class NonMekUnitInstance {
 
     public componentMode(componentId: ComponentId): string | undefined {
         return this.query().componentMode(componentId);
-    }
-
-    public ammoRemaining(componentId: ComponentId): number {
-        return this.query().remainingAmmo(componentId);
-    }
-
-    public attackerTargetingState(): AttackerTargetingState {
-        return this.state.attackerTargeting;
     }
 
     /** Updates presentation order without entering gameplay undo/history. */
