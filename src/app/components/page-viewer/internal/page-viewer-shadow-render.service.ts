@@ -8,6 +8,10 @@ import { PAGE_GAP, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
 import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 import type { PageViewerMember, PageViewerShadowDescriptor } from './types';
 
+export function pageViewerShadowKey(unitIndex: number, direction: 'left' | 'right'): string {
+    return `${direction}:${unitIndex}`;
+}
+
 @Injectable()
 export class PageViewerShadowRenderService {
     private readonly sheetSource = inject(PageViewerSheetSourceService);

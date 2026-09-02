@@ -5,7 +5,6 @@
 import { TestBed } from '@angular/core/testing';
 
 import { PageViewerSwipeDomService } from './page-viewer-swipe-dom.service';
-import { PageViewerWrapperLayoutService } from './page-viewer-wrapper-layout.service';
 import type { PageViewerSwipeRendererInstruction, PageViewerSwipeRendererSlotState } from './page-viewer-swipe-renderer.service';
 
 function createSvg(): SVGSVGElement {
@@ -17,7 +16,7 @@ describe('PageViewerSwipeDomService', () => {
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            providers: [PageViewerWrapperLayoutService, PageViewerSwipeDomService]
+            providers: [PageViewerSwipeDomService]
         });
 
         service = TestBed.inject(PageViewerSwipeDomService);

@@ -5,7 +5,6 @@
 import { Injectable, inject } from '@angular/core';
 
 import { PageViewerDisplayWindowService } from './page-viewer-display-window.service';
-import { PageViewerInPlaceUpdateService } from './page-viewer-in-place-update.service';
 import type { PageViewerInPlaceUpdatePlan, PageViewerMember } from './types';
 
 export interface PageViewerActiveDisplayPreparation {
@@ -22,7 +21,6 @@ export interface PageViewerActiveInPlacePreparation {
 @Injectable()
 export class PageViewerActiveDisplayService {
     private readonly pageViewerDisplayWindow = inject(PageViewerDisplayWindowService);
-    private readonly pageViewerInPlaceUpdate = inject(PageViewerInPlaceUpdateService);
 
     clearActivePageElements(content: HTMLDivElement, pageElements: readonly HTMLDivElement[]): HTMLDivElement[] {
         pageElements.forEach((element) => {
@@ -78,11 +76,33 @@ export class PageViewerActiveDisplayService {
 
         return {
             expectedUnits,
-            patchPlan: this.pageViewerInPlaceUpdate.buildPlan({
+            patchPlan: this.buildInPlaceUpdatePlan({
                 expectedUnits,
                 currentWrapperUnitIds,
                 preserveSelectedUnitId
             })
+        };
+    }
+
+    private buildInPlaceUpdatePlan(options: {
+        expectedUnits: readonly PageViewerMember[];
+        currentWrapperUnitIds: readonly string[];
+        preserveSelectedUnitId: string;
+    }): PageViewerInPlaceUpdatePlan {
+        const { expectedUnits, currentWrapperUnitIds, preserveSelectedUnitId } = options;
+        if (expectedUnits.length !== currentWrapperUnitIds.length) {
+            return { canPatchInPlace: false, slots: [] };
+        }
+
+        const preservedSlotIndex = currentWrapperUnitIds.indexOf(preserveSelectedUnitId);
+        return {
+            canPatchInPlace: true,
+            slots: expectedUnits.map((unit, slotIndex) => ({
+                slotIndex,
+                unit,
+                preserveExisting: slotIndex === preservedSlotIndex
+                    && unit.id === preserveSelectedUnitId,
+            })),
         };
     }
 }

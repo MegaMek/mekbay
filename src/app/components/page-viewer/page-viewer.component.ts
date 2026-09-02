@@ -51,17 +51,17 @@ import { PageViewerViewStateService } from './internal/page-viewer-view-state.se
 import { PageViewerActiveRenderService } from './internal/page-viewer-active-render.service';
 import { PageViewerActiveDisplayService } from './internal/page-viewer-active-display.service';
 import { PageViewerOverlayService } from './internal/page-viewer-overlay.service';
-import { PageViewerShadowService } from './internal/page-viewer-shadow.service';
 import { PageViewerShadowNavigationService } from './internal/page-viewer-shadow-navigation.service';
-import { PageViewerShadowRenderService } from './internal/page-viewer-shadow-render.service';
+import {
+    pageViewerShadowKey,
+    PageViewerShadowRenderService,
+} from './internal/page-viewer-shadow-render.service';
 import { PageViewerDisplayWindowService } from './internal/page-viewer-display-window.service';
-import { PageViewerEffectStateService } from './internal/page-viewer-effect-state.service';
 import { PageViewerForceChangeService } from './internal/page-viewer-force-change.service';
 import { PageViewerForceUnitsReactionService } from './internal/page-viewer-force-units-reaction.service';
 import { PageViewerOptionReactionService } from './internal/page-viewer-option-reaction.service';
 import { PageViewerPresentationService } from './internal/page-viewer-presentation.service';
 import { PageViewerSelectionChangeService } from './internal/page-viewer-selection-change.service';
-import { PageViewerInPlaceUpdateService } from './internal/page-viewer-in-place-update.service';
 import { PageViewerUiGlueService } from './internal/page-viewer-ui-glue.service';
 import { PageViewerSwipeSlotService } from './internal/page-viewer-swipe-slot.service';
 import { PageViewerSwipeLoadService } from './internal/page-viewer-swipe-load.service';
@@ -73,7 +73,6 @@ import { PageViewerSwipeBindingService } from './internal/page-viewer-swipe-bind
 import { PageViewerSwipeDomService } from './internal/page-viewer-swipe-dom.service';
 import { PageViewerSwipeRenderPlanService } from './internal/page-viewer-swipe-render-plan.service';
 import { PageViewerSwipeRendererService } from './internal/page-viewer-swipe-renderer.service';
-import { PageViewerWrapperLayoutService } from './internal/page-viewer-wrapper-layout.service';
 import type { PageViewerMember, PageViewerPageDescriptor, PageViewerShadowDescriptor, ViewportTransform } from './internal/types';
 import { PageViewerSheetSourceService } from './internal/page-viewer-sheet-source.service';
 import { PageViewerMekRuntimeService } from './internal/page-viewer-mek-runtime.service';
@@ -111,17 +110,14 @@ type ShadowDirection = 'left' | 'right';
         PageViewerActiveDisplayService,
         PageViewerActiveRenderService,
         PageViewerOverlayService,
-        PageViewerShadowService,
         PageViewerShadowNavigationService,
         PageViewerShadowRenderService,
         PageViewerDisplayWindowService,
-        PageViewerEffectStateService,
         PageViewerForceChangeService,
         PageViewerForceUnitsReactionService,
         PageViewerOptionReactionService,
         PageViewerPresentationService,
         PageViewerSelectionChangeService,
-        PageViewerInPlaceUpdateService,
         PageViewerUiGlueService,
         PageViewerSwipeSlotService,
         PageViewerSwipeLoadService,
@@ -133,7 +129,6 @@ type ShadowDirection = 'left' | 'right';
         PageViewerSwipeDomService,
         PageViewerSwipeRenderPlanService,
         PageViewerSwipeRendererService,
-        PageViewerWrapperLayoutService,
         PageViewerSheetSourceService,
         PageViewerMekInteractionService,
         PageViewerMekRuntimeService,
@@ -158,10 +153,8 @@ export class PageViewerComponent implements AfterViewInit {
     private pageViewerActiveDisplay = inject(PageViewerActiveDisplayService);
     private pageViewerActiveRender = inject(PageViewerActiveRenderService);
     private pageViewerOverlay = inject(PageViewerOverlayService);
-    private pageViewerShadow = inject(PageViewerShadowService);
     private pageViewerShadowNavigation = inject(PageViewerShadowNavigationService);
     private pageViewerShadowRender = inject(PageViewerShadowRenderService);
-    private pageViewerEffectState = inject(PageViewerEffectStateService);
     private pageViewerForceChange = inject(PageViewerForceChangeService);
     private pageViewerForceUnitsReaction = inject(PageViewerForceUnitsReactionService);
     private pageViewerOptionReaction = inject(PageViewerOptionReactionService);
@@ -176,7 +169,6 @@ export class PageViewerComponent implements AfterViewInit {
     private pageViewerSwipeSession = inject(PageViewerSwipeSessionService);
     private pageViewerSwipeDom = inject(PageViewerSwipeDomService);
     private pageViewerSwipeRenderer = inject(PageViewerSwipeRendererService);
-    private pageViewerWrapperLayout = inject(PageViewerWrapperLayoutService);
     private pageViewerSheetSource = inject(PageViewerSheetSourceService);
     private pageViewerMekInteractions = inject(PageViewerMekInteractionService);
     private pageViewerMekRuntime = inject(PageViewerMekRuntimeService);
@@ -478,14 +470,13 @@ export class PageViewerComponent implements AfterViewInit {
         }, { injector: this.injector });
 
         effect(() => {
-            this.pageViewerEffectState.syncViewerState({
-                state: this.pageViewerState,
-                forceUnits: this.forceUnits(),
-                selectedUnitId: this.unit()?.id ?? null,
-                visiblePageCount: this.visiblePageCount(),
-                maxVisiblePageCount: this.maxVisiblePageCount(),
-                allowMultipleActiveSheets: this.optionsService.options().allowMultipleActiveSheets
-            });
+            this.pageViewerState.setForceUnits(this.forceUnits());
+            this.pageViewerState.setSelectedUnitId(this.unit()?.id ?? null);
+            this.pageViewerState.visiblePageCount.set(this.visiblePageCount());
+            this.pageViewerState.maxVisiblePageCount.set(this.maxVisiblePageCount());
+            this.pageViewerState.allowMultipleActiveSheets.set(
+                this.optionsService.options().allowMultipleActiveSheets,
+            );
         }, { injector: this.injector });
 
         effect(() => {
@@ -493,9 +484,8 @@ export class PageViewerComponent implements AfterViewInit {
                 return;
             }
 
-            const snapshot = this.pageViewerEffectState.captureViewStateSnapshot(this.zoomPanService.viewState());
+            const snapshot = this.captureCurrentViewState();
 
-            this.lastViewState = snapshot;
             this.pageViewerViewState.saveSharedViewState(snapshot);
         }, { injector: this.injector });
 
@@ -1062,15 +1052,14 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     private applyWrapperLayout(wrapper: HTMLDivElement, options: { originalLeft: number; scale?: number }): void {
-        const layout = options.scale === undefined
-            ? this.pageViewerWrapperLayout.buildUnscaledLayout(options.originalLeft)
-            : this.pageViewerWrapperLayout.buildScaledLayout(options.originalLeft, options.scale);
+        const scale = options.scale ?? 1;
+        const left = options.originalLeft * scale;
 
-        wrapper.dataset['originalLeft'] = String(layout.originalLeft);
-        wrapper.style.width = `${layout.width}px`;
-        wrapper.style.height = `${layout.height}px`;
+        wrapper.dataset['originalLeft'] = String(options.originalLeft);
+        wrapper.style.width = `${PAGE_WIDTH * scale}px`;
+        wrapper.style.height = `${PAGE_HEIGHT * scale}px`;
         wrapper.style.position = 'absolute';
-        wrapper.style.left = `${layout.left}px`;
+        wrapper.style.left = `${left}px`;
         wrapper.style.top = '0';
     }
 
@@ -1267,10 +1256,6 @@ export class PageViewerComponent implements AfterViewInit {
         this.swipeLeftmostOffset = extendedState.leftmostOffset;
         this.swipeRightmostOffset = extendedState.rightmostOffset;
         this.swipeTotalSlots = extendedState.swipeTotalSlots;
-    }
-
-    private getShadowKey(unitIndex: number, direction: ShadowDirection): string {
-        return this.pageViewerShadow.getShadowKey(unitIndex, direction);
     }
 
     private removeShadowPageElement(shadowElement: HTMLDivElement): void {
@@ -1645,7 +1630,8 @@ export class PageViewerComponent implements AfterViewInit {
     }
 
     private captureCurrentViewState(): ViewportTransform {
-        this.lastViewState = this.pageViewerEffectState.captureViewStateSnapshot(this.zoomPanService.viewState());
+        const { scale, translateX, translateY } = this.zoomPanService.viewState();
+        this.lastViewState = { scale, translateX, translateY };
 
         return this.lastViewState;
     }
@@ -1860,7 +1846,7 @@ export class PageViewerComponent implements AfterViewInit {
             // Apply fluff visibility
             const centerContent = this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
             const showFluff = centerContent === 'fluffImage';
-            const shadowKey = this.getShadowKey(targetIndex, direction);
+            const shadowKey = pageViewerShadowKey(targetIndex, direction);
 
             this.upsertTransientShadowPage({
                 key: shadowKey,
@@ -2358,7 +2344,7 @@ export class PageViewerComponent implements AfterViewInit {
             allUnits,
             shadowPageElements: this.shadowPageElements,
             activeUnitIds: new Set(this.displayedUnits().map((unit) => unit.id)),
-            getShadowKey: (unitIndex, shadowDirection) => this.getShadowKey(unitIndex, shadowDirection),
+            getShadowKey: pageViewerShadowKey,
             isRequestCurrent: () => this.swipeVersion === animationVersion && this.pageViewerSwipeAnimation.hasActiveAnimation(),
             upsertTransientShadowPage: (descriptor, shadowScale, shouldShowFluff) => this.upsertTransientShadowPage(descriptor, shadowScale, shouldShowFluff)
         });

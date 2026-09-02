@@ -6,13 +6,12 @@ import { Injectable, computed, inject } from '@angular/core';
 
 import { PAGE_GAP, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
 import { PageViewerStateService } from './page-viewer-state.service';
-import { PageViewerShadowService } from './page-viewer-shadow.service';
+import { pageViewerShadowKey } from './page-viewer-shadow-render.service';
 import type { PageViewerMember, PageViewerOverlayMode, PageViewerPageDescriptor, PageViewerShadowDescriptor } from './types';
 
 @Injectable()
 export class PageViewerRenderModelService {
     private readonly state = inject(PageViewerStateService);
-    private readonly shadow = inject(PageViewerShadowService);
 
     readonly activePages = computed<PageViewerPageDescriptor[]>(() => {
         const units = this.state.forceUnits();
@@ -100,7 +99,7 @@ export class PageViewerRenderModelService {
             const unitIndex = this.state.normalizeIndex(startIndex - leftUnitOffset);
             const unit = units[unitIndex];
             shadows.push({
-                key: this.shadow.getShadowKey(unitIndex, 'left'),
+                key: pageViewerShadowKey(unitIndex, 'left'),
                 unit,
                 unitId: unit.id,
                 unitIndex,
@@ -119,7 +118,7 @@ export class PageViewerRenderModelService {
             const unitIndex = this.state.normalizeIndex(startIndex + rightUnitOffset);
             const unit = units[unitIndex];
             shadows.push({
-                key: this.shadow.getShadowKey(unitIndex, 'right'),
+                key: pageViewerShadowKey(unitIndex, 'right'),
                 unit,
                 unitId: unit.id,
                 unitIndex,

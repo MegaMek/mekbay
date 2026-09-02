@@ -6,7 +6,6 @@ import { TestBed } from '@angular/core/testing';
 
 import { PageViewerActiveDisplayService } from './page-viewer-active-display.service';
 import { PageViewerDisplayWindowService } from './page-viewer-display-window.service';
-import { PageViewerInPlaceUpdateService } from './page-viewer-in-place-update.service';
 
 function createUnit(id: string, hasSvg: boolean = true) {
     return {
@@ -22,7 +21,6 @@ describe('PageViewerActiveDisplayService', () => {
         TestBed.configureTestingModule({
             providers: [
                 PageViewerDisplayWindowService,
-                PageViewerInPlaceUpdateService,
                 PageViewerActiveDisplayService,
             ]
         });
@@ -97,5 +95,33 @@ describe('PageViewerActiveDisplayService', () => {
         expect(preparation.expectedUnits).toEqual(units);
         expect(preparation.patchPlan.canPatchInPlace).toBeTrue();
         expect(preparation.patchPlan.slots.map((slot) => slot.preserveExisting)).toEqual([false, true]);
+    });
+
+    it('refuses in-place patching when wrapper and unit counts differ', () => {
+        const unit = createUnit('a');
+
+        const preparation = service.prepareInPlaceUpdate({
+            allUnits: [unit],
+            visiblePages: 1,
+            viewStartIndex: 0,
+            currentWrapperUnitIds: [],
+            preserveSelectedUnitId: 'a',
+        });
+
+        expect(preparation.patchPlan).toEqual({ canPatchInPlace: false, slots: [] });
+    });
+
+    it('replaces every slot when the selected unit moved to another wrapper', () => {
+        const units = [createUnit('b'), createUnit('a')];
+
+        const preparation = service.prepareInPlaceUpdate({
+            allUnits: units,
+            visiblePages: 2,
+            viewStartIndex: 0,
+            currentWrapperUnitIds: ['a', 'b'],
+            preserveSelectedUnitId: 'b',
+        });
+
+        expect(preparation.patchPlan.slots.map(slot => slot.preserveExisting)).toEqual([false, false]);
     });
 });

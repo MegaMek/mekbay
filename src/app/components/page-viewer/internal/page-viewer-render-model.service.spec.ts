@@ -5,7 +5,6 @@
 import { TestBed } from '@angular/core/testing';
 
 import { PageViewerRenderModelService } from './page-viewer-render-model.service';
-import { PageViewerShadowService } from './page-viewer-shadow.service';
 import { PageViewerStateService } from './page-viewer-state.service';
 
 describe('PageViewerRenderModelService', () => {
@@ -14,7 +13,7 @@ describe('PageViewerRenderModelService', () => {
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            providers: [PageViewerStateService, PageViewerRenderModelService, PageViewerShadowService]
+            providers: [PageViewerStateService, PageViewerRenderModelService]
         });
 
         renderModel = TestBed.inject(PageViewerRenderModelService);

@@ -2,18 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 
+import { PAGE_GAP, PAGE_HEIGHT, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
 import type { PageViewerSwipeSlotExtensionPlan } from './page-viewer-swipe-slot.service';
 import type { PageViewerMember, PageViewerOverlayMode } from './types';
 import type { PageViewerSwipeRendererInstruction, PageViewerSwipeRendererSlotState, PageViewerSwipeRendererUpdate } from './page-viewer-swipe-renderer.service';
-import { PageViewerWrapperLayoutService } from './page-viewer-wrapper-layout.service';
 
 @Injectable()
 export class PageViewerSwipeDomService {
-    private readonly pageViewerWrapperLayout = inject(PageViewerWrapperLayoutService);
-
-
     setupSlots(options: {
         content: HTMLDivElement;
         existingSwipeSlots: readonly HTMLDivElement[];
@@ -480,17 +477,16 @@ export class PageViewerSwipeDomService {
         slot.dataset['slotOffset'] = String(offset);
         this.setPageWrapperContentState(slot, false);
 
-        if (this.pageViewerWrapperLayout.isNeighborOffset(offset, visibleCount)) {
+        if (offset < 0 || offset >= visibleCount) {
             slot.classList.add('neighbor-page');
         }
 
-        const originalLeft = this.pageViewerWrapperLayout.resolveOriginalLeft(baseLeft, offset);
-        const layout = this.pageViewerWrapperLayout.buildScaledLayout(originalLeft, scale);
-        slot.dataset['originalLeft'] = String(layout.originalLeft);
-        slot.style.width = `${layout.width}px`;
-        slot.style.height = `${layout.height}px`;
+        const originalLeft = baseLeft + offset * (PAGE_WIDTH + PAGE_GAP);
+        slot.dataset['originalLeft'] = String(originalLeft);
+        slot.style.width = `${PAGE_WIDTH * scale}px`;
+        slot.style.height = `${PAGE_HEIGHT * scale}px`;
         slot.style.position = 'absolute';
-        slot.style.left = `${layout.left}px`;
+        slot.style.left = `${originalLeft * scale}px`;
         slot.style.top = '0';
 
         return slot;
