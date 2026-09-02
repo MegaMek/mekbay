@@ -15,7 +15,6 @@ export const FORCE_PAYLOAD_FIELD = {
 } as const;
 
 export const AS_FORCE_FIELD = {
-    formatVersion: 'v',
     groups: 'g',
     networks: 'n',
 } as const;
@@ -68,7 +67,6 @@ export const AS_NETWORK_FIELD = {
 } as const;
 
 export const CBT_FORCE_FIELD = {
-    formatVersion: 'v',
     revision: 'r',
     units: 'u',
     groups: 'g',

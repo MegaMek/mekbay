@@ -34,7 +34,6 @@ const ASSET_HASHES = Object.freeze({
     equipment: LOCAL_HASH,
     quirks: LOCAL_HASH,
     sourcebooks: LOCAL_HASH,
-    eras: LOCAL_HASH,
     factions: LOCAL_HASH,
     sprites: LOCAL_HASH,
 }) satisfies DependencyAssetHashes;
@@ -44,7 +43,6 @@ function bundle(): ApplicationCatalogDependencyBundle {
         equipment: {},
         quirks: {},
         sourcebooks: {},
-        eras: {},
         factions: {},
         spriteManifest: { manifestDigest: LOCAL_HASH, manifestText: '' },
     } as unknown as ApplicationCatalogDependencyBundle;

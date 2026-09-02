@@ -15,7 +15,6 @@ import {
 } from '../src/app/models/equipment.model';
 import { equipmentCatalogEntriesIncludingSupplements } from '../src/app/models/equipment-catalog-supplements';
 import type { Quirks } from '../src/app/models/quirks.model';
-import type { Eras } from '../src/app/models/eras.model';
 import type { RawMULFactions } from '../src/app/models/mulfactions.model';
 import type { Sourcebook, Sourcebooks } from '../src/app/models/sourcebook.model';
 import type { UnitSummary } from '../src/app/models/unit-summary.model';
@@ -73,7 +72,6 @@ export const DEFAULT_SUMMARY_PROJECTION_CONCURRENCY = 4;
 
 const MAX_RELEASE_EQUIPMENT_BYTES = 64 * 1_024 * 1_024;
 const MAX_RELEASE_QUIRKS_BYTES = 8 * 1_024 * 1_024;
-const MAX_RELEASE_ERAS_BYTES = 16 * 1_024 * 1_024;
 const MAX_RELEASE_FACTIONS_BYTES = 64 * 1_024 * 1_024;
 const ZIP_ENTRY_DATE = new Date('1984-01-01T00:00:00.000Z');
 const OWNED_STAGE_PREFIX = '.core-unit-assets-stage-';
@@ -222,14 +220,12 @@ async function createProductionSummaryGenerationContext(
     const staticCatalogRoot = path.join(projectRoot, 'public', 'online-assets', 'static');
     const equipmentPath = path.join(staticCatalogRoot, 'equipment.json');
     const quirksPath = path.join(staticCatalogRoot, 'quirks.json');
-    const erasPath = path.join(staticCatalogRoot, 'eras.json');
     const factionsPath = path.join(staticCatalogRoot, 'factions.json');
     const spriteManifestPath = path.join(assetsRoot, 'sprites', 'unit-icons.json');
     for (const requiredPath of [
         sourcebooksPath,
         equipmentPath,
         quirksPath,
-        erasPath,
         factionsPath,
         spriteManifestPath,
     ]) {
@@ -238,12 +234,9 @@ async function createProductionSummaryGenerationContext(
 
     const equipmentBytes = fs.readFileSync(equipmentPath);
     const quirksBytes = fs.readFileSync(quirksPath);
-    const erasBytes = fs.readFileSync(erasPath);
     const factionsBytes = fs.readFileSync(factionsPath);
     if (equipmentBytes.byteLength > MAX_RELEASE_EQUIPMENT_BYTES
         || quirksBytes.byteLength > MAX_RELEASE_QUIRKS_BYTES
-        || erasBytes.byteLength < 1
-        || erasBytes.byteLength > MAX_RELEASE_ERAS_BYTES
         || factionsBytes.byteLength < 1
         || factionsBytes.byteLength > MAX_RELEASE_FACTIONS_BYTES) {
         throw new Error('Repository-authored catalog input exceeds its byte ceiling');
@@ -253,7 +246,6 @@ async function createProductionSummaryGenerationContext(
     const equipmentRaw = parseJson<RawEquipmentData>(equipmentBytes, 'equipment.json');
     const quirksRaw = parseJson<Quirks>(quirksBytes, 'quirks.json');
     const sourcebooksRaw = parseJson<unknown>(sourcebooksBytes, 'sourcebooks.json');
-    const erasRaw = parseJson<Eras>(erasBytes, 'eras.json');
     const factionsRaw = parseJson<RawMULFactions>(factionsBytes, 'factions.json');
     if (!isRecord(equipmentRaw) || !isRecord(equipmentRaw.equipment)
         || Object.keys(equipmentRaw.equipment).length < 4_000) {
@@ -287,11 +279,6 @@ async function createProductionSummaryGenerationContext(
         assetHash: sha1(quirksBytes),
         quirks: quirksRaw.quirks,
     };
-    const erasCatalog: Eras = {
-        version: erasRaw.version,
-        assetHash: sha1(erasBytes),
-        eras: erasRaw.eras,
-    };
     const factionsCatalog: RawMULFactions = {
         version: factionsRaw.version,
         assetHash: sha1(factionsBytes),
@@ -301,7 +288,6 @@ async function createProductionSummaryGenerationContext(
         equipment: equipmentRaw,
         quirks: quirksCatalog,
         sourcebooks: sourcebookCatalog,
-        eras: erasCatalog,
         factions: factionsCatalog,
         spriteManifest: {
             manifestDigest: spriteAssignments.manifestDigest,

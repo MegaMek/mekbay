@@ -166,7 +166,7 @@ function summary(): UnitSummary {
 
 function dependencyBundle(): ApplicationCatalogDependencyBundle {
     return {
-        equipment: {}, quirks: {}, sourcebooks: {}, eras: {}, factions: {},
+        equipment: {}, quirks: {}, sourcebooks: {}, factions: {},
         spriteManifest: { manifestDigest: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA', manifestText: '{}' },
     } as unknown as ApplicationCatalogDependencyBundle;
 }

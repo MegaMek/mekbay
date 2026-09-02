@@ -53,4 +53,16 @@ describe('remote force-list wire decoder', () => {
             name: 'Legacy',
         }).version).toBe(1);
     });
+
+    it('decodes legacy and compact rows independently in one mixed response', () => {
+        const decoded = [
+            { instanceId: 'legacy', timestamp: 'now', name: 'Legacy' },
+            [2, 'current', 0, 0, 'Current', []] as const,
+        ].map(decodeRemoteLoadForceEntry);
+
+        expect(decoded.map(entry => [entry.version, entry.instanceId])).toEqual([
+            [1, 'legacy'],
+            [2, 'current'],
+        ]);
+    });
 });

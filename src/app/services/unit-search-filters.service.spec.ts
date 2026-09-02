@@ -563,7 +563,16 @@ function hydrateDataService(
     bundle: BenchmarkBundle,
 ): void {
     unitsCatalog.replaceUnits(bundle.units);
-    (dataService as any).erasCatalog.hydrate(cloneUnit(bundle.eras));
+    const eras = cloneUnit(bundle.eras.eras).map((era) => ({
+        ...era,
+        factions: new Set(era.factions),
+        units: new Set(era.units),
+    }));
+    (dataService as any).eraIndex.commitPreparedIndex({
+        eras,
+        eraNameMap: new Map(eras.map(era => [era.name, era])),
+        eraIdMap: new Map(eras.map(era => [era.id, era])),
+    });
     (dataService as any).factionsCatalog.hydrate(cloneUnit(bundle.factions));
     refreshSearchCorpusForTest(dataService);
     dataService.isDataReady.set(true);

@@ -62,7 +62,7 @@ async function createFixture() {
     const unitsManifest = Buffer.from(JSON.stringify({ [UNIT_FILE]: unitHash }));
     const unitsManifestHash = sha1(unitsManifest);
     const dependencies = {
-        equipment: {}, quirks: {}, sourcebooks: {}, eras: {}, factions: {},
+        equipment: {}, quirks: {}, sourcebooks: {}, factions: {},
         spriteManifest: { manifestDigest: 'digest', manifestText: '{}' },
     };
     const summaries = [{

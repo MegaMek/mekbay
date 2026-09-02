@@ -23,7 +23,6 @@ import { PPC_CAPACITOR_CHARGING_STATE } from '../src/app/models/runtime/componen
 import { commandMayChangeBaseBattleValue } from '../src/app/models/runtime/cbt-force-mek-mutation-impact';
 import {
     asEncounterTargetId,
-    emptyCBTEncounterSnapshot,
     type TargetRegistrySnapshot,
 } from '../src/app/models/runtime/encounter-runtime';
 import { MEK_TORSO_CRIPPLING_RULE_CHECK_KEY } from '../src/app/models/runtime/mek-destruction-state-v2';
@@ -42,6 +41,7 @@ import {
     createDirectMekRuntimeFixture,
     createDirectModularArmorRuntimeFixture,
     createDirectShieldRuntimeFixture,
+    emptyCBTEncounterSnapshot,
     type DirectMekRuntimeFixture,
 } from '../src/app/models/runtime/testing/direct-mek-runtime-fixture';
 import type {

@@ -1,7 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { Eras } from '../../models/eras.model';
 import type { RawEquipmentData } from '../../models/equipment.model';
 import type { RawMULFactions } from '../../models/mulfactions.model';
 import type { Quirks } from '../../models/quirks.model';
@@ -20,7 +19,6 @@ export interface ApplicationCatalogDependencyBundle {
     readonly equipment: RawEquipmentData;
     readonly quirks: Quirks;
     readonly sourcebooks: Sourcebooks;
-    readonly eras: Eras;
     readonly factions: RawMULFactions;
     readonly spriteManifest: UnitSpriteManifestEvidence;
 }
@@ -95,7 +93,6 @@ export function isApplicationCatalogDependencyBundle(
     return isRecord(value['equipment'])
         && isRecord(value['quirks'])
         && isRecord(value['sourcebooks'])
-        && isRecord(value['eras'])
         && isRecord(value['factions'])
         && isRecord(sprites)
         && typeof sprites['manifestDigest'] === 'string'

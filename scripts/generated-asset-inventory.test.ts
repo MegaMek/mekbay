@@ -59,7 +59,6 @@ test('assets manifest is a direct SHA-1 map and excludes individual units', t =>
   fs.writeFileSync(path.join(generated, 'units.zip'), 'zip');
   fs.writeFileSync(path.join(generated, 'units', `${UUID}.mtf`), 'unit');
   fs.writeFileSync(path.join(online, 'static', 'equipment.json'), '{}');
-  fs.writeFileSync(path.join(online, 'static', 'eras.json'), '{}');
   fs.writeFileSync(path.join(online, 'static', 'factions.json'), '{}');
   fs.writeFileSync(path.join(online, 'asset-manifest.json'), 'obsolete');
 
@@ -68,7 +67,6 @@ test('assets manifest is a direct SHA-1 map and excludes individual units', t =>
     'online-assets/generated/units-manifest.json',
     'online-assets/generated/units.zip',
     'online-assets/static/equipment.json',
-    'online-assets/static/eras.json',
     'online-assets/static/factions.json',
   ]);
   assert.equal(manifest['online-assets/generated/units.zip'], sha1(Buffer.from('zip')));

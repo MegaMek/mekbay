@@ -351,7 +351,6 @@ const hashes = Object.freeze({
     equipment: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
     quirks: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
     sourcebooks: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
-    eras: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
     factions: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
     sprites: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
 }) satisfies DependencyAssetHashes;
@@ -365,7 +364,7 @@ function dependencies(): PreparedApplicationCatalogDependencies {
 
 function dependencyBundle(): ApplicationCatalogDependencyBundle {
     return {
-        equipment: {}, quirks: {}, sourcebooks: {}, eras: {}, factions: {},
+        equipment: {}, quirks: {}, sourcebooks: {}, factions: {},
         spriteManifest: { manifestDigest: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA', manifestText: '{}' },
     } as unknown as ApplicationCatalogDependencyBundle;
 }

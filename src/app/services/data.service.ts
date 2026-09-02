@@ -24,7 +24,7 @@ import { getForcePacks } from '../models/forcepacks.model';
 import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
 import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catalog.service';
-import { ErasCatalogService } from './catalogs/eras-catalog.service';
+import { EraIndexService } from './era-index.service';
 import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SarnaPageTitlesCatalogService } from './catalogs/sarna-page-titles-catalog.service';
@@ -93,7 +93,7 @@ export class DataService {
     private unitsCatalog = inject(UnitsCatalogService);
     private presentationCatalogs = inject(PresentationCatalogSyncService);
     private equipmentCatalog = inject(EquipmentCatalogService);
-    private erasCatalog = inject(ErasCatalogService);
+    private eraIndex = inject(EraIndexService);
     private factionsCatalog = inject(FactionsCatalogService);
     private megaMekAvailabilityCatalog = inject(MegaMekAvailabilityCatalogService);
     private megaMekFactionsCatalog = inject(MegaMekFactionsCatalogService);
@@ -349,18 +349,18 @@ export class DataService {
     }
 
     public getEras(): Era[] {
-        return this.activeMemberships?.eras ?? this.erasCatalog.getEras();
+        return this.activeMemberships?.eras ?? this.eraIndex.getEras();
     }
 
     public getEraByName(name: string): Era | undefined {
-        const canonical = this.erasCatalog.getEraByName(name);
+        const canonical = this.eraIndex.getEraByName(name);
         return canonical === undefined ? undefined : this.getEraById(canonical.id);
     }
 
     public getEraById(id: number): Era | undefined {
         const active = this.activeMemberships;
         return active === undefined
-            ? this.erasCatalog.getEraById(id)
+            ? this.eraIndex.getEraById(id)
             : active.erasById.get(id);
     }
 
@@ -706,7 +706,7 @@ export class DataService {
 
     private isUnitYearValidForEra(unit: Pick<UnitSummary, 'year'>, era: Era): boolean {
         const eraEndYear = era.years.to ?? Number.POSITIVE_INFINITY;
-        return unit.year < eraEndYear;
+        return Number.isFinite(unit.year) && unit.year <= eraEndYear;
     }
 
     private async checkForUpdate(): Promise<void> {

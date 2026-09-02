@@ -10,14 +10,14 @@ import {
 import type { ApplicationCatalogDependencyBundle } from './application-catalog-dependency-bundle';
 
 describe('application catalog dependency bundle', () => {
-    it('uses the six catalog values directly without wrapper metadata', () => {
+    it('uses the five external catalog values directly without wrapper metadata', () => {
         const input = validBundle();
 
         const built = buildApplicationCatalogDependencyBundle(input);
 
         expect(built).toBe(input);
         expect(Object.keys(built).sort()).toEqual([
-            'equipment', 'eras', 'factions', 'quirks', 'sourcebooks', 'spriteManifest',
+            'equipment', 'factions', 'quirks', 'sourcebooks', 'spriteManifest',
         ]);
     });
 
@@ -43,7 +43,6 @@ function validBundle(): ApplicationCatalogDependencyBundle {
         equipment: { version: '', equipment: {} },
         quirks: { version: '', assetHash: '', quirks: [] },
         sourcebooks: { assetHash: '', sourcebooks: [] },
-        eras: { version: '', assetHash: '', eras: [] },
         factions: { version: '', assetHash: '', factions: [] },
         spriteManifest: { manifestDigest: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA', manifestText: '{}' },
     } as unknown as ApplicationCatalogDependencyBundle;

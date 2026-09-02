@@ -138,7 +138,6 @@ function dependencies(): ApplicationCatalogDependencyBundle {
         equipment: {} as ApplicationCatalogDependencyBundle['equipment'],
         quirks: {} as ApplicationCatalogDependencyBundle['quirks'],
         sourcebooks: {} as ApplicationCatalogDependencyBundle['sourcebooks'],
-        eras: {} as ApplicationCatalogDependencyBundle['eras'],
         factions: {} as ApplicationCatalogDependencyBundle['factions'],
         spriteManifest: { manifestDigest: 'digest' as never, manifestText: '{}' },
     };

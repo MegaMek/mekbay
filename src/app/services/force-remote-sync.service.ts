@@ -13,10 +13,6 @@ import { isCBTForceMember, type ForceMember } from '../models/force-member.model
 import type { ForceAlignment, ForceSlot } from '../models/force-slot.model';
 import type { SerializedForce } from '../models/force-serialization';
 import {
-    decodeForceFromStorage,
-    isCompactStoredForce,
-} from '../models/runtime/force-storage-codec';
-import {
     ForcePersistenceService,
     type PreparedRemoteForceAcceptance,
     type StagedRemoteForceSnapshot,
@@ -178,9 +174,7 @@ export class ForceRemoteSyncService {
         try {
             // Conflict arbitration may outlive the transport callback. Retain
             // the exact bytes observed at receipt, never its caller-owned graph.
-            incomingSnapshot = isCompactStoredForce(serializedForce)
-                ? decodeForceFromStorage(serializedForce)
-                : structuredClone(serializedForce);
+            incomingSnapshot = structuredClone(serializedForce);
         } catch (error) {
             this.logger.error(`Ignoring unclonable remote force update for ${targetForce.instanceId()}: ${error}`);
             return;

@@ -38,7 +38,6 @@ import path from 'node:path';
 const APP_VERSION = '0.7';
 
 const root = path.resolve(__dirname, '..'); // app/ folder
-const versionFile = path.join(root, 'src', 'app', 'version.constant.ts');
 const buildMetaFile = path.join(root, 'src', 'app', 'build-meta.ts');
 
 function git(cmd: string): string | null {

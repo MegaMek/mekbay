@@ -3,7 +3,7 @@
 
 import { TestBed } from '@angular/core/testing';
 import { EquipmentCatalogService } from '../catalogs/equipment-catalog.service';
-import { ErasCatalogService } from '../catalogs/eras-catalog.service';
+import { EraIndexService } from '../era-index.service';
 import { FactionsCatalogService } from '../catalogs/mulfactions-catalog.service';
 import { CatalogStorage } from '../catalogs/catalog-storage.service';
 import { QuirksCatalogService } from '../catalogs/quirks-catalog.service';
@@ -23,14 +23,13 @@ describe('ApplicationCatalogBundleCoordinatorService', () => {
         equipment: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
         quirks: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
         sourcebooks: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
-        eras: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
         factions: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
         sprites: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA',
     }) satisfies DependencyAssetHashes;
     let equipment: jasmine.SpyObj<EquipmentCatalogService>;
     let quirks: jasmine.SpyObj<QuirksCatalogService>;
     let sourcebooks: jasmine.SpyObj<SourcebooksCatalogService>;
-    let eras: jasmine.SpyObj<ErasCatalogService>;
+    let eraIndex: jasmine.SpyObj<EraIndexService>;
     let factions: jasmine.SpyObj<FactionsCatalogService>;
     let sprites: jasmine.SpyObj<SpriteStorageService>;
     let storage: jasmine.SpyObj<CatalogStorage>;
@@ -47,8 +46,8 @@ describe('ApplicationCatalogBundleCoordinatorService', () => {
         sourcebooks = jasmine.createSpyObj<SourcebooksCatalogService>('SourcebooksCatalogService', [
             'prepareBundledCatalog', 'prepareRemoteCatalog', 'commitPreparedCatalog',
         ]);
-        eras = jasmine.createSpyObj<ErasCatalogService>('ErasCatalogService', [
-            'prepareBundledCatalog', 'prepareRemoteCatalog', 'commitPreparedCatalog',
+        eraIndex = jasmine.createSpyObj<EraIndexService>('EraIndexService', [
+            'prepareFromFactions', 'commitPreparedIndex',
         ]);
         factions = jasmine.createSpyObj<FactionsCatalogService>('FactionsCatalogService', [
             'prepareBundledCatalog', 'prepareRemoteCatalog', 'commitPreparedCatalog',
@@ -75,7 +74,7 @@ describe('ApplicationCatalogBundleCoordinatorService', () => {
                 { provide: EquipmentCatalogService, useValue: equipment },
                 { provide: QuirksCatalogService, useValue: quirks },
                 { provide: SourcebooksCatalogService, useValue: sourcebooks },
-                { provide: ErasCatalogService, useValue: eras },
+                { provide: EraIndexService, useValue: eraIndex },
                 { provide: FactionsCatalogService, useValue: factions },
                 { provide: SpriteStorageService, useValue: sprites },
                 { provide: CatalogStorage, useValue: storage },
@@ -86,7 +85,7 @@ describe('ApplicationCatalogBundleCoordinatorService', () => {
         service = TestBed.inject(ApplicationCatalogBundleCoordinatorService);
     });
 
-    it('prepares all six members from the ZIP seed without network access', async () => {
+    it('prepares all five external members and derives eras from the ZIP seed', async () => {
         const source = bundle();
         const preparedMembers = installBundledResults();
 
@@ -97,6 +96,8 @@ describe('ApplicationCatalogBundleCoordinatorService', () => {
         expect(prepared.equipment).toBe(preparedMembers.equipment);
         expect(prepared.sprites).toBe(preparedMembers.sprites);
         expect(equipment.prepareBundledCatalog).toHaveBeenCalledOnceWith(source.equipment);
+        expect(eraIndex.prepareFromFactions)
+            .toHaveBeenCalledOnceWith(preparedMembers.factions.factions);
         expect(sprites.prepareBundledAssignmentManifest)
             .toHaveBeenCalledOnceWith(source.spriteManifest, hashes.sprites);
     });
@@ -110,7 +111,6 @@ describe('ApplicationCatalogBundleCoordinatorService', () => {
         expect(equipment.prepareRemoteCatalog).not.toHaveBeenCalled();
         expect(quirks.prepareRemoteCatalog).not.toHaveBeenCalled();
         expect(sourcebooks.prepareRemoteCatalog).not.toHaveBeenCalled();
-        expect(eras.prepareRemoteCatalog).not.toHaveBeenCalled();
         expect(factions.prepareRemoteCatalog).not.toHaveBeenCalled();
         expect(sprites.prepareRemoteAssignmentManifest).not.toHaveBeenCalled();
     });
@@ -133,11 +133,11 @@ describe('ApplicationCatalogBundleCoordinatorService', () => {
 
         expect(prepared?.assetHashes).toEqual(hashes);
         expect(storage.getEntry.calls.allArgs().map(args => args[0])).toEqual([
-            'equipment', 'quirks', 'sourcebooks', 'eras', 'factions',
+            'equipment', 'quirks', 'sourcebooks', 'factions',
         ]);
     });
 
-    it('persists five catalog rows separately and keeps sprites in the sprite database', async () => {
+    it('persists four catalog rows separately and keeps sprites in the sprite database', async () => {
         const prepared = preparedDependencies();
 
         await service.persistPreparedDependencies(prepared);
@@ -145,7 +145,7 @@ describe('ApplicationCatalogBundleCoordinatorService', () => {
         expect(sprites.persistPreparedAssignmentManifest).toHaveBeenCalledOnceWith(prepared.sprites);
         const [rows, installedAssets] = storage.putMany.calls.mostRecent().args;
         expect(rows.map(row => row.key)).toEqual([
-            'equipment', 'quirks', 'sourcebooks', 'eras', 'factions',
+            'equipment', 'quirks', 'sourcebooks', 'factions',
         ]);
         expect(installedAssets).toEqual(jasmine.objectContaining({
             'online-assets/generated/sprites/unit-icons.json': hashes.sprites,
@@ -160,7 +160,7 @@ describe('ApplicationCatalogBundleCoordinatorService', () => {
         expect(equipment.commitPreparedCatalog).toHaveBeenCalledOnceWith(prepared.equipment);
         expect(quirks.commitPreparedCatalog).toHaveBeenCalledOnceWith(prepared.quirks);
         expect(sourcebooks.commitPreparedCatalog).toHaveBeenCalledOnceWith(prepared.sourcebooks);
-        expect(eras.commitPreparedCatalog).toHaveBeenCalledOnceWith(prepared.eras);
+        expect(eraIndex.commitPreparedIndex).toHaveBeenCalledOnceWith(prepared.eras);
         expect(factions.commitPreparedCatalog).toHaveBeenCalledOnceWith(prepared.factions);
         expect(sprites.commitPreparedAssignmentManifest).toHaveBeenCalledOnceWith(prepared.sprites);
     });
@@ -170,8 +170,8 @@ describe('ApplicationCatalogBundleCoordinatorService', () => {
         equipment.prepareBundledCatalog.and.returnValue(values.equipment);
         quirks.prepareBundledCatalog.and.returnValue(values.quirks);
         sourcebooks.prepareBundledCatalog.and.returnValue(values.sourcebooks);
-        eras.prepareBundledCatalog.and.returnValue(values.eras);
         factions.prepareBundledCatalog.and.returnValue(values.factions);
+        eraIndex.prepareFromFactions.and.returnValue(values.eras);
         sprites.prepareBundledAssignmentManifest.and.returnValue(values.sprites);
         return values;
     }
@@ -189,7 +189,7 @@ describe('ApplicationCatalogBundleCoordinatorService', () => {
 
 function members() {
     return {
-        equipment: { registry: {} }, quirks: {}, sourcebooks: {}, eras: {}, factions: {},
+        equipment: { registry: {} }, quirks: {}, sourcebooks: {}, eras: {}, factions: { factions: [] },
         sprites: {},
     } as unknown as Pick<PreparedApplicationCatalogDependencies,
         'equipment' | 'quirks' | 'sourcebooks' | 'eras' | 'factions' | 'sprites'>;
@@ -197,7 +197,7 @@ function members() {
 
 function bundle(): ApplicationCatalogDependencyBundle {
     return {
-        equipment: {}, quirks: {}, sourcebooks: {}, eras: {}, factions: {},
+        equipment: {}, quirks: {}, sourcebooks: {}, factions: {},
         spriteManifest: { manifestDigest: 'AAAAAAAAAAAAAAAAAAAAAAAAAAA', manifestText: '{}' },
     } as unknown as ApplicationCatalogDependencyBundle;
 }

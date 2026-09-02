@@ -22,7 +22,7 @@ import { FORCE_PERSISTENCE_REVISION, WsService } from './ws.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
-import { ErasCatalogService } from './catalogs/eras-catalog.service';
+import { EraIndexService } from './era-index.service';
 import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
 import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
@@ -290,8 +290,7 @@ describe('DataService', () => {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
         getEquipmentRegistry: jasmine.createSpy('getEquipmentRegistry').and.returnValue(new EquipmentRegistry({})),
     };
-    const erasCatalogMock = {
-        initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
+    const eraIndexMock = {
         getEras: jasmine.createSpy('getEras').and.returnValue([]),
         getEraByName: jasmine.createSpy('getEraByName').and.returnValue(undefined),
         getEraById: jasmine.createSpy('getEraById').and.returnValue(undefined),
@@ -369,7 +368,7 @@ describe('DataService', () => {
                 snapshot: { revision, summaries: [] },
                 dependencies: {
                     equipment: { registry: equipmentCatalogMock.getEquipmentRegistry() },
-                    eras: { eras: erasCatalogMock.getEras() },
+                    eras: { eras: eraIndexMock.getEras() },
                     factions: { factions: factionsCatalogMock.getFactions() },
                 },
             },
@@ -467,14 +466,12 @@ describe('DataService', () => {
         equipmentCatalogMock.initialize.and.resolveTo(undefined);
         equipmentCatalogMock.getEquipmentRegistry.calls.reset();
         equipmentCatalogMock.getEquipmentRegistry.and.returnValue(new EquipmentRegistry({}));
-        erasCatalogMock.initialize.calls.reset();
-        erasCatalogMock.initialize.and.resolveTo(undefined);
-        erasCatalogMock.getEras.calls.reset();
-        erasCatalogMock.getEras.and.returnValue([]);
-        erasCatalogMock.getEraByName.calls.reset();
-        erasCatalogMock.getEraByName.and.returnValue(undefined);
-        erasCatalogMock.getEraById.calls.reset();
-        erasCatalogMock.getEraById.and.returnValue(undefined);
+        eraIndexMock.getEras.calls.reset();
+        eraIndexMock.getEras.and.returnValue([]);
+        eraIndexMock.getEraByName.calls.reset();
+        eraIndexMock.getEraByName.and.returnValue(undefined);
+        eraIndexMock.getEraById.calls.reset();
+        eraIndexMock.getEraById.and.returnValue(undefined);
         factionsCatalogMock.initialize.calls.reset();
         factionsCatalogMock.initialize.and.resolveTo(undefined);
         factionsCatalogMock.getFactions.calls.reset();
@@ -545,7 +542,7 @@ describe('DataService', () => {
                 { provide: UnitsCatalogService, useValue: unitsCatalogMock },
                 { provide: PresentationCatalogSyncService, useValue: presentationCatalogsMock },
                 { provide: EquipmentCatalogService, useValue: equipmentCatalogMock },
-                { provide: ErasCatalogService, useValue: erasCatalogMock },
+                { provide: EraIndexService, useValue: eraIndexMock },
                 { provide: FactionsCatalogService, useValue: factionsCatalogMock },
                 { provide: MegaMekAvailabilityCatalogService, useValue: megaMekAvailabilityCatalogMock },
                 { provide: MegaMekFactionsCatalogService, useValue: megaMekFactionsCatalogMock },
@@ -608,34 +605,34 @@ describe('DataService', () => {
     it('delegates faction and era ID lookups to their indexed catalogs before activation', () => {
         const era = { id: 42, name: 'Indexed Era' } as Era;
         const faction = { id: 17, name: 'Indexed Faction' } as Faction;
-        erasCatalogMock.getEraById.and.returnValue(era);
+        eraIndexMock.getEraById.and.returnValue(era);
         factionsCatalogMock.getFactionById.and.returnValue(faction);
 
         expect(service.getEraById(era.id)).toBe(era);
         expect(service.getFactionById(faction.id)).toBe(faction);
-        expect(erasCatalogMock.getEraById).toHaveBeenCalledOnceWith(era.id);
+        expect(eraIndexMock.getEraById).toHaveBeenCalledOnceWith(era.id);
         expect(factionsCatalogMock.getFactionById).toHaveBeenCalledOnceWith(faction.id);
     });
 
-    it('adds units with no faction data to the synthetic None faction for valid eras', async () => {
+    it('keeps factionless units out of eras that end before their introduction year', async () => {
         const earlyEra: Era = {
-            id: 1,
-            name: 'Early',
-            years: { from: 2500, to: 2600 },
+            id: 9,
+            name: 'Age of War',
+            years: { from: 2005, to: 2570 },
             factions: new Set<number>(),
             units: new Set<number>(),
         };
         const introEra: Era = {
-            id: 2,
-            name: 'Intro',
-            years: { from: 2600, to: 2700 },
+            id: 256,
+            name: 'Late Succession War - Renaissance',
+            years: { from: 3020, to: 3049 },
             factions: new Set<number>(),
             units: new Set<number>(),
         };
         const openEra: Era = {
-            id: 3,
-            name: 'Open',
-            years: { from: 2701 },
+            id: 257,
+            name: 'ilClan',
+            years: { from: 3151, to: 9999 },
             factions: new Set<number>(),
             units: new Set<number>(),
         };
@@ -655,12 +652,15 @@ describe('DataService', () => {
                 [introEra.id]: new Set<number>([3]),
             },
         };
-        const noFactionUnit = createEmptyUnit({ id: -1, name: 'No Faction', year: 2600 });
-        const futureNoFactionUnit = createEmptyUnit({ id: -2, name: 'Future No Faction', year: 2701 });
-        const houseUnit = createEmptyUnit({ id: 3, name: 'House Unit', year: 2600 });
+        const noFactionUnit = createEmptyUnit({ id: -1, name: 'No Faction', year: 3030 });
+        const futureNoFactionUnit = createEmptyUnit({ id: -2, name: 'Future No Faction', year: 3151 });
+        const eraBoundaryUnit = createEmptyUnit({ id: -3, name: 'Era Boundary', year: 2570 });
+        const houseUnit = createEmptyUnit({ id: 3, name: 'House Unit', year: 3030 });
 
-        unitsCatalogMock.getUnits.and.returnValue([noFactionUnit, futureNoFactionUnit, houseUnit]);
-        erasCatalogMock.getEras.and.returnValue([earlyEra, introEra, openEra]);
+        unitsCatalogMock.getUnits.and.returnValue([
+            noFactionUnit, futureNoFactionUnit, eraBoundaryUnit, houseUnit,
+        ]);
+        eraIndexMock.getEras.and.returnValue([earlyEra, introEra, openEra]);
         factionsCatalogMock.getFactions.and.returnValue([noneFaction, houseFaction]);
         factionsCatalogMock.getFactionById.and.callFake((id: number) => {
             if (id === noneFaction.id) return noneFaction;
@@ -678,29 +678,34 @@ describe('DataService', () => {
         const activeOpen = activeEras.find(era => era.id === openEra.id)!;
         const activeNone = activeFactions.find(faction => faction.id === MULFACTION_NONE)!;
         const activeHouse = activeFactions.find(faction => faction.id === houseFaction.id)!;
-        erasCatalogMock.getEraById.calls.reset();
+        eraIndexMock.getEraById.calls.reset();
         factionsCatalogMock.getFactionById.calls.reset();
         expect(service.getEraById(activeIntro.id)).toBe(activeIntro);
         expect(service.getFactionById(activeHouse.id)).toBe(activeHouse);
-        expect(erasCatalogMock.getEraById).not.toHaveBeenCalled();
+        expect(eraIndexMock.getEraById).not.toHaveBeenCalled();
         expect(factionsCatalogMock.getFactionById).not.toHaveBeenCalled();
-        expect(activeNone.eras[introEra.id]).toEqual(new Set<number>([noFactionUnit.id]));
-        expect(activeNone.eras[openEra.id]).toEqual(new Set<number>([noFactionUnit.id, futureNoFactionUnit.id]));
-        expect(activeNone.eras[earlyEra.id]).toBeUndefined();
+        expect(activeNone.eras[earlyEra.id]).toEqual(new Set<number>([eraBoundaryUnit.id]));
+        expect(activeNone.eras[introEra.id]).toEqual(new Set<number>([
+            noFactionUnit.id, eraBoundaryUnit.id,
+        ]));
+        expect(activeNone.eras[openEra.id]).toEqual(new Set<number>([
+            noFactionUnit.id, futureNoFactionUnit.id, eraBoundaryUnit.id,
+        ]));
         expect((activeEarly.units as Set<number>).has(noFactionUnit.id)).toBeFalse();
         expect((activeEarly.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
+        expect((activeEarly.units as Set<number>).has(eraBoundaryUnit.id)).toBeTrue();
         expect((activeIntro.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
         expect((activeIntro.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
         expect((activeOpen.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
         expect((activeOpen.units as Set<number>).has(futureNoFactionUnit.id)).toBeTrue();
         expect((activeIntro.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
         expect((activeOpen.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
-        expect((activeEarly.factions as Set<number>).has(MULFACTION_NONE)).toBeFalse();
+        expect((activeEarly.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
         expect(activeNone.eras[introEra.id].has(houseUnit.id)).toBeFalse();
         expect(noneFaction.eras).toEqual({});
         expect(introEra.units).toEqual(new Set<number>());
         expect(unitSearchIndexServiceMock.prepareCatalogIndexes).toHaveBeenCalledWith(
-            [noFactionUnit, futureNoFactionUnit, houseUnit],
+            [noFactionUnit, futureNoFactionUnit, eraBoundaryUnit, houseUnit],
             activeEras,
             activeFactions,
             undefined,
@@ -2574,7 +2579,7 @@ describe('DataService', () => {
             img: '',
             eras: {},
         };
-        erasCatalogMock.getEras.and.returnValue([era]);
+        eraIndexMock.getEras.and.returnValue([era]);
         factionsCatalogMock.getFactions.and.returnValue([none]);
         const unitsA = [createEmptyUnit({ id: 101, name: 'A', year: 3100 })];
         unitsCatalogMock.getUnits.and.returnValue(unitsA);

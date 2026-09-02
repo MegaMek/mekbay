@@ -8,7 +8,7 @@ import {
     EquipmentCatalogService,
     type PreparedEquipmentCatalog,
 } from '../catalogs/equipment-catalog.service';
-import { ErasCatalogService, type PreparedErasCatalog } from '../catalogs/eras-catalog.service';
+import { EraIndexService, type PreparedEraIndex } from '../era-index.service';
 import {
     FactionsCatalogService,
     type PreparedFactionsCatalog,
@@ -42,7 +42,6 @@ export const DEPENDENCY_ASSET_PATHS = Object.freeze({
     equipment: 'online-assets/static/equipment.json',
     quirks: 'online-assets/static/quirks.json',
     sourcebooks: 'online-assets/generated/sourcebooks.json',
-    eras: 'online-assets/static/eras.json',
     factions: 'online-assets/static/factions.json',
     sprites: 'online-assets/generated/sprites/unit-icons.json',
 } as const);
@@ -57,7 +56,7 @@ export interface PreparedApplicationCatalogDependencies {
     readonly equipment: PreparedEquipmentCatalog;
     readonly quirks: PreparedQuirksCatalog;
     readonly sourcebooks: PreparedSourcebooksCatalog;
-    readonly eras: PreparedErasCatalog;
+    readonly eras: PreparedEraIndex;
     readonly factions: PreparedFactionsCatalog;
     readonly sprites: PreparedUnitSpriteManifest;
     readonly getProjector: () => Promise<CoreUnitSummaryProjector>;
@@ -68,7 +67,7 @@ export class ApplicationCatalogBundleCoordinatorService {
     private readonly equipment = inject(EquipmentCatalogService);
     private readonly quirks = inject(QuirksCatalogService);
     private readonly sourcebooks = inject(SourcebooksCatalogService);
-    private readonly eras = inject(ErasCatalogService);
+    private readonly eraIndex = inject(EraIndexService);
     private readonly factions = inject(FactionsCatalogService);
     private readonly sprites = inject(SpriteStorageService);
     private readonly storage = inject(CatalogStorage);
@@ -82,33 +81,30 @@ export class ApplicationCatalogBundleCoordinatorService {
         return Object.freeze(Object.fromEntries(entries)) as DependencyAssetHashes;
     }
 
-    /** Loads the six source catalogs from their owning IndexedDB rows. */
+    /** Loads the five external dependencies from their owning stores. */
     public async prepareCachedDependencies(
         onProgress?: (progress: CoreCatalogSyncProgress) => void,
     ): Promise<PreparedApplicationCatalogDependencies | undefined> {
-        const [equipment, quirks, sourcebooks, eras, factions, sprites] = await Promise.all([
+        const [equipment, quirks, sourcebooks, factions, sprites] = await Promise.all([
             this.storage.getEntry<ApplicationCatalogDependencyBundle['equipment']>('equipment'),
             this.storage.getEntry<ApplicationCatalogDependencyBundle['quirks']>('quirks'),
             this.storage.getEntry<ApplicationCatalogDependencyBundle['sourcebooks']>('sourcebooks'),
-            this.storage.getEntry<ApplicationCatalogDependencyBundle['eras']>('eras'),
             this.storage.getEntry<ApplicationCatalogDependencyBundle['factions']>('factions'),
             this.sprites.prepareCachedAssignmentManifest(),
         ]);
-        if (!equipment || !quirks || !sourcebooks || !eras || !factions || !sprites) {
+        if (!equipment || !quirks || !sourcebooks || !factions || !sprites) {
             return undefined;
         }
         return this.prepareBundle({
             equipment: equipment.payload,
             quirks: quirks.payload,
             sourcebooks: sourcebooks.payload,
-            eras: eras.payload,
             factions: factions.payload,
             spriteManifest: sprites.evidence,
         }, {
             equipment: equipment.hash,
             quirks: quirks.hash,
             sourcebooks: sourcebooks.hash,
-            eras: eras.hash,
             factions: factions.hash,
             sprites: sprites.assetHash,
         }, onProgress);
@@ -123,7 +119,6 @@ export class ApplicationCatalogBundleCoordinatorService {
             { key: 'equipment', hash: candidate.assetHashes.equipment, payload: candidate.bundle.equipment },
             { key: 'quirks', hash: candidate.assetHashes.quirks, payload: candidate.bundle.quirks },
             { key: 'sourcebooks', hash: candidate.assetHashes.sourcebooks, payload: candidate.bundle.sourcebooks },
-            { key: 'eras', hash: candidate.assetHashes.eras, payload: candidate.bundle.eras },
             { key: 'factions', hash: candidate.assetHashes.factions, payload: candidate.bundle.factions },
         ], Object.fromEntries(Object.entries(DEPENDENCY_ASSET_PATHS).map(([name, path]) => [
             path,
@@ -159,11 +154,12 @@ export class ApplicationCatalogBundleCoordinatorService {
         onProgress?: (progress: CoreCatalogSyncProgress) => void,
     ): Promise<PreparedApplicationCatalogDependencies> {
         const nextHashes = await this.currentAssetHashes(signal);
+        const dependencyCount = Object.keys(DEPENDENCY_ASSET_PATHS).length;
         let completed = 0;
         const track = async <T>(work: () => Promise<T>): Promise<T> => {
             const value = await work();
             completed += 1;
-            emit(onProgress, { phase: 'dependency-fetch', completed, total: 6 });
+            emit(onProgress, { phase: 'dependency-fetch', completed, total: dependencyCount });
             return value;
         };
         const prepareIfChanged = <T>(
@@ -173,16 +169,14 @@ export class ApplicationCatalogBundleCoordinatorService {
         ): Promise<T> => track(() => nextHashes[name] === previous.assetHashes[name]
             ? Promise.resolve(current)
             : prepare());
-        emit(onProgress, { phase: 'dependency-fetch', completed, total: 6 });
-        const [equipment, quirks, sourcebooks, eras, factions, sprites] = await Promise.all([
+        emit(onProgress, { phase: 'dependency-fetch', completed, total: dependencyCount });
+        const [equipment, quirks, sourcebooks, factions, sprites] = await Promise.all([
             prepareIfChanged('equipment', previous.equipment,
                 () => this.equipment.prepareRemoteCatalog(previous.equipment, signal)),
             prepareIfChanged('quirks', previous.quirks,
                 () => this.quirks.prepareRemoteCatalog(previous.quirks, signal)),
             prepareIfChanged('sourcebooks', previous.sourcebooks,
                 () => this.sourcebooks.prepareRemoteCatalog(previous.sourcebooks, signal)),
-            prepareIfChanged('eras', previous.eras,
-                () => this.eras.prepareRemoteCatalog(previous.eras, signal)),
             prepareIfChanged('factions', previous.factions,
                 () => this.factions.prepareRemoteCatalog(previous.factions, signal)),
             prepareIfChanged('sprites', previous.sprites,
@@ -191,7 +185,6 @@ export class ApplicationCatalogBundleCoordinatorService {
         if (equipment === previous.equipment
             && quirks === previous.quirks
             && sourcebooks === previous.sourcebooks
-            && eras === previous.eras
             && factions === previous.factions
             && sprites === previous.sprites) {
             return previous;
@@ -201,10 +194,12 @@ export class ApplicationCatalogBundleCoordinatorService {
             equipment: equipment.transport.data,
             quirks: quirks.transport.data,
             sourcebooks: sourcebooks.transport.data,
-            eras: eras.transport.data,
             factions: factions.transport.data,
             spriteManifest: sprites.evidence,
         });
+        const eras = factions === previous.factions
+            ? previous.eras
+            : this.eraIndex.prepareFromFactions(factions.factions);
         return this.prepared(
             bundle,
             nextHashes,
@@ -221,7 +216,7 @@ export class ApplicationCatalogBundleCoordinatorService {
         this.equipment.commitPreparedCatalog(candidate.equipment);
         this.quirks.commitPreparedCatalog(candidate.quirks);
         this.sourcebooks.commitPreparedCatalog(candidate.sourcebooks);
-        this.eras.commitPreparedCatalog(candidate.eras);
+        this.eraIndex.commitPreparedIndex(candidate.eras);
         this.factions.commitPreparedCatalog(candidate.factions);
         this.sprites.commitPreparedAssignmentManifest(candidate.sprites);
     }
@@ -231,30 +226,31 @@ export class ApplicationCatalogBundleCoordinatorService {
         assetHashes: DependencyAssetHashes,
         onProgress?: (progress: CoreCatalogSyncProgress) => void,
     ): Promise<PreparedApplicationCatalogDependencies> {
+        const dependencyCount = Object.keys(DEPENDENCY_ASSET_PATHS).length;
         let completed = 0;
         const track = async <T>(label: string, work: () => T | Promise<T>): Promise<T> => {
             try {
                 const value = await work();
                 completed += 1;
-                emit(onProgress, { phase: 'dependency-fetch', completed, total: 6 });
+                emit(onProgress, { phase: 'dependency-fetch', completed, total: dependencyCount });
                 return value;
             } catch (error) {
                 this.logger.warn(`Failed to prepare ${label}: ${describeError(error)}`);
                 throw error;
             }
         };
-        emit(onProgress, { phase: 'dependency-fetch', completed, total: 6 });
-        const [equipment, quirks, sourcebooks, eras, factions, sprites] = await Promise.all([
+        emit(onProgress, { phase: 'dependency-fetch', completed, total: dependencyCount });
+        const [equipment, quirks, sourcebooks, factions, sprites] = await Promise.all([
             track('equipment', () => this.equipment.prepareBundledCatalog(bundle.equipment)),
             track('quirks', () => this.quirks.prepareBundledCatalog(bundle.quirks)),
             track('sourcebooks', () => this.sourcebooks.prepareBundledCatalog(bundle.sourcebooks)),
-            track('eras', () => this.eras.prepareBundledCatalog(bundle.eras)),
             track('factions', () => this.factions.prepareBundledCatalog(bundle.factions)),
             track('sprites', () => this.sprites.prepareBundledAssignmentManifest(
                 bundle.spriteManifest,
                 assetHashes.sprites,
             )),
         ]);
+        const eras = this.eraIndex.prepareFromFactions(factions.factions);
         return this.prepared(
             bundle,
             assetHashes,
@@ -273,7 +269,7 @@ export class ApplicationCatalogBundleCoordinatorService {
         equipment: PreparedEquipmentCatalog,
         quirks: PreparedQuirksCatalog,
         sourcebooks: PreparedSourcebooksCatalog,
-        eras: PreparedErasCatalog,
+        eras: PreparedEraIndex,
         factions: PreparedFactionsCatalog,
         sprites: PreparedUnitSpriteManifest,
     ): PreparedApplicationCatalogDependencies {
