@@ -9,11 +9,6 @@ import { getEquipmentCost } from './equipment-pricing';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 import { isBattleArmorManipulatorEquipment } from '../../../battle-armor-equipment.model';
 
-/** Mirrors MegaMek's BattleArmorCostCalculator, including training costs. */
-export function calculateBattleArmorCost(entity: BattleArmorEntity, equipmentCost: number): number {
-  return calculateBattleArmorCostReport(entity, [amount('Equipment', equipmentCost)]).total;
-}
-
 export function calculateBattleArmorCostReport(
   entity: BattleArmorEntity, equipment: readonly EntityCostEntry[],
 ): EntityCostReport {
@@ -56,11 +51,6 @@ export function calculateBattleArmorCostReport(
     multiplier('Clan Multiplier', clanMultiplier, clanMultiplier !== 1),
     amount('Training', trainingCost), ...equipment, multiplier('Trooper Multiplier', troopers),
   ]);
-}
-
-/** Mirrors MegaMek's InfantryCostCalculator. */
-export function calculateInfantryCost(entity: InfantryEntity): number {
-  return calculateInfantryCostReport(entity).total;
 }
 
 export function calculateInfantryCostReport(entity: InfantryEntity): EntityCostReport {

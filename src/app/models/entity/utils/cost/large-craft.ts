@@ -13,11 +13,6 @@ import { capitalCraftArmorPointsPerTon, smallCraftArmorPointsPerTon } from '../l
 
 type CapitalCraft = JumpShipEntity | WarShipEntity | SpaceStationEntity;
 
-/** Mirrors MegaMek's DropShipCostCalculator. */
-export function calculateDropShipCost(entity: DropShipEntity, equipmentCost: number): number {
-  return calculateDropShipCostReport(entity, [amount('Equipment', equipmentCost)]).total;
-}
-
 export function calculateDropShipCostReport(
   entity: DropShipEntity, equipment: readonly EntityCostEntry[],
 ): EntityCostReport {
@@ -35,11 +30,6 @@ export function calculateDropShipCostReport(
   ], true);
 }
 
-/** Mirrors MegaMek's JumpShipCostCalculator. */
-export function calculateJumpShipCost(entity: JumpShipEntity, equipmentCost: number): number {
-  return calculateJumpShipCostReport(entity, [amount('Equipment', equipmentCost)]).total;
-}
-
 export function calculateJumpShipCostReport(
   entity: JumpShipEntity, equipment: readonly EntityCostEntry[],
 ): EntityCostReport {
@@ -49,11 +39,6 @@ export function calculateJumpShipCostReport(
     amount('Lithium-Fusion Battery', 10000000 * (entity.tonnage() / 10000)),
     ...capitalCommonEntries(entity), ...equipment, multiplier('Weight Multiplier', 1.25),
   ], true);
-}
-
-/** Mirrors MegaMek's WarShipCostCalculator. */
-export function calculateWarShipCost(entity: WarShipEntity, equipmentCost: number): number {
-  return calculateWarShipCostReport(entity, [amount('Equipment', equipmentCost)]).total;
 }
 
 export function calculateWarShipCostReport(
@@ -67,11 +52,6 @@ export function calculateWarShipCostReport(
     amount('Lithium-Fusion Battery', 20000000 * (50 + entity.tonnage() / 10000)),
     ...capitalCommonEntries(entity), ...equipment, multiplier('Weight Multiplier', 2),
   ], true);
-}
-
-/** Mirrors MegaMek's SpaceStationCostCalculator. */
-export function calculateSpaceStationCost(entity: SpaceStationEntity, equipmentCost: number): number {
-  return calculateSpaceStationCostReport(entity, [amount('Equipment', equipmentCost)]).total;
 }
 
 export function calculateSpaceStationCostReport(

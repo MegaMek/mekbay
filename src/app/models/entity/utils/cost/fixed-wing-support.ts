@@ -14,14 +14,6 @@ import {
   supportVehicleStructureMultiplier,
 } from '../../../chassis-equipment.model';
 
-/** Mirrors MegaMek's FixedWingSupportCostCalculator. */
-export function calculateFixedWingSupportCost(
-  entity: FixedWingSupportEntity,
-  equipmentCost: number,
-): number {
-  return calculateFixedWingSupportCostReport(entity, [amount('Equipment', equipmentCost)]).total;
-}
-
 export function calculateFixedWingSupportCostReport(
   entity: FixedWingSupportEntity,
   equipment: readonly EntityCostEntry[],

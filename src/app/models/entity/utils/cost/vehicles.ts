@@ -22,11 +22,6 @@ import {
   supportVehicleStructureMultiplier,
 } from '../../../chassis-equipment.model';
 
-/** Mirrors MegaMek's CombatVehicleCostCalculator for support and combat vehicles. */
-export function calculateVehicleCost(entity: VehicleEntity, equipmentCost: number): number {
-  return calculateVehicleCostReport(entity, [amount('Equipment', equipmentCost)]).total;
-}
-
 export function calculateVehicleCostReport(
   entity: VehicleEntity,
   equipment: readonly EntityCostEntry[],

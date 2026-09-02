@@ -25,11 +25,6 @@ export interface MountedEquipmentCostBreakdown {
   readonly entries: readonly EntityCostEntry[];
 }
 
-/** Mirrors CostCalculator.getWeaponsAndEquipmentCost's mounted-item rules. */
-export function calculateMountedEquipmentCost(entity: BaseEntity, ignoreAmmo = false): number {
-  return calculateMountedEquipmentCostBreakdown(entity, ignoreAmmo).total;
-}
-
 /** Mirrors CostCalculator.getWeaponsAndEquipmentCost's mounted-item rules with report entries. */
 export function calculateMountedEquipmentCostBreakdown(
   entity: BaseEntity,
@@ -203,11 +198,6 @@ function isExplosiveForGeneratedClanCase(entity: BaseEntity, mount: EntityMounte
     if (isBlueShieldEquipment(equipment)) return false;
   }
   return true;
-}
-
-/** Prices transporter systems. Large-craft family calculators invoke this directly. */
-export function calculateTransporterCost(entity: BaseEntity): number {
-  return calculateTransporterCostBreakdown(entity).reduce((sum, entry) => sum + (entry.amount ?? 0), 0);
 }
 
 function calculateTransporterCostBreakdown(entity: BaseEntity): EntityCostEntry[] {

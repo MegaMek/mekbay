@@ -5,11 +5,6 @@
 import type { ProtoMekEntity } from '../../entities/protomek/protomek-entity';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 
-/** Mirrors MegaMek's ProtoMekCostCalculator. */
-export function calculateProtoMekCost(entity: ProtoMekEntity, equipmentCost: number): number {
-  return calculateProtoMekCostReport(entity, [amount('Equipment', equipmentCost)]).total;
-}
-
 export function calculateProtoMekCostReport(
   entity: ProtoMekEntity, equipment: readonly EntityCostEntry[],
 ): EntityCostReport {

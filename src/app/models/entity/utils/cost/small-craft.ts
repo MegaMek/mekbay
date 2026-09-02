@@ -7,11 +7,6 @@ import { calculateSmallCraftFuelSystemWeight, nextHalfTon } from './common';
 import { amount, buildCostReport, multiplier, type EntityCostEntry, type EntityCostReport } from './cost-report';
 import { smallCraftArmorPointsPerTon } from '../large-craft-armor';
 
-/** Mirrors MegaMek's SmallCraftCostCalculator for non-DropShip Small Craft. */
-export function calculateSmallCraftCost(entity: SmallCraftEntity, equipmentCost: number): number {
-  return calculateSmallCraftCostReport(entity, [amount('Equipment', equipmentCost)]).total;
-}
-
 export function calculateSmallCraftCostReport(
   entity: SmallCraftEntity, equipment: readonly EntityCostEntry[],
 ): EntityCostReport {

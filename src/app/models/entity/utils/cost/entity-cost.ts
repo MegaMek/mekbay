@@ -38,22 +38,7 @@ export interface EntityCostOptions {
   readonly ignoreAmmo?: boolean;
 }
 
-/**
- * Calculates the construction cost represented by canonical entity state.
- *
- * Equipment prices come from the equipment database through
- * `EntityMountedEquipment.getCost()`. That method only calculates a price
- * when the database marks the equipment cost as `variable`; fixed prices are
- * returned unchanged.
- */
-export function calculateEntityCost(
-  entity: BaseEntity,
-  options: EntityCostOptions = {},
-): number {
-  return calculateEntityCostDetails(entity, options).total;
-}
-
-/** Returns the canonical calculation report used by `calculateEntityCost`. */
+/** Returns the canonical construction-cost report for the entity state. */
 export function calculateEntityCostDetails(
   entity: BaseEntity,
   options: EntityCostOptions = {},
