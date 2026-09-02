@@ -25,18 +25,6 @@ export const GENERATED_ASSET_FILES: readonly GeneratedAssetFileInventoryEntry[] 
   { relativePath: 'sarna-page-titles.json', required: true, producers: ['scripts/generate-sarna-page-titles.ts'] },
   { relativePath: 'sourcebooks.json', required: true, producers: ['scripts/generate-assets.ts'] },
 
-  // These generators are not part of gen-assets today. If their outputs are
-  // present, they are still generator-owned and receive the same validation.
-  { relativePath: 'availability.json', required: false, producers: ['scripts/generate-all-megamek-availability.ts'] },
-  { relativePath: 'availability_weighted.json', required: false, producers: ['scripts/generate-megamek-availability.ts', 'scripts/generate-all-megamek-availability.ts'] },
-  { relativePath: 'availability_weighted_q.json', required: false, producers: ['scripts/generate-all-megamek-availability.ts'] },
-  { relativePath: 'chassis.json', required: false, producers: ['scripts/generate-all-megamek-availability.ts'] },
-  { relativePath: 'faction-era-data.json', required: false, producers: ['scripts/generate-all-megamek-availability.ts'] },
-  { relativePath: 'models.json', required: false, producers: ['scripts/generate-all-megamek-availability.ts'] },
-  { relativePath: 'mulized_availability.json', required: false, producers: ['scripts/generate-all-megamek-availability.ts'] },
-  { relativePath: 'mulized_chassis.json', required: false, producers: ['scripts/generate-all-megamek-availability.ts'] },
-  { relativePath: 'mulized_models.json', required: false, producers: ['scripts/generate-all-megamek-availability.ts'] },
-  { relativePath: 'ratgenerator.csv', required: false, producers: ['scripts/ratgenerator_build_table.ts'] },
 ]);
 
 export const GENERATED_ASSET_PATTERNS: readonly GeneratedAssetPatternInventoryEntry[] = Object.freeze([

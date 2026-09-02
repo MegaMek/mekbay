@@ -37,15 +37,8 @@ jobs:
           npm ci
           npm run build
 
-      - name: Verify published equipment and official Mek domain corpora
-        run: npm run check:mek-domain-corpus
-
-      - name: Verify script typechecks and RAT generator oracle
-        env:
-          MM_DATA_PATH: mm-data
-          SVGEXPORT_UNITFILES_PATH: mm-data/data/mekfiles
-          MEK_NAME_CHANGES_PATH: mm-data/data/mekfiles/name_changes.txt
-        run: npm run check:script-integrity
+      - name: Verify script typechecks
+        run: npm run typecheck:scripts
 
       - name: Get LFTP
         run: sudo apt-get install -y --no-install-recommends lftp

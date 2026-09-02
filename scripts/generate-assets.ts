@@ -50,7 +50,6 @@ const sourcebooksOutput = path.join(root, 'public', 'online-assets', 'generated'
 const megaMekAvailabilityScript = path.join(__dirname, 'generate-megamek-availability.ts');
 const megaMekRulesetsScript = path.join(__dirname, 'generate-megamek-rulesets.ts');
 const sarnaPageTitlesScript = path.join(__dirname, 'generate-sarna-page-titles.ts');
-const ratGeneratorCsvScript = path.join(__dirname, 'ratgenerator_build_table.ts');
 const forceNameWordsScript = path.join(__dirname, 'generate-force-name-words.ts');
 const coreUnitAssetsScript = path.join(__dirname, 'generate-core-unit-assets.ts');
 const spriteMapScript = path.join(__dirname, 'generate-sprite-map.ts');
@@ -178,36 +177,6 @@ function generateSourcebooks(): void {
   console.log(`[Assets] Generated ${sourcebooksOutput} with ${sourcebooks.length} sourcebooks.`);
 }
 
-// function runCompressAssets() {
-//   return new Promise((resolve, reject) => {
-//     const compressScript = path.join(__dirname, 'compress-assets.ts');
-    
-//     if (!fs.existsSync(compressScript)) {
-//       console.log('[Assets] compress-assets.ts not found, skipping compression.');
-//       resolve();
-//       return;
-//     }
-
-//     console.log('[Assets] Running compress-assets.ts...');
-//     const child = spawn('node', [compressScript], { 
-//       stdio: 'inherit',
-//       cwd: root
-//     });
-
-//     child.on('close', (code) => {
-//       if (code === 0) {
-//         resolve();
-//       } else {
-//         reject(new Error(`compress-assets.ts exited with code ${code}`));
-//       }
-//     });
-
-//     child.on('error', (err) => {
-//       reject(err);
-//     });
-//   });
-// }
-
 async function main(): Promise<void> {
   try {
     runTypeScriptScript(forceNameWordsScript);
@@ -219,10 +188,8 @@ async function main(): Promise<void> {
     // and sourcebook inputs, so they must exist before the archive is sealed.
     runTypeScriptScript(spriteMapScript);
     runTypeScriptScript(coreUnitAssetsScript);
-    // runTypeScriptScript(ratGeneratorCsvScript);
     const assetsManifest = writeRepositoryAssetsManifest(path.join(root, 'public'));
     console.log(`[Assets] Generated one manifest for ${Object.keys(assetsManifest).length} deployed assets.`);
-    // await runCompressAssets();
     console.log('[Assets] All asset generation complete.');
   } catch (err) {
     console.error('[Assets] Error:', err);

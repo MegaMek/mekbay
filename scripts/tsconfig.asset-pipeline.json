@@ -7,7 +7,6 @@
     "./generated-asset-inventory.test.ts",
     "./generate-force-name-words.ts",
     "./generate-megamek-availability.ts",
-    "./generate-all-megamek-availability.ts",
     "./generate-megamek-rulesets.ts",
     "./generate-sarna-page-titles.ts",
     "./lib/megamek-unit-file-metadata.ts",

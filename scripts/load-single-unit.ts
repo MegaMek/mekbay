@@ -41,7 +41,7 @@ import {
 import { recordSheetAmmoName } from '../src/app/utils/record-sheet-ammo.util';
 import { loadQuirkResolver } from './quirk-fixture';
 import { resolveMmDataRoot } from './lib/script-paths';
-import { formatBattleValueDetails, formatCostReport, formatDiagnosticNumber } from './unit-diagnostics';
+import { formatBattleValueDetails, formatCostReport, formatDiagnosticNumber } from './lib/formatter';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLI argument parsing

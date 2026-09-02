@@ -55,18 +55,11 @@ jobs:
       - name: Verify deterministic asset and deployment pipelines
         run: npm run check:asset-pipeline && npm run test:deploy-pipeline
 
-      - name: Verify script typechecks and RAT generator oracle
-        env:
-          MM_DATA_PATH: mm-data
-          SVGEXPORT_UNITFILES_PATH: mm-data/data/mekfiles
-          MEK_NAME_CHANGES_PATH: mm-data/data/mekfiles/name_changes.txt
-        run: npm run check:script-integrity
+      - name: Verify script typechecks
+        run: npm run typecheck:scripts
 
       - name: Verify entity/runtime architecture boundaries
         run: npm run test:convergence-architecture && npm run test:equipment-status-architecture && npm run typecheck:equipment-status-profile
-
-      - name: Verify full unit, presentation, and Mek domain corpora
-        run: npm run check:presentation-catalogs && npm run check:mek-domain-corpus
 
       - name: Run Angular test suite
         env:

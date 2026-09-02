@@ -20,6 +20,7 @@ import type { ComponentId } from '../src/app/models/entity/entity-identifiers';
 import type { AttackerTargetingEdit } from '../src/app/models/runtime/attacker-targeting-state';
 import { BOMBAST_LASER_CHARGING_STATE } from '../src/app/models/runtime/component-bombast-laser';
 import { PPC_CAPACITOR_CHARGING_STATE } from '../src/app/models/runtime/component-ppc-capacitor';
+import { commandMayChangeBaseBattleValue } from '../src/app/models/runtime/cbt-force-mek-mutation-impact';
 import {
     asEncounterTargetId,
     emptyCBTEncounterSnapshot,
@@ -234,6 +235,7 @@ let checksum = 0;
 
 class BenchmarkProgress {
     private completedUpdates = 0;
+    private lastRenderedAt = Number.NEGATIVE_INFINITY;
     private lineOpen = false;
 
     public constructor(private readonly totalUpdates: number) {}
@@ -245,6 +247,13 @@ class BenchmarkProgress {
     ): void {
         this.completedUpdates++;
         const measured = sampleIndex >= warmupSamples;
+        const finalMeasuredSample = sampleIndex === warmupSamples + measuredSamples - 1;
+        if (!process.stdout.isTTY && !finalMeasuredSample) return;
+        const renderedAt = performance.now();
+        const finalUpdate = this.completedUpdates === this.totalUpdates;
+        if (process.stdout.isTTY && !finalUpdate && renderedAt - this.lastRenderedAt < 100) return;
+        this.lastRenderedAt = renderedAt;
+
         const phaseSample = measured ? sampleIndex - warmupSamples + 1 : sampleIndex + 1;
         const phaseTotal = measured ? measuredSamples : warmupSamples;
         const completedFraction = this.completedUpdates / this.totalUpdates;
@@ -259,7 +268,7 @@ class BenchmarkProgress {
             + `/${Math.max(...phaseSamples).toFixed(4)}ms ${label}`;
 
         if (!process.stdout.isTTY) {
-            if (sampleIndex === warmupSamples + measuredSamples - 1) console.log(line);
+            console.log(line);
             return;
         }
         clearLine(process.stdout, 0);
@@ -1462,73 +1471,6 @@ function refreshRuntimeBattleValue(
 function dispatch(instance: CBTUnitInstance, command: CBTUnitCommand): void {
     const result = instance.dispatch(command);
     if (!result.accepted) throw new Error(`Benchmark command ${command.type} was rejected`);
-}
-
-/** Mirrors the force/member CBTUnitCommand dependency classifier. Direct
- * non-command mutation lanes declare their BV impact through mutationStep. */
-function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolean {
-    switch (command.type) {
-        case 'damage-armor':
-        case 'repair-armor':
-        case 'damage-internal':
-        case 'repair-internal':
-        case 'hit-critical':
-        case 'repair-critical':
-        case 'apply-mek-blow-off':
-        case 'apply-mek-critical-roll':
-        case 'set-system-critical-level':
-        case 'set-component-status':
-        case 'damage-shield':
-        case 'repair-shield':
-            return command.target === 'committed';
-        case 'set-location-condition':
-            return command.target === 'committed' && command.condition !== 'narc';
-        case 'configure-ammo-source':
-        case 'spend-ammo':
-        case 'activate-coolant-pod':
-        case 'fire-weapons':
-        case 'detonate-booby-trap':
-        case 'edit-escalating-failure':
-        case 'end-phase':
-        case 'end-turn':
-        case 'commit-pending':
-            return true;
-        case 'set-component-mode':
-        case 'set-stealth-state':
-        case 'toggle-gauss-power':
-        case 'set-component-jammed':
-        case 'set-ppc-capacitor-charge':
-        case 'set-bombast-laser-charge':
-        case 'edit-c3-emergency-master':
-        case 'set-heat':
-        case 'set-pending-heat':
-        case 'set-heatsinks-off':
-        case 'apply-heat':
-        case 'set-condition':
-        case 'set-mek-shutdown-state':
-        case 'resolve-mek-rule-check':
-        case 'set-crew-state':
-        case 'declare-mek-movement':
-        case 'clear-mek-movement':
-        case 'declare-mek-action':
-        case 'clear-mek-action':
-        case 'prepare-mek-stand':
-        case 'resolve-mek-stand-attempt':
-        case 'adjust-mek-stand-attempts':
-        case 'resolve-mek-pilot-check':
-        case 'dismiss-mek-pilot-checks':
-        case 'dismiss-mek-automatic-falls':
-        case 'replace-turn-state':
-        case 'set-pending-fall-consequences':
-        case 'reset-turn-state':
-        case 'mark-end-turn-heat-staged':
-        case 'cancel-pending':
-            return false;
-        default: {
-            const exhaustive: never = command;
-            throw new Error(`Unclassified CBT unit command: ${String(exhaustive)}`);
-        }
-    }
 }
 
 function projectSheet(

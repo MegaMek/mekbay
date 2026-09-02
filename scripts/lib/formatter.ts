@@ -1,5 +1,5 @@
-import type { BattleValueDetail } from '../src/app/models/entity/utils/battle-value/bv-calculator';
-import type { EntityCostReport } from '../src/app/models/entity/utils/cost/cost-report';
+import type { BattleValueDetail } from '../../src/app/models/entity/utils/battle-value/bv-calculator';
+import type { EntityCostReport } from '../../src/app/models/entity/utils/cost/cost-report';
 
 export function formatDiagnosticNumber(value: number): string {
   return Number.isInteger(value)
