@@ -413,6 +413,7 @@ export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmen
 function getWeaponTechBasesForAmmo(
     ammo: AmmoEquipment,
     inventory: readonly MountedEquipment[],
+    unit: Pick<UnitSummary, 'techBase' | 'mixed'>,
     weapon?: WeaponEquipment,
 ): EquipmentTechBase[] {
     const matchingWeapons = weapon
@@ -421,7 +422,10 @@ function getWeaponTechBasesForAmmo(
             .map(entry => entry.equipment)
             .filter((equipment): equipment is WeaponEquipment =>
                 equipment instanceof WeaponEquipment && ammoMatchesWeapon(equipment, ammo));
-    return [...new Set(matchingWeapons.map(equipment => equipment.techBase))];
+    return [...new Set(matchingWeapons.map(equipment => {
+        if (equipment.techBase !== 'All' || unit.mixed) return equipment.techBase;
+        return unit.techBase === 'Clan' ? 'Clan' : 'IS';
+    }))];
 }
 
 export function getAmmoEntryRemaining(entry: AmmoControlEntry): number {
@@ -678,7 +682,7 @@ export async function setAmmoEntry(
             inventory,
             gameRules: entry.owner.gameRules,
             equipmentRegistry,
-            weaponTechBases: getWeaponTechBasesForAmmo(entry.originalAmmo, inventory, weapon),
+            weaponTechBases: getWeaponTechBasesForAmmo(entry.originalAmmo, inventory, unitBlueprint, weapon),
         } as SetAmmoDialogData
     });
 
@@ -729,7 +733,7 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerComm
             inventory,
             gameRules: firstEntry.owner.gameRules,
             equipmentRegistry,
-            weaponTechBases: getWeaponTechBasesForAmmo(firstEntry.originalAmmo, inventory),
+            weaponTechBases: getWeaponTechBasesForAmmo(firstEntry.originalAmmo, inventory, unitBlueprint),
         } as SetAmmoDialogData
     });
 

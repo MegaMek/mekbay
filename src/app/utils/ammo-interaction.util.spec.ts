@@ -155,36 +155,44 @@ describe('ammo interaction tech-base selection', () => {
         )).toContain(clanAmmo);
     });
 
-    it('derives weapon tech bases when opening ammo from a bare critical-slot entry', async () => {
+    it('resolves an All weapon tech base from the owning unit', async () => {
         const ammo = createAmmo('IS Ultra AC/20 Ammo', 'IS Ammo', 'IS');
         const weapon = new WeaponEquipment({
-            id: 'ISUltraAC20',
-            name: 'IS Ultra AC/20',
+            id: 'UltraAC20',
+            name: 'Ultra AC/20',
             type: 'weapon',
-            tech: { base: 'IS' },
+            tech: { base: 'All' },
             weapon: { ammoType: 'AC_ULTRA', rackSize: 20 },
         });
-        let weaponEntry!: MountedEquipment;
-        const owner = {
-            id: 'unit-1',
-            force: { era: () => null },
-            getUnit: () => ({ type: 'Mek', techBase: 'Inner Sphere' }),
-            getInventory: () => [weaponEntry],
-            getEquipmentStatus: () => 'available',
-            svg: () => null,
-        } as unknown as CBTForceUnit;
-        weaponEntry = new MountedWeapon({ owner, id: weapon.internalName, name: weapon.internalName, equipment: weapon });
-        const entry = createCritEntry({ id: ammo.internalName, loc: 'LT', slot: 0, ammo, owner });
-        const context = createContext({
-            [ammo.internalName]: ammo,
-            [weapon.internalName]: weapon,
-        });
-        const createDialog = context.dialogsService.createDialog as jasmine.Spy;
-        createDialog.and.returnValue({ closed: of(null) });
+        const cases = [
+            { techBase: 'Inner Sphere', mixed: false, expected: 'IS' },
+            { techBase: 'Clan', mixed: false, expected: 'Clan' },
+            { techBase: 'Inner Sphere', mixed: true, expected: 'All' },
+        ] as const;
 
-        await setAmmoEntry(entry, context);
+        for (const testCase of cases) {
+            let weaponEntry!: MountedEquipment;
+            const owner = {
+                id: 'unit-1',
+                force: { era: () => null },
+                getUnit: () => ({ type: 'Mek', techBase: testCase.techBase, mixed: testCase.mixed }),
+                getInventory: () => [weaponEntry],
+                getEquipmentStatus: () => 'available',
+                svg: () => null,
+            } as unknown as CBTForceUnit;
+            weaponEntry = new MountedWeapon({ owner, id: weapon.internalName, name: weapon.internalName, equipment: weapon });
+            const entry = createCritEntry({ id: ammo.internalName, loc: 'LT', slot: 0, ammo, owner });
+            const context = createContext({
+                [ammo.internalName]: ammo,
+                [weapon.internalName]: weapon,
+            });
+            const createDialog = context.dialogsService.createDialog as jasmine.Spy;
+            createDialog.and.returnValue({ closed: of(null) });
 
-        expect(createDialog.calls.mostRecent().args[1].data.weaponTechBases).toEqual(['IS']);
+            await setAmmoEntry(entry, context);
+
+            expect(createDialog.calls.mostRecent().args[1].data.weaponTechBases).toEqual([testCase.expected]);
+        }
     });
 });
 
