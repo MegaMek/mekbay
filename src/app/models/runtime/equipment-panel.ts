@@ -5,6 +5,7 @@ import { compareText } from '../../utils/string.util';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { asComponentId, type ComponentId, type LocationId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { EquipmentTechBase } from '../entity/types/tech';
 import type { EntityWeaponHitModifier } from '../entity/types/weapon';
 import {
     ammoMatchesWeapon,
@@ -44,7 +45,13 @@ import {
     type TnTargetModifierBreakdownEntry,
 } from '../target-number-calculator.model';
 import { componentLocationIds, equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-import { mekAmmoDefaultMunitionKey, mekAmmoLoadouts, mekIntrinsicMagazine, type AmmoLoadout } from './mek-ammo';
+import {
+    entityWeaponTechBasesForAmmo,
+    mekAmmoDefaultMunitionKey,
+    mekAmmoLoadouts,
+    mekIntrinsicMagazine,
+    type AmmoLoadout,
+} from './mek-ammo';
 import { mekComponentModes } from './mek-component-rules';
 import { mekRiscLaserPulseActive, mekRiscLaserPulseLink } from './component-risc-laser-pulse';
 import { RISC_LASER_PULSE_HEAT_BONUS } from '../risc-laser-mode.model';
@@ -229,6 +236,7 @@ export interface EquipmentPanelComponent {
         readonly remaining: number;
         readonly capacity: number;
         readonly loadouts: readonly EquipmentPanelAmmoLoadout[];
+        readonly weaponTechBases?: readonly EquipmentTechBase[];
     }>;
 }
 
@@ -1583,6 +1591,7 @@ function ammoSnapshot(
         remaining: query.remainingAmmo(componentId),
         capacity: query.ammoCapacity(componentId),
         loadouts: freezeLoadouts(loadouts),
+        weaponTechBases: entityWeaponTechBasesForAmmo(entity, selected.equipment),
     });
 }
 

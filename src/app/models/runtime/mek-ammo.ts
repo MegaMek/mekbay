@@ -12,6 +12,7 @@ import type { BaseEntity } from '../entity/base-entity';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { EntityMountedEquipment } from '../entity/types';
+import type { EquipmentTechBase } from '../entity/types/tech';
 import {
     resolveChangedAmmoCapacity,
     type AmmoCapacityFacts,
@@ -34,6 +35,19 @@ export interface MekIntrinsicMagazine {
     readonly capacity: number;
     readonly defaultMunitionKey: string;
     readonly loadouts: readonly AmmoLoadout[];
+}
+
+/** Effective tech bases of installed weapons that consume this ammo family. */
+export function entityWeaponTechBasesForAmmo(
+    entity: BaseEntity,
+    ammo: AmmoEquipment,
+): readonly EquipmentTechBase[] {
+    return Object.freeze([...new Set(entity.equipment().flatMap(mount => {
+        const weapon = mount.equipment;
+        if (!(weapon instanceof WeaponEquipment) || !ammoMatchesWeapon(weapon, ammo)) return [];
+        if (weapon.techBase !== 'All' || entity.mixedTech()) return [weapon.techBase];
+        return [entity.techBase()];
+    }))]);
 }
 
 /** Compatible loadouts for one ordinary Entity ammunition mount. */

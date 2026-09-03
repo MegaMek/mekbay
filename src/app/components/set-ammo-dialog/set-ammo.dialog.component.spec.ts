@@ -8,8 +8,10 @@ import { TestBed } from '@angular/core/testing';
 import { AmmoEquipment } from '../../models/equipment.model';
 import type { Era } from '../../models/eras.model';
 import { DialogsService } from '../../services/dialogs.service';
+import { OptionsService } from '../../services/options.service';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from './set-ammo.dialog.component';
 import { getAmmoInfoItems } from './set-ammo-dropdown.component';
+import { EquipmentTechBase } from '../../models/entity/types/tech';
 
 function createEra(from: number | undefined, to: number | undefined): Era {
     return {
@@ -21,14 +23,19 @@ function createEra(from: number | undefined, to: number | undefined): Era {
     };
 }
 
-function createAmmo(id: string, kgPerShot = 100, ammo: Partial<ConstructorParameters<typeof AmmoEquipment>[0]['ammo']> = {}): AmmoEquipment {
+function createAmmo(
+    id: string,
+    kgPerShot = 100,
+    ammo: Partial<ConstructorParameters<typeof AmmoEquipment>[0]['ammo']> = {},
+    techBase: EquipmentTechBase = 'Clan',
+): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
         type: 'ammo',
         rulesRefs: [{ book: 'TM', page: 207 }],
         tech: {
-            base: 'Clan',
+            base: techBase,
             rating: 'E',
             availability: { sl: 'X', sw: 'D', clan: 'C', da: 'B' },
             advancement: { clan: { prototype: '~2824', production: '~2826', common: '2828' } },
@@ -40,13 +47,14 @@ function createAmmo(id: string, kgPerShot = 100, ammo: Partial<ConstructorParame
 describe('SetAmmoDialogComponent', () => {
     let overlayContainerElement: HTMLElement;
 
-    function configureDialog(data: SetAmmoDialogData) {
+    function configureDialog(data: SetAmmoDialogData, allowMixedTechBaseAmmo = false) {
         TestBed.configureTestingModule({
             imports: [SetAmmoDialogComponent],
             providers: [
                 { provide: DIALOG_DATA, useValue: data },
                 { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
                 { provide: DialogsService, useValue: { requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false) } },
+                { provide: OptionsService, useValue: { options: () => ({ CBTOptionalRules: { allowMixedTechBaseAmmo } }) } },
             ],
         });
 
@@ -107,6 +115,54 @@ describe('SetAmmoDialogComponent', () => {
             .find(element => element.textContent?.includes('Extremely Long Prototype Specialty Ammunition'));
 
         expect(longOptionLabel).toBeTruthy();
+    });
+
+    it('keeps the selected ammo visible while hiding other incompatible ammo by default', () => {
+        const isAmmo = createAmmo('IS Ammo', 100, {}, 'IS');
+        const clanAmmo = createAmmo('Clan Ammo');
+        const otherClanAmmo = createAmmo('Other Clan Ammo');
+        const allAmmo = createAmmo('All Ammo', 100, {}, 'All');
+        const fixture = configureDialog({
+            currentAmmo: clanAmmo,
+            originalAmmo: clanAmmo,
+            originalTotalAmmo: 5,
+            ammoOptions: [clanAmmo, otherClanAmmo, isAmmo, allAmmo],
+            quantity: 3,
+            maxQuantity: 5,
+            weaponTechBases: ['IS'],
+        });
+        expect(fixture.componentInstance.ammoOptions().map(ammo => ammo.internalName)).toEqual([
+            clanAmmo.internalName,
+            isAmmo.internalName,
+            allAmmo.internalName,
+        ]);
+    });
+
+    it('shows incompatible ammo in red and allows selecting it when mixed tech is enabled', () => {
+        const isAmmo = createAmmo('IS Ammo', 100, {}, 'IS');
+        const clanAmmo = createAmmo('Clan Ammo');
+        const fixture = configureDialog({
+            currentAmmo: isAmmo,
+            originalAmmo: isAmmo,
+            originalTotalAmmo: 5,
+            ammoOptions: [isAmmo, clanAmmo],
+            quantity: 3,
+            maxQuantity: 5,
+            weaponTechBases: ['IS'],
+        }, true);
+        const trigger: HTMLButtonElement = fixture.nativeElement.querySelector('#inputName');
+
+        trigger.click();
+        fixture.detectChanges();
+
+        const clanOption = Array.from(overlayContainerElement.querySelectorAll('.ammo-dropdown-option'))
+            .find(element => element.textContent?.includes('Clan Ammo')) as HTMLElement;
+        expect(clanOption.classList).toContain('selection-issue');
+        expect(clanOption.getAttribute('title')).toBe('Ammunition tech base does not match the weapon');
+
+        clanOption.click();
+        fixture.detectChanges();
+        expect(fixture.componentInstance.selectedAmmoName()).toBe(clanAmmo.internalName);
     });
 
     it('ignores stale pointer hover after keyboard navigation scrolls the dropdown', () => {

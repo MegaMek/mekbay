@@ -6,6 +6,7 @@ import {
     TestBattleArmorEntity,
     TestBipedMekEntity,
     TestDropShipEntity,
+    TestHandheldWeaponEntity,
     TestInfantryEntity,
     TestJumpShipEntity,
     TestProtoMekEntity,
@@ -909,6 +910,25 @@ describe('NonMekUnitInstance', () => {
         expect(nonMekAttackMovementModifier(new TestProtoMekEntity(), 'jump')).toBe(3);
         expect(nonMekAttackMovementModifier(new TestInfantryEntity(), 'walk')).toBe(0);
         expect(nonMekAttackMovementModifier(new TestAeroSpaceFighterEntity(), 'run')).toBe(0);
+    });
+
+    it('allows active actions for entities with no crew positions', () => {
+        const entity = new TestHandheldWeaponEntity();
+        entity.uuid.set(UUID);
+        const runtime = new NonMekUnitInstance(
+            'unit:handheld-no-crew',
+            baseline(),
+            entity,
+            CORE_2026_RULESET,
+        );
+
+        expect(runtime.getIndex().crewPositions.size).toBe(0);
+        expect(canNonMekTakeActiveActions(
+            entity,
+            runtime.getIndex(),
+            runtime.snapshot(),
+            CORE_2026_RULESET,
+        )).toBeTrue();
     });
 
     it('denies active turn actions without a live controller and permits a drone controller', () => {

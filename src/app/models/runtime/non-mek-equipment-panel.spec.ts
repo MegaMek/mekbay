@@ -111,6 +111,7 @@ describe('Entity equipment panel projection', () => {
             id: 'AC_10',
             name: 'AC/10',
             type: 'weapon',
+            tech: { base: 'All' },
             flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
             weapon: {
                 ammoType: 'AC',
@@ -124,12 +125,14 @@ describe('Entity equipment panel projection', () => {
             id: 'Ammo_AC_10',
             name: 'AC/10 Ammo',
             type: 'ammo',
+            tech: { base: 'IS' },
             ammo: { type: 'AC', rackSize: 10, shots: 10 },
         });
         const precision = new AmmoEquipment({
             id: 'Ammo_AC_10_Precision',
             name: 'AC/10 Precision Ammo',
             type: 'ammo',
+            tech: { base: 'Clan' },
             ammo: { type: 'AC', rackSize: 10, shots: 10, munitionType: ['M_PRECISION'] },
         });
         const entity = new TestTankEntity(createTestEquipmentRegistry({
@@ -138,6 +141,8 @@ describe('Entity equipment panel projection', () => {
             [precision.id]: precision,
         }));
         entity.uuid.set(UUID);
+        entity.techBase.set('IS');
+        entity.mixedTech.set(false);
         const location = entity.locationOrder[0];
         const weaponMount = addTestEquipment(entity, weapon, { location });
         const ammoMount = addTestEquipment(entity, standard, { location, shotsCount: 10 });
@@ -252,6 +257,7 @@ describe('Entity equipment panel projection', () => {
         expect(ammoRow.previewStatus).toBe('destroyed');
         expect(ammoRow.ammo?.loadouts.map(loadout => loadout.munitionKey))
             .toEqual([standard.id, precision.id]);
+        expect(ammoRow.ammo?.weaponTechBases).toEqual(['IS']);
         expect(ammoRow.ammo?.remaining).toBe(4);
         expect(snapshot.targets.map(target => target.targetId)).toEqual([targetId]);
         const target = projectTargetingTarget(snapshot.targets[0], snapshot.ruleset);

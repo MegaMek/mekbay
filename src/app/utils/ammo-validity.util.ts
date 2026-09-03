@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { AmmoMunitionFlag } from '../models/ammo-munition-flags.type';
-import { effectiveTechDateYear, TechAdvancementDates } from '../models/entity/types/tech';
+import { effectiveTechDateYear, TechAdvancementDates, type EquipmentTechBase } from '../models/entity/types/tech';
 import type { AmmoEquipment, AmmoType } from '../models/equipment.model';
 import { isBattleArmorAmmo } from '../models/equipment-platform.model';
 import type { Era } from '../models/eras.model';
@@ -22,11 +22,13 @@ export interface AmmoValidityContext {
     readonly unitType?: UnitType;
     readonly era?: Era | null;
     readonly compatibilityFacts?: AmmoSelectionCompatibilityFacts;
+    readonly weaponTechBases?: readonly EquipmentTechBase[];
     readonly allowAeroArtilleryAlternateMunitions?: boolean; // unofficial rules, this comes from MegaMek's AmmoType canAeroUse()
 }
 
 export type AmmoSelectionIssueReason = 'not-yet-existing-in-era'
     | 'extinct-in-era'
+    | 'incompatible-tech-base'
     | 'missing-artemis-iv-component'
     | 'missing-artemis-v-component';
 
@@ -42,6 +44,7 @@ export interface AmmoSelectionStatus {
 const AMMO_SELECTION_ISSUE_MESSAGES: Record<AmmoSelectionIssueReason, string> = {
     'not-yet-existing-in-era': 'Not yet existing in this era',
     'extinct-in-era': 'Extinct in this era',
+    'incompatible-tech-base': 'Ammunition tech base does not match the weapon',
     'missing-artemis-iv-component': 'Missing Artemis IV component',
     'missing-artemis-v-component': 'Missing Artemis V component',
 };
@@ -52,6 +55,14 @@ export class AmmoValidityUtil {
             || this.canAeroUse(ammo, !!context.allowAeroArtilleryAlternateMunitions);
     }
 
+    static isAmmoCompatibleWithWeaponTechBases(
+        ammo: AmmoEquipment,
+        weaponTechBases: readonly EquipmentTechBase[] = [],
+    ): boolean {
+        return weaponTechBases.length === 0
+            || weaponTechBases.some(weaponTechBase => this.isTechBaseCompatible(ammo.techBase, weaponTechBase));
+    }
+
     static isAmmoCompatible(
         originalAmmo: AmmoEquipment,
         candidateAmmo: AmmoEquipment,
@@ -59,7 +70,6 @@ export class AmmoValidityUtil {
     ): boolean {
         if (!this.isAmmoValid(candidateAmmo, { unitType: unit?.type })) return false;
         if (originalAmmo.ammoType !== candidateAmmo.ammoType) return false;
-        if (!this.hasCompatibleTechBase(originalAmmo, candidateAmmo, unit)) return false;
         if (originalAmmo.hasMunitionType('M_CASELESS') !== candidateAmmo.hasMunitionType('M_CASELESS')) return false;
         if (isBattleArmorAmmo(originalAmmo) !== isBattleArmorAmmo(candidateAmmo)) return false;
 
@@ -76,23 +86,15 @@ export class AmmoValidityUtil {
 
     static getAmmoSelectionIssues(ammo: AmmoEquipment, context: AmmoValidityContext = {}): AmmoSelectionIssue[] {
         const reasons = [
+            ...(this.isAmmoCompatibleWithWeaponTechBases(ammo, context.weaponTechBases) ? [] : ['incompatible-tech-base' as const]),
             ...this.getEraSelectionIssueReasons(ammo, context.era ?? null),
             ...this.getArtemisSelectionIssueReasons(ammo, context.compatibilityFacts),
         ];
         return reasons.map(reason => ({ reason, message: AMMO_SELECTION_ISSUE_MESSAGES[reason] }));
     }
 
-    private static hasCompatibleTechBase(
-        originalAmmo: AmmoEquipment,
-        candidateAmmo: AmmoEquipment,
-        unit?: AmmoCompatibilityUnitFacts,
-    ): boolean {
-        if (originalAmmo.techBase === candidateAmmo.techBase) return true;
-        if (!unit) return originalAmmo.techBase === 'All' || candidateAmmo.techBase === 'All';
-        if (unit.mixed) return true;
-        if (unit.techBase === 'Clan' && originalAmmo.techBase === 'IS') return false;
-        if (unit.techBase === 'Inner Sphere' && originalAmmo.techBase === 'Clan') return false;
-        return true;
+    private static isTechBaseCompatible(ammoTechBase: EquipmentTechBase, weaponTechBase: EquipmentTechBase): boolean {
+        return ammoTechBase === 'All' || weaponTechBase === 'All' || ammoTechBase === weaponTechBase;
     }
 
     private static getArtemisSelectionIssueReasons(

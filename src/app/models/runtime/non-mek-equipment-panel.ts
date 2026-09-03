@@ -25,6 +25,7 @@ import {
 import {
     entityAmmoLoadout,
     entityAmmoLoadouts,
+    entityWeaponTechBasesForAmmo,
     weaponAcceptsAmmo,
     type AmmoLoadout,
 } from './mek-ammo';
@@ -813,6 +814,7 @@ function projectAmmo(
         remaining: Math.max(0, current.capacity - (runtime?.shotsSpent ?? 0)),
         capacity: current.capacity,
         loadouts: freezeLoadouts(loadouts),
+        weaponTechBases: entityWeaponTechBasesForAmmo(entity, current.equipment),
     });
 }
 

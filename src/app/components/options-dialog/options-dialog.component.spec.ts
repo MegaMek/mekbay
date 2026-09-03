@@ -109,6 +109,7 @@ describe('OptionsDialogComponent', () => {
                     forcedWithdrawal: true,
                     extremeRange: false,
                     sprinting: false,
+                    allowMixedTechBaseAmmo: false,
                 },
             }),
             setOption,
@@ -124,6 +125,7 @@ describe('OptionsDialogComponent', () => {
             forcedWithdrawal: false,
             extremeRange: false,
             sprinting: false,
+            allowMixedTechBaseAmmo: false,
         });
     });
 

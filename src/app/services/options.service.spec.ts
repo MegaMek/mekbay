@@ -189,6 +189,7 @@ describe('OptionsService theme migration', () => {
             forcedWithdrawal: true,
             extremeRange: false,
             sprinting: false,
+            allowMixedTechBaseAmmo: false,
         });
     });
 
@@ -197,16 +198,20 @@ describe('OptionsService theme migration', () => {
             CBTOptionalRules: {
                 forcedWithdrawal: false,
                 extremeRange: true,
+                floatingCriticals: true,
+                sprinting: true,
+                allowMixedTechBaseAmmo: true,
             },
         };
 
         const service = await createService();
 
         expect(service.options().CBTOptionalRules).toEqual({
-            floatingCriticals: false,
+            floatingCriticals: true,
             forcedWithdrawal: false,
             extremeRange: true,
-            sprinting: false,
+            sprinting: true,
+            allowMixedTechBaseAmmo: true,
         });
     });
 

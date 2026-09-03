@@ -71,6 +71,7 @@ const DEFAULT_OPTIONS: Options = {
         forcedWithdrawal: true,
         extremeRange: false,
         sprinting: false,
+        allowMixedTechBaseAmmo: false,
     },
     allowMultipleActiveSheets: false,
     CBTRules: 'total-warfare',
@@ -243,6 +244,7 @@ function resolveCBTOptionalRules(saved: Partial<Options> | null | undefined): CB
         forcedWithdrawal: saved?.CBTOptionalRules?.forcedWithdrawal ?? defaults.forcedWithdrawal,
         extremeRange: saved?.CBTOptionalRules?.extremeRange ?? defaults.extremeRange,
         sprinting: saved?.CBTOptionalRules?.sprinting ?? defaults.sprinting,
+        allowMixedTechBaseAmmo: saved?.CBTOptionalRules?.allowMixedTechBaseAmmo ?? defaults.allowMixedTechBaseAmmo,
     };
 }
 

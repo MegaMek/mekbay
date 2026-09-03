@@ -619,6 +619,15 @@
                     </select>
                 </div>
                 <div class="option-row">
+                    <label for="CBTOptionalMixedTechBaseAmmo">Allow mixed IS/Clan ammunition:</label>
+                    <select id="CBTOptionalMixedTechBaseAmmo" class="bt-select"
+                        [value]="optionsService.options().CBTOptionalRules.allowMixedTechBaseAmmo"
+                        (change)="onCBTOptionalRuleChange('allowMixedTechBaseAmmo', $event)">
+                        <option value="true">Enabled</option>
+                        <option value="false">Disabled (default)</option>
+                    </select>
+                </div>
+                <div class="option-row">
                     <label for="CBTForcedWithdrawal">Forced withdrawal (Cripple):</label>
                     <select id="CBTForcedWithdrawal" class="bt-select"
                         [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"

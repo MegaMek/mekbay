@@ -416,6 +416,7 @@ export function canNonMekTakeActiveActions(
         || state.conditions.has('shutdown')) return false;
     if ([...index.components.values()].some(component =>
         isDroneOperatingSystemEquipment(component.mount.equipment))) return true;
+    if (index.crewPositions.size === 0) return true;
     return [...index.crewPositions.keys()].some(positionId =>
         CrewMember.from(state.crew.get(positionId)).isAvailable());
 }

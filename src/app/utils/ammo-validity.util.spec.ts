@@ -53,6 +53,26 @@ function compatibilityFacts(
 }
 
 describe('AmmoValidityUtil', () => {
+    it('matches ammo and weapon tech bases while treating All as a wildcard', () => {
+        const isAmmo = new AmmoEquipment({ id: 'IS Ammo', name: 'IS Ammo', type: 'ammo', tech: { base: 'IS' } });
+        const clanAmmo = new AmmoEquipment({ id: 'Clan Ammo', name: 'Clan Ammo', type: 'ammo', tech: { base: 'Clan' } });
+        const allAmmo = new AmmoEquipment({ id: 'All Ammo', name: 'All Ammo', type: 'ammo', tech: { base: 'All' } });
+
+        expect(AmmoValidityUtil.isAmmoCompatibleWithWeaponTechBases(isAmmo, ['IS'])).toBeTrue();
+        expect(AmmoValidityUtil.isAmmoCompatibleWithWeaponTechBases(isAmmo, ['Clan'])).toBeFalse();
+        expect(AmmoValidityUtil.isAmmoCompatibleWithWeaponTechBases(clanAmmo, ['Clan'])).toBeTrue();
+        expect(AmmoValidityUtil.isAmmoCompatibleWithWeaponTechBases(allAmmo, ['IS'])).toBeTrue();
+        expect(AmmoValidityUtil.isAmmoCompatibleWithWeaponTechBases(isAmmo, ['All'])).toBeTrue();
+    });
+
+    it('reports an incompatible tech-base selection issue', () => {
+        const ammo = new AmmoEquipment({ id: 'Clan Ammo', name: 'Clan Ammo', type: 'ammo', tech: { base: 'Clan' } });
+
+        expect(issueReasons(ammo, { weaponTechBases: ['IS'] })).toEqual(['incompatible-tech-base']);
+        expect(AmmoValidityUtil.getAmmoSelectionIssues(ammo, { weaponTechBases: ['IS'] })[0]?.message)
+            .toBe('Ammunition tech base does not match the weapon');
+    });
+
     it('marks ammo with a selection issue when its advancement is after the selected era', () => {
         const ammo = createAmmo('Future Ammo', { clan: { prototype: '3057', production: '~3079', common: '3088' } });
 

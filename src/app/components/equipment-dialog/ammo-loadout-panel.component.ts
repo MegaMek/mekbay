@@ -648,6 +648,9 @@ export class AmmoLoadoutPanelComponent {
                     maxQuantity,
                     unitType: runtime.snapshot().unitType,
                     equipmentRegistry: registry,
+                    weaponTechBases: Object.freeze([...new Set(rows.flatMap(row =>
+                        row.ammo?.weaponTechBases ?? []
+                    ))]),
                 } satisfies SetAmmoDialogData,
             },
         );
