@@ -29,7 +29,7 @@ export interface UnitStateDropdownChoice {
     imports: [CdkMenuModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div #dropdown class="unit-state-dropdown has-shadow" cdkMenu aria-label="Unit states">
+        <div #dropdown class="unit-state-dropdown has-shadow" cdkMenu [attr.aria-label]="ariaLabel()">
             @for (choice of choices(); track choice.isBreak ? $index : choice.key) {
                 @if (choice.isBreak) {
                     <div class="unit-state-dropdown-break" aria-hidden="true"></div>
@@ -251,6 +251,7 @@ export class UnitStateDropdownComponent {
     private readonly dropdownRef = viewChild<ElementRef<HTMLDivElement>>('dropdown');
 
     readonly choices = input<UnitStateDropdownChoice[]>([]);
+    readonly ariaLabel = input('Unit states');
     readonly closeOnSelect = input(true);
     readonly initialEvent = input<PointerEvent | null>(null);
     readonly selected = output<string>();

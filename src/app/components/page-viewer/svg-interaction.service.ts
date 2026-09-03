@@ -11,7 +11,7 @@ import { DialogsService, type DialogRef } from '../../services/dialogs.service';
 import { firstValueFrom, type Subscription } from 'rxjs';
 import type { SkillType } from '../../models/crew-member.model';
 import type { MountedEquipment } from '../../models/mounted-equipment.model';
-import type { CriticalSlot } from '../../models/force-serialization';
+import type { CriticalSlot, MekHitArc } from '../../models/force-serialization';
 import { OptionsService } from '../../services/options.service';
 import { InputDialogComponent, type InputDialogData } from '../input-dialog/input-dialog.component';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
@@ -42,6 +42,11 @@ import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, R
 import { ClusterTableDialogComponent } from '../cluster-table-dialog/cluster-table-dialog.component';
 import { hasUnitDefaultReferenceTables } from '../../utils/reference-table-definition';
 import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
+import {
+    applyMekHitDamage,
+    isResolvedMekFallHitLocation,
+    resolveMekFallHitLocation,
+} from '../../utils/mek-falling.util';
 import { isCenterPanelTarget, isPointInCenterPanel, resolveCenterPanelCursorElements } from '../../utils/record-sheet-center-panel.util';
 import { COOLANT_POD_ACTIVE_STATE_KEY } from '../../equipment-handlers/coolant-pod.handler';
 import { canApplyMekCriticalHitToSlot } from '../../utils/mek-critical-hit.util';
@@ -86,8 +91,15 @@ const SVG_INVENTORY_TARGET_CHOICE_OVERLAY_KEY = 'svg-inventory-target-choice';
 const SVG_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-conditions-dropdown';
 const SVG_CREW_STATE_DROPDOWN_OVERLAY_KEY = 'svg-crew-state-dropdown';
 const SVG_LOCATION_CONDITIONS_DROPDOWN_OVERLAY_KEY = 'svg-location-conditions-dropdown';
+const SVG_RANDOM_MEK_HIT_DROPDOWN_OVERLAY_KEY = 'svg-random-mek-hit-dropdown';
 const CRITICAL_CHANCE_ACTION = 'critical-chance';
 const CRITICAL_HIT_ACTION = 'critical-hit';
+const RANDOM_MEK_HIT_ARCS: readonly { key: MekHitArc; label: string }[] = [
+    { key: 'front', label: 'Front' },
+    { key: 'rear', label: 'Rear' },
+    { key: 'left', label: 'Left Side' },
+    { key: 'right', label: 'Right Side' },
+];
 const EQUIPMENT_HOVER_SECONDARY_CLASS = 'equipment-hover-secondary';
 const ARMOR_OVERFLOW_CHOICE_COLORS = {
     normal: '#8B0000',
@@ -255,6 +267,7 @@ export class SvgInteractionService {
         this.setupPipInteractions(svg, signal);
         this.setupSoldierPipInteractions(svg, signal);
         this.setupArmorInteraction(svg, signal);
+        this.setupRandomMekHitInteraction(svg, signal);
         this.setupVtolRotorHitsInteraction(svg, signal);
         this.setupCritSlotInteractions(svg, signal);
         this.setupHeatInteractions(svg, signal);
@@ -861,6 +874,194 @@ export class SvgInteractionService {
                 createAndShowPicker(event);
             }, signal);
         });
+    }
+
+    private setupRandomMekHitInteraction(svg: SVGSVGElement, signal: AbortSignal): void {
+        const unit = this.unit();
+        const armorDiagram = svg.querySelector<SVGGElement>('#ArmorDiagram');
+        if (!unit || unit.getUnit().type !== 'Mek' || !armorDiagram) return;
+
+        let button = armorDiagram.querySelector<SVGGElement>('.mek-random-hit-button');
+        if (!button) {
+            button = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            button.classList.add('mek-random-hit-button', 'edit-only');
+            button.setAttribute('aria-label', 'Apply random hit');
+            button.style.cursor = 'pointer';
+
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            title.textContent = 'Apply random hit';
+            button.appendChild(title);
+
+            const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            hitArea.setAttribute('x', '82');
+            hitArea.setAttribute('y', '204');
+            hitArea.setAttribute('width', '28');
+            hitArea.setAttribute('height', '28');
+            hitArea.setAttribute('fill', 'transparent');
+            button.appendChild(hitArea);
+
+            const icon = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+            icon.setAttribute('href', '/images/random.svg');
+            icon.setAttribute('x', '85');
+            icon.setAttribute('y', '207');
+            icon.setAttribute('width', '22');
+            icon.setAttribute('height', '22');
+            icon.setAttribute('pointer-events', 'none');
+            button.appendChild(icon);
+            armorDiagram.appendChild(button);
+        }
+
+        this.addSvgTapHandler(button, event => {
+            this.showRandomMekHitArcDropdown(button!, unit, event);
+        }, signal, false, true);
+    }
+
+    private showRandomMekHitArcDropdown(
+        button: SVGElement,
+        unit: CBTForceUnit,
+        initialEvent?: PointerEvent,
+    ): void {
+        if (this.overlayManager.has(SVG_RANDOM_MEK_HIT_DROPDOWN_OVERLAY_KEY)) {
+            this.overlayManager.closeManagedOverlay(SVG_RANDOM_MEK_HIT_DROPDOWN_OVERLAY_KEY);
+            return;
+        }
+
+        this.removePicker();
+        this.zoomPanService.cancelGesture();
+        this.overlayManager.closeAllManagedOverlays();
+        const portal = new ComponentPortal(UnitStateDropdownComponent, null, this.injector);
+        const { componentRef } = this.overlayManager.createManagedOverlay(
+            SVG_RANDOM_MEK_HIT_DROPDOWN_OVERLAY_KEY,
+            button as unknown as HTMLElement,
+            portal,
+            {
+                hasBackdrop: false,
+                panelClass: 'unit-state-dropdown-overlay-panel',
+                closeOnOutsideClick: true,
+                scrollStrategy: this.overlay.scrollStrategies.reposition(),
+            },
+        );
+        componentRef.setInput('ariaLabel', 'Hit direction');
+        componentRef.setInput('initialEvent', initialEvent ?? null);
+        componentRef.setInput('choices', RANDOM_MEK_HIT_ARCS.map(arc => ({
+            key: arc.key,
+            label: arc.label,
+            color: '#444',
+            active: false,
+            action: true,
+        } satisfies UnitStateDropdownChoice)));
+        componentRef.changeDetectorRef.detectChanges();
+
+        outputToObservable(componentRef.instance.selected).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(key => {
+            const arc = RANDOM_MEK_HIT_ARCS.find(candidate => candidate.key === key);
+            if (!arc) return;
+            this.overlayManager.closeManagedOverlay(SVG_RANDOM_MEK_HIT_DROPDOWN_OVERLAY_KEY);
+            this.showRandomMekHitDamagePicker(button, unit, arc.key, arc.label);
+        });
+        outputToObservable(componentRef.instance.cancelled).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+            this.overlayManager.closeManagedOverlay(SVG_RANDOM_MEK_HIT_DROPDOWN_OVERLAY_KEY);
+        });
+    }
+
+    private showRandomMekHitDamagePicker(
+        button: SVGElement,
+        unit: CBTForceUnit,
+        arc: MekHitArc,
+        arcLabel: string,
+    ): void {
+        const max = this.remainingMekDamageCapacity(unit);
+        const apply = (damage: number) => {
+            this.removePicker();
+            this.applyRandomMekHit(unit, arc, damage);
+        };
+        const event = new Event('random-hit');
+        const title = `${arcLabel} Hit Damage`;
+        const pickerStyle = this.getUserPickerPreference();
+        if (pickerStyle === 'radial' || pickerStyle === 'default') {
+            this.showNumericPicker({
+                event,
+                el: button,
+                title,
+                min: 0,
+                max,
+                selected: 0,
+                onPick: result => apply(result.value),
+                onCancel: () => this.removePicker(),
+            });
+            return;
+        }
+
+        const values = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 50, 100, 200, 350, 500, max]
+            .filter((value, index, candidates) => value <= max && candidates.indexOf(value) === index)
+            .sort((left, right) => left - right)
+            .map(value => ({ label: String(value), value }));
+        this.showChoicePicker({
+            event,
+            el: button,
+            title,
+            values,
+            selected: 0,
+            suggestedStyle: 'linear',
+            targetType: 'armor',
+            onPick: choice => apply(choice.value as number),
+            onCancel: () => this.removePicker(),
+        });
+    }
+
+    private remainingMekDamageCapacity(unit: CBTForceUnit): number {
+        const locations = [...(unit.locations?.internal.keys() ?? [])];
+        return locations.reduce((total, location) => {
+            const modularArmor = unit.getModularArmorState(location).remaining;
+            const internal = Math.max(0, unit.getInternalPoints(location) - unit.getInternalHits(location));
+            const frontArmor = Math.max(0, unit.getArmorPoints(location, false) - unit.getArmorHits(location, false));
+            const rearArmor = MEK_TORSO_LOCATIONS.has(location)
+                ? Math.max(0, unit.getArmorPoints(location, true) - unit.getArmorHits(location, true))
+                : 0;
+            return total + modularArmor + internal + frontArmor + rearArmor;
+        }, 0);
+    }
+
+    private applyRandomMekHit(unit: CBTForceUnit, arc: MekHitArc, damage: number): void {
+        const appliedDamage = Math.max(0, Math.trunc(damage));
+        const table = clusterTableForUnit(unit.getUnit()).hitLocationTable ?? 'biped';
+        const dice = [this.rollD6(), this.rollD6()] as const;
+        const total = dice[0] + dice[1];
+        const preliminary = resolveMekFallHitLocation(table, arc, total);
+        const tripodLegRoll = preliminary.location === null
+            && preliminary.tripodLegModifier !== undefined
+            ? this.rollD6()
+            : undefined;
+        const result = tripodLegRoll === undefined
+            ? preliminary
+            : resolveMekFallHitLocation(table, arc, total, tripodLegRoll);
+        if (!isResolvedMekFallHitLocation(result)) return;
+
+        this.queueAutomation(async () => {
+            const applyHeadHit = appliedDamage > 0 && result.location === 'HD'
+                ? await this.reviewHeadHitPilotHit(unit)
+                : false;
+            if (applyHeadHit === null) return;
+
+            const applied = applyMekHitDamage(unit, { ...result, damage: appliedDamage }, this.consolidateImmediately);
+            if (applyHeadHit && applied.headHits > 0) {
+                const pilotHits = unit.applyHeadHitCrewHits();
+                if (unit.automationMode('pilotHitsAndConsciousnessCheck') === 'yes') {
+                    this.automationToasts.show(
+                        unit,
+                        `Pilot hit from random head damage: ${pilotHits > 0 ? `${pilotHits} applied` : 'none applied'}`,
+                        pilotHits > 0 ? 'error' : 'info',
+                    );
+                }
+            }
+            this.toastService.showToast(
+                `Random ${RANDOM_MEK_HIT_ARCS.find(candidate => candidate.key === arc)?.label ?? arc} hit: ${applied.appliedDamage} damage to ${result.locationLabel} (roll ${total})`,
+                applied.appliedDamage > 0 ? 'error' : 'info',
+            );
+        });
+    }
+
+    private rollD6(): number {
+        return Math.floor(Math.random() * 6) + 1;
     }
 
     private setupCritLocInteractions(svg: SVGSVGElement, signal: AbortSignal) {

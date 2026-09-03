@@ -73,6 +73,13 @@ export interface AppliedMekFallDamage {
     readonly locations: readonly AppliedMekFallLocationDamage[];
 }
 
+type MekArmorDamageApplier = (
+    location: string,
+    damage: number,
+    rear: boolean,
+    remainingArmor: number,
+) => MekFallArmorDamageResolution;
+
 const TW_ORIENTATION: Readonly<Record<number, Omit<MekFallOrientation, 'roll'>>> = {
     1: {
         facingOffset: 0,
@@ -316,6 +323,49 @@ export function applyMekFallDamage(
     groups: readonly ResolvedMekFallDamageGroup[],
     consolidateImmediately: boolean,
 ): AppliedMekFallDamage {
+    return applyResolvedMekDamage(
+        unit,
+        groups,
+        consolidateImmediately,
+        (location, damage, rear) => unit.applyMekFallArmorDamage(
+            location,
+            damage,
+            rear,
+            consolidateImmediately,
+        ),
+    );
+}
+
+/** Applies ordinary record-sheet damage at a rolled location, including inward transfer. */
+export function applyMekHitDamage(
+    unit: CBTForceUnit,
+    group: ResolvedMekFallDamageGroup,
+    consolidateImmediately: boolean,
+): AppliedMekFallDamage {
+    return applyResolvedMekDamage(
+        unit,
+        [group],
+        consolidateImmediately,
+        (location, damage, rear, remainingArmor) => {
+            const armorDamage = Math.min(damage, remainingArmor);
+            if (armorDamage > 0) {
+                unit.addArmorHits(location, armorDamage, rear, consolidateImmediately);
+            }
+            return {
+                armorDamage,
+                remainingDamage: damage - armorDamage,
+                appliedDamage: armorDamage,
+            };
+        },
+    );
+}
+
+function applyResolvedMekDamage(
+    unit: CBTForceUnit,
+    groups: readonly ResolvedMekFallDamageGroup[],
+    consolidateImmediately: boolean,
+    applyArmorDamage: MekArmorDamageApplier,
+): AppliedMekFallDamage {
     const topology = getTopologyFor(unit.locations?.internal.keys() ?? []);
     const locations: AppliedMekFallLocationDamage[] = [];
     let appliedDamage = 0;
@@ -354,11 +404,11 @@ export function applyMekFallDamage(
             const remainingArmor = Math.max(0, unit.getArmorPoints(location, rear) - unit.getArmorHits(location, rear));
             const armorType = unit.getArmorTypeAt(location);
             if (damage > 0) {
-                const armor = unit.applyMekFallArmorDamage(
+                const armor = applyArmorDamage(
                     location,
                     damage,
                     rear,
-                    consolidateImmediately,
+                    remainingArmor,
                 );
                 armorDamage = armor.armorDamage;
                 damage = armor.remainingDamage;

@@ -6,6 +6,8 @@ import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { ArmorType } from '../models/entity/types';
 import {
     applyMekFallDamage,
+    applyMekHitDamage,
+    isResolvedMekFallHitLocation,
     mekFallDamage,
     mekFallDamageGroups,
     resolvedMekFallDamageGroups,
@@ -166,6 +168,33 @@ describe('Mek falling rules', () => {
         expect(harness.internalHits).toEqual(new Map([['LA', 2]]));
         expect(result.appliedDamage).toBe(5);
         expect(result.locations.map(entry => entry.location)).toEqual(['LA', 'LT']);
+    });
+
+    it('applies an ordinary rolled hit with transfer and its starred critical arc', () => {
+        const resolved = resolveMekFallHitLocation('biped', 'left', 2);
+        if (!isResolvedMekFallHitLocation(resolved)) {
+            fail('Expected the rolled hit location to resolve');
+            return;
+        }
+        const harness = createDamageHarness({
+            armorType: 'IMPACT_RESISTANT',
+            armor: { LT: 1, CT: 10 },
+            internal: { LT: 2, CT: 10 },
+        });
+
+        const result = applyMekHitDamage(harness.unit, { ...resolved, damage: 5 }, false);
+
+        expect(harness.armorHits).toEqual(new Map([
+            ['LT', 1],
+            ['CT', 2],
+        ]));
+        expect(harness.internalHits).toEqual(new Map([['LT', 2]]));
+        expect(result.appliedDamage).toBe(5);
+        expect(harness.queueMekCriticalChance).toHaveBeenCalledOnceWith('LT', {
+            consolidateImmediately: false,
+            hardenedArmorApplies: false,
+            throughArmorHitArc: 'left',
+        });
     });
 
     it('transfers hits from every destroyed quad leg into the correct side torso', () => {

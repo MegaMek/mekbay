@@ -45,6 +45,9 @@ type SvgInteractionServicePrivate = {
     setupInteractions(svg: SVGSVGElement): void;
     setupReadOnlyInteractions(svg: SVGSVGElement): void;
     setupCrewHitInteractions(svg: SVGSVGElement, signal: AbortSignal): void;
+    setupRandomMekHitInteraction(svg: SVGSVGElement, signal: AbortSignal): void;
+    applyRandomMekHit(unit: any, arc: 'front' | 'rear' | 'left' | 'right', damage: number): void;
+    rollD6(): number;
     cleanup(): void;
     getHeatDiffMarkerData(): { el: SVGElement | null; heat: number; baselineHeat: number; containerRect: DOMRect } | null;
     updateHeatHighlight(heatValue: number): void;
@@ -1601,6 +1604,102 @@ describe('SvgInteractionService', () => {
             hardenedArmorApplies: true,
             armorDamagedBySameHit: true,
         });
+    });
+
+    it('adds the random-hit button to Mek armor diagrams only', () => {
+        const mekSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const armorDiagram = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        armorDiagram.id = 'ArmorDiagram';
+        mekSvg.appendChild(armorDiagram);
+        const mek = createSvgInteractionUnit({ getUnit: () => ({ type: 'Mek' }) });
+        service.updateUnit(mek);
+
+        service.setupRandomMekHitInteraction(mekSvg, new AbortController().signal);
+
+        const button = armorDiagram.querySelector('.mek-random-hit-button');
+        expect(button?.getAttribute('aria-label')).toBe('Apply random hit');
+        const icon = button?.querySelector('image');
+        expect(icon?.getAttribute('href')).toBe('/images/random.svg');
+        expect(icon?.getAttribute('x')).toBe('85');
+        expect(icon?.getAttribute('y')).toBe('190');
+
+        const tankSvg = mekSvg.cloneNode(true) as SVGSVGElement;
+        tankSvg.querySelector('.mek-random-hit-button')?.remove();
+        const tank = createSvgInteractionUnit({ getUnit: () => ({ type: 'Tank' }) });
+        service.updateUnit(tank);
+        service.setupRandomMekHitInteraction(tankSvg, new AbortController().signal);
+        expect(tankSvg.querySelector('.mek-random-hit-button')).toBeNull();
+    });
+
+    it('opens hit-direction choices before the non-negative damage picker', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const armorDiagram = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        armorDiagram.id = 'ArmorDiagram';
+        svg.appendChild(armorDiagram);
+        const unit = createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek' }),
+            locations: { internal: new Map() },
+        });
+        service.updateUnit(unit);
+        service.setupRandomMekHitInteraction(svg, new AbortController().signal);
+
+        tap(armorDiagram.querySelector('.mek-random-hit-button') as SVGElement, 715);
+
+        const menu = document.querySelector('[aria-label="Hit direction"]')!;
+        expect(Array.from(menu.querySelectorAll('.state-label')).map(label => label.textContent?.trim()))
+            .toEqual(['Front', 'Rear', 'Left Side', 'Right Side']);
+
+        (menu.querySelector('[data-unit-state-key="left"]') as HTMLButtonElement).click();
+
+        expect(pickerFactory.createNumericPicker).toHaveBeenCalledWith(jasmine.objectContaining({
+            title: 'Left Side Hit Damage',
+            min: 0,
+            selected: 0,
+        }));
+    });
+
+    it('applies a rolled side hit through transfer and preserves the starred critical arc', async () => {
+        const armor = new Map([['LT', 1], ['CT', 10]]);
+        const armorHits = new Map<string, number>();
+        const internal = new Map([['LT', 2], ['CT', 10]]);
+        const internalHits = new Map<string, number>();
+        const queueMekCriticalChance = jasmine.createSpy('queueMekCriticalChance');
+        const unit = createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'BattleMek', comp: [] }),
+            locations: { internal: new Map([['LT', {}], ['CT', {}]]) },
+            getModularArmorState: () => ({ hits: 0, points: 0, remaining: 0 }),
+            addModularArmorHits: () => 0,
+            getArmorPoints: (location: string) => armor.get(location) ?? 0,
+            getArmorHits: (location: string) => armorHits.get(location) ?? 0,
+            addArmorHits: (location: string, hits: number) =>
+                armorHits.set(location, (armorHits.get(location) ?? 0) + hits),
+            getInternalPoints: (location: string) => internal.get(location) ?? 0,
+            getInternalHits: (location: string) => internalHits.get(location) ?? 0,
+            addInternalHits: (location: string, hits: number) => {
+                internalHits.set(location, (internalHits.get(location) ?? 0) + hits);
+                return hits;
+            },
+            getArmorTypeAt: () => 'STANDARD',
+            getStructureKindAt: () => 'standard',
+            queueMekCriticalChance,
+        });
+        service.updateUnit(unit);
+        spyOn(service, 'rollD6').and.returnValues(1, 1);
+
+        service.applyRandomMekHit(unit, 'left', 5);
+        await service.automationQueue;
+
+        expect(armorHits).toEqual(new Map([['LT', 1], ['CT', 2]]));
+        expect(internalHits).toEqual(new Map([['LT', 2]]));
+        expect(queueMekCriticalChance).toHaveBeenCalledOnceWith('LT', {
+            consolidateImmediately: false,
+            hardenedArmorApplies: false,
+            throughArmorHitArc: 'left',
+        });
+        expect(showToast).toHaveBeenCalledWith(
+            'Random Left Side hit: 5 damage to Left Torso (roll 2)',
+            'error',
+        );
     });
 
     it('applies an accepted head-hit pilot injury once, including armor overflow', async () => {

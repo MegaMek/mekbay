@@ -2395,7 +2395,15 @@ hr.divider {
 }
 
 /* Night mode */
+.mek-random-hit-button image {
+    filter: invert(1);
+}
+
 @media screen {
+    .night-mode .mek-random-hit-button image {
+        filter: none;
+    }
+
     .night-mode .mekbay-sheet {
         --svg-bg-color: #141414;
         --svg-fg-color: #FFF;
