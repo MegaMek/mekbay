@@ -44,6 +44,8 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
     }
 
     async handleSelection(equipment: MountedEquipment, choice: PickerChoice, context: HandlerCommandContext): Promise<boolean> {
+        if (!(equipment.equipment instanceof WeaponEquipment)) return false;
+        const weapon = equipment.equipment;
         const equipmentCatalog = context.equipmentCatalog;
         const entries = getAmmoControlEntriesForWeapon(equipment, equipmentCatalog);
         if (entries.length === 0) return false;
@@ -79,7 +81,7 @@ export class WeaponAmmoHandler extends EquipmentInteractionHandler {
             return changeAmmoEntryRemaining(entry, 1, context);
         }
         if (choice.value === 'weapon-ammo-set') {
-            return setAmmoEntry(entry, context);
+            return setAmmoEntry(entry, context, weapon);
         }
 
         return false;

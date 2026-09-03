@@ -81,6 +81,7 @@ export interface CBTOptionalRules {
     forcedWithdrawal: boolean;
     extremeRange: boolean;
     sprinting: boolean;
+    allowMixedTechBaseAmmo: boolean;
 }
 
 export interface Options {

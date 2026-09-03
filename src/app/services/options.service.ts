@@ -57,6 +57,7 @@ const DEFAULT_OPTIONS: Options = {
         forcedWithdrawal: true,
         extremeRange: false,
         sprinting: false,
+        allowMixedTechBaseAmmo: false,
     },
     allowMultipleActiveSheets: false,
     CBTRules: 'tw',
@@ -194,6 +195,7 @@ function resolveCBTOptionalRules(saved: Options | null | undefined): CBTOptional
         forcedWithdrawal: resolveSavedValue(saved?.CBTOptionalRules?.forcedWithdrawal, defaults.forcedWithdrawal),
         extremeRange: resolveSavedValue(saved?.CBTOptionalRules?.extremeRange, defaults.extremeRange),
         sprinting: resolveSavedValue(saved?.CBTOptionalRules?.sprinting, defaults.sprinting),
+        allowMixedTechBaseAmmo: resolveSavedValue(saved?.CBTOptionalRules?.allowMixedTechBaseAmmo, defaults.allowMixedTechBaseAmmo),
     };
 }
 

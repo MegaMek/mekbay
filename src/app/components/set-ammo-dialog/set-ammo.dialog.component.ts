@@ -8,9 +8,11 @@ import type { AmmoEquipment } from '../../models/equipment.model';
 import type { EquipmentRegistry } from '../../models/equipment-lookup';
 import type { Era } from '../../models/eras.model';
 import type { MountedEquipment } from '../../models/mounted-equipment.model';
+import type { EquipmentTechBase } from '../../models/entity/types/tech';
 import { CORE_2026_GAME_RULES, type CBTGameRules } from '../../models/rules/game-rules';
 import type { UnitType } from '../../models/unit-summary.model';
 import { DialogsService } from '../../services/dialogs.service';
+import { OptionsService } from '../../services/options.service';
 import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
 import { getAmmoInfoItems, SetAmmoDropdownComponent } from './set-ammo-dropdown.component';
 import { AdvancementTimelineComponent, getEquipmentAdvancementTimeline, type EquipmentAdvancementTimeline } from './advancement-timeline.component';
@@ -28,6 +30,7 @@ export interface SetAmmoDialogData {
     inventory?: readonly MountedEquipment[];
     gameRules?: CBTGameRules;
     equipmentRegistry?: EquipmentRegistry;
+    weaponTechBases?: readonly EquipmentTechBase[];
 }
 
 @Component({
@@ -253,6 +256,7 @@ export interface SetAmmoDialogData {
 
 export class SetAmmoDialogComponent {
     private dialogsService = inject(DialogsService)
+    private readonly optionsService = inject(OptionsService, { optional: true });
     inputQuantityRef = viewChild.required<ElementRef<HTMLInputElement>>('inputQuantityRef');
     public dialogRef = inject<DialogRef<{name: string; quantity: number, totalAmmo: number} | null, SetAmmoDialogComponent>>(DialogRef);
     readonly data: SetAmmoDialogData = inject(DIALOG_DATA);
@@ -260,7 +264,15 @@ export class SetAmmoDialogComponent {
     public totalKgAvailable: number;
     
     selectedAmmoName = signal(this.data.currentAmmo.internalName);
-    ammoOptions = computed(() => this.data.ammoOptions);
+    allowMixedTechBaseAmmo = computed(() => this.optionsService?.options().CBTOptionalRules?.allowMixedTechBaseAmmo ?? false);
+    ammoOptions = computed(() => {
+        const options = this.data.ammoOptions;
+        if (this.allowMixedTechBaseAmmo()) return options;
+
+        const weaponTechBases = this.data.weaponTechBases ?? [];
+        return options.filter(ammo => ammo.internalName === this.selectedAmmoName()
+            || AmmoValidityUtil.isAmmoCompatibleWithWeaponTechBases(ammo, weaponTechBases));
+    });
     ammoSelectionStatus = computed(() => AmmoValidityUtil.getAmmoSelectionStatus(this.ammoOptions(), this.data));
     selectedAmmo = computed(() => this.ammoOptions().find(
         ammo => ammo.internalName === this.selectedAmmoName()

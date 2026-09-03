@@ -107,6 +107,7 @@ describe('OptionsDialogComponent', () => {
                     extremeRange: false,
                     floatingCriticals: true,
                     sprinting: false,
+                    allowMixedTechBaseAmmo: false,
                 },
             }),
             setOption,
@@ -122,6 +123,7 @@ describe('OptionsDialogComponent', () => {
             extremeRange: false,
             floatingCriticals: true,
             sprinting: false,
+            allowMixedTechBaseAmmo: false,
         });
     });
 
