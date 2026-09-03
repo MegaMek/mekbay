@@ -1841,10 +1841,6 @@ hr.divider {
         }
     }
 
-    .soldierPip.damaged {
-        filter: opacity(0.3) !important;
-    }
-
     .disabledInventory,
     .disabledInventory text {
         fill: var(--disabled-color) !important;
@@ -2129,22 +2125,6 @@ hr.divider {
 
         .pip.pending:not(.damaged):not(.fresh) {
             fill: #03a9f4 !important;
-        }
-
-        .soldierPip.fresh {
-            filter: brightness(1.1) saturate(100) hue-rotate(-140deg) !important;
-        }
-
-        .soldierPip.damaged.fresh {
-            filter: brightness(1.1) saturate(100) hue-rotate(20deg) !important;
-        }
-
-        .soldierPip.pending:not(.fresh) {
-            filter: brightness(1.1) saturate(50) hue-rotate(-120deg) !important;
-        }
-
-        .soldierPip.damaged.pending:not(.fresh) {
-            filter: brightness(1) saturate(50) hue-rotate(10deg) !important;
         }
 
         .inventoryEntry {
@@ -2536,6 +2516,10 @@ hr.divider {
             filter: url("#mekbay-night-image-invert");
         }
 
+        image.soldierTinted {
+            filter: none !important;
+        }
+
         #fluff-image-fo {
             mix-blend-mode: lighten;
         }
@@ -2622,26 +2606,6 @@ hr.divider {
 
         .pip.pending:not(.damaged):not(.fresh) {
             fill: #03a9f4 !important;
-        }
-
-        .soldierPip.damaged {
-            filter: invert(1) opacity(0.3) !important;
-        }
-
-        .soldierPip.damaged.fresh {
-            filter: invert(1) brightness(0.6) saturate(100) hue-rotate(237deg) contrast(4) !important;
-        }
-
-        .soldierPip.fresh {
-            filter: invert(1) saturate(100) hue-rotate(10deg) !important;
-        }
-
-        .soldierPip.pending:not(.fresh) {
-            filter: invert(1) saturate(100) hue-rotate(40deg) !important;
-        }
-
-        .soldierPip.damaged.pending:not(.fresh) {
-            filter: invert(1) brightness(0.6) saturate(50) hue-rotate(217deg) contrast(1.5) !important;
         }
 
         .skillValue {
