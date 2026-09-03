@@ -153,10 +153,12 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
                 this.hydrate(wrappedData);
                 this.ensureHydratedData('remote');
             } catch (error) {
+                let restoredPreviousData = false;
                 if (previousData) {
                     try {
                         this.hydrate(previousData);
                         this.ensureHydratedData('cache');
+                        restoredPreviousData = true;
                         this.logger.warn(`Preserved cached ${this.catalogKey} after rejecting the remote update.`);
                     } catch (restoreError) {
                         this.logger.error(`Failed to restore cached ${this.catalogKey}: ${this.describeError(restoreError)}`);
@@ -165,6 +167,9 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
 
                 const message = `Rejected ${this.catalogKey} update: ${this.describeError(error)}`;
                 this.logger.error(message);
+                if (restoredPreviousData) {
+                    return;
+                }
                 throw new Error(message);
             }
 
