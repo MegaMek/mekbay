@@ -14,6 +14,7 @@ import type { CBTGameRules } from '../models/rules/game-rules';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { normalizeBattleArmorTrooperLocation } from '../models/battle-armor-location.model';
 import { combineEquipmentStatuses, type EquipmentStatus } from '../models/equipment-status.model';
+import type { EquipmentTechBase } from '../models/entity/types/tech';
 
 export const INTRINSIC_ONE_SHOT_AMMO_STATE = 'intrinsic_one_shot_ammo';
 
@@ -409,6 +410,24 @@ export function getAmmoControlEntriesForUnitWeapons(unit: CBTForceUnit, equipmen
     return sortAmmoControlEntries([...critEntries, ...inventoryEntries, ...intrinsicEntries]);
 }
 
+function getWeaponTechBasesForAmmo(
+    ammo: AmmoEquipment,
+    inventory: readonly MountedEquipment[],
+    unit: Pick<UnitSummary, 'techBase' | 'mixed'>,
+    weapon?: WeaponEquipment,
+): EquipmentTechBase[] {
+    const matchingWeapons = weapon
+        ? [weapon]
+        : inventory
+            .map(entry => entry.equipment)
+            .filter((equipment): equipment is WeaponEquipment =>
+                equipment instanceof WeaponEquipment && ammoMatchesWeapon(equipment, ammo));
+    return [...new Set(matchingWeapons.map(equipment => {
+        if (equipment.techBase !== 'All' || unit.mixed) return equipment.techBase;
+        return unit.techBase === 'Clan' ? 'Clan' : 'IS';
+    }))];
+}
+
 export function getAmmoEntryRemaining(entry: AmmoControlEntry): number {
     if (!isAmmoControlEntryUsable(entry)) return 0;
     return Math.max(0, entry.totalAmmo - entry.consumed);
@@ -637,7 +656,11 @@ function getTotalAmmoForAmmoType(
     return Math.floor((originalAmmo.getEffectiveKgPerShot(gameRules, equipmentRegistry) * originalTotalAmmo) / selectedKgPerShot);
 }
 
-export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerCommandContext): Promise<boolean> {
+export async function setAmmoEntry(
+    entry: AmmoControlEntry,
+    context: HandlerCommandContext,
+    weapon?: WeaponEquipment,
+): Promise<boolean> {
     if (!isAmmoControlEntryUsable(entry)) return false;
 
     const equipmentRegistry = context.equipmentCatalog;
@@ -659,6 +682,7 @@ export async function setAmmoEntry(entry: AmmoControlEntry, context: HandlerComm
             inventory,
             gameRules: entry.owner.gameRules,
             equipmentRegistry,
+            weaponTechBases: getWeaponTechBasesForAmmo(entry.originalAmmo, inventory, unitBlueprint, weapon),
         } as SetAmmoDialogData
     });
 
@@ -709,6 +733,7 @@ export async function setAmmoGroup(group: AmmoControlGroup, context: HandlerComm
             inventory,
             gameRules: firstEntry.owner.gameRules,
             equipmentRegistry,
+            weaponTechBases: getWeaponTechBasesForAmmo(firstEntry.originalAmmo, inventory, unitBlueprint),
         } as SetAmmoDialogData
     });
 

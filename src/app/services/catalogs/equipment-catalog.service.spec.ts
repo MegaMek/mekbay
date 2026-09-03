@@ -14,6 +14,7 @@ import { EquipmentCatalogService } from './equipment-catalog.service';
 
 interface HydratableEquipmentCatalogService {
     hydrate(data: RawEquipmentData): void;
+    getMinimumDatasetSize(): number;
 }
 
 function createAmmo(id: string, name = id): EquipmentRawData {
@@ -70,6 +71,10 @@ describe('EquipmentCatalogService', () => {
         expect(registry.findEquipment('CleanId')).toBeDefined();
         expect(registry.findEquipment('Precision Ammo')).toBeDefined();
         expect(registry.findEquipment('ProductionAmmo')).toBeDefined();
+    });
+
+    it('accepts equipment datasets with at least 3000 entries', () => {
+        expect((service as unknown as HydratableEquipmentCatalogService).getMinimumDatasetSize()).toBe(3000);
     });
 
     it('skips records that fail to hydrate', () => {

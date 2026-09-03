@@ -144,7 +144,7 @@ export class UnitDetailsDialogComponent {
     gunnerySkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
         if (currentUnit instanceof CBTForceUnit) {
-            return currentUnit.getCrewMember(0).getSkill('gunnery');
+            return currentUnit.gunnerySkill();
         } else
             if (currentUnit instanceof ASForceUnit) {
                 return currentUnit.getPilotSkill();
@@ -155,7 +155,7 @@ export class UnitDetailsDialogComponent {
     pilotingSkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
         if (currentUnit instanceof CBTForceUnit) {
-            return currentUnit.getCrewMember(0).getSkill('piloting');
+            return currentUnit.pilotingSkill();
         } else
             if (currentUnit instanceof ASForceUnit) {
                 return currentUnit.getPilotSkill();
@@ -437,8 +437,8 @@ export class UnitDetailsDialogComponent {
         let gunnery;
         let piloting;
         if (this.unit instanceof CBTForceUnit) {
-            gunnery = this.unit.getCrewMember(0).getSkill('gunnery');
-            piloting = this.unit.getCrewMember(0).getSkill('piloting');
+            gunnery = this.unit.gunnerySkill();
+            piloting = this.unit.pilotingSkill();
         } else if (this.unit instanceof ASForceUnit) {
             gunnery = this.unit.getPilotSkill();
             piloting = this.unit.getPilotSkill();
@@ -490,8 +490,8 @@ export class UnitDetailsDialogComponent {
         let piloting: number | undefined;
         const currentUnit = this.unit;
         if (currentUnit instanceof CBTForceUnit) {
-            gunnery = currentUnit.getCrewMember(0).getSkill('gunnery');
-            piloting = currentUnit.getCrewMember(0).getSkill('piloting');
+            gunnery = currentUnit.gunnerySkill();
+            piloting = currentUnit.pilotingSkill();
         } else if (currentUnit instanceof ASForceUnit) {
             gunnery = currentUnit.getPilotSkill();
             piloting = currentUnit.getPilotSkill();

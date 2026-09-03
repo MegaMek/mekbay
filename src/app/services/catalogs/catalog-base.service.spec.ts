@@ -244,11 +244,32 @@ describe('CatalogBaseService', () => {
             headers: new HttpHeaders({ ETag: 'etag-new' }),
         });
 
-        await expectAsync(initializePromise).toBeRejectedWithError(/Rejected test_catalog update/);
+        await initializePromise;
 
         expect(service.getItems()).toEqual([1, 2, 3, 4, 5, 6]);
         expect(service.savedData).toEqual([]);
         expect(logger.warn).toHaveBeenCalledWith('Preserved cached test_catalog after rejecting the remote update.');
+        expect(logger.error).toHaveBeenCalledWith(jasmine.stringMatching(/Rejected test_catalog update/));
+
+        await service.initialize();
+        httpMock.expectNone(TEST_CATALOG_URL);
+    });
+
+    it('rejects an invalid remote dataset when no cached data can be restored', async () => {
+        const initializePromise = service.initialize();
+        await settleMicrotasks();
+
+        httpMock.expectOne(TEST_CATALOG_URL).flush('', {
+            headers: new HttpHeaders({ ETag: 'etag-new' }),
+        });
+        await settleMicrotasks();
+        httpMock.expectOne(TEST_CATALOG_URL).flush({ items: [] }, {
+            headers: new HttpHeaders({ ETag: 'etag-new' }),
+        });
+
+        await expectAsync(initializePromise).toBeRejectedWithError(/Rejected test_catalog update/);
+        expect(service.getItems()).toEqual([]);
+        expect(service.savedData).toEqual([]);
     });
 
     it('rejects suspiciously shrunken remote datasets and keeps the previous data', async () => {
@@ -273,7 +294,7 @@ describe('CatalogBaseService', () => {
             headers: new HttpHeaders({ ETag: 'etag-new' }),
         });
 
-        await expectAsync(initializePromise).toBeRejectedWithError(/Rejected test_catalog update/);
+        await initializePromise;
 
         expect(service.getItems()).toEqual(Array.from({ length: 20 }, (_, index) => index));
         expect(service.savedData).toEqual([]);

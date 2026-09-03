@@ -1494,7 +1494,9 @@ export class CBTForceUnit extends ForceUnit {
     canTakeActiveActions(): boolean {
         return !this.destroyed
             && !this.getCondition('shutdown')
-            && (this.rules.isRemoteDrone() || this.rules.getActivePilotCrewId() !== null);
+            && (this.getUnit().crewSize === 0
+                || this.rules.isRemoteDrone()
+                || this.rules.getActivePilotCrewId() !== null);
     }
 
     canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {

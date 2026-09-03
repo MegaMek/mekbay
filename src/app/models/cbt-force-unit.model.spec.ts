@@ -5120,6 +5120,25 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getAvailableMotiveModes(false).some(option => option.mode !== 'stationary')).toBeTrue();
     });
 
+    it('allows crewless handheld weapons to perform equipment actions', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            type: 'Handheld Weapon',
+            subtype: 'Handheld Weapon',
+            crewSize: 0,
+        }));
+        const rangedWeapon = new MountedEquipment({
+            owner: forceUnit,
+            id: 'APGauss@GUN#0',
+            name: 'AP Gauss Rifle',
+            equipment: equipment['APGauss'],
+        });
+
+        expect(forceUnit.getCrewMembers()).toEqual([]);
+        expect(forceUnit.canTakeActiveActions()).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(rangedWeapon, 'fire')).toBeTrue();
+        expect(forceUnit.canPerformEquipmentAction(rangedWeapon, 'change-mode')).toBeTrue();
+    });
+
     it('unions current critical and mount installation locations for whole-mount status', () => {
         const forceUnit = createForceUnit();
         forceUnit.locations = {

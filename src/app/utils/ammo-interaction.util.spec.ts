@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { AmmoEquipment, Equipment, WeaponEquipment } from '../models/equipment.model';
+import { of } from 'rxjs';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MountedEquipment, MountedWeapon } from '../models/mounted-equipment.model';
 import { type CriticalSlot } from '../models/force-serialization';
@@ -12,14 +13,15 @@ import {
     type HandlerCommandContext,
     type HandlerDialogsService,
 } from '../services/equipment-interaction-registry.service';
-import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlEntryForCriticalSlot, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, isIntrinsicOneShotAmmoMount, materializeIntrinsicOneShotAmmoForInventory, setAmmoEntryValue, type AmmoControlEntry } from './ammo-interaction.util';
+import { changeAmmoEntryRemaining, changeAmmoGroupRemaining, getAmmoControlEntriesForUnitWeapons, getAmmoControlEntryForCriticalSlot, getAmmoControlGroups, getAmmoEntryRemaining, getAmmoGroupRemaining, getCompatibleCatalogAmmo, isIntrinsicOneShotAmmoMount, materializeIntrinsicOneShotAmmoForInventory, setAmmoEntry, setAmmoEntryValue, type AmmoControlEntry } from './ammo-interaction.util';
 
-function createAmmo(id: string, shortName: string): AmmoEquipment {
+function createAmmo(id: string, shortName: string, techBase: 'IS' | 'Clan' | 'All' = 'All'): AmmoEquipment {
     return new AmmoEquipment({
         id,
         name: id,
         shortName,
         type: 'ammo',
+        tech: { base: techBase },
         ammo: { type: 'AC_ULTRA', rackSize: 20, shots: 5, kgPerShot: 200 }
     });
 }
@@ -135,6 +137,64 @@ function testEquipmentStatus(source: MountedEquipment | CriticalSlot): 'availabl
 function testEquipmentOperational(source: MountedEquipment | CriticalSlot): boolean {
     return testEquipmentStatus(source) === 'available';
 }
+
+describe('ammo interaction tech-base selection', () => {
+    it('keeps opposite-base ammo in the catalog candidates for dialog filtering', () => {
+        const isAmmo = createAmmo('IS Ultra AC/20 Ammo', 'IS Ammo', 'IS');
+        const clanAmmo = createAmmo('Clan Ultra AC/20 Ammo', 'Clan Ammo', 'Clan');
+        const catalog = createEquipmentCatalog({
+            [isAmmo.internalName]: isAmmo,
+            [clanAmmo.internalName]: clanAmmo,
+        });
+
+        expect(getCompatibleCatalogAmmo(
+            isAmmo,
+            catalog,
+            { type: 'Mek', techBase: 'Clan', mixed: false } as never,
+            [],
+        )).toContain(clanAmmo);
+    });
+
+    it('resolves an All weapon tech base from the owning unit', async () => {
+        const ammo = createAmmo('IS Ultra AC/20 Ammo', 'IS Ammo', 'IS');
+        const weapon = new WeaponEquipment({
+            id: 'UltraAC20',
+            name: 'Ultra AC/20',
+            type: 'weapon',
+            tech: { base: 'All' },
+            weapon: { ammoType: 'AC_ULTRA', rackSize: 20 },
+        });
+        const cases = [
+            { techBase: 'Inner Sphere', mixed: false, expected: 'IS' },
+            { techBase: 'Clan', mixed: false, expected: 'Clan' },
+            { techBase: 'Inner Sphere', mixed: true, expected: 'All' },
+        ] as const;
+
+        for (const testCase of cases) {
+            let weaponEntry!: MountedEquipment;
+            const owner = {
+                id: 'unit-1',
+                force: { era: () => null },
+                getUnit: () => ({ type: 'Mek', techBase: testCase.techBase, mixed: testCase.mixed }),
+                getInventory: () => [weaponEntry],
+                getEquipmentStatus: () => 'available',
+                svg: () => null,
+            } as unknown as CBTForceUnit;
+            weaponEntry = new MountedWeapon({ owner, id: weapon.internalName, name: weapon.internalName, equipment: weapon });
+            const entry = createCritEntry({ id: ammo.internalName, loc: 'LT', slot: 0, ammo, owner });
+            const context = createContext({
+                [ammo.internalName]: ammo,
+                [weapon.internalName]: weapon,
+            });
+            const createDialog = context.dialogsService.createDialog as jasmine.Spy;
+            createDialog.and.returnValue({ closed: of(null) });
+
+            await setAmmoEntry(entry, context);
+
+            expect(createDialog.calls.mostRecent().args[1].data.weaponTechBases).toEqual([testCase.expected]);
+        }
+    });
+});
 
 describe('ammo interaction critical damage', () => {
     it('keeps a damaged bin usable until destruction commits without erasing its rounds', () => {

@@ -190,6 +190,7 @@ describe('OptionsService', () => {
             extremeRange: false,
             floatingCriticals: false,
             sprinting: false,
+            allowMixedTechBaseAmmo: false,
         });
         expect(service.options().lastCanvasState).toBeUndefined();
         expect(service.options().sidebarLipPosition).toBeUndefined();
@@ -253,6 +254,7 @@ describe('OptionsService', () => {
             extremeRange: false,
             floatingCriticals: false,
             sprinting: false,
+            allowMixedTechBaseAmmo: false,
         });
     });
 
@@ -318,6 +320,7 @@ describe('OptionsService', () => {
                 extremeRange: true,
                 floatingCriticals: true,
                 sprinting: true,
+                allowMixedTechBaseAmmo: true,
             },
         };
 
@@ -328,6 +331,7 @@ describe('OptionsService', () => {
             extremeRange: true,
             floatingCriticals: true,
             sprinting: true,
+            allowMixedTechBaseAmmo: true,
         });
     });
 
