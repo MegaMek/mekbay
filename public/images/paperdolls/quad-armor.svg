@@ -265,4 +265,63 @@
       </g>
     </g>
   </g>
+  <g data-mekbay-paperdoll-overlay="armor" font-family="Roboto, Arial, sans-serif" font-size="6.626" font-weight="700">
+    <g class="diagram-location-label" pointer-events="none">
+      <text x="61.61" y="14.416">Head</text>
+      <text>
+        <tspan x="-4.349" y="85.899">Left</tspan>
+        <tspan x="-7.034" y="93.851">Torso</tspan>
+      </text>
+      <text>
+        <tspan x="145.896" y="88.842">Right</tspan>
+        <tspan x="145.341" y="93.851">Torso</tspan>
+      </text>
+      <text>
+        <tspan x="68.191" y="153.651">Center</tspan>
+        <tspan x="70.103" y="161.603">Torso</tspan>
+      </text>
+      <text>
+        <tspan x="3.14" y="251.591">Left</tspan>
+        <tspan x="-5.972" y="259.543">Front Leg</tspan>
+      </text>
+      <text>
+        <tspan x="141.09" y="251.599">Right</tspan>
+        <tspan x="134.106" y="259.551">Front Leg</tspan>
+      </text>
+      <text>
+        <tspan x="47.202" y="240.857">Left</tspan>
+        <tspan x="38.844" y="248.809">Rear Leg</tspan>
+      </text>
+      <text>
+        <tspan x="96.479" y="240.865">Right</tspan>
+        <tspan x="90.249" y="248.816">Rear Leg</tspan>
+      </text>
+      <text>
+        <tspan x="8.2" y="298.844">Left</tspan>
+        <tspan x="-3.753" y="307.219">Torso Rear</tspan>
+      </text>
+      <text>
+        <tspan x="135.792" y="298.844">Right</tspan>
+        <tspan x="126.482" y="307.769">Torso Rear</tspan>
+      </text>
+      <text x="42.2" y="326.72">Center Torso Rear</text>
+    </g>
+    <g class="diagram-value" pointer-events="none">
+      <text id="textArmor_HD" x="79.652" y="14.121"></text>
+      <text id="textArmor_LT" x="1.448" y="102.262"></text>
+      <text id="textArmor_RT" x="153.838" y="102.262"></text>
+      <text id="textArmor_CT" x="78.672" y="169.755"></text>
+      <text id="textArmor_FLL" x="8.67" y="266.951"></text>
+      <text id="textArmor_FRL" x="149.085" y="266.951"></text>
+      <text id="textArmor_RLL" x="53.152" y="256.465"></text>
+      <text id="textArmor_RRL" x="104.328" y="256.465"></text>
+      <text id="textArmor_LTR" x="13.707" y="316.294"></text>
+      <text id="textArmor_RTR" x="143.626" y="316.294"></text>
+      <text id="textArmor_CTR" x="102.956" y="327.084"></text>
+    </g>
+  </g>
+  <g class="mek-random-hit-button screen-only" data-mekbay-random-hit="1" role="button" transform="translate(82 220)">
+    <circle class="mek-random-hit-area" cx="14" cy="14" r="15" fill="transparent"/>
+    <image x="3" y="3" width="22" height="22" pointer-events="none" href="/images/random-black.svg"/>
+  </g>
 </svg>

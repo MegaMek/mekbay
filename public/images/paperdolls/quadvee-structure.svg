@@ -146,4 +146,46 @@
       </g>
     </g>
   </g>
+  <g data-mekbay-paperdoll-overlay="structure" font-family="Roboto, Arial, sans-serif" font-size="6.7614" font-weight="700" pointer-events="none">
+    <g class="diagram-location-label">
+      <text x="55.8545" y="2.9468">Head</text>
+      <text>
+        <tspan x="-9.78019" y="2.93959">Left</tspan>
+        <tspan x="-12.60754" y="11.29701">Torso</tspan>
+      </text>
+      <text>
+        <tspan x="124.34435" y="2.93959">Right</tspan>
+        <tspan x="123.75931" y="11.29701">Torso</tspan>
+      </text>
+      <text>
+        <tspan x="53.35469" y="101.65067">Center</tspan>
+        <tspan x="55.36731" y="110.41906">Torso</tspan>
+      </text>
+      <text>
+        <tspan x="-3.36226" y="70.62501">Left</tspan>
+        <tspan x="-12.95877" y="78.98243">Front Leg</tspan>
+      </text>
+      <text>
+        <tspan x="118.72055" y="70.62501">Right</tspan>
+        <tspan x="111.36635" y="78.98243">Front Leg</tspan>
+      </text>
+      <text>
+        <tspan x="-6.18343" y="119.98055">Left</tspan>
+        <tspan x="-14.98581" y="128.33797">Rear Leg</tspan>
+      </text>
+      <text>
+        <tspan x="122.96209" y="119.98055">Right</tspan>
+        <tspan x="116.40202" y="128.33797">Rear Leg</tspan>
+      </text>
+    </g>
+    <g class="diagram-value" font-size="6.56082" text-anchor="middle">
+      <text id="textIS_LT" x="-3.32209" y="20.34556"></text>
+      <text id="textIS_RT" x="132.51431" y="20.34556"></text>
+      <text id="textIS_CT" x="64.33861" y="119.61696"></text>
+      <text id="textIS_FLL" x="3.28021" y="87.55306"></text>
+      <text id="textIS_FRL" x="127.47143" y="87.55306"></text>
+      <text id="textIS_RLL" x="-0.36599" y="137.65226"></text>
+      <text id="textIS_RRL" x="131.66971" y="137.65226"></text>
+    </g>
+  </g>
 </svg>
