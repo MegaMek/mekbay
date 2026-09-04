@@ -42,7 +42,7 @@ import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, R
 import { ClusterTableDialogComponent } from '../cluster-table-dialog/cluster-table-dialog.component';
 import { hasUnitDefaultReferenceTables } from '../../utils/reference-table-definition';
 import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
-import { isResolvedMekFallHitLocation, resolveMekHitLocation } from '../../utils/mek-falling.util';
+import { isResolvedMekFallHitLocation, resolveMekHitLocation, resolveMekHitTransferLocation } from '../../utils/mek-falling.util';
 import { isCenterPanelTarget, isPointInCenterPanel, resolveCenterPanelCursorElements } from '../../utils/record-sheet-center-panel.util';
 import { COOLANT_POD_ACTIVE_STATE_KEY } from '../../equipment-handlers/coolant-pod.handler';
 import { canApplyMekCriticalHitToSlot } from '../../utils/mek-critical-hit.util';
@@ -508,8 +508,15 @@ export class SvgInteractionService {
             ? preliminary
             : resolveMekHitLocation(table, arc, total, tripodLegRoll);
         if (!isResolvedMekFallHitLocation(result)) return;
+        const location = resolveMekHitTransferLocation(unit, result.location);
 
-        this.showRandomMekHitResult(svg, result.location, result.locationLabel, result.rear, result.critical);
+        this.showRandomMekHitResult(
+            svg,
+            location,
+            getMekLocationLabel(location) ?? result.locationLabel,
+            result.rear,
+            result.critical,
+        );
     }
 
     private showRandomMekHitResult(

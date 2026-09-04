@@ -88,6 +88,7 @@ function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInve
         getNotificationDisplayName: () => 'Test Unit',
         automationMode: () => 'ask',
         applyUnderwaterBreachAndFlooding: () => undefined,
+        isInternalLocPhysicallyDestroyed: () => false,
         resolveUnderwaterHullBreachCheck: () => null,
         automationTriggers: new Subject(),
         rules: NO_CONDITION_RULES,
@@ -346,6 +347,35 @@ describe('SvgInteractionService', () => {
         } finally {
             jasmine.clock().uninstall();
         }
+    });
+
+    it('transfers a random hit inward from a physically destroyed location', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const armorDiagram = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        armorDiagram.id = 'ArmorDiagram';
+        const leftArm = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        leftArm.classList.add('unitLocation', 'armor');
+        leftArm.setAttribute('loc', 'LA');
+        const leftTorso = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        leftTorso.classList.add('unitLocation', 'armor');
+        leftTorso.setAttribute('loc', 'LT');
+        armorDiagram.append(leftArm, leftTorso);
+        svg.appendChild(armorDiagram);
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+            isInternalLocPhysicallyDestroyed: (location: string) => location === 'LA',
+        }));
+        service.setupRandomMekHitInteraction(svg, new AbortController().signal);
+        spyOn(service, 'rollD6').and.returnValue(5);
+
+        const button = armorDiagram.querySelector('.mek-random-hit-button') as SVGGElement;
+        button.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 75 }));
+        pickerFactory.createDirectionalPicker.calls.mostRecent().args[0]
+            .onPick({ label: 'Front', value: 'front' });
+
+        expect(leftArm.classList).not.toContain('random-hit-location-highlight');
+        expect(leftTorso.classList).toContain('random-hit-location-highlight');
+        expect(armorDiagram.querySelector('.mek-random-hit-result-location')?.textContent).toBe('LT');
     });
 
     it('does not add the hit-location dice to non-Mek sheets', () => {

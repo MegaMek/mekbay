@@ -310,6 +310,22 @@ export function isResolvedMekFallHitLocation(
     return result.location !== null && result.locationLabel !== null;
 }
 
+/** Follows the normal inward damage path past locations that are physically destroyed. */
+export function resolveMekHitTransferLocation(unit: CBTForceUnit, location: string): string {
+    const topology = getTopologyFor(unit.locations?.internal.keys() ?? []);
+    const visited = new Set<string>();
+    let current = location;
+
+    while (unit.isInternalLocPhysicallyDestroyed(current) && !visited.has(current)) {
+        visited.add(current);
+        const next = topology[current as keyof typeof topology]?.transfersTo;
+        if (!next) break;
+        current = next;
+    }
+
+    return current;
+}
+
 /** Applies resolved fall groups to armor/structure and follows normal Mek damage transfer. */
 export function applyMekFallDamage(
     unit: CBTForceUnit,
@@ -323,14 +339,15 @@ export function applyMekFallDamage(
 
     for (const group of groups) {
         let damage = Math.max(0, Math.trunc(group.damage));
-        let location: string | null = group.location;
-        const originalRear = group.rear && MEK_TORSO_LOCATIONS.has(group.location);
+        const impactLocation = resolveMekHitTransferLocation(unit, group.location);
+        let location: string | null = impactLocation;
+        const originalRear = group.rear && MEK_TORSO_LOCATIONS.has(impactLocation);
         const originalArmor = Math.max(
             0,
-            unit.getArmorPoints(group.location, originalRear)
-                - unit.getArmorHits(group.location, originalRear),
+            unit.getArmorPoints(impactLocation, originalRear)
+                - unit.getArmorHits(impactLocation, originalRear),
         );
-        const originalArmorType = unit.getArmorTypeAt(group.location);
+        const originalArmorType = unit.getArmorTypeAt(impactLocation);
         const visited = new Set<string>();
         let groupDamaged = false;
         let sharedCompositePip = false;
@@ -415,15 +432,15 @@ export function applyMekFallDamage(
             location = nextLocation;
         }
 
-        if (group.location === 'HD' && groupDamaged) headHits++;
+        if (impactLocation === 'HD' && groupDamaged) headHits++;
         if (group.critical && groupDamaged
             && !(unit.gameRules.id === 'core2026'
                 && originalArmorType === 'ANTI_PENETRATIVE_ABLATION'
                 && originalArmor > 0)) {
-            unit.queueMekCriticalChance(group.location, {
+            unit.queueMekCriticalChance(impactLocation, {
                 consolidateImmediately,
                 hardenedArmorApplies: originalArmorType === 'HARDENED' && originalArmor > 0,
-                throughArmorHitArc: throughArmorHitArc(group),
+                throughArmorHitArc: throughArmorHitArc({ ...group, location: impactLocation }),
             });
         }
     }

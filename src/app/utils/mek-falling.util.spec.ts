@@ -12,6 +12,7 @@ import {
     rollMekFallDice,
     resolveMekFallArmorDamage,
     resolveMekFallDamage,
+    resolveMekHitTransferLocation,
     resolveMekHitLocation,
     resolveMekFallOrientation,
     twoD6ForTotal,
@@ -84,6 +85,22 @@ describe('Mek falling rules', () => {
             locationLabel: 'Left Leg',
             rear: false,
         }));
+    });
+
+    it('transfers through physically destroyed locations but not flooded-only locations', () => {
+        const physicallyDestroyed = new Set<string>(['LA', 'LT']);
+        const flooded = new Set<string>(['RA']);
+        const unit = {
+            locations: {
+                internal: new Map(['HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL'].map(location => [location, {}])),
+            },
+            getLocationCondition: (location: string, condition: string) =>
+                condition === 'flooded' && flooded.has(location),
+            isInternalLocPhysicallyDestroyed: (location: string) => physicallyDestroyed.has(location),
+        } as unknown as CBTForceUnit;
+
+        expect(resolveMekHitTransferLocation(unit, 'LA')).toBe('CT');
+        expect(resolveMekHitTransferLocation(unit, 'RA')).toBe('RA');
     });
 
     it('resolves every quad hit-table abbreviation to a canonical entity location', () => {
@@ -186,6 +203,7 @@ describe('Mek falling rules', () => {
                 armor: { [testCase.location]: 0, [`${testCase.torso}-rear`]: 10 },
                 internal: { FLL: 5, FRL: 5, RLL: 5, RRL: 5, LT: 10, RT: 10, CT: 10, HD: 3 },
                 initialInternalHits: { [testCase.location]: 5 },
+                physicallyDestroyed: [testCase.location],
             });
 
             const result = applyMekFallDamage(harness.unit, [{
@@ -199,8 +217,36 @@ describe('Mek falling rules', () => {
             expect(harness.armorHits.get(`${testCase.torso}-rear`)).withContext(testCase.location).toBe(5);
             expect(result.locations.map(entry => entry.location))
                 .withContext(testCase.location)
-                .toEqual([testCase.location, testCase.torso]);
+                .toEqual([testCase.torso]);
         }
+    });
+
+    it('skips blown-off locations before applying fall damage', () => {
+        const harness = createDamageHarness({
+            armor: { LA: 10, LT: 10 },
+            internal: { LA: 5, LT: 10, CT: 10 },
+            blownOff: ['LA'],
+        });
+
+        const result = applyMekFallDamage(harness.unit, [group('LA', 5)], false);
+
+        expect(harness.armorHits.get('LA')).toBeUndefined();
+        expect(harness.armorHits.get('LT')).toBe(5);
+        expect(result.locations.map(entry => entry.location)).toEqual(['LT']);
+    });
+
+    it('applies fall damage to a flooded location that is not physically destroyed', () => {
+        const harness = createDamageHarness({
+            armor: { LA: 10, LT: 10 },
+            internal: { LA: 5, LT: 10, CT: 10 },
+            flooded: ['LA'],
+        });
+
+        const result = applyMekFallDamage(harness.unit, [group('LA', 5)], false);
+
+        expect(harness.armorHits.get('LA')).toBe(5);
+        expect(harness.armorHits.get('LT')).toBeUndefined();
+        expect(result.locations.map(entry => entry.location)).toEqual(['LA']);
     });
 
     it('halves a group that reaches intact Impact-Resistant Armor, rounding down', () => {
@@ -489,6 +535,9 @@ function createDamageHarness(options: {
     armor: Readonly<Record<string, number>>;
     internal: Readonly<Record<string, number>>;
     initialInternalHits?: Readonly<Record<string, number>>;
+    blownOff?: readonly string[];
+    flooded?: readonly string[];
+    physicallyDestroyed?: readonly string[];
     modularArmor?: Readonly<Record<string, number>>;
     rulesId?: 'core2026' | 'tw';
     armorType?: ArmorType;
@@ -563,6 +612,13 @@ function createDamageHarness(options: {
         },
         getInternalPoints: (location: string) => options.internal[location] ?? 0,
         getInternalHits: (location: string) => internalHits.get(location) ?? 0,
+        getLocationCondition: (location: string, condition: string) =>
+            condition === 'blown-off'
+                ? options.blownOff?.includes(location) ?? false
+                : condition === 'flooded' && (options.flooded?.includes(location) ?? false),
+        isInternalLocPhysicallyDestroyed: (location: string) =>
+            (options.blownOff?.includes(location) ?? false)
+            || (options.physicallyDestroyed?.includes(location) ?? false),
         addInternalHits,
         queueMekCriticalChance,
     } as unknown as CBTForceUnit;
