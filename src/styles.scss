@@ -2461,7 +2461,7 @@ hr.divider {
 @media screen {
     .night-mode .mekbay-sheet .mek-random-hit-result {
         .mek-random-hit-result-background {
-            fill: #fffe;
+            fill: #ffbf00;
         }
 
         text {
@@ -2469,7 +2469,7 @@ hr.divider {
         }
 
         .mek-random-hit-result-through-armor {
-            fill: #7a4d00;
+            fill: red;
         }
     }
 
