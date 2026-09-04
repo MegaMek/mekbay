@@ -30,6 +30,7 @@ import { RangeSliderComponent } from '../range-slider/range-slider.component';
 import { naturalCompare } from '../../utils/sort.util';
 import { AppUpdateService } from '../../services/app-update.service';
 import { DisplayNameService } from '../../services/display-name.service';
+import { copyTextToClipboard } from '../../utils/clipboard.util';
 
 type OptionsSectionId = 'General' | 'Search' | 'Account' | 'Tags' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
 
@@ -622,6 +623,15 @@ export class OptionsDialogComponent {
 
     toggleUserUuidVisibility() {
         this.showUserUuid.update(value => !value);
+    }
+
+    async copyUserUuid(): Promise<void> {
+        try {
+            await copyTextToClipboard(this.userUuid());
+            this.toastService.showToast('User identifier copied to clipboard.', 'success');
+        } catch {
+            this.toastService.showToast('Failed to copy user identifier.', 'error');
+        }
     }
 
     async onPurgeCache() {
