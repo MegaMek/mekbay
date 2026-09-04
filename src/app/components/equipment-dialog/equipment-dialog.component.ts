@@ -188,7 +188,6 @@ export class EquipmentDialogComponent {
                 scrollStrategy: this.overlay.scrollStrategies.reposition(),
             },
         );
-        componentRef?.setInput('endTurnForAllButtonVisible', false);
         componentRef?.setInput('member', this.unit());
     }
 

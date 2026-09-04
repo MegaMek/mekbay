@@ -41,6 +41,7 @@ import { CatalogStorage } from '../../services/catalogs/catalog-storage.service'
 import { deleteUnitCatalogDatabase } from '../../services/unit-catalog/unit-catalog-database';
 import { DisplayNameService } from '../../services/display-name.service';
 import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
+import { copyTextToClipboard } from '../../utils/clipboard.util';
 
 type OptionsSectionId = 'General' | 'Search' | 'Account' | 'Tags' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
 
@@ -584,6 +585,15 @@ export class OptionsDialogComponent {
 
     toggleUserUuidVisibility() {
         this.showUserUuid.update(value => !value);
+    }
+
+    async copyUserUuid(): Promise<void> {
+        try {
+            await copyTextToClipboard(this.userUuid());
+            this.toastService.showToast('User identifier copied to clipboard.', 'success');
+        } catch {
+            this.toastService.showToast('Failed to copy user identifier.', 'error');
+        }
     }
 
     async onPurgeCanvas() {

@@ -25,7 +25,18 @@ import { DisplayNameService } from '../../services/display-name.service';
 import { OptionsDialogComponent } from './options-dialog.component';
 
 describe('OptionsDialogComponent', () => {
-    function configureComponent(optionsService: object): OptionsDialogComponent {
+    function configureComponent(
+        optionsService: object,
+        userStateService: object = {
+            uuid: signal(''),
+            publicId: signal(''),
+            displayName: signal(''),
+            availableAuthProviders: signal([]),
+            oauthProviders: signal([]),
+            hasOAuth: signal(false),
+        },
+        toastService: object = {},
+    ): OptionsDialogComponent {
         TestBed.configureTestingModule({
             providers: [
                 { provide: AccountAuthService, useValue: { authInFlight: signal(false) } },
@@ -42,18 +53,8 @@ describe('OptionsDialogComponent', () => {
                 { provide: SpriteStorageService, useValue: { getIconCount: () => Promise.resolve(0) } },
                 { provide: TaggingService, useValue: {} },
                 { provide: TagsService, useValue: { version: signal(0) } },
-                { provide: ToastService, useValue: {} },
-                {
-                    provide: UserStateService,
-                    useValue: {
-                        uuid: signal(''),
-                        publicId: signal(''),
-                        displayName: signal(''),
-                        availableAuthProviders: signal([]),
-                        oauthProviders: signal([]),
-                        hasOAuth: signal(false),
-                    },
-                },
+                { provide: ToastService, useValue: toastService },
+                { provide: UserStateService, useValue: userStateService },
             ],
         });
         return TestBed.runInInjectionContext(() => new OptionsDialogComponent());
@@ -180,5 +181,37 @@ describe('OptionsDialogComponent', () => {
 
         expect(component.equipmentCount()).toBe(2);
         expect(getEquipmentRegistry).toHaveBeenCalled();
+    });
+
+    it('copies the user UUID to the clipboard', async () => {
+        const writeText = jasmine.createSpy('writeText').and.resolveTo();
+        const showToast = jasmine.createSpy('showToast');
+        const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+        const component = configureComponent(
+            { options: () => ({ unitServers: [] }) },
+            {
+                uuid: signal('test-user-uuid'),
+                publicId: signal(''),
+                displayName: signal(''),
+                availableAuthProviders: signal([]),
+                oauthProviders: signal([]),
+                hasOAuth: signal(false),
+            },
+            { showToast },
+        );
+
+        try {
+            await component.copyUserUuid();
+
+            expect(writeText).toHaveBeenCalledOnceWith('test-user-uuid');
+            expect(showToast).toHaveBeenCalledOnceWith('User identifier copied to clipboard.', 'success');
+        } finally {
+            if (originalClipboard) {
+                Object.defineProperty(navigator, 'clipboard', originalClipboard);
+            } else {
+                delete (navigator as { clipboard?: Clipboard }).clipboard;
+            }
+        }
     });
 });

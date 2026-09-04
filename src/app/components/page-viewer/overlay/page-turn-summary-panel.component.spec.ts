@@ -153,7 +153,7 @@ describe('PageTurnSummaryPanelComponent', () => {
     });
 
     it('shows the current and all-unit phase/turn scopes only while they are actionable', () => {
-        const harness = turnMember(turnSnapshot());
+        const harness = turnMember(turnSnapshot(), 2);
         const fixture = createComponent(harness.member, overlayManager());
         fixture.detectChanges();
 
@@ -203,8 +203,18 @@ describe('PageTurnSummaryPanelComponent', () => {
         );
         expect(turnActions.map(button => button.textContent?.trim())).toEqual([
             'End Turn',
-            'All Units',
         ]);
+    });
+
+    it('shows End Turn for an otherwise idle immobile Core 2026 unit', () => {
+        const harness = turnMember(turnSnapshot({ immobile: true }));
+        const fixture = createComponent(harness.member, overlayManager());
+        fixture.detectChanges();
+
+        const turnActions = Array.from<HTMLButtonElement>(
+            fixture.nativeElement.querySelectorAll('.turn-actions button'),
+        );
+        expect(turnActions.map(button => button.textContent?.trim())).toEqual(['End Turn']);
     });
 
     it('dispatches selected and force-wide phase boundaries through the V2 owner', async () => {
@@ -626,7 +636,7 @@ function overlayManager() {
     };
 }
 
-function turnMember(initial: MekTurnPanelSnapshot) {
+function turnMember(initial: MekTurnPanelSnapshot, memberCount = 1) {
     const changed = new Subject<void>();
     const entity = new TestBipedMekEntity();
     let current = initial;
@@ -640,7 +650,9 @@ function turnMember(initial: MekTurnPanelSnapshot) {
     const force = {
         changed,
         sessionChanged: new Subject<void>(),
-        members: () => [member],
+        members: () => Array.from({ length: memberCount }, (_value, index) => index === 0
+            ? member
+            : { ...member, id: `mek-${index + 1}` }),
         getMekTurnPanelSnapshot: () => current,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
         getEquipmentInteractions: () => [],

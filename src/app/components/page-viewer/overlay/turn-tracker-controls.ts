@@ -201,7 +201,8 @@ export abstract class TurnTrackerControls {
         this.forceRuntimeVersion();
         const member = this.member();
         if (!member) return false;
-        return member.force.members().some(candidate => {
+        const members = member.force.members().filter(isCBTForceMember);
+        return members.length > 1 && members.some(candidate => {
             if (isCBTMekForceMember(candidate)) {
                 const snapshot = candidate.force.getMekTurnPanelSnapshot(
                     candidate.id,
@@ -220,7 +221,8 @@ export abstract class TurnTrackerControls {
         this.forceRuntimeVersion();
         const member = this.member();
         if (!member) return false;
-        return member.force.members().some(candidate => {
+        const members = member.force.members().filter(isCBTForceMember);
+        return members.length > 1 && members.some(candidate => {
             if (isCBTMekForceMember(candidate)) {
                 const snapshot = candidate.force.getMekTurnPanelSnapshot(
                     candidate.id,
@@ -247,6 +249,7 @@ export abstract class TurnTrackerControls {
                 || candidate.force.hasPendingEndTurnForUnit(candidate.id);
         });
     });
+    readonly endTurnButtonVisible = computed(() => this.dirty() || this.showImmobileStatus());
 
     readonly damageReceived = computed(() => {
         const runtime = this.runtime();
