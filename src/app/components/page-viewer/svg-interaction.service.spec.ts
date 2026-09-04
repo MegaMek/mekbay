@@ -284,9 +284,8 @@ describe('SvgInteractionService', () => {
 
         expect(frontCenterTorso.classList).toContain('random-hit-location-highlight');
         const result = armorDiagram.querySelector('.mek-random-hit-result') as SVGGElement;
-        expect(result.getAttribute('aria-label')).toBe('Center Torso, through armor hit!');
         expect(result.querySelector('.mek-random-hit-result-location')?.textContent).toBe('CT');
-        expect(result.querySelector('.mek-random-hit-result-through-armor')?.textContent).toBe('THROUGH ARMOR!');
+        expect(result.querySelector('.mek-random-hit-result-through-armor')?.textContent).toBe('THROUGH ARMOR');
         expect(showToast).not.toHaveBeenCalled();
 
         (result.querySelector('.mek-random-hit-result-through-armor') as SVGTextElement)
@@ -343,6 +342,45 @@ describe('SvgInteractionService', () => {
         service.setupRandomMekHitInteraction(svg, new AbortController().signal);
 
         expect(armorDiagram.querySelector('.mek-random-hit-button')).toBeNull();
+    });
+
+    it('positions the hit-location dice for Tripod and Quad Mek layouts', () => {
+        const tripodSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const tripodArmor = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        tripodArmor.id = 'ArmorDiagram';
+        tripodSvg.appendChild(tripodArmor);
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Tripod BattleMek', comp: [] }),
+        }));
+        service.setupRandomMekHitInteraction(tripodSvg, new AbortController().signal);
+
+        const tripodIcon = tripodArmor.querySelector('.mek-random-hit-button image')!;
+        expect(tripodIcon.getAttribute('x')).toBe('115');
+        expect(tripodIcon.getAttribute('y')).toBe('157');
+
+        const quadSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const quadArmor = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        quadArmor.id = 'armor_diagram_quad';
+        quadSvg.appendChild(quadArmor);
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Quad BattleMek', comp: [] }),
+        }));
+        service.setupRandomMekHitInteraction(quadSvg, new AbortController().signal);
+
+        const quadButton = quadSvg.querySelector(':scope > .mek-random-hit-button')!;
+        const quadIcon = quadButton.querySelector('image')!;
+        expect(quadIcon.getAttribute('x')).toBe('487');
+        expect(quadIcon.getAttribute('y')).toBe('193');
+
+        spyOn(service, 'rollD6').and.returnValue(1);
+        quadButton.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 74 }));
+        pickerFactory.createDirectionalPicker.calls.mostRecent().args[0]
+            .onPick({ label: 'Front', value: 'front' });
+
+        const quadResult = quadSvg.querySelector('.mek-random-hit-result')!;
+        expect(quadResult.querySelector('rect')?.getAttribute('x')).toBe('460');
+        expect(quadResult.querySelector('rect')?.getAttribute('y')).toBe('150');
+        expect(quadResult.querySelector('.mek-random-hit-result-location')?.getAttribute('x')).toBe('498');
     });
 
     it('selects inventory entries from main inventory buttons only', () => {
