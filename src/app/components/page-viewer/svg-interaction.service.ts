@@ -516,6 +516,7 @@ export class SvgInteractionService {
             getMekLocationLabel(location) ?? result.locationLabel,
             result.rear,
             result.critical,
+            location === result.location ? undefined : result.location,
         );
     }
 
@@ -525,6 +526,7 @@ export class SvgInteractionService {
         locationLabel: string,
         rear: boolean,
         throughArmor: boolean,
+        transferredFromLocation?: string,
     ): void {
         this.clearRandomMekHitResult();
         const button = svg.querySelector<SVGElement>('.mek-random-hit-button');
@@ -556,11 +558,22 @@ export class SvgInteractionService {
         const locationText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         locationText.classList.add('mek-random-hit-result-location');
         locationText.setAttribute('x', String(resultCenterX));
-        locationText.setAttribute('y', String(resultCenterY));
+        locationText.setAttribute('y', String(resultCenterY - (transferredFromLocation ? 5 : 0)));
         locationText.setAttribute('dy', '.35em');
         locationText.setAttribute('pointer-events', 'none');
         locationText.textContent = location;
         result.appendChild(locationText);
+
+        if (transferredFromLocation) {
+            const transferredFromText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            transferredFromText.classList.add('mek-random-hit-result-transferred-from');
+            transferredFromText.setAttribute('x', String(resultCenterX));
+            transferredFromText.setAttribute('y', String(resultCenterY + 9));
+            transferredFromText.setAttribute('dy', '.35em');
+            transferredFromText.setAttribute('pointer-events', 'none');
+            transferredFromText.textContent = transferredFromLocation;
+            result.appendChild(transferredFromText);
+        }
 
         if (throughArmor) {
             const throughArmorText = document.createElementNS('http://www.w3.org/2000/svg', 'text');

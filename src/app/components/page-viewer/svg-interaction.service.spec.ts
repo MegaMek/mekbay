@@ -298,6 +298,7 @@ describe('SvgInteractionService', () => {
         expect(locationText.getAttribute('dy')).toBe('.35em');
         expect(locationText.getAttribute('pointer-events')).toBe('none');
         expect(result.querySelector('.mek-random-hit-result-location')?.textContent).toBe('CT');
+        expect(result.querySelector('.mek-random-hit-result-transferred-from')).toBeNull();
         expect(result.querySelector('.mek-random-hit-result-through-armor')?.textContent).toBe('THROUGH ARMOR');
         expect(showToast).not.toHaveBeenCalled();
 
@@ -375,7 +376,9 @@ describe('SvgInteractionService', () => {
 
         expect(leftArm.classList).not.toContain('random-hit-location-highlight');
         expect(leftTorso.classList).toContain('random-hit-location-highlight');
-        expect(armorDiagram.querySelector('.mek-random-hit-result-location')?.textContent).toBe('LT');
+        const result = armorDiagram.querySelector('.mek-random-hit-result')!;
+        expect(result.querySelector('.mek-random-hit-result-location')?.textContent).toBe('LT');
+        expect(result.querySelector('.mek-random-hit-result-transferred-from')?.textContent).toBe('LA');
     });
 
     it('does not add the hit-location dice to non-Mek sheets', () => {
