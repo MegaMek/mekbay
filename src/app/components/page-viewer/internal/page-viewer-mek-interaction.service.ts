@@ -314,7 +314,7 @@ export class PageViewerMekInteractionService {
             badge.setAttribute('transform', this.rootRelativeTransform(svgMatrix, buttonMatrix));
         }
         result.appendChild(badge);
-        if (true || throughArmorCritical) {
+        if (throughArmorCritical) {
             const criticalText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             criticalText.setAttribute('class', 'mek-random-hit-result-through-armor');
             const armorLayer = button.closest<SVGGraphicsElement>('[data-type="armor"]');
