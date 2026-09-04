@@ -465,7 +465,8 @@ export class SvgInteractionService {
             if (event.button !== 0) return;
             event.preventDefault();
             event.stopPropagation();
-            button!.dispatchEvent(new CustomEvent('svg-interaction-click', { bubbles: true }));
+            button!.dispatchEvent(new CustomEvent('svg-interaction-click', { bubbles: true }));        
+            this.clearRandomMekHitResult();
             this.showRandomMekHitDirectionPicker(button!, event);
         }, { passive: false, signal });
     }
