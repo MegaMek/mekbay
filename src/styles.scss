@@ -2394,11 +2394,6 @@ hr.divider {
     }
 }
 
-/* Night mode */
-.mek-random-hit-button image {
-    filter: invert(1);
-}
-
 .mekbay-sheet .random-hit-location-highlight {
     stroke: #ffbf00 !important;
     stroke-width: 6;
@@ -2464,10 +2459,6 @@ hr.divider {
 }
 
 @media screen {
-    .night-mode .mek-random-hit-button image {
-        filter: none;
-    }
-
     .night-mode .mekbay-sheet .mek-random-hit-result {
         .mek-random-hit-result-background {
             fill: #fffe;
