@@ -7,7 +7,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal, viewChild
 import type { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { MekHitArc } from '../../models/force-serialization';
 import {
-    resolveMekFallHitLocation,
+    resolveMekHitLocation,
     twoD6ForTotal,
     twoD6Total,
 } from '../../utils/mek-falling.util';
@@ -157,7 +157,7 @@ export class MekFloatingCriticalDialogComponent {
         const roll = this.locationRoll();
         return roll === null
             ? null
-            : resolveMekFallHitLocation(
+            : resolveMekHitLocation(
                 this.hitLocationTable,
                 this.data.hitArc,
                 roll,
@@ -227,7 +227,7 @@ function floatingLocationRow(
     roll: number,
     hitArc: MekHitArc,
 ): FloatingCriticalLocationRow {
-    const result = resolveMekFallHitLocation(table, hitArc, roll);
+    const result = resolveMekHitLocation(table, hitArc, roll);
     return {
         roll,
         label: result.locationLabel ?? result.tableLabel,

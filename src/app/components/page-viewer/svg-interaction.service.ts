@@ -11,7 +11,7 @@ import { DialogsService, type DialogRef } from '../../services/dialogs.service';
 import { firstValueFrom, type Subscription } from 'rxjs';
 import type { SkillType } from '../../models/crew-member.model';
 import type { MountedEquipment } from '../../models/mounted-equipment.model';
-import type { CriticalSlot } from '../../models/force-serialization';
+import type { CriticalSlot, MekHitArc } from '../../models/force-serialization';
 import { OptionsService } from '../../services/options.service';
 import { InputDialogComponent, type InputDialogData } from '../input-dialog/input-dialog.component';
 import type { ZoomPanServiceInterface } from './zoom-pan.interface';
@@ -42,6 +42,7 @@ import { isLaserWithRiscModule, isRiscLaserPulseModule, RISC_LASER_PULSE_MODE, R
 import { ClusterTableDialogComponent } from '../cluster-table-dialog/cluster-table-dialog.component';
 import { hasUnitDefaultReferenceTables } from '../../utils/reference-table-definition';
 import { clusterTableForUnit } from '../../utils/record-sheet-reference-table';
+import { isResolvedMekFallHitLocation, resolveMekHitLocation } from '../../utils/mek-falling.util';
 import { isCenterPanelTarget, isPointInCenterPanel, resolveCenterPanelCursorElements } from '../../utils/record-sheet-center-panel.util';
 import { COOLANT_POD_ACTIVE_STATE_KEY } from '../../equipment-handlers/coolant-pod.handler';
 import { canApplyMekCriticalHitToSlot } from '../../utils/mek-critical-hit.util';
@@ -97,6 +98,7 @@ const REPEATABLE_MOTIVE_HIT_LABELS = new Map<number, string>([
     [2, 'Medium'],
     [3, 'Heavy']
 ]);
+const RANDOM_MEK_HIT_RESULT_DURATION_MS = 4000;
 
 
 export interface InteractionState {
@@ -151,6 +153,8 @@ export class SvgInteractionService {
     private centerPanelDialogRef: DialogRef | null = null;
     private unitAutomationSubscription: Subscription | null = null;
     private automationQueue: Promise<void> = Promise.resolve();
+    private randomMekHitResultSvg: SVGSVGElement | null = null;
+    private randomMekHitResultTimeout: number | null = null;
 
     private currentHighlightedElement: SVGElement | null = null;
 
@@ -255,6 +259,7 @@ export class SvgInteractionService {
         this.setupPipInteractions(svg, signal);
         this.setupSoldierPipInteractions(svg, signal);
         this.setupArmorInteraction(svg, signal);
+        this.setupRandomMekHitInteraction(svg, signal);
         this.setupVtolRotorHitsInteraction(svg, signal);
         this.setupCritSlotInteractions(svg, signal);
         this.setupHeatInteractions(svg, signal);
@@ -412,6 +417,176 @@ export class SvgInteractionService {
 
     private markEditOnlyControls(svg: SVGSVGElement): void {
         svg.querySelectorAll('.unitConditionButton').forEach(control => control.classList.add('edit-only'));
+    }
+
+    private setupRandomMekHitInteraction(svg: SVGSVGElement, signal: AbortSignal): void {
+        const unit = this.unit();
+        const armorDiagram = svg.querySelector<SVGGElement>('#ArmorDiagram');
+        if (!unit || unit.getUnit().type !== 'Mek' || !armorDiagram) return;
+
+        let button = armorDiagram.querySelector<SVGGElement>('.mek-random-hit-button');
+        if (!button) {
+            button = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            button.classList.add('mek-random-hit-button', 'edit-only', 'interactive');
+            button.setAttribute('aria-label', 'Roll hit location');
+            button.setAttribute('role', 'button');
+            button.setAttribute('tabindex', '0');
+            button.style.cursor = 'pointer';
+
+            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            title.textContent = 'Roll hit location';
+            button.appendChild(title);
+
+            const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            hitArea.setAttribute('x', '82');
+            hitArea.setAttribute('y', '204');
+            hitArea.setAttribute('width', '28');
+            hitArea.setAttribute('height', '28');
+            hitArea.setAttribute('fill', 'transparent');
+            button.appendChild(hitArea);
+
+            const icon = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+            icon.setAttribute('href', '/images/random.svg');
+            icon.setAttribute('x', '85');
+            icon.setAttribute('y', '207');
+            icon.setAttribute('width', '22');
+            icon.setAttribute('height', '22');
+            icon.setAttribute('pointer-events', 'none');
+            button.appendChild(icon);
+            armorDiagram.appendChild(button);
+        }
+
+        button.addEventListener('pointerdown', (event: PointerEvent) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            button!.dispatchEvent(new CustomEvent('svg-interaction-click', { bubbles: true }));
+            this.showRandomMekHitDirectionPicker(button!, event);
+        }, { passive: false, signal });
+    }
+
+    private showRandomMekHitDirectionPicker(button: SVGElement, event: PointerEvent): void {
+        const unit = this.unit();
+        if (!unit) return;
+        if (this.pickerRef) this.removePicker();
+        this.zoomPanService.cancelGesture();
+        button.classList.add('picker-active');
+        this.currentHighlightedElement = button;
+        this.state.isPickerOpen.set(true);
+
+        const rect = button.getBoundingClientRect();
+        this.pickerRef = this.pickerFactory.createDirectionalPicker({
+            position: {
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2,
+            },
+            lightTheme: this.optionsService.options().colorScheme === 'night',
+            initialEvent: event,
+            onPick: choice => {
+                this.removePicker();
+                this.rollRandomMekHitLocation(button, unit, choice.value as MekHitArc);
+            },
+            onCancel: () => this.removePicker(),
+        });
+    }
+
+    private rollRandomMekHitLocation(button: SVGElement, unit: CBTForceUnit, arc: MekHitArc): void {
+        const svg = button.ownerSVGElement;
+        if (!svg) return;
+
+        const table = clusterTableForUnit(unit.getUnit()).hitLocationTable ?? 'biped';
+        const total = this.rollD6() + this.rollD6();
+        const preliminary = resolveMekHitLocation(table, arc, total);
+        const tripodLegRoll = preliminary.location === null && preliminary.tripodLegModifier !== undefined
+            ? this.rollD6()
+            : undefined;
+        const result = tripodLegRoll === undefined
+            ? preliminary
+            : resolveMekHitLocation(table, arc, total, tripodLegRoll);
+        if (!isResolvedMekFallHitLocation(result)) return;
+
+        this.showRandomMekHitResult(svg, result.location, result.locationLabel, result.rear, result.critical);
+    }
+
+    private showRandomMekHitResult(
+        svg: SVGSVGElement,
+        location: string,
+        locationLabel: string,
+        rear: boolean,
+        throughArmor: boolean,
+    ): void {
+        throughArmor = true;
+        this.clearRandomMekHitResult();
+        const armorDiagram = svg.querySelector<SVGGElement>('#ArmorDiagram');
+        if (!armorDiagram) return;
+
+        const locationElements = Array.from(armorDiagram.querySelectorAll<SVGElement>('.unitLocation.armor'))
+            .filter(element => element.getAttribute('loc') === location);
+        const highlightedLocation = rear
+            ? locationElements.find(element => element.getAttribute('rear') === '1') ?? locationElements[0]
+            : locationElements.find(element => element.getAttribute('rear') !== '1') ?? locationElements[0];
+        highlightedLocation?.classList.add('random-hit-location-highlight');
+
+        const result = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        result.classList.add('mek-random-hit-result', 'interactive');
+        result.setAttribute('role', 'status');
+        result.setAttribute('aria-label', `${locationLabel}${throughArmor ? ', through armor hit!' : ''}`);
+
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        title.textContent = `${locationLabel}${throughArmor ? ' - Through armor hit!' : ''}`;
+        result.appendChild(title);
+
+        const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        background.setAttribute('x', '58');
+        background.setAttribute('y', '164');
+        background.setAttribute('width', '76');
+        background.setAttribute('height', '34');
+        background.setAttribute('rx', '4');
+        result.appendChild(background);
+
+        const locationText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        locationText.classList.add('mek-random-hit-result-location');
+        locationText.setAttribute('x', '96');
+        locationText.setAttribute('y', '184');
+        locationText.textContent = location;
+        result.appendChild(locationText);
+
+        if (throughArmor) {
+            const throughArmorText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            throughArmorText.classList.add('mek-random-hit-result-through-armor');
+            throughArmorText.setAttribute('x', '96');
+            throughArmorText.setAttribute('y', '120');
+            throughArmorText.textContent = 'THROUGH ARMOR!';
+            result.appendChild(throughArmorText);
+        }
+
+        result.addEventListener('pointerdown', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.clearRandomMekHitResult();
+        }, { passive: false });
+        armorDiagram.appendChild(result);
+
+        this.randomMekHitResultSvg = svg;
+        this.randomMekHitResultTimeout = window.setTimeout(
+            () => this.clearRandomMekHitResult(),
+            RANDOM_MEK_HIT_RESULT_DURATION_MS,
+        );
+    }
+
+    private clearRandomMekHitResult(): void {
+        if (this.randomMekHitResultTimeout !== null) {
+            window.clearTimeout(this.randomMekHitResultTimeout);
+            this.randomMekHitResultTimeout = null;
+        }
+        this.randomMekHitResultSvg?.querySelector('.random-hit-location-highlight')
+            ?.classList.remove('random-hit-location-highlight');
+        this.randomMekHitResultSvg?.querySelector('.mek-random-hit-result')?.remove();
+        this.randomMekHitResultSvg = null;
+    }
+
+    private rollD6(): number {
+        return Math.floor(Math.random() * 6) + 1;
     }
 
     private addSvgTapHandler(
@@ -2555,6 +2730,7 @@ export class SvgInteractionService {
 
     cleanup() {
         this.endHeatDrag();
+        this.clearRandomMekHitResult();
         this.unitAutomationSubscription?.unsubscribe();
         this.unitAutomationSubscription = null;
         this.centerPanelDialogRef?.close();

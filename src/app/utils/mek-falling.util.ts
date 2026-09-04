@@ -224,7 +224,7 @@ export function rollMekFallDice(
     const rolled = Array.from({ length: damageGroupCount }, (_unused, index) => {
         const saved = options.damageRolls?.[index];
         const hitLocationDice = saved?.hitLocationDice ?? [rollD6(random), rollD6(random)] as const;
-        const preliminary = resolveMekFallHitLocation(
+        const preliminary = resolveMekHitLocation(
             table,
             orientation.hitArc,
             twoD6Total(hitLocationDice),
@@ -238,7 +238,7 @@ export function rollMekFallDice(
             damageRoll: { hitLocationDice, tripodLegRoll },
             hitLocation: tripodLegRoll === null
                 ? preliminary
-                : resolveMekFallHitLocation(
+                : resolveMekHitLocation(
                     table,
                     orientation.hitArc,
                     twoD6Total(hitLocationDice),
@@ -255,13 +255,13 @@ export function rollMekFallDice(
 }
 
 /** Resolves one 2D6 hit-location roll, including the extra tripod leg roll. */
-export function resolveMekFallHitLocation(
+export function resolveMekHitLocation(
     table: MekHitLocationTable,
     arc: MekFallHitArc,
     hitLocationRoll: number,
     tripodLegRoll?: number,
 ): MekFallHitLocationResult {
-    assertIntegerInRange(hitLocationRoll, 2, 12, 'Fall hit-location roll');
+    assertIntegerInRange(hitLocationRoll, 2, 12, 'Mek hit-location roll');
     if (tripodLegRoll !== undefined) {
         assertIntegerInRange(tripodLegRoll, 1, 6, 'Tripod leg roll');
     }

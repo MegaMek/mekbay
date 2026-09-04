@@ -12,7 +12,7 @@ import {
     rollMekFallDice,
     resolveMekFallArmorDamage,
     resolveMekFallDamage,
-    resolveMekFallHitLocation,
+    resolveMekHitLocation,
     resolveMekFallOrientation,
     twoD6ForTotal,
     twoD6Total,
@@ -71,7 +71,7 @@ describe('Mek falling rules', () => {
     });
 
     it('uses the selected arc and identifies rear torso armor and table criticals', () => {
-        expect(resolveMekFallHitLocation('biped', 'rear', 2)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('biped', 'rear', 2)).toEqual(jasmine.objectContaining({
             rawTableResult: 'CT(C)',
             tableLabel: 'CT',
             location: 'CT',
@@ -79,7 +79,7 @@ describe('Mek falling rules', () => {
             rear: true,
             critical: true,
         }));
-        expect(resolveMekFallHitLocation('biped', 'left', 3)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('biped', 'left', 3)).toEqual(jasmine.objectContaining({
             location: 'LL',
             locationLabel: 'Left Leg',
             rear: false,
@@ -88,15 +88,15 @@ describe('Mek falling rules', () => {
 
     it('resolves every quad hit-table abbreviation to a canonical entity location', () => {
         expect([3, 4, 9, 10, 11].map(roll =>
-            resolveMekFallHitLocation('quad', 'rear', roll).location,
+            resolveMekHitLocation('quad', 'rear', roll).location,
         )).toEqual(['FRL', 'FRL', 'RLL', 'FLL', 'FLL']);
         expect([3, 4, 5, 6, 10].map(roll =>
-            resolveMekFallHitLocation('quad', 'left', roll).location,
+            resolveMekHitLocation('quad', 'left', roll).location,
         )).toEqual(['RLL', 'FLL', 'FLL', 'RLL', 'FRL']);
 
         const unresolved = (['front', 'rear', 'left', 'right'] as const).flatMap(arc =>
             Array.from({ length: 11 }, (_unused, index) => index + 2)
-                .map(roll => ({ arc, roll, result: resolveMekFallHitLocation('quad', arc, roll) })))
+                .map(roll => ({ arc, roll, result: resolveMekHitLocation('quad', arc, roll) })))
             .filter(entry => entry.result.location === null || entry.result.locationLabel === null)
             .map(entry => `${entry.arc}:${entry.roll}`);
 
@@ -104,21 +104,21 @@ describe('Mek falling rules', () => {
     });
 
     it('resolves the tripod leg subtable with side modifiers', () => {
-        const pending = resolveMekFallHitLocation('tripod', 'left', 3);
+        const pending = resolveMekHitLocation('tripod', 'left', 3);
         expect(pending.location).toBeNull();
         expect(pending.rawTableResult).toBe('Leg (+1)†');
         expect(pending.tableLabel).toBe('Leg (+1)');
         expect(pending.tripodLegModifier).toBe(1);
 
-        expect(resolveMekFallHitLocation('tripod', 'left', 3, 4)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('tripod', 'left', 3, 4)).toEqual(jasmine.objectContaining({
             adjustedTripodLegRoll: 5,
             location: 'LL',
         }));
-        expect(resolveMekFallHitLocation('tripod', 'right', 3, 3)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('tripod', 'right', 3, 3)).toEqual(jasmine.objectContaining({
             adjustedTripodLegRoll: 2,
             location: 'RL',
         }));
-        expect(resolveMekFallHitLocation('tripod', 'front', 5, 3)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('tripod', 'front', 5, 3)).toEqual(jasmine.objectContaining({
             adjustedTripodLegRoll: 3,
             location: 'CL',
         }));
@@ -177,7 +177,7 @@ describe('Mek falling rules', () => {
         ] as const;
 
         for (const testCase of cases) {
-            const resolved = resolveMekFallHitLocation('quad', testCase.arc, testCase.roll);
+            const resolved = resolveMekHitLocation('quad', testCase.arc, testCase.roll);
             if (resolved.location === null || resolved.locationLabel === null) {
                 fail(`Expected ${testCase.arc}:${testCase.roll} to resolve`);
                 continue;
