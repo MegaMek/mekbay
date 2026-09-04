@@ -284,6 +284,7 @@ export class SvgInteractionService {
         this.markEditOnlyControls(svg);
         this.interactionAbortController = new AbortController();
         const signal = this.interactionAbortController.signal;
+        this.setupRandomMekHitInteraction(svg, signal);
         this.setupMekEquipmentHoverInteractions(svg, signal);
         this.setupAmmoProfileInteractions(svg, signal);
         this.setupCenterPanelInteraction(svg, signal);
@@ -436,7 +437,7 @@ export class SvgInteractionService {
         let button = buttonHost.querySelector<SVGGElement>('.mek-random-hit-button');
         if (!button) {
             button = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            button.classList.add('mek-random-hit-button', 'edit-only', 'interactive');
+            button.classList.add('mek-random-hit-button', 'screen-only', 'interactive');
             button.setAttribute('role', 'button');
             button.setAttribute('tabindex', '0');
             button.style.cursor = 'pointer';
@@ -512,8 +513,8 @@ export class SvgInteractionService {
 
         this.showRandomMekHitResult(
             svg,
+            unit,
             location,
-            getMekLocationLabel(location) ?? result.locationLabel,
             result.rear,
             result.critical,
             location === result.location ? undefined : result.location,
@@ -522,8 +523,8 @@ export class SvgInteractionService {
 
     private showRandomMekHitResult(
         svg: SVGSVGElement,
+        unit: CBTForceUnit,
         location: string,
-        locationLabel: string,
         rear: boolean,
         throughArmor: boolean,
         transferredFromLocation?: string,
@@ -542,6 +543,11 @@ export class SvgInteractionService {
             ? locationElements.find(element => element.getAttribute('rear') === '1') ?? locationElements[0]
             : locationElements.find(element => element.getAttribute('rear') !== '1') ?? locationElements[0];
         highlightedLocation?.classList.add('random-hit-location-highlight');
+        const highlightedRear = highlightedLocation?.getAttribute('rear') === '1';
+        if (unit.isArmorLocDestroyed(location, highlightedRear)) {
+            svg.querySelector<SVGElement>(`.unitLocation.structure[loc="${location}"]`)
+                ?.classList.add('random-hit-location-highlight');
+        }
 
         const result = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         result.classList.add('mek-random-hit-result');
@@ -608,8 +614,8 @@ export class SvgInteractionService {
             window.clearTimeout(this.randomMekHitResultTimeout);
             this.randomMekHitResultTimeout = null;
         }
-        this.randomMekHitResultSvg?.querySelector('.random-hit-location-highlight')
-            ?.classList.remove('random-hit-location-highlight');
+        this.randomMekHitResultSvg?.querySelectorAll('.random-hit-location-highlight')
+            .forEach(element => element.classList.remove('random-hit-location-highlight'));
         this.randomMekHitResultSvg?.querySelector('.mek-random-hit-result')?.remove();
         this.randomMekHitResultSvg = null;
     }

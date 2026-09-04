@@ -88,6 +88,7 @@ function createSvgInteractionUnit<T extends object>(overrides: T): T & { getInve
         getNotificationDisplayName: () => 'Test Unit',
         automationMode: () => 'ask',
         applyUnderwaterBreachAndFlooding: () => undefined,
+        isArmorLocDestroyed: () => false,
         isInternalLocPhysicallyDestroyed: () => false,
         resolveUnderwaterHullBreachCheck: () => null,
         automationTriggers: new Subject(),
@@ -348,6 +349,39 @@ describe('SvgInteractionService', () => {
         } finally {
             jasmine.clock().uninstall();
         }
+    });
+
+    it('also highlights matching structure when the hit armor is destroyed', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const armorDiagram = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        armorDiagram.id = 'ArmorDiagram';
+        const armor = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        armor.classList.add('unitLocation', 'armor');
+        armor.setAttribute('loc', 'CT');
+        const structure = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        structure.classList.add('unitLocation', 'structure');
+        structure.setAttribute('loc', 'CT');
+        armorDiagram.append(armor, structure);
+        svg.appendChild(armorDiagram);
+        service.updateUnit(createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+            isArmorLocDestroyed: (location: string, rear: boolean) => location === 'CT' && !rear,
+        }));
+        service.setupRandomMekHitInteraction(svg, new AbortController().signal);
+        spyOn(service, 'rollD6').and.returnValue(1);
+
+        const button = armorDiagram.querySelector('.mek-random-hit-button') as SVGGElement;
+        button.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 74 }));
+        pickerFactory.createDirectionalPicker.calls.mostRecent().args[0]
+            .onPick({ label: 'Front', value: 'front' });
+
+        expect(armor.classList).toContain('random-hit-location-highlight');
+        expect(structure.classList).toContain('random-hit-location-highlight');
+
+        (armorDiagram.querySelector('.mek-random-hit-result-through-armor') as SVGTextElement)
+            .dispatchEvent(createPointerEvent('pointerdown', { pointerId: 75 }));
+        expect(armor.classList).not.toContain('random-hit-location-highlight');
+        expect(structure.classList).not.toContain('random-hit-location-highlight');
     });
 
     it('transfers a random hit inward from a physically destroyed location', () => {
@@ -1187,6 +1221,24 @@ describe('SvgInteractionService', () => {
         service.updateUnit(unit);
         service.setupInteractions(svg);
         expect(svg.classList.contains('read-only')).toBeFalse();
+    });
+
+    it('keeps the random Mek hit control usable on read-only sheets', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const armorDiagram = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        armorDiagram.id = 'ArmorDiagram';
+        svg.appendChild(armorDiagram);
+        const unit = createSvgInteractionUnit({
+            getUnit: () => ({ type: 'Mek', subtype: 'Biped', comp: [] }),
+        });
+        service.updateUnit(unit);
+
+        service.setupReadOnlyInteractions(svg);
+
+        const button = armorDiagram.querySelector('.mek-random-hit-button') as SVGGElement;
+        expect(button).not.toBeNull();
+        button.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 76 }));
+        expect(pickerFactory.createDirectionalPicker).toHaveBeenCalled();
     });
 
     it('faintly cross-highlights a Mek inventory entry and all of its critical slots', () => {
