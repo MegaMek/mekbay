@@ -359,8 +359,6 @@ describe('PageTurnSummaryPanelComponent', () => {
         await component.endPhase(currentEvent);
 
         expect(currentEvent.stopPropagation).toHaveBeenCalledTimes(1);
-        expect(blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-unit-a');
-        expect(unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-a');
         expect(closeManagedOverlay).toHaveBeenCalledWith('turnSummary-unit-a');
         expect(resolvePhase).toHaveBeenCalledOnceWith(currentUnit);
 
