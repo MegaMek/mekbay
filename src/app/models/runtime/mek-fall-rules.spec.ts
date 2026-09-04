@@ -5,7 +5,7 @@ import {
     mekFallDamageGroups,
     resolveMekFallArmorDamage,
     resolveMekFallDamage,
-    resolveMekFallHitLocation,
+    resolveMekHitLocation,
     resolveMekFallOrientation,
     resolveMekStructureDamage,
 } from './mek-fall-rules';
@@ -34,13 +34,13 @@ describe('direct Mek falling rules', () => {
     });
 
     it('resolves typed biped and tripod hit-location cells', () => {
-        expect(resolveMekFallHitLocation('biped', 'rear', 12)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('biped', 'rear', 12)).toEqual(jasmine.objectContaining({
             location: 'HD', rear: true,
         }));
-        expect(resolveMekFallHitLocation('tripod', 'front', 5)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('tripod', 'front', 5)).toEqual(jasmine.objectContaining({
             location: null, tripodLegModifier: 0,
         }));
-        expect(resolveMekFallHitLocation('tripod', 'front', 5, 6)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('tripod', 'front', 5, 6)).toEqual(jasmine.objectContaining({
             location: 'LL', adjustedTripodLegRoll: 6,
         }));
     });

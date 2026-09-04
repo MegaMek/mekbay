@@ -16,7 +16,7 @@ import { OverlayManagerService } from '../../../services/overlay-manager.service
 import { PickerFactoryService } from '../../../services/picker-factory.service';
 import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
 import { ToastService } from '../../../services/toast.service';
-import type { ChoicePickerConfig, NumericPickerConfig } from '../../../services/picker-factory.service';
+import type { ChoicePickerConfig, DirectionalPickerConfig, NumericPickerConfig } from '../../../services/picker-factory.service';
 import type { MekRecordSheetInteraction } from '../mek-record-sheet-binder';
 import { MekCriticalChanceDialogComponent } from '../mek-critical-chance-dialog.component';
 import { MekCriticalRollDialogComponent } from '../mek-critical-roll-dialog.component';
@@ -32,6 +32,7 @@ describe('PageViewerMekInteractionService', () => {
     let service: PageViewerMekInteractionService;
     let numericConfig: NumericPickerConfig | null;
     let choiceConfig: ChoicePickerConfig | null;
+    let directionalConfig: DirectionalPickerConfig | null;
     let revision: number;
     let currentSnapshot: MekRecordSheetSnapshot;
     let panel: EquipmentPanelSnapshot;
@@ -44,15 +45,14 @@ describe('PageViewerMekInteractionService', () => {
     beforeEach(() => {
         numericConfig = null;
         choiceConfig = null;
+        directionalConfig = null;
         revision = 1;
         currentSnapshot = recordSheetSnapshot(revision);
         panel = equipmentPanel(revision);
         const directUnitSnapshot = () => ({
-            entity: {
-                entityType: 'Mek',
-                mountedCockpit: () => ({ canEject: true }),
+            entity: Object.assign(Object.create(member.entity), {
                 totalHeatSinks: () => currentSnapshot.heatSinks.count,
-            },
+            }),
             state: { stateRevision: revision },
             index: { locations: new Map([['loc-ct', { code: 'CT' }]]) },
             query: {
@@ -90,6 +90,7 @@ describe('PageViewerMekInteractionService', () => {
                     industrialMek: false, modifiers: [],
                 }),
                 mekBlowOff: () => ({ kind: 'blown-off', locationId: 'loc-ct' }),
+                    locationStatus: () => 'available',
             },
         });
         force = {
@@ -145,6 +146,10 @@ describe('PageViewerMekInteractionService', () => {
                         },
                         createChoicePicker: (config: ChoicePickerConfig) => {
                             choiceConfig = config;
+                            return { component: { values: { set: () => undefined } }, setPosition: () => undefined, destroy: () => undefined };
+                        },
+                        createDirectionalPicker: (config: DirectionalPickerConfig) => {
+                            directionalConfig = config;
                             return { component: { values: { set: () => undefined } }, setPosition: () => undefined, destroy: () => undefined };
                         },
                     },
@@ -564,6 +569,65 @@ describe('PageViewerMekInteractionService', () => {
                 gameRules: jasmine.objectContaining({ id: 'core-2026' }),
             }),
         }));
+    });
+
+    it('rolls and highlights a random hit location selected from the directional picker', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g data-mekbay-random-hit="1"><circle class="mek-random-hit-area"></circle></g>'
+            + '<path class="unitLocation armor" loc="CT"></path>';
+        const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
+        const event = new PointerEvent('pointerdown', { button: 0 });
+        spyOn(Math, 'random').and.returnValues(0.4, 0.5);
+
+        service.handle(member, {
+            kind: 'random-hit', element: control, expectedRevision: 1,
+        } as MekRecordSheetInteraction, event);
+        directionalConfig!.onPick({ label: 'Front', value: 'front' });
+
+        expect(svg.querySelector('.unitLocation')?.classList).toContain('random-hit-location-highlight');
+        expect(svg.querySelector('.mek-random-hit-result-location')?.textContent).toBe('CT');
+
+        service.handle(member, {
+            kind: 'random-hit', element: control, expectedRevision: 1,
+        } as MekRecordSheetInteraction, new PointerEvent('pointerdown', { button: 0 }));
+
+        expect(svg.querySelector('.mek-random-hit-result')).toBeNull();
+        expect(svg.querySelector('.unitLocation')?.classList.contains('random-hit-location-highlight')).toBeFalse();
+    });
+
+    it('transfers a random hit past a destroyed location', () => {
+        const runtime = force.getUnitSnapshot('unit-1');
+        force.getUnitSnapshot.and.returnValue({
+            ...runtime,
+            index: {
+                ...runtime.index,
+                locations: new Map([
+                    ['loc-la', { id: 'loc-la', code: 'LA' }],
+                    ['loc-lt', { id: 'loc-lt', code: 'LT' }],
+                ]),
+                damageTransferLocationIdByLocation: new Map([
+                    ['loc-la', 'loc-lt'],
+                    ['loc-lt', null],
+                ]),
+            },
+            query: {
+                ...runtime.query,
+                locationStatus: (locationId: string) => locationId === 'loc-la' ? 'destroyed' : 'available',
+            },
+        });
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g data-mekbay-random-hit="1"></g><path class="unitLocation armor" loc="LT"></path>';
+        const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
+        spyOn(Math, 'random').and.returnValues(0.8, 0.8);
+
+        service.handle(member, {
+            kind: 'random-hit', element: control, expectedRevision: 1,
+        } as MekRecordSheetInteraction, new PointerEvent('pointerdown', { button: 0 }));
+        directionalConfig!.onPick({ label: 'Front', value: 'front' });
+
+        expect(svg.querySelector('.mek-random-hit-result-location')?.textContent).toBe('LT');
+        expect(svg.querySelector('.mek-random-hit-result-transferred-from')?.textContent).toBe('from LA');
+        expect(svg.querySelector('[loc="LT"]')?.classList).toContain('random-hit-location-highlight');
     });
 });
 

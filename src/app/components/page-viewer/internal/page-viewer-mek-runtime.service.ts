@@ -37,14 +37,17 @@ export class PageViewerMekRuntimeService {
         this.destroyBinding(member.id);
 
         const snapshot = this.requiredSnapshot(member);
-        svg.classList.toggle('read-only', member.force.readOnly());
+        const readOnly = member.force.readOnly();
+        svg.classList.toggle('read-only', readOnly);
+        const handleInteraction = (interaction: Parameters<PageViewerMekInteractionService['handle']>[1], event: Event): void => {
+            this.interactions.handle(member, interaction, event);
+        };
         const binding = bindMekRecordSheet(
             svg,
             MM_DATA_MEK_SHEET_BINDING_MANIFEST,
             snapshot,
-            member.force.readOnly()
-                ? undefined
-                : (interaction, event) => this.interactions.handle(member, interaction, event),
+            readOnly ? undefined : handleInteraction,
+            handleInteraction,
         );
         const subscription = merge(member.force.changed, member.force.sessionChanged).subscribe(changedUnitIds => {
             if (changedUnitIds?.includes(member.id) ?? true) this.render(member);

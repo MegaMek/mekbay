@@ -1,0 +1,42 @@
+<div
+    class="directional-picker-container"
+    [class.light-theme]="lightTheme()"
+    [style.left.px]="position().x - diameter / 2"
+    [style.top.px]="position().y - diameter / 2"
+    [style.width.px]="diameter"
+    [style.height.px]="diameter"
+>
+    <svg
+        class="directional-picker"
+        [attr.width]="diameter"
+        [attr.height]="diameter"
+        [attr.viewBox]="'0 0 ' + diameter + ' ' + diameter"
+        aria-label="Hit direction"
+    >
+        @for (choice of values(); let index = $index; track choice.value) {
+            <path
+                class="directional-sector"
+                [class.highlight]="hoveredChoice() === choice"
+                [attr.d]="sectorPath(index)"
+                [attr.data-direction-index]="index"
+                [attr.aria-label]="choice.label"
+                role="button"
+                tabindex="0"
+                (pointerenter)="setHoveredChoice(choice)"
+                (pointerleave)="resetHoveredChoice()"
+                (pointerdown)="handlePointerDown($event, choice)"
+                (click)="handleChoiceClick($event, choice)"
+                (keydown)="handleChoiceKeydown($event, choice)"
+            />
+            <text
+                class="directional-label"
+                [attr.x]="labelPosition(index).x"
+                [attr.y]="labelPosition(index).y"
+                text-anchor="middle"
+                dominant-baseline="middle"
+            >{{ choice.label }}</text>
+        }
+        <circle class="directional-center" [attr.cx]="center" [attr.cy]="center" [attr.r]="innerRadius" />
+        <circle class="directional-border" [attr.cx]="center" [attr.cy]="center" [attr.r]="diameter / 2 - 2" />
+    </svg>
+</div>

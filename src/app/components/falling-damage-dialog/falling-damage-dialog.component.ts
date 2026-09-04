@@ -6,11 +6,11 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import {
     resolveMekFallDamage,
-    resolveMekFallHitLocation,
+    resolveMekHitLocation,
     resolveMekFallOrientation,
     resolvedMekFallDamageGroups,
     type MekFallDamageBreakdown,
-    type MekFallHitLocationResult,
+    type MekHitLocationResult,
     type MekFallOrientation,
 } from '../../models/runtime/mek-fall-rules';
 import type { MekHitLocationTable } from '../../utils/record-sheet-reference-table';
@@ -26,7 +26,7 @@ export interface FallingDamageDialogData {
     readonly armorNote?: string;
 }
 
-export interface ResolvedMekFallDamageGroup extends MekFallHitLocationResult {
+export interface ResolvedMekFallDamageGroup extends MekHitLocationResult {
     readonly damage: number;
 }
 
@@ -49,7 +49,7 @@ interface FallingDamageGroupRoll {
 interface FallingDamageGroupRow extends FallingDamageGroupRoll {
     readonly index: number;
     readonly damage: number;
-    readonly result: MekFallHitLocationResult | null;
+    readonly result: MekHitLocationResult | null;
 }
 
 @Component({
@@ -90,7 +90,7 @@ export class FallingDamageDialogComponent {
             damage: this.damageGroups[index]!,
             ...roll,
             result: orientation && roll.hitLocationRoll !== null
-                ? resolveMekFallHitLocation(
+                ? resolveMekHitLocation(
                     this.data.hitLocationTable,
                     orientation.hitArc,
                     roll.hitLocationRoll,
@@ -178,7 +178,7 @@ export function resolveAutomaticFallingDamage(
     const groups = resolvedMekFallDamageGroups(damage).map(group => {
         const roll = rollDamageGroup(data.hitLocationTable, orientation.hitArc, random);
         return Object.freeze({
-            ...resolveMekFallHitLocation(
+            ...resolveMekHitLocation(
                 data.hitLocationTable,
                 orientation.hitArc,
                 roll.hitLocationRoll!,
@@ -196,7 +196,7 @@ function rollDamageGroup(
     random: () => number,
 ): FallingDamageGroupRoll {
     const hitLocationRoll = randomD6(random) + randomD6(random);
-    const unresolved = resolveMekFallHitLocation(table, arc, hitLocationRoll);
+    const unresolved = resolveMekHitLocation(table, arc, hitLocationRoll);
     return Object.freeze({
         hitLocationRoll,
         tripodLegRoll: unresolved.location === null ? randomD6(random) : null,

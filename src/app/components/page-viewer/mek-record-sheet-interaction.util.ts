@@ -163,6 +163,7 @@ export function recordSheetCommand(
         case 'inventory-selection':
         case 'action-selection':
         case 'reference-table':
+        case 'random-hit':
             throw new Error(`${interaction.kind} is not a direct unit command`);
     }
 }

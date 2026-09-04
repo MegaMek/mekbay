@@ -274,13 +274,14 @@ export class BipedPaperdollUtil {
         sourceGroup.appendChild(importedArt);
         if (art !== source) {
             for (const child of Array.from(source.children)) {
-                if (child !== art && this.containsPlaceholderMarker(child)) {
+                if (child !== art && this.containsImportedAssetContent(child)) {
                     sourceGroup.appendChild(document.importNode(child, true));
                 }
             }
         }
         scaleGroup.appendChild(sourceGroup);
 
+        this.removeSupersededAssetText(sourceGroup);
         this.applySilhouetteStyles(sourceGroup, type, options);
         this.replacePlaceholders(sourceGroup, armor, structureTonnage, options);
         if (options.outline) {
@@ -1344,9 +1345,18 @@ export class BipedPaperdollUtil {
         return this.isFillGeometry(element) || this.isRailGeometry(element);
     }
 
-    private static containsPlaceholderMarker(element: Element): boolean {
+    private static containsImportedAssetContent(element: Element): boolean {
         return element.matches('[data-canon], [data-fill], [data-rail]')
-            || element.querySelector('[data-canon], [data-fill], [data-rail]') !== null;
+            || element.querySelector('[data-canon], [data-fill], [data-rail]') !== null
+            || element.matches('[data-mekbay-paperdoll-overlay], [data-mekbay-random-hit]')
+            || element.querySelector('[data-mekbay-paperdoll-overlay], [data-mekbay-random-hit]') !== null;
+    }
+
+    private static removeSupersededAssetText(sourceGroup: SVGGElement): void {
+        if (!sourceGroup.querySelector('[data-mekbay-paperdoll-overlay]')) return;
+        sourceGroup.querySelectorAll('text').forEach(text => {
+            if (!text.closest('[data-mekbay-paperdoll-overlay]')) text.remove();
+        });
     }
 
     private static isShieldPlaceholderType(

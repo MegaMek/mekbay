@@ -43,6 +43,22 @@ describe('BipedPaperdollUtil', () => {
         expect(fetcher).toHaveBeenCalledTimes(urls.length + 1);
     });
 
+    it('keeps semantic overlays and removes superseded asset text', async () => {
+        const assetUrl = 'https://example.test/semantic-paperdoll.svg';
+        const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+            <g id="paperdoll-art-armor"><text>Legacy</text></g>
+            <g data-mekbay-paperdoll-overlay="armor"><text>Center Torso</text></g>
+            <g data-mekbay-random-hit="1"></g>
+        </svg>`;
+        spyOn(window, 'fetch').and.resolveTo(new Response(source));
+
+        const layer = await BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl });
+
+        expect(layer.textContent).toContain('Center Torso');
+        expect(layer.textContent).not.toContain('Legacy');
+        expect(layer.querySelector('[data-mekbay-random-hit="1"]')).not.toBeNull();
+    });
+
     it('renders armor and structure silhouettes with location pip layers', async () => {
         const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, {
             HD: 5,

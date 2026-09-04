@@ -9,6 +9,26 @@ import { asComponentId, asCriticalSlotId, asLocationId } from '../../models/enti
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 describe('Mek record-sheet binder', () => {
+    it('emits a typed random-hit interaction from the generated roll control', () => {
+        const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', '<g data-mekbay-random-hit="1"></g>');
+        const interactions: MekRecordSheetInteraction[] = [];
+        bindMekRecordSheet(
+            svg,
+            MM_DATA_MEK_SHEET_BINDING_MANIFEST,
+            snapshot(),
+            interaction => interactions.push(interaction),
+        );
+        const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
+
+        control.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+
+        expect(interactions).toEqual([jasmine.objectContaining({
+            kind: 'random-hit', element: control, expectedRevision: 7,
+        })]);
+        expect(control.getAttribute('tabindex')).toBe('0');
+    });
+
     it('renders pristine pips from the entity projection and damage only from runtime overlay values', () => {
         const svg = sheet();
         const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, snapshot());
@@ -495,7 +515,15 @@ describe('Mek record-sheet binder', () => {
 
     it('renders a read-only projection without attaching mutation handlers', () => {
         const svg = sheet();
-        bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, snapshot());
+        svg.insertAdjacentHTML('beforeend', '<g data-mekbay-random-hit="1"></g>');
+        const interactions: MekRecordSheetInteraction[] = [];
+        bindMekRecordSheet(
+            svg,
+            MM_DATA_MEK_SHEET_BINDING_MANIFEST,
+            snapshot(),
+            undefined,
+            interaction => interactions.push(interaction),
+        );
 
         expect(svg.querySelector('.unitLocation.armor')?.classList.contains('interactive')).toBeFalse();
         expect(svg.querySelector('.critSlot')?.classList.contains('interactive')).toBeFalse();
@@ -505,6 +533,10 @@ describe('Mek record-sheet binder', () => {
         expect(svg.querySelector('#heatScale .heat')?.classList.contains('interactive')).toBeFalse();
         expect(svg.querySelector('#mpWalk')?.classList.contains('interactive')).toBeFalse();
         expect(svg.querySelector('.unitConditionButton')?.classList.contains('edit-only')).toBeTrue();
+        const randomHit = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
+        expect(randomHit.classList).toContain('interactive');
+        randomHit.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+        expect(interactions).toEqual([jasmine.objectContaining({ kind: 'random-hit' })]);
     });
 
     it('cross-highlights inventory rows and critical slots by authoritative component ID', () => {
@@ -687,6 +719,7 @@ describe('Mek record-sheet binder', () => {
 
     it('uses displayed damage for pending and fresh pip colors', () => {
         const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', '<text id="textArmor_CT"></text><text id="textIS_CT"></text>');
         const base = snapshot();
         const withArmor = (committedRemaining: number, previewRemaining: number): MekRecordSheetSnapshot => ({
             ...base,
@@ -705,8 +738,11 @@ describe('Mek record-sheet binder', () => {
             withArmor(4, 4),
         );
         const pips = [...svg.querySelectorAll<SVGElement>('.armor.pip[loc="CT"]')];
+        expect(svg.getElementById('textArmor_CT')?.textContent).toBe('(4)');
+        expect(svg.getElementById('textIS_CT')?.textContent).toBe('(2/3)');
 
         binding.render(withArmor(4, 3));
+        expect(svg.getElementById('textArmor_CT')?.textContent).toBe('(3/4)');
         expect(pips.filter(pip => pip.classList.contains('damaged')).length).toBe(1);
         expect(pips.filter(pip => pip.classList.contains('pending')).length).toBe(1);
         expect(pips.filter(pip => pip.classList.contains('fresh')).length).toBe(1);
@@ -722,6 +758,16 @@ describe('Mek record-sheet binder', () => {
         expect(pips.filter(pip => pip.classList.contains('damaged')).length).toBe(0);
         expect(pips.filter(pip => pip.classList.contains('pending')).length).toBe(1);
         expect(pips.filter(pip => pip.classList.contains('fresh')).length).toBe(1);
+
+        binding.render({
+            ...withArmor(4, 4),
+            locations: [{
+                ...withArmor(4, 4).locations[0]!,
+                committedRemainingInternal: 3,
+                previewRemainingInternal: 3,
+            }],
+        });
+        expect(svg.getElementById('textIS_CT')?.textContent).toBe('(3)');
     });
 
     it('uses armor, extra-hit, then whole-slot marks for an armored Core autocannon', () => {

@@ -40,7 +40,7 @@ import {
 import {
     resolveMekFallArmorDamage,
     resolveMekFallDamage,
-    resolveMekFallHitLocation,
+    resolveMekHitLocation,
     resolveMekFallOrientation,
     resolveMekStructureDamage,
 } from '../models/runtime/mek-fall-rules';
@@ -228,7 +228,7 @@ interface PreparedMekFall {
     readonly orientation: ReturnType<typeof resolveMekFallOrientation>;
     readonly locations: readonly Readonly<{
         damage: number;
-        result: ReturnType<typeof resolveMekFallHitLocation>;
+        result: ReturnType<typeof resolveMekHitLocation>;
     }>[];
     readonly applyPilotHits: boolean;
     readonly forceSeatbeltFailure: boolean;
@@ -2904,11 +2904,11 @@ export class DirectMekAutomationService {
 
     private rollHitLocation(snapshot: MekSnapshot, hitArc: MekHitArcV2) {
         const dice = roll2D6();
-        let result = resolveMekFallHitLocation(
+        let result = resolveMekHitLocation(
             hitLocationTable(snapshot), hitArc, twoD6Total(dice),
         );
         if (result.location === null) {
-            result = resolveMekFallHitLocation(
+            result = resolveMekHitLocation(
                 hitLocationTable(snapshot), hitArc, twoD6Total(dice), randomD6(),
             );
         }

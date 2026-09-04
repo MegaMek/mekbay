@@ -117,6 +117,6 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
     }
 
     protected override getMinimumDatasetSize(): number {
-        return 4000;
+        return 3000;
     }
 }

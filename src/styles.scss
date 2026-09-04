@@ -1850,6 +1850,58 @@ hr.divider {
         filter: opacity(0.3) !important;
     }
 
+    .mek-random-hit-button {
+        cursor: pointer;
+
+        &.picker-active .mek-random-hit-area,
+        &:focus-visible .mek-random-hit-area {
+            fill: var(--bt-yellow) !important;
+            stroke-width: 2;
+        }
+    }
+
+    .random-hit-location-highlight {
+        stroke: var(--bt-yellow) !important;
+        stroke-width: 4;
+        stroke-linejoin: round;
+        paint-order: fill stroke;
+        filter: drop-shadow(0 0 4px var(--damage-color));
+        animation: random-hit-location-pulse 650ms ease-in-out infinite alternate;
+    }
+
+    .mek-random-hit-result {
+        pointer-events: none;
+
+        .mek-random-hit-result-background {
+            fill: #111e;
+            stroke: var(--bt-yellow);
+            stroke-width: 2;
+        }
+
+        text {
+            fill: #fff;
+            font-weight: 700;
+            text-anchor: middle;
+        }
+
+        .mek-random-hit-result-location {
+            font-size: 12px;
+        }
+
+        .mek-random-hit-result-transferred-from {
+            fill: #ccc;
+            font-size: 5px;
+        }
+
+        .mek-random-hit-result-through-armor {
+            fill: var(--damage-color);
+            font-size: 7px;
+            stroke: #fff;
+            stroke-width: 2;
+            paint-order: stroke fill;
+        }
+    }
+
     .disabledInventory,
     .disabledInventory text {
         fill: var(--disabled-color) !important;
@@ -1877,6 +1929,17 @@ hr.divider {
 
     .crewHit.damaged .crew-x {
         opacity: 1 !important;
+    }
+}
+
+@keyframes random-hit-location-pulse {
+    from { filter: drop-shadow(0 0 2px var(--damage-color)); }
+    to { filter: drop-shadow(0 0 6px var(--damage-color)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mekbay-sheet .random-hit-location-highlight {
+        animation: none;
     }
 }
 

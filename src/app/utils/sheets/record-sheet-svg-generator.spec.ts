@@ -421,6 +421,16 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.querySelectorAll('#mekbay-night-image-invert').length).toBe(1);
         expect(svg.dataset['mekbayRecordSheetPrepared']).toBeUndefined();
         expect(svg.querySelectorAll('.unitConditionButton[condition]').length).toBe(3);
+        const randomHit = svg.querySelector('[data-mekbay-random-hit="1"]');
+        expect(randomHit?.closest('[data-source="/images/paperdolls/quad-armor.svg"]')).not.toBeNull();
+        expect(randomHit?.classList.contains('edit-only')).toBeFalse();
+        expect(randomHit?.querySelector('image')?.getAttribute('href')).toBe('/images/random-black.svg');
+        const leftTorso = Array.from(svg.querySelectorAll<SVGTextElement>('.diagram-location-label text'))
+            .find(label => Array.from(label.querySelectorAll('tspan'), line => line.textContent).join(' ') === 'Left Torso');
+        expect(Array.from(leftTorso?.querySelectorAll('tspan') ?? [], line => line.textContent))
+            .toEqual(['Left', 'Torso']);
+        expect(svg.querySelector('#textArmor_CT')?.textContent).toMatch(/^\(\d+\)$/u);
+        expect(svg.querySelector('#textIS_CT')?.textContent).toMatch(/^\(\d+\)$/u);
         expect(svg.querySelectorAll('.unitConditionBanner[condition]').length)
             .toBe(UNIT_CONDITION_DEFINITIONS.length);
         expect(svg.querySelectorAll('mask[id^="generated_condition_banner_fade_"]').length)
@@ -458,9 +468,10 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.querySelectorAll('.inventoryEntry[display="none"]').length).toBe(0);
         expect(svg.querySelectorAll('.crewHit').length).toBe(6);
         expect(svg.querySelectorAll('#heatScale .heat').length).toBe(31);
-        expect(Array.from(svg.querySelectorAll('image')).every(image =>
-            (image.getAttribute('href') ?? image.getAttribute('xlink:href') ?? '').startsWith('data:'),
-        )).toBeTrue();
+        expect(Array.from(svg.querySelectorAll('image')).every(image => {
+            const href = image.getAttribute('href') ?? image.getAttribute('xlink:href') ?? '';
+            return href.startsWith('data:') || href === '/images/random-black.svg';
+        })).toBeTrue();
         expect(svg.querySelectorAll('#btLogoColor > path').length).toBe(4);
         expect(svg.querySelectorAll('#btLogoColor > polygon').length).toBe(8);
         expect(svg.querySelectorAll('#cglLogoBW path').length).toBe(27);
@@ -699,7 +710,7 @@ describe('RecordSheetSvgGenerator', () => {
             expect(svg.dataset['mekbayGenerated']).withContext(context).toBe('1');
             expect(Array.from(svg.querySelectorAll('image')).every(image => {
                 const href = image.getAttribute('href') ?? image.getAttribute('xlink:href') ?? '';
-                return href.startsWith('data:');
+                return href.startsWith('data:') || href === '/images/random-black.svg';
             })).withContext(context).toBeTrue();
             expect(svg.querySelector('script')).withContext(context).toBeNull();
             expect(Array.from(svg.querySelectorAll('use')).some(use => {

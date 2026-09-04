@@ -19,7 +19,7 @@ export interface MekFallOrientation {
     readonly rulesExplanation: string;
 }
 
-export interface MekFallHitLocationResult {
+export interface MekHitLocationResult {
     readonly hitLocationRoll: number;
     readonly rawTableResult: string;
     readonly tableLabel: string;
@@ -125,13 +125,13 @@ export function mekFallDamageGroups(damage: number): readonly number[] {
     return Object.freeze(groups);
 }
 
-export function resolveMekFallHitLocation(
+export function resolveMekHitLocation(
     table: MekHitLocationTable,
     arc: MekHitArc,
     hitLocationRoll: number,
     tripodLegRoll?: number,
-): MekFallHitLocationResult {
-    assertIntegerInRange(hitLocationRoll, 2, 12, 'Fall hit-location roll');
+): MekHitLocationResult {
+    assertIntegerInRange(hitLocationRoll, 2, 12, 'Mek hit-location roll');
     if (tripodLegRoll !== undefined) assertIntegerInRange(tripodLegRoll, 1, 6, 'Tripod leg roll');
     const cell = hitLocationCellDefinition(table, hitLocationRoll, arc);
     let location = cell.location;

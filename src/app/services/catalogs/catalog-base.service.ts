@@ -236,15 +236,8 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
                 this.hydrate(wrappedData);
                 this.ensureHydratedData('remote');
             } catch (error) {
-                if (previousData) {
-                    try {
-                        this.hydrate(previousData);
-                        this.ensureHydratedData('cache');
-                    } catch (restoreError) {
-                        this.logger.error(`Failed to restore cached ${this.catalogKey}: ${this.describeError(restoreError)}`);
-                    }
-                }
-                throw new Error(`Rejected ${this.catalogKey} update: ${this.describeError(error)}`);
+                this.handleRejectedRemoteUpdate(error, previousData);
+                return;
             }
             // Parsed bytes and authored hash are persisted as one IndexedDB
             // value: no separate validator row can get ahead of the content.
@@ -306,25 +299,32 @@ export abstract class CatalogBaseService<THydrateInput, TStored extends THydrate
                 this.hydrate(wrappedData);
                 this.ensureHydratedData('remote');
             } catch (error) {
-                if (previousData) {
-                    try {
-                        this.hydrate(previousData);
-                        this.ensureHydratedData('cache');
-                        this.logger.warn(`Preserved cached ${this.catalogKey} after rejecting the remote update.`);
-                    } catch (restoreError) {
-                        this.logger.error(`Failed to restore cached ${this.catalogKey}: ${this.describeError(restoreError)}`);
-                    }
-                }
-
-                const message = `Rejected ${this.catalogKey} update: ${this.describeError(error)}`;
-                this.logger.error(message);
-                throw new Error(message);
+                this.handleRejectedRemoteUpdate(error, previousData);
+                return;
             }
 
             await this.saveToCache(wrappedData);
             this.transportRevision = revision;
             this.logger.info(`${this.catalogKey} updated. (revision: ${revision})`);
         });
+    }
+
+    private handleRejectedRemoteUpdate(error: unknown, previousData?: THydrateInput): void {
+        let restoredPreviousData = false;
+        if (previousData) {
+            try {
+                this.hydrate(previousData);
+                this.ensureHydratedData('cache');
+                restoredPreviousData = true;
+                this.logger.warn(`Preserved cached ${this.catalogKey} after rejecting the remote update.`);
+            } catch (restoreError) {
+                this.logger.error(`Failed to restore cached ${this.catalogKey}: ${this.describeError(restoreError)}`);
+            }
+        }
+
+        const message = `Rejected ${this.catalogKey} update: ${this.describeError(error)}`;
+        this.logger.error(message);
+        if (!restoredPreviousData) throw new Error(message);
     }
 
     private tryHydrateData(data: THydrateInput, source: CatalogDataSource): boolean {

@@ -171,6 +171,11 @@ export type MekRecordSheetInteraction =
     | Readonly<{
         kind: 'reference-table';
         expectedRevision: number;
+    }>
+    | Readonly<{
+        kind: 'random-hit';
+        element: SVGElement;
+        expectedRevision: number;
     }>;
 
 export type MekRecordSheetInteractionHandler = (
@@ -209,6 +214,7 @@ export function bindMekRecordSheet(
     manifest: MekSheetBindingManifestV1,
     initial: MekRecordSheetSnapshot,
     onInteraction?: MekRecordSheetInteractionHandler,
+    onPresentationInteraction: MekRecordSheetInteractionHandler | undefined = onInteraction,
 ): MekRecordSheetBinding {
     assertReviewedBinding(manifest, initial);
     const abort = new AbortController();
@@ -220,6 +226,11 @@ export function bindMekRecordSheet(
         event.preventDefault();
         event.stopPropagation();
         onInteraction?.(interaction, event);
+    };
+    const emitPresentation = (interaction: MekRecordSheetInteraction, event: Event): void => {
+        event.preventDefault();
+        event.stopPropagation();
+        onPresentationInteraction?.(interaction, event);
     };
 
     const bindButton = (
@@ -461,7 +472,20 @@ export function bindMekRecordSheet(
         bindHeatSinkControls(svg, emit, abort.signal, () => current.stateRevision, onInteraction !== undefined);
         bindShutdownControl(svg, emit, abort.signal, () => current.stateRevision, onInteraction !== undefined);
         bindEquipmentOpeners(svg, emit, abort.signal, () => current.stateRevision, onInteraction !== undefined);
-        bindReferenceTable(svg, emit, abort.signal, () => current.stateRevision, onInteraction !== undefined);
+        bindRandomHitControl(
+            svg,
+            emitPresentation,
+            abort.signal,
+            () => current.stateRevision,
+            onPresentationInteraction !== undefined,
+        );
+        bindReferenceTable(
+            svg,
+            emitPresentation,
+            abort.signal,
+            () => current.stateRevision,
+            onPresentationInteraction !== undefined,
+        );
         renderRecordSheetDestroyed(svg, snapshot.destroyed);
         firstRender = false;
         return Object.freeze(issues);
@@ -780,6 +804,12 @@ function renderLocation(
         location.previewRemainingInternal,
         markChanges,
     );
+    renderDiagramCounter(
+        svg,
+        `textIS_${location.code}`,
+        location.previewRemainingInternal,
+        location.maximumInternal,
+    );
     if (location.maximumInternal > 0 && internalPips.length < location.maximumInternal) {
         issues.push(`Missing structure pips for ${location.code}: ${internalPips.length}/${location.maximumInternal}`);
     }
@@ -928,6 +958,12 @@ function renderArmorFace(
         face.previewRemaining,
         markChanges,
     );
+    renderDiagramCounter(
+        svg,
+        `textArmor_${face.locationCode}${rear ? 'R' : ''}`,
+        face.previewRemaining,
+        face.maximum,
+    );
     if (face.maximum > 0 && pips.length < face.maximum) {
         issues.push(`Missing ${rear ? 'rear ' : ''}armor pips for ${face.locationCode}: ${pips.length}/${face.maximum}`);
     }
@@ -947,6 +983,17 @@ function renderArmorFace(
             expectedRevision: revision(),
         }));
     });
+}
+
+function renderDiagramCounter(
+    svg: SVGSVGElement,
+    id: string,
+    current: number,
+    maximum: number,
+): void {
+    const counter = svg.getElementById(id);
+    if (!counter) return;
+    counter.textContent = current === maximum ? `(${maximum})` : `(${current}/${maximum})`;
 }
 
 function updateCriticalSlotPip(
@@ -1676,6 +1723,35 @@ function bindCrewControls(
             positionId: position.positionId,
             expectedRevision: revision(),
         }), event)));
+}
+
+function bindRandomHitControl(
+    svg: SVGSVGElement,
+    emit: (interaction: MekRecordSheetInteraction, event: Event) => void,
+    signal: AbortSignal,
+    revision: () => number,
+    interactive: boolean,
+): void {
+    if (!interactive) return;
+    svg.querySelectorAll<SVGElement>('[data-mekbay-random-hit="1"]').forEach(element => {
+        if (element.dataset['mekbayBound'] === '1') return;
+        element.dataset['mekbayBound'] = '1';
+        element.classList.add('interactive');
+        element.setAttribute('tabindex', '0');
+        const activate = (event: Event): void => emit(Object.freeze({
+            kind: 'random-hit',
+            element,
+            expectedRevision: revision(),
+        }), event);
+        element.addEventListener('pointerdown', event => {
+            if (!(event instanceof PointerEvent) || event.button !== 0) return;
+            activate(event);
+        }, { signal });
+        element.addEventListener('keydown', event => {
+            if (!(event instanceof KeyboardEvent) || (event.key !== 'Enter' && event.key !== ' ')) return;
+            activate(event);
+        }, { signal });
+    });
 }
 
 function bindEquipmentOpeners(

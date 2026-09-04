@@ -1317,7 +1317,11 @@ export async function drawMekPaperdolls(svg: SVGSVGElement, entity: MekEntity, b
     } else {
         relocateCanonicalBipedPips(structure, group, BIPED_CANON_STRUCTURE_PIP_PLACEMENTS, box);
     }
-    drawBipedDiagramValues(group, entity, box);
+    if (group.querySelector('[data-mekbay-paperdoll-overlay]')) {
+        initializeMekDiagramCounters(group, entity);
+    } else {
+        drawBipedDiagramValues(group, entity, box);
+    }
     svg.appendChild(group);
 }
 
@@ -1703,24 +1707,6 @@ interface ProfiledMekPaperdollProfile {
     readonly structureHeading: ProfiledMekDiagramHeading;
 }
 
-interface ProfiledMekDiagramLabel {
-    readonly text: string;
-    readonly x: number;
-    readonly y: number;
-}
-
-interface ProfiledMekDiagramTextProfile {
-    readonly armorLabels: readonly ProfiledMekDiagramLabel[];
-    readonly structureLabels: readonly ProfiledMekDiagramLabel[];
-    readonly armorValues: Readonly<Record<string, readonly [number, number]>>;
-    readonly structureValues: Readonly<Record<string, readonly [number, number]>>;
-    readonly armorFontSize: number;
-    readonly structureFontSize: number;
-    readonly armorValueFontSize?: number;
-    readonly structureValueFontSize?: number;
-    readonly armorValueAnchors?: Readonly<Record<string, 'start' | 'middle' | 'end'>>;
-}
-
 const NON_BIPED_PAPERDOLL_ASSETS: Readonly<Record<'Quad' | 'Tripod' | 'QuadVee' | 'LAM', NonBipedPaperdollAssets>> = {
     Quad: {
         armor: '/images/paperdolls/quad-armor.svg',
@@ -1812,172 +1798,6 @@ const PROFILED_MEK_PAPERDOLLS: Readonly<Record<'Quad' | 'Tripod' | 'QuadVee' | '
             subtitleX: 86.879062,
             subtitleY: 377.5,
         }),
-    }),
-});
-
-const PROFILED_MEK_DIAGRAM_TEXT: Readonly<Partial<Record<'Quad' | 'Tripod' | 'QuadVee' | 'LAM', ProfiledMekDiagramTextProfile>>> = Object.freeze({
-    Quad: Object.freeze({
-        armorFontSize: 6.626,
-        structureFontSize: 6.964,
-        armorLabels: Object.freeze([
-            { text: 'Head', x: 79.61, y: 32.416 },
-            { text: 'Center', x: 86.191, y: 171.651 },
-            { text: 'Torso', x: 88.103, y: 179.603 },
-            { text: 'Left', x: 13.651, y: 103.899 },
-            { text: 'Torso', x: 10.966, y: 111.851 },
-            { text: 'Right', x: 163.896, y: 106.842 },
-            { text: 'Torso', x: 163.341, y: 111.851 },
-            { text: 'Left', x: 21.14, y: 269.591 },
-            { text: 'Front Leg', x: 12.028, y: 277.543 },
-            { text: 'Right', x: 159.09, y: 269.599 },
-            { text: 'Front Leg', x: 152.106, y: 277.551 },
-            { text: 'Left', x: 65.202, y: 258.857 },
-            { text: 'Rear Leg', x: 56.844, y: 266.809 },
-            { text: 'Right', x: 114.479, y: 258.865 },
-            { text: 'Rear Leg', x: 108.249, y: 266.816 },
-            { text: 'Left', x: 26.2, y: 316.844 },
-            { text: 'Torso Rear', x: 14.247, y: 325.219 },
-            { text: 'Right', x: 153.792, y: 316.844 },
-            { text: 'Torso Rear', x: 144.482, y: 325.769 },
-            { text: 'Center Torso Rear', x: 60.2, y: 344.72 },
-        ]),
-        structureLabels: Object.freeze([
-            { text: 'Head', x: 74.342, y: 386.947 },
-            { text: 'Left', x: 17.648, y: 386.94 },
-            { text: 'Torso', x: 14.826, y: 395.297 },
-            { text: 'Right', x: 135.581, y: 386.94 },
-            { text: 'Torso', x: 134.997, y: 395.297 },
-            { text: 'Center', x: 71.847, y: 485.651 },
-            { text: 'Torso', x: 73.855, y: 494.419 },
-            { text: 'Left', x: 15.243, y: 454.625 },
-            { text: 'Front Leg', x: 5.666, y: 462.982 },
-            { text: 'Right', x: 137.082, y: 454.625 },
-            { text: 'Front Leg', x: 129.742, y: 462.982 },
-            { text: 'Left', x: 12.428, y: 503.981 },
-            { text: 'Rear Leg', x: 3.643, y: 512.338 },
-            { text: 'Right', x: 141.315, y: 503.981 },
-            { text: 'Rear Leg', x: 134.768, y: 512.338 },
-        ]),
-        armorValues: Object.freeze({
-            HD: [97.652, 32.121], CT: [96.672, 187.755], CT_R: [120.956, 345.084],
-            LT: [19.448, 120.262], LT_R: [31.707, 334.294], RT: [171.838, 120.262], RT_R: [161.626, 334.294],
-            FLL: [26.67, 284.951], FRL: [167.085, 284.951], RLL: [71.152, 274.465], RRL: [122.328, 274.465],
-        } satisfies Record<string, readonly [number, number]>),
-        structureValues: Object.freeze({
-            CT: [82.64, 503.617], LT: [23.817, 404.346], RT: [143.688, 404.346],
-            FLL: [21.582, 471.553], FRL: [146.325, 471.553], RLL: [17.936, 521.652], RRL: [149.971, 521.652],
-        } satisfies Record<string, readonly [number, number]>),
-    }),
-    QuadVee: Object.freeze({
-        armorFontSize: 6.7614,
-        structureFontSize: 6.7614,
-        structureValueFontSize: 6.56082,
-        armorLabels: Object.freeze([
-            { text: 'Head', x: 78.6222, y: 34.18058 },
-            { text: 'Center', x: 86.31324, y: 132.70488 },
-            { text: 'Torso', x: 88.22433, y: 140.6566 },
-            { text: 'Left', x: 23.7814, y: 96.82512 },
-            { text: 'Torso', x: 21.09668, y: 104.77684 },
-            { text: 'Right', x: 155.95083, y: 96.82512 },
-            { text: 'Torso', x: 155.3953, y: 104.77684 },
-            { text: 'Left', x: 67.15424, y: 260.62232 },
-            { text: 'Rear Leg', x: 58.79591, y: 268.57404 },
-            { text: 'Right', x: 110.55158, y: 260.63016 },
-            { text: 'Rear Leg', x: 104.32147, y: 268.5809 },
-            { text: 'Left', x: 23.09256, y: 271.35626 },
-            { text: 'Front Leg', x: 13.98016, y: 279.30798 },
-            { text: 'Right', x: 155.16194, y: 271.3641 },
-            { text: 'Front Leg', x: 148.17874, y: 279.31582 },
-            { text: 'Left', x: 25.166, y: 318.60892 },
-            { text: 'Torso Rear', x: 13.25911, y: 326.984 },
-            { text: 'Right', x: 152.80488, y: 318.60892 },
-            { text: 'Torso Rear', x: 143.49394, y: 327.53378 },
-            { text: 'Center Torso Rear', x: 59.21232, y: 346.48502 },
-        ]),
-        structureLabels: Object.freeze([
-            { text: 'Head', x: 73.8545, y: 388.9468 },
-            { text: 'Left', x: 8.21981, y: 388.93959 },
-            { text: 'Torso', x: 5.39246, y: 397.29701 },
-            { text: 'Right', x: 142.34435, y: 388.93959 },
-            { text: 'Torso', x: 141.75931, y: 397.29701 },
-            { text: 'Center', x: 71.35469, y: 487.65067 },
-            { text: 'Torso', x: 73.36731, y: 496.41906 },
-            { text: 'Left', x: 14.63774, y: 456.62501 },
-            { text: 'Front Leg', x: 5.04123, y: 464.98243 },
-            { text: 'Right', x: 136.72055, y: 456.62501 },
-            { text: 'Front Leg', x: 129.36635, y: 464.98243 },
-            { text: 'Left', x: 11.81657, y: 505.98055 },
-            { text: 'Rear Leg', x: 3.01419, y: 514.33797 },
-            { text: 'Right', x: 140.96209, y: 505.98055 },
-            { text: 'Rear Leg', x: 134.40202, y: 514.33797 },
-        ]),
-        armorValues: Object.freeze({
-            HD: [96.664, 33.8856], CT: [96.97662, 148.8102], CT_R: [119.9684, 346.8486],
-            LT: [29.76822, 112.6482], LT_R: [30.90502, 336.0588],
-            RT: [163.54802, 112.6482], RT_R: [160.82362, 336.0588],
-            FLL: [28.80782, 287.6958], FRL: [163.34222, 287.6958],
-            RLL: [72.93134, 277.2098], RRL: [118.51702, 277.2098],
-        } satisfies Record<string, readonly [number, number]>),
-        armorValueAnchors: Object.freeze({
-            HD: 'start', CT: 'middle', CT_R: 'start',
-            LT: 'middle', LT_R: 'middle', RT: 'middle', RT_R: 'middle',
-            FLL: 'middle', FRL: 'middle', RLL: 'end', RRL: 'middle',
-        }),
-        structureValues: Object.freeze({
-            CT: [82.33861, 505.61696], LT: [14.67791, 406.34556], RT: [150.51431, 406.34556],
-            FLL: [21.28021, 473.55306], FRL: [145.47143, 473.55306],
-            RLL: [17.63401, 523.65226], RRL: [149.66971, 523.65226],
-        } satisfies Record<string, readonly [number, number]>),
-    }),
-    Tripod: Object.freeze({
-        armorFontSize: 5.56,
-        structureFontSize: 5.686,
-        armorLabels: Object.freeze([
-            { text: 'Head', x: 84.908, y: 39.301 },
-            { text: 'Left Torso', x: 47.006, y: 39.301 },
-            { text: 'Right Torso', x: 118.094, y: 39.301 },
-            { text: 'Center', x: 62.046, y: 194.04 },
-            { text: 'Torso', x: 63.655, y: 200.71 },
-            { text: 'Left Arm', x: 8.17, y: 167.047 },
-            { text: 'Right Arm', x: 165.138, y: 167.047 },
-            { text: 'Left', x: 12.17, y: 194.99 },
-            { text: 'Leg', x: 12.431, y: 201.66 },
-            { text: 'Center', x: 115.37, y: 253.729 },
-            { text: 'Leg', x: 119.492, y: 260.398 },
-            { text: 'Right', x: 177.227, y: 233.877 },
-            { text: 'Leg', x: 179.275, y: 240.547 },
-            { text: 'Left', x: 22.3, y: 317.653 },
-            { text: 'Torso Rear', x: 12.846, y: 326.39 },
-            { text: 'Right', x: 147.611, y: 317.653 },
-            { text: 'Torso Rear', x: 139.873, y: 326.39 },
-            { text: 'Center Torso Rear', x: 56.216, y: 345.228 },
-        ]),
-        structureLabels: Object.freeze([
-            { text: 'Head', x: 63.266, y: 388.04 },
-            { text: 'Left Torso', x: 20.259, y: 396.102 },
-            { text: 'Right Torso', x: 111.66, y: 396.102 },
-            { text: 'Left', x: 12.86, y: 454.61 },
-            { text: 'Arm', x: 12.133, y: 462.962 },
-            { text: 'Right', x: 146.364, y: 455.054 },
-            { text: 'Arm', x: 147.471, y: 463.406 },
-            { text: 'Center', x: 96.094, y: 503.548 },
-            { text: 'Torso', x: 97.733, y: 511.901 },
-            { text: 'Left', x: 23.942, y: 511.61 },
-            { text: 'Leg', x: 24.209, y: 519.964 },
-            { text: 'Center', x: 57.593, y: 511.606 },
-            { text: 'Leg', x: 61.809, y: 519.959 },
-            { text: 'Right', x: 136.274, y: 511.606 },
-            { text: 'Leg', x: 138.374, y: 519.959 },
-        ]),
-        armorValues: Object.freeze({
-            HD: [101.637, 39.186], CT: [70.946, 207.347], CT_R: [107.074, 345.318],
-            LT: [67.704, 47.021], LT_R: [27.743, 334.74], RT: [123.978, 47.021], RT_R: [154.657, 334.74],
-            LA: [18.987, 174.472], RA: [178.622, 174.472], LL: [17.117, 208.905], CL: [124.199, 267.035], RL: [184.041, 247.174],
-        } satisfies Record<string, readonly [number, number]>),
-        structureValues: Object.freeze({
-            CT: [105.186, 521.228], LT: [48.791, 396.17], RT: [144.036, 396.17],
-            LA: [18.456, 471.383], RA: [153.677, 471.383], LL: [29.267, 528.37], CL: [66.937, 528.37], RL: [143.436, 528.37],
-        } satisfies Record<string, readonly [number, number]>),
     }),
 });
 
@@ -2096,55 +1916,22 @@ async function drawProfiledMekPaperdolls(svg: SVGSVGElement, entity: MekEntity, 
         drawMekSchematic(content, entity, rear, 'rear', REAR_TORSO_REGIONS);
         drawMekSchematic(content, entity, structureArea, 'structure', nonBipedFrontRegions(entity.chassisConfig));
     }
-    drawProfiledMekDiagramText(content, entity, chassis);
+    if (content.querySelector('[data-mekbay-paperdoll-overlay]')) {
+        initializeMekDiagramCounters(content, entity);
+    }
     svg.appendChild(group);
 }
 
-function drawProfiledMekDiagramText(
-    group: SVGGElement,
-    entity: MekEntity,
-    chassis: keyof typeof NON_BIPED_PAPERDOLL_ASSETS,
-): void {
-    const profile = PROFILED_MEK_DIAGRAM_TEXT[chassis];
-    if (!profile) return;
-    const locations = new Map(entity.damageLocations().map(location => [location.code, location] as const));
-    const drawLabels = (labels: readonly ProfiledMekDiagramLabel[], size: number): void => {
-        labels.forEach(label => {
-            const text = addText(group, label.text, label.x, label.y, { size, weight: 700 });
-            text.classList.add('diagram-location-label');
-            text.style.pointerEvents = 'none';
-        });
+function initializeMekDiagramCounters(group: SVGGElement, entity: MekEntity): void {
+    const writeCounter = (id: string, value: number): void => {
+        const counter = group.querySelector<SVGElement>(`#${id}`);
+        if (counter) counter.textContent = `(${Math.max(0, value)})`;
     };
-    drawLabels(profile.armorLabels, profile.armorFontSize);
-    drawLabels(profile.structureLabels, profile.structureFontSize);
-
-    Object.entries(profile.armorValues).forEach(([key, position]) => {
-        const rear = key.endsWith('_R');
-        const code = rear ? key.slice(0, -2) : key;
-        const location = locations.get(code);
-        if (!location) return;
-        const value = rear ? location.armor.rear : location.armor.front;
-        const text = addText(group, `( ${Math.max(0, value)} )`, position[0], position[1], {
-            size: profile.armorValueFontSize ?? profile.armorFontSize,
-            weight: 700,
-            anchor: profile.armorValueAnchors?.[key],
-        });
-        text.id = `textArmor_${rear ? `${code}R` : code}`;
-        text.classList.add('diagram-value');
-        text.style.pointerEvents = 'none';
-    });
-    Object.entries(profile.structureValues).forEach(([code, position]) => {
-        const location = locations.get(code);
-        if (!location) return;
-        const text = addText(group, `( ${Math.max(0, location.internalPoints)} )`, position[0], position[1], {
-            size: profile.structureValueFontSize ?? profile.structureFontSize,
-            weight: 700,
-            anchor: 'middle',
-        });
-        text.id = `textIS_${code}`;
-        text.classList.add('diagram-value');
-        text.style.pointerEvents = 'none';
-    });
+    for (const location of entity.damageLocations()) {
+        writeCounter(`textArmor_${location.code}`, location.armor.front);
+        if (location.armor.rear > 0) writeCounter(`textArmor_${location.code}R`, location.armor.rear);
+        writeCounter(`textIS_${location.code}`, location.internalPoints);
+    }
 }
 
 const TRIPOD_SCHEMATIC_REGIONS: readonly MekSchematicRegion[] = Object.freeze([
