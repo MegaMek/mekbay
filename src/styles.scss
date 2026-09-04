@@ -2401,10 +2401,10 @@ hr.divider {
 
 .mekbay-sheet .random-hit-location-highlight {
     stroke: #ffbf00 !important;
-    stroke-width: 5 !important;
+    stroke-width: 6;
     stroke-linejoin: round;
     paint-order: fill stroke;
-    filter: drop-shadow(0 0 2px #ffbf00);
+    filter: drop-shadow(0 0 4px red);
     animation: random-hit-location-pulse 650ms ease-in-out infinite alternate;
 }
 
@@ -2440,8 +2440,13 @@ hr.divider {
 }
 
 @keyframes random-hit-location-pulse {
-    from { stroke-opacity: 0.55; }
-    to { stroke-opacity: 1; }
+    from {
+        filter: drop-shadow(0 0 2px red);
+    }
+
+    to {
+        filter: drop-shadow(0 0 6px red);
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
