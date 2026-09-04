@@ -148,7 +148,7 @@ describe('SetAmmoDialogComponent', () => {
 
         const optionLabels = Array.from(overlayContainerElement.querySelectorAll('.ammo-dropdown-option-name'))
             .map(element => element.textContent?.trim());
-        expect(optionLabels).toEqual(['Clan Ammo', 'IS Ammo', 'All Ammo']);
+        expect(optionLabels).toEqual(['[CL] Clan Ammo', '[IS] IS Ammo', 'All Ammo']);
     });
 
     it('shows incompatible ammo in red and allows selecting it when mixed tech is enabled', () => {

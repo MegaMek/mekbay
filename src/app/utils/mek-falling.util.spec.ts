@@ -12,7 +12,8 @@ import {
     rollMekFallDice,
     resolveMekFallArmorDamage,
     resolveMekFallDamage,
-    resolveMekFallHitLocation,
+    resolveMekHitTransferLocation,
+    resolveMekHitLocation,
     resolveMekFallOrientation,
     twoD6ForTotal,
     twoD6Total,
@@ -71,7 +72,7 @@ describe('Mek falling rules', () => {
     });
 
     it('uses the selected arc and identifies rear torso armor and table criticals', () => {
-        expect(resolveMekFallHitLocation('biped', 'rear', 2)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('biped', 'rear', 2)).toEqual(jasmine.objectContaining({
             rawTableResult: 'CT(C)',
             tableLabel: 'CT',
             location: 'CT',
@@ -79,24 +80,40 @@ describe('Mek falling rules', () => {
             rear: true,
             critical: true,
         }));
-        expect(resolveMekFallHitLocation('biped', 'left', 3)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('biped', 'left', 3)).toEqual(jasmine.objectContaining({
             location: 'LL',
             locationLabel: 'Left Leg',
             rear: false,
         }));
     });
 
+    it('transfers through physically destroyed locations but not flooded-only locations', () => {
+        const physicallyDestroyed = new Set<string>(['LA', 'LT']);
+        const flooded = new Set<string>(['RA']);
+        const unit = {
+            locations: {
+                internal: new Map(['HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL'].map(location => [location, {}])),
+            },
+            getLocationCondition: (location: string, condition: string) =>
+                condition === 'flooded' && flooded.has(location),
+            isInternalLocPhysicallyDestroyed: (location: string) => physicallyDestroyed.has(location),
+        } as unknown as CBTForceUnit;
+
+        expect(resolveMekHitTransferLocation(unit, 'LA')).toBe('CT');
+        expect(resolveMekHitTransferLocation(unit, 'RA')).toBe('RA');
+    });
+
     it('resolves every quad hit-table abbreviation to a canonical entity location', () => {
         expect([3, 4, 9, 10, 11].map(roll =>
-            resolveMekFallHitLocation('quad', 'rear', roll).location,
+            resolveMekHitLocation('quad', 'rear', roll).location,
         )).toEqual(['FRL', 'FRL', 'RLL', 'FLL', 'FLL']);
         expect([3, 4, 5, 6, 10].map(roll =>
-            resolveMekFallHitLocation('quad', 'left', roll).location,
+            resolveMekHitLocation('quad', 'left', roll).location,
         )).toEqual(['RLL', 'FLL', 'FLL', 'RLL', 'FRL']);
 
         const unresolved = (['front', 'rear', 'left', 'right'] as const).flatMap(arc =>
             Array.from({ length: 11 }, (_unused, index) => index + 2)
-                .map(roll => ({ arc, roll, result: resolveMekFallHitLocation('quad', arc, roll) })))
+                .map(roll => ({ arc, roll, result: resolveMekHitLocation('quad', arc, roll) })))
             .filter(entry => entry.result.location === null || entry.result.locationLabel === null)
             .map(entry => `${entry.arc}:${entry.roll}`);
 
@@ -104,21 +121,21 @@ describe('Mek falling rules', () => {
     });
 
     it('resolves the tripod leg subtable with side modifiers', () => {
-        const pending = resolveMekFallHitLocation('tripod', 'left', 3);
+        const pending = resolveMekHitLocation('tripod', 'left', 3);
         expect(pending.location).toBeNull();
         expect(pending.rawTableResult).toBe('Leg (+1)†');
         expect(pending.tableLabel).toBe('Leg (+1)');
         expect(pending.tripodLegModifier).toBe(1);
 
-        expect(resolveMekFallHitLocation('tripod', 'left', 3, 4)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('tripod', 'left', 3, 4)).toEqual(jasmine.objectContaining({
             adjustedTripodLegRoll: 5,
             location: 'LL',
         }));
-        expect(resolveMekFallHitLocation('tripod', 'right', 3, 3)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('tripod', 'right', 3, 3)).toEqual(jasmine.objectContaining({
             adjustedTripodLegRoll: 2,
             location: 'RL',
         }));
-        expect(resolveMekFallHitLocation('tripod', 'front', 5, 3)).toEqual(jasmine.objectContaining({
+        expect(resolveMekHitLocation('tripod', 'front', 5, 3)).toEqual(jasmine.objectContaining({
             adjustedTripodLegRoll: 3,
             location: 'CL',
         }));
@@ -177,7 +194,7 @@ describe('Mek falling rules', () => {
         ] as const;
 
         for (const testCase of cases) {
-            const resolved = resolveMekFallHitLocation('quad', testCase.arc, testCase.roll);
+            const resolved = resolveMekHitLocation('quad', testCase.arc, testCase.roll);
             if (resolved.location === null || resolved.locationLabel === null) {
                 fail(`Expected ${testCase.arc}:${testCase.roll} to resolve`);
                 continue;
@@ -186,6 +203,7 @@ describe('Mek falling rules', () => {
                 armor: { [testCase.location]: 0, [`${testCase.torso}-rear`]: 10 },
                 internal: { FLL: 5, FRL: 5, RLL: 5, RRL: 5, LT: 10, RT: 10, CT: 10, HD: 3 },
                 initialInternalHits: { [testCase.location]: 5 },
+                physicallyDestroyed: [testCase.location],
             });
 
             const result = applyMekFallDamage(harness.unit, [{
@@ -199,8 +217,36 @@ describe('Mek falling rules', () => {
             expect(harness.armorHits.get(`${testCase.torso}-rear`)).withContext(testCase.location).toBe(5);
             expect(result.locations.map(entry => entry.location))
                 .withContext(testCase.location)
-                .toEqual([testCase.location, testCase.torso]);
+                .toEqual([testCase.torso]);
         }
+    });
+
+    it('skips blown-off locations before applying fall damage', () => {
+        const harness = createDamageHarness({
+            armor: { LA: 10, LT: 10 },
+            internal: { LA: 5, LT: 10, CT: 10 },
+            blownOff: ['LA'],
+        });
+
+        const result = applyMekFallDamage(harness.unit, [group('LA', 5)], false);
+
+        expect(harness.armorHits.get('LA')).toBeUndefined();
+        expect(harness.armorHits.get('LT')).toBe(5);
+        expect(result.locations.map(entry => entry.location)).toEqual(['LT']);
+    });
+
+    it('applies fall damage to a flooded location that is not physically destroyed', () => {
+        const harness = createDamageHarness({
+            armor: { LA: 10, LT: 10 },
+            internal: { LA: 5, LT: 10, CT: 10 },
+            flooded: ['LA'],
+        });
+
+        const result = applyMekFallDamage(harness.unit, [group('LA', 5)], false);
+
+        expect(harness.armorHits.get('LA')).toBe(5);
+        expect(harness.armorHits.get('LT')).toBeUndefined();
+        expect(result.locations.map(entry => entry.location)).toEqual(['LA']);
     });
 
     it('halves a group that reaches intact Impact-Resistant Armor, rounding down', () => {
@@ -489,6 +535,9 @@ function createDamageHarness(options: {
     armor: Readonly<Record<string, number>>;
     internal: Readonly<Record<string, number>>;
     initialInternalHits?: Readonly<Record<string, number>>;
+    blownOff?: readonly string[];
+    flooded?: readonly string[];
+    physicallyDestroyed?: readonly string[];
     modularArmor?: Readonly<Record<string, number>>;
     rulesId?: 'core2026' | 'tw';
     armorType?: ArmorType;
@@ -563,6 +612,13 @@ function createDamageHarness(options: {
         },
         getInternalPoints: (location: string) => options.internal[location] ?? 0,
         getInternalHits: (location: string) => internalHits.get(location) ?? 0,
+        getLocationCondition: (location: string, condition: string) =>
+            condition === 'blown-off'
+                ? options.blownOff?.includes(location) ?? false
+                : condition === 'flooded' && (options.flooded?.includes(location) ?? false),
+        isInternalLocPhysicallyDestroyed: (location: string) =>
+            (options.blownOff?.includes(location) ?? false)
+            || (options.physicallyDestroyed?.includes(location) ?? false),
         addInternalHits,
         queueMekCriticalChance,
     } as unknown as CBTForceUnit;

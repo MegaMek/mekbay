@@ -224,7 +224,7 @@ export function rollMekFallDice(
     const rolled = Array.from({ length: damageGroupCount }, (_unused, index) => {
         const saved = options.damageRolls?.[index];
         const hitLocationDice = saved?.hitLocationDice ?? [rollD6(random), rollD6(random)] as const;
-        const preliminary = resolveMekFallHitLocation(
+        const preliminary = resolveMekHitLocation(
             table,
             orientation.hitArc,
             twoD6Total(hitLocationDice),
@@ -238,7 +238,7 @@ export function rollMekFallDice(
             damageRoll: { hitLocationDice, tripodLegRoll },
             hitLocation: tripodLegRoll === null
                 ? preliminary
-                : resolveMekFallHitLocation(
+                : resolveMekHitLocation(
                     table,
                     orientation.hitArc,
                     twoD6Total(hitLocationDice),
@@ -255,13 +255,13 @@ export function rollMekFallDice(
 }
 
 /** Resolves one 2D6 hit-location roll, including the extra tripod leg roll. */
-export function resolveMekFallHitLocation(
+export function resolveMekHitLocation(
     table: MekHitLocationTable,
     arc: MekFallHitArc,
     hitLocationRoll: number,
     tripodLegRoll?: number,
 ): MekFallHitLocationResult {
-    assertIntegerInRange(hitLocationRoll, 2, 12, 'Fall hit-location roll');
+    assertIntegerInRange(hitLocationRoll, 2, 12, 'Mek hit-location roll');
     if (tripodLegRoll !== undefined) {
         assertIntegerInRange(tripodLegRoll, 1, 6, 'Tripod leg roll');
     }
@@ -310,6 +310,22 @@ export function isResolvedMekFallHitLocation(
     return result.location !== null && result.locationLabel !== null;
 }
 
+/** Follows the normal inward damage path past locations that are physically destroyed. */
+export function resolveMekHitTransferLocation(unit: CBTForceUnit, location: string): string {
+    const topology = getTopologyFor(unit.locations?.internal.keys() ?? []);
+    const visited = new Set<string>();
+    let current = location;
+
+    while (unit.isInternalLocPhysicallyDestroyed(current) && !visited.has(current)) {
+        visited.add(current);
+        const next = topology[current as keyof typeof topology]?.transfersTo;
+        if (!next) break;
+        current = next;
+    }
+
+    return current;
+}
+
 /** Applies resolved fall groups to armor/structure and follows normal Mek damage transfer. */
 export function applyMekFallDamage(
     unit: CBTForceUnit,
@@ -323,14 +339,15 @@ export function applyMekFallDamage(
 
     for (const group of groups) {
         let damage = Math.max(0, Math.trunc(group.damage));
-        let location: string | null = group.location;
-        const originalRear = group.rear && MEK_TORSO_LOCATIONS.has(group.location);
+        const impactLocation = resolveMekHitTransferLocation(unit, group.location);
+        let location: string | null = impactLocation;
+        const originalRear = group.rear && MEK_TORSO_LOCATIONS.has(impactLocation);
         const originalArmor = Math.max(
             0,
-            unit.getArmorPoints(group.location, originalRear)
-                - unit.getArmorHits(group.location, originalRear),
+            unit.getArmorPoints(impactLocation, originalRear)
+                - unit.getArmorHits(impactLocation, originalRear),
         );
-        const originalArmorType = unit.getArmorTypeAt(group.location);
+        const originalArmorType = unit.getArmorTypeAt(impactLocation);
         const visited = new Set<string>();
         let groupDamaged = false;
         let sharedCompositePip = false;
@@ -415,15 +432,15 @@ export function applyMekFallDamage(
             location = nextLocation;
         }
 
-        if (group.location === 'HD' && groupDamaged) headHits++;
+        if (impactLocation === 'HD' && groupDamaged) headHits++;
         if (group.critical && groupDamaged
             && !(unit.gameRules.id === 'core2026'
                 && originalArmorType === 'ANTI_PENETRATIVE_ABLATION'
                 && originalArmor > 0)) {
-            unit.queueMekCriticalChance(group.location, {
+            unit.queueMekCriticalChance(impactLocation, {
                 consolidateImmediately,
                 hardenedArmorApplies: originalArmorType === 'HARDENED' && originalArmor > 0,
-                throughArmorHitArc: throughArmorHitArc(group),
+                throughArmorHitArc: throughArmorHitArc({ ...group, location: impactLocation }),
             });
         }
     }

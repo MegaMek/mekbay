@@ -38,7 +38,7 @@ import {
     type MekCriticalChanceResult,
     type MekCriticalHitOptions,
 } from '../utils/mek-critical-hit.util';
-import { resolveMekFallHitLocation, twoD6Total } from '../utils/mek-falling.util';
+import { resolveMekHitLocation, twoD6Total } from '../utils/mek-falling.util';
 import { clusterTableForUnit } from '../utils/record-sheet-reference-table';
 import { isConsciousnessCheck } from '../utils/unit-check.util';
 import { uuidv7 } from '../utils/uuid.util';
@@ -521,13 +521,13 @@ export class MekCriticalResolutionService {
         const dice = floating.hitLocationDice ?? [this.rollD6(), this.rollD6()] as const;
         const locationRoll = twoD6Total(dice);
         const table = clusterTableForUnit(unit.getUnit()).hitLocationTable ?? 'biped';
-        const preliminary = resolveMekFallHitLocation(table, floating.hitArc, locationRoll);
+        const preliminary = resolveMekHitLocation(table, floating.hitArc, locationRoll);
         const needsTripodLeg = preliminary.location === null
             && preliminary.tripodLegModifier !== undefined;
         const tripodLegRoll = needsTripodLeg
             ? floating.tripodLegRoll ?? this.rollD6()
             : null;
-        const result = resolveMekFallHitLocation(
+        const result = resolveMekHitLocation(
             table,
             floating.hitArc,
             locationRoll,

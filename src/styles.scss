@@ -1841,10 +1841,6 @@ hr.divider {
         }
     }
 
-    .soldierPip.damaged {
-        filter: opacity(0.3) !important;
-    }
-
     .disabledInventory,
     .disabledInventory text {
         fill: var(--disabled-color) !important;
@@ -2131,22 +2127,6 @@ hr.divider {
             fill: #03a9f4 !important;
         }
 
-        .soldierPip.fresh {
-            filter: brightness(1.1) saturate(100) hue-rotate(-140deg) !important;
-        }
-
-        .soldierPip.damaged.fresh {
-            filter: brightness(1.1) saturate(100) hue-rotate(20deg) !important;
-        }
-
-        .soldierPip.pending:not(.fresh) {
-            filter: brightness(1.1) saturate(50) hue-rotate(-120deg) !important;
-        }
-
-        .soldierPip.damaged.pending:not(.fresh) {
-            filter: brightness(1) saturate(50) hue-rotate(10deg) !important;
-        }
-
         .inventoryEntry {
             &.equipment-hover-secondary>.inventoryEntryButton {
                 fill: var(--equipment-hover-secondary-color);
@@ -2415,7 +2395,93 @@ hr.divider {
 }
 
 /* Night mode */
+.mek-random-hit-button image {
+    filter: invert(1);
+}
+
+.mekbay-sheet .random-hit-location-highlight {
+    stroke: #ffbf00 !important;
+    stroke-width: 6;
+    stroke-linejoin: round;
+    paint-order: fill stroke;
+    filter: drop-shadow(0 0 4px red);
+    animation: random-hit-location-pulse 650ms ease-in-out infinite alternate;
+}
+
+.mekbay-sheet .mek-random-hit-result {
+    pointer-events: none;
+
+    .mek-random-hit-result-background {
+        fill: #111e;
+        stroke: #ffbf00;
+        stroke-width: 2;
+    }
+
+    text {
+        fill: #fff;
+        font-family: Roboto, sans-serif;
+        font-weight: 700;
+        text-anchor: middle;
+    }
+
+    .mek-random-hit-result-location {
+        font-size: 14px;
+        pointer-events: none;
+    }
+
+    .mek-random-hit-result-transferred-from {
+        fill: #ccc;
+        font-size: 7px;
+        pointer-events: none;
+    }
+
+    .mek-random-hit-result-through-armor {
+        fill: red;
+        font-size: 25px;
+        font-family: 'Roboto Condensed', serif;
+        stroke: black;
+        stroke-width: 4;
+        paint-order: stroke fill;
+        cursor: pointer;
+        pointer-events: auto;
+    }
+}
+
+@keyframes random-hit-location-pulse {
+    from {
+        filter: drop-shadow(0 0 2px red);
+    }
+
+    to {
+        filter: drop-shadow(0 0 6px red);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mekbay-sheet .random-hit-location-highlight {
+        animation: none;
+    }
+}
+
 @media screen {
+    .night-mode .mek-random-hit-button image {
+        filter: none;
+    }
+
+    .night-mode .mekbay-sheet .mek-random-hit-result {
+        .mek-random-hit-result-background {
+            fill: #fffe;
+        }
+
+        text {
+            fill: #111;
+        }
+
+        .mek-random-hit-result-through-armor {
+            fill: #7a4d00;
+        }
+    }
+
     .night-mode .mekbay-sheet {
         --svg-bg-color: #141414;
         --svg-fg-color: #FFF;
@@ -2536,6 +2602,10 @@ hr.divider {
             filter: url("#mekbay-night-image-invert");
         }
 
+        image.soldierTinted {
+            filter: none !important;
+        }
+
         #fluff-image-fo {
             mix-blend-mode: lighten;
         }
@@ -2622,26 +2692,6 @@ hr.divider {
 
         .pip.pending:not(.damaged):not(.fresh) {
             fill: #03a9f4 !important;
-        }
-
-        .soldierPip.damaged {
-            filter: invert(1) opacity(0.3) !important;
-        }
-
-        .soldierPip.damaged.fresh {
-            filter: invert(1) brightness(0.6) saturate(100) hue-rotate(237deg) contrast(4) !important;
-        }
-
-        .soldierPip.fresh {
-            filter: invert(1) saturate(100) hue-rotate(10deg) !important;
-        }
-
-        .soldierPip.pending:not(.fresh) {
-            filter: invert(1) saturate(100) hue-rotate(40deg) !important;
-        }
-
-        .soldierPip.damaged.pending:not(.fresh) {
-            filter: invert(1) brightness(0.6) saturate(50) hue-rotate(217deg) contrast(1.5) !important;
         }
 
         .skillValue {

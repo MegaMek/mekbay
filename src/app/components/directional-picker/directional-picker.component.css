@@ -1,0 +1,64 @@
+.directional-picker-container {
+    position: fixed;
+    z-index: 1000;
+    font-family: 'Roboto', sans-serif;
+    pointer-events: none;
+    user-select: none;
+    touch-action: none;
+}
+
+.directional-picker {
+    display: block;
+}
+
+.directional-sector {
+    fill: #000d;
+    stroke: #fff;
+    stroke-width: 1;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: fill 0.15s ease-in-out;
+}
+
+.directional-sector.highlight,
+.directional-sector:focus-visible {
+    fill: var(--bt-yellow);
+    outline: none;
+}
+
+.directional-label {
+    fill: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    pointer-events: none;
+}
+
+.directional-center {
+    fill: transparent;
+    pointer-events: none;
+}
+
+.directional-border {
+    fill: none;
+    stroke: #fff;
+    stroke-width: 2;
+    pointer-events: none;
+}
+
+.light-theme .directional-sector {
+    fill: #fffd;
+    stroke: #000;
+}
+
+.light-theme .directional-sector.highlight,
+.light-theme .directional-sector:focus-visible {
+    fill: var(--bt-yellow-strong);
+}
+
+.light-theme .directional-label {
+    fill: #000;
+}
+
+.light-theme .directional-border {
+    stroke: #000;
+}

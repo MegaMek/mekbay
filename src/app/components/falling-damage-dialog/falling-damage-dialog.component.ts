@@ -15,7 +15,7 @@ import {
     resolvedMekFallDamageGroups,
     rollMekFallDice,
     resolveMekFallDamage,
-    resolveMekFallHitLocation,
+    resolveMekHitLocation,
     resolveMekFallOrientation,
     twoD6ForTotal,
     twoD6Total,
@@ -109,7 +109,7 @@ export class FallingDamageDialogComponent {
                 ...roll,
                 hitLocationRoll,
                 result: orientation && hitLocationRoll !== null
-                    ? resolveMekFallHitLocation(
+                    ? resolveMekHitLocation(
                         this.hitLocationTable,
                         orientation.hitArc,
                         hitLocationRoll,
