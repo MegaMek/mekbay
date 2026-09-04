@@ -2119,7 +2119,7 @@ export class DirectMekAutomationService {
                 row.result.rear,
                 row.damage,
                 prepared.orientation.hitArc,
-                row.result.critical,
+                row.result.throughArmorCritical,
                 dispatch,
                 prepared.interactive,
             );

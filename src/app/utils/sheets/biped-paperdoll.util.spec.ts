@@ -124,6 +124,10 @@ describe('BipedPaperdollUtil', () => {
 
         expect(paperdoll.getAttribute('data-width')).toBe('80');
         expect(paperdoll.getAttribute('data-height')).toBe('120');
+        expect(paperdoll.getAttribute('data-art-x')).toBe('0');
+        expect(paperdoll.getAttribute('data-art-y')).toBe('0');
+        expect(Number(paperdoll.getAttribute('data-art-width'))).toBeCloseTo(80, 8);
+        expect(Number(paperdoll.getAttribute('data-art-height'))).toBeCloseTo(116.923077, 6);
         expect(fitGroup.getAttribute('transform')).toContain('translate(');
         expect(scaleGroup.getAttribute('transform')).toContain('scale(');
     });

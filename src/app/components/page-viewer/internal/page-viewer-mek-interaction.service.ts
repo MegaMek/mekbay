@@ -255,7 +255,7 @@ export class PageViewerMekInteractionService {
             interaction.element,
             locationCode,
             result.rear && MEK_TORSO_LOCATIONS.has(locationCode),
-            result.critical,
+            result.throughArmorCritical,
             locationCode === sourceCode ? undefined : sourceCode,
         );
     }
@@ -266,7 +266,7 @@ export class PageViewerMekInteractionService {
         button: SVGElement,
         locationCode: string,
         rear: boolean,
-        critical: boolean,
+        throughArmorCritical: boolean,
         transferredFrom?: string,
     ): void {
         this.clearRandomHitResult();
@@ -285,38 +285,75 @@ export class PageViewerMekInteractionService {
         const result = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         result.setAttribute('class', 'mek-random-hit-result');
         result.setAttribute('role', 'status');
+        const badge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        badge.setAttribute('class', 'mek-random-hit-result-badge');
         const background = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         background.setAttribute('class', 'mek-random-hit-result-background');
         background.setAttribute('cx', '11');
         background.setAttribute('cy', '11');
         background.setAttribute('r', '17');
-        result.appendChild(background);
+        badge.appendChild(background);
         const locationText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         locationText.setAttribute('class', 'mek-random-hit-result-location');
         locationText.setAttribute('x', '11');
         locationText.setAttribute('y', transferredFrom ? '7' : '11');
         locationText.setAttribute('dy', '.35em');
         locationText.textContent = locationCode;
-        result.appendChild(locationText);
+        badge.appendChild(locationText);
         if (transferredFrom) {
             const transferText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             transferText.setAttribute('class', 'mek-random-hit-result-transferred-from');
             transferText.setAttribute('x', '11');
             transferText.setAttribute('y', '18');
             transferText.textContent = `from ${transferredFrom}`;
-            result.appendChild(transferText);
+            badge.appendChild(transferText);
         }
-        if (critical) {
+        const buttonMatrix = button instanceof SVGGraphicsElement ? button.getCTM() : null;
+        const svgMatrix = svg.getCTM();
+        if (buttonMatrix && svgMatrix) {
+            badge.setAttribute('transform', this.rootRelativeTransform(svgMatrix, buttonMatrix));
+        }
+        result.appendChild(badge);
+        if (true || throughArmorCritical) {
             const criticalText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             criticalText.setAttribute('class', 'mek-random-hit-result-through-armor');
-            criticalText.setAttribute('x', '11');
-            criticalText.setAttribute('y', '-13');
+            const armorLayer = button.closest<SVGGraphicsElement>('[data-type="armor"]');
+            const artX = Number(armorLayer?.dataset['artX']);
+            const artY = Number(armorLayer?.dataset['artY']);
+            const artWidth = Number(armorLayer?.dataset['artWidth']);
+            const artHeight = Number(armorLayer?.dataset['artHeight']);
+            criticalText.setAttribute('x', String(
+                Number.isFinite(artX) && Number.isFinite(artWidth) ? artX + artWidth / 2 : 0,
+            ));
+            criticalText.setAttribute('y', String(
+                Number.isFinite(artY) && Number.isFinite(artHeight) ? artY + artHeight * 0.4 : 0,
+            ));
+            const armorMatrix = armorLayer?.getCTM();
+            if (armorMatrix && svgMatrix) {
+                criticalText.setAttribute('transform', this.rootRelativeTransform(svgMatrix, armorMatrix));
+            }
+            criticalText.setAttribute('role', 'button');
+            criticalText.setAttribute('tabindex', '0');
             criticalText.textContent = 'THROUGH ARMOR';
+            const dismissResult = (event: Event): void => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.clearRandomHitResult();
+            };
+            criticalText.addEventListener('pointerdown', dismissResult, { passive: false });
+            criticalText.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') dismissResult(event);
+            });
             result.appendChild(criticalText);
         }
-        button.appendChild(result);
+        svg.appendChild(result);
         const timeout = window.setTimeout(() => this.clearRandomHitResult(), RANDOM_HIT_RESULT_DURATION_MS);
         this.randomHitResult = Object.freeze({ unitId, svg, timeout });
+    }
+
+    private rootRelativeTransform(svgMatrix: DOMMatrix, elementMatrix: DOMMatrix): string {
+        const matrix = svgMatrix.inverse().multiply(elementMatrix);
+        return `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`;
     }
 
     private clearRandomHitResult(): void {

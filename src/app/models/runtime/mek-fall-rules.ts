@@ -26,7 +26,7 @@ export interface MekHitLocationResult {
     readonly location: string | null;
     readonly locationLabel: string | null;
     readonly rear: boolean;
-    readonly critical: boolean;
+    readonly throughArmorCritical: boolean;
     readonly tripodLegRoll?: number;
     readonly tripodLegModifier?: number;
     readonly adjustedTripodLegRoll?: number;
@@ -147,7 +147,7 @@ export function resolveMekHitLocation(
         location,
         locationLabel: getMekLocationLabel(location ?? undefined),
         rear: arc === 'rear',
-        critical: cell.critical,
+        throughArmorCritical: cell.throughArmorCritical,
         ...(cell.tripodLegModifier === undefined ? {} : { tripodLegModifier: cell.tripodLegModifier }),
         ...(tripodLegRoll === undefined || cell.tripodLegModifier === undefined ? {} : { tripodLegRoll }),
         ...(adjustedTripodLegRoll === undefined ? {} : { adjustedTripodLegRoll }),

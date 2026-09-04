@@ -571,13 +571,15 @@ describe('PageViewerMekInteractionService', () => {
         }));
     });
 
-    it('rolls and highlights a random hit location selected from the directional picker', () => {
+    it('rolls and highlights a through-armor hit selected from the directional picker', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.innerHTML = '<g data-mekbay-random-hit="1"><circle class="mek-random-hit-area"></circle></g>'
+        svg.innerHTML = '<g data-type="armor" data-art-x="10" data-art-y="20" '
+            + 'data-art-width="200" data-art-height="300">'
+            + '<g data-mekbay-random-hit="1"><circle class="mek-random-hit-area"></circle></g></g>'
             + '<path class="unitLocation armor" loc="CT"></path>';
         const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
         const event = new PointerEvent('pointerdown', { button: 0 });
-        spyOn(Math, 'random').and.returnValues(0.4, 0.5);
+        spyOn(Math, 'random').and.returnValues(0, 0);
 
         service.handle(member, {
             kind: 'random-hit', element: control, expectedRevision: 1,
@@ -586,6 +588,18 @@ describe('PageViewerMekInteractionService', () => {
 
         expect(svg.querySelector('.unitLocation')?.classList).toContain('random-hit-location-highlight');
         expect(svg.querySelector('.mek-random-hit-result-location')?.textContent).toBe('CT');
+        const throughArmor = svg.querySelector<SVGTextElement>('.mek-random-hit-result-through-armor')!;
+        expect(throughArmor.textContent).toBe('THROUGH ARMOR');
+        expect(throughArmor.getAttribute('x')).toBe('110');
+        expect(throughArmor.getAttribute('y')).toBe('140');
+        expect(throughArmor.getAttribute('role')).toBe('button');
+        expect(throughArmor.getAttribute('tabindex')).toBe('0');
+        expect(svg.lastElementChild?.classList).toContain('mek-random-hit-result');
+
+        throughArmor.dispatchEvent(new PointerEvent('pointerdown', { button: 0 }));
+
+        expect(svg.querySelector('.mek-random-hit-result')).toBeNull();
+        expect(svg.querySelector('.unitLocation')?.classList.contains('random-hit-location-highlight')).toBeFalse();
 
         service.handle(member, {
             kind: 'random-hit', element: control, expectedRevision: 1,

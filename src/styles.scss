@@ -1895,10 +1895,13 @@ hr.divider {
 
         .mek-random-hit-result-through-armor {
             fill: var(--damage-color);
-            font-size: 7px;
-            stroke: #fff;
-            stroke-width: 2;
+            font-family: 'Roboto Condensed', serif;
+            font-size: 25px;
+            stroke: #000;
+            stroke-width: 4;
             paint-order: stroke fill;
+            cursor: pointer;
+            pointer-events: auto;
         }
     }
 

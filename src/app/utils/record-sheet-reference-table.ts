@@ -37,7 +37,7 @@ export interface HitLocationCellDefinition {
     readonly tableText: string;
     readonly tableLabel: string;
     readonly location: string | null;
-    readonly critical: boolean;
+    readonly throughArmorCritical: boolean;
     readonly tripodLegModifier?: -1 | 0 | 1;
 }
 
@@ -192,9 +192,9 @@ function locationCell(
     tableText: string,
     location: string,
     tableLabel = tableText,
-    critical = false,
+    throughArmorCritical = false,
 ): HitLocationCellDefinition {
-    return Object.freeze({ tableText, tableLabel, location, critical });
+    return Object.freeze({ tableText, tableLabel, location, throughArmorCritical });
 }
 
 function tripodLegCell(
@@ -202,7 +202,7 @@ function tripodLegCell(
     tableLabel: string,
     tripodLegModifier: -1 | 0 | 1,
 ): HitLocationCellDefinition {
-    return Object.freeze({ tableText, tableLabel, location: null, critical: false, tripodLegModifier });
+    return Object.freeze({ tableText, tableLabel, location: null, throughArmorCritical: false, tripodLegModifier });
 }
 
 function definitionRow(

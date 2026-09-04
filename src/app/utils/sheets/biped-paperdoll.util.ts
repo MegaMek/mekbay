@@ -222,6 +222,10 @@ export class BipedPaperdollUtil {
         const renderedHeight = viewBox.height * scale;
         const offsetX = inset + (options.centeredHorizontally ? (availableWidth - renderedWidth) / 2 : 0);
         const offsetY = inset + (options.centeredVertically ? (availableHeight - renderedHeight) / 2 : 0);
+        layer.setAttribute('data-art-x', offsetX.toString());
+        layer.setAttribute('data-art-y', offsetY.toString());
+        layer.setAttribute('data-art-width', renderedWidth.toString());
+        layer.setAttribute('data-art-height', renderedHeight.toString());
 
         const fitGroup = document.createElementNS(SVG_NAMESPACE, 'g');
         fitGroup.setAttribute('transform', `translate(${offsetX} ${offsetY})`);
