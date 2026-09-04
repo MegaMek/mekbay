@@ -299,7 +299,7 @@
             </div>
         }
         <div class="turn-actions">
-            @if (dirty()) {
+            @if (endTurnButtonVisible()) {
                 <button type="button" class="bt-button turn-action end-turn-action large-action" (click)="endTurn()">
                     <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
                         <path d="M3 12h13M11 7l5 5-5 5M20 4v16" />
@@ -312,7 +312,7 @@
                     <svg class="turn-action-icon" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
                         <path d="M3 6h11M10 3l4 3-4 3M3 12h11M10 9l4 3-4 3M3 18h11M10 15l4 3-4 3M20 3v18" />
                     </svg>
-                    <span>{{ (dirty()) ? "All Units" : "End Turn for All Units" }}</span>
+                    <span>{{ endTurnButtonVisible() ? "All Units" : "End Turn for All Units" }}</span>
                 </button>
             }
         </div>

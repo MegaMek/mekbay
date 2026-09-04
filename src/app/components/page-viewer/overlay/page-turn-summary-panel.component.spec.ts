@@ -29,6 +29,7 @@ describe('PageTurnSummaryPanelComponent', () => {
         ]);
         const markPhaseStateChanged = jasmine.createSpy('markPhaseStateChanged');
         const turnState = {
+            dirty: signal(false),
             airborne: signal<boolean | null>(false),
             moveMode,
             moveDistance: signal<number | null>(5),
@@ -126,6 +127,7 @@ describe('PageTurnSummaryPanelComponent', () => {
         fixture.detectChanges();
 
         expect(component.immobile()).toBeTrue();
+        expect(fixture.nativeElement.querySelector('.end-turn-action')).not.toBeNull();
         expect(fixture.nativeElement.querySelector('.move-button')).toBeNull();
         expect(fixture.nativeElement.querySelector('.immobile-status')?.textContent.trim())
             .toBe('Unit is immobile');
@@ -135,6 +137,7 @@ describe('PageTurnSummaryPanelComponent', () => {
 
         expect(component.immobile()).toBeTrue();
         expect(component.showImmobileStatus()).toBeFalse();
+        expect(fixture.nativeElement.querySelector('.end-turn-action')).toBeNull();
         expect(fixture.nativeElement.querySelector('.immobile-status')).toBeNull();
         expect(fixture.nativeElement.querySelectorAll('.move-button').length).toBe(1);
         expect(fixture.nativeElement.querySelector('.move-button.stationary-only')).not.toBeNull();
@@ -271,6 +274,8 @@ describe('PageTurnSummaryPanelComponent', () => {
         const otherDirty = signal(false);
         const currentUnit = {
             id: 'unit-a',
+            gameRules: TW_GAME_RULES,
+            getCondition: () => false,
             turnState: () => ({
                 dirty: currentDirty,
                 dirtyPhase: currentDirty,
@@ -278,16 +283,20 @@ describe('PageTurnSummaryPanelComponent', () => {
         };
         const otherUnit = {
             id: 'unit-b',
+            gameRules: TW_GAME_RULES,
+            getCondition: () => false,
             turnState: () => ({
                 dirty: otherDirty,
                 dirtyPhase: otherDirty,
             }),
         };
-        const force = { units: () => [currentUnit, otherUnit] };
+        const forceUnits = signal([currentUnit]);
+        const force = { units: forceUnits };
         const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
         const blockCloseUntil = jasmine.createSpy('blockCloseUntil');
         const unblockClose = jasmine.createSpy('unblockClose');
         const resolvePhase = jasmine.createSpy('endPhase').and.resolveTo(true);
+        const endTurn = jasmine.createSpy('endTurn').and.resolveTo(undefined);
         const requestConfirmation = jasmine.createSpy('requestConfirmation').and.resolveTo(true);
 
         TestBed.configureTestingModule({
@@ -306,7 +315,7 @@ describe('PageTurnSummaryPanelComponent', () => {
                 { provide: ToastService, useValue: {} },
                 { provide: DialogsService, useValue: { requestConfirmation } },
                 { provide: DataService, useValue: {} },
-                { provide: CBTEndTurnService, useValue: {} },
+                { provide: CBTEndTurnService, useValue: { endTurn } },
                 { provide: CBTPhaseResolutionService, useValue: { endPhase: resolvePhase } },
             ],
         });
@@ -350,10 +359,18 @@ describe('PageTurnSummaryPanelComponent', () => {
 
         currentDirty.set(true);
         fixture.detectChanges();
-        const phaseButtons = fixture.nativeElement.querySelectorAll('.phase-actions button');
+        let phaseButtons = fixture.nativeElement.querySelectorAll('.phase-actions button');
+        expect(phaseButtons.length).toBe(1);
+        expect(phaseButtons[0].textContent.trim().toLowerCase()).toBe('end phase');
+        expect(fixture.nativeElement.querySelector('.all-units-action')).toBeNull();
+
+        forceUnits.set([currentUnit, otherUnit]);
+        fixture.detectChanges();
+        phaseButtons = fixture.nativeElement.querySelectorAll('.phase-actions button');
         expect(phaseButtons.length).toBe(2);
         expect(phaseButtons[0].textContent.trim().toLowerCase()).toBe('end phase');
         expect(phaseButtons[1].textContent.trim().toLowerCase()).toBe('all units');
+        expect(fixture.nativeElement.querySelector('.all-units-action')).not.toBeNull();
 
         const currentEvent = jasmine.createSpyObj<MouseEvent>('event', ['stopPropagation']);
         await component.endPhase(currentEvent);
@@ -387,5 +404,19 @@ describe('PageTurnSummaryPanelComponent', () => {
         );
         expect(closeManagedOverlay).toHaveBeenCalledWith('turnSummary-unit-a');
         expect(resolvePhase).toHaveBeenCalledOnceWith([currentUnit, otherUnit]);
+
+        requestConfirmation.calls.reset();
+        blockCloseUntil.calls.reset();
+        unblockClose.calls.reset();
+        const endTurnEvent = jasmine.createSpyObj<MouseEvent>('event', ['stopPropagation']);
+        await component.endTurnForAll(endTurnEvent);
+
+        expect(endTurnEvent.stopPropagation).toHaveBeenCalledTimes(1);
+        expect(requestConfirmation).toHaveBeenCalledOnceWith(
+            'Are you sure you want to end the turn for all units?',
+            'End Turn',
+            'info'
+        );
+        expect(endTurn).toHaveBeenCalledOnceWith([currentUnit, otherUnit]);
     });
 });
