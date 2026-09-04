@@ -2409,9 +2409,9 @@ hr.divider {
 }
 
 .mekbay-sheet .mek-random-hit-result {
-    cursor: pointer;
+    pointer-events: none;
 
-    rect {
+    .mek-random-hit-result-background {
         fill: #111e;
         stroke: #ffbf00;
         stroke-width: 2;
@@ -2422,11 +2422,11 @@ hr.divider {
         font-family: Roboto, sans-serif;
         font-weight: 700;
         text-anchor: middle;
-        pointer-events: auto;
     }
 
     .mek-random-hit-result-location {
         font-size: 14px;
+        pointer-events: none;
     }
 
     .mek-random-hit-result-through-armor {
@@ -2436,6 +2436,8 @@ hr.divider {
         stroke: black;
         stroke-width: 4;
         paint-order: stroke fill;
+        cursor: pointer;
+        pointer-events: auto;
     }
 }
 
@@ -2461,7 +2463,7 @@ hr.divider {
     }
 
     .night-mode .mekbay-sheet .mek-random-hit-result {
-        rect {
+        .mek-random-hit-result-background {
             fill: #fffe;
         }
 

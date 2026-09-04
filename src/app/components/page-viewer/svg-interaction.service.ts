@@ -441,15 +441,11 @@ export class SvgInteractionService {
             button.setAttribute('tabindex', '0');
             button.style.cursor = 'pointer';
 
-            const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-            title.textContent = 'Roll hit location';
-            button.appendChild(title);
-
-            const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            hitArea.setAttribute('x', String(hitAreaPosition.x));
-            hitArea.setAttribute('y', String(hitAreaPosition.y));
-            hitArea.setAttribute('width', '28');
-            hitArea.setAttribute('height', '28');
+            const hitArea = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            hitArea.classList.add('mek-random-hit-area');
+            hitArea.setAttribute('cx', String(hitAreaPosition.x + 14));
+            hitArea.setAttribute('cy', String(hitAreaPosition.y + 14));
+            hitArea.setAttribute('r', '15');
             hitArea.setAttribute('fill', 'transparent');
             button.appendChild(hitArea);
 
@@ -525,12 +521,11 @@ export class SvgInteractionService {
     ): void {
         this.clearRandomMekHitResult();
         const button = svg.querySelector<SVGElement>('.mek-random-hit-button');
-        const hitArea = button?.querySelector<SVGRectElement>('rect');
+        const hitArea = button?.querySelector<SVGCircleElement>('.mek-random-hit-area');
         const resultHost = button?.parentElement as SVGElement | null;
         if (!hitArea || !resultHost) return;
-        const buttonX = Number(hitArea.getAttribute('x'));
-        const buttonY = Number(hitArea.getAttribute('y'));
-        const resultCenterX = buttonX + 14;
+        const resultCenterX = Number(hitArea.getAttribute('cx'));
+        const resultCenterY = Number(hitArea.getAttribute('cy'));
 
         const locationElements = Array.from(svg.querySelectorAll<SVGElement>('.unitLocation.armor'))
             .filter(element => element.getAttribute('loc') === location);
@@ -540,25 +535,23 @@ export class SvgInteractionService {
         highlightedLocation?.classList.add('random-hit-location-highlight');
 
         const result = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        result.classList.add('mek-random-hit-result', 'interactive');
+        result.classList.add('mek-random-hit-result');
         result.setAttribute('role', 'status');
 
-        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-        title.textContent = `${locationLabel}${throughArmor ? ' - Through armor hit' : ''}`;
-        result.appendChild(title);
-
-        const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        background.setAttribute('x', String(buttonX - 24));
-        background.setAttribute('y', String(buttonY - 40));
-        background.setAttribute('width', '76');
-        background.setAttribute('height', '34');
-        background.setAttribute('rx', '4');
+        const background = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        background.classList.add('mek-random-hit-result-background');
+        background.setAttribute('cx', String(resultCenterX));
+        background.setAttribute('cy', String(resultCenterY));
+        background.setAttribute('r', '20');
+        background.setAttribute('pointer-events', 'none');
         result.appendChild(background);
 
         const locationText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         locationText.classList.add('mek-random-hit-result-location');
         locationText.setAttribute('x', String(resultCenterX));
-        locationText.setAttribute('y', String(buttonY - 20));
+        locationText.setAttribute('y', String(resultCenterY));
+        locationText.setAttribute('dy', '.35em');
+        locationText.setAttribute('pointer-events', 'none');
         locationText.textContent = location;
         result.appendChild(locationText);
 
@@ -566,16 +559,21 @@ export class SvgInteractionService {
             const throughArmorText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             throughArmorText.classList.add('mek-random-hit-result-through-armor');
             throughArmorText.setAttribute('x', String(resultCenterX));
-            throughArmorText.setAttribute('y', String(buttonY - 84));
+            throughArmorText.setAttribute('y', String(resultCenterY - 98));
+            throughArmorText.setAttribute('role', 'button');
+            throughArmorText.setAttribute('tabindex', '0');
             throughArmorText.textContent = 'THROUGH ARMOR';
+            const dismissResult = (event: Event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.clearRandomMekHitResult();
+            };
+            throughArmorText.addEventListener('pointerdown', dismissResult, { passive: false });
+            throughArmorText.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') dismissResult(event);
+            });
             result.appendChild(throughArmorText);
         }
-
-        result.addEventListener('pointerdown', event => {
-            event.preventDefault();
-            event.stopPropagation();
-            this.clearRandomMekHitResult();
-        }, { passive: false });
         resultHost.appendChild(result);
 
         this.randomMekHitResultSvg = svg;

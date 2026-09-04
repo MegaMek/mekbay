@@ -265,7 +265,11 @@ describe('SvgInteractionService', () => {
         spyOn(service, 'rollD6').and.returnValue(1);
 
         const button = armorDiagram.querySelector('.mek-random-hit-button') as SVGGElement;
+        const hitArea = button.querySelector('.mek-random-hit-area')!;
         const icon = button.querySelector('image')!;
+        expect(hitArea.getAttribute('cx')).toBe('96');
+        expect(hitArea.getAttribute('cy')).toBe('218');
+        expect(hitArea.getAttribute('r')).toBe('15');
         expect(icon.getAttribute('x')).toBe('85');
         expect(icon.getAttribute('y')).toBe('207');
         button.getBoundingClientRect = () => ({
@@ -284,12 +288,24 @@ describe('SvgInteractionService', () => {
 
         expect(frontCenterTorso.classList).toContain('random-hit-location-highlight');
         const result = armorDiagram.querySelector('.mek-random-hit-result') as SVGGElement;
+        const background = result.querySelector('.mek-random-hit-result-background')!;
+        const locationText = result.querySelector('.mek-random-hit-result-location')!;
+        expect(background.tagName.toLowerCase()).toBe('circle');
+        expect(background.getAttribute('cx')).toBe('96');
+        expect(background.getAttribute('cy')).toBe('218');
+        expect(background.getAttribute('pointer-events')).toBe('none');
+        expect(locationText.getAttribute('dy')).toBe('.35em');
+        expect(locationText.getAttribute('pointer-events')).toBe('none');
         expect(result.querySelector('.mek-random-hit-result-location')?.textContent).toBe('CT');
         expect(result.querySelector('.mek-random-hit-result-through-armor')?.textContent).toBe('THROUGH ARMOR');
         expect(showToast).not.toHaveBeenCalled();
 
+        button.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 72 }));
+        expect(pickerFactory.createDirectionalPicker).toHaveBeenCalledTimes(2);
+        expect(armorDiagram.querySelector('.mek-random-hit-result')).toBe(result);
+
         (result.querySelector('.mek-random-hit-result-through-armor') as SVGTextElement)
-            .dispatchEvent(createPointerEvent('pointerdown', { pointerId: 72 }));
+            .dispatchEvent(createPointerEvent('pointerdown', { pointerId: 73 }));
         expect(frontCenterTorso.classList).not.toContain('random-hit-location-highlight');
         expect(armorDiagram.querySelector('.mek-random-hit-result')).toBeNull();
     });
@@ -322,7 +338,7 @@ describe('SvgInteractionService', () => {
 
             expect(frontCenterTorso.classList).not.toContain('random-hit-location-highlight');
             expect(rearCenterTorso.classList).toContain('random-hit-location-highlight');
-            expect(armorDiagram.querySelector('.mek-random-hit-result-through-armor')).not.toBeNull();
+            expect(armorDiagram.querySelector('.mek-random-hit-result')).not.toBeNull();
 
             jasmine.clock().tick(4000);
             expect(rearCenterTorso.classList).not.toContain('random-hit-location-highlight');
@@ -355,8 +371,8 @@ describe('SvgInteractionService', () => {
         service.setupRandomMekHitInteraction(tripodSvg, new AbortController().signal);
 
         const tripodIcon = tripodArmor.querySelector('.mek-random-hit-button image')!;
-        expect(tripodIcon.getAttribute('x')).toBe('115');
-        expect(tripodIcon.getAttribute('y')).toBe('157');
+        expect(tripodIcon.getAttribute('x')).toBe('112');
+        expect(tripodIcon.getAttribute('y')).toBe('187');
 
         const quadSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const quadArmor = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -370,7 +386,7 @@ describe('SvgInteractionService', () => {
         const quadButton = quadSvg.querySelector(':scope > .mek-random-hit-button')!;
         const quadIcon = quadButton.querySelector('image')!;
         expect(quadIcon.getAttribute('x')).toBe('487');
-        expect(quadIcon.getAttribute('y')).toBe('193');
+        expect(quadIcon.getAttribute('y')).toBe('223');
 
         spyOn(service, 'rollD6').and.returnValue(1);
         quadButton.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 74 }));
@@ -378,8 +394,8 @@ describe('SvgInteractionService', () => {
             .onPick({ label: 'Front', value: 'front' });
 
         const quadResult = quadSvg.querySelector('.mek-random-hit-result')!;
-        expect(quadResult.querySelector('rect')?.getAttribute('x')).toBe('460');
-        expect(quadResult.querySelector('rect')?.getAttribute('y')).toBe('150');
+        expect(quadResult.querySelector('circle')?.getAttribute('cx')).toBe('498');
+        expect(quadResult.querySelector('circle')?.getAttribute('cy')).toBe('234');
         expect(quadResult.querySelector('.mek-random-hit-result-location')?.getAttribute('x')).toBe('498');
     });
 
