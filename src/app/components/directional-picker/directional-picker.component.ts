@@ -133,11 +133,16 @@ export class DirectionalPickerComponent implements ChoicePickerComponent {
         window.removeEventListener('pointermove', this.handlePointerMove);
     }
 
-    private readonly handleQuickPointerUp = (): void => {
+    private readonly handleQuickPointerUp = (event: PointerEvent): void => {
         if (this.holdTimeout !== null) {
             window.clearTimeout(this.holdTimeout);
             this.holdTimeout = null;
         }
+        const choice = this.hoveredChoice();
+        if (!choice) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.pick(choice);
     };
 
     private readonly handleHeldPointerUp = (event: PointerEvent): void => {

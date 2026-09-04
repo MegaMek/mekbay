@@ -58,6 +58,23 @@ describe('DirectionalPickerComponent', () => {
         expect(picked).toHaveBeenCalledOnceWith(jasmine.objectContaining({ value: 'front' }));
         fixture.destroy();
     });
+
+    it('selects the hovered sector when a quick swipe is released', async () => {
+        const fixture = TestBed.createComponent(DirectionalPickerComponent);
+        const picked = jasmine.createSpy<(choice: PickerChoice) => void>('picked');
+        fixture.componentInstance.picked.subscribe(picked);
+        fixture.componentInstance.initialEvent.set(pointerEvent('pointerdown'));
+        fixture.detectChanges();
+        await fixture.whenStable();
+
+        const rightSector = fixture.nativeElement.querySelector('[aria-label="Right"]') as SVGPathElement;
+        spyOn(document, 'elementFromPoint').and.returnValue(rightSector);
+        window.dispatchEvent(pointerEvent('pointermove', { clientX: 150, clientY: 80 }));
+        window.dispatchEvent(pointerEvent('pointerup', { clientX: 150, clientY: 80 }));
+
+        expect(picked).toHaveBeenCalledOnceWith(jasmine.objectContaining({ value: 'right' }));
+        fixture.destroy();
+    });
 });
 
 function pointerEvent(type: string, init: PointerEventInit = {}): PointerEvent {
