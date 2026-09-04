@@ -168,12 +168,23 @@
                 <div class="option-col">
                     <label for="userUuid">User identifier:</label>
                     <div class="option-row">
-                        <div class="sensitive-input-wrapper">
+                        <div class="sensitive-input-wrapper" [class.uuid-visible]="showUserUuid()">
                             <input #uuidInput id="userUuid" class="bt-input" [class.error]="!!userUuidError"
                                 [class.user-uuid-input-readonly]="userHasOAuth()"
                                 [type]="showUserUuid() ? 'text' : 'password'" [value]="userUuid()"
                                 [readOnly]="userHasOAuth()" [attr.aria-readonly]="userHasOAuth() ? 'true' : null"
                                 (focus)="selectAll($event)" (keydown)="onUserUuidKeydown($event)" />
+                            @if (showUserUuid()) {
+                            <button type="button" class="sensitive-copy" (click)="copyUserUuid()"
+                                [disabled]="!userUuid()" aria-label="Copy user identifier"
+                                title="Copy user identifier">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="9" y="9" width="11" height="11" rx="2" />
+                                    <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+                                </svg>
+                            </button>
+                            }
                             <button type="button" class="sensitive-toggle" (click)="toggleUserUuidVisibility()"
                                 [attr.aria-label]="showUserUuid() ? 'Hide user identifier' : 'Show user identifier'"
                                 [title]="showUserUuid() ? 'Hide user identifier' : 'Show user identifier'">

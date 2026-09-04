@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { afterNextRender, ChangeDetectionStrategy, Component, computed, inject, Injector, input, output, signal } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, computed, inject, Injector, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
@@ -19,7 +19,7 @@ import { DataService } from '../../../services/data.service';
 import type { MountedEquipment } from '../../../models/mounted-equipment.model';
 import { EscalatingFailureHandler } from '../../../equipment-handlers/escalatingfailure.handler';
 import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
-import { composeTurnSummaryHeatRows, displayPsrModifiers, isMoveModeDisabledWhileProne, runWithTurnSummaryCloseBlocked } from './page-turn-summary.util';
+import { composeTurnSummaryHeatRows, displayPsrModifiers, isEndTurnAvailable, isMoveModeDisabledWhileProne, runWithTurnSummaryCloseBlocked } from './page-turn-summary.util';
 import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.util';
 import { toggleStandingUpOverlay } from './page-standing-up-panel.component';
 import { isUnitBuildingLevel, isUnitWaterDepth, type UnitCover } from '../../../models/unit-cover.model';
@@ -78,8 +78,6 @@ export class PageTurnSummaryPanelComponent {
     private readonly phaseResolution = inject(CBTPhaseResolutionService);
     readonly unit = this.parent.unit;
     readonly force = this.parent.force;
-    readonly endTurnForAllButtonVisible = input<boolean>(false);
-    readonly endTurnForAllClicked = output<void>();
     readonly renderReady = signal(false);
 
     constructor() {
@@ -98,15 +96,20 @@ export class PageTurnSummaryPanelComponent {
         );
     }
 
-    endTurnForAll(event: MouseEvent): void {
-        event.stopPropagation();
-        this.endTurnForAllClicked.emit();
-    }
-
     readonly dirty = computed(() => {
         const unit = this.unit();
         if (!unit) return false;
         return unit.turnState().dirty();
+    });
+
+    readonly endTurnButtonVisible = computed(() => {
+        const unit = this.unit();
+        return unit ? isEndTurnAvailable(unit) : false;
+    });
+
+    readonly endTurnForAllButtonVisible = computed(() => {
+        const units = this.force()?.units() ?? [];
+        return units.length > 1 && units.some(isEndTurnAvailable);
     });
 
     readonly phaseDirty = computed(() => {
@@ -118,7 +121,8 @@ export class PageTurnSummaryPanelComponent {
     readonly endPhaseForAllButtonVisible = computed(() => {
         const force = this.force();
         if (!force) return false;
-        return force.units().some(unit => unit.turnState().dirtyPhase());
+        const units = force.units();
+        return units.length > 1 && units.some(unit => unit.turnState().dirtyPhase());
     });
 
     readonly damageReceived = computed(() => {
@@ -322,6 +326,26 @@ export class PageTurnSummaryPanelComponent {
     async endTurn(): Promise<void> {
         const unit = this.unit();
         if (unit) await this.cbtEndTurnService.endTurn([unit]);
+    }
+
+    async endTurnForAll(event: MouseEvent): Promise<void> {
+        event.stopPropagation();
+        const force = this.force();
+        const unitId = this.unit()?.id;
+        if (!force || !unitId) return;
+
+        const confirmed = await runWithTurnSummaryCloseBlocked(
+            this.overlayManager,
+            unitId,
+            () => this.dialogsService.requestConfirmation(
+                'Are you sure you want to end the turn for all units?',
+                'End Turn',
+                'info'
+            )
+        );
+        if (!confirmed) return;
+
+        await this.cbtEndTurnService.endTurn(force.units());
     }
 
     async endPhase(event: MouseEvent): Promise<void> {

@@ -5,6 +5,7 @@
 import type { PSRModifier, UnitHeatSource } from '../../../models/rules/unit-type-rules';
 import type { SelectedInventoryWeaponHeat } from '../../../utils/inventory-control-heat.util';
 import type { MotiveModes } from '../../../models/motiveModes.model';
+import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import type { ManagedOverlayRef, OverlayManagerService } from '../../../services/overlay-manager.service';
 
 export interface TurnSummaryHeatRow {
@@ -110,4 +111,9 @@ export function isMoveModeDisabledWhileProne(
     prone: boolean,
 ): boolean {
     return (mode === 'jump' || mode === 'sprint') && prone;
+}
+
+export function isEndTurnAvailable(unit: CBTForceUnit): boolean {
+    return unit.turnState().dirty()
+        || (unit.gameRules.id === 'core2026' && unit.getCondition('immobile'));
 }

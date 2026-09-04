@@ -148,15 +148,13 @@ export class EquipmentDialogComponent {
             parent: this.injector
         });
         const portal = new ComponentPortal(PageTurnSummaryPanelComponent, null, customInjector);
-        const { componentRef } = this.overlayManager.createManagedOverlay<PageTurnSummaryPanelComponent>(overlayKey, target, portal, {
+        this.overlayManager.createManagedOverlay<PageTurnSummaryPanelComponent>(overlayKey, target, portal, {
             hasBackdrop: false,
             panelClass: 'turn-summary-overlay-panel',
             closeOnOutsideClick: false,
             closeOnOutsideClickOnly: true,
             scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
-
-        componentRef?.setInput('endTurnForAllButtonVisible', false);
     }
 
     openTargets(event: MouseEvent): void {

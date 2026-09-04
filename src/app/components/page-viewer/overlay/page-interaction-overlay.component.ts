@@ -16,7 +16,6 @@ import {
 import { CommonModule } from '@angular/common';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
-import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DialogsService } from '../../../services/dialogs.service';
 import { LoggerService } from '../../../services/logger.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
@@ -24,7 +23,6 @@ import { DataService } from '../../../services/data.service';
 import { createHandlerCommandContext, createHandlerQueryContext, EquipmentInteractionRegistryService } from '../../../services/equipment-interaction-registry.service';
 import { ForceBuilderService } from '../../../services/force-builder.service';
 import { ToastService } from '../../../services/toast.service';
-import { CBTEndTurnService } from '../../../services/cbt-end-turn.service';
 import { CBTPhaseResolutionService } from '../../../services/cbt-phase-resolution.service';
 import type { CBTForceUnit } from '../../../models/cbt-force-unit.model';
 import type { CBTForce } from '../../../models/cbt-force.model';
@@ -39,7 +37,6 @@ import {
 } from '../../unit-notification-badges/unit-notification-badges.component';
 import { WeaponTargetsOverlayController } from '../../equipment-dialog/weapon-targets-overlay.controller';
 import { getTurnMovementIndicator } from '../../../utils/turn-movement-indicator.util';
-import { runWithTurnSummaryCloseBlocked } from './page-turn-summary.util';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 
@@ -73,7 +70,6 @@ export class PageInteractionOverlayComponent {
     private equipmentRegistryService = inject(EquipmentInteractionRegistryService);
     private forceBuilderService = inject(ForceBuilderService);
     private toastService = inject(ToastService);
-    private cbtEndTurnService = inject(CBTEndTurnService);
     private phaseResolution = inject(CBTPhaseResolutionService);
     private targetsOverlay = new WeaponTargetsOverlayController({
         overlay: this.overlay,
@@ -113,13 +109,6 @@ export class PageInteractionOverlayComponent {
         );
     });
 
-    endTurnButtonVisible = computed(() => {
-        const force = this.force();
-        if (!force) return false;
-        const units = force.units();
-        return units.some(u => u.turnState().dirty());
-    });
-
     turnTrackerVisible = computed(() => !this.pageViewerState.inventoryDialogOpen());
 
     constructor() {
@@ -157,7 +146,7 @@ export class PageInteractionOverlayComponent {
 
         const portal = new ComponentPortal(PageTurnSummaryPanelComponent, null, customInjector);
 
-        const { componentRef } = this.overlayManager.createManagedOverlay<PageTurnSummaryPanelComponent>(overlayKey, target, portal, {
+        this.overlayManager.createManagedOverlay<PageTurnSummaryPanelComponent>(overlayKey, target, portal, {
             hasBackdrop: false,
             panelClass: 'turn-summary-overlay-panel',
             closeOnOutsideClick: false,
@@ -165,13 +154,6 @@ export class PageInteractionOverlayComponent {
             sensitiveAreaReferenceElement: this.nativeElement,
             scrollStrategy: this.overlay.scrollStrategies.reposition()
         });
-
-        if (componentRef) {
-            componentRef.setInput('endTurnForAllButtonVisible', this.endTurnButtonVisible());
-            outputToObservable(componentRef.instance.endTurnForAllClicked).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-                this.endTurnForAll();
-            });
-        }
     }
 
     openNotification({ kind, event }: UnitNotificationActivation): void {
@@ -297,24 +279,6 @@ export class PageInteractionOverlayComponent {
         return `${PAGE_TARGETS_OVERLAY_PREFIX}-${unitId}`;
     }
 
-    async endTurnForAll() {
-        const force = this.force();
-        const unitId = this.unit()?.id;
-        if (!force || !unitId) return;
-        const confirm = await runWithTurnSummaryCloseBlocked(
-            this.overlayManager,
-            unitId,
-            () => this.dialogsService.requestConfirmation(
-                'Are you sure you want to end the turn for all units?',
-                'End Turn',
-                'info'
-            )
-        );
-        if (!confirm) return;
-        const units = force.units();
-        await this.cbtEndTurnService.endTurn(units);
-    }
-
     async endPhase(event: MouseEvent): Promise<void> {
         event.stopPropagation();
         const unit = this.unit();
@@ -322,12 +286,6 @@ export class PageInteractionOverlayComponent {
 
         this.closeAllOverlays();
         await this.phaseResolution.endPhase(unit);
-    }
-
-    async endTurn(event: MouseEvent): Promise<void> {
-        event.stopPropagation();
-        const unit = this.unit();
-        if (unit) await this.cbtEndTurnService.endTurn([unit]);
     }
 
     /**

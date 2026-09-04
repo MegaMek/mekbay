@@ -466,6 +466,10 @@
   padding-right: 40px;
 }
 
+.sensitive-input-wrapper.uuid-visible .bt-input {
+  padding-right: 72px;
+}
+
 .sensitive-input-wrapper .bt-input.user-uuid-input-readonly {
   color: var(--text-color-secondary);
   cursor: text;
@@ -951,9 +955,9 @@ input {
   margin: 0 0.1em;
 }
 
+.sensitive-copy,
 .sensitive-toggle {
   position: absolute;
-  right: 4px;
   top: 0;
   bottom: 0;
   margin: auto 0;
@@ -972,13 +976,28 @@ input {
   z-index: 1;
 }
 
+.sensitive-copy {
+  right: 36px;
+}
+
+.sensitive-toggle {
+  right: 4px;
+}
+
+.sensitive-copy svg,
 .sensitive-toggle svg {
   width: 20px;
   height: 20px;
 }
 
+.sensitive-copy:hover,
 .sensitive-toggle:hover {
   color: var(--text-color);
+}
+
+.sensitive-copy:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 hr {
