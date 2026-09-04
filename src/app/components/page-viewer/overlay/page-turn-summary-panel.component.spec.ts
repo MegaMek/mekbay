@@ -285,6 +285,8 @@ describe('PageTurnSummaryPanelComponent', () => {
         };
         const force = { units: () => [currentUnit, otherUnit] };
         const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');
+        const blockCloseUntil = jasmine.createSpy('blockCloseUntil');
+        const unblockClose = jasmine.createSpy('unblockClose');
         const resolvePhase = jasmine.createSpy('endPhase').and.resolveTo(true);
         const requestConfirmation = jasmine.createSpy('requestConfirmation').and.resolveTo(true);
 
@@ -295,7 +297,10 @@ describe('PageTurnSummaryPanelComponent', () => {
                     provide: PageInteractionOverlayComponent,
                     useValue: { unit: signal(currentUnit), force: signal(force) },
                 },
-                { provide: OverlayManagerService, useValue: { closeManagedOverlay } },
+                {
+                    provide: OverlayManagerService,
+                    useValue: { closeManagedOverlay, blockCloseUntil, unblockClose },
+                },
                 { provide: Overlay, useValue: {} },
                 { provide: EquipmentInteractionRegistryService, useValue: { getRegistry: () => ({}) } },
                 { provide: ToastService, useValue: {} },
@@ -354,11 +359,15 @@ describe('PageTurnSummaryPanelComponent', () => {
         await component.endPhase(currentEvent);
 
         expect(currentEvent.stopPropagation).toHaveBeenCalledTimes(1);
+        expect(blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-unit-a');
+        expect(unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-a');
         expect(closeManagedOverlay).toHaveBeenCalledWith('turnSummary-unit-a');
         expect(resolvePhase).toHaveBeenCalledOnceWith(currentUnit);
 
         resolvePhase.calls.reset();
         closeManagedOverlay.calls.reset();
+        blockCloseUntil.calls.reset();
+        unblockClose.calls.reset();
         currentDirty.set(false);
         otherDirty.set(true);
         fixture.detectChanges();
@@ -371,6 +380,8 @@ describe('PageTurnSummaryPanelComponent', () => {
         await component.endPhaseForAll(allEvent);
 
         expect(allEvent.stopPropagation).toHaveBeenCalledTimes(1);
+        expect(blockCloseUntil).toHaveBeenCalledOnceWith('turnSummary-unit-a');
+        expect(unblockClose).toHaveBeenCalledOnceWith('turnSummary-unit-a');
         expect(requestConfirmation).toHaveBeenCalledOnceWith(
             'Are you sure you want to end the phase for all units?',
             'End Phase',

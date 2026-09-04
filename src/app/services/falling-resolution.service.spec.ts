@@ -381,6 +381,7 @@ function createUnit(
         },
         getInternalPoints: () => 10,
         getInternalHits: () => 0,
+        isInternalLocPhysicallyDestroyed: () => false,
         getStructureKindAt: () => 'standard',
         addInternalHits: jasmine.createSpy('addInternalHits').and.callFake((_location: string, hits: number) => hits),
         queueMekCriticalChance: jasmine.createSpy('queueMekCriticalChance'),
