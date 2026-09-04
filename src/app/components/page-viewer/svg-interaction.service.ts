@@ -451,7 +451,7 @@ export class SvgInteractionService {
             button.appendChild(hitArea);
 
             const icon = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-            icon.setAttribute('href', '/images/random.svg');
+            icon.setAttribute('href', '/images/random-black.svg');
             icon.setAttribute('x', String(hitAreaPosition.x + 3));
             icon.setAttribute('y', String(hitAreaPosition.y + 3));
             icon.setAttribute('width', '22');
