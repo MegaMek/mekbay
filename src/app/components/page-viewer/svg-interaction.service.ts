@@ -523,7 +523,6 @@ export class SvgInteractionService {
         rear: boolean,
         throughArmor: boolean,
     ): void {
-        throughArmor = true;
         this.clearRandomMekHitResult();
         const button = svg.querySelector<SVGElement>('.mek-random-hit-button');
         const hitArea = button?.querySelector<SVGRectElement>('rect');
