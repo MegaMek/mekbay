@@ -3,8 +3,9 @@
 // Author: Drake
 
 import { inject, Pipe, type PipeTransform } from "@angular/core";
-import { DOES_NOT_TRACK, UnitSearchIndexService, type MinMaxStatsRange } from "../services/unit-search-index.service";
+import { UnitSearchIndexService, type MinMaxStatsRange } from "../services/unit-search-index.service";
 import type { UnitSummary } from "../models/unit-summary.model";
+import { getUnitStatValues } from "../utils/unit-stat-values.util";
 
 
 interface statBarSpec {
@@ -33,7 +34,7 @@ export class StatBarSpecsPipe implements PipeTransform {
     private readonly searchIndex = inject(UnitSearchIndexService);
 
     transform(unit: UnitSummary): statBarSpec[] {
-        const bucketStats = this.searchIndex.getUnitSubtypeMaxStats(unit.subtype);
+        const bucketStats = this.searchIndex.getUnitStats(unit);
         // const armorLabel = unit.armorType ? `Armor (${unit.armorType.replace(/armor/i,'').trim()})` : 'Armor';
         const armorLabel = 'Armor';
         let structureLabel;
@@ -59,17 +60,17 @@ export class StatBarSpecsPipe implements PipeTransform {
         }
         const statDefs: StatBarDefinition[] = [];
         statDefs.push(
-            { key: 'armor', label: armorLabel, value: unit.armor, valueText: armorValue, max: bucketStats.armor.max, description: 'Total armor points protecting the unit from internal damage' },
-            { key: 'internal', label: structureLabel, value: unit.internal, valueText: internalValue, max: bucketStats.internal.max, description: unit.type === 'Infantry' ? 'Number of soldiers in the infantry unit' : 'Internal structure points; unit is destroyed when depleted' },
+            { key: 'armor', label: armorLabel, value: unit.armor, valueText: armorValue, max: bucketStats.armor.p95, description: 'Total armor points protecting the unit from internal damage' },
+            { key: 'internal', label: structureLabel, value: unit.internal, valueText: internalValue, max: bucketStats.internal.p95, description: unit.type === 'Infantry' ? 'Number of soldiers in the infantry unit' : 'Internal structure points; unit is destroyed when depleted' },
         );
 
         if (unit.capital) {
             statDefs.push(
-                { key: 'sailIntegrity', label: 'Sail Integrity', value: unit.capital.sailIntegrity, max: bucketStats.sailIntegrity.max, description: 'Jump sail integrity for interstellar travel' },
-                { key: 'kfIntegrity', label: 'KF Integrity', value: unit.capital.kfIntegrity, max: bucketStats.kfIntegrity.max, description: 'Kearny-Fuchida drive integrity for jump capability' },
-                { key: 'dropshipCapacity', label: 'Docking Collars', value: unit.capital.dropshipCapacity, max: bucketStats.dropshipCapacity.max, description: 'Number of DropShip docking collars available' },
-                { key: 'lifeBoats', label: 'Life Boats', value: unit.capital.lifeBoats, max: bucketStats.lifeBoats.max, description: 'Number of life boats for crew evacuation' },
-                { key: 'escapePods', label: 'Escape Pods', value: unit.capital.escapePods, max: bucketStats.escapePods.max, description: 'Number of escape pods for emergency evacuation' },
+                { key: 'sailIntegrity', label: 'Sail Integrity', value: unit.capital.sailIntegrity, max: bucketStats.sailIntegrity.p95, description: 'Jump sail integrity for interstellar travel' },
+                { key: 'kfIntegrity', label: 'KF Integrity', value: unit.capital.kfIntegrity, max: bucketStats.kfIntegrity.p95, description: 'Kearny-Fuchida drive integrity for jump capability' },
+                { key: 'dropshipCapacity', label: 'Docking Collars', value: unit.capital.dropshipCapacity, max: bucketStats.dropshipCapacity.p95, description: 'Number of DropShip docking collars available' },
+                { key: 'lifeBoats', label: 'Life Boats', value: unit.capital.lifeBoats, max: bucketStats.lifeBoats.p95, description: 'Number of life boats for crew evacuation' },
+                { key: 'escapePods', label: 'Escape Pods', value: unit.capital.escapePods, max: bucketStats.escapePods.p95, description: 'Number of escape pods for emergency evacuation' },
             );
         }
 
@@ -79,31 +80,32 @@ export class StatBarSpecsPipe implements PipeTransform {
         const dissipationValue = (unit.diss?.length === 2 && (unit.diss[0] != unit.diss[1])) ? `${unit.diss[0]} (${unit.diss[1]})` : `${unit.dissipation}`;
         
         statDefs.push(
-            { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical ?? 0, max: bucketStats.alphaNoPhysicalNoOneshots.max, description: 'Total maximum damage from all weapons fired simultaneously' },
-            { key: 'dpt', label: 'Damage/Turn', value: unit.dpt, max: bucketStats.dpt.max, description: 'Average damage per turn over a 10-turn engagement, accounting for heat and ammo limits' },
-            { key: 'maxRange', label: 'Range', value: maxRange, valueText: maxRangeValue, max: bucketStats.maxRange.max, description: 'Maximum weapon range in hexes, and weighted maximum range for effective damage output' },
-            { key: 'heat', label: 'Heat', value: unit.heat, max: bucketStats.heat.max, description: 'Maximum heat generated when firing all weapons and activating all equipment' },
-            { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, valueText: dissipationValue, max: bucketStats.dissipation.max, description: 'Heat dissipation capacity per turn from heat sinks. If two values are present, the first is the minimum and the second is the maximum' },
-            { key: 'run2MP', label: 'Top Speed', value: unit.run2, max: bucketStats.run2MP.max, description: 'Maximum running/cruising speed in hexes per turn' },
-            { key: 'jumpMP', label: jumpLabel, value: jumpValue, max: bucketStats.jumpMP.max, description: jumpLabel === 'VTOL' ? 'VTOL movement capability in hexes' : 'Jump movement capability in hexes' },
+            { key: 'alphaNoPhysical', label: 'Firepower', value: unit._mdSumNoPhysical ?? 0, max: bucketStats.alphaNoPhysicalNoOneshots.p95, description: 'Total maximum damage from all weapons fired simultaneously' },
+            { key: 'dpt', label: 'Damage/Turn', value: unit.dpt, max: bucketStats.dpt.p95, description: 'Average damage per turn over a 10-turn engagement, accounting for heat and ammo limits' },
+            { key: 'weightedMaxRange', label: 'Range', value: weightedMaxRange, valueText: maxRangeValue, max: bucketStats.weightedMaxRange.p95, description: 'Maximum weapon range in hexes, and weighted maximum range for effective damage output' },
+            { key: 'heat', label: 'Heat', value: unit.heat, max: bucketStats.heat.p95, description: 'Maximum heat generated when firing all weapons and activating all equipment' },
+            { key: 'dissipation', label: 'Dissipation', value: unit.dissipation, valueText: dissipationValue, max: bucketStats.dissipation.p95, description: 'Heat dissipation capacity per turn from heat sinks. If two values are present, the first is the minimum and the second is the maximum' },
+            { key: 'run2MP', label: 'Top Speed', value: unit.run2, max: bucketStats.run2MP.p95, description: 'Maximum running/cruising speed in hexes per turn' },
+            { key: 'jumpMP', label: jumpLabel, value: jumpValue, max: bucketStats.jumpMP.p95, description: jumpLabel === 'VTOL' ? 'VTOL movement capability in hexes' : 'Jump movement capability in hexes' },
         );
 
         if (unit.umu > 0) {
-            statDefs.push({ key: 'umuMP', label: 'UMU', value: unit.umu, max: bucketStats.umuMP.max, description: 'Underwater Maneuvering Unit movement in hexes' });
+            statDefs.push({ key: 'umuMP', label: 'UMU', value: unit.umu, max: bucketStats.umuMP.p95, description: 'Underwater Maneuvering Unit movement in hexes' });
         }
-        const filteredStats: statBarSpec[] = statDefs.filter(def => {
-            const statSummary = bucketStats[def.key];
-            if (def.value === undefined || def.value === null || def.value === -1) return false;
-            if (!statSummary) return false;
-            if (statSummary.min === statSummary.max) return false;
-            if (statSummary.min === 0 && DOES_NOT_TRACK === statSummary.max && DOES_NOT_TRACK === def.value) return false;
-            return true;
-        }).map(def => ({ label: def.label, value: def.value, valueText: def.valueText, max: def.max, percent: this.getStatPercent(def.value, def.max), description: def.description }) );
+        const values = getUnitStatValues(unit);
+        const filteredStats: statBarSpec[] = statDefs.filter(def =>
+            values[def.key] !== null && bucketStats[def.key].count > 0,
+        ).map(def => ({
+            label: def.label, value: def.value, valueText: def.valueText, max: def.max,
+            percent: this.getStatPercent(def.value, def.max),
+            description: `${def.description}. P95 reference: ${def.max}`
+                + (def.max === 0 && def.value > 0 ? ' (rare capability)' : ''),
+        }));
         return filteredStats;
     }
 
     private getStatPercent(value: number, max: number): number {
-        if (max === 0) return 0;
-        return Math.min((value / max) * 100, 100);
+        if (max <= 0) return value > 0 ? 100 : 0;
+        return Math.max(0, Math.min((value / max) * 100, 100));
     }
 }

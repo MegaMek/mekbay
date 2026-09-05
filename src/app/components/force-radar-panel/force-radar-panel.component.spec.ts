@@ -3,596 +3,164 @@
 // Author: Drake
 
 import { TestBed } from '@angular/core/testing';
-
 import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
-import {
-    UnitSearchIndexService,
-    type BucketStatSummary,
-    type MinMaxStatsRange,
-} from '../../services/unit-search-index.service';
-import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
+import { UnitSearchIndexService } from '../../services/unit-search-index.service';
+import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { ForceRadarPanelComponent } from './force-radar-panel.component';
 
-type MaxStatsOverride = {
-    [Key in keyof MinMaxStatsRange]?: Partial<BucketStatSummary>;
-};
-
-function createBucketStatSummary(overrides: Partial<BucketStatSummary> = {}): BucketStatSummary {
-    const min = overrides.min ?? 0;
-    const max = overrides.max ?? 0;
-
-    return {
-        min,
-        max,
-        average: overrides.average ?? ((min + max) / 2),
-        ...overrides,
-    };
-}
-
-function createMaxStats(overrides: MaxStatsOverride): MinMaxStatsRange {
-    const pick = <Key extends keyof MinMaxStatsRange>(key: Key): Partial<BucketStatSummary> | undefined => overrides[key];
-
-    return {
-        armor: createBucketStatSummary(pick('armor')),
-        internal: createBucketStatSummary(pick('internal')),
-        heat: createBucketStatSummary(pick('heat')),
-        dissipation: createBucketStatSummary(pick('dissipation')),
-        dissipationEfficiency: createBucketStatSummary(pick('dissipationEfficiency')),
-        runMP: createBucketStatSummary(pick('runMP')),
-        run2MP: createBucketStatSummary(pick('run2MP')),
-        umuMP: createBucketStatSummary(pick('umuMP')),
-        jumpMP: createBucketStatSummary(pick('jumpMP')),
-        alphaNoPhysical: createBucketStatSummary(pick('alphaNoPhysical')),
-        alphaNoPhysicalNoOneshots: createBucketStatSummary(pick('alphaNoPhysicalNoOneshots')),
-        maxRange: createBucketStatSummary(pick('maxRange')),
-        weightedMaxRange: createBucketStatSummary(pick('weightedMaxRange')),
-        dpt: createBucketStatSummary(pick('dpt')),
-        asTmm: createBucketStatSummary(pick('asTmm')),
-        asArm: createBucketStatSummary(pick('asArm')),
-        asStr: createBucketStatSummary(pick('asStr')),
-        asDmgS: createBucketStatSummary(pick('asDmgS')),
-        asDmgM: createBucketStatSummary(pick('asDmgM')),
-        asDmgL: createBucketStatSummary(pick('asDmgL')),
-        dropshipCapacity: createBucketStatSummary(pick('dropshipCapacity')),
-        escapePods: createBucketStatSummary(pick('escapePods')),
-        lifeBoats: createBucketStatSummary(pick('lifeBoats')),
-        gravDecks: createBucketStatSummary(pick('gravDecks')),
-        sailIntegrity: createBucketStatSummary(pick('sailIntegrity')),
-        kfIntegrity: createBucketStatSummary(pick('kfIntegrity')),
-    };
-}
-
-function createUnit(overrides: TestUnitOverrides): UnitSummary {
-    const { as: asOverrides, ...unitOverrides } = overrides;
-
-    return createEmptyUnit({
-        id: 1,
-        name: 'Unit',
-        chassis: 'Unit',
-        model: 'A',
-        year: 3050,
-        engineRating: 250,
-        engineHS: 10,
-        role: 'Brawler',
-        armorType: 'Standard',
-        structureType: 'Standard',
-        internal: 0,
-        moveType: 'Biped',
-        _displayType: 'Mek',
-        ...unitOverrides,
-        as: {
-            TP: 'BM',
-            SZ: 2,
-            MVm: { '': 0 },
-            ...asOverrides,
-        },
-    });
-}
-
 describe('ForceRadarPanelComponent', () => {
-    let subtypeMaxStats = new Map<string, MinMaxStatsRange>();
-    let asTypeMaxStats = new Map<string, MinMaxStatsRange>();
-
+    let index: UnitSearchIndexService;
     beforeEach(() => {
-        subtypeMaxStats = new Map<string, MinMaxStatsRange>([
-            ['BattleMek', createMaxStats({
-                armor: { min: 10, max: 50 },
-                internal: { min: 5, max: 12 },
-                alphaNoPhysicalNoOneshots: { min: 4, max: 20 },
-                weightedMaxRange: { min: 6, max: 14 },
-                dpt: { min: 3, max: 15 },
-                run2MP: { min: 2, max: 9 },
-                jumpMP: { min: 1, max: 7 },
-            })],
-            ['Industrial Mek', createMaxStats({
-                armor: { min: 30, max: 95 },
-                internal: { min: 18, max: 40 },
-                alphaNoPhysicalNoOneshots: { min: 12, max: 60 },
-                weightedMaxRange: { min: 4, max: 12 },
-                dpt: { min: 8, max: 28 },
-                run2MP: { min: 8, max: 20 },
-                jumpMP: { min: 4, max: 20 },
-            })],
-            ['Aerospace Fighter', createMaxStats({
-                armor: { min: 18, max: 35 },
-                internal: { min: 6, max: 11 },
-                alphaNoPhysicalNoOneshots: { min: 6, max: 14 },
-                weightedMaxRange: { min: 10, max: 18 },
-                dpt: { min: 4, max: 10 },
-                run2MP: { min: 8, max: 12 },
-                jumpMP: { min: 0, max: 0 },
-            })],
-        ]);
-        asTypeMaxStats = new Map<string, MinMaxStatsRange>([
-            ['BM', createMaxStats({
-                asTmm: { min: 1, max: 4 },
-                asArm: { min: 2, max: 5 },
-                asStr: { min: 1, max: 4 },
-                asDmgS: { min: 1, max: 4 },
-                asDmgM: { min: 1, max: 3 },
-                asDmgL: { min: 0, max: 2 },
-            })],
-            ['AF', createMaxStats({
-                asTmm: { min: 2, max: 5 },
-                asArm: { min: 1, max: 3 },
-                asStr: { min: 1, max: 2 },
-                asDmgS: { min: 1, max: 2 },
-                asDmgM: { min: 2, max: 4 },
-                asDmgL: { min: 3, max: 5 },
-            })],
-            ['PM', createMaxStats({
-                asTmm: { min: 4, max: 6 },
-                asArm: { min: 5, max: 8 },
-                asStr: { min: 4, max: 6 },
-                asDmgS: { min: 4, max: 6 },
-                asDmgM: { min: 4, max: 6 },
-                asDmgL: { min: 4, max: 6 },
-            })],
-        ]);
-
-        TestBed.configureTestingModule({
-            imports: [ForceRadarPanelComponent],
-            providers: [
-                {
-                    provide: UnitSearchIndexService,
-                    useValue: {
-                        getUnitSubtypeMaxStats: (subtype: string) => subtypeMaxStats.get(subtype) ?? createMaxStats({}),
-                        getASUnitTypeMaxStats: (asUnitType: string) => asTypeMaxStats.get(asUnitType) ?? createMaxStats({}),
-                    },
-                },
-            ],
-        });
+        index = new UnitSearchIndexService();
+        TestBed.configureTestingModule({ imports: [ForceRadarPanelComponent], providers: [
+            { provide: UnitSearchIndexService, useValue: index },
+        ] });
     });
 
-    it('aggregates classic radar stats using global subtype maxima', () => {
+    function render(units: UnitSummary[], type = GameSystem.CBT) {
         const fixture = TestBed.createComponent(ForceRadarPanelComponent);
-        const mekA = createUnit({
-            id: 1,
-            name: 'Mek A',
-            armor: 30,
-            internal: 10,
-            _weightedMaxRange: 8,
-            _mdSumNoPhysical: 8,
-            _mdSumNoPhysicalNoOneshots: 9,
-            dpt: 7,
-            run2: 5,
-            jump: 3,
-        });
-        const mekB = createUnit({
-            id: 2,
-            name: 'Mek B',
-            armor: 15,
-            internal: 5,
-            _weightedMaxRange: 8,
-            _mdSumNoPhysical: 4,
-            _mdSumNoPhysicalNoOneshots: 5,
-            dpt: 3,
-            run2: 2,
-            jump: 2,
-        });
-        const aero = createUnit({
-            id: 3,
-            name: 'Aero B',
-            type: 'Aero',
-            subtype: 'Aerospace Fighter',
-            moveType: 'Aerodyne',
-            armor: 20,
-            internal: 8,
-            _weightedMaxRange: 12,
-            _mdSumNoPhysical: 12,
-            _mdSumNoPhysicalNoOneshots: 13,
-            dpt: 9,
-            run2: 10,
-            jump: 0,
-        });
-
-        fixture.componentRef.setInput('force', new LoadForceEntry({
-            groups: [{
-                units: [
-                    { unit: mekA, destroyed: false },
-                    { unit: mekB, destroyed: false },
-                    { unit: aero, destroyed: false },
-                ],
-            }],
-        }));
+        fixture.componentRef.setInput('force', new LoadForceEntry({ type,
+            groups: [{ units: units.map(unit => ({ unit, destroyed: false })) }] }));
         fixture.detectChanges();
+        return fixture;
+    }
 
+    it('uses shared TP and superheavy p95 values for the exact force composition', () => {
+        const standard = Array.from({ length: 20 }, (_, i) => createEmptyUnit({
+            name: `BM ${i}`, armor: i === 19 ? 500 : 100, internal: 10,
+            run2: i === 19 ? 40 : 14, jump: 0,
+            subtype: i % 2 ? 'BattleMek Omni' : 'BattleMek',
+        }));
+        const sh = createEmptyUnit({ armor: 800, internal: 100, run2: 3, jump: 0,
+            weightClass: 'Colossal/Super-Heavy' });
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([...standard, sh], [], []));
+        const fixture = render([standard[0], standard[19], sh]);
         const axes = fixture.componentInstance.chartAxes();
-        const getAxis = (key: string) => axes.find((axis) => axis.key === key);
-
-        expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 17, min: 11, max: 28 }));
-        expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 88, min: 54, max: 170 }));
-        expect(getAxis('range')).toEqual(jasmine.objectContaining({ value: 28, min: 22, max: 46 }));
-        expect(getAxis('dpt')).toEqual(jasmine.objectContaining({ value: 19, min: 10, max: 40 }));
-        expect(getAxis('mobility')?.ratio).toBeCloseTo(72 / 289, 6);
-        expect(getAxis('endurance')?.ratio).toBeCloseTo(289 / 1682, 6);
-        expect(getAxis('range')?.ratio).toBeCloseTo(0.125, 6);
-        expect(getAxis('dpt')?.ratio).toBeCloseTo(0.18, 6);
+        expect(axes.find(axis => axis.key === 'mobility')!.max).toBe(31);
+        expect(axes.find(axis => axis.key === 'endurance')!.max).toBe(1120);
+        expect(axes.find(axis => axis.key === 'mobility')!.value).toBe(57);
     });
 
-    it('maps aggregated bucket averages to the midpoint ring', () => {
-        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
-        const averageMekA = createUnit({
-            id: 31,
-            name: 'Average Mek A',
-            dpt: 7,
-        });
-        const averageMekB = createUnit({
-            id: 32,
-            name: 'Average Mek B',
-            dpt: 7,
-        });
-
-        subtypeMaxStats.set('BattleMek', createMaxStats({
-            armor: { min: 10, max: 50 },
-            internal: { min: 5, max: 12 },
-            alphaNoPhysicalNoOneshots: { min: 4, max: 20 },
-            dpt: { min: 3, average: 7, max: 15 },
-            run2MP: { min: 2, max: 9 },
-            jumpMP: { min: 1, max: 7 },
+    it('uses linear ratios and retains a fixed benchmark above 100 percent', () => {
+        const units = Array.from({ length: 20 }, (_, i) => createEmptyUnit({
+            run2: i === 19 ? 40 : 10, jump: 0,
         }));
-
-        fixture.componentRef.setInput('force', new LoadForceEntry({
-            groups: [{
-                units: [
-                    { unit: averageMekA, destroyed: false },
-                    { unit: averageMekB, destroyed: false },
-                ],
-            }],
-        }));
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes(units, [], []));
+        const fixture = render([units[19]]);
+        const axis = fixture.componentInstance.chartAxes()[0];
+        expect(axis.max).toBe(10);
+        expect(axis.ratio).toBe(4);
+        expect(axis.comparisonText).toBe('40 / 10 · 400%');
+        expect(axis.dataPoint).toEqual(axis.axisPoint);
+        const average = fixture.componentInstance.averageAxes()[0];
+        expect(average.value).toBe(11.5);
+        expect(average.ratio).toBe(1.15);
+        expect(average.dataPoint).toEqual(average.axisPoint);
+        fixture.componentRef.setInput('hoveredUnit', createEmptyUnit({ run2: 5, jump: 0 }));
         fixture.detectChanges();
-
-        const dptAxis = fixture.componentInstance.chartAxes().find((axis) => axis.key === 'dpt');
-        const midpointRing = fixture.nativeElement.querySelector('.radar-ring-midpoint') as SVGPolygonElement | null;
-
-        expect(dptAxis).toEqual(jasmine.objectContaining({
-            value: 14,
-            min: 6,
-            average: 14,
-            max: 30,
-        }));
-        expect(dptAxis?.ratio).toBeCloseTo(0.5, 6);
-        expect(midpointRing).not.toBeNull();
-        expect(fixture.nativeElement.querySelectorAll('.radar-ring-midpoint').length).toBe(1);
+        const overlay = fixture.componentInstance.hoveredUnitAxes()[0];
+        expect(overlay.max).toBe(axis.max);
+        expect(overlay.ratio).toBe(0.5);
     });
 
-    it('overlays hovered classic unit stats using that unit subtype range', () => {
-        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
-        const mekA = createUnit({
-            id: 7,
-            name: 'Hover Mek',
-            armor: 30,
-            internal: 10,
-            _weightedMaxRange: 8,
-            _mdSumNoPhysical: 8,
-            _mdSumNoPhysicalNoOneshots: 9,
-            dpt: 7,
-            run2: 5,
-            jump: 3,
-        });
-        const aero = createUnit({
-            id: 8,
-            name: 'Other Aero',
-            type: 'Aero',
-            subtype: 'Aerospace Fighter',
-            moveType: 'Aerodyne',
-            armor: 20,
-            internal: 8,
-            _weightedMaxRange: 12,
-            _mdSumNoPhysical: 12,
-            _mdSumNoPhysicalNoOneshots: 13,
-            dpt: 9,
-            run2: 10,
-            jump: 0,
-        });
-
-        fixture.componentRef.setInput('force', new LoadForceEntry({
-            groups: [{
-                units: [
-                    { unit: mekA, destroyed: false },
-                    { unit: aero, destroyed: false },
-                ],
-            }],
-        }));
-        fixture.componentRef.setInput('hoveredUnit', mekA);
+    it('plots composition-weighted catalog averages on each axis, keeping zero as the origin', () => {
+        const low = createEmptyUnit({ run2: 4, jump: 0, armor: 100, internal: 0 });
+        const high = createEmptyUnit({ run2: 12, jump: 0, armor: 300, internal: 0 });
+        const sh = createEmptyUnit({ run2: 2, jump: 0, armor: 800, internal: 0,
+            weightClass: 'Colossal/Super-Heavy' });
+        const vehicle = createEmptyUnit({ run2: 20, jump: 0, armor: 10, internal: 0, as: { TP: 'CV' } });
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([low, high, sh, vehicle], [], []));
+        const fixture = render([low, low, sh, vehicle]);
+        const component = fixture.componentInstance;
+        const [mobility, endurance] = component.averageAxes();
+        expect(mobility.value).toBe(38);
+        expect(mobility.max).toBe(46);
+        expect(mobility.ratio).toBeCloseTo(38 / 46);
+        expect(endurance.value).toBe(1210);
+        expect(endurance.max).toBe(1410);
+        expect(endurance.ratio).toBeCloseTo(1210 / 1410);
+        expect(component.averagePath().match(/M/g)!.length).toBe(4);
+        expect(fixture.nativeElement.querySelector('.radar-ring-midpoint')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.radar-average-outline').getAttribute('d')).toBe(component.averagePath());
+        const path = component.averagePath();
+        fixture.componentRef.setInput('hoveredUnit', low);
         fixture.detectChanges();
-
-        const axes = fixture.componentInstance.hoveredUnitAxes();
-        const getAxis = (key: string) => axes.find((axis) => axis.key === key);
-
-        expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 5, min: 2, max: 9 }));
-        expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 40, min: 15, max: 62 }));
-        expect(getAxis('range')).toEqual(jasmine.objectContaining({ value: 8, min: 6, max: 14 }));
-        expect(getAxis('dpt')).toEqual(jasmine.objectContaining({ value: 7, min: 3, max: 15 }));
-        expect(getAxis('mobility')?.ratio).toBeCloseTo(18 / 49, 6);
-        expect(getAxis('endurance')?.ratio).toBeCloseTo(1241 / 2209, 6);
-        expect(getAxis('range')?.ratio).toBeCloseTo(0.125, 6);
-        expect(getAxis('dpt')?.ratio).toBeCloseTo(2 / 9, 6);
-        expect(fixture.nativeElement.querySelectorAll('.radar-hover-node').length).toBe(4);
-        const cbtHoveredLabels = Array.from(fixture.nativeElement.querySelectorAll('.radar-label-value-hover')) as SVGTextElement[];
-
-        expect(cbtHoveredLabels.map((element) => element.textContent?.trim())).toEqual([
-            '5/9',
-            '40/62',
-            '8/14',
-            '7/15',
-        ]);
+        expect(component.averagePath()).toBe(path);
+        expect(component.hoveredUnitAxes()[0].ratio).toBeCloseTo(4 / 12);
     });
 
-    it('uses the lower global subtype ceiling when jump and run are tied for a unit', () => {
-        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
-        const tiedMobilityMek = createUnit({
-            id: 4,
-            name: 'Tie Mek',
-            run2: 6,
-            jump: 6,
-        });
-        fixture.componentRef.setInput('force', new LoadForceEntry({
-            groups: [{
-                units: [{ unit: tiedMobilityMek, destroyed: false }],
-            }],
-        }));
+    it('compares hovered units against their own bucket regardless of force size', () => {
+        const unit = createEmptyUnit({ run2: 10, jump: 0 });
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([unit], [], []));
+        const fixture = render(Array(12).fill(unit));
+        fixture.componentRef.setInput('hoveredUnit', unit);
         fixture.detectChanges();
-
-        const mobilityAxis = fixture.componentInstance.chartAxes().find((axis) => axis.key === 'mobility');
-
-        expect(mobilityAxis).toEqual(jasmine.objectContaining({ value: 6, min: 1, max: 7 }));
-        expect(mobilityAxis?.ratio).toBeCloseTo(17 / 18, 6);
+        expect(fixture.componentInstance.chartAxes()[0].max).toBe(120);
+        expect(fixture.componentInstance.hoveredUnitAxes()[0].max).toBe(10);
+        expect(fixture.componentInstance.hoveredUnitAxes()[0].ratio).toBe(1);
+        expect(fixture.componentInstance.hoveredUnitAxes()[0].comparisonText).toBe('10 / 10');
+        expect(fixture.nativeElement.textContent).not.toContain('Unit profile');
+        expect(fixture.nativeElement.querySelector('button[aria-label="How to read the radar"]')).not.toBeNull();
     });
 
-    it('aggregates Alpha Strike radar stats from global as.TP maxima', () => {
-        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
-
-        const asMek = createUnit({
-            id: 5,
-            name: 'AS Mek',
-            as: {
-                TP: 'BM',
-                PV: 34,
-                SZ: 3,
-                TMM: 2,
-                usesOV: false,
-                OV: 0,
-                MV: '8j',
-                MVm: { '': 8, j: 12 },
-                usesTh: false,
-                Th: 0,
-                Arm: 4,
-                Str: 3,
-                specials: ['ECM', 'CASE'],
-                dmg: {
-                    dmgS: '3',
-                    dmgM: '2',
-                    dmgL: '1',
-                    dmgE: '0',
-                },
-                usesE: false,
-                usesArcs: false,
-            },
-        });
-        const asAero = createUnit({
-            id: 6,
-            name: 'AS Aero',
-            type: 'Aero',
-            subtype: 'Aerospace Fighter',
-            moveType: 'Aerodyne',
-            as: {
-                TP: 'AF',
-                PV: 29,
-                SZ: 2,
-                TMM: 3,
-                usesOV: false,
-                OV: 0,
-                MV: '16a',
-                MVm: { a: 16 },
-                usesTh: false,
-                Th: 0,
-                Arm: 2,
-                Str: 1,
-                specials: ['BOMB'],
-                dmg: {
-                    dmgS: '2',
-                    dmgM: '3',
-                    dmgL: '4',
-                    dmgE: '0',
-                },
-                usesE: false,
-                usesArcs: false,
-            },
-        });
-        fixture.componentRef.setInput('force', new LoadForceEntry({
-            type: GameSystem.AS,
-            groups: [{
-                units: [
-                    { unit: asMek, destroyed: false },
-                    { unit: asAero, destroyed: false },
-                ],
-            }],
-        }));
-        fixture.detectChanges();
-
-        const axes = fixture.componentInstance.chartAxes();
-        const getAxis = (key: string) => axes.find((axis) => axis.key === key);
-
-        expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 5, min: 3, max: 9 }));
-        expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 10, min: 5, max: 14 }));
-        expect(getAxis('shortRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, min: 2, max: 6 }));
-        expect(getAxis('mediumRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, min: 3, max: 7 }));
-        expect(getAxis('longRangeDamage')).toEqual(jasmine.objectContaining({ value: 5, min: 3, max: 7 }));
-        expect(getAxis('mobility')?.ratio).toBeCloseTo(2 / 9, 6);
-        expect(getAxis('endurance')?.ratio).toBeCloseTo(49 / 81, 6);
-        expect(getAxis('shortRangeDamage')?.ratio).toBeCloseTo(0.875, 6);
-        expect(getAxis('mediumRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
-        expect(getAxis('longRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
+    it('switches hover benchmarks with the unit TP and superheavy bucket', () => {
+        const mek = createEmptyUnit({ run2: 10, jump: 0 });
+        const sh = createEmptyUnit({ run2: 3, jump: 0, weightClass: 'Colossal/Super-Heavy' });
+        const vehicle = createEmptyUnit({ run2: 8, jump: 0, as: { TP: 'CV' } });
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([mek, sh, vehicle], [], []));
+        const fixture = render([mek, sh, vehicle]);
+        for (const unit of [mek, sh, vehicle]) {
+            fixture.componentRef.setInput('hoveredUnit', unit);
+            fixture.detectChanges();
+            expect(fixture.componentInstance.chartAxes()[0].max).toBe(21);
+            expect(fixture.componentInstance.hoveredUnitAxes()[0].max).toBe(unit.run2);
+            expect(fixture.componentInstance.hoveredUnitAxes()[0].ratio).toBe(1);
+        }
     });
 
-    it('overlays hovered Alpha Strike unit stats using that unit as.TP range', () => {
-        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
-
-        const asMek = createUnit({
-            id: 9,
-            name: 'AS Hover Mek',
-            as: {
-                TP: 'BM',
-                PV: 34,
-                SZ: 3,
-                TMM: 2,
-                usesOV: false,
-                OV: 0,
-                MV: '8j',
-                MVm: { '': 8, j: 12 },
-                usesTh: false,
-                Th: 0,
-                Arm: 4,
-                Str: 3,
-                specials: ['ECM', 'CASE'],
-                dmg: {
-                    dmgS: '3',
-                    dmgM: '2',
-                    dmgL: '1',
-                    dmgE: '0',
-                },
-                usesE: false,
-                usesArcs: false,
-            },
-        });
-        const asAero = createUnit({
-            id: 10,
-            name: 'AS Hover Aero',
-            type: 'Aero',
-            subtype: 'Aerospace Fighter',
-            moveType: 'Aerodyne',
-            as: {
-                TP: 'AF',
-                PV: 29,
-                SZ: 2,
-                TMM: 3,
-                usesOV: false,
-                OV: 0,
-                MV: '16a',
-                MVm: { a: 16 },
-                usesTh: false,
-                Th: 0,
-                Arm: 2,
-                Str: 1,
-                specials: ['BOMB'],
-                dmg: {
-                    dmgS: '2',
-                    dmgM: '3',
-                    dmgL: '4',
-                    dmgE: '0',
-                },
-                usesE: false,
-                usesArcs: false,
-            },
-        });
-
-        fixture.componentRef.setInput('force', new LoadForceEntry({
-            type: GameSystem.AS,
-            groups: [{
-                units: [
-                    { unit: asMek, destroyed: false },
-                    { unit: asAero, destroyed: false },
-                ],
-            }],
+    it('shows rare positive capabilities without a fabricated denominator', () => {
+        const units = Array.from({ length: 100 }, (_, i) => createEmptyUnit({
+            as: { TP: 'BA', dmg: { dmgL: i === 99 ? '0*' : '0' } },
         }));
-        fixture.componentRef.setInput('hoveredUnit', asAero);
-        fixture.detectChanges();
-
-        const axes = fixture.componentInstance.hoveredUnitAxes();
-        const getAxis = (key: string) => axes.find((axis) => axis.key === key);
-
-        expect(getAxis('mobility')).toEqual(jasmine.objectContaining({ value: 3, min: 2, max: 5 }));
-        expect(getAxis('endurance')).toEqual(jasmine.objectContaining({ value: 3, min: 2, max: 5 }));
-        expect(getAxis('shortRangeDamage')).toEqual(jasmine.objectContaining({ value: 2, min: 1, max: 2 }));
-        expect(getAxis('mediumRangeDamage')).toEqual(jasmine.objectContaining({ value: 3, min: 2, max: 4 }));
-        expect(getAxis('longRangeDamage')).toEqual(jasmine.objectContaining({ value: 4, min: 3, max: 5 }));
-        expect(getAxis('mobility')?.ratio).toBeCloseTo(2 / 9, 6);
-        expect(getAxis('endurance')?.ratio).toBeCloseTo(2 / 9, 6);
-        expect(getAxis('shortRangeDamage')?.ratio).toBeCloseTo(1, 6);
-        expect(getAxis('mediumRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
-        expect(getAxis('longRangeDamage')?.ratio).toBeCloseTo(0.5, 6);
-        expect(fixture.nativeElement.querySelectorAll('.radar-hover-node').length).toBe(5);
-        const alphaStrikeHoveredLabels = Array.from(fixture.nativeElement.querySelectorAll('.radar-label-value-hover')) as SVGTextElement[];
-
-        expect(alphaStrikeHoveredLabels.map((element) => element.textContent?.trim())).toEqual([
-            '3/5',
-            '3/5',
-            '2/2',
-            '3/4',
-            '4/5',
-        ]);
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes(units, [], []));
+        const fixture = render([units[99]], GameSystem.AS);
+        const axis = fixture.componentInstance.chartAxes().find(axis => axis.key === 'asDmgL')!;
+        expect(axis.available).toBeTrue();
+        expect(axis.max).toBe(0);
+        expect(axis.value).toBe(0.5);
+        expect(axis.comparisonText).toBe('0.5 · rare');
+        const average = fixture.componentInstance.averageAxes().find(axis => axis.key === 'asDmgL')!;
+        expect(average.value).toBe(0.005);
+        expect(average.available).toBeFalse();
+        expect(fixture.componentInstance.averagePath().match(/M/g)!.length).toBe(3);
     });
 
-    it('maps hovered unit bucket averages to the midpoint ring', () => {
-        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
-        const averageMek = createUnit({
-            id: 33,
-            name: 'Average Hover Mek',
-            dpt: 7,
-        });
-
-        subtypeMaxStats.set('BattleMek', createMaxStats({
-            armor: { min: 10, max: 50 },
-            internal: { min: 5, max: 12 },
-            alphaNoPhysicalNoOneshots: { min: 4, max: 20 },
-            dpt: { min: 3, average: 7, max: 15 },
-            run2MP: { min: 2, max: 9 },
-            jumpMP: { min: 1, max: 7 },
-        }));
-
-        fixture.componentRef.setInput('force', new LoadForceEntry({
-            groups: [{
-                units: [{ unit: averageMek, destroyed: false }],
-            }],
-        }));
-        fixture.componentRef.setInput('hoveredUnit', averageMek);
+    it('distinguishes missing data from genuine zero capability, including mixed forces', () => {
+        const fighter = createEmptyUnit({ as: { TP: 'AF', TMM: null } });
+        const mek = createEmptyUnit({ as: { TP: 'BM', TMM: 0 } });
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([fighter, mek], [], []));
+        const fixture = render([fighter, mek], GameSystem.AS);
+        expect(fixture.componentInstance.chartAxes()[0].comparisonText).toBe('N/A');
+        expect(fixture.componentInstance.averageAxes()[0].available).toBeFalse();
+        expect(fixture.componentInstance.averagePath().match(/M/g)!.length).toBe(3);
+        fixture.componentRef.setInput('hoveredUnit', mek);
         fixture.detectChanges();
-
-        const dptAxis = fixture.componentInstance.hoveredUnitAxes().find((axis) => axis.key === 'dpt');
-
-        expect(dptAxis).toEqual(jasmine.objectContaining({
-            value: 7,
-            min: 3,
-            average: 7,
-            max: 15,
-        }));
-        expect(dptAxis?.ratio).toBeCloseTo(0.5, 6);
+        expect(fixture.componentInstance.hoveredUnitAxes()[0].comparisonText).toBe('0 / 0');
+        fixture.componentRef.setInput('hoveredUnit', fighter);
+        fixture.detectChanges();
+        expect(fixture.componentInstance.hoveredUnitAxes()[0].comparisonText).toBe('N/A');
+        const zero = render([mek], GameSystem.AS).componentInstance.chartAxes()[0];
+        expect(zero.available).toBeTrue();
+        expect(zero.comparisonText).toBe('0 / 0');
+        expect(zero.ratio).toBe(0);
     });
 
-    it('shows the empty state when the force has no resolvable units', () => {
-        const fixture = TestBed.createComponent(ForceRadarPanelComponent);
-
-        fixture.componentRef.setInput('force', new LoadForceEntry({
-            groups: [{
-                units: [{ unit: undefined, destroyed: false }],
-            }],
-        }));
-        fixture.detectChanges();
-
+    it('shows an empty state without units', () => {
+        const fixture = render([]);
         expect(fixture.componentInstance.hasUnits()).toBeFalse();
+        expect(fixture.componentInstance.averagePath().trim()).toBe('');
         expect(fixture.nativeElement.textContent).toContain('No units to chart.');
     });
 });

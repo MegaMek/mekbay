@@ -260,8 +260,7 @@ describe('DataService', () => {
         rebuildIndexes: jasmine.createSpy('rebuildIndexes'),
         rebuildTagSearchIndex: jasmine.createSpy('rebuildTagSearchIndex'),
         prepareCatalogIndexes: jasmine.createSpy('prepareCatalogIndexes').and.returnValue({
-            unitSubtypeMaxStats: {},
-            unitAsTypeMaxStats: {},
+            unitStats: {},
             searchFilterIndex: new Map(),
             searchFilterValues: new Map(),
             dropdownOptionUniverse: new Map(),
@@ -424,8 +423,7 @@ describe('DataService', () => {
         unitSearchIndexServiceMock.rebuildTagSearchIndex.calls.reset();
         unitSearchIndexServiceMock.prepareCatalogIndexes.calls.reset();
         unitSearchIndexServiceMock.prepareCatalogIndexes.and.returnValue({
-            unitSubtypeMaxStats: {},
-            unitAsTypeMaxStats: {},
+            unitStats: {},
             searchFilterIndex: new Map(),
             searchFilterValues: new Map(),
             dropdownOptionUniverse: new Map(),
@@ -2540,7 +2538,7 @@ describe('DataService', () => {
                     .some(args => args[0] === unitsA)).toBeFalse();
             }
             return {
-                unitSubtypeMaxStats: {}, unitAsTypeMaxStats: {}, searchFilterIndex: new Map(),
+                unitStats: {}, searchFilterIndex: new Map(),
                 searchFilterValues: new Map(),
                 dropdownOptionUniverse: new Map(), factionEraSnapshot: {},
             };
@@ -2639,7 +2637,7 @@ describe('DataService', () => {
         unitSearchIndexServiceMock.prepareCatalogIndexes.and.callFake((units: UnitSummary[]) => {
             if (units === replacementUnits) throw new Error('index failed');
             return {
-                unitSubtypeMaxStats: {}, unitAsTypeMaxStats: {}, searchFilterIndex: new Map(),
+                unitStats: {}, searchFilterIndex: new Map(),
                 searchFilterValues: new Map(),
                 dropdownOptionUniverse: new Map(), factionEraSnapshot: {},
             };

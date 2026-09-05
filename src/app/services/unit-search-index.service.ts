@@ -10,6 +10,7 @@ import { removeAccents } from '../utils/string.util';
 import { compareUnitsByName, naturalCompare } from '../utils/sort.util';
 import { getMergedTags, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
 import { calculateWeightedMaxRange, getMaxRangeFromComponents } from '../utils/unit-range.util';
+import { getUnitStatBucketKey, getUnitStatValues } from '../utils/unit-stat-values.util';
 import { parseASDamageValue } from '../utils/as-damage.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, BOOLEAN_FILTERS, getBooleanFilterUnitValue } from './unit-search-filters.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
@@ -29,9 +30,15 @@ export interface BucketStatSummary {
     readonly min: number;
     readonly max: number;
     readonly average: number;
+    /** Nearest-rank 95th percentile of supported measurements. */
+    readonly p95: number;
+    readonly count: number;
 }
 
 export interface MinMaxStatsRange {
+    readonly mobility: BucketStatSummary;
+    readonly endurance: BucketStatSummary;
+    readonly asEndurance: BucketStatSummary;
     readonly armor: BucketStatSummary;
     readonly internal: BucketStatSummary;
     readonly heat: BucketStatSummary;
@@ -58,10 +65,6 @@ export interface MinMaxStatsRange {
     readonly gravDecks: BucketStatSummary;
     readonly sailIntegrity: BucketStatSummary;
     readonly kfIntegrity: BucketStatSummary;
-}
-
-export interface UnitSubtypeMaxStats {
-    [unitSubtype: string]: MinMaxStatsRange;
 }
 
 export interface UnitSearchDropdownOption {
@@ -155,10 +158,6 @@ export interface FactionEraMembershipSnapshot {
     >;
 }
 
-interface ASUnitTypeMaxStats {
-    [asUnitType: string]: MinMaxStatsRange;
-}
-
 /**
  * Fully built search state for one exact Units/dependency activation.
  *
@@ -167,8 +166,7 @@ interface ASUnitTypeMaxStats {
  * failed or superseded build cannot expose a partially rebuilt index.
  */
 export interface PreparedUnitSearchIndexes {
-    readonly unitSubtypeMaxStats: UnitSubtypeMaxStats;
-    readonly unitAsTypeMaxStats: ASUnitTypeMaxStats;
+    readonly unitStats: Readonly<Record<string, MinMaxStatsRange>>;
     readonly searchFilterIndex: Map<string, Map<string, ReadonlySet<UnitUuid>>>;
     readonly unitOrdinalLookup: UnitOrdinalLookup;
     readonly searchFilterValues: Map<string, string[]>;
@@ -193,79 +191,17 @@ export interface PreparedUnitSearchIndexes {
     };
 }
 
-interface TrackedStatAccumulator {
-    min: number;
-    max: number;
-    total: number;
-    count: number;
-}
+type StatSamples = Partial<Record<keyof MinMaxStatsRange, number[]>>;
 
-function createBucketStatSummary(min = 0, max = 0, average = 0): BucketStatSummary {
-    return { min, max, average };
-}
-
-function createTrackedStatAccumulator(): TrackedStatAccumulator {
+function summarizeStat(values: number[] = []): BucketStatSummary {
+    if (values.length === 0) return { min: 0, max: 0, average: 0, p95: 0, count: 0 };
+    values.sort((left, right) => left - right);
     return {
-        min: Infinity,
-        max: -Infinity,
-        total: 0,
-        count: 0,
-    };
-}
-
-function updateTrackedStat(stat: TrackedStatAccumulator, value: number): void {
-    if (value < stat.min) {
-        stat.min = value;
-    }
-
-    if (value > stat.max) {
-        stat.max = value;
-    }
-
-    stat.total += value;
-    stat.count += 1;
-}
-
-function normalizeTrackedStat(stat: TrackedStatAccumulator): BucketStatSummary {
-    if (stat.count === 0) {
-        return createBucketStatSummary();
-    }
-
-    return createBucketStatSummary(
-        stat.min === Infinity ? 0 : stat.min,
-        stat.max === -Infinity ? 0 : Math.max(stat.max, 0),
-        stat.total / stat.count,
-    );
-}
-
-function createEmptyMinMaxStatsRange(): MinMaxStatsRange {
-    return {
-        armor: createBucketStatSummary(),
-        internal: createBucketStatSummary(),
-        heat: createBucketStatSummary(),
-        dissipation: createBucketStatSummary(),
-        dissipationEfficiency: createBucketStatSummary(),
-        runMP: createBucketStatSummary(),
-        run2MP: createBucketStatSummary(),
-        umuMP: createBucketStatSummary(),
-        jumpMP: createBucketStatSummary(),
-        alphaNoPhysical: createBucketStatSummary(),
-        alphaNoPhysicalNoOneshots: createBucketStatSummary(),
-        maxRange: createBucketStatSummary(),
-        weightedMaxRange: createBucketStatSummary(),
-        dpt: createBucketStatSummary(),
-        asTmm: createBucketStatSummary(),
-        asArm: createBucketStatSummary(),
-        asStr: createBucketStatSummary(),
-        asDmgS: createBucketStatSummary(),
-        asDmgM: createBucketStatSummary(),
-        asDmgL: createBucketStatSummary(),
-        dropshipCapacity: createBucketStatSummary(),
-        escapePods: createBucketStatSummary(),
-        lifeBoats: createBucketStatSummary(),
-        gravDecks: createBucketStatSummary(),
-        sailIntegrity: createBucketStatSummary(),
-        kfIntegrity: createBucketStatSummary(),
+        min: values[0],
+        max: values[values.length - 1],
+        average: values.reduce((sum, value) => sum + value, 0) / values.length,
+        p95: values[Math.ceil(values.length * 0.95) - 1],
+        count: values.length,
     };
 }
 
@@ -273,8 +209,7 @@ function createEmptyMinMaxStatsRange(): MinMaxStatsRange {
     providedIn: 'root'
 })
 export class UnitSearchIndexService {
-    private unitSubtypeMaxStats: UnitSubtypeMaxStats = {};
-    private unitAsTypeMaxStats: ASUnitTypeMaxStats = {};
+    private unitStats: Readonly<Record<string, MinMaxStatsRange>> = {};
     private searchFilterIndex = new Map<string, Map<string, ReadonlySet<UnitUuid>>>();
     private unitOrdinalLookup: UnitOrdinalLookup = {
         unitUuids: [],
@@ -340,8 +275,7 @@ export class UnitSearchIndexService {
 
     /** Final no-build switch. Angular observers cannot interleave the assignments. */
     public commitPreparedCatalogIndexes(candidate: PreparedUnitSearchIndexes): void {
-        this.unitSubtypeMaxStats = candidate.unitSubtypeMaxStats;
-        this.unitAsTypeMaxStats = candidate.unitAsTypeMaxStats;
+        this.unitStats = candidate.unitStats;
         this.searchFilterIndex = candidate.searchFilterIndex;
         this.unitOrdinalLookup = candidate.unitOrdinalLookup;
         this.searchFilterValues = candidate.searchFilterValues;
@@ -355,8 +289,7 @@ export class UnitSearchIndexService {
         preparationTimings: PreparedUnitSearchIndexes['preparationTimings'],
     ): PreparedUnitSearchIndexes {
         return Object.freeze({
-            unitSubtypeMaxStats: this.unitSubtypeMaxStats,
-            unitAsTypeMaxStats: this.unitAsTypeMaxStats,
+            unitStats: this.unitStats,
             searchFilterIndex: this.searchFilterIndex,
             unitOrdinalLookup: this.unitOrdinalLookup,
             searchFilterValues: this.searchFilterValues,
@@ -370,101 +303,8 @@ export class UnitSearchIndexService {
     }
 
     private prepareUnits(units: UnitSummary[]): void {
-        this.unitSubtypeMaxStats = {};
-        this.unitAsTypeMaxStats = {};
-
-        const createStatsAccumulator = () => ({
-            armor: createTrackedStatAccumulator(),
-            internal: createTrackedStatAccumulator(),
-            heat: createTrackedStatAccumulator(),
-            dissipation: createTrackedStatAccumulator(),
-            dissipationEfficiency: createTrackedStatAccumulator(),
-            runMP: createTrackedStatAccumulator(),
-            run2MP: createTrackedStatAccumulator(),
-            jumpMP: createTrackedStatAccumulator(),
-            umuMP: createTrackedStatAccumulator(),
-            alphaNoPhysical: createTrackedStatAccumulator(),
-            alphaNoPhysicalNoOneshots: createTrackedStatAccumulator(),
-            maxRange: createTrackedStatAccumulator(),
-            weightedMaxRange: createTrackedStatAccumulator(),
-            dpt: createTrackedStatAccumulator(),
-            asTmm: createTrackedStatAccumulator(),
-            asArm: createTrackedStatAccumulator(),
-            asStr: createTrackedStatAccumulator(),
-            asDmgS: createTrackedStatAccumulator(),
-            asDmgM: createTrackedStatAccumulator(),
-            asDmgL: createTrackedStatAccumulator(),
-            dropshipCapacity: createTrackedStatAccumulator(),
-            escapePods: createTrackedStatAccumulator(),
-            lifeBoats: createTrackedStatAccumulator(),
-            sailIntegrity: createTrackedStatAccumulator(),
-            kfIntegrity: createTrackedStatAccumulator(),
-            gravDecks: createTrackedStatAccumulator(),
-        });
-
-        const updateTrackedStats = (stats: ReturnType<typeof createStatsAccumulator>, unit: UnitSummary): void => {
-            updateTrackedStat(stats.armor, unit.armor || 0);
-            updateTrackedStat(stats.internal, unit.internal || 0);
-            updateTrackedStat(stats.heat, unit.heat || 0);
-            updateTrackedStat(stats.dissipation, unit.dissipation || 0);
-            updateTrackedStat(stats.dissipationEfficiency, unit._dissipationEfficiency || 0);
-            updateTrackedStat(stats.runMP, unit.run || 0);
-            updateTrackedStat(stats.run2MP, unit.run2 || 0);
-            updateTrackedStat(stats.jumpMP, unit.jump || 0);
-            updateTrackedStat(stats.umuMP, unit.umu || 0);
-            updateTrackedStat(stats.alphaNoPhysical, unit._mdSumNoPhysical || 0);
-            updateTrackedStat(stats.alphaNoPhysicalNoOneshots, unit._mdSumNoPhysicalNoOneshots || 0);
-            updateTrackedStat(stats.maxRange, unit._maxRange || 0);
-            updateTrackedStat(stats.weightedMaxRange, unit._weightedMaxRange || 0);
-            updateTrackedStat(stats.dpt, unit.dpt || 0);
-            updateTrackedStat(stats.asTmm, unit.as?.TMM || 0);
-            updateTrackedStat(stats.asArm, unit.as?.Arm || 0);
-            updateTrackedStat(stats.asStr, unit.as?.Str || 0);
-            updateTrackedStat(stats.asDmgS, parseASDamageValue(unit.as?.dmg.dmgS) ?? 0);
-            updateTrackedStat(stats.asDmgM, parseASDamageValue(unit.as?.dmg.dmgM) ?? 0);
-            updateTrackedStat(stats.asDmgL, parseASDamageValue(unit.as?.dmg.dmgL) ?? 0);
-
-            if (unit.capital) {
-                updateTrackedStat(stats.dropshipCapacity, unit.capital.dropshipCapacity || 0);
-                updateTrackedStat(stats.escapePods, unit.capital.escapePods || 0);
-                updateTrackedStat(stats.lifeBoats, unit.capital.lifeBoats || 0);
-                updateTrackedStat(stats.sailIntegrity, unit.capital.sailIntegrity || 0);
-                updateTrackedStat(stats.kfIntegrity, unit.capital.kfIntegrity || 0);
-                updateTrackedStat(stats.gravDecks, unit.capital.gravDecks?.length || 0);
-            }
-        };
-
-        const toNormalizedStats = (stats: ReturnType<typeof createStatsAccumulator>): MinMaxStatsRange => ({
-            armor: normalizeTrackedStat(stats.armor),
-            internal: normalizeTrackedStat(stats.internal),
-            heat: normalizeTrackedStat(stats.heat),
-            dissipation: normalizeTrackedStat(stats.dissipation),
-            dissipationEfficiency: normalizeTrackedStat(stats.dissipationEfficiency),
-            runMP: normalizeTrackedStat(stats.runMP),
-            run2MP: normalizeTrackedStat(stats.run2MP),
-            jumpMP: normalizeTrackedStat(stats.jumpMP),
-            umuMP: normalizeTrackedStat(stats.umuMP),
-            alphaNoPhysical: normalizeTrackedStat(stats.alphaNoPhysical),
-            alphaNoPhysicalNoOneshots: normalizeTrackedStat(stats.alphaNoPhysicalNoOneshots),
-            maxRange: normalizeTrackedStat(stats.maxRange),
-            weightedMaxRange: normalizeTrackedStat(stats.weightedMaxRange),
-            dpt: normalizeTrackedStat(stats.dpt),
-            asTmm: normalizeTrackedStat(stats.asTmm),
-            asArm: normalizeTrackedStat(stats.asArm),
-            asStr: normalizeTrackedStat(stats.asStr),
-            asDmgS: normalizeTrackedStat(stats.asDmgS),
-            asDmgM: normalizeTrackedStat(stats.asDmgM),
-            asDmgL: normalizeTrackedStat(stats.asDmgL),
-            dropshipCapacity: normalizeTrackedStat(stats.dropshipCapacity),
-            escapePods: normalizeTrackedStat(stats.escapePods),
-            lifeBoats: normalizeTrackedStat(stats.lifeBoats),
-            sailIntegrity: normalizeTrackedStat(stats.sailIntegrity),
-            kfIntegrity: normalizeTrackedStat(stats.kfIntegrity),
-            gravDecks: normalizeTrackedStat(stats.gravDecks),
-        });
-
-        const statsBySubtype: { [subtype: string]: ReturnType<typeof createStatsAccumulator> } = {};
-        const statsByAsType: { [asUnitType: string]: ReturnType<typeof createStatsAccumulator> } = {};
+        const unitStats: Record<string, MinMaxStatsRange> = {};
+        const samplesByBucket: Record<string, StatSamples> = {};
 
         for (let unitOrdinal = 0; unitOrdinal < units.length; unitOrdinal++) {
             const unit = units[unitOrdinal];
@@ -497,24 +337,20 @@ export class UnitSearchIndexService {
                 }
             }
 
-            const subtype = unit.subtype;
-            statsBySubtype[subtype] ??= createStatsAccumulator();
-            updateTrackedStats(statsBySubtype[subtype], unit);
-
-            const asUnitType = unit.as?.TP;
-            if (asUnitType) {
-                statsByAsType[asUnitType] ??= createStatsAccumulator();
-                updateTrackedStats(statsByAsType[asUnitType], unit);
+            const key = getUnitStatBucketKey(unit);
+            const samples = samplesByBucket[key] ??= {};
+            for (const [statKey, value] of Object.entries(getUnitStatValues(unit))) {
+                if (value !== null) (samples[statKey as keyof MinMaxStatsRange] ??= []).push(value);
+                else samples[statKey as keyof MinMaxStatsRange] ??= [];
             }
         }
 
-        for (const [subtype, stats] of Object.entries(statsBySubtype)) {
-            this.unitSubtypeMaxStats[subtype] = toNormalizedStats(stats);
+        for (const [key, samples] of Object.entries(samplesByBucket)) {
+            unitStats[key] = Object.fromEntries(
+                Object.entries(samples).map(([statKey, values]) => [statKey, summarizeStat(values)]),
+            ) as unknown as MinMaxStatsRange;
         }
-
-        for (const [asUnitType, stats] of Object.entries(statsByAsType)) {
-            this.unitAsTypeMaxStats[asUnitType] = toNormalizedStats(stats);
-        }
+        this.unitStats = unitStats;
 
         const unitsByName = [...units].sort(compareUnitsByName);
         for (let rank = 0; rank < unitsByName.length; rank++) {
@@ -710,12 +546,10 @@ export class UnitSearchIndexService {
         return this.dropdownOptionUniverse.get(filterKey)?.map(option => ({ ...option })) ?? [];
     }
 
-    public getUnitSubtypeMaxStats(subtype: string): MinMaxStatsRange {
-        return this.unitSubtypeMaxStats[subtype] || createEmptyMinMaxStatsRange();
-    }
-
-    public getASUnitTypeMaxStats(asUnitType: string): MinMaxStatsRange {
-        return this.unitAsTypeMaxStats[asUnitType] || createEmptyMinMaxStatsRange();
+    public getUnitStats(unit: UnitSummary): MinMaxStatsRange {
+        return this.unitStats[getUnitStatBucketKey(unit)] ?? Object.fromEntries(
+            Object.keys(getUnitStatValues(unit)).map(key => [key, summarizeStat()]),
+        ) as unknown as MinMaxStatsRange;
     }
 
     private rebuildDropdownOptionUniverse(eras: Era[], factions: Faction[]): void {

@@ -53,6 +53,37 @@ import {
 } from './testing/direct-mek-runtime-fixture';
 
 describe('direct Mek entity/runtime projections', () => {
+    it('derives intact quad and tripod PSR bonuses before sheet projection and refreshes them after leg damage', () => {
+        for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+            for (const [fixture, bonus] of [
+                [createDirectQuadRuntimeFixture(ruleset), -2],
+                [createDirectTripodRuntimeFixture(ruleset), -1],
+            ] as const) {
+                const initial = fixture.instance.query().mekMovementPsr();
+                expect(initial.kind).toBe('supported');
+                if (initial.kind !== 'supported') continue;
+                expect(initial.permanentPsrModifiers).toContain({ modifier: bonus, reason: 'No Destroyed Legs' });
+
+                projectMekRecordSheet(
+                    fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.snapshot(),
+                    fixture.instance.query(), emptyCBTEncounterSnapshot(), null,
+                );
+                expect(fixture.instance.query().mekMovementPsr()).toEqual(initial);
+
+                const leg = [...fixture.index.locations.values()].find(location =>
+                    location.code === 'LL' || location.code === 'FLL')!;
+                expect(fixture.instance.dispatch({
+                    type: 'damage-internal', locationId: leg.id,
+                    amount: leg.internalPoints, target: 'committed',
+                }).accepted).toBeTrue();
+                const damaged = fixture.instance.query().mekMovementPsr();
+                expect(damaged.kind).toBe('supported');
+                if (damaged.kind !== 'supported') continue;
+                expect(damaged.permanentPsrModifiers.some(modifier => modifier.reason === 'No Destroyed Legs')).toBeFalse();
+            }
+        }
+    });
+
     it('derives torso equipment destruction and dependent-arm detachment after pending damage commits', () => {
         const fixture = createDirectMekRuntimeFixture();
         const leftTorso = [...fixture.index.locations.values()].find(location => location.code === 'LT')!;
