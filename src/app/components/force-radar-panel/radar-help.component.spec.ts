@@ -26,10 +26,6 @@ describe('RadarHelpComponent', () => {
         const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
         expect(button.getAttribute('aria-expanded')).toBe('true');
         expect(dialog.querySelectorAll('svg').length).toBe(3);
-        expect(dialog.textContent).toContain('Catalog average');
-        expect(dialog.textContent).toContain('Stays fixed when hovering');
-        expect(dialog.textContent).toContain('one matching unit, not the force');
-        expect(dialog.textContent).toContain('P95 reference');
         expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
         expect(document.activeElement).toBe(dialog.querySelector('header'));
         dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));

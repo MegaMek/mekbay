@@ -94,8 +94,8 @@ export class UnitMetadataBuilder {
       squads: this.buildSquadCount(entity),
       squadSize: this.buildSquadSize(entity),      
       
-      heat: entity.heatGeneration(),
-      dissipation: entity.heatDissipation(),
+      heat: entity.tracksHeat() ? entity.heatGeneration() : null,
+      dissipation: entity.tracksHeat() ? entity.heatDissipation() : null,
       diss: entity.heatDissipationRange() ? [...entity.heatDissipationRange()!] : undefined,
       engineHS: entity.engineHeatSinks(),
       engineHSType: entity.engineHeatSinkType(),

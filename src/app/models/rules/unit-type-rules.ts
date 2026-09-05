@@ -803,7 +803,7 @@ export abstract class UnitTypeRulesBase implements UnitTypeRules {
     }
 
     heatSources(turnState: TurnState): UnitHeatSource[] {
-        if (this.unit.getUnit().heat < 0) return []; // Does not track heat
+        if (this.unit.getUnit().heat === null) return []; // Does not track heat
         const sources: UnitHeatSource[] = [];
         const weaponsHeat = turnState.weaponsHeat();
         if (weaponsHeat > 0) {

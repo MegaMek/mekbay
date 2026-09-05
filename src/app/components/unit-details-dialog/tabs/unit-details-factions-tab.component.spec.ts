@@ -41,7 +41,7 @@ describe('UnitDetailsFactionTabComponent', () => {
             id: 7,
             name: 'Draconis Combine',
             group: 'Inner Sphere',
-            img: '/assets/draconis-combine.png',
+            img: TEST_ICON_SRC,
             eras: {
                 3050: new Set([1]),
             },
@@ -146,7 +146,7 @@ describe('UnitDetailsFactionTabComponent', () => {
         expect(viewModel[0].factions.find((faction) => faction.name === 'Draconis Combine')?.megaMekTooltip).toEqual([
             {
                 value: 'Draconis Combine',
-                iconSrc: '/assets/draconis-combine.png',
+                iconSrc: TEST_ICON_SRC,
                 iconAlt: 'Draconis Combine',
                 isHeader: true,
             },
@@ -314,7 +314,7 @@ describe('UnitDetailsFactionTabComponent', () => {
         expect(viewModel[0].factions[0].megaMekTooltip).toEqual([
             {
                 value: 'Draconis Combine',
-                iconSrc: '/assets/draconis-combine.png',
+                iconSrc: TEST_ICON_SRC,
                 iconAlt: 'Draconis Combine',
                 isHeader: true,
             },

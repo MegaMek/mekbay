@@ -5,6 +5,7 @@
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { By } from '@angular/platform-browser';
 import { of } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
@@ -70,6 +71,14 @@ describe('ForceEntryPreviewDialogComponent', () => {
         await TestBed.configureTestingModule({
             imports: [ForceEntryPreviewDialogComponent],
             providers: [
+                {
+                    provide: SpriteStorageService,
+                    useValue: {
+                        loading: signal(false),
+                        getCachedSpriteInfo: () => null,
+                        getSpriteInfo: () => Promise.resolve(null),
+                    },
+                },
                 provideZonelessChangeDetection(),
                 { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
                 {

@@ -40,6 +40,19 @@ import { EquipmentFlag } from '../models/equipment-flags.type';
 describe('UnitMetadataBuilder', () => {
   const builder = new UnitMetadataBuilder();
 
+  it('exports null heat measurements only for entities that do not track heat', () => {
+    for (const entity of [new TankEntity(), new ConvFighterEntity(), new InfantryEntity()]) {
+      const metadata = builder.build(entity);
+      expect(metadata.heat).toBeNull();
+      expect(metadata.dissipation).toBeNull();
+    }
+    for (const entity of [new BipedMekEntity(), new AeroSpaceFighterEntity()]) {
+      const metadata = builder.build(entity);
+      expect(metadata.heat).toBe(0);
+      expect(metadata.dissipation).toBe(entity.heatDissipation());
+    }
+  });
+
   it('exports the path returned by the unit icon resolver', () => {
     const entity = new BipedMekEntity();
     const resolver = jasmine.createSpy('resolver').and.returnValue('meks/Test.png');

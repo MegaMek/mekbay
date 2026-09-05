@@ -31,6 +31,9 @@ export class UnitRuntimeService {
         this.unitsByNameMap.clear();
         this.unitUuidMap.clear();
         for (const unit of units) {
+            // Older cached catalogs and additional servers may still export -1.
+            if (unit.heat === -1) unit.heat = null;
+            if (unit.dissipation === -1) unit.dissipation = null;
             unit._techBaseDisplay = getUnitTechBaseDisplay(unit);
             const nameKey = UnitRuntimeService.getUnitNameKey(unit.name);
             const matchingUnits = this.unitsByNameMap.get(nameKey);

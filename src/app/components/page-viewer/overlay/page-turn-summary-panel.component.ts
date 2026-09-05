@@ -276,7 +276,7 @@ export class PageTurnSummaryPanelComponent {
     readonly tracksHeat = computed(() => {
         const unit = this.unit();
         if (!unit) return false;
-        return unit.getUnit().heat >= 0;
+        return unit.getUnit().heat !== null;
     });
 
     readonly heatRows = computed(() => {

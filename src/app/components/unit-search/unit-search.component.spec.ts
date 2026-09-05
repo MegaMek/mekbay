@@ -22,6 +22,7 @@ import { LongPressDirective } from '../../directives/long-press.directive';
 import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SavedSearchesService } from '../../services/saved-searches.service';
+import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { TaggingService } from '../../services/tagging.service';
 import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
@@ -257,6 +258,14 @@ describe('UnitSearchComponent card virtualization', () => {
                 { provide: Dialog, useValue: { openDialogs } },
                 { provide: Overlay, useValue: overlayStub },
                 { provide: DataService, useValue: dataServiceStub },
+                {
+                    provide: SpriteStorageService,
+                    useValue: {
+                        loading: signal(false),
+                        getCachedSpriteInfo: () => null,
+                        getSpriteInfo: () => Promise.resolve(null),
+                    },
+                },
                 { provide: TaggingService, useValue: taggingServiceStub },
                 { provide: AsAbilityLookupService, useValue: abilityLookupServiceStub },
             ],

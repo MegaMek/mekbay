@@ -196,8 +196,9 @@ export interface UnitSummary {
     internal: number;
     squads?: number;
     squadSize?: number;
-    heat: number;
-    dissipation: number;
+    // Null means the unit does not track heat; zero is a valid measurement.
+    heat: number | null;
+    dissipation: number | null;
     diss?: number[]; // Mix/Max dissipation
     moveType: MoveType;
     walk: number;
@@ -239,7 +240,7 @@ export interface UnitSummary {
     _techBaseDisplay: UnitTechBaseDisplay; // Mixed-aware tech base used by display, search, and sorting.
     _maxRange: number; // Max range of any weapon on this unit
     _weightedMaxRange: number; // Damage-weighted average of weapon max ranges
-    _dissipationEfficiency: number; // Dissipation - Heat
+    _dissipationEfficiency: number | null; // Dissipation - Heat; null on non-heat units
     _mdSumNoPhysical: number; // Max damage sum for all weapons except physical
     _mdSumNoPhysicalNoOneshots: number; // Max damage sum for all weapons except physical, ignoring oneshots
     _weaponTypes?: WeaponType[]; // Intrinsic types present on mounted weapons

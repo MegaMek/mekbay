@@ -46,23 +46,45 @@
     flex-shrink: 0;
 }
 
+.range-edit-hint {
+    grid-column: 1 / -1;
+    margin: 4px 0;
+    color: var(--text-color-secondary);
+    font-size: 0.75rem;
+}
+
 .range-label {
+    appearance: none;
+    max-width: 100%;
+    min-height: 24px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
     transition: color 0.2s;
 }
 
-.range-label:hover {
+.range-label:not(:disabled):hover,
+.range-label:focus-visible {
     color: var(--bt-yellow);
-    text-decoration: underline;
 }
 
-.range-label.disabled {
+.range-label:focus-visible {
+    outline: 1px solid var(--bt-yellow);
+    outline-offset: 2px;
+}
+
+.range-label:disabled {
     cursor: default;
 }
 
-.range-label.disabled:hover {
-    color: inherit;
-    text-decoration: none;
+.range-edit-icon {
+    margin-left: 4px;
+    vertical-align: -1px;
+    color: var(--text-color-secondary);
 }
 
 .range-values {
@@ -70,6 +92,15 @@
     font-size: 0.9em;
 }
 
-.range-label:hover .range-values {
+.range-label:not(:disabled) .range-values,
+.range-label:not(:disabled) .effective-range {
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+}
+
+.range-label:not(:disabled):hover .range-values,
+.range-label:focus-visible .range-values,
+.range-label:not(:disabled):hover .range-edit-icon,
+.range-label:focus-visible .range-edit-icon {
     color: var(--bt-yellow);
 }

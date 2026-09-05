@@ -9,6 +9,7 @@ import { parseSemanticQueryAST } from './semantic-filter-ast.util';
 import { executeUnitSearch } from './unit-search-executor.util';
 import { parseASSpecials } from './as-special-filter.util';
 import { applyFilterStateToUnits } from './unit-filter-kernel.util';
+import { getProperty } from './unit-search-shared.util';
 
 function createUnit(overrides: Pick<UnitSummary, 'name' | 'chassis' | 'model' | 'tons'>): UnitSummary {
     return createEmptyUnit(overrides);
@@ -55,6 +56,89 @@ function executeQuery(units: UnitSummary[], query: string): UnitSummary[] {
 }
 
 describe('unit-search-executor', () => {
+    describe('heat filters on units without heat tracking', () => {
+        const nonHeat = createEmptyUnit({
+            name: 'Tank', type: 'Tank', heat: null, dissipation: null,
+            _dissipationEfficiency: null, armor: 100,
+        });
+        const zero = createEmptyUnit({ name: 'Zero', heat: 0, dissipation: 0, _dissipationEfficiency: 0 });
+        const medium = createEmptyUnit({ name: 'Medium', heat: 20, dissipation: 20, _dissipationEfficiency: 20 });
+        const high = createEmptyUnit({ name: 'High', heat: 40, dissipation: 40, _dissipationEfficiency: 40 });
+        const units = [nonHeat, zero, medium, high];
+        const dependencies = {
+            getProperty,
+            getAdjustedBV: (unit: UnitSummary) => unit.bv,
+            getAdjustedPV: (unit: UnitSummary) => unit.as.PV,
+            getUnitIdsForExternalFilters: () => null,
+            getPositiveFactionNames: () => [],
+            unitMatchesAvailabilityFrom: () => false,
+            unitMatchesAvailabilityRarity: () => false,
+            getForcePackLookupSet: () => undefined,
+            getAvailabilityLookupKey: (unit: UnitSummary) => unit.name,
+        };
+
+        for (const [key, semanticKey] of [
+            ['heat', 'heat'], ['dissipation', 'dissipation'], ['_dissipationEfficiency', 'efficiency'],
+        ]) {
+            it(`keeps non-heat units through ${key} sliders, included ranges, and excluded ranges`, () => {
+                const cases: {
+                    value: [number, number];
+                    excludeRanges?: [number, number][];
+                    includeRanges?: [number, number][];
+                    expected: UnitSummary[];
+                }[] = [
+                    { value: [0, 10], expected: [nonHeat, zero] },
+                    { value: [10, 30], expected: [nonHeat, medium] },
+                    { value: [0, 40], excludeRanges: [[0, 30]], expected: [nonHeat, high] },
+                    { value: [0, 40], includeRanges: [[0, 0], [40, 40]], expected: [nonHeat, zero, high] },
+                ];
+                for (const { expected, ...filter } of cases) {
+                    const results = applyFilterStateToUnits({
+                        units, dependencies,
+                        state: { [key]: { interactedWith: true, ...filter } },
+                    });
+                    expect(results).withContext(JSON.stringify(filter)).toEqual(expected);
+                }
+            });
+
+            it(`keeps non-heat units through ${semanticKey} numeric comparisons and exclusions`, () => {
+                const cases: [string, UnitSummary[]][] = [
+                    ['<10', [nonHeat, zero]],
+                    ['>10', [nonHeat, medium, high]],
+                    ['=0', [nonHeat, zero]],
+                    ['!=0', [nonHeat, medium, high]],
+                    ['=10-30', [nonHeat, medium]],
+                    ['!=10-30', [nonHeat, zero, high]],
+                ];
+                for (const [expression, expected] of cases) {
+                    expect(executeQuery(units, semanticKey + expression))
+                        .withContext(expression).toEqual(jasmine.arrayWithExactContents(expected));
+                }
+            });
+        }
+
+        it('still applies other filters to units that pass a heat filter', () => {
+            const results = applyFilterStateToUnits({
+                units: [nonHeat], dependencies,
+                state: {
+                    dissipation: { interactedWith: true, value: [0, 10] },
+                    armor: { interactedWith: true, value: [0, 50] },
+                },
+            });
+            expect(results).toEqual([]);
+            expect(executeQuery([nonHeat], 'dissipation<10 armor<50')).toEqual([]);
+        });
+
+        it('still excludes missing values for unrelated numeric filters', () => {
+            const missing = createEmptyUnit({ as: { ...zero.as, TMM: null } });
+            expect(applyFilterStateToUnits({
+                units: [missing, zero], dependencies,
+                state: { 'as.TMM': { interactedWith: true, value: [0, 10] } },
+            })).toEqual([zero]);
+            expect(executeQuery([missing], 'tmm<10')).toEqual([]);
+        });
+    });
+
     it('ignores a normalization contract for the wrong game system', () => {
         const unit = createEmptyUnit({ name: 'AS Unit', as: { ...createEmptyUnit().as, PV: 20 } });
         const execution = executeUnitSearch({

@@ -70,18 +70,39 @@ describe('UnitSearchIndexService', () => {
     it('excludes absent measurements but preserves zero and sparse capabilities', () => {
         const service = new UnitSearchIndexService();
         const units = Array.from({ length: 100 }, (_, i) => createUnit({
-            name: `BA ${i}`, heat: -1,
+            name: `BA ${i}`, heat: null, dissipation: null,
             as: { TP: 'BA', TMM: i === 0 ? null : 0,
                 dmg: { dmgL: i === 0 ? '0*' : '0' } },
         }));
         service.prepareUnits(units);
         const stats = service.getUnitStats(units[0]);
         expect(stats.heat.count).toBe(0);
+        expect(stats.dissipation.count).toBe(0);
+        expect(stats.dissipationEfficiency.count).toBe(0);
         expect(stats.asTmm.count).toBe(99);
         expect(stats.asTmm.p95).toBe(0);
         expect(stats.asDmgL.p95).toBe(0);
         expect(stats.asDmgL.max).toBe(0.5);
         expect(stats.asDmgL.count).toBe(100);
+    });
+
+    it('keeps zero heat, signed efficiency, and measured 999 distinct from null', () => {
+        const service = new UnitSearchIndexService();
+        const units = [
+            createUnit({ heat: null, dissipation: null }),
+            createUnit({ heat: 0, dissipation: 20 }),
+            createUnit({ heat: 20, dissipation: 0 }),
+            createUnit({ heat: 999, dissipation: 999 }),
+        ];
+        service.prepareUnits(units);
+        expect(units.map(unit => unit._dissipationEfficiency)).toEqual([null, 20, -20, 0]);
+        const stats = service.getUnitStats(units[0]);
+        expect(stats.heat.count).toBe(3);
+        expect(stats.heat.min).toBe(0);
+        expect(stats.heat.max).toBe(999);
+        expect(stats.dissipation.count).toBe(3);
+        expect(stats.dissipation.max).toBe(999);
+        expect(stats.dissipationEfficiency).toEqual({ min: -20, max: 20, average: 0, p95: 20, count: 3 });
     });
 
     it('does not interpret aerospace named range bands as zero range', () => {
