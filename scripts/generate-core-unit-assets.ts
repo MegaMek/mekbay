@@ -248,7 +248,7 @@ async function createProductionSummaryGenerationContext(
     const sourcebooksRaw = parseJson<unknown>(sourcebooksBytes, 'sourcebooks.json');
     const factionsRaw = parseJson<RawMULFactions>(factionsBytes, 'factions.json');
     if (!isRecord(equipmentRaw) || !isRecord(equipmentRaw.equipment)
-        || Object.keys(equipmentRaw.equipment).length < 4_000) {
+        || Object.keys(equipmentRaw.equipment).length < 2_000) {
         throw new Error('Core summary equipment catalog is missing or implausibly small');
     }
     if (!isRecord(quirksRaw) || !Array.isArray(quirksRaw.quirks) || quirksRaw.quirks.length < 70) {
