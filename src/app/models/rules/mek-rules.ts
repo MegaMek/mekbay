@@ -370,7 +370,8 @@ export class MekRules extends UnitTypeRulesBase {
         }
     }
 
-    protected readonly currentLegState = computed(() => {
+    // Locations load outside signals; do not cache a configuration inferred before they arrive.
+    protected currentLegState() {
         const internalLocations = this.unit.locations?.internal;
         const config = inferMekConfigFromLocations(internalLocations?.keys() ?? []);
         const legs = getMekLegLocations(config);
@@ -387,7 +388,7 @@ export class MekRules extends UnitTypeRulesBase {
             internalLocations?.has(loc) && this.unit.isInternalLocDestroyed(loc)
         );
         return { config, destroyedLegs, destroyedArms, hasIntactLeg, allLegsIntact };
-    });
+    }
 
     /** CORE treats a breached leg as destroyed; TW overrides this with physical destruction only. */
     protected isLegDestroyed(location: string, committed = false): boolean {
@@ -1374,34 +1375,18 @@ export class MekRules extends UnitTypeRulesBase {
     // ── PSR ──────────────────────────────────────────────────────────────────
 
     override readonly PSRModifiers = computed<{ modifier: number; modifiers: PSRModifier[] }>(() => {
-        const ignoreLeg = new Set<string>();
         let preExisting = 0;
         const modifiers: PSRModifier[] = [];
 
         const { config, destroyedLegs } = this.currentLegState();
-        const undamagedLegs = destroyedLegs.length === 0;
-        // Calculate pre-existing leg destruction modifiers. If a leg is gone, is gone.
-        for (const loc of destroyedLegs) {
-            ignoreLeg.add(loc); // Track destroyed legs, we ignore further modifiers on that leg
-        }
+        const ignoreLeg = new Set<string>(destroyedLegs);
         const destroyedLegModifiers = this.getPreExistingDestroyedLegPSRModifiers(config, destroyedLegs);
         preExisting += destroyedLegModifiers.reduce((total, modifier) => total + (modifier.pilotCheck ?? 0), 0);
         modifiers.push(...destroyedLegModifiers);
-        if (undamagedLegs) {
-            if (config === 'Tripod') {
-                preExisting -= 1; // Tripod unit with all legs intact gets -1 modifier
-                modifiers.push({
-                    pilotCheck: -1,
-                    reason: "No Destroyed Legs"
-                });
-            } else
-            if (config === 'Quad') {
-                preExisting -= 2; // Four-legged unit with all legs intact gets -2 modifier
-                modifiers.push({
-                    pilotCheck: -2,
-                    reason: "No Destroyed Legs"
-                });
-            }
+        const intactLegModifier = destroyedLegs.length > 0 ? 0 : config === 'Quad' ? -2 : config === 'Tripod' ? -1 : 0;
+        if (intactLegModifier) {
+            preExisting += intactLegModifier;
+            modifiers.push({ pilotCheck: intactLegModifier, reason: 'No Destroyed Legs' });
         }
         // Calculate current turn modifiers
         let ignorePreExistingGyro = false;

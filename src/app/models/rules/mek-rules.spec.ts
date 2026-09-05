@@ -2496,6 +2496,46 @@ describe('MekRules', () => {
         ]);
     });
 
+    for (const rulesId of ['core2026', 'tw'] as const) {
+        for (const { subtype, bonus } of [
+            { subtype: 'BattleMek', bonus: 0 },
+            { subtype: 'Tripod BattleMek', bonus: -1 },
+            { subtype: 'Quad BattleMek', bonus: -2 },
+        ] as const) {
+            const expectedModifier = bonus + (subtype === 'Tripod BattleMek' ? -1 : 0); // Dedicated pilot.
+            it(`applies the intact-leg PSR bonus for ${rulesId} ${subtype}`, () => {
+                const forceUnit = createForceUnitHarness({ rulesId, subtype });
+                expect(forceUnit.PSRModifiers().modifier).toBe(expectedModifier);
+                expect(forceUnit.PSRTargetRoll()).toBe(5 + expectedModifier);
+                expect(forceUnit.PSRModifiers().modifiers.filter(modifier => modifier.reason === 'No Destroyed Legs'))
+                    .toEqual(bonus ? [{ reason: 'No Destroyed Legs', pilotCheck: bonus }] : []);
+
+                const leg = subtype === 'Quad BattleMek' ? 'FLL' : subtype === 'Tripod BattleMek' ? 'CL' : 'LL';
+                forceUnit.setLocations({ [leg]: { pendingInternal: 1 } });
+                expect(forceUnit.PSRModifiers().modifiers.some(modifier => modifier.reason === 'No Destroyed Legs'))
+                    .toBeFalse();
+                forceUnit.setLocations({ [leg]: { internal: 1 } }, true);
+                expect(forceUnit.PSRModifiers().modifiers.some(modifier => modifier.reason === 'No Destroyed Legs'))
+                    .toBeFalse();
+                forceUnit.setLocations({}, true);
+                expect(forceUnit.PSRModifiers().modifier).toBe(expectedModifier);
+            });
+
+            it(`updates ${rulesId} ${subtype} leg state after locations load`, () => {
+                const initialized = createForceUnitHarness({ rulesId, subtype });
+                const force = new TestCBTForce('Loading Force', dataService, unitInitializer, injector);
+                const forceUnit = new CBTForceUnit(initialized.getUnit(), force, dataService, unitInitializer, injector);
+                forceUnit.rules.getStandAttemptLimit(forceUnit.turnState());
+                forceUnit.locations = initialized.locations;
+                forceUnit.setLocations({}, true);
+                forceUnit.isLoaded.set(true);
+
+                expect(forceUnit.PSRModifiers().modifier).toBe(expectedModifier);
+                expect(forceUnit.PSRTargetRoll()).toBe(5 + expectedModifier);
+            });
+        }
+    }
+
     it('includes intact Tripod legs in piloting checks', () => {
         const forceUnit = createForceUnitHarness({
             subtype: 'Tripod BattleMek',
