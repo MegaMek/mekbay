@@ -20,6 +20,28 @@ import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.compone
 import type { MotiveModeOption, MotiveModes } from '../../../models/motiveModes.model';
 
 describe('PageTurnSummaryPanelComponent', () => {
+    it('hides heat controls for null measurements while retaining measured zero', () => {
+        const heat = signal<number | null>(null);
+        const unit = { getUnit: () => ({ heat: heat() }) };
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: PageInteractionOverlayComponent, useValue: { unit: signal(unit), force: signal(null) } },
+                { provide: OverlayManagerService, useValue: {} },
+                { provide: Overlay, useValue: {} },
+                { provide: EquipmentInteractionRegistryService, useValue: { getRegistry: () => ({}) } },
+                { provide: ToastService, useValue: {} },
+                { provide: DialogsService, useValue: {} },
+                { provide: DataService, useValue: {} },
+                { provide: CBTEndTurnService, useValue: {} },
+                { provide: CBTPhaseResolutionService, useValue: {} },
+            ],
+        });
+        const component = TestBed.runInInjectionContext(() => new PageTurnSummaryPanelComponent());
+        expect(component.tracksHeat()).toBeFalse();
+        heat.set(0);
+        expect(component.tracksHeat()).toBeTrue();
+    });
+
     it('distinguishes an Immobile unit from one with only Stationary available', () => {
         const immobile = signal(false);
         const rulesId = signal<'core2026' | 'tw'>('core2026');

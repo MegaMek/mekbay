@@ -54,6 +54,19 @@ describe('UnitRuntimeService', () => {
         service = TestBed.inject(UnitRuntimeService);
     });
 
+    it('normalizes cached heat sentinels before indexing without changing measured values', () => {
+        const units = [
+            createEmptyUnit({ heat: -1, dissipation: -1 }),
+            createEmptyUnit({ heat: null, dissipation: null }),
+            createEmptyUnit({ heat: 0, dissipation: 999 }),
+        ];
+        service.preprocessUnits(units);
+        expect(units.map(unit => [unit.heat, unit.dissipation])).toEqual([
+            [null, null], [null, null], [0, 999],
+        ]);
+        expect(unitSearchIndexServiceMock.prepareUnits).toHaveBeenCalledOnceWith(units);
+    });
+
     it('retrieves units by name without matching case exactly', () => {
         const unit = createUnit('Mad Cat Prime');
 

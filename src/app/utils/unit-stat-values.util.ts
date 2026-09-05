@@ -32,10 +32,9 @@ export function getUnitStatValues(unit: UnitSummary): UnitStatValues {
         asEndurance: sum(unit.as?.Arm, unit.as?.Str),
         armor: stat(unit.armor),
         internal: stat(unit.internal),
-        heat: stat(unit.heat),
-        dissipation: stat(unit.dissipation),
-        dissipationEfficiency: stat(unit.heat) === null || stat(unit.dissipation) === null
-            ? null : stat(unit._dissipationEfficiency, true),
+        heat: unit.heat,
+        dissipation: unit.dissipation,
+        dissipationEfficiency: unit._dissipationEfficiency,
         runMP: stat(unit.run),
         run2MP: run,
         jumpMP: jump,

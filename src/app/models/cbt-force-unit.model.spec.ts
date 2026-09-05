@@ -346,8 +346,8 @@ function createVehicleUnit(equipment: EquipmentMap): UnitSummary {
         model: 'SM1',
         type: 'Tank',
         subtype: 'Hovercraft',
-        heat: -1,
-        dissipation: -1,
+        heat: null,
+        dissipation: null,
         comp: [
             { id: 'CLUltraAC20', q: 1, q2: 0, n: 'Ultra AC/20', t: 'B', p: 1, l: 'FR', r: '4/8/12', m: '0', d: '20/Sht', md: '40.0', c: '1', os: 0, eq: equipment['CLUltraAC20'] },
             { id: 'Clan Ultra AC/20 Ammo', q: 6, q2: 30, n: 'Ultra AC/20 Ammo', t: 'X', p: 0, l: 'BD', c: '0', os: 0, eq: equipment['Clan Ultra AC/20 Ammo'] },
@@ -396,8 +396,8 @@ function createVariableDamageUnit(equipment: EquipmentMap): UnitSummary {
         model: 'T1',
         type: 'Tank',
         subtype: 'Hovercraft',
-        heat: -1,
-        dissipation: -1,
+        heat: null,
+        dissipation: null,
         comp: [
             { id: 'VariableDamageLaser', q: 1, q2: 0, n: 'Variable Damage Laser', t: 'E', p: 1, l: 'FR', r: '2/5/9', m: '-4', d: '9/7/5', md: '9.0', c: '1', os: 0, eq: equipment['VariableDamageLaser'] },
         ],
@@ -456,8 +456,8 @@ function createLaserInsulatorUnit(equipment: EquipmentMap): UnitSummary {
         model: 'T1',
         type: 'Tank',
         subtype: 'Hovercraft',
-        heat: -1,
-        dissipation: -1,
+        heat: null,
+        dissipation: null,
         comp: [
             { id: 'ISMediumLaser', q: 1, q2: 0, n: 'Medium Laser', t: 'E', p: 1, l: 'FR', r: '3/6/9', m: '0', d: '5', md: '5.0', c: '1', os: 0, eq: equipment['ISMediumLaser'] },
             { id: 'ISLaserInsulator', q: 1, q2: 0, n: 'Laser Insulator', t: 'E', p: 0, l: 'FR', c: '1', os: 0, eq: equipment['ISLaserInsulator'] },
@@ -495,8 +495,8 @@ function createRiscLaserUnit(equipment: EquipmentMap): UnitSummary {
         model: 'T1',
         type: 'Tank',
         subtype: 'Hovercraft',
-        heat: -1,
-        dissipation: -1,
+        heat: null,
+        dissipation: null,
         comp: [
             { id: 'ISMediumLaser', q: 1, q2: 0, n: 'Medium Laser', t: 'E', p: 1, l: 'FR', r: '3/6/9', m: '0', d: '5', md: '5.0', c: '1', os: 0, eq: equipment['ISMediumLaser'] },
             { id: 'ISRISCLaserPulseModule', q: 1, q2: 0, n: 'RISC Laser Pulse Module', t: 'E', p: 0, l: 'FR', c: '1', os: 0, eq: equipment['ISRISCLaserPulseModule'] },
@@ -538,8 +538,8 @@ function createMmlUnit(equipment: EquipmentMap): UnitSummary {
         model: 'T1',
         type: 'Tank',
         subtype: 'Hovercraft',
-        heat: -1,
-        dissipation: -1,
+        heat: null,
+        dissipation: null,
         comp: [
             { id: 'ISMML9', q: 1, q2: 0, n: 'MML 9', t: 'M', p: 1, l: 'LT', r: '', m: '0', d: '[M,C,S]', md: '0.0', c: '1', os: 0, eq: equipment['ISMML9'] },
             { id: 'ISMML9LRMAmmo', q: 1, q2: 12, n: 'MML 9 LRM Ammo', t: 'X', p: 0, l: 'BD', c: '0', os: 0, eq: equipment['ISMML9LRMAmmo'] },
@@ -1399,6 +1399,15 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getHeat().current).toBe(10);
         expect(forceUnit.turnState().hasPendingHeatResolution()).toBeTrue();
         expect(forceUnit.turnState().dirty()).toBeFalse();
+    });
+
+    it('omits weapon heat sources for a non-heat unit with null catalog measurements', () => {
+        const forceUnit = createForceUnit(createEmptyUnit({
+            type: 'Tank', subtype: 'Hovercraft', heat: null, dissipation: null,
+        }));
+        forceUnit.turnState().addFiredHeat(8);
+        expect(forceUnit.turnState().weaponsHeat()).toBe(8);
+        expect(forceUnit.turnState().heatSources()).toEqual([]);
     });
 
     it('applies approved Aero cooling without requiring a heat source', () => {
@@ -6226,8 +6235,8 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             model: 'T1',
             type: 'Tank',
             subtype: 'Hovercraft',
-            heat: -1,
-            dissipation: -1,
+            heat: null,
+            dissipation: null,
             comp: [
                 { id: 'ISATM6', q: 1, q2: 0, n: 'ATM 6', t: 'M', p: 1, l: 'LT', r: '', m: '0', d: '[M,S,H]', md: '0.0', c: '1', os: 0, eq: equipment['ISATM6'] },
                 { id: 'ISATM6ERAmmo', q: 1, q2: 10, n: 'ATM 6 ER Ammo', t: 'X', p: 0, l: 'BD', c: '0', os: 0, eq: equipment['ISATM6ERAmmo'] },

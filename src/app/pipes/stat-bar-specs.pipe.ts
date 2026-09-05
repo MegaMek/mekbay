@@ -20,7 +20,7 @@ interface statBarSpec {
 interface StatBarDefinition {
     key: keyof MinMaxStatsRange;
     label: string;
-    value: number;
+    value: number | null;
     valueText?: string;
     max: number;
     description?: string;
@@ -91,14 +91,15 @@ export class StatBarSpecsPipe implements PipeTransform {
             statDefs.push({ key: 'umuMP', label: 'UMU', value: unit.umu, max: bucketStats.umuMP.p95, description: 'Underwater Maneuvering Unit movement in hexes' });
         }
         const values = getUnitStatValues(unit);
-        const filteredStats: statBarSpec[] = statDefs.filter(def =>
-            values[def.key] !== null && bucketStats[def.key].count > 0,
-        ).map(def => ({
-            label: def.label, value: def.value, valueText: def.valueText, max: def.max,
-            percent: this.getStatPercent(def.value, def.max),
-            description: `${def.description}. P95 reference: ${def.max}`
-                + (def.max === 0 && def.value > 0 ? ' (rare capability)' : ''),
-        }));
+        const filteredStats: statBarSpec[] = statDefs.flatMap(def => {
+            if (def.value === null || values[def.key] === null || bucketStats[def.key].count === 0) return [];
+            return [{
+                label: def.label, value: def.value, valueText: def.valueText, max: def.max,
+                percent: this.getStatPercent(def.value, def.max),
+                description: `${def.description}. P95 reference: ${def.max}`
+                    + (def.max === 0 && def.value > 0 ? ' (rare capability)' : ''),
+            }];
+        });
         return filteredStats;
     }
 

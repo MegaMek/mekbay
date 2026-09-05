@@ -61,7 +61,7 @@ export interface AdvFilterConfig {
     sortOptions?: string[]; // For dropdowns, can be pre-defined sort order, supports wildcard '*' at the end for prefix matching
     external?: boolean; // If true, this filter datasource is not from the local data, but from an external source (era, faction, etc.)
     curve?: number; // for range sliders, defines the curve of the slider
-    ignoreValues?: any[]; // Values to ignore in the range filter, e.g. [-1] for heat/dissipation
+    ignoreValues?: any[]; // Numeric values to ignore in the range filter; null is always excluded
     multistate?: boolean; // if true, the filter (dropdown) can have multiple states (OR, AND, NOT)
     countable?: boolean; // if true, show amount next to options
     stepSize?: number; // for range sliders, defines the step size
@@ -484,8 +484,8 @@ export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
     { key: 'internal', semanticKey: 'structure', label: 'Structure', curve: 0, game: GameSystem.CLASSIC },
     { key: '_mdSumNoPhysical', semanticKey: 'firepower', label: 'Firepower', curve: 0, game: GameSystem.CLASSIC },
     { key: 'dpt', semanticKey: 'dpt', label: 'Damage/Turn', curve: 0, game: GameSystem.CLASSIC },
-    { key: 'heat', semanticKey: 'heat', label: 'Heat', curve: 0, ignoreValues: [-1], game: GameSystem.CLASSIC },
-    { key: 'dissipation', semanticKey: 'dissipation', label: 'Dissipation', curve: 0, ignoreValues: [-1], game: GameSystem.CLASSIC },
+    { key: 'heat', semanticKey: 'heat', label: 'Heat', curve: 0, game: GameSystem.CLASSIC },
+    { key: 'dissipation', semanticKey: 'dissipation', label: 'Dissipation', curve: 0, game: GameSystem.CLASSIC },
     { key: '_dissipationEfficiency', semanticKey: 'efficiency', label: 'Heat Efficiency', curve: 1, game: GameSystem.CLASSIC },
     { key: '_maxRange', semanticKey: 'range', label: 'Range', curve: 0, game: GameSystem.CLASSIC },
     { key: 'walk', semanticKey: 'walk', label: 'Walk MP', curve: 0.9, game: GameSystem.CLASSIC },

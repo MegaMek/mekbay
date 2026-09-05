@@ -70,7 +70,8 @@ export class UnitSearchIndexService {
             unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
             unit._maxRange = unit.comp ? getMaxRangeFromComponents(unit.comp) : 0;
             unit._weightedMaxRange = unit.comp ? calculateWeightedMaxRange(unit) : 0;
-            unit._dissipationEfficiency = (unit.heat && unit.dissipation) ? unit.dissipation - unit.heat : 0;
+            unit._dissipationEfficiency = unit.heat === null || unit.dissipation === null
+                ? null : unit.dissipation - unit.heat;
 
             if (unit.as) {
                 if (unit.as.dmg) {
