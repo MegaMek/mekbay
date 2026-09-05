@@ -329,9 +329,10 @@ const STRING_FIELDS = new Set([
   'role', 'subtype', 'techBase', 'techRating', 'type', 'unitFile', 'weightClass',
 ]);
 const NULLABLE_STRING_FIELDS = new Set(['engine', 'engineHSType', 'structureType']);
+const NULLABLE_NUMBER_FIELDS = new Set(['dissipation', 'heat']);
 const NUMBER_FIELDS = new Set([
-  'armor', 'armorPer', 'bv', 'cost', 'crewSize', 'dissipation', 'dpt', 'engineHS',
-  'engineRating', 'heat', 'id', 'internal', 'jump', 'jump2', 'offSpeedFactor', 'omni',
+  'armor', 'armorPer', 'bv', 'cost', 'crewSize', 'dpt', 'engineHS', 'engineRating',
+  'id', 'internal', 'jump', 'jump2', 'offSpeedFactor', 'omni',
   'loadoutTons', 'pv', 'run', 'run2', 'squadSize', 'squads', 'su', 'tons', 'umu', 'walk', 'walk2', 'year',
 ]);
 const STRING_ARRAY_FIELDS = new Set(['features', 'published', 'quirks', 'sheets', 'source']);
@@ -525,6 +526,9 @@ function validateNonAsField(field: string, value: unknown): string | null {
       ? null
       : `expected a string or null, received ${describeValue(value)}`;
   }
+  if (NULLABLE_NUMBER_FIELDS.has(field)) {
+    return value === null ? null : validateFiniteNumber(value);
+  }
   if (NUMBER_FIELDS.has(field)) return validateFiniteNumber(value);
   if (STRING_ARRAY_FIELDS.has(field)) return validateStringArray(value);
   if (BOOLEAN_FIELDS.has(field)) {
@@ -693,6 +697,7 @@ function compareField(check: FieldCheck, expected: any, actual: any): boolean {
 
     case 'numeric': {
       const tolerance = check.tolerance ?? 0;
+      if (expected === null || actual === null) return expected === actual;
       if (typeof expected !== 'number' || typeof actual !== 'number') return false;
       return Math.abs(expected - actual) <= tolerance;
     }
