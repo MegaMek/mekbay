@@ -3,11 +3,10 @@
         <force-preview-panel [force]="force" [displayMode]="displayMode" [scrollUnitsOnly]="true"></force-preview-panel>
     </div>
     <div class="wide-dialog-actions">
-        @if (canLoadForce()) {
-            <button class="bt-button primary" (click)="onLoad()">LOAD</button>
-        }
-        @if (!isForceLoaded()) {
-            <button class="bt-button" (click)="onAdd()">ADD</button>
+        @if (isForceLoaded()) {
+            <button class="bt-button" (click)="onRecall()" [disabled]="busy()">RECALL</button>
+        } @else {
+            <button class="bt-button primary" (click)="onDeploy()" [disabled]="busy()">DEPLOY</button>
         }
         <button class="bt-button" (click)="close()">DISMISS</button>
     </div>
