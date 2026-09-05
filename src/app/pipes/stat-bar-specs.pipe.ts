@@ -97,7 +97,7 @@ export class StatBarSpecsPipe implements PipeTransform {
             return [{
                 label: def.label, value, valueText: def.valueText, max: reference.p95,
                 percent: this.getStatPercent(value, reference.p95),
-                description: def.description + '. P95 reference: ' + reference.p95
+                description: def.description + '.<br>P95 reference: ' + reference.p95
                     + (reference.p95 === 0 && value > 0 ? ' (rare capability)' : ''),
             }];
         });
