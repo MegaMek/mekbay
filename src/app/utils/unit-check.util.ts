@@ -155,6 +155,7 @@ export function pendingUnitCheckGroupList(
 export function pendingCheckReviewGroupList(
     units: readonly CBTForceUnit[],
     atPhaseEnd = false,
+    manualResolution = false,
 ): readonly PendingCheckReviewEntry[] {
     if (units.some(unit => pendingFallCount(unit) > 0)) return [];
 
@@ -167,7 +168,7 @@ export function pendingCheckReviewGroupList(
         const turnState = unit.turnState();
         hasPendingCriticals ||= turnState.pendingCriticalChanceCount() > 0
             || turnState.pendingCriticalHitCount() > 0;
-        const unitPsrs = pendingPsrReviewList(unit);
+        const unitPsrs = pendingPsrReviewList(unit, manualResolution);
         psrs.push(...unitPsrs.map(check => ({ unit, check })));
 
         for (const check of pendingUnitCheckReviewList(unit, atPhaseEnd)) {
@@ -195,10 +196,10 @@ export function pendingCheckReviewGroupList(
         : [...beforePsr, ...psrs, ...afterPsr];
 }
 
-export function pendingPsrReviewList(unit: CBTForceUnit): readonly PSRCheck[] {
+export function pendingPsrReviewList(unit: CBTForceUnit, manualResolution = false): readonly PSRCheck[] {
     const turnState = unit.turnState();
     if (turnState.PSRRollsCount() === 0
-        || unit.automationMode('pilotSkillCheck') !== 'ask'
+        || (!manualResolution && unit.automationMode('pilotSkillCheck') !== 'ask')
         || turnState.automaticPSRFailure()
         || turnState.actionablePSRRollsCount() === 0) return [];
     return turnState.getPSRChecks().filter(check =>

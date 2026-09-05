@@ -22,6 +22,7 @@ import { PendingUnitCheckRowComponent } from './pending-unit-check-row.component
 export interface PendingUnitCheckDialogData {
     readonly units: readonly CBTForceUnit[];
     readonly atPhaseEnd?: boolean;
+    readonly manualResolution?: boolean;
     readonly applyResolved: (
         entries: readonly PendingCheckReviewEntry[],
         forcedPsrFailures: ReadonlySet<string>,
@@ -77,7 +78,7 @@ export class PendingUnitCheckDialogComponent {
     private readonly dialogRef = inject<DialogRef<boolean>>(DialogRef);
     readonly rows = viewChildren(PendingUnitCheckRowComponent);
     readonly entries = computed<readonly PendingCheckReviewEntry[]>(() =>
-        pendingCheckReviewGroupList(this.data.units, this.data.atPhaseEnd));
+        pendingCheckReviewGroupList(this.data.units, this.data.atPhaseEnd, this.data.manualResolution));
     readonly commonUnitName = computed(() => {
         const entries = this.entries();
         const firstUnit = entries[0]?.unit;
