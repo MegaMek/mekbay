@@ -190,9 +190,11 @@ function createForceUnitHarness(options: {
     forceUnit.setLocations(options.locationState ?? createCommittedLocationState(options.committedDestroyedLocations), true);
     if (options.critSlots) {
         const targetingComputer = miscEquipment('ISTargeting Computer', 'Targeting Computer', ['F_TARGETING_COMPUTER']);
-        const criticalSlots = normalizeGeneratedCriticalSlots(options.critSlots).map(slot =>
-            slot.name === 'Targeting Computer' ? { ...slot, eq: targetingComputer } : slot
-        );
+        const criticalSlots = normalizeGeneratedCriticalSlots(options.critSlots.map(slot =>
+            slot.name === 'Targeting Computer'
+                ? { ...slot, loc: slot.loc ?? 'CT', eq: targetingComputer }
+                : slot
+        ));
         forceUnit.writeCrits(criticalSlots);
         const targetingComputerSlots = criticalSlots.filter(slot => slot.eq === targetingComputer);
         if (targetingComputerSlots.length > 0) {
@@ -341,6 +343,7 @@ function miscEntry(forceUnit: CBTForceUnit, equipment: Equipment): MountedEquipm
         id: equipment.id,
         name: equipment.name,
         equipment,
+        locations: new Set(['CT']),
     });
 }
 
@@ -1049,6 +1052,7 @@ describe('MekRules', () => {
             owner: forceUnit,
             id: 'PPC Capacitor',
             name: 'PPC Capacitor',
+            locations: new Set(['RA']),
             equipment: new Equipment({
                 id: 'PPC Capacitor',
                 name: 'PPC Capacitor',
@@ -1060,6 +1064,7 @@ describe('MekRules', () => {
             owner: forceUnit,
             id: 'Light PPC',
             name: 'Light PPC',
+            locations: new Set(['RA']),
             equipment: new WeaponEquipment({
                 id: 'Light PPC',
                 name: 'Light PPC',
@@ -2097,6 +2102,7 @@ describe('MekRules', () => {
             owner: forceUnit,
             id: 'ISRamPlate',
             name: 'Ram Plate',
+            locations: new Set(['CT']),
             equipment: miscEquipment('ISRamPlate', 'Ram Plate', ['F_RAM_PLATE']),
         });
         const charge = new MountedEquipment({
@@ -2217,6 +2223,7 @@ describe('MekRules', () => {
             owner: twForceUnit,
             id: 'ISRamPlate',
             name: 'Ram Plate',
+            locations: new Set(['CT']),
             equipment: ramPlateEquipment,
         });
         twForceUnit.setInventory([ramPlate]);
@@ -2243,6 +2250,7 @@ describe('MekRules', () => {
             owner: forceUnit,
             id: 'ISRamPlate',
             name: 'Ram Plate',
+            locations: new Set(['CT']),
             equipment: miscEquipment('ISRamPlate', 'Ram Plate', ['F_RAM_PLATE']),
         })]);
         const charge = new MountedEquipment({

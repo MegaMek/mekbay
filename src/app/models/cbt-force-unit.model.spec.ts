@@ -5069,12 +5069,14 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
             id: 'ISGroundMobileHPG@CT#0',
             name: hpgEquipment.name,
             equipment: hpgEquipment,
+            locations: new Set(['CT']),
         });
         const weapon = new MountedEquipment({
             owner: forceUnit,
             id: 'VariableDamageLaser@RA#0',
             name: 'Variable Damage Laser',
             equipment: equipment['VariableDamageLaser'],
+            locations: new Set(['RA']),
         });
         forceUnit.setInventory([hpg, weapon], true);
 
