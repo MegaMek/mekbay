@@ -2213,7 +2213,7 @@ function evaluateRangeFilter(
     parsedValues: ParsedRangeValue[],
     conf: AdvFilterConfig
 ): boolean {
-    if (unitValue == null) return false;
+    if (unitValue == null) return conf.includeMissing === true;
     
     const numValue = typeof unitValue === 'number' ? unitValue : Number.parseFloat(String(unitValue));
     if (isNaN(numValue)) return false;

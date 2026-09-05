@@ -508,11 +508,12 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
             } else {
                 results = results.filter(unit => {
                     const unitValue = dependencies.getProperty(unit, conf.key) as number;
+                    if (unitValue == null) return conf.includeMissing === true;
                     if (conf.ignoreValues && conf.ignoreValues.includes(unitValue)) {
                         return val[0] === 0;
                     }
                     if (isExcluded(unitValue)) return false;
-                    return unitValue != null && isIncluded(unitValue);
+                    return isIncluded(unitValue);
                 });
             }
         }
