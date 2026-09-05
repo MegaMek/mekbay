@@ -88,13 +88,20 @@
         <div class="filter-row"></div>
     }
 
+    @if (rangeFilters().length) {
+    <p class="range-edit-hint">Drag sliders or tap a value to type a range.</p>
+    }
+
     @for (conf of rangeFilters(); track conf.key; let index = $index) {
       <div class="filter-row"
           [class.semantic-only]="filtersReady() && index < renderedRangeCount() && $any(filtersService.advOptions()[conf.key])?.semanticOnly">
         @if (filtersReady() && index < renderedRangeCount()) {
         @let rangeOpts = $any(filtersService.advOptions()[conf.key]);
         <div class="range">
-            <label class="range-label" [class.disabled]="rangeOpts?.semanticOnly"
+            <button type="button" class="range-label" [disabled]="rangeOpts?.semanticOnly"
+                [attr.title]="rangeOpts?.semanticOnly ? null : 'Type ' + rangeOpts?.label + ' range values'"
+                [attr.aria-label]="rangeOpts?.semanticOnly ? null : 'Edit ' + rangeOpts?.label + ' range values'"
+                [attr.aria-haspopup]="rangeOpts?.semanticOnly ? null : 'dialog'"
                 (click)="!rangeOpts?.semanticOnly && openRangeValueDialog(conf.key, rangeOpts?.value, rangeOpts?.options)">{{
                 rangeOpts?.label }}
                 @if (rangeOpts?.displayText) {
@@ -107,7 +114,14 @@
                         class="range-value-max">{{ formatRangeValue(conf, rangeOpts?.value?.[1]) }}</span>)
                 </span>
                 }
-            </label>
+                @if (!rangeOpts?.semanticOnly) {
+                <svg class="range-edit-icon" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true" focusable="false">
+                    <path d="m16 3 5 5-12 12-6 1 1-6Z M13 6l5 5" />
+                </svg>
+                }
+            </button>
             <range-slider [min]="rangeOpts?.totalRange?.[0] ?? 0"
                 [max]="rangeOpts?.totalRange?.[1] ?? 100"
                 [value]="rangeOpts?.value"
