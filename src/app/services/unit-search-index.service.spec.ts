@@ -36,6 +36,64 @@ function createUnit(overrides: TestUnitOverrides): UnitSummary {
 }
 
 describe('UnitSearchIndexService', () => {
+    it('stores p95 once per TP/superheavy bucket while retaining absolute maxima', () => {
+        const service = new UnitSearchIndexService();
+        const units = Array.from({ length: 100 }, (_, i) => createUnit({
+            name: `BM ${i}`, armor: i + 1,
+            subtype: i % 2 ? 'BattleMek Omni' : 'BattleMek',
+        }));
+        const superheavy = createUnit({ name: 'SH', armor: 800, weightClass: 'Colossal/Super-Heavy' });
+        const vehicle = createUnit({ name: 'CV', armor: 500, as: { TP: 'CV' } });
+        service.prepareUnits([...units, superheavy, vehicle]);
+        const bucket = service.getUnitStats(units[0]);
+        expect(bucket.armor).toEqual({ min: 1, max: 100, average: 50.5, p95: 95, count: 100 });
+        expect(service.getUnitStats(units[1])).toBe(bucket);
+        expect(service.getUnitStats(superheavy).armor.p95).toBe(800);
+        expect(service.getUnitStats(vehicle).armor.p95).toBe(500);
+        service.prepareUnits([superheavy]);
+        expect(service.getUnitStats(units[0]).armor.count).toBe(0);
+    });
+
+    it('measures composite axes before taking percentiles', () => {
+        const service = new UnitSearchIndexService();
+        const first = createUnit({ armor: 100, internal: 10, run2: 20, jump: 0,
+            as: { Arm: 8, Str: 2 } });
+        const second = createUnit({ armor: 10, internal: 100, run2: 0, jump: 20,
+            as: { Arm: 2, Str: 8 } });
+        service.prepareUnits([first, second]);
+        const stats = service.getUnitStats(first);
+        expect(stats.endurance.p95).toBe(110);
+        expect(stats.asEndurance.p95).toBe(10);
+        expect(stats.mobility).toEqual({ min: 20, max: 20, average: 20, p95: 20, count: 2 });
+    });
+
+    it('excludes absent measurements but preserves zero and sparse capabilities', () => {
+        const service = new UnitSearchIndexService();
+        const units = Array.from({ length: 100 }, (_, i) => createUnit({
+            name: `BA ${i}`, heat: -1,
+            as: { TP: 'BA', TMM: i === 0 ? null : 0,
+                dmg: { dmgL: i === 0 ? '0*' : '0' } },
+        }));
+        service.prepareUnits(units);
+        const stats = service.getUnitStats(units[0]);
+        expect(stats.heat.count).toBe(0);
+        expect(stats.asTmm.count).toBe(99);
+        expect(stats.asTmm.p95).toBe(0);
+        expect(stats.asDmgL.p95).toBe(0);
+        expect(stats.asDmgL.max).toBe(0.5);
+        expect(stats.asDmgL.count).toBe(100);
+    });
+
+    it('does not interpret aerospace named range bands as zero range', () => {
+        const service = new UnitSearchIndexService();
+        const unit = createUnit({ as: { TP: 'AF', TMM: null },
+            comp: [{ id: 'laser', q: 1, n: 'Laser', t: 'E', p: 1, l: 'Nose', md: '5', r: 'Long' }] });
+        service.prepareUnits([unit]);
+        expect(service.getUnitStats(unit).weightedMaxRange.count).toBe(0);
+        expect(service.getUnitStats(unit).maxRange.count).toBe(0);
+        expect(service.getUnitStats(unit).asTmm.count).toBe(0);
+    });
+
     it('uses UUID postings while expanding duplicate MUL ids for era and faction membership', () => {
         const service = new UnitSearchIndexService();
         const first = createUnit({ id: 42, uuid: 'uuid-a', name: 'Duplicate Name' });
@@ -172,7 +230,7 @@ describe('UnitSearchIndexService', () => {
         expect(unit.as.dmg._dmgM).toBe(1);
         expect(unit.as.dmg._dmgL).toBe(0);
         expect(unit.as.dmg._dmgE).toBe(0.5);
-        expect(service.getASUnitTypeMaxStats('BM').asDmgS).toEqual({ min: 0.5, max: 0.5, average: 0.5 });
+        expect(service.getUnitStats(createUnit({})).asDmgS).toEqual({ min: 0.5, max: 0.5, average: 0.5, p95: 0.5, count: 1 });
     });
 
     it('tracks min, max, and average stats by subtype and alpha strike type', () => {
@@ -311,23 +369,23 @@ describe('UnitSearchIndexService', () => {
             }),
         ]);
 
-        expect(service.getUnitSubtypeMaxStats('BattleMek').armor).toEqual({ min: 10, max: 30, average: 20 });
-        expect(service.getUnitSubtypeMaxStats('BattleMek').dpt).toEqual({ min: 4, max: 8, average: 6 });
-        expect(service.getUnitSubtypeMaxStats('BattleMek').run2MP).toEqual({ min: 4, max: 6, average: 5 });
-        expect(service.getUnitSubtypeMaxStats('BattleMek').weightedMaxRange).toEqual({ min: 10, max: 12, average: 11 });
-        expect(service.getASUnitTypeMaxStats('BM').asTmm).toEqual({ min: 2, max: 4, average: 3 });
-        expect(service.getASUnitTypeMaxStats('BM').asDmgM).toEqual({ min: 1, max: 3, average: 2 });
-        expect(service.getUnitSubtypeMaxStats('WarShip').dropshipCapacity).toEqual({ min: 2, max: 6, average: 4 });
-        expect(service.getUnitSubtypeMaxStats('WarShip').gravDecks).toEqual({ min: 1, max: 3, average: 2 });
+        expect(service.getUnitStats(createUnit({})).armor).toEqual({ min: 10, max: 30, average: 20, p95: 30, count: 2 });
+        expect(service.getUnitStats(createUnit({})).dpt).toEqual({ min: 4, max: 8, average: 6, p95: 8, count: 2 });
+        expect(service.getUnitStats(createUnit({})).run2MP).toEqual({ min: 4, max: 6, average: 5, p95: 6, count: 2 });
+        expect(service.getUnitStats(createUnit({})).weightedMaxRange).toEqual({ min: 10, max: 12, average: 11, p95: 12, count: 2 });
+        expect(service.getUnitStats(createUnit({})).asTmm).toEqual({ min: 2, max: 4, average: 3, p95: 4, count: 2 });
+        expect(service.getUnitStats(createUnit({})).asDmgM).toEqual({ min: 1, max: 3, average: 2, p95: 3, count: 2 });
+        expect(service.getUnitStats(createUnit({ as: { TP: 'WS' } })).dropshipCapacity).toEqual({ min: 2, max: 6, average: 4, p95: 6, count: 2 });
+        expect(service.getUnitStats(createUnit({ as: { TP: 'WS' } })).gravDecks).toEqual({ min: 1, max: 3, average: 2, p95: 3, count: 2 });
     });
 
     it('returns zeroed min, max, and average values for missing buckets', () => {
         const service = new UnitSearchIndexService();
 
-        expect(service.getUnitSubtypeMaxStats('Missing').armor).toEqual({ min: 0, max: 0, average: 0 });
-        expect(service.getUnitSubtypeMaxStats('Missing').weightedMaxRange).toEqual({ min: 0, max: 0, average: 0 });
-        expect(service.getASUnitTypeMaxStats('Missing').asTmm).toEqual({ min: 0, max: 0, average: 0 });
-        expect(service.getUnitSubtypeMaxStats('Missing').gravDecks).toEqual({ min: 0, max: 0, average: 0 });
+        expect(service.getUnitStats(createUnit({ as: { TP: 'XX' } })).armor).toEqual({ min: 0, max: 0, average: 0, p95: 0, count: 0 });
+        expect(service.getUnitStats(createUnit({ as: { TP: 'XX' } })).weightedMaxRange).toEqual({ min: 0, max: 0, average: 0, p95: 0, count: 0 });
+        expect(service.getUnitStats(createUnit({ as: { TP: 'XX' } })).asTmm).toEqual({ min: 0, max: 0, average: 0, p95: 0, count: 0 });
+        expect(service.getUnitStats(createUnit({ as: { TP: 'XX' } })).gravDecks).toEqual({ min: 0, max: 0, average: 0, p95: 0, count: 0 });
     });
 
     it('indexes the exported source filter without duplicating published values', () => {

@@ -6,7 +6,10 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { of } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
+import type { Force } from '../../models/force.model';
+import type { ForceSlot } from '../../models/force-slot.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { Options } from '../../models/options.model';
 import { DialogsService } from '../../services/dialogs.service';
@@ -16,6 +19,8 @@ import { ToastService } from '../../services/toast.service';
 import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../formation-info-dialog/formation-info-dialog.component';
 import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 import { ForceEntryPreviewDialogComponent } from './force-entry-preview-dialog.component';
+import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
+import { ForceAddModePickerDialogComponent } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
 
 describe('ForceEntryPreviewDialogComponent', () => {
     function createUnitEntries(count: number) {
@@ -47,9 +52,11 @@ describe('ForceEntryPreviewDialogComponent', () => {
         };
 
         const forceBuilderServiceStub = {
-            loadedForces: signal([]),
+            loadedForces: signal<ForceSlot[]>([]),
+            hasUserLoadedForces: jasmine.createSpy('hasUserLoadedForces').and.returnValue(false),
             smartCurrentForce: jasmine.createSpy('smartCurrentForce').and.returnValue(null),
             loadForceEntry: jasmine.createSpy('loadForceEntry').and.resolveTo(true),
+            removeLoadedForce: jasmine.createSpy('removeLoadedForce').and.resolveTo(),
         };
 
         const optionsServiceStub = {
@@ -82,7 +89,7 @@ describe('ForceEntryPreviewDialogComponent', () => {
         const fixture = TestBed.createComponent(ForceEntryPreviewDialogComponent);
         fixture.detectChanges();
 
-        return { fixture, dialogsServiceStub };
+        return { fixture, dialogsServiceStub, forceBuilderServiceStub, toastServiceStub };
     }
 
     async function waitForClampMeasurement() {
@@ -90,24 +97,139 @@ describe('ForceEntryPreviewDialogComponent', () => {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
 
-    it('shows LOAD, ADD, and DISMISS for owned forces', async () => {
+    it('shows DEPLOY and DISMISS for owned forces', async () => {
         const { fixture } = await render(createForceEntry({ owned: true }));
         const nativeElement = fixture.nativeElement as HTMLElement;
 
         const buttonLabels = Array.from(nativeElement.querySelectorAll('button'))
             .map((button) => button.textContent?.trim());
 
-        expect(buttonLabels).toEqual(['LOAD', 'ADD', 'DISMISS']);
+        expect(buttonLabels).toEqual(['DEPLOY', 'DISMISS']);
     });
 
-    it('shows only ADD and DISMISS for non-owned forces', async () => {
+    it('shows DEPLOY and DISMISS for non-owned forces', async () => {
         const { fixture } = await render(createForceEntry({ owned: false }));
         const nativeElement = fixture.nativeElement as HTMLElement;
 
         const buttonLabels = Array.from(nativeElement.querySelectorAll('button'))
             .map((button) => button.textContent?.trim());
 
-        expect(buttonLabels).toEqual(['ADD', 'DISMISS']);
+        expect(buttonLabels).toEqual(['DEPLOY', 'DISMISS']);
+    });
+
+    function createLoadedSlot(instanceId: string): ForceSlot {
+        return {
+            force: { instanceId: signal(instanceId) } as unknown as Force,
+            alignment: 'friendly',
+            changeSub: null,
+        };
+    }
+
+    it('deploys directly when no user forces are loaded and switches to RECALL', async () => {
+        const force = createForceEntry();
+        const { fixture, dialogsServiceStub, forceBuilderServiceStub } = await render(force);
+        forceBuilderServiceStub.loadForceEntry.and.callFake(async () => {
+            forceBuilderServiceStub.loadedForces.set([createLoadedSlot(force.instanceId)]);
+            return true;
+        });
+
+        await fixture.componentInstance.onDeploy();
+        fixture.detectChanges();
+
+        expect(dialogsServiceStub.createDialog).not.toHaveBeenCalled();
+        expect(forceBuilderServiceStub.loadForceEntry).toHaveBeenCalledOnceWith(force, 'load');
+        expect(fixture.nativeElement.querySelector('.wide-dialog-actions button').textContent.trim()).toBe('RECALL');
+        expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
+    });
+
+    it('offers replacement when forces are already deployed', async () => {
+        const force = createForceEntry();
+        const { fixture, dialogsServiceStub, forceBuilderServiceStub } = await render(force);
+        forceBuilderServiceStub.hasUserLoadedForces.and.returnValue(true);
+        dialogsServiceStub.createDialog.and.returnValue({ closed: of('replace') });
+
+        await fixture.componentInstance.onDeploy();
+
+        expect(dialogsServiceStub.createDialog).toHaveBeenCalledWith(ConfirmDialogComponent, jasmine.objectContaining({
+            data: jasmine.objectContaining({
+                title: 'Deploy Force',
+                buttons: [
+                    { label: 'REPLACE', value: 'replace' },
+                    { label: 'ADD', value: 'add' },
+                    { label: 'CANCEL', value: 'cancel' },
+                ],
+            }),
+        }));
+        expect(forceBuilderServiceStub.loadForceEntry).toHaveBeenCalledOnceWith(force, 'load');
+    });
+
+    for (const alignment of ['friendly', 'enemy'] as const) {
+        it(`adds a ${alignment} force without replacing or activating it`, async () => {
+            const force = createForceEntry();
+            const { fixture, dialogsServiceStub, forceBuilderServiceStub } = await render(force);
+            forceBuilderServiceStub.hasUserLoadedForces.and.returnValue(true);
+            dialogsServiceStub.createDialog.and.returnValues({ closed: of('add') }, { closed: of(alignment) });
+
+            await fixture.componentInstance.onDeploy();
+
+            expect(dialogsServiceStub.createDialog.calls.argsFor(1)[0]).toBe(ForceAddModePickerDialogComponent);
+            expect(forceBuilderServiceStub.loadForceEntry).toHaveBeenCalledOnceWith(force, 'add', alignment, { activate: false });
+            expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
+        });
+    }
+
+    for (const answers of [['cancel'], ['add', null]]) {
+        it(`does not deploy when the ${answers.length === 1 ? 'deployment' : 'alignment'} picker is cancelled`, async () => {
+            const { fixture, dialogsServiceStub, forceBuilderServiceStub } = await render(createForceEntry());
+            forceBuilderServiceStub.hasUserLoadedForces.and.returnValue(true);
+            dialogsServiceStub.createDialog.and.returnValues(...answers.map(answer => ({ closed: of(answer) })));
+
+            await fixture.componentInstance.onDeploy();
+
+            expect(forceBuilderServiceStub.loadForceEntry).not.toHaveBeenCalled();
+            expect(fixture.componentInstance.busy()).toBeFalse();
+        });
+    }
+
+    it('keeps DEPLOY available if loading fails', async () => {
+        const { fixture, forceBuilderServiceStub, toastServiceStub } = await render(createForceEntry());
+        forceBuilderServiceStub.loadForceEntry.and.resolveTo(false);
+
+        await fixture.componentInstance.onDeploy();
+
+        expect(fixture.componentInstance.isForceLoaded()).toBeFalse();
+        expect(fixture.componentInstance.busy()).toBeFalse();
+        expect(toastServiceStub.showToast).not.toHaveBeenCalled();
+    });
+
+    it('recalls only this force and switches back to DEPLOY', async () => {
+        const { fixture, forceBuilderServiceStub } = await render(createForceEntry());
+        const recalled = createLoadedSlot('force-1');
+        const remaining = createLoadedSlot('force-2');
+        forceBuilderServiceStub.loadedForces.set([remaining, recalled]);
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.wide-dialog-actions button').textContent.trim()).toBe('RECALL');
+        forceBuilderServiceStub.removeLoadedForce.and.callFake(async (force: Force) => {
+            forceBuilderServiceStub.loadedForces.update(slots => slots.filter(slot => slot.force !== force));
+        });
+
+        await fixture.componentInstance.onRecall();
+        fixture.detectChanges();
+
+        expect(forceBuilderServiceStub.removeLoadedForce).toHaveBeenCalledOnceWith(recalled.force);
+        expect(forceBuilderServiceStub.loadedForces()).toEqual([remaining]);
+        expect(fixture.nativeElement.querySelector('.wide-dialog-actions button').textContent.trim()).toBe('DEPLOY');
+    });
+
+    it('keeps RECALL when the save prompt cancels removal', async () => {
+        const { fixture, forceBuilderServiceStub, toastServiceStub } = await render(createForceEntry());
+        forceBuilderServiceStub.loadedForces.set([createLoadedSlot('force-1')]);
+
+        await fixture.componentInstance.onRecall();
+
+        expect(fixture.componentInstance.isForceLoaded()).toBeTrue();
+        expect(fixture.componentInstance.busy()).toBeFalse();
+        expect(toastServiceStub.showToast).not.toHaveBeenCalled();
     });
 
     it('forwards the unit display override to the preview panel', async () => {

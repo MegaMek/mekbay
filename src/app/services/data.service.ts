@@ -67,9 +67,15 @@ export interface BucketStatSummary {
     min: number;
     max: number;
     average: number;
+    /** Nearest-rank 95th percentile of supported measurements; max remains the absolute maximum. */
+    p95: number;
+    count: number;
 }
 
 export interface MinMaxStatsRange {
+    mobility: BucketStatSummary,
+    endurance: BucketStatSummary,
+    asEndurance: BucketStatSummary,
     armor: BucketStatSummary,
     internal: BucketStatSummary,
     heat: BucketStatSummary,
@@ -98,9 +104,6 @@ export interface MinMaxStatsRange {
     gravDecks: BucketStatSummary,
     sailIntegrity: BucketStatSummary,
     kfIntegrity: BucketStatSummary,
-}
-export interface UnitSubtypeMaxStats {
-    [unitSubtype: string]: MinMaxStatsRange
 }
 
 // Generic store update payload used for cross-tab notifications
@@ -474,12 +477,8 @@ export class DataService {
         this.unitSearchIndexService.rebuildTagSearchIndex(this.getUnits());
     }
 
-    public getUnitSubtypeMaxStats(subtype: string): MinMaxStatsRange {
-        return this.unitSearchIndexService.getUnitSubtypeMaxStats(subtype);
-    }
-
-    public getASUnitTypeMaxStats(asUnitType: string): MinMaxStatsRange {
-        return this.unitSearchIndexService.getASUnitTypeMaxStats(asUnitType);
+    public getUnitStats(unit: UnitSummary): MinMaxStatsRange {
+        return this.unitSearchIndexService.getUnitStats(unit);
     }
 
     private postprocessData(): void {

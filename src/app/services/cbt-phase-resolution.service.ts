@@ -115,7 +115,8 @@ export class CBTPhaseResolutionService {
     /**
      * Resumes queued UI work without closing the current phase's pilot-damage
      * group or consolidating pending phase damage. Badge-driven resolution is
-     * always interactive: configured `yes` modes behave as `ask` for this run.
+     * always interactive: configured `yes` modes and disabled PSRs behave as
+     * `ask` for this run.
      */
     async resumePendingChain(units: CBTForceUnit | readonly CBTForceUnit[]): Promise<boolean> {
         const requested = Array.isArray(units) ? units : [units];
@@ -191,7 +192,7 @@ export class CBTPhaseResolutionService {
                 !skippedPilotChecks.has(unit) && hasPilotSkillWork(unit));
             if (pilotUnit) {
                 const mode = pilotUnit.automationMode('pilotSkillCheck');
-                if (mode === 'no') {
+                if (!manualResolution && mode === 'no') {
                     skippedPilotChecks.add(pilotUnit);
                     continue;
                 }

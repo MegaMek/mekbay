@@ -13,6 +13,7 @@ import { type ForceAddModePickerData, ForceAddModePickerDialogComponent, type Fo
 import { firstValueFrom } from 'rxjs';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
+import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 
 export interface ForceEntryPreviewDialogData {
     force: LoadForceEntry;
@@ -42,24 +43,46 @@ export class ForceEntryPreviewDialogComponent {
     private forceBuilderService = inject(ForceBuilderService);
     private toastService = inject(ToastService);
     readonly displayMode = this.data.unitDisplayNameOverride ?? null;
-    force: LoadForceEntry;
+    readonly force: LoadForceEntry = this.data.force;
 
-    isForceLoaded = signal(false);
-    canLoadForce = computed(() => !this.isForceLoaded() && this.force.owned);
+    private loadedForce = computed(() => this.forceBuilderService.loadedForces()
+        .find(slot => slot.force.instanceId() === this.force.instanceId)?.force);
+    isForceLoaded = computed(() => !!this.loadedForce());
+    busy = signal(false);
 
-    constructor() {
-        this.force = this.data.force;
-        this.isForceLoaded.set(
-            this.forceBuilderService.loadedForces().some(s => s.force.instanceId() === this.force.instanceId)
-        );
+    async onDeploy(): Promise<void> {
+        if (this.busy() || this.isForceLoaded()) return;
+        this.busy.set(true);
+        try {
+            if (this.forceBuilderService.hasUserLoadedForces()) {
+                const ref = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
+                    disableClose: true,
+                    data: {
+                        title: 'Deploy Force',
+                        message: 'You already have forces deployed. Would you like to replace them or add this force alongside them?',
+                        buttons: [
+                            { label: 'REPLACE', value: 'replace' },
+                            { label: 'ADD', value: 'add' },
+                            { label: 'CANCEL', value: 'cancel' },
+                        ],
+                    } satisfies ConfirmDialogData<string>,
+                });
+                const answer = await firstValueFrom(ref.closed);
+                if (answer === 'add') {
+                    await this.onAdd();
+                    return;
+                }
+                if (answer !== 'replace') return;
+            }
+
+            const loaded = await this.forceBuilderService.loadForceEntry(this.force, 'load');
+            if (loaded) this.toastService.showToast(`"${this.force.name}" deployed.`, 'success');
+        } finally {
+            this.busy.set(false);
+        }
     }
 
-    async onLoad(): Promise<void> {
-        const loaded = await this.forceBuilderService.loadForceEntry(this.force, 'load');
-        if (loaded) this.close();
-    }
-
-    async onAdd(): Promise<void> {
+    private async onAdd(): Promise<void> {
         const currentForce = this.forceBuilderService.smartCurrentForce();
         const showInsert = !!currentForce && currentForce.owned();
         const ref = this.dialogsService.createDialog<ForceAddModePickerResult>(
@@ -82,10 +105,22 @@ export class ForceEntryPreviewDialogComponent {
         } else {
             const added = await this.forceBuilderService.loadForceEntry(this.force, 'add', result, { activate: false });
             if (added) {
-                this.isForceLoaded.set(true);
                 this.toastService.showToast(`"${this.force.name}" added to loaded forces.`, 'success');
-                this.close();
             }
+        }
+    }
+
+    async onRecall(): Promise<void> {
+        const force = this.loadedForce();
+        if (this.busy() || !force) return;
+        this.busy.set(true);
+        try {
+            await this.forceBuilderService.removeLoadedForce(force);
+            if (!this.isForceLoaded()) {
+                this.toastService.showToast(`"${this.force.name}" recalled.`, 'success');
+            }
+        } finally {
+            this.busy.set(false);
         }
     }
 

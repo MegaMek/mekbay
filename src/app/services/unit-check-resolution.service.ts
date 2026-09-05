@@ -76,7 +76,7 @@ export class UnitCheckResolutionService {
         this.discardDisabledPilotAutomation(uniqueUnits);
         uniqueUnits.forEach(unit => unit.turnState().refreshPendingUnitCheckTargets());
         this.applyAutomaticUnitCheckStages(uniqueUnits, atPhaseEnd, manualResolution);
-        if (pendingCheckReviewGroupList(uniqueUnits, atPhaseEnd).length === 0) return true;
+        if (pendingCheckReviewGroupList(uniqueUnits, atPhaseEnd, manualResolution).length === 0) return true;
 
         this.active = true;
         try {
@@ -85,8 +85,9 @@ export class UnitCheckResolutionService {
                 data: <PendingUnitCheckDialogData>{
                     units: uniqueUnits,
                     atPhaseEnd,
+                    manualResolution,
                     applyResolved: (entries, forcedPsrFailures) => {
-                        this.applyResolved(entries, atPhaseEnd, forcedPsrFailures);
+                        this.applyResolved(entries, atPhaseEnd, forcedPsrFailures, manualResolution);
                         this.applyAutomaticUnitCheckStages(
                             uniqueUnits,
                             atPhaseEnd,
@@ -242,6 +243,7 @@ export class UnitCheckResolutionService {
         entries: readonly PendingCheckReviewEntry[],
         atPhaseEnd = false,
         forcedPsrFailures: ReadonlySet<string> = new Set<string>(),
+        manualResolution = false,
     ): void {
         const units = Array.from(new Map(entries.map(entry => [entry.unit.id, entry.unit])).values());
         const submittedUnitChecks = new Map<CBTForceUnit, Set<string>>();
@@ -278,7 +280,7 @@ export class UnitCheckResolutionService {
                 continue;
             }
 
-            const psrEntries = pendingCheckReviewGroupList(units, atPhaseEnd)
+            const psrEntries = pendingCheckReviewGroupList(units, atPhaseEnd, manualResolution)
                 .filter(entry => !isPendingUnitCheckEntry(entry));
             if (psrEntries.length === 0) return;
 

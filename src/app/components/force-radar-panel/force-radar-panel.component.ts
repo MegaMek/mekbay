@@ -8,149 +8,40 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import { GameSystem } from '../../models/common.model';
 import { getForcePreviewResolvedUnits, type ForcePreviewEntry } from '../../models/force-preview.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
-import { DataService, DOES_NOT_TRACK, type MinMaxStatsRange } from '../../services/data.service';
+import { DataService, type MinMaxStatsRange } from '../../services/data.service';
+import { getUnitStatValues } from '../../utils/unit-stat-values.util';
+import { RadarHelpComponent } from './radar-help.component';
 
-type RadarStatKey =
-    | 'armor'
-    | 'internal'
-    | 'range'
-    | 'dpt'
-    | 'mobility'
-    | 'endurance'
-    | 'shortRangeDamage'
-    | 'mediumRangeDamage'
-    | 'longRangeDamage';
-
-interface RadarContribution {
-    value: number;
-    min: number;
-    average: number;
-    max: number;
-}
-
-interface RadarPoint {
-    x: number;
-    y: number;
-}
-
-interface RadarRing {
-    factor: number;
-    points: string;
-}
-
-interface RadarAxisDefinition {
-    key: RadarStatKey;
-    label: string;
-    getContribution: (unit: UnitSummary, bucketStats: MinMaxStatsRange) => RadarContribution;
-}
-
+interface RadarPoint { x: number; y: number; }
+interface RadarAxisDefinition { key: keyof MinMaxStatsRange; label: string; }
 interface RadarAxis {
-    key: RadarStatKey;
+    key: keyof MinMaxStatsRange;
     label: string;
-    angle: number;
     value: number;
-    min: number;
-    average: number;
     max: number;
+    available: boolean;
     ratio: number;
-    valueText: string;
-    maxText: string;
+    comparisonText: string;
     axisPoint: RadarPoint;
     dataPoint: RadarPoint;
     labelPoint: RadarPoint;
     textAnchor: 'start' | 'middle' | 'end';
 }
+interface ForceRadarAxis extends RadarAxis { average: number; }
 
 const CLASSIC_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
-    {
-        key: 'mobility',
-        label: 'Mobility',
-        getContribution: (unit, bucketStats) => getMobilityContribution(unit, bucketStats),
-    },
-    {
-        key: 'endurance',
-        label: 'Endurance',
-        getContribution: (unit, bucketStats) => ({
-            value: sanitizeStatValue(unit.armor) + sanitizeStatValue(unit.internal),
-            min: sanitizeStatValue(bucketStats.armor.min) + sanitizeStatValue(bucketStats.internal.min),
-            average: sanitizeStatValue(bucketStats.armor.average) + sanitizeStatValue(bucketStats.internal.average),
-            max: sanitizeStatValue(bucketStats.armor.max) + sanitizeStatValue(bucketStats.internal.max),
-        }),
-    },
-    {
-        key: 'range',
-        label: 'Range',
-        getContribution: (unit, bucketStats) => ({
-            value: sanitizeStatValue(unit._weightedMaxRange),
-            min: sanitizeStatValue(bucketStats.weightedMaxRange.min),
-            average: sanitizeStatValue(bucketStats.weightedMaxRange.average),
-            max: sanitizeStatValue(bucketStats.weightedMaxRange.max),
-        }),
-    },
-    {
-        key: 'dpt',
-        label: 'Damage',
-        getContribution: (unit, bucketStats) => ({
-            value: sanitizeStatValue(unit.dpt),
-            min: sanitizeStatValue(bucketStats.dpt.min),
-            average: sanitizeStatValue(bucketStats.dpt.average),
-            max: sanitizeStatValue(bucketStats.dpt.max),
-        }),
-    },
-] as const;
-
+    { key: 'mobility', label: 'Mobility' },
+    { key: 'endurance', label: 'Endurance' },
+    { key: 'weightedMaxRange', label: 'Range' },
+    { key: 'dpt', label: 'Damage' },
+];
 const ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS: readonly RadarAxisDefinition[] = [
-    {
-        key: 'mobility',
-        label: 'Mobility',
-        getContribution: (unit, bucketStats) => ({
-            value: sanitizeStatValue(unit.as?.TMM),
-            min: sanitizeStatValue(bucketStats.asTmm.min),
-            average: sanitizeStatValue(bucketStats.asTmm.average),
-            max: sanitizeStatValue(bucketStats.asTmm.max),
-        }),
-    },
-    {
-        key: 'endurance',
-        label: 'Endurance',
-        getContribution: (unit, bucketStats) => ({
-            value: sanitizeStatValue(unit.as?.Arm) + sanitizeStatValue(unit.as?.Str),
-            min: sanitizeStatValue(bucketStats.asArm.min) + sanitizeStatValue(bucketStats.asStr.min),
-            average: sanitizeStatValue(bucketStats.asArm.average) + sanitizeStatValue(bucketStats.asStr.average),
-            max: sanitizeStatValue(bucketStats.asArm.max) + sanitizeStatValue(bucketStats.asStr.max),
-        }),
-    },
-    {
-        key: 'shortRangeDamage',
-        label: 'Damage (S)',
-        getContribution: (unit, bucketStats) => ({
-            value: getASDamageValue(unit.as?.dmg._dmgS, unit.as?.dmg.dmgS),
-            min: sanitizeStatValue(bucketStats.asDmgS.min),
-            average: sanitizeStatValue(bucketStats.asDmgS.average),
-            max: sanitizeStatValue(bucketStats.asDmgS.max),
-        }),
-    },
-    {
-        key: 'mediumRangeDamage',
-        label: 'Damage (M)',
-        getContribution: (unit, bucketStats) => ({
-            value: getASDamageValue(unit.as?.dmg._dmgM, unit.as?.dmg.dmgM),
-            min: sanitizeStatValue(bucketStats.asDmgM.min),
-            average: sanitizeStatValue(bucketStats.asDmgM.average),
-            max: sanitizeStatValue(bucketStats.asDmgM.max),
-        }),
-    },
-    {
-        key: 'longRangeDamage',
-        label: 'Damage (L)',
-        getContribution: (unit, bucketStats) => ({
-            value: getASDamageValue(unit.as?.dmg._dmgL, unit.as?.dmg.dmgL),
-            min: sanitizeStatValue(bucketStats.asDmgL.min),
-            average: sanitizeStatValue(bucketStats.asDmgL.average),
-            max: sanitizeStatValue(bucketStats.asDmgL.max),
-        }),
-    },
-] as const;
+    { key: 'asTmm', label: 'Mobility' },
+    { key: 'asEndurance', label: 'Endurance' },
+    { key: 'asDmgS', label: 'Damage (S)' },
+    { key: 'asDmgM', label: 'Damage (M)' },
+    { key: 'asDmgL', label: 'Damage (L)' },
+];
 
 const RADAR_VIEWBOX_WIDTH = 500;
 const RADAR_VIEWBOX_HEIGHT = 400;
@@ -201,65 +92,6 @@ function getLabelPoint(angleDegrees: number): RadarPoint {
     };
 }
 
-function sanitizeStatValue(value: number | undefined | null): number {
-    if (value === undefined || value === null || !Number.isFinite(value) || value === DOES_NOT_TRACK) {
-        return 0;
-    }
-
-    return Math.max(0, value);
-}
-
-function getMobilityContribution(unit: UnitSummary, bucketStats: MinMaxStatsRange): RadarContribution {
-    const runValue = sanitizeStatValue(unit.run2);
-    const jumpValue = sanitizeStatValue(unit.jump);
-    const runMin = sanitizeStatValue(bucketStats.run2MP.min);
-    const runAverage = sanitizeStatValue(bucketStats.run2MP.average);
-    const jumpMin = sanitizeStatValue(bucketStats.jumpMP.min);
-    const jumpAverage = sanitizeStatValue(bucketStats.jumpMP.average);
-    const runMax = sanitizeStatValue(bucketStats.run2MP.max);
-    const jumpMax = sanitizeStatValue(bucketStats.jumpMP.max);
-
-    if (runValue > jumpValue) {
-        return { value: runValue, min: runMin, average: runAverage, max: runMax };
-    }
-
-    if (jumpValue > runValue) {
-        return { value: jumpValue, min: jumpMin, average: jumpAverage, max: jumpMax };
-    }
-
-    if (runMax < jumpMax) {
-        return { value: runValue, min: runMin, average: runAverage, max: runMax };
-    }
-
-    if (jumpMax < runMax) {
-        return { value: jumpValue, min: jumpMin, average: jumpAverage, max: jumpMax };
-    }
-
-    if (runMin < jumpMin) {
-        return { value: runValue, min: runMin, average: runAverage, max: runMax };
-    }
-
-    if (jumpMin < runMin) {
-        return { value: jumpValue, min: jumpMin, average: jumpAverage, max: jumpMax };
-    }
-
-    return {
-        value: runValue,
-        min: runMin,
-        average: Math.min(runAverage, jumpAverage),
-        max: runMax,
-    };
-}
-
-function getASDamageValue(precomputed: number | undefined, rawValue: string | undefined): number {
-    if (precomputed !== undefined) {
-        return sanitizeStatValue(precomputed);
-    }
-
-    const parsedValue = Number.parseFloat(rawValue ?? '');
-    return sanitizeStatValue(parsedValue);
-}
-
 function formatStatValue(value: number): string {
     const roundedValue = Math.round(value * 10) / 10;
     if (Number.isInteger(roundedValue)) {
@@ -272,89 +104,30 @@ function formatStatValue(value: number): string {
     });
 }
 
-function easeOutRadarDeviation(value: number): number {
-    const clampedValue = clamp(value, 0, 1);
-    return 1 - ((1 - clampedValue) * (1 - clampedValue));
-}
-
-function getRadarRatio(value: number, min: number, average: number, max: number): number {
-    if (max <= min) {
-        if (value < average) {
-            return 0;
-        }
-
-        if (value > average) {
-            return 1;
-        }
-
-        return average > 0 ? 0.5 : 0;
-    }
-
-    const clampedAverage = clamp(average, min, max);
-
-    if (value === clampedAverage) {
-        return clampedAverage > 0 ? 0.5 : 0;
-    }
-
-    if (value < clampedAverage) {
-        const lowerSpan = clampedAverage - min;
-        if (lowerSpan <= 0) {
-            return 0;
-        }
-
-        const lowerValue = clamp(value, min, clampedAverage);
-        const lowerDeviation = (clampedAverage - lowerValue) / lowerSpan;
-        return clamp(0.5 - (0.5 * easeOutRadarDeviation(lowerDeviation)), 0, 1);
-    }
-
-    const upperSpan = max - clampedAverage;
-    if (upperSpan <= 0) {
-        return 1;
-    }
-
-    const upperValue = clamp(value, clampedAverage, max);
-    const upperDeviation = (upperValue - clampedAverage) / upperSpan;
-    return clamp(0.5 + (0.5 * easeOutRadarDeviation(upperDeviation)), 0, 1);
-}
 
 function buildRadarAxis(
-    definition: RadarAxisDefinition,
-    index: number,
-    axisCount: number,
-    contribution: RadarContribution,
+    definition: RadarAxisDefinition, index: number, axisCount: number,
+    value: number, max: number, available: boolean,
 ): RadarAxis {
     const angle = getAngle(index, axisCount);
-    const ratio = getRadarRatio(contribution.value, contribution.min, contribution.average, contribution.max);
+    const ratio = !available ? 0 : max > 0 ? value / max : value > 0 ? 1 : 0;
+    const comparisonText = !available ? 'N/A'
+        : max === 0 && value > 0 ? `${formatStatValue(value)} · rare`
+        : `${formatStatValue(value)} / ${formatStatValue(max)}`
+            + (ratio > 1 ? ` · ${Math.round(ratio * 100)}%` : '');
     const labelPoint = getLabelPoint(angle);
-
     return {
-        key: definition.key,
-        label: definition.label,
-        angle,
-        value: contribution.value,
-        min: contribution.min,
-        average: contribution.average,
-        max: contribution.max,
-        ratio,
-        valueText: formatStatValue(contribution.value),
-        maxText: formatStatValue(contribution.max),
+        ...definition, value, max, available, ratio, comparisonText,
         axisPoint: toPoint(angle, RADAR_RADIUS),
-        dataPoint: toPoint(angle, RADAR_RADIUS * ratio),
-        labelPoint,
-        textAnchor: getTextAnchor(labelPoint),
+        dataPoint: toPoint(angle, RADAR_RADIUS * clamp(ratio, 0, 1)),
+        labelPoint, textAnchor: getTextAnchor(labelPoint),
     };
-}
-
-function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem, unit: UnitSummary): MinMaxStatsRange {
-    return gameSystem === GameSystem.ALPHA_STRIKE
-        ? dataService.getASUnitTypeMaxStats(unit.as?.TP ?? '')
-        : dataService.getUnitSubtypeMaxStats(unit.subtype);
 }
 
 @Component({
     selector: 'force-radar-panel',
     standalone: true,
-    imports: [CommonModule],
+    imports: [CommonModule, RadarHelpComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     @let axes = chartAxes();
@@ -363,18 +136,19 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
     <div class="force-radar-shell">
         @if (hasUnits()) {
             <div class="radar-area">
+                <radar-help />
                 <svg
                     class="radar-chart"
                     [attr.viewBox]="'0 0 ' + viewBoxWidth + ' ' + viewBoxHeight"
                     [attr.width]="renderWidth"
                     [attr.height]="renderHeight"
                     preserveAspectRatio="xMidYMid meet"
-                    role="img">
+                    role="img" aria-label="Force capabilities compared with the catalog p95 reference">
+                    <title>Force values / p95 reference for this unit composition. The gray dotted outline shows the catalog average for the force composition. The blue dashed outline compares the hovered unit with its own type and superheavy bucket, not the whole force. Use the help button for a visual guide.</title>
 
                     @for (ring of gridRings(); track ring.factor) {
                         <polygon
                             class="radar-ring"
-                            [class.radar-ring-midpoint]="ring.factor === 0.5"
                             [attr.points]="ring.points"></polygon>
                     }
 
@@ -389,6 +163,9 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
 
                     <polygon class="radar-fill" [attr.points]="valuePolygonPoints()"></polygon>
                     <polygon class="radar-outline" [attr.points]="valuePolygonPoints()"></polygon>
+                    <path class="radar-average-outline" [attr.d]="averagePath()">
+                        <title>Catalog average for this force composition. Gaps indicate unavailable measurements or a positive average with a zero p95 reference.</title>
+                    </path>
 
                     @for (axis of axes; track axis.key) {
                         <circle
@@ -419,11 +196,11 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
                             [attr.transform]="'translate(' + axis.labelPoint.x + ' ' + axis.labelPoint.y + ')'">
                             <text class="radar-label" [attr.text-anchor]="axis.textAnchor">{{ axis.label }}</text>
                             <text class="radar-label-value" [attr.text-anchor]="axis.textAnchor" y="16">
-                                {{ axis.valueText }}/{{ axis.maxText }}
+                                {{ axis.comparisonText }}
                             </text>
                             @if (overlayAxisMap.get(axis.key); as overlayAxis) {
                                 <text class="radar-label-value radar-label-value-hover" [attr.text-anchor]="axis.textAnchor" y="32">
-                                    {{ overlayAxis.valueText }}/{{ overlayAxis.maxText }}
+                                    {{ overlayAxis.comparisonText }}
                                 </text>
                             }
                         </g>
@@ -449,6 +226,7 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
         }
 
         .radar-area {
+            position: relative;
             display: flex;
             justify-content: center;
             width: 100%;
@@ -472,10 +250,12 @@ function getUnitBucketMaxStats(dataService: DataService, gameSystem: GameSystem,
             stroke-width: 1;
         }
 
-        .radar-ring-midpoint {
-            stroke: rgba(255, 255, 255, 0.18);
-            stroke-width: 1.5;
-            stroke-dasharray: 6 4;
+        .radar-average-outline {
+            fill: none;
+            stroke: #aaa;
+            stroke-width: 2;
+            stroke-dasharray: 1 5;
+            stroke-linecap: round;
         }
 
         .radar-axis {
@@ -565,89 +345,58 @@ export class ForceRadarPanelComponent {
     readonly force = input.required<ForcePreviewEntry>();
     readonly hoveredUnit = input<UnitSummary | null>(null);
     readonly axisDefinitions = computed(() => this.force().type === GameSystem.ALPHA_STRIKE
-        ? ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS
-        : CLASSIC_RADAR_AXIS_DEFINITIONS);
-
-    readonly units = computed<UnitSummary[]>(() => getForcePreviewResolvedUnits(this.force()));
-
+        ? ALPHA_STRIKE_RADAR_AXIS_DEFINITIONS : CLASSIC_RADAR_AXIS_DEFINITIONS);
+    readonly units = computed(() => getForcePreviewResolvedUnits(this.force()));
     readonly hasUnits = computed(() => this.units().length > 0);
 
-    readonly chartAxes = computed<RadarAxis[]>(() => {
-        const axisDefinitions = this.axisDefinitions();
-        const gameSystem = this.force().type;
-        const totals = axisDefinitions.map((definition, index) => ({
-            definition,
-            index,
-            value: 0,
-            min: 0,
-            average: 0,
-            max: 0,
+    readonly chartAxes = computed<ForceRadarAxis[]>(() => {
+        const definitions = this.axisDefinitions();
+        const units = this.units().map(unit => ({
+            values: getUnitStatValues(unit),
+            stats: this.dataService.getUnitStats(unit),
         }));
-
-        for (const unit of this.units()) {
-            const maxStats = gameSystem === GameSystem.ALPHA_STRIKE
-                ? this.dataService.getASUnitTypeMaxStats(unit.as?.TP ?? '')
-                : this.dataService.getUnitSubtypeMaxStats(unit.subtype);
-
-            for (const total of totals) {
-                const contribution = total.definition.getContribution(unit, maxStats);
-                total.value += contribution.value;
-                total.min += contribution.min;
-                total.average += contribution.average;
-                total.max += contribution.max;
-            }
-        }
-
-        return totals.map((total) => {
-            return buildRadarAxis(total.definition, total.index, axisDefinitions.length, {
-                value: total.value,
-                min: total.min,
-                average: total.average,
-                max: total.max,
-            });
+        return definitions.map((definition, index) => {
+            const key = definition.key;
+            // Partial totals would compare different compositions, so mark the whole axis unavailable.
+            const available = units.length > 0 && units.every(unit =>
+                unit.values[key] !== null && unit.stats[key].count > 0);
+            const value = units.reduce((sum, unit) => sum + (unit.values[key] ?? 0), 0);
+            const benchmark = units.reduce((sum, unit) => sum + unit.stats[key].p95, 0);
+            const average = units.reduce((sum, unit) => sum + unit.stats[key].average, 0);
+            return { ...buildRadarAxis(definition, index, definitions.length, value, benchmark, available), average };
         });
     });
 
+    readonly averageAxes = computed(() => this.chartAxes().map((axis, index, axes) =>
+        buildRadarAxis(axis, index, axes.length, axis.average, axis.max,
+            axis.available && (axis.max > 0 || axis.average === 0)),
+    ));
+    readonly averagePath = computed(() => {
+        const axes = this.averageAxes();
+        // Leave gaps rather than suggesting a zero average for unsupported or unscalable axes.
+        return axes.map((axis, index) => {
+            const next = axes[(index + 1) % axes.length];
+            if (!axis.available || !next.available) return '';
+            return `M${axis.dataPoint.x},${axis.dataPoint.y} L${next.dataPoint.x},${next.dataPoint.y}`;
+        }).join(' ');
+    });
+
     readonly hoveredUnitAxes = computed<RadarAxis[]>(() => {
-        const hoveredUnit = this.hoveredUnit();
-        if (!hoveredUnit) {
-            return [];
-        }
-
-        const axisDefinitions = this.axisDefinitions();
-        const maxStats = this.getUnitBucketMaxStats(hoveredUnit);
-
-        return axisDefinitions.map((definition, index) => buildRadarAxis(
-            definition,
-            index,
-            axisDefinitions.length,
-            definition.getContribution(hoveredUnit, maxStats),
+        const unit = this.hoveredUnit();
+        if (!unit) return [];
+        const values = getUnitStatValues(unit);
+        const stats = this.dataService.getUnitStats(unit);
+        return this.axisDefinitions().map((axis, index, axes) => buildRadarAxis(
+            axis, index, axes.length, values[axis.key] ?? 0, stats[axis.key].p95,
+            values[axis.key] !== null && stats[axis.key].count > 0,
         ));
     });
-
-    readonly hoveredAxisMap = computed(() => {
-        return new Map(this.hoveredUnitAxes().map((axis) => [axis.key, axis] as const));
-    });
-
-    readonly gridRings = computed<RadarRing[]>(() => {
-        const axisDefinitions = this.axisDefinitions();
-        return RADAR_RING_FACTORS.map((factor) => ({
-            factor,
-            points: toPointString(
-                axisDefinitions.map((_, index) => toPoint(getAngle(index, axisDefinitions.length), RADAR_RADIUS * factor)),
-            ),
-        }));
-    });
-
-    readonly valuePolygonPoints = computed(() => {
-        return toPointString(this.chartAxes().map((axis) => axis.dataPoint));
-    });
-
-    readonly hoveredValuePolygonPoints = computed(() => {
-        return toPointString(this.hoveredUnitAxes().map((axis) => axis.dataPoint));
-    });
-
-    private getUnitBucketMaxStats(unit: UnitSummary): MinMaxStatsRange {
-        return getUnitBucketMaxStats(this.dataService, this.force().type, unit);
-    }
+    readonly hoveredAxisMap = computed(() => new Map(this.hoveredUnitAxes().map(axis => [axis.key, axis])));
+    readonly gridRings = computed(() => RADAR_RING_FACTORS.map(factor => ({
+        factor,
+        points: toPointString(this.axisDefinitions().map((_, index, axes) =>
+            toPoint(getAngle(index, axes.length), RADAR_RADIUS * factor))),
+    })));
+    readonly valuePolygonPoints = computed(() => toPointString(this.chartAxes().map(axis => axis.dataPoint)));
+    readonly hoveredValuePolygonPoints = computed(() => toPointString(this.hoveredUnitAxes().map(axis => axis.dataPoint)));
 }

@@ -224,6 +224,27 @@ describe('PendingUnitCheckDialogComponent', () => {
         ]);
     });
 
+    for (const mode of ['no', 'yes'] as const) {
+        it(`shows selectable ${mode}-mode PSRs in a manually opened dialog`, () => {
+            first.checks.set([]);
+            second.checks.set([]);
+            spyOn(first.unit, 'automationMode').and.returnValue(mode);
+            Object.assign(fixture.componentInstance.data, { manualResolution: true });
+            first.psrChecks.set([{
+                id: 'psr:one', kind: PSR_CHECK_KIND.DAMAGE_THRESHOLD,
+                failure: FALL_PSR_FAILURE, fallCheck: 0, reason: '20 or more damage',
+            }]);
+            fixture.detectChanges();
+
+            const rows = fixture.debugElement.queryAll(By.directive(PendingUnitCheckRowComponent));
+            expect(rows.length).toBe(1);
+            expect(rows[0].componentInstance.label()).toBe('Piloting Skill Check');
+            rows[0].componentInstance.choose('success');
+            expect(first.unit.psrOutcomeSelections()).toEqual({ 'psr:one': 'success' });
+            expect(fixture.componentInstance.allResolved()).toBeTrue();
+        });
+    }
+
     it('shows PSRs in sequence and auto-fails them after the active pilot loses consciousness', () => {
         first.checks.set([
             {

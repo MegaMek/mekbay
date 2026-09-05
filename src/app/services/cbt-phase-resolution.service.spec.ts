@@ -160,22 +160,40 @@ describe('CBTPhaseResolutionService', () => {
         ]);
     });
 
-    it('opens yes-mode PSRs for manual resolution when the pending badge is used', async () => {
-        const harness = createHarness();
-        harness.mode = 'yes';
-        harness.checks = [fallCheck('psr:1')];
-        spyOn(Math, 'random');
-        openUnitChecks.and.callFake(async () => {
-            harness.outcomes.set('psr:1', 'success');
-            return true;
-        });
+    for (const mode of ['yes', 'no', 'ask'] as const) {
+        it(`opens ${mode}-mode PSRs for manual resolution when the pending badge is used`, async () => {
+            const harness = createHarness();
+            harness.mode = mode;
+            harness.checks = [fallCheck('psr:1')];
+            spyOn(Math, 'random');
+            openUnitChecks.and.callFake(async () => {
+                harness.outcomes.set('psr:1', 'success');
+                return true;
+            });
 
-        expect(await service.resumePendingChain(harness.unit)).toBeTrue();
+            expect(await service.resumePendingChain(harness.unit)).toBeTrue();
+
+            expect(openUnitChecks).toHaveBeenCalledOnceWith([harness.unit], false, true);
+            expect(Math.random).not.toHaveBeenCalled();
+            expect(harness.outcomes.get('psr:1')).toBe('success');
+            expect(showToast).not.toHaveBeenCalled();
+            expect(harness.resetPSRChecks).not.toHaveBeenCalled();
+            expect(harness.mode).toBe(mode);
+        });
+    }
+
+    it('leaves disabled PSRs pending when their manually opened dialog is closed', async () => {
+        const harness = createHarness();
+        harness.mode = 'no';
+        harness.checks = [fallCheck('psr:1')];
+        openUnitChecks.and.resolveTo(false);
+
+        expect(await service.resumePendingChain(harness.unit)).toBeFalse();
 
         expect(openUnitChecks).toHaveBeenCalledOnceWith([harness.unit], false, true);
-        expect(Math.random).not.toHaveBeenCalled();
-        expect(harness.outcomes.get('psr:1')).toBe('success');
-        expect(showToast).not.toHaveBeenCalled();
+        expect(harness.outcomes.size).toBe(0);
+        expect(harness.resetPSRChecks).not.toHaveBeenCalled();
+        expect(service.isResolving(harness.unit)).toBeFalse();
     });
 
     it('rolls the TW shutdown PSR but automatically fails a later PSR while shutdown', async () => {
