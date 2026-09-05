@@ -5,6 +5,7 @@
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
+import type { PendingUnitCheckDialogData } from '../components/pending-unit-check-dialog/pending-unit-check-dialog.component';
 import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import type { PendingEventInput, SerializedPendingUnitCheck } from '../models/force-serialization';
 import type { AutomationMode } from '../models/options.model';
@@ -286,6 +287,32 @@ describe('UnitCheckResolutionService', () => {
         expect(harness.unit.setCrewState).not.toHaveBeenCalled();
         expect(showToast).not.toHaveBeenCalled();
     });
+
+    for (const mode of ['no', 'yes'] as const) {
+        it(`opens and applies ${mode}-mode PSRs only when manually requested`, async () => {
+            const harness = createHarness([], 'tw', 1);
+            spyOn(harness.unit, 'automationMode').and.returnValue(mode);
+            spyOn(Math, 'random');
+
+            expect(await service.open([harness.unit])).toBeTrue();
+            expect(createDialog).not.toHaveBeenCalled();
+
+            expect(await service.open([harness.unit], false, true)).toBeFalse();
+            expect(createDialog).toHaveBeenCalledTimes(1);
+            const data = createDialog.calls.mostRecent().args[1].data as PendingUnitCheckDialogData;
+            const entries = pendingCheckReviewGroupList(data.units, data.atPhaseEnd, data.manualResolution);
+            expect(entries.map(entry => entry.check.id)).toEqual(['psr:1']);
+            expect(harness.psrOutcomes.size).toBe(0);
+
+            harness.unit.psrOutcomeSelections.set({ 'psr:1': 'success' });
+            data.applyResolved(entries, new Set());
+
+            expect(harness.psrOutcomes.get('psr:1')).toBe('success');
+            expect(harness.unit.psrOutcomeSelections()).toEqual({});
+            expect(harness.unit.automationMode('pilotSkillCheck')).toBe(mode);
+            expect(Math.random).not.toHaveBeenCalled();
+        });
+    }
 
     it('keeps an aerospace unit controlled when another crew member can take over', async () => {
         automationModes['pilotHitsAndConsciousnessCheck'] = 'yes';

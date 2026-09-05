@@ -305,9 +305,17 @@ describe('SvgInteractionService', () => {
 
         button.dispatchEvent(createPointerEvent('pointerdown', { pointerId: 72 }));
         expect(pickerFactory.createDirectionalPicker).toHaveBeenCalledTimes(2);
-        expect(armorDiagram.querySelector('.mek-random-hit-result')).toBe(result);
+        expect(armorDiagram.querySelector('.mek-random-hit-result')).toBeNull();
+        expect(frontCenterTorso.classList).not.toContain('random-hit-location-highlight');
 
-        (result.querySelector('.mek-random-hit-result-through-armor') as SVGTextElement)
+        pickerFactory.createDirectionalPicker.calls.mostRecent().args[0]
+            .onPick({ label: 'Front', value: 'front' });
+        const nextResult = armorDiagram.querySelector('.mek-random-hit-result') as SVGGElement;
+        expect(nextResult).not.toBeNull();
+        expect(nextResult).not.toBe(result);
+        expect(frontCenterTorso.classList).toContain('random-hit-location-highlight');
+
+        (nextResult.querySelector('.mek-random-hit-result-through-armor') as SVGTextElement)
             .dispatchEvent(createPointerEvent('pointerdown', { pointerId: 73 }));
         expect(frontCenterTorso.classList).not.toContain('random-hit-location-highlight');
         expect(armorDiagram.querySelector('.mek-random-hit-result')).toBeNull();
