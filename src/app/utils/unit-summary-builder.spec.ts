@@ -3,7 +3,12 @@
 // Author: Drake
 
 import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-emplacement-entity';
-import { TestBipedMekEntity as BipedMekEntity } from '../models/entity/testing/test-entities';
+import {
+  TestBipedMekEntity as BipedMekEntity,
+  TestTankEntity,
+  TestAeroSpaceFighterEntity,
+  TestConvFighterEntity,
+} from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { ArmorEquipment } from '../models/equipment.model';
 import {
@@ -47,6 +52,22 @@ describe('UnitSummaryBuilder', () => {
     });
     expect(summary.uuid).toBe(uuid);
     expect(summary.entityType).toBe('Mek');
+    expect(summary.heat).toBe(0);
+    expect(summary.dissipation).toBe(mek().heatDissipation());
+  });
+
+  it('generates nullable heat measurements from the native capability', () => {
+    for (const [entity, tracksHeat] of [
+      [new TestTankEntity(), false],
+      [new TestConvFighterEntity(), false],
+      [new TestAeroSpaceFighterEntity(), true],
+    ] as const) {
+      entity.uuid.set(uuid);
+      const summary = new UnitSummaryBuilder().build(entity, { entryKey, format: 'blk' });
+      expect(summary.heat).withContext(entity.entityType).toBe(tracksHeat ? entity.heatGeneration() : null);
+      expect(summary.dissipation).withContext(entity.entityType).toBe(tracksHeat ? entity.heatDissipation() : null);
+      expect(JSON.parse(JSON.stringify(summary)).heat).toBe(summary.heat);
+    }
   });
 
   it('persists optional per-location material layouts', () => {
@@ -114,6 +135,8 @@ describe('UnitSummaryBuilder', () => {
     expect(summary.bv).toBe(0);
     expect(summary.cost).toBe(0);
     expect(summary.as.TP).toBe('XX');
+    expect(summary.heat).toBeNull();
+    expect(summary.dissipation).toBeNull();
     expect(entity.fluff().overview).toBe('Catalog prose remains available.');
     expect(Object.prototype.hasOwnProperty.call(summary, 'fluff')).toBeFalse();
   });

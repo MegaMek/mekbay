@@ -163,4 +163,16 @@ describe('ForceRadarPanelComponent', () => {
         expect(fixture.componentInstance.averagePath().trim()).toBe('');
         expect(fixture.nativeElement.textContent).toContain('No units to chart.');
     });
+
+    it('shows unavailable AS axes for native units with no AS conversion', () => {
+        const unit = createEmptyUnit({ entityType: 'GunEmplacement', as: { TP: 'XX' } });
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([unit], [], []));
+        const fixture = render([unit], GameSystem.AS);
+        fixture.componentRef.setInput('hoveredUnit', unit);
+        fixture.detectChanges();
+        for (const axis of [...fixture.componentInstance.chartAxes(), ...fixture.componentInstance.hoveredUnitAxes()]) {
+            expect(axis.available).toBeFalse();
+            expect(axis.comparisonText).toBe('N/A');
+        }
+    });
 });

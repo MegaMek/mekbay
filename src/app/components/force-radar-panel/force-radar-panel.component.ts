@@ -8,14 +8,14 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import { GameSystem } from '../../models/common.model';
 import { getForcePreviewResolvedUnits, type ForcePreviewEntry } from '../../models/force-preview.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
-import { UnitSearchIndexService, type MinMaxStatsRange } from '../../services/unit-search-index.service';
-import { getUnitStatValues } from '../../utils/unit-stat-values.util';
+import { UnitSearchIndexService } from '../../services/unit-search-index.service';
+import { UNIT_STAT_READERS, type UnitStatKey } from '../../models/unit-statistics';
 import { RadarHelpComponent } from './radar-help.component';
 
 interface RadarPoint { x: number; y: number; }
-interface RadarAxisDefinition { key: keyof MinMaxStatsRange; label: string; }
+interface RadarAxisDefinition { key: UnitStatKey; label: string; }
 interface RadarAxis {
-    key: keyof MinMaxStatsRange;
+    key: UnitStatKey;
     label: string;
     value: number;
     max: number;
@@ -352,15 +352,16 @@ export class ForceRadarPanelComponent {
     readonly chartAxes = computed<ForceRadarAxis[]>(() => {
         const definitions = this.axisDefinitions();
         const units = this.units().map(unit => ({
-            values: getUnitStatValues(unit),
+            summary: unit,
             stats: this.searchIndex.getUnitStats(unit),
         }));
         return definitions.map((definition, index) => {
             const key = definition.key;
+            const values = units.map(unit => UNIT_STAT_READERS[key](unit.summary));
             // Partial totals would compare different compositions, so mark the whole axis unavailable.
-            const available = units.length > 0 && units.every(unit =>
-                unit.values[key] !== null && unit.stats[key].count > 0);
-            const value = units.reduce((sum, unit) => sum + (unit.values[key] ?? 0), 0);
+            const available = units.length > 0 && units.every((unit, index) =>
+                values[index] !== null && unit.stats[key].count > 0);
+            const value = values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
             const benchmark = units.reduce((sum, unit) => sum + unit.stats[key].p95, 0);
             const average = units.reduce((sum, unit) => sum + unit.stats[key].average, 0);
             return { ...buildRadarAxis(definition, index, definitions.length, value, benchmark, available), average };
@@ -384,12 +385,14 @@ export class ForceRadarPanelComponent {
     readonly hoveredUnitAxes = computed<RadarAxis[]>(() => {
         const unit = this.hoveredUnit();
         if (!unit) return [];
-        const values = getUnitStatValues(unit);
         const stats = this.searchIndex.getUnitStats(unit);
-        return this.axisDefinitions().map((axis, index, axes) => buildRadarAxis(
-            axis, index, axes.length, values[axis.key] ?? 0, stats[axis.key].p95,
-            values[axis.key] !== null && stats[axis.key].count > 0,
-        ));
+        return this.axisDefinitions().map((axis, index, axes) => {
+            const value = UNIT_STAT_READERS[axis.key](unit);
+            return buildRadarAxis(
+                axis, index, axes.length, value ?? 0, stats[axis.key].p95,
+                value !== null && stats[axis.key].count > 0,
+            );
+        });
     });
     readonly hoveredAxisMap = computed(() => new Map(this.hoveredUnitAxes().map(axis => [axis.key, axis])));
     readonly gridRings = computed(() => RADAR_RING_FACTORS.map(factor => ({

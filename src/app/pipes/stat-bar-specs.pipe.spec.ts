@@ -34,16 +34,27 @@ describe('StatBarSpecsPipe', () => {
 
     it('preserves rare capabilities while excluding unavailable measurements', () => {
         const units = Array.from({ length: 100 }, (_, i) => createEmptyUnit({
-            heat: -1, dpt: i === 99 ? 5 : 0,
+            heat: null, dissipation: null, dpt: i === 99 ? 5 : 0,
         }));
         index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes(units, [], []));
         const stats = pipe.transform(units[99]);
         expect(stats.some(stat => stat.label === 'Heat')).toBeFalse();
+        expect(stats.some(stat => stat.label === 'Dissipation')).toBeFalse();
         const damage = stats.find(stat => stat.label === 'Damage/Turn')!;
         expect(damage.value).toBe(5);
         expect(damage.max).toBe(0);
         expect(damage.percent).toBe(100);
         expect(damage.description).toContain('rare capability');
         expect(pipe.transform(units[0]).find(stat => stat.label === 'Damage/Turn')!.percent).toBe(0);
+    });
+
+    it('displays measured zero heat and legitimate values of 999', () => {
+        const unit = createEmptyUnit({ heat: 0, dissipation: 10, armor: 999, dpt: 999 });
+        index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([unit], [], []));
+        const stats = pipe.transform(unit);
+        expect(stats.find(stat => stat.label === 'Heat')?.value).toBe(0);
+        expect(stats.find(stat => stat.label === 'Dissipation')?.value).toBe(10);
+        expect(stats.find(stat => stat.label === 'Armor')?.value).toBe(999);
+        expect(stats.find(stat => stat.label === 'Damage/Turn')?.value).toBe(999);
     });
 });

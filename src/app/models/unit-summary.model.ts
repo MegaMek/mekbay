@@ -15,7 +15,7 @@ import type {
 } from '../services/unit-catalog/unit-catalog.types';
 
 /** Bump when generated UnitSummary fields or their meaning change. */
-export const UNIT_SUMMARY_VERSION = 9 as const;
+export const UNIT_SUMMARY_VERSION = 10 as const;
 
 export type { MoveType, UnitSubtype, UnitType } from './entity/types';
 
@@ -182,8 +182,9 @@ export interface UnitSummary {
   internal: number;
   squads: number;
   squadSize: number;
-  heat: number;
-  dissipation: number;
+  /** Null when the native construction does not track heat; zero is a measured value. */
+  heat: number | null;
+  dissipation: number | null;
   diss?: number[];
   moveType: MoveType;
   walk: number;

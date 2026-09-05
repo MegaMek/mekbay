@@ -10,7 +10,15 @@ import { removeAccents } from '../utils/string.util';
 import { compareUnitsByName, naturalCompare } from '../utils/sort.util';
 import { getMergedTags, getUnitSourceFilterValues } from '../utils/unit-search-shared.util';
 import { calculateWeightedMaxRange, getMaxRangeFromComponents } from '../utils/unit-range.util';
-import { getUnitStatBucketKey, getUnitStatValues } from '../utils/unit-stat-values.util';
+import {
+    EMPTY_UNIT_BUCKET_STATS,
+    UNIT_STAT_KEYS,
+    UNIT_STAT_READERS,
+    getUnitStatBucketKey,
+    type BucketStatSummary,
+    type UnitBucketStats,
+    type UnitStatKey,
+} from '../models/unit-statistics';
 import { parseASDamageValue } from '../utils/as-damage.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, BOOLEAN_FILTERS, getBooleanFilterUnitValue } from './unit-search-filters.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
@@ -23,49 +31,6 @@ import {
     type ParsedASSpecials,
 } from '../utils/as-special-filter.util';
 import type { UnitUuid } from './unit-catalog/unit-catalog.types';
-
-export const DOES_NOT_TRACK = 999;
-
-export interface BucketStatSummary {
-    readonly min: number;
-    readonly max: number;
-    readonly average: number;
-    /** Nearest-rank 95th percentile of supported measurements. */
-    readonly p95: number;
-    readonly count: number;
-}
-
-export interface MinMaxStatsRange {
-    readonly mobility: BucketStatSummary;
-    readonly endurance: BucketStatSummary;
-    readonly asEndurance: BucketStatSummary;
-    readonly armor: BucketStatSummary;
-    readonly internal: BucketStatSummary;
-    readonly heat: BucketStatSummary;
-    readonly dissipation: BucketStatSummary;
-    readonly dissipationEfficiency: BucketStatSummary;
-    readonly runMP: BucketStatSummary;
-    readonly run2MP: BucketStatSummary;
-    readonly umuMP: BucketStatSummary;
-    readonly jumpMP: BucketStatSummary;
-    readonly alphaNoPhysical: BucketStatSummary;
-    readonly alphaNoPhysicalNoOneshots: BucketStatSummary;
-    readonly maxRange: BucketStatSummary;
-    readonly weightedMaxRange: BucketStatSummary;
-    readonly dpt: BucketStatSummary;
-    readonly asTmm: BucketStatSummary;
-    readonly asArm: BucketStatSummary;
-    readonly asStr: BucketStatSummary;
-    readonly asDmgS: BucketStatSummary;
-    readonly asDmgM: BucketStatSummary;
-    readonly asDmgL: BucketStatSummary;
-    readonly dropshipCapacity: BucketStatSummary;
-    readonly escapePods: BucketStatSummary;
-    readonly lifeBoats: BucketStatSummary;
-    readonly gravDecks: BucketStatSummary;
-    readonly sailIntegrity: BucketStatSummary;
-    readonly kfIntegrity: BucketStatSummary;
-}
 
 export interface UnitSearchDropdownOption {
     name: string;
@@ -166,7 +131,7 @@ export interface FactionEraMembershipSnapshot {
  * failed or superseded build cannot expose a partially rebuilt index.
  */
 export interface PreparedUnitSearchIndexes {
-    readonly unitStats: Readonly<Record<string, MinMaxStatsRange>>;
+    readonly unitStats: Readonly<Record<string, UnitBucketStats>>;
     readonly searchFilterIndex: Map<string, Map<string, ReadonlySet<UnitUuid>>>;
     readonly unitOrdinalLookup: UnitOrdinalLookup;
     readonly searchFilterValues: Map<string, string[]>;
@@ -191,7 +156,7 @@ export interface PreparedUnitSearchIndexes {
     };
 }
 
-type StatSamples = Partial<Record<keyof MinMaxStatsRange, number[]>>;
+type StatSamples = Partial<Record<UnitStatKey, number[]>>;
 
 function summarizeStat(values: number[] = []): BucketStatSummary {
     if (values.length === 0) return { min: 0, max: 0, average: 0, p95: 0, count: 0 };
@@ -209,7 +174,7 @@ function summarizeStat(values: number[] = []): BucketStatSummary {
     providedIn: 'root'
 })
 export class UnitSearchIndexService {
-    private unitStats: Readonly<Record<string, MinMaxStatsRange>> = {};
+    private unitStats: Readonly<Record<string, UnitBucketStats>> = {};
     private searchFilterIndex = new Map<string, Map<string, ReadonlySet<UnitUuid>>>();
     private unitOrdinalLookup: UnitOrdinalLookup = {
         unitUuids: [],
@@ -303,7 +268,7 @@ export class UnitSearchIndexService {
     }
 
     private prepareUnits(units: UnitSummary[]): void {
-        const unitStats: Record<string, MinMaxStatsRange> = {};
+        const unitStats: Record<string, UnitBucketStats> = {};
         const samplesByBucket: Record<string, StatSamples> = {};
 
         for (let unitOrdinal = 0; unitOrdinal < units.length; unitOrdinal++) {
@@ -322,13 +287,13 @@ export class UnitSearchIndexService {
             unit._mdSumNoPhysicalNoOneshots = unit.comp ? this.sumWeaponDamageNoPhysical(unit, unit.comp, true) : 0;
             unit._maxRange = unit.comp ? getMaxRangeFromComponents(unit.comp) : 0;
             unit._weightedMaxRange = unit.comp ? calculateWeightedMaxRange(unit) : 0;
-            unit._dissipationEfficiency = (unit.heat && unit.dissipation) ? unit.dissipation - unit.heat : 0;
+            unit._dissipationEfficiency = UNIT_STAT_READERS.dissipationEfficiency(unit) ?? undefined;
 
             if (unit.as) {
-                unit.as.dmg._dmgS = parseASDamageValue(unit.as.dmg.dmgS) ?? 0;
-                unit.as.dmg._dmgM = parseASDamageValue(unit.as.dmg.dmgM) ?? 0;
-                unit.as.dmg._dmgL = parseASDamageValue(unit.as.dmg.dmgL) ?? 0;
-                unit.as.dmg._dmgE = parseASDamageValue(unit.as.dmg.dmgE) ?? 0;
+                unit.as.dmg._dmgS = parseASDamageValue(unit.as.dmg.dmgS) ?? undefined;
+                unit.as.dmg._dmgM = parseASDamageValue(unit.as.dmg.dmgM) ?? undefined;
+                unit.as.dmg._dmgL = parseASDamageValue(unit.as.dmg.dmgL) ?? undefined;
+                unit.as.dmg._dmgE = parseASDamageValue(unit.as.dmg.dmgE) ?? undefined;
                 if (unit.as.MVm['j'] !== undefined && unit.as.MVm[''] === undefined) {
                     const mvmKeys = Object.keys(unit.as.MVm);
                     if (unit.as.TP === 'BM' || (mvmKeys.length === 1 && mvmKeys[0] === 'j')) {
@@ -339,16 +304,16 @@ export class UnitSearchIndexService {
 
             const key = getUnitStatBucketKey(unit);
             const samples = samplesByBucket[key] ??= {};
-            for (const [statKey, value] of Object.entries(getUnitStatValues(unit))) {
-                if (value !== null) (samples[statKey as keyof MinMaxStatsRange] ??= []).push(value);
-                else samples[statKey as keyof MinMaxStatsRange] ??= [];
+            for (const statKey of UNIT_STAT_KEYS) {
+                const value = UNIT_STAT_READERS[statKey](unit);
+                if (value !== null) (samples[statKey] ??= []).push(value);
             }
         }
 
         for (const [key, samples] of Object.entries(samplesByBucket)) {
             unitStats[key] = Object.fromEntries(
-                Object.entries(samples).map(([statKey, values]) => [statKey, summarizeStat(values)]),
-            ) as unknown as MinMaxStatsRange;
+                UNIT_STAT_KEYS.map(statKey => [statKey, summarizeStat(samples[statKey])]),
+            ) as UnitBucketStats;
         }
         this.unitStats = unitStats;
 
@@ -546,10 +511,8 @@ export class UnitSearchIndexService {
         return this.dropdownOptionUniverse.get(filterKey)?.map(option => ({ ...option })) ?? [];
     }
 
-    public getUnitStats(unit: UnitSummary): MinMaxStatsRange {
-        return this.unitStats[getUnitStatBucketKey(unit)] ?? Object.fromEntries(
-            Object.keys(getUnitStatValues(unit)).map(key => [key, summarizeStat()]),
-        ) as unknown as MinMaxStatsRange;
+    public getUnitStats(unit: UnitSummary): UnitBucketStats {
+        return this.unitStats[getUnitStatBucketKey(unit)] ?? EMPTY_UNIT_BUCKET_STATS;
     }
 
     private rebuildDropdownOptionUniverse(eras: Era[], factions: Faction[]): void {

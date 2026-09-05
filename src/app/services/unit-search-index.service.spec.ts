@@ -49,6 +49,49 @@ function expectUnitIds(
 }
 
 describe('UnitSearchIndexService', () => {
+    it('uses native categories for units without Alpha Strike support', () => {
+        const service = new UnitSearchIndexService();
+        const building = createUnit({ name: 'Building', entityType: 'BuildingEntity', armor: 100, as: { TP: 'XX' } });
+        const gun = createUnit({ name: 'Gun', entityType: 'GunEmplacement', armor: 10, as: { TP: 'XX' } });
+        const handheld = createUnit({ name: 'Handheld', entityType: 'HandheldWeapon', armor: 2, as: { TP: 'XX' } });
+        prepareCatalog(service, [building, gun, handheld]);
+        for (const unit of [building, gun, handheld]) {
+            const stats = service.getUnitStats(unit);
+            expect(stats.armor).toEqual({ min: unit.armor, max: unit.armor, average: unit.armor, p95: unit.armor, count: 1 });
+            expect(stats.asArm.count).toBe(0);
+            expect(stats.asEndurance.count).toBe(0);
+            expect(stats.asDmgS.count).toBe(0);
+        }
+    });
+
+    it('preserves 999 and derives signed heat efficiency with measured zeros', () => {
+        const service = new UnitSearchIndexService();
+        const noHeat = createUnit({ name: 'No heat', heat: 0, dissipation: 10, armor: 999, dpt: 999 });
+        const noSinks = createUnit({ name: 'No sinks', heat: 10, dissipation: 0 });
+        const untracked = createUnit({ name: 'Untracked', heat: null, dissipation: null });
+        prepareCatalog(service, [noHeat, noSinks, untracked]);
+        const stats = service.getUnitStats(noHeat);
+        expect(stats.armor.max).toBe(999);
+        expect(stats.dpt.max).toBe(999);
+        expect(stats.heat.count).toBe(2);
+        expect(stats.dissipation.count).toBe(2);
+        expect(stats.dissipationEfficiency).toEqual({ min: -10, max: 10, average: 0, p95: 10, count: 2 });
+        expect(noHeat._dissipationEfficiency).toBe(10);
+        expect(noSinks._dissipationEfficiency).toBe(-10);
+        expect(untracked._dissipationEfficiency).toBeUndefined();
+    });
+
+    it('keeps unmeasured AS damage distinct from zero after parsing during preparation', () => {
+        const service = new UnitSearchIndexService();
+        const unit = createUnit({ as: { dmg: { dmgS: '', dmgM: '0', dmgL: '0*' } } });
+        prepareCatalog(service, [unit]);
+        const stats = service.getUnitStats(unit);
+        expect(unit.as.dmg._dmgS).toBeUndefined();
+        expect(stats.asDmgS.count).toBe(0);
+        expect(stats.asDmgM).toEqual({ min: 0, max: 0, average: 0, p95: 0, count: 1 });
+        expect(stats.asDmgL.p95).toBe(0.5);
+    });
+
     it('keeps statistics and UUID postings on the active catalog until the candidate is committed', () => {
         const service = new UnitSearchIndexService();
         const active = createUnit({ uuid: 'active', name: 'Active', armor: 100 });
@@ -105,7 +148,7 @@ describe('UnitSearchIndexService', () => {
     it('excludes absent measurements but preserves zero and sparse capabilities', () => {
         const service = new UnitSearchIndexService();
         const units = Array.from({ length: 100 }, (_, i) => createUnit({
-            name: `BA ${i}`, heat: -1,
+            name: `BA ${i}`, heat: null, dissipation: null,
             as: { TP: 'BA', TMM: i === 0 ? null : 0,
                 dmg: { dmgL: i === 0 ? '0*' : '0' } },
         }));
@@ -121,7 +164,7 @@ describe('UnitSearchIndexService', () => {
 
     it('does not interpret aerospace named range bands as zero range', () => {
         const service = new UnitSearchIndexService();
-        const unit = createUnit({ as: { TP: 'AF', TMM: null },
+        const unit = createUnit({ type: 'Aero', entityType: 'Aero', as: { TP: 'AF', TMM: null },
             comp: [{ id: 'laser', q: 1, n: 'Laser', t: 'E', p: 1, l: 'Nose', md: '5', r: 'Long' }] });
         prepareCatalog(service, [unit]);
         expect(service.getUnitStats(unit).weightedMaxRange.count).toBe(0);
