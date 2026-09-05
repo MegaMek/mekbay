@@ -25,8 +25,8 @@ import { asComponentId } from '../entity/entity-identifiers';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asSourceHashCanary } from '../source-hash-canary';
 import {
-    decodeForceFromStorage,
-    encodeForceForStorage,
+    decodeForceFromStorage as decodeStorageRecord,
+    encodeForceForStorage as encodeStorageRecord,
 } from './force-storage-codec';
 import { RUNTIME_HISTORY_MESSAGE } from './runtime-history';
 import {
@@ -40,6 +40,22 @@ import {
 } from './unit-state-initializer';
 
 describe('compact force storage codec', () => {
+    it('owns queued Alpha Strike state independently of later source edits', () => {
+        const force: ASSerializedForce = {
+            version: 2, timestamp: '2026-09-01T12:00:00.000Z',
+            instanceId: '019f6767-0dcb-7bb8-992f-aef08202f5e3', type: GameSystem.AS, name: 'Queued save',
+            groups: [{ id: '019f6767-0dcb-7bb8-992f-aef08202f5e4', units: [{
+                id: '019f6767-0dcb-7bb8-992f-aef08202f5e5', uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2'),
+                state: { armor: [2, 1], consumed: { BOMB1: [0, 1] } },
+            }] }],
+        };
+        const stored = encodeForceForStorage(force);
+        force.groups[0].units[0].state!.armor![0] = 99;
+        force.groups[0].units[0].state!.consumed!['BOMB1'][1] = 99;
+        const restored = decodeForceFromStorage(stored) as ASSerializedForce;
+        expect(restored.groups[0].units[0].state).toEqual({ armor: [2, 1], consumed: { BOMB1: [0, 1] } });
+    });
+
     it('round-trips lossless Alpha Strike state through projection-friendly short keys', () => {
         const firstId = '019f6767-0dcb-7bb8-992f-aef08202f5e4';
         const secondId = '~legacy-unit-id';
@@ -921,4 +937,31 @@ function forceWithUnit(
 
 function byteLength(value: unknown): number {
     return new TextEncoder().encode(JSON.stringify(value)).length;
+}
+
+// Every existing round-trip fixture also exercises the codec ownership boundary,
+// including rich Mek/non-Mek continuation state, crew, row order, and C3 history.
+function encodeForceForStorage(force: SerializedForce) {
+    const stored = encodeStorageRecord(force);
+    expectDetachedObjects(force, stored);
+    return stored;
+}
+
+function decodeForceFromStorage(value: unknown): SerializedForce {
+    const decoded = decodeStorageRecord(value);
+    expectDetachedObjects(value, decoded);
+    return decoded;
+}
+
+function expectDetachedObjects(source: unknown, result: unknown): void {
+    const sourceObjects = new Set<object>();
+    const visit = (value: unknown, inspect: (object: object, path: string) => void, path = '$'): void => {
+        if (value === null || typeof value !== 'object') return;
+        inspect(value, path);
+        for (const [key, child] of Object.entries(value)) visit(child, inspect, `${path}.${key}`);
+    };
+    visit(source, object => sourceObjects.add(object));
+    const sharedPaths: string[] = [];
+    visit(result, (object, path) => { if (sourceObjects.has(object)) sharedPaths.push(path); });
+    expect(sharedPaths).withContext('Storage bytes must not retain caller-owned objects').toEqual([]);
 }

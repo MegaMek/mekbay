@@ -246,19 +246,17 @@ const CBT_NON_MEK_UNIT_FIELDS = [
 ] as const;
 
 export function encodeForceForStorage(force: SerializedForce): StoredForceRecord {
-    const detached = clone(force);
-    if (force.version === 1) return Object.freeze({ ...detached });
+    if (force.version === 1) return Object.freeze(clone(force)) as unknown as StoredForceRecord;
     if (force.version !== 2) throw new Error('Unsupported force persistence version');
+    // Packers construct an independently owned wire graph. Clone only the
+    // small force metadata; copying the full snapshot here would immediately
+    // discard its unit graph, and would not detach fields packed from `force`.
+    const { groups: _groups, c3Networks: _networks, cbt: _cbt, ...metadata } = force;
+    const current = clone(metadata);
     if (force.type === GameSystem.AS) {
         if (!Array.isArray(force.groups)) {
             throw new Error('Current Alpha Strike persistence requires force groups');
         }
-        const {
-            timestamp: _timestamp,
-            groups: _groups,
-            c3Networks: _networks,
-            ...current
-        } = detached;
         return Object.freeze({
             ...current,
             timestamp: packTimestamp(force.timestamp),
@@ -272,12 +270,6 @@ export function encodeForceForStorage(force: SerializedForce): StoredForceRecord
     if (force.cbt === undefined) {
         throw new Error('Current CBT persistence requires a current CBT snapshot');
     }
-    const {
-        timestamp: _timestamp,
-        groups: _legacyGroups,
-        c3Networks: _legacyNetworks,
-        ...current
-    } = detached;
     return Object.freeze({
         ...current,
         timestamp: packTimestamp(force.timestamp),
@@ -286,11 +278,10 @@ export function encodeForceForStorage(force: SerializedForce): StoredForceRecord
 }
 
 export function decodeForceFromStorage(value: unknown): SerializedForce {
-    const detached = clone(value);
-    const root = record(detached, 'force');
-    if (root['version'] === 1) return detached as SerializedForce;
+    const root = record(value, 'force');
+    if (root['version'] === 1) return clone(root) as unknown as SerializedForce;
     if (root['version'] === undefined) {
-        return { ...root, version: 1 } as unknown as SerializedForce;
+        return { ...clone(root), version: 1 } as unknown as SerializedForce;
     }
     if (root['type'] === GameSystem.AS) {
         const field = FORCE_PAYLOAD_FIELD.alphaStrike;
@@ -356,13 +347,14 @@ function packASState(state: ASSerializedState | undefined): Readonly<Record<stri
         [AS_STATE_FIELD.conditions]: state.conditions === undefined
             ? undefined
             : state.conditions.map(packASCondition),
-        [AS_STATE_FIELD.heat]: state.heat,
-        [AS_STATE_FIELD.armor]: state.armor,
-        [AS_STATE_FIELD.internal]: state.internal,
-        [AS_STATE_FIELD.criticals]: state.crits,
-        [AS_STATE_FIELD.physicalCriticals]: state.pCrits,
-        [AS_STATE_FIELD.consumed]: state.consumed,
-        [AS_STATE_FIELD.exhausted]: state.exhausted,
+        [AS_STATE_FIELD.heat]: state.heat?.slice(),
+        [AS_STATE_FIELD.armor]: state.armor?.slice(),
+        [AS_STATE_FIELD.internal]: state.internal?.slice(),
+        [AS_STATE_FIELD.criticals]: state.crits?.map(row => [...row]),
+        [AS_STATE_FIELD.physicalCriticals]: state.pCrits?.map(row => [...row]),
+        [AS_STATE_FIELD.consumed]: state.consumed === undefined ? undefined
+            : Object.fromEntries(Object.entries(state.consumed).map(([key, pair]) => [key, [...pair]])),
+        [AS_STATE_FIELD.exhausted]: state.exhausted?.map(row => [...row]),
     });
     return Object.keys(packed).length === 0 ? undefined : packed;
 }
@@ -975,7 +967,9 @@ function mapHistoryTurns(
                     throw new Error(`${messagePath}[0] is not a history message ID`);
                 }
                 return mapMessage(
-                    Object.freeze([...row]) as SerializedRuntimeHistoryMessage,
+                    Object.freeze(row.map(value => value !== null && typeof value === 'object'
+                        ? clone(value)
+                        : value)) as SerializedRuntimeHistoryMessage,
                     messagePath,
                 );
             })));
@@ -1137,7 +1131,7 @@ function packMekUnit(unit: SerializedCBTUnitV2, c3Position: C3UnitPosition | und
         [CBT_UNIT_FIELD.movementPsr]: packMovement(unit.movementPsr),
         [CBT_UNIT_FIELD.equipmentRowOrder]: packEquipmentRowOrder(unit.equipmentRowOrder),
         [CBT_UNIT_FIELD.conditions]: unit.conditions?.values.length
-            ? unit.conditions.values
+            ? [...unit.conditions.values]
             : undefined,
         [CBT_UNIT_FIELD.c3Position]: c3Position === undefined
             ? undefined
@@ -1338,7 +1332,7 @@ function packNonMekUnit(unit: SerializedNonMekUnit, c3Position: C3UnitPosition |
         ]),
         [CBT_UNIT_FIELD.damageTrackState]: packRows(
             unit.damageTrackState,
-            row => [row.damageTrackId, row.hits, row.hitTimestamps],
+            row => [row.damageTrackId, row.hits, row.hitTimestamps?.slice()],
         ),
         [CBT_UNIT_FIELD.ammoState]: packRows(
             unit.ammoState,
@@ -1350,7 +1344,7 @@ function packNonMekUnit(unit: SerializedNonMekUnit, c3Position: C3UnitPosition |
             packCrewState(row),
             row.recoveryReadyTurn,
         )),
-        [CBT_UNIT_FIELD.conditions]: unit.conditions?.length ? unit.conditions : undefined,
+        [CBT_UNIT_FIELD.conditions]: unit.conditions?.length ? [...unit.conditions] : undefined,
         [CBT_UNIT_FIELD.heat]: packNonMekHeat(unit.heat),
         [CBT_UNIT_FIELD.nonMekTurn]: packNonMekTurn(unit.turn),
         [CBT_UNIT_FIELD.equipmentRowOrder]: packEquipmentRowOrder(unit.equipmentRowOrder),
@@ -1546,8 +1540,8 @@ function unpackNonMekUnit(value: Record<string, unknown>, path: string): Seriali
 function packEquipmentRowOrder(value: EquipmentRowOrderState | undefined): unknown {
     if (value === undefined) return undefined;
     return compactObject({
-        [CBT_EQUIPMENT_ROW_ORDER_FIELD.ranged]: value.ranged,
-        [CBT_EQUIPMENT_ROW_ORDER_FIELD.physical]: value.physical,
+        [CBT_EQUIPMENT_ROW_ORDER_FIELD.ranged]: value.ranged?.slice(),
+        [CBT_EQUIPMENT_ROW_ORDER_FIELD.physical]: value.physical?.slice(),
     });
 }
 
@@ -1574,7 +1568,7 @@ function packNonMekTurn(value: SerializedNonMekUnit['turn']): unknown {
             value.movement.mode,
             value.movement.distance,
             value.movement.boosterComponentIds.length
-                ? value.movement.boosterComponentIds
+                ? [...value.movement.boosterComponentIds]
                 : undefined,
         );
     const airborne = value.airborne === undefined ? 0 : value.airborne ? 1 : -1;
@@ -2163,10 +2157,10 @@ function packMovement(value: SerializedMekMovementPsrStateV2): unknown {
                 [CBT_MOVEMENT_SOURCE_FIELD.triggerKind]: check.source.triggerKind,
                 [CBT_MOVEMENT_SOURCE_FIELD.witness]: check.source.witness,
                 [CBT_MOVEMENT_SOURCE_FIELD.criticalSlotIds]: check.source.criticalSlotIds.length
-                    ? check.source.criticalSlotIds
+                    ? [...check.source.criticalSlotIds]
                     : undefined,
                 [CBT_MOVEMENT_SOURCE_FIELD.locationIds]: check.source.locationIds.length
-                    ? check.source.locationIds
+                    ? [...check.source.locationIds]
                     : undefined,
                 [CBT_MOVEMENT_SOURCE_FIELD.baseTarget]: check.source.baseTarget,
                 [CBT_MOVEMENT_SOURCE_FIELD.triggerModifier]: check.source.triggerModifier,
@@ -2176,9 +2170,10 @@ function packMovement(value: SerializedMekMovementPsrStateV2): unknown {
             check.targetNumber,
             check.reason,
             check.status,
-            check.resolution && [check.resolution.dice, check.resolution.total],
+            check.resolution && [[...check.resolution.dice], check.resolution.total],
         )),
-        [CBT_MOVEMENT_FIELD.automaticFalls]: value.automaticFalls,
+        [CBT_MOVEMENT_FIELD.automaticFalls]: value.automaticFalls === undefined
+            ? undefined : clone(value.automaticFalls),
     });
     return Object.keys(compact).length === 0 ? undefined : compact;
 }
@@ -2281,7 +2276,7 @@ function packMekMovementDeclaration(
     return tuple(
         value.mode,
         value.distance,
-        value.boosterComponentIds.length === 0 ? undefined : value.boosterComponentIds,
+        value.boosterComponentIds.length === 0 ? undefined : [...value.boosterComponentIds],
     );
 }
 
@@ -2324,11 +2319,11 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
                 value.pendingFallConsequences.hitArcLabel,
                 value.pendingFallConsequences.applyPilotHits ? 1 : 0,
                 value.pendingFallConsequences.forceSeatbeltFailure ? 1 : 0,
-                value.pendingFallConsequences.seatbeltPositionIds,
+                [...value.pendingFallConsequences.seatbeltPositionIds],
                 value.pendingFallConsequences.headHits,
                 value.pendingFallConsequences.stage === 'head-hits' ? 0
                     : value.pendingFallConsequences.stage === 'seatbelts' ? 1 : 2,
-                value.pendingFallConsequences.seatbeltFailures,
+                value.pendingFallConsequences.seatbeltFailures?.slice(),
             ),
         [CBT_TURN_FIELD.pendingCriticalEvents]: value.pendingCriticalEvents === undefined
             ? undefined
@@ -2554,7 +2549,7 @@ function packNonMekPending(value: SerializedNonMekUnit['pendingCombat']): unknow
         ),
         [CBT_NON_MEK_PENDING_COMBAT_FIELD.damageTrackHits]: packRows(
             value.damageTrackHits,
-            row => [row.damageTrackId, row.hitDelta, row.hitTimestamps],
+            row => [row.damageTrackId, row.hitDelta, row.hitTimestamps?.slice()],
         ),
     });
 }

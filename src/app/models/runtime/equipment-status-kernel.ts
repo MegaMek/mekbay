@@ -5,6 +5,7 @@ import { combineEquipmentStatuses, type EquipmentStatus } from '../equipment-sta
 import type { EquipmentFlag } from '../equipment-flags.type';
 import { isCBTRuleset, type CBTRuleset } from '../cbt-ruleset.model';
 import { isShieldFlags } from '../entity/utils/physical-weapon-kernel';
+import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 
 export type EquipmentStatusUnitFamily = 'mek' | 'vehicle' | 'other';
 
@@ -26,9 +27,35 @@ export interface RuntimeStatusCriticalDefinition {
  * Read-only projection of entity topology used by status evaluation.
  * It intentionally contains no equipment objects, owners, rules, callbacks, or UI state.
  */
-export interface RuntimeEquipmentStatusTopology {
+export interface RuntimeEquipmentStatusTopologyInput {
     readonly components: ReadonlyMap<string, RuntimeStatusComponentDefinition>;
     readonly criticalSlots: ReadonlyMap<string, RuntimeStatusCriticalDefinition>;
+}
+
+/** Validated once when entity topology is compiled, shared by every state revision. */
+export class RuntimeEquipmentStatusTopology implements RuntimeEquipmentStatusTopologyInput {
+    public readonly components: ReadonlyMap<string, RuntimeStatusComponentDefinition>;
+    public readonly criticalSlots: ReadonlyMap<string, RuntimeStatusCriticalDefinition>;
+
+    public constructor(topology: RuntimeEquipmentStatusTopologyInput) {
+        validateTopology(topology);
+        this.components = new ImmutableIndex([...topology.components].map(([id, component]) => [id,
+            Object.freeze({
+                id: component.id,
+                flags: new ImmutableSet(component.flags),
+                locationIds: Object.freeze([...component.locationIds]),
+                criticalSlotIds: Object.freeze([...component.criticalSlotIds]),
+            }),
+        ]));
+        this.criticalSlots = new ImmutableIndex([...topology.criticalSlots].map(([id, slot]) => [id,
+            Object.freeze({
+                id: slot.id,
+                locationId: slot.locationId,
+                componentIds: Object.freeze([...slot.componentIds]),
+            }),
+        ]));
+        Object.freeze(this);
+    }
 }
 
 export interface RuntimeCriticalCommittedState {
@@ -68,6 +95,11 @@ const AVAILABLE: EquipmentStatusResolution = Object.freeze({
     status: 'available',
     diagnostics: Object.freeze([]),
 });
+const RESOLUTIONS: Readonly<Record<EquipmentStatus, EquipmentStatusResolution>> = Object.freeze({
+    available: AVAILABLE,
+    disabled: Object.freeze({ status: 'disabled', diagnostics: AVAILABLE.diagnostics }),
+    destroyed: Object.freeze({ status: 'destroyed', diagnostics: AVAILABLE.diagnostics }),
+});
 
 /**
  * Pure V2 status resolver over one immutable topology and one committed sparse snapshot.
@@ -82,7 +114,6 @@ export class RuntimeEquipmentStatusKernel {
         if (!isCBTRuleset(options.rules)) {
             throw new Error(`Unsupported CBT ruleset ${String(options.rules)}`);
         }
-        validateTopology(topology);
         validateCommittedState(committed);
     }
 
@@ -90,25 +121,24 @@ export class RuntimeEquipmentStatusKernel {
         const definition = this.topology.components.get(componentId);
         if (!definition) return stale('STALE_COMPONENT_REFERENCE', componentId);
 
-        return resolution([
-            this.componentState(componentId),
-            ...definition.locationIds.map(locationId => this.locationState(locationId)),
-            this.mountedCriticalContribution(definition.criticalSlotIds, definition.flags),
-            this.familyContribution(definition),
-        ]);
+        const contributions = new Array<EquipmentStatus>(definition.locationIds.length + 3);
+        contributions[0] = this.componentState(componentId);
+        contributions[1] = this.mountedCriticalContribution(definition.criticalSlotIds, definition.flags);
+        contributions[2] = this.familyContribution(definition);
+        for (let index = 0; index < definition.locationIds.length; index++) {
+            contributions[index + 3] = this.locationState(definition.locationIds[index]!);
+        }
+        return resolution(contributions);
     }
 
     public componentAtLocation(componentId: string, locationId: string): EquipmentStatusResolution {
         const definition = this.topology.components.get(componentId);
         if (!definition) return stale('STALE_COMPONENT_REFERENCE', componentId);
 
-        const criticalIds = definition.criticalSlotIds.filter(slotId =>
-            this.topology.criticalSlots.get(slotId)?.locationId === locationId,
-        );
         return resolution([
             this.componentState(componentId),
             this.locationState(locationId),
-            this.mountedCriticalContribution(criticalIds, definition.flags),
+            this.mountedCriticalContribution(definition.criticalSlotIds, definition.flags, locationId),
             this.familyContribution(definition),
         ]);
     }
@@ -137,15 +167,15 @@ export class RuntimeEquipmentStatusKernel {
     private mountedCriticalContribution(
         criticalSlotIds: readonly string[],
         componentFlags: ReadonlySet<EquipmentFlag>,
+        locationId?: string,
     ): EquipmentStatus {
         if (this.options.family !== 'mek' || criticalSlotIds.length === 0) return 'available';
-        const hits = criticalSlotIds.reduce(
-            (count, id) => {
-                const slot = this.committed.criticalSlots.get(id);
-                return count + Math.max(0, (slot?.hits ?? 0) - (slot?.armored ? 1 : 0));
-            },
-            0,
-        );
+        let hits = 0;
+        for (const id of criticalSlotIds) {
+            if (locationId !== undefined && this.topology.criticalSlots.get(id)?.locationId !== locationId) continue;
+            const slot = this.committed.criticalSlots.get(id);
+            hits += Math.max(0, (slot?.hits ?? 0) - (slot?.armored ? 1 : 0));
+        }
         return hits >= mekCriticalDamageThreshold(this.options.rules, componentFlags)
             ? 'destroyed'
             : 'available';
@@ -172,8 +202,7 @@ export function mekCriticalDamageThreshold(
 }
 
 function resolution(statuses: readonly EquipmentStatus[]): EquipmentStatusResolution {
-    const status = combineEquipmentStatuses(statuses);
-    return status === 'available' ? AVAILABLE : { status, diagnostics: AVAILABLE.diagnostics };
+    return RESOLUTIONS[combineEquipmentStatuses(statuses)];
 }
 
 function stale(code: EquipmentStatusDiagnosticCode, referenceId: string): EquipmentStatusResolution {
@@ -183,7 +212,7 @@ function stale(code: EquipmentStatusDiagnosticCode, referenceId: string): Equipm
     };
 }
 
-function validateTopology(topology: RuntimeEquipmentStatusTopology): void {
+function validateTopology(topology: RuntimeEquipmentStatusTopologyInput): void {
     for (const [id, component] of topology.components) {
         if (!id || component.id !== id) throw new Error(`Invalid runtime component identity: ${id}`);
         if (new Set(component.locationIds).size !== component.locationIds.length) {

@@ -232,7 +232,9 @@ async function createEmptyCBTForceV2(
 export async function inspectSerializedCBTForceV2(
     data: SerializedForce,
 ): Promise<SerializedCBTForceV2 | null> {
-    const raw = structuredClone(data).cbt;
+    // The owning validator synchronously detaches its payload before returning
+    // its promise. Do not copy the outer record and then copy the payload again.
+    const raw = data.cbt;
     if (raw === undefined) return null;
     return validateSerializedCBTForceV2(raw);
 }

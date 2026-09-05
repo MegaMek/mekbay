@@ -8,7 +8,6 @@ import { AsAbilityLookupService } from '../services/as-ability-lookup.service';
 import {
     type ASSerializedState,
     type ASSerializedUnit,
-    AS_SERIALIZED_UNIT_SCHEMA,
     type ConditionData,
 } from './force-serialization';
 import type { ASForce } from './as-force.model';
@@ -17,7 +16,6 @@ import {
     type ForceUnit,
 } from './force-unit.model';
 import type { UnitGroup } from './force.model';
-import { Sanitizer } from '../utils/sanitizer.util';
 import { ASForceUnitState } from './as-force-unit-state.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
 import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';
@@ -655,35 +653,34 @@ export class ASForceUnit implements ForceUnit {
         };
     }
 
+    /** Materializes a row already sanitized by ASForce's force-record boundary. */
     public static deserialize(
         data: ASSerializedUnit,
         force: ASForce,
         unit: UnitSummary,
         injector: Injector
     ): ASForceUnit {
-        // Sanitize the input data using the schema
-        const sanitizedData = Sanitizer.sanitize(data, AS_SERIALIZED_UNIT_SCHEMA);
-        if (unit.uuid !== sanitizedData.uuid) {
+        if (unit.uuid !== data.uuid) {
             throw new Error('Serialized Alpha Strike unit does not match its catalog summary');
         }
         const fu = new ASForceUnit(unit, force, injector);
-        fu.id = sanitizedData.id;
+        fu.id = data.id;
         
-        if (sanitizedData.alias !== undefined) {
-            fu._pilotName.set(sanitizedData.alias);
+        if (data.alias !== undefined) {
+            fu._pilotName.set(data.alias);
         }
-        if (sanitizedData.skill !== undefined) {
-            fu._pilotSkill.set(sanitizedData.skill);
+        if (data.skill !== undefined) {
+            fu._pilotSkill.set(data.skill);
         }
-        if (sanitizedData.abilities !== undefined) {
-            fu._pilotAbilities.set(structuredClone(sanitizedData.abilities));
+        if (data.abilities !== undefined) {
+            fu._pilotAbilities.set(structuredClone(data.abilities));
         }
-        fu._formationAbilities.set([...(sanitizedData.formationAbilities ?? [])]);
-        fu._formationCommander.set(sanitizedData.commander ?? false);
-        if (sanitizedData.updatedTs !== undefined) {
-            fu.updatedTs = sanitizedData.updatedTs;
+        fu._formationAbilities.set([...(data.formationAbilities ?? [])]);
+        fu._formationCommander.set(data.commander ?? false);
+        if (data.updatedTs !== undefined) {
+            fu.updatedTs = data.updatedTs;
         }
-        if (sanitizedData.state !== undefined) fu.state.update(sanitizedData.state);
+        if (data.state !== undefined) fu.state.update(data.state);
         return fu;
     }
 

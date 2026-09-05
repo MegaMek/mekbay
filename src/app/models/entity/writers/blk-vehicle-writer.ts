@@ -26,8 +26,8 @@ import {
 import { encodeEquipmentLine } from './equipment-encoder';
 import {
   LST_ARMOR_LOCS,
-  SUPERHEAVY_ARMOR_LOCS,
-  VEHICLE_ARMOR_LOCS,
+  ordinaryVehicleArmorLocations,
+  superheavyVehicleArmorLocations,
   VTOL_ARMOR_LOCS,
 } from '../parsers/blk-constants';
 
@@ -87,25 +87,13 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
     }
     w.addBlock('armor', ...base);
   } else if (entity.isSuperHeavy() && !(entity instanceof VtolEntity)) {
-    // Superheavy Tank: Front, Front Right, Front Left, Rear Right, Rear Left, Rear[, Turret[, Rear Turret]]
-    const base: number[] = SUPERHEAVY_ARMOR_LOCS.slice(0, 6).map(loc => armorMap.get(loc)?.front ?? 0);
-    if (entity.hasTurret()) {
-      base.push(armorMap.get('Turret')?.front ?? 0);
-    }
-    if (entity.hasDualTurret()) {
-      base.push(armorMap.get('Rear Turret')?.front ?? 0);
-    }
-    w.addBlock('armor', ...base);
+    const count = 6 + (entity.hasDualTurret() ? 2 : entity.hasTurret() ? 1 : 0);
+    const locations = superheavyVehicleArmorLocations(count).slice(0, count);
+    w.addBlock('armor', ...locations.map(location => armorMap.get(location)?.front ?? 0));
   } else {
-    // Tank: Front, Right, Left, Rear[, Turret] or Rear Turret, Front Turret
-    const base: number[] = VEHICLE_ARMOR_LOCS.slice(0, 4).map(loc => armorMap.get(loc)?.front ?? 0);
-    if (entity.hasDualTurret()) {
-      base.push(armorMap.get('Rear Turret')?.front ?? 0);
-      base.push(armorMap.get('Front Turret')?.front ?? 0);
-    } else if (entity.hasTurret()) {
-      base.push(armorMap.get('Turret')?.front ?? 0);
-    }
-    w.addBlock('armor', ...base);
+    const count = 4 + (entity.hasDualTurret() ? 2 : entity.hasTurret() ? 1 : 0);
+    const locations = ordinaryVehicleArmorLocations(count).slice(0, count);
+    w.addBlock('armor', ...locations.map(location => armorMap.get(location)?.front ?? 0));
   }
 
   // 11. Equipment per location

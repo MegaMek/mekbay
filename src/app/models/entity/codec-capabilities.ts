@@ -6,11 +6,6 @@ import type { EntityType } from './types';
 
 export type NativeSourceFormat = 'mtf' | 'blk';
 
-export type NativeSourceDialect = 'megamek-mtf' | 'megamek-blk';
-
-/** The dialect version is part of an encode request; it is not inferred. */
-export type NativeSourceDialectVersion = 1;
-
 export type NativeCodecFamily =
   | 'mek'
   | 'aero'
@@ -24,50 +19,39 @@ export type NativeCodecFamily =
   | 'handheld-weapon'
   | 'static-emplacement';
 
-/**
- * Auditable native-format support. False means unsupported by design, not an
- * unimplemented switch branch. The table is deliberately data-only.
- */
+/** Supported native families and the source aliases accepted by their parser. */
 export interface NativeCodecCapability {
   readonly family: NativeCodecFamily;
   readonly format: NativeSourceFormat;
-  readonly dialect: NativeSourceDialect;
-  readonly dialectVersion: NativeSourceDialectVersion;
   readonly entityTypes: readonly EntityType[];
   readonly unitTypeAliases: readonly string[];
-  readonly recognizeSyntax: boolean;
-  readonly decodeEntity: boolean;
 }
 
-export const NATIVE_CODEC_CAPABILITIES: readonly NativeCodecCapability[] = [
+const NATIVE_CODEC_CAPABILITIES: readonly NativeCodecCapability[] = [
   capability('mek', 'mtf', ['Mek'], [
     'Mek', 'BattleMek', 'BipedMek', 'TripodMek', 'QuadMek', 'QuadVee', 'LAM',
-  ], {
-    recognizeSyntax: true,
-    decodeEntity: true,
-  }),
+  ]),
   capability('aero', 'blk', ['Aero', 'ConvFighter', 'FixedWingSupport'], [
     'Aero', 'AeroSpaceFighter', 'ConvFighter', 'FixedWingSupport',
-  ], decodedCapability()),
-  capability('small-craft', 'blk', ['SmallCraft'], ['SmallCraft'], decodedCapability()),
-  capability('drop-ship', 'blk', ['DropShip'], ['DropShip', 'Dropship'], decodedCapability()),
+  ]),
+  capability('small-craft', 'blk', ['SmallCraft'], ['SmallCraft']),
+  capability('drop-ship', 'blk', ['DropShip'], ['DropShip', 'Dropship']),
   capability('large-craft', 'blk', ['JumpShip', 'WarShip', 'SpaceStation'], [
     'JumpShip', 'Jumpship', 'WarShip', 'Warship', 'SpaceStation',
-  ], decodedCapability()),
+  ]),
   capability('vehicle', 'blk', [
     'Tank', 'Naval', 'VTOL', 'SupportTank', 'SupportNaval', 'SupportVTOL',
     'LargeSupportTank',
-  ], ['Tank', 'Naval', 'VTOL', 'SupportTank', 'SupportNaval', 'SupportVTOL', 'LargeSupportTank'], decodedCapability()),
-  capability('infantry', 'blk', ['Infantry'], ['Infantry'], decodedCapability()),
-  capability('battle-armor', 'blk', ['BattleArmor'], ['BattleArmor'], decodedCapability()),
-  capability('protomek', 'blk', ['ProtoMek'], ['ProtoMek'], decodedCapability()),
-  capability('handheld-weapon', 'blk', ['HandheldWeapon'], ['HandheldWeapon'], decodedCapability()),
+  ], ['Tank', 'Naval', 'VTOL', 'SupportTank', 'SupportNaval', 'SupportVTOL', 'LargeSupportTank']),
+  capability('infantry', 'blk', ['Infantry'], ['Infantry']),
+  capability('battle-armor', 'blk', ['BattleArmor'], ['BattleArmor']),
+  capability('protomek', 'blk', ['ProtoMek'], ['ProtoMek']),
+  capability('handheld-weapon', 'blk', ['HandheldWeapon'], ['HandheldWeapon']),
   capability(
     'static-emplacement',
     'blk',
     ['GunEmplacement', 'BuildingEntity'],
     ['GunEmplacement', 'BuildingEntity'],
-    decodedCapability(),
   ),
 ] as const;
 
@@ -85,12 +69,6 @@ for (const row of NATIVE_CODEC_CAPABILITIES) {
   }
 }
 
-export function nativeCapabilityForEntityType(type: EntityType): NativeCodecCapability {
-  const capability = BY_ENTITY_TYPE.get(type);
-  if (!capability) throw new Error(`Missing native codec capability for entity type: ${type}`);
-  return capability;
-}
-
 export function isNativeEntityType(value: unknown): value is EntityType {
   return typeof value === 'string' && BY_ENTITY_TYPE.has(value as EntityType);
 }
@@ -104,27 +82,11 @@ function capability(
   format: NativeSourceFormat,
   entityTypes: readonly EntityType[],
   unitTypeAliases: readonly string[],
-  overrides: Partial<Pick<NativeCodecCapability,
-    | 'recognizeSyntax'
-    | 'decodeEntity'>> = {},
 ): NativeCodecCapability {
   return {
     family,
     format,
-    dialect: format === 'mtf' ? 'megamek-mtf' : 'megamek-blk',
-    dialectVersion: 1,
     entityTypes,
     unitTypeAliases,
-    recognizeSyntax: false,
-    decodeEntity: false,
-    ...overrides,
-  };
-}
-
-function decodedCapability(): Pick<NativeCodecCapability,
-  'recognizeSyntax' | 'decodeEntity'> {
-  return {
-    recognizeSyntax: true,
-    decodeEntity: true,
   };
 }

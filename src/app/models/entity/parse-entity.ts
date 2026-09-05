@@ -89,7 +89,7 @@ function parseBlk(bb: BuildingBlock, ctx: ParseContext): BaseEntity {
   const unitType = bb.getFirstString('UnitType').trim();
   const capability = nativeCapabilityForUnitTypeAlias(unitType);
 
-  if (!capability || !capability.recognizeSyntax || !capability.decodeEntity) {
+  if (!capability) {
     throw new Error(`Unsupported BLK UnitType: "${unitType}"`);
   }
   if (capability.format !== 'blk') {

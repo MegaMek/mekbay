@@ -8,8 +8,7 @@ import type { UnitSearchNormalization, UnitSearchNormalizationMatch } from '../m
 import { getForcePacks } from '../models/forcepacks.model';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, isMegaMekRaritySortKey, normalizeMotiveValue, type FilterState, type SearchTelemetryStage } from '../services/unit-search-filters.model';
 import {
-    filterUnitsWithAST,
-    getMatchingTextForUnit,
+    prepareASTSearch,
     isComplexQuery,
     type EvaluatorContext,
     type ParseResult,
@@ -271,11 +270,15 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
         );
     }
 
+    let astSearch: ReturnType<typeof prepareASTSearch<UnitSummary>>;
     let results = measureStage(
         telemetryStages,
         'ast-filter',
         candidateUnits.length,
-        () => filterUnitsWithAST(candidateUnits, parsedQuery.ast, context, request.initialAvailabilityScope),
+        () => {
+            astSearch = prepareASTSearch(parsedQuery.ast, context, request.initialAvailabilityScope);
+            return astSearch.filter(candidateUnits);
+        },
         value => value.length,
     );
 
@@ -316,6 +319,15 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
 
     const sorted = [...results];
     const compiledSearchTokens = compileRelevanceSearchGroups(request.searchTokens);
+    const relevanceTokensByText = new Map<string, ReturnType<typeof compileRelevanceSearchGroups>>();
+    const getRelevanceTokens = (text: string) => {
+        let tokens = relevanceTokensByText.get(text);
+        if (!tokens) {
+            tokens = compileRelevanceSearchGroups(parseSearchQuery(text));
+            relevanceTokensByText.set(text, tokens);
+        }
+        return tokens;
+    };
     let relevanceScores: Float64Array | null = null;
     let unindexedRelevanceScores: Map<UnitSummary, number> | null = null;
     let megaMekRarityScores: WeakMap<UnitSummary, number> | null = null;
@@ -339,24 +351,17 @@ export function executeUnitSearch(request: UnitSearchExecutionRequest): UnitSear
 
                 for (const unit of sorted) {
                     if (isComplex) {
-                        const matchingTexts = getMatchingTextForUnit(
-                            parsedQuery.ast,
-                            unit,
-                            context,
-                            request.initialAvailabilityScope,
-                        );
+                        const matchingTexts = astSearch.matchingText(unit);
                         if (matchingTexts.length > 0) {
                             let bestScore = 0;
                             for (const text of matchingTexts) {
-                                const textTokens = compileRelevanceSearchGroups(parseSearchQuery(text));
+                                const textTokens = getRelevanceTokens(text);
                                 const score = computeUnitRelevanceScore(unit, textTokens);
                                 if (score > bestScore) {
                                     bestScore = score;
                                 }
                             }
-                            const combinedTokens = compileRelevanceSearchGroups(
-                                parseSearchQuery(matchingTexts.join(' ')),
-                            );
+                            const combinedTokens = getRelevanceTokens(matchingTexts.join(' '));
                             const combinedScore = computeUnitRelevanceScore(unit, combinedTokens);
                             setScore(unit, Math.max(bestScore, combinedScore));
                         } else {

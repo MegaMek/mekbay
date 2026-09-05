@@ -329,7 +329,7 @@ export class ForcePersistenceService {
     /** Materializes a detached candidate before ForceBuilder commits it. */
     public async stageRemoteForceSnapshot(serialized: SerializedForce): Promise<StagedRemoteForceSnapshot> {
         const detached = structuredClone(serialized);
-        const normalized = structuredClone(await this.normalizePersistedForce(detached));
+        const normalized = await this.normalizePersistedForce(detached);
         const force = await this.deserializeCurrentForce(normalized);
         const persistenceBytes = detached.version === 1
             ? structuredClone(await force.serializeForPersistence())

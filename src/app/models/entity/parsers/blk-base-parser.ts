@@ -18,6 +18,7 @@ import { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 import {
   ArmorType,
   EntityMountedEquipment,
+  type EntityMountedEquipmentInput,
   type EntityMountedWeapon,
   EntityQuirk,
   EntityTechBase,
@@ -52,6 +53,7 @@ import {
   weaponBayGroupingKey,
 } from '../utils/weapon-bay-grouping';
 import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
+import type { EquipmentBayInput } from '../equipment-relationships';
 
 /**
  * Common BLK parsing - reads universal blocks that apply to all unit types.
@@ -238,22 +240,11 @@ export function parseBlkEquipment(
 ): void {
   const createsWeaponBays = opts?.equipmentLineProfile === 'large-craft'
     || opts?.equipmentLineProfile === 'dropship';
+  const parsedBays: EquipmentBayInput[] = [];
   for (const [blkTag, locCode] of equipTags) {
     if (!bb.exists(blkTag)) continue;
-    interface ParsedWeaponBay {
-      readonly key: string;
-      readonly mounts: EntityMountedEquipment[];
-      readonly weapons: EntityMountedWeapon[];
-      damage: number;
-    }
-    const weaponBays: ParsedWeaponBay[] = [];
-    const pendingAmmo: EntityMountedEquipment[] = [];
-    let currentBay: ParsedWeaponBay | null = null;
-    const finishBay = (): void => {
-      if (currentBay === null) return;
-      weaponBays.push(currentBay);
-      currentBay = null;
-    };
+    const inputs: EntityMountedEquipmentInput[] = [];
+    const newBayStarts = new Set<number>();
     const lines = bb.getDataAsString(blkTag);
     for (const raw of lines) {
       const line = raw.trim();
@@ -267,7 +258,8 @@ export function parseBlkEquipment(
         ? resolved?.type === 'ammo' ? parsed.shots : undefined
         : parsed.shots;
 
-      const mount = entity.addEquipment({
+      if (parsed.isNewBay) newBayStarts.add(inputs.length);
+      inputs.push({
         equipmentId: parsed.name,
         equipment: resolved ?? undefined,
         allocation: { kind: 'location', location: locCode },
@@ -280,42 +272,71 @@ export function parseBlkEquipment(
         facing: parsed.facing,
         shotsCount,
       });
-      if (createsWeaponBays) {
-        if (resolved instanceof WeaponEquipment) {
-          const weapon = mount as EntityMountedWeapon;
-          const key = weaponBayGroupingKey(weapon);
-          const damage = standardWeaponBayDamage(weapon);
-          if (parsed.isNewBay
-            || currentBay === null
-            || currentBay.key !== key
-            || currentBay.damage + damage > weaponBayDamageLimit(weapon)) {
-            finishBay();
-            currentBay = { key, mounts: [], weapons: [], damage: 0 };
-          }
-          currentBay.mounts.push(weapon);
-          currentBay.weapons.push(weapon);
-          currentBay.damage += damage;
-          for (let index = 0; index < pendingAmmo.length;) {
-            if (ammoFitsParsedBay(pendingAmmo[index], currentBay)) {
-              currentBay.mounts.push(pendingAmmo[index]);
-              pendingAmmo.splice(index, 1);
-            } else {
-              index++;
-            }
-          }
-        } else if (resolved instanceof AmmoEquipment) {
-          const bays = currentBay === null ? weaponBays : [...weaponBays, currentBay];
-          const compatibleBay = [...bays].reverse().find(bay => ammoFitsParsedBay(mount, bay));
-          if (compatibleBay) compatibleBay.mounts.push(mount);
-          else pendingAmmo.push(mount);
-        }
-      }
     }
+    const mounts = entity.addEquipmentBatch(inputs);
     if (createsWeaponBays) {
-      finishBay();
-      for (const bay of weaponBays) entity.addEquipmentBay('weapon-bay', { mounts: bay.mounts });
+      parsedBays.push(...groupParsedWeaponBays(mounts, newBayStarts));
     }
   }
+  if (parsedBays.length > 0) {
+    entity.replaceEquipmentBays('weapon-bay', [
+      ...entity.equipmentBays().filter(bay => bay.kind === 'weapon-bay'),
+      ...parsedBays,
+    ]);
+  }
+}
+
+/** Preserve authored bay starts and ammo order while enforcing the weapon-class damage limit. */
+function groupParsedWeaponBays(
+  mounts: readonly EntityMountedEquipment[],
+  newBayStarts: ReadonlySet<number>,
+): readonly EquipmentBayInput[] {
+  interface ParsedWeaponBay {
+    readonly key: string;
+    readonly mounts: EntityMountedEquipment[];
+    readonly weapons: EntityMountedWeapon[];
+    damage: number;
+  }
+  const bays: ParsedWeaponBay[] = [];
+  const pendingAmmo: EntityMountedEquipment[] = [];
+  let currentBay: ParsedWeaponBay | undefined;
+  for (let mountIndex = 0; mountIndex < mounts.length; mountIndex++) {
+    const mount = mounts[mountIndex];
+    if (mount.equipment instanceof WeaponEquipment) {
+      const weapon = mount as EntityMountedWeapon;
+      const key = weaponBayGroupingKey(weapon);
+      const damage = standardWeaponBayDamage(weapon);
+      if (newBayStarts.has(mountIndex)
+        || currentBay === undefined
+        || currentBay.key !== key
+        || currentBay.damage + damage > weaponBayDamageLimit(weapon)) {
+        currentBay = { key, mounts: [], weapons: [], damage: 0 };
+        bays.push(currentBay);
+      }
+      currentBay.mounts.push(weapon);
+      currentBay.weapons.push(weapon);
+      currentBay.damage += damage;
+      for (let index = 0; index < pendingAmmo.length;) {
+        if (ammoFitsParsedBay(pendingAmmo[index], currentBay)) {
+          currentBay.mounts.push(pendingAmmo[index]);
+          pendingAmmo.splice(index, 1);
+        } else {
+          index++;
+        }
+      }
+    } else if (mount.equipment instanceof AmmoEquipment) {
+      let compatibleBay: ParsedWeaponBay | undefined;
+      for (let index = bays.length - 1; index >= 0; index--) {
+        if (ammoFitsParsedBay(mount, bays[index])) {
+          compatibleBay = bays[index];
+          break;
+        }
+      }
+      if (compatibleBay) compatibleBay.mounts.push(mount);
+      else pendingAmmo.push(mount);
+    }
+  }
+  return bays;
 }
 
 function ammoFitsParsedBay(ammo: EntityMountedEquipment, bay: {

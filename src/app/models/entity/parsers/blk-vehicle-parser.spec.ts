@@ -52,9 +52,27 @@ describe('BLK vehicle parser', () => {
     expect(written).toContain('<icon>\nabc\n</icon>');
     expect(written).toContain('<fluffimage>\ndef\n</fluffimage>');
   });
+
+  for (const tonnage of [20, 150]) {
+    for (const turrets of [0, 1, 2]) {
+      it(`preserves all armor through repeated saves for a ${tonnage}-ton tank with ${turrets} turrets`, () => {
+        const armor = Array.from({ length: (tonnage > 100 ? 6 : 4) + turrets }, (_, index) => 10 + index);
+        let source = vehicleBlk('', tonnage, armor);
+        for (let cycle = 0; cycle < 3; cycle++) {
+          const entity = parseBlkVehicle(new BuildingBlock(source), new ParseContext('armor.blk', registry));
+          if (turrets === 2) {
+            expect(entity.armorValues().get('Rear Turret')?.front).toBe(armor[armor.length - 2]);
+            expect(entity.armorValues().get('Front Turret')?.front).toBe(armor[armor.length - 1]);
+          }
+          source = writeBlkVehicle(entity);
+          expect(new BuildingBlock(source).getDataAsInt('armor')).toEqual(armor);
+        }
+      });
+    }
+  }
 });
 
-function vehicleBlk(extraSeats: string): string {
+function vehicleBlk(extraSeats: string, tonnage = 20, armor: readonly number[] = [1, 1, 1, 1]): string {
   return `<UnitType>
 Tank
 </UnitType>
@@ -71,7 +89,7 @@ IS Level 2
 Tracked
 </motion_type>
 <tonnage>
-20
+${tonnage}
 </tonnage>
 <cruiseMP>
 4
@@ -83,10 +101,7 @@ Tracked
 0
 </armor_type>
 <armor>
-1
-1
-1
-1
+${armor.join('\n')}
 </armor>
 ${extraSeats}`;
 }

@@ -19,9 +19,9 @@ import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.mod
 import {
     RuntimeEquipmentStatusKernel,
     type RuntimeEquipmentCommittedState,
-    type RuntimeStatusComponentDefinition,
     type RuntimeEquipmentStatusTopology,
 } from './equipment-status-kernel';
+import { buildMekEquipmentStatusTopology } from './mek-equipment-status-topology';
 import {
     type MekUnitRuntimeState,
     type AmmoRuntimeState,
@@ -314,6 +314,7 @@ interface MekRuntimeSource {
     readonly entity: MekEntity;
     readonly index: MekRuntimeIndex;
     readonly ruleset: CBTRuleset;
+    readonly statusTopology: RuntimeEquipmentStatusTopology;
 }
 
 export interface CBTUnitAttackerTargetingCommand {
@@ -697,7 +698,6 @@ export type MekBattleValueProjection =
 export class CBTUnitInstance {
     readonly #source: MekRuntimeSource;
     readonly #runtimeIndex: MekRuntimeIndex;
-    readonly #statusTopology: RuntimeEquipmentStatusTopology;
     readonly #crewAssignment: CrewAssignment;
     readonly #heatContext: MekHeatRuntimeContextV2;
     readonly #mechanicsContext: MekMechanicsContextV2;
@@ -719,13 +719,15 @@ export class CBTUnitInstance {
         mechanicsContext: MekMechanicsContextV2 = createUnboundMekMechanicsContextV2(),
     ) {
         this.#runtimeIndex = runtimeIndex;
-        this.#source = Object.freeze({ entity: unit, index: this.#runtimeIndex, ruleset });
+        const statusTopology = buildMekEquipmentStatusTopology(runtimeIndex);
+        this.#source = Object.freeze({
+            entity: unit, index: this.#runtimeIndex, ruleset, statusTopology,
+        });
         validateState(initialState, this.#source);
         this.#crewAssignment = canonicalizeCrewAssignment(
             this.#runtimeIndex.crewPositions,
             crewAssignment ?? createDefaultCrewAssignment(this.#runtimeIndex.crewPositions),
         );
-        this.#statusTopology = buildStatusTopology(this.#source);
         assertMekHeatContextEntityV2(heatContext, unit);
         assertMekMechanicsContextEntityV2(mechanicsContext, unit);
         this.#mechanicsContext = mechanicsContext;
@@ -738,7 +740,7 @@ export class CBTUnitInstance {
         const heatBlockers = validateMekHeatContextStateV2(
             heatContext,
             unit,
-            buildHeatKernelInput(this.#source, reconciled, this.#statusTopology),
+            buildHeatKernelInput(this.#source, reconciled, this.#source.statusTopology),
         );
         this.#heatContext = heatContext.kind === 'supported' && heatBlockers.length > 0
             ? disableMekHeatContextV2(heatContext, heatBlockers)
@@ -778,7 +780,7 @@ export class CBTUnitInstance {
         const state = this.#state;
         if (this.#queryCache?.state === state) return this.#queryCache.query;
         const unit = this.#source;
-        const statusTopology = this.#statusTopology;
+        const statusTopology = this.#source.statusTopology;
         let committedStatus: RuntimeEquipmentStatusKernel | undefined;
         let previewStatus: RuntimeEquipmentStatusKernel | undefined;
         const createStatusKernel = (perspective: RuntimeStatePerspective): RuntimeEquipmentStatusKernel =>
@@ -1231,7 +1233,7 @@ export class CBTUnitInstance {
             this.#state,
             command,
             this.query(),
-            this.#statusTopology,
+            this.#source.statusTopology,
             this.#heatContext,
             this.#mechanicsContext,
         );
@@ -1244,7 +1246,7 @@ export class CBTUnitInstance {
             this.#state,
             command,
             this.query(),
-            this.#statusTopology,
+            this.#source.statusTopology,
             this.#heatContext,
             this.#mechanicsContext,
         ));
@@ -1264,7 +1266,7 @@ export class CBTUnitInstance {
             registry,
             forceReadOnly,
             this.query(),
-            this.#statusTopology,
+            this.#source.statusTopology,
         ));
     }
 
@@ -1283,7 +1285,7 @@ export class CBTUnitInstance {
             forceReadOnly,
             c3Available,
             this.query(),
-            this.#statusTopology,
+            this.#source.statusTopology,
             this.#heatContext,
             this.#mechanicsContext,
         ));
@@ -4889,7 +4891,7 @@ function applyPendingMekCriticalExplosions(
 ): MekUnitRuntimeState | null {
     let next = state;
     const resolved = new Set<string>();
-    const topology = buildStatusTopology(unit);
+    const topology = unit.statusTopology;
     while (true) {
         const pending = projectPendingMekCriticalExplosionV2(
             entity,
@@ -4906,9 +4908,12 @@ function applyPendingMekCriticalExplosions(
 }
 
 function armorDamage(state: MekUnitRuntimeState, faceId: ArmorFaceId, perspective: RuntimeStatePerspective): number {
-    const committed = [...state.locations.values()].flatMap(location => location.armorDamage)
-        .find(item => item.faceId === faceId)?.damage ?? 0;
-    return committed + (perspective === 'preview' ? state.pendingCombat.armorDamage.get(faceId) ?? 0 : 0);
+    const pending = perspective === 'preview' ? state.pendingCombat.armorDamage.get(faceId) ?? 0 : 0;
+    for (const location of state.locations.values()) {
+        const face = location.armorDamage.find(item => item.faceId === faceId);
+        if (face) return face.damage + pending;
+    }
+    return pending;
 }
 
 function modularArmorDamage(
@@ -5182,7 +5187,7 @@ function componentRuntimeStatus(
     perspective: RuntimeStatePerspective = 'committed',
 ): EquipmentStatus {
     return new RuntimeEquipmentStatusKernel(
-        buildStatusTopology(unit),
+        unit.statusTopology,
         statusState(unit, state, perspective),
         { rules: unit.ruleset, family: 'mek' },
     ).component(componentId).status;
@@ -5194,9 +5199,16 @@ function statusState(
     perspective: RuntimeStatePerspective,
 ): RuntimeEquipmentCommittedState {
     const components = new Map<ComponentId, EquipmentStatus>();
-    for (const [id, value] of state.components) components.set(id, value.statusOverride ?? 'available');
+    for (const [id, value] of state.components) {
+        if (value.statusOverride !== undefined) {
+            components.set(id, value.statusOverride);
+        }
+    }
     if (perspective === 'preview') {
-        for (const [id, status] of state.pendingCombat.componentStatus) components.set(id, status);
+        for (const [id, status] of state.pendingCombat.componentStatus) {
+            if (status === 'available') components.delete(id);
+            else components.set(id, status);
+        }
     }
     const slots = new Map<CriticalSlotId, { status: EquipmentStatus; hits: number; armored: boolean }>();
     for (const [id, definition] of unit.index.slots) {
@@ -5212,13 +5224,9 @@ function statusState(
         const status = runtimeLocationStatus(unit, state, id, perspective);
         if (status !== 'available') locations.set(id, status);
     }
-    const engineHit = [...unit.index.slots.values()].some(slot =>
-        criticalHits(state, slot.id, perspective) > 0
-        && slot.componentIds.some(componentId => {
-            const component = unit.index.components.get(componentId);
-            return component?.kind === 'system' && component.systemType === 'Engine';
-        }));
-    return { components, criticalSlots: slots, locations, engineHit };
+    // Engine-hit status disables vehicle energy weapons only. Mek engine
+    // consequences belong to the destruction/heat rules, never this input.
+    return { components, criticalSlots: slots, locations, engineHit: false };
 }
 
 function runtimeLocationStatus(
@@ -5256,30 +5264,6 @@ function clearNarcFromCommittedPhysicallyDestroyedLocations(
         result = withLocationCondition(result, locationId, 'narc', 0) ?? result;
     }
     return result;
-}
-
-function buildStatusTopology(unit: MekRuntimeSource): RuntimeEquipmentStatusTopology {
-    const components = new Map<string, RuntimeStatusComponentDefinition>();
-    for (const [id, component] of unit.index.components) {
-        components.set(id, {
-            id,
-            flags: component.kind === 'equipment'
-                ? component.mount.equipment?.flags ?? new ImmutableSet([])
-                : new ImmutableSet([]),
-            locationIds: componentLocationIds(unit.index, id),
-            criticalSlotIds: [...unit.index.slots.values()]
-                .filter(slot => slot.componentIds.includes(id))
-                .map(slot => slot.id),
-        });
-    }
-    return {
-        components,
-        criticalSlots: new Map([...unit.index.slots].map(([id, slot]) => [id, {
-            id,
-            componentIds: slot.componentIds,
-            locationId: slot.locationId,
-        }])),
-    };
 }
 
 function emptyPending(): PendingCombatOverlay {

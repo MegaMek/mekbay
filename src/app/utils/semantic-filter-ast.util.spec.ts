@@ -4,9 +4,16 @@
 
 import { GameSystem } from '../models/common.model';
 import { asUnitUuid, type UnitUuid } from '../services/unit-catalog/unit-catalog.types';
-import { filterUnitsWithAST, getMatchingTextForUnit, parseSemanticQueryAST, tokenizeForHighlight, type ParseResult } from './semantic-filter-ast.util';
+import { prepareASTSearch, parseSemanticQueryAST, tokenizeForHighlight, type EvaluatorContext, type GroupASTNode, type ParseResult } from './semantic-filter-ast.util';
+import type { AvailabilityFilterScope } from '../services/unit-search-filters.model';
 import { filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';
 import { matchesSearch, parseSearchQuery } from './search.util';
+
+function filterUnitsWithAST<TUnit extends object>(
+    units: TUnit[], ast: GroupASTNode, context: EvaluatorContext<TUnit>, scope?: AvailabilityFilterScope,
+): TUnit[] {
+    return prepareASTSearch(ast, context, scope).filter(units);
+}
 
 function testUnitUuid(value: string | number): UnitUuid {
     const text = String(value);
@@ -31,6 +38,54 @@ function getUnitId(unit: unknown): UnitUuid {
 function unitIds(...values: readonly (string | number)[]): Set<UnitUuid> {
     return new Set(values.map(testUnitUuid));
 }
+
+describe('prepared semantic search', () => {
+    const context = {
+        gameSystem: GameSystem.CBT,
+        getUnitId,
+        getProperty: (unit: { name: string; bv: number }, key: string) => key === 'bv' ? unit.bv : unit.name,
+        matchesText: (unit: { name: string; bv: number }, text: string) => unit.name.includes(text),
+    };
+
+    it('reads current unit facts without retaining previous matches', () => {
+        const unit = { name: 'Atlas', bv: 1200 };
+        const search = prepareASTSearch(parseSemanticQueryAST('Atlas bv>1000', GameSystem.CBT).ast, context);
+        expect(search.filter([unit])).toEqual([unit]);
+        unit.bv = 900;
+        expect(search.filter([unit])).toEqual([]);
+    });
+
+    it('uses the first matching OR branch for relevance even when several branches match', () => {
+        const unit = { name: 'Atlas AS7', bv: 1200 };
+        const search = prepareASTSearch(parseSemanticQueryAST('(Atlas bv>1000) OR AS7', GameSystem.CBT).ast, context);
+        expect(search.filter([unit])).toEqual([unit]);
+        expect(search.matchingText(unit)).toEqual(['Atlas']);
+        unit.bv = 900;
+        expect(search.matchingText(unit)).toEqual(['AS7']);
+    });
+
+    it('unescapes literal search text consistently for filtering and relevance', () => {
+        const unit = { name: 'Puma (Adder)', bv: 1200 };
+        const search = prepareASTSearch(parseSemanticQueryAST('Puma \\(Adder\\)', GameSystem.CBT).ast, context);
+        expect(search.filter([unit])).toEqual([unit]);
+        expect(search.matchingText(unit)).toEqual(['Puma', '(Adder)']);
+    });
+
+    it('keeps query scopes independent when one parsed query is used in different searches', () => {
+        const unit = { name: 'Atlas', bv: 1200 };
+        const ast = parseSemanticQueryAST('faction="Federated Suns"', GameSystem.CBT).ast;
+        const scopedContext = {
+            ...context,
+            unitBelongsToFaction: (_unit: typeof unit, _faction: string, eras?: readonly string[]) =>
+                eras?.includes('Jihad') ?? false,
+            getAllFactionNames: () => ['Federated Suns'],
+        };
+        const jihad = prepareASTSearch(ast, scopedContext, { eraNames: ['Jihad'] });
+        const invasion = prepareASTSearch(ast, scopedContext, { eraNames: ['Clan Invasion'] });
+        expect(invasion.filter([unit])).toEqual([]);
+        expect(jihad.filter([unit])).toEqual([unit]);
+    });
+});
 
 describe('semantic boolean filters', () => {
     const units = [
@@ -444,7 +499,7 @@ describe('semantic filter exclusivity', () => {
 
         expect(result.errors).toEqual([]);
         expect(filterUnitsWithAST([unit], result.ast, context, scope)).toEqual([unit]);
-        expect(getMatchingTextForUnit(result.ast, unit, context, scope)).toEqual(['Atlas']);
+        expect(prepareASTSearch(result.ast, context, scope).matchingText(unit)).toEqual(['Atlas']);
     });
 
     it('uses indexed results for wildcard external include filters without per-unit membership scans', () => {

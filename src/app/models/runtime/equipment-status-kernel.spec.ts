@@ -4,12 +4,12 @@
 import {
     RuntimeEquipmentStatusKernel,
     type RuntimeEquipmentCommittedState,
-    type RuntimeEquipmentStatusTopology,
+    RuntimeEquipmentStatusTopology,
 } from './equipment-status-kernel';
 import type { EquipmentFlag } from '../equipment-flags.type';
 
 function topology(flags: readonly EquipmentFlag[] = ['F_AC']): RuntimeEquipmentStatusTopology {
-    return {
+    return new RuntimeEquipmentStatusTopology({
         components: new Map([
             ['weapon', {
                 id: 'weapon',
@@ -22,7 +22,7 @@ function topology(flags: readonly EquipmentFlag[] = ['F_AC']): RuntimeEquipmentS
             ['LT:3', { id: 'LT:3', componentIds: ['weapon'], locationId: 'LT' }],
             ['RT:4', { id: 'RT:4', componentIds: ['weapon'], locationId: 'RT' }],
         ]),
-    };
+    });
 }
 
 function committed(input: Partial<RuntimeEquipmentCommittedState> = {}): RuntimeEquipmentCommittedState {
@@ -67,14 +67,14 @@ describe('RuntimeEquipmentStatusKernel', () => {
     });
 
     it('counts repeat hits in one Core autocannon slot after component armor', () => {
-        const oneSlot: RuntimeEquipmentStatusTopology = {
+        const oneSlot = new RuntimeEquipmentStatusTopology({
             components: new Map([['weapon', {
                 id: 'weapon', flags: new Set(['F_AC']), locationIds: ['LT'], criticalSlotIds: ['LT:3'],
             }]]),
             criticalSlots: new Map([['LT:3', {
                 id: 'LT:3', componentIds: ['weapon'], locationId: 'LT',
             }]]),
-        };
+        });
         expect(new RuntimeEquipmentStatusKernel(oneSlot, committed({
             criticalSlots: new Map([['LT:3', { status: 'destroyed', hits: 2, armored: true }]]),
         }), { rules: 'core-2026', family: 'mek' }).component('weapon').status).toBe('available');
@@ -137,9 +137,37 @@ describe('RuntimeEquipmentStatusKernel', () => {
     it('rejects duplicate or inconsistent topology identities at the boundary', () => {
         const invalid = topology();
         const component = invalid.components.get('weapon')!;
-        expect(() => new RuntimeEquipmentStatusKernel({
+        expect(() => new RuntimeEquipmentStatusTopology({
             ...invalid,
             components: new Map([['weapon', { ...component, criticalSlotIds: ['LT:3', 'LT:3'] }]]),
-        }, committed(), { rules: 'core-2026', family: 'mek' })).toThrowError(/Duplicate critical identity/);
+        })).toThrowError(/Duplicate critical identity/);
+    });
+
+    it('owns immutable topology independently of its construction input', () => {
+        const flags = new Set<EquipmentFlag>(['F_AC']);
+        const componentIds = ['weapon'];
+        const locationIds = ['LT'];
+        const criticalSlotIds = ['LT:3'];
+        const components = new Map([['weapon', { id: 'weapon', flags, locationIds, criticalSlotIds }]]);
+        const criticalSlots = new Map([['LT:3', { id: 'LT:3', componentIds, locationId: 'LT' }]]);
+        const compiled = new RuntimeEquipmentStatusTopology({ components, criticalSlots });
+        flags.clear();
+        componentIds.length = 0;
+        locationIds.length = 0;
+        criticalSlotIds.length = 0;
+        components.clear();
+        criticalSlots.clear();
+
+        const damaged = new RuntimeEquipmentStatusKernel(compiled, committed({
+            criticalSlots: new Map([['LT:3', destroyed()]]),
+        }), { rules: 'core-2026', family: 'mek' });
+        const pristine = new RuntimeEquipmentStatusKernel(compiled, committed(), {
+            rules: 'core-2026', family: 'mek',
+        });
+        expect(damaged.component('weapon').status).toBe('available');
+        expect(damaged.criticalSlot('LT:3').status).toBe('destroyed');
+        expect(pristine.criticalSlot('LT:3').status).toBe('available');
+        expect(compiled.components.get('weapon')?.locationIds).toEqual(['LT']);
+        expect(compiled.criticalSlots.get('LT:3')?.componentIds).toEqual(['weapon']);
     });
 });

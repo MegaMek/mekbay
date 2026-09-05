@@ -2,44 +2,40 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-  NATIVE_CODEC_CAPABILITIES,
-  nativeCapabilityForEntityType,
+  isNativeEntityType,
   nativeCapabilityForUnitTypeAlias,
 } from './codec-capabilities';
 import type { EntityType } from './types';
 
 describe('native codec capabilities', () => {
-  it('covers every EntityType exactly once', () => {
+  it('recognizes every supported EntityType at persisted-data ingress', () => {
     const expected: EntityType[] = [
       'Mek', 'Aero', 'ConvFighter', 'FixedWingSupport', 'SmallCraft', 'DropShip',
       'JumpShip', 'WarShip', 'SpaceStation', 'Tank', 'Naval', 'VTOL',
       'SupportTank', 'SupportNaval', 'SupportVTOL', 'LargeSupportTank', 'Infantry',
       'BattleArmor', 'ProtoMek', 'HandheldWeapon', 'GunEmplacement', 'BuildingEntity',
     ];
-    const actual = NATIVE_CODEC_CAPABILITIES.flatMap(row => row.entityTypes);
-
-    expect(new Set(actual).size).toBe(actual.length);
-    expect([...actual].sort()).toEqual([...expected].sort());
-    expected.forEach(type => expect(nativeCapabilityForEntityType(type)).toBeDefined());
+    expected.forEach(type => expect(isNativeEntityType(type)).toBeTrue());
+    for (const invalid of [undefined, null, 0, {}, 'FutureMysteryUnit', 'Mek ']) {
+      expect(isNativeEntityType(invalid)).toBeFalse();
+    }
   });
 
   it('maps every supported native entity to its codec family', () => {
     expect(nativeCapabilityForUnitTypeAlias('BattleMek')).toEqual(jasmine.objectContaining({
-      family: 'mek', format: 'mtf', dialect: 'megamek-mtf', dialectVersion: 1,
+      family: 'mek', format: 'mtf',
     }));
-    expect(nativeCapabilityForEntityType('GunEmplacement')).toEqual(jasmine.objectContaining({
-      format: 'blk', decodeEntity: true,
+    expect(nativeCapabilityForUnitTypeAlias('GunEmplacement')).toEqual(jasmine.objectContaining({
+      family: 'static-emplacement', format: 'blk',
     }));
-    expect(nativeCapabilityForEntityType('Tank')).toEqual(jasmine.objectContaining({
-      family: 'vehicle', format: 'blk', decodeEntity: true,
+    expect(nativeCapabilityForUnitTypeAlias('Tank')).toEqual(jasmine.objectContaining({
+      family: 'vehicle', format: 'blk',
     }));
   });
 
-  it('keeps native capability metadata explicit', () => {
-    const vehicle = nativeCapabilityForEntityType('Naval');
-
-    expect(vehicle.decodeEntity).toBeTrue();
-    expect('verifiedMegaMekInterop' in vehicle).toBeFalse();
+  it('resolves recognized aliases to the same canonical family', () => {
+    expect(nativeCapabilityForUnitTypeAlias('Naval')).toBe(nativeCapabilityForUnitTypeAlias('Tank'));
+    expect(nativeCapabilityForUnitTypeAlias('Warship')).toBe(nativeCapabilityForUnitTypeAlias('WarShip'));
   });
 
   it('default-denies unknown UnitType values', () => {

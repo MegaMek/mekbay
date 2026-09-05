@@ -137,23 +137,33 @@ async function waitForLoadingToFinish(service: SpriteStorageService): Promise<vo
 function installFakeDb(
     spriteStore = new Map<string, unknown>(),
 ): FakeDb {
+    // Earlier TestBed services can still finish asynchronous initialization.
+    // Their late calls must not read or overwrite this test's fake database.
+    const instances = new WeakSet<SpriteStorageService>();
     spyOn<any>(SpriteStorageService.prototype, 'initIndexedDb')
-        .and.returnValue(Promise.resolve({} as IDBDatabase));
+        .and.callFake(async function(this: SpriteStorageService) {
+            instances.add(this);
+            return {} as IDBDatabase;
+        });
     spyOn<any>(SpriteStorageService.prototype, 'dbGet')
-        .and.callFake(async (store: string, key: string) => {
+        .and.callFake(async function(this: SpriteStorageService, store: string, key: string) {
+            if (!instances.has(this)) return null;
             if (store === 'sprites') return spriteStore.get(key) ?? null;
             return null;
         });
     const dbPut = spyOn<any>(SpriteStorageService.prototype, 'dbPut')
-        .and.callFake(async (store: string, key: string, value: unknown) => {
+        .and.callFake(async function(this: SpriteStorageService, store: string, key: string, value: unknown) {
+            if (!instances.has(this)) return;
             if (store === 'sprites') spriteStore.set(key, value);
         });
     const dbDelete = spyOn<any>(SpriteStorageService.prototype, 'dbDelete')
-        .and.callFake(async (store: string, key: string) => {
+        .and.callFake(async function(this: SpriteStorageService, store: string, key: string) {
+            if (!instances.has(this)) return;
             if (store === 'sprites') spriteStore.delete(key);
         });
     spyOn<any>(SpriteStorageService.prototype, 'dbClear')
-        .and.callFake(async (store: string) => {
+        .and.callFake(async function(this: SpriteStorageService, store: string) {
+            if (!instances.has(this)) return;
             if (store === 'sprites') spriteStore.clear();
         });
     return { spriteStore, dbPut, dbDelete };

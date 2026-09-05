@@ -1987,23 +1987,10 @@ function getIndexedCandidateIdsForFilter<TUnit extends object>(
     context: EvaluatorContext<TUnit>,
     activeScope?: AvailabilityFilterScope,
 ): Set<string> | null {
-    const matchingFilters = ADVANCED_FILTERS.filter(f =>
-        (f.semanticKey || f.key).toLowerCase() === filter.field.toLowerCase()
-    );
-    if (matchingFilters.length === 0) {
+    const sortedFilters = getSortedFilterConfigs(context, filter.field);
+    if (sortedFilters.length === 0) {
         return null;
     }
-
-    const sortedFilters: typeof matchingFilters = [];
-    const gameAgnostic: typeof matchingFilters = [];
-    const otherGame: typeof matchingFilters = [];
-    for (const f of matchingFilters) {
-        if (f.game === context.gameSystem) sortedFilters.push(f);
-        else if (!f.game) gameAgnostic.push(f);
-        else otherGame.push(f);
-    }
-    for (const f of gameAgnostic) sortedFilters.push(f);
-    for (const f of otherGame) sortedFilters.push(f);
 
     const candidateSets: Set<string>[] = [];
     for (const conf of sortedFilters) {
@@ -2539,164 +2526,80 @@ function evaluateSemanticFilter(
     return operator === '!=';
 }
 
+interface PreparedASTNode<TUnit> {
+    matches(unit: TUnit): boolean;
+    matchingText(unit: TUnit): string[];
+}
+
 /**
- * Evaluate an AST node against a unit.
- * Returns true if the unit matches the node's criteria.
+ * Resolve query facts once, including inherited availability scopes and escaped
+ * text. Closures retain query data only; unit facts are read on each evaluation.
  */
-export function evaluateASTNode<TUnit extends object>(
+function prepareASTNode<TUnit extends object>(
     node: ASTNode,
-    unit: TUnit,
     context: EvaluatorContext<TUnit>,
     activeScope?: AvailabilityFilterScope,
-): boolean {
-    switch (node.type) {
-        case 'text':
-            // Text nodes filter by matching against unit's searchable text
-            // Unescape the text value before matching (e.g., \( -> ()
-            if (context.matchesText) {
-                return context.matchesText(unit, unescapeText(node.value));
-            }
-            // If no text matcher provided, pass through
-            return true;
-            
-        case 'filter':
-            return evaluateFilter(node.token, unit, context, activeScope);
-            
-        case 'group':
-            return evaluateGroup(node, unit, context, activeScope);
-            
-        default:
-            return true;
-    }
-}
-
-/**
- * Evaluate a group node against a unit.
- */
-function evaluateGroup<TUnit extends object>(
-    group: GroupASTNode,
-    unit: TUnit,
-    context: EvaluatorContext<TUnit>,
-    activeScope?: AvailabilityFilterScope,
-): boolean {
-    if (group.children.length === 0) return true;
-    
-    if (group.operator === 'AND') {
-        const nextActiveScope = getAndGroupAvailabilityScope(group, context, activeScope);
-        // All children must match
-        return group.children.every(child => evaluateASTNode(child, unit, context, nextActiveScope));
-    } else {
-        // OR: At least one child must match
-        return group.children.some(child => evaluateASTNode(child, unit, context, activeScope));
-    }
-}
-
-/**
- * Filter units using an AST.
- * This is the main entry point for AST-based filtering.
- */
-export function filterUnitsWithAST<TUnit extends object>(
-    units: TUnit[],
-    ast: GroupASTNode,
-    context: EvaluatorContext<TUnit>,
-    initialScope?: AvailabilityFilterScope,
-): TUnit[] {
-    // If AST has no children, return all units
-    if (ast.children.length === 0) return units;
-    
-    // Check if AST has any meaningful nodes (filters or text when matcher is provided)
-    const hasFilters = hasFilterNodes(ast);
-    const hasText = context.matchesText && hasTextNodes(ast);
-    if (!hasFilters && !hasText) return units;
-
-    let candidateUnits = units;
-    if (context.getIndexedUnitIds && context.getIndexedFilterValues) {
-        const candidateIds = getIndexedCandidateIdsForNode(ast, context, initialScope);
-        if (candidateIds) {
-            candidateUnits = units.filter(unit => {
-                const unitId = context.getUnitId(unit);
-                return candidateIds.has(unitId);
-            });
-        }
-    }
-
-    return candidateUnits.filter(unit => evaluateASTNode(ast, unit, context, initialScope));
-}
-
-/**
- * Check if AST contains any filter nodes.
- */
-function hasFilterNodes(node: ASTNode): boolean {
-    if (node.type === 'filter') return true;
-    if (node.type === 'group') {
-        return node.children.some(child => hasFilterNodes(child));
-    }
-    return false;
-}
-
-/**
- * Check if AST contains any text nodes.
- */
-function hasTextNodes(node: ASTNode): boolean {
-    if (node.type === 'text') return true;
-    if (node.type === 'group') {
-        return node.children.some(child => hasTextNodes(child));
-    }
-    return false;
-}
-
-/**
- * Extract text nodes from AST that would match a unit.
- * For OR groups, returns only the text from the matching branch.
- * This is used for relevance scoring with complex queries.
- */
-export function getMatchingTextForUnit<TUnit extends object>(
-    ast: GroupASTNode,
-    unit: TUnit,
-    context: EvaluatorContext<TUnit>,
-    initialScope?: AvailabilityFilterScope,
-): string[] {
-    return collectMatchingText(ast, unit, context, initialScope);
-}
-
-function collectMatchingText<TUnit extends object>(
-    node: ASTNode,
-    unit: TUnit,
-    context: EvaluatorContext<TUnit>,
-    activeScope?: AvailabilityFilterScope,
-): string[] {
+): PreparedASTNode<TUnit> {
     if (node.type === 'text') {
-        // Check if this text node matches the unit (use unescaped value for matching)
-        const unescapedValue = unescapeText(node.value);
-        if (context.matchesText && context.matchesText(unit, unescapedValue)) {
-            return [unescapedValue];
-        }
-        return [];
+        const text = unescapeText(node.value);
+        return {
+            matches: unit => context.matchesText?.(unit, text) ?? true,
+            matchingText: unit => context.matchesText?.(unit, text) ? [text] : [],
+        };
     }
-    
     if (node.type === 'filter') {
-        return [];
+        return {
+            matches: unit => evaluateFilter(node.token, unit, context, activeScope),
+            matchingText: () => [],
+        };
     }
-    
-    if (node.type === 'group') {
-        if (node.operator === 'AND') {
-            const nextActiveScope = getAndGroupAvailabilityScope(node, context, activeScope);
-            // For AND, collect all matching text from all children
-            const texts: string[] = [];
-            for (const child of node.children) {
-                texts.push(...collectMatchingText(child, unit, context, nextActiveScope));
-            }
-            return texts;
-        } else {
-            // For OR, find the first matching child and return its text
-            for (const child of node.children) {
-                if (evaluateASTNode(child, unit, context, activeScope)) {
-                    return collectMatchingText(child, unit, context, activeScope);
-                }
-            }
-            return [];
-        }
+    if (node.children.length === 0) {
+        return { matches: () => true, matchingText: () => [] };
     }
-    
-    return [];
+
+    const isAnd = node.operator === 'AND';
+    const scope = isAnd ? getAndGroupAvailabilityScope(node, context, activeScope) : activeScope;
+    const children = node.children.map(child => prepareASTNode(child, context, scope));
+    return {
+        matches: isAnd
+            ? unit => children.every(child => child.matches(unit))
+            : unit => children.some(child => child.matches(unit)),
+        matchingText: isAnd
+            ? unit => children.flatMap(child => child.matchingText(unit))
+            // Relevance uses the first matching OR branch, as filtering does.
+            : unit => children.find(child => child.matches(unit))?.matchingText(unit) ?? [],
+    };
+}
+
+/**
+ * One search owns this evaluation and its candidate postings. Filtering and
+ * relevance read the same prepared scopes; nothing is retained across searches.
+ * Indexes narrow candidates only: the rule evaluator still verifies each unit.
+ */
+export function prepareASTSearch<TUnit extends object>(
+    ast: GroupASTNode,
+    context: EvaluatorContext<TUnit>,
+    initialScope?: AvailabilityFilterScope,
+): { filter(units: TUnit[]): TUnit[]; matchingText(unit: TUnit): string[] } {
+    const evaluation = prepareASTNode(ast, context, initialScope);
+    const candidateIds = context.getIndexedUnitIds && context.getIndexedFilterValues
+        ? getIndexedCandidateIdsForNode(ast, context, initialScope)
+        : null;
+    const isInactive = ast.children.length === 0
+        || (!hasFilterNodes(ast) && !(context.matchesText && hasTextNodes(ast)));
+    return {
+        filter: units => isInactive ? units : units.filter(unit =>
+            (candidateIds === null || candidateIds.has(context.getUnitId(unit))) && evaluation.matches(unit)),
+        matchingText: evaluation.matchingText,
+    };
+}
+
+function hasFilterNodes(node: ASTNode): boolean {
+    return node.type === 'filter'
+        || (node.type === 'group' && node.children.some(hasFilterNodes));
+}
+
+function hasTextNodes(node: ASTNode): boolean {
+    return node.type === 'text'
+        || (node.type === 'group' && node.children.some(hasTextNodes));
 }

@@ -1246,6 +1246,14 @@ export abstract class BaseEntity implements EntityTechnology {
     return mount;
   }
 
+  /** Install a decoded inventory in one update, preserving existing mounts and relationships. */
+  addEquipmentBatch(inputs: readonly EntityMountedEquipmentInput[]): readonly EntityMountedEquipment[] {
+    if (inputs.length === 0) return [];
+    const mounts = inputs.map(input => this.createEquipmentMount(input));
+    this.#equipment.set([...this.#equipment(), ...mounts]);
+    return mounts;
+  }
+
   /** Create an identified mount for an atomic subclass batch update without installing it yet. */
   protected createEquipmentMount(input: EntityMountedEquipmentInput): EntityMountedEquipment {
     return new EntityMountedEquipment({ ...input, mountId: this.allocateMountId() }, this);
