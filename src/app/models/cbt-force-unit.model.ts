@@ -174,6 +174,11 @@ export type CBTUnitAutomationTrigger =
         readonly commit: boolean;
     };
 
+interface CBTUnitLocations {
+    readonly armor: ReadonlyMap<string, { readonly loc: string; readonly rear: boolean; readonly points?: number }>;
+    readonly internal: ReadonlyMap<string, { readonly loc: string; readonly points?: number }>;
+}
+
 export class CBTForceUnit extends ForceUnit {
     override get force(): CBTForce { return super.force as CBTForce; }
     override set force(value: CBTForce) { super.force = value; }
@@ -193,10 +198,10 @@ export class CBTForceUnit extends ForceUnit {
     readonly pendingFallCount = computed(() => this.turnState().pendingFallCount());
     readonly gameRules: CBTGameRules;
     viewState: ViewportTransform;
-    locations?: {
-        armor: Map<string, { loc: string; rear: boolean; points?: number }>;
-        internal: Map<string, { loc: string; points?: number }>;
-    };
+    private readonly _locations = signal<CBTUnitLocations | undefined>(undefined);
+    /** Replace the layout as a whole so location-dependent computations refresh, including after early reads. */
+    get locations(): CBTUnitLocations | undefined { return this._locations(); }
+    set locations(value: CBTUnitLocations | undefined) { this._locations.set(value); }
     protected override state: CBTForceUnitState;
     readonly inventoryControl = new CBTInventoryControlRuntime(this);
     private readonly inventoryControlRuntime = this.inventoryControl;

@@ -2364,7 +2364,10 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
         const reinforced = createCriticalHeatSinkForceUnit().forceUnit;
         spyOn(reinforced, 'getStructureKindAt').and.returnValue('reinforced');
-        reinforced.locations!.internal.set('LT', { loc: 'LT', points: 10 });
+        reinforced.locations = {
+            ...reinforced.locations!,
+            internal: new Map(reinforced.locations!.internal).set('LT', { loc: 'LT', points: 10 }),
+        };
 
         reinforced.addInternalHits('LT', 1);
         expect(reinforced.turnState().dmgReceived()).toBe(0);
@@ -2376,7 +2379,10 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     it('counts every Core composite pip destroyed by an internal explosion toward the damage PSR', () => {
         const explosion = createCriticalHeatSinkForceUnit().forceUnit;
         spyOn(explosion, 'getStructureKindAt').and.returnValue('composite');
-        explosion.locations!.internal.set('LT', { loc: 'LT', points: 20 });
+        explosion.locations = {
+            ...explosion.locations!,
+            internal: new Map(explosion.locations!.internal).set('LT', { loc: 'LT', points: 20 }),
+        };
 
         // Explosion resolution has already capped 10 damage and doubled it to 20 structure pips.
         expect(explosion.addInternalHits('LT', 20, false, {
@@ -2481,7 +2487,10 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
 
     it('floods a location when either front or rear armor facing is breached', () => {
         const rearBreached = createCriticalHeatSinkForceUnit().forceUnit;
-        rearBreached.locations!.armor.set('LT-rear', { loc: 'LT', rear: true, points: 5 });
+        rearBreached.locations = {
+            ...rearBreached.locations!,
+            armor: new Map(rearBreached.locations!.armor).set('LT-rear', { loc: 'LT', rear: true, points: 5 }),
+        };
         rearBreached.setLocations({
             LT: { armor: 5 },
             'LT-rear': { armor: 0 },
@@ -2491,7 +2500,10 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(rearBreached.getLocationCondition('LT', 'flooded')).toBeTrue();
 
         const frontBreached = createCriticalHeatSinkForceUnit().forceUnit;
-        frontBreached.locations!.armor.set('LT-rear', { loc: 'LT', rear: true, points: 5 });
+        frontBreached.locations = {
+            ...frontBreached.locations!,
+            armor: new Map(frontBreached.locations!.armor).set('LT-rear', { loc: 'LT', rear: true, points: 5 }),
+        };
         frontBreached.setLocations({
             LT: { armor: 0 },
             'LT-rear': { armor: 5 },
@@ -6045,8 +6057,10 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
     it('keeps NARC active through pending location destruction and removes it when committed', () => {
         const forceUnit = createForceUnit();
         initialize(forceUnit, createMekDamageSvg());
-        forceUnit.locations!.armor.set('LL', { loc: 'LL', rear: false, points: 1 });
-        forceUnit.locations!.internal.set('LL', { loc: 'LL', points: 1 });
+        forceUnit.locations = {
+            armor: new Map(forceUnit.locations!.armor).set('LL', { loc: 'LL', rear: false, points: 1 }),
+            internal: new Map(forceUnit.locations!.internal).set('LL', { loc: 'LL', points: 1 }),
+        };
         forceUnit.setLocations({ ...forceUnit.getLocations(), LL: { armor: 0, internal: 0 } }, true);
         forceUnit.setLocationCondition('LA', 'narc', true);
         forceUnit.setLocationCondition('LL', 'narc', true);

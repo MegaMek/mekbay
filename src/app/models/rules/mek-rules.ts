@@ -370,7 +370,6 @@ export class MekRules extends UnitTypeRulesBase {
         }
     }
 
-    // Locations load outside signals; do not cache a configuration inferred before they arrive.
     protected currentLegState() {
         const internalLocations = this.unit.locations?.internal;
         const config = inferMekConfigFromLocations(internalLocations?.keys() ?? []);

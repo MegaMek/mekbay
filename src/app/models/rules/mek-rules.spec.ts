@@ -372,8 +372,12 @@ function createShieldHarness(
             { ...crit('Triple Strength Myomer', false), loc: 'RT', slot: 0, eq: tsm },
         ],
     });
-    forceUnit.locations!.armor.set('DALA', { loc: 'DALA', rear: false, points: 5 });
-    forceUnit.locations!.armor.set('DCLA', { loc: 'DCLA', rear: false, points: 18 });
+    forceUnit.locations = {
+        ...forceUnit.locations!,
+        armor: new Map(forceUnit.locations!.armor)
+            .set('DALA', { loc: 'DALA', rear: false, points: 5 })
+            .set('DCLA', { loc: 'DCLA', rear: false, points: 18 }),
+    };
     const currentShieldCriticals = forceUnit.getCritSlots().filter(slot => slot.eq === shieldEquipment);
     forceUnit.setInventory([new MountedEquipment({
         owner: forceUnit,
@@ -450,12 +454,12 @@ function createShieldPropulsionHarness(
             })),
         ],
     });
-    forceUnit.locations!.armor.set('DALA', {
-        loc: 'DALA', rear: false, points: large ? 7 : 5,
-    });
-    forceUnit.locations!.armor.set('DCLA', {
-        loc: 'DCLA', rear: false, points: large ? 25 : 18,
-    });
+    forceUnit.locations = {
+        ...forceUnit.locations!,
+        armor: new Map(forceUnit.locations!.armor)
+            .set('DALA', { loc: 'DALA', rear: false, points: large ? 7 : 5 })
+            .set('DCLA', { loc: 'DCLA', rear: false, points: large ? 25 : 18 }),
+    };
     const currentShieldCriticals = forceUnit.getCritSlots().filter(slot => slot.eq === shieldEquipment);
     forceUnit.setInventory([new MountedEquipment({
         owner: forceUnit,
@@ -2525,15 +2529,48 @@ describe('MekRules', () => {
                 const initialized = createForceUnitHarness({ rulesId, subtype });
                 const force = new TestCBTForce('Loading Force', dataService, unitInitializer, injector);
                 const forceUnit = new CBTForceUnit(initialized.getUnit(), force, dataService, unitInitializer, injector);
+                const rules = forceUnit.rules as MekRules;
                 forceUnit.rules.getStandAttemptLimit(forceUnit.turnState());
+                expect(forceUnit.turnState().canStandWithoutPSR()).toBeFalse();
+                expect(rules.systemsStatus().internalLocations.size).toBe(0);
+                forceUnit.PSRModifiers();
                 forceUnit.locations = initialized.locations;
+
+                // Location assignment alone must invalidate early reads, without crit or damage writes.
+                expect(forceUnit.turnState().canStandWithoutPSR()).toBe(subtype === 'Quad BattleMek');
+                expect(rules.systemsStatus().internalLocations).toEqual(new Set(initialized.locations!.internal.keys()));
+                expect(forceUnit.PSRModifiers().modifier).toBe(expectedModifier);
                 forceUnit.setLocations({}, true);
                 forceUnit.isLoaded.set(true);
 
                 expect(forceUnit.PSRModifiers().modifier).toBe(expectedModifier);
                 expect(forceUnit.PSRTargetRoll()).toBe(5 + expectedModifier);
+
+                forceUnit.locations = undefined;
+                expect(forceUnit.turnState().canStandWithoutPSR()).toBeFalse();
+                expect(rules.systemsStatus().internalLocations.size).toBe(0);
+                forceUnit.locations = initialized.locations;
+                expect(forceUnit.turnState().canStandWithoutPSR()).toBe(subtype === 'Quad BattleMek');
+                expect(rules.systemsStatus().internalLocations).toEqual(new Set(initialized.locations!.internal.keys()));
             });
         }
+
+        it(`refreshes ${rulesId} movement and combat when the location layout is replaced`, () => {
+            const forceUnit = createForceUnitHarness({ rulesId, committedDestroyedLocations: ['LL'] });
+            const rules = forceUnit.rules as MekRules;
+            expect(rules.systemsStatus().destroyedLegsCount).toBe(1);
+            expect(rules.movementState()?.walk).toBe(1);
+            expect(rules.physicalCombat()?.canKick).toBeFalse();
+
+            forceUnit.locations = {
+                ...forceUnit.locations!,
+                internal: new Map(forceUnit.locations!.internal).set('LL', { loc: 'LL', points: 2 }),
+            };
+
+            expect(rules.systemsStatus().destroyedLegsCount).toBe(0);
+            expect(rules.movementState()?.walk).toBe(5);
+            expect(rules.physicalCombat()?.canKick).toBeTrue();
+        });
     }
 
     it('includes intact Tripod legs in piloting checks', () => {
