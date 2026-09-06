@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../../services/unit-name.service';
 import { Directive, input, output, computed, inject, signal } from '@angular/core';
 import type { ASForceUnit, AbilitySelection } from '../../../models/as-force-unit.model';
 import type { ColorScheme } from '../../../models/options.model';
@@ -61,6 +62,7 @@ export type CardAbility = PilotCardAbility | FormationWideCardAbility;
 
 @Directive()
 export abstract class AsLayoutBaseComponent {
+    readonly unitNames = inject(UnitNameService);
     protected readonly dataService = inject(DataService);
     protected readonly abilityLookup = inject(AsAbilityLookupService);
 
@@ -90,7 +92,7 @@ export abstract class AsLayoutBaseComponent {
     // Derived from unit
     asStats = computed<AlphaStrikeUnitStats>(() => this.unit().as);
     model = computed<string>(() => this.unit().model);
-    chassis = computed<string>(() => this.unit().chassis);
+    chassis = computed<string>(() => this.unitNames.chassis(this.unit()));
 
     // Critical hits variant from layout config
     criticalHitsVariant = computed<CriticalHitsVariant>(() => {
@@ -103,7 +105,13 @@ export abstract class AsLayoutBaseComponent {
     skill = computed<number>(() => this.forceUnit()?.getPilotStats() ?? this.skillOverride() ?? DEFAULT_GUNNERY_SKILL);
     basePV = computed<number>(() => this.asStats().PV);
     adjustedPV = computed<number>(() => {
+        const member = this.forceUnit();
+        if (member) return member.getBv();
         return adjustPointValueForSkill(this.asStats().PV, this.skill());
+    });
+    readonly vacant = computed(() => {
+        const member = this.forceUnit();
+        return member?.crewVacant() ?? false;
     });
     abilities = computed<CardAbility[]>(() => {
         const forceUnit = this.forceUnit();

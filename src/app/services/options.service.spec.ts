@@ -28,6 +28,22 @@ describe('OptionsService theme migration', () => {
 
     afterEach(() => TestBed.resetTestingModule());
 
+    it('defaults old saves to Inner Sphere first and persists the selected name format', async () => {
+        savedOptions = {};
+        let service = await createService();
+        expect(service.options().displayUnitNameFormat).toBe('innerSphereClan');
+        await service.setOption('displayUnitNameFormat', 'clanInnerSphere');
+        expect(dbService.saveOptions).toHaveBeenCalledWith(jasmine.objectContaining({ displayUnitNameFormat: 'clanInnerSphere' }));
+        TestBed.resetTestingModule();
+        savedOptions = { displayUnitNameFormat: 'clanInnerSphere' };
+        service = await createService();
+        expect(service.options().displayUnitNameFormat).toBe('clanInnerSphere');
+        TestBed.resetTestingModule();
+        savedOptions = { displayUnitNameFormat: 'invalid' };
+        service = await createService();
+        expect(service.options().displayUnitNameFormat).toBe('innerSphereClan');
+    });
+
     it('uses the normal theme by default', async () => {
         savedOptions = null;
 

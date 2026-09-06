@@ -38,6 +38,7 @@ describe('DbService current force persistence', () => {
             instanceId,
             type: GameSystem.CBT,
             name: 'Protected DB Force',
+            personnel: { people: [], assignments: [] },
             groups: [],
         };
         const revision = (value: number) => createEmptyCBTForceForTest(instanceId, value);
@@ -46,7 +47,10 @@ describe('DbService current force persistence', () => {
         await service.saveForce(first);
         const stored = await rawStoredForce(instanceId);
         expect(stored['timestamp']).toBe(Date.parse(first.timestamp));
-        expect(stored['cbt']).toEqual(jasmine.objectContaining({ r: 1, u: [], g: [] }));
+        expect(stored['cbt']).toEqual({ r: 1 });
+        expect(stored['units']).toEqual([]);
+        expect(stored['groups']).toEqual([]);
+        expect(stored['personnel']).toBeUndefined();
         expect((stored['cbt'] as Record<string, unknown>)['schemaVersion']).toBeUndefined();
         expect((stored['cbt'] as Record<string, unknown>)['forceId']).toBeUndefined();
         await expectAsync(service.saveForce(base)).toBeRejectedWithError(/current CBT snapshot/u);
@@ -72,6 +76,7 @@ describe('DbService current force persistence', () => {
             instanceId,
             type: GameSystem.CBT,
             name: 'Current compact row',
+            personnel: { people: [], assignments: [] },
             cbt: createEmptyCBTForceForTest(instanceId, 1),
         };
 
@@ -79,8 +84,107 @@ describe('DbService current force persistence', () => {
 
         const stored = await rawStoredForce(instanceId);
         expect(stored['name']).toBe('Current compact row');
-        expect(stored['cbt']).toEqual(jasmine.objectContaining({ r: 1, u: [], g: [] }));
+        expect(stored['cbt']).toEqual({ r: 1 });
+        expect(stored['units']).toEqual([]);
+        expect(stored['groups']).toEqual([]);
         expect((stored['cbt'] as Record<string, unknown>)['schemaVersion']).toBeUndefined();
+    });
+
+    it('lists valid headers without decoding or retaining unreadable combat state', async () => {
+        await putRawForce(instanceId, {
+            version: 2, instanceId, timestamp: Date.parse('2026-08-10T00:00:00Z'), type: GameSystem.CBT, name: 'Preview only',
+            units: [{ id: 'unit:preview', uuid: 'AZ9nZw3Le7iZL67wggL14g', crew: [{ id: 'person:pilot', name: 'Morgan', g: 3 }],
+                state: { invalid: ['combat data the preview must never inspect'] } }],
+            groups: [{ id: 'group:preview', unitIndices: [0] }], cbt: { r: 0 },
+            personnel: [{ id: 'person:reserve', name: 'Unassigned Morgan', health: { unreadable: true } }],
+        });
+
+        const entry = (await service.listForces()).find(force => force.instanceId === instanceId)!;
+        expect(entry.name).toBe('Preview only');
+        expect(entry.reserveCount).toBe(1);
+        expect(entry.groups![0].units[0]).toEqual(jasmine.objectContaining({ alias: 'Morgan', g: 3, p: 5 }));
+        expect(JSON.stringify(entry)).not.toContain('combat data');
+        expect(JSON.stringify(entry)).not.toContain('Unassigned Morgan');
+        expect((entry as unknown as Record<string, unknown>)['cbt']).toBeUndefined();
+        expect(await service.getForcePreview(instanceId)).toEqual(entry);
+        expect(await service.getForcePreview(`${instanceId}-missing`)).toBeNull();
+        await expectAsync(service.getForce(instanceId)).toBeRejected();
+    });
+
+    it('keeps cached V1 source bytes intact until an explicit best-effort load', async () => {
+        const source: SerializedForce = { version: 1, instanceId, timestamp: '2026-09-01T00:00:00Z', type: GameSystem.CBT,
+            name: 'Legacy cache', groups: [{ id: 'g', units: [{ id: 'u', unit: 'Atlas', state: { inventory: 'unreadable' } as never }] }] };
+        await service.saveForce(source);
+        expect(await rawStoredForce(instanceId)).toEqual(source as unknown as Record<string, unknown>);
+        expect(await service.getForce(instanceId)).toEqual(source);
+        expect((await service.listForces()).find(force => force.instanceId === instanceId)?.groups![0].units[0].unit).toBe('Atlas');
+        expect((await service.getForcePreview(instanceId))?.groups![0].units[0].unit).toBe('Atlas');
+    });
+
+    it('rejects unreadable tag updates and aborts their transaction without escaping the event handler', async () => {
+        const database = await (service as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+        const request = { result: { version: 2, instanceId, type: GameSystem.AS } } as IDBRequest;
+        const put = jasmine.createSpy('put');
+        const abort = jasmine.createSpy('abort');
+        const transaction = { objectStore: () => ({ get: () => request, put }), abort } as unknown as IDBTransaction;
+        const createTransaction = spyOn(database, 'transaction').and.returnValue(transaction);
+        try {
+            const result = service.updateForceTags(instanceId, ['updated']).then(
+                value => ({ value, error: undefined }),
+                error => ({ value: undefined, error }),
+            );
+            await Promise.resolve();
+            let escaped: unknown;
+            try {
+                request.onsuccess?.call(request, new Event('success'));
+            } catch (error) {
+                escaped = error;
+            }
+            expect(escaped).toBeUndefined();
+            // Avoid waiting forever if a broken event handler left the operation pending.
+            if (escaped) return;
+
+            expect((await result).error).toEqual(jasmine.any(Error));
+            expect(abort).toHaveBeenCalledTimes(1);
+            expect(put).not.toHaveBeenCalled();
+        } finally {
+            createTransaction.and.callThrough();
+        }
+    });
+
+    it('leaves an unreadable stored record unchanged when its tag update fails', async () => {
+        const source = { version: 2, instanceId, type: GameSystem.AS, malformed: true };
+        await putRawForce(instanceId, source);
+
+        await expectAsync(service.updateForceTags(instanceId, ['updated'])).toBeRejectedWithError();
+
+        expect(await rawStoredForce(instanceId)).toEqual(source);
+    });
+
+    it('checks existing keys in one transaction without decoding unreadable records', async () => {
+        await putRawForce(instanceId, { version: 2, malformed: true });
+        const database = await (service as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+        const transaction = database.transaction.bind(database);
+        let get!: jasmine.Spy;
+        let getKey!: jasmine.Spy;
+        const createTransaction = spyOn(database, 'transaction').and.callFake((...args) => {
+            const created = transaction(...args);
+            const store = created.objectStore('forceStore');
+            get = spyOn(store, 'get').and.callThrough();
+            getKey = spyOn(store, 'getKey').and.callThrough();
+            return created;
+        });
+        try {
+            const missingId = `${instanceId}-missing`;
+            expect(await service.getExistingForceIds([instanceId, missingId])).toEqual(new Set([instanceId]));
+            expect(createTransaction).toHaveBeenCalledOnceWith('forceStore', 'readonly');
+            expect(getKey.calls.allArgs()).toEqual([[instanceId], [missingId]]);
+            expect(get).not.toHaveBeenCalled();
+            expect(await service.getExistingForceIds([])).toEqual(new Set());
+            expect(createTransaction).toHaveBeenCalledTimes(1);
+        } finally {
+            createTransaction.and.callThrough();
+        }
     });
 });
 

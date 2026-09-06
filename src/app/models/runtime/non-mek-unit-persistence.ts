@@ -405,6 +405,7 @@ export function restoreNonMekUnit(
         ruleset,
         state,
         forcedWithdrawal,
+        saved.deployment.values.crewAssignment,
     );
 }
 

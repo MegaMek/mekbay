@@ -8,6 +8,7 @@ import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../../models/mek-sheet-bi
 import type { CBTMekForceMember } from '../../../models/force-member.model';
 import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
 import { LoggerService } from '../../../services/logger.service';
+import { UnitNameService } from '../../../services/unit-name.service';
 import {
     bindMekRecordSheet,
     type MekRecordSheetBinding,
@@ -24,6 +25,7 @@ interface BoundMekSheet {
 /** Binds Entity + typed runtime state to the established page-viewer SVG. */
 @Injectable()
 export class PageViewerMekRuntimeService {
+    private readonly unitNames = inject(UnitNameService);
     private readonly interactions = inject(PageViewerMekInteractionService);
     private readonly logger = inject(LoggerService);
     private readonly bound = new Map<string, BoundMekSheet>();
@@ -53,6 +55,7 @@ export class PageViewerMekRuntimeService {
             if (changedUnitIds?.includes(member.id) ?? true) this.render(member);
         });
         this.bound.set(member.id, { member, svg, binding, subscription });
+        this.unitNames.applyToRecordSheet(svg, member.entity);
         return true;
     }
 
@@ -82,6 +85,7 @@ export class PageViewerMekRuntimeService {
         const snapshot = member.mekRecordSheetSnapshot();
         if (!current || current.member !== member || !snapshot) return;
         const issues = current.binding.render(snapshot);
+        this.unitNames.applyToRecordSheet(current.svg, member.entity);
         if (issues.length > 0) {
             this.logger.warn(`Record-sheet layout omissions for ${snapshot.identity.displayName}: ${issues.join('; ')}`);
         }

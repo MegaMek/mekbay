@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { EMPTY_FORCE_PERSONNEL, assignedForcePerson, createForcePerson, addForcePerson, assignForcePerson, updateForcePerson, detachForcePersonnel, removeUnitPersonnel, cloneForcePersonnel, transferForcePersonnel, restoreForcePersonnelEdit, forcePersonnelCrewAssignment, type ForcePerson, type ForcePersonnelSnapshot } from './force-personnel';
+import { unitCrewKind, type UnitCrewPolicy } from './unit-crew-policy';
+import { canonicalizeCrewAssignment } from './runtime/crew-assignment';
+import { CrewMember, type CrewMemberRuntimeState } from './crew-member.model';
+import { asCrewPositionId, type CrewPositionId } from './entity/entity-identifiers';
 import { computed, type Injector } from '@angular/core';
 import type { DataService } from '../services/data.service';
 import { forceMemberAdjustedValue, type CBTForceMember, type ForceMember } from './force-member.model';
@@ -554,7 +559,7 @@ export class CBTForce extends Force<never> {
             this.commitCBTForceMutation(
                 context,
                 prepared,
-                () => this.unitStore.replace(envelope, replacements, scenario),
+                () => this.unitStore.replace(envelope, replacements, { scenarioRules: scenario }),
             );
             this.emitChangedFromReservedIntent(Object.freeze([...replacements.keys()]));
             return true;
@@ -743,17 +748,25 @@ export class CBTForce extends Force<never> {
             return rejectedUnitTransfer('PERSISTENCE_REJECTED');
         }
 
+        let transferredPersonnel: ReturnType<typeof transferForcePersonnel>;
+        try {
+            transferredPersonnel = transferForcePersonnel(this.personnel(), target.personnel(), new Map([[instanceId, instanceId]]));
+        } catch {
+            return rejectedUnitTransfer('PERSISTENCE_REJECTED');
+        }
         this.commitPairedCBTForceMutations(
             target,
             {
                 mutation: sourceContext,
                 prepared: Object.freeze({ envelope: sourceEnvelope, reused: false }),
                 install: () => this.unitStore.remove(sourceEnvelope, [instanceId]),
+                personnel: transferredPersonnel.source,
             },
             {
                 mutation: targetContext,
                 prepared: Object.freeze({ envelope: targetEnvelope, reused: false }),
                 install: () => target.unitStore.add(targetEnvelope, candidate, destinationScenario),
+                personnel: target.personnelFromProfiles(transferredPersonnel.target, targetEnvelope),
             },
         );
         this.session.prune(new Set(removal.plan.removedInstanceIds ?? [instanceId]));
@@ -1253,6 +1266,9 @@ export class CBTForce extends Force<never> {
             const move = this.session.prepare(direction);
             if (!move) return rejectedRuntimeUndoCommand('EMPTY');
             const checkpoint = this.session.preserveCurrentOperationalState(move.checkpoint);
+            const personnel = checkpoint.personnel && move.entry.before.personnel && move.entry.after.personnel
+                ? restoreForcePersonnelEdit(this.personnel(), move.entry.before.personnel, move.entry.after.personnel, checkpoint.personnel)
+                : undefined;
 
             let replacements: ReadonlyMap<string, CBTUnit>;
             try {
@@ -1278,6 +1294,7 @@ export class CBTForce extends Force<never> {
                     ...current,
                     forceRevision: nextForceRevision(current.forceRevision),
                     units,
+                    ...(personnel === undefined ? {} : { roster: this.rosterWithPersonnelCommanders(current.roster, personnel) }),
                     ...(context.typedEncounterState === undefined
                         ? {}
                         : {
@@ -1294,7 +1311,8 @@ export class CBTForce extends Force<never> {
             this.commitCBTForceMutation(
                 context,
                 prepared,
-                () => this.unitStore.replace(envelope, replacements),
+                () => this.unitStore.replace(envelope, replacements, { preserveC3Session: personnel !== undefined }),
+                personnel,
             );
             this.session.commit(move);
             this.emitChangedFromReservedIntent(Object.freeze([...replacements.keys()]));
@@ -1482,44 +1500,125 @@ export class CBTForce extends Force<never> {
         return this.unitStore.crewProfile(instanceId);
     }
 
-    public async replaceUnitCrewProfile(
-        instanceId: string,
-        positions: readonly CrewAssignmentPosition[],
-    ): Promise<CrewAssignment | null> {
-        let capturedPositions: readonly CrewAssignmentPosition[];
-        try {
-            capturedPositions = structuredClone(positions);
-        } catch {
-            return null;
-        }
-        const capturedInstanceId = instanceId;
+    public override getUnitCrewPolicy(instanceId: string): UnitCrewPolicy {
+        const unit = this.unitStore.cbtUnit(instanceId);
+        if (!unit) return super.getUnitCrewPolicy(instanceId);
+        const entity = unit.getUnit();
+        const kind = unitCrewKind(entity.unitType(), entity.unitSubtype(), unit.getIndex().crewPositions.size);
+        const canEdit = this.canEditPersonnel();
+        const positions = kind === 'none' ? [] : [...unit.getIndex().crewPositions.values()]
+            .sort((left, right) => left.occurrence - right.occurrence)
+            .map(position => ({ positionId: position.id as string,
+                label: kind === 'integrated' ? 'Squad' : entity.entityType === 'Mek' && position.occurrence === 0 ? 'Pilot' : 'Crew ' + (position.occurrence + 1) }));
+        return { kind, positions, canEdit, ...(!canEdit ? { reason: 'This force is read-only or no longer active.' } : {}) };
+    }
+
+    /** Existing profile editors use the same atomic personnel transaction as assignment commands. */
+    public async replaceUnitCrewProfile(instanceId: string, positions: readonly CrewAssignmentPosition[]): Promise<CrewAssignment | null> {
+        const captured = structuredClone(positions);
+        const accepted = await this.applyPersonnelEdit(before => {
+            const unit = this.unitStore.cbtUnit(instanceId);
+            if (!unit) return null;
+            const policy = this.getUnitCrewPolicy(instanceId);
+            const profile = canonicalizeCrewAssignment(unit.getIndex().crewPositions, { schemaVersion: 1, positions: captured });
+            const previous = unit.getCrewAssignment();
+            if (jsonValuesEqual(previous, profile)) return before;
+            if (policy.kind === 'none' || (policy.kind === 'integrated'
+                && !jsonValuesEqual(profile.positions.map(position => position.positionId), previous.positions.map(position => position.positionId)))) return null;
+            const retained = new Set(profile.positions.map(position => position.positionId as string));
+            let next: ForcePersonnelSnapshot = { people: before.people, assignments: before.assignments.filter(assignment =>
+                assignment.unitId !== instanceId || retained.has(assignment.positionId)) };
+            for (const position of profile.positions) {
+                const assigned = assignedForcePerson(next, instanceId, position.positionId);
+                const patch = { name: position.name, gunnery: position.gunnery, piloting: position.piloting };
+                if (assigned) next = updateForcePerson(next, assigned.id, patch);
+                else {
+                    const person = createForcePerson(patch);
+                    next = assignForcePerson(addForcePerson(next, person), instanceId, position.positionId, person.id);
+                }
+            }
+            return next;
+        });
+        return accepted ? this.getUnitCrewProfile(instanceId) : null;
+    }
+
+    /** Every affected runtime is prepared first; the roster, people, health, and undo checkpoint commit together. */
+    protected override applyPersonnelEdit(edit: (before: ForcePersonnelSnapshot) => ForcePersonnelSnapshot | null): Promise<boolean> {
         return this.enqueueCBTMutation(async () => {
-            if (this.readOnly()) return null;
-            const ready = this.unitStore.cbtUnit(capturedInstanceId);
-            const beforeProfile = this.unitStore.crewProfile(capturedInstanceId);
-            const capture = ready === null
-                ? null
-                : this.captureRuntimeCommandMutation([capturedInstanceId]);
-            const executionGeneration = this.captureForceOwnerGeneration();
-            return this.unitStore.replaceCrewProfile(
-                capturedInstanceId,
-                capturedPositions,
-                () => this.readOnly(),
-                () => this.isForceOwnerGenerationCurrent(executionGeneration),
-                () => {
-                    const afterReady = this.unitStore.cbtUnit(capturedInstanceId);
-                    const afterProfile = this.unitStore.crewProfile(capturedInstanceId);
-                    if (capture === null || afterReady === null || beforeProfile === null || afterProfile === null) {
-                        throw new Error('Accepted crew command has no captured state');
-                    }
-                    const changedUnitIds = this.recordRuntimeCommandMutation(
-                        capture,
-                        crewProfileHistory(capturedInstanceId, afterReady, beforeProfile, afterProfile),
-                    );
-                    this.reserveForceOwnerMutationIntent();
-                    this.emitChangedFromReservedIntent(changedUnitIds.length > 0 ? changedUnitIds : [capturedInstanceId]);
-                },
-            );
+            if (!this.canEditPersonnel()) return false;
+            const before = this.personnel();
+            let next: ForcePersonnelSnapshot | null;
+            try { next = edit(before); } catch { return false; }
+            if (next === null) return false;
+            if (next === before || jsonValuesEqual(next, before)) return true;
+            next = this.reconcilePersonnelCommanders(before, next);
+            const beforePeople = new Map(before.people.map(person => [person.id, person]));
+            const nextPeople = new Map(next.people.map(person => [person.id, person]));
+            const beforeBindings = new Map(before.assignments.map(assignment => [assignment.personId, assignment]));
+            const nextBindings = new Map(next.assignments.map(assignment => [assignment.personId, assignment]));
+            const affected = new Set<string>();
+            for (const personId of new Set([...beforePeople.keys(), ...nextPeople.keys()])) {
+                const oldBinding = beforeBindings.get(personId), newBinding = nextBindings.get(personId);
+                if (beforePeople.get(personId) === nextPeople.get(personId)
+                    && oldBinding?.unitId === newBinding?.unitId && oldBinding?.positionId === newBinding?.positionId) continue;
+                if (oldBinding) affected.add(oldBinding.unitId);
+                if (newBinding) affected.add(newBinding.unitId);
+            }
+            if (!affected.size) {
+                this.reserveForceOwnerMutationIntent();
+                this.commitUnassignedPersonnelEdit(next);
+                this.emitChangedFromReservedIntent();
+                return true;
+            }
+            const instanceIds = [...affected];
+            const fence = this.unitStore.snapshot();
+            const generation = this.captureForceOwnerGeneration();
+            const capture = this.session.capture(instanceIds, before);
+            const healthByPerson = new Map<string, CrewMemberRuntimeState>();
+            for (const assignment of before.assignments) {
+                if (!affected.has(assignment.unitId)) continue;
+                const unit = this.unitStore.cbtUnit(assignment.unitId);
+                if (!unit) return false;
+                const health = unit.captureRuntime().query.crewState(asCrewPositionId(assignment.positionId)).toRuntimeState();
+                healthByPerson.set(assignment.personId, health);
+                if (nextPeople.has(assignment.personId) && !nextBindings.has(assignment.personId)) {
+                    next = updateForcePerson(next, assignment.personId, { health: CrewMember.from(health).isPristine() ? undefined : health });
+                }
+            }
+            const edits = instanceIds.map(instanceId => {
+                const health = new Map<CrewPositionId, CrewMemberRuntimeState>();
+                for (const assignment of next!.assignments) {
+                    if (assignment.unitId !== instanceId) continue;
+                    const person = nextPeople.get(assignment.personId)!;
+                    const state = CrewMember.from(healthByPerson.get(person.id) ?? person.health);
+                    if (!state.isPristine()) health.set(asCrewPositionId(assignment.positionId), state.toRuntimeState());
+                    if (person.health !== undefined) next = updateForcePerson(next!, person.id, { health: undefined });
+                }
+                return { instanceId, assignment: forcePersonnelCrewAssignment(next!, instanceId), health };
+            });
+            try {
+                const candidates = await this.unitStore.buildCrewCandidates(edits);
+                if (!this.canEditPersonnel() || !this.isForceOwnerGenerationCurrent(generation)
+                    || !this.unitStore.isSnapshotCurrent(fence) || this.personnel() !== before) return false;
+                const envelope = this.unitStore.envelope()!;
+                const serialized = new Map([...candidates].map(([id, unit]) => [id, unit.serialize()]));
+                const updated: SerializedCBTForceV2 = Object.freeze({ ...envelope,
+                    forceRevision: nextForceRevision(envelope.forceRevision),
+                    roster: this.rosterWithPersonnelCommanders(envelope.roster, next!),
+                    units: Object.freeze(envelope.units.map(entry => {
+                        const unit = serialized.get(entry.instanceId);
+                        return unit ? Object.freeze({ ...entry, unit, stateRevision: unit.stateRevision }) : entry;
+                    })),
+                });
+                const history = instanceIds.flatMap(id => crewProfileHistory(id, candidates.get(id)!,
+                    this.unitStore.crewProfile(id)!, candidates.get(id)!.getCrewAssignment()));
+                this.reserveForceOwnerMutationIntent();
+                this.unitStore.replace(updated, candidates, { preserveC3Session: true });
+                this.installPersonnel(next!);
+                const changed = this.session.record(capture, history, undefined, this.personnel());
+                this.emitChangedFromReservedIntent(changed.length ? changed : instanceIds);
+                return true;
+            } catch { return false; }
         });
     }
 
@@ -1783,20 +1882,105 @@ export class CBTForce extends Force<never> {
         );
     }
 
+    protected override commitUnassignedPersonnelEdit(snapshot: ForcePersonnelSnapshot): void {
+        const envelope = this.unitStore.envelope();
+        if (envelope) {
+            this.unitStore.commit(Object.freeze({ ...envelope, forceRevision: nextForceRevision(envelope.forceRevision) }));
+        }
+        this.advanceForceOwnerGeneration();
+        this.installPersonnel(snapshot);
+    }
+
+    protected override prepareCBTForcePersonnel(
+        previous: SerializedCBTForceV2 | undefined, next: SerializedCBTForceV2,
+    ): ForcePersonnelSnapshot {
+        const remaining = new Set(next.units.map(entry => entry.instanceId));
+        let personnel = this.personnel();
+        const removed = new Set((previous?.units ?? []).filter(entry => !remaining.has(entry.instanceId)).map(entry => entry.instanceId));
+        personnel = removeUnitPersonnel(personnel, removed);
+        const previousEntries = new Map((previous?.units ?? []).map(entry => [entry.instanceId, entry.unit] as const));
+        const profiles = new Map<string, CrewAssignment>();
+        for (const entry of next.units) {
+            if (previousEntries.get(entry.instanceId) !== entry.unit) continue;
+            const live = this.unitStore.unitCrewAssignment(entry.instanceId);
+            if (live) profiles.set(entry.instanceId, live);
+        }
+        return this.personnelFromProfiles(personnel, next, profiles);
+    }
+
+    private personnelFromProfiles(snapshot: ForcePersonnelSnapshot, envelope: SerializedCBTForceV2, liveProfiles?: ReadonlyMap<string, CrewAssignment>, synchronizeCommanders = true): ForcePersonnelSnapshot {
+        let personnel = snapshot;
+        const commanderUnits = new Set(envelope.roster.groups.flatMap(group => group.members.filter(member => member.commander).map(member => member.instanceId)));
+        for (const entry of envelope.units) {
+            const profiles = (liveProfiles?.get(entry.instanceId) ?? entry.unit.deployment.values.crewAssignment).positions;
+            const retained = new Set(profiles.map(position => position.positionId as string));
+            const assignments = personnel.assignments.filter(assignment => assignment.unitId !== entry.instanceId || retained.has(assignment.positionId));
+            if (assignments.length !== personnel.assignments.length) personnel = Object.freeze({ people: personnel.people, assignments: Object.freeze(assignments) });
+            for (const profile of profiles) {
+                const previous = assignedForcePerson(personnel, entry.instanceId, profile.positionId);
+                const patch = { name: profile.name, gunnery: profile.gunnery, piloting: profile.piloting, health: undefined };
+                if (previous) {
+                    const same = (previous.name ?? '') === profile.name
+                        && (previous.gunnery ?? 4) === profile.gunnery && (previous.piloting ?? 5) === profile.piloting && previous.health === undefined;
+                    if (!same) personnel = updateForcePerson(personnel, previous.id, patch);
+                } else {
+                    const person = createForcePerson(patch);
+                    personnel = assignForcePerson(addForcePerson(personnel, person), entry.instanceId, profile.positionId, person.id);
+                }
+            }
+            if (!synchronizeCommanders) continue;
+            const occupants = personnel.assignments.filter(assignment => assignment.unitId === entry.instanceId)
+                .map(assignment => personnel.people.find(person => person.id === assignment.personId)!);
+            const commander = commanderUnits.has(entry.instanceId);
+            if (!commander) {
+                for (const person of occupants) if (person.commander) personnel = updateForcePerson(personnel, person.id, { commander: undefined });
+            } else if (!occupants.some(person => person.commander) && occupants[0]) {
+                personnel = updateForcePerson(personnel, occupants[0].id, { commander: true });
+            }
+        }
+        return personnel;
+    }
+
+    private rosterWithPersonnelCommanders(roster: SerializedCBTForceV2['roster'], personnel: ForcePersonnelSnapshot): SerializedCBTForceV2['roster'] {
+        const commanders = new Set(personnel.people.filter(person => person.commander).map(person => person.id));
+        const commanderUnits = new Set(personnel.assignments.filter(assignment => commanders.has(assignment.personId)).map(assignment => assignment.unitId));
+        return Object.freeze({ ...roster, groups: Object.freeze(roster.groups.map(group => Object.freeze({
+            ...group, members: Object.freeze(group.members.map(member => {
+                const { commander: _commander, ...identity } = member;
+                return Object.freeze({ ...identity, ...(commanderUnits.has(member.instanceId) ? { commander: true as const } : {}) });
+            })),
+        }))) });
+    }
+
     protected override async restoreCBTForce(
         envelope: SerializedCBTForceV2,
+        suppliedPersonnel?: ForcePersonnelSnapshot,
     ): Promise<RestoredCBTForce> {
+        if (suppliedPersonnel !== undefined) {
+            envelope = Object.freeze({ ...envelope,
+                units: Object.freeze(envelope.units.map(entry => {
+                    const unit = entry.unit;
+                    return Object.freeze({ ...entry, unit: Object.freeze({ ...unit, deployment: Object.freeze({ ...unit.deployment,
+                        values: Object.freeze({ ...unit.deployment.values, crewAssignment: forcePersonnelCrewAssignment(suppliedPersonnel, entry.instanceId) }),
+                    }) }) as typeof unit });
+                })),
+                roster: this.rosterWithPersonnelCommanders(envelope.roster, suppliedPersonnel),
+            });
+        }
         const restored = await this.unitStore.restore(
             envelope,
             this.injector.get(CBTUnitService),
             this.currentScenarioRules(),
         );
+        const unitIds = new Set(restored.envelope.units.map(entry => entry.instanceId));
+        const basePersonnel = suppliedPersonnel ?? EMPTY_FORCE_PERSONNEL;
+        const removed = new Set(basePersonnel.assignments.filter(assignment => !unitIds.has(assignment.unitId)).map(assignment => assignment.unitId));
+        const personnel = this.personnelFromProfiles(detachForcePersonnel(basePersonnel, removed), restored.envelope, undefined, suppliedPersonnel === undefined);
         return Object.freeze({
-            ...(restored.envelope === envelope
-                ? {}
-                : { replacement: restored.envelope }),
+            replacement: restored.envelope,
             install: () => {
                 this.unitStore.install(restored);
+                this.installPersonnel(personnel);
                 this.resetRuntimeCommandSession();
             },
             ...(restored.warnings.length === 0
@@ -2071,9 +2255,12 @@ export class CBTForce extends Force<never> {
         if (!serialized.cbt) throw new Error('CBT force clone requires a validated V2 envelope');
 
         const cbt = await remapCBTForceCloneEnvelope(serialized.cbt);
+        const unitIdMap = new Map(serialized.cbt.units.map((entry, index) => [entry.instanceId, cbt.units[index]!.instanceId] as const));
+        const personnel = cloneForcePersonnel(this.personnel(), unitIdMap);
         const record = this.buildCBTForcePersistenceRecord(
             Object.freeze({
                 ...this.buildCBTForceMetadataRecord(cbt.forceId, new Date().toISOString()),
+                personnel,
                 owned: true,
             }),
             cbt,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -166,6 +167,7 @@ interface Vec2 {
     styleUrl: './c3-network-dialog.component.scss'
 })
 export class C3NetworkDialogComponent implements AfterViewInit {
+    readonly unitNames = inject(UnitNameService);
     private dialogRef = inject(DialogRef<C3NetworkDialogResult>);
     protected data = inject<C3NetworkDialogData>(DIALOG_DATA);
     private toastService = inject(ToastService);
@@ -249,6 +251,10 @@ export class C3NetworkDialogComponent implements AfterViewInit {
     constructor() {
         this.destroyRef.onDestroy(() => this.cleanupGlobalPointerState());
         this.watchForRemoteUpdates();
+    }
+
+    protected c3Chassis(unit: C3DialogUnit | undefined): string {
+        return this.unitNames.chassis(unit?.member?.entity ?? unit?.getSummary?.() ?? unit?.getC3Presentation());
     }
 
     /** One presentation snapshot; mechanics remain owned by Entity + runtime. */
@@ -742,7 +748,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 for (const id of network.peerIds) {
                     const node = nodesById.get(id) ?? null;
                     members.push({
-                        id, name: node?.unit.getC3Presentation().chassis || 'Unknown',
+                        id, name: this.c3Chassis(node?.unit) || 'Unknown',
                         role: 'peer', canRemove: !this.data.readOnly, node,
                         brokenLink: runtimeGraph.hasOnlyBrokenIncidentLinks(network.id, id),
                         ...getUnitBvData(node)
@@ -752,7 +758,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const masterNode = nodesById.get(network.masterId) ?? null;
                 members.push({
                     id: network.masterId,
-                    name: masterNode?.unit.getC3Presentation().chassis || 'Unknown',
+                    name: this.c3Chassis(masterNode?.unit) || 'Unknown',
                     role: 'master', canRemove: false, node: masterNode, network,
                     brokenLink: runtimeGraph.hasOnlyBrokenIncidentLinks(network.id, network.masterId),
                     ...getUnitBvData(masterNode)
@@ -771,7 +777,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                             const childVm = buildNetworkVm(childNet, false);
                             members.push({
                                 id: parsed.unitId,
-                                name: node?.unit.getC3Presentation().chassis || 'Unknown',
+                                name: this.c3Chassis(node?.unit) || 'Unknown',
                                 role: 'sub-master', canRemove: !this.data.readOnly, isSelfConnection,
                                 memberStr, node, network: childNet, networkVm: childVm ?? undefined,
                                 brokenLink: !runtimeGraph.stateForNetwork(parsed.unitId, childNet.id).linked,
@@ -784,7 +790,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
                     members.push({
                         id: parsed.unitId,
-                        name: node?.unit.getC3Presentation().chassis || 'Unknown',
+                        name: this.c3Chassis(node?.unit) || 'Unknown',
                         role: 'slave', canRemove: !this.data.readOnly, isSelfConnection, memberStr, node,
                         brokenLink: runtimeGraph.childLinkBroken(network.id, {
                             unitId: parsed.unitId,
@@ -848,7 +854,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                 const node = nodesById.get(id) ?? null;
                 return {
                     id,
-                    name: node?.unit.getC3Presentation().chassis || 'Unknown',
+                    name: this.c3Chassis(node?.unit) || 'Unknown',
                     role: index === 0 ? 'master' : 'slave',
                     canRemove: false,
                     brokenLink: false,

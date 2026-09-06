@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { formatUnitName } from '../../utils/unit-display-name.util';
 import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
 import { merge, type Subscription } from 'rxjs';
 
@@ -391,7 +392,7 @@ export class EquipmentDialogRuntimeController {
             || isBoobyTrapDetonated(row.mode)
             || row.status !== 'available') return;
         const confirmed = await this.dialogs.requestConfirmation(
-            `Detonate ${this.snapshot().displayName}'s Booby Trap? `
+            `Detonate ${formatUnitName(this.member.entity, this.options.options().displayUnitNameFormat)}'s Booby Trap? `
                 + 'The unit will be completely destroyed. Ejection and blast damage must be resolved on the battlefield.',
             'Detonate Booby Trap',
             'danger',

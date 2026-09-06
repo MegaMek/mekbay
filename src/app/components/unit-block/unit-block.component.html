@@ -48,13 +48,11 @@
             class="compact-notification-row"
             [snapshot]="notificationSnapshot()" />
         <div class="pilot-info-list">
-            @if (isAlphaStrike()) {
-            <button type="button" class="pilot-info info-slot numeric slim interactive">
-                <span class="value">{{ alphaStrikePilotSkill() }}</span>
-            </button>
-            } @else {
-            <button type="button" class="pilot-info info-slot numeric slim interactive">
-                <span class="value">{{ pilotStats() }}</span>
+            @for (badge of crewBadges(); track badge.positionId) {
+            <button type="button" class="pilot-info info-slot numeric slim interactive"
+                [class.vacant]="badge.vacant" [title]="badge.title" [attr.aria-label]="badge.title"
+                (click)="editPilot($event)">
+                <span class="value">{{ badge.skills }}</span>
             </button>
             }
         </div>
@@ -206,11 +204,6 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                         <div class="info-slot slim centered">
                             <span class="value">MV: <span [innerHTML]="getEffectiveMovement()"></span></span>
                         </div>
-                        <button type="button" class="info-slot slim centered pilot-info interactive" (click)="editPilot($event)"
-                            title="Edit Pilot" aria-label="Edit pilot">
-                            <span class="value">{{ alphaStrikePilotSkill() }}</span>
-                            <img src="/images/helmet.svg" class="icon" alt="Pilot">
-                        </button>
                     } @else {
                         <div class="info-slot slim numeric" [tooltip]="bvTooltip()">
                             <span class="value">BV: {{ displayedBvPv() }}</span>
@@ -219,10 +212,14 @@ L25.311,132.56z M128.335,129.929l-9.917,2.643l-7.262-7.262l2.649-9.917l9.923-2.6
                             <span class="value">{{ unit()?.tons | formatTons }}</span>
                             <img src="/images/weight.svg" class="icon" alt="Tonnage">
                         </div>
-                        <button type="button" class="info-slot slim numeric pilot-info interactive" (click)="editPilot($event)"
-                            title="Edit Crew" aria-label="Edit crew">
-                            <span class="value">{{ pilotStats() }}</span>
-                            <img src="/images/helmet.svg" class="icon" alt="Pilot">
+                    }
+                    @for (badge of crewBadges(); track badge.positionId) {
+                        <button type="button" class="info-slot slim numeric pilot-info interactive"
+                            [class.vacant]="badge.vacant" [title]="badge.title" [attr.aria-label]="badge.title"
+                            (click)="editPilot($event)">
+                            @if (badge.vacant) { <span class="value">VACANT</span> }
+                            @else { <span class="value">{{ badge.skills }}</span> }
+                            <img src="/images/helmet.svg" class="icon" alt="">
                         </button>
                     }
                     @for (c3Item of c3NetworkItems(); track c3Item.networkType) {

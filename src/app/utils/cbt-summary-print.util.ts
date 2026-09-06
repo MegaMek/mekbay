@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { DisplayUnitNameFormat } from '../models/options.model';
+import { formatUnitChassis } from './unit-display-name.util';
 import { isCaseEquipment } from '../models/case-equipment.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { BaseEntity } from '../models/entity/base-entity';
@@ -36,6 +38,7 @@ export class CBTSummaryPrintUtil {
         force: CBTForce,
         printOptions: CBTSummaryPrintOptions,
         triggerPrint: boolean = true,
+        nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
     ): Promise<void> {
         if (force.getCBTMembers().length === 0) {
             console.warn('No units to export.');
@@ -45,7 +48,7 @@ export class CBTSummaryPrintUtil {
         await printInOverlay({
             containerId: 'cbt-summary-print-container',
             bodyClass: 'cbt-summary-print-active',
-            content: await this.createRosterSummary(force, printOptions.printPilotData),
+            content: await this.createRosterSummary(force, printOptions.printPilotData, nameFormat),
             styles: this.getPrintStyles(printOptions.printMargin, printOptions.paperSize),
             triggerPrint,
         });
@@ -54,6 +57,7 @@ export class CBTSummaryPrintUtil {
     private static async createRosterSummary(
         force: CBTForce,
         printPilotData: boolean,
+        nameFormat: DisplayUnitNameFormat,
     ): Promise<string> {
         const members = force.getCBTMembers();
         let totalBaseBv = 0;
@@ -67,7 +71,7 @@ export class CBTSummaryPrintUtil {
             const rows = groupMembers.map(member => {
                 totalBaseBv += this.getBaseBv(member);
                 totalFinalBv += this.getPrintableBv(member, printPilotData);
-                return this.createRosterTableRow(member, printPilotData);
+                return this.createRosterTableRow(member, printPilotData, nameFormat);
             });
             const groupBv = groupMembers.reduce(
                 (total, member) => total + this.getPrintableBv(member, printPilotData),
@@ -124,11 +128,11 @@ export class CBTSummaryPrintUtil {
         `;
     }
 
-    private static createRosterTableRow(member: CBTForceMember, printPilotData: boolean): string {
+    private static createRosterTableRow(member: CBTForceMember, printPilotData: boolean, nameFormat: DisplayUnitNameFormat = 'innerSphereClan'): string {
         const entity = member.entity;
         const primaryCrew = member.force.getUnitCrewAssignment(member.id)?.positions[0];
         const alias = printPilotData ? primaryCrew?.name : undefined;
-        const chassis = entity.fullChassis();
+        const chassis = formatUnitChassis(entity, nameFormat);
         const chassisLine = alias ? `${chassis} (${alias})` : chassis;
         const unitType = entity.unitType();
         const unitSubtype = entity.unitSubtype();

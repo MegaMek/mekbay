@@ -96,13 +96,15 @@ export class ForceDialogsService {
                 gameSystem: force instanceof CBTForce ? GameSystem.CBT : GameSystem.AS,
                 printSummary: async (printOptions: PrintAllOptions) => {
                     if (force instanceof CBTForce) {
-                        await CBTSummaryPrintUtil.print(force, printOptions);
+                        await CBTSummaryPrintUtil.print(force, printOptions, true, this.options.options().displayUnitNameFormat);
                     } else if (force instanceof ASForce) {
                         await ASSummaryPrintUtil.print(
                             force,
                             this.injector.get(AsAbilityLookupService),
                             this.options.options().ASUseHex,
                             printOptions,
+                            true,
+                            this.options.options().displayUnitNameFormat,
                         );
                     }
                 },

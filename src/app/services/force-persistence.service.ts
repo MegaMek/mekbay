@@ -23,7 +23,6 @@ import {
 } from '../models/force-serialization';
 import {
     createLoadForceEntry,
-    createLoadForceEntryFromSerializedForce,
     LoadForceEntry,
     type RemoteLoadForceEntry,
 } from '../models/load-force-entry.model';
@@ -43,6 +42,7 @@ import {
     type PersistedForceV1ConversionOptions,
 } from '../models/runtime/legacy-force-v1-converter';
 import { naturalCompare } from '../utils/sort.util';
+import { ForceListSession } from '../models/force-list-session';
 import { DataService } from './data.service';
 import { DbService } from './db.service';
 import { DialogsService } from './dialogs.service';
@@ -241,7 +241,6 @@ export class ForcePersistenceService {
     /** Converts the sole legacy storage format before it reaches live force models. */
     private async normalizePersistedForce(
         raw: SerializedForce,
-        notifyWarnings = false,
     ): Promise<SerializedForce> {
         if (raw.version !== 1) return raw;
 
@@ -252,6 +251,7 @@ export class ForcePersistenceService {
         let skippedUnitCount = 0;
         let resetUnitStateCount = 0;
         const warn = (warning: PersistedForceV1ConversionWarning): void => {
+            this.logger.warn(`V1 force conversion: ${warning.message}`);
             if (warning.kind === 'unit-skipped') {
                 skippedUnitCount += 1;
                 return;
@@ -266,7 +266,6 @@ export class ForcePersistenceService {
                 return;
             }
             warnings.set(warning.message, { warning, count: 1 });
-            this.logger.warn(`V1 force conversion: ${warning.message}`);
         };
 
         const materializeUnit = async (
@@ -294,7 +293,7 @@ export class ForcePersistenceService {
             materializeUnit,
             onWarning: warn,
         });
-        if (notifyWarnings && (warnings.size > 0 || skippedUnitCount > 0 || resetUnitStateCount > 0)) {
+        if (warnings.size > 0 || skippedUnitCount > 0 || resetUnitStateCount > 0) {
             const notices: string[] = [];
             if (skippedUnitCount > 0) {
                 notices.push(skippedUnitCount === 1
@@ -306,8 +305,10 @@ export class ForcePersistenceService {
                     ? '1 unit had unreadable saved state and was reset to pristine.'
                     : `${resetUnitStateCount} units had unreadable saved state and were reset to pristine.`);
             }
-            notices.push(...[...warnings.values()].map(({ warning, count }) =>
+            const details = [...warnings.values()];
+            notices.push(...details.slice(0, 3).map(({ warning, count }) =>
                 `${warning.message}${count === 1 ? '' : ` (${count} occurrences)`}`));
+            if (details.length > 3) notices.push('Other unreadable saved details were skipped.');
             await this.injector.get(DialogsService).showNotice(
                 notices.map(message => `• ${message}`).join('\n'),
                 'V1 Save Loaded with Warnings',
@@ -317,7 +318,7 @@ export class ForcePersistenceService {
     }
 
     private async loadPersistedForce(raw: SerializedForce): Promise<Force> {
-        return this.deserializeCurrentForce(await this.normalizePersistedForce(raw, true));
+        return this.deserializeCurrentForce(await this.normalizePersistedForce(raw));
     }
 
     private async deserializeCurrentForce(persisted: SerializedForce): Promise<Force> {
@@ -644,7 +645,14 @@ export class ForcePersistenceService {
         if (!ownerlessLease) return null;
         await ownerlessLease.ready;
         if (!detachedAuthorityIsCurrent()) return null;
-        const localRaw = skipLocal ? null : await this.dbService.getForce(instanceId);
+        let localRaw: SerializedForce | null = null;
+        if (!skipLocal) {
+            try {
+                localRaw = await this.dbService.getForce(instanceId);
+            } catch (error) {
+                this.logger.warn(`Could not read local force ${instanceId}: ${error}`);
+            }
+        }
         let cloudRaw: SerializedForce | null = null;
         let triedCloud = false;
         if (showLoading) this.isCloudForceLoading.set(true);
@@ -715,9 +723,14 @@ export class ForcePersistenceService {
             result.setExpectedCloudCBTForceV2Revision(null);
             if (!result.readOnly() && ownerlessLease) {
                 try {
+                    // The explicit load already reported any V1 losses. New
+                    // cloud saves use the recovered runtime's current schema.
+                    const cloudSave = localRaw.version === 1
+                        ? await result.serializeForPersistence()
+                        : localRaw;
                     await this.pushOwnerlessForceToCloud(
                         result,
-                        localRaw,
+                        cloudSave,
                         ownerlessLease,
                         authorityGeneration,
                     );
@@ -830,6 +843,18 @@ export class ForcePersistenceService {
         } finally {
             this.releaseForceSaveFence(fence);
         }
+    }
+
+    /** Reconnect confirmed that a locally created/reloaded force has no cloud copy. */
+    public async saveForceMissingFromCloud(force: Force): Promise<void> {
+        const instanceId = force.instanceId();
+        if (!instanceId || this.activeForceAuthority.get(instanceId) !== force
+            || !force.isWholeOwnerActive() || force.readOnly()) return;
+        // A save may have succeeded since the reconnect lookup began. Its
+        // acknowledgement is newer evidence than this missing-force response.
+        if (typeof force.getExpectedCloudCBTForceV2Revision() === 'number') return;
+        force.setExpectedCloudCBTForceV2Revision(null);
+        await this.saveForceAndWaitForCloud(force);
     }
 
     /**
@@ -1378,11 +1403,12 @@ export class ForcePersistenceService {
         lease: OwnerlessForceOperationLease,
         generation: number,
     ): Promise<boolean> {
-        const normalized = await this.normalizePersistedForce(detached);
-        const instanceId = normalized.instanceId;
+        // Caching a V1 source must preserve it until an explicit load can warn
+        // about skipped/reset state. Only a runtime save promotes it to V2.
+        const instanceId = detached.instanceId;
         if (!instanceId || !this.isOwnerlessForceOperationCurrent(instanceId, lease, generation)) return false;
-        if (normalized.type !== GameSystem.AS && normalized.cbt !== undefined) {
-            await inspectSerializedCBTForceV2(normalized);
+        if (detached.version === 2 && detached.type !== GameSystem.AS && detached.cbt !== undefined) {
+            await inspectSerializedCBTForceV2(detached);
         }
         if (!this.isOwnerlessForceOperationCurrent(instanceId, lease, generation)) return false;
         let written = false;
@@ -1390,20 +1416,20 @@ export class ForcePersistenceService {
             instanceId,
             async () => {
                 if (!this.isOwnerlessForceOperationCurrent(instanceId, lease, generation)) return;
-                await this.dbService.saveForce(normalized);
+                await this.dbService.saveForce(detached);
                 written = this.isOwnerlessForceOperationCurrent(instanceId, lease, generation);
             },
         );
         return written;
     }
 
-    public async listForces(): Promise<LoadForceEntry[]> {
+    private async listLocalForceEntries(): Promise<LoadForceEntry[]> {
         this.logger.info(`Retrieving local forces...`);
         const localForces: LoadForceEntry[] = [];
         for (const raw of await this.dbService.listForces()) {
             try {
-                localForces.push(createLoadForceEntryFromSerializedForce(
-                    await this.normalizePersistedForce(raw),
+                localForces.push(createLoadForceEntry(
+                    raw,
                     this.dataService,
                     { local: true },
                 ));
@@ -1411,36 +1437,56 @@ export class ForcePersistenceService {
                 this.logger.warn(`Skipping unreadable saved force: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
-        this.logger.info(`Retrieving cloud forces...`);
-        const cloudForces = await this.listForcesCloud();
-        this.logger.info(`Found ${localForces.length} local forces and ${cloudForces.length} cloud forces.`);
-        const forceMap = new Map<string, LoadForceEntry>();
-        const getTimestamp = (f: { readonly timestamp?: string | number | null }) => {
-            if (f && typeof f.timestamp === 'number') return f.timestamp;
-            if (f && f.timestamp) return new Date(f.timestamp).getTime();
-            return 0;
-        };
-        for (const force of localForces) {
-            if (!force) continue;
-            if (!force.instanceId) continue;
-            force.local = true;
-            forceMap.set(force.instanceId, force);
-        }
-        for (const cloudForce of cloudForces) {
-            if (!cloudForce) continue;
-            if (!cloudForce.instanceId) continue;
-            const localForce = forceMap.get(cloudForce.instanceId);
-            if (!localForce || getTimestamp(cloudForce) >= getTimestamp(localForce)) {
-                if (localForce) {
-                    cloudForce.local = true; // This force is both local and cloud
-                }
-                forceMap.set(cloudForce.instanceId, cloudForce);
+        return localForces;
+    }
+
+    /** All local summaries, with cloud pages owned and released by the requesting dialog. */
+    public async openForceList(): Promise<ForceListSession> {
+        const local = await this.listLocalForceEntries();
+        for (const entry of local) this.updateCachedForceTags(entry.instanceId, entry.tags);
+        const cloud = await this.canUseCloud();
+        const uuid = this.userStateService.uuid();
+        return new ForceListSession(local, async (cursor, pageSize) => {
+            if (!cloud) return { entries: [] };
+            if (this.userStateService.uuid() !== uuid) throw new Error('The active account changed. Reopen the force list.');
+            const response = await this.wsService.sendAndWaitForResponse<
+                WsDataResponse<RemoteLoadForceWireEntry[]> & { nextCursor?: string; nextTimestamp?: number }
+            >({
+                action: 'listForces',
+                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
+                uuid,
+                sortBy: 'timestamp',
+                pageSize,
+                ...(cursor ? { afterInstanceId: cursor.instanceId, afterTimestamp: cursor.timestamp } : {}),
+            });
+            if (!response || response['action'] === 'error') {
+                throw new Error(typeof response?.['message'] === 'string' ? response['message'] : 'Could not load cloud forces.');
             }
-        }
-        const mergedForces = Array.from(forceMap.values()).sort((a, b) => getTimestamp(b) - getTimestamp(a));
-        this.refreshCachedForceTags(mergedForces);
-        this.logger.info(`Found ${mergedForces.length} unique forces.`);
-        return mergedForces;
+            if (this.userStateService.uuid() !== uuid) throw new Error('The active account changed. Reopen the force list.');
+            const hasCursor = response.nextCursor !== undefined || response.nextTimestamp !== undefined;
+            if (!Array.isArray(response.data) || (hasCursor && (
+                typeof response.nextCursor !== 'string' || response.nextCursor.trim().length === 0
+                || !Number.isSafeInteger(response.nextTimestamp)
+                || !Number.isFinite(new Date(response.nextTimestamp!).getTime())
+            ))) throw new Error('Invalid cloud force-list page.');
+            const entries: LoadForceEntry[] = [];
+            for (const wire of response.data) {
+                try {
+                    entries.push(createLoadForceEntry(decodeRemoteLoadForceEntry(wire), this.dataService, { cloud: true }));
+                } catch (error) {
+                    this.logger.warn(`Skipping unreadable cloud force: ${error}`);
+                }
+            }
+            return {
+                entries,
+                ...(response.nextCursor === undefined ? {} : {
+                    next: { instanceId: response.nextCursor, timestamp: response.nextTimestamp! },
+                }),
+            };
+        }, (entries, complete) => {
+            if (complete) this.refreshCachedForceTags(entries);
+            else for (const entry of entries) this.updateCachedForceTags(entry.instanceId, entry.tags);
+        });
     }
 
     private static readonly FORCE_BULK_CHUNK_SIZE = 100;
@@ -1449,8 +1495,8 @@ export class ForcePersistenceService {
         const uniqueIds = Array.from(new Set(instanceIds.filter((instanceId): instanceId is string => !!instanceId)));
         if (uniqueIds.length === 0) return 0;
 
-        const localRawForces = await Promise.all(uniqueIds.map((instanceId) => this.dbService.getForce(instanceId)));
-        const missingIds = uniqueIds.filter((_, index) => !localRawForces[index]);
+        const existingIds = await this.dbService.getExistingForceIds(uniqueIds);
+        const missingIds = uniqueIds.filter(instanceId => !existingIds.has(instanceId));
         if (missingIds.length === 0) return 0;
 
         const cloudForces = await this.getForcesCloudRawByIds(missingIds);
@@ -1466,17 +1512,13 @@ export class ForcePersistenceService {
         if (orderedIds.length === 0) return [];
 
         const entryMap = new Map<string, LoadForceEntry>();
-        const localRawForces = await Promise.all(orderedIds.map(instanceId => this.dbService.getForce(instanceId)));
+        const localPreviews = await Promise.all(orderedIds.map(instanceId => this.dbService.getForcePreview(instanceId)));
 
-        for (const localRaw of localRawForces) {
-            if (!localRaw?.instanceId) continue;
+        for (const preview of localPreviews) {
+            if (!preview?.instanceId) continue;
             entryMap.set(
-                localRaw.instanceId,
-                createLoadForceEntryFromSerializedForce(
-                    await this.normalizePersistedForce(localRaw),
-                    this.dataService,
-                    { local: true },
-                ),
+                preview.instanceId,
+                createLoadForceEntry(preview, this.dataService, { local: true }),
             );
         }
 
@@ -1622,36 +1664,6 @@ export class ForcePersistenceService {
     }
 
 
-    private async listForcesCloud(): Promise<LoadForceEntry[]> {
-        const ws = await this.canUseCloud();
-        if (!ws) return [];
-        const forces: LoadForceEntry[] = [];
-        const uuid = this.userStateService.uuid();
-        let afterInstanceId: string | undefined;
-        do {
-            const response = await this.wsService.sendAndWaitForResponse<
-                WsDataResponse<RemoteLoadForceWireEntry[]> & { readonly nextCursor?: string }
-            >({
-                action: 'listForces',
-                forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
-                uuid,
-                ...(afterInstanceId === undefined ? {} : { afterInstanceId }),
-            });
-            for (const wire of response?.data ?? []) {
-                try {
-                    const raw = decodeRemoteLoadForceEntry(wire);
-                    forces.push(createLoadForceEntry(raw, this.dataService, { cloud: true }));
-                } catch (error) {
-                    this.logger.error('Failed to deserialize force: ' + error + ' ' + wire);
-                }
-            }
-            const nextCursor = response?.nextCursor;
-            if (typeof nextCursor !== 'string' || nextCursor === afterInstanceId) break;
-            afterInstanceId = nextCursor;
-        } while (true);
-        return forces;
-    }
-
     SAVE_FORCE_CLOUD_DEBOUNCE_MS = 2000;
     // Debounce map to prevent multiple simultaneous saves for the same force
     private saveForceCloudDebounce = new Map<string, {
@@ -1682,14 +1694,19 @@ export class ForcePersistenceService {
         return this.forceAuthorityGeneration.get(instanceId) ?? 0;
     }
 
-    private isForceSaveFenceCurrent(force: Force, fence: ForceSaveFence): boolean {
+    private isForceSaveAuthorityCurrent(force: Force, fence: ForceSaveFence): boolean {
         const activeForce = this.activeForceAuthority.get(fence.instanceId);
         return fence.owner === force
             && force.instanceId() === fence.instanceId
             && this.registeredForceIdentity.get(force) === fence.instanceId
             && !force.readOnly()
+            && !force.isWholeOwnerRetired()
             && activeForce === force
-            && this.currentForceAuthorityGeneration(fence.instanceId) === fence.generation
+            && this.currentForceAuthorityGeneration(fence.instanceId) === fence.generation;
+    }
+
+    private isForceSaveFenceCurrent(force: Force, fence: ForceSaveFence): boolean {
+        return this.isForceSaveAuthorityCurrent(force, fence)
             && force.isForceOwnerRevisionFenceCurrent(fence.revisionFence);
     }
 
@@ -1699,7 +1716,9 @@ export class ForcePersistenceService {
         serialized: SerializedForce,
         fence: ForceSaveFence,
     ): void {
-        if (!this.isForceSaveFenceCurrent(force, fence)) return;
+        // A later local edit invalidates the saved bytes, but the successful
+        // cloud write is still the predecessor for this same owner's next save.
+        if (!this.isForceSaveAuthorityCurrent(force, fence)) return;
         force.markCloudCBTForceV2Saved(serialized);
         const pending = this.saveForceCloudDebounce.get(fence.instanceId);
         if (pending
@@ -1889,6 +1908,7 @@ export class ForcePersistenceService {
         serialized: SerializedForce,
         expectedCloudRevision: number | null | undefined,
         fence: ForceSaveFence,
+        unloading = false,
     ): Promise<void> {
         const instanceId = force.instanceId();
         if (!instanceId) return Promise.reject(new Error('Force instance ID is required for cloud saving.'));
@@ -1902,25 +1922,19 @@ export class ForcePersistenceService {
             // remote authority swap advances the generation. Never put those
             // already-queued stale bytes on the wire.
             if (!this.isForceSaveFenceCurrent(force, fence)) {
-                return Promise.resolve<number | null | undefined>(undefined);
+                return Promise.resolve(expected);
             }
             return this.sendForceToCloud(
                 force,
                 serialized,
                 expected,
                 fence,
-            );
+                unloading,
+            ).then(acknowledgedRevision => acknowledgedRevision === undefined ? expected : acknowledgedRevision);
         };
-        const sent = predecessor
+        const task = predecessor
             ? predecessor.then(send, () => send(expectedCloudRevision))
             : send(expectedCloudRevision);
-        const task = sent.then(acknowledgedRevision => {
-            if (this.isForceSaveFenceCurrent(force, fence)) {
-                this.acknowledgeForceCloudSave(force, serialized, fence);
-                return force.getExpectedCloudCBTForceV2Revision();
-            }
-            return acknowledgedRevision;
-        });
         const entry = Object.freeze({ generation: fence.generation, fence, promise: task });
         this.forceCloudSaveChain.set(instanceId, entry);
         task.then(
@@ -1943,23 +1957,27 @@ export class ForcePersistenceService {
         serialized: SerializedForce,
         expectedCloudRevision: number | null | undefined,
         fence: ForceSaveFence,
+        unloading: boolean,
     ): Promise<number | null | undefined> {
-        const ws = await this.canUseCloud();
-        if (!this.isForceSaveFenceCurrent(force, fence)) return undefined;
-        if (!ws) {
-            throw new Error('Cloud save skipped because WebSocket is unavailable.');
-        }
-
-        const uuid = this.userStateService.uuid();
         let savedForceCount: number | undefined;
-        try {
-            savedForceCount = await this.dbService.countForces();
-        } catch (error) {
-            if (this.isForceSaveFenceCurrent(force, fence)) {
-                this.logger.warn(`Could not count local forces before cloud save: ${error}`);
+        // Page lifecycle flushes already checked the open socket. Dispatch
+        // synchronously before the page can close, while still tracking the ACK.
+        if (!unloading) {
+            const ws = await this.canUseCloud();
+            if (!this.isForceSaveFenceCurrent(force, fence)) return undefined;
+            if (!ws) {
+                throw new Error('Cloud save skipped because WebSocket is unavailable.');
+            }
+            try {
+                savedForceCount = await this.dbService.countForces();
+            } catch (error) {
+                if (this.isForceSaveFenceCurrent(force, fence)) {
+                    this.logger.warn(`Could not count local forces before cloud save: ${error}`);
+                }
             }
         }
         if (!this.isForceSaveFenceCurrent(force, fence)) return undefined;
+        const uuid = this.userStateService.uuid();
         let response: ForceSaveResponse | null;
         try {
             response = await this.wsService.sendAndWaitForResponse<ForceSaveResponse>({
@@ -1979,12 +1997,12 @@ export class ForcePersistenceService {
             });
 
         } catch (error) {
-            if (!this.isForceSaveFenceCurrent(force, fence)) return undefined;
+            if (!this.isForceSaveAuthorityCurrent(force, fence)) return undefined;
             throw error;
         }
         // Remote acceptance detaches old-generation responses completely:
         // no adoption prompts, warnings, revision acknowledgements, or errors.
-        if (!this.isForceSaveFenceCurrent(force, fence)) return undefined;
+        if (!this.isForceSaveAuthorityCurrent(force, fence)) return undefined;
 
         if (!response) {
             throw new Error('Cloud save did not receive a response.');
@@ -2000,11 +2018,12 @@ export class ForcePersistenceService {
         if (response.action !== 'forceSaved') {
             throw new Error(`Cloud save returned unexpected response: ${response.action ?? 'unknown'}.`);
         }
+        this.acknowledgeForceCloudSave(force, serialized, fence);
         return serialized.cbt?.forceRevision ?? null;
     }
 
     // Flush function performs the actual cloud save for the latest Force for a given instanceId
-    private async flushSaveForceCloud(instanceId: string): Promise<void> {
+    private async flushSaveForceCloud(instanceId: string, unloading = false): Promise<void> {
         const entry = this.saveForceCloudDebounce.get(instanceId);
         if (!entry) return;
         // Remove entry immediately to allow new debounces
@@ -2024,7 +2043,7 @@ export class ForcePersistenceService {
         }
 
         try {
-            await this.sendForceToCloudOrdered(force, serialized, expectedCloudRevision, fence);
+            await this.sendForceToCloudOrdered(force, serialized, expectedCloudRevision, fence, unloading);
             for (const r of resolvers) r.resolve();
         } catch (err) {
             for (const r of resolvers) r.reject(err);
@@ -2033,69 +2052,11 @@ export class ForcePersistenceService {
 
     // Best-effort flush of all pending debounced cloud saves.
     private flushAllPendingSavesOnUnload(): void {
-        if (!this.saveForceCloudDebounce || this.saveForceCloudDebounce.size === 0) return;
-
         const ws = this.wsService.getWebSocket();
-        const canSendOverWs = ws && ws.readyState === WebSocket.OPEN;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-        for (const [instanceId, entry] of Array.from(this.saveForceCloudDebounce.entries())) {
-            try {
-                // stop scheduled debounce
-                clearTimeout(entry.timeout);
-                this.saveForceCloudDebounce.delete(instanceId);
-
-                // Skip read-only forces, they must never be saved
-                if (entry.force.readOnly()) {
-                    for (const r of entry.resolvers) {
-                        try { r.resolve(); } catch { /* best-effort */ }
-                    }
-                    continue;
-                }
-
-                // An acknowledged CAS is already in flight. Its chained save
-                // owns the next expected revision; a synchronous unload write
-                // would carry stale CAS evidence and can only be rejected.
-                if (this.forceCloudSaveChain.has(instanceId)) {
-                    for (const r of entry.resolvers) {
-                        try { r.resolve(); } catch { /* best-effort */ }
-                    }
-                    continue;
-                }
-
-                // try to send final payload over websocket if available (synchronous queueing)
-                if (canSendOverWs) {
-                    try {
-                        const uuid = this.userStateService.uuid();
-                        const payload = {
-                            action: 'saveForce',
-                            forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
-                            uuid,
-                            data: encodeForceForStorage(entry.serialized),
-                            ...(entry.serialized.cbt === undefined ? {} : {
-                                cbtPersistence: {
-                                    writerVersion: 2,
-                                    ...(entry.expectedCloudRevision === undefined
-                                        ? {}
-                                        : {
-                                            expectedRevision: entry.expectedCloudRevision,
-                                        }),
-                                },
-                            }),
-                        };
-                        this.wsService.send(payload);
-                    } catch { /* best-effort */ }
-                }
-
-                // resolve pending promises so callers do not hang on unload
-                for (const r of entry.resolvers) {
-                    try { r.resolve(); } catch { /* best-effort */ }
-                }
-            } catch (err) {
-                // ensure resolvers are resolved even on error
-                for (const r of entry.resolvers) {
-                    try { r.resolve(); } catch { /* best-effort */ }
-                }
-            }
+        for (const instanceId of Array.from(this.saveForceCloudDebounce.keys())) {
+            void this.flushSaveForceCloud(instanceId, true);
         }
     }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { DecimalPipe } from '@angular/common';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import {
@@ -43,6 +44,7 @@ import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../f
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { ForceReservesPreviewComponent } from '../force-reserves-preview/force-reserves-preview.component';
 import { GameSystem } from '../../models/common.model';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
@@ -70,7 +72,7 @@ export interface ForcePreviewUnitMenuActionEvent {
 
 @Component({
     selector: 'force-preview-panel',
-    imports: [DecimalPipe, CdkMenuModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent, ForceTagsComponent],
+    imports: [DecimalPipe, CdkMenuModule, CleanModelStringPipe, MeasureClampOverflowDirective, UnitIconComponent, ForceTagsComponent, ForceReservesPreviewComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     @let unitDisplayName = effectiveUnitDisplayName();
@@ -211,7 +213,7 @@ export interface ForcePreviewUnitMenuActionEvent {
                                         || unitDisplayName === 'both'
                                         || !unitEntry.alias) {
                                     <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
-                                    <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
+                                    <div class="unit-chassis">{{ unitNames.chassis(unitEntry.unit) }}</div>
                                     }
                                     @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
                                     <div class="unit-alias"
@@ -307,6 +309,9 @@ export interface ForcePreviewUnitMenuActionEvent {
                         }
                     </div>
                 </div>
+                }
+                @if ((entry.reserveCount ?? 0) > 0) {
+                    <force-reserves-preview [count]="entry.reserveCount ?? 0"></force-reserves-preview>
                 }
             </div>
         </div>
@@ -823,6 +828,7 @@ export interface ForcePreviewUnitMenuActionEvent {
     `],
 })
 export class ForcePreviewPanelComponent {
+    readonly unitNames = inject(UnitNameService);
     private readonly dialogsService = inject(DialogsService);
     private readonly forceTaggingService = inject(ForceTaggingService);
     readonly optionsService = inject(OptionsService);

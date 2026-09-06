@@ -660,3 +660,12 @@
     }
 
 }
+.hangar-page-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    color: var(--text-color-secondary);
+    font-size: 0.8rem;
+}

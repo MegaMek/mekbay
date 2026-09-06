@@ -5,20 +5,50 @@ import {
     serializeMekMovementPsrStateV2,
 } from './mek-movement-psr-v2';
 import {
-    MEK_MOVEMENT_PSR_RESTORATION_ALGORITHM_VERSION_V1,
     canonicalizeLegacyMekTurnStateV1,
     createPristineLegacyMekTurnStateV1,
     parseLegacyMekTurnStateV1,
+} from './legacy-mek-turn-state-v1';
+import {
     projectLegacyMekTurnStateV1,
     restoreLegacyMekMovementPsrV1,
 } from './mek-movement-psr-restoration-v1';
 
 describe('legacy Mek movement/PSR restoration V1', () => {
+    it('keeps valid heat acknowledgements and piloting facts when neighboring entries are invalid', () => {
+        const parsed = parseLegacyMekTurnStateV1({
+            acknowledgedHeatSources: { source: 'signature', invalid: { discarded: true } },
+            psrOutcomes: { valid: 'success', invalid: 'unknown' },
+            psrChecks: {
+                legActuators: { LL: 2, RL: -1 }, hipsHit: ['LL', null],
+                gyroHit: 1, gyroDestroyed: 'invalid', unknownField: { discarded: true },
+            },
+            turnCounter: 2,
+        });
+
+        expect([...parsed.state.acknowledgedHeatSources]).toEqual([['source', 'signature']]);
+        expect([...parsed.state.psrOutcomes]).toEqual([['valid', 'success']]);
+        expect([...parsed.state.psrChecks.legActuators]).toEqual([['LL', 2]]);
+        expect([...parsed.state.psrChecks.hipsHit]).toEqual(['LL']);
+        expect(parsed.state.psrChecks.gyroHit).toBe(1);
+        expect(parsed.state.psrChecks.gyroDestroyed).toBeFalse();
+        expect(parsed.state.turnCounter).toBe(2);
+        expect(parsed.warnings.length).toBe(3);
+        expect(Object.keys(parsed).sort()).toEqual(['state', 'warnings']);
+        expect(JSON.stringify(parsed)).not.toContain('discarded');
+    });
+
+    it('resets an unreadable turn with one warning and no raw diagnostic payload', () => {
+        const parsed = parseLegacyMekTurnStateV1(['unreadable']);
+        expect(parsed.state).toBe(createPristineLegacyMekTurnStateV1());
+        expect(parsed.warnings.length).toBe(1);
+        expect(Object.keys(parsed).sort()).toEqual(['state', 'warnings']);
+    });
+
     it('materializes a pristine typed state from an absent legacy turn', () => {
         const result = restoreLegacyMekMovementPsrV1(parseLegacyMekTurnStateV1(undefined));
 
         expect(result.kind).toBe('supported');
-        expect(result.algorithmVersion).toBe(MEK_MOVEMENT_PSR_RESTORATION_ALGORITHM_VERSION_V1);
         if (result.kind !== 'supported') return;
         expect(serializeMekMovementPsrStateV2(result.state)).toEqual({ schemaVersion: 2 });
         expect(Object.isFrozen(result)).toBeTrue();
@@ -69,21 +99,22 @@ describe('legacy Mek movement/PSR restoration V1', () => {
         });
     });
 
-    it('retains malformed legacy standing fields instead of inventing attempts', () => {
-        const result = restoreLegacyMekMovementPsrV1(parseLegacyMekTurnStateV1({
+    it('warns and resets malformed standing fields without inventing attempts', () => {
+        const parsed = parseLegacyMekTurnStateV1({
             carefulStand: true,
-        }));
+        });
+        const result = restoreLegacyMekMovementPsrV1(parsed);
 
-        expect(result).toEqual(jasmine.objectContaining({
-            kind: 'unsupported',
-            blockers: ['LEGACY_STANDING_STATE_UNREPRESENTABLE'],
-        }));
+        expect(parsed.warnings.length).toBe(1);
+        expect(parsed.state.carefulStand).toBeFalse();
+        expect(parsed.state.standAttempts).toBe(0);
+        expect(result.kind).toBe('supported');
     });
 
     it('carries production V1 cover into the one current turn-state model', () => {
         const legacy = parseLegacyMekTurnStateV1({ cover: 8, turnCounter: 4 });
 
-        expect(legacy.unresolved).toBeUndefined();
+        expect(legacy.warnings).toEqual([]);
         expect(legacy.state.cover).toBe('building-3');
         expect(projectLegacyMekTurnStateV1(legacy.state).cover).toBe('building-3');
         expect(projectLegacyMekTurnStateV1(legacy.state).turnCounter).toBe(4);
@@ -99,7 +130,7 @@ describe('legacy Mek movement/PSR restoration V1', () => {
 
         expect(absent).toEqual(jasmine.objectContaining({
             kind: 'unsupported',
-            blockers: ['LEGACY_MOVEMENT_PSR_WITNESS_UNAVAILABLE'],
+            warnings: ['Saved movement required piloting history that was not recorded and could not be converted.'],
         }));
         expect(disabled.kind).toBe('supported');
     });
@@ -124,7 +155,7 @@ describe('legacy Mek movement/PSR restoration V1', () => {
             expect(restoreLegacyMekMovementPsrV1(parseLegacyMekTurnStateV1(raw))).toEqual(
                 jasmine.objectContaining({
                     kind: 'unsupported',
-                    blockers: jasmine.arrayContaining(['LEGACY_INCOHERENT_MOVEMENT']),
+                    warnings: jasmine.arrayContaining(['Saved movement had an inconsistent mode and distance and could not be converted.']),
                 }),
             );
         }
@@ -138,14 +169,14 @@ describe('legacy Mek movement/PSR restoration V1', () => {
 
         expect(result).toEqual(jasmine.objectContaining({
             kind: 'unsupported',
-            blockers: [
-                'LEGACY_MOVEMENT_DISTANCE_UNREPRESENTABLE',
-                'LEGACY_VTOL_MOVEMENT_UNSUPPORTED',
+            warnings: [
+                'Saved VTOL movement is unsupported for this Mek and could not be converted.',
+                'Saved movement distance is outside the supported range and could not be converted.',
             ],
         }));
     });
 
-    it('retains fractional and threshold damage as distinct blockers', () => {
+    it('retains fractional and threshold damage as distinct warnings', () => {
         const fractional = restoreLegacyMekMovementPsrV1(parseLegacyMekTurnStateV1({
             dmgReceived: 0.5,
         }));
@@ -154,10 +185,10 @@ describe('legacy Mek movement/PSR restoration V1', () => {
         }));
 
         expect(fractional).toEqual(jasmine.objectContaining({
-            kind: 'unsupported', blockers: ['LEGACY_FRACTIONAL_PHASE_DAMAGE'],
+            kind: 'unsupported', warnings: ['Saved fractional phase damage could not be converted.'],
         }));
         expect(threshold).toEqual(jasmine.objectContaining({
-            kind: 'unsupported', blockers: ['LEGACY_DAMAGE_PSR_WITNESS_UNAVAILABLE'],
+            kind: 'unsupported', warnings: ['Saved phase damage required piloting history that was not recorded and could not be converted.'],
         }));
     });
 
@@ -169,55 +200,43 @@ describe('legacy Mek movement/PSR restoration V1', () => {
 
         expect(result).toEqual(jasmine.objectContaining({
             kind: 'unsupported',
-            blockers: [
-                'LEGACY_PSR_CHECK_WITNESS_UNAVAILABLE',
-                'LEGACY_PSR_OUTCOME_DICE_UNAVAILABLE',
+            warnings: [
+                'Saved piloting checks lack their trigger history and could not be converted.',
+                'Saved piloting outcomes lack their dice rolls and could not be converted.',
             ],
         }));
     });
 
-    it('maps only the six movement-owned malformed legacy fields', () => {
-        const result = restoreLegacyMekMovementPsrV1({
-            state: createPristineLegacyMekTurnStateV1(),
-            unresolved: {
-                moveMode: 'teleport',
-                moveDistance: 'far',
-                dmgReceived: 'many',
-                psrChecks: 'lost',
-                psrOutcomes: 'lost',
-                unrelatedFamilyFact: { future: true },
-            },
+    it('skips malformed turn fields with warnings and keeps readable facts', () => {
+        const parsed = parseLegacyMekTurnStateV1({
+            moveMode: 'teleport', moveDistance: 'far', dmgReceived: 'many',
+            psrChecks: 'lost', psrOutcomes: 'lost', weaponsHeat: 7,
+            unrelatedFamilyFact: { future: true },
         });
+        const result = restoreLegacyMekMovementPsrV1(parsed);
 
-        expect(result).toEqual(jasmine.objectContaining({
-            kind: 'unsupported',
-            blockers: [
-                'LEGACY_DAMAGE_PSR_WITNESS_UNAVAILABLE',
-                'LEGACY_INCOHERENT_MOVEMENT',
-                'LEGACY_MOVEMENT_DISTANCE_UNREPRESENTABLE',
-                'LEGACY_PSR_CHECK_WITNESS_UNAVAILABLE',
-                'LEGACY_PSR_OUTCOME_DICE_UNAVAILABLE',
-            ],
-        }));
+        expect(parsed.warnings.length).toBe(6);
+        expect(parsed.state.weaponsHeat).toBe(7);
+        expect(Object.keys(parsed).sort()).toEqual(['state', 'warnings']);
+        expect(result.kind).toBe('supported');
     });
 
-    it('classifies a malformed finite fractional damage value as fractional', () => {
-        const result = restoreLegacyMekMovementPsrV1({
-            state: createPristineLegacyMekTurnStateV1(),
-            unresolved: { dmgReceived: -0.5 },
-        });
+    it('skips malformed negative damage with a warning', () => {
+        const parsed = parseLegacyMekTurnStateV1({ dmgReceived: -0.5 });
+        const result = restoreLegacyMekMovementPsrV1(parsed);
 
-        expect(result).toEqual(jasmine.objectContaining({
-            kind: 'unsupported', blockers: ['LEGACY_FRACTIONAL_PHASE_DAMAGE'],
-        }));
+        expect(parsed.warnings.length).toBe(1);
+        expect(parsed.state.dmgReceived).toBe(0);
+        expect(result.kind).toBe('supported');
     });
 
-    it('ignores nonmovement unresolved family evidence', () => {
-        const result = restoreLegacyMekMovementPsrV1({
-            state: createPristineLegacyMekTurnStateV1(),
-            unresolved: { futureFamilyFact: { exact: true } },
+    it('warns about unknown turn fields without dropping valid movement', () => {
+        const parsed = parseLegacyMekTurnStateV1({
+            moveMode: 'walk', moveDistance: 2, futureFamilyFact: { exact: true },
         });
+        const result = restoreLegacyMekMovementPsrV1(parsed);
 
+        expect(parsed.warnings.length).toBe(1);
         expect(result.kind).toBe('supported');
     });
 
@@ -227,11 +246,11 @@ describe('legacy Mek movement/PSR restoration V1', () => {
         });
 
         expect(result).toEqual(jasmine.objectContaining({
-            kind: 'unsupported', blockers: ['LEGACY_INCOHERENT_MOVEMENT'],
+            kind: 'unsupported', warnings: ['Saved movement had an inconsistent mode and distance and could not be converted.'],
         }));
     });
 
-    it('returns sorted unique frozen blockers', () => {
+    it('returns sorted unique frozen warnings', () => {
         const turn = canonicalizeLegacyMekTurnStateV1({
             ...createPristineLegacyMekTurnStateV1(),
             moveMode: 'jump',
@@ -240,13 +259,12 @@ describe('legacy Mek movement/PSR restoration V1', () => {
         });
         const result = restoreLegacyMekMovementPsrV1({
             state: turn,
-            unresolved: { moveDistance: 'bad', dmgReceived: 'bad' },
         });
 
         expect(result.kind).toBe('unsupported');
         if (result.kind !== 'unsupported') return;
-        expect(result.blockers).toEqual([...new Set(result.blockers)].sort());
+        expect(result.warnings).toEqual([...new Set(result.warnings)].sort());
         expect(Object.isFrozen(result)).toBeTrue();
-        expect(Object.isFrozen(result.blockers)).toBeTrue();
+        expect(Object.isFrozen(result.warnings)).toBeTrue();
     });
 });

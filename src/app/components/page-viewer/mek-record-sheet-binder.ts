@@ -1573,7 +1573,8 @@ function renderCrew(
         ? snapshot.movement.projection.permanentPsrModifier
         : 0;
     const allCrewDefault = snapshot.crew.every(position =>
-        position.name.length === 0 && position.gunnery === 4 && position.piloting === 5);
+        position.effectiveState !== 'vacant'
+        && position.name.length === 0 && position.gunnery === 4 && position.piloting === 5);
     svg.querySelectorAll<SVGElement>('.skillValue')
         .forEach(element => element.classList.toggle('screen-only', allCrewDefault));
     for (const id of [
@@ -1586,11 +1587,14 @@ function renderCrew(
     }
     for (const position of snapshot.crew) {
         const occurrence = position.occurrence;
-        if (!renderCrewName(svg, occurrence, position.name)) {
-            write(svg, `#crewName${occurrence}`, position.name);
+        const vacant = position.effectiveState === 'vacant';
+        const displayName = vacant ? 'VACANT' : position.name;
+        if (!renderCrewName(svg, occurrence, displayName)) {
+            write(svg, `#crewName${occurrence}`, displayName);
         }
-        write(svg, `#gunnerySkill${occurrence}`, position.gunnery);
-        renderPilotingSkillDisplay(
+        write(svg, `#gunnerySkill${occurrence}`, vacant ? '—' : position.gunnery);
+        if (vacant) write(svg, `#pilotingSkill${occurrence}`, '—');
+        else renderPilotingSkillDisplay(
             svg.querySelector<SVGElement>(`#pilotingSkill${occurrence}`),
             position.piloting,
             permanentPsrModifier,
@@ -1598,15 +1602,16 @@ function renderCrew(
         for (let wounds = 1; wounds <= 6; wounds++) {
             const marker = svg.querySelector<SVGElement>(`.crewHit[crewId="${occurrence}"][hit="${wounds}"]`);
             if (!marker) continue;
-            marker.style.display = '';
+            marker.style.display = vacant ? 'none' : '';
             marker.classList.toggle('damaged', wounds <= position.state.wounds);
             marker.dataset['mekbayCrewWounds'] = String(position.state.wounds);
-            if (!interactive) continue;
+            if (!interactive || vacant) continue;
             if (marker.dataset['mekbayBound'] === '1') continue;
             marker.dataset['mekbayBound'] = '1';
             marker.classList.add('interactive');
             marker.setAttribute('tabindex', '0');
             const select = (event: Event): void => {
+                if (marker.style.display === 'none') return;
                 const current = Number(marker.dataset['mekbayCrewWounds'] ?? 0);
                 const next = current === wounds ? Math.max(0, wounds - 1) : wounds;
                 emit(Object.freeze({
@@ -1627,7 +1632,8 @@ function renderCrew(
         renderCrewState(
             svg,
             occurrence,
-            position.effectiveState === 'healthy' ? null : position.effectiveState,
+            position.effectiveState === 'healthy' || position.effectiveState === 'vacant'
+                ? null : position.effectiveState,
         );
         if (interactive) {
             bindCrewControls(svg, position, emit, signal, revision);

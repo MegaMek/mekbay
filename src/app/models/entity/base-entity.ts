@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { formatChassisName } from '../../utils/unit-display-name.util';
 import { Signal, computed, signal } from '@angular/core';
 import {
   armoredComponentStaticTechLevel,
@@ -685,8 +686,7 @@ export abstract class BaseEntity implements EntityTechnology {
    * E.g. "Black Hawk (Nova)"
    */
   fullChassis = computed(() => {
-    const clan = this.clanName();
-    return clan ? `${this.chassis()} (${clan})` : this.chassis();
+    return formatChassisName(this.chassis(), this.clanName());
   });
 
   displayName = computed(() => {
@@ -906,7 +906,7 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly engineHeatSinkType = computed<string | null>(() => null);
 
   /** Number of independently tracked crew positions, not physical complement. */
-  readonly crewSlotCount = computed<number>(() => this.entityType === 'HandheldWeapon' ? 0 : 1);
+  readonly crewSlotCount = computed<number>(() => this.entityType === 'HandheldWeapon' || this.entityType === 'BuildingEntity' ? 0 : 1);
 
   protected hasEquipmentFlag(flag: EquipmentFlag): boolean {
     return this.equipment().some(mount => mount.equipment?.hasFlag(flag));

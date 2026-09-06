@@ -163,6 +163,7 @@ export abstract class TurnTrackerControls {
                 snapshot.index,
                 snapshot.state,
                 snapshot.ruleset,
+                snapshot.crewAssignment,
             )
             : null;
     });
@@ -319,6 +320,7 @@ export abstract class TurnTrackerControls {
                 snapshot.index,
                 snapshot.state,
                 snapshot.ruleset,
+                snapshot.crewAssignment,
             )
             : [];
     });

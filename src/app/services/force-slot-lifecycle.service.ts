@@ -14,8 +14,9 @@ import { WsService, type ForceUpdateSource } from './ws.service';
 
 interface ForceSlotActivationPlan {
     enabled: boolean;
+    subscribedInstanceId: string | null;
     readonly onRemoteUpdate: (
-        serializedForce: SerializedForce,
+        serializedForce: SerializedForce | null,
         source: ForceUpdateSource,
     ) => void | Promise<void>;
 }
@@ -65,7 +66,12 @@ export class ForceSlotLifecycleService {
         this.logger.info(`ForceSlotLifecycleService: setting up "${force.displayName()}"${instanceId ? ` (${instanceId})` : ''}`);
         const activation: ForceSlotActivationPlan = {
             enabled: false,
+            subscribedInstanceId: null,
             onRemoteUpdate: (serializedForce, source) => {
+                if (serializedForce === null) {
+                    if (source === 'reconnect') return this.forcePersistence.saveForceMissingFromCloud(force);
+                    return;
+                }
                 if (serializedForce.instanceId !== force.instanceId()) {
                     this.logger.warn(`Ignoring force update for ${serializedForce.instanceId}; slot owns ${force.instanceId()}.`);
                     return;
@@ -83,6 +89,7 @@ export class ForceSlotLifecycleService {
             }
             this.forcePersistence.queueForceAutosave(force);
             this.forcePersistence.activateForceAuthority(force);
+            this.subscribeForceUpdates(force, activation);
         });
         this.activationPlans.set(slot, activation);
         if (!activate) return slot;
@@ -106,16 +113,24 @@ export class ForceSlotLifecycleService {
             throw new Error(`Force authority for ${force.instanceId() ?? force.displayName()} is already claimed or inactive`);
         }
         activation.enabled = true;
+        this.subscribeForceUpdates(force, activation);
+    }
+
+    private subscribeForceUpdates(force: Force, activation: ForceSlotActivationPlan): void {
         const instanceId = force.instanceId();
-        if (!instanceId) return;
+        if (!activation.enabled || !instanceId || activation.subscribedInstanceId === instanceId) return;
+        // New forces acquire their ID on their first edit, after slot activation.
+        activation.subscribedInstanceId = instanceId;
         try {
             void Promise.resolve(this.wsService.subscribeToForceUpdates(
                 instanceId,
                 activation.onRemoteUpdate,
             )).catch(error => {
+                activation.subscribedInstanceId = null;
                 this.logger.error(`Could not subscribe to remote updates for force ${instanceId}: ${error}`);
             });
         } catch (error) {
+            activation.subscribedInstanceId = null;
             this.logger.error(`Could not subscribe to remote updates for force ${instanceId}: ${error}`);
         }
     }

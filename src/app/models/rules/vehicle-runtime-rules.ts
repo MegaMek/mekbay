@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { CrewAssignment } from '../runtime/crew-assignment';
+
 import { combineEquipmentStatuses, type EquipmentStatus } from '../equipment-status.model';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
 import type { ComponentId } from '../entity/entity-identifiers';
@@ -96,15 +98,18 @@ export function projectVehicleRuntimeRules(
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
+    crewAssignment?: CrewAssignment,
 ): VehicleRuntimeRulesProjection {
     const activeDamageTracks = [...index.damageTracks.values()]
         .filter(track => (state.damageTracks.get(track.id)?.hits ?? 0) > 0);
     const activeDamageTrackIds = new Set(activeDamageTracks.map(track => track.sheetId));
     const hasDamage = (sheetId: string): boolean => activeDamageTrackIds.has(sheetId);
     const rawCommanderHit = hasDamage('commander_hit');
-    const crewKilled = [...index.crewPositions.keys()].some(positionId =>
+    const occupied = crewAssignment?.positions.map(position => position.positionId) ?? [...index.crewPositions.keys()];
+    const vacant = index.crewPositions.size > 0 && occupied.length === 0;
+    const crewKilled = occupied.some(positionId =>
         CrewMember.from(state.crew.get(positionId)).isDeathCommitted());
-    const crewStunned = [...index.crewPositions.keys()].some(positionId =>
+    const crewStunned = occupied.some(positionId =>
         CrewMember.from(state.crew.get(positionId)).hasState('stunned'));
     const motiveHits = Object.freeze(activeDamageTracks.flatMap(track => {
         if (track.motiveLevel === undefined) return [];
@@ -159,9 +164,9 @@ export function projectVehicleRuntimeRules(
     const motiveImmobile = motiveHits.some(hit => hit.level === 4);
     const storedImmobile = state.conditions.has('immobile');
     const computedConditions = new Set<UnitConditionKey>();
-    if (crewKilled && !hasDroneOperatingSystem) computedConditions.add('abandoned');
+    if ((crewKilled || vacant) && !hasDroneOperatingSystem) computedConditions.add('abandoned');
     if (disconnected) computedConditions.add('disconnected');
-    if (crewKilled || motiveImmobile || disconnected) computedConditions.add('immobile');
+    if (crewKilled || (vacant && !hasDroneOperatingSystem) || motiveImmobile || disconnected) computedConditions.add('immobile');
     const destroyed = state.explicitlyDestroyed || [...index.locations.values()].some(location =>
         location.internalPoints > 0
         && (state.locations.get(location.id)?.internalDamage ?? 0) >= location.internalPoints);

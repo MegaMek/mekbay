@@ -405,3 +405,24 @@
         gap: 8px;
     }
 }
+.pilot-profile {
+    min-width: 0;
+}
+
+.pilot-profile.with-portrait {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+
+    > pilot-portrait-field { grid-column: 1; grid-row: 1 / span 2; justify-self: start; align-self: stretch; }
+    > .commander-layout { display: contents; }
+    .commander-name-row, .skill-field { grid-column: 2; min-width: 0; }
+    .skill-field { align-self: end; }
+}
+
+@container (max-width: 420px) {
+    .pilot-profile.with-portrait {
+        > pilot-portrait-field { grid-row: 1; }
+        .skill-field { grid-column: 1 / -1; }
+    }
+}

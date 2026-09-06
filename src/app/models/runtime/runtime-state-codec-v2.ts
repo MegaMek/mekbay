@@ -34,9 +34,7 @@ import {
     type SerializedLocationConditionStateEntryV2,
     type SerializedLocationStateEntryV2,
     type SerializedPendingCombatStateV2,
-    type SerializedRecoverableStateFactV2,
     type SerializedSlotStateEntryV2,
-    type SerializedUnresolvedStateRecoveryEntryV2,
 } from './persistence-v2';
 import {
     freezeRuntimeState,
@@ -131,7 +129,7 @@ export type V2StateRestoreWarningCode =
     | 'TARGET_REKEYED'
     | 'DAMAGE_CLAMPED'
     | 'AMMO_CAPACITY_CHANGED'
-    | 'UNSUPPORTED_EQUIPMENT_STATE_RETAINED';
+    | 'STATE_SKIPPED';
 
 export interface V2StateRestoreWarning {
     readonly code: V2StateRestoreWarningCode;
@@ -158,7 +156,6 @@ export interface RestoreSerializedCBTUnitV2Result {
     readonly blueprintReferences: SavedBlueprintReferenceTableV2;
     readonly targetTranslation: Readonly<Record<SavedTargetRef, SavedTargetRef>>;
     readonly warnings: readonly V2StateRestoreWarning[];
-    readonly unresolved: readonly SerializedUnresolvedStateRecoveryEntryV2[];
     readonly appliedExact: number;
     readonly appliedWithWarning: number;
 }
@@ -235,12 +232,6 @@ interface RestoreAccumulator {
     readonly translations: Map<SavedTargetRef, SavedTargetRef>;
     readonly warnings: V2StateRestoreWarning[];
     readonly warningKeys: Set<string>;
-    readonly unresolvedDrafts: {
-        readonly sourceTargetRef: SavedTargetRef;
-        readonly sourceTarget: SavedStateTargetV2;
-        readonly fact: SerializedRecoverableStateFactV2;
-        readonly reason: string;
-    }[];
     appliedExact: number;
     appliedWithWarning: number;
 }
@@ -727,16 +718,9 @@ function restoreSavedMekRuleChecks(
         if (ruleChecks.has(entry.key)) {
             codecFail('INVALID_SERIALIZED_STATE', `${path}.key`, 'duplicate recoverable Mek rule check');
         }
-        const fact: SerializedRecoverableStateFactV2 = {
-            kind: 'mek-rule-check',
-            key: entry.key,
-            token: entry.token,
-            openedRevision,
-            status: entry.status,
-        };
         const current = resolveLocationTarget(source, accumulator);
         if (!current || current.target.section !== 'internal') {
-            unresolved(accumulator, entry.trigger, source, fact, 'MEK_RULE_CHECK_TRIGGER_NOT_FOUND');
+            warnSkippedState(accumulator, entry.trigger, 'MEK_RULE_CHECK_TRIGGER_NOT_FOUND');
             return;
         }
         const token = createMekTorsoCripplingRuleCheckTokenV2(
@@ -816,7 +800,6 @@ export async function restoreSerializedCBTUnitV2(
         translations: new Map(),
         warnings,
         warningKeys,
-        unresolvedDrafts: [],
         appliedExact: 0,
         appliedWithWarning: 0,
     };
@@ -841,10 +824,9 @@ export async function restoreSerializedCBTUnitV2(
 
     forEachUnique(saved.locationState, '$.locationState', entry => {
         const target = sourceTarget(accumulator, entry.target, 'location-section', '$.locationState');
-        const fact: SerializedRecoverableStateFactV2 = { kind: 'location-damage', damage: entry.damage };
         const requested = requirePositiveSerializedInteger(entry.damage, '$.locationState.damage');
         const currentTarget = resolveLocationTarget(target, accumulator);
-        if (!currentTarget) return unresolved(accumulator, entry.target, target, fact, 'LOCATION_SECTION_NOT_FOUND');
+        if (!currentTarget) return warnSkippedState(accumulator, entry.target, 'LOCATION_SECTION_NOT_FOUND');
         const effective = Math.min(requested, currentTarget.maximum);
         let warned = false;
         if (effective !== requested) {
@@ -857,7 +839,7 @@ export async function restoreSerializedCBTUnitV2(
                 saved: { damage: requested },
                 current: { maximum: currentTarget.maximum, effectiveDamage: effective },
             });
-            unresolved(accumulator, entry.target, target, fact, 'DAMAGE_EXCEEDS_CURRENT_MAXIMUM');
+            warnSkippedState(accumulator, entry.target, 'DAMAGE_EXCEEDS_CURRENT_MAXIMUM');
         }
         applyLocationDamage(locations, currentTarget, effective);
         translated(accumulator, entry.target, currentTarget.ref, warned);
@@ -880,10 +862,9 @@ export async function restoreSerializedCBTUnitV2(
             false,
             'INVALID_SERIALIZED_STATE',
         );
-        const fact: SerializedRecoverableStateFactV2 = { kind: 'location-condition', condition, value };
         const currentTarget = resolveLocationTarget(target, accumulator);
         if (!currentTarget || currentTarget.target.section !== 'internal') {
-            return unresolved(accumulator, entry.target, target, fact, 'LOCATION_NOT_FOUND_FOR_CONDITION');
+            return warnSkippedState(accumulator, entry.target, 'LOCATION_NOT_FOUND_FOR_CONDITION');
         }
         applyLocationCondition(locations, currentTarget.locationId, condition, value);
         translated(accumulator, entry.target, currentTarget.ref, false);
@@ -894,14 +875,9 @@ export async function restoreSerializedCBTUnitV2(
         const destroyedTurn = entry.destroyedTurn === undefined
             ? undefined
             : requirePositiveSerializedInteger(entry.destroyedTurn, '$.slotState.destroyedTurn');
-        const fact: SerializedRecoverableStateFactV2 = {
-            kind: 'slot-hits',
-            hits: entry.hits,
-            ...(destroyedTurn === undefined ? {} : { destroyedTurn }),
-        };
         const hits = requirePositiveSerializedInteger(entry.hits, '$.slotState.hits');
         const currentTarget = resolveSlotTarget(target, accumulator);
-        if (!currentTarget) return unresolved(accumulator, entry.target, target, fact, 'CRITICAL_SLOT_NOT_FOUND');
+        if (!currentTarget) return warnSkippedState(accumulator, entry.target, 'CRITICAL_SLOT_NOT_FOUND');
         const mismatch = warnForSlotOccupantMismatch(accumulator, entry.target, target, currentTarget);
         const effective = Math.min(hits, currentTarget.maximumHits);
         let warned = mismatch;
@@ -915,7 +891,7 @@ export async function restoreSerializedCBTUnitV2(
                 saved: { hits },
                 current: { maximumHits: currentTarget.maximumHits, effectiveHits: effective },
             });
-            unresolved(accumulator, entry.target, target, fact, 'CRITICAL_HITS_EXCEED_CURRENT_CAPACITY');
+            warnSkippedState(accumulator, entry.target, 'CRITICAL_HITS_EXCEED_CURRENT_CAPACITY');
         }
         if (effective === 0) slots.delete(currentTarget.slotId);
         else slots.set(currentTarget.slotId, Object.freeze({
@@ -933,51 +909,12 @@ export async function restoreSerializedCBTUnitV2(
             deserializeComponentState(entry, '$.componentState'),
             accumulator,
         );
-        const savedFact = componentStateFact(savedState);
-        if (!savedFact) {
+        if (!hasComponentState(savedState)) {
             codecFail('INVALID_SERIALIZED_STATE', '$.componentState', 'sparse component state must contain a fact');
         }
         const currentTarget = resolveComponentTarget(target, accumulator);
         if (!currentTarget) {
-            if (savedState.statusOverride !== undefined) {
-                unresolved(accumulator, entry.target, target, {
-                    kind: 'component-state',
-                    statusOverride: savedState.statusOverride,
-                }, 'COMPONENT_NOT_UNIQUELY_TYPE_COMPATIBLE');
-            }
-            if (savedState.mode !== undefined || savedState.jammed !== undefined
-                || savedState.escalatingFailure !== undefined || savedState.ppcCapacitor !== undefined
-                || savedState.bombastLaser !== undefined
-                || savedState.c3EmergencyMaster !== undefined
-                || savedState.gaussPower !== undefined || savedState.shieldDamage !== undefined
-                || savedState.modularArmorDamage !== undefined) {
-                unresolved(accumulator, entry.target, target, {
-                    kind: 'component-state',
-                    ...(savedState.mode === undefined ? {} : { mode: savedState.mode }),
-                    ...(savedState.jammed === undefined ? {} : { jammed: true }),
-                    ...(savedState.escalatingFailure === undefined
-                        ? {}
-                        : { escalatingFailure: savedState.escalatingFailure }),
-                    ...(savedState.ppcCapacitor === undefined
-                        ? {}
-                        : { ppcCapacitor: savedState.ppcCapacitor }),
-                    ...(savedState.bombastLaser === undefined
-                        ? {}
-                        : { bombastLaser: savedState.bombastLaser }),
-                    ...(savedState.c3EmergencyMaster === undefined
-                        ? {}
-                        : { c3EmergencyMaster: savedState.c3EmergencyMaster }),
-                    ...(savedState.gaussPower === undefined
-                        ? {}
-                        : { gaussPower: savedState.gaussPower }),
-                    ...(savedState.shieldDamage === undefined
-                        ? {}
-                        : { shieldDamage: savedState.shieldDamage }),
-                    ...(savedState.modularArmorDamage === undefined
-                        ? {}
-                        : { modularArmorDamage: savedState.modularArmorDamage }),
-                }, 'COMPONENT_NOT_UNIQUELY_TYPE_COMPATIBLE');
-            }
+            warnSkippedState(accumulator, entry.target, 'COMPONENT_NOT_UNIQUELY_TYPE_COMPATIBLE');
             return;
         }
         const partition = partitionComponentState(savedState, currentTarget);
@@ -985,10 +922,7 @@ export async function restoreSerializedCBTUnitV2(
         const rekeyed = componentSavedId(target) !== currentTarget.componentId;
         if (rekeyed) warnRekeyed(accumulator, entry.target, currentTarget.ref, 'component');
         if (partition.clampedShieldDamage) {
-            unresolved(accumulator, entry.target, target, {
-                kind: 'component-state',
-                shieldDamage: partition.clampedShieldDamage.requested,
-            }, 'SHIELD_DAMAGE_EXCEEDS_CURRENT_CAPACITY');
+            warnSkippedState(accumulator, entry.target, 'SHIELD_DAMAGE_EXCEEDS_CURRENT_CAPACITY');
             warn(accumulator, {
                 code: 'DAMAGE_CLAMPED',
                 message: 'Saved shield damage exceeds the current shield track bounds.',
@@ -1002,27 +936,15 @@ export async function restoreSerializedCBTUnitV2(
                 },
             });
         }
-        if (partition.unsupportedFact) {
-            unresolved(
-                accumulator,
-                entry.target,
-                target,
-                partition.unsupportedFact,
-                'UNSUPPORTED_COMPONENT_CAPABILITY',
-            );
-            warn(accumulator, {
-                code: 'UNSUPPORTED_EQUIPMENT_STATE_RETAINED',
-                message: 'Component runtime state unsupported by the current equipment definition was retained for recovery.',
-                sourceTargetRef: entry.target,
-                currentTargetRef: currentTarget.ref,
-            });
+        if (partition.hasUnsupportedState) {
+            warnSkippedState(accumulator, entry.target, 'UNSUPPORTED_COMPONENT_CAPABILITY');
         }
         if (partition.supportedFact) {
             translated(
                 accumulator,
                 entry.target,
                 currentTarget.ref,
-                rekeyed || partition.unsupportedFact !== null || partition.clampedShieldDamage !== undefined,
+                rekeyed || partition.hasUnsupportedState || partition.clampedShieldDamage !== undefined,
             );
         }
         else accumulator.translations.set(entry.target, currentTarget.ref);
@@ -1032,13 +954,9 @@ export async function restoreSerializedCBTUnitV2(
         const target = sourceTarget(accumulator, entry.target, 'ammo-source', '$.ammoState');
         const requested = requireNonnegativeInteger(entry.shotsSpent, '$.ammoState.shotsSpent');
         const munitionOverride = optionalBoundedText(entry.munitionOverride, '$.ammoState.munitionOverride');
-        const shotsFact: SerializedRecoverableStateFactV2 | null = requested === 0
-            ? null
-            : { kind: 'ammo-state', shotsSpent: requested };
-        const munitionFact: SerializedRecoverableStateFactV2 | null = munitionOverride === undefined
-            ? null
-            : { kind: 'ammo-state', shotsSpent: 0, munitionOverride };
-        if (!shotsFact && !munitionFact) {
+        const hasSpentShots = requested !== 0;
+        const hasMunitionOverride = munitionOverride !== undefined;
+        if (!hasSpentShots && !hasMunitionOverride) {
             codecFail('INVALID_SERIALIZED_STATE', '$.ammoState', 'sparse ammunition state must contain a fact');
         }
         if (target.munitionAtSave !== undefined && target.munitionAtSave !== munitionOverride) {
@@ -1046,17 +964,11 @@ export async function restoreSerializedCBTUnitV2(
         }
         const currentTarget = resolveAmmoTarget(target, accumulator);
         if (!currentTarget) {
-            if (shotsFact) {
-                unresolved(
-                    accumulator,
-                    entry.target,
-                    target,
-                    shotsFact,
-                    'AMMO_SOURCE_NOT_UNIQUELY_TYPE_COMPATIBLE',
-                );
+            if (hasSpentShots) {
+                warnSkippedState(accumulator, entry.target, 'AMMO_SOURCE_NOT_UNIQUELY_TYPE_COMPATIBLE');
             }
-            if (munitionFact) {
-                unresolved(accumulator, entry.target, target, munitionFact, 'UNSUPPORTED_MUNITION_CAPABILITY');
+            if (hasMunitionOverride) {
+                warnSkippedState(accumulator, entry.target, 'UNSUPPORTED_MUNITION_CAPABILITY');
             }
             return;
         }
@@ -1092,23 +1004,11 @@ export async function restoreSerializedCBTUnitV2(
                 saved: { shotsSpent: requested },
                 current: { capacity: currentCapacity, effectiveShotsSpent: effective },
             });
-            unresolved(
-                accumulator,
-                entry.target,
-                target,
-                shotsFact!,
-                'AMMO_CONSUMPTION_EXCEEDS_CURRENT_CAPACITY',
-            );
+            warnSkippedState(accumulator, entry.target, 'AMMO_CONSUMPTION_EXCEEDS_CURRENT_CAPACITY');
         }
         if (munitionOverride !== undefined && !supportedMunition) {
             warned = true;
-            unresolved(accumulator, entry.target, target, munitionFact!, 'UNSUPPORTED_MUNITION_CAPABILITY');
-            warn(accumulator, {
-                code: 'UNSUPPORTED_EQUIPMENT_STATE_RETAINED',
-                message: 'An uncompiled munition override was retained for recovery instead of being applied.',
-                sourceTargetRef: entry.target,
-                currentTargetRef: currentTarget.ref,
-            });
+            warnSkippedState(accumulator, entry.target, 'UNSUPPORTED_MUNITION_CAPABILITY');
         }
         if (effective > 0 || (munitionOverride !== undefined && supportedMunition)) {
             ammo.set(
@@ -1122,7 +1022,7 @@ export async function restoreSerializedCBTUnitV2(
         const rekeyed = target.savedAmmoSourceId !== undefined
             && target.savedAmmoSourceId !== currentTarget.componentId;
         if (rekeyed) warnRekeyed(accumulator, entry.target, currentTarget.ref, 'ammo source');
-        if (shotsFact || (munitionFact && supportedMunition)) {
+        if (hasSpentShots || (hasMunitionOverride && supportedMunition)) {
             translated(accumulator, entry.target, currentTarget.ref, warned || rekeyed);
         } else accumulator.translations.set(entry.target, currentTarget.ref);
     });
@@ -1168,15 +1068,8 @@ export async function restoreSerializedCBTUnitV2(
         if (requested === 0 && !entry.unconscious && !ejected) {
             codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions', 'sparse crew state must contain a fact');
         }
-        const fact: SerializedRecoverableStateFactV2 = {
-            kind: 'crew-state',
-            wounds: requested,
-            unconscious: entry.unconscious,
-            ...(dead ? { dead: true } : {}),
-            ...(ejected ? { ejected: true } : {}),
-        };
         const currentTarget = resolveCrewTarget(target, accumulator);
-        if (!currentTarget) return unresolved(accumulator, entry.target, target, fact, 'CREW_POSITION_NOT_FOUND');
+        if (!currentTarget) return warnSkippedState(accumulator, entry.target, 'CREW_POSITION_NOT_FOUND');
         const effective = Math.min(requested, MAX_CREW_WOUNDS);
         let warned = false;
         if (effective !== requested) {
@@ -1189,7 +1082,7 @@ export async function restoreSerializedCBTUnitV2(
                 saved: { wounds: requested },
                 current: { maximumWounds: MAX_CREW_WOUNDS, effectiveWounds: effective },
             });
-            unresolved(accumulator, entry.target, target, fact, 'CREW_WOUNDS_EXCEED_CURRENT_LIMIT');
+            warnSkippedState(accumulator, entry.target, 'CREW_WOUNDS_EXCEED_CURRENT_LIMIT');
         }
         if (effective === 0 && !entry.unconscious && !ejected) crew.delete(currentTarget.positionId);
         else crew.set(currentTarget.positionId, Object.freeze({
@@ -1318,10 +1211,6 @@ export async function restoreSerializedCBTUnitV2(
         pendingCombat,
     });
 
-    const unresolvedEntries = finalizeUnresolved(
-        accumulator.unresolvedDrafts,
-        new Set(),
-    );
     const targetTranslation = Object.freeze(Object.fromEntries(
         [...accumulator.translations].sort(([left], [right]) => compareText(left, right)),
     ) as Record<SavedTargetRef, SavedTargetRef>);
@@ -1332,7 +1221,6 @@ export async function restoreSerializedCBTUnitV2(
         blueprintReferences: current.table,
         targetTranslation,
         warnings: Object.freeze(warnings.map(canonicalClone)),
-        unresolved: unresolvedEntries,
         appliedExact: accumulator.appliedExact,
         appliedWithWarning: accumulator.appliedWithWarning,
     });
@@ -2175,11 +2063,10 @@ function restorePending(
     if (!pending) return;
     forEachUnique(pending.locationDamage, '$.pendingCombat.locationDamage', entry => {
         const target = sourceTarget(accumulator, entry.target, 'location-section', '$.pendingCombat.locationDamage');
-        const fact: SerializedRecoverableStateFactV2 = { kind: 'pending-location-damage', damage: entry.damage };
         const damage = requireSignedNonzeroInteger(entry.damage, '$.pendingCombat.locationDamage.damage');
         const current = resolveLocationTarget(target, accumulator);
         if (!current) {
-            return unresolved(accumulator, entry.target, target, fact, 'PENDING_LOCATION_SECTION_NOT_FOUND');
+            return warnSkippedState(accumulator, entry.target, 'PENDING_LOCATION_SECTION_NOT_FOUND');
         }
         if (current.armorFaceId) pendingArmor.set(current.armorFaceId, damage);
         else pendingLocation.set(current.locationId, damage);
@@ -2214,20 +2101,9 @@ function restorePending(
                 true,
                 'INVALID_SERIALIZED_STATE',
             );
-            const fact: SerializedRecoverableStateFactV2 = {
-                kind: 'pending-location-condition',
-                condition,
-                value,
-            };
             const current = resolveLocationTarget(target, accumulator);
             if (!current || current.target.section !== 'internal') {
-                return unresolved(
-                    accumulator,
-                    entry.target,
-                    target,
-                    fact,
-                    'PENDING_LOCATION_NOT_FOUND_FOR_CONDITION',
-                );
+                return warnSkippedState(accumulator, entry.target, 'PENDING_LOCATION_NOT_FOUND_FOR_CONDITION');
             }
             const committed = locations.get(current.locationId)?.conditions.get(condition) ?? 0;
             if (value === committed) {
@@ -2243,10 +2119,9 @@ function restorePending(
     );
     forEachUnique(pending.slotHits, '$.pendingCombat.slotHits', entry => {
         const target = sourceTarget(accumulator, entry.target, 'critical-slot', '$.pendingCombat.slotHits');
-        const fact: SerializedRecoverableStateFactV2 = { kind: 'pending-slot-hits', hits: entry.hits };
         const hits = requireSignedNonzeroInteger(entry.hits, '$.pendingCombat.slotHits.hits');
         const current = resolveSlotTarget(target, accumulator);
-        if (!current) return unresolved(accumulator, entry.target, target, fact, 'PENDING_CRITICAL_SLOT_NOT_FOUND');
+        if (!current) return warnSkippedState(accumulator, entry.target, 'PENDING_CRITICAL_SLOT_NOT_FOUND');
         const mismatch = warnForSlotOccupantMismatch(accumulator, entry.target, target, current);
         const committed = slots.get(current.slotId)?.hits ?? 0;
         const effective = Math.max(-committed, Math.min(hits, current.maximumHits - committed));
@@ -2261,41 +2136,22 @@ function restorePending(
                 saved: { hits },
                 current: { committedHits: committed, maximumHits: current.maximumHits, effectiveDelta: effective },
             });
-            unresolved(
-                accumulator,
-                entry.target,
-                target,
-                fact,
-                'PENDING_CRITICAL_HITS_EXCEED_CURRENT_CAPACITY',
-            );
+            warnSkippedState(accumulator, entry.target, 'PENDING_CRITICAL_HITS_EXCEED_CURRENT_CAPACITY');
         }
         if (effective !== 0) pendingSlots.set(current.slotId, effective);
         translated(accumulator, entry.target, current.ref, warned);
     });
     forEachUnique(pending.componentStatus, '$.pendingCombat.componentStatus', entry => {
         const target = sourceTarget(accumulator, entry.target, ['component', 'intrinsic-system'], '$.pendingCombat.componentStatus');
-        const fact: SerializedRecoverableStateFactV2 = { kind: 'pending-component-status', status: entry.status };
         if (!isEquipmentStatus(entry.status)) {
             codecFail('INVALID_SERIALIZED_STATE', '$.pendingCombat.componentStatus.status', `invalid status ${entry.status}`);
         }
         const current = resolveComponentTarget(target, accumulator);
         if (!current) {
-            return unresolved(
-                accumulator,
-                entry.target,
-                target,
-                fact,
-                'PENDING_COMPONENT_NOT_UNIQUELY_TYPE_COMPATIBLE',
-            );
+            return warnSkippedState(accumulator, entry.target, 'PENDING_COMPONENT_NOT_UNIQUELY_TYPE_COMPATIBLE');
         }
         if (current.target.kind === 'intrinsic-system') {
-            unresolved(
-                accumulator,
-                entry.target,
-                target,
-                fact,
-                'INTRINSIC_SYSTEM_STATUS_REQUIRES_SLOT_OR_LOCATION_DAMAGE',
-            );
+            warnSkippedState(accumulator, entry.target, 'INTRINSIC_SYSTEM_STATUS_REQUIRES_SLOT_OR_LOCATION_DAMAGE');
             accumulator.translations.set(entry.target, current.ref);
             return;
         }
@@ -2312,19 +2168,9 @@ function restorePending(
             '$.pendingCombat.shieldDamage',
         );
         const requested = readPendingShieldDamage(entry, '$.pendingCombat.shieldDamage');
-        const fact: SerializedRecoverableStateFactV2 = {
-            kind: 'pending-shield-damage',
-            ...requested,
-        };
         const current = resolveComponentTarget(target, accumulator);
         if (!current || current.target.kind !== 'component' || !current.supportsShieldDamage) {
-            return unresolved(
-                accumulator,
-                entry.target,
-                target,
-                fact,
-                'PENDING_SHIELD_NOT_UNIQUELY_TYPE_COMPATIBLE',
-            );
+            return warnSkippedState(accumulator, entry.target, 'PENDING_SHIELD_NOT_UNIQUELY_TYPE_COMPATIBLE');
         }
         const effective = clampPendingShieldDamage(
             current,
@@ -2346,13 +2192,7 @@ function restorePending(
                     effectiveDelta: effective,
                 },
             });
-            unresolved(
-                accumulator,
-                entry.target,
-                target,
-                fact,
-                'PENDING_SHIELD_DAMAGE_EXCEEDS_CURRENT_CAPACITY',
-            );
+            warnSkippedState(accumulator, entry.target, 'PENDING_SHIELD_DAMAGE_EXCEEDS_CURRENT_CAPACITY');
         }
         if (effective.absorptionDamage !== 0 || effective.capacityDamage !== 0) {
             pendingShieldDamage.set(current.componentId, effective);
@@ -2375,19 +2215,9 @@ function restorePending(
                 entry.damage,
                 '$.pendingCombat.modularArmorDamage.damage',
             );
-            const fact: SerializedRecoverableStateFactV2 = {
-                kind: 'pending-modular-armor-damage',
-                damage: requested,
-            };
             const current = resolveComponentTarget(target, accumulator);
             if (!current || current.target.kind !== 'component' || !current.supportsModularArmor) {
-                return unresolved(
-                    accumulator,
-                    entry.target,
-                    target,
-                    fact,
-                    'PENDING_MODULAR_ARMOR_NOT_UNIQUELY_TYPE_COMPATIBLE',
-                );
+                return warnSkippedState(accumulator, entry.target, 'PENDING_MODULAR_ARMOR_NOT_UNIQUELY_TYPE_COMPATIBLE');
             }
             const committed = components.get(current.componentId)?.modularArmorDamage ?? 0;
             const effective = Math.max(
@@ -2409,13 +2239,7 @@ function restorePending(
                         effectiveDelta: effective,
                     },
                 });
-                unresolved(
-                    accumulator,
-                    entry.target,
-                    target,
-                    fact,
-                    'PENDING_MODULAR_ARMOR_DAMAGE_EXCEEDS_CAPACITY',
-                );
+                warnSkippedState(accumulator, entry.target, 'PENDING_MODULAR_ARMOR_DAMAGE_EXCEEDS_CAPACITY');
             }
             if (effective !== 0) pendingModularArmorDamage.set(current.componentId, effective);
             const rekeyed = componentSavedId(target) !== current.componentId;
@@ -2632,18 +2456,11 @@ function translated(
     else accumulator.appliedExact += 1;
 }
 
-function unresolved(
-    accumulator: RestoreAccumulator,
-    sourceTargetRef: SavedTargetRef,
-    sourceTarget: SavedStateTargetV2,
-    fact: SerializedRecoverableStateFactV2,
-    reason: string,
-): void {
-    accumulator.unresolvedDrafts.push({
+function warnSkippedState(accumulator: RestoreAccumulator, sourceTargetRef: SavedTargetRef, reason: string): void {
+    warn(accumulator, {
+        code: 'STATE_SKIPPED',
+        message: 'Saved state was skipped: ' + reason.toLowerCase().replaceAll('_', ' ') + '.',
         sourceTargetRef,
-        sourceTarget: canonicalClone(sourceTarget),
-        fact: canonicalClone(fact),
-        reason,
     });
 }
 
@@ -2758,7 +2575,7 @@ function setPendingLocationCondition(
 }
 
 function deserializeComponentState(
-    entry: Omit<SerializedComponentStateEntryV2, 'target'> | Extract<SerializedRecoverableStateFactV2, { kind: 'component-state' }>,
+    entry: Omit<SerializedComponentStateEntryV2, 'target'>,
     path: string,
 ): ComponentRuntimeState {
     if (entry.statusOverride !== undefined && entry.statusOverride !== 'disabled' && entry.statusOverride !== 'destroyed') {
@@ -2836,39 +2653,12 @@ function deserializeComponentState(
     };
 }
 
-function componentStateFact(
-    state: ComponentRuntimeState,
-): Extract<SerializedRecoverableStateFactV2, { kind: 'component-state' }> | null {
-    if (state.statusOverride === undefined && state.mode === undefined && state.jammed === undefined
-        && state.escalatingFailure === undefined && state.ppcCapacitor === undefined
-        && state.bombastLaser === undefined && state.c3EmergencyMaster === undefined
-        && state.gaussPower === undefined && state.shieldDamage === undefined
-        && state.modularArmorDamage === undefined) return null;
-    return {
-        kind: 'component-state',
-        ...(state.statusOverride === undefined ? {} : { statusOverride: state.statusOverride }),
-        ...(state.mode === undefined ? {} : { mode: state.mode }),
-        ...(state.jammed === undefined ? {} : { jammed: true }),
-        ...(state.escalatingFailure === undefined
-            ? {}
-            : { escalatingFailure: Object.freeze({ ...state.escalatingFailure }) }),
-        ...(state.ppcCapacitor === undefined
-            ? {}
-            : { ppcCapacitor: Object.freeze({ ...state.ppcCapacitor }) }),
-        ...(state.bombastLaser === undefined
-            ? {}
-            : { bombastLaser: Object.freeze({ ...state.bombastLaser }) }),
-        ...(state.c3EmergencyMaster === undefined
-            ? {}
-            : { c3EmergencyMaster: Object.freeze({ ...state.c3EmergencyMaster }) }),
-        ...(state.gaussPower === undefined ? {} : { gaussPower: state.gaussPower }),
-        ...(state.shieldDamage === undefined
-            ? {}
-            : { shieldDamage: Object.freeze({ ...state.shieldDamage }) }),
-        ...(state.modularArmorDamage === undefined
-            ? {}
-            : { modularArmorDamage: state.modularArmorDamage }),
-    };
+function hasComponentState(state: ComponentRuntimeState): boolean {
+    return state.statusOverride !== undefined || state.mode !== undefined || state.jammed !== undefined
+        || state.escalatingFailure !== undefined || state.ppcCapacitor !== undefined
+        || state.bombastLaser !== undefined || state.c3EmergencyMaster !== undefined
+        || state.gaussPower !== undefined || state.shieldDamage !== undefined
+        || state.modularArmorDamage !== undefined;
 }
 
 function validateGaussPowerState(
@@ -3018,7 +2808,7 @@ interface PartitionedComponentState {
     /** True when at least one saved fact is understood, including selecting the current default mode. */
     readonly supportedFact: boolean;
     readonly resetMode: boolean;
-    readonly unsupportedFact: Extract<SerializedRecoverableStateFactV2, { kind: 'component-state' }> | null;
+    readonly hasUnsupportedState: boolean;
     readonly clampedShieldDamage?: {
         readonly requested: MekShieldDamageRuntimeState;
         readonly effective: MekShieldDamageRuntimeState;
@@ -3037,18 +2827,7 @@ function partitionComponentState(
     };
     let supportedFact = saved.statusOverride !== undefined && target.target.kind === 'component';
     let resetMode = false;
-    const unsupportedStatus = target.target.kind === 'intrinsic-system'
-        ? saved.statusOverride
-        : undefined;
-    let unsupportedMode: string | undefined;
-    let unsupportedJammed: true | undefined;
-    let unsupportedEscalatingFailure: ComponentRuntimeState['escalatingFailure'];
-    let unsupportedPpcCapacitor: ComponentRuntimeState['ppcCapacitor'];
-    let unsupportedBombastLaser: ComponentRuntimeState['bombastLaser'];
-    let unsupportedC3EmergencyMaster: ComponentRuntimeState['c3EmergencyMaster'];
-    let unsupportedGaussPower: ComponentRuntimeState['gaussPower'];
-    let unsupportedShieldDamage: ComponentRuntimeState['shieldDamage'];
-    let unsupportedModularArmorDamage: number | undefined;
+    let hasUnsupportedState = target.target.kind === 'intrinsic-system' && saved.statusOverride !== undefined;
     let clampedShieldDamage: PartitionedComponentState['clampedShieldDamage'];
 
     if (saved.mode !== undefined) {
@@ -3057,48 +2836,48 @@ function partitionComponentState(
             supportedFact = true;
             if (saved.mode === capabilities.defaultMode) resetMode = true;
             else (supported as { mode?: string }).mode = saved.mode;
-        } else unsupportedMode = saved.mode;
+        } else hasUnsupportedState = true;
     }
     if (saved.jammed !== undefined) {
         if (capabilities.supportsJamming) {
             supportedFact = true;
             (supported as { jammed?: boolean }).jammed = true;
-        } else unsupportedJammed = true;
+        } else hasUnsupportedState = true;
     }
     if (saved.escalatingFailure !== undefined) {
         if (target.escalatingFailureTargetCount >= saved.escalatingFailure.sequence) {
             supportedFact = true;
             (supported as { escalatingFailure?: ComponentRuntimeState['escalatingFailure'] })
                 .escalatingFailure = Object.freeze({ ...saved.escalatingFailure });
-        } else unsupportedEscalatingFailure = saved.escalatingFailure;
+        } else hasUnsupportedState = true;
     }
     if (saved.ppcCapacitor !== undefined) {
         if (target.ppcCapacitorWeaponId === saved.ppcCapacitor.weaponId) {
             supportedFact = true;
             (supported as { ppcCapacitor?: ComponentRuntimeState['ppcCapacitor'] })
                 .ppcCapacitor = Object.freeze({ ...saved.ppcCapacitor });
-        } else unsupportedPpcCapacitor = saved.ppcCapacitor;
+        } else hasUnsupportedState = true;
     }
     if (saved.bombastLaser !== undefined) {
         if (target.supportsBombastLaser) {
             supportedFact = true;
             (supported as { bombastLaser?: ComponentRuntimeState['bombastLaser'] })
                 .bombastLaser = Object.freeze({ ...saved.bombastLaser });
-        } else unsupportedBombastLaser = saved.bombastLaser;
+        } else hasUnsupportedState = true;
     }
     if (saved.c3EmergencyMaster !== undefined) {
         if (target.supportsC3EmergencyMaster) {
             supportedFact = true;
             (supported as { c3EmergencyMaster?: ComponentRuntimeState['c3EmergencyMaster'] })
                 .c3EmergencyMaster = Object.freeze({ ...saved.c3EmergencyMaster });
-        } else unsupportedC3EmergencyMaster = saved.c3EmergencyMaster;
+        } else hasUnsupportedState = true;
     }
     if (saved.gaussPower !== undefined) {
         if (target.supportsGaussPower) {
             supportedFact = true;
             (supported as { gaussPower?: ComponentRuntimeState['gaussPower'] })
                 .gaussPower = saved.gaussPower;
-        } else unsupportedGaussPower = saved.gaussPower;
+        } else hasUnsupportedState = true;
     }
     if (saved.shieldDamage !== undefined) {
         if (target.supportsShieldDamage) {
@@ -3123,53 +2902,21 @@ function partitionComponentState(
                     effective,
                 });
             }
-        } else unsupportedShieldDamage = saved.shieldDamage;
+        } else hasUnsupportedState = true;
     }
     if (saved.modularArmorDamage !== undefined) {
         if (target.supportsModularArmor) {
             supportedFact = true;
             (supported as { modularArmorDamage?: number }).modularArmorDamage =
                 saved.modularArmorDamage;
-        } else unsupportedModularArmorDamage = saved.modularArmorDamage;
+        } else hasUnsupportedState = true;
     }
 
-    const unsupportedFact = unsupportedStatus === undefined
-        && unsupportedMode === undefined && unsupportedJammed === undefined
-        && unsupportedEscalatingFailure === undefined && unsupportedPpcCapacitor === undefined
-        && unsupportedBombastLaser === undefined && unsupportedC3EmergencyMaster === undefined
-        && unsupportedGaussPower === undefined && unsupportedShieldDamage === undefined
-        && unsupportedModularArmorDamage === undefined
-        ? null
-        : {
-            kind: 'component-state' as const,
-            ...(unsupportedStatus === undefined ? {} : { statusOverride: unsupportedStatus }),
-            ...(unsupportedMode === undefined ? {} : { mode: unsupportedMode }),
-            ...(unsupportedJammed === undefined ? {} : { jammed: true as const }),
-            ...(unsupportedEscalatingFailure === undefined
-                ? {}
-                : { escalatingFailure: unsupportedEscalatingFailure }),
-            ...(unsupportedPpcCapacitor === undefined
-                ? {}
-                : { ppcCapacitor: unsupportedPpcCapacitor }),
-            ...(unsupportedBombastLaser === undefined
-                ? {}
-                : { bombastLaser: unsupportedBombastLaser }),
-            ...(unsupportedC3EmergencyMaster === undefined
-                ? {}
-                : { c3EmergencyMaster: unsupportedC3EmergencyMaster }),
-            ...(unsupportedGaussPower === undefined ? {} : { gaussPower: unsupportedGaussPower }),
-            ...(unsupportedShieldDamage === undefined
-                ? {}
-                : { shieldDamage: unsupportedShieldDamage }),
-            ...(unsupportedModularArmorDamage === undefined
-                ? {}
-                : { modularArmorDamage: unsupportedModularArmorDamage }),
-        };
     return Object.freeze({
         supportedState: Object.freeze(supported),
         supportedFact,
         resetMode,
-        unsupportedFact: unsupportedFact && Object.freeze(unsupportedFact),
+        hasUnsupportedState,
         ...(clampedShieldDamage === undefined ? {} : { clampedShieldDamage }),
     });
 }
@@ -3354,20 +3101,7 @@ function assertBaselineMatchesEntity(
     }
 }
 
-function finalizeUnresolved(
-    drafts: readonly RestoreAccumulator['unresolvedDrafts'][number][],
-    usedIds: Set<string>,
-): readonly SerializedUnresolvedStateRecoveryEntryV2[] {
-    const result: SerializedUnresolvedStateRecoveryEntryV2[] = [];
-    let sequence = 0;
-    for (const draft of drafts) {
-        let recoveryId = `v2-recovery:${sequence++}`;
-        while (usedIds.has(recoveryId)) recoveryId = `v2-recovery:${sequence++}`;
-        usedIds.add(recoveryId);
-        result.push(canonicalClone({ recoveryId, ...draft }));
-    }
-    return Object.freeze(result);
-}
+
 
 function forEachUnique<T extends { readonly target: SavedTargetRef }>(
     entries: readonly T[] | undefined,

@@ -47,7 +47,7 @@ interface WsRequestOptions {
 }
 
 interface ForceSubscription {
-    onRemoteUpdate: (data: SerializedForce, source: ForceUpdateSource) => void | Promise<void>;
+    onRemoteUpdate: (data: SerializedForce | null, source: ForceUpdateSource) => void | Promise<void>;
     handler: ((event: MessageEvent) => void) | null;
     socket: WebSocket | null;
     updateQueue: Promise<void>;
@@ -664,7 +664,7 @@ export class WsService {
      */
     public async subscribeToForceUpdates(
         instanceId: string,
-        onRemoteUpdate: (data: SerializedForce, source: ForceUpdateSource) => void | Promise<void>,
+        onRemoteUpdate: (data: SerializedForce | null, source: ForceUpdateSource) => void | Promise<void>,
     ): Promise<void> {
         // Unsubscribe from previous subscription if exists
         await this.unsubscribeFromForceUpdates(instanceId);
@@ -796,6 +796,12 @@ export class WsService {
                 return;
             }
 
+            if (response?.['action'] === 'forceData'
+                && response['instanceId'] === instanceId
+                && response['data'] === null) {
+                await this.notifyForceSubscription(subscription, null, 'reconnect', instanceId);
+                return;
+            }
             const force = decodeRemoteForce(response?.['data'], instanceId);
             if (force) await this.notifyForceSubscription(subscription, force, 'reconnect', instanceId);
         } catch (error) {
@@ -805,7 +811,7 @@ export class WsService {
 
     private notifyForceSubscription(
         subscription: ForceSubscription,
-        data: SerializedForce,
+        data: SerializedForce | null,
         source: ForceUpdateSource,
         instanceId: string,
     ): Promise<void> {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CdkMenuModule } from '@angular/cdk/menu';
 import type { UnitSummary } from '../../models/unit-summary.model';
@@ -23,6 +24,7 @@ import {
     styleUrl: './unit-details-footer.component.scss',
 })
 export class UnitDetailsFooterComponent {
+    readonly unitNames = inject(UnitNameService);
     private toastService = inject(ToastService);
 
     readonly activeTab = input.required<string>();
@@ -104,6 +106,6 @@ export class UnitDetailsFooterComponent {
     }
 
     private formatUnitLabel(unit: UnitSummary): string {
-        return [unit.chassis, unit.model].filter(Boolean).join(' ') || unit.name;
+        return this.unitNames.name(unit);
     }
 }

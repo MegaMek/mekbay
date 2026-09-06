@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { OptionsService } from '../../services/options.service';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -173,6 +174,7 @@ export interface ShareForceDialogData {
 })
 
 export class ShareForceDialogComponent {
+    private readonly optionsService = inject(OptionsService);
     public dialogRef = inject<DialogRef<string | number | null, ShareForceDialogComponent>>(DialogRef);
     private data: ShareForceDialogData = inject(DIALOG_DATA);
     forceBuilderService = inject(ForceBuilderService);
@@ -214,7 +216,7 @@ export class ShareForceDialogComponent {
         this.isExporting.set(true);
         try {
             const { exportForceToExcel } = await import('../../utils/excel-export.util');
-            await exportForceToExcel(this.force, members);
+            await exportForceToExcel(this.force, members, undefined, this.optionsService.options().displayUnitNameFormat);
             this.toastService.showToast(`Exported ${members.length} units to Excel.`, 'success');
         } catch (err) {
             console.error('Failed to export to Excel:', err);
@@ -239,7 +241,7 @@ export class ShareForceDialogComponent {
         this.isExporting.set(true);
         try {
             const { exportForceToCSV } = await import('../../utils/excel-export.util');
-            await exportForceToCSV(this.force, members);
+            await exportForceToCSV(this.force, members, undefined, this.optionsService.options().displayUnitNameFormat);
             this.toastService.showToast(`Exported ${members.length} units to CSV.`, 'success');
         } catch (err) {
             console.error('Failed to export to CSV:', err);

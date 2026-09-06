@@ -3,6 +3,7 @@
 
 import { compareText } from '../../utils/string.util';
 import type { BaseEntity } from '../entity/base-entity';
+import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
 import {
     isAeroEntity,
     isInfantryFamilyEntity,
@@ -186,7 +187,7 @@ export function projectNonMekEquipmentPanel(
         }),
         crew: Object.freeze({
             gunnery: firstCrew?.gunnery ?? 4,
-            piloting: firstCrew?.piloting ?? 5,
+            piloting: effectiveEntityPilotingSkill(entity, firstCrew?.piloting ?? 5),
         }),
         components,
         physicalAttacks: vehicleRules !== null

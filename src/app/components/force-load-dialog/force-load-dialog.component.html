@@ -21,19 +21,19 @@
                     [class.active]="hangarTagFilter() === hangarAllFilter"
                     (click)="setHangarTagFilter(hangarAllFilter)">
                     <span class="filter-label">All</span>
-                    <span class="filter-count">{{ getHangarGameTypeCount('all') }}</span>
+                    <span class="filter-count">{{ hangarComplete() ? getHangarGameTypeCount('all') : '…' }}</span>
                 </button>
                 <button class="filter-btn"
                     [class.active]="hangarTagFilter() === hangarCBTFilter"
                     (click)="toggleHangarTagFilter(hangarCBTFilter)">
                     <span class="filter-label">Battletech</span>
-                    <span class="filter-count">{{ getHangarGameTypeCount(GameSystem.CBT) }}</span>
+                    <span class="filter-count">{{ hangarComplete() ? getHangarGameTypeCount(GameSystem.CBT) : '…' }}</span>
                 </button>
                 <button class="filter-btn"
                     [class.active]="hangarTagFilter() === hangarAlphaStrikeFilter"
                     (click)="toggleHangarTagFilter(hangarAlphaStrikeFilter)">
                     <span class="filter-label">Alpha Strike</span>
-                    <span class="filter-count">{{ getHangarGameTypeCount(GameSystem.AS) }}</span>
+                    <span class="filter-count">{{ hangarComplete() ? getHangarGameTypeCount(GameSystem.AS) : '…' }}</span>
                 </button>
                 @if (getHangarTagCount(hangarUnfiledFilter) > 0) {
                     <button type="button"
@@ -41,7 +41,7 @@
                         [class.active]="hangarTagFilter() === hangarUnfiledFilter"
                         (click)="toggleHangarTagFilter(hangarUnfiledFilter)">
                         <span class="filter-label">Untagged</span>
-                        <span class="filter-count">{{ getHangarTagCount(hangarUnfiledFilter) }}</span>
+                        <span class="filter-count">{{ hangarComplete() ? getHangarTagCount(hangarUnfiledFilter) : '…' }}</span>
                     </button>
                 }
                 @for (tag of hangarTags(); track tag.id) {
@@ -51,14 +51,19 @@
                         [class.active]="hangarTagFilter() === tag.id"
                         (click)="toggleHangarTagFilter(tag.id)">
                         <span class="filter-label">{{ tag.label }}</span>
-                        <span class="filter-count">{{ tag.count }}</span>
+                        <span class="filter-count">{{ hangarComplete() ? tag.count : '…' }}</span>
                     </button>
                     }
                 }
+                @if (!hangarComplete()) {
+                    <button type="button" class="filter-btn" (click)="loadAllForces()" [disabled]="loading() || hangarLoadingAll()">All tags…</button>
+                }
             </div>
-            @if (loading()) {
-                <loading-spinner class="loading-spinner" message="Loading forces..." ariaLabel="Loading forces"></loading-spinner>
-            } @else if (filteredForces().length === 0) {
+            @if (loading() || hangarLoadingAll()) {
+                <loading-spinner class="loading-spinner" [message]="hangarLoadingAll() ? 'Loading all forces for account-wide results…' : 'Loading forces…'" ariaLabel="Loading forces"></loading-spinner>
+            } @else if (!hangarComplete() && hangarRequiresComplete()) {
+                <div class="empty-state">Load the remaining cloud summaries to search, filter, or sort the entire account.</div>
+            } @else if (filteredForces().length === 0 && hangarComplete()) {
                 <div class="empty-state">{{ getHangarEmptyStateMessage() }}</div>
             } @else {
                 <cdk-virtual-scroll-viewport
@@ -68,6 +73,8 @@
                     [style.--hangar-item-size.px]="hangarItemSize()"
                     [minBufferPx]="hangarMinBufferPx"
                     [maxBufferPx]="hangarMaxBufferPx"
+                    [forceListPaging]="activeTab() === 'Hangar' && !loading() && !hangarLoadingMore() && !hangarLoadingAll() && !hangarComplete() && !hangarLoadError() && !hangarRequiresComplete()"
+                    (forceListLoadMore)="loadMoreForces()"
                     tabindex="0">
                     <div class="virtual-hangar-item"
                         *cdkVirtualFor="let force of filteredForces(); let i = index; trackBy: trackForce"
@@ -173,7 +180,7 @@
                                             || unitDisplayName === 'both'
                                             || !unitEntry.alias) {
                                         <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
-                                        <div class="unit-chassis">{{ unitEntry.unit?.chassis }}</div>
+                                        <div class="unit-chassis">{{ unitNames.chassis(unitEntry.unit) }}</div>
                                         }
                                         @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
                                         <div class="unit-alias" 
@@ -187,10 +194,26 @@
                                 </div>
                             </div>
                             }
+                            @if ((force.reserveCount ?? 0) > 0) {
+                                <force-reserves-preview [count]="force.reserveCount ?? 0"></force-reserves-preview>
+                            }
                         </div>
                     </div>
                     </div>
                 </cdk-virtual-scroll-viewport>
+            }
+            @if (!loading() && !hangarComplete()) {
+                <div class="hangar-page-status" role="status">
+                    @if (hangarLoadError()) {
+                        <span>Could not finish loading cloud forces. {{ forces().length }} loaded.</span>
+                    } @else {
+                        <span>{{ forces().length }} loaded · More cloud forces available</span>
+                    }
+                    <button type="button" class="bt-button" [disabled]="hangarLoadingMore() || hangarLoadingAll()"
+                        (click)="hangarRequiresComplete() ? loadAllForces() : loadMoreForces()">
+                        {{ hangarLoadingMore() || hangarLoadingAll() ? 'Loading…' : hangarLoadError() ? 'Retry' : 'Load more' }}
+                    </button>
+                </div>
             }
         }
         @if (activeTab() === 'Force Packs') {
@@ -223,7 +246,7 @@
                                     <div class="unit-square compact-mode" [class.missing]="!pu.unit">                                        
                                         <unit-icon [unit]="pu.unit" [size]="32"></unit-icon>
                                         <div class="unit-model">{{ pu.unit?.model || pu.model || '' }}</div>
-                                        <div class="unit-chassis">{{ pu.unit?.chassis || pu.chassis }}</div>
+                                        <div class="unit-chassis">{{ unitNames.chassis(pu.unit) || pu.chassis }}</div>
                                     </div>
                                     }
                                 </div>
@@ -358,6 +381,7 @@
                     allLabel="All factions"
                     ariaLabel="Filter by faction"
                     fallbackLabel="F"
+                    (opened)="loadAllForces()"
                     (selectedIdChange)="setHangarFactionFilter($event)">
                 </compact-filter-menu>
                 <compact-filter-menu
@@ -366,6 +390,7 @@
                     allLabel="All eras"
                     ariaLabel="Filter by era"
                     fallbackLabel="E"
+                    (opened)="loadAllForces()"
                     (selectedIdChange)="setHangarEraFilter($event)">
                 </compact-filter-menu>
             </div>

@@ -9,6 +9,7 @@ import type { UnitSummary } from './unit-summary.model';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type { ForceViewerBVPVDisplayDamage } from './options.model';
 import type { NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
+import { effectiveEntityPilotingSkill } from './entity/utils/battle-value/skill-facts';
 
 const MAX_RECORD_SHEET_PAGES = 2;
 
@@ -224,9 +225,13 @@ export function forceMemberDestroyed(value: ForceMember): boolean {
 }
 
 export function forceMemberPilotStats(value: ForceMember): string {
-    if (!isCBTForceMember(value)) return `${value.getPilotStats()}`;
-    const crew = value.force.getUnitCrewAssignment(value.id)?.positions ?? [];
-    return crew.map(position => `${position.gunnery}/${position.piloting}`).join(' ');
+    return value.force.getUnitCrewPolicy(value.id).positions.map(position => {
+        const person = value.force.getAssignedPerson(value.id, position.positionId);
+        if (!person) return '—';
+        return isCBTForceMember(value)
+            ? `${person.gunnery ?? 4}/${effectiveEntityPilotingSkill(value.entity, person.piloting ?? 5)}`
+            : String(person.gunnery ?? 4);
+    }).join(' · ');
 }
 
 /** Current skill-adjusted BV/PV for one visible force member. */

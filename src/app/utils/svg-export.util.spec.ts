@@ -11,6 +11,13 @@ describe('SvgExportUtil', () => {
         return new Blob(['png'], { type: 'image/png' });
     }
 
+    function exportedSvgBlob(createObjectUrl: jasmine.Spy): Blob {
+        const blob = createObjectUrl.calls.allArgs().map(args => args[0])
+            .find(value => value instanceof Blob && value.type.startsWith('image/svg+xml'));
+        if (!blob) throw new Error('No serialized SVG was exported');
+        return blob;
+    }
+
     function getNavigatorPropertyDescriptor(propertyName: MockedNavigatorApi): PropertyDescriptor | undefined {
         return Object.getOwnPropertyDescriptor(Navigator.prototype, propertyName) ?? Object.getOwnPropertyDescriptor(navigator, propertyName);
     }
@@ -106,7 +113,7 @@ describe('SvgExportUtil', () => {
         expect(download).toHaveBeenCalledOnceWith(jasmine.any(Blob), 'record-sheet');
         expect(canvasWidth).toBe(450);
         expect(canvasHeight).toBe(900);
-        const serializedSvg = await (createObjectUrl.calls.first().args[0] as Blob).text();
+        const serializedSvg = await exportedSvgBlob(createObjectUrl).text();
         expect(serializedSvg).toContain('@font-face');
         expect(serializedSvg).toContain("font-family: 'Roboto';");
         expect(serializedSvg).toContain('data:font/ttf;base64,AQID');
@@ -133,9 +140,12 @@ describe('SvgExportUtil', () => {
         mockCanvasPng();
         spyOn(SvgExportUtil, 'downloadPngBlob').and.stub();
 
-        await withFakeSvgImage(() => SvgExportUtil.downloadPng([svg], 'record-sheet'));
+        const rendering = withFakeSvgImage(() => SvgExportUtil.downloadPng([svg], 'record-sheet'));
+        // Other services can create object URLs while image embedding awaits fetch/FileReader.
+        URL.createObjectURL(pngBlob());
+        await rendering;
 
-        const serializedSvg = await (createObjectUrl.calls.first().args[0] as Blob).text();
+        const serializedSvg = await exportedSvgBlob(createObjectUrl).text();
         const exportedSvg = new DOMParser().parseFromString(serializedSvg, 'image/svg+xml');
         expect(exportedSvg.getElementById('fluff-image-injected')?.getAttribute('src')).toBe('data:image/png;base64,BAUG');
         expect(exportedSvg.getElementById('fluff-image-fo')?.getAttribute('style')).toContain('display: block');
@@ -159,7 +169,7 @@ describe('SvgExportUtil', () => {
 
         await withFakeSvgImage(() => SvgExportUtil.downloadPng([svg], 'record-sheet'));
 
-        const serializedSvg = await (createObjectUrl.calls.first().args[0] as Blob).text();
+        const serializedSvg = await exportedSvgBlob(createObjectUrl).text();
         const exportedSvg = new DOMParser().parseFromString(serializedSvg, 'image/svg+xml');
         expect(exportedSvg.getElementById('fluff-image-fo')?.getAttribute('style')).toContain('display: none');
         expect(exportedSvg.querySelector('.referenceTable')?.getAttribute('style')).toContain('display: block');

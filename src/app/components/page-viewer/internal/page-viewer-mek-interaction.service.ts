@@ -1005,24 +1005,12 @@ export class PageViewerMekInteractionService {
 
     private async swapCrewPositions(member: CBTMekForceMember, occurrence: number): Promise<void> {
         const snapshot = member.mekRecordSheetSnapshot();
-        const profile = member.force.getUnitCrewProfile(member.id);
         const source = snapshot?.crew.find(position => position.occurrence === occurrence);
         const target = snapshot?.crew.find(position => position.occurrence === (occurrence === 0 ? 1 : 0));
-        if (!snapshot || !profile || !source || !target) return;
-        const byId = new Map(profile.positions.map(position => [position.positionId, position] as const));
-        const sourceProfile = byId.get(source.positionId);
-        const targetProfile = byId.get(target.positionId);
-        if (!sourceProfile || !targetProfile) return;
-        const positions = profile.positions.map(position => {
-            const replacement = position.positionId === source.positionId
-                ? targetProfile
-                : position.positionId === target.positionId ? sourceProfile : null;
-            return replacement === null ? position : {
-                ...replacement,
-                positionId: position.positionId,
-            };
-        });
-        const result = await member.force.replaceUnitCrewProfile(member.id, positions);
+        if (!source || !target) return;
+        const person = member.force.getAssignedPerson(member.id, source.positionId);
+        if (!person) return;
+        const result = await member.force.assignPersonToUnit(person.id, member.id, target.positionId);
         if (!result) this.rejected('The crew profile could not be saved.');
     }
 

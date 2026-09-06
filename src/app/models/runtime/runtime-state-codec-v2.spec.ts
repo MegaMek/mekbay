@@ -63,7 +63,7 @@ describe('direct Mek V2 state codec', () => {
         const replay = fixture.createInstance('unit:codec-replay');
         expect(restored.state.locations.size).toBe(1);
         expect(restored.state.ammo.size).toBe(1);
-        expect(restored.unresolved).toEqual([]);
+        expect('unresolved' in restored).toBeFalse();
         expect(replay.snapshot().locations.size).toBe(0);
     });
 
@@ -216,7 +216,7 @@ describe('direct Mek V2 state codec', () => {
         }));
 
         const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
-        expect(restored.unresolved).toEqual([]);
+        expect('unresolved' in restored).toBeFalse();
         expect(restored.state.components.get(hag.id)).toEqual(jasmine.objectContaining({
             mode: 'Flak',
             gaussPower: 'Powered Down',
@@ -242,7 +242,7 @@ describe('direct Mek V2 state codec', () => {
         expect(componentState).toEqual(jasmine.objectContaining({ mode: 'Enabling' }));
 
         const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
-        expect(restored.unresolved).toEqual([]);
+        expect('unresolved' in restored).toBeFalse();
         expect(restored.state.components.get(stealth.id)?.mode).toBe('Enabling');
     });
 
@@ -261,7 +261,7 @@ describe('direct Mek V2 state codec', () => {
 
         const saved = serialize(fixture);
         const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
-        expect(restored.unresolved).toEqual([]);
+        expect('unresolved' in restored).toBeFalse();
         expect(restored.state.components.get(blueShield.id)?.escalatingFailure)
             .toEqual({ sequence: 14, active: true });
     });
@@ -291,7 +291,7 @@ describe('direct Mek V2 state codec', () => {
         }));
 
         const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
-        expect(restored.unresolved).toEqual([]);
+        expect('unresolved' in restored).toBeFalse();
         expect(restored.state.components.get(shield.id)?.shieldDamage).toEqual({
             absorptionDamage: 2,
             capacityDamage: 0,
@@ -332,7 +332,7 @@ describe('direct Mek V2 state codec', () => {
         }));
 
         const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
-        expect(restored.unresolved).toEqual([]);
+        expect('unresolved' in restored).toBeFalse();
         expect(restored.state.components.get(panel.id)?.modularArmorDamage).toBe(6);
         expect(restored.state.pendingCombat.modularArmorDamage.get(panel.id)).toBe(3);
     });
@@ -371,8 +371,9 @@ describe('direct Mek V2 state codec', () => {
             capacityDamage: 18,
         });
         expect(restored.warnings).toContain(jasmine.objectContaining({ code: 'DAMAGE_CLAMPED' }));
-        expect(restored.unresolved).toContain(jasmine.objectContaining({
-            reason: 'SHIELD_DAMAGE_EXCEEDS_CURRENT_CAPACITY',
+        expect('unresolved' in restored).toBeFalse();
+        expect(restored.warnings).toContain(jasmine.objectContaining({
+            code: 'STATE_SKIPPED', message: 'Saved state was skipped: shield damage exceeds current capacity.',
         }));
     });
 

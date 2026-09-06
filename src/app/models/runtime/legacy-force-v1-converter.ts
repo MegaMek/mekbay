@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { compareText } from '../../utils/string.util';
+import { uuidv7 } from '../../utils/uuid.util';
 import { GameSystem } from '../common.model';
 import { DEFAULT_GUNNERY_SKILL, MAX_CREW_WOUNDS } from '../crew-member.model';
 import type {
@@ -38,7 +39,6 @@ import {
 import {
     CBT_FORCE_ROSTER_SCHEMA_VERSION,
     CBT_FORCE_UNASSIGNED_GROUP_ID,
-    CBTForceRosterValidationError,
     MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
     type SerializedCBTForceRosterGroupV1,
 } from './cbt-force-roster';
@@ -143,26 +143,19 @@ function convertAlphaStrikeForce(
     const rawGroups = payload['groups'];
     if (!Array.isArray(rawGroups)) throw new Error('Alpha Strike V1 force groups must be an array');
 
-    const groupIds = new Set<string>();
+    const parsed = readV1Groups(rawGroups, GameSystem.AS, options.onWarning);
     const unitIds = new Set<string>();
-    const groups: ASSerializedGroup[] = rawGroups.map((rawGroup, groupOrder) => {
-        const group = requireObject(rawGroup, `Alpha Strike V1 group ${groupOrder}`);
-        const id = readGroupId(group, groupOrder);
-        if (groupIds.has(id)) throw new Error(`Alpha Strike V1 force has duplicate group ID ${id}`);
-        groupIds.add(id);
+    const ambiguousUnitIds = new Set<string>();
+    const groups: ASSerializedGroup[] = parsed.groups.map(({ group, id }, groupOrder) => {
         const rawUnits = group['units'];
         if (!Array.isArray(rawUnits)) throw new Error(`Alpha Strike V1 group ${id} requires a units array`);
         const units = rawUnits.flatMap((rawUnit, unitOrder): ASSerializedUnit[] => {
             const unit = requireObject(rawUnit, `Alpha Strike V1 unit ${groupOrder}:${unitOrder}`);
             const rowLabel = `Alpha Strike V1 unit ${groupOrder}:${unitOrder}`;
-            const instanceId = requireV1Text(unit, 'id', rowLabel);
             const legacyName = requireV1Text(unit, 'unit', rowLabel);
-            if (unitIds.has(instanceId)) {
-                throw new Error(`Alpha Strike V1 force has duplicate unit ID ${instanceId}`);
-            }
-            unitIds.add(instanceId);
-
             const identity = options.resolveIdentity(unit);
+            const instanceId = readV1UnitId(unit, legacyName, unitIds, ambiguousUnitIds,
+                identity.kind === 'resolved' ? options.onWarning : undefined);
             if (identity.kind !== 'resolved') {
                 options.onWarning?.({
                     kind: 'unit-skipped',
@@ -186,32 +179,24 @@ function convertAlphaStrikeForce(
             }
         });
 
-        const name = optionalMetadata(group, 'name', `Alpha Strike V1 group ${id}`);
-        const color = optionalMetadata(group, 'color', `Alpha Strike V1 group ${id}`);
-        const formationId = optionalMetadata(group, 'formationId', `Alpha Strike V1 group ${id}`);
-        const formationTargetGroupId = optionalMetadata(
-            group,
-            'formationTargetGroupId',
-            `Alpha Strike V1 group ${id}`,
-        );
-        const formationLock = sparseTrue(group, 'formationLock', `Alpha Strike V1 group ${id}`);
         return {
             id,
-            ...(name === undefined ? {} : { name }),
-            ...(color === undefined ? {} : { color }),
-            ...(formationId === undefined ? {} : { formationId }),
-            ...(formationTargetGroupId === undefined ? {} : { formationTargetGroupId }),
-            ...(formationLock ? { formationLock: true } : {}),
+            ...readV1GroupMetadata(group, id, options.onWarning, parsed.ambiguousIds),
             units,
         };
     });
 
+    const rawNetworks = payload['c3Networks'];
+    const networks = readV1C3Networks(rawNetworks, ambiguousUnitIds);
+    if (rawNetworks !== undefined && !jsonValuesEqual(rawNetworks, networks)) {
+        options.onWarning?.({ kind: 'force-state-reset', message: V1_C3_LINKS_WARNING });
+    }
     return Object.freeze({
         version: 2,
         timestamp: requireV1Text(payload, 'timestamp', 'Alpha Strike V1 force'),
         instanceId: requireV1Text(payload, 'instanceId', 'Alpha Strike V1 force'),
         type: GameSystem.AS,
-        name: requireV1Text(payload, 'name', 'Alpha Strike V1 force'),
+        name: readV1ForceName(payload, options.onWarning),
         ...(typeof force.note === 'string' && force.note.length > 0 ? { note: force.note } : {}),
         ...(Array.isArray(force.tags) && force.tags.length > 0 ? { tags: [...force.tags] } : {}),
         ...(typeof force.factionId === 'number' ? { factionId: force.factionId } : {}),
@@ -220,8 +205,8 @@ function convertAlphaStrikeForce(
         ...(force.eraLock === true ? { eraLock: true } : {}),
         ...(force.owned === false ? { owned: false } : {}),
         groups,
-        ...(Array.isArray(force.c3Networks) && force.c3Networks.length > 0
-            ? { c3Networks: structuredClone(force.c3Networks) }
+        ...(networks.length > 0
+            ? { c3Networks: networks }
             : {}),
     });
 }
@@ -266,7 +251,7 @@ function convertAlphaStrikeV1MutableState(unit: JsonObject): Omit<ASSerializedUn
 }
 
 function convertAlphaStrikeV1State(value: JsonValue | undefined): ASSerializedState | undefined {
-    if (value === undefined || value === null) return undefined;
+    if (value === undefined) return undefined;
     const state = requireObject(value, 'Alpha Strike V1 unit state');
     const modified = state['modified'];
     const destroyed = state['destroyed'];
@@ -302,6 +287,7 @@ export async function convertPersistedMekUnitV1(
     source: LegacyUnitSourceV1,
     fresh: CBTMekUnit,
     scenario: ScenarioRules,
+    onIssue?: (message: string) => void,
 ): Promise<SerializedCBTUnitV2> {
     const baseline = fresh.serialize();
     const runtimeBaseline = fresh.getInstance().baselineRef;
@@ -312,6 +298,8 @@ export async function convertPersistedMekUnitV1(
         baselineRef: runtimeBaseline,
         state: fresh.getInstance().snapshot(),
     });
+    const issues = [...restored.warnings];
+    const crewRows = readLegacyCrewRows(source, fresh.getIndex().crewPositions, issues);
     const restoredState = convertLegacyMovementHeatAcknowledgement(
         restored.state,
         fresh,
@@ -320,11 +308,12 @@ export async function convertPersistedMekUnitV1(
     const state = freezeRuntimeState({
         ...restoredState,
         crew: restoreLegacyCrewRuntime(
-            source,
+            crewRows,
             restoredState.crew,
             fresh.getIndex().crewPositions,
         ),
     });
+    if (issues.length > 0) onIssue?.([...new Set(issues)].join(' '));
     return serializeCBTUnitStateV2({
         entity: fresh.getUnit(),
         index: fresh.getIndex(),
@@ -336,7 +325,7 @@ export async function convertPersistedMekUnitV1(
             values: Object.freeze({
                 ...baseline.deployment.values,
                 crewAssignment: restoreLegacyCrewAssignment(
-                    source,
+                    crewRows,
                     fresh.getIndex().crewPositions,
                 ),
             }),
@@ -360,11 +349,15 @@ export function convertPersistedNonMekUnitV1(
     }
 
     const index = fresh.getIndex();
-    const recovery = readLegacyUnitStateV1(source);
-    const rawState = isRecord(recovery.rawUnitAndFamilyState)
-        ? recovery.rawUnitAndFamilyState
-        : {};
+    const rawState = readLegacyUnitStateV1(source);
     const issues: string[] = [];
+    if (rawState['inventory'] !== undefined && !Array.isArray(rawState['inventory'])) {
+        issues.push('Malformed V1 inventory container was skipped.');
+    }
+    if (rawState['crits'] !== undefined && !Array.isArray(rawState['crits'])) {
+        issues.push('Malformed V1 critical container was skipped.');
+    }
+    const crewRows = readLegacyCrewRows(source, index.crewPositions, issues);
     const locations = restoreLegacyEntityLocations(rawState['locations'], index, issues);
     const componentState = new Map<ComponentId, {
         status?: 'disabled' | 'destroyed';
@@ -381,7 +374,7 @@ export function convertPersistedNonMekUnitV1(
         hitDelta: number;
         hitTimestamps: readonly number[];
     }>>();
-    for (const raw of recovery.rawInventoryRecords) {
+    for (const raw of Array.isArray(rawState['inventory']) ? rawState['inventory'] : []) {
         restoreLegacyEntityInventory(
             raw,
             index,
@@ -391,7 +384,7 @@ export function convertPersistedNonMekUnitV1(
             issues,
         );
     }
-    for (const raw of recovery.rawCriticalRecords) {
+    for (const raw of Array.isArray(rawState['crits']) ? rawState['crits'] : []) {
         if (restoreLegacyNonMekDamageTrack(
             raw,
             index,
@@ -402,8 +395,14 @@ export function convertPersistedNonMekUnitV1(
         restoreLegacyNonMekComponentDamage(raw, index, componentState, pendingComponentState, issues);
     }
 
-    const conditions = restoreLegacyEntityConditions(rawState['conditions'], issues);
-    const crewState = restoreLegacyNonMekCrewState(source, index.crewPositions, issues);
+    const savedConditions = restoreLegacyEntityConditions(rawState['conditions'], issues);
+    const conditions = rawState['shutdown'] === true && !savedConditions.includes('shutdown')
+        ? [...savedConditions, 'shutdown' as const].sort(compareText)
+        : savedConditions;
+    if (rawState['shutdown'] !== undefined && typeof rawState['shutdown'] !== 'boolean') {
+        issues.push('Malformed V1 shutdown state was skipped.');
+    }
+    const crewState = restoreLegacyNonMekCrewState(crewRows, index.crewPositions);
     const heat = restoreLegacyEntityHeat(
         rawState['heat'],
         fresh.getUnit().tracksHeat(),
@@ -415,7 +414,7 @@ export function convertPersistedNonMekUnitV1(
     if (rawState['destroyed'] !== undefined && typeof rawState['destroyed'] !== 'boolean') {
         issues.push('Malformed V1 destroyed state was skipped.');
     }
-    preserveUnsupportedLegacyFamilyState(rawState, issues);
+    reportUnsupportedLegacyFamilyState(rawState, issues);
 
     const pendingCombat = Object.freeze({
         ...(locations.pendingInternal.length === 0
@@ -443,7 +442,7 @@ export function convertPersistedNonMekUnitV1(
             ...baseline.deployment,
             values: Object.freeze({
                 ...baseline.deployment.values,
-                crewAssignment: restoreLegacyCrewAssignment(source, index.crewPositions),
+                crewAssignment: restoreLegacyCrewAssignment(crewRows, index.crewPositions),
             }),
         }),
         ...(destroyed ? { destroyed: true as const } : {}),
@@ -472,11 +471,10 @@ export function convertPersistedNonMekUnitV1(
 }
 
 function restoreLegacyCrewAssignment(
-    source: LegacyUnitSourceV1,
+    rows: readonly JsonValue[],
     topology: CrewTopology,
 ): CrewAssignment {
     const defaults = createDefaultCrewAssignment(topology);
-    const rows = legacyCrewRows(source);
     return Object.freeze({
         schemaVersion: 1 as const,
         positions: Object.freeze(defaults.positions.map((position, occurrence) => {
@@ -492,12 +490,11 @@ function restoreLegacyCrewAssignment(
 }
 
 function restoreLegacyCrewRuntime(
-    source: LegacyUnitSourceV1,
+    rows: readonly JsonValue[],
     current: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>,
     topology: CrewTopology,
 ): ReadonlyMap<CrewPositionId, CrewMemberRuntimeState> {
     const crew = new Map(current);
-    const rows = legacyCrewRows(source);
     for (const position of [...topology.values()].sort((left, right) => left.occurrence - right.occurrence)) {
         const row = legacyCrewRow(rows, position.occurrence);
         if (!row) continue;
@@ -511,9 +508,8 @@ function restoreLegacyCrewRuntime(
 }
 
 function restoreLegacyNonMekCrewState(
-    source: LegacyUnitSourceV1,
+    rows: readonly JsonValue[],
     topology: CrewTopology,
-    issues: string[],
 ): readonly Readonly<{
     positionId: CrewPositionId;
     wounds: number;
@@ -521,16 +517,11 @@ function restoreLegacyNonMekCrewState(
     ejected: boolean;
     dead?: true;
 }>[] {
-    const rows = legacyCrewRows(source);
     const restored = [...topology.values()]
         .sort((left, right) => left.occurrence - right.occurrence)
         .flatMap(position => {
             const row = legacyCrewRow(rows, position.occurrence);
             if (!row) return [];
-            const rawState = integer(row['state']);
-            if (rawState !== null && ![0, 1, 2, 3, 4, 5].includes(rawState)) {
-                issues.push(`Unknown V1 crew state ${rawState} at position ${position.occurrence}.`);
-            }
             const state = legacyCrewState(row);
             return state.wounds === 0 && !state.unconscious && !state.ejected
                 && !state.dead
@@ -540,12 +531,36 @@ function restoreLegacyNonMekCrewState(
     return Object.freeze(restored);
 }
 
-function legacyCrewRows(source: LegacyUnitSourceV1): readonly JsonValue[] {
-    const recovery = readLegacyUnitStateV1(source);
-    const state = isRecord(recovery.rawUnitAndFamilyState)
-        ? recovery.rawUnitAndFamilyState
-        : {};
-    return Array.isArray(state['crew']) ? state['crew'] : [];
+function readLegacyCrewRows(
+    source: LegacyUnitSourceV1,
+    topology: CrewTopology,
+    issues: string[],
+): readonly JsonValue[] {
+    const state = readLegacyUnitStateV1(source);
+    const rows = state['crew'];
+    if (rows === undefined) return [];
+    if (!Array.isArray(rows)) {
+        issues.push('Malformed V1 crew container was skipped.');
+        return [];
+    }
+    if (rows.length > topology.size) issues.push('V1 crew positions absent from the current design were skipped.');
+    for (const [index, row] of rows.entries()) {
+        if (!isRecord(row)) {
+            issues.push(`Malformed V1 crew position ${index} was skipped.`);
+            continue;
+        }
+        const invalidName = row['name'] !== undefined && boundedLegacyText(row['name'], 160) === undefined;
+        const invalidSkills = ['gunnerySkill', 'pilotingSkill'].some(key =>
+            row[key] !== undefined && legacySkill(row[key]) === undefined);
+        const hits = integer(row['hits']);
+        const invalidHits = row['hits'] !== undefined && (hits === null || hits < 0 || hits > MAX_CREW_WOUNDS);
+        const status = integer(row['state']);
+        const invalidStatus = row['state'] !== undefined && (status === null || status < 0 || status > 5);
+        if (invalidName || invalidSkills || invalidHits || invalidStatus) {
+            issues.push(`Invalid V1 crew facts at position ${index} were reset or clamped.`);
+        }
+    }
+    return rows;
 }
 
 function legacyCrewRow(rows: readonly JsonValue[], occurrence: number): Readonly<Record<string, JsonValue>> | undefined {
@@ -981,13 +996,13 @@ function restoreLegacyEntityConditions(raw: JsonValue | undefined, issues: strin
     return Object.freeze([...conditions].sort(compareText));
 }
 
-function preserveUnsupportedLegacyFamilyState(
+function reportUnsupportedLegacyFamilyState(
     rawState: Readonly<Record<string, JsonValue>>,
     issues: string[],
 ): void {
     const ignored = new Set([
         'modified', 'destroyed', 'conditions', 'crew', 'crits', 'locations', 'inventory', 'heat', 'turnState',
-        'shutdown',
+        'shutdown', 'c3Position',
     ]);
     for (const [key, value] of Object.entries(rawState)) {
         if (ignored.has(key) || value === undefined || value === null) continue;
@@ -1253,40 +1268,28 @@ async function convertCBTForce(
     }
     const payload = requireObject(cloneAsJson(force), 'CBT V1 force');
     const rawGroups = payload['groups'];
-    if (rawGroups !== undefined && !Array.isArray(rawGroups)) {
+    if (!Array.isArray(rawGroups)) {
         throw new Error('CBT V1 force groups must be an array');
     }
 
     const stateRevision = 0;
     const seenInstanceIds = new Set<string>();
+    const ambiguousUnitIds = new Set<string>();
     const resolvedUnits: ResolvedLegacyCBTUnitV1[] = [];
-    const groupIds = new Set<string>();
+    const parsed = readV1Groups(rawGroups, GameSystem.CBT, options.onWarning);
     const rosterGroups: SerializedCBTForceRosterGroupV1[] = [];
 
-    for (const [groupOrder, rawGroup] of (rawGroups ?? []).entries()) {
-        const group = requireObject(rawGroup, `CBT V1 group ${groupOrder}`);
-        const groupId = readGroupId(group, groupOrder);
-        if (groupId === CBT_FORCE_UNASSIGNED_GROUP_ID) {
-            throw new Error(`CBT V1 group ${groupOrder} uses reserved ID ${groupId}`);
-        }
-        if (groupIds.has(groupId)) throw new Error(`CBT V1 force has duplicate group ID ${groupId}`);
-        groupIds.add(groupId);
+    for (const [groupOrder, { group, id: groupId }] of parsed.groups.entries()) {
 
         const rawMembers = group['units'];
         if (!Array.isArray(rawMembers)) throw new Error(`CBT V1 group ${groupId} requires a units array`);
         let commanderInstanceId: string | undefined;
         const members = rawMembers.flatMap((rawMember, memberOrder) => {
             const unit = requireObject(rawMember, `CBT V1 unit ${groupOrder}:${memberOrder}`);
-            const rawId = unit['id'];
-            if (typeof rawId !== 'string') throw new Error(`CBT V1 unit ${groupOrder}:${memberOrder} requires an ID`);
-            const instanceId = rawId;
-            if (seenInstanceIds.has(instanceId)) {
-                throw new Error(`CBT V1 force has duplicate unit ID ${instanceId}`);
-            }
-            seenInstanceIds.add(instanceId);
-
-            const legacyName = stringValue(unit['unit']) ?? String(instanceId);
+            const legacyName = requireV1Text(unit, 'unit', `CBT V1 unit ${groupOrder}:${memberOrder}`);
             const identity = options.resolveIdentity(unit);
+            const instanceId = readV1UnitId(unit, legacyName, seenInstanceIds, ambiguousUnitIds,
+                identity.kind === 'resolved' ? options.onWarning : undefined);
             if (identity.kind !== 'resolved') {
                 options.onWarning?.({
                     kind: 'unit-skipped',
@@ -1296,17 +1299,16 @@ async function convertCBTForce(
                 return [];
             }
 
-            const commander = sparseTrue(unit, 'commander', `CBT V1 unit ${instanceId}`);
-            if (commander) {
-                if (commanderInstanceId !== undefined) {
-                    throw new CBTForceRosterValidationError(
-                        'ROSTER_COMMANDER_CONFLICT',
-                        `groups/${groupOrder}/units/${memberOrder}/commander`,
-                        `roster group ${groupId} may contain at most one commander; ${instanceId} conflicts with ${commanderInstanceId}`,
-                    );
-                }
-                commanderInstanceId = instanceId;
+            const rawCommander = unit['commander'];
+            const commander = rawCommander === true && commanderInstanceId === undefined;
+            if ((rawCommander !== undefined && typeof rawCommander !== 'boolean')
+                || (rawCommander === true && commanderInstanceId !== undefined)) {
+                options.onWarning?.({
+                    kind: 'state-partial', unit: legacyName,
+                    message: `Unit "${legacyName}" loaded without its invalid or conflicting commander flag.`,
+                });
             }
+            if (commander) commanderInstanceId = instanceId;
 
             resolvedUnits.push(Object.freeze({
                 instanceId,
@@ -1319,23 +1321,10 @@ async function convertCBTForce(
             })];
         });
 
-        const name = optionalMetadata(group, 'name', `CBT V1 group ${groupId}`);
-        const color = optionalMetadata(group, 'color', `CBT V1 group ${groupId}`);
-        const formationId = optionalMetadata(group, 'formationId', `CBT V1 group ${groupId}`);
-        const formationTargetGroupId = optionalMetadata(
-            group,
-            'formationTargetGroupId',
-            `CBT V1 group ${groupId}`,
-        );
-        const formationLock = sparseTrue(group, 'formationLock', `CBT V1 group ${groupId}`);
         rosterGroups.push(Object.freeze({
             groupId,
             order: groupOrder,
-            ...(name === undefined ? {} : { name }),
-            ...(color === undefined ? {} : { color }),
-            ...(formationId === undefined ? {} : { formationId }),
-            ...(formationTargetGroupId === undefined ? {} : { formationTargetGroupId }),
-            ...(formationLock ? { formationLock: true as const } : {}),
+            ...readV1GroupMetadata(group, groupId, options.onWarning, parsed.ambiguousIds),
             members: Object.freeze(members),
         }));
     }
@@ -1349,6 +1338,7 @@ async function convertCBTForce(
         options.materializeUnit,
         options.scenario,
         payload['c3Networks'],
+        ambiguousUnitIds,
         options.onWarning,
     );
 
@@ -1357,7 +1347,7 @@ async function convertCBTForce(
         timestamp: force.timestamp,
         instanceId: force.instanceId,
         type: GameSystem.CBT,
-        name: force.name,
+        name: readV1ForceName(payload, options.onWarning),
         ...(force.note === undefined ? {} : { note: force.note }),
         ...(force.tags === undefined ? {} : { tags: force.tags }),
         ...(force.factionId === undefined ? {} : { factionId: force.factionId }),
@@ -1378,6 +1368,7 @@ async function materializeResolvedUnits(
     materializeUnit: NonNullable<PersistedForceV1ConversionOptions['materializeUnit']>,
     scenario: ScenarioRules,
     rawLegacyNetworks: JsonValue | undefined,
+    ambiguousUnitIds: ReadonlySet<string>,
     onWarning?: PersistedForceV1ConversionOptions['onWarning'],
 ): Promise<SerializedCBTForceV2> {
     const materializedIds = new Set<string>();
@@ -1417,7 +1408,9 @@ async function materializeResolvedUnits(
             throw new Error(`Converted V1 unit ${entry.instanceId} changed identity`);
         }
 
-        const rawState = readLegacyUnitStateV1(entry.source).rawUnitAndFamilyState;
+        // Read positions independently: malformed unit state is reported once by the
+        // state conversion below, while an invalid editor position is only partial loss.
+        const rawState = (entry.source.payload as JsonObject)['state'];
         try {
             const position = convertV1C3Position(
                 isRecord(rawState) ? rawState['c3Position'] : undefined,
@@ -1435,14 +1428,15 @@ async function materializeResolvedUnits(
 
         let unit: SerializedCBTUnitV2 | SerializedNonMekUnit;
         try {
+            const onIssue = (message: string) => onWarning?.({
+                kind: 'state-partial',
+                unit: legacyName,
+                message: `Unit "${legacyName}" loaded with some legacy state skipped: ${message}`,
+            });
             unit = isCBTMekUnit(ready)
-                ? await convertPersistedMekUnitV1(entry.source, ready, scenario)
+                ? await convertPersistedMekUnitV1(entry.source, ready, scenario, onIssue)
                 : isCBTNonMekUnit(ready)
-                    ? convertPersistedNonMekUnitV1(entry.source, ready, message => onWarning?.({
-                        kind: 'state-partial',
-                        unit: legacyName,
-                        message: `Unit "${legacyName}" loaded with some legacy state skipped: ${message}`,
-                    }))
+                    ? convertPersistedNonMekUnitV1(entry.source, ready, onIssue)
                     : ready.serialize();
         } catch (error) {
             onWarning?.({
@@ -1468,6 +1462,7 @@ async function materializeResolvedUnits(
         rawLegacyNetworks,
         presentations,
         c3Positions,
+        ambiguousUnitIds,
         onWarning,
     );
 
@@ -1503,6 +1498,16 @@ function requireV1Text(
         throw new Error(`${label} has invalid ${key}`);
     }
     return value;
+}
+
+function readV1ForceName(record: JsonObject, onWarning?: PersistedForceV1ConversionOptions['onWarning']): string {
+    const name = record['name'];
+    // V1 used an empty name to display the automatically chosen organization name.
+    if (typeof name !== 'string' || name.includes('\0')) {
+        onWarning?.({ kind: 'force-state-reset', message: 'The force loaded without its unreadable display name.' });
+        return '';
+    }
+    return name;
 }
 
 function convertAlphaStrikeV1Abilities(
@@ -1655,6 +1660,7 @@ function convertLegacyC3Networks(
     raw: JsonValue | undefined,
     units: readonly C3EncounterPresentationUnit[],
     c3Positions: readonly C3UnitPosition[],
+    ambiguousUnitIds: ReadonlySet<string>,
     onWarning?: PersistedForceV1ConversionOptions['onWarning'],
 ): ReturnType<typeof encodeCBTEncounterStateV2> {
     if (raw === undefined) {
@@ -1664,10 +1670,7 @@ function convertLegacyC3Networks(
         });
     }
 
-    const sanitized = Sanitizer.sanitizeArray<SerializedC3NetworkGroup>(
-        raw,
-        C3_NETWORK_GROUP_SCHEMA,
-    );
+    const sanitized = readV1C3Networks(raw, ambiguousUnitIds);
     let changed = !jsonValuesEqual(raw, sanitized);
     const unitsById = new Map(units.map(unit => [String(unit.instanceId), unit] as const));
     const cleaned = C3NetworkEditor.clean(structuredClone(sanitized), unitsById);
@@ -1682,13 +1685,21 @@ function convertLegacyC3Networks(
     if (changed) {
         onWarning?.({
             kind: 'force-state-reset',
-            message: 'Invalid or unavailable V1 C3 network links were skipped.',
+            message: V1_C3_LINKS_WARNING,
         });
     }
     return encodeCBTEncounterStateV2({
         networks,
         c3Positions,
     });
+}
+
+const V1_C3_LINKS_WARNING = 'Invalid, unavailable or ambiguous V1 C3 network links were skipped.';
+
+function readV1C3Networks(raw: JsonValue | undefined, ambiguousUnitIds: ReadonlySet<string>): SerializedC3NetworkGroup[] {
+    let networks = Sanitizer.sanitizeArray<SerializedC3NetworkGroup>(raw, C3_NETWORK_GROUP_SCHEMA);
+    for (const id of ambiguousUnitIds) networks = C3NetworkEditor.removeUnit(networks, id).networks;
+    return networks;
 }
 
 function legacyUnitName(source: LegacyUnitSourceV1): string {
@@ -1702,34 +1713,73 @@ function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
-function optionalMetadata(
-    record: JsonObject,
-    key: 'name' | 'color' | 'formationId' | 'formationTargetGroupId',
-    label: string,
-): string | undefined {
-    const value = record[key];
-    if (value === undefined) return undefined;
-    if (typeof value !== 'string' || value.includes('\0')) throw new Error(`${label} has invalid ${key}`);
-    const normalized = value.trim();
-    if (!normalized) return undefined;
-    if (normalized.length > MAX_CBT_FORCE_ROSTER_METADATA_LENGTH) throw new Error(`${label} has invalid ${key}`);
-    return normalized;
-}
-
-function sparseTrue(record: JsonObject, key: 'formationLock' | 'commander', label: string): boolean {
-    const value = record[key];
-    if (value === undefined || value === false) return false;
-    if (value !== true) throw new Error(`${label} has invalid ${key}`);
-    return true;
-}
-
-function readGroupId(group: JsonObject, groupOrder: number): string {
-    const value = group['id'];
-    if (value === undefined) return `v1-group:${groupOrder}`;
-    if (typeof value !== 'string' || !value.trim() || value.length > 512 || value.includes('\0')) {
-        throw new Error(`CBT V1 group ${groupOrder} has an invalid ID`);
+function readV1GroupMetadata(
+    group: JsonObject,
+    groupId: string,
+    onWarning?: PersistedForceV1ConversionOptions['onWarning'],
+    ambiguousGroupIds?: ReadonlySet<string>,
+): Pick<SerializedCBTForceRosterGroupV1, 'name' | 'color' | 'formationId' | 'formationTargetGroupId' | 'formationLock'> {
+    const result: { name?: string; color?: string; formationId?: string; formationTargetGroupId?: string; formationLock?: true } = {};
+    for (const key of ['name', 'color', 'formationId', 'formationTargetGroupId'] as const) {
+        const value = group[key];
+        if (value === undefined) continue;
+        if (key === 'formationTargetGroupId' && typeof value === 'string' && ambiguousGroupIds?.has(value)) {
+            onWarning?.({ kind: 'force-state-reset', message: `Group "${groupId}" loaded without its ambiguous formation target.` });
+            continue;
+        }
+        if (typeof value !== 'string' || value.includes('\0')
+            || value.trim().length > MAX_CBT_FORCE_ROSTER_METADATA_LENGTH) {
+            onWarning?.({ kind: 'force-state-reset', message: `Group "${groupId}" loaded without its invalid ${key}.` });
+        } else if (value.trim()) result[key] = value.trim();
     }
-    return value;
+    const lock = group['formationLock'];
+    if (lock === true) result.formationLock = true;
+    else if (lock !== undefined && lock !== false) {
+        onWarning?.({ kind: 'force-state-reset', message: `Group "${groupId}" loaded without its invalid formation lock.` });
+    }
+    return result;
+}
+
+/** Read all group identities before resolving any cross-group formation targets. */
+function readV1Groups(rawGroups: JsonValue[], system: GameSystem, onWarning?: PersistedForceV1ConversionOptions['onWarning']) {
+    const seen = new Set<string>(system === GameSystem.CBT ? [CBT_FORCE_UNASSIGNED_GROUP_ID] : []);
+    const ambiguousIds = new Set<string>();
+    const groups = rawGroups.map((raw, order) => {
+        const group = requireObject(raw, `${system} V1 group ${order}`);
+        // Early V1 groups omitted IDs; retain their existing deterministic fallback.
+        const original = group['id'] === undefined ? `v1-group:${order}` : group['id'];
+        const id = readUniqueV1Id(original, seen, ambiguousIds);
+        if (id !== original) onWarning?.({
+            kind: 'force-state-reset', message: `Group ${order + 1} received a new ID because its saved ID was invalid or duplicated.`,
+        });
+        return { group, id };
+    });
+    return { groups, ambiguousIds };
+}
+
+function readV1UnitId(unit: JsonObject, name: string, seen: Set<string>, ambiguousIds: Set<string>,
+    onWarning?: PersistedForceV1ConversionOptions['onWarning']): string {
+    const id = readUniqueV1Id(unit['id'], seen, ambiguousIds);
+    if (id !== unit['id']) onWarning?.({
+        kind: 'state-partial', unit: name,
+        message: `Unit "${name}" received a new ID because its saved ID was missing, invalid or duplicated.`,
+    });
+    return id;
+}
+
+/** Preserve the first valid identity; corrupt identities cannot discard an identifiable unit. */
+function readUniqueV1Id(raw: JsonValue | undefined, seen: Set<string>, ambiguousIds: Set<string>): string {
+    if (typeof raw === 'string' && raw.trim() && raw.length <= 512 && !raw.includes('\0')) {
+        if (!seen.has(raw)) {
+            seen.add(raw);
+            return raw;
+        }
+        ambiguousIds.add(raw);
+    }
+    let id: string;
+    do { id = uuidv7(); } while (seen.has(id));
+    seen.add(id);
+    return id;
 }
 
 function requireObject(value: unknown, label: string): JsonObject {

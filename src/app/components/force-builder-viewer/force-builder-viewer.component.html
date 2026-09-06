@@ -194,6 +194,9 @@
                 </div>
                 }
             </div>
+            @if (!miniMode()) {
+                <force-reserve-crew [force]="slotForce" [layout]="compactMode() ? 'compact' : 'cards'" />
+            }
         </div>
         }
         </div>

@@ -30,17 +30,22 @@ describe('CrewAssignment', () => {
         expect(assertCanonicalCrewAssignment(source, assignment)).toEqual(assignment);
     });
 
-    it('rejects duplicate, missing, and unknown crew positions', () => {
+    it('rejects duplicate and unknown crew positions', () => {
         const source = topology(2);
         expect(() => canonicalizeCrewAssignment(source, assignmentFor([0, 0])))
             .toThrowError(/duplicated/u);
-        expect(() => canonicalizeCrewAssignment(source, assignmentFor([0])))
-            .toThrowError(/must exhaust/u);
         expect(() => canonicalizeCrewAssignment(source, assignmentFor([0, 2])))
             .toThrowError(/not in the entity crew topology/u);
     });
 
-    it('bounds names, roles, skills, and object shape', () => {
+    it('canonicalizes partial assignments and preserves explicitly empty assignments', () => {
+        const source = topology(3);
+        expect(canonicalizeCrewAssignment(source, assignmentFor([2, 0])).positions.map(position => position.name))
+            .toEqual(['Crew 0', 'Crew 2']);
+        expect(assertCanonicalCrewAssignment(source, assignmentFor([])).positions).toEqual([]);
+    });
+
+    it('bounds names, skills, and object shape', () => {
         const source = topology(1);
         const longName = assignmentFor([0]);
         longName.positions[0].name = 'x'.repeat(MAX_CREW_NAME_LENGTH + 1);
@@ -59,14 +64,13 @@ describe('CrewAssignment', () => {
         expect(() => canonicalizeCrewAssignment(source, future)).toThrowError(/must contain exactly/u);
     });
 
-    it('fails closed when a profile crosses crew-topology drift in either direction', () => {
+    it('allows vacant new stations but rejects assignments to removed stations', () => {
         const standard = topology(1);
         const commandConsole = topology(2);
         const standardAssignment = canonicalizeCrewAssignment(standard, assignmentFor([0]));
         const commandAssignment = canonicalizeCrewAssignment(commandConsole, assignmentFor([0, 1]));
 
-        expect(() => canonicalizeCrewAssignment(commandConsole, standardAssignment))
-            .toThrowError(/must exhaust/u);
+        expect(canonicalizeCrewAssignment(commandConsole, standardAssignment)).toEqual(standardAssignment);
         expect(() => canonicalizeCrewAssignment(standard, commandAssignment))
             .toThrowError(/not in the entity crew topology/u);
     });
@@ -91,7 +95,6 @@ function assignmentFor(order: readonly number[]): {
     positions: Array<{
         positionId: ReturnType<typeof asCrewPositionId>;
         name: string;
-        role: string;
         gunnery: number;
         piloting: number;
     }>;
@@ -101,7 +104,6 @@ function assignmentFor(order: readonly number[]): {
         positions: order.map(occurrence => ({
             positionId: asCrewPositionId(`crew:${occurrence}`),
             name: `Crew ${occurrence}`,
-            role: `role:${occurrence}`,
             gunnery: 4,
             piloting: 5,
         })),

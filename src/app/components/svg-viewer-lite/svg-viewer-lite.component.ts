@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, DestroyRef, signal, effect, input, inject, viewChild, type ElementRef } from '@angular/core';
 
 import type { UnitSummary } from '../../models/unit-summary.model';
@@ -27,6 +28,7 @@ type PointerGesture = {
     styleUrl: './svg-viewer-lite.component.css'
 })
 export class SvgViewerLiteComponent {
+    readonly unitNames = inject(UnitNameService);
     logger = inject(LoggerService);
     private destroyRef = inject(DestroyRef);
     private optionsService = inject(OptionsService);
@@ -64,6 +66,11 @@ export class SvgViewerLiteComponent {
 
     // Reactive effect: load sheet when unit changes
     constructor() {
+        effect(() => {
+            const unit = this.unit();
+            if (!unit) return;
+            for (const svg of this.svgs()) this.unitNames.applyToRecordSheet(svg, unit);
+        });
         effect((onCleanup) => {
             const loadGeneration = ++this.sheetLoadGeneration;
             onCleanup(() => {
@@ -603,7 +610,7 @@ export class SvgViewerLiteComponent {
 
     private exportFileName(): string {
         const unit = this.unit();
-        const name = [unit?.chassis, unit?.model].filter(Boolean).join('-') || unit?.name || 'record-sheet';
+        const name = this.unitNames.name(unit).replaceAll(' ', '-') || 'record-sheet';
         return name.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'record-sheet';
     }
 

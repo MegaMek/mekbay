@@ -24,12 +24,7 @@ import type { UnitConditionKey } from './unit-condition.model';
 import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { DEFAULT_FORCE_DEPLOYMENT_ID, scenarioRuleset } from './runtime/unit-state-initializer';
 import type { CBTRuleset } from './cbt-ruleset.model';
-import {
-    canonicalizeCrewAssignment,
-    CREW_ASSIGNMENT_SCHEMA_VERSION,
-    type CrewAssignment,
-    type CrewAssignmentPosition,
-} from './runtime/crew-assignment';
+import type { CrewAssignment } from './runtime/crew-assignment';
 import {
     projectNonMekEscalatingFailureInteractions,
     type NonMekUnitCommand,
@@ -432,7 +427,7 @@ export class CBTUnitStore {
     public replace(
         envelope: SerializedCBTForceV2,
         replacements: ReadonlyMap<string, CBTUnit>,
-        scenarioRules?: ScenarioRules,
+        options?: Readonly<{ scenarioRules?: ScenarioRules; preserveC3Session?: boolean }>,
     ): void {
         if (!this.binding) throw new Error('The force has no installed V2 unit owner');
         const units = new Map(this.liveUnits().map(unit => [unit.instanceId, unit] as const));
@@ -442,13 +437,14 @@ export class CBTUnitStore {
             }
             units.set(instanceId, replacement);
         }
-        this.setUnits(envelope, units, scenarioRules);
+        this.setUnits(envelope, units, options?.scenarioRules, options?.preserveC3Session);
     }
 
     private setUnits(
         envelope: SerializedCBTForceV2,
         units: ReadonlyMap<string, CBTUnit>,
         scenarioRules?: ScenarioRules,
+        preserveC3Session = false,
     ): void {
         if (envelope.units.length !== units.size
             || envelope.units.some(entry => !units.has(entry.instanceId))) {
@@ -461,7 +457,9 @@ export class CBTUnitStore {
             units,
             scenarioRules: effectiveRules,
         });
-        this.c3.reset();
+        // Crew edits keep the same encounter: retain dormant/active transitions
+        // so a later emergency-master activation is still announced.
+        if (!preserveC3Session) this.c3.reset();
     }
 
     public instanceIds(): readonly string[] {
@@ -675,75 +673,33 @@ export class CBTUnitStore {
         return this.binding?.units.get(instanceId)?.getCrewAssignment() ?? null;
     }
 
-    public async replaceCrewProfile(
-        instanceId: string,
-        positions: readonly CrewAssignmentPosition[],
-        isReadOnly: () => boolean,
-        isOwnerCurrent: () => boolean,
-        publishChanged: () => void,
-    ): Promise<CrewAssignment | null> {
-        if (isReadOnly() || !isOwnerCurrent()) return null;
+    /** Builds all changed crew contexts without publishing any replacement. */
+    public async buildCrewCandidates(
+        edits: readonly Readonly<{
+            instanceId: string;
+            assignment: CrewAssignment;
+            health: ReadonlyMap<import('./entity/entity-identifiers').CrewPositionId, import('./crew-member.model').CrewMemberRuntimeState>;
+        }>[],
+    ): Promise<ReadonlyMap<string, CBTUnit>> {
         const binding = this.binding;
-        const current = binding?.units.get(instanceId);
-        if (!binding || !current) return null;
-
-        const runtimeRevision = current.revision();
-        if (runtimeRevision !== 0) return null;
-
-        let assignment: CrewAssignment;
-        try {
-            assignment = canonicalizeCrewAssignment(current.getIndex().crewPositions, {
-                schemaVersion: CREW_ASSIGNMENT_SCHEMA_VERSION,
-                positions,
-            });
-        } catch {
-            return null;
-        }
-        if (jsonValuesEqual(assignment, current.getCrewAssignment())) return current.getCrewAssignment();
-
-        let replacement: CBTUnit;
-        try {
-            if (isCBTMekUnit(current)) {
-                replacement = await CBTMekUnit.redeployCrew(
-                    current,
-                    assignment,
-                    binding.scenarioRules,
-                );
-            } else if (isCBTNonMekUnit(current)) {
-                replacement = CBTNonMekUnit.redeploy(current, assignment);
-            } else {
-                throw new Error(`Unknown CBT runtime family ${instanceId}`);
-            }
-            // Force the exact persistence codec before installing the candidate.
+        if (!binding) throw new Error('The force has no installed CBT authority');
+        const candidates = await Promise.all(edits.map(async edit => {
+            const current = binding.units.get(edit.instanceId);
+            if (!current) throw new Error('Crew target is not owned');
+            const replacement = isCBTMekUnit(current)
+                ? await CBTMekUnit.redeployCrew(current, edit.assignment, binding.scenarioRules, edit.health)
+                : isCBTNonMekUnit(current) ? CBTNonMekUnit.redeploy(current, edit.assignment, edit.health) : null;
+            if (!replacement) throw new Error('Unknown runtime family');
+            replacement.installAttackerTargetingSessionState(current.captureRuntime().query.attackerTargetingState());
             const serialized = replacement.serialize();
-            if (replacement.instanceId !== instanceId
-                || serialized.instanceId !== instanceId
-                || serialized.stateRevision !== replacement.revision()
-                || replacement.getUnit() !== current.getUnit()
+            if (replacement.instanceId !== edit.instanceId || serialized.instanceId !== edit.instanceId
+                || serialized.stateRevision !== replacement.revision() || replacement.getUnit() !== current.getUnit()
                 || !cbtUnitMatchesEntity(replacement, current.getUnit())) {
-                throw new Error('Redeployed Ready unit changed owner identity or native source');
+                throw new Error('Crew replacement changed unit identity or native source');
             }
-        } catch {
-            return null;
-        }
-
-        // An owner replacement during the asynchronous Mek rebuild wins.
-        if (isReadOnly()
-            || !isOwnerCurrent()
-            || this.binding !== binding
-            || binding.units.get(instanceId) !== current
-            || current.revision() !== runtimeRevision) {
-            return null;
-        }
-
-        const units = new Map(binding.units);
-        units.set(instanceId, replacement);
-        this.binding = Object.freeze({
-            ...binding,
-            units,
-        });
-        publishChanged();
-        return replacement.getCrewAssignment();
+            return [edit.instanceId, replacement] as const;
+        }));
+        return new Map(candidates);
     }
 
     public equipmentInteractions(

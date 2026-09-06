@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
+import { UnitNameService } from '../../services/unit-name.service';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -155,6 +157,8 @@ const CREW_POSITION_LABELS = Object.freeze(['Pilot', 'Gunner', 'Officer'] as con
     styleUrl: './tactical-view.component.scss',
 })
 export class TacticalViewComponent {
+    readonly targetNames = inject(InventoryControlOpforService);
+    readonly unitNames = inject(UnitNameService);
     private readonly workspace = inject(ForceWorkspaceStateService);
     private readonly forceCommands = inject(ForceWorkspaceCommandsService);
     private readonly keyboardShortcuts = inject(KeyboardShortcutService);

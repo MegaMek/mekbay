@@ -2,23 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { compareText } from '../../utils/string.util';
-import { isObjectLiteralRecord } from '../../utils/json-value.util';
 import {
     canonicalizeLegacyMekTurnStateV1,
     type LegacyMekTurnStateParseResultV1,
     type LegacyMekTurnStateV1,
 } from './legacy-mek-turn-state-v1';
 import { canonicalizeMekTurnStateV2, type MekTurnStateV2 } from './mek-turn-state-v2';
-export {
-    canonicalizeLegacyMekTurnStateV1,
-    createPristineLegacyMekTurnStateV1,
-    deserializeLegacyMekTurnStateV1,
-    parseLegacyMekTurnStateV1,
-    serializeLegacyMekTurnStateV1,
-    type LegacyMekTurnStateParseResultV1,
-    type LegacyMekTurnStateV1,
-    type SerializedLegacyMekTurnStateV1,
-} from './legacy-mek-turn-state-v1';
 import {
     canonicalizeMekMovementPsrStateV2,
     MAX_MEK_MOVEMENT_MP_V2,
@@ -27,40 +16,14 @@ import {
     type MekMovementPsrStateV2,
 } from './mek-movement-psr-v2';
 
-export const MEK_MOVEMENT_PSR_RESTORATION_ALGORITHM_VERSION_V1 = 1 as const;
-
-/**
- * Exact reasons why an old mutable turn cannot author typed movement/PSR state.
- * These are durable machine codes; display text belongs to the caller.
- */
-export type LegacyMekMovementPsrBlockerV1 =
-    | 'LEGACY_INCOHERENT_MOVEMENT'
-    | 'LEGACY_MOVEMENT_DISTANCE_UNREPRESENTABLE'
-    | 'LEGACY_VTOL_MOVEMENT_UNSUPPORTED'
-    | 'LEGACY_STANDING_STATE_UNREPRESENTABLE'
-    | 'LEGACY_FRACTIONAL_PHASE_DAMAGE'
-    | 'LEGACY_DAMAGE_PSR_WITNESS_UNAVAILABLE'
-    | 'LEGACY_PSR_CHECK_WITNESS_UNAVAILABLE'
-    | 'LEGACY_PSR_OUTCOME_DICE_UNAVAILABLE'
-    | 'LEGACY_MOVEMENT_PSR_WITNESS_UNAVAILABLE';
-
-export interface LegacyMekMovementPsrRestorationInputV1 {
-    /** Canonical field-by-field result from the legacy turn parser. */
-    readonly state: LegacyMekTurnStateV1;
-    /** Exact malformed fragments returned by that parser. */
-    readonly unresolved?: unknown;
-}
-
 export type LegacyMekMovementPsrRestorationResultV1 =
     | {
         readonly kind: 'supported';
-        readonly algorithmVersion: typeof MEK_MOVEMENT_PSR_RESTORATION_ALGORITHM_VERSION_V1;
         readonly state: MekMovementPsrStateV2;
     }
     | {
         readonly kind: 'unsupported';
-        readonly algorithmVersion: typeof MEK_MOVEMENT_PSR_RESTORATION_ALGORITHM_VERSION_V1;
-        readonly blockers: readonly LegacyMekMovementPsrBlockerV1[];
+        readonly warnings: readonly string[];
     };
 
 /**
@@ -69,18 +32,16 @@ export type LegacyMekMovementPsrRestorationResultV1 =
  * the live transition kernel, which could create evidence that was not saved.
  */
 export function restoreLegacyMekMovementPsrV1(
-    input: LegacyMekMovementPsrRestorationInputV1
-        | Pick<LegacyMekTurnStateParseResultV1, 'state' | 'unresolved'>,
+    input: Pick<LegacyMekTurnStateParseResultV1, 'state'>,
 ): LegacyMekMovementPsrRestorationResultV1 {
     let turn: LegacyMekTurnStateV1;
     try {
         turn = canonicalizeLegacyMekTurnStateV1(input.state);
     } catch {
-        return blocked(['LEGACY_INCOHERENT_MOVEMENT']);
+        return blocked(['Saved movement had an inconsistent mode and distance and could not be converted.']);
     }
 
-    const blockers = new Set<LegacyMekMovementPsrBlockerV1>();
-    classifyUnresolved(input.unresolved, turn, blockers);
+    const blockers = new Set<string>();
     classifyMovement(turn, blockers);
     classifyDamage(turn, blockers);
     classifyChecks(turn, blockers);
@@ -97,7 +58,6 @@ export function restoreLegacyMekMovementPsrV1(
         });
     return Object.freeze({
         kind: 'supported',
-        algorithmVersion: MEK_MOVEMENT_PSR_RESTORATION_ALGORITHM_VERSION_V1,
         state: canonicalizeMekMovementPsrStateV2({
             movement,
             action: null,
@@ -133,38 +93,38 @@ export function projectLegacyMekTurnStateV1(
 
 function classifyMovement(
     turn: LegacyMekTurnStateV1,
-    blockers: Set<LegacyMekMovementPsrBlockerV1>,
+    blockers: Set<string>,
 ): void {
     const mode = turn.moveMode;
     const distance = turn.moveDistance;
     if (distance !== null
         && (!Number.isSafeInteger(distance) || distance < 0 || distance > MAX_MEK_MOVEMENT_MP_V2)) {
-        blockers.add('LEGACY_MOVEMENT_DISTANCE_UNREPRESENTABLE');
+        blockers.add('Saved movement distance is outside the supported range and could not be converted.');
     }
     if ((mode === null) !== (distance === null)
         || (mode === 'stationary' && distance !== 0)) {
-        blockers.add('LEGACY_INCOHERENT_MOVEMENT');
+        blockers.add('Saved movement had an inconsistent mode and distance and could not be converted.');
     }
-    if (mode === 'VTOL') blockers.add('LEGACY_VTOL_MOVEMENT_UNSUPPORTED');
+    if (mode === 'VTOL') blockers.add('Saved VTOL movement is unsupported for this Mek and could not be converted.');
     if ((mode === 'run' || mode === 'jump') && turn.applyMovePSR) {
-        blockers.add('LEGACY_MOVEMENT_PSR_WITNESS_UNAVAILABLE');
+        blockers.add('Saved movement required piloting history that was not recorded and could not be converted.');
     }
 }
 
 function classifyDamage(
     turn: LegacyMekTurnStateV1,
-    blockers: Set<LegacyMekMovementPsrBlockerV1>,
+    blockers: Set<string>,
 ): void {
     if (!Number.isSafeInteger(turn.dmgReceived)) {
-        blockers.add('LEGACY_FRACTIONAL_PHASE_DAMAGE');
+        blockers.add('Saved fractional phase damage could not be converted.');
     } else if (turn.dmgReceived >= 20) {
-        blockers.add('LEGACY_DAMAGE_PSR_WITNESS_UNAVAILABLE');
+        blockers.add('Saved phase damage required piloting history that was not recorded and could not be converted.');
     }
 }
 
 function classifyChecks(
     turn: LegacyMekTurnStateV1,
-    blockers: Set<LegacyMekMovementPsrBlockerV1>,
+    blockers: Set<string>,
 ): void {
     const checks = turn.psrChecks;
     if (checks.legActuators.size > 0
@@ -173,53 +133,19 @@ function classifyChecks(
         || checks.gyroDestroyed
         || checks.legsDestroyed.size > 0
         || checks.shutdown) {
-        blockers.add('LEGACY_PSR_CHECK_WITNESS_UNAVAILABLE');
+        blockers.add('Saved piloting checks lack their trigger history and could not be converted.');
     }
     if (turn.psrOutcomes.size > 0) {
-        blockers.add('LEGACY_PSR_OUTCOME_DICE_UNAVAILABLE');
-    }
-}
-
-function classifyUnresolved(
-    value: unknown,
-    turn: LegacyMekTurnStateV1,
-    blockers: Set<LegacyMekMovementPsrBlockerV1>,
-): void {
-    if (!isObjectLiteralRecord(value)) return;
-    if (Object.hasOwn(value, 'moveMode')) blockers.add('LEGACY_INCOHERENT_MOVEMENT');
-    if (Object.hasOwn(value, 'moveDistance')) {
-        blockers.add('LEGACY_MOVEMENT_DISTANCE_UNREPRESENTABLE');
-    }
-    if (Object.hasOwn(value, 'standAttempts') || Object.hasOwn(value, 'carefulStand')) {
-        blockers.add('LEGACY_STANDING_STATE_UNREPRESENTABLE');
-    }
-    if (Object.hasOwn(value, 'dmgReceived')) {
-        const rawDamage = value['dmgReceived'];
-        if (typeof rawDamage === 'number' && Number.isFinite(rawDamage) && !Number.isInteger(rawDamage)) {
-            blockers.add('LEGACY_FRACTIONAL_PHASE_DAMAGE');
-        } else {
-            blockers.add('LEGACY_DAMAGE_PSR_WITNESS_UNAVAILABLE');
-        }
-    }
-    if (Object.hasOwn(value, 'psrChecks')) {
-        blockers.add('LEGACY_PSR_CHECK_WITNESS_UNAVAILABLE');
-    }
-    if (Object.hasOwn(value, 'psrOutcomes')) {
-        blockers.add('LEGACY_PSR_OUTCOME_DICE_UNAVAILABLE');
-    }
-    if (Object.hasOwn(value, 'applyMovePSR')
-        && (turn.moveMode === 'run' || turn.moveMode === 'jump')) {
-        blockers.add('LEGACY_MOVEMENT_PSR_WITNESS_UNAVAILABLE');
+        blockers.add('Saved piloting outcomes lack their dice rolls and could not be converted.');
     }
 }
 
 function blocked(
-    values: readonly LegacyMekMovementPsrBlockerV1[],
+    values: readonly string[],
 ): LegacyMekMovementPsrRestorationResultV1 {
     const blockers = Object.freeze([...new Set(values)].sort(compareText));
     return Object.freeze({
         kind: 'unsupported',
-        algorithmVersion: MEK_MOVEMENT_PSR_RESTORATION_ALGORITHM_VERSION_V1,
-        blockers,
+        warnings: blockers,
     });
 }

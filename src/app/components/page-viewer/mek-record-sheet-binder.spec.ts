@@ -9,6 +9,33 @@ import { asComponentId, asCriticalSlotId, asLocationId } from '../../models/enti
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 describe('Mek record-sheet binder', () => {
+    it('clears departed crew data, shows the vacant station, and restores its controls on assignment', () => {
+        const svg = sheet();
+        const original = snapshot();
+        const interactions: MekRecordSheetInteraction[] = [];
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, original,
+            interaction => interactions.push(interaction));
+        binding.render({
+            ...original,
+            crew: original.crew.map(position => ({ ...position, name: '', effectiveState: 'vacant' })),
+        });
+
+        expect(svg.querySelector('#crewName0')?.textContent).toBe('VACANT');
+        const marker = svg.querySelector<SVGElement>('.crewHit[crewId="0"][hit="2"]')!;
+        expect(marker.style.display).toBe('none');
+        marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions).toEqual([]);
+        svg.querySelector('.crewNameButton')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions.at(-1)?.kind).toBe('crew-name');
+
+        binding.render(original);
+        expect(svg.querySelector('#crewName0')?.textContent).toBe(original.crew[0].name);
+        expect(marker.style.display).toBe('');
+        marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions.at(-1)?.kind).toBe('crew-wounds');
+        binding.destroy();
+    });
+
     it('emits a typed random-hit interaction from the generated roll control', () => {
         const svg = sheet();
         svg.insertAdjacentHTML('beforeend', '<g data-mekbay-random-hit="1"></g>');
@@ -1615,7 +1642,6 @@ function snapshot(): MekRecordSheetSnapshot {
             positionKey: 'crew:0',
             occurrence: 0,
             name: 'Morgan',
-            role: 'MechWarrior',
             gunnery: 3,
             piloting: 4,
             state: { wounds: 1, unconscious: false },

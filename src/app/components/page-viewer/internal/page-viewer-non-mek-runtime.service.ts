@@ -32,6 +32,7 @@ import {
     unitConditionControls,
 } from '../../../models/unit-status-presentation';
 import { LoggerService } from '../../../services/logger.service';
+import { UnitNameService } from '../../../services/unit-name.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { OptionsService } from '../../../services/options.service';
@@ -78,6 +79,7 @@ interface OpenEntityPicker {
 /** Direct non-Mek Entity + sparse-runtime binding for a supplied record sheet. */
 @Injectable()
 export class PageViewerNonMekRuntimeService {
+    private readonly unitNames = inject(UnitNameService);
     private readonly logger = inject(LoggerService);
     private readonly dialogs = inject(DialogsService);
     private readonly injector = inject(Injector);
@@ -126,7 +128,7 @@ export class PageViewerNonMekRuntimeService {
             this.bound.set(member.id, current);
         }
         current.pages.set(svg, { svg, binding });
-        this.renderPage(current.pages.get(svg)!, snapshot, equipment);
+        this.renderPage(current.pages.get(svg)!, snapshot, equipment, member);
         return true;
     }
 
@@ -151,15 +153,17 @@ export class PageViewerNonMekRuntimeService {
         const snapshot = this.snapshot(member);
         if (!current || current.member !== member || !snapshot) return;
         const equipment = member.force.getEquipmentPanelSnapshot(member.id);
-        for (const page of current.pages.values()) this.renderPage(page, snapshot, equipment);
+        for (const page of current.pages.values()) this.renderPage(page, snapshot, equipment, member);
     }
 
     private renderPage(
         page: BoundEntitySheetPage,
         snapshot: NonMekRecordSheetSnapshot,
         equipment: EquipmentPanelSnapshot | null,
+        member: CBTForceMember,
     ): void {
         const issues = page.binding.render(snapshot, equipment);
+        this.unitNames.applyToRecordSheet(page.svg, member.entity);
         if (issues.length > 0 && page.svg.dataset['mekbayPartialSheet'] !== '1') {
             this.logger.warn(`Record-sheet layout omissions for ${snapshot.displayName}: ${issues.join('; ')}`);
         }

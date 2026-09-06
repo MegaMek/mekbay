@@ -8,6 +8,18 @@ import {
 } from './crew-member.model';
 
 describe('CrewMember', () => {
+    it('distinguishes vacancy from healthy, killed, unconscious, or ejected people', () => {
+        expect(CrewMember.vacant.effectiveState()).toBe('vacant');
+        expect(CrewMember.vacant.effectiveState(true)).toBe('vacant');
+        expect(CrewMember.vacant.isAvailable()).toBeFalse();
+        expect(CrewMember.vacant.isAboard()).toBeFalse();
+        expect(CrewMember.vacant.isCrippled()).toBeFalse();
+        expect(CrewMember.vacant.hasState('healthy')).toBeFalse();
+        expect(CrewMember.vacant.hasState('killed', true)).toBeFalse();
+        expect(CrewMember.vacant.equals(CrewMember.healthy)).toBeFalse();
+        expect(CrewMember.from()).toBe(CrewMember.healthy);
+    });
+
     it('projects one effective state while retaining independent stored facts', () => {
         const crew = CrewMember.healthy.withManualDeath({
             unconscious: true,

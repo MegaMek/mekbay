@@ -385,6 +385,7 @@ export class ForceImportService {
             newGroups.push(newGroup);
         }
 
+        this.crewTransfers.copyUnassignedPersonnel(sourceForce, targetForce);
         this.formations.generateFactionAndForceNameIfNeeded(targetForce);
         for (const group of newGroups) await this.formations.assignFormationIfNeeded(group);
         const systemNote = needsConversion ? ' (units were converted)' : '';

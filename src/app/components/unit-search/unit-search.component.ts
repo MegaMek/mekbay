@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -123,6 +124,7 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
     }
 })
 export class UnitSearchComponent {
+    readonly unitNames = inject(UnitNameService);
     readonly maximumNormalizedPv = DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX;
     readonly forceBvLimitTooltip = [
         { value: 'Filters search results to units whose adjusted BV or PV fits within the remaining force budget.' },
@@ -2697,8 +2699,9 @@ export class UnitSearchComponent {
         return AS_TYPE_DISPLAY_NAMES[group.asType] ?? group.asType;
     }
 
-    formatVariantGroupTitle(group: UnitVariantGroupIdentity): string {
-        return group.chassis;
+    formatVariantGroupTitle(group: UnitVariantGroupIdentity & { representativeUnit?: UnitSummary }): string {
+        const unit = group.representativeUnit;
+        return unit && group.chassis === unit.chassis ? this.unitNames.chassis(unit) : group.chassis;
     }
 
     formatVariantGroupMeta(group: UnitVariantGroupIdentity, variantCount: number): string {

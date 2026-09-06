@@ -1,27 +1,17 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Author: Drake
 
 import { GameSystem } from './common.model';
 import { asUnitUuid, type UnitUuid } from '../services/unit-catalog/unit-catalog.types';
-import {
-    FORCE_LIST_ENTRY_INDEX,
-    FORCE_LIST_FORMAT_VERSION,
-    FORCE_LIST_GROUP_INDEX,
-    FORCE_LIST_GROUP_METADATA_FIELD,
-    FORCE_LIST_METADATA_FIELD,
-    FORCE_LIST_SYSTEM_CODE,
-    FORCE_LIST_UNIT_INDEX,
-    FORCE_LIST_UNIT_METADATA_FIELD,
-} from './runtime/force-storage-vocabulary';
+import { unpackUuid } from './runtime/compact-uuid';
 
 export interface RemoteLoadForceUnit {
     unit?: string;
     uuid?: UnitUuid;
     alias?: string;
     skill?: number;
-    g?: number; // gunnery
-    p?: number; // piloting
+    g?: number;
+    p?: number;
     commander?: boolean;
     state?: { destroyed?: boolean };
 }
@@ -45,162 +35,207 @@ export interface RemoteLoadForceEntry {
     eraId?: number;
     bv?: number;
     pv?: number;
+    reserveCount?: number;
     groups?: RemoteLoadForceGroup[];
 }
 
-/** V2 server list row: [2,id,time,system(0 CBT/1 AS),name,groups,metadata?]. */
-export type RemoteLoadForceWireEntry = RemoteLoadForceEntry | readonly unknown[];
+/** List-only tuple: absent details mean an occupied station with default skills. */
+export type RemoteLoadForceListUnitV2 = readonly [uuid: string, details?: {
+    readonly name?: string;
+    readonly skill?: number;
+    readonly g?: number;
+    readonly p?: number;
+    readonly commander?: true;
+    readonly destroyed?: true;
+    readonly vacant?: true;
+}];
 
-export function decodeRemoteLoadForceEntry(value: RemoteLoadForceWireEntry): RemoteLoadForceEntry {
-    if (!Array.isArray(value)) {
-        const entry = value as RemoteLoadForceEntry;
-        return { ...entry, version: entry.version ?? 1 };
+export interface RemoteLoadForceListGroupV2 {
+    readonly name?: string;
+    readonly formationId?: string;
+    readonly units: readonly RemoteLoadForceListUnitV2[];
+}
+
+/** A transport summary built from projected headers; never stored as force data. */
+export interface RemoteLoadForceListEntryV2 extends Omit<RemoteLoadForceEntry, 'version' | 'timestamp' | 'type' | 'groups'> {
+    readonly version: 2;
+    readonly timestamp: number;
+    readonly type: GameSystem;
+    readonly groups: readonly RemoteLoadForceListGroupV2[];
+}
+
+export type RemoteLoadForceWireEntry = RemoteLoadForceEntry | RemoteLoadForceListEntryV2;
+
+/** Reads only preview facts, from cloud or an IndexedDB record. */
+export function decodeRemoteLoadForceEntry(value: unknown): RemoteLoadForceEntry {
+    const root = record(value, 'force list entry');
+    const version = root['version'] ?? 1;
+    if (version !== 1 && version !== 2) throw new Error('Unsupported force-list version');
+    if (typeof root['instanceId'] !== 'string' || typeof root['name'] !== 'string'
+        || (typeof root['timestamp'] !== 'string' && typeof root['timestamp'] !== 'number')) {
+        throw new Error('Invalid force-list metadata');
     }
-    if (value[FORCE_LIST_ENTRY_INDEX.revision] !== FORCE_LIST_FORMAT_VERSION
-        || typeof value[FORCE_LIST_ENTRY_INDEX.instanceId] !== 'string'
-        || (typeof value[FORCE_LIST_ENTRY_INDEX.timestamp] !== 'number'
-            && typeof value[FORCE_LIST_ENTRY_INDEX.timestamp] !== 'string')
-        || (value[FORCE_LIST_ENTRY_INDEX.system] !== FORCE_LIST_SYSTEM_CODE.classicBattleTech
-            && value[FORCE_LIST_ENTRY_INDEX.system] !== FORCE_LIST_SYSTEM_CODE.alphaStrike)
-        || typeof value[FORCE_LIST_ENTRY_INDEX.name] !== 'string'
-        || !Array.isArray(value[FORCE_LIST_ENTRY_INDEX.groups])) {
-        throw new Error('Invalid compact force-list entry');
+    const type = root['type'] === GameSystem.AS ? GameSystem.AS : GameSystem.CBT;
+    const timestamp = typeof root['timestamp'] === 'number'
+        ? new Date(root['timestamp']).toISOString() : root['timestamp'];
+    let reserveCount = 0;
+    if (version === 2) {
+        reserveCount = Array.isArray(root['personnel']) ? root['personnel'].length : 0;
+        if (Number.isSafeInteger(root['reserveCount']) && (root['reserveCount'] as number) >= 0) {
+            reserveCount = root['reserveCount'] as number;
+        }
     }
-    const instanceId = value[FORCE_LIST_ENTRY_INDEX.instanceId] as string;
-    const rawTimestamp = value[FORCE_LIST_ENTRY_INDEX.timestamp] as string | number;
-    const name = value[FORCE_LIST_ENTRY_INDEX.name] as string;
-    const rawGroups = value[FORCE_LIST_ENTRY_INDEX.groups] as unknown[];
-    const system = value[FORCE_LIST_ENTRY_INDEX.system] === FORCE_LIST_SYSTEM_CODE.classicBattleTech
-        ? GameSystem.CBT
-        : GameSystem.AS;
-    const metadata = optionalRecord(
-        value[FORCE_LIST_ENTRY_INDEX.metadata],
-        'force-list metadata',
-    );
-    const note = metadata?.[FORCE_LIST_METADATA_FIELD.note];
-    const tags = metadata?.[FORCE_LIST_METADATA_FIELD.tags];
-    const factionId = metadata?.[FORCE_LIST_METADATA_FIELD.factionId];
-    const eraId = metadata?.[FORCE_LIST_METADATA_FIELD.eraId];
-    const battleValue = metadata?.[FORCE_LIST_METADATA_FIELD.battleValue];
-    const pointValue = metadata?.[FORCE_LIST_METADATA_FIELD.pointValue];
-    const owned = metadata?.[FORCE_LIST_METADATA_FIELD.owned];
     return {
-        version: FORCE_LIST_FORMAT_VERSION,
-        instanceId,
-        timestamp: typeof rawTimestamp === 'number'
-            ? new Date(rawTimestamp).toISOString()
-            : rawTimestamp,
-        type: system,
-        name,
-        ...(typeof note === 'string' ? { note } : {}),
-        ...(Array.isArray(tags) ? {
-            tags: tags.filter((tag): tag is string => typeof tag === 'string'),
+        version,
+        instanceId: root['instanceId'],
+        timestamp,
+        type,
+        name: root['name'],
+        ...(typeof root['note'] === 'string' ? { note: root['note'] } : {}),
+        ...(Array.isArray(root['tags']) ? {
+            tags: root['tags'].filter((tag): tag is string => typeof tag === 'string'),
         } : {}),
-        ...(typeof factionId === 'number' ? { factionId } : {}),
-        ...(typeof eraId === 'number' ? { eraId } : {}),
-        ...(typeof battleValue === 'number' ? { bv: battleValue } : {}),
-        ...(typeof pointValue === 'number' ? { pv: pointValue } : {}),
-        ...(owned === 0
-            ? { owned: false }
-            : owned === 1
-                ? { owned: true }
-                : {}),
-        groups: rawGroups.map((group, index) => decodeCompactGroup(group, system, index)),
+        ...(typeof root['factionId'] === 'number' ? { factionId: root['factionId'] } : {}),
+        ...(typeof root['eraId'] === 'number' ? { eraId: root['eraId'] } : {}),
+        ...(typeof root['bv'] === 'number' ? { bv: root['bv'] } : {}),
+        ...(typeof root['pv'] === 'number' ? { pv: root['pv'] } : {}),
+        ...(typeof root['owned'] === 'boolean' ? { owned: root['owned'] } : {}),
+        reserveCount,
+        groups: version === 1 ? legacyGroups(root)
+            : root['units'] === undefined ? currentListGroups(root, type) : storedGroups(root, type),
     };
 }
 
-function decodeCompactGroup(value: unknown, system: GameSystem, index: number): RemoteLoadForceGroup {
-    if (!Array.isArray(value) || !Array.isArray(value[FORCE_LIST_GROUP_INDEX.units])) {
-        throw new Error(`Invalid compact force-list group ${index}`);
+function currentListGroups(root: Record<string, unknown>, system: GameSystem): RemoteLoadForceGroup[] {
+    return array(root['groups'], 'force.groups').map(value => {
+        const group = record(value, 'force group');
+        return {
+            ...(typeof group['name'] === 'string' ? { name: group['name'] } : {}),
+            ...(typeof group['formationId'] === 'string' ? { formationId: group['formationId'] } : {}),
+            units: array(group['units'], 'force group units').map(value => currentListUnit(value, system)),
+        };
+    });
+}
+
+function currentListUnit(value: unknown, system: GameSystem): RemoteLoadForceUnit {
+    const row = array(value, 'force-list unit');
+    if (row.length < 1 || row.length > 2 || typeof row[0] !== 'string') {
+        throw new Error('Invalid force-list unit tuple');
     }
-    const rawUnits = value[FORCE_LIST_GROUP_INDEX.units] as unknown[];
-    const metadata = optionalRecord(
-        value[FORCE_LIST_GROUP_INDEX.metadata],
-        `force-list group ${index} metadata`,
-    );
-    const name = metadata?.[FORCE_LIST_GROUP_METADATA_FIELD.name];
-    const formationId = metadata?.[FORCE_LIST_GROUP_METADATA_FIELD.formationId];
-    return {
-        ...(typeof name === 'string' ? { name } : {}),
-        ...(typeof formationId === 'string' ? { formationId } : {}),
-        units: rawUnits.map((unit, unitIndex) =>
-            decodeCompactUnit(unit, system, index, unitIndex)),
+    const details = row.length === 1 ? undefined : record(row[1], 'force-list unit details');
+    if (details !== undefined) {
+        if (details['name'] !== undefined && typeof details['name'] !== 'string') {
+            throw new Error('Invalid force-list unit name');
+        }
+        for (const key of ['skill', 'g', 'p']) {
+            if (details[key] !== undefined && (typeof details[key] !== 'number' || !Number.isFinite(details[key]))) {
+                throw new Error('Invalid force-list unit ' + key);
+            }
+        }
+        for (const key of ['commander', 'destroyed', 'vacant']) {
+            if (details[key] !== undefined && typeof details[key] !== 'boolean') {
+                throw new Error('Invalid force-list unit ' + key);
+            }
+        }
+    }
+    const unit: RemoteLoadForceUnit = {
+        uuid: asUnitUuid(unpackUuid(row[0], 'force-list unit UUID')),
+        state: { destroyed: details?.['destroyed'] === true },
     };
-}
-
-function decodeCompactUnit(
-    value: unknown,
-    system: GameSystem,
-    groupIndex: number,
-    unitIndex: number,
-): RemoteLoadForceUnit {
-    if (!Array.isArray(value) || typeof value[FORCE_LIST_UNIT_INDEX.catalogUuid] !== 'string') {
-        throw new Error(`Invalid compact force-list unit ${groupIndex}:${unitIndex}`);
+    if (details?.['vacant'] === true) return unit;
+    if (typeof details?.['name'] === 'string') unit.alias = details['name'];
+    if (system === GameSystem.AS) unit.skill = (details?.['skill'] as number | undefined) ?? 4;
+    else {
+        unit.g = (details?.['g'] as number | undefined) ?? 4;
+        unit.p = (details?.['p'] as number | undefined) ?? 5;
     }
-    const catalogUuid = value[FORCE_LIST_UNIT_INDEX.catalogUuid] as string;
-    const metadataPath = `force-list unit ${groupIndex}:${unitIndex} metadata`;
-    const metadata = optionalRecord(value[FORCE_LIST_UNIT_INDEX.metadata], metadataPath);
-    exactOptionalKeys(metadata, Object.values(FORCE_LIST_UNIT_METADATA_FIELD), metadataPath);
-    const alias = metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.alias];
-    const skill = metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.alphaStrikeSkill];
-    const gunnery = metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.gunnery];
-    const piloting = metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.piloting];
-    return {
-        uuid: expandCompactUuid(catalogUuid),
-        ...(typeof alias === 'string' ? { alias } : {}),
-        ...(typeof skill === 'number'
-            ? { skill }
-            : system === GameSystem.AS ? { skill: 4 } : {}),
-        ...(typeof gunnery === 'number' ? { g: gunnery } : {}),
-        ...(typeof piloting === 'number' ? { p: piloting } : {}),
-        ...(compactTrue(
-            metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.commander],
-            `${metadataPath}.${FORCE_LIST_UNIT_METADATA_FIELD.commander}`,
-        ) ? { commander: true } : {}),
-        state: {
-            destroyed: compactTrue(
-                metadata?.[FORCE_LIST_UNIT_METADATA_FIELD.destroyed],
-                `${metadataPath}.${FORCE_LIST_UNIT_METADATA_FIELD.destroyed}`,
-            ),
-        },
-    };
+    if (details?.['commander'] === true) unit.commander = true;
+    return unit;
 }
 
-function compactTrue(value: unknown, path: string): boolean {
-    if (value === undefined) return false;
-    if (value !== 1) throw new Error(`Invalid ${path}`);
-    return true;
+/** Local IndexedDB records expose the same preview facts without decoding runtime state. */
+function storedGroups(root: Record<string, unknown>, system: GameSystem): RemoteLoadForceGroup[] {
+    const units = array(root['units'], 'force.units').map((value, index): RemoteLoadForceUnit => {
+        const unit = record(value, 'force.units[' + index + ']');
+        if (typeof unit['uuid'] !== 'string') throw new Error('Missing force-list unit UUID');
+        let g: number | undefined;
+        let p: number | undefined;
+        let pilot: Record<string, unknown> | undefined;
+        let commander = false;
+        if (unit['crew'] !== undefined) {
+            for (const rawPerson of array(unit['crew'], 'force unit crew')) {
+                if (rawPerson === null) continue;
+                const person = record(rawPerson, 'force-list crew person');
+                pilot ??= person;
+                commander ||= person['commander'] === true;
+                const gunnery = typeof person['g'] === 'number' ? person['g'] : 4;
+                const piloting = typeof person['p'] === 'number' ? person['p'] : 5;
+                g = g === undefined ? gunnery : Math.min(g, gunnery);
+                p = p === undefined ? piloting : Math.min(p, piloting);
+            }
+        }
+        return {
+            uuid: asUnitUuid(unpackUuid(unit['uuid'], 'force.units[' + index + '].uuid')),
+            ...(typeof pilot?.['name'] === 'string' ? { alias: pilot['name'] } : {}),
+            ...(system === GameSystem.AS ? {
+                ...(pilot ? { skill: typeof pilot['g'] === 'number' ? pilot['g'] : 4 } : {}),
+            } : { ...(g === undefined ? {} : { g }), ...(p === undefined ? {} : { p }) }),
+            ...(commander ? { commander: true } : {}),
+            state: { destroyed: unit['destroyed'] === true },
+        };
+    });
+    return array(root['groups'], 'force.groups').map(value => {
+        const group = record(value, 'force group');
+        return {
+            ...(typeof group['name'] === 'string' ? { name: group['name'] } : {}),
+            ...(typeof group['formationId'] === 'string' ? { formationId: group['formationId'] } : {}),
+            units: array(group['unitIndices'], 'force group unitIndices').map(index => {
+                if (!Number.isSafeInteger(index) || (index as number) < 0 || !units[index as number]) {
+                    throw new Error('Force-list group references a missing unit');
+                }
+                return units[index as number]!;
+            }),
+        };
+    });
 }
 
-function exactOptionalKeys(
-    value: Record<string, unknown> | undefined,
-    allowed: readonly string[],
-    path: string,
-): void {
-    if (value === undefined) return;
-    const allowedKeys = new Set(allowed);
-    const unknown = Object.keys(value).find(key => !allowedKeys.has(key));
-    if (unknown !== undefined) throw new Error(`Invalid ${path}.${unknown}`);
+/** Legacy previews never migrate, materialize, or overwrite a unit. */
+function legacyGroups(root: Record<string, unknown>): RemoteLoadForceGroup[] {
+    return array(root['groups'] ?? [], 'legacy force groups').map(value => {
+        const group = record(value, 'legacy force group');
+        return {
+            ...(typeof group['name'] === 'string' ? { name: group['name'] } : {}),
+            ...(typeof group['formationId'] === 'string' ? { formationId: group['formationId'] } : {}),
+            units: array(group['units'] ?? [], 'legacy group units').map(value => {
+                const unit = isRecord(value) ? value : {};
+                const state = isRecord(unit['state']) ? unit['state'] : {};
+                const crew = Array.isArray(state['crew']) ? state['crew'] : [];
+                const pilot = isRecord(crew[0]) ? crew[0] : {};
+                const gunner = isRecord(crew[1]) ? crew[1] : pilot;
+                const g = unit['g'] ?? gunner['gunnerySkill'];
+                const p = unit['p'] ?? pilot['pilotingSkill'];
+                return {
+                    ...(typeof unit['unit'] === 'string' ? { unit: unit['unit'] } : {}),
+                    ...(typeof unit['alias'] === 'string' ? { alias: unit['alias'] } : {}),
+                    ...(typeof unit['skill'] === 'number' ? { skill: unit['skill'] } : {}),
+                    ...(typeof g === 'number' ? { g } : {}),
+                    ...(typeof p === 'number' ? { p } : {}),
+                    ...(unit['commander'] === true ? { commander: true } : {}),
+                    state: { destroyed: state['destroyed'] === true },
+                };
+            }),
+        };
+    });
 }
 
-function optionalRecord(value: unknown, path: string): Record<string, unknown> | undefined {
-    if (value === undefined) return undefined;
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Invalid ${path}`);
-    return value as Record<string, unknown>;
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
-
-function expandCompactUuid(value: string): UnitUuid {
-    if (!/^[A-Za-z0-9_-]{22}$/u.test(value)) throw new Error('Invalid compact force-list UUID');
-    let bytes: string;
-    try {
-        bytes = atob(value.replaceAll('-', '+').replaceAll('_', '/') + '==');
-    } catch {
-        throw new Error('Invalid compact force-list UUID');
-    }
-    if (bytes.length !== 16) throw new Error('Invalid compact force-list UUID');
-    const hex = Array.from(bytes, byte => byte.charCodeAt(0).toString(16).padStart(2, '0')).join('');
-    return asUnitUuid([
-        hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16),
-        hex.slice(16, 20), hex.slice(20),
-    ].join('-'));
+function record(value: unknown, path: string): Record<string, unknown> {
+    if (!isRecord(value)) throw new Error('Invalid ' + path);
+    return value;
+}
+function array(value: unknown, path: string): unknown[] {
+    if (!Array.isArray(value)) throw new Error('Invalid ' + path);
+    return value;
 }

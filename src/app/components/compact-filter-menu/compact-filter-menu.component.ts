@@ -30,7 +30,7 @@ export interface CompactFilterMenuOption {
             [attr.aria-label]="ariaLabel()"
             [cdkMenuTriggerFor]="filterMenu"
             [cdkMenuPosition]="menuPositions"
-            (cdkMenuOpened)="menuOpen.set(true)"
+            (cdkMenuOpened)="menuOpen.set(true); opened.emit()"
             (cdkMenuClosed)="menuOpen.set(false)">
             @if (activeOption; as option) {
                 @if (option.img) {
@@ -279,6 +279,7 @@ export class CompactFilterMenuComponent {
     readonly panelAlign = input<'left' | 'right'>('right');
 
     readonly selectedIdChange = output<number | null>();
+    readonly opened = output<void>();
 
     get menuPositions(): ConnectedPosition[] {
         const above = this.availableSpaceAboveTrigger();

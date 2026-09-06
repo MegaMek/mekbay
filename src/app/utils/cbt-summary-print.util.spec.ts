@@ -97,7 +97,8 @@ function createForce(): MutableForceFixture {
 
 function createMember(force: CBTForce, chassis: string, rosterGroupId: string): CBTForceMember {
     const entity = {
-        fullChassis: () => chassis,
+        chassis: () => chassis,
+        clanName: () => '',
         model: () => 'TST-1',
         unitType: () => 'Mek',
         unitSubtype: () => 'BattleMek',

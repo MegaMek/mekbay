@@ -126,12 +126,11 @@ export interface MekRecordSheetCrewPosition {
     readonly positionKey: string;
     readonly occurrence: number;
     readonly name: string;
-    readonly role: string;
     readonly gunnery: number;
     readonly piloting: number;
     readonly state: CrewMemberRuntimeState;
     /** Rule-derived display state, including lethal wounds and cockpit loss. */
-    readonly effectiveState: Extract<CrewMemberState, 'healthy' | 'ejected' | 'unconscious' | 'dead'>;
+    readonly effectiveState: Extract<CrewMemberState, 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'vacant'>;
 }
 
 /** Lightweight status facts for force cards and other non-sheet presentation. */
@@ -428,7 +427,6 @@ export function projectMekRecordSheet(
             || compareText(left.id, right.id))
         .map(position => {
             const assigned = assignedById.get(position.id);
-            if (!assigned) throw new Error(`Crew assignment is missing ${position.id}`);
             const crewState = query.crewState(position.id);
             const effectiveState = effectiveCrewStateById.get(position.id);
             if (effectiveState === undefined) throw new Error(`Crew status is missing ${position.id}`);
@@ -436,12 +434,11 @@ export function projectMekRecordSheet(
                 positionId: position.id,
                 positionKey: position.id,
                 occurrence: position.occurrence,
-                name: assigned.name,
-                role: assigned.role,
-                gunnery: assigned.gunnery,
-                piloting: assigned.piloting,
+                name: assigned?.name ?? '',
+                gunnery: assigned?.gunnery ?? 4,
+                piloting: assigned?.piloting ?? 5,
                 state: Object.freeze({
-                    ...crewState,
+                    ...crewState.toRuntimeState(),
                     ejected: crewState.ejected === true,
                 }),
                 effectiveState,

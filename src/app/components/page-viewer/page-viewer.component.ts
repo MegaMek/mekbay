@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import {
     Component,
     afterNextRender,
@@ -139,6 +140,7 @@ type ShadowDirection = 'left' | 'right';
     styleUrl: './page-viewer.component.scss'
 })
 export class PageViewerComponent implements AfterViewInit {
+    readonly unitNames = inject(UnitNameService);
     private injector = inject(Injector);
     private renderer = inject(Renderer2);
     private appRef = inject(ApplicationRef);
@@ -340,6 +342,14 @@ export class PageViewerComponent implements AfterViewInit {
     private fluffImageInjectEffectRef: EffectRef | null = null;
 
     constructor() {
+        effect(() => {
+            this.optionsService.options().displayUnitNameFormat;
+            for (const member of this.forceUnits()) {
+                for (const svg of member.recordSheets()) {
+                    this.unitNames.applyToRecordSheet(svg, member.entity);
+                }
+            }
+        });
         this.keyboardShortcutService.register({
             id: 'page-viewer',
             active: () => this.viewInitialized() && !!this.unit(),
@@ -1105,7 +1115,7 @@ export class PageViewerComponent implements AfterViewInit {
             this.renderer.appendChild(wrapper, placeholder);
         }
 
-        placeholder.textContent = unit.entity.displayName();
+        placeholder.textContent = this.unitNames.name(unit.entity);
         this.renderer.addClass(wrapper, 'has-placeholder');
         this.renderer.removeClass(wrapper, 'has-svg');
         this.renderer.removeClass(wrapper, 'is-empty');

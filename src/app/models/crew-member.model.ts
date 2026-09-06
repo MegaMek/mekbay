@@ -16,7 +16,7 @@ export interface CrewMemberDetails {
     readonly asfPiloting?: number;
 }
 
-export type CrewMemberEffectiveState = 'healthy' | 'ejected' | 'unconscious' | 'dead';
+export type CrewMemberEffectiveState = 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'vacant';
 export type CrewMemberState = CrewMemberEffectiveState | 'killed' | 'stunned';
 
 /** Sparse combat facts stored by every CBT unit runtime. */
@@ -59,6 +59,8 @@ const HEALTHY_CREW_STATE: CrewMemberRuntimeState = Object.freeze({
  */
 export class CrewMember implements CrewMemberRuntimeState {
     static readonly healthy = new CrewMember(HEALTHY_CREW_STATE);
+    /** A query-only view of an unoccupied station; vacancy is an assignment fact. */
+    static readonly vacant = new CrewMember(HEALTHY_CREW_STATE);
 
     readonly wounds: number;
     readonly unconscious: boolean;
@@ -83,6 +85,7 @@ export class CrewMember implements CrewMemberRuntimeState {
     }
 
     effectiveState(derivedDead = false): CrewMemberEffectiveState {
+        if (this === CrewMember.vacant) return 'vacant';
         if (derivedDead || this.dead === true) return 'dead';
         if (this.ejected) return 'ejected';
         if (this.unconscious) return 'unconscious';
@@ -90,7 +93,9 @@ export class CrewMember implements CrewMemberRuntimeState {
     }
 
     hasState(state: CrewMemberState, derivedDead = false): boolean {
+        if (this === CrewMember.vacant) return state === 'vacant';
         switch (state) {
+            case 'vacant': return false;
             case 'dead':
             case 'killed': return derivedDead || this.dead === true;
             case 'ejected': return this.ejected;
@@ -107,7 +112,7 @@ export class CrewMember implements CrewMemberRuntimeState {
 
     isAboard(derivedDead = false): boolean {
         const state = this.effectiveState(derivedDead);
-        return state !== 'dead' && state !== 'ejected';
+        return state !== 'vacant' && state !== 'dead' && state !== 'ejected';
     }
 
     isCrippled(derivedDead = false): boolean {
@@ -159,7 +164,8 @@ export class CrewMember implements CrewMemberRuntimeState {
     }
 
     equals(other: CrewMember): boolean {
-        return this.wounds === other.wounds
+        return (this === CrewMember.vacant) === (other === CrewMember.vacant)
+            && this.wounds === other.wounds
             && this.unconscious === other.unconscious
             && this.ejected === other.ejected
             && this.dead === other.dead

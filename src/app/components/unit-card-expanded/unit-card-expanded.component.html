@@ -18,7 +18,7 @@
         <div class="expanded-title">
             <div class="expanded-model" [innerHTML]="highlight(u.model)"></div>
             <div class="expanded-chassis">
-                <span [innerHTML]="highlight(u.chassis)"></span>
+                <span [innerHTML]="highlight(unitNames.chassis(u))"></span>
                 @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
                 @if (u.loadIssues.length) { <span class="load-issue-badge" title="{{ u.loadIssues.length }} unit data issue(s)" aria-label="Unit has data issues">!</span> }
             </div>
@@ -160,7 +160,7 @@
         <div class="expanded-title">
             <div class="expanded-model" [innerHTML]="highlight(u.model)"></div>
             <div class="expanded-chassis">
-                <span [innerHTML]="highlight(u.chassis)"></span>
+                <span [innerHTML]="highlight(unitNames.chassis(u))"></span>
                 @if (alias(); as pilotName) { <span class="inline-alias">({{ pilotName }})</span> }
                 @if (u.loadIssues.length) { <span class="load-issue-badge" title="{{ u.loadIssues.length }} unit data issue(s)" aria-label="Unit has data issues">!</span> }
             </div>
@@ -345,7 +345,7 @@
         </div>
         <div class="primary-info">
             <div class="chassis">
-                <span [innerHTML]="highlight(u.chassis)"></span>
+                <span [innerHTML]="highlight(unitNames.chassis(u))"></span>
                 @if (u.loadIssues.length) { <span class="load-issue-badge" title="{{ u.loadIssues.length }} unit data issue(s)" aria-label="Unit has data issues">!</span> }
             </div>
             @if (alias(); as pilotName) { <span class="alias">({{ pilotName }})</span>  }

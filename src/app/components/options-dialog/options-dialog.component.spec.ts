@@ -60,6 +60,15 @@ describe('OptionsDialogComponent', () => {
         return TestBed.runInInjectionContext(() => new OptionsDialogComponent());
     }
 
+    it('persists the selected unit name order', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({ options: () => ({}), setOption });
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="clanInnerSphere">Clan (Inner Sphere)</option>';
+        component.onDisplayUnitNameFormatChange({ target: select } as unknown as Event);
+        expect(setOption).toHaveBeenCalledWith('displayUnitNameFormat', 'clanInnerSphere');
+    });
+
     it('persists the selected force viewer BV/PV display mode', () => {
         const setOption = jasmine.createSpy('setOption');
         const component = configureComponent({ options: () => ({}), setOption });

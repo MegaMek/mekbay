@@ -1,6 +1,8 @@
 {
   "extends": "./tsconfig.json",
   "include": [
+    "./generate-portrait-sheets.ts",
+    "./generate-portrait-sheets.test.ts",
     "./generate-core-unit-assets.ts",
     "./generate-core-unit-assets.test.ts",
     "./verify-core-unit-archive-summary.ts",

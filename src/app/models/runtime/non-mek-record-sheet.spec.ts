@@ -18,6 +18,26 @@ import { NonMekUnitInstance } from './non-mek-unit-instance';
 import { projectNonMekRecordSheet } from './non-mek-record-sheet';
 
 describe('projectNonMekRecordSheet', () => {
+    it('retains a vacant physical station and derives fixed piloting without changing the personal rating', () => {
+        const entity = new TestProtoMekEntity();
+        entity.uuid.set(UUID);
+        const runtime = new NonMekUnitInstance('unit:proto-crew-sheet', baseline(), entity, CORE_2026_RULESET);
+        const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
+        const assignment = Object.freeze({ schemaVersion: 1 as const, positions: Object.freeze([
+            Object.freeze({ positionId, name: 'Pilot', gunnery: 2, piloting: 2 }),
+        ]) });
+        const project = (crew: typeof assignment | { schemaVersion: 1; positions: [] }) => projectNonMekRecordSheet(
+            entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, 100, 100, crew,
+        );
+        expect(project(assignment).crew[0].piloting).toBe(5);
+        expect(assignment.positions[0].piloting).toBe(2);
+        const vacant = project({ schemaVersion: 1, positions: [] });
+        expect(vacant.crew.length).toBe(1);
+        expect(vacant.crew[0].effectiveState).toBe('vacant');
+        expect(vacant.conditions).toContain('immobile');
+        expect(vacant.conditions).toContain('abandoned');
+    });
+
     it('carries selectable air-ground state into presentation but suppresses space-only invariants', () => {
         const fighter = new TestAeroSpaceFighterEntity();
         fighter.uuid.set(UUID);
@@ -92,7 +112,6 @@ describe('projectNonMekRecordSheet', () => {
             positions: Object.freeze([Object.freeze({
                 positionId: crewPositionId,
                 name: 'Morgan Kell',
-                role: 'Commander',
                 gunnery: 3,
                 piloting: 4,
             })]),
@@ -124,7 +143,6 @@ describe('projectNonMekRecordSheet', () => {
         expect(snapshot.crew[0]).toEqual(jasmine.objectContaining({
             positionId: crewPositionId,
             name: 'Morgan Kell',
-            role: 'Commander',
             gunnery: 3,
             piloting: 4,
             effectiveState: 'stunned',

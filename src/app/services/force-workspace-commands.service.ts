@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { UnitNameService } from './unit-name.service';
 import { inject, Injectable, Injector } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
@@ -46,6 +47,7 @@ import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
 /** Owns force/member mutations; the workspace service owns only slots and selection. */
 @Injectable({ providedIn: 'root' })
 export class ForceWorkspaceCommandsService {
+    readonly unitNames = inject(UnitNameService);
     private readonly builder = inject(ForceBuilderService);
     private readonly workspace = inject(ForceWorkspaceStateService);
     private readonly dataService = inject(DataService);
@@ -318,7 +320,7 @@ export class ForceWorkspaceCommandsService {
         const unitId = unitToRemove.id;
         const authorityFingerprint = targetForce.captureWholeOwnerAuthorityFingerprint();
         if (unitToRemove.modified && !skipConfirmation) {
-            const unitName = (unitToRemove.getSummary().chassis + ' ' + unitToRemove.getSummary().model).trim();
+            const unitName = this.unitNames.name(unitToRemove.getSummary());
             const dialogRef = this.dialogsService.createDialog<string>(ConfirmDialogComponent, {
                 panelClass: 'danger',
                 data: <ConfirmDialogData<string>>{
@@ -400,8 +402,8 @@ export class ForceWorkspaceCommandsService {
         }
 
         // Build confirmation message
-        const oldUnitName = `${originalUnit.getSummary().chassis} ${originalUnit.getSummary().model}`.trim();
-        const newUnitName = `${newUnitData.chassis} ${newUnitData.model}`.trim();
+        const oldUnitName = this.unitNames.name(originalUnit.getSummary());
+        const newUnitName = this.unitNames.name(newUnitData);
 
         const result = await this.dialogsService.choose(
             'Change Unit',
@@ -578,8 +580,8 @@ export class ForceWorkspaceCommandsService {
                     );
                     if (!summary) {
                         throw new Error(`Catalog conversion data is unavailable for ${isCBTForceMember(sourceUnit)
-                            ? sourceUnit.entity.displayName()
-                            : sourceUnit.getDisplayName()}`);
+                            ? this.unitNames.name(sourceUnit.entity)
+                            : this.unitNames.name(sourceUnit.getSummary())}`);
                     }
                     const newForceUnit = await this.unitAdmission.admit({
                         force: newForce,
@@ -598,6 +600,7 @@ export class ForceWorkspaceCommandsService {
                 }
             }
 
+            this.crewTransfers.copyUnassignedPersonnel(force, newForce);
             for (const sourceGroup of force.groups()) {
                 const sourceTargetId = sourceGroup.formationTargetGroupId();
                 if (!sourceTargetId) continue;
@@ -681,7 +684,7 @@ export class ForceWorkspaceCommandsService {
         const authority = force.captureWholeOwnerAuthorityFingerprint();
         if (!skipConfirmation) {
             const confirmed = await this.dialogsService.requestConfirmation(
-                `Removing will discard all runtime state and permanently remove "${member.entity.displayName()}" from the force.`,
+                `Removing will discard all runtime state and permanently remove "${this.unitNames.name(member.entity)}" from the force.`,
                 'Delete Unit',
                 'danger',
             );
@@ -707,7 +710,7 @@ export class ForceWorkspaceCommandsService {
     }
 
     public async repairUnit(member: ForceMember): Promise<boolean> {
-        const chassis = isCBTForceMember(member) ? member.entity.chassis() : member.getSummary().chassis;
+        const chassis = this.unitNames.chassis(isCBTForceMember(member) ? member.entity : member.getSummary());
         const model = isCBTForceMember(member) ? member.entity.model() : member.getSummary().model;
         const label = `${chassis} ${model}`.trim();
         const confirmed = await this.dialogsService.requestConfirmation(

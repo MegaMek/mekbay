@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { DisplayUnitNameFormat } from '../models/options.model';
+import { formatUnitName } from './unit-display-name.util';
 import type { ASSpecialAbility } from '../models/as-abilities.model';
 import type { AbilitySelection, ASForceUnit } from '../models/as-force-unit.model';
 import { COMMAND_ABILITIES } from '../models/command-abilities.model';
@@ -85,8 +87,9 @@ export function collectASPrintRulesReferenceData(
     abilityLookup: AbilityLookup,
     useHex: boolean,
     previewResolver: FormationPreviewResolver = group => FormationAbilityAssignmentUtil.previewGroupFormationAssignments(group),
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): ASPrintRulesReferenceData {
-    const unitNames = collectUnitNames(groups);
+    const unitNames = collectUnitNames(groups, nameFormat);
     const abilities = new Map<string, MutableAbilityReference>();
     const specials = new Map<string, MutableSpecialReference>();
     const formations: ASPrintFormationReference[] = [];
@@ -180,9 +183,10 @@ export function createASPrintRulesReferencePage(
     abilityLookup: AbilityLookup,
     useHex: boolean,
     forceName: string = '',
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): HTMLElement {
     return renderASPrintRulesReferencePage(
-        collectASPrintRulesReferenceData(groups, abilityLookup, useHex),
+        collectASPrintRulesReferenceData(groups, abilityLookup, useHex, undefined, nameFormat),
         forceName,
     );
 }
@@ -433,13 +437,13 @@ export function getASPrintRulesReferenceStyles(): string {
     `;
 }
 
-function collectUnitNames(groups: UnitGroup<ASForceUnit>[]): Map<string, string> {
+function collectUnitNames(groups: UnitGroup<ASForceUnit>[], nameFormat: DisplayUnitNameFormat): Map<string, string> {
     const unitNames = new Map<string, string>();
 
     for (const group of groups) {
         for (const unit of group.units()) {
             const unitData = unit.getSummary();
-            const baseName = [unitData.chassis, unitData.model].filter(Boolean).join(' ') || unitData.name || unit.id;
+            const baseName = formatUnitName(unitData, nameFormat) || unitData.name || unit.id;
             unitNames.set(unit.id, baseName);
         }
     }

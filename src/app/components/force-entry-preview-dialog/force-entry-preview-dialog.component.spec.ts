@@ -100,6 +100,37 @@ describe('ForceEntryPreviewDialogComponent', () => {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
 
+    it('appends one count-only Reserves display after unit groups', async () => {
+        const force = createForceEntry({ groups: [{ name: 'Lance', units: createUnitEntries(2) }], reserveCount: 3 });
+        const { fixture } = await render(force);
+        const scroll = fixture.nativeElement.querySelector('.unit-scroll') as HTMLElement;
+        const reserves = scroll.querySelector('force-reserves-preview')!;
+
+        expect(scroll.lastElementChild).toBe(reserves);
+        expect(reserves.querySelector('.group-name')?.textContent).toBe('Reserves');
+        expect(reserves.querySelector('.reserve-count')?.textContent?.trim()).toBe('3');
+        expect(reserves.querySelector('.reserve-count')?.getAttribute('aria-label')).toBe('3 people in reserve');
+        expect(reserves.querySelectorAll('img').length).toBe(1);
+        expect(reserves.querySelectorAll('button, input, unit-icon').length).toBe(0);
+        expect(scroll.querySelectorAll('.unit-square').length).toBe(2);
+        expect(force.groups.length).toBe(1);
+    });
+
+    it('shows reserves for a force with no units and uses a singular accessible label', async () => {
+        const { fixture } = await render(createForceEntry({ reserveCount: 1 }));
+        const reserves = fixture.nativeElement.querySelector('force-reserves-preview') as HTMLElement;
+
+        expect(reserves.querySelector('.reserve-count')?.getAttribute('aria-label')).toBe('1 person in reserve');
+        expect(reserves.querySelector('img')?.getAttribute('alt')).toBe('');
+        expect(fixture.nativeElement.querySelectorAll('.unit-square').length).toBe(0);
+    });
+
+    it('omits the Reserves display when nobody is in reserve', async () => {
+        const { fixture } = await render(createForceEntry());
+
+        expect(fixture.nativeElement.querySelector('force-reserves-preview')).toBeNull();
+    });
+
     it('shows DEPLOY and DISMISS for owned forces', async () => {
         const { fixture } = await render(createForceEntry({ owned: true }));
         const nativeElement = fixture.nativeElement as HTMLElement;

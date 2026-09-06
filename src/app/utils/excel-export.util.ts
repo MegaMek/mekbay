@@ -4,6 +4,8 @@
 
 
 
+import type { DisplayUnitNameFormat } from '../models/options.model';
+import { formatUnitChassis } from './unit-display-name.util';
 import type { UnitSummary, AlphaStrikeArcStats } from '../models/unit-summary.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { ASForceUnit } from '../models/as-force-unit.model';
@@ -417,7 +419,8 @@ function forceMembersToRows(force: Force, members: readonly ForceMember[]): Reco
 export async function exportUnitsToExcel(
     units: UnitSummary[],
     gameSystem: GameSystem,
-    filename?: string
+    filename?: string,
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): Promise<void> {
     if (!units || units.length === 0) {
         throw new Error('No units to export');
@@ -428,6 +431,7 @@ export async function exportUnitsToExcel(
     const rows = gameSystem === GameSystem.AS
         ? unitsToASRows(units)
         : unitsToCBTRows(units);
+    rows.forEach((row, index) => { row['chassis'] = formatUnitChassis(units[index], nameFormat); });
 
     const worksheet = utils.json_to_sheet(rows);
     
@@ -467,7 +471,8 @@ export async function exportUnitsToExcel(
 export async function exportUnitsToCSV(
     units: UnitSummary[],
     gameSystem: GameSystem,
-    filename?: string
+    filename?: string,
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): Promise<void> {
     if (!units || units.length === 0) {
         throw new Error('No units to export');
@@ -478,6 +483,7 @@ export async function exportUnitsToCSV(
     const rows = gameSystem === GameSystem.AS
         ? unitsToASRows(units)
         : unitsToCBTRows(units);
+    rows.forEach((row, index) => { row['chassis'] = formatUnitChassis(units[index], nameFormat); });
 
     const worksheet = utils.json_to_sheet(rows);
     const workbook = utils.book_new();
@@ -526,7 +532,8 @@ function createWorksheetWithAutoWidth(
 export async function exportForceToExcel(
     force: Force,
     members: readonly ForceMember[],
-    filename?: string
+    filename?: string,
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): Promise<void> {
     if (members.length === 0) {
         throw new Error('No units to export');
@@ -535,6 +542,10 @@ export async function exportForceToExcel(
     const { utils, writeFile } = await loadXlsx();
     const gameSystem = force.gameSystem;
     const rows = forceMembersToRows(force, members);
+    rows.forEach((row, index) => {
+        const member = members[index];
+        row['chassis'] = formatUnitChassis(isCBTForceMember(member) ? member.entity : member.getSummary(), nameFormat);
+    });
 
     const worksheet = createWorksheetWithAutoWidth(rows, utils);
     const workbook = utils.book_new();
@@ -560,7 +571,8 @@ export async function exportForceToExcel(
 export async function exportForceToCSV(
     force: Force,
     members: readonly ForceMember[],
-    filename?: string
+    filename?: string,
+    nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
 ): Promise<void> {
     if (members.length === 0) {
         throw new Error('No units to export');
@@ -569,6 +581,10 @@ export async function exportForceToCSV(
     const { utils, writeFile } = await loadXlsx();
     const gameSystem = force.gameSystem;
     const rows = forceMembersToRows(force, members);
+    rows.forEach((row, index) => {
+        const member = members[index];
+        row['chassis'] = formatUnitChassis(isCBTForceMember(member) ? member.entity : member.getSummary(), nameFormat);
+    });
 
     const worksheet = utils.json_to_sheet(rows);
     const workbook = utils.book_new();

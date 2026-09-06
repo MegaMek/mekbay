@@ -19,6 +19,7 @@ import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit } from './runtime/cbt-unit'
 import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { scenarioRuleset } from './runtime/unit-state-initializer';
 import { unroundedEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
+import { unitCrewKind } from './unit-crew-policy';
 
 export interface CBTForceBattleValueUnit {
     readonly unit: CBTUnit;
@@ -64,7 +65,9 @@ export function pristineUnitBattleValue(unit: CBTUnit): number {
 export function calculateCBTForceBattleValues(
     input: CBTForceBattleValueInput,
 ): ReadonlyMap<string, CBTForceBattleValueBreakdown> {
-    const inventories = input.units.map(row => ({
+    const vacant = new Set(input.units.filter(({ unit }) => unitCrewKind(unit.getUnit().unitType(), unit.getUnit().unitSubtype(), unit.getUnit().crewSlotCount()) !== 'none'
+        && unit.getCrewAssignment().positions.length === 0).map(({ unit }) => unit.instanceId));
+    const inventories = input.units.filter(row => !vacant.has(row.unit.instanceId)).map(row => ({
         ...row,
         inventory: tagBattleValueInventory(row.unit),
     }));
@@ -93,10 +96,11 @@ export function calculateCBTForceBattleValues(
         return [unit.instanceId, rules.calculateTagBVCost(facts)] as const;
     }));
 
+    // Keep configured endpoints in the structural graph; vacancy changes operation and cost, not ownership.
     const views = input.units.map(row => battleValueC3View(
-        row,
+        vacant.has(row.unit.instanceId) ? { ...row, baseBattleValue: 0 } : row,
         tagValues.get(row.unit.instanceId) ?? 0,
-        input.isC3EndpointIntact,
+        (instanceId, componentId) => !vacant.has(instanceId) && input.isC3EndpointIntact(instanceId, componentId),
     ));
     const viewsById = new Map(views.map(view => [view.instanceId, view] as const));
     const editorNetworks = projectEncounterNetworksToC3Editor(input.networks, views);
@@ -107,6 +111,7 @@ export function calculateCBTForceBattleValues(
     );
 
     return new Map(input.units.flatMap(row => {
+        if (vacant.has(row.unit.instanceId)) return [[row.unit.instanceId, Object.freeze({ base: 0, tag: 0, c3: 0, skills: 0, adjusted: 0 })] as const];
         const base = row.baseBattleValue;
         if (base === null) return [];
         const view = viewsById.get(row.unit.instanceId)!;

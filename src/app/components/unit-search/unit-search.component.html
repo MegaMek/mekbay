@@ -250,7 +250,7 @@
                     <div class="chassis-view-td chassis-view-td-count">{{ group.variantCount }}</div>
                     <div class="chassis-view-td chassis-view-td-icon"><unit-icon [unit]="group.representativeUnit" [size]="28"></unit-icon></div>
                     <div class="chassis-view-td chassis-view-td-chassis">
-                        <span class="chassis-view-chassis-name">{{ group.chassis }}</span>
+                        <span class="chassis-view-chassis-name">{{ formatVariantGroupTitle(group) }}</span>
                         <span class="chassis-view-type">{{ formatVariantGroupType(group) }}@if (group.omni) {<span class="chassis-view-omni">(omni)</span>}</span>
                     </div>
                     <div class="chassis-view-td chassis-view-td-value">{{ formatChassisGroupBvPv(group) }}</div>
@@ -313,7 +313,7 @@
                 <div class="as-td as-td-name">
                     <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
                     <span class="as-td-chassis">
-                        <span class="as-td-chassis-name" [innerHTML]="highlight(unit.chassis)"></span>
+                        <span class="as-td-chassis-name" [innerHTML]="highlight(unitNames.chassis(unit))"></span>
                     </span>
                 </div>
             </ng-template>

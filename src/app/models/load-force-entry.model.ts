@@ -27,27 +27,12 @@ export type {
  */
 export type LoadForceUnit = ForcePreviewUnit;
 
-function cloneLoadForceGroups(groups: readonly ForcePreviewGroup[]): LoadForceGroup[] {
-    return groups.map((group) => ({
-        name: group.name,
-        formationId: group.formationId,
-        units: group.units.map((unit) => ({
-            ...unit,
-            crew: unit.crew?.map((member) => ({ ...member })),
-        })),
-    }));
-}
-
 export function createLoadForceEntry(
     raw: RemoteLoadForceEntry,
     resolver: ForceEntryResolver,
     options: { cloud?: boolean; local?: boolean } = {},
 ): LoadForceEntry {
-    const previewEntry = createForcePreviewEntry(raw, resolver, options);
-    return new LoadForceEntry({
-        ...previewEntry,
-        groups: cloneLoadForceGroups(previewEntry.groups),
-    });
+    return new LoadForceEntry(createForcePreviewEntry(raw, resolver, options));
 }
 
 export function createLoadForceEntryFromSerializedForce(
@@ -55,11 +40,7 @@ export function createLoadForceEntryFromSerializedForce(
     resolver: ForceEntryResolver,
     options: { cloud?: boolean; local?: boolean } = {},
 ): LoadForceEntry {
-    const previewEntry = createForcePreviewEntryFromSerializedForce(raw, resolver, options);
-    return new LoadForceEntry({
-        ...previewEntry,
-        groups: cloneLoadForceGroups(previewEntry.groups),
-    });
+    return new LoadForceEntry(createForcePreviewEntryFromSerializedForce(raw, resolver, options));
 }
 
 export interface LoadForceGroup extends Omit<ForcePreviewGroup, 'force'> {
@@ -82,6 +63,7 @@ export class LoadForceEntry implements ForcePreviewEntry {
     era: Era | null;
     bv?: number;
     pv?: number;
+    reserveCount?: number;
     groups: LoadForceGroup[];
     _searchText?: string; // for internal searching use only, not persisted
 
@@ -101,6 +83,7 @@ export class LoadForceEntry implements ForcePreviewEntry {
         this.era = data.era ?? null;
         this.bv = data.bv ?? undefined;
         this.pv = data.pv ?? undefined;
+        this.reserveCount = data.reserveCount ?? 0;
         this.groups = data.groups ?? [];
         for (const group of this.groups) {
             group.force = this;

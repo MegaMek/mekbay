@@ -23,14 +23,17 @@ export interface SkillPreviewEntry {
             @for (entry of entries(); track entry.skill) {
                 <div class="skill-option"
                      [class.active]="entry.skill === selectedSkill()"
+                     [class.skill-only]="!showPreview()"
                      (click)="onSelect(entry.skill)">
                     <span class="skill-value">{{ entry.skill }}</span>
+                    @if (showPreview()) {
                     <span class="adjusted-value">{{ valueLabel() }}: {{ entry.adjustedValue }}</span>
                     <span class="delta" [class.positive]="entry.delta > 0" [class.negative]="entry.delta < 0">
                         @if (entry.delta !== 0) {
                             {{ entry.delta > 0 ? '+' : '' }}{{ entry.delta }}
                         }
                     </span>
+                    }
                 </div>
             }
         </div>
@@ -73,6 +76,10 @@ export interface SkillPreviewEntry {
             font-size: 1.1em;
             text-align: left;
             color: var(--text-color);
+        }
+
+        .skill-option.skill-only {
+            grid-template-columns: 1fr;
         }
 
         @container (min-width: 200px) {
@@ -131,6 +138,7 @@ export class SkillDropdownPanelComponent {
     entries = input.required<SkillPreviewEntry[]>();
     selectedSkill = input<number>(4);
     valueLabel = input<string>('BV');
+    showPreview = input(true);
     title = input<string>('');
 
     selected = output<number>();

@@ -214,7 +214,7 @@
                             || unitDisplayName() === 'both'
                             || !node.unit.alias()) {
                             <div class="unit-model">{{ node.unit.getC3Presentation().model }}</div>
-                            <div class="unit-chassis">{{ node.unit.getC3Presentation().chassis }}</div>
+                            <div class="unit-chassis">{{ c3Chassis(node.unit) }}</div>
                             }
                             @if (unitDisplayName() === 'alias' || unitDisplayName() === 'both') {
                             <div class="unit-alias">{{ node.unit.alias() }}</div>
@@ -432,7 +432,7 @@
                             <span class="internal-connection-badge" title="Internal connection">internal link</span>
                         } @else if (member.node) {
                             <span class="name">
-                                {{ member.node.unit.getC3Presentation().chassis }}
+                                {{ c3Chassis(member.node.unit) }}
                                 @if (member.node.unit.getC3Presentation().model) {
                                     - {{ member.node.unit.getC3Presentation().model }}
                                 }
@@ -470,7 +470,7 @@
                             <span class="internal-connection-badge" title="Internal connection">internal link</span>
                         } @else if (member.node) {
                             <span class="name">
-                                {{ member.node.unit.getC3Presentation().chassis }}
+                                {{ c3Chassis(member.node.unit) }}
                                 @if (member.node.unit.getC3Presentation().model) {
                                     - {{ member.node.unit.getC3Presentation().model }}
                                 }

@@ -28,7 +28,7 @@ describe('MUL file utilities', () => {
             movement: { motiveType: 'Biped' },
             crew: [{
                 positionId: asCrewPositionId('crew:pilot'), positionKey: 'pilot', occurrence: 0,
-                name: 'Morgan', role: 'Pilot', gunnery: 3, piloting: 4,
+                name: 'Morgan', gunnery: 3, piloting: 4,
                 state: { wounds: 2, unconscious: false, ejected: false },
             }],
             locations: [{

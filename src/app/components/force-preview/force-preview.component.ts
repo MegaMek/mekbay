@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import type { Force } from '../../models/force.model';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { ForceReservesPreviewComponent } from '../force-reserves-preview/force-reserves-preview.component';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { OptionsService } from '../../services/options.service';
 import { getFactionImg } from '../../models/factions.model';
@@ -13,7 +15,6 @@ import { formatForceMembersBvPv } from '../../utils/force-viewer-bv-pv-display.u
 import {
     forceMemberAlias,
     forceMemberCommander,
-    forceMemberChassis,
     forceMemberDestroyed,
     forceMemberModel,
     forceMemberPilotStats,
@@ -28,7 +29,7 @@ import {
 @Component({
     selector: 'force-preview',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [UnitIconComponent, CleanModelStringPipe],
+    imports: [UnitIconComponent, CleanModelStringPipe, ForceReservesPreviewComponent],
     template: `
     @let unitDisplayName = optionsService.options().unitDisplayName;
     @let f = force();
@@ -82,7 +83,7 @@ import {
                                     || unitDisplayName === 'both'
                                     || !alias) {
                                     <div class="unit-model">{{ forceMemberModel(fu) | cleanModelString }}</div>
-                                    <div class="unit-chassis">{{ forceMemberChassis(fu) }}</div>
+                                    <div class="unit-chassis">{{ unitNames.chassis(presentationUnit) }}</div>
                                 }
                                 @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
                                     <div class="unit-alias"
@@ -96,6 +97,9 @@ import {
                     }
                 </div>
             </div>
+        }
+        @if (reserveCount() > 0) {
+            <force-reserves-preview [count]="reserveCount()"></force-reserves-preview>
         }
     </div>
     `,
@@ -312,6 +316,7 @@ import {
     `]
 })
 export class ForcePreviewComponent {
+    readonly unitNames = inject(UnitNameService);
     optionsService = inject(OptionsService);
 
     readonly displayGroups = computed(() => {
@@ -320,6 +325,11 @@ export class ForcePreviewComponent {
             group,
             members: force.membersInGroup(group),
         }));
+    });
+
+    readonly reserveCount = computed(() => {
+        const personnel = this.force().personnel();
+        return personnel.people.length - personnel.assignments.length;
     });
 
     displayedBvPv = computed(() => {
@@ -332,7 +342,6 @@ export class ForcePreviewComponent {
     });
     protected readonly forceMemberAlias = forceMemberAlias;
     protected readonly forceMemberCommander = forceMemberCommander;
-    protected readonly forceMemberChassis = forceMemberChassis;
     protected readonly forceMemberDestroyed = forceMemberDestroyed;
     protected readonly forceMemberModel = forceMemberModel;
     protected readonly forceMemberPilotStats = forceMemberPilotStats;

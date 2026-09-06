@@ -921,6 +921,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         };
         testState.currentForceSignal.set({
             members: () => [liveUnit1, liveUnit2],
+            personnel: () => ({ people: [], assignments: [] }),
             owned: () => true,
             instanceId: () => 'force-1',
             name: 'Current Force',

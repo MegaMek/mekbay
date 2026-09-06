@@ -437,17 +437,17 @@
                 <button class="filter-btn" [class.active]="sidebarFilter() === sidebarAllFilter"
                     (click)="setSidebarFilter(sidebarAllFilter)">
                     <span class="filter-label">All</span>
-                    <span class="filter-count">{{ getSidebarFilterCount(sidebarAllFilter) }}</span>
+                    <span class="filter-count">{{ sidebarComplete() ? getSidebarFilterCount(sidebarAllFilter) : '…' }}</span>
                 </button>
                 <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.CBT"
                     (click)="toggleSidebarFilter(GameSystem.CBT)">
                     <span class="filter-label">BattleTech</span>
-                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.CBT) }}</span>
+                    <span class="filter-count">{{ sidebarComplete() ? getSidebarFilterCount(GameSystem.CBT) : '…' }}</span>
                 </button>
                 <button class="filter-btn" [class.active]="sidebarFilter() === GameSystem.AS"
                     (click)="toggleSidebarFilter(GameSystem.AS)">
                     <span class="filter-label">Alpha Strike</span>
-                    <span class="filter-count">{{ getSidebarFilterCount(GameSystem.AS) }}</span>
+                    <span class="filter-count">{{ sidebarComplete() ? getSidebarFilterCount(GameSystem.AS) : '…' }}</span>
                 </button>
             </div>
             <div class="sidebar-tag-bar">
@@ -456,7 +456,7 @@
                     [class.active]="sidebarFilter() === sidebarUntaggedFilter"
                     (click)="toggleSidebarFilter(sidebarUntaggedFilter)">
                     <span class="filter-label">Untagged</span>
-                    <span class="filter-count">{{ getSidebarTagCount(sidebarUntaggedFilter) }}</span>
+                    <span class="filter-count">{{ sidebarComplete() ? getSidebarTagCount(sidebarUntaggedFilter) : '…' }}</span>
                 </button>
                 }
                 @for (tag of sidebarTags(); track tag.id) {
@@ -465,18 +465,28 @@
                         [class.active]="sidebarFilter() === tag.id"
                         (click)="toggleSidebarFilter(tag.id)">
                         <span class="filter-label">{{ tag.label }}</span>
-                        <span class="filter-count">{{ tag.count }}</span>
+                        <span class="filter-count">{{ sidebarComplete() ? tag.count : '…' }}</span>
                     </button>
                     }
+                }
+                @if (!sidebarComplete()) {
+                <button class="filter-btn" type="button" [disabled]="sidebarLoading() || !!sidebarPending()"
+                    (click)="loadSidebarPage('all')">All tags…</button>
                 }
             </div>
         </div>
 
-        <div class="forces-list">
+        <div class="forces-list"
+            [forceListPaging]="sidebarVisible() && !sidebarLoading() && !sidebarPending() && !sidebarComplete() && !sidebarLoadError() && !sidebarRequiresComplete()"
+            (forceListLoadMore)="loadSidebarPage()">
             @if (sidebarLoading()) {
             <div class="sidebar-empty">Loading forces...</div>
+            } @else if (sidebarPending() === 'all') {
+            <div class="sidebar-empty" role="status">Loading all forces for account-wide results…</div>
+            } @else if (!sidebarComplete() && sidebarRequiresComplete()) {
+            <div class="sidebar-empty">Load the remaining forces to search, filter, or sort the entire account.</div>
             } @else if (sidebarForces().length === 0) {
-            <div class="sidebar-empty">{{ getSidebarEmptyStateMessage() }}</div>
+            <div class="sidebar-empty">{{ sidebarComplete() ? getSidebarEmptyStateMessage() : 'Loading more available forces…' }}</div>
             } @else {
             @for (force of sidebarForces(); track force.instanceId) {
             @let metadata = forcesData().get(force.instanceId);
@@ -507,6 +517,22 @@
             }
         </div>
 
+        @if (!sidebarLoading() && !sidebarComplete()) {
+        <div class="sidebar-paging" role="status">
+            @if (sidebarLoadError()) {
+            <span>Could not load all cloud forces. Available entries are shown.</span>
+            } @else if (sidebarPending()) {
+            <span>Loading forces…</span>
+            } @else {
+            <span>{{ sidebarForces().length }} available loaded</span>
+            }
+            <button class="bt-button" type="button" [disabled]="!!sidebarPending()"
+                (click)="loadSidebarPage(sidebarRequiresComplete() ? 'all' : 'next')">
+                {{ sidebarLoadError() ? 'RETRY' : 'LOAD MORE' }}
+            </button>
+        </div>
+        }
+
         <div class="sidebar-sort-footer">
             <div class="sidebar-footer-filter-controls">
                 <compact-filter-menu
@@ -517,6 +543,7 @@
                     fallbackLabel="F"
                     size="small"
                     panelAlign="left"
+                    (opened)="loadSidebarPage('all')"
                     (selectedIdChange)="setSidebarFactionFilter($event)">
                 </compact-filter-menu>
                 <compact-filter-menu
@@ -527,6 +554,7 @@
                     fallbackLabel="E"
                     size="small"
                     panelAlign="left"
+                    (opened)="loadSidebarPage('all')"
                     (selectedIdChange)="setSidebarEraFilter($event)">
                 </compact-filter-menu>
             </div>

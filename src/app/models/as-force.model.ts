@@ -15,6 +15,8 @@ import { C3Network } from './c3-network.model';
 import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
 import { DialogsService } from '../services/dialogs.service';
 import { sourceHashCanaryChanged } from './source-hash-canary';
+import { detachForcePersonnel, remapForcePersonnelUnits, type ForcePerson } from './force-personnel';
+import { unitCrewKind, type UnitCrewPolicy } from './unit-crew-policy';
 
 
 
@@ -29,6 +31,22 @@ export class ASForce extends Force<ASForceUnit> {
 
     private createForceUnit(unit: UnitSummary): ASForceUnit {
         return new ASForceUnit(unit, this, this.injector);
+    }
+
+    /** Pilot edits update the force-owned person; an explicitly vacant station stays vacant. */
+    public updatePilotProfile(unit: ASForceUnit, patch: Partial<Omit<ForcePerson, 'id'>>): boolean {
+        if (unit.force !== this || !this.isWholeOwnerActive() || this.readOnly()) return false;
+        const pilot = this.getAssignedPerson(unit.id, 'pilot');
+        return pilot !== undefined && (this.updatePerson(pilot.id, patch) as boolean);
+    }
+
+    public override getUnitCrewPolicy(unitId: string): UnitCrewPolicy {
+        const unit = this.units().find(unit => unit.id === unitId && unit.force === this);
+        if (!unit) return super.getUnitCrewPolicy(unitId);
+        const kind = unitCrewKind(unit.getSummary().type, unit.getSummary().subtype);
+        const canEdit = this.canEditPersonnel();
+        return { kind, positions: kind === 'none' ? [] : [{ positionId: 'pilot', label: kind === 'integrated' ? 'Squad' : 'Pilot' }],
+            canEdit, ...(!canEdit ? { reason: 'This force is read-only or no longer active.' } : {}) };
     }
 
     /** Creates a detached Alpha Strike unit for an explicit cross-system transfer. */
@@ -51,6 +69,7 @@ export class ASForce extends Force<ASForceUnit> {
         const forceUnit = this.createForceUnit(captureUnitForAdmission(unit));
         const intentReserved = !this.loading;
         if (intentReserved) this.reserveForceOwnerMutationIntent();
+        if (unitCrewKind(forceUnit.getSummary().type, forceUnit.getSummary().subtype) !== 'none') this.ensurePersonnelAssignment(forceUnit.id, 'pilot');
         if (this.groups().length === 0) {
             this.groups.set([new UnitGroup<ASForceUnit>(this)]);
         }
@@ -85,14 +104,12 @@ export class ASForce extends Force<ASForceUnit> {
         if (originalGroup === null || originalIndex === -1 || originalUnit.force !== this) return null;
 
         const newForceUnit = this.createForceUnit(captureUnitForAdmission(newUnitData));
-        newForceUnit.disabledSaving = true;
-        try {
-            this.transferPilotData(originalUnit, newForceUnit);
-        } finally {
-            newForceUnit.disabledSaving = false;
-        }
+        newForceUnit.setFormationAbilities([...originalUnit.formationAbilities()], false);
 
         this.reserveForceOwnerMutationIntent();
+        this.installPersonnel(unitCrewKind(newUnitData.type, newUnitData.subtype) === 'none'
+            ? detachForcePersonnel(this.personnel(), new Set([originalUnit.id]))
+            : remapForcePersonnelUnits(this.personnel(), new Map([[originalUnit.id, newForceUnit.id]])));
         const currentNetworks = this._c3Networks();
         if (currentNetworks.length > 0 && new C3Network(currentNetworks).isUnitConnected(originalUnit.id)) {
             this._c3Networks.set(C3NetworkEditor.removeUnit(currentNetworks, originalUnit.id).networks);
@@ -132,23 +149,6 @@ export class ASForce extends Force<ASForceUnit> {
         return ownedGroup ? [...ownedGroup.units()] : [];
     }
 
-    /**
-     * Transfers pilot data (name, skill, abilities) from one AS unit to another.
-     */
-    private transferPilotData(fromUnit: ASForceUnit, toUnit: ASForceUnit): void {
-        const pilotName = fromUnit.alias();
-        if (pilotName) {
-            toUnit.setPilotName(pilotName);
-        }
-        toUnit.setPilotSkill(fromUnit.pilotSkill());
-        const abilities = fromUnit.manualPilotAbilities();
-        if (abilities && abilities.length > 0) {
-            toUnit.setPilotAbilities([...abilities]);
-        }
-        toUnit.setFormationAbilities([...fromUnit.formationAbilities()]);
-        toUnit.setFormationCommander(fromUnit.commander());
-    }
-
     /** Installs a current Alpha Strike grouped record into this owner. */
     private populateFromSerialized(data: ASSerializedForce): readonly string[] {
         if (data.version !== 2
@@ -165,6 +165,7 @@ export class ASForce extends Force<ASForceUnit> {
 
         const sanitizedData = Sanitizer.sanitize(data, AS_SERIALIZED_FORCE_SCHEMA);
         const warnings = new Set<string>();
+        const skippedUnitIds = new Set<string>();
         let skippedUnitCount = 0;
         let resetUnitStateCount = 0;
         this.loading = true;
@@ -185,18 +186,28 @@ export class ASForce extends Force<ASForceUnit> {
                         if (!currentSummary) {
                             throw new Error(`Unit UUID "${serializedUnit.uuid}" is not installed`);
                         }
-                        return [ASForceUnit.deserialize(
+                        const unit = ASForceUnit.deserialize(
                             serializedUnit,
                             this,
                             currentSummary,
                             this.injector,
-                        )];
+                        );
+                        if (sanitizedData.personnel === undefined && unitCrewKind(unit.getSummary().type, unit.getSummary().subtype) !== 'none') {
+                            this.ensurePersonnelAssignment(unit.id, 'pilot', {
+                                name: serializedUnit.alias,
+                                gunnery: serializedUnit.skill,
+                                abilities: serializedUnit.abilities,
+                                commander: serializedUnit.commander === true ? true : undefined,
+                            });
+                        }
+                        return [unit];
                     } catch {
                         const uuid = typeof serializedUnit.uuid === 'string'
                             ? serializedUnit.uuid
                             : '';
                         const summary = uuid ? this.dataService.getUnitByUuid(uuid) : undefined;
                         if (!summary) {
+                            skippedUnitIds.add(serializedUnit.id);
                             skippedUnitCount += 1;
                             return [];
                         }
@@ -204,6 +215,7 @@ export class ASForce extends Force<ASForceUnit> {
                         if (typeof serializedUnit.id === 'string' && serializedUnit.id) {
                             unit.id = serializedUnit.id;
                         }
+                        if (sanitizedData.personnel === undefined && unitCrewKind(unit.getSummary().type, unit.getSummary().subtype) !== 'none') this.ensurePersonnelAssignment(unit.id, 'pilot');
                         resetUnitStateCount += 1;
                         return [unit];
                     }
@@ -225,6 +237,9 @@ export class ASForce extends Force<ASForceUnit> {
             }
 
             this.groups.set(parsedGroups);
+            if (skippedUnitIds.size > 0) {
+                this.installPersonnel(detachForcePersonnel(this.personnel(), skippedUnitIds));
+            }
             for (const group of parsedGroups) {
                 const targetGroupId = group.formationTargetGroupId();
                 if (targetGroupId !== null

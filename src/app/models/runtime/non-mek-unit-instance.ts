@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { assignedCrewRuntimeState, canonicalizeCrewAssignment, createDefaultCrewAssignment, type CrewAssignment } from './crew-assignment';
 import { compareText } from '../../utils/string.util';
 import type { BaseEntity } from '../entity/base-entity';
 import type { EntityStateView } from '../entity/entity-state-view';
@@ -334,12 +335,13 @@ export function projectNonMekMovementCapabilities(
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
+    crewAssignment?: CrewAssignment,
 ): NonMekMovementCapabilities {
     const vehicle = isVehicleEntity(entity)
-        ? projectVehicleRuntimeRules(entity, index, state, ruleset)
+        ? projectVehicleRuntimeRules(entity, index, state, ruleset, crewAssignment)
         : null;
     const protoMek = isProtoMekEntity(entity)
-        ? projectProtoMekRuntimeRules(entity, index, state, ruleset)
+        ? projectProtoMekRuntimeRules(entity, index, state, ruleset, true, crewAssignment)
         : null;
     const infantry = isInfantryFamilyEntity(entity)
         ? projectInfantryRuntimeRules(entity, index, state)
@@ -356,7 +358,7 @@ export function projectNonMekMovementCapabilities(
         || state.conditions.has('immobile')
         || vehicle?.computedConditions.includes('immobile') === true
         || protoMek?.computedConditions.includes('immobile') === true;
-    const canTakeActiveActions = canNonMekTakeActiveActions(entity, index, state, ruleset);
+    const canTakeActiveActions = canNonMekTakeActiveActions(entity, index, state, ruleset, crewAssignment);
     const hpgMovementBlocked = mobileHpgBlocksMovement(
         buildNonMekMobileHpgFacts(entity, index, state, ruleset),
     );
@@ -405,20 +407,28 @@ export function projectNonMekMovementCapabilities(
     });
 }
 
+/** Empty assignments disable crewed units; autonomous drones retain their controller. */
+export function hasVacantNonMekCrew(index: NonMekRuntimeIndex, assignment?: CrewAssignment): boolean {
+    return index.crewPositions.size > 0 && assignment?.positions.length === 0
+        && ![...index.components.values()].some(component =>
+            isDroneOperatingSystemEquipment(component.mount.equipment));
+}
+
 /** Whether this Entity-backed unit has a live controller for active turn actions. */
 export function canNonMekTakeActiveActions(
     entity: BaseEntity,
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
+    crewAssignment?: CrewAssignment,
 ): boolean {
     if (entityRuntimeDestroyed(entity, index, state, ruleset)
         || state.conditions.has('shutdown')) return false;
     if ([...index.components.values()].some(component =>
         isDroneOperatingSystemEquipment(component.mount.equipment))) return true;
     if (index.crewPositions.size === 0) return true;
-    return [...index.crewPositions.keys()].some(positionId =>
-        CrewMember.from(state.crew.get(positionId)).isAvailable());
+    return (crewAssignment?.positions.map(position => position.positionId) ?? [...index.crewPositions.keys()])
+        .some(positionId => CrewMember.from(state.crew.get(positionId)).isAvailable());
 }
 
 /** Origin/next attacker badges, derived from the loaded Entity family. */
@@ -509,9 +519,11 @@ export function projectNonMekDefenseModifierBreakdown(
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
+    crewAssignment?: CrewAssignment,
 ): readonly UnitModifierBreakdownEntry[] {
     const entries: UnitModifierBreakdownEntry[] = [];
-    if (entityHasCondition(entity, index, state, ruleset, 'immobile')) {
+    if (hasVacantNonMekCrew(index, crewAssignment)
+        || entityHasCondition(entity, index, state, ruleset, 'immobile', crewAssignment)) {
         entries.push({ label: 'Immobile', modifier: TN_IMMOBILE });
     }
     if (gameRulesFor(ruleset).supportsSkidding
@@ -727,6 +739,7 @@ export function freezeNonMekUnitState(state: NonMekUnitRuntimeState): NonMekUnit
 export class NonMekUnitInstance {
     private state: NonMekUnitRuntimeState;
     private readonly index: NonMekRuntimeIndex;
+    public readonly crewAssignment: CrewAssignment;
 
     public constructor(
         public readonly id: string,
@@ -735,6 +748,7 @@ export class NonMekUnitInstance {
         public readonly ruleset: CBTRuleset,
         initialState: NonMekUnitRuntimeState = createPristineNonMekUnitState(entity),
         public readonly forcedWithdrawal = true,
+        crewAssignment?: CrewAssignment,
     ) {
         if (entity.entityType === 'Mek') throw new Error('Meks require CBTUnitInstance');
         if (baselineRef.entity !== entity.uuid()) {
@@ -743,7 +757,9 @@ export class NonMekUnitInstance {
         if (baselineRef.ruleset !== ruleset) throw new Error('Runtime ruleset does not match its baseline');
         if (typeof forcedWithdrawal !== 'boolean') throw new Error('Forced withdrawal gate must be boolean');
         this.index = buildNonMekRuntimeIndex(entity);
-        this.state = validateState(initialState, this.index, entity, ruleset);
+        this.crewAssignment = canonicalizeCrewAssignment(this.index.crewPositions,
+            crewAssignment ?? createDefaultCrewAssignment(this.index.crewPositions));
+        this.state = validateState({ ...initialState, crew: assignedCrewRuntimeState(initialState.crew, this.crewAssignment) }, this.index, entity, ruleset);
     }
 
     public getUnit(): BaseEntity {
@@ -774,6 +790,7 @@ export class NonMekUnitInstance {
             this.state,
             this.ruleset,
             this.forcedWithdrawal,
+            this.crewAssignment,
         );
     }
 
@@ -791,7 +808,7 @@ export class NonMekUnitInstance {
 
     public vehicleRules(): VehicleRuntimeRulesProjection | null {
         if (!isVehicleEntity(this.entity)) return null;
-        return projectVehicleRuntimeRules(this.entity, this.index, this.state, this.ruleset);
+        return projectVehicleRuntimeRules(this.entity, this.index, this.state, this.ruleset, this.crewAssignment);
     }
 
     public infantryRules(): InfantryRuntimeRulesProjection | null {
@@ -865,7 +882,8 @@ export class NonMekUnitInstance {
                 ? command.edit.componentIds
                 : [];
         if (selectedComponentIds.length > 0
-            && (this.destroyed()
+            && (hasVacantNonMekCrew(this.index, this.crewAssignment)
+                || this.destroyed()
                 || selectedComponentIds.some(componentId =>
                     this.state.components.get(componentId)?.jammed === true
                     || this.componentStatus(componentId, 'committed') !== 'available')
@@ -973,7 +991,8 @@ export class NonMekUnitInstance {
         let heat = 0;
         const vehicle = this.vehicleRules();
         const infantry = this.infantryRules();
-        if (this.destroyed() || this.hasCondition('shutdown')) return unchanged();
+        if (hasVacantNonMekCrew(this.index, this.crewAssignment)
+            || this.destroyed() || this.hasCondition('shutdown')) return unchanged();
         for (const [weaponId, targeting] of selected) {
             const component = this.index.components.get(weaponId);
             const weapon = component?.mount.equipment;
@@ -1114,13 +1133,14 @@ export class NonMekUnitInstance {
     public dispatch(command: NonMekUnitCommand): NonMekUnitCommandResult {
         let next: NonMekUnitRuntimeState | null;
         try {
-            next = reduceNonMekUnitState(this.state, this.index, this.entity, this.ruleset, command);
+            next = reduceNonMekUnitState(this.state, this.index, this.entity, this.ruleset, command, this.crewAssignment);
         } catch {
             return Object.freeze({ accepted: true, changed: false, state: this.state });
         }
         if (next === null) return Object.freeze({ accepted: true, changed: false, state: this.state });
-        this.state = next;
-        return Object.freeze({ accepted: true, changed: true, state: next });
+        const crew = assignedCrewRuntimeState(next.crew, this.crewAssignment);
+        this.state = crew === next.crew ? next : freezeNonMekUnitState({ ...next, crew });
+        return Object.freeze({ accepted: true, changed: true, state: this.state });
     }
 }
 
@@ -1140,12 +1160,13 @@ function projectNonMekRuntime(
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
     forcedWithdrawal = true,
+    crewAssignment?: CrewAssignment,
 ): ProjectedNonMekRuntime {
     const vehicle = isVehicleEntity(entity)
-        ? projectVehicleRuntimeRules(entity, index, state, ruleset)
+        ? projectVehicleRuntimeRules(entity, index, state, ruleset, crewAssignment)
         : null;
     const protoMek = isProtoMekEntity(entity)
-        ? projectProtoMekRuntimeRules(entity, index, state, ruleset, forcedWithdrawal)
+        ? projectProtoMekRuntimeRules(entity, index, state, ruleset, forcedWithdrawal, crewAssignment)
         : null;
     const infantry = isInfantryFamilyEntity(entity)
         ? projectInfantryRuntimeRules(entity, index, state)
@@ -1178,6 +1199,7 @@ function createNonMekUnitQuery(
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
     forcedWithdrawal: boolean,
+    crewAssignment: CrewAssignment,
 ): CBTUnitQueryPort {
     let runtimeProjection: ProjectedNonMekRuntime | undefined;
     const projection = (): ProjectedNonMekRuntime =>
@@ -1187,6 +1209,7 @@ function createNonMekUnitQuery(
             state,
             ruleset,
             forcedWithdrawal,
+            crewAssignment,
         );
     let projectedStateView: EntityStateView | undefined;
     const stateView = (): EntityStateView =>
@@ -1198,8 +1221,14 @@ function createNonMekUnitQuery(
             projection(),
         );
     let effectiveConditionValues: readonly UnitConditionKey[] | undefined;
-    const effectiveConditions = (): readonly UnitConditionKey[] =>
-        effectiveConditionValues ??= projectedConditions(entity, state, projection());
+    const effectiveConditions = (): readonly UnitConditionKey[] => {
+        if (effectiveConditionValues !== undefined) return effectiveConditionValues;
+        const conditions = projectedConditions(entity, state, projection());
+        const vacant = hasVacantNonMekCrew(index, crewAssignment);
+        return effectiveConditionValues = vacant
+            ? Object.freeze([...new Set<UnitConditionKey>([...conditions, 'abandoned', 'immobile'])])
+            : conditions;
+    };
     return Object.freeze({
         stateRevision: state.stateRevision,
         hasPendingPhaseChanges: () => hasPendingNonMekPhaseChanges(state),
@@ -1251,7 +1280,9 @@ function createNonMekUnitQuery(
             if (!index.crewPositions.has(positionId)) {
                 throw new Error(`Unknown entity crew position ${positionId}`);
             }
-            return CrewMember.from(state.crew.get(positionId));
+            return crewAssignment.positions.some(position => position.positionId === positionId)
+                ? CrewMember.from(state.crew.get(positionId))
+                : CrewMember.vacant;
         },
     });
 }
@@ -1284,9 +1315,10 @@ function entityHasCondition(
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
     condition: UnitConditionKey,
+    crewAssignment?: CrewAssignment,
 ): boolean {
     if (state.conditions.has(condition)) return true;
-    return projectedHasCondition(projectNonMekRuntime(entity, index, state, ruleset), condition);
+    return projectedHasCondition(projectNonMekRuntime(entity, index, state, ruleset, true, crewAssignment), condition);
 }
 
 function projectedHasCondition(
@@ -1452,6 +1484,7 @@ function reduceNonMekUnitState(
     entity: BaseEntity,
     ruleset: CBTRuleset,
     command: NonMekUnitCommand,
+    crewAssignment: CrewAssignment,
 ): NonMekUnitRuntimeState | null {
     let candidate: Omit<NonMekUnitRuntimeState, 'stateRevision'> & { stateRevision: number } = state;
     switch (command.kind) {
@@ -1826,6 +1859,7 @@ function reduceNonMekUnitState(
             break;
         }
         case 'set-crew-state': {
+            if (!crewAssignment.positions.some(position => position.positionId === command.positionId)) return null;
             if (!index.crewPositions.has(command.positionId)
                 || !Number.isSafeInteger(command.wounds) || command.wounds < 0 || command.wounds > MAX_CREW_WOUNDS
                 || (command.dead !== undefined && typeof command.dead !== 'boolean')
@@ -1929,7 +1963,7 @@ function reduceNonMekUnitState(
             };
             break;
         case 'set-movement': {
-            const movement = validateNonMekMovement(command.movement, state, index, entity, ruleset);
+            const movement = validateNonMekMovement(command.movement, state, index, entity, ruleset, true, crewAssignment);
             if (movement !== null
                 && movement.mode !== 'stationary'
                 && mobileHpgBlocksMovement(
@@ -1962,7 +1996,7 @@ function reduceNonMekUnitState(
             if (typeof command.spotting !== 'boolean'
                 || (command.spotting && state.turn.movement?.mode === 'sprint')
                 || (command.spotting
-                    && !canNonMekTakeActiveActions(entity, index, state, ruleset))) {
+                    && !canNonMekTakeActiveActions(entity, index, state, ruleset, crewAssignment))) {
                 throw new Error('Invalid non-Mek spotting state');
             }
             if (state.turn.spotting === command.spotting) return null;
@@ -2677,6 +2711,7 @@ function validateNonMekMovement(
     entity: BaseEntity,
     ruleset: CBTRuleset,
     enforceCurrentCapacity = true,
+    crewAssignment?: CrewAssignment,
 ): NonMekMovementDeclaration | null {
     if (value === null) return null;
     if (!NON_MEK_MOVEMENT_MODES.has(value.mode)
@@ -2689,7 +2724,7 @@ function validateNonMekMovement(
         || (value.mode !== 'run' && boosterComponentIds.length > 0)) {
         throw new Error('Invalid non-Mek movement boosters');
     }
-    const capabilities = projectNonMekMovementCapabilities(entity, index, state, ruleset);
+    const capabilities = projectNonMekMovementCapabilities(entity, index, state, ruleset, crewAssignment);
     const availableBoosters = new Set(capabilities.boosterComponentIds);
     for (const componentId of boosterComponentIds) {
         const component = index.components.get(componentId);

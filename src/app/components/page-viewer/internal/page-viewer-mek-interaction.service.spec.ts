@@ -106,7 +106,7 @@ describe('PageViewerMekInteractionService', () => {
             dispatchEquipmentChoice: jasmine.createSpy().and.resolveTo({ accepted: true, changed: true }),
             getUnitCrewProfile: jasmine.createSpy().and.returnValue({
                 schemaVersion: 1,
-                positions: [{ positionId: 'crew-0', name: 'Morgan', role: 'Pilot', gunnery: 3, piloting: 4 }],
+                positions: [{ positionId: 'crew-0', name: 'Morgan', gunnery: 3, piloting: 4 }],
             }),
             replaceUnitCrewProfile: jasmine.createSpy().and.resolveTo({ schemaVersion: 1, positions: [] }),
             getAttackerTargeting: jasmine.createSpy().and.returnValue({
@@ -404,7 +404,7 @@ describe('PageViewerMekInteractionService', () => {
                 { ...currentSnapshot.crew[0]!, occurrence: 0, effectiveState: 'active' },
                 {
                     ...currentSnapshot.crew[0]!, positionId: 'crew-1', positionKey: 'crew:1', occurrence: 1,
-                    role: 'Commander', effectiveState: 'dead',
+                    effectiveState: 'dead',
                 },
             ],
         } as unknown as MekRecordSheetSnapshot;
@@ -514,8 +514,23 @@ describe('PageViewerMekInteractionService', () => {
         choiceConfig!.onPick({ label: '2', value: 2 });
         await settleAsyncHandlers();
         expect(force.replaceUnitCrewProfile).toHaveBeenCalledWith('unit-1', [
-            { positionId: 'crew-0', name: 'Morgan', role: 'Pilot', gunnery: 2, piloting: 4 },
+            { positionId: 'crew-0', name: 'Morgan', gunnery: 2, piloting: 4 },
         ]);
+    });
+
+    it('moves the person identity when the sheet swaps into a vacant second station', async () => {
+        const first = currentSnapshot.crew[0];
+        currentSnapshot = { ...currentSnapshot, crew: [first,
+            { ...first, positionId: 'crew-1', occurrence: 1, effectiveState: 'vacant' },
+        ] } as MekRecordSheetSnapshot;
+        force.getAssignedPerson = jasmine.createSpy().and.returnValue({ id: 'person-morgan' });
+        force.assignPersonToUnit = jasmine.createSpy().and.resolveTo(true);
+        const controls = service as unknown as {
+            swapCrewPositions(member: CBTMekForceMember, occurrence: number): Promise<void>;
+        };
+        await controls.swapCrewPositions(member, 0);
+        expect(force.assignPersonToUnit).toHaveBeenCalledWith('person-morgan', 'unit-1', 'crew-1');
+        expect(force.replaceUnitCrewProfile).not.toHaveBeenCalled();
     });
 
     it('routes an inventory range button to the attacker-targeting owner', async () => {
@@ -686,7 +701,7 @@ function recordSheetSnapshot(stateRevision: number): MekRecordSheetSnapshot {
             }],
         }],
         crew: [{
-            positionId: 'crew-0', positionKey: 'crew:0', occurrence: 0, name: 'Morgan', role: 'Pilot',
+            positionId: 'crew-0', positionKey: 'crew:0', occurrence: 0, name: 'Morgan',
             gunnery: 3, piloting: 4, state: { wounds: 0, unconscious: false, ejected: false },
         }],
         heatSinks: { count: 10, unavailableUnits: 0 },

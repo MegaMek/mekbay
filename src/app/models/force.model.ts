@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { EMPTY_FORCE_PERSONNEL, assignedForcePerson, createForcePerson, addForcePerson, assignForcePerson, updateForcePerson, removeForcePerson, removeUnitPersonnel, cloneForcePersonnel, transferForcePersonnel, type ForcePerson, type ForcePersonnelSnapshot } from './force-personnel';
+import type { UnitCrewPolicy } from './unit-crew-policy';
 import { signal, computed, type Signal, type WritableSignal, type Injector } from '@angular/core';
 import { Subject } from 'rxjs';
 import type { DataService } from '../services/data.service';
@@ -83,6 +85,7 @@ const reserveUnitGroupOwnerMutation = Symbol('reserveUnitGroupOwnerMutation');
 const publishReservedUnitGroupOwnerMutation = Symbol('publishReservedUnitGroupOwnerMutation');
 const queryUnitGroupOwnerCapacity = Symbol('queryUnitGroupOwnerCapacity');
 const pruneUnitGroupOwnerLegacyC3 = Symbol('pruneUnitGroupOwnerLegacyC3');
+const prepareUnitGroupPersonnelTransfer = Symbol('prepareUnitGroupPersonnelTransfer');
 
 interface ForceOwnerAuthorityFingerprintBinding {
     readonly owner: object;
@@ -170,6 +173,7 @@ export interface CBTForceMutationInstall {
     readonly mutation: CBTForceMutation;
     readonly prepared: PreparedCBTForcePersistenceV2;
     readonly install: () => void;
+    readonly personnel?: ForcePersonnelSnapshot;
 }
 
 function getEraEndYear(era: Era): number {
@@ -412,6 +416,14 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
             && targetForce[queryUnitGroupOwnerCapacity]() >= MAX_UNITS) return null;
         if (sourceForce !== targetForce
             && targetForce.units().some(candidate => candidate.id === insertedUnit.id)) return null;
+        let installPersonnel: (() => void) | undefined;
+        if (sourceForce !== targetForce && sourceForce.gameSystem === targetForce.gameSystem) {
+            try {
+                const clearCommander = sourceUnit.commander() && targetGroup.units().some(candidate => candidate.commander());
+                installPersonnel = sourceForce[prepareUnitGroupPersonnelTransfer](targetForce,
+                    new Map([[sourceUnit.id, insertedUnit.id]]), clearCommander ? insertedUnit.id : undefined);
+            } catch { return null; }
+        }
         const sourceIntent = sourceForce[reserveUnitGroupOwnerMutation](this);
         if (sourceIntent === null) return null;
         const targetIntent = sourceForce === targetForce
@@ -424,7 +436,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         const insertAt = toIndex !== undefined
             ? Math.min(Math.max(0, toIndex), targetUnits.length)
             : targetUnits.length;
-        if (insertedUnit.commander()
+        if (!installPersonnel && insertedUnit.commander()
             && targetUnits.some(candidate => candidate.commander())) {
             insertedUnit.setFormationCommander(false, false);
         }
@@ -433,6 +445,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
         this.units.set(sourceUnits as TUnit[]);
         if (this === targetGroup) this.units.set(targetUnits as TUnit[]);
         else targetGroup.units.set(targetUnits);
+        installPersonnel?.();
         if (sourceForce !== targetForce) sourceForce[pruneUnitGroupOwnerLegacyC3](sourceUnit.id);
         sourceForce[publishReservedUnitGroupOwnerMutation](sourceIntent);
         if (targetForce !== sourceForce) {
@@ -528,6 +541,159 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     _tags: WritableSignal<string[]>;
     timestamp: string | null = null;
     groups: WritableSignal<UnitGroup<TUnit>[]> = signal([]);
+    private readonly _personnel = signal<ForcePersonnelSnapshot>(EMPTY_FORCE_PERSONNEL);
+    public readonly personnel = this._personnel.asReadonly();
+
+    public getAssignedPerson(unitId: string, positionId: string): ForcePerson | undefined {
+        return assignedForcePerson(this._personnel(), unitId, positionId);
+    }
+
+    public canEditPersonnel(): boolean { return !this.readOnly() && this.isWholeOwnerActive(); }
+
+    public getUnitCrewPolicy(_unitId: string): UnitCrewPolicy {
+        return { kind: 'none', positions: [], canEdit: false, reason: 'Unit is unavailable.' };
+    }
+
+    public updatePerson(personId: string, patch: Partial<Omit<ForcePerson, 'id'>>): boolean | Promise<boolean> {
+        const captured = structuredClone(patch);
+        return this.applyPersonnelEdit(before => before.people.some(person => person.id === personId)
+            ? updateForcePerson(before, personId, captured) : null);
+    }
+
+    public assignPersonToUnit(personId: string, unitId: string, positionId = 'pilot'): boolean | Promise<boolean> {
+        return this.applyPersonnelEdit(before => {
+            const source = before.assignments.find(assignment => assignment.personId === personId);
+            if (!before.people.some(person => person.id === personId) || !this.canChangeCrewStation(unitId, positionId)
+                || (source && !this.canChangeCrewStation(source.unitId, source.positionId))) return null;
+            return assignForcePerson(before, unitId, positionId, personId);
+        });
+    }
+
+    public unassignPerson(unitId: string, positionId: string): boolean | Promise<boolean> {
+        return this.applyPersonnelEdit(before => {
+            if (!this.canChangeCrewStation(unitId, positionId)) return null;
+            const assignments = before.assignments.filter(assignment => assignment.unitId !== unitId || assignment.positionId !== positionId);
+            return assignments.length === before.assignments.length ? null : { people: before.people, assignments };
+        });
+    }
+
+    public detachUnitCrew(unitId: string): boolean | Promise<boolean> {
+        return this.applyPersonnelEdit(before => {
+            if (this.getUnitCrewPolicy(unitId).kind !== 'swappable') return null;
+            const assignments = before.assignments.filter(assignment => assignment.unitId !== unitId);
+            return assignments.length === before.assignments.length ? null : { people: before.people, assignments };
+        });
+    }
+
+    public deletePerson(personId: string): boolean | Promise<boolean> {
+        return this.applyPersonnelEdit(before => {
+            const source = before.assignments.find(assignment => assignment.personId === personId);
+            if (!before.people.some(person => person.id === personId)
+                || (source && !this.canChangeCrewStation(source.unitId, source.positionId))) return null;
+            return removeForcePerson(before, personId);
+        });
+    }
+
+    public createPersonForUnit(unitId: string, positionId: string): ForcePerson | null | Promise<ForcePerson | null> {
+        const person = createForcePerson();
+        const accepted = this.applyPersonnelEdit(before => this.canChangeCrewStation(unitId, positionId)
+            ? assignForcePerson(addForcePerson(before, person), unitId, positionId, person.id) : null);
+        return typeof accepted === 'boolean' ? (accepted ? person : null) : accepted.then(success => success ? person : null);
+    }
+
+    /** Import/conversion copies are one transaction, including integrated crew and explicit vacancies. */
+    public replaceCopiedUnitPersonnel(unitId: string, crew: readonly { readonly positionId: string; readonly profile: Omit<ForcePerson, 'id'> }[]): boolean | Promise<boolean> {
+        const copied = crew.map(occupant => ({ positionId: occupant.positionId, person: createForcePerson(occupant.profile) }));
+        return this.applyPersonnelEdit(before => {
+            const policy = this.getUnitCrewPolicy(unitId);
+            if (!policy.canEdit) return null;
+            const stations = new Set(policy.positions.map(position => position.positionId));
+            let next = removeUnitPersonnel(before, new Set([unitId]));
+            for (const occupant of copied) {
+                next = addForcePerson(next, occupant.person);
+                if (stations.has(occupant.positionId)) next = assignForcePerson(next, unitId, occupant.positionId, occupant.person.id);
+            }
+            return next;
+        });
+    }
+
+    protected canChangeCrewStation(unitId: string, positionId: string): boolean {
+        const policy = this.getUnitCrewPolicy(unitId);
+        return policy.canEdit && policy.kind === 'swappable' && policy.positions.some(position => position.positionId === positionId);
+    }
+
+    /** CBT overrides this seam to prepare every affected runtime before one owner commit. */
+    protected applyPersonnelEdit(edit: (before: ForcePersonnelSnapshot) => ForcePersonnelSnapshot | null): boolean | Promise<boolean> {
+        if (!this.canEditPersonnel() || this.forceOwnerOperationDepth > 0) return false;
+        let next: ForcePersonnelSnapshot | null;
+        try { next = edit(this.personnel()); } catch { return false; }
+        if (next === null || next === this.personnel()) return false;
+        next = this.reconcilePersonnelCommanders(this.personnel(), next);
+        this.reserveForceOwnerMutationIntent();
+        this.commitUnassignedPersonnelEdit(next);
+        this.emitChangedFromReservedIntent();
+        return true;
+    }
+
+    /** A moved/newly designated commander takes precedence over the group's previous commander. */
+    protected reconcilePersonnelCommanders(before: ForcePersonnelSnapshot, next: ForcePersonnelSnapshot): ForcePersonnelSnapshot {
+        for (const group of this.groups()) {
+            const units = new Set(this.membersInGroup(group).map(member => member.id));
+            const commanders = next.assignments.filter(assignment => units.has(assignment.unitId)
+                && next.people.some(person => person.id === assignment.personId && person.commander));
+            if (commanders.length < 2) continue;
+            const preferred = commanders.find(assignment => !before.assignments.some(previous => previous.personId === assignment.personId
+                && previous.unitId === assignment.unitId && previous.positionId === assignment.positionId
+                && before.people.some(person => person.id === assignment.personId && person.commander))) ?? commanders[0];
+            for (const commander of commanders) if (commander !== preferred) next = updateForcePerson(next, commander.personId, { commander: undefined });
+        }
+        return next;
+    }
+
+    public addUnassignedPerson(profile: Omit<ForcePerson, 'id'> = {}): ForcePerson | null {
+        if (this.readOnly() || !this.isWholeOwnerActive() || this.forceOwnerOperationDepth > 0) return null;
+        const person = createForcePerson(profile);
+        const next = addForcePerson(this.personnel(), person);
+        this.reserveForceOwnerMutationIntent();
+        this.commitUnassignedPersonnelEdit(next);
+        this.emitChangedFromReservedIntent();
+        return person;
+    }
+
+    /** Caller owns the surrounding admission, load, or mutation transaction. */
+    protected installPersonnel(snapshot: ForcePersonnelSnapshot): void {
+        // Queued loads capture with structuredClone, which discards frozen descriptors.
+        for (const person of snapshot.people) {
+            if (person.abilities) {
+                for (const ability of person.abilities) if (typeof ability !== 'string') Object.freeze(ability);
+                Object.freeze(person.abilities);
+            }
+            if (person.health) Object.freeze(person.health);
+            Object.freeze(person);
+        }
+        for (const assignment of snapshot.assignments) Object.freeze(assignment);
+        Object.freeze(snapshot.people);
+        Object.freeze(snapshot.assignments);
+        Object.freeze(snapshot);
+        this._personnel.set(snapshot);
+    }
+
+    protected commitUnassignedPersonnelEdit(snapshot: ForcePersonnelSnapshot): void {
+        this.installPersonnel(snapshot);
+    }
+
+    protected ensurePersonnelAssignment(unitId: string, positionId: string, profile: Omit<ForcePerson, 'id'> = {}): ForcePerson {
+        const assigned = this.getAssignedPerson(unitId, positionId);
+        if (assigned) return assigned;
+        const person = createForcePerson(profile);
+        this.installPersonnel(assignForcePerson(addForcePerson(this.personnel(), person), unitId, positionId, person.id));
+        return person;
+    }
+
+    protected prepareCBTForcePersonnel(_previous: SerializedCBTForceV2 | undefined, _next: SerializedCBTForceV2): ForcePersonnelSnapshot {
+        return this.personnel();
+    }
+
     _c3Networks: WritableSignal<SerializedC3NetworkGroup[]> = signal([]); // C3 network configurations
     loading: boolean = false;
     cloud?: boolean = false; // Indicates if this force is stored in the cloud
@@ -986,6 +1152,19 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         this.emitChangedFromReservedIntent();
     }
 
+    public [prepareUnitGroupPersonnelTransfer](target: Force, unitIds: ReadonlyMap<string, string>, clearCommanderFor?: string): () => void {
+        const plan = transferForcePersonnel(this.personnel(), target.personnel(), unitIds);
+        let targetPersonnel = plan.target;
+        if (clearCommanderFor !== undefined) {
+            for (const assignment of targetPersonnel.assignments) {
+                if (assignment.unitId !== clearCommanderFor) continue;
+                const person = targetPersonnel.people.find(person => person.id === assignment.personId)!;
+                if (person.commander) targetPersonnel = updateForcePerson(targetPersonnel, person.id, { commander: undefined });
+            }
+        }
+        return () => { this.installPersonnel(plan.source); target.installPersonnel(targetPersonnel); };
+    }
+
     /** Module-private structural capacity query for atomic group transfers. */
     public [queryUnitGroupOwnerCapacity](): number {
         return this.ownedMemberCountForCapacity();
@@ -1040,8 +1219,11 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         mutation: CBTForceMutation,
         prepared: PreparedCBTForcePersistenceV2,
         install: () => void,
+        preparedPersonnel?: ForcePersonnelSnapshot,
     ): void {
+        const personnel = preparedPersonnel ?? this.prepareCBTForcePersonnel(mutation.previous, prepared.envelope);
         install();
+        this.installPersonnel(personnel);
         this.installCBTEncounterPersistence(prepared.envelope.encounter);
         if (this.getSupportedCBTForceV2Envelope() !== prepared.envelope) {
             throw new Error('CBT unit store did not publish its prepared envelope');
@@ -1058,8 +1240,12 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         peer: CBTForceMutationInstall,
     ): void {
         if (other === this) throw new Error('Cannot transfer a unit to the same force');
+        const ownPersonnel = own.personnel ?? this.prepareCBTForcePersonnel(own.mutation.previous, own.prepared.envelope);
+        const peerPersonnel = peer.personnel ?? other.prepareCBTForcePersonnel(peer.mutation.previous, peer.prepared.envelope);
         own.install();
         peer.install();
+        this.installPersonnel(ownPersonnel);
+        other.installPersonnel(peerPersonnel);
         this.installCBTEncounterPersistence(own.prepared.envelope.encounter);
         other.installCBTEncounterPersistence(peer.prepared.envelope.encounter);
         this.reserveForceOwnerMutationIntent();
@@ -1127,7 +1313,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             return true;
         }
         if (submittedForceId === null || result.forceId !== submittedForceId) return false;
-        const restored = await this.restoreCBTForce(result);
+        const restored = await this.restoreCBTForce(result, data.personnel);
         if (!ownerIsCurrent()) return false;
         const installedEnvelope = restored.replacement ?? result;
         if (installedEnvelope.forceId !== submittedForceId) return false;
@@ -1214,8 +1400,13 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 identityInstalled = prepared.identityInstalled;
                 if (identityInstalled) {
                     this.persistenceIdentityPromotionInstanceId = serialized.instanceId;
+                    // A freshly minted force ID has no cloud predecessor.
+                    this.expectedCloudCBTForceV2Revision = null;
                 }
             }
+            // Listing totals are a cache of this sealed owner snapshot. Candidate
+            // and remote-staging builders must not borrow the current owner's value.
+            serialized = Object.freeze({ ...serialized, [this.gameSystem === GameSystem.AS ? 'pv' : 'bv']: this.totalBv() });
             const revisionFence = this.captureForceOwnerRevisionFence();
             const identityPromotionProof = Object.freeze({
                 [forcePersistenceIdentityPromotionProofBrand]: true,
@@ -1305,6 +1496,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     /** Subclasses restore their complete CBT state before it is installed. */
     protected async restoreCBTForce(
         _envelope: import('./runtime/persistence-v2').SerializedCBTForceV2,
+        _personnel?: ForcePersonnelSnapshot,
     ): Promise<RestoredCBTForce> {
         return Object.freeze({
             install: () => undefined,
@@ -1655,6 +1847,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             throw new Error('Prepared replacement units do not exactly match the selected group');
         }
 
+        const installPersonnel = source !== this && source.gameSystem === this.gameSystem
+            ? source[prepareUnitGroupPersonnelTransfer](this, new Map(originalUnits.map((unit, index) => [unit.id, incomingUnits[index].id] as const)))
+            : undefined;
         source.reserveForceOwnerMutationIntent();
         if (source !== this) this.reserveForceOwnerMutationIntent();
         const remainingSourceGroups = sourceGroups.filter(candidate => candidate !== group);
@@ -1675,6 +1870,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         if (source !== this) {
             for (const unit of originalUnits) source.removeUnitFromLegacyC3Networks(unit.id);
         }
+        installPersonnel?.();
         if (source !== this && source.instanceId()) source.emitChangedFromReservedIntent();
         if (this.instanceId()) this.emitChangedFromReservedIntent();
     }
@@ -1702,6 +1898,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 targetGroup.units.set([...targetGroup.units(), ...removed.units()]);
             }
         } else {
+            this.installPersonnel(removeUnitPersonnel(this.personnel(), new Set(removed.units().map(unit => unit.id))));
             // Destroy all units in the group and clean up C3 networks
             let networks = this._c3Networks();
             for (const unit of removed.units()) {
@@ -1727,6 +1924,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
 
         const remainingUnits = [...ownerGroup.units()];
         remainingUnits.splice(unitIndex, 1);
+        this.installPersonnel(removeUnitPersonnel(this.personnel(), new Set([unitToRemove.id])));
         ownerGroup.units.set(remainingUnits);
 
         // Clean up C3 networks - remove the unit from all networks it participates in
@@ -1891,6 +2089,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             instanceId,
             type: GameSystem.CBT,
             name: this.name,
+            personnel: this.personnel(),
             ...(this.note ? { note: this.note } : {}),
             ...(this.tags.length > 0 ? { tags: [...this.tags] } : {}),
             ...(this.faction() === null ? {} : { factionId: this.faction()!.id }),
@@ -1937,6 +2136,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             instanceId: instanceId,
             type: this.gameSystem,
             name: this.name,
+            personnel: this.personnel(),
             ...(this.note ? { note: this.note } : {}),
             ...(this.tags.length === 0 ? {} : { tags: [...this.tags] }),
             ...(this.faction() === null ? {} : { factionId: this.faction()!.id }),
@@ -1959,6 +2159,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
             instanceId: metadata.instanceId,
             type: GameSystem.CBT,
             name: metadata.name,
+            personnel: metadata.personnel ?? this.personnel(),
             ...(metadata.note === undefined ? {} : { note: metadata.note }),
             ...(metadata.tags === undefined ? {} : { tags: metadata.tags }),
             ...(metadata.factionId === undefined ? {} : { factionId: metadata.factionId }),
@@ -2027,7 +2228,9 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         }
         this.loading = true;
         try {
-            this.populateSerializedMetadata(data);
+            // Personnel is installed with the restored runtime after its asynchronous load fence.
+            const { personnel: _personnel, ...metadata } = data;
+            this.populateSerializedMetadata(metadata);
             this.groups.set([]);
             this._c3Networks.set([]);
         } finally {
@@ -2036,6 +2239,7 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     }
 
     protected populateSerializedMetadata(data: SerializedForce): void {
+        if (data.personnel !== undefined) this.installPersonnel(data.personnel);
         this._instanceId.set(data.instanceId);
         this._owned.set(data.owned !== false);
         this._name.set(data.name);
@@ -2098,6 +2302,8 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
                 }
             }
         }
+
+        if (serialized.personnel) serialized.personnel = cloneForcePersonnel(serialized.personnel, unitIdMap);
 
         // Remap C3 network references
         if (serialized.c3Networks) {

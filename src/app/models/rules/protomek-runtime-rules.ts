@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { CrewAssignment } from '../runtime/crew-assignment';
+
 import {
     CrewMember,
     type CrewMemberState,
@@ -31,11 +33,12 @@ export function projectProtoMekRuntimeRules(
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
     forcedWithdrawal = true,
+    crewAssignment?: CrewAssignment,
 ): ProtoMekRuntimeRulesProjection {
-    const crew = [...index.crewPositions.keys()]
+    const crew = (crewAssignment?.positions.map(position => position.positionId) ?? [...index.crewPositions.keys()])
         .map(positionId => CrewMember.from(state.crew.get(positionId)));
     const crewStates = crew.map(crewMember => crewMember.effectiveState());
-    const abandoned = crewStates.length > 0
+    const abandoned = index.crewPositions.size > 0
         && crewStates.every(crewState => crewState === 'dead');
     const functionalCrew = crewStates.some(crewState => crewState === 'healthy');
     const crippled = forcedWithdrawal

@@ -281,9 +281,9 @@ export interface SavedBlueprintReferenceTableV2 {
 }
 
 /**
- * Returns the canonical transitive source-table closure for active recovery roots.
+ * Returns the canonical transitive witness closure for sparse runtime facts.
  * Intrinsic/one-shot ammo targets depend on their owner component target; callers
- * must retain that owner even when it is not itself an unresolved recovery row.
+ * must retain that owner even when no runtime fact references it directly.
  */
 export function savedTargetReferenceClosureV2(
     targets: Readonly<Record<SavedTargetRef, SavedStateTargetV2>>,
@@ -402,67 +402,6 @@ export interface SerializedPendingCombatStateV2 {
         readonly target: SavedTargetRef;
         readonly damage: number;
     }[];
-}
-
-export type SerializedRecoverableStateFactV2 =
-    | { readonly kind: 'location-damage'; readonly damage: number }
-    | {
-        readonly kind: 'location-condition';
-        readonly condition: MekLocationConditionKey;
-        readonly value: number;
-    }
-    | { readonly kind: 'slot-hits'; readonly hits: number; readonly destroyedTurn?: number }
-    | {
-        readonly kind: 'component-state';
-        readonly statusOverride?: Exclude<EquipmentStatus, 'available'>;
-        readonly mode?: string;
-        readonly jammed?: boolean;
-        readonly escalatingFailure?: EscalatingFailureRuntimeState;
-        readonly ppcCapacitor?: PpcCapacitorRuntimeState;
-        readonly bombastLaser?: BombastLaserRuntimeState;
-        readonly c3EmergencyMaster?: C3EmergencyMasterRuntimeState;
-        readonly gaussPower?: ComponentRuntimeState['gaussPower'];
-        readonly shieldDamage?: ComponentRuntimeState['shieldDamage'];
-        readonly modularArmorDamage?: number;
-    }
-    | { readonly kind: 'ammo-state'; readonly shotsSpent: number; readonly munitionOverride?: string }
-    | {
-        readonly kind: 'crew-state';
-        readonly wounds: number;
-        readonly unconscious: boolean;
-        readonly dead?: true;
-        /** Omitted is canonical false. */
-        readonly ejected?: true;
-    }
-    | {
-        readonly kind: 'mek-rule-check';
-        readonly key: MekRuleCheckKeyV2;
-        readonly token: MekRuleCheckTokenV2;
-        readonly openedRevision: number;
-        readonly status: MekRuleCheckStatusV2;
-    }
-    | { readonly kind: 'pending-location-damage'; readonly damage: number }
-    | {
-        readonly kind: 'pending-location-condition';
-        readonly condition: MekLocationConditionKey;
-        readonly value: number;
-    }
-    | { readonly kind: 'pending-slot-hits'; readonly hits: number }
-    | { readonly kind: 'pending-component-status'; readonly status: EquipmentStatus }
-    | {
-        readonly kind: 'pending-shield-damage';
-        readonly absorptionDamage: number;
-        readonly capacityDamage: number;
-    }
-    | { readonly kind: 'pending-modular-armor-damage'; readonly damage: number };
-
-export interface SerializedUnresolvedStateRecoveryEntryV2 {
-    readonly recoveryId: string;
-    /** Exact source-table occurrence; target content alone is not a unique provenance key. */
-    readonly sourceTargetRef: SavedTargetRef;
-    readonly sourceTarget: SavedStateTargetV2;
-    readonly fact: SerializedRecoverableStateFactV2;
-    readonly reason: string;
 }
 
 export interface SerializedMekRuleCheckEntryV1 {

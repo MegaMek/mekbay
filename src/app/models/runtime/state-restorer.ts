@@ -17,7 +17,6 @@ import type {
     LocationId,
 } from '../entity/entity-identifiers';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
-import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import {
     freezeRuntimeState,
     type AmmoRuntimeState,
@@ -48,10 +47,11 @@ import { isMekLocationPhysicallyDestroyed } from './mek-location-state-kernel';
 import {
     canonicalizeLegacyMekTurnStateV1,
     parseLegacyMekTurnStateV1,
+    type LegacyMekTurnStateV1,
+} from './legacy-mek-turn-state-v1';
+import {
     projectLegacyMekTurnStateV1,
     restoreLegacyMekMovementPsrV1,
-    type LegacyMekTurnStateV1,
-    type LegacyMekMovementPsrRestorationResultV1,
 } from './mek-movement-psr-restoration-v1';
 import { createPristineMekMovementPsrStateV2 } from './mek-movement-psr-v2';
 import {
@@ -103,54 +103,18 @@ import {
     mekCriticalSlotMaximumHits,
 } from './mek-critical-slot-rules';
 import { isShieldEquipment, resolveShieldProfile } from '../entity/utils/physical-weapon';
-
-export const STATE_RESTORATION_ALGORITHM_VERSION = 9 as const;
-
-export type StateRestoreWarningCode =
-    | 'SLOT_OCCUPANT_MISMATCH'
-    | 'SYSTEM_TARGET_REKEYED'
-    | 'DAMAGE_CLAMPED'
-    | 'INITIAL_BASELINE_CHANGED'
-    | 'CONFLICTING_AMMO_EVIDENCE';
-
-export interface StateRestoreWarning {
-    readonly code: StateRestoreWarningCode;
-    readonly message: string;
-    readonly saved?: Readonly<Record<string, unknown>>;
-    readonly current?: Readonly<Record<string, unknown>>;
-}
-
-export interface UnresolvedStateRecoveryEntry {
-    readonly recoveryId: string;
-    readonly kind: 'critical' | 'inventory' | 'location' | 'unit-family';
-    readonly reason: string;
-    readonly raw: JsonValue;
-}
-
-export interface UnitRestorationMetadata {
-    readonly algorithmVersion: typeof STATE_RESTORATION_ALGORITHM_VERSION;
-    readonly savedIdentity: UnitUuid;
-    readonly targetEntity: UnitUuid;
-    readonly warnings: readonly StateRestoreWarning[];
-    readonly unresolved: readonly UnresolvedStateRecoveryEntry[];
-    readonly idTranslation: Readonly<Record<string, ComponentId | CriticalSlotId | LocationId | ArmorFaceId>>;
-}
+import { mekCriticalSlotLabel } from '../../utils/mek-critical-display.util';
+import { AmmoEquipment } from '../equipment.model';
 
 interface MekRestoreUnit {
     readonly entity: MekEntity;
     readonly index: MekRuntimeIndex;
-    readonly identity: UnitUuid;
     readonly ruleset: CBTRuleset;
 }
 
 export interface LegacyStateRestoreResult {
     readonly state: MekUnitRuntimeState;
-    readonly baselineRef: InstanceBaselineRef;
-    readonly metadata: UnitRestorationMetadata;
-    /** Separate capability result; generic algorithm-six evidence remains unchanged. */
-    readonly movementPsr: LegacyMekMovementPsrRestorationResultV1;
-    readonly appliedExact: number;
-    readonly appliedWithWarning: number;
+    readonly warnings: readonly string[];
 }
 
 export class StateRestoreIdentityError extends Error {
@@ -163,7 +127,7 @@ export class StateRestoreIdentityError extends Error {
 /**
  * Tolerant same-design restoration. Physical slot damage is coordinate-owned:
  * it is applied even if the current occupant changed, and the mismatch is reported.
- * Equipment-owned facts require a unique compatible target or remain recoverable.
+ * Equipment-owned facts require a unique compatible target; otherwise their loss is reported.
  */
 export async function restoreLegacyUnitState(
     record: LegacyUnitSourceV1,
@@ -179,7 +143,7 @@ export async function restoreLegacyUnitState(
     if (record.identity.kind !== 'resolved') {
         throw new StateRestoreIdentityError('An unresolved legacy design cannot become an operational V2 instance');
     }
-    const sourceState = readLegacyUnitStateV1(record);
+    const rawState = readLegacyUnitStateV1(record);
     const saved = record.identity.uuid;
     if (saved !== initialized.baselineRef.entity
         || saved !== entity.uuid()) {
@@ -188,25 +152,16 @@ export async function restoreLegacyUnitState(
     const unit: MekRestoreUnit = Object.freeze({
         entity,
         index: buildMekRuntimeIndex(entity),
-        identity: initialized.baselineRef.entity,
         ruleset: initialized.baselineRef.ruleset,
     });
 
-    const warnings: StateRestoreWarning[] = [];
-    const unresolved: UnresolvedStateRecoveryEntry[] = [];
-    let recoverySequence = 0;
-    const recover = (
-        kind: UnresolvedStateRecoveryEntry['kind'],
-        reason: string,
-        raw: JsonValue,
-    ): UnresolvedStateRecoveryEntry => recovery(kind, reason, raw, recoverySequence++);
+    const warnings: string[] = [];
     const idTranslation: Record<string, ComponentId | CriticalSlotId | LocationId | ArmorFaceId> = {};
-    let appliedExact = 0;
-    let appliedWithWarning = 0;
     const slots = new Map(initialized.state.slots);
     const components = new Map(initialized.state.components);
     const ammo = new Map(initialized.state.ammo);
-    const criticalAmmoConsumption = new Map<ComponentId, CriticalAmmoConsumptionEvidence>();
+    // Null marks conflicting duplicate first-slot consumption; inventory cannot override it.
+    const criticalAmmoConsumption = new Map<ComponentId, number | null>();
     const locations = new Map(initialized.state.locations);
     const pendingLocation = new Map(initialized.state.pendingCombat.locationInternalDamage);
     const pendingArmor = new Map(initialized.state.pendingCombat.armorDamage);
@@ -217,44 +172,49 @@ export async function restoreLegacyUnitState(
         .map(([locationId, values]) => [locationId, new Map(values)] as const));
     const conditions = new Set(initialized.state.conditions);
 
-    for (const raw of sourceState.rawCriticalRecords) {
+    for (const raw of array(rawState['crits'])) {
         const critical = recordObject(raw);
         if (!critical) {
-            unresolved.push(recover('critical', 'Critical witness is not an object', raw));
+            warnings.push('Critical witness is not an object');
             continue;
         }
         const coordinate = criticalCoordinate(critical, unit);
         if (coordinate) {
-            const hits = committedHits(
+            let hits = committedHits(
                 critical,
                 mekCriticalSlotMaximumHits(unit.index, unit.ruleset, coordinate),
             );
             const parsedPendingHits = integer(critical['pendingHits']);
-            const pendingHits = parsedPendingHits ?? 0;
+            let pendingHits = parsedPendingHits ?? 0;
             if (critical['hits'] !== undefined && nonnegativeInteger(critical['hits']) === null) {
-                unresolved.push(recover(
-                    'critical',
-                    'Malformed committed critical hits were preserved for recovery',
-                    critical,
-                ));
+                warnings.push('Malformed committed critical hits were skipped');
             }
             if (critical['pendingHits'] !== undefined && parsedPendingHits === null) {
-                unresolved.push(recover(
-                    'critical',
-                    'Malformed pending critical hits were preserved for recovery',
-                    critical,
-                ));
+                warnings.push('Malformed pending critical hits were skipped');
+            }
+            const destroying = critical['destroying'] === true || nonnegativeInteger(critical['destroying']) !== null;
+            const destroyed = critical['destroyed'] === true || nonnegativeInteger(critical['destroyed']) !== null;
+            for (const key of ['destroying', 'destroyed'] as const) {
+                if (critical[key] !== undefined && typeof critical[key] !== 'boolean'
+                    && nonnegativeInteger(critical[key]) === null) {
+                    warnings.push(`Malformed critical ${key} marker was skipped`);
+                }
+            }
+            // V1 included a pending direct hit in `hits` and set `destroying`
+            // before `destroyed`. Zero-hit markers come from location loss;
+            // V2 derives that loss from locations without inventing slot damage.
+            if (critical['pendingHits'] === undefined && destroying && !destroyed
+                && hits >= mekCriticalSlotDirectHitThreshold(coordinate)) {
+                const committed = mekCriticalSlotDirectHitThreshold(coordinate) - 1;
+                pendingHits = hits - committed;
+                hits = committed;
             }
             const expected = expectedEquipmentName(critical);
             const current = slotOccupants(unit, coordinate.id);
             const mismatch = !!expected && !current.some(candidate => equipmentNamesMatch(expected, candidate));
             const destroyedTurn = nonnegativeInteger(critical['destroyedTurn']);
             if (critical['destroyedTurn'] !== undefined && destroyedTurn === null) {
-                unresolved.push(recover(
-                    'critical',
-                    'Malformed critical destruction turn was preserved for recovery',
-                    { destroyedTurn: critical['destroyedTurn'] },
-                ));
+                warnings.push('Malformed critical destruction turn was skipped');
             }
             if (hits > 0) {
                 const nextHits = (slots.get(coordinate.id)?.hits ?? 0) + hits;
@@ -272,37 +232,15 @@ export async function restoreLegacyUnitState(
                 (pendingCritical.get(coordinate.id) ?? 0) + pendingHits,
             );
             idTranslation[string(critical['id']) ?? `${coordinate.locationCode}:${coordinate.slotIndex}`] = coordinate.id;
-            if (mismatch) {
-                warnings.push({
-                    code: 'SLOT_OCCUPANT_MISMATCH',
-                    message: `Applied saved damage to ${coordinate.locationCode} slot ${coordinate.slotIndex} despite an occupant mismatch.`,
-                    saved: { equipment: expected },
-                    current: { equipment: current.join(' | ') || '<empty>' },
-                });
-                appliedWithWarning++;
-            } else {
-                appliedExact++;
+            if (mismatch && (hits > 0 || pendingHits !== 0)) {
+                warnings.push(`Applied saved damage to ${coordinate.locationCode} slot ${coordinate.slotIndex} despite an occupant mismatch.`);
             }
-            restoreCriticalAmmo(
-                critical,
-                coordinate.id,
-                unit,
-                ammo,
-                criticalAmmoConsumption,
-                warnings,
-                unresolved,
-                raw,
-                recover,
-            );
-            const unsupported = omitFields(critical, new Set([
+            restoreCriticalAmmo(critical, coordinate.id, unit, ammo, criticalAmmoConsumption, warnings);
+            const unsupported = hasUnknownFields(critical, new Set([
                 'id', 'name', 'originalName', 'loc', 'slot', 'hits', 'pendingHits',
-                'consumed', 'totalAmmo', 'destroyed', 'destroyedTurn',
+                'consumed', 'totalAmmo', 'destroying', 'destroyed', 'destroyedTurn', 'armored',
             ]));
-            if (Object.keys(unsupported).length > 0) unresolved.push(recover(
-                'critical',
-                'Critical timestamp/transition data awaits a typed V2 codec',
-                unsupported,
-            ));
+            if (unsupported) warnings.push('Unsupported critical-hit details were skipped');
             continue;
         }
 
@@ -310,42 +248,34 @@ export async function restoreLegacyUnitState(
         if (semantic) {
             const hits = committedHits(critical);
             if (critical['hits'] !== undefined && nonnegativeInteger(critical['hits']) === null) {
-                unresolved.push(recover(
-                    'critical',
-                    'Malformed semantic-system critical hits were preserved for recovery',
-                    critical,
-                ));
+                warnings.push('Malformed semantic-system critical hits were skipped');
             }
             const targetSlots = [...unit.index.slots.values()]
                 .filter(slot => slot.componentIds.includes(semantic.id))
                 .slice(0, hits);
             for (const slot of targetSlots) slots.set(slot.id, { hits: (slots.get(slot.id)?.hits ?? 0) + 1 });
-            warnings.push({
-                code: 'SYSTEM_TARGET_REKEYED',
-                message: `Mapped legacy semantic system ${semantic.system} to current critical coordinates.`,
-            });
+            warnings.push(`Mapped legacy semantic system ${semantic.system} to current critical coordinates.`);
             idTranslation[string(critical['id']) ?? semantic.system] = semantic.id;
-            appliedWithWarning++;
-            const unsupported = omitFields(critical, new Set(['id', 'name', 'originalName', 'hits', 'destroyed']));
-            if (Object.keys(unsupported).length > 0) unresolved.push(recover(
-                'critical',
-                'Semantic-system transition data awaits a typed V2 codec',
-                unsupported,
-            ));
+            const unsupported = hasUnknownFields(critical, new Set(['id', 'name', 'originalName', 'hits', 'destroyed']));
+            if (unsupported) warnings.push('Unsupported system damage details were skipped');
         } else {
-            unresolved.push(recover('critical', 'No current physical or semantic critical target', raw));
+            warnings.push('No current physical or semantic critical target');
         }
     }
 
-    for (const raw of sourceState.rawInventoryRecords) {
+    for (const raw of array(rawState['inventory'])) {
         const inventory = recordObject(raw);
         if (!inventory) {
-            unresolved.push(recover('inventory', 'Inventory witness is not an object', raw));
+            warnings.push('Inventory witness is not an object');
             continue;
         }
+        // Early V1 saves included pristine rows, including intrinsic physical
+        // attacks. They carry no mutable fact that requires an equipment mount.
+        if (Object.entries(inventory).every(([key, value]) =>
+            key === 'id' || (key === 'destroyed' && value === false))) continue;
         const matched = matchInventoryComponent(inventory, unit);
         if (!matched) {
-            unresolved.push(recover('inventory', 'Equipment-specific state has no unique compatible target', raw));
+            warnings.push('Equipment-specific state has no unique compatible target');
             continue;
         }
         const matchedDefinition = unit.index.components.get(matched.id)!;
@@ -356,11 +286,7 @@ export async function restoreLegacyUnitState(
         const intrinsicSystemStatus = matchedDefinition.kind === 'system'
             && (destroyed || destroying || disabled);
         if (intrinsicSystemStatus) {
-            unresolved.push(recover(
-                'inventory',
-                'Intrinsic system status requires authoritative critical-slot or location damage evidence',
-                raw,
-            ));
+            warnings.push('Intrinsic system status requires authoritative critical-slot or location damage evidence');
         }
         const escalatingFailure = restoreLegacyEscalatingFailureState(
             inventory['states'],
@@ -413,7 +339,6 @@ export async function restoreLegacyUnitState(
         if (destroying && !intrinsicSystemStatus) pendingComponents.set(matched.id, 'destroyed');
         const consumed = nonnegativeInteger(inventory['consumed']);
         const criticalEvidence = criticalAmmoConsumption.get(matched.id);
-        let conflictingAmmoEvidence = false;
         if (consumed !== null) {
             const modularArmor = matchedDefinition.kind === 'equipment'
                 && isModularArmorEquipment(matchedDefinition.mount.equipment);
@@ -421,53 +346,21 @@ export async function restoreLegacyUnitState(
                 ? MODULAR_ARMOR_POINTS_PER_MOUNT
                 : mekAmmoCapacity(entity, unit.index, matched.id, unit.ruleset);
             if (capacity === null) {
-                unresolved.push(recover(
-                    'inventory',
-                    'Ammo consumption targeted equipment without an ammo-bin capability',
-                    raw,
-                ));
+                warnings.push('Ammo consumption targeted equipment without an ammo-bin capability');
             } else if (modularArmor) {
                 const damage = Math.min(consumed, capacity);
-                if (damage !== consumed) warnings.push({
-                    code: 'DAMAGE_CLAMPED',
-                    message: `${matched.equipmentKey} damage exceeded its current capacity`,
-                });
+                if (damage !== consumed) warnings.push(`${matched.equipmentKey} damage exceeded its current capacity`);
                 if (damage > 0) components.set(matched.id, {
                     ...components.get(matched.id),
                     modularArmorDamage: damage,
                 });
             } else {
                 const shotsSpent = Math.min(consumed, capacity);
-                if (shotsSpent !== consumed) warnings.push({
-                    code: 'DAMAGE_CLAMPED',
-                    message: `${matched.equipmentKey} ammunition consumption exceeded current capacity`,
-                });
-                if (criticalEvidence?.shotsSpent === null) {
-                    conflictingAmmoEvidence = true;
-                    warnings.push({
-                        code: 'CONFLICTING_AMMO_EVIDENCE',
-                        message: `${matched.equipmentKey} parent consumption cannot resolve conflicting first-critical evidence`,
-                        saved: { parentConsumed: consumed },
-                        current: { appliedConsumed: null },
-                    });
-                    unresolved.push(recover(
-                        'inventory',
-                        'Parent one-shot consumption was retained because first-critical evidence is ambiguous',
-                        raw,
-                    ));
-                } else if (criticalEvidence !== undefined && criticalEvidence.shotsSpent !== consumed) {
-                    conflictingAmmoEvidence = true;
-                    warnings.push({
-                        code: 'CONFLICTING_AMMO_EVIDENCE',
-                        message: `${matched.equipmentKey} parent consumption disagrees with its first critical slot`,
-                        saved: { parentConsumed: consumed, firstCriticalConsumed: criticalEvidence.shotsSpent },
-                        current: { appliedConsumed: criticalEvidence.shotsSpent },
-                    });
-                    unresolved.push(recover(
-                        'inventory',
-                        'Conflicting parent one-shot consumption was retained; first-critical evidence remains authoritative',
-                        raw,
-                    ));
+                if (shotsSpent !== consumed) warnings.push(`${matched.equipmentKey} ammunition consumption exceeded current capacity`);
+                if (criticalEvidence === null) {
+                    warnings.push(`${matched.equipmentKey} parent consumption cannot resolve conflicting first-critical evidence`);
+                } else if (criticalEvidence !== undefined && criticalEvidence !== consumed) {
+                    warnings.push(`${matched.equipmentKey} parent consumption disagrees with its first critical slot`);
                 } else if (criticalEvidence === undefined) {
                     ammo.set(matched.id, { shotsSpent });
                 }
@@ -483,34 +376,22 @@ export async function restoreLegacyUnitState(
         const savedCapacity = nonnegativeInteger(inventory['totalAmmo']);
         const currentCapacity = mekAmmoCapacity(entity, unit.index, matched.id, unit.ruleset);
         if (savedCapacity !== null && currentCapacity !== null && savedCapacity !== currentCapacity) {
-            warnings.push({
-                code: 'INITIAL_BASELINE_CHANGED',
-                message: `${matched.equipmentKey} ammunition capacity changed from the saved baseline`,
-                saved: { capacity: savedCapacity },
-                current: { capacity: currentCapacity },
-            });
+            warnings.push(`${matched.equipmentKey} ammunition capacity changed from the saved baseline`);
         }
         if (unknownStates.length > 0 || inventory['ammo'] !== undefined) {
-            unresolved.push(recover(
-                'inventory',
-                'Unsupported equipment-specific modes/munition overrides were preserved for repair',
-                raw,
-            ));
-        } else if (conflictingAmmoEvidence) {
-            appliedWithWarning++;
-        } else {
-            appliedExact++;
+            warnings.push('Unsupported equipment modes or ammunition overrides were skipped');
         }
         idTranslation[string(inventory['id']) ?? matched.equipmentKey] = matched.id;
     }
 
-    const rawState = recordObject(sourceState.rawUnitAndFamilyState) ?? {};
     if (rawState['crits'] !== undefined && !Array.isArray(rawState['crits'])) {
-        unresolved.push(recover(
-            'critical',
-            'Malformed legacy critical container was preserved for recovery',
-            rawState['crits'],
-        ));
+        warnings.push('Malformed legacy critical container was skipped');
+    }
+    if (rawState['inventory'] !== undefined && !Array.isArray(rawState['inventory'])) {
+        warnings.push('Malformed legacy inventory container was skipped');
+    }
+    if (rawState['conditions'] !== undefined && !Array.isArray(rawState['conditions'])) {
+        warnings.push('Malformed legacy conditions were skipped');
     }
     const ruleChecks = new Map(initialized.state.ruleChecks);
     const restoredLegacyRuleChecks = restoreLegacyMekRuleChecks(
@@ -519,35 +400,33 @@ export async function restoreLegacyUnitState(
         initialized.state.stateRevision,
         ruleChecks,
     );
-    if (restoredLegacyRuleChecks) appliedWithWarning++;
     let explicitlyDestroyed = initialized.state.explicitlyDestroyed;
     if (rawState['destroyed'] !== undefined) {
         if (typeof rawState['destroyed'] === 'boolean') {
             explicitlyDestroyed = rawState['destroyed'];
-            appliedExact++;
         } else {
-            unresolved.push(recover(
-                'unit-family',
-                'Malformed legacy destroyed state was preserved for recovery',
-                { destroyed: rawState['destroyed'] },
-            ));
+            warnings.push('Malformed legacy destroyed state was skipped');
         }
     }
     restoreLocations(
         rawState['locations'], unit, locations, components, pendingLocation, pendingArmor,
-        pendingShieldDamage, pendingLocationConditions,
-        warnings, unresolved, idTranslation, recover,
+        pendingShieldDamage, pendingLocationConditions, warnings, idTranslation,
     );
     for (const condition of array(rawState['conditions'])) {
         if (isUnitConditionKey(condition)) conditions.add(condition);
-        else unresolved.push(recover('unit-family', 'Condition needs a typed V2 codec', condition));
+        else warnings.push('An unsupported unit condition was skipped');
+    }
+    // Early V1 saves predate the conditions array and store shutdown directly.
+    if (rawState['shutdown'] === true) conditions.add('shutdown');
+    else if (rawState['shutdown'] !== undefined && typeof rawState['shutdown'] !== 'boolean') {
+        warnings.push('Malformed legacy shutdown state was skipped');
     }
     const rawHeat = recordObject(rawState['heat']);
     let heat = initialized.state.heat;
-    const unsupportedHeat: JsonObject = rawHeat ? omitFields(
+    let unsupportedHeat = rawHeat !== null && hasUnknownFields(
         rawHeat,
         new Set(['current', 'previous', 'next', 'heatsinksOff']),
-    ) : {};
+    );
     if (rawHeat) {
         const current = legacyHeatValue(rawHeat['current']);
         const previous = legacyHeatValue(rawHeat['previous']);
@@ -557,14 +436,10 @@ export async function restoreLegacyUnitState(
             && parsedHeatsinksOff <= MAX_MEK_HEATSINKS_OFF_V2
             ? parsedHeatsinksOff
             : null;
-        if (rawHeat['current'] !== undefined && current === null) unsupportedHeat['current'] = rawHeat['current'];
-        if (rawHeat['previous'] !== undefined && previous === null) unsupportedHeat['previous'] = rawHeat['previous'];
-        if (rawHeat['next'] !== undefined && pendingOverride === null) unsupportedHeat['next'] = rawHeat['next'];
-        if (rawHeat['heatsinksOff'] !== undefined && heatsinksOff === null) {
-            unsupportedHeat['heatsinksOff'] = rawHeat['heatsinksOff'];
-        }
-        const applied = [current, previous, pendingOverride, heatsinksOff].filter(value => value !== null).length;
-        appliedExact += applied;
+        unsupportedHeat ||= (rawHeat['current'] !== undefined && current === null)
+            || (rawHeat['previous'] !== undefined && previous === null)
+            || (rawHeat['next'] !== undefined && pendingOverride === null)
+            || (rawHeat['heatsinksOff'] !== undefined && heatsinksOff === null);
         heat = canonicalizeMekHeatStateV2({
             current: current ?? initialized.state.heat.current,
             previous: previous ?? initialized.state.heat.previous,
@@ -572,43 +447,22 @@ export async function restoreLegacyUnitState(
             heatsinksOff: heatsinksOff ?? initialized.state.heat.heatsinksOff,
         });
     } else if (rawState['heat'] !== undefined) {
-        unresolved.push(recover(
-            'unit-family',
-            'Malformed legacy heat state was preserved for recovery',
-            { heat: rawState['heat'] },
-        ));
+        warnings.push('Malformed legacy heat state was skipped');
     }
-    if (Object.keys(unsupportedHeat).length > 0) unresolved.push(recover(
-        'unit-family',
-        'Invalid or unknown legacy heat facts were preserved for recovery',
-        unsupportedHeat,
-    ));
+    if (unsupportedHeat) warnings.push('Invalid or unknown legacy heat facts were skipped');
     const restoredTurn = parseLegacyMekTurnStateV1(rawState['turnState']);
     const movementPsr = restoreLegacyMekMovementPsrV1(restoredTurn);
     if (movementPsr.kind === 'unsupported') {
-        unresolved.push(recover(
-            'unit-family',
-            `Legacy movement/PSR state could not be converted: ${movementPsr.blockers.join(', ')}`,
-            {
-                turnState: (rawState['turnState'] ?? null) as JsonValue,
-                blockers: [...movementPsr.blockers],
-            },
-        ));
+        warnings.push(...movementPsr.warnings);
     }
     const translatedTurn = translateLegacyHeatAcknowledgementIds(
         restoredTurn.state,
         unit,
         idTranslation,
     );
-    appliedExact += restoredTurn.appliedFacts;
-    if (restoredTurn.unresolved !== undefined) unresolved.push(recover(
-        'unit-family',
-        'Invalid or unknown legacy turn facts were preserved for recovery',
-        { turnState: restoredTurn.unresolved } as JsonValue,
-    ));
-    const preservedFamily = omitKnownState(rawState, restoredLegacyRuleChecks);
-    if (Object.keys(preservedFamily).length > 0) {
-        unresolved.push(recover('unit-family', 'Legacy crew/turn/family state awaits its V2 capability codec', preservedFamily));
+    warnings.push(...restoredTurn.warnings);
+    if (hasUnsupportedFamilyState(rawState, restoredLegacyRuleChecks)) {
+        warnings.push('Unsupported legacy family state was skipped');
     }
 
     const pendingCombat: PendingCombatOverlay = Object.freeze({
@@ -638,21 +492,7 @@ export async function restoreLegacyUnitState(
         turn: projectLegacyMekTurnStateV1(translatedTurn),
         pendingCombat,
     });
-    return {
-        state,
-        baselineRef: initialized.baselineRef,
-        movementPsr,
-        appliedExact,
-        appliedWithWarning,
-        metadata: Object.freeze({
-            algorithmVersion: STATE_RESTORATION_ALGORITHM_VERSION,
-            savedIdentity: saved,
-            targetEntity: unit.identity,
-            warnings: Object.freeze(warnings),
-            unresolved: Object.freeze(unresolved),
-            idTranslation: Object.freeze(idTranslation),
-        }),
-    };
+    return { state, warnings: Object.freeze([...new Set(warnings)]) };
 }
 
 /**
@@ -777,87 +617,64 @@ function semanticSystemTarget(raw: JsonObject, unit: MekRestoreUnit) {
     return candidates.length === 1 ? candidates[0] : null;
 }
 
-interface CriticalAmmoConsumptionEvidence {
-    /** Null means conflicting duplicate witnesses made the first-slot evidence ambiguous. */
-    readonly shotsSpent: number | null;
-    readonly firstRaw: JsonValue;
-}
-
 function restoreCriticalAmmo(
     raw: JsonObject,
     slotId: CriticalSlotId,
     unit: MekRestoreUnit,
     ammo: Map<ComponentId, AmmoRuntimeState>,
-    criticalAmmoConsumption: Map<ComponentId, CriticalAmmoConsumptionEvidence>,
-    warnings: StateRestoreWarning[],
-    unresolved: UnresolvedStateRecoveryEntry[],
-    original: JsonValue,
-    recover: (
-        kind: UnresolvedStateRecoveryEntry['kind'],
-        reason: string,
-        raw: JsonValue,
-    ) => UnresolvedStateRecoveryEntry,
+    criticalAmmoConsumption: Map<ComponentId, number | null>,
+    warnings: string[],
 ): void {
     const consumed = nonnegativeInteger(raw['consumed']);
     if (consumed === null) return;
     const slot = unit.index.slots.get(slotId)!;
     const candidates = slot.componentIds.filter(id =>
         mekAmmoCapacity(unit.entity, unit.index, id, unit.ruleset) !== null);
+    if (candidates.length !== 1 && consumed === 0) return;
+    // V1 exposes one consumption counter for identical bins sharing a
+    // superheavy slot. Distribute that total in the entity's stable mount order.
+    const firstBin = unit.index.components.get(candidates[0]);
+    if (candidates.length > 1 && firstBin?.kind === 'equipment'
+        && firstBin.mount.equipment instanceof AmmoEquipment
+        && candidates.every(id => {
+            const candidate = unit.index.components.get(id);
+            return candidate?.kind === 'equipment'
+                && candidate.mount.equipment?.id === firstBin.mount.equipment!.id;
+        })) {
+        let remaining = consumed;
+        for (const id of candidates) {
+            const capacity = mekAmmoCapacity(unit.entity, unit.index, id, unit.ruleset)!;
+            const shotsSpent = Math.min(remaining, capacity);
+            ammo.set(id, { shotsSpent });
+            remaining -= shotsSpent;
+        }
+        if (remaining > 0) warnings.push('Critical-slot ammunition consumption exceeded current capacity');
+        return;
+    }
     if (candidates.length === 1) {
         const componentId = candidates[0];
         const capacity = mekAmmoCapacity(unit.entity, unit.index, componentId, unit.ruleset)!;
         const shotsSpent = Math.min(consumed, capacity);
-        if (shotsSpent !== consumed) warnings.push({
-            code: 'DAMAGE_CLAMPED',
-            message: 'Critical-slot ammunition consumption exceeded current capacity',
-        });
+        if (shotsSpent !== consumed) warnings.push('Critical-slot ammunition consumption exceeded current capacity');
         if (mekIntrinsicMagazine(unit.entity, unit.index, componentId, unit.ruleset) === null) {
             ammo.set(componentId, { shotsSpent });
             return;
         }
         if (!isFirstComponentCritical(unit, componentId, slotId)) {
-            unresolved.push(recover(
-                'critical',
-                'One-shot consumption was retained because only the owner weapon first critical slot is authoritative',
-                original,
-            ));
+            warnings.push('One-shot ammunition consumption outside the weapon first critical slot was skipped');
             return;
         }
         const current = criticalAmmoConsumption.get(componentId);
         if (current === undefined) {
             ammo.set(componentId, { shotsSpent });
-            criticalAmmoConsumption.set(componentId, { shotsSpent, firstRaw: original });
+            criticalAmmoConsumption.set(componentId, shotsSpent);
             return;
         }
-        if (current.shotsSpent === shotsSpent) {
-            unresolved.push(recover(
-                'critical',
-                'Duplicate first-critical one-shot consumption evidence was retained',
-                original,
-            ));
-            return;
-        }
-        if (current.shotsSpent !== null) {
-            unresolved.push(recover(
-                'critical',
-                'Conflicting duplicate first-critical one-shot consumption evidence was retained',
-                current.firstRaw,
-            ));
-            warnings.push({
-                code: 'CONFLICTING_AMMO_EVIDENCE',
-                message: 'Conflicting duplicate first-critical one-shot consumption evidence was not applied',
-                saved: { firstCriticalConsumed: [current.shotsSpent, shotsSpent].sort((left, right) => left - right) },
-                current: { appliedConsumed: null },
-            });
-        }
-        unresolved.push(recover(
-            'critical',
-            'Conflicting duplicate first-critical one-shot consumption evidence was retained',
-            original,
-        ));
+        if (current === shotsSpent) return;
+        warnings.push('Conflicting duplicate first-critical one-shot ammunition consumption was skipped');
         ammo.delete(componentId);
-        criticalAmmoConsumption.set(componentId, { shotsSpent: null, firstRaw: current.firstRaw });
-    } else unresolved.push(recover('critical', 'Ammo consumption has no unique bin at this coordinate', original));
+        criticalAmmoConsumption.set(componentId, null);
+    } else warnings.push('Ammo consumption has no unique bin at this coordinate');
 }
 
 function isFirstComponentCritical(
@@ -908,82 +725,51 @@ function restoreLocations(
     pendingArmor: Map<ArmorFaceId, number>,
     pendingShieldDamage: Map<ComponentId, MekShieldDamageRuntimeState>,
     pendingConditions: Map<LocationId, Map<MekLocationConditionKey, number>>,
-    warnings: StateRestoreWarning[],
-    unresolved: UnresolvedStateRecoveryEntry[],
+    warnings: string[],
     idTranslation: Record<string, ComponentId | CriticalSlotId | LocationId | ArmorFaceId>,
-    recover: (
-        kind: UnresolvedStateRecoveryEntry['kind'],
-        reason: string,
-        raw: JsonValue,
-    ) => UnresolvedStateRecoveryEntry,
 ): void {
     if (raw === undefined) return;
     const records = recordObject(raw);
     if (!records) {
-        unresolved.push(recover(
-            'location',
-            'Malformed legacy locations container was preserved for recovery',
-            raw,
-        ));
+        warnings.push('Malformed legacy locations container was skipped');
         return;
     }
     for (const [savedCode, value] of Object.entries(records)) {
         const data = recordObject(value);
         if (!data) {
-            unresolved.push(recover('location', `Malformed location ${savedCode}`, value));
+            warnings.push(`Malformed location ${savedCode}`);
             continue;
         }
-        if (restoreLegacyShieldTrack(
-            savedCode,
-            data,
-            unit,
-            components,
-            pendingShieldDamage,
-            warnings,
-            unresolved,
-            recover,
-        )) continue;
+        if (restoreLegacyShieldTrack(savedCode, data, unit, components, pendingShieldDamage, warnings)) continue;
         const rear = savedCode.endsWith('-rear');
         const code = rear ? savedCode.slice(0, -'-rear'.length) : savedCode;
         const location = [...unit.index.locations.values()].find(candidate => candidate.code === code);
         if (!location) {
-            unresolved.push(recover('location', `Unknown location ${savedCode}`, value));
+            warnings.push(`Unknown location ${savedCode}`);
             continue;
         }
         const current = locations.get(location.id) ?? emptyLocationRuntimeState();
         const internal = nonnegativeInteger(data['internal']);
         if (data['internal'] !== undefined && internal === null) {
-            unresolved.push(recover(
-                'location',
-                `Malformed internal damage at ${savedCode} was preserved for recovery`,
-                locationFieldEvidence(savedCode, 'internal', data['internal']),
-            ));
+            warnings.push(`Malformed internal damage at ${savedCode} was skipped`);
         }
         const appliedInternal = internal === null
             ? current.internalDamage
             : Math.min(internal, location.internalPoints);
-        if (internal !== null && appliedInternal !== internal) warnings.push({
-            code: 'DAMAGE_CLAMPED', message: `${savedCode} internal damage exceeded current capacity`,
-        });
+        if (internal !== null && appliedInternal !== internal) warnings.push(`${savedCode} internal damage exceeded current capacity`);
         const face = location.armorFaceIds
             .map(faceId => unit.index.armorFaces.get(faceId)!)
             .find(candidate => candidate.face === (rear ? 'rear' : 'front'));
         if (!face) {
-            unresolved.push(recover('location', `Location ${savedCode} has no matching armor face`, value));
+            warnings.push(`Location ${savedCode} has no matching armor face`);
             continue;
         }
         const armor = nonnegativeInteger(data['armor']);
         if (data['armor'] !== undefined && armor === null) {
-            unresolved.push(recover(
-                'location',
-                `Malformed armor damage at ${savedCode} was preserved for recovery`,
-                locationFieldEvidence(savedCode, 'armor', data['armor']),
-            ));
+            warnings.push(`Malformed armor damage at ${savedCode} was skipped`);
         }
         const appliedArmor = armor === null ? null : Math.min(armor, face.maximumPoints);
-        if (armor !== null && appliedArmor !== armor) warnings.push({
-            code: 'DAMAGE_CLAMPED', message: `${savedCode} armor damage exceeded current capacity`,
-        });
+        if (armor !== null && appliedArmor !== armor) warnings.push(`${savedCode} armor damage exceeded current capacity`);
         const armorDamage = new Map(current.armorDamage.map(entry => [entry.faceId, entry.damage]));
         if (appliedArmor !== null) {
             if (appliedArmor === 0) armorDamage.delete(face.id);
@@ -1006,32 +792,17 @@ function restoreLocations(
         const parsedPendingInternal = integer(data['pendingInternal']);
         const parsedPendingArmor = integer(data['pendingArmor']);
         if (data['pendingInternal'] !== undefined && parsedPendingInternal === null) {
-            unresolved.push(recover(
-                'location',
-                `Malformed pending internal damage at ${savedCode} was preserved for recovery`,
-                locationFieldEvidence(savedCode, 'pendingInternal', data['pendingInternal']),
-            ));
+            warnings.push(`Malformed pending internal damage at ${savedCode} was skipped`);
         }
         if (data['pendingArmor'] !== undefined && parsedPendingArmor === null) {
-            unresolved.push(recover(
-                'location',
-                `Malformed pending armor damage at ${savedCode} was preserved for recovery`,
-                locationFieldEvidence(savedCode, 'pendingArmor', data['pendingArmor']),
-            ));
+            warnings.push(`Malformed pending armor damage at ${savedCode} was skipped`);
         }
         const pendingI = parsedPendingInternal ?? 0;
         const pendingA = parsedPendingArmor ?? 0;
         if (pendingI !== 0) pendingInternal.set(location.id, pendingI);
         if (pendingA !== 0) pendingArmor.set(face.id, pendingA);
         restoreLegacyLocationConditions(
-            data['conditions'],
-            savedCode,
-            rear,
-            location.id,
-            locations,
-            pendingConditions,
-            unresolved,
-            recover,
+            data['conditions'], savedCode, rear, location.id, locations, pendingConditions, warnings,
         );
     }
     clearRestoredNarcFromPhysicallyDestroyedLocations(unit.index, locations, pendingConditions);
@@ -1043,13 +814,7 @@ function restoreLegacyShieldTrack(
     unit: MekRestoreUnit,
     components: Map<ComponentId, ComponentRuntimeState>,
     pendingShieldDamage: Map<ComponentId, MekShieldDamageRuntimeState>,
-    warnings: StateRestoreWarning[],
-    unresolved: UnresolvedStateRecoveryEntry[],
-    recover: (
-        kind: UnresolvedStateRecoveryEntry['kind'],
-        reason: string,
-        raw: JsonValue,
-    ) => UnresolvedStateRecoveryEntry,
+    warnings: string[],
 ): boolean {
     const match = /^(DA|DC)(LA|RA)$/u.exec(savedCode);
     if (!match) return false;
@@ -1065,11 +830,7 @@ function restoreLegacyShieldTrack(
         ? resolveShieldProfile(component.mount.equipment)
         : undefined;
     if (!component || !profile) {
-        unresolved.push(recover(
-            'location',
-            `Legacy shield track ${savedCode} has no unique current physical shield`,
-            data,
-        ));
+        warnings.push(`Legacy shield track ${savedCode} has no unique current physical shield`);
         return true;
     }
 
@@ -1079,17 +840,10 @@ function restoreLegacyShieldTrack(
     const currentDamage = current.shieldDamage ?? { absorptionDamage: 0, capacityDamage: 0 };
     const committed = nonnegativeInteger(data['armor']);
     if (data['armor'] !== undefined && committed === null) {
-        unresolved.push(recover(
-            'location',
-            `Malformed shield damage at ${savedCode} was preserved for recovery`,
-            locationFieldEvidence(savedCode, 'armor', data['armor']),
-        ));
+        warnings.push(`Malformed shield damage at ${savedCode} was skipped`);
     }
     const effectiveCommitted = committed === null ? currentDamage[track] : Math.min(committed, maximum);
-    if (committed !== null && effectiveCommitted !== committed) warnings.push({
-        code: 'DAMAGE_CLAMPED',
-        message: `${savedCode} shield damage exceeded current capacity`,
-    });
+    if (committed !== null && effectiveCommitted !== committed) warnings.push(`${savedCode} shield damage exceeded current capacity`);
     if (committed !== null) {
         setComponentShieldDamage(components, component.id, {
             ...currentDamage,
@@ -1099,21 +853,14 @@ function restoreLegacyShieldTrack(
 
     const pending = integer(data['pendingArmor']);
     if (data['pendingArmor'] !== undefined && pending === null) {
-        unresolved.push(recover(
-            'location',
-            `Malformed pending shield damage at ${savedCode} was preserved for recovery`,
-            locationFieldEvidence(savedCode, 'pendingArmor', data['pendingArmor']),
-        ));
+        warnings.push(`Malformed pending shield damage at ${savedCode} was skipped`);
     }
     if (pending !== null) {
         const effectivePending = Math.max(
             -effectiveCommitted,
             Math.min(pending, maximum - effectiveCommitted),
         );
-        if (effectivePending !== pending) warnings.push({
-            code: 'DAMAGE_CLAMPED',
-            message: `${savedCode} pending shield damage exceeded current capacity`,
-        });
+        if (effectivePending !== pending) warnings.push(`${savedCode} pending shield damage exceeded current capacity`);
         const currentPending = pendingShieldDamage.get(component.id)
             ?? { absorptionDamage: 0, capacityDamage: 0 };
         const nextPending = Object.freeze({ ...currentPending, [track]: effectivePending });
@@ -1124,12 +871,9 @@ function restoreLegacyShieldTrack(
         }
     }
 
-    const unsupported = omitFields(data, new Set(['armor', 'pendingArmor']));
-    if (Object.keys(unsupported).length > 0) unresolved.push(recover(
-        'location',
-        `Legacy shield track ${savedCode} contains non-shield location state`,
-        unsupported,
-    ));
+    if (hasUnknownFields(data, new Set(['armor', 'pendingArmor']))) {
+        warnings.push(`Legacy shield track ${savedCode} contains unsupported location state`);
+    }
     return true;
 }
 
@@ -1158,24 +902,15 @@ function restoreLegacyLocationConditions(
     locationId: LocationId,
     locations: Map<LocationId, LocationRuntimeState>,
     pendingConditions: Map<LocationId, Map<MekLocationConditionKey, number>>,
-    unresolved: UnresolvedStateRecoveryEntry[],
-    recover: (
-        kind: UnresolvedStateRecoveryEntry['kind'],
-        reason: string,
-        raw: JsonValue,
-    ) => UnresolvedStateRecoveryEntry,
+    warnings: string[],
 ): void {
     if (raw === undefined) return;
     if (!Array.isArray(raw)) {
-        unresolved.push(recover('location', `Malformed location conditions for ${savedCode}`, raw));
+        warnings.push(`Malformed location conditions for ${savedCode}`);
         return;
     }
     if (rear) {
-        unresolved.push(recover(
-            'location',
-            `Rear armor record ${savedCode} cannot own a stable location condition`,
-            raw,
-        ));
+        warnings.push(`Rear armor record ${savedCode} cannot own a stable location condition`);
         return;
     }
 
@@ -1185,15 +920,15 @@ function restoreLegacyLocationConditions(
     for (const entry of raw) {
         const parsed = parseLegacyLocationCondition(entry);
         if (parsed.kind === 'unresolved') {
-            unresolved.push(recover('location', `${parsed.reason} at ${savedCode}`, entry));
+            warnings.push(`${parsed.reason} at ${savedCode}`);
             if (parsed.recognizedKey !== undefined) {
                 committed.delete(parsed.recognizedKey);
                 pending.delete(parsed.recognizedKey);
             }
             continue;
         }
-        if (parsed.retainEvidence !== undefined) {
-            unresolved.push(recover('location', `${parsed.retainEvidence} at ${savedCode}`, entry));
+        if (parsed.warning !== undefined) {
+            warnings.push(`${parsed.warning} at ${savedCode}`);
         }
         if (parsed.pending) {
             committed.delete(parsed.key);
@@ -1225,7 +960,7 @@ type ParsedLegacyLocationCondition =
         readonly key: MekLocationConditionKey;
         readonly value: number;
         readonly pending: boolean;
-        readonly retainEvidence?: string;
+        readonly warning?: string;
     };
 
 function parseLegacyLocationCondition(raw: JsonValue): ParsedLegacyLocationCondition {
@@ -1274,7 +1009,7 @@ function parseLegacyLocationCondition(raw: JsonValue): ParsedLegacyLocationCondi
             key: condition,
             value,
             pending,
-            ...(malformedMetadata ? { retainEvidence: 'Malformed legacy NARC metadata was not promoted' } : {}),
+            ...(malformedMetadata ? { warning: 'Malformed legacy NARC metadata was skipped' } : {}),
         };
     }
 
@@ -1285,7 +1020,7 @@ function parseLegacyLocationCondition(raw: JsonValue): ParsedLegacyLocationCondi
         value: 1,
         pending,
         ...(malformedMetadata || discardedBooleanValue
-            ? { retainEvidence: 'Non-canonical boolean location-condition metadata was not promoted' }
+            ? { warning: 'Invalid boolean location-condition metadata was skipped' }
             : {}),
     };
 }
@@ -1345,13 +1080,18 @@ function matchInventoryComponent(raw: JsonObject, unit: MekRestoreUnit): Matched
             unit.index.locations.get(locationId)?.code === evidence.location)) return [];
         return [{ id: component.id, equipmentKey }];
     });
+    if (candidates.length > 1 && evidence.location && evidence.slotIndex !== undefined) {
+        const slot = criticalCoordinate({ loc: evidence.location, slot: evidence.slotIndex }, unit);
+        const atCoordinate = candidates.filter(candidate => slot?.componentIds.includes(candidate.id));
+        return atCoordinate.length === 1 ? atCoordinate[0] : null;
+    }
     return candidates.length === 1 ? candidates[0] : null;
 }
 
-function parseLegacyInventoryId(id: string): { equipment?: string; location?: string; summaryIndex?: number } {
+function parseLegacyInventoryId(id: string): { equipment?: string; location?: string; slotIndex?: number } {
     const match = /^(.*?)@([^#]+)#([0-9]+)(?:\.[0-9]+)?$/u.exec(id);
     if (!match) return id ? { equipment: id } : {};
-    return { equipment: match[1], location: match[2], summaryIndex: Number(match[3]) };
+    return { equipment: match[1], location: match[2], slotIndex: Number(match[3]) };
 }
 
 function componentLocations(index: MekRuntimeIndex, component: MekIndexedComponent): readonly LocationId[] {
@@ -1365,14 +1105,18 @@ function componentLocations(index: MekRuntimeIndex, component: MekIndexedCompone
 }
 
 function slotOccupants(unit: MekRestoreUnit, slotId: CriticalSlotId): readonly string[] {
-    return unit.index.slots.get(slotId)?.componentIds.flatMap(id => {
+    const slot = unit.index.slots.get(slotId);
+    if (!slot) return [];
+    const location = unit.index.locations.get(slot.locationId)!;
+    const sheetSlot = unit.entity.criticalSlotGrid().get(location.code)?.[slot.slotIndex];
+    return [mekCriticalSlotLabel(sheetSlot, unit.entity), ...slot.componentIds.flatMap(id => {
         const component = unit.index.components.get(id);
         if (!component) return [];
         return component.kind === 'equipment'
             ? [component.mount.equipment?.id ?? component.mount.equipmentId,
                 component.mount.equipment?.name ?? component.mount.equipmentId]
             : [component.systemType];
-    }) ?? [];
+    })];
 }
 
 function expectedEquipmentName(raw: JsonObject): string | null {
@@ -1390,15 +1134,7 @@ function normalizeEquipmentName(value: string): string {
 function committedHits(raw: JsonObject, destroyedMarkerCapacity = 1): number {
     const hits = nonnegativeInteger(raw['hits']);
     if (hits !== null) return hits;
-    return raw['destroyed'] !== undefined ? destroyedMarkerCapacity : 0;
-}
-
-function locationFieldEvidence(
-    location: string,
-    field: 'internal' | 'armor' | 'pendingInternal' | 'pendingArmor',
-    value: JsonValue,
-): JsonObject {
-    return { location, [field]: value } as JsonObject;
+    return stateMarker(raw['destroyed']) ? destroyedMarkerCapacity : 0;
 }
 
 function disabledState(raw: JsonValue | undefined): boolean {
@@ -1604,7 +1340,9 @@ function restoreLegacyMekRuleChecks(
     output: Map<typeof MEK_TORSO_CRIPPLING_RULE_CHECK_KEY, MekRuleCheckStateV2>,
 ): boolean {
     const checks = recordObject(raw);
-    if (!checks || Object.keys(checks).length !== 1) return false;
+    if (!checks) return false;
+    if (Object.keys(checks).length === 0) return true;
+    if (Object.keys(checks).length !== 1) return false;
     const check = recordObject(checks[MEK_TORSO_CRIPPLING_RULE_CHECK_KEY]);
     if (!check
         || Object.keys(check).some(key => key !== 'token' && key !== 'trigger' && key !== 'status')
@@ -1628,30 +1366,18 @@ function restoreLegacyMekRuleChecks(
     return true;
 }
 
-function omitKnownState(raw: JsonObject, includeRuleChecks = false): JsonObject {
+function hasUnsupportedFamilyState(raw: JsonObject, includeRuleChecks = false): boolean {
     const known = new Set([
-        'modified', 'destroyed', 'conditions', 'crits', 'locations', 'heat', 'inventory', 'turnState',
+        'modified', 'destroyed', 'shutdown', 'conditions', 'crits', 'locations', 'heat', 'inventory', 'turnState',
+        // The force converter owns crew assignment/runtime and encounter editor positions.
+        'crew', 'c3Position',
         ...(includeRuleChecks ? ['ruleChecks'] : []),
     ]);
-    return Object.fromEntries(Object.entries(raw).filter(([key]) => !known.has(key))) as JsonObject;
+    return hasUnknownFields(raw, known);
 }
 
-function omitFields(raw: JsonObject, known: ReadonlySet<string>): JsonObject {
-    return Object.fromEntries(Object.entries(raw).filter(([key]) => !known.has(key))) as JsonObject;
-}
-
-function recovery(
-    kind: UnresolvedStateRecoveryEntry['kind'],
-    reason: string,
-    raw: JsonValue,
-    occurrence: number,
-): UnresolvedStateRecoveryEntry {
-    return {
-        recoveryId: `recovery:${kind}:${occurrence}`,
-        kind,
-        reason,
-        raw,
-    };
+function hasUnknownFields(raw: JsonObject, known: ReadonlySet<string>): boolean {
+    return Object.keys(raw).some(key => !known.has(key));
 }
 
 function recordObject(value: JsonValue | undefined): JsonObject | null {

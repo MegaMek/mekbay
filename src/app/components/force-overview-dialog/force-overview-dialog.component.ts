@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, effect, type DestroyRef, type ElementRef, inject, signal, TemplateRef, untracked, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { DragDropModule, type CdkDragDrop, type CdkDragMove } from '@angular/cdk/drag-drop';
@@ -13,6 +14,7 @@ import type { UnitSummary } from '../../models/unit-summary.model';
 import {
     isCBTForceMember,
     isCBTMekForceMember,
+    forceMemberPilotStats,
     type CBTForceMember,
     type ForceMember,
 } from '../../models/force-member.model';
@@ -33,7 +35,8 @@ import { createForcePreviewEntryFromForce, type ForcePreviewEntry, type ForcePre
 import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview-panel.component';
 import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
-import { UnitBlockComponent } from '../unit-block/unit-block.component';
+import { ForceUnitCrewComponent } from '../force-crew/force-unit-crew.component';
+import { ForceReserveCrewComponent } from '../force-crew/force-reserve-crew.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
@@ -60,6 +63,7 @@ import {
     isUnitDataTableSortActive,
 } from '../../utils/unit-data-table.util';
 import { getProperty } from '../../utils/unit-search-shared.util';
+import { effectiveEntityPilotingSkill } from '../../models/entity/utils/battle-value/skill-facts';
 
 export interface ForceOverviewDialogData {
     force: Force;
@@ -107,7 +111,8 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
         UnitCardExpandedComponent,
         ForcePreviewPanelComponent,
         ForceRadarPanelComponent,
-        UnitBlockComponent,
+        ForceUnitCrewComponent,
+        ForceReserveCrewComponent,
         UnitIconComponent,
         DataTableComponent,
         TooltipDirective,
@@ -120,6 +125,7 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
     styleUrl: './force-overview-dialog.component.scss'
 })
 export class ForceOverviewDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     protected readonly isCBTMekForceMember = isCBTMekForceMember;
     private dialogRef = inject<DialogRef<void>>(DialogRef);
     protected data = inject<ForceOverviewDialogData>(DIALOG_DATA);
@@ -276,8 +282,8 @@ export class ForceOverviewDialogComponent {
     readonly nextViewModeTitle = computed(() => {
         const current = this.viewMode();
         const next = this.nextViewMode();
-        const currentLabel = current === 'compact' ? 'Compact View' : current === 'expanded' ? 'Expanded View' : 'Table View';
-        const nextLabel = next === 'compact' ? 'Compact View' : next === 'expanded' ? 'Expanded View' : 'Table View';
+        const currentLabel = current === 'compact' ? 'Crew Rows' : current === 'expanded' ? 'Expanded View' : 'Table View';
+        const nextLabel = next === 'compact' ? 'Crew Rows' : next === 'expanded' ? 'Expanded View' : 'Table View';
         return `${currentLabel}. Click to switch to ${nextLabel}.`;
     });
 
@@ -873,31 +879,15 @@ export class ForceOverviewDialogComponent {
 
     memberPiloting(member: ForceMember): number {
         if (!isCBTForceMember(member)) return DEFAULT_PILOTING_SKILL;
-        return member.force.getUnitCrewAssignment(member.id)?.positions[0]?.piloting
-            ?? DEFAULT_PILOTING_SKILL;
+        return effectiveEntityPilotingSkill(member.entity,
+            member.force.getUnitCrewAssignment(member.id)?.positions[0]?.piloting ?? DEFAULT_PILOTING_SKILL);
     }
 
     private openMemberDetails(member: ForceMember): void {
-        if (!isCBTForceMember(member)) {
-            const unitList = this.data.force.units();
-            this.dialogsService.createDialog(UnitDetailsDialogComponent, {
-                data: <UnitDetailsDialogData>{
-                    unitList: this.data.force.units,
-                    unitIndex: unitList.findIndex(unit => unit.id === member.id),
-                },
-            });
-            return;
-        }
-
-        const summary = this.resolveCBTCatalogSummary(member);
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: <UnitDetailsDialogData>{
-                unitList: [summary],
-                unitIndex: 0,
-                gunnerySkill: this.memberGunnery(member),
-                pilotingSkill: this.memberPiloting(member),
-                hideAddButton: true,
-                gameSystem: this.data.force.gameSystem,
+                unitList: this.data.force.members,
+                unitIndex: this.data.force.members().findIndex(unit => unit.id === member.id),
             },
         });
     }
@@ -1234,9 +1224,9 @@ export class ForceOverviewDialogComponent {
         });
     }
 
-    /** Get pilot skill for AS table display */
-    getPilotSkill(vm: ForceMemberViewModel): number {
-        return this.memberGunnery(vm.member);
+    /** Compact skill display retains empty stations in multi-crew units. */
+    getPilotSkill(vm: ForceMemberViewModel): string {
+        return forceMemberPilotStats(vm.member);
     }
 
     private normalizeViewMode(viewMode: 'expanded' | 'compact' | 'table'): 'expanded' | 'compact' | 'table' {

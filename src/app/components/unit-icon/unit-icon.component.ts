@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, inject, input, signal, effect, computed, DestroyRef } from '@angular/core';
 
 import { SpriteStorageService, type SpriteIconInfo } from '../../services/sprite-storage.service';
@@ -60,6 +61,7 @@ const DEFAULT_HEIGHT = 72;
   `]
 })
 export class UnitIconComponent {
+    readonly unitNames = inject(UnitNameService);
   private spriteService = inject(SpriteStorageService);
   private destroyed = false;
   
@@ -84,9 +86,7 @@ export class UnitIconComponent {
   private unitLabel = computed(() => {
     const u = this.unit();
     if (!u) return '';
-    return u instanceof BaseEntity
-      ? u.displayName()
-      : `${u.chassis || ''} ${u.model || ''}`.trim();
+    return this.unitNames.name(u);
   });
 
   displayAlt = computed(() => this.alt() || this.unitLabel());

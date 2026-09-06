@@ -9,7 +9,9 @@ import { GameSystem } from '../../models/common.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
 import { InfantryEntity } from '../../models/entity/entities/infantry/infantry-entity';
 import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
-import { TestBipedMekEntity, TestTankEntity } from '../../models/entity/testing/test-entities';
+import { TestBipedMekEntity, TestTankEntity, TestProtoMekEntity } from '../../models/entity/testing/test-entities';
+import { CBTForceMember } from '../../models/force-member.model';
+import type { CBTForce } from '../../models/cbt-force.model';
 import type { Force } from '../../models/force.model';
 import { OptionsService } from '../../services/options.service';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
@@ -27,6 +29,8 @@ interface ForceBudgetOptimizerDialogTestApi {
     getCBTSkillPriorities(entity: BaseEntity): CBTSkillPrioritiesTestApi;
     getCBTSmartScore(priorities: CBTSkillPrioritiesTestApi, gunnery: number, piloting: number): number;
     selectBestAffordableState(states: readonly OptimizationStateTestApi[], targetBudget: number): OptimizationStateTestApi | null;
+    createOptions(member: CBTForceMember): readonly { cost: number }[];
+    applyChoice(choice: { member: CBTForceMember; gunnery: number; piloting: number }): Promise<unknown>;
 }
 
 interface CBTOptionsMemberTestApi {
@@ -93,6 +97,32 @@ describe('ForceBudgetOptimizerDialogComponent', () => {
         const component = await createComponent(5_000, 7_500);
 
         expect(component.targetBudget()).toBe(7_500);
+    });
+
+    it('does not price or fill a vacant crew slot during optimization', async () => {
+        const component = await createComponent();
+        const force = {
+            getUnitCrewPolicy: () => ({ positions: [{ positionId: 'crew:0' }] }),
+            getAssignedPerson: () => undefined,
+            getUnitCrewProfile: () => ({ positions: [] }),
+            getUnitAdjustedBattleValue: () => 0,
+        } as unknown as CBTForce;
+        const member = new CBTForceMember('vacant', force, new TestBipedMekEntity());
+        expect(component.createOptions(member).map(option => option.cost)).toEqual([0]);
+    });
+
+    it('changes ProtoMek Gunnery without overwriting the personal Piloting with its fixed effective value', async () => {
+        const component = await createComponent();
+        const replace = jasmine.createSpy().and.resolveTo(true);
+        const force = {
+            getUnitCrewProfile: () => ({ positions: [{ positionId: 'crew:0', name: 'Pilot', gunnery: 4, piloting: 2 }] }),
+            replaceUnitCrewProfile: replace,
+        } as unknown as CBTForce;
+        const member = new CBTForceMember('proto', force, new TestProtoMekEntity());
+        await component.applyChoice({ member, gunnery: 3, piloting: 5 });
+        expect(replace).toHaveBeenCalledWith('proto', [
+            { positionId: 'crew:0', name: 'Pilot', gunnery: 3, piloting: 2 },
+        ]);
     });
 
     it('uses the current force total when no positive BV/PV limit is set', async () => {

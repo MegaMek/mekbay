@@ -16,6 +16,7 @@ import {
 } from './runtime-history';
 import { CBT_HISTORY_FIELD, CBT_HISTORY_TURN_FIELD } from './force-storage-vocabulary';
 import type { AttackerTargetingState } from './attacker-targeting-state';
+import type { ForcePersonnelSnapshot } from '../force-personnel';
 
 /** Session-only restoration data. It is never part of force persistence. */
 export interface RuntimeCommandCheckpoint {
@@ -25,6 +26,8 @@ export interface RuntimeCommandCheckpoint {
         /** Session-only targeting that must survive gameplay undo/redo. */
         readonly attackerTargeting: AttackerTargetingState;
     }>[];
+    /** Present only for crew ownership edits; immutable snapshots share unchanged people. */
+    readonly personnel?: ForcePersonnelSnapshot;
 }
 
 export interface RuntimeCommandEntry {
@@ -96,7 +99,10 @@ export function appendRuntimeCommandEntry(
     let phaseStart = applied.length;
     while (phaseStart > 0) {
         const candidate = applied[phaseStart - 1]!;
-        if (candidate.turn !== entry.turn
+        // Crew preparation remains its own undo step. Folding it into a battle
+        // phase would also absorb independent reserve edits made between crews.
+        if (candidate.before.personnel !== undefined || candidate.after.personnel !== undefined
+            || candidate.turn !== entry.turn
             || candidate.phase !== entry.phase
             || runtimeCommandScope(candidate) !== scope) break;
         phaseStart -= 1;

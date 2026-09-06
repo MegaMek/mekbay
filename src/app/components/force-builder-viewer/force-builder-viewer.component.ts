@@ -39,13 +39,14 @@ import {
 } from '../../models/force-member.model';
 import { CBTForce } from '../../models/cbt-force.model';
 import { ForceMemberValueComponent } from './force-member-value.component';
+import { ForceReserveCrewComponent } from '../force-crew/force-reserve-crew.component';
 
 
 
 @Component({
     selector: 'force-builder-viewer',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [DragDropModule, UnitBlockComponent, TooltipDirective, ForceMemberValueComponent],
+    imports: [DragDropModule, UnitBlockComponent, TooltipDirective, ForceMemberValueComponent, ForceReserveCrewComponent],
     host: {
         '(window:keydown)': 'onKeyDown($event)',
         '(window:keyup)': 'onKeyUp($event)',

@@ -7,7 +7,7 @@ import { ChangeDetectionStrategy, Component, input, output, signal } from '@angu
 /**
  * 
  * Panel component to display a matrix of gunnery/piloting skill combinations and their corresponding BV values.
- * Used in the EditAsPilotDialogComponent for skill selection with BV preview.
+ * Unassigned personnel select skill pairs without a unit BV preview.
  */
 
 export interface SkillMatrixCell {
@@ -48,7 +48,7 @@ export interface SkillMatrixCell {
                                     (mouseenter)="hoveredG.set(g); hoveredP.set(p)"
                                     (mouseleave)="hoveredG.set(-1); hoveredP.set(-1)"
                                     (click)="onCellClick(g, p)">
-                                    {{ getCellBv(g, p) }}
+                                    {{ getCellLabel(g, p) }}
                                 </td>
                             }
                         </tr>
@@ -198,6 +198,7 @@ export interface SkillMatrixCell {
 })
 export class SkillMatrixPanelComponent {
     matrix = input.required<number[][]>();
+    showBv = input(true);
     selectedGunnery = input<number>(4);
     selectedPiloting = input<number>(5);
 
@@ -208,7 +209,8 @@ export class SkillMatrixPanelComponent {
 
     readonly skills = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
-    getCellBv(gunnery: number, piloting: number): string {
+    getCellLabel(gunnery: number, piloting: number): string {
+        if (!this.showBv()) return `${gunnery}/${piloting}`;
         const bv = this.matrix()[gunnery]?.[piloting] ?? 0;
         return bv.toLocaleString();
     }

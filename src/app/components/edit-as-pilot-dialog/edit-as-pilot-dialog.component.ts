@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, ElementRef, inject, signal, viewChild, computed, DestroyRef, Injector } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
@@ -31,6 +32,9 @@ import { PilotNameGeneratorService } from '../../services/pilot-name-generator.s
 import { LoggerService } from '../../services/logger.service';
 import type { Era } from '../../models/eras.model';
 import type { UnitSubtype, UnitType } from '../../models/entity/types/classification';
+import { PilotNotesFieldComponent } from '../pilot-notes-field/pilot-notes-field.component';
+import { PilotPortraitFieldComponent } from '../pilot-portrait-field/pilot-portrait-field.component';
+import type { CrewEditAction, CrewEditActions } from '../force-crew/crew-edit-actions';
 
 /** Represents either a standard ability (by ID) or a custom ability (object) */
 export type AbilitySelection = string | ASCustomPilotAbility;
@@ -38,6 +42,12 @@ export type AbilitySelection = string | ASCustomPilotAbility;
 export interface EditASPilotDialogData {
     unitId: string;
     name: string;
+    notes?: string;
+    portrait?: string;
+    editPortrait?: boolean;
+    /** Enable only when the caller owns a persistent person and saves notes. */
+    editNotes?: boolean;
+    personnelActions?: CrewEditActions;
     skill: number;
     abilities: AbilitySelection[]; // Array of ability IDs or custom abilities
     formationAbilities?: string[];
@@ -57,7 +67,10 @@ export interface EditASPilotDialogData {
 }
 
 export interface EditASPilotResult {
+    action?: CrewEditAction;
     name: string;
+    notes?: string;
+    portrait?: string;
     skill: number;
     abilities: AbilitySelection[]; // Array of ability IDs or custom abilities
     formationAbilities: string[];
@@ -74,6 +87,7 @@ interface FormationEffectCardView {
 
 @Component({
     selector: 'edit-as-pilot-dialog',
+    imports: [PilotNotesFieldComponent, PilotPortraitFieldComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         class: 'fullscreen-dialog-host glass'
@@ -82,6 +96,7 @@ interface FormationEffectCardView {
     styleUrl: './edit-as-pilot-dialog.component.scss'
 })
 export class EditASPilotDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     private commanderSelectionRequestId = 0;
     nameInput = viewChild.required<ElementRef<HTMLInputElement>>('nameInput');
     skillTrigger = viewChild.required<ElementRef<HTMLDivElement>>('skillTrigger');
@@ -110,6 +125,8 @@ export class EditASPilotDialogComponent {
     openFormationDropdownKey = signal<string | null>(null);
     currentSkill = signal<number>(4);
     readonly nameHasText = signal(!!this.data.name.trim());
+    readonly notes = signal(this.data.notes ?? '');
+    readonly portrait = signal(this.data.portrait);
     readonly generatingName = signal(false);
 
     private readonly hasPvPreview = this.data.basePv != null;
@@ -275,7 +292,7 @@ export class EditASPilotDialogComponent {
 
     private formatCommanderDisplayName(unit: ASForceUnit): string {
         const pilotName = unit.alias()?.trim();
-        const unitName = unit.getDisplayName();
+        const unitName = this.unitNames.name(unit.getSummary());
         if (pilotName) {
             return `${unitName} (${pilotName})`;
         }
@@ -1168,13 +1185,16 @@ export class EditASPilotDialogComponent {
         this.nameHasText.set(!!(event.target as HTMLInputElement).value.trim());
     }
 
-    submit() {
+    submit(action?: CrewEditAction) {
         const name = this.nameInput().nativeElement.value.trim();
         const skill = this.currentSkill();
         const abilities = this.selectedAbilities().filter((a): a is AbilitySelection => a !== null);
         const preview = this.formationPreview();
         this.dialogRef.close({
+            ...(action ? { action } : {}),
             name,
+            ...(this.data.notes !== undefined || this.notes() ? { notes: this.notes() } : {}),
+            ...(this.portrait() ? { portrait: this.portrait() } : {}),
             skill,
             abilities,
             formationAbilities: [...(preview?.assignmentsByUnitId.get(this.data.unitId) ?? this.selectedFormationAbilities())],

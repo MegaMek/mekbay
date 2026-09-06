@@ -53,6 +53,7 @@ const sarnaPageTitlesScript = path.join(__dirname, 'generate-sarna-page-titles.t
 const forceNameWordsScript = path.join(__dirname, 'generate-force-name-words.ts');
 const coreUnitAssetsScript = path.join(__dirname, 'generate-core-unit-assets.ts');
 const spriteMapScript = path.join(__dirname, 'generate-sprite-map.ts');
+const portraitSheetsScript = path.join(__dirname, 'generate-portrait-sheets.ts');
 
 console.log(`[Assets] Using MM data from: ${mmDataRoot}`);
 console.log(`[Assets] Using sourcebooks from: ${sourcebooksDir}`);
@@ -187,6 +188,7 @@ async function main(): Promise<void> {
     // Core UnitSummary projection consumes these exact generated presentation
     // and sourcebook inputs, so they must exist before the archive is sealed.
     runTypeScriptScript(spriteMapScript);
+    runTypeScriptScript(portraitSheetsScript);
     runTypeScriptScript(coreUnitAssetsScript);
     const assetsManifest = writeRepositoryAssetsManifest(path.join(root, 'public'));
     console.log(`[Assets] Generated one manifest for ${Object.keys(assetsManifest).length} deployed assets.`);

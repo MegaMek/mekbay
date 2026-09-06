@@ -126,6 +126,7 @@ export class CBTPrintUtil {
                 const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, snapshot);
                 binding.render(snapshot);
                 binding.destroy();
+                recordSheetSource.applyUnitName(svg, entity);
                 return Object.freeze({
                     member,
                     svg,
@@ -147,6 +148,7 @@ export class CBTPrintUtil {
             const binding = bindNonMekRecordSheet(svg, snapshot);
             binding.render(snapshot);
             binding.destroy();
+            recordSheetSource.applyUnitName(svg, entity);
             return Object.freeze({
                 member,
                 svg,

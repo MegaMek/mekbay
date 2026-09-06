@@ -53,7 +53,6 @@ export class ASForceUnit implements ForceUnit {
     protected readonly state: ASForceUnitState;
     protected readonly abilityLookup: AsAbilityLookupService;
     private readonly _forceRef = signal<ASForce>(null!);
-    protected readonly _formationCommander = signal(false);
 
     id = uuidv7();
     updatedTs = 0;
@@ -63,19 +62,16 @@ export class ASForceUnit implements ForceUnit {
     set force(value: ASForce) { this._forceRef.set(value); }
 
     readonly readOnly = computed(() => this.force.readOnly());
-    readonly commander = this._formationCommander.asReadonly();
-
-    private readonly _pilotName = signal<string | undefined>(undefined);
-    private readonly _pilotSkill = signal<number>(4);
-    private readonly _pilotAbilities = signal<AbilitySelection[]>([]);
+    readonly pilot = computed(() => this.force.getAssignedPerson(this.id, 'pilot'));
+    readonly commander = computed(() => this.pilot()?.commander === true);
     private readonly _formationAbilities = signal<string[]>([]);
 
-    readonly alias = this._pilotName.asReadonly();
-    readonly pilotSkill = this._pilotSkill.asReadonly();
-    readonly manualPilotAbilities = this._pilotAbilities.asReadonly();
+    readonly alias = computed(() => this.pilot()?.name);
+    readonly pilotSkill = computed(() => this.pilot()?.gunnery ?? 4);
+    readonly manualPilotAbilities = computed<readonly AbilitySelection[]>(() => this.pilot()?.abilities ?? []);
     readonly formationAbilities = this._formationAbilities.asReadonly();
     readonly pilotAbilities = computed<AbilitySelection[]>(() => {
-        const manualAbilities = this._pilotAbilities();
+        const manualAbilities = this.manualPilotAbilities();
         const mergedAbilities: AbilitySelection[] = [...manualAbilities];
         const seenAbilityIds = new Set(
             manualAbilities
@@ -123,11 +119,12 @@ export class ASForceUnit implements ForceUnit {
     }
 
     getConditions(): ReadonlyMap<UnitConditionKey, ConditionData | undefined> {
-        return this.state.conditions();
+        if (!this.crewVacant()) return this.state.conditions();
+        return new Map([...this.state.conditions(), ['abandoned', undefined], ['immobile', undefined]]);
     }
 
     isC3EndpointOperational(_componentIndex: number, _component?: C3Component): boolean {
-        return !this.destroyed;
+        return !this.destroyed && !this.crewVacant();
     }
 
     isC3Jammed(): boolean {
@@ -143,8 +140,8 @@ export class ASForceUnit implements ForceUnit {
     }
 
     setFormationCommander(value: boolean, markModified = true): void {
-        if (this._formationCommander() === value) return;
-        this._formationCommander.set(value);
+        if (this.commander() === value) return;
+        if (!this.force.updatePilotProfile(this, { commander: value ? true : undefined })) return;
         if (markModified) this.setModified();
     }
 
@@ -193,11 +190,14 @@ export class ASForceUnit implements ForceUnit {
     })
 
     public adjustedPv = computed<number>(() => {
+        if (this.crewVacant()) return 0;
         return adjustPointValueForSkill(
             this.getBaseBv(),
             this.pilotSkill()
         );
     });
+
+    public readonly crewVacant = computed(() => this.force.getUnitCrewPolicy(this.id).kind !== 'none' && !this.pilot());
 
     getHeat = computed<number>(() => {
         return this.state.heat();
@@ -296,7 +296,7 @@ export class ASForceUnit implements ForceUnit {
     private activeAbilityEffectRefs(): ASAbilityEffectRef[] {
         const refs: ASAbilityEffectRef[] = [];
 
-        for (const ability of this._pilotAbilities()) {
+        for (const ability of this.manualPilotAbilities()) {
             if (typeof ability === 'string') {
                 refs.push({ source: 'pilot', id: ability });
             }
@@ -533,18 +533,15 @@ export class ASForceUnit implements ForceUnit {
     }
 
     setPilotName(name: string | undefined): void {
-        this._pilotName.set(name);
-        this.setModified();
+        if (this.force.updatePilotProfile(this, { name })) this.setModified();
     }
 
     setPilotSkill(skill: number): void {
-        this._pilotSkill.set(skill);
-        this.setModified();
+        if (this.force.updatePilotProfile(this, { gunnery: skill })) this.setModified();
     }
 
     setPilotAbilities(abilities: AbilitySelection[]): void {
-        this._pilotAbilities.set(structuredClone(abilities));
-        this.setModified();
+        if (this.force.updatePilotProfile(this, { abilities })) this.setModified();
     }
 
     setFormationAbilities(abilities: string[], markModified: boolean = true): void {
@@ -562,31 +559,18 @@ export class ASForceUnit implements ForceUnit {
     }
 
     public getPilotSkill = computed<number>(() => {
-        return this._pilotSkill();
+        return this.pilotSkill();
     });
 
     public getPilotStats = computed<number>(() => {
-        return this._pilotSkill();
+        return this.pilotSkill();
     });
 
     public update(data: ASSerializedUnit) {
         if (data.updatedTs !== undefined) {
             this.updatedTs = data.updatedTs;
         }
-        // Update pilot name/alias
-        if (data.alias !== this.alias()) {
-            this._pilotName.set(data.alias);
-        }
-        // Update pilot skill
-        if (data.skill !== undefined && data.skill !== this._pilotSkill()) {
-            this._pilotSkill.set(data.skill);
-        }
-        // Update pilot abilities
-        if (data.abilities !== undefined) {
-            this._pilotAbilities.set(structuredClone(data.abilities));
-        }
         this._formationAbilities.set([...(data.formationAbilities ?? [])]);
-        this._formationCommander.set(data.commander ?? false);
         // Update state (includes pending)
         if (data.state) {
             this.state.update(data.state);
@@ -636,7 +620,6 @@ export class ASForceUnit implements ForceUnit {
                 ] as [string[], string[], string[]] }
                 : {}),
         };
-        const abilities = this._pilotAbilities();
         const formationAbilities = this._formationAbilities();
         const hashCanary = sourceHashCanary(this.getSummary().hash);
         return {
@@ -644,12 +627,8 @@ export class ASForceUnit implements ForceUnit {
             uuid: this.getSummary().uuid,
             ...(hashCanary === undefined ? {} : { sourceHashCanary: hashCanary }),
             ...(Object.keys(state).length === 0 ? {} : { state }),
-            ...(this.alias() === undefined ? {} : { alias: this.alias() }),
             ...(this.updatedTs === 0 ? {} : { updatedTs: this.updatedTs }),
-            ...(this._pilotSkill() === 4 ? {} : { skill: this._pilotSkill() }),
-            ...(abilities.length === 0 ? {} : { abilities: structuredClone(abilities) }),
             ...(formationAbilities.length === 0 ? {} : { formationAbilities: [...formationAbilities] }),
-            ...(this._formationCommander() ? { commander: true } : {}),
         };
     }
 
@@ -666,17 +645,7 @@ export class ASForceUnit implements ForceUnit {
         const fu = new ASForceUnit(unit, force, injector);
         fu.id = data.id;
         
-        if (data.alias !== undefined) {
-            fu._pilotName.set(data.alias);
-        }
-        if (data.skill !== undefined) {
-            fu._pilotSkill.set(data.skill);
-        }
-        if (data.abilities !== undefined) {
-            fu._pilotAbilities.set(structuredClone(data.abilities));
-        }
         fu._formationAbilities.set([...(data.formationAbilities ?? [])]);
-        fu._formationCommander.set(data.commander ?? false);
         if (data.updatedTs !== undefined) {
             fu.updatedTs = data.updatedTs;
         }
@@ -731,9 +700,15 @@ export class ASForceUnit implements ForceUnit {
         // Build result with '' first if present
         const result: { [mode: string]: number } = {};
         let baseGroundMovementValue: number | undefined;
+        const crewVacant = this.crewVacant();
 
         for (const [mode, inches] of entries) {
             if (typeof inches !== 'number' || inches <= 0) continue;
+            if (crewVacant) {
+                if (mode === '') baseGroundMovementValue = 0;
+                else result[mode] = 0;
+                continue;
+            }
 
             let reducedInches: number;
             if (this.isAerospace()) {
@@ -1149,6 +1124,7 @@ export class ASForceUnit implements ForceUnit {
         weaponHits: number,
         orderedCrits: { key: string; timestamp: number }[]
     ): string {
+        if (this.crewVacant()) return '0';
         if (this.isVehicle()) {
             return this.calculateVehicleDamageReductionWithCrits(base, orderedCrits);
         }

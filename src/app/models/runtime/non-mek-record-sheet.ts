@@ -10,6 +10,7 @@ import type {
     LocationId,
 } from '../entity/entity-identifiers';
 import type { BaseEntity } from '../entity/base-entity';
+import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
 import {
     isAeroEntity,
     isInfantryFamilyEntity,
@@ -22,7 +23,7 @@ import { STANDARD_MOVEMENT_CALCULATION, type EntityTechBase } from '../entity/ty
 import type { UnitType } from '../unit-summary.model';
 import { CrewMember, type CrewMemberRuntimeState, type CrewMemberState } from '../crew-member.model';
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
-import type { NonMekUnitRuntimeState } from './non-mek-unit-instance';
+import { hasVacantNonMekCrew, type NonMekUnitRuntimeState } from './non-mek-unit-instance';
 import type { CrewAssignment } from './crew-assignment';
 import { entityAmmoLoadout } from './mek-ammo';
 import { projectVehicleRuntimeRules } from '../rules/vehicle-runtime-rules';
@@ -84,7 +85,6 @@ export interface NonMekRecordSheetCrewPosition {
     readonly positionId: CrewPositionId;
     readonly occurrence: number;
     readonly name: string;
-    readonly role: string;
     readonly gunnery: number;
     readonly piloting: number;
     readonly state: CrewMemberRuntimeState;
@@ -147,10 +147,10 @@ export function projectNonMekRecordSheet(
 ): NonMekRecordSheetSnapshot {
     if (entity.entityType === 'Mek') throw new Error('Meks require the Mek record-sheet projection');
     const vehicleRules = isVehicleEntity(entity)
-        ? projectVehicleRuntimeRules(entity, index, state, ruleset)
+        ? projectVehicleRuntimeRules(entity, index, state, ruleset, crewAssignment)
         : null;
     const protoMekRules = isProtoMekEntity(entity)
-        ? projectProtoMekRuntimeRules(entity, index, state, ruleset, forcedWithdrawal)
+        ? projectProtoMekRuntimeRules(entity, index, state, ruleset, forcedWithdrawal, crewAssignment)
         : null;
     const infantryRules = isInfantryFamilyEntity(entity)
         ? projectInfantryRuntimeRules(entity, index, state)
@@ -249,15 +249,14 @@ export function projectNonMekRecordSheet(
         .map(position => {
             const runtimeState = state.crew.get(position.id);
             const assignment = crewAssignment?.positions.find(candidate => candidate.positionId === position.id);
-            const member = CrewMember.from(runtimeState);
+            const member = crewAssignment !== undefined && !assignment ? CrewMember.vacant : CrewMember.from(runtimeState);
             const effectiveState = member.effectiveState();
             return Object.freeze({
                 positionId: position.id,
                 occurrence: position.occurrence,
                 name: assignment?.name ?? '',
-                role: assignment?.role ?? '',
                 gunnery: assignment?.gunnery ?? 4,
-                piloting: assignment?.piloting ?? 5,
+                piloting: effectiveEntityPilotingSkill(entity, assignment?.piloting ?? 5),
                 state: member.toRuntimeState(),
                 effectiveState: effectiveState === 'dead'
                     ? 'killed'
@@ -267,6 +266,10 @@ export function projectNonMekRecordSheet(
             });
         });
     const conditions = new Set(state.conditions);
+    if (hasVacantNonMekCrew(index, crewAssignment)) {
+        conditions.add('abandoned');
+        conditions.add('immobile');
+    }
     conditions.delete('crippled');
     vehicleRules?.computedConditions.forEach(condition => conditions.add(condition));
     protoMekRules?.computedConditions.forEach(condition => conditions.add(condition));
@@ -282,7 +285,7 @@ export function projectNonMekRecordSheet(
         ?? state.explicitlyDestroyed;
     const movementBlocked = destroyed
         || protoMekRules?.computedConditions.includes('immobile') === true
-        || state.conditions.has('immobile');
+        || conditions.has('immobile');
     return Object.freeze({
         entityUuid: entity.uuid(),
         stateRevision: state.stateRevision,
@@ -305,7 +308,7 @@ export function projectNonMekRecordSheet(
         }),
         armorType: armor?.armor.name ?? 'Patchwork',
         structureType: structure?.structure.name ?? '',
-        crewSize: index.crewPositions.size,
+        crewSize: crew.length,
         crew: Object.freeze(crew),
         conditions: Object.freeze([...conditions]),
         conditionControlKeys: vehicleRules?.conditionControlKeys

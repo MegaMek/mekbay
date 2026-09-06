@@ -11,7 +11,7 @@
                 </div>
                 <div class="header-row">
                     <div class="header-chassis-group">
-                        <div class="header-chassis allow-select">{{ headerUnit().chassis }}</div>
+                        <div class="header-chassis allow-select">{{ unitNames.chassis(headerUnit()) }}</div>
                     </div>
                     <div class="header-details">
                         @if (headerUnit().role && headerUnit().role != 'None') {
@@ -68,6 +68,7 @@
                 }
                 @if (activeTab() === 'General') {
                 <unit-details-general-tab [unit]="unit" [gunnerySkill]="gunnerySkill()"
+                    [forceMember]="currentForceMember()"
                     [pilotingSkill]="pilotingSkill()" [adjustedValueOverride]="searchResultContext()?.adjustedValue">
                 </unit-details-general-tab>
                 }
@@ -115,6 +116,7 @@
                 }
                 @if (activeTab() === 'General') {
                 <unit-details-general-tab [unit]="incomingUnit()!"
+                    [forceMember]="incomingForceMember()"
                     [gunnerySkill]="incomingGunnerySkill()"
                     [pilotingSkill]="incomingPilotingSkill()"
                     [adjustedValueOverride]="incomingSearchResultContext()?.adjustedValue">

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
@@ -94,6 +95,7 @@ type CollectionExportValue = string | number;
     styleUrl: './collection-dialog.component.scss'
 })
 export class CollectionDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     private readonly dialogRef = inject(DialogRef<void>);
     private readonly dataService = inject(DataService);
     private readonly forcePersistence = inject(ForcePersistenceService);
@@ -1308,15 +1310,16 @@ export class CollectionDialogComponent {
     }
 
     private getUnitDisplayName(unit: UnitSummary): string {
-        return unit.model ? `${unit.chassis} ${unit.model}` : unit.chassis;
+        return this.unitNames.name(unit);
     }
 
     private getQuickAddUnitDisplayName(unit: UnitSummary): string {
-        return unit.model ? this.getUnitDisplayName(unit) : `${unit.chassis} (Standard)`;
+        return unit.model ? this.getUnitDisplayName(unit) : `${this.unitNames.chassis(unit)} (Standard)`;
     }
 
     private getVariantGroupChassis(unit: UnitSummary): string {
-        return getUnitVariantGroupIdentity(unit).chassis;
+        const chassis = getUnitVariantGroupIdentity(unit).chassis;
+        return chassis === unit.chassis ? this.unitNames.chassis(unit) : chassis;
     }
 
     private getVariantGroupInputLabel(unit: UnitSummary): string {

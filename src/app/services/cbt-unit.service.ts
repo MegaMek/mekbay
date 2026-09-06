@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { UnitNameService } from './unit-name.service';
 import { Injectable, inject } from '@angular/core';
 
 import { MekEntity } from '../models/entity/entities/mek/mek-entity';
@@ -53,6 +54,7 @@ export interface CBTUnitRestoreResult {
 /** Loads one native entity once, then creates or restores its CBT runtime aggregate. */
 @Injectable({ providedIn: 'root' })
 export class CBTUnitService {
+    private readonly unitNames = inject(UnitNameService);
     private readonly entities = inject(NativeEntityService);
 
     public async create(request: CreateCBTUnitRequest): Promise<CBTUnit> {
@@ -92,7 +94,7 @@ export class CBTUnitService {
         const loaded = await this.entities.load(saved.entity);
         const uuid = loaded.source.uuid;
         const nativeSource = nativeSourceHandleForLoadedEntity(loaded);
-        const unitName = loaded.entity.displayName();
+        const unitName = this.unitNames.name(loaded.entity);
         const warnings: CBTUnitRestoreWarning[] = [];
         const warn = (code: CBTUnitRestoreWarningCode, message: string): void => {
             warnings.push(Object.freeze({ unitName, code, message }));

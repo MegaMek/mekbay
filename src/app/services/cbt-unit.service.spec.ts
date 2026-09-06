@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { OptionsService } from './options.service';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
@@ -18,6 +19,9 @@ import {
 } from './unit-catalog/unit-catalog.types';
 
 describe('CBTUnitService restore warnings', () => {
+    beforeEach(() => TestBed.configureTestingModule({
+        providers: [{ provide: OptionsService, useValue: { options: () => ({ displayUnitNameFormat: 'innerSphereClan' }) } }],
+    }));
     it('restores by UUID, warns without blocking, and adopts the current canary', async () => {
         const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
         const entity = new TestTankEntity();

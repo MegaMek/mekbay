@@ -121,6 +121,7 @@ export function bindNonMekRecordSheet(
         element.classList.add('interactive', 'selectable');
         element.setAttribute('tabindex', '0');
         const emit = (event: Event): void => {
+            if (element.style.display === 'none') return;
             event.preventDefault();
             event.stopPropagation();
             onInteraction(interaction(), event);
@@ -271,14 +272,15 @@ function renderCrew(
     const displays = crewStateDefinitions(snapshot.crewStateDisplayKeys);
     for (const position of snapshot.crew) {
         const occurrence = position.occurrence;
+        const vacant = position.effectiveState === 'vacant';
         const nameButton = svg.querySelector<SVGElement>(`.crewNameButton[crewId="${occurrence}"]`);
         const mappedName = nameButton?.getAttribute('textElement');
         const name = mappedName ? svg.getElementById(mappedName) : svg.getElementById(`crewName${occurrence}`);
-        if (name) name.textContent = position.name;
+        if (name) name.textContent = vacant ? 'VACANT' : position.name;
         const gunnery = svg.getElementById(`gunnerySkill${occurrence}`);
-        if (gunnery) gunnery.textContent = String(position.gunnery);
+        if (gunnery) gunnery.textContent = vacant ? '—' : String(position.gunnery);
         const piloting = svg.getElementById(`pilotingSkill${occurrence}`);
-        if (piloting) piloting.textContent = String(position.piloting);
+        if (piloting) piloting.textContent = vacant ? '—' : String(position.piloting);
         svg.querySelectorAll<SVGElement>(
             `.crewNameButton[crewId="${occurrence}"], .crewSkillButton[crewId="${occurrence}"]`,
         ).forEach(button => bind(button, () => Object.freeze({
@@ -291,8 +293,9 @@ function renderCrew(
                 `.crewHit[crewId="${position.occurrence}"][hit="${wounds}"]`,
             );
             if (!marker) continue;
-            marker.style.display = '';
+            marker.style.display = vacant ? 'none' : '';
             marker.classList.toggle('damaged', wounds <= position.state.wounds);
+            if (vacant) continue;
             bind(marker, () => {
                 const latest = current();
                 const currentPosition = latest.crew.find(row => row.positionId === position.positionId);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -58,6 +59,7 @@ const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
     styleUrl: './equipment-dialog.component.scss',
 })
 export class EquipmentDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     readonly data = inject<EquipmentDialogData>(DIALOG_DATA);
     private readonly dialogRef = inject<DialogRef<void, EquipmentDialogComponent>>(DialogRef);
     private readonly keyboardShortcuts = inject(KeyboardShortcutService);
@@ -113,9 +115,7 @@ export class EquipmentDialogComponent {
     }
 
     unitTitle(unit: CBTForceMember | null = this.unit()): string {
-        return unit?.id === this.runtime().member.id
-            ? this.runtime().snapshot().displayName
-            : this.formatUnitLabel(unit);
+        return this.formatUnitLabel(unit);
     }
 
     unitModel(unit: CBTForceMember | null): string {
@@ -123,7 +123,7 @@ export class EquipmentDialogComponent {
     }
 
     unitChassis(unit: CBTForceMember | null): string {
-        return unit?.entity.chassis() ?? '';
+        return this.unitNames.chassis(unit?.entity);
     }
 
     readOnly(unit: CBTForceMember = this.unit()): boolean {
@@ -394,7 +394,7 @@ export class EquipmentDialogComponent {
 
     private formatUnitLabel(unit: CBTForceMember | null): string {
         if (!unit) return '';
-        return unit.entity.displayName();
+        return this.unitNames.name(unit.entity);
     }
 
     private closeUnitOverlays(unitId: string): void {

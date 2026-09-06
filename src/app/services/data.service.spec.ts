@@ -49,6 +49,7 @@ function createUnit(name: string): UnitSummary {
 function createSerializedForceForTest(overrides: Partial<SerializedForce> = {}): SerializedForce {
     return {
         version: 2,
+        personnel: { people: [], assignments: [] },
         instanceId: 'force-test',
         timestamp: '2026-04-05T00:00:00Z',
         type: GameSystem.AS,
@@ -216,6 +217,8 @@ describe('DataService', () => {
     };
     const dbServiceMock = {
         getForce: jasmine.createSpy('getForce'),
+        getForcePreview: jasmine.createSpy('getForcePreview'),
+        getExistingForceIds: jasmine.createSpy('getExistingForceIds'),
         listForces: jasmine.createSpy('listForces'),
         countForces: jasmine.createSpy('countForces'),
         saveForce: jasmine.createSpy('saveForce'),
@@ -378,6 +381,10 @@ describe('DataService', () => {
         TestBed.resetTestingModule();
         dbServiceMock.getForce.calls.reset();
         dbServiceMock.getForce.and.resolveTo(null);
+        dbServiceMock.getForcePreview.calls.reset();
+        dbServiceMock.getForcePreview.and.resolveTo(null);
+        dbServiceMock.getExistingForceIds.calls.reset();
+        dbServiceMock.getExistingForceIds.and.resolveTo(new Set<string>());
         dbServiceMock.listForces.calls.reset();
         dbServiceMock.listForces.and.resolveTo([]);
         dbServiceMock.countForces.calls.reset();
@@ -710,66 +717,146 @@ describe('DataService', () => {
         expect(unitSearchIndexServiceMock.commitPreparedCatalogIndexes).toHaveBeenCalledTimes(1);
     });
 
-    it('collects bounded compact cloud-list pages before returning entries', async () => {
+    it('can complete a list session in bounded projected cloud pages', async () => {
         wsServiceMock.sendAndWaitForResponse.and.callFake(async (payload: Record<string, unknown>) => {
             if (payload['afterInstanceId'] === undefined) {
                 return {
-                    data: [[
-                        2, 'force-page-1', Date.parse('2026-04-01T00:00:00Z'),
-                        1, 'Page One', [],
-                    ]],
+                    data: [{ version: 2, instanceId: 'force-page-1', timestamp: Date.parse('2026-04-02T00:00:00Z'),
+                        type: GameSystem.AS, name: 'Page One', units: [], groups: [], personnel: [] }],
                     nextCursor: 'force-page-1',
+                    nextTimestamp: Date.parse('2026-04-02T00:00:00Z'),
                 };
             }
             return {
-                data: [[
-                    2, 'force-page-2', Date.parse('2026-04-02T00:00:00Z'),
-                    0, 'Page Two', [],
-                ]],
+                data: [{ version: 2, instanceId: 'force-page-2', timestamp: Date.parse('2026-04-01T00:00:00Z'),
+                    type: GameSystem.CBT, name: 'Page Two', units: [], groups: [], personnel: [] }],
             };
         });
         spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
 
-        const entries = await forcePersistence.listForces();
+        const session = await forcePersistence.openForceList();
+        await session.loadAll();
+        const entries = session.getEntries();
+        expect(session.complete).toBeTrue();
+        session.dispose();
 
-        expect(entries.map(entry => entry.instanceId)).toEqual(['force-page-2', 'force-page-1']);
+        expect(entries.map(entry => entry.instanceId)).toEqual(['force-page-1', 'force-page-2']);
         expect(wsServiceMock.sendAndWaitForResponse.calls.allArgs()).toEqual([
             [{
                 action: 'listForces',
                 forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                 uuid: 'user-1',
+                sortBy: 'timestamp',
+                pageSize: 100,
             }],
             [{
                 action: 'listForces',
                 forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
                 uuid: 'user-1',
                 afterInstanceId: 'force-page-1',
+                afterTimestamp: Date.parse('2026-04-02T00:00:00Z'),
+                sortBy: 'timestamp',
+                pageSize: 100,
             }],
         ]);
     });
 
-    it('merges local force entries with lightweight cloud bulk entries', async () => {
+    it('opens a dialog list without draining the cloud and preserves unseen cached tags until completion', async () => {
+        const timestamp = Date.parse('2026-04-01T00:00:00Z');
+        dbServiceMock.listForces.and.resolveTo([{ instanceId: 'local', timestamp: new Date(timestamp - 1).toISOString(),
+            type: GameSystem.AS, name: 'Local', tags: ['Local tag'], groups: [] }]);
+        wsServiceMock.sendAndWaitForResponse.and.returnValues(Promise.resolve({
+            data: [{ version: 2, instanceId: 'cloud', timestamp, type: GameSystem.AS, name: 'Cloud',
+                tags: ['Cloud tag'], groups: [] }], nextCursor: 'cloud', nextTimestamp: timestamp,
+        }), Promise.resolve({ data: [] }));
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
+        forcePersistence.updateCachedForceTags('unseen', ['Unseen tag']);
+
+        const session = await forcePersistence.openForceList();
+        expect(wsServiceMock.sendAndWaitForResponse).not.toHaveBeenCalled();
+        await session.loadNext();
+        expect(session.getEntries().map(entry => entry.instanceId)).toEqual(['cloud']);
+        expect(forcePersistence.getCachedForceTagLabels()).toContain('Unseen tag');
+        await session.loadAll();
+        expect(session.getEntries().map(entry => entry.instanceId)).toEqual(['cloud', 'local']);
+        expect(forcePersistence.getCachedForceTagLabels()).toEqual(['Cloud tag', 'Local tag']);
+        expect(wsServiceMock.sendAndWaitForResponse.calls.allArgs()).toEqual([
+            [{ action: 'listForces', forcePersistenceRevision: FORCE_PERSISTENCE_REVISION, uuid: 'user-1', sortBy: 'timestamp', pageSize: 100 }],
+            [{ action: 'listForces', forcePersistenceRevision: FORCE_PERSISTENCE_REVISION, uuid: 'user-1', sortBy: 'timestamp', pageSize: 100,
+                afterInstanceId: 'cloud', afterTimestamp: timestamp }],
+        ]);
+        session.dispose();
+    });
+
+    it('keeps failed cloud-page retrieval retryable and exposes all local summaries when offline', async () => {
+        const online = spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ action: 'error', message: 'Disconnected' });
+        const session = await forcePersistence.openForceList();
+        await expectAsync(session.loadNext()).toBeRejectedWithError('Disconnected');
+        expect(session.complete).toBeFalse();
+        session.dispose();
+
+        online.and.resolveTo(null);
+        dbServiceMock.listForces.and.resolveTo([{ instanceId: 'local', timestamp: '2026-04-01T00:00:00Z',
+            type: GameSystem.AS, name: 'Local', groups: [] }]);
+        wsServiceMock.sendAndWaitForResponse.calls.reset();
+        const offline = await forcePersistence.openForceList();
+        await offline.loadNext();
+        expect(offline.complete).toBeTrue();
+        expect(offline.getEntries().map(entry => entry.instanceId)).toEqual(['local']);
+        expect(wsServiceMock.sendAndWaitForResponse).not.toHaveBeenCalled();
+    });
+
+    it('discards a cloud response if the active account changed while it was pending', async () => {
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
+        wsServiceMock.sendAndWaitForResponse.and.callFake(async () => {
+            userStateServiceMock.uuid.and.returnValue('other-user');
+            return { data: [{ version: 2, instanceId: 'old-account', timestamp: 1, type: GameSystem.AS,
+                name: 'Old account', tags: ['Old account tag'], groups: [] }] };
+        });
+        const session = await forcePersistence.openForceList();
+        await expectAsync(session.loadNext()).toBeRejectedWithError('The active account changed. Reopen the force list.');
+        expect(session.getEntries()).toEqual([]);
+        expect(forcePersistence.getCachedForceTagLabels()).not.toContain('Old account tag');
+    });
+
+    for (const response of [{ data: null }, { data: [] as unknown[], nextCursor: 'id' },
+        { data: [] as unknown[], nextTimestamp: 1 }, { data: [] as unknown[], nextCursor: ' ', nextTimestamp: 1 },
+        { data: [] as unknown[], nextCursor: 'id', nextTimestamp: NaN }]) {
+        it(`rejects malformed cloud list cursor/data ${JSON.stringify(response)} at ingress`, async () => {
+            spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
+            wsServiceMock.sendAndWaitForResponse.and.resolveTo(response);
+            const session = await forcePersistence.openForceList();
+            await expectAsync(session.loadNext()).toBeRejectedWithError('Invalid cloud force-list page.');
+            expect(session.complete).toBeFalse();
+        });
+    }
+
+    it('caches V1 bytes without silently migrating or dropping unreadable state', async () => {
+        const raw: SerializedForce = { version: 1, instanceId: 'v1-cache', timestamp: '2026-04-01T00:00:00Z',
+            type: GameSystem.CBT, name: 'Legacy cache', groups: [{ id: 'group', units: [{ id: 'unit', unit: 'Atlas',
+                state: { inventory: 'unreadable' } as never }] }] };
+        await forcePersistence.saveSerializedForceToLocalStorage(raw);
+        expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(raw);
+        expect(unitRuntimeServiceMock.resolvePersistedUnitIdentity).not.toHaveBeenCalled();
+    });
+
+    it('merges local previews with cloud bulk entries even when local combat state is unreadable', async () => {
         const atlas = createUnit('Atlas');
         unitRuntimeServiceMock.getUnitByName.and.callFake((name: string) => name === 'Atlas' ? atlas : undefined);
 
-        dbServiceMock.getForce.and.callFake(async (instanceId: string) => {
+        dbServiceMock.getForce.and.rejectWith(new Error('Unreadable local combat state'));
+        dbServiceMock.getForcePreview.and.callFake(async (instanceId: string) => {
             if (instanceId !== 'force-1') return null;
             return {
-                version: 2,
                 instanceId: 'force-1',
                 timestamp: '2026-04-01T00:00:00Z',
                 type: GameSystem.AS,
                 name: 'Local Force',
                 groups: [{
-                    id: 'group-1',
                     units: [{
-                        id: 'unit-1',
                         unit: 'Atlas',
-                        state: {
-                            modified: false,
-                            destroyed: false,
-                            shutdown: false,
-                        },
+                        state: { destroyed: false },
                     }],
                 }],
             };
@@ -805,6 +892,8 @@ describe('DataService', () => {
 
         const entries = await forcePersistence.getLoadForceEntriesByIds(['force-1', 'force-2']);
 
+        expect(dbServiceMock.getForce).not.toHaveBeenCalled();
+        expect(dbServiceMock.getForcePreview.calls.allArgs()).toEqual([['force-1'], ['force-2']]);
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'getForcesBulk',
             forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
@@ -833,6 +922,7 @@ describe('DataService', () => {
             instanceId === 'force-local'
                 ? {
                     version: 2,
+                    personnel: { people: [], assignments: [] },
                     instanceId,
                     timestamp: '2026-04-01T00:00:00Z',
                     type: GameSystem.AS,
@@ -841,6 +931,7 @@ describe('DataService', () => {
                 }
                 : null
         ));
+        dbServiceMock.getExistingForceIds.and.resolveTo(new Set(['force-local']));
         wsServiceMock.sendAndWaitForResponse.and.callFake(async (payload: { instanceId: string }) => {
             if (payload.instanceId === 'force-missing') {
                 return {
@@ -858,6 +949,8 @@ describe('DataService', () => {
         const cached = await forcePersistence.cacheForcesLocally(['force-local', 'force-missing', 'force-unknown', 'force-missing']);
 
         expect(cached).toBe(1);
+        expect(dbServiceMock.getExistingForceIds).toHaveBeenCalledOnceWith(['force-local', 'force-missing', 'force-unknown']);
+        expect(dbServiceMock.getForce).not.toHaveBeenCalled();
         expect(wsServiceMock.sendAndWaitForResponse).toHaveBeenCalledWith({
             action: 'getForce',
             forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
@@ -878,9 +971,39 @@ describe('DataService', () => {
         );
     });
 
+    it('does not decode an already cached force just to establish its presence', async () => {
+        dbServiceMock.getExistingForceIds.and.resolveTo(new Set(['force-corrupt']));
+        dbServiceMock.getForce.and.rejectWith(new Error('Unreadable cached force'));
+
+        expect(await forcePersistence.cacheForcesLocally(['force-corrupt'])).toBe(0);
+
+        expect(dbServiceMock.getForce).not.toHaveBeenCalled();
+        expect(wsServiceMock.sendAndWaitForResponse).not.toHaveBeenCalled();
+        expect(dbServiceMock.saveForce).not.toHaveBeenCalled();
+    });
+
+    it('opens the readable cloud copy when the local storage record cannot be decoded', async () => {
+        const cloud = createSerializedForceForTest({ instanceId: 'force-corrupt-local', name: 'Readable Cloud' });
+        dbServiceMock.getForce.and.rejectWith(new Error('Unreadable cached force'));
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: encodeForceForStorage(cloud), owned: true });
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
+
+        const loaded = await forcePersistence.getForce(cloud.instanceId);
+
+        expect(loaded?.name).toBe('Readable Cloud');
+        expect(loggerServiceMock.warn).toHaveBeenCalledWith(
+            `Could not read local force ${cloud.instanceId}: Error: Unreadable cached force`,
+        );
+        expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(jasmine.objectContaining({
+            instanceId: cloud.instanceId,
+            name: cloud.name,
+        }));
+    });
+
     it('saves an owned cloud-only force locally when opened', async () => {
         const cloudRawForce: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-cloud-owned',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.CBT,
@@ -909,6 +1032,7 @@ describe('DataService', () => {
         expect(dbServiceMock.saveForce).toHaveBeenCalledOnceWith(
             jasmine.objectContaining({
                 version: 2,
+                personnel: { people: [], assignments: [] },
                 instanceId: cloudRawForce.instanceId,
                 type: GameSystem.CBT,
                 cbt: jasmine.objectContaining({ forceId: cloudRawForce.instanceId }),
@@ -1032,7 +1156,7 @@ describe('DataService', () => {
     });
 
     it('loads a persisted V1 Alpha Strike force with its units intact', async () => {
-        const atlas = createUnit('Atlas');
+        const atlas = createEmptyUnit({ name: 'Atlas', as: { PV: 30 } });
         unitRuntimeServiceMock.resolvePersistedUnitIdentity.and.returnValue({
             kind: 'resolved',
             uuid: atlas.uuid,
@@ -1112,6 +1236,7 @@ describe('DataService', () => {
         };
         const current: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: legacy.instanceId,
             timestamp,
             type: GameSystem.CBT,
@@ -1130,6 +1255,7 @@ describe('DataService', () => {
         wsServiceMock.sendAndWaitForResponse.and.resolveTo({
             data: encodeForceForStorage({
                 version: 2,
+                personnel: { people: [], assignments: [] },
                 instanceId: 'remote-force',
                 timestamp: '2026-04-05T00:00:00Z',
                 type: GameSystem.AS,
@@ -1163,6 +1289,7 @@ describe('DataService', () => {
     it('flushes reconnect cloud saves immediately and waits for acknowledgement', async () => {
         const serializedForce: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-1',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.AS,
@@ -1379,6 +1506,7 @@ describe('DataService', () => {
     it('sends the prepared V2 payload with the observed cloud revision instead of reserializing', async () => {
         const serializedForce: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-v2',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.CBT,
@@ -1462,6 +1590,7 @@ describe('DataService', () => {
         const secondRevision = 6;
         const persisted = (timestamp: string, forceRevision: number) => ({
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-chain',
             timestamp,
             type: GameSystem.CBT,
@@ -1516,6 +1645,7 @@ describe('DataService', () => {
     it('stages detached transport bytes and consumes the token synchronously on acceptance', async () => {
         const incoming: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-staged',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.AS,
@@ -1554,6 +1684,7 @@ describe('DataService', () => {
     it('invalidates discarded and identity-mutated tokens before persistence', async () => {
         const incoming: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-discard',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.AS,
@@ -1708,6 +1839,7 @@ describe('DataService', () => {
     it('fences delayed pre-remote serialization and keeps remote bytes until a post-remote edit', async () => {
         const oldBytes: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-generation',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.AS,
@@ -1773,6 +1905,7 @@ describe('DataService', () => {
     it('orders an already-enqueued local write before remote authority so remote is the final IDB value', async () => {
         const localBytes: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-local-order',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.AS,
@@ -1826,6 +1959,7 @@ describe('DataService', () => {
     it('tracks serialization and IndexedDB work synchronously for unload protection', async () => {
         const serialized: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-unload',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.AS,
@@ -1900,6 +2034,7 @@ describe('DataService', () => {
     it('detaches an in-flight old cloud generation and never sends its already-queued successor', async () => {
         const persisted = (timestamp: string, name: string): SerializedForce => ({
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-cloud-generation',
             timestamp,
             type: GameSystem.AS,
@@ -1962,6 +2097,7 @@ describe('DataService', () => {
     it('rechecks generation after awaited cloud preparation and does not transmit stale bytes', async () => {
         const local: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-cloud-await',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.AS,
@@ -2009,6 +2145,7 @@ describe('DataService', () => {
         const postRevision = 10;
         const remote: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-rebase',
             timestamp: '2026-04-05T00:00:01Z',
             type: GameSystem.CBT,
@@ -2049,6 +2186,7 @@ describe('DataService', () => {
     it('persists a valid V2 envelope but rejects a malformed one', async () => {
         const base = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-wire',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.CBT,
@@ -2074,6 +2212,7 @@ describe('DataService', () => {
     it('detaches raw cache bytes synchronously and blocks activation until that write settles', async () => {
         const raw: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-raw-race',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.CBT,
@@ -2184,6 +2323,7 @@ describe('DataService', () => {
     it('uses current persisted topology when deleting unit canvases', async () => {
         dbServiceMock.getForce.and.resolveTo({
             version: 2,
+            personnel: { people: [], assignments: [] },
             timestamp: '2026-08-22T00:00:00.000Z',
             instanceId: 'force-delete-current',
             type: GameSystem.AS,
@@ -2220,6 +2360,7 @@ describe('DataService', () => {
     it('updates protected tags through the registered live authority instead of a stale twin', async () => {
         const persisted: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-live-tags',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.CBT,
@@ -2257,6 +2398,7 @@ describe('DataService', () => {
     it('updates force tags through the lightweight local and cloud path', async () => {
         const local = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-1',
             timestamp: '2026-04-01T00:00:00Z',
             type: GameSystem.AS,
@@ -2317,6 +2459,7 @@ describe('DataService', () => {
     it('persists inactive CBT tags through the ownerless byte transaction', async () => {
         const existing: SerializedForce = {
             version: 2,
+            personnel: { people: [], assignments: [] },
             instanceId: 'force-inactive-cbt-tags',
             timestamp: '2026-04-05T00:00:00Z',
             type: GameSystem.CBT,

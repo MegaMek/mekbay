@@ -4,17 +4,17 @@
 import { compareText } from '../../utils/string.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../crew-member.model';
 import type { CrewPositionId } from '../entity/entity-identifiers';
+import type { CrewMemberRuntimeState } from '../crew-member.model';
+import { ImmutableIndex } from '../entity/immutable-collections';
 
 export const CREW_ASSIGNMENT_SCHEMA_VERSION = 1 as const;
 export const MAX_CREW_NAME_LENGTH = 160;
-export const MAX_CREW_ROLE_LENGTH = 80;
 export const MIN_CREW_SKILL = 0;
 export const MAX_CREW_SKILL = 8;
 
 export interface CrewAssignmentPosition {
     readonly positionId: CrewPositionId;
     readonly name: string;
-    readonly role: string;
     readonly gunnery: number;
     readonly piloting: number;
 }
@@ -32,11 +32,23 @@ export interface CrewPositionDefinition {
 
 export type CrewTopology = ReadonlyMap<CrewPositionId, CrewPositionDefinition>;
 
+/** Health belongs to assigned people; vacant stations cannot retain combat state. */
+export function assignedCrewRuntimeState(
+    crew: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>,
+    assignment: CrewAssignment,
+): ReadonlyMap<CrewPositionId, CrewMemberRuntimeState> {
+    const assigned = (id: CrewPositionId): boolean =>
+        assignment.positions.some(position => position.positionId === id);
+    for (const id of crew.keys()) {
+        if (!assigned(id)) return new ImmutableIndex([...crew].filter(([positionId]) => assigned(positionId)));
+    }
+    return crew;
+}
+
 export function createDefaultCrewAssignment(crewPositions: CrewTopology): CrewAssignment {
     return freezeAssignment(canonicalCrewPositions(crewPositions).map(position => ({
         positionId: position.id,
         name: '',
-        role: '',
         gunnery: DEFAULT_GUNNERY_SKILL,
         piloting: DEFAULT_PILOTING_SKILL,
     })));
@@ -60,7 +72,7 @@ export function canonicalizeCrewAssignment(
         const path = `crewAssignment.positions[${index}]`;
         const item = requireExactRecord(
             record['positions'][index],
-            ['positionId', 'name', 'role', 'gunnery', 'piloting'],
+            ['positionId', 'name', 'gunnery', 'piloting'],
             path,
         );
         const positionId = boundedPositionId(item['positionId'], `${path}.positionId`);
@@ -70,16 +82,14 @@ export function canonicalizeCrewAssignment(
         parsed.set(positionId, Object.freeze({
             positionId,
             name: boundedText(item['name'], MAX_CREW_NAME_LENGTH, `${path}.name`),
-            role: boundedText(item['role'], MAX_CREW_ROLE_LENGTH, `${path}.role`),
             gunnery: boundedSkill(item['gunnery'], `${path}.gunnery`),
             piloting: boundedSkill(item['piloting'], `${path}.piloting`),
         }));
     }
-    if (parsed.size !== expected.length) {
-        const missing = expected.filter(position => !parsed.has(position.id)).map(position => position.id);
-        throw new Error(`crewAssignment.positions must exhaust the entity crew topology; missing: ${missing.join(', ')}`);
-    }
-    return freezeAssignment(expected.map(position => parsed.get(position.id)!));
+    return freezeAssignment(expected.flatMap(position => {
+        const assigned = parsed.get(position.id);
+        return assigned === undefined ? [] : [assigned];
+    }));
 }
 
 /** Persistence must already use canonical entity-position order. */

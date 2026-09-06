@@ -5,7 +5,8 @@
 import { Injector, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
-import type { ASForce } from './as-force.model';
+import { ASForce } from './as-force.model';
+import type { DataService } from '../services/data.service';
 import { ASForceUnit } from './as-force-unit.model';
 import type { UnitSummary } from './unit-summary.model';
 
@@ -20,17 +21,8 @@ describe('ASForceUnit ability effects', () => {
     });
 
     function createForceUnit(unit: UnitSummary = createTestUnit()): ASForceUnit {
-        const force = {
-            owned: () => true,
-            emitChanged: jasmine.createSpy('emitChanged'),
-            groups: () => [],
-        } as unknown as ASForce;
-
-        return new ASForceUnit(
-            unit,
-            force,
-            injector,
-        );
+        const force = new ASForce('Test', {} as DataService, injector);
+        return force.addUnit(unit);
     }
 
     function createTestUnit(overrides: Parameters<typeof createEmptyUnit>[0] = {}): UnitSummary {
@@ -61,6 +53,17 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.getBaseBv()).toBe(30);
         expect(forceUnit.getPreSkillBv()).toBe(30);
         expect(forceUnit.getBv()).toBeGreaterThan(30);
+    });
+
+    it('uses one personal rating for AS Skill across zero, default and maximum values', () => {
+        const unit = createForceUnit();
+        for (const skill of [0, 4, 8]) {
+            unit.setPilotSkill(skill);
+            expect(unit.getPilotSkill()).toBe(skill);
+            expect(unit.pilot()!.gunnery ?? 4).toBe(skill);
+            expect('skill' in unit.pilot()!).toBeFalse();
+            expect('role' in unit.pilot()!).toBeFalse();
+        }
     });
 
     it('constructs from UnitSummary without opening a native CBT source', () => {
@@ -99,6 +102,23 @@ describe('ASForceUnit ability effects', () => {
         expect(forceUnit.isShutdown()).toBeTrue();
         expect(forceUnit.effectiveMovement()).toEqual({ '': 0, a: 10 });
         expect(forceUnit.movementDisplayValue('', 0)).toEqual({ baseInches: 0 });
+    });
+
+    it('keeps parsed movement modes at zero for a vacant pilot station', () => {
+        const forceUnit = createForceUnit(createTestUnit({
+            as: { MV: '8\"/4\"j', MVm: { '': 8, j: 4 } },
+        }));
+        expect(forceUnit.force.unassignPerson(forceUnit.id, 'pilot')).toBeTrue();
+        expect(forceUnit.effectiveMovement()).toEqual({ '': 0, j: 0 });
+        expect(forceUnit.previewMovement()).toEqual({ '': 0, j: 0 });
+        expect(forceUnit.previewMovementNoHeat()).toEqual({ '': 0, j: 0 });
+        expect(forceUnit.isImmobilized()).toBeTrue();
+    });
+
+    it('preserves normalized ground movement for a vacant jump-only Mek', () => {
+        const forceUnit = createForceUnit(createTestUnit({ as: { MVm: { j: 6 } } }));
+        expect(forceUnit.force.unassignPerson(forceUnit.id, 'pilot')).toBeTrue();
+        expect(forceUnit.effectiveMovement()).toEqual({ '': 0, j: 0 });
     });
 
     it('preserves aerospace thrust while heat shutdown', () => {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTUnit } from './cbt-unit';
+import type { ForcePersonnelSnapshot } from '../force-personnel';
 import { emptyRuntimeHistory } from './persistence-v2';
 import {
     appendRuntimeCommandEntry,
@@ -44,6 +45,7 @@ export interface RecordedRuntimeCommandMutation {
 export function captureRuntimeCommandMutation(
     authority: RuntimeCommandJournalUnitAccess,
     instanceIds: readonly string[],
+    personnel?: ForcePersonnelSnapshot,
 ): CapturedRuntimeCommandMutation {
     const ids = [...new Set(instanceIds)].sort(compareUnitInstanceIds);
     const openingWitnesses = new Map<string, Readonly<{
@@ -61,7 +63,7 @@ export function captureRuntimeCommandMutation(
         });
     }));
     return Object.freeze({
-        checkpoint: Object.freeze({ units }),
+        checkpoint: Object.freeze({ units, ...(personnel === undefined ? {} : { personnel }) }),
         openingWitnesses,
     });
 }
@@ -72,6 +74,7 @@ export function recordRuntimeCommandMutation(
     captured: CapturedRuntimeCommandMutation,
     history: RuntimeHistoryInput,
     boundary?: 'phase',
+    personnel?: ForcePersonnelSnapshot,
 ): RecordedRuntimeCommandMutation {
     const changedUnitIds = captured.checkpoint.units.flatMap(row => {
         const current = authority.cbtUnit(row.instanceId);
@@ -88,8 +91,10 @@ export function recordRuntimeCommandMutation(
     const changed = new Set(changedUnitIds);
     const before = Object.freeze({
         units: Object.freeze(captured.checkpoint.units.filter(row => changed.has(row.instanceId))),
+        ...(captured.checkpoint.personnel === undefined ? {} : { personnel: captured.checkpoint.personnel }),
     });
     const after = Object.freeze({
+        ...(personnel === undefined ? {} : { personnel }),
         units: Object.freeze(changedUnitIds.map(instanceId => {
             const unit = authority.cbtUnit(instanceId);
             if (!unit) throw new Error(`Cannot record unknown runtime ${instanceId}`);

@@ -229,6 +229,7 @@
 
     .unit-name-line {
         display: flex;
+        flex-wrap: wrap;
         min-width: 0;
         align-items: center;
         gap: 4px;
@@ -236,9 +237,10 @@
 
         .unit-alias,
         .chassis {
+            flex: 0 1 auto;
+            max-width: 100%;
             min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            overflow-wrap: anywhere;
         }
     }
 
@@ -541,4 +543,9 @@
         background-color: var(--move-sprint);
         color: var(--move-on-light);
     }
+}
+.pilot-info.vacant {
+    border: 1px dashed var(--text-color-secondary);
+    color: var(--text-color-secondary);
+    .icon { opacity: 0.5; }
 }

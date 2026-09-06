@@ -217,6 +217,16 @@ function createDialog(data: EquipmentDialogData) {
 }
 
 describe('EquipmentDialogComponent', () => {
+    it('uses the chosen name order even when the runtime snapshot contains the canonical title', () => {
+        const member = createMember();
+        member.entity.chassis.set('Mad Cat');
+        member.entity.clanName.set('Timber Wolf');
+        const { component } = createDialog({ member, initialTab: 'ammo' });
+        spyOn(TestBed.inject(OptionsService), 'options').and.returnValue({ displayUnitNameFormat: 'clanInnerSphere' } as never);
+        expect(component.unitTitle()).toBe('Timber Wolf (Mad Cat) CRB-20');
+        expect(component.unitChassis(member)).toBe('Timber Wolf (Mad Cat)');
+    });
+
     it('opens the original ammo panel directly from one retained Mek authority', () => {
         const { fixture, component } = createDialog({ member: createMember(), initialTab: 'ammo' });
 

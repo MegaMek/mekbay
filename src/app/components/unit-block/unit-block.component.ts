@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, computed, effect, input, output, inject, signal } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
@@ -32,7 +33,6 @@ import {
     forceMemberAdjustedValue,
     forceMemberBaseValue,
     forceMemberDestroyed,
-    forceMemberPilotStats,
     isCBTForceMember,
     isCBTMekForceMember,
     type ForceMember,
@@ -40,6 +40,7 @@ import {
 import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
 import { hasMekRuntime, hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
 import { UnitNotificationBadgesComponent } from '../unit-notification-badges/unit-notification-badges.component';
+import { effectiveEntityPilotingSkill } from '../../models/entity/utils/battle-value/skill-facts';
 import { projectRuntimeUnitNotifications } from '../unit-notification-badges/unit-notification-runtime.util';
 import { projectCBTUnitTagEcmCapabilitySummary } from '../../models/runtime/cbt-unit-capability-projection';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
@@ -80,6 +81,7 @@ export interface UnitBlockPilotEditEvent {
     styleUrl: './unit-block.component.scss',
 })
 export class UnitBlockComponent {
+    readonly unitNames = inject(UnitNameService);
     optionsService = inject(OptionsService);
     forceUnit = input<ForceMember>();
     compactMode = input<boolean>(false);
@@ -97,10 +99,14 @@ export class UnitBlockComponent {
         this.runtimeRevision();
         const member = this.forceUnit();
         if (!member) return undefined;
-        if (!isCBTForceMember(member)) return member.getSummary();
+        if (!isCBTForceMember(member)) {
+            const summary = member.getSummary();
+            return { name: this.unitNames.name(summary), chassis: this.unitNames.chassis(summary),
+                model: summary.model, role: summary.role, tons: summary.tons };
+        }
         return Object.freeze({
-            name: member.entity.displayName(),
-            chassis: member.entity.chassis(),
+            name: this.unitNames.name(member.entity),
+            chassis: this.unitNames.chassis(member.entity),
             model: member.entity.model(),
             role: member.entity.role(),
             tons: member.entity.tonnage(),
@@ -125,10 +131,21 @@ export class UnitBlockComponent {
 
     readOnly = computed(() => this.forceUnit()?.force.readOnly() ?? true);
 
-    pilotStats = computed(() => {
-        this.runtimeRevision();
+    readonly crewBadges = computed(() => {
         const member = this.forceUnit();
-        return member ? forceMemberPilotStats(member) : '';
+        if (!member) return [];
+        return member.force.getUnitCrewPolicy(member.id).positions.map(position => {
+            const person = member.force.getAssignedPerson(member.id, position.positionId);
+            const skills = person ? (isCBTForceMember(member)
+                ? `${person.gunnery ?? 4}/${effectiveEntityPilotingSkill(member.entity, person.piloting ?? 5)}`
+                : String(person.gunnery ?? 4)) : '—';
+            return {
+                positionId: position.positionId,
+                vacant: !person,
+                skills,
+                title: `${position.label}: ${person ? person.name || 'Unnamed' : 'Vacant'}`,
+            };
+        });
     });
 
     public constructor() {
@@ -143,11 +160,6 @@ export class UnitBlockComponent {
             onCleanup(() => subscription.unsubscribe());
         });
     }
-
-    alphaStrikePilotSkill = computed<number | undefined>(() => {
-        const forceUnit = this.forceUnit();
-        return forceUnit instanceof ASForceUnit ? forceUnit.getPilotSkill() : undefined;
-    });
 
     displayedBvPv = computed(() => {
         const unit = this.forceUnit();

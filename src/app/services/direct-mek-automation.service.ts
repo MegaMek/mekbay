@@ -2631,7 +2631,7 @@ export class DirectMekAutomationService {
                 const assignment = initial.crewAssignment.positions.find(candidate =>
                     candidate.positionId === position.id);
                 const name = positions.length > 1
-                    ? assignment?.name.trim() || assignment?.role.trim()
+                    ? assignment?.name.trim()
                     : undefined;
                 return [Object.freeze({
                     id: position.id,
@@ -2930,7 +2930,7 @@ export class DirectMekAutomationService {
     }
 
     private subject(snapshot: MekSnapshot): string {
-        return directAutomationSubject(snapshot);
+        return directAutomationSubject(snapshot, this.options.options().displayUnitNameFormat);
     }
 
     private toast(snapshot: MekSnapshot, message: string, type: Toast['type']): void {

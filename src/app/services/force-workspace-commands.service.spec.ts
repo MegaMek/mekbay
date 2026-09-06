@@ -200,7 +200,7 @@ function createHarness() {
     );
     const crewTransfers = jasmine.createSpyObj<ForceCrewTransferService>(
         'ForceCrewTransferService',
-        ['transferCrossSystem'],
+        ['transferCrossSystem', 'copyUnassignedPersonnel'],
     );
     crewTransfers.transferCrossSystem.and.resolveTo();
     const formations = jasmine.createSpyObj<ForceFormationService>(

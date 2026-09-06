@@ -694,7 +694,7 @@ export class DirectNonMekAutomationService {
                 targetNumber: target,
                 event: Object.freeze({
                     id: eventId,
-                    subject: directAutomationSubject(snapshot),
+                    subject: directAutomationSubject(snapshot, this.options.options().displayUnitNameFormat),
                     event: 'Consciousness Recovery',
                     description: `Target ${target}+.`,
                     effects: Object.freeze(['Success: crew member regains consciousness']),
@@ -1151,7 +1151,7 @@ export class DirectNonMekAutomationService {
                 const assignment = initial.crewAssignment.positions.find(candidate =>
                     candidate.positionId === position.id);
                 const name = positions.length > 1
-                    ? assignment?.name.trim() || assignment?.role.trim()
+                    ? assignment?.name.trim()
                     : undefined;
                 return Object.freeze({
                     id: position.id,
@@ -1453,7 +1453,7 @@ export class DirectNonMekAutomationService {
     }
 
     private subject(snapshot: NonMekSnapshot): string {
-        return directAutomationSubject(snapshot);
+        return directAutomationSubject(snapshot, this.options.options().displayUnitNameFormat);
     }
 
     private toast(snapshot: NonMekSnapshot, message: string, type: Toast['type']): void {

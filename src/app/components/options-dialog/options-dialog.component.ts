@@ -21,6 +21,7 @@ import type {
     CBTAutomationKey,
     CBTOptionalRules,
     CBTUnitViewMode,
+    DisplayUnitNameFormat,
     ForceViewerBVPVDisplay,
     ForceViewerBVPVDisplayDamage,
     RecordSheetDoubleTapZoomResetMode,
@@ -478,6 +479,11 @@ export class OptionsDialogComponent {
     onUnitDisplayNameChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'chassisModel' | 'alias' | 'both';
         this.optionsService.setOption('unitDisplayName', value);
+    }
+
+    onDisplayUnitNameFormatChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as DisplayUnitNameFormat;
+        this.optionsService.setOption('displayUnitNameFormat', value);
     }
 
     onForceViewerBVPVDisplayChange(event: Event) {

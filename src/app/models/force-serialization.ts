@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { canonicalizeForcePersonnel, type ForcePersonnelSnapshot } from './force-personnel';
 import { Sanitizer } from '../utils/sanitizer.util';
 import { GameSystem } from './common.model';
 import type { ASCustomPilotAbility } from './pilot-abilities.model';
@@ -61,6 +62,7 @@ export interface SerializedForce {
     instanceId: string;
     type: GameSystem;
     name: string;
+    personnel?: ForcePersonnelSnapshot;
     note?: string;
     tags?: string[];
     factionId?: number;
@@ -485,6 +487,7 @@ export const AS_SERIALIZED_FORCE_SCHEMA = Sanitizer.schema<ASSerializedForce>()
     .number('eraId')
     .boolean('eraLock')
     .number('pv')
+    .custom('personnel', (value: unknown) => value === undefined ? undefined : canonicalizeForcePersonnel(value))
     .boolean('owned', { default: true })
     .custom('groups', (value: unknown) => {
         if (!Array.isArray(value)) return [];

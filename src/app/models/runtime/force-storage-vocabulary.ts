@@ -15,37 +15,13 @@ export const FORCE_PAYLOAD_FIELD = {
 } as const;
 
 export const AS_FORCE_FIELD = {
-    groups: 'g',
     networks: 'n',
 } as const;
 
-export const AS_GROUP_FIELD = {
-    instanceId: 'i',
-    name: 'n',
-    color: 'c',
-    formationId: 'f',
-    formationLock: 'l',
-    formationTargetGroupId: 't',
-    units: 'u',
-} as const;
-
-export const AS_UNIT_FIELD = {
-    instanceId: 'i',
-    catalogUuid: 'u',
-    sourceHashCanary: 'h',
-    alias: 'a',
-    updatedTimestamp: 't',
-    skill: 's',
-    abilities: 'b',
-    formationAbilities: 'f',
-    commander: 'c',
-    c3Position: 'c3',
-    state: 'x',
-} as const;
-
 export const AS_STATE_FIELD = {
+    formationAbilities: 'f',
+    c3Position: 'c3',
     modified: 'm',
-    destroyed: 'd',
     conditions: 'c',
     heat: 'h',
     armor: 'a',
@@ -68,8 +44,6 @@ export const AS_NETWORK_FIELD = {
 
 export const CBT_FORCE_FIELD = {
     revision: 'r',
-    units: 'u',
-    groups: 'g',
     history: 'h',
     encounter: 'e',
 } as const;
@@ -111,19 +85,14 @@ export const CBT_UNIT_FAMILY = {
 export const CBT_UNIT_FIELD = {
     family: 'k',
     entityType: 't',
-    instanceId: 'i',
-    catalogUuid: 'e',
-    sourceHashCanary: 'h',
     deployment: 'd',
     stateRevision: 'r',
-    destroyed: 'x',
     locationState: 'l',
     locationConditions: 'n',
     slotState: 's',
     componentState: 'c',
     damageTrackState: 'q',
     ammoState: 'a',
-    crewState: 'w',
     heat: 'z',
     ruleChecks: 'rC',
     movementPsr: 'm',
@@ -235,63 +204,4 @@ export const CBT_NON_MEK_PENDING_COMBAT_FIELD = {
     armorDamage: 'a',
     componentStatus: 'c',
     damageTrackHits: 'q',
-} as const;
-
-export const CBT_ROSTER_GROUP_METADATA_FIELD = {
-    name: 'n',
-    color: 'c',
-    formationId: 'f',
-    targetGroupIndex: 't',
-    formationLock: 'l',
-} as const;
-
-export const FORCE_LIST_ENTRY_INDEX = {
-    revision: 0,
-    instanceId: 1,
-    timestamp: 2,
-    system: 3,
-    name: 4,
-    groups: 5,
-    metadata: 6,
-} as const;
-
-export const FORCE_LIST_FORMAT_VERSION = 2;
-
-export const FORCE_LIST_SYSTEM_CODE = {
-    classicBattleTech: 0,
-    alphaStrike: 1,
-} as const;
-
-export const FORCE_LIST_METADATA_FIELD = {
-    note: 'n',
-    tags: 't',
-    factionId: 'f',
-    eraId: 'e',
-    battleValue: 'b',
-    pointValue: 'p',
-    owned: 'o',
-} as const;
-
-export const FORCE_LIST_GROUP_INDEX = {
-    units: 0,
-    metadata: 1,
-} as const;
-
-export const FORCE_LIST_GROUP_METADATA_FIELD = {
-    name: 'n',
-    formationId: 'f',
-} as const;
-
-export const FORCE_LIST_UNIT_INDEX = {
-    catalogUuid: 0,
-    metadata: 1,
-} as const;
-
-export const FORCE_LIST_UNIT_METADATA_FIELD = {
-    alias: 'a',
-    alphaStrikeSkill: 's',
-    gunnery: 'g',
-    piloting: 'p',
-    commander: 'c',
-    destroyed: 'd',
 } as const;

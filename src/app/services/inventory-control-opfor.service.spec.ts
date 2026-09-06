@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { forceOpforTargetId } from '../models/runtime/cbt-force-target-roster';
+import { formatUnitName } from '../utils/unit-display-name.util';
 import { signal } from '@angular/core';
 import type { Force } from '../models/force.model';
 import { CBTForce } from '../models/cbt-force.model';
@@ -13,6 +15,22 @@ import {
 import { InventoryControlOpforService } from './inventory-control-opfor.service';
 
 describe('InventoryControlOpforService', () => {
+    it('formats linked opponent names without changing manual target names or stored names', () => {
+        const service = Object.create(InventoryControlOpforService.prototype) as InventoryControlOpforService;
+        const force = Object.create(CBTForce.prototype) as CBTForce;
+        const entity = { chassis: () => 'Mad Cat', clanName: () => 'Timber Wolf', model: () => 'Prime' };
+        Object.assign(force, { instanceId: () => 'enemy-force', getCBTMembers: () => [{ id: 'enemy-unit', entity }] });
+        Object.assign(service, {
+            loadedForces: () => [{ force }],
+            unitNames: { name: () => formatUnitName(entity, 'clanInnerSphere') },
+        });
+        const storedName = 'Mad Cat (Timber Wolf) Prime';
+        expect(service.targetName(forceOpforTargetId('enemy-force', 'enemy-unit'), storedName))
+            .toBe('Timber Wolf (Mad Cat) Prime');
+        expect(service.targetName('manual-target', 'My target (west)')).toBe('My target (west)');
+        expect(entity.chassis()).toBe('Mad Cat');
+    });
+
     function createOpforHarness() {
         const service = Object.create(InventoryControlOpforService.prototype) as InventoryControlOpforService;
         let targets: EncounterTarget[] = [];

@@ -26,6 +26,7 @@ import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { uuidv7 } from '../utils/uuid.util';
 import type { CrewMemberDetails } from './crew-member.model';
 import type { SerializedCBTForceV2 } from './runtime/persistence-v2';
+import { assignedForcePerson, type ForcePerson } from './force-personnel';
 
 export interface ForcePreviewUnit {
     unit: UnitSummary | undefined;
@@ -62,6 +63,8 @@ export interface ForcePreviewEntry {
     era: Era | null;
     bv?: number;
     pv?: number;
+    /** Unassigned people; displayed separately from the durable unit groups. */
+    reserveCount?: number;
     groups: ForcePreviewGroup[];
 }
 
@@ -118,6 +121,7 @@ function createForcePreviewEntryData(data: Partial<ForcePreviewEntry>): ForcePre
         era: data.era ?? null,
         bv: data.bv,
         pv: data.pv,
+        reserveCount: data.reserveCount ?? 0,
         groups: data.groups ?? [],
     };
 
@@ -159,6 +163,7 @@ export function createForcePreviewUnit(
 export function createForcePreviewUnitFromSerializedUnit(
     unit: ASSerializedUnit,
     getUnitByUuid: (uuid: UnitUuid) => UnitSummary | undefined,
+    person?: ForcePerson,
 ): ForcePreviewUnit {
     const resolvedUnit = getUnitByUuid(unit.uuid);
     const previewUnit: ForcePreviewUnit = {
@@ -167,10 +172,10 @@ export function createForcePreviewUnitFromSerializedUnit(
         lockKey: resolveSerializedUnitId(unit.id),
     };
 
-    assignForcePreviewUnitField(previewUnit, 'alias', unit.alias);
-    assignForcePreviewUnitField(previewUnit, 'commander', unit.commander);
+    assignForcePreviewUnitField(previewUnit, 'alias', person?.name);
+    assignForcePreviewUnitField(previewUnit, 'commander', person?.commander);
 
-    assignForcePreviewUnitField(previewUnit, 'skill', unit.skill);
+    assignForcePreviewUnitField(previewUnit, 'skill', person ? person.gunnery ?? 4 : undefined);
     return previewUnit;
 }
 
@@ -261,6 +266,7 @@ export function createForcePreviewEntry(
         era: raw.eraId != null ? resolver.getEraById(raw.eraId) ?? null : null,
         bv: raw.bv,
         pv: raw.pv,
+        reserveCount: raw.reserveCount,
         timestamp: raw.timestamp,
         groups: createForcePreviewGroups(
             raw.groups,
@@ -292,6 +298,7 @@ export function createForcePreviewEntryFromSerializedForce(
         era: raw.eraId != null ? resolver.getEraById(raw.eraId) ?? null : null,
         bv: raw.bv,
         pv: raw.pv,
+        reserveCount: raw.personnel ? raw.personnel.people.length - raw.personnel.assignments.length : 0,
         timestamp: raw.timestamp,
         groups: raw.type === GameSystem.CBT
             ? createCBTForcePreviewGroups(raw.cbt!, resolver)
@@ -301,6 +308,7 @@ export function createForcePreviewEntryFromSerializedForce(
                 units: group.units.map((unit) => createForcePreviewUnitFromSerializedUnit(
                     unit as ASSerializedUnit,
                     (uuid) => resolver.getUnitByUuid(uuid),
+                    raw.personnel ? assignedForcePerson(raw.personnel, unit.id, 'pilot') : undefined,
                 )),
             })),
     });
@@ -313,6 +321,7 @@ export function createForcePreviewEntryFromForce(
     resolveCBTSummary?: (member: Extract<ForceMember, { readonly kind: 'cbt' }>) => UnitSummary | undefined,
 ): ForcePreviewEntry {
     const tags = force.tags ?? [];
+    const personnel = force.personnel();
     const groups = force.groups()
         .map((group) => {
             const alphaStrikeMembers = new Set(group.units());
@@ -344,6 +353,7 @@ export function createForcePreviewEntryFromForce(
         era: force.era(),
         bv: force.gameSystem === GameSystem.CBT ? total : undefined,
         pv: force.gameSystem === GameSystem.AS ? total : undefined,
+        reserveCount: personnel.people.length - personnel.assignments.length,
         timestamp: force.timestamp ?? '',
         groups,
     });

@@ -11,6 +11,7 @@ import {
     type ElementRef,
     inject,
     signal,
+    untracked,
     viewChild,
     type WritableSignal,
 } from '@angular/core';
@@ -36,6 +37,8 @@ import { Faction, FactionId, getFactionImg } from '../../models/factions.model';
 import { naturalCompare } from '../../utils/sort.util';
 import { CompactFilterMenuComponent } from '../compact-filter-menu/compact-filter-menu.component';
 import { uuidv4 } from '../../utils/uuid.util';
+import type { ForceListSession } from '../../models/force-list-session';
+import { ForceListPagingDirective } from '../../directives/force-list-paging.directive';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.0;
@@ -272,7 +275,7 @@ function createMissingForceEntry(instanceId: string): LoadForceEntry {
 @Component({
     selector: 'force-org-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FactionImgPipe, CompactFilterMenuComponent],
+    imports: [FactionImgPipe, CompactFilterMenuComponent, ForceListPagingDirective],
     host: {
         class: 'fullscreen-dialog-host fullheight tv-fade',
         '(window:beforeunload)': 'onBeforeUnload($event)',
@@ -379,6 +382,15 @@ export class ForceOrgDialogComponent {
     protected sidebarEraFilter = signal<number | null>(null);
     protected sidebarAnimated = signal(false);
     protected sidebarLoading = signal(false);
+    protected sidebarComplete = signal(false);
+    protected sidebarPending = signal<'next' | 'all' | null>(null);
+    protected sidebarLoadError = signal('');
+    protected sidebarVisible = computed(() => !this.readOnly() && (!this.layoutService.isMobile() || this.sidebarOpen()));
+    private sidebarSession?: ForceListSession;
+    private sidebarLoadGeneration = 0;
+    protected sidebarRequiresComplete = computed(() => this.sidebarSearchText().trim().length > 0
+        || this.sidebarFilter() !== SIDEBAR_FILTER_ALL || this.sidebarFactionFilter() !== null
+        || this.sidebarEraFilter() !== null || this.sidebarSort() !== 'timestamp' || this.sidebarSortDirection() !== 'desc');
     protected loading = signal(false);
 
     // Sidebar sort
@@ -492,13 +504,13 @@ export class ForceOrgDialogComponent {
         return this.sidebarCountSourceForces().filter(force => this.matchesSidebarFilter(force, filter));
     });
 
-    protected sidebarFactionOptions = computed<SidebarFactionFilterOption[]>(() =>
+    protected sidebarFactionOptions = computed<SidebarFactionFilterOption[]>(() => !this.sidebarComplete() ? [] :
         this.buildSidebarFactionOptions(
             this.sidebarFacetSourceForces().filter(force => this.matchesSidebarEraFilter(force, this.sidebarEraFilter())),
         ),
     );
 
-    protected sidebarEraOptions = computed<SidebarEraFilterOption[]>(() =>
+    protected sidebarEraOptions = computed<SidebarEraFilterOption[]>(() => !this.sidebarComplete() ? [] :
         this.buildSidebarEraOptions(
             this.sidebarFacetSourceForces().filter(force => this.matchesSidebarFactionFilter(force, this.sidebarFactionFilter())),
         ),
@@ -888,6 +900,12 @@ export class ForceOrgDialogComponent {
 
     constructor() {
         effect(() => {
+            if (this.sidebarVisible() && !this.loading() && !this.sidebarLoading() && !this.sidebarPending()
+                && !this.sidebarComplete() && !this.sidebarLoadError() && this.sidebarRequiresComplete()) {
+                untracked(() => { void this.loadSidebarPage('all', true); });
+            }
+        });
+        effect(() => {
             this.ensureSidebarFilterIsValid();
         });
         effect(() => {
@@ -908,6 +926,7 @@ export class ForceOrgDialogComponent {
             void this.close();
         });
         this.destroyRef.onDestroy(() => {
+            this.sidebarSession?.dispose();
             this.cleanupGlobalPointerState();
             this.urlService.setQueryParams({ toe: null });
         });
@@ -925,20 +944,63 @@ export class ForceOrgDialogComponent {
     // ==================== Data Loading ====================
 
     private async loadForces(): Promise<void> {
+        const generation = ++this.sidebarLoadGeneration;
+        this.sidebarSession?.dispose();
+        this.sidebarSession = undefined;
         this.sidebarLoading.set(true);
+        this.sidebarComplete.set(false);
+        this.sidebarLoadError.set('');
+        this.sidebarPending.set(null);
         try {
-            const result = await this.forcePersistence.listForces();
-            for (const f of result || []) {
-                f._searchText = this.computeSearchText(f);
-            }
-            this.allForces.set(result || []);
+            const session = await this.forcePersistence.openForceList();
+            if (this.destroyRef.destroyed || generation !== this.sidebarLoadGeneration) { session.dispose(); return; }
+            this.sidebarSession = session;
+            await session.loadNext();
+            if (this.destroyRef.destroyed || generation !== this.sidebarLoadGeneration) return;
+            this.publishSidebarForces();
             if (this.layoutService.isMobile() && this.placedForces().length === 0) {
                 this.sidebarOpen.set(true);
             }
-        } catch {
-            // Error loading forces; allForces remains empty
+        } catch (error) {
+            if (this.destroyRef.destroyed || generation !== this.sidebarLoadGeneration) return;
+            this.publishSidebarForces();
+            this.sidebarLoadError.set(String(error));
         } finally {
-            this.sidebarLoading.set(false);
+            if (!this.destroyRef.destroyed && generation === this.sidebarLoadGeneration) this.sidebarLoading.set(false);
+        }
+    }
+
+    private publishSidebarForces(): void {
+        const session = this.sidebarSession;
+        if (!session || this.destroyRef.destroyed) return;
+        const entries = session.getEntries();
+        this.primeForceSearchText(entries);
+        // Keep directly resolved organization entries beyond the cursor, including
+        // those the user has since moved from the canvas back into the sidebar.
+        this.applyAvailableForces(entries);
+        this.sidebarComplete.set(session.complete);
+    }
+
+    protected async loadSidebarPage(mode: 'next' | 'all' = 'next', automatic = false): Promise<void> {
+        if (this.sidebarLoading() || this.sidebarPending() || this.sidebarComplete() || this.readOnly()) return;
+        const session = this.sidebarSession;
+        if (!session) { await this.loadForces(); return; }
+        this.sidebarPending.set(mode);
+        this.sidebarLoadError.set('');
+        try {
+            if (mode === 'all') {
+                await session.loadAll(() => !automatic || (this.sidebarVisible() && this.sidebarRequiresComplete()));
+            } else {
+                await session.loadNext();
+            }
+            if (this.sidebarSession === session) this.publishSidebarForces();
+        } catch (error) {
+            if (!this.destroyRef.destroyed && this.sidebarSession === session) {
+                this.publishSidebarForces();
+                this.sidebarLoadError.set(String(error));
+            }
+        } finally {
+            if (!this.destroyRef.destroyed && this.sidebarSession === session) this.sidebarPending.set(null);
         }
     }
 
@@ -1129,19 +1191,6 @@ export class ForceOrgDialogComponent {
         return forces;
     }
 
-    private async loadOrganizationSidebarForces(): Promise<LoadForceEntry[]> {
-        this.sidebarLoading.set(true);
-        try {
-            const forces = await this.forcePersistence.listForces();
-            this.primeForceSearchText(forces);
-            return forces;
-        } catch {
-            return [];
-        } finally {
-            this.sidebarLoading.set(false);
-        }
-    }
-
     // ==================== Sidebar ====================
 
     protected toggleSidebar(): void {
@@ -1211,6 +1260,7 @@ export class ForceOrgDialogComponent {
     }
 
     private ensureSidebarFilterIsValid(): void {
+        if (!this.sidebarComplete()) return;
         if (this.sidebarFilter() !== SIDEBAR_FILTER_UNTAGGED) {
             return;
         }
@@ -1220,6 +1270,7 @@ export class ForceOrgDialogComponent {
     }
 
     private ensureSidebarFacetFiltersAreValid(): void {
+        if (!this.sidebarComplete()) return;
         if (this.sidebarLoading()) {
             return;
         }
@@ -3045,6 +3096,9 @@ export class ForceOrgDialogComponent {
     }
 
     private async loadOrganization(organizationId: string): Promise<void> {
+        ++this.sidebarLoadGeneration;
+        this.sidebarSession?.dispose();
+        this.sidebarSession = undefined;
         this.loading.set(true);
         this.sidebarLoading.set(false);
         try {
@@ -3065,8 +3119,8 @@ export class ForceOrgDialogComponent {
             this.restoreOrganizationShell(org);
 
             const sidebarForcesPromise = org.owned === false
-                ? Promise.resolve<LoadForceEntry[]>([])
-                : this.loadOrganizationSidebarForces();
+                ? Promise.resolve()
+                : this.loadForces();
 
             try {
                 const orgForces = await this.loadOrganizationForceEntries(orgForceIds);
@@ -3078,8 +3132,7 @@ export class ForceOrgDialogComponent {
             }
 
             if (org.owned !== false) {
-                const sidebarForces = await sidebarForcesPromise;
-                this.applyAvailableForces(sidebarForces);
+                await sidebarForcesPromise;
             }
         } catch {
             this.organizationId.set(null);

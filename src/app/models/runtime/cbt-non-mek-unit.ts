@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../entity/base-entity';
-import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
+import type { CrewPositionId } from '../entity/entity-identifiers';
+import type { CrewMemberRuntimeState } from '../crew-member.model';
 import type { NativeUnitSourceHandle } from '../native-unit-source-handle';
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { cloneNativeUnitSourceHandle } from '../native-unit-source-handle';
@@ -180,18 +181,19 @@ export class CBTNonMekUnit implements CBTUnit {
     ): CBTNonMekUnit {
         verifySource(entity, request.uuid, nativeSource);
         const index = buildNonMekRuntimeIndex(entity);
+        const assigned = request.deployment.crewAssignment === undefined
+            ? createDefaultCrewAssignment(index.crewPositions)
+            : canonicalizeCrewAssignment(index.crewPositions, request.deployment.crewAssignment);
         const crewAssignment = request.crewSkills
             ? {
                 schemaVersion: 1 as const,
-                positions: createDefaultCrewAssignment(index.crewPositions).positions.map(position => ({
+                positions: assigned.positions.map(position => ({
                     ...position,
                     gunnery: request.crewSkills!.gunnery,
-                    piloting: effectiveEntityPilotingSkill(entity, request.crewSkills!.piloting),
+                    piloting: request.crewSkills!.piloting,
                 })),
             }
-            : request.deployment.crewAssignment === undefined
-                ? createDefaultCrewAssignment(index.crewPositions)
-            : canonicalizeCrewAssignment(index.crewPositions, request.deployment.crewAssignment);
+            : assigned;
         const ruleset = scenarioRuleset(request.scenario);
         const baseline = Object.freeze({
             entity: request.uuid,
@@ -209,6 +211,7 @@ export class CBTNonMekUnit implements CBTUnit {
             ruleset,
             createPristineNonMekUnitState(entity),
             scenarioUsesForcedWithdrawal(request.scenario),
+            crewAssignment,
         );
         const deployment = freezeDeployment({
             schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
@@ -230,19 +233,6 @@ export class CBTNonMekUnit implements CBTUnit {
         verifySource(entity, uuid, nativeSource);
         if (saved.entity !== uuid) {
             throw new Error('Persisted entity source does not match the loaded source');
-        }
-        const storedCrew = saved.deployment.values.crewAssignment;
-        if (storedCrew.positions.length === 0) {
-            const crewAssignment = createDefaultCrewAssignment(buildNonMekRuntimeIndex(entity).crewPositions);
-            if (crewAssignment.positions.length > 0) {
-                saved = Object.freeze({
-                    ...saved,
-                    deployment: Object.freeze({
-                        ...saved.deployment,
-                        values: Object.freeze({ ...saved.deployment.values, crewAssignment }),
-                    }),
-                });
-            }
         }
         const runtime = restoreNonMekUnit(
             saved,
@@ -297,6 +287,7 @@ export class CBTNonMekUnit implements CBTUnit {
             runtime.ruleset,
             state,
             runtime.forcedWithdrawal,
+            current.getCrewAssignment(),
         );
         return new CBTNonMekUnit(
             current.getUnit(),
@@ -310,15 +301,21 @@ export class CBTNonMekUnit implements CBTUnit {
     public static redeploy(
         current: CBTNonMekUnit,
         crewAssignment: CrewAssignment,
+        crewState?: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>,
     ): CBTNonMekUnit {
         const assignment = canonicalizeCrewAssignment(
             current.getIndex().crewPositions,
             crewAssignment,
         );
+        const state = current.runtime.snapshot();
         return new CBTNonMekUnit(
             current.entity,
             current.uuid,
-            current.runtime,
+            new NonMekUnitInstance(
+                current.instanceId, current.runtime.baselineRef, current.entity, current.runtime.ruleset,
+                crewState === undefined ? state : { ...state, crew: crewState },
+                current.runtime.forcedWithdrawal, assignment,
+            ),
             {
                 ...current.deployment,
                 values: Object.freeze({

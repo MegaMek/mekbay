@@ -8,28 +8,16 @@
     <div class="wide-dialog-body">
         <div class="form-row commander-layout">
             <div class="commander-name-row">
-                @if (data.commanderContext) {
-                <button
-                    type="button"
-                    class="group-commander-toggle bt-button square"
-                    [class.active]="selectedGroupCommander()"
-                    [attr.aria-label]="selectedGroupCommander() ? 'Unset group commander' : 'Set as group commander'"
-                    [attr.aria-pressed]="selectedGroupCommander()"
-                    [attr.title]="selectedGroupCommander() ? 'Unset group commander' : 'Set as group commander'"
-                    (click)="setGroupCommanderSelected(!selectedGroupCommander())">
-                    <svg class="group-commander-icon" width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                        <g transform="translate(-.02)">
-                            <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
-                                <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
-                                <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
-                            </g>
-                        </g>
-                    </svg>
-                </button>
+                @if (!layoutService.isPhone() && (data.commanderContext || data.personnelActions)) {
+                    <ng-container [ngTemplateOutlet]="pilotActions" />
                 }
                 <div class="crew-list">
                     @for (member of crew; let index = $index; track member.id) {
-                    <section class="crew-member-editor" [attr.aria-label]="crewNameLabel(index).replace(' Name', '')">
+                    <section class="crew-member-editor" [class.with-portrait]="data.editPortrait" [attr.aria-label]="crewNameLabel(index).replace(' Name', '')">
+                        @if (data.editPortrait) { <pilot-portrait-field [(value)]="member.portrait" /> }
+                        @if (index === 0 && layoutService.isPhone() && (data.commanderContext || data.personnelActions)) {
+                            <ng-container [ngTemplateOutlet]="pilotActions" />
+                        }
                         <div class="form-fields name-field">
                             <label class="field-label" [for]="'classic-crew-name-' + member.id">{{ crewNameLabel(index) }}</label>
                             <div class="input-wrapper">
@@ -57,6 +45,21 @@
                                     </button>
                                 </div>
                             </div>
+                            @if (index === 0 && !data.disablePiloting) {
+                            <button type="button" class="bt-button square skill-matrix-toggle" title="Skill Matrix" aria-label="Skill Matrix" (click)="toggleMatrixView()">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                    <rect x="1" y="1" width="4" height="4" rx="0.5" />
+                                    <rect x="6" y="1" width="4" height="4" rx="0.5" />
+                                    <rect x="11" y="1" width="4" height="4" rx="0.5" />
+                                    <rect x="1" y="6" width="4" height="4" rx="0.5" />
+                                    <rect x="6" y="6" width="4" height="4" rx="0.5" />
+                                    <rect x="11" y="6" width="4" height="4" rx="0.5" />
+                                    <rect x="1" y="11" width="4" height="4" rx="0.5" />
+                                    <rect x="6" y="11" width="4" height="4" rx="0.5" />
+                                    <rect x="11" y="11" width="4" height="4" rx="0.5" />
+                                </svg>
+                            </button>
+                            }
                             <div class="form-fields" [class.disabled]="!!data.disablePiloting">
                                 <label class="field-label" [for]="'classic-crew-piloting-' + member.id">{{ data.labelPiloting || 'Piloting Skill' }}</label>
                                 <div #pilotingTrigger>
@@ -68,6 +71,10 @@
                                 </div>
                             </div>
                         </div>
+                        @if (data.fixedPiloting !== undefined) {
+                            <p class="crew-skill-note">This unit uses Piloting {{ data.fixedPiloting }}. This person's own rating is retained for other units.</p>
+                        }
+                        @if (data.editNotes) { <pilot-notes-field [(value)]="member.notes" /> }
                         @if (member.asfGunnery && member.asfPiloting) {
                         <div class="form-row no-stack crew-skills aerospace-skills">
                             <div class="form-fields">
@@ -97,22 +104,46 @@
         </div>
     </div>
     <div class="wide-dialog-actions">
-        <button (click)="submit()" class="bt-button">CONFIRM</button>
-        @if (!data.disablePiloting && hasBvPreview) {
-        <button #matrixTrigger class="bt-button square" title="Skill Matrix" aria-label="Skill Matrix" (click)="toggleMatrixView()">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <rect x="1" y="1" width="4" height="4" rx="0.5" />
-                <rect x="6" y="1" width="4" height="4" rx="0.5" />
-                <rect x="11" y="1" width="4" height="4" rx="0.5" />
-                <rect x="1" y="6" width="4" height="4" rx="0.5" />
-                <rect x="6" y="6" width="4" height="4" rx="0.5" />
-                <rect x="11" y="6" width="4" height="4" rx="0.5" />
-                <rect x="1" y="11" width="4" height="4" rx="0.5" />
-                <rect x="6" y="11" width="4" height="4" rx="0.5" />
-                <rect x="11" y="11" width="4" height="4" rx="0.5" />
-            </svg>
-        </button>
-        }
+        <button (click)="submit()" class="bt-button primary">CONFIRM</button>
         <button (click)="close()" class="bt-button">DISMISS</button>
     </div>
 </div>
+
+<ng-template #pilotActions>
+    <div class="pilot-actions" role="group" aria-label="Pilot actions">
+        <button
+            type="button"
+            class="group-commander-toggle bt-button square"
+            [class.active]="selectedGroupCommander()"
+            [attr.aria-label]="selectedGroupCommander() ? 'Unset commander' : 'Set as commander'"
+            [attr.aria-pressed]="selectedGroupCommander()"
+            [attr.title]="selectedGroupCommander() ? 'Unset commander' : 'Set as commander'"
+            (click)="setGroupCommanderSelected(!selectedGroupCommander())">
+            <svg class="group-commander-icon" width="21" height="26" viewBox="0 0 21 25.9" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                <g transform="translate(-.02)">
+                    <g transform="matrix(.265 0 0 .265 -21.1 0)" fill="currentColor">
+                        <path d="m79.7 70 39.3-70 40 70.1h-27l-13-22.1-13 22.1z" />
+                        <path d="m81.4 97.9 11.3-21.6h52.3l12 21.6z" />
+                    </g>
+                </g>
+            </svg>
+        </button>
+        @if (data.personnelActions?.canUnassign || data.personnelActions?.canDelete) {
+        <div class="personnel-actions">
+            @if (data.personnelActions.canUnassign) {
+            <button type="button" class="bt-button square" (click)="submit('unassign')" title="Unassign" aria-label="Unassign">
+                <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                    <path d="M15 2a4 4 0 0 0-4 4v1a5 5 0 0 0 2 4v2l-3 1.5A4 4 0 0 0 8 18v4h14v-4a4 4 0 0 0-2-3.5L17 13v-2a5 5 0 0 0 2-4V6a4 4 0 0 0-4-4Z" fill="currentColor" />
+                    <path d="M8 11H1m3-3-3 3 3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+            }
+            @if (data.personnelActions.canDelete) {
+            <button type="button" class="bt-button square danger" (click)="submit('delete')" title="Delete" aria-label="Delete">
+                <span class="delete-icon" aria-hidden="true"></span>
+            </button>
+            }
+        </div>
+        }
+    </div>
+</ng-template>

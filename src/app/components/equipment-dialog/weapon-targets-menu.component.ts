@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
+import { ChangeDetectionStrategy, Component, input, output, inject } from '@angular/core';
 import { ColorPickerButtonComponent } from '../color-picker-button/color-picker-button.component';
 import {
     DEFAULT_ENCOUNTER_TARGET_COLORS,
@@ -106,11 +107,11 @@ export interface WeaponTargetCalculatorRequest {
                                             [value]="target.color"
                                             [colors]="colors()"
                                             [disabled]="readOnly()"
-                                            [ariaLabel]="'Choose color for ' + target.name"
+                                            [ariaLabel]="'Choose color for ' + targetNames.targetName(target.id, target.name)"
                                             (valueChange)="updateColor(target.id, $event)">
                                             {{ target.letter }}
                                         </color-picker-button>
-                                        <input class="bt-input target-name" [class.linked-target-name]="target.readOnly === true" type="text" [readOnly]="readOnly() || target.readOnly === true" [value]="target.name" (input)="updateName(target.id, $any($event.target).value)">
+                                        <input class="bt-input target-name" [class.linked-target-name]="target.readOnly === true" type="text" [readOnly]="readOnly() || target.readOnly === true" [value]="targetNames.targetName(target.id, target.name)" (input)="updateName(target.id, $any($event.target).value)">
                                     </div>
                                     <div class="target-controls-row">
                                         <div class="target-number-field">
@@ -700,6 +701,7 @@ export interface WeaponTargetCalculatorRequest {
     `]
 })
 export class WeaponTargetsMenuComponent {
+    readonly targetNames = inject(InventoryControlOpforService);
     readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
     readonly tnModifierTooltip = 'Target-side TN modifier for this target. Use it for target movement, indirect fire, spotter movement, terrain, cover, stance, and similar target conditions. It is added separately from your unit skill, your movement, range, heat, and weapon modifiers. Directly editing it creates a complete target-side override.';
     readonly targets = input<TargetingTarget[]>([]);

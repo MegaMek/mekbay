@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../../services/unit-name.service';
 import {
     Component,
     ChangeDetectionStrategy,
@@ -112,6 +113,7 @@ import type { PageCanvasMember } from '../internal/types';
     styleUrl: './page-viewer-canvas-controls.component.scss'
 })
 export class PageViewerCanvasControlsComponent {
+    readonly unitNames = inject(UnitNameService);
     canvasService = inject(PageViewerCanvasService);
     private dialogsService = inject(DialogsService);
 
@@ -146,7 +148,7 @@ export class PageViewerCanvasControlsComponent {
         const currentForce = currentUnit.force;
         const choice = await this.dialogsService.choose<'unit' | 'force' | 'dismiss'>(
             'Clear Canvas',
-            `Delete the canvas for "${isCBTForceMember(currentUnit) ? currentUnit.entity.displayName() : currentUnit.getDisplayName()}", or delete all canvases for "${currentForce.displayName()}"? This cannot be undone.`,
+            `Delete the canvas for "${isCBTForceMember(currentUnit) ? this.unitNames.name(currentUnit.entity) : this.unitNames.name(currentUnit.getSummary())}", or delete all canvases for "${currentForce.displayName()}"? This cannot be undone.`,
             [
                 { label: 'UNIT', value: 'unit', class: 'danger' },
                 { label: 'FORCE', value: 'force', class: 'danger' },

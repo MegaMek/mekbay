@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { Component, inject, signal, ChangeDetectionStrategy, viewChild, type ElementRef, type afterNextRender, computed } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
@@ -25,6 +26,7 @@ export type ForcePackDialogResult = PackUnitEntry[] | null;
     styleUrl: './force-pack-dialog.component.css'
 })
 export class ForcePackDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     private dialogRef = inject(DialogRef<ForcePackDialogResult>);
     private dataService = inject(DataService);
     gameService = inject(GameService);

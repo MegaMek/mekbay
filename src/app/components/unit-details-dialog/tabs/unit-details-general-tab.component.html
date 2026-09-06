@@ -10,7 +10,7 @@
             <span class="muted">{{ valueLabel() }}: </span>
             <strong>{{ displayedValue() }}</strong>
         </div>
-        @if (showAdjustedPilotSkills()) {
+        @if (!forceMember() && showAdjustedPilotSkills()) {
             <div><span class="muted">Gunnery / Piloting: </span><strong class="pilot-skill-value">{{ gunnerySkill() }} / {{ pilotingSkill() }}</strong></div>
         }
         <div><span class="muted">Rules: </span><strong>{{ unit().level }}</strong></div>
@@ -55,6 +55,9 @@ unit().moveType }}</strong></div>
 <div><span class="muted">Network: </span><strong>{{ unit().c3 }}</strong></div>
 }
 </div>
+@if (forceMember(); as member) {
+    <force-unit-crew class="instance-crew" [force]="member.force" [unitId]="member.id" layout="cards" />
+}
 @if (unit().quirks && unit().quirks.length > 0) {
 <div class="quirks-block">
 <div class="quirks">
@@ -273,7 +276,7 @@ unit().moveType }}</strong></div>
 </div>
 <div class="bottom-right">
 @if (sarnaWikiUrl(); as wikiUrl) {
-<a class="sarna-link" target="_BLANK" rel="noopener noreferrer" [href]="wikiUrl" [title]="'Open Sarna wiki page for ' + (sarnaPageTitle() || unit().chassis)">
+<a class="sarna-link" target="_BLANK" rel="noopener noreferrer" [href]="wikiUrl" [title]="'Open Sarna wiki page for ' + (sarnaPageTitle() || unitNames.chassis(unit()))">
     <img class="sarna-logo" src="/images/sarna.png" alt="Sarna">
     SARNA
 </a>

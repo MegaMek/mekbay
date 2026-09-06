@@ -28,8 +28,8 @@
 }
 
 .crew-member-editor {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
 
     & + & {
@@ -41,6 +41,66 @@
 
 .crew-skills {
     margin: 0;
+    gap: 8px;
+}
+
+.skill-matrix-toggle {
+    align-self: flex-end;
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+}
+
+.crew-member-editor.with-portrait {
+    grid-template-columns: auto minmax(0, 1fr);
+
+    > pilot-portrait-field { grid-column: 1; grid-row: 1 / span 2; justify-self: start; align-self: stretch; }
+    > .name-field, > .crew-skills { grid-column: 2; }
+    > .crew-skills { align-self: end; }
+    > .crew-skill-note, > pilot-notes-field, > .aerospace-skills { grid-column: 1 / -1; }
+}
+
+@container (max-width: 420px) {
+    .crew-member-editor.with-portrait {
+        > pilot-portrait-field { grid-row: 1; }
+        > .crew-skills { grid-column: 1 / -1; }
+    }
+}
+
+:host(.phone-layout) {
+    .commander-name-row {
+        display: block;
+    }
+
+    .crew-member-editor {
+        > .name-field { grid-column: 1 / -1; grid-row: 1; }
+        > .crew-skills { grid-column: 1 / -1; grid-row: 2; }
+        > .aerospace-skills { grid-row: auto; }
+        > .pilot-actions { grid-column: 1 / -1; grid-row: 3; align-self: center; }
+
+        &.with-portrait {
+            grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+
+            > pilot-portrait-field { grid-column: 2; grid-row: 1; justify-self: center; align-self: start; }
+            > .name-field { grid-row: 2; }
+            > .crew-skills:not(.aerospace-skills) { grid-row: 3; }
+            > .pilot-actions { display: contents; }
+            .group-commander-toggle { grid-column: 1; grid-row: 1; justify-self: end; align-self: start; }
+            .personnel-actions { grid-column: 3; grid-row: 1; justify-self: start; align-self: start; }
+        }
+    }
+
+    .pilot-actions {
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+    }
+}
+
+.crew-skill-note {
+    margin: 0;
+    color: var(--text-color-secondary);
+    font-size: .8em;
 }
 
 .name-field {
@@ -85,12 +145,25 @@
     }
 }
 
-.group-commander-toggle {
-    align-self: flex-start;
+.pilot-actions,
+.personnel-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     flex: 0 0 auto;
-    line-height: 0;
-    width: 55px;
-    height: 55px;
+
+    .bt-button {
+        line-height: 0;
+        width: 55px;
+        height: 55px;
+    }
+}
+
+.delete-icon {
+    width: 24px;
+    height: 24px;
+    background-color: currentColor;
+    mask: url('/images/delete.svg') center / contain no-repeat;
 }
 
 .group-commander-icon {

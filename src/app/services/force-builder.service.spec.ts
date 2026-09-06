@@ -1021,43 +1021,56 @@ describe('ForceBuilderService remote force updates', () => {
         expect(service.workspace.selectUnit).toHaveBeenCalledOnceWith(newUnit);
     });
 
-    it('prebuilds a dormant change subscription that cannot save before activation', () => {
-        const service = Object.create(ForceSlotLifecycleService.prototype) as any;
-        service.activationPlans = new WeakMap();
-        service.forcePersistence = {
-            saveForce: jasmine.createSpy('saveForce').and.resolveTo(),
-            queueForceAutosave: jasmine.createSpy('queueForceAutosave'),
-            activateForceAuthority: jasmine.createSpy('activateForceAuthority').and.returnValue(true),
-        };
-        service.wsService = {
-            subscribeToForceUpdates: jasmine.createSpy('subscribeToForceUpdates').and.resolveTo(),
-        };
-        service.remoteSync = { reconcileRemoteForce: jasmine.createSpy('reconcileRemoteForce') };
-        service.logger = {
-            info: jasmine.createSpy('info'),
-            warn: jasmine.createSpy('warn'),
-            error: jasmine.createSpy('error'),
-        };
-        const changed = new Subject<void>();
-        const force = {
-            changed,
-            owned: () => true,
-            instanceId: signal('force-dormant'),
-            displayName: () => 'Dormant Force',
-        } as unknown as Force;
+    for (const initialId of [null, 'force-dormant']) {
+        it(`activates a dormant slot and subscribes when its ID is available (initial ID: ${initialId})`, async () => {
+            const service = Object.create(ForceSlotLifecycleService.prototype) as any;
+            service.activationPlans = new WeakMap();
+            service.forcePersistence = {
+                saveForce: jasmine.createSpy('saveForce').and.resolveTo(),
+                queueForceAutosave: jasmine.createSpy('queueForceAutosave'),
+                activateForceAuthority: jasmine.createSpy('activateForceAuthority').and.returnValue(true),
+                saveForceMissingFromCloud: jasmine.createSpy('saveForceMissingFromCloud').and.resolveTo(),
+            };
+            service.wsService = {
+                subscribeToForceUpdates: jasmine.createSpy('subscribeToForceUpdates').and.resolveTo(),
+            };
+            service.remoteSync = { reconcileRemoteForce: jasmine.createSpy('reconcileRemoteForce') };
+            service.logger = {
+                info: jasmine.createSpy('info'),
+                warn: jasmine.createSpy('warn'),
+                error: jasmine.createSpy('error'),
+            };
+            const changed = new Subject<void>();
+            const instanceId = signal<string | null>(initialId);
+            const force = {
+                changed,
+                owned: () => true,
+                instanceId,
+                displayName: () => 'Dormant Force',
+            } as unknown as Force;
 
-        const slot = service.setupForceSlot(force, 'friendly', false);
-        changed.next();
-        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
-        expect(service.forcePersistence.activateForceAuthority).not.toHaveBeenCalled();
+            const slot = service.setupForceSlot(force, 'friendly', false);
+            changed.next();
+            expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
+            expect(service.forcePersistence.activateForceAuthority).not.toHaveBeenCalled();
 
-        service.activateForceSlot(slot);
-        expect(service.forcePersistence.activateForceAuthority).toHaveBeenCalledOnceWith(force);
-        changed.next();
-        expect(service.forcePersistence.activateForceAuthority).toHaveBeenCalledTimes(2);
-        expect(service.forcePersistence.queueForceAutosave).toHaveBeenCalledOnceWith(force);
-        expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
-    });
+            service.activateForceSlot(slot);
+            expect(service.forcePersistence.activateForceAuthority).toHaveBeenCalledOnceWith(force);
+            expect(service.wsService.subscribeToForceUpdates).toHaveBeenCalledTimes(initialId === null ? 0 : 1);
+            instanceId.set('force-dormant');
+            changed.next();
+            expect(service.forcePersistence.activateForceAuthority).toHaveBeenCalledTimes(2);
+            expect(service.forcePersistence.queueForceAutosave).toHaveBeenCalledOnceWith(force);
+            expect(service.forcePersistence.saveForce).not.toHaveBeenCalled();
+            expect(service.wsService.subscribeToForceUpdates).toHaveBeenCalledTimes(1);
+            const onRemoteUpdate = service.wsService.subscribeToForceUpdates.calls.mostRecent().args[1];
+            await onRemoteUpdate(null, 'reconnect');
+            expect(service.forcePersistence.saveForceMissingFromCloud).toHaveBeenCalledOnceWith(force);
+            expect(service.remoteSync.reconcileRemoteForce).not.toHaveBeenCalled();
+            changed.next();
+            expect(service.wsService.subscribeToForceUpdates).toHaveBeenCalledTimes(1);
+        });
+    }
 
     it('rejects duplicate durable live unit IDs before beginning retirement', async () => {
         const first = { id: 'duplicate-unit' } as ForceUnit;

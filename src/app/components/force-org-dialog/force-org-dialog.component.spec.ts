@@ -8,6 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
 import { LoadForceEntry } from '../../models/load-force-entry.model';
+import { ForceListSession, type ForceListCursor } from '../../models/force-list-session';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -36,7 +37,7 @@ describe('ForceOrgDialogComponent', () => {
     };
 
     const forcePersistenceStub = {
-        listForces: jasmine.createSpy('listForces').and.resolveTo([]),
+        openForceList: jasmine.createSpy('openForceList'),
         getLoadForceEntriesByIds: jasmine.createSpy('getLoadForceEntriesByIds').and.resolveTo([]),
     };
 
@@ -67,8 +68,8 @@ describe('ForceOrgDialogComponent', () => {
 
     beforeEach(async () => {
         nextPlacementId = 0;
-        forcePersistenceStub.listForces.calls.reset();
-        forcePersistenceStub.listForces.and.resolveTo([]);
+        forcePersistenceStub.openForceList.calls.reset();
+        forcePersistenceStub.openForceList.and.callFake(async () => new ForceListSession([], async () => ({ entries: [] }), () => {}));
         forcePersistenceStub.getLoadForceEntriesByIds.calls.reset();
         forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([]);
         organizationStorageStub.getOrganization.calls.reset();
@@ -98,6 +99,7 @@ describe('ForceOrgDialogComponent', () => {
         fixture = TestBed.createComponent(ForceOrgDialogComponent);
         component = fixture.componentInstance;
         fixture.detectChanges();
+        await fixture.whenStable();
         dialogsServiceStub.choose.calls.reset();
         urlServiceStub.setQueryParams.calls.reset();
     });
@@ -173,6 +175,111 @@ describe('ForceOrgDialogComponent', () => {
         await Promise.resolve();
         await Promise.resolve();
     }
+
+    function pagedForces(count = 400, maximumReturned = 100) {
+        const unit = createBattleMek('Atlas');
+        const entries = Array.from({ length: count }, (_, index) => {
+            const entry = createLoadForce(`force-${index}`, [unit]);
+            entry.timestamp = new Date(1_700_000_000_000 - index).toISOString();
+            return entry;
+        });
+        const fetchPage = jasmine.createSpy('fetchPage').and.callFake(async (cursor: ForceListCursor | undefined, size: number) => {
+            const start = cursor ? entries.findIndex(entry => entry.instanceId === cursor.instanceId) + 1 : 0;
+            const page = entries.slice(start, start + Math.min(size, maximumReturned));
+            const last = page[page.length - 1];
+            return { entries: page, ...(start + page.length < entries.length && last ? {
+                next: { instanceId: last.instanceId, timestamp: Date.parse(last.timestamp) },
+            } : {}) };
+        });
+        const session = new ForceListSession([], fetchPage, () => {});
+        forcePersistenceStub.openForceList.and.resolveTo(session);
+        return { entries, fetchPage, session };
+    }
+
+    it('loads the sidebar progressively while resolving a canvas force beyond the first page by ID', async () => {
+        const { entries, fetchPage } = pagedForces();
+        const referenced = entries[399]!;
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([referenced]);
+        organizationStorageStub.getOrganization.and.resolveTo({
+            organizationId: 'org-paged', name: 'Paged', timestamp: Date.now(), owned: true,
+            forces: [{ instanceId: referenced.instanceId, x: 0, y: 0, zIndex: 0, groupId: null }], groups: [],
+        });
+        await component['loadOrganization']('org-paged');
+        expect(fetchPage).toHaveBeenCalledOnceWith(undefined, 100);
+        expect(forcePersistenceStub.getLoadForceEntriesByIds).toHaveBeenCalledWith([referenced.instanceId]);
+        expect(component['placedForces']()[0]!.force).toBe(referenced);
+        expect(component['sidebarForces']().length).toBe(100);
+        expect(component['sidebarComplete']()).toBeFalse();
+        await component['loadSidebarPage']();
+        expect(component['sidebarForces']().length).toBe(200);
+        expect(component['placedForces']()[0]!.force).toBe(referenced);
+        component['placedForces'].set([]);
+        await component['loadSidebarPage']();
+        expect(component['sidebarForces']().length).toBe(301);
+        expect(component['sidebarForces']()).toContain(referenced);
+    });
+
+    it('automatically fills the actual sidebar when 19 first-page forces are already placed', async () => {
+        // The byte budget can return fewer than the requested 100 summaries.
+        const { entries, fetchPage } = pagedForces(100, 20);
+        const deployed = entries.slice(0, 19);
+        forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo(deployed);
+        organizationStorageStub.getOrganization.and.resolveTo({
+            organizationId: 'org-deployed', name: 'Deployed', timestamp: Date.now(), owned: true,
+            forces: deployed.map((force, index) => ({ instanceId: force.instanceId, x: index * 240, y: 0, zIndex: index, groupId: null })),
+            groups: [],
+        });
+        const viewport = fixture.nativeElement.querySelector('.forces-list') as HTMLElement;
+        viewport.style.flex = 'none';
+        viewport.style.height = '300px';
+        await component['loadOrganization']('org-deployed');
+        await fixture.whenStable();
+        expect(fetchPage.calls.count()).toBe(2);
+        expect(component['sidebarForces']().length).toBe(21);
+        expect(component['placedForces']().every(placed => !placed.force.missing)).toBeTrue();
+    });
+
+    it('finishes remaining summaries for account-wide search in 100-row batches', async () => {
+        const { fetchPage } = pagedForces(200);
+        await component['loadForces']();
+        component['sidebarSearchText'].set('force-199');
+        await fixture.whenStable();
+        // The effect starts an async page chain outside Angular's pending-task tracker.
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        await fixture.whenStable();
+        expect(fetchPage.calls.allArgs().map(args => args[1])).toEqual([100, 100]);
+        expect(component['sidebarForces']().map(force => force.instanceId)).toEqual(['force-199']);
+        expect(component['sidebarComplete']()).toBeTrue();
+    });
+
+    it('retains local sidebar entries on cloud failure and allows a deliberate retry', async () => {
+        const local = createLoadForce('local', [createBattleMek('Atlas')]);
+        const fetchPage = jasmine.createSpy('fetchPage').and.rejectWith(new Error('offline'));
+        forcePersistenceStub.openForceList.and.resolveTo(new ForceListSession([local], fetchPage, () => {}));
+        await component['loadForces']();
+        await fixture.whenStable();
+        expect(component['sidebarForces']()).toEqual([local]);
+        expect(component['sidebarLoadError']()).toContain('offline');
+        expect(fetchPage).toHaveBeenCalledTimes(1);
+        fetchPage.and.resolveTo({ entries: [] });
+        await component['loadSidebarPage']();
+        expect(component['sidebarLoadError']()).toBe('');
+        expect(component['sidebarComplete']()).toBeTrue();
+    });
+
+    it('disposes the sidebar session and ignores a page arriving after the dialog closes', async () => {
+        const pending = createDeferred<import('../../models/force-list-session').ForceListPage>();
+        const delayed = new ForceListSession([], () => pending.promise, () => {});
+        forcePersistenceStub.openForceList.and.resolveTo(delayed);
+        const dispose = spyOn(delayed, 'dispose').and.callThrough();
+        const loading = component['loadForces']();
+        await flushPromises();
+        fixture.destroy();
+        expect(dispose).toHaveBeenCalled();
+        pending.resolve({ entries: [createLoadForce('late', [])] });
+        await loading;
+        expect(component['allForces']()).toEqual([]);
+    });
 
     function setDirtyState(isDirty: boolean): void {
         const baseline = isDirty
@@ -379,7 +486,7 @@ describe('ForceOrgDialogComponent', () => {
         const forceA = createLoadForce('force-a', [createBattleMek('Atlas')]);
         const forceB = createLoadForce('force-b', [createBattleMek('Locust')]);
 
-        forcePersistenceStub.listForces.and.resolveTo([forceA, forceB]);
+        forcePersistenceStub.openForceList.and.callFake(async () => new ForceListSession([forceA, forceB], async () => ({ entries: [] }), () => {}));
         organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-1',
             name: 'Loaded Org',
@@ -877,7 +984,7 @@ describe('ForceOrgDialogComponent', () => {
     it('loads foreign organization forces by instance id instead of listing the viewer\'s own forces', async () => {
         const foreignForce = createLoadForce('force-foreign', [createBattleMek('Atlas')]);
 
-        forcePersistenceStub.listForces.calls.reset();
+        forcePersistenceStub.openForceList.calls.reset();
         forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([foreignForce]);
         organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-foreign',
@@ -893,13 +1000,13 @@ describe('ForceOrgDialogComponent', () => {
 
         await (component as any).loadOrganization('org-foreign');
 
-        expect(forcePersistenceStub.listForces).not.toHaveBeenCalled();
+        expect(forcePersistenceStub.openForceList).not.toHaveBeenCalled();
         expect(forcePersistenceStub.getLoadForceEntriesByIds).toHaveBeenCalledWith(['force-foreign']);
         expect((component as any).placedForces().map((pf: any) => pf.force.instanceId)).toEqual(['force-foreign']);
     });
 
     it('keeps missing force references as placeholders so saving the TO&E preserves them', async () => {
-        forcePersistenceStub.listForces.and.resolveTo([]);
+        forcePersistenceStub.openForceList.and.callFake(async () => new ForceListSession([], async () => ({ entries: [] }), () => {}));
         forcePersistenceStub.getLoadForceEntriesByIds.and.resolveTo([]);
         organizationStorageStub.getOrganization.and.resolveTo({
             organizationId: 'org-missing',

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, inject, input, output, computed } from '@angular/core';
 import type { UnitSummary, UnitComponent } from '../../models/unit-summary.model';
 import type { ForceUnit } from '../../models/force-unit.model';
@@ -75,6 +76,7 @@ import { getProperty } from '../../utils/unit-search-shared.util';
     styleUrl: './unit-card-expanded.component.scss'
 })
 export class UnitCardExpandedComponent {
+    readonly unitNames = inject(UnitNameService);
     readonly megaMekAvailabilityUnknown = MEGAMEK_AVAILABILITY_UNKNOWN;
 
     gameService = inject(GameService);

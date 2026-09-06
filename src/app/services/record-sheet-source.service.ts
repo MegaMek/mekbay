@@ -10,6 +10,7 @@ import {
     type RecordSheetSvgGeneratorOptions,
 } from '../utils/sheets/record-sheet-svg-generator';
 import { OptionsService } from './options.service';
+import { UnitNameService } from './unit-name.service';
 import { UnitFluffImageService } from './catalogs/unit-fluff-image.service';
 
 export interface RecordSheetSourceResult {
@@ -23,6 +24,7 @@ export interface RecordSheetEntitySourceContext {
 /** Generates a record sheet from the admitted Entity. */
 @Injectable({ providedIn: 'root' })
 export class RecordSheetSourceService {
+    private readonly unitNames = inject(UnitNameService);
     private readonly options = inject(OptionsService);
     private readonly fluffImages = inject(UnitFluffImageService);
 
@@ -38,7 +40,14 @@ export class RecordSheetSourceService {
             fluffImageUrl: generatorOptions.fluffImageUrl
                 ?? this.fluffImages.resolveEntityUrl(entity, context.design),
         });
-        svgs.forEach(svg => { svg.dataset['mekbaySheetSource'] = 'generated'; });
+        svgs.forEach(svg => {
+            svg.dataset['mekbaySheetSource'] = 'generated';
+            this.unitNames.applyToRecordSheet(svg, entity);
+        });
         return Object.freeze({ svgs });
+    }
+
+    applyUnitName(svg: SVGSVGElement, entity: BaseEntity): void {
+        this.unitNames.applyToRecordSheet(svg, entity);
     }
 }

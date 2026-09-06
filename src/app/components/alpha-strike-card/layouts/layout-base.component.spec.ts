@@ -57,6 +57,7 @@ describe('AsLayoutBaseComponent skill and PV', () => {
         const fixture = createFixture();
         const forceUnit = {
             getPilotStats: () => 2,
+            getBv: () => 28,
         } as ASForceUnit;
 
         fixture.componentRef.setInput('skillOverride', 3);
@@ -65,6 +66,18 @@ describe('AsLayoutBaseComponent skill and PV', () => {
 
         expect(fixture.componentInstance.skill()).toBe(2);
         expect(fixture.componentInstance.adjustedPV()).toBe(28);
+    });
+
+    it('uses the force authority for an abandoned unit instead of pricing its default rating', () => {
+        const fixture = createFixture();
+        fixture.componentRef.setInput('forceUnit', {
+            getPilotStats: () => 4,
+            getBv: () => 0,
+            crewVacant: () => true,
+        } as ASForceUnit);
+        expect(fixture.componentInstance.adjustedPV()).toBe(0);
+        expect(fixture.componentInstance.basePV()).toBe(20);
+        expect(fixture.componentInstance.vacant()).toBeTrue();
     });
 
     it('rejects an invalid skill override when adjusted PV is evaluated', () => {

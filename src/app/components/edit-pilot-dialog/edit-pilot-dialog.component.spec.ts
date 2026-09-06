@@ -2,14 +2,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { signal } from '@angular/core';
+import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { OverlayContainer } from '@angular/cdk/overlay';
 
 import {
     buildCrewSkillPreviewEntries,
     EditPilotDialogComponent,
     getSyntheticCrewSkill,
+    type EditPilotDialogData,
 } from './edit-pilot-dialog.component';
 import type { CrewMemberDetails } from '../../models/crew-member.model';
+import { DialogsService } from '../../services/dialogs.service';
+import { LayoutService } from '../../services/layout.service';
+import { LoggerService } from '../../services/logger.service';
+import { OptionsService } from '../../services/options.service';
+import { OverlayManagerService } from '../../services/overlay-manager.service';
+import { PilotNameGeneratorService } from '../../services/pilot-name-generator.service';
+import { UnitNameService } from '../../services/unit-name.service';
+import { EditASPilotDialogComponent } from '../edit-as-pilot-dialog/edit-as-pilot-dialog.component';
 
 const CREW: CrewMemberDetails[] = [
     { id: 0, name: 'Pilot', gunnery: 4, piloting: 2 },
@@ -71,7 +83,7 @@ describe('CBT multi-crew pilot dialog logic', () => {
         expect(entries[8].adjustedValue).toBe(304);
     });
 
-    it('uses generic and role-specific crew name labels', () => {
+    it('uses generic and station-specific crew name labels', () => {
         expect(EditPilotDialogComponent.prototype.crewNameLabel.call({ crew: [CREW[0]] }, 0)).toBe('Name');
         expect(EditPilotDialogComponent.prototype.crewNameLabel.call({ crew: CREW }, 0)).toBe('Pilot Name');
         expect(EditPilotDialogComponent.prototype.crewNameLabel.call({ crew: CREW }, 1)).toBe('Gunner Name');
@@ -84,8 +96,8 @@ describe('CBT multi-crew pilot dialog logic', () => {
         const close = jasmine.createSpy('close');
         const harness = {
             crew: [
-                { id: 0, name: signal(' Pilot '), gunnery: signal(3), piloting: signal(1) },
-                { id: 1, name: signal('Gunner'), gunnery: signal(2), piloting: signal(2) },
+                { id: 0, name: signal(' Pilot '), notes: signal(''), portrait: signal('Doctor_M_8'), gunnery: signal(3), piloting: signal(1) },
+                { id: 1, name: signal('Gunner'), notes: signal(''), portrait: signal(undefined), gunnery: signal(2), piloting: signal(2) },
             ],
             data: {
                 disablePiloting: true,
@@ -103,7 +115,7 @@ describe('CBT multi-crew pilot dialog logic', () => {
 
         expect(close).toHaveBeenCalledOnceWith({
             crew: [
-                { id: 0, name: 'Pilot', gunnery: 3, piloting: 5 },
+                { id: 0, name: 'Pilot', portrait: 'Doctor_M_8', gunnery: 3, piloting: 5 },
                 { id: 1, name: 'Gunner', gunnery: 2, piloting: 6 },
             ],
             commander: true,
@@ -191,5 +203,164 @@ describe('CBT multi-crew pilot dialog logic', () => {
 
         expect(requestConfirmation).toHaveBeenCalledTimes(1);
         expect(selected()).toBeTrue();
+    });
+});
+
+describe('Pilot dialog skill previews and reserve controls', () => {
+    let data: EditPilotDialogData;
+    let close: jasmine.Spy;
+
+    beforeEach(() => {
+        data = {
+            crew: [{ id: 0, name: 'Alex', gunnery: 4, piloting: 5 }],
+            personnelActions: { canUnassign: false, canDelete: true },
+            preSkillBv: 1200,
+            skillFacts: { unitType: 'Mek', unitSubtype: 'BattleMek', canAntiMech: false },
+        };
+        close = jasmine.createSpy('close');
+        TestBed.configureTestingModule({ providers: [
+            provideZonelessChangeDetection(),
+            { provide: DIALOG_DATA, useValue: data },
+            { provide: DialogRef, useValue: { close } },
+            { provide: DialogsService, useValue: { requestConfirmation: jasmine.createSpy('requestConfirmation') } },
+            { provide: PilotNameGeneratorService, useValue: { generate: jasmine.createSpy('generate') } },
+            { provide: LoggerService, useValue: { warn: jasmine.createSpy('warn') } },
+            { provide: LayoutService, useValue: { isPhone: signal(false), windowWidth: signal(1024), windowHeight: signal(768) } },
+            { provide: OptionsService, useValue: { options: () => ({ ASUseHex: false }) } },
+            { provide: UnitNameService, useValue: {} },
+        ] });
+    });
+
+    afterEach(() => TestBed.inject(OverlayManagerService).closeAllManagedOverlays());
+
+    for (const action of ['unassign', 'delete'] as const) {
+        it(`keeps edits when ${action} is dismissed and submits only after confirmation`, async () => {
+            data.personnelActions = { canUnassign: true, canDelete: true };
+            const requestConfirmation = TestBed.inject(DialogsService).requestConfirmation as jasmine.Spy;
+            let resolveConfirmation!: (confirmed: boolean) => void;
+            requestConfirmation.and.callFake(() => new Promise<boolean>(resolve => resolveConfirmation = resolve));
+            const fixture = TestBed.createComponent(EditPilotDialogComponent);
+            fixture.detectChanges();
+            fixture.componentInstance.crew[0].name.set('Edited Alex');
+            const label = action === 'delete' ? 'Delete' : 'Unassign';
+            const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!;
+
+            button.click();
+            expect(requestConfirmation).toHaveBeenCalledOnceWith(
+                jasmine.any(String), `${label} Crew Member`, action === 'delete' ? 'danger' : 'info',
+            );
+            expect(close).not.toHaveBeenCalled();
+            resolveConfirmation(false);
+            await fixture.whenStable();
+            expect(close).not.toHaveBeenCalled();
+            expect(fixture.componentInstance.crew[0].name()).toBe('Edited Alex');
+
+            button.click();
+            expect(close).not.toHaveBeenCalled();
+            resolveConfirmation(true);
+            await fixture.whenStable();
+            expect(close).toHaveBeenCalledOnceWith(jasmine.objectContaining({ action }));
+        });
+    }
+
+    it('opens the matrix between Gunnery and Piloting and applies a selected pair', async () => {
+        const fixture = TestBed.createComponent(EditPilotDialogComponent);
+        fixture.detectChanges();
+        const buttons = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.crew-skills button');
+        expect(buttons.length).toBe(3);
+        expect(buttons[1].getAttribute('aria-label')).toBe('Skill Matrix');
+
+        buttons[1].click();
+        await fixture.whenStable();
+
+        const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+        const cells = overlay.querySelectorAll<HTMLElement>('.matrix-cell');
+        expect(cells.length).toBe(81);
+        expect(cells[3 * 9 + 4].textContent?.trim()).toBe((1584).toLocaleString());
+        cells[3 * 9 + 4].click();
+        await fixture.whenStable();
+
+        expect(buttons[0].textContent?.trim()).toBe('3');
+        expect(buttons[2].textContent?.trim()).toBe('4');
+        expect(overlay.querySelector('.matrix-panel')).toBeNull();
+        fixture.componentInstance.submit();
+        expect(close).toHaveBeenCalledWith(jasmine.objectContaining({ crew: [jasmine.objectContaining({ gunnery: 3, piloting: 4 })] }));
+    });
+
+    it('renders nonzero BV totals and positive and negative deltas in both dropdowns', async () => {
+        const fixture = TestBed.createComponent(EditPilotDialogComponent);
+        fixture.detectChanges();
+        const root = fixture.nativeElement as HTMLElement;
+        root.querySelector<HTMLButtonElement>('#classic-crew-gunnery-0')!.click();
+        await fixture.whenStable();
+
+        const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+        let options = overlay.querySelectorAll('.skill-option');
+        expect(options.length).toBe(9);
+        expect(options[3].querySelector('.adjusted-value')?.textContent?.trim()).toBe('BV: 1440');
+        expect(options[3].querySelector('.delta')?.textContent?.trim()).toBe('+240');
+        expect(options[5].querySelector('.delta')?.textContent?.trim()).toBe('-120');
+
+        root.querySelector<HTMLButtonElement>('#classic-crew-piloting-0')!.click();
+        await fixture.whenStable();
+
+        options = overlay.querySelectorAll('.skill-option');
+        expect(options.length).toBe(9);
+        expect(options[4].querySelector('.adjusted-value')?.textContent?.trim()).toBe('BV: 1320');
+        expect(options[4].querySelector('.delta')?.textContent?.trim()).toBe('+120');
+        expect(options[6].querySelector('.delta')?.textContent?.trim()).toBe('-60');
+
+        root.querySelector<HTMLButtonElement>('[aria-label="Skill Matrix"]')!.click();
+        await fixture.whenStable();
+        expect(overlay.querySelector('.dropdown-panel')).toBeNull();
+        expect(overlay.querySelector('.matrix-panel')).not.toBeNull();
+    });
+
+    it('allows a CBT reserve commander toggle and omits unavailable BV values', async () => {
+        delete data.preSkillBv;
+        delete data.skillFacts;
+        const fixture = TestBed.createComponent(EditPilotDialogComponent);
+        fixture.detectChanges();
+        const root = fixture.nativeElement as HTMLElement;
+        const commander = root.querySelector<HTMLButtonElement>('[aria-label="Set as commander"]')!;
+        commander.click();
+        await fixture.whenStable();
+
+        expect(commander.getAttribute('aria-pressed')).toBe('true');
+        root.querySelector<HTMLButtonElement>('#classic-crew-gunnery-0')!.click();
+        await fixture.whenStable();
+        const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+        expect(overlay.querySelectorAll('.skill-option').length).toBe(9);
+        expect(overlay.querySelector('.adjusted-value')).toBeNull();
+        expect(overlay.querySelector('.delta')).toBeNull();
+
+        root.querySelector<HTMLButtonElement>('[aria-label="Skill Matrix"]')!.click();
+        await fixture.whenStable();
+        const cells = overlay.querySelectorAll<HTMLElement>('.matrix-cell');
+        expect(cells.length).toBe(81);
+        expect(cells[2 * 9 + 3].textContent?.trim()).toBe('2/3');
+        expect(cells[3 * 9 + 4].textContent?.trim()).toBe('3/4');
+        cells[2 * 9 + 3].click();
+        await fixture.whenStable();
+
+        fixture.componentInstance.submit();
+        expect(close).toHaveBeenCalledWith(jasmine.objectContaining({ commander: true,
+            crew: [jasmine.objectContaining({ gunnery: 2, piloting: 3 })] }));
+    });
+
+    it('allows an Alpha Strike reserve commander toggle without a unit or group', async () => {
+        TestBed.overrideProvider(DIALOG_DATA, { useValue: {
+            unitId: 'reserve', name: 'Alex', skill: 4, abilities: [],
+            personnelActions: { canUnassign: false, canDelete: true },
+        } });
+        const fixture = TestBed.createComponent(EditASPilotDialogComponent);
+        fixture.detectChanges();
+        const commander = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[aria-label="Set as commander"]')!;
+        commander.click();
+        await fixture.whenStable();
+
+        expect(commander.getAttribute('aria-pressed')).toBe('true');
+        fixture.componentInstance.submit();
+        expect(close).toHaveBeenCalledWith(jasmine.objectContaining({ commander: true }));
     });
 });

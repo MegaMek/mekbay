@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal, DestroyRef } from '@angular/core';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import type { UnitSummary } from '../../models/unit-summary.model';
@@ -43,6 +44,7 @@ import {
     type ForceMember,
 } from '../../models/force-member.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
+import { effectiveEntityPilotingSkill } from '../../models/entity/utils/battle-value/skill-facts';
 
 
 export interface UnitDetailsDialogData {
@@ -82,6 +84,7 @@ export interface UnitDetailsChangeAction {
     }
 })
 export class UnitDetailsDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     gameService = inject(GameService);
     protected readonly forceWorkspace = inject(ForceWorkspaceStateService);
 
@@ -129,6 +132,10 @@ export class UnitDetailsDialogComponent {
         return isSignal(input) ? input() : input;
     });
     unitIndex = signal(this.data.unitIndex);
+    readonly currentForceMember = computed<ForceMember | undefined>(() => {
+        const item = this.unitList()[this.unitIndex()];
+        return item instanceof ASForceUnit || item instanceof CBTForceMember ? item : undefined;
+    });
     private readonly resolvedActiveUnit = signal<{
         readonly source: UnitDetailsListItem;
         readonly summary: UnitSummary;
@@ -172,8 +179,8 @@ export class UnitDetailsDialogComponent {
     pilotingSkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
         if (currentUnit instanceof CBTForceMember) {
-            return currentUnit.force.getUnitCrewAssignment(currentUnit.id)?.positions[0]?.piloting
-                ?? DEFAULT_PILOTING_SKILL;
+            return effectiveEntityPilotingSkill(currentUnit.entity,
+                currentUnit.force.getUnitCrewAssignment(currentUnit.id)?.positions[0]?.piloting ?? DEFAULT_PILOTING_SKILL);
         }
         if (currentUnit instanceof ASForceUnit) return currentUnit.getPilotSkill();
         const context = this.searchResultContext();
@@ -183,6 +190,12 @@ export class UnitDetailsDialogComponent {
     // Swipe animation state
     isSwipeAnimating = signal(false);
     incomingUnit = signal<UnitSummary | null>(null);
+    private readonly incomingUnitIndex = signal<number | null>(null);
+    readonly incomingForceMember = computed<ForceMember | undefined>(() => {
+        const index = this.incomingUnitIndex();
+        const item = index === null || !this.incomingUnit() ? undefined : this.unitList()[index];
+        return item instanceof ASForceUnit || item instanceof CBTForceMember ? item : undefined;
+    });
     readonly incomingSearchResultContext = computed<UnitSearchNormalizationMatch | null>(() => {
         const unitUuid = this.incomingUnit()?.uuid;
         return unitUuid ? this.data.searchResultContexts?.get(unitUuid) ?? null : null;
@@ -345,8 +358,8 @@ export class UnitDetailsDialogComponent {
             );
             if (!summary) {
                 const name = item instanceof CBTForceMember
-                    ? item.entity.displayName()
-                    : item.getDisplayName();
+                    ? this.unitNames.name(item.entity)
+                    : this.unitNames.name(item.getSummary());
                 throw new Error(`Catalog presentation is unavailable for ${name}`);
             }
             return summary;
@@ -441,7 +454,7 @@ export class UnitDetailsDialogComponent {
             gameSystemOverride
         );
         if (addedUnit) {
-            this.toastService.showToast(`${selectedUnit.chassis} ${selectedUnit.model} added to the force.`, 'success');
+            this.toastService.showToast(`${this.unitNames.name(selectedUnit)} added to the force.`, 'success');
             this.add.emit(selectedUnit);
         }
         if (!keepOpen) {
@@ -458,7 +471,7 @@ export class UnitDetailsDialogComponent {
         const ref = this.dialogsService.createDialog<number | undefined>(ConfirmDialogComponent, {
             data: <ConfirmDialogData<number>>{
                 title: 'Add Multiple',
-                message: `How many copies of ${this.unit.chassis} ${this.unit.model}?`,
+                message: `How many copies of ${this.unitNames.name(this.unit)}?`,
                 buttons: [
                     { label: '1', value: 1, class: 'square' },
                     { label: '2', value: 2, class: 'square' },
@@ -491,7 +504,7 @@ export class UnitDetailsDialogComponent {
         }
         if (addedCount > 0) {
             this.toastService.showToast(
-                `${addedCount}x ${selectedUnit.chassis} ${selectedUnit.model} added to the force.`,
+                `${addedCount}x ${this.unitNames.name(selectedUnit)} added to the force.`,
                 'success'
             );
         }
@@ -524,7 +537,7 @@ export class UnitDetailsDialogComponent {
             this.unit.name,
             this.activeTab(),
         );
-        const shareTitle = `${this.unit.chassis} ${this.unit.model}`;
+        const shareTitle = `${this.unitNames.name(this.unit)}`;
         const result = await shareUrlWithClipboardFallback({ title: shareTitle, url: httpsUrl });
         if (result === 'copied') {
             this.toastService.showToast('Unit links copied to clipboard.', 'success');
@@ -580,7 +593,7 @@ export class UnitDetailsDialogComponent {
                 if (!result) return false;
 
                 this.toastService.showToast(
-                    `Changed ${originalForceUnit.getSummary().chassis} ${originalForceUnit.getSummary().model} to ${selectedUnit.chassis} ${selectedUnit.model}.`,
+                    `Changed ${this.unitNames.name(originalForceUnit.getSummary())} to ${this.unitNames.name(selectedUnit)}.`,
                     'success'
                 );
                 this.change.emit({ oldUnit: originalForceUnit, newUnit: selectedUnit });
@@ -656,7 +669,7 @@ export class UnitDetailsDialogComponent {
             // Swiping right - show previous unit coming from the left
             const prevUnit = this.getUnitAtIndex(this.unitIndex() - 1);
             if (this.incomingUnit() !== prevUnit) {
-                this.prepareIncomingUnit(prevUnit);
+                this.prepareIncomingUnit(this.unitIndex() - 1);
             }
             // Current panel moves right by deltaX
             this.currentPanelOffset.set(`${deltaX}px`);
@@ -666,7 +679,7 @@ export class UnitDetailsDialogComponent {
             // Swiping left - show next unit coming from the right
             const nextUnit = this.getUnitAtIndex(this.unitIndex() + 1);
             if (this.incomingUnit() !== nextUnit) {
-                this.prepareIncomingUnit(nextUnit);
+                this.prepareIncomingUnit(this.unitIndex() + 1);
             }
             // Current panel moves left by deltaX (negative)
             this.currentPanelOffset.set(`${deltaX}px`);
@@ -716,9 +729,7 @@ export class UnitDetailsDialogComponent {
         const incoming = this.incomingUnit();
         if (incoming) {
             const currentIdx = this.unitIndex();
-            const incomingIdx = this.unitList().findIndex(u => {
-                return this.getUnitSummary(u) === incoming;
-            });
+            const incomingIdx = this.incomingUnitIndex() ?? currentIdx;
             if (incomingIdx < currentIdx) {
                 // Was coming from left, animate back to left
                 this.incomingPanelOffset.set('-100%');
@@ -786,9 +797,10 @@ export class UnitDetailsDialogComponent {
         setTimeout(() => this.resetSwipeState(), 100);
     }
 
-    private prepareIncomingUnit(unit: UnitSummary): void {
+    private prepareIncomingUnit(index: number): void {
         this.incomingPanelScrollTop.set(this.getIncomingPanelInitialScrollTop());
-        this.incomingUnit.set(unit);
+        this.incomingUnitIndex.set(index);
+        this.incomingUnit.set(this.getUnitAtIndex(index));
         requestAnimationFrame(() => this.syncIncomingPanelScrollTop());
     }
 

@@ -6,11 +6,13 @@ import { GameSystem } from './common.model';
 import { LoadForceEntry } from './load-force-entry.model';
 import {
     createForcePreviewEntryFromForce,
+    createForcePreviewEntryFromSerializedForce,
     createForcePreviewUnitFromSerializedUnit,
     getForcePreviewResolvedUnits,
     getForcePreviewUnitPilotStats,
     isForcePreviewEntry,
 } from './force-preview.model';
+import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 describe('createForcePreviewUnitFromSerializedUnit', () => {
     const getUnitByName = (name: string) => ({
@@ -19,7 +21,7 @@ describe('createForcePreviewUnitFromSerializedUnit', () => {
         subtype: name === 'Phoenix Hawk LAM' ? 'Land-Air BattleMek' : 'BattleMek',
     } as any);
 
-    it('reads alpha strike pilot skill from serialized AS units', () => {
+    it('reads alpha strike pilot skill from its independently owned person', () => {
         const serializedUnit = {
             id: 'as-1',
             unit: 'Atlas AS7-D',
@@ -39,7 +41,8 @@ describe('createForcePreviewUnitFromSerializedUnit', () => {
             },
         } as any;
 
-        const result = createForcePreviewUnitFromSerializedUnit(serializedUnit, getUnitByName);
+        const result = createForcePreviewUnitFromSerializedUnit(serializedUnit, getUnitByName,
+            { id: 'person:ace', name: 'Ace', gunnery: 3, commander: true });
 
         expect(result).toEqual(jasmine.objectContaining({
             alias: 'Ace',
@@ -79,6 +82,10 @@ describe('createForcePreviewEntryFromForce', () => {
             era: () => null,
             totalBv: () => 123,
             timestamp: null,
+            personnel: () => ({
+                people: [{ id: 'assigned' }, { id: 'reserve' }],
+                assignments: [{ unitId: 'as-1', positionId: 'pilot', personId: 'assigned' }],
+            }),
             groups: () => [{
                 name: () => 'Striker',
                 activeFormation: () => ({ id: 'battle-lance' }),
@@ -94,6 +101,7 @@ describe('createForcePreviewEntryFromForce', () => {
         expect(result.note).toBe('Forward recon screen.');
         expect(result.tags).toEqual(['Recon', 'Priority']);
         expect(result.pv).toBe(123);
+        expect(result.reserveCount).toBe(1);
         expect(result.groups[0]).toEqual(jasmine.objectContaining({
             name: 'Striker',
             formationId: 'battle-lance',
@@ -115,6 +123,7 @@ describe('createForcePreviewEntryFromForce', () => {
             faction: () => null,
             era: () => null,
             timestamp: '2026-08-14T00:00:00.000Z',
+            personnel: () => ({ people: [], assignments: [] }),
             groups: () => [{
                 id: 'group-v2',
                 name: () => 'Lance',
@@ -123,7 +132,7 @@ describe('createForcePreviewEntryFromForce', () => {
             }],
             getUnitCrewAssignment: () => ({
                 schemaVersion: 1,
-                positions: [{ positionId: 'crew:pilot', name: 'Ace', role: 'pilot', gunnery: 3, piloting: 4 }],
+                positions: [{ positionId: 'crew:pilot', name: 'Ace', gunnery: 3, piloting: 4 }],
             }),
             getUnitDestroyed: () => true,
             isUnitCommander: () => true,
@@ -147,6 +156,7 @@ describe('createForcePreviewEntryFromForce', () => {
         );
 
         expect(result.bv).toBe(1200);
+        expect(result.reserveCount).toBe(0);
         expect(result.groups).toEqual([jasmine.objectContaining({
             name: 'Lance',
             force: result,
@@ -163,6 +173,25 @@ describe('createForcePreviewEntryFromForce', () => {
 });
 
 describe('force preview helpers', () => {
+    it('counts unassigned people in a normalized save without manufacturing a unit group', () => {
+        const result = createForcePreviewEntryFromSerializedForce({
+            version: 2, type: GameSystem.AS, instanceId: 'force', timestamp: '', name: 'Force',
+            personnel: {
+                people: [{ id: 'pilot' }, { id: 'reserve:1' }, { id: 'reserve:2' }],
+                assignments: [{ unitId: 'unit', positionId: 'pilot', personId: 'pilot' }],
+            },
+            groups: [{ id: 'group', units: [{ id: 'unit', uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2') }] }],
+        }, {
+            getUnitByName: () => undefined, getUnitByUuid: () => undefined,
+            getFactionById: () => undefined, getEraById: () => undefined,
+        });
+
+        expect(result.reserveCount).toBe(2);
+        expect(result.groups.length).toBe(1);
+        expect(result.groups[0].units.length).toBe(1);
+        expect(JSON.stringify({ ...result, groups: undefined })).not.toContain('reserve:');
+    });
+
     it('treats saved load entries as compatible preview entries', () => {
         const resolvedUnit = { name: 'Atlas AS7-D', type: 'Mek' } as any;
         const entry = new LoadForceEntry({

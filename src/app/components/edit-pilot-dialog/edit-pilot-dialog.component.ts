@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, Injector, signal, viewChild, viewChildren, type WritableSignal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, Injector, signal, viewChildren, type WritableSignal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -10,16 +11,24 @@ import { DialogsService } from '../../services/dialogs.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SkillDropdownPanelComponent, type SkillPreviewEntry } from '../skill-dropdown-panel/skill-dropdown-panel.component';
 import { SkillMatrixPanelComponent, type SkillMatrixCell } from '../skill-dropdown-panel/skill-matrix-panel.component';
-import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
-import type { UnitSummary } from '../../models/unit-summary.model';
+import { adjustCBTBattleValueForSkills, type CBTSkillUnitFacts } from '../../models/entity/utils/battle-value/rules';
 import type { Era } from '../../models/eras.model';
 import type { CrewPositionId } from '../../models/entity/entity-identifiers';
 import { PilotNameGeneratorService } from '../../services/pilot-name-generator.service';
 import { LoggerService } from '../../services/logger.service';
+import { LayoutService } from '../../services/layout.service';
+import { PilotNotesFieldComponent } from '../pilot-notes-field/pilot-notes-field.component';
+import { PilotPortraitFieldComponent } from '../pilot-portrait-field/pilot-portrait-field.component';
+import type { CrewEditAction, CrewEditActions } from '../force-crew/crew-edit-actions';
 
 
 
 export interface EditPilotDialogData {
+    /** Generator previews have no persistent person to receive these notes. */
+    editNotes?: boolean;
+    /** Enabled for persistent personnel, including reserves and assigned crew. */
+    editPortrait?: boolean;
+    personnelActions?: CrewEditActions;
     unitId?: string;
     crew: readonly EditPilotCrewPosition[];
     /** Skills that affect BV but are not editable here, such as LAM aerospace skills. */
@@ -28,6 +37,8 @@ export interface EditPilotDialogData {
     labelGunnery?: string;
     labelPiloting?: string;
     disablePiloting?: boolean;
+    /** Entity-derived override; the editable value remains this person's own rating. */
+    fixedPiloting?: number;
     commander?: boolean;
     /** Detached commander context; no force/group/runtime object enters the dialog. */
     commanderContext?: {
@@ -38,11 +49,12 @@ export interface EditPilotDialogData {
     era?: Era | null;
     /** Pre-skill BV (base + TAG + C3) for BV preview calculation. */
     preSkillBv?: number;
-    /** Unit reference for effective piloting skill calculation. */
-    unit?: UnitSummary;
+    /** Detached unit facts for effective piloting and BV calculations. */
+    skillFacts?: CBTSkillUnitFacts;
 }
 
 export interface EditPilotResult {
+    action?: CrewEditAction;
     crew: EditPilotCrewPosition[];
     commander: boolean;
 }
@@ -51,7 +63,8 @@ export interface EditPilotResult {
 export interface EditPilotCrewPosition {
     readonly id: CrewPositionId | number;
     readonly name: string;
-    readonly role?: string;
+    readonly notes?: string;
+    readonly portrait?: string;
     readonly gunnery: number;
     readonly piloting: number;
     readonly asfGunnery?: number;
@@ -63,10 +76,11 @@ type CrewSkillField = CrewSkillType | 'asfGunnery' | 'asfPiloting';
 
 interface EditableCrewMember {
     readonly id: CrewPositionId | number;
-    readonly role?: string;
     readonly asfGunnery?: WritableSignal<number>;
     readonly asfPiloting?: WritableSignal<number>;
     readonly name: WritableSignal<string>;
+    readonly notes: WritableSignal<string>;
+    readonly portrait: WritableSignal<string | undefined>;
     readonly gunnery: WritableSignal<number>;
     readonly piloting: WritableSignal<number>;
     readonly generatingName: WritableSignal<boolean>;
@@ -120,9 +134,11 @@ export function buildCrewSkillPreviewEntries(
 
 @Component({
     selector: 'edit-pilot-dialog',
+    imports: [NgTemplateOutlet, PilotNotesFieldComponent, PilotPortraitFieldComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
-        class: 'fullscreen-dialog-host glass'
+        class: 'fullscreen-dialog-host glass',
+        '[class.phone-layout]': 'layoutService.isPhone()',
     },
     templateUrl: './edit-pilot-dialog.component.html',
     styleUrl: './edit-pilot-dialog.component.scss'
@@ -137,6 +153,7 @@ export class EditPilotDialogComponent {
 
     public dialogRef = inject(DialogRef<EditPilotResult | null, EditPilotDialogComponent>);
     readonly data: EditPilotDialogData = inject(DIALOG_DATA) as EditPilotDialogData;
+    readonly layoutService = inject(LayoutService);
     private overlayManager = inject(OverlayManagerService);
     private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
@@ -146,17 +163,18 @@ export class EditPilotDialogComponent {
 
     readonly crew = this.data.crew.map<EditableCrewMember>((member) => ({
         id: member.id,
-        ...(member.role === undefined ? {} : { role: member.role }),
         asfGunnery: member.asfGunnery === undefined ? undefined : signal(member.asfGunnery),
         asfPiloting: member.asfPiloting === undefined ? undefined : signal(member.asfPiloting),
         name: signal(member.name),
+        notes: signal(member.notes ?? ''),
+        portrait: signal(member.portrait),
         gunnery: signal(member.gunnery),
         piloting: signal(member.piloting),
         generatingName: signal(false),
     }));
     selectedGroupCommander = signal<boolean>(this.data.commander ?? false);
 
-    readonly hasBvPreview = !!(this.data.preSkillBv != null && this.data.unit);
+    readonly hasBvPreview = this.data.preSkillBv != null && this.data.skillFacts != null;
     readonly syntheticGunnery = computed(() => getSyntheticCrewSkill(
         this.crewSnapshot(),
         'gunnery',
@@ -242,6 +260,7 @@ export class EditPilotDialogComponent {
     }
 
     toggleMatrixView(): void {
+        this.closeSkillDropdowns();
         this.overlayManager.closeManagedOverlay('skill-matrix');
 
         const portal = new ComponentPortal(SkillMatrixPanelComponent, null, this.injector);
@@ -256,6 +275,7 @@ export class EditPilotDialogComponent {
         );
 
         componentRef.setInput('matrix', this.bvMatrix());
+        componentRef.setInput('showBv', this.hasBvPreview);
         componentRef.setInput('selectedGunnery', this.syntheticGunnery());
         componentRef.setInput('selectedPiloting', this.syntheticPiloting());
 
@@ -306,6 +326,7 @@ export class EditPilotDialogComponent {
         title?: string
     ): void {
         this.closeSkillDropdowns();
+        this.overlayManager.closeManagedOverlay('skill-matrix');
 
         const portal = new ComponentPortal(SkillDropdownPanelComponent, null, this.injector);
 
@@ -323,6 +344,7 @@ export class EditPilotDialogComponent {
         componentRef.setInput('entries', entries);
         componentRef.setInput('selectedSkill', currentSkill);
         componentRef.setInput('valueLabel', 'BV');
+        componentRef.setInput('showPreview', this.hasBvPreview);
         if (title) componentRef.setInput('title', title);
 
         outputToObservable(componentRef.instance.selected)
@@ -349,8 +371,9 @@ export class EditPilotDialogComponent {
     private crewSnapshot(): EditPilotCrewPosition[] {
         return this.crew.map((member) => ({
             id: member.id,
-            ...(member.role === undefined ? {} : { role: member.role }),
             name: member.name(),
+            ...(member.notes() ? { notes: member.notes() } : {}),
+            ...(member.portrait() ? { portrait: member.portrait() } : {}),
             gunnery: member.gunnery(),
             piloting: member.piloting(),
             ...(member.asfGunnery === undefined ? {} : { asfGunnery: member.asfGunnery() }),
@@ -360,11 +383,11 @@ export class EditPilotDialogComponent {
 
     private calculateBv(gunnery: number, piloting: number): number {
         if (!this.hasBvPreview) return 0;
-        return BVCalculatorUtil.calculateAdjustedBV(
-            this.data.unit!,
+        return adjustCBTBattleValueForSkills(
             this.data.preSkillBv!,
             gunnery,
-            piloting
+            piloting,
+            this.data.skillFacts!,
         );
     }
 
@@ -391,8 +414,8 @@ export class EditPilotDialogComponent {
                 factionId: this.data.factionId,
                 isAerospace: !!this.data.isAerospace,
                 isCommander: this.selectedGroupCommander(),
-                unitType: this.data.unit?.type,
-                unitSubtype: this.data.unit?.subtype,
+                unitType: this.data.skillFacts?.unitType,
+                unitSubtype: this.data.skillFacts?.unitSubtype,
                 era: this.data.era?.years,
             });
             if (!name) {
@@ -422,8 +445,19 @@ export class EditPilotDialogComponent {
         this.crew[index].name.set((event.target as HTMLInputElement).value);
     }
 
-    submit(): void {
+    async submit(action?: CrewEditAction): Promise<void> {
+        if (action) {
+            const confirmed = await this.dialogsService.requestConfirmation(
+                action === 'delete'
+                    ? 'Delete this crew member from the force? This cannot be undone.'
+                    : 'Unassign this crew member and move them to reserves?',
+                action === 'delete' ? 'Delete Crew Member' : 'Unassign Crew Member',
+                action === 'delete' ? 'danger' : 'info',
+            );
+            if (!confirmed || this.destroyRef.destroyed) return;
+        }
         this.dialogRef.close({
+            ...(action ? { action } : {}),
             crew: this.crewSnapshot().map((member, index) => ({
                 ...member,
                 name: member.name.trim(),

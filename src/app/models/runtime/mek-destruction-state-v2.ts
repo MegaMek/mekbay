@@ -377,7 +377,8 @@ function allCrewCrippled(
     committedUnavailable: ReadonlySet<CriticalSlotId>,
 ): boolean {
     if (profile.droneOperatingSystems.length > 0) return false;
-    const positions = [...index.crewPositions.values()];
+    const positions = [...index.crewPositions.values()]
+        .filter(position => !state.crewState(position.id).hasState('vacant'));
     return positions.length > 0 && positions.every(position => {
         const crew = state.crewState(position.id);
         const cockpit = position.occurrence === 1 && profile.cockpit.commandConsole !== undefined

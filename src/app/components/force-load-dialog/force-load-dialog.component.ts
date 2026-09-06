@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { Component, inject, signal, effect, ChangeDetectionStrategy, computed, viewChild, type ElementRef, DestroyRef, afterNextRender, Injector, untracked } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
@@ -10,8 +11,10 @@ import { firstValueFrom, map, race } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
 import { MeasureClampOverflowDirective } from '../../directives/measure-clamp-overflow.directive';
+import { ForceListPagingDirective } from '../../directives/force-list-paging.directive';
 import { DataService } from '../../services/data.service';
 import { ForcePersistenceService } from '../../services/force-persistence.service';
+import type { ForceListSession } from '../../models/force-list-session';
 import { DialogsService } from '../../services/dialogs.service';
 import { ToastService } from '../../services/toast.service';
 import { Pipe, type PipeTransform } from "@angular/core";
@@ -34,6 +37,7 @@ import { OperationStorageService } from '../../services/operation-storage.servic
 import { OrganizationStorageService } from '../../services/organization-storage.service';
 import { GameSystem } from '../../models/common.model';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { ForceReservesPreviewComponent } from '../force-reserves-preview/force-reserves-preview.component';
 import { type ResolvedPack, resolveForcePacks } from '../../utils/force-pack.util';
 import { CustomizeForcePackDialogComponent, type CustomizeForcePackDialogData, type CustomizeForcePackDialogResult } from '../customize-force-pack-dialog/customize-force-pack-dialog.component';
 import type { ForceAlignment } from '../../models/force-slot.model';
@@ -121,11 +125,12 @@ const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
 @Component({
     selector: 'force-load-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [DecimalPipe, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent, LoadingSpinnerComponent],
+    imports: [DecimalPipe, ScrollingModule, BaseDialogComponent, CleanModelStringPipe, FormatTimestamp, MeasureClampOverflowDirective, UnitIconComponent, OpPreviewComponent, FactionImgPipe, ForceTagsComponent, CompactFilterMenuComponent, LoadingSpinnerComponent, ForceReservesPreviewComponent, ForceListPagingDirective],
     templateUrl: './force-load-dialog.component.html',
     styleUrl: './force-load-dialog.component.css'
 })
 export class ForceLoadDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     private dialogRef = inject(DialogRef<ForceLoadDialogResult>);
     private dialogData: ForceLoadDialogData | null = inject(DIALOG_DATA, { optional: true });
     private dataService = inject(DataService);
@@ -237,6 +242,11 @@ export class ForceLoadDialogComponent {
     forces = signal<LoadForceEntry[]>([]);
     selectedForce = signal<LoadForceEntry | null>(null);
     loading = signal<boolean>(true);
+    readonly hangarComplete = signal(false);
+    readonly hangarLoadingMore = signal(false);
+    readonly hangarLoadingAll = signal(false);
+    readonly hangarLoadError = signal('');
+    private forceListSession?: ForceListSession;
     forceTagsVersion = signal(0);
 
     readonly tabs: readonly ForceLoadTab[] = ['Hangar', 'Force Packs', 'TO&E', 'Operations'];
@@ -258,6 +268,11 @@ export class ForceLoadDialogComponent {
     hangarTagFilter = signal<string>(this.getStoredHangarTagFilter());
     hangarFactionFilter = signal<number | null>(this.getStoredNumberFilter(HANGAR_FACTION_FILTER_SESSION_KEY));
     hangarEraFilter = signal<number | null>(this.getStoredNumberFilter(HANGAR_ERA_FILTER_SESSION_KEY));
+    readonly hangarRequiresComplete = computed(() => this.searchText().trim().length > 0
+        || this.hangarTagFilter() !== HANGAR_FILTER_ALL
+        || this.hangarFactionFilter() !== null || this.hangarEraFilter() !== null
+        || this.hangarSort() !== DEFAULT_HANGAR_SORT_KEY
+        || this.hangarSortDirection() !== DEFAULT_HANGAR_SORT_DIRECTION);
 
     private hangarCountSourceForces = computed(() => {
         const tokens = this.searchText().trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -376,13 +391,13 @@ export class ForceLoadDialogComponent {
         return this.hangarCountSourceForces().filter(force => this.matchesHangarTagFilter(force, tagFilter));
     });
 
-    hangarFactionOptions = computed<FactionFilterOption[]>(() =>
+    hangarFactionOptions = computed<FactionFilterOption[]>(() => !this.hangarComplete() ? [] :
         this.buildFactionOptionsFromForces(
             this.hangarFacetSourceForces().filter(force => this.matchesForceEraFilter(force, this.hangarEraFilter())),
         ),
     );
 
-    hangarEraOptions = computed<EraFilterOption[]>(() =>
+    hangarEraOptions = computed<EraFilterOption[]>(() => !this.hangarComplete() ? [] :
         this.buildEraOptionsFromForces(
             this.hangarFacetSourceForces().filter(force => this.matchesForceFactionFilter(force, this.hangarFactionFilter())),
         ),
@@ -493,6 +508,14 @@ export class ForceLoadDialogComponent {
     constructor() {
         // Load forces on init
         this.loadForces();
+        this.destroyRef.onDestroy(() => this.forceListSession?.dispose());
+
+        effect(() => {
+            if (this.activeTab() === 'Hangar' && !this.loading() && !this.hangarComplete()
+                && !this.hangarLoadError() && this.hangarRequiresComplete()) {
+                untracked(() => { void this.loadAllForces(false); });
+            }
+        });
 
         effect(() => {
             this.ensureHangarTagFilterIsValid();
@@ -685,8 +708,8 @@ export class ForceLoadDialogComponent {
             const forceTagsVersion = this.forceTagsVersion();
             const expandedForceNotes = this.expandedForceNotes();
             this.overflowingForceNotes();
-            const unitDisplayName = this.optionsService.options().unitDisplayName;
-            const layoutKey = `${unitDisplayName}:${forceTagsVersion}:${Array.from(expandedForceNotes).sort().join('|')}`;
+            const { unitDisplayName, displayUnitNameFormat } = this.optionsService.options();
+            const layoutKey = `${unitDisplayName}:${displayUnitNameFormat}:${forceTagsVersion}:${Array.from(expandedForceNotes).sort().join('|')}`;
 
             untracked(() => {
                 if (!visible) {
@@ -800,15 +823,60 @@ export class ForceLoadDialogComponent {
     private async loadForces(): Promise<void> {
         this.loading.set(true);
         try {
-            const result = await this.forcePersistence.listForces();
-            const enriched = (result || []).map(f => {
-                f._searchText = this.computeSearchText(f);
-                return f;
-            });
-            this.forces.set(enriched);
-            this.ensureHangarTagFilterIsValid();
+            const session = await this.forcePersistence.openForceList();
+            if (this.destroyRef.destroyed) { session.dispose(); return; }
+            this.forceListSession = session;
+            await session.loadNext();
+            this.publishForceList();
+        } catch (error) {
+            this.publishForceList();
+            if (!this.destroyRef.destroyed) this.hangarLoadError.set(String(error));
         } finally {
-            this.loading.set(false);
+            if (!this.destroyRef.destroyed) this.loading.set(false);
+        }
+    }
+
+    private publishForceList(): void {
+        const session = this.forceListSession;
+        if (!session || this.destroyRef.destroyed) return;
+        const entries = session.getEntries();
+        for (const entry of entries) entry._searchText ??= this.computeSearchText(entry);
+        this.forces.set(entries);
+        this.hangarComplete.set(session.complete);
+        this.ensureHangarTagFilterIsValid();
+        this.clearFilteredOutSelections();
+    }
+
+    async loadMoreForces(): Promise<void> {
+        if (this.loading() || this.hangarLoadingMore() || this.hangarLoadingAll() || this.hangarComplete()) return;
+        if (!this.forceListSession) { await this.loadForces(); return; }
+        this.hangarLoadingMore.set(true);
+        this.hangarLoadError.set('');
+        try {
+            await this.forceListSession.loadNext();
+            this.publishForceList();
+        } catch (error) {
+            this.publishForceList();
+            if (!this.destroyRef.destroyed) this.hangarLoadError.set(String(error));
+        } finally {
+            if (!this.destroyRef.destroyed) this.hangarLoadingMore.set(false);
+        }
+    }
+
+    async loadAllForces(explicit = true): Promise<void> {
+        if (this.loading() || this.hangarLoadingAll() || this.hangarComplete()) return;
+        if (!this.forceListSession) { await this.loadForces(); return; }
+        this.hangarLoadingAll.set(true);
+        this.hangarLoadError.set('');
+        try {
+            await this.forceListSession.loadAll(() => explicit
+                || (this.activeTab() === 'Hangar' && this.hangarRequiresComplete()));
+            this.publishForceList();
+        } catch (error) {
+            this.publishForceList();
+            if (!this.destroyRef.destroyed) this.hangarLoadError.set(String(error));
+        } finally {
+            if (!this.destroyRef.destroyed) this.hangarLoadingAll.set(false);
         }
     }
 
@@ -1095,6 +1163,7 @@ export class ForceLoadDialogComponent {
     }
 
     getHangarEmptyStateMessage(): string {
+        if (!this.hangarComplete()) return 'The cloud list is not fully loaded.';
         if (this.searchText().trim().length > 0) {
             return 'No forces match the current search.';
         }
@@ -1147,7 +1216,7 @@ export class ForceLoadDialogComponent {
     private clearFilteredOutSelections() {
         // if selected force is filtered out, clear selection
         const selForce = this.selectedForce();
-        if (selForce && !this.filteredForces().includes(selForce)) {
+        if (selForce && this.hangarComplete() && !this.filteredForces().includes(selForce)) {
             this.selectedForce.set(null);
         }
         // if selected pack is filtered out, clear selection
@@ -1480,6 +1549,7 @@ export class ForceLoadDialogComponent {
     }
 
     private ensureHangarTagFilterIsValid(): void {
+        if (!this.hangarComplete()) return;
         const activeTag = this.hangarTagFilter();
         if (activeTag === HANGAR_FILTER_ALL || this.isVirtualHangarTagFilter(activeTag)) {
             return;
@@ -1496,7 +1566,7 @@ export class ForceLoadDialogComponent {
     }
 
     private ensureHangarFacetFiltersAreValid(): void {
-        if (this.loading()) {
+        if (this.loading() || !this.hangarComplete()) {
             return;
         }
 
@@ -1800,6 +1870,7 @@ export class ForceLoadDialogComponent {
         if (confirmed) {
             const deleted = await this.forceBuilderService.deleteForceByInstanceId(force.instanceId);
             if (!deleted) return;
+            this.forceListSession?.remove(force.instanceId);
             this.forces.update(forces => forces.filter(f => f !== force));
             this.ensureHangarTagFilterIsValid();
             this.selectedForce.set(null);

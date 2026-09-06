@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
 import { ChangeDetectionStrategy, Component, afterNextRender, computed, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
@@ -191,7 +192,7 @@ export interface TnCalculatorDialogResult {
     },
     template: `
     <div class="tn-dialog glass framed-borders has-shadow" [class.ready]="renderReady()">
-        <h2 class="tn-dialog-title"><span class="target-color-square" [style.background]="target.color">{{ target.letter }}</span><span>{{ target.name }}</span></h2>
+        <h2 class="tn-dialog-title"><span class="target-color-square" [style.background]="target.color">{{ target.letter }}</span><span>{{ targetNames.targetName(target.id, target.name) }}</span></h2>
         <div class="tn-dialog-body">
             <div class="tn-grid">
                 <div class="tn-column">
@@ -1163,6 +1164,7 @@ export interface TnCalculatorDialogResult {
     `]
 })
 export class TnCalculatorDialogComponent {
+    readonly targetNames = inject(InventoryControlOpforService);
     readonly jammedConditionColor = JAMMED_CONDITION_COLOR;
     readonly taggedUnavailableReason = 'TAG cannot designate infantry';
     readonly MOVEMENT_MIN = 0;

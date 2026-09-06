@@ -150,7 +150,7 @@ function effectiveStealthMoveDistance(
         : distance ?? 0;
 }
 
-function forceOpforTargetId(forceInstanceId: string, unitInstanceId: string) {
+export function forceOpforTargetId(forceInstanceId: string, unitInstanceId: string) {
     return asEncounterTargetId(
         `${OPFOR_TARGET_ID_PREFIX}${forceInstanceId.length}:${forceInstanceId}:${unitInstanceId}`,
     );

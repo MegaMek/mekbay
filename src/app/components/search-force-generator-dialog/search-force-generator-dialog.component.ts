@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
@@ -131,6 +132,7 @@ type FormationTargetDropdownOptionsProvider = UnitSearchFiltersService & {
     styleUrl: './search-force-generator-dialog.component.scss',
 })
 export class SearchForceGeneratorDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     readonly GameSystem = GameSystem;
     readonly MAX_UNITS = FORCE_MAX_UNITS;
     private readonly dialogRef = inject(DialogRef<SearchForceGeneratorDialogResult | null>);
@@ -2086,7 +2088,7 @@ export class SearchForceGeneratorDialogComponent {
                     isAerospace: unit.type === 'Aero',
                     era: this.preview().era,
                     preSkillBv: unit.bv,
-                    unit,
+                    skillFacts: { unitType: unit.type, unitSubtype: unit.subtype, canAntiMech: unit.canAntiMech === true },
                 },
             },
         );
@@ -2291,6 +2293,6 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private formatUnitLabel(unit: UnitSummary): string {
-        return `${unit.chassis} ${unit.model}`.trim();
+        return this.unitNames.name(unit);
     }
 }

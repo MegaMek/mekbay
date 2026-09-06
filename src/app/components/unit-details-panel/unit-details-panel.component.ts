@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, input, output, signal, computed, inject, DestroyRef, viewChild, effect } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import type { UnitSummary } from '../../models/unit-summary.model';
@@ -57,6 +58,7 @@ import { UnitDetailsSummaryService } from '../../services/unit-details-summary.s
     }
 })
 export class UnitDetailsPanelComponent {
+    readonly unitNames = inject(UnitNameService);
     private gameService = inject(GameService);
     protected readonly forceWorkspace = inject(ForceWorkspaceStateService);
 
@@ -172,7 +174,7 @@ export class UnitDetailsPanelComponent {
         );
 
         if (addedUnit) {
-            this.toastService.showToast(`${unit.chassis} ${unit.model} added to force`, 'success');
+            this.toastService.showToast(`${this.unitNames.name(unit)} added to force`, 'success');
             this.add.emit(unit);
         }
     }
@@ -185,7 +187,7 @@ export class UnitDetailsPanelComponent {
         const ref = this.dialogsService.createDialog<number | undefined>(ConfirmDialogComponent, {
             data: <ConfirmDialogData<number>>{
                 title: 'Add Multiple',
-                message: `How many copies of ${unit.chassis} ${unit.model}?`,
+                message: `How many copies of ${this.unitNames.name(unit)}?`,
                 buttons: [
                     { label: '1', value: 1, class: 'square' },
                     { label: '2', value: 2, class: 'square' },
@@ -213,7 +215,7 @@ export class UnitDetailsPanelComponent {
 
         if (addedCount > 0) {
             this.toastService.showToast(
-                `${addedCount}x ${unit.chassis} ${unit.model} added to force`,
+                `${addedCount}x ${this.unitNames.name(unit)} added to force`,
                 'success'
             );
             this.add.emit(unit);
@@ -248,7 +250,7 @@ export class UnitDetailsPanelComponent {
         const unitName = encodeURIComponent(unit.name);
         const tab = encodeURIComponent(this.activeTab());
         const shareUrl = `${domain}?gs=${this.gameService.currentGameSystem()}&shareUnit=${unitName}&tab=${tab}`;
-        const shareText = `${unit.chassis} ${unit.model}`;
+        const shareText = `${this.unitNames.name(unit)}`;
         
         if (navigator.share) {
             navigator.share({

@@ -23,26 +23,19 @@ export type PersistedUnitIdentity =
         readonly reason: 'not-found' | 'ambiguous' | 'catalog-not-ready';
     };
 
-export interface LegacyUnitStateV1 {
-    readonly rawCriticalRecords: readonly JsonValue[];
-    readonly rawInventoryRecords: readonly JsonValue[];
-    readonly rawUnitAndFamilyState: JsonValue;
-}
-
 /** Transient V1 input used only while converting one legacy unit to V2. */
 export interface LegacyUnitSourceV1 {
     readonly payload: JsonValue;
     readonly identity: PersistedUnitIdentity;
 }
 
-export function readLegacyUnitStateV1(source: Pick<LegacyUnitSourceV1, 'payload'>): LegacyUnitStateV1 {
-    const unit = isRecord(source.payload) ? source.payload : {};
-    const state = isRecord(unit['state']) ? unit['state'] : {};
-    return Object.freeze({
-        rawCriticalRecords: Array.isArray(state['crits']) ? state['crits'] : Object.freeze([]),
-        rawInventoryRecords: Array.isArray(state['inventory']) ? state['inventory'] : Object.freeze([]),
-        rawUnitAndFamilyState: state,
-    });
+export function readLegacyUnitStateV1(source: Pick<LegacyUnitSourceV1, 'payload'>): JsonObject {
+    if (!isRecord(source.payload)) throw new Error('V1 unit must be an object');
+    const rawState = source.payload['state'];
+    if (rawState !== undefined && !isRecord(rawState)) {
+        throw new Error('V1 unit state must be an object');
+    }
+    return rawState ?? {};
 }
 
 export interface DeferredUnitDescriptor {
@@ -83,16 +76,16 @@ export function cloneAsJson(value: unknown): JsonValue {
 
 function describeDeferredUnit(descriptor: DeferredUnitDescriptor): string {
     if (descriptor.gameplayAdmission) {
-        return `${descriptor.gameplayAdmission.message} Its saved state was retained as deferred state.`;
+        return descriptor.gameplayAdmission.message;
     }
     const identity = descriptor.requestedUuid
         ? descriptor.requestedUuid
         : `legacy name "${descriptor.rawLegacyName}"`;
     if (descriptor.reason === 'ambiguous') {
-        return `Unit reference ${identity} is ambiguous and was retained as deferred state`;
+        return `Unit reference ${identity} is ambiguous`;
     }
     if (descriptor.reason === 'catalog-not-ready') {
-        return `Unit reference ${identity} cannot be resolved until the catalog is ready; its state was retained`;
+        return `Unit reference ${identity} cannot be resolved until the catalog is ready`;
     }
-    return `Unit reference ${identity} is not installed and was retained as deferred state`;
+    return `Unit reference ${identity} is not installed`;
 }

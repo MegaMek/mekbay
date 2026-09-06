@@ -55,6 +55,10 @@ describe('compact runtime persistence', () => {
             instanceId: uuidAt(9_999),
             type: GameSystem.AS,
             name: 'Mixed Alpha Strike damage budget',
+            personnel: {
+                people: units.map((_unit, index) => ({ id: uuidAt(20_000 + index), ...(index % 7 === 0 ? { gunnery: 3 } : {}) })),
+                assignments: units.map((unit, index) => ({ unitId: unit.id, positionId: 'pilot', personId: uuidAt(20_000 + index) })),
+            },
             groups: Array.from({ length: 20 }, (_, groupIndex) => ({
                 id: uuidAt(8_000 + groupIndex),
                 name: `Formation ${groupIndex + 1}`,
@@ -124,6 +128,15 @@ describe('compact runtime persistence', () => {
             instanceId: force.forceId,
             type: GameSystem.CBT,
             name: 'Maximum size budget',
+            personnel: {
+                people: units.flatMap((entry, unitIndex) => entry.unit.deployment.values.crewAssignment.positions.map((position, positionIndex) => ({
+                    id: uuidAt(30_000 + unitIndex * 10 + positionIndex),
+                    name: position.name, gunnery: position.gunnery, piloting: position.piloting,
+                }))),
+                assignments: units.flatMap((entry, unitIndex) => entry.unit.deployment.values.crewAssignment.positions.map((position, positionIndex) => ({
+                    unitId: entry.instanceId, positionId: position.positionId, personId: uuidAt(30_000 + unitIndex * 10 + positionIndex),
+                }))),
+            },
             cbt: force,
         });
         expect(byteLength(stored)).toBeLessThan(120_000);
@@ -149,7 +162,6 @@ function mixedAlphaStrikeUnit(index: number): ASSerializedUnit {
         id: uuidAt(index),
         uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2'),
         ...(state === undefined ? {} : { state }),
-        ...(index % 7 === 0 ? { skill: 3 } : {}),
     };
 }
 

@@ -310,13 +310,6 @@ export function historyTargetLabel(
 }
 
 export function historyCrewLabel(unit: CBTUnit, occurrence: number): string {
-    const definition = [...unit.getIndex().crewPositions.values()]
-        .find(position => position.occurrence === occurrence);
-    const assigned = definition === undefined
-        ? undefined
-        : unit.getCrewAssignment().positions.find(position => position.positionId === definition.id);
-    const role = assigned?.role.trim();
-    if (role) return role;
     if (unit.getUnit().entityType === 'Mek' && occurrence === 0) return 'Pilot';
     return `Crew ${occurrence + 1}`;
 }

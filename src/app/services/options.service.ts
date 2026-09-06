@@ -25,6 +25,7 @@ import { isCBTRuleset } from '../models/cbt-ruleset.model';
 const DEFAULT_OPTIONS: Options = {
     canvasInput: 'all',
     unitDisplayName: 'both',
+    displayUnitNameFormat: 'innerSphereClan',
     gameSystem: GameSystem.CBT,
     availabilitySource: 'mul',
     forceViewerBVPVDisplay: 'adjusted',
@@ -277,6 +278,7 @@ export class OptionsService {
         swipeToNextSheet: DEFAULT_OPTIONS.swipeToNextSheet,
         syncZoomBetweenSheets: DEFAULT_OPTIONS.syncZoomBetweenSheets,
         unitDisplayName: DEFAULT_OPTIONS.unitDisplayName,
+        displayUnitNameFormat: DEFAULT_OPTIONS.displayUnitNameFormat,
         gameSystem: DEFAULT_OPTIONS.gameSystem,
         availabilitySource: DEFAULT_OPTIONS.availabilitySource,
         forceViewerBVPVDisplay: DEFAULT_OPTIONS.forceViewerBVPVDisplay,
@@ -319,6 +321,11 @@ export class OptionsService {
             swipeToNextSheet: saved?.swipeToNextSheet ?? DEFAULT_OPTIONS.swipeToNextSheet,
             syncZoomBetweenSheets: saved?.syncZoomBetweenSheets ?? DEFAULT_OPTIONS.syncZoomBetweenSheets,
             unitDisplayName: saved?.unitDisplayName ?? DEFAULT_OPTIONS.unitDisplayName,
+            displayUnitNameFormat: resolveSavedValue(
+                saved?.displayUnitNameFormat,
+                DEFAULT_OPTIONS.displayUnitNameFormat,
+                OPTION_VALUES.displayUnitNameFormat,
+            ),
             gameSystem: saved?.gameSystem ?? DEFAULT_OPTIONS.gameSystem,
             availabilitySource: saved?.availabilitySource ?? DEFAULT_OPTIONS.availabilitySource,
             forceViewerBVPVDisplay: saved?.forceViewerBVPVDisplay ?? DEFAULT_OPTIONS.forceViewerBVPVDisplay,

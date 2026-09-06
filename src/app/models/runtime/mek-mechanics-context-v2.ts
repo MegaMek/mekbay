@@ -737,9 +737,9 @@ function runtimeCrewPositions(
     const positions = [...binding.index.crewPositions.values()].sort((left, right) =>
         left.occurrence - right.occurrence
         || compareText(left.id, right.id));
-    return positions.map(position => {
+    return positions.flatMap(position => {
         const assigned = assignments.get(position.id);
-        if (!assigned) throw new Error(`Movement crew assignment is missing ${position.id}`);
+        if (!assigned) return [];
         const runtime = input.crewState(position.id);
         const seat = position.occurrence === 1 && binding.profile.cockpit.commandConsole
             ? binding.profile.cockpit.commandConsole
@@ -748,7 +748,7 @@ function runtimeCrewPositions(
             && seat.criticalSlotIds.every(slotId => !input.criticalSlotUnavailable(slotId))
             && seat.locationIds.every(locationId => !input.locationDestroyed(locationId));
         const healthy = CrewMember.from(runtime).isAvailable();
-        return Object.freeze({ position, assigned, healthy, seatAvailable, functional: healthy && seatAvailable });
+        return [Object.freeze({ position, assigned, healthy, seatAvailable, functional: healthy && seatAvailable })];
     });
 }
 

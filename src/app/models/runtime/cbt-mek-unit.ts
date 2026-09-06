@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { CrewPositionId } from '../entity/entity-identifiers';
+import type { CrewMemberRuntimeState } from '../crew-member.model';
+import { ImmutableIndex } from '../entity/immutable-collections';
 import { buildMekRuntimeIndex, type MekRuntimeIndex } from './mek-runtime-index';
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { jsonValuesEqual } from '../../utils/json-value.util';
 import type { InitializeUnitStateOptions } from './unit-state-initializer';
@@ -26,7 +28,7 @@ import {
     type V2StateRestoreWarning,
 } from './runtime-state-codec-v2';
 import { MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION } from './unit-state-initializer';
-import { createDefaultCrewAssignment, type CrewAssignment } from './crew-assignment';
+import { canonicalizeCrewAssignment, createDefaultCrewAssignment, type CrewAssignment } from './crew-assignment';
 import {
     createMekHeatContextV2,
     type MekHeatAutomationPolicyV2,
@@ -190,25 +192,27 @@ export class CBTMekUnit implements CBTUnit {
         });
     }
 
-    /** Rebuilds the immutable deployment baseline for an unstarted unit. */
-    public static redeployCrew(
+    /** Rebinds personal facts while preserving the exact entity, baseline, and combat snapshot. */
+    public static async redeployCrew(
         current: CBTMekUnit,
         crewAssignment: CrewAssignment,
         scenario: ScenarioRules,
+        crewState?: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>,
     ): Promise<CBTMekUnit> {
-        const saved = current.serialize();
-        return this.redeployPreCombat(current, {
-            initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
-            profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
-            deployment: {
-                id: saved.deployment.values.id,
-                ...(saved.deployment.values.initialHeat === undefined
-                    ? {}
-                    : { initialHeat: saved.deployment.values.initialHeat }),
-                crewAssignment,
-            },
-            scenario,
-        });
+        const index = current.getIndex();
+        const assignment = canonicalizeCrewAssignment(index.crewPositions, crewAssignment);
+        const health = crewState === undefined ? undefined : new ImmutableIndex(
+            [...crewState].map(([id, value]) => [id, Object.freeze({ ...value })] as const));
+        const state = current.runtime.snapshot();
+        const heat = await bindMekHeatRuntimeContext(current.entity, index, current.baselineRef.ruleset, scenario);
+        if (current.runtime.snapshot() !== state || !current.runtime.matchesEntity(current.entity)) {
+            throw new Error('The runtime changed while its crew replacement was being prepared');
+        }
+        const instance = new CBTUnitInstance(current.instanceId, current.baselineRef, current.entity, index,
+            current.baselineRef.ruleset, health === undefined ? state : { ...state, crew: health }, assignment,
+            heat, bindMekMechanicsContext(current.entity, index, current.baselineRef.ruleset, scenario));
+        return new CBTMekUnit(current.entity, current.uuid, instance, Object.freeze({ ...current.deployment,
+            values: Object.freeze({ ...current.deployment.values, crewAssignment: assignment }) }), current.nativeSource);
     }
 
     /**
@@ -219,8 +223,12 @@ export class CBTMekUnit implements CBTUnit {
     public static async redeployPreCombat(
         current: CBTMekUnit,
         options: InitializeUnitStateOptions,
+        crewState?: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>,
     ): Promise<CBTMekUnit> {
         options = captureInitializeOptions(options);
+        const health = crewState === undefined ? undefined : new ImmutableIndex(
+            [...crewState].map(([id, value]) => [id, Object.freeze({ ...value })] as const),
+        );
         const runtime = current.getInstance();
         if (runtime.revision() !== 0) {
             throw new Error('A started V2 runtime cannot be redeployed');
@@ -268,7 +276,7 @@ export class CBTMekUnit implements CBTUnit {
             entity,
             runtimeIndex,
             initialized.baselineRef.ruleset,
-            state,
+            health === undefined ? state : { ...state, crew: health },
             initialized.deployment.crewAssignment,
             heatContext,
             bindMekMechanicsContext(
@@ -441,7 +449,7 @@ export class CBTMekUnit implements CBTUnit {
                         positions: createDefaultCrewAssignment(runtimeIndex.crewPositions).positions.map(position => ({
                             ...position,
                             gunnery: request.crewSkills!.gunnery,
-                            piloting: effectiveEntityPilotingSkill(entity, request.crewSkills!.piloting),
+                            piloting: request.crewSkills!.piloting,
                         })),
                     },
                 },
@@ -503,22 +511,9 @@ export class CBTMekUnit implements CBTUnit {
         }
         nativeSource = verifyNativeSource(nativeSource);
         const runtimeIndex = buildMekRuntimeIndex(entity);
-        const storedCrew = saved.deployment.values.crewAssignment;
-        const crewAssignment = storedCrew.positions.length === 0
-            ? createDefaultCrewAssignment(runtimeIndex.crewPositions)
-            : storedCrew;
-        const deploymentValues = crewAssignment === storedCrew
-            ? saved.deployment.values
-            : Object.freeze({ ...saved.deployment.values, crewAssignment });
-        if (deploymentValues !== saved.deployment.values) {
-            saved = Object.freeze({
-                ...saved,
-                deployment: Object.freeze({ ...saved.deployment, values: deploymentValues }),
-            });
-        }
         const initialized = initializeUnitState(entity, runtimeIndex, uuid, {
             ...options,
-            deployment: deploymentValues,
+            deployment: saved.deployment.values,
         });
         // The native Entity owns topology. Storage carries only stable target IDs;
         // rebuild the transient lookup table from the exact loaded source.

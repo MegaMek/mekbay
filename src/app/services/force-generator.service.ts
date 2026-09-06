@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { formatUnitName } from '../utils/unit-display-name.util';
 import { Injectable, OnDestroy, inject } from '@angular/core';
 
 import { GameSystem } from '../models/common.model';
@@ -1806,11 +1807,6 @@ function getForceGeneratorNow(): number {
     return Date.now();
 }
 
-function formatForceGenerationUnitLabel(unit: Pick<UnitSummary, 'chassis' | 'model'>): string {
-    const model = unit.model.trim();
-    return model.length > 0 ? `${unit.chassis} ${model}` : unit.chassis;
-}
-
 function formatForceGenerationSkillSummary(
     gameSystem: GameSystem,
     step: Pick<ForceGenerationSelectionStep, 'skill' | 'gunnery' | 'piloting'>,
@@ -2934,6 +2930,7 @@ export class ForceGeneratorService implements OnDestroy {
             era,
             bv: preview.gameSystem === GameSystem.CBT ? preview.totalCost : undefined,
             pv: preview.gameSystem === GameSystem.AS ? preview.totalCost : undefined,
+            reserveCount: 0,
             groups: previewGroups,
         };
 
@@ -5278,7 +5275,7 @@ export class ForceGeneratorService implements OnDestroy {
                 ? ''
                 : `, R ${formatForceGeneratorWeight(step.requisitionWeight)} / S ${formatForceGeneratorWeight(step.salvageWeight)}`;
             lines.push(
-                `${index + 1}. ${formatForceGenerationUnitLabel(step.unit)}: ${selectionNote}${weightNote}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
+                `${index + 1}. ${formatUnitName(step.unit, this.optionsService.options().displayUnitNameFormat)}: ${selectionNote}${weightNote}${skillNote}, ${step.cost.toLocaleString()} ${budgetLabel}${reasons}.`,
             );
         }
 
@@ -5879,7 +5876,7 @@ export class ForceGeneratorService implements OnDestroy {
             becameBest,
             decisionReason,
             units: selectionAttempt.selectedCandidates.map((candidate) => ({
-                label: formatForceGenerationUnitLabel(candidate.unit),
+                label: formatUnitName(candidate.unit, this.optionsService.options().displayUnitNameFormat),
                 cost: candidate.cost,
             })),
         };

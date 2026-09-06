@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { UnitNameService } from './unit-name.service';
+import { forceOpforTargetId } from '../models/runtime/cbt-force-target-roster';
 import { DestroyRef, effect, inject, Injectable, Injector, type EffectRef, type Signal, untracked } from '@angular/core';
 import { CBTForce } from '../models/cbt-force.model';
 import type { InventoryControlTargetRosterRow } from '../models/cbt-force.types';
@@ -17,6 +19,7 @@ import { ToastService } from './toast.service';
 
 @Injectable({ providedIn: 'root' })
 export class InventoryControlOpforService {
+    private readonly unitNames = inject(UnitNameService);
     private readonly injector = inject(Injector);
     private readonly logger = inject(LoggerService);
     private readonly toastService = inject(ToastService);
@@ -31,6 +34,20 @@ export class InventoryControlOpforService {
         this.monitor?.destroy();
         this.loadedForces = loadedForces;
         this.monitor = effect(() => this.synchronizeLoadedForces(), { injector: this.injector });
+    }
+
+    targetName(targetId: string, fallback: string): string {
+        for (const slot of this.loadedForces()) {
+            if (!(slot.force instanceof CBTForce)) continue;
+            const forceId = slot.force.instanceId();
+            if (!forceId) continue;
+            for (const member of slot.force.getCBTMembers()) {
+                if (forceOpforTargetId(forceId, member.id) === targetId) {
+                    return this.unitNames.name(member.entity);
+                }
+            }
+        }
+        return fallback;
     }
 
     isAvailable(force: CBTForce): boolean {

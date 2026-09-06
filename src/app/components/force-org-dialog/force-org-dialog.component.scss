@@ -829,3 +829,12 @@
     background-color: var(--background-color-menu);
     border-top: 2px solid var(--border-color);
 }
+.sidebar-paging {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    font-size: 12px;
+    color: var(--text-color-secondary);
+    .bt-button { margin-left: auto; flex-shrink: 0; font-size: 11px; }
+}

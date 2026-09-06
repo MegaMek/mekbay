@@ -20,7 +20,7 @@ describe('CBT force battle value authority', () => {
       captureRuntime: () => ({ query: fixture.instance.query() }),
       getCrewAssignment: () => ({
         schemaVersion: 1,
-        positions: [{ positionId, name: '', role: '', gunnery: 4, piloting: 2 }],
+        positions: [{ positionId, name: '', gunnery: 4, piloting: 2 }],
       }),
     } as unknown as CBTUnit;
     const lyingSummary = {
@@ -50,7 +50,7 @@ describe('CBT force battle value authority', () => {
       captureRuntime: () => ({ query: fixture.instance.query() }),
       getCrewAssignment: () => ({
         schemaVersion: 1,
-        positions: [{ positionId, name: '', role: '', gunnery: 4, piloting: 4 }],
+        positions: [{ positionId, name: '', gunnery: 4, piloting: 4 }],
       }),
     } as unknown as CBTUnit;
 

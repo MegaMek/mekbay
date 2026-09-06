@@ -39,7 +39,7 @@
         <header class="unit-hero">
             <unit-icon class="unit-icon" [unit]="activeMember.entity" [size]="44" />
             <div class="unit-title-block">
-                <h1>{{ activeMember.entity.displayName() }}</h1>
+                <h1>{{ unitNames.name(activeMember.entity) }}</h1>
                 <div class="unit-meta">
                     @if (mekSnapshot(); as mek) {
                     <span>{{ mek.identity.massTons }} T</span><span>{{ mek.identity.techBase }}</span><span>{{
@@ -99,8 +99,12 @@
                             [attr.aria-label]="'Edit ' + crewPositionLabel(crewIndex) + ' name'"
                             [attr.title]="'Edit ' + crewPositionLabel(crewIndex) + ' name'">
                             <strong class="crew-position-label">{{ crewPositionLabel(crewIndex) }}</strong>
-                            @if (crew.name) { <span class="crew-name-text">: {{ crew.name }}</span> }
+                            @if (crew.effectiveState === 'vacant') { <span class="crew-name-text">: VACANT</span> }
+                            @else if (crew.name) { <span class="crew-name-text">: {{ crew.name }}</span> }
                         </button>
+                        @if (crew.effectiveState === 'vacant') {
+                            <span class="muted">Assign a crew member to this station.</span>
+                        } @else {
                         <div class="skills">
                             <span class="skill-item"><span>Gunnery:</span><strong>{{ crew.gunnery }}</strong></span>
                             <span class="skill-item"><span>Piloting:</span><strong>{{ crew.piloting }}</strong>
@@ -136,6 +140,7 @@
                                 (click)="toggleMekCrewState(crew, control.key)">{{ control.label }}</button>
                             }
                         </div>
+                        }
                     </article>
                     }
                 </div>
@@ -151,8 +156,12 @@
                             [attr.aria-label]="'Edit ' + crewPositionLabel(crewIndex) + ' name'"
                             [attr.title]="'Edit ' + crewPositionLabel(crewIndex) + ' name'">
                             <strong class="crew-position-label">{{ crewPositionLabel(crewIndex) }}</strong>
-                            @if (crew.name) { <span class="crew-name-text">: {{ crew.name }}</span> }
+                            @if (crew.effectiveState === 'vacant') { <span class="crew-name-text">: VACANT</span> }
+                            @else if (crew.name) { <span class="crew-name-text">: {{ crew.name }}</span> }
                         </button>
+                        @if (crew.effectiveState === 'vacant') {
+                            <span class="muted">Assign a crew member to this station.</span>
+                        } @else {
                         <div class="skills">
                             <span class="skill-item"><span>Gunnery:</span><strong>{{ crew.gunnery }}</strong></span>
                             <span class="skill-item"><span>Piloting:</span><strong>{{ crew.piloting }}</strong></span>
@@ -180,6 +189,7 @@
                                 (click)="toggleNonMekCrewState(crew, control.key)">{{ control.label }}</button>
                             }
                         </div>
+                        }
                         }
                     </article>
                     }
@@ -257,7 +267,7 @@
                                         <button type="button" class="target-chip"
                                             [class.active]="inventoryTargetSelection(row) === target.targetId"
                                             [style.--target-color]="target.color" [disabled]="readOnly()"
-                                            [title]="target.name"
+                                            [title]="targetNames.targetName(target.targetId, target.name)"
                                             (click)="selectInventoryTarget(row, target.targetId)">{{ target.letter
                                             }}</button>
                                         }
@@ -538,22 +548,22 @@
     <nav class="tactical-navigation-toolbar glass" aria-label="Force unit navigation">
         <button type="button" class="tactical-footer-nav tactical-footer-nav-left"
             [class.hidden]="!canNavigate()" [disabled]="!canNavigate()" (click)="previousUnit()"
-            [attr.aria-label]="previousNavigationUnit() ? 'Previous Unit: ' + previousNavigationUnit()!.entity.displayName() : 'Previous Unit'"
-            [title]="previousNavigationUnit()?.entity?.displayName() ?? ''">
+            [attr.aria-label]="previousNavigationUnit() ? 'Previous Unit: ' + unitNames.name(previousNavigationUnit()!.entity) : 'Previous Unit'"
+            [title]="unitNames.name(previousNavigationUnit()?.entity)">
             <span class="nav-arrow-symbol" aria-hidden="true">&#10094;</span>
             <span class="nav-unit-name">
                 <span class="nav-unit-model">{{ previousNavigationUnit()?.entity?.model() }}</span>
-                <span class="nav-unit-chassis">{{ previousNavigationUnit()?.entity?.chassis() }}</span>
+                <span class="nav-unit-chassis">{{ unitNames.chassis(previousNavigationUnit()?.entity) }}</span>
             </span>
         </button>
         <span class="unit-position" aria-label="Unit position">{{ unitIndex() + 1 }} / {{ forceMembers().length }}</span>
         <button type="button" class="tactical-footer-nav tactical-footer-nav-right"
             [class.hidden]="!canNavigate()" [disabled]="!canNavigate()" (click)="nextUnit()"
-            [attr.aria-label]="nextNavigationUnit() ? 'Next Unit: ' + nextNavigationUnit()!.entity.displayName() : 'Next Unit'"
-            [title]="nextNavigationUnit()?.entity?.displayName() ?? ''">
+            [attr.aria-label]="nextNavigationUnit() ? 'Next Unit: ' + unitNames.name(nextNavigationUnit()!.entity) : 'Next Unit'"
+            [title]="unitNames.name(nextNavigationUnit()?.entity)">
             <span class="nav-unit-name">
                 <span class="nav-unit-model">{{ nextNavigationUnit()?.entity?.model() }}</span>
-                <span class="nav-unit-chassis">{{ nextNavigationUnit()?.entity?.chassis() }}</span>
+                <span class="nav-unit-chassis">{{ unitNames.chassis(nextNavigationUnit()?.entity) }}</span>
             </span>
             <span class="nav-arrow-symbol" aria-hidden="true">&#10095;</span>
         </button>

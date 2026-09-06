@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, DestroyRef, input, computed, effect, inject, signal } from '@angular/core';
 import type { UnitSummary } from '../../../models/unit-summary.model';
 import type { UnitFluff } from '../../../models/unit-fluff.model';
@@ -21,6 +22,7 @@ interface ManufacturerFactoryDisplay {
     styleUrl: './unit-details-intel-tab.component.css'
 })
 export class UnitDetailsIntelTabComponent {
+    readonly unitNames = inject(UnitNameService);
     unit = input.required<UnitSummary>();
     isSwiping = input<boolean>(false);
 

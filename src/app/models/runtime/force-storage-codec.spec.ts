@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { GameSystem } from '../common.model';
+import { canonicalizeForcePersonnel, type ForcePersonnelSnapshot } from '../force-personnel';
 import type { ASSerializedForce, SerializedCBTForce, SerializedForce } from '../force-serialization';
 import {
     CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -21,7 +22,7 @@ import {
 import { TestAeroSpaceFighterEntity, TestTankEntity } from '../entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
 import { componentIdForMount } from './non-mek-runtime-index';
-import { asComponentId } from '../entity/entity-identifiers';
+import { asComponentId, asCrewPositionId } from '../entity/entity-identifiers';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asSourceHashCanary } from '../source-hash-canary';
 import {
@@ -39,11 +40,12 @@ import {
     UNIT_STATE_INITIALIZER_REVISION,
 } from './unit-state-initializer';
 
-describe('compact force storage codec', () => {
+describe('force storage codec', () => {
     it('owns queued Alpha Strike state independently of later source edits', () => {
         const force: ASSerializedForce = {
             version: 2, timestamp: '2026-09-01T12:00:00.000Z',
             instanceId: '019f6767-0dcb-7bb8-992f-aef08202f5e3', type: GameSystem.AS, name: 'Queued save',
+            personnel: { people: [], assignments: [] },
             groups: [{ id: '019f6767-0dcb-7bb8-992f-aef08202f5e4', units: [{
                 id: '019f6767-0dcb-7bb8-992f-aef08202f5e5', uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2'),
                 state: { armor: [2, 1], consumed: { BOMB1: [0, 1] } },
@@ -56,7 +58,7 @@ describe('compact force storage codec', () => {
         expect(restored.groups[0].units[0].state).toEqual({ armor: [2, 1], consumed: { BOMB1: [0, 1] } });
     });
 
-    it('round-trips lossless Alpha Strike state through projection-friendly short keys', () => {
+    it('round-trips lossless Alpha Strike state with authoritative projected headers', () => {
         const firstId = '019f6767-0dcb-7bb8-992f-aef08202f5e4';
         const secondId = '~legacy-unit-id';
         const force: ASSerializedForce = {
@@ -71,6 +73,12 @@ describe('compact force storage codec', () => {
             eraId: 3150,
             pv: 84,
             owned: false,
+            personnel: {
+                people: [{ id: 'person:lead', name: 'Lead', portrait: 'Doctor_M_8', gunnery: 3, commander: true,
+                    abilities: ['Melee Master', { name: 'Custom', cost: 2, summary: 'Summary' }] },
+                    { id: 'person:reserve', name: 'Reserve', portrait: 'Doctor_F_1' }],
+                assignments: [{ unitId: firstId, positionId: 'pilot', personId: 'person:lead' }],
+            },
             groups: [{
                 id: '019f6767-0dcb-7bb8-992f-aef08202f5e6',
                 name: 'Lance',
@@ -82,12 +90,8 @@ describe('compact force storage codec', () => {
                     id: firstId,
                     uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2'),
                     sourceHashCanary: asSourceHashCanary('k8zQ'),
-                    alias: 'Lead',
                     updatedTs: 42,
-                    skill: 3,
-                    abilities: ['Melee Master', { name: 'Custom', cost: 2, summary: 'Summary' }],
                     formationAbilities: ['LEAD'],
-                    commander: true,
                     state: {
                         modified: true,
                         destroyed: true,
@@ -105,7 +109,7 @@ describe('compact force storage codec', () => {
                     id: secondId,
                     uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e3'),
                 }],
-            }],
+            }, { id: '~legacy-target', units: [] }],
             c3Networks: [{
                 id: '019f6767-0dcb-7bb8-992f-aef08202f5e5',
                 type: 'c3i',
@@ -116,17 +120,21 @@ describe('compact force storage codec', () => {
 
         const stored = encodeForceForStorage(force);
         expect(stored['timestamp']).toBe(Date.parse(force.timestamp));
-        expect(stored['groups']).toBeUndefined();
         expect(stored['c3Networks']).toBeUndefined();
-        const compact = stored['a'] as Record<string, unknown>;
-        const group = (compact['g'] as Record<string, unknown>[])[0]!;
-        const unit = (group['u'] as Record<string, unknown>[])[0]!;
-        expect(unit['u']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
-        expect(unit['h']).toBe('k8zQ');
-        expect(unit['c3']).toEqual([12, -4]);
-        expect((unit['x'] as Record<string, unknown>)['d']).toBe(1);
-        expect((unit['x'] as Record<string, unknown>)['p']).toBeUndefined();
-        expect(byteLength(stored)).toBeLessThan(byteLength(force) * 0.75);
+        const group = (stored['groups'] as Record<string, unknown>[])[0]!;
+        const unit = (stored['units'] as Record<string, unknown>[])[0]!;
+        expect(group['unitIndices']).toEqual([0, 1]);
+        expect(group['formationTarget']).toBe(1);
+        expect(unit['uuid']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
+        expect(unit['sourceHash']).toBe('k8zQ');
+        expect(unit['commander']).toBeUndefined();
+        expect(unit['crew']).toEqual([jasmine.objectContaining({ commander: true, portrait: 'Doctor_M_8' })]);
+        expect(stored['personnel']).toEqual([{ id: 'person:reserve', name: 'Reserve', portrait: 'Doctor_F_1' }]);
+        expect(unit['destroyed']).toBeTrue();
+        expect((unit['state'] as Record<string, unknown>)['c3']).toEqual([12, -4]);
+        expect((unit['state'] as Record<string, unknown>)['d']).toBeUndefined();
+        expect((unit['state'] as Record<string, unknown>)['p']).toBeUndefined();
+        expect(byteLength(stored)).toBeLessThan(byteLength(force));
 
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
         expect(decoded).toEqual(force);
@@ -172,8 +180,8 @@ describe('compact force storage codec', () => {
         expect(compact['history']).toBeUndefined();
         expect(compact['encounter']).toBeUndefined();
 
-        const unit = (compact['u'] as Record<string, unknown>[])[0]!;
-        expect(unit['h']).toBe('k8zQ');
+        const unit = storedUnitState(stored);
+        expect(storedUnit(stored)['sourceHash']).toBe('k8zQ');
         expect(unit['c3']).toEqual([203, 392]);
         expect(unit['q']).toBeUndefined();
         expect(unit['baselineRefAtSave']).toBeUndefined();
@@ -255,7 +263,7 @@ describe('compact force storage codec', () => {
         const force = forceWithUnit(unit, 'force:critical-storage', 'Critical storage');
 
         const stored = encodeForceForStorage(force);
-        const compactUnit = ((stored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
+        const compactUnit = storedUnitState(stored);
         expect((compactUnit['t'] as Record<string, unknown>)['q']).toBeDefined();
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
         const decodedUnit = decoded.cbt!.units[0]!.unit as SerializedCBTUnitV2;
@@ -304,7 +312,7 @@ describe('compact force storage codec', () => {
         const unit = ready.serialize();
         const force = forceWithUnit(unit, 'force:compact-modular', 'Compact Modular Armor');
         const stored = encodeForceForStorage(force);
-        const compactUnit = ((stored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
+        const compactUnit = storedUnitState(stored);
         expect((compactUnit['c'] as unknown[][]).some(row =>
             (row[1] as Record<string, unknown>)['r'] === 6)).toBeTrue();
         expect((compactUnit['p'] as Record<string, unknown>)['m']).toEqual(jasmine.any(Array));
@@ -348,6 +356,7 @@ describe('compact force storage codec', () => {
         } as const;
         const force: SerializedCBTForce = {
             ...source,
+            personnel: personnelForUnits([unit]),
             cbt: {
                 ...source.cbt!,
                 history,
@@ -365,13 +374,13 @@ describe('compact force storage codec', () => {
 
         const stored = encodeForceForStorage(force);
         const compact = stored['cbt'] as Record<string, unknown>;
-        const compactUnit = (compact['u'] as Record<string, unknown>[])[0]!;
+        const compactUnit = storedUnitState(stored);
         const compactHistory = compact['h'] as Array<{ p: unknown[][][] }>;
-        const compactGroup = (compact['g'] as unknown[][])[0]!;
+        const compactGroup = (stored['groups'] as Record<string, unknown>[])[0]!;
         expect(stored['timestamp']).toBe(Date.parse(force.timestamp));
         expect(compactUnit['k']).toBeUndefined();
-        expect(compactUnit['i']).toMatch(/^~u[A-Za-z0-9_-]{22}$/u);
-        expect(compactUnit['e']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
+        expect(storedUnit(stored)['id']).toMatch(/^~u[A-Za-z0-9_-]{22}$/u);
+        expect(storedUnit(stored)['uuid']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
         expect(compactHistory[0]!.p[0]![0]).toEqual([
             RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR,
             0,
@@ -386,7 +395,7 @@ describe('compact force storage codec', () => {
             1,
             CBT_HISTORY_MUTATION_TARGET_CODE.committed,
         ]);
-        expect(compactGroup[0]).toMatch(/^~[A-Za-z0-9_-]{22}$/u);
+        expect(compactGroup['id']).toMatch(/^~[A-Za-z0-9_-]{22}$/u);
 
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
         expect(decoded.cbt!.history).toEqual(history);
@@ -433,7 +442,7 @@ describe('compact force storage codec', () => {
             'force:movement-psr',
             'Movement and PSR',
         ));
-        const compactUnit = ((stored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
+        const compactUnit = storedUnitState(stored);
         const compactMovement = compactUnit['m'] as Record<string, unknown>;
         expect(compactMovement['m']).toEqual(['walk', 3]);
         expect(compactMovement['k']).toEqual(jasmine.any(Array));
@@ -505,14 +514,16 @@ describe('compact force storage codec', () => {
         const force = forceWithUnit(ready.serialize(), 'force:implicit-defaults', 'Implicit defaults');
         const stored = encodeForceForStorage(force);
         const compact = stored['cbt'] as Record<string, unknown>;
-        const unit = (compact['u'] as Record<string, unknown>[])[0]!;
+        const unit = storedUnitState(stored);
 
         expect(unit['b']).toBeUndefined();
         expect(unit['d']).toBeUndefined();
         expect(unit['r']).toBeUndefined();
         expect(unit['k']).toBeUndefined();
-        expect(unit['e']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
-        expect(((compact['g'] as unknown[][])[0]![1] as unknown[][])[0]).toEqual([0]);
+        expect(storedUnit(stored)['uuid']).toMatch(/^[A-Za-z0-9_-]{22}$/u);
+        expect((stored['groups'] as Record<string, unknown>[])[0]!['unitIndices']).toEqual([0]);
+        expect(compact['u']).toBeUndefined();
+        expect(compact['g']).toBeUndefined();
         expect(byteLength(stored)).toBeLessThan(400);
 
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
@@ -521,7 +532,7 @@ describe('compact force storage codec', () => {
         if (isSerializedNonMekUnit(entry.unit)) {
             throw new Error('Implicit-default fixture did not decode as a ready Mek');
         }
-        expect(entry.unit.deployment.values.crewAssignment.positions).toEqual([]);
+        expect(entry.unit.deployment.values.crewAssignment.positions).toEqual(ready.getCrewAssignment().positions);
         const restored = await CBTMekUnit.restoreFromEntity(
             entry.unit,
             fixture.entity,
@@ -556,7 +567,7 @@ describe('compact force storage codec', () => {
             'force:row-order',
             'Row order',
         ));
-        const compactUnit = ((stored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
+        const compactUnit = storedUnitState(stored);
 
         expect(compactUnit['y']).toEqual({ r: [1, 0] });
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
@@ -597,8 +608,8 @@ describe('compact force storage codec', () => {
         };
 
         const stored = encodeForceForStorage(force);
-        const compactGroups = (stored['cbt'] as Record<string, unknown>)['g'] as unknown[][];
-        expect((compactGroups[0][2] as Record<string, unknown>)['t']).toBe(1);
+        const compactGroups = stored['groups'] as Record<string, unknown>[];
+        expect(compactGroups[0]['formationTarget']).toBe(1);
 
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
         expect(decoded.cbt!.roster.groups[0].formationTargetGroupId).toBe('group:target');
@@ -686,12 +697,13 @@ describe('compact force storage codec', () => {
         expect(entry.unit.pendingCombat?.damageTrackHits?.[0]?.hitTimestamps).toEqual([17]);
 
         const compact = stored['cbt'] as Record<string, unknown>;
-        const compactUnit = (compact['u'] as Record<string, unknown>[])[0]!;
+        const compactUnit = storedUnitState(stored);
         expect(compactUnit['baselineRefAtSave']).toBeUndefined();
         expect(compactUnit['attackerTargeting']).toBeUndefined();
         expect(compactUnit['q']).toBeUndefined();
         expect(compactUnit['p']).toBeDefined();
-        expect(compactUnit['w']).toEqual([[crewPositionId, 0, { unconscious: true }]]);
+        expect(compactUnit['w']).toBeUndefined();
+        expect(storedPerson(stored)['health']).toEqual({ unconscious: true });
         expect(compactUnit['v']).toEqual([0, 0, ['run', 5], 0, 2, 1, 1, undefined, 1]);
         expect(compactUnit['y']).toEqual({ p: [1, 0] });
         expect(compactUnit['c']).toEqual([[boosterId, { e: [1, 1] }]]);
@@ -715,7 +727,7 @@ describe('compact force storage codec', () => {
             'force:compact-aero-pristine',
             'Compact pristine aero',
         ));
-        expect(((pristine['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!['z'])
+        expect(storedUnitState(pristine)['z'])
             .toBeUndefined();
 
         const runtime = ready.getInstance();
@@ -757,10 +769,11 @@ describe('compact force storage codec', () => {
             'force:compact-aero-heat',
             'Compact aero heat',
         ));
-        const compactUnit = ((stored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
+        const compactUnit = storedUnitState(stored);
         expect(compactUnit['z']).toEqual({ o: 19, s: 2 });
         expect((compactUnit['v'] as unknown[])[7]).toEqual([1, 0]);
-        expect(compactUnit['w']).toEqual([[pilotId, 1, { unconscious: true }, 1]]);
+        expect(compactUnit['w']).toBeUndefined();
+        expect(storedPerson(stored)['health']).toEqual({ wounds: 1, unconscious: true, recoveryReadyTurn: 1 });
 
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
         const entry = decoded.cbt!.units[0]!;
@@ -776,6 +789,148 @@ describe('compact force storage codec', () => {
             identity,
             { id: 'megamek', ruleset: 'core-2026' },
         ).serialize()).toEqual(unit);
+    });
+
+    it('preserves independent unit and group order, commanders, and history references', () => {
+        const source = damagedForce();
+        const first = source.cbt.units[0]!;
+        const secondId = 'unit:second';
+        const second = { ...first, instanceId: secondId, unit: { ...first.unit, instanceId: secondId } };
+        const force: SerializedCBTForce = { ...source,
+            personnel: personnelForUnits([first.unit, second.unit], new Set([secondId])),
+            cbt: { ...source.cbt,
+            units: [first, second],
+            roster: { schemaVersion: 1, groups: [
+                { groupId: 'group:first', order: 0, members: [{ instanceId: secondId, order: 0, commander: true }] },
+                { groupId: 'group:second', order: 1, members: [{ instanceId: first.instanceId, order: 0 }] },
+            ] },
+            history: { u: [secondId, first.instanceId], t: [{ n: 1, p: [[
+                [RUNTIME_HISTORY_MESSAGE.UNIT_ACTION, 0, 'second'],
+                [RUNTIME_HISTORY_MESSAGE.UNIT_ACTION, 1, 'first'],
+            ]] }] },
+        } };
+        const stored = encodeForceForStorage(force);
+        expect((stored['groups'] as Record<string, unknown>[]).map(group => group['unitIndices'])).toEqual([[1], [0]]);
+        expect(storedUnit(stored, 0)['commander']).toBeUndefined();
+        expect(storedUnit(stored, 1)['commander']).toBeUndefined();
+        expect(storedPerson(stored, 1)['commander']).toBeTrue();
+        const restored = decodeForceFromStorage(JSON.parse(JSON.stringify(stored))).cbt!;
+        expect(restored.units.map(unit => unit.instanceId)).toEqual([first.instanceId, secondId]);
+        expect(restored.roster).toEqual(force.cbt.roster);
+        expect(restored.history).toEqual(force.cbt.history);
+        expect(restored.encounter).toEqual(force.cbt.encounter);
+    });
+
+    it('stores each crew profile once and binds multiple stations independently of deployment metadata', () => {
+        const source = damagedForce();
+        const entry = source.cbt.units[0]!;
+        const positions = [{ positionId: asCrewPositionId('crew:0'), name: 'Morgan', gunnery: 3, piloting: 5 },
+            { positionId: asComponentId('crew:1'), name: '', gunnery: 4, piloting: 2 }];
+        const unit = { ...entry.unit, deployment: { ...entry.unit.deployment, values: {
+            id: 'scenario-deployment', initialHeat: 2,
+            crewAssignment: { schemaVersion: 1 as const, positions },
+        } } } as SerializedCBTUnitV2;
+        const force = forceWithUnit(unit, 'force:crew-header', 'Crew');
+        const stored = encodeForceForStorage(force);
+        expect(storedUnit(stored)['crew']).toEqual([
+            jasmine.objectContaining({ name: 'Morgan' }), jasmine.objectContaining({ p: 2 }),
+        ]);
+        expect(stored['personnel']).toBeUndefined();
+        expect(storedPerson(stored)).toEqual(jasmine.objectContaining({ g: 3, name: 'Morgan' }));
+        expect(storedPerson(stored, 1)['p']).toBe(2);
+        expect(storedUnitState(stored)['d']).toEqual({ i: 'scenario-deployment', h: 2 });
+        positions[0]!.name = 'Later edit';
+        const restored = decodeForceFromStorage(JSON.parse(JSON.stringify(stored))).cbt!.units[0]!.unit;
+        expect(restored.deployment.values.crewAssignment.positions[0]!.name).toBe('Morgan');
+        expect(restored.deployment.values.crewAssignment.positions.map(position => [position.gunnery, position.piloting])).toEqual([[3, 5], [4, 2]]);
+    });
+
+    it('stores occupied stations even when every personal skill is standard', async () => {
+        const source = damagedForce();
+        const original = source.cbt.units[0]!.unit as SerializedCBTUnitV2;
+        const unit = { ...original, deployment: { ...original.deployment, values: {
+            ...original.deployment.values, id: 'custom-deployment', initialHeat: 2,
+        } } };
+        const stored = encodeForceForStorage(forceWithUnit(unit, 'force:pristine-crew', 'Pristine crew'));
+        expect(storedUnit(stored)['crew']).toBeDefined();
+        expect(storedPerson(stored)['g']).toBeUndefined();
+        expect(storedPerson(stored)['p']).toBeUndefined();
+        expect(storedUnitState(stored)['d']).toEqual({ i: 'custom-deployment', h: 2 });
+        const decoded = decodeForceFromStorage(stored).cbt!.units[0]!.unit as SerializedCBTUnitV2;
+        expect(decoded.deployment.values.crewAssignment.positions).toEqual(original.deployment.values.crewAssignment.positions);
+        const fixture = createDirectMekRuntimeFixture();
+        const restored = await CBTMekUnit.restoreFromEntity(decoded, fixture.entity, fixture.identity, {
+            initializerRevision: UNIT_STATE_INITIALIZER_REVISION,
+            profileId: DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
+            deployment: decoded.deployment.values,
+            scenario: { id: 'megamek', ruleset: 'core-2026' },
+        });
+        expect(restored.getCrewAssignment().positions).toEqual(original.deployment.values.crewAssignment.positions);
+    });
+
+    it('keeps the AS destruction flag once and omits an empty system payload', () => {
+        const force: ASSerializedForce = { version: 2, timestamp: '2026-09-01T12:00:00.000Z', instanceId: 'force:as-minimal', type: GameSystem.AS, name: 'Minimal',
+            personnel: { people: [], assignments: [] },
+            groups: [{ id: 'group:first', units: [{ id: 'unit:first', uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2'), state: { destroyed: true } }] }] };
+        const stored = encodeForceForStorage(force);
+        expect(stored['a']).toBeUndefined();
+        expect(storedUnit(stored)['destroyed']).toBeTrue();
+        expect(storedUnit(stored)['state']).toBeUndefined();
+        expect(decodeForceFromStorage(stored)).toEqual(force);
+    });
+
+    it('rejects dangling or duplicate roster membership and the unused previous V2 draft', () => {
+        const stored = encodeForceForStorage(damagedForce());
+        for (const indices of [[1], [0, 0], []]) {
+            const invalid = structuredClone(stored);
+            (invalid['groups'] as Record<string, unknown>[])[0]!['unitIndices'] = indices;
+            expect(() => decodeForceFromStorage(invalid)).toThrow();
+        }
+        const oldDraft = { ...stored, cbt: { r: 1, u: stored['units'], g: stored['groups'] } };
+        delete (oldDraft as Record<string, unknown>)['units'];
+        delete (oldDraft as Record<string, unknown>)['groups'];
+        expect(() => decodeForceFromStorage(oldDraft)).toThrow();
+    });
+
+    it('round-trips reserves and an abandoned CBT unit without manufacturing occupants', async () => {
+        const source = damagedForce();
+        const original = source.cbt.units[0].unit as SerializedCBTUnitV2;
+        const unit: SerializedCBTUnitV2 = { ...original,
+            deployment: { ...original.deployment, values: { ...original.deployment.values,
+                crewAssignment: { schemaVersion: 1, positions: [] } } },
+            crew: { schemaVersion: 1, positions: [] },
+        };
+        const force = forceWithUnit(unit, 'force:reserve', 'Reserve');
+        force.personnel = { people: [{ id: 'person:reserve', name: 'Morgan', portrait: 'Doctor_M_8', notes: 'Medical notes\nReady for duty', gunnery: 3, commander: true,
+            abilities: ['future-cbt-ability'], health: { wounds: 2, unconscious: false, ejected: false } }], assignments: [] };
+        const stored = encodeForceForStorage(force);
+        expect(storedUnit(stored)['crew']).toBeUndefined();
+        expect(storedPerson(stored)).toEqual({ id: 'person:reserve', name: 'Morgan', portrait: 'Doctor_M_8', notes: 'Medical notes\nReady for duty', g: 3, commander: true,
+            abilities: ['future-cbt-ability'], health: { wounds: 2 } });
+        const decoded = decodeForceFromStorage(stored);
+        expect(decoded.personnel).toEqual(force.personnel);
+        expect(encodeForceForStorage(decoded)).toEqual(stored);
+        const fixture = createDirectMekRuntimeFixture();
+        const restored = await CBTMekUnit.restoreFromEntity(decoded.cbt!.units[0].unit as SerializedCBTUnitV2, fixture.entity, fixture.identity, {
+            initializerRevision: 1, profileId: 'pristine', deployment: { id: 'default' }, scenario: { id: 'megamek', ruleset: 'core-2026' },
+        });
+        expect(restored.getCrewAssignment().positions).toEqual([]);
+        expect(restored.getInstance().query().crewState([...fixture.index.crewPositions.keys()][0]!).isAvailable()).toBeFalse();
+    });
+
+    it('rejects invalid person objects and duplicate identities across stations and reserves', () => {
+        const stored = encodeForceForStorage(damagedForce());
+        for (const person of [-1, 99, 0.5, {}, { id: 12 }]) {
+            const invalid = structuredClone(stored);
+            storedUnit(invalid)['crew'] = [person];
+            expect(() => decodeForceFromStorage(invalid)).toThrow();
+        }
+        const repeated = structuredClone(stored);
+        const person = storedPerson(repeated);
+        storedUnit(repeated)['crew'] = [person, person];
+        expect(() => decodeForceFromStorage(repeated)).toThrowError(/duplicate person/u);
+        const assignedReserve = { ...stored, personnel: [storedPerson(stored)] };
+        expect(() => decodeForceFromStorage(assignedReserve)).toThrowError(/duplicate person/u);
     });
 
     it('keeps V1 as the sole compatibility load format', () => {
@@ -796,8 +951,8 @@ describe('compact force storage codec', () => {
     it('rejects non-current UUID spellings in V2 storage', () => {
         const force = damagedForce();
         const stored = structuredClone(encodeForceForStorage(force));
-        const compactUnit = ((stored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
-        compactUnit['e'] = force.cbt.units[0]!.unit.entity;
+        const compactUnit = storedUnitState(stored);
+        storedUnit(stored)['uuid'] = force.cbt.units[0]!.unit.entity;
 
         expect(() => decodeForceFromStorage(stored)).toThrowError(/compact UUID/u);
     });
@@ -824,8 +979,9 @@ describe('compact force storage codec', () => {
             'force:pending-crew-death',
             'Pending crew death',
         ));
-        const pendingUnit = ((pendingStored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
-        expect((pendingUnit['w'] as unknown[][])[0]?.slice(1)).toEqual([6]);
+        const pendingUnit = storedUnitState(pendingStored);
+        expect(pendingUnit['w']).toBeUndefined();
+        expect(storedPerson(pendingStored)['health']).toEqual({ wounds: 6 });
 
         expect(fixture.instance.dispatch({ type: 'end-phase' }))
             .toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
@@ -834,8 +990,9 @@ describe('compact force storage codec', () => {
             'force:committed-crew-death',
             'Committed crew death',
         ));
-        const committedUnit = ((committedStored['cbt'] as Record<string, unknown>)['u'] as Record<string, unknown>[])[0]!;
-        expect((committedUnit['w'] as unknown[][])[0]?.slice(1)).toEqual([6, { dead: true }]);
+        const committedUnit = storedUnitState(committedStored);
+        expect(committedUnit['w']).toBeUndefined();
+        expect(storedPerson(committedStored)['health']).toEqual({ wounds: 6, dead: true });
         const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(committedStored)));
         expect((decoded.cbt!.units[0]!.unit as SerializedCBTUnitV2).crew.positions[0]?.dead).toBeTrue();
     });
@@ -932,11 +1089,29 @@ function forceWithUnit(
         type: GameSystem.CBT,
         name,
         cbt,
+        personnel: personnelForUnits([unit]),
     };
 }
 
 function byteLength(value: unknown): number {
     return new TextEncoder().encode(JSON.stringify(value)).length;
+}
+
+function personnelForUnits(units: readonly (SerializedCBTUnitV2 | SerializedNonMekUnit)[], commanders = new Set<string>()): ForcePersonnelSnapshot {
+    const rows = units.flatMap(unit => unit.deployment.values.crewAssignment.positions.map((position, index) => ({
+        unitId: unit.instanceId, position, personId: `person:${unit.instanceId}:${index}`, commander: index === 0 && commanders.has(unit.instanceId),
+    })));
+    return canonicalizeForcePersonnel({
+        people: rows.map(({ position, personId, commander }) => ({ id: personId, name: position.name,
+            gunnery: position.gunnery, piloting: position.piloting, ...(commander ? { commander: true } : {}) })),
+        assignments: rows.map(({ unitId, position, personId }) => ({ unitId, positionId: position.positionId, personId })),
+    });
+}
+
+function storedPerson(stored: Readonly<Record<string, unknown>>, index = 0): Record<string, unknown> {
+    const assigned = (stored['units'] as Record<string, unknown>[]).flatMap(unit =>
+        (unit['crew'] ?? []) as (Record<string, unknown> | null)[]).filter(person => person !== null);
+    return [...assigned, ...((stored['personnel'] ?? []) as Record<string, unknown>[])][index]!;
 }
 
 // Every existing round-trip fixture also exercises the codec ownership boundary,
@@ -964,4 +1139,12 @@ function expectDetachedObjects(source: unknown, result: unknown): void {
     const sharedPaths: string[] = [];
     visit(result, (object, path) => { if (sourceObjects.has(object)) sharedPaths.push(path); });
     expect(sharedPaths).withContext('Storage bytes must not retain caller-owned objects').toEqual([]);
+}
+
+function storedUnit(stored: Readonly<Record<string, unknown>>, index = 0): Record<string, unknown> {
+    return (stored['units'] as Record<string, unknown>[])[index]!;
+}
+
+function storedUnitState(stored: Readonly<Record<string, unknown>>, index = 0): Record<string, unknown> {
+    return (storedUnit(stored, index)['state'] ?? {}) as Record<string, unknown>;
 }

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
+import { ChangeDetectionStrategy, Component, input, output, inject } from '@angular/core';
 import type { EncounterTargetId } from '../../models/runtime/encounter-runtime';
 
 /** Detached presentation row shared by legacy and Entity/runtime target surfaces. */
@@ -37,7 +38,7 @@ export interface WeaponTargetChoiceRow {
                         [class.selected-choice]="selectedTargetId() === target.id"
                         [disabled]="targetDisabledReason(target.id) !== null"
                         [attr.aria-label]="targetAriaLabel(target)"
-                        [title]="targetDisabledReason(target.id) ?? target.name"
+                        [title]="targetDisabledReason(target.id) ?? targetNames.targetName(target.id, target.name)"
                         (click)="selected.emit(target.id)">
                         <span class="target-choice-token" [style.background]="target.color">{{ target.letter }}</span>
                         @if (targetDisabledReason(target.id); as disabledReason) {
@@ -49,7 +50,7 @@ export interface WeaponTargetChoiceRow {
                         } @else {
                             <span class="target-choice-tn"></span>
                         }
-                        <span class="target-choice-name">{{ target.name }}</span>
+                        <span class="target-choice-name">{{ targetNames.targetName(target.id, target.name) }}</span>
                     </button>
                 }
             </div>
@@ -153,6 +154,7 @@ export interface WeaponTargetChoiceRow {
     `]
 })
 export class WeaponTargetChoiceMenuComponent {
+    readonly targetNames = inject(InventoryControlOpforService);
     readonly targets = input<readonly WeaponTargetChoiceRow[]>([]);
     readonly selectedTargetId = input<EncounterTargetId | null>(null);
     readonly targetNumberTexts = input<Readonly<Record<EncounterTargetId, string>>>({});
@@ -170,7 +172,7 @@ export class WeaponTargetChoiceMenuComponent {
     targetAriaLabel(target: WeaponTargetChoiceRow): string {
         const targetNumber = this.targetNumberText(target.id);
         const disabledReason = this.targetDisabledReason(target.id);
-        if (disabledReason) return `${target.name}, unavailable: ${disabledReason}`;
-        return targetNumber ? `${target.name}, TN ${targetNumber}` : target.name;
+        if (disabledReason) return `${this.targetNames.targetName(target.id, target.name)}, unavailable: ${disabledReason}`;
+        return targetNumber ? `${this.targetNames.targetName(target.id, target.name)}, TN ${targetNumber}` : this.targetNames.targetName(target.id, target.name);
     }
 }

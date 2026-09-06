@@ -19,6 +19,29 @@ import {
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 describe('bindNonMekRecordSheet', () => {
+    it('renders an empty station without stale names, ratings or injury controls', () => {
+        const svg = stateSheet();
+        const original = stateSnapshot(1);
+        const interactions: NonMekRecordSheetInteraction[] = [];
+        const binding = bindNonMekRecordSheet(svg, {
+            ...original,
+            crew: original.crew.map(position => ({ ...position, name: '', effectiveState: 'vacant' })),
+        }, interaction => interactions.push(interaction));
+        expect(svg.querySelector('#crewName0')?.textContent).toBe('VACANT');
+        expect(svg.querySelector('#gunnerySkill0')?.textContent).toBe('—');
+        expect(svg.querySelector('#pilotingSkill0')?.textContent).toBe('—');
+        const marker = svg.querySelector<SVGElement>('.crewHit[hit="2"]')!;
+        expect(marker.style.display).toBe('none');
+        marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions).toEqual([]);
+        svg.querySelector('.crewNameButton')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions.at(-1)?.kind).toBe('crew-profile');
+        binding.render(original);
+        expect(marker.style.display).toBe('');
+        expect(svg.querySelector('#gunnerySkill0')?.textContent).toBe('4');
+        binding.destroy();
+    });
+
     it('renders entity damage and emits stable runtime identifiers', () => {
         const svg = sheet();
         const interactions: NonMekRecordSheetInteraction[] = [];
@@ -627,7 +650,6 @@ function stateSnapshot(wounds: number): NonMekRecordSheetSnapshot {
             positionId: CREW_ID,
             occurrence: 0,
             name: 'Crew 1',
-            role: 'Crew',
             gunnery: 4,
             piloting: 5,
             state: Object.freeze({ wounds, unconscious: false, ejected: false, dead: true as const }),

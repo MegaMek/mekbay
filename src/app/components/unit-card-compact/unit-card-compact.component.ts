@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { GameSystem } from '../../models/common.model';
@@ -27,6 +28,7 @@ import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
     styleUrl: './unit-card-compact.component.css'
 })
 export class UnitCardCompactComponent {
+    readonly unitNames = inject(UnitNameService);
     gameService = inject(GameService);
 
     /** The unit to display. If null/undefined, shows "NO UNIT" placeholder. */

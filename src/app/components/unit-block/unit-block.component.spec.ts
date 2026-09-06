@@ -10,6 +10,7 @@ import { CBTForceMember } from '../../models/force-member.model';
 import {
     TestBipedMekEntity,
     TestTankEntity,
+    TestProtoMekEntity,
 } from '../../models/entity/testing/test-entities';
 import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
 import { createEquipment, WeaponEquipment } from '../../models/equipment.model';
@@ -36,6 +37,25 @@ describe('UnitBlockComponent capability badges', () => {
                 } },
             ],
         }).compileComponents();
+    });
+
+    it('keeps every crew station visible and displays effective rather than stored fixed piloting', () => {
+        const person = { id: 'pilot', name: 'Morgan', gunnery: 2, piloting: 2 };
+        const occupant = signal<typeof person | undefined>(person);
+        const force = {
+            changed: new Subject<void>(),
+            getUnitCrewPolicy: () => ({ positions: [{ positionId: 'crew:0', label: 'Pilot' },
+                { positionId: 'crew:1', label: 'Gunner' }] }),
+            getAssignedPerson: (_unitId: string, positionId: string) => positionId === 'crew:0' ? occupant() : undefined,
+        } as unknown as CBTForce;
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', new CBTForceMember('proto', force, new TestProtoMekEntity()));
+        expect(fixture.componentInstance.crewBadges().map(badge => [badge.positionId, badge.skills, badge.vacant]))
+            .toEqual([['crew:0', '2/5', false], ['crew:1', '—', true]]);
+        expect(person.piloting).toBe(2);
+        occupant.set(undefined);
+        expect(fixture.componentInstance.crewBadges().every(badge => badge.vacant)).toBeTrue();
+        fixture.destroy();
     });
 
     it('reads TAG and ECM display data only through the immutable unit summary', () => {
@@ -239,6 +259,7 @@ describe('UnitBlockComponent capability badges', () => {
             readOnly: () => false,
             getUnitDestroyed: () => false,
             getUnitCrewAssignment: () => ({ positions: [] }),
+            getUnitCrewPolicy: () => ({ positions: [] }),
             getUnitAdjustedBattleValue: () => 0,
             getUnitCurrentBaseBattleValue: () => 0,
             getUnitPristineBattleValue: () => 0,
@@ -276,6 +297,37 @@ describe('UnitBlockComponent capability badges', () => {
         fixture.detectChanges();
         fixture.componentInstance.activeConditions();
         expect(getNonMekRecordSheetSnapshot.calls.count()).toBe(initialCalls + 2);
+        fixture.destroy();
+    });
+});
+
+
+describe('UnitBlockComponent name wrapping', () => {
+    it('moves the whole pilot name below the chassis when the row is too narrow', async () => {
+        await TestBed.configureTestingModule({
+            imports: [UnitBlockComponent],
+            providers: [{ provide: OptionsService, useValue: { options: signal({ unitDisplayName: 'both' }) } }],
+        }).compileComponents();
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentInstance.unit = signal({ name: 'King Crab', chassis: 'King Crab', model: '', role: '', tons: 100 });
+        fixture.componentInstance.alias = signal('Pilot Name');
+        fixture.detectChanges();
+        const line = fixture.nativeElement.querySelector('.unit-name-line') as HTMLElement;
+        const chassis = line.querySelector('.chassis') as HTMLElement;
+        const pilot = line.querySelector('.unit-alias') as HTMLElement;
+        line.style.width = '400px';
+        const chassisWidth = chassis.getBoundingClientRect().width;
+        const pilotWidth = pilot.getBoundingClientRect().width;
+        const lineHeight = chassis.getBoundingClientRect().height;
+        expect(Math.abs(pilot.getBoundingClientRect().top - chassis.getBoundingClientRect().top)).toBeLessThan(3);
+
+        line.style.width = Math.ceil(Math.max(chassisWidth, pilotWidth) + 2) + 'px';
+        const chassisBounds = chassis.getBoundingClientRect();
+        const pilotBounds = pilot.getBoundingClientRect();
+        expect(pilotBounds.top).toBeGreaterThanOrEqual(chassisBounds.bottom);
+        expect(Math.abs(pilotBounds.left - chassisBounds.left)).toBeLessThan(1);
+        expect(chassisBounds.height).toBe(lineHeight);
+        expect(pilotBounds.width).toBeCloseTo(pilotWidth, 0);
         fixture.destroy();
     });
 });

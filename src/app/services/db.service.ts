@@ -5,6 +5,7 @@
 import { inject, Injectable } from '@angular/core';
 import type { Options } from '../models/options.model';
 import type { SerializedForce } from '../models/force-serialization';
+import { decodeRemoteLoadForceEntry, type RemoteLoadForceEntry } from '../models/remote-load-force-entry.model';
 import { DialogsService } from './dialogs.service';
 import type { SerializedSearchFilter } from './unit-search-filters.model';
 import { LoggerService } from './logger.service';
@@ -836,14 +837,23 @@ export class DbService {
     }
 
     public async getForce(instanceId: string): Promise<SerializedForce | null> {
+        const stored = await this.readForceRecord(instanceId);
+        return stored === undefined ? null : decodeForceFromStorage(stored);
+    }
+
+    public async getForcePreview(instanceId: string): Promise<RemoteLoadForceEntry | null> {
+        const stored = await this.readForceRecord(instanceId);
+        return stored === undefined ? null : decodeRemoteLoadForceEntry(stored);
+    }
+
+    private async readForceRecord(instanceId: string): Promise<StoredForceRecord | undefined> {
         const db = await this.dbPromise;
-        if (!db) return null;
-        return new Promise<SerializedForce | null>((resolve, reject) => {
+        if (!db) return undefined;
+        return new Promise<StoredForceRecord | undefined>((resolve, reject) => {
             const transaction = db.transaction(FORCE_STORE, 'readonly');
             const request = transaction.objectStore(FORCE_STORE).get(instanceId);
             transaction.oncomplete = () => {
-                const stored = request.result as StoredForceRecord | undefined;
-                resolve(stored === undefined ? null : decodeForceFromStorage(stored));
+                resolve(request.result as StoredForceRecord | undefined);
             };
             transaction.onerror = () => reject(transaction.error);
             transaction.onabort = () => reject(transaction.error ?? new Error('Force read was aborted'));
@@ -863,13 +873,33 @@ export class DbService {
         });
     }
 
+    public async getExistingForceIds(instanceIds: readonly string[]): Promise<ReadonlySet<string>> {
+        const existingIds = new Set<string>();
+        if (instanceIds.length === 0) return existingIds;
+        const db = await this.dbPromise;
+        if (!db) return existingIds;
+
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(FORCE_STORE, 'readonly');
+            const store = transaction.objectStore(FORCE_STORE);
+            for (const instanceId of instanceIds) {
+                const request = store.getKey(instanceId);
+                request.onsuccess = () => {
+                    if (request.result !== undefined) existingIds.add(instanceId);
+                };
+            }
+            transaction.oncomplete = () => resolve(existingIds);
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Force presence query was aborted'));
+        });
+    }
+
     public async saveForce(force: SerializedForce): Promise<void> {
         if (!force.instanceId) {
             throw new Error('Force instance ID is required for saving.');
         }
-        if (force.version !== 2) {
-            throw new Error('Only V2 force records may be saved.');
-        }
+        // Live owners save V2. Background downloads may cache an intact V1
+        // source until an explicit load can warn about best-effort conversion.
         const stored = encodeForceForStorage(force);
         const db = await this.dbPromise;
         if (!db) return;
@@ -896,15 +926,20 @@ export class DbService {
                 const stored = request.result as StoredForceRecord | undefined;
                 // Loaded force ownership must reseal V2 records.
                 if (!stored || stored['cbt'] !== undefined) return;
-                const force = decodeForceFromStorage(stored);
-                updatedForce = { ...force };
-                if (tags.length > 0) {
-                    updatedForce.tags = [...tags];
-                } else {
-                    delete updatedForce.tags;
+                try {
+                    const force = decodeForceFromStorage(stored);
+                    updatedForce = { ...force };
+                    if (tags.length > 0) {
+                        updatedForce.tags = [...tags];
+                    } else {
+                        delete updatedForce.tags;
+                    }
+                    updatedForce.timestamp = new Date().toISOString();
+                    store.put(encodeForceForStorage(updatedForce), instanceId);
+                } catch (error) {
+                    reject(error);
+                    transaction.abort();
                 }
-                updatedForce.timestamp = new Date().toISOString();
-                store.put(encodeForceForStorage(updatedForce), instanceId);
             };
 
             transaction.oncomplete = () => {
@@ -914,20 +949,21 @@ export class DbService {
             transaction.onerror = () => {
                 reject(transaction.error);
             };
+            transaction.onabort = () => reject(transaction.error ?? new Error('Force tag update was aborted'));
         });
     }
     
     /**
      * Retrieves all forces from IndexedDB, sorted by timestamp descending.
      */
-    public async listForces(): Promise<SerializedForce[]> {
+    public async listForces(): Promise<RemoteLoadForceEntry[]> {
         const db = await this.dbPromise;
         if (!db) return []; // Degraded mode
-        return new Promise<SerializedForce[]>((resolve, reject) => {
+        return new Promise<RemoteLoadForceEntry[]>((resolve, reject) => {
             const transaction = db.transaction(FORCE_STORE, 'readonly');
             const store = transaction.objectStore(FORCE_STORE);
             // Use index if available, otherwise iterate and sort manually
-            const forces: unknown[] = [];
+            const forces: RemoteLoadForceEntry[] = [];
             let request: IDBRequest;
             if (store.indexNames.contains('timestamp')) {
                 const index = store.index('timestamp');
@@ -939,22 +975,20 @@ export class DbService {
             request.onsuccess = () => {
                 const cursor = request.result;
                 if (cursor) {
-                    forces.push(cursor.value);
+                    // Drop gameplay state as each cursor row arrives. Listing
+                    // never decodes unit state or promotes a legacy record.
+                    try {
+                        forces.push(decodeRemoteLoadForceEntry(cursor.value));
+                    } catch (error) {
+                        this.logger.warn(`Skipping unreadable saved force: ${error instanceof Error ? error.message : String(error)}`);
+                    }
                     cursor.continue();
                 } else {
                     // V1 records use ISO strings while current records use epoch
                     // numbers. IndexedDB orders those as different key types, so
                     // normalize before comparing.
                     forces.sort((left, right) => forceTimestamp(right) - forceTimestamp(left));
-                    const entries: SerializedForce[] = [];
-                    for (const raw of forces) {
-                        try {
-                            entries.push(decodeForceFromStorage(raw));
-                        } catch (error) {
-                            this.logger.warn(`Skipping unreadable saved force: ${error instanceof Error ? error.message : String(error)}`);
-                        }
-                    }
-                    resolve(entries);
+                    resolve(forces);
                 }
             };
             request.onerror = () => {

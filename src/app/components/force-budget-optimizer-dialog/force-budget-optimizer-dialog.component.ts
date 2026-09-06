@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ASForceUnit } from '../../models/as-force-unit.model';
@@ -85,6 +86,7 @@ const BALANCED_DAMAGE_RATIO = 0.5;
     styleUrl: './force-budget-optimizer-dialog.component.scss',
 })
 export class ForceBudgetOptimizerDialogComponent {
+    readonly unitNames = inject(UnitNameService);
     private readonly dialogRef = inject(DialogRef<null, ForceBudgetOptimizerDialogComponent>);
     private readonly data: ForceBudgetOptimizerDialogData = inject(DIALOG_DATA) as ForceBudgetOptimizerDialogData;
     private readonly optionsService = inject(OptionsService);
@@ -247,6 +249,10 @@ export class ForceBudgetOptimizerDialogComponent {
     }
 
     private createOptions(member: ForceMember): OptimizationChoice[] {
+        const stations = member.force.getUnitCrewPolicy(member.id).positions;
+        if (!stations.some(position => member.force.getAssignedPerson(member.id, position.positionId))) {
+            return [this.createCurrentChoice(member)];
+        }
         if (this.isAlphaStrike() && member instanceof ASForceUnit) {
             return this.createAlphaStrikeOptions(member);
         }
@@ -355,7 +361,7 @@ export class ForceBudgetOptimizerDialogComponent {
             }
             choice.member.setPilotSkill(choice.skill);
             return {
-                detail: `${choice.member.getDisplayName()} (${currentSkill}→${choice.skill})`,
+                detail: `${this.unitNames.name(choice.member.getSummary())} (${currentSkill}→${choice.skill})`,
             };
         }
 
@@ -365,18 +371,20 @@ export class ForceBudgetOptimizerDialogComponent {
             if (!before || !primary) return null;
             const currentGunnery = primary.gunnery;
             const currentPiloting = primary.piloting;
-            if (currentGunnery === choice.gunnery && currentPiloting === choice.piloting) {
+            const personalPiloting = fixedEntityPilotingSkill(choice.member.entity) === null
+                ? choice.piloting : currentPiloting;
+            if (currentGunnery === choice.gunnery && currentPiloting === personalPiloting) {
                 return null;
             }
             const positions = before.positions.map((position, index) => index === 0 ? {
                 ...position,
                 gunnery: choice.gunnery!,
-                piloting: choice.piloting!,
+                piloting: personalPiloting,
             } : position);
             const applied = await choice.member.force.replaceUnitCrewProfile(choice.member.id, positions);
             if (!applied) return null;
             return {
-                detail: `${choice.member.entity.displayName()} (${currentGunnery}/${currentPiloting}→${choice.gunnery}/${choice.piloting})`,
+                detail: `${this.unitNames.name(choice.member.entity)} (${currentGunnery}/${currentPiloting}→${choice.gunnery}/${choice.piloting})`,
             };
         }
 

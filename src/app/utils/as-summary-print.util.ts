@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { DisplayUnitNameFormat } from '../models/options.model';
+import { formatUnitName } from './unit-display-name.util';
 import type { ASForceUnit } from '../models/as-force-unit.model';
 import type { ASForce } from '../models/as-force.model';
 import type { PrintAllOptions } from '../models/print-options.model';
@@ -31,6 +33,7 @@ export class ASSummaryPrintUtil {
         useHex: boolean,
         printOptions: ASSummaryPrintOptions,
         triggerPrint: boolean = true,
+        nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
     ): Promise<void> {
         if (force.units().length === 0) {
             console.warn('No units to export.');
@@ -39,12 +42,13 @@ export class ASSummaryPrintUtil {
 
         const groups = force.groups();
         const forceName = getPrintRosterHeading(force).name;
-        const rosterPage = await this.createRosterSummaryPage(force, useHex);
+        const rosterPage = await this.createRosterSummaryPage(force, useHex, nameFormat);
         const rulesReferencePage = createASPrintRulesReferencePage(
             groups,
             abilityLookup,
             useHex,
             forceName,
+            nameFormat,
         );
 
         await printInOverlay({
@@ -59,6 +63,7 @@ export class ASSummaryPrintUtil {
     private static async createRosterSummaryPage(
         force: ASForce,
         useHex: boolean,
+        nameFormat: DisplayUnitNameFormat,
     ): Promise<HTMLElement> {
         const groups = force.groups();
         const container = document.createElement('div');
@@ -89,7 +94,7 @@ export class ASSummaryPrintUtil {
 
                 const row = document.createElement('tr');
                 const cells: RosterCell[] = [
-                    { content: [unit.chassis, unit.model].filter(Boolean).join(' ') },
+                    { content: formatUnitName(unit, nameFormat) },
                     { content: as.TP },
                     { content: String(as.SZ) },
                     { content: String(forceUnit.pilotSkill()) },

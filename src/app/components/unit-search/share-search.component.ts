@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { OptionsService } from '../../services/options.service';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
@@ -132,6 +133,7 @@ import { DialogsService } from '../../services/dialogs.service';
 })
 
 export class ShareSearchDialogComponent {
+    private readonly optionsService = inject(OptionsService);
     public dialogRef = inject<DialogRef<string | number | null, ShareSearchDialogComponent>>(DialogRef);
     unitSearchFilters = inject(UnitSearchFiltersService);
     toastService = inject(ToastService);
@@ -184,7 +186,7 @@ export class ShareSearchDialogComponent {
             const systemLabel = gameSystem === GameSystem.AS ? 'alpha-strike' : 'battletech';
             const filename = `mekbay-${systemLabel}-units-${timestamp}`;
             
-            await exportUnitsToExcel(units, gameSystem, filename);
+            await exportUnitsToExcel(units, gameSystem, filename, this.optionsService.options().displayUnitNameFormat);
             this.toastService.showToast(`Exported ${units.length} units to Excel.`, 'success');
         } catch (err) {
             console.error('Failed to export to Excel:', err);
@@ -215,7 +217,7 @@ export class ShareSearchDialogComponent {
             const systemLabel = gameSystem === GameSystem.AS ? 'alpha-strike' : 'battletech';
             const filename = `mekbay-${systemLabel}-units-${timestamp}`;
             
-            await exportUnitsToCSV(units, gameSystem, filename);
+            await exportUnitsToCSV(units, gameSystem, filename, this.optionsService.options().displayUnitNameFormat);
             this.toastService.showToast(`Exported ${units.length} units to CSV.`, 'success');
         } catch (err) {
             console.error('Failed to export to CSV:', err);

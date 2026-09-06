@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { UnitNameService } from '../../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, input, inject, computed, signal } from '@angular/core';
 import type { UnitSummary, UnitComponent } from '../../../models/unit-summary.model';
 import { weaponTypes } from '../../../utils/equipment.util';
@@ -39,6 +40,8 @@ import { formatBvPv } from '../../../utils/force-viewer-bv-pv-display.util';
 import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
 import { GameService } from '../../../services/game.service';
 import { BASE_RULES_REFS } from '../../../utils/rules-ref.util';
+import { forceMemberAdjustedValue, type ForceMember } from '../../../models/force-member.model';
+import { ForceUnitCrewComponent } from '../../force-crew/force-unit-crew.component';
 
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
@@ -224,11 +227,12 @@ export function shouldShowAdjustedPilotSkills(
 @Component({
     selector: 'unit-details-general-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective],
+    imports: [UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective, ForceUnitCrewComponent],
     templateUrl: './unit-details-general-tab.component.html',
     styleUrl: './unit-details-general-tab.component.css'
 })
 export class UnitDetailsGeneralTabComponent {
+    readonly unitNames = inject(UnitNameService);
     private dataService = inject(DataService);
     private dialogsService = inject(DialogsService);
     private layoutService = inject(LayoutService);
@@ -237,6 +241,7 @@ export class UnitDetailsGeneralTabComponent {
 
     // Inputs
     unit = input.required<UnitSummary>();
+    forceMember = input<ForceMember>();
     gunnerySkill = input<number | undefined>(undefined);
     pilotingSkill = input<number | undefined>(undefined);
     adjustedValueOverride = input<number | undefined>(undefined);
@@ -379,6 +384,10 @@ export class UnitDetailsGeneralTabComponent {
     });
 
     adjustedValue = computed(() => {
+        const member = this.forceMember();
+        if (member) {
+            return forceMemberAdjustedValue(member, this.optionsService.options().forceViewerBVPVDisplayDamage);
+        }
         const override = this.adjustedValueOverride();
         if (override !== undefined) {
             return override;
@@ -394,11 +403,15 @@ export class UnitDetailsGeneralTabComponent {
             : BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
     });
 
-    readonly valueLabel = computed(() => this.gameService.isAlphaStrike() ? 'PV' : 'BV');
+    readonly isAlphaStrike = computed(() => this.forceMember()
+        ? this.forceMember()!.force.gameSystem === 'as'
+        : this.gameService.isAlphaStrike());
+
+    readonly valueLabel = computed(() => this.isAlphaStrike() ? 'PV' : 'BV');
 
     displayedValue = computed(() => {
         const unit = this.unit();
-        const baseValue = this.gameService.isAlphaStrike() ? unit.as.PV : unit.bv;
+        const baseValue = this.isAlphaStrike() ? unit.as.PV : unit.bv;
         return formatBvPv(this.adjustedValue() ?? baseValue, baseValue, 'both');
     });
 

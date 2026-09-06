@@ -112,7 +112,7 @@ import {
     type MekPendingFallConsequencesV2,
     type MekTurnStateV2,
 } from './mek-turn-state-v2';
-import { canonicalizeCrewAssignment, createDefaultCrewAssignment, type CrewAssignment } from './crew-assignment';
+import { assignedCrewRuntimeState, canonicalizeCrewAssignment, createDefaultCrewAssignment, type CrewAssignment } from './crew-assignment';
 import {
     isMekLocationPhysicallyDestroyed,
     isMekLocationPhysicallyDestroyedFromView,
@@ -315,6 +315,7 @@ interface MekRuntimeSource {
     readonly index: MekRuntimeIndex;
     readonly ruleset: CBTRuleset;
     readonly statusTopology: RuntimeEquipmentStatusTopology;
+    readonly crewAssignment: CrewAssignment;
 }
 
 export interface CBTUnitAttackerTargetingCommand {
@@ -698,7 +699,6 @@ export type MekBattleValueProjection =
 export class CBTUnitInstance {
     readonly #source: MekRuntimeSource;
     readonly #runtimeIndex: MekRuntimeIndex;
-    readonly #crewAssignment: CrewAssignment;
     readonly #heatContext: MekHeatRuntimeContextV2;
     readonly #mechanicsContext: MekMechanicsContextV2;
     #queryCache: Readonly<{
@@ -720,14 +720,14 @@ export class CBTUnitInstance {
     ) {
         this.#runtimeIndex = runtimeIndex;
         const statusTopology = buildMekEquipmentStatusTopology(runtimeIndex);
-        this.#source = Object.freeze({
-            entity: unit, index: this.#runtimeIndex, ruleset, statusTopology,
-        });
-        validateState(initialState, this.#source);
-        this.#crewAssignment = canonicalizeCrewAssignment(
+        const assignment = canonicalizeCrewAssignment(
             this.#runtimeIndex.crewPositions,
             crewAssignment ?? createDefaultCrewAssignment(this.#runtimeIndex.crewPositions),
         );
+        this.#source = Object.freeze({
+            entity: unit, index: this.#runtimeIndex, ruleset, statusTopology, crewAssignment: assignment,
+        });
+        validateState(initialState, this.#source);
         assertMekHeatContextEntityV2(heatContext, unit);
         assertMekMechanicsContextEntityV2(mechanicsContext, unit);
         this.#mechanicsContext = mechanicsContext;
@@ -745,7 +745,7 @@ export class CBTUnitInstance {
         this.#heatContext = heatContext.kind === 'supported' && heatBlockers.length > 0
             ? disableMekHeatContextV2(heatContext, heatBlockers)
             : heatContext;
-        this.#state = freezeRuntimeState(reconciled);
+        this.#state = freezeRuntimeState({ ...reconciled, crew: assignedCrewRuntimeState(reconciled.crew, this.#source.crewAssignment) });
         Object.seal(this);
     }
 
@@ -820,7 +820,7 @@ export class CBTUnitInstance {
                 unit,
                 state,
                 statusTopology,
-                this.#crewAssignment,
+                this.#source.crewAssignment,
                 this.#mechanicsContext,
                 projectionContext(),
             );
@@ -832,9 +832,10 @@ export class CBTUnitInstance {
         const hasAirGroundSelection = canChangeAirborneGround(motiveModeFactsForEntity(unit.entity));
         const storedDisplayConditions = new ImmutableSet<UnitConditionKey>([...state.conditions].filter(condition =>
             condition !== 'airborne' && condition !== 'grounded' && condition !== 'crippled'));
-        const effectiveCrewState = (positionId: CrewPositionId): 'healthy' | 'ejected' | 'unconscious' | 'dead' => {
+        const effectiveCrewState = (positionId: CrewPositionId): ReturnType<CrewMember['effectiveState']> => {
             const position = unit.index.crewPositions.get(positionId);
             if (!position) throw new Error(`Unknown crew position ${positionId}`);
+            if (!this.#source.crewAssignment.positions.some(assigned => assigned.positionId === positionId)) return 'vacant';
             const crew = CrewMember.from(state.crew.get(positionId));
             let cockpitDestroyed = false;
             const destruction = mechanicsProjection();
@@ -868,7 +869,7 @@ export class CBTUnitInstance {
                 && positions.length > 0
                 && positions.every(position => {
                     const crew = effectiveCrewState(position.id);
-                    return crew === 'dead' || crew === 'ejected';
+                    return crew === 'vacant' || crew === 'dead' || crew === 'ejected';
                 })) {
                 conditions.add('abandoned');
             }
@@ -898,7 +899,7 @@ export class CBTUnitInstance {
             this.#runtimeIndex,
             state,
             statusTopology,
-            this.#crewAssignment,
+            this.#source.crewAssignment,
             this.#mechanicsContext,
             projectionContext(),
         );
@@ -908,7 +909,7 @@ export class CBTUnitInstance {
                 unit,
                 state,
                 statusTopology,
-                this.#crewAssignment,
+                this.#source.crewAssignment,
                 this.#mechanicsContext,
                 projectionContext(),
             );
@@ -939,7 +940,7 @@ export class CBTUnitInstance {
                 unit,
                 state,
                 statusTopology,
-                this.#crewAssignment,
+                this.#source.crewAssignment,
                 this.#mechanicsContext,
                 projectionContext(),
             ),
@@ -1198,12 +1199,14 @@ export class CBTUnitInstance {
                     ...derivedConditions(),
                 ]),
             ].sort(compareText)),
-            crewAssignment: () => this.#crewAssignment,
+            crewAssignment: () => this.#source.crewAssignment,
             crewState: (positionId: CrewPositionId) => {
                 if (!unit.index.crewPositions.has(positionId)) {
                     throw new Error(`Unknown crew position ${positionId}`);
                 }
-                return CrewMember.from(state.crew.get(positionId));
+                return this.#source.crewAssignment.positions.some(position => position.positionId === positionId)
+                    ? CrewMember.from(state.crew.get(positionId))
+                    : CrewMember.vacant;
             },
             turnState: () => state.turn,
             previewEndPhase: () => this.preview({
@@ -1373,8 +1376,10 @@ export class CBTUnitInstance {
     ): MekUnitCommandResult {
         const next = apply();
         if (!next.accepted) return next;
-        if (next.changed) this.#state = next.state;
-        return next;
+        if (!next.changed) return next;
+        const crew = assignedCrewRuntimeState(next.state.crew, this.#source.crewAssignment);
+        this.#state = crew === next.state.crew ? next.state : freezeRuntimeState({ ...next.state, crew });
+        return this.#state === next.state ? next : Object.freeze({ ...next, state: this.#state });
     }
 }
 
@@ -1391,6 +1396,8 @@ function reduceAttackerTargeting(
     const selectingComponents = (command.edit.kind === 'set-component-selection'
         || command.edit.kind === 'set-component-selections')
         && command.edit.selection !== null;
+    if (selectingComponents && runtime.crewAssignment().positions.length === 0
+        && runtime.hasCondition('abandoned')) return unchanged(state);
     if (selectingComponents
         && mobileHpgBlocksWeaponAttacks(
             buildMekMobileHpgFacts(unit, state, statusTopology, 'committed'),
@@ -2347,6 +2354,8 @@ function reduce(
             break;
         }
         case 'fire-weapons': {
+            if (runtime.crewAssignment().positions.length === 0
+                && runtime.hasCondition('abandoned')) return unchanged(state);
             if (mekHeatCapabilityV2(heatContext, entity).kind === 'unsupported') {
                 return unchanged(state);
             }
@@ -2551,7 +2560,7 @@ function reduce(
             break;
         }
         case 'set-crew-state': {
-            if (!unit.index.crewPositions.has(command.positionId)) {
+            if (!runtime.crewAssignment().positions.some(position => position.positionId === command.positionId)) {
                 return unchanged(state);
             }
             if (!Number.isSafeInteger(command.wounds)
@@ -3065,7 +3074,9 @@ function mekDamageStateView(
         },
         crewState: (positionId: CrewPositionId) => {
             if (!unit.index.crewPositions.has(positionId)) throw new Error(`Unknown crew position ${positionId}`);
-            return CrewMember.from(state.crew.get(positionId));
+            return unit.crewAssignment.positions.some(position => position.positionId === positionId)
+                ? CrewMember.from(state.crew.get(positionId))
+                : CrewMember.vacant;
         },
         locationCondition: (
             locationId: LocationId,

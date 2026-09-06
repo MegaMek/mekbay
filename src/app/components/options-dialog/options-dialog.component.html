@@ -62,6 +62,15 @@
                     </select>
                 </div>
                 <div class="option-row">
+                    <label for="displayUnitNameFormat">Unit name format:</label>
+                    <select id="displayUnitNameFormat" class="bt-select"
+                        [value]="optionsService.options().displayUnitNameFormat"
+                        (change)="onDisplayUnitNameFormatChange($event)">
+                        <option value="innerSphereClan">Inner Sphere (Clan)</option>
+                        <option value="clanInnerSphere">Clan (Inner Sphere)</option>
+                    </select>
+                </div>
+                <div class="option-row">
                     <label for="forceViewerBVPVDisplay">Force viewer BV/PV:</label>
                     <select id="forceViewerBVPVDisplay" class="bt-select"
                         [value]="optionsService.options().forceViewerBVPVDisplay"

@@ -12,6 +12,7 @@ export const OPTION_VALUES = {
     canvasInput: ['all', 'touch', 'pen'],
     swipeToNextSheet: ['vertical', 'horizontal', 'disabled'],
     unitDisplayName: ['chassisModel', 'alias', 'both'],
+    displayUnitNameFormat: ['innerSphereClan', 'clanInnerSphere'],
     gameSystem: [GameSystem.CBT, GameSystem.AS],
     availabilitySource: ['mul', 'megamek'],
     forceViewerBVPVDisplay: ['adjusted', 'base', 'both'],
@@ -33,6 +34,7 @@ export type ColorScheme = OptionValue<'colorScheme'>;
 export type UnitSearchViewMode = OptionValue<'unitSearchViewMode'>;
 export type AutomationMode = OptionValue<'automationMode'>;
 export type CBTUnitViewMode = OptionValue<'cbtUnitViewMode'>;
+export type DisplayUnitNameFormat = OptionValue<'displayUnitNameFormat'>;
 
 export const CBT_AUTOMATION_KEYS = [
     'pilotSkillCheck',
@@ -96,6 +98,7 @@ export interface Options {
     swipeToNextSheet: OptionValue<'swipeToNextSheet'>;
     syncZoomBetweenSheets: boolean;
     unitDisplayName: OptionValue<'unitDisplayName'>;
+    displayUnitNameFormat: DisplayUnitNameFormat;
     gameSystem: GameSystem;
     availabilitySource: AvailabilitySource;
     megaMekAvailabilityFiltersUseAllScopedOptions: boolean;

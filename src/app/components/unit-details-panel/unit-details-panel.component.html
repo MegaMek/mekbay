@@ -25,7 +25,7 @@
                 </div>
                 <div class="header-row">
                     <div class="header-chassis-group">
-                        <div class="header-chassis allow-select">{{ currentUnit.chassis }}</div>
+                        <div class="header-chassis allow-select">{{ unitNames.chassis(currentUnit) }}</div>
                     </div>
                     <unit-tags class="header-tags" [unit]="currentUnit" [mode]="'full'" (tagClick)="onTagClick($event)"></unit-tags>
                 </div>

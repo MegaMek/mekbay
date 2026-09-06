@@ -51,7 +51,6 @@ function position(effectiveState: NonMekRecordSheetCrewPosition['effectiveState'
         positionId: CREW_ID,
         occurrence: 0,
         name: 'Crew 1',
-        role: 'Crew',
         gunnery: 4,
         piloting: 5,
         state: Object.freeze({

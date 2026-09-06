@@ -386,23 +386,66 @@
     min-height: 48px;
 
     .compact & {
-        padding-left: 8px;
-        padding-right: 8px;
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+        padding: 0 8px;
         gap: 8px;
-        // items in same row match tallest height
-
-        .drag-item {
-            display: flex;
-            flex-direction: column;
-
-            // unit-block has display:contents, ::ng-deep to reach the inner .unit-card
-            ::ng-deep .unit-card {
-                flex: 1;
-            }
-        }
     }
+}
+
+.crew-unit-row {
+    border: 1px solid var(--border-color);
+    background: var(--background-color-menu);
+    min-width: 0;
+    &.selected { border-color: var(--bt-yellow); }
+}
+
+.crew-unit-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+}
+
+.crew-unit-name {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    gap: 12px;
+    border: 0;
+    padding: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    &:hover strong { color: var(--bt-yellow); }
+}
+
+.crew-unit-title {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    strong { overflow-wrap: anywhere; }
+    > .muted { font-size: 12px; }
+}
+
+.crew-unit-value { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.unit-drag-handle { cursor: grab; padding: 6px 2px; color: var(--text-color-secondary); }
+.crew-row-action {
+    border: 0;
+    background: none;
+    color: var(--text-color-secondary);
+    min-width: 30px;
+    min-height: 32px;
+    cursor: pointer;
+    &:hover { color: var(--bt-yellow); }
+    &.danger:hover { color: var(--danger-color, #e56b6f); }
+}
+
+@container (max-width: 520px) {
+    .crew-unit-summary { flex-wrap: wrap; gap: 6px; padding: 8px; }
+    .crew-unit-name { flex-basis: calc(100% - 42px); }
+    .crew-unit-value { margin-left: auto; }
 }
 
 // Drag and Drop

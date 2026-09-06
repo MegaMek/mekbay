@@ -31,6 +31,7 @@ import { emptyRuntimeHistory } from './persistence-v2';
 import type { SerializedRuntimeHistory } from './runtime-history';
 import { preserveEquipmentRowOrder, type RuntimeHistoryInput } from './cbt-force-runtime-history';
 import { isSerializedNonMekUnit } from './non-mek-unit-persistence';
+import type { ForcePersonnelSnapshot } from '../force-personnel';
 
 /** Per-force owner of data that exists only for the lifetime of the loaded force. */
 export class CBTForceSession {
@@ -87,14 +88,15 @@ export class CBTForceSession {
         return runtimeHistoryRows(durable ?? emptyRuntimeHistory(), this.commandSession);
     }
 
-    public capture(instanceIds: readonly string[]): CapturedRuntimeCommandMutation {
-        return captureRuntimeCommandMutation(this.units, instanceIds);
+    public capture(instanceIds: readonly string[], personnel?: ForcePersonnelSnapshot): CapturedRuntimeCommandMutation {
+        return captureRuntimeCommandMutation(this.units, instanceIds, personnel);
     }
 
     public record(
         captured: CapturedRuntimeCommandMutation,
         history: RuntimeHistoryInput,
         boundary?: 'phase',
+        personnel?: ForcePersonnelSnapshot,
     ): readonly string[] {
         const recorded = recordRuntimeCommandMutation(
             this.units,
@@ -102,6 +104,7 @@ export class CBTForceSession {
             captured,
             history,
             boundary,
+            personnel,
         );
         this.commandSession = recorded.session;
         return recorded.changedUnitIds;
