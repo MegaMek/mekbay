@@ -36,11 +36,14 @@ import type {
 } from './runtime/unit-instance';
 import { evaluateMekRuntimeCapability } from './runtime/mek-runtime-capability';
 import { cbtUnitMatchesEntity } from './runtime/cbt-unit-validation';
-import { canPerformMekAction } from './runtime/mek-action-availability';
+import {
+    canSelectMekEquipmentInteraction,
+    expandEquipmentDropdownBinding,
+    projectMekEquipmentInteractions,
+    projectNonMekEquipmentInteractions,
+} from './runtime/cbt-equipment-interactions';
 import type { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
 import type {
-    EquipmentInteractionChoice,
-    EquipmentInteractionChoiceBinding,
     EquipmentInteractionCommandContext,
     EquipmentInteractionQueryContext,
 } from './runtime/equipment-interaction';
@@ -59,7 +62,6 @@ import type {
     CBTForceEndTurnUnitResult,
     CBTMekUnitCommandResult,
     InventoryControlTargetRosterRow,
-    CBTEquipmentChoice,
     CBTEquipmentChoiceCommand,
     CBTEquipmentChoiceDispatchResult,
     CBTEquipmentInteraction,
@@ -126,14 +128,11 @@ export class CBTUnitStore {
             } catch {
                 invalidStateUnitIds.add(entry.instanceId);
                 try {
-                    const deployment = isSerializedNonMekUnit(entry.unit)
-                        ? entry.unit.deployment.values
-                        : entry.unit.deployment.values;
                     const identity = entry.unit.entity;
                     return { entry, unit: await cbtUnits.create({
                         uuid: identity,
                         instanceId: entry.instanceId,
-                        deployment,
+                        deployment: entry.unit.deployment.values,
                         scenario: scenarioRules,
                     }) };
                 } catch {
@@ -712,38 +711,9 @@ export class CBTUnitStore {
         const owner = this.binding;
         const unit = owner?.units.get(instanceId);
         if (!owner || !unit) return Object.freeze([]);
-        const entity = unit.getUnit();
-
         if (isCBTNonMekUnit(unit)) {
-            const runtime = unit.getInstance();
-            const interactions = projectNonMekEscalatingFailureInteractions(
-                entity,
-                unit.getIndex(),
-                runtime.snapshot(),
-                runtime.ruleset,
-                context.choiceSurface,
-            );
-            return Object.freeze(interactions.map(interaction => {
-                const choices = interaction.choices.map(choice => detachedEquipmentChoice(
-                    Object.freeze({
-                        instanceId,
-                        entityUuid: entity.uuid(),
-                        componentId: interaction.componentId,
-                        handlerId: ESCALATING_FAILURE_HANDLER_ID,
-                        value: choice.value,
-                    }),
-                    'escalating-failure',
-                    choice,
-                    readOnly || choice.disabled === true,
-                ));
-                return Object.freeze({
-                    componentId: interaction.componentId,
-                    componentLabel: interaction.componentLabel,
-                    choices: Object.freeze(choices),
-                });
-            }));
+            return projectNonMekEquipmentInteractions(unit, context, readOnly);
         }
-
         if (!isCBTMekUnit(unit)) return Object.freeze([]);
         const mekEntity = unit.getUnit();
         const encounterSnapshot = encounter();
@@ -765,59 +735,7 @@ export class CBTUnitStore {
             },
             context,
         );
-        const groups = new Map<string, ExpandedEquipmentInteractionChoiceBinding[]>();
-        for (const binding of offered.flatMap(expandEquipmentDropdownBinding)) {
-            const key = `${binding.componentId}\0${binding.relatedComponentId ?? ''}`;
-            const group = groups.get(key) ?? [];
-            group.push(binding);
-            groups.set(key, group);
-        }
-        const rows: CBTEquipmentInteraction[] = [];
-        for (const group of groups.values()) {
-            const first = group[0];
-            const publicChoices = group.map(interaction => {
-                    const command: CBTEquipmentChoiceCommand = Object.freeze({
-                        instanceId,
-                        entityUuid: mekEntity.uuid(),
-                        componentId: interaction.componentId,
-                        ...(interaction.relatedComponentId === undefined
-                            ? {}
-                            : { relatedComponentId: interaction.relatedComponentId }),
-                        handlerId: interaction.handler.id,
-                        value: interaction.choice.value,
-                    });
-                    const action = interaction.choice.action;
-                    const actionAllowed = interaction.choice.stateEdit !== undefined
-                        || interaction.choice.skipActionGate === true
-                        || action === 'configure-network'
-                        || canPerformMekAction(
-                            mekEntity,
-                            unit.getIndex(),
-                            runtime.query(),
-                            { kind: 'component', componentId: interaction.componentId },
-                            action ?? 'change-mode',
-                            runtime.ruleset(),
-                        );
-                    return detachedEquipmentChoice(
-                        command,
-                        interaction.kind,
-                        interaction.choice,
-                        (readOnly && interaction.choice.readOnlySafe !== true)
-                            || interaction.choice.disabled === true
-                            || !actionAllowed,
-                        interaction.groupLabel,
-                    );
-            });
-            const component = mekEntity.equipment().find(
-                mount => mount.mountId === String(first.componentId),
-            );
-            rows.push(Object.freeze({
-                componentId: first.componentId,
-                componentLabel: component?.displayName() ?? first.componentId,
-                choices: Object.freeze(publicChoices),
-            }));
-        }
-        return Object.freeze(rows);
+        return projectMekEquipmentInteractions(unit, offered, readOnly);
     }
 
     public endTurnForAll(
@@ -950,18 +868,9 @@ export class CBTUnitStore {
         if (isReadOnly() && interaction.choice.readOnlySafe !== true) {
             return rejectedEquipmentChoice('READ_ONLY');
         }
-        const action = interaction.choice.action;
-        if (interaction.choice.stateEdit === undefined
-            && interaction.choice.skipActionGate !== true
-            && action !== 'configure-network'
-            && !canPerformMekAction(
-                mekEntity,
-                unit.getIndex(),
-                runtime.query(),
-                { kind: 'component', componentId: interaction.componentId },
-                action ?? 'change-mode',
-                runtime.ruleset(),
-            )) return rejectedEquipmentChoice('CHOICE_UNAVAILABLE');
+        if (!canSelectMekEquipmentInteraction(unit, interaction)) {
+            return rejectedEquipmentChoice('CHOICE_UNAVAILABLE');
+        }
 
         const before = runtime.revision();
         const finalize = (accepted: boolean, handlerFailed: boolean): CBTEquipmentChoiceDispatchResult => {
@@ -1127,54 +1036,6 @@ export class CBTUnitStore {
         );
     }
 
-}
-
-type ExpandedEquipmentInteractionChoiceBinding = EquipmentInteractionChoiceBinding & Readonly<{
-    groupLabel?: string;
-}>;
-
-function detachedEquipmentChoice(
-    command: CBTEquipmentChoiceCommand,
-    interactionKind: CBTEquipmentChoice['interactionKind'],
-    choice: EquipmentInteractionChoice,
-    disabled: boolean,
-    groupLabel?: string,
-): CBTEquipmentChoice {
-    return Object.freeze({
-        command,
-        interactionKind,
-        label: choice.label,
-        ...(groupLabel === undefined ? {} : { groupLabel }),
-        ...(choice.shortLabel === undefined ? {} : { shortLabel: choice.shortLabel }),
-        active: choice.active === true,
-        disabled,
-        ...(choice.selectionTone === undefined ? {} : { selectionTone: choice.selectionTone }),
-        ...(choice.colors === undefined ? {} : { colors: Object.freeze({ ...choice.colors }) }),
-        ...(choice.keepOpen === undefined ? {} : { keepOpen: choice.keepOpen }),
-        ...(choice.displayType === undefined ? {} : { displayType: choice.displayType }),
-        ...(choice.tooltipType === undefined ? {} : { tooltipType: choice.tooltipType }),
-        ...(choice.failureTarget === undefined ? {} : { failureTarget: choice.failureTarget }),
-    });
-}
-
-function expandEquipmentDropdownBinding(
-    binding: EquipmentInteractionChoiceBinding,
-): readonly ExpandedEquipmentInteractionChoiceBinding[] {
-    const options = binding.choice.choices;
-    if (!options?.length) return Object.freeze([binding]);
-    const { choices: _options, ...baseChoice } = binding.choice;
-    return Object.freeze(options.map(option => Object.freeze({
-        ...binding,
-        groupLabel: binding.choice.label,
-        choice: Object.freeze({
-            ...baseChoice,
-            label: option.label,
-            shortLabel: option.label,
-            value: option.value,
-            active: option.value === binding.choice.value,
-            disabled: option.disabled === true,
-        }),
-    })));
 }
 
 function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {

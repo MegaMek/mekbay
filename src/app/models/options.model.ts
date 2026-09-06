@@ -15,7 +15,7 @@ export const OPTION_VALUES = {
     displayUnitNameFormat: ['innerSphereClan', 'clanInnerSphere'],
     gameSystem: [GameSystem.CBT, GameSystem.AS],
     availabilitySource: ['mul', 'megamek'],
-    forceViewerBVPVDisplay: ['adjusted', 'base', 'both'],
+    forceViewerBVPVDisplay: ['adjustedPostSkill', 'adjustedPreSkill', 'both'],
     forceViewerBVPVDisplayDamage: ['damaged', 'pristine'],
     recordSheetDoubleTapZoomReset: ['disabled', 'fit-to-screen', 'full-width', 'contextual'],
     unitSearchExpandedViewLayout: ['panel-list-filters', 'filters-list-panel'],

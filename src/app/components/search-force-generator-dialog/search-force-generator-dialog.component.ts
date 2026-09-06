@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { getBudgetMetric, type SkillRange as ForceGenerationSkillRange } from '../../services/force-generator/skill-options';
 import { UnitNameService } from '../../services/unit-name.service';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
@@ -38,7 +39,6 @@ import {
     type ForceGenerationPreview,
     type ForceGenerationPreviewTask,
     type ForceGenerationRequest,
-    type ForceGenerationSkillRange,
     type ForceGenerationSkillRanges,
     type ForceGenerationTargetFormationSelection,
     type GeneratedForceUnit,
@@ -1409,7 +1409,7 @@ export class SearchForceGeneratorDialogComponent {
 
             return {
                 unit: lockedUnit.unit,
-                cost: this.forceGeneratorService.getBudgetMetric(
+                cost: getBudgetMetric(
                     lockedUnit.unit,
                     gameSystem,
                     skill ?? syntheticGunnery ?? gunnery,
@@ -1894,7 +1894,7 @@ export class SearchForceGeneratorDialogComponent {
                 unit,
                 alias: undefined,
                 crew: undefined,
-                cost: this.forceGeneratorService.getBudgetMetric(unit, gameSystem, skill, this.pilotingSkillRange()[0]),
+                cost: getBudgetMetric(unit, gameSystem, skill, this.pilotingSkillRange()[0]),
                 skill,
                 gunnery: undefined,
                 piloting: undefined,
@@ -1918,7 +1918,7 @@ export class SearchForceGeneratorDialogComponent {
                         unit,
                         alias: undefined,
                         crew,
-                        cost: this.forceGeneratorService.getBudgetMetric(
+                        cost: getBudgetMetric(
                             unit,
                             gameSystem,
                             syntheticGunnery,
@@ -2118,7 +2118,7 @@ export class SearchForceGeneratorDialogComponent {
             piloting,
             skill: undefined,
             commander: result.commander,
-            cost: this.forceGeneratorService.getBudgetMetric(unit, GameSystem.CBT, gunnery, piloting),
+            cost: getBudgetMetric(unit, GameSystem.CBT, gunnery, piloting),
         }));
     }
 
@@ -2164,7 +2164,7 @@ export class SearchForceGeneratorDialogComponent {
             piloting: undefined,
             crew: undefined,
             commander: result.commander,
-            cost: this.forceGeneratorService.getBudgetMetric(unit, GameSystem.AS, result.skill, this.pilotingSkillRange()[0]),
+            cost: getBudgetMetric(unit, GameSystem.AS, result.skill, this.pilotingSkillRange()[0]),
         }));
     }
 
@@ -2240,7 +2240,7 @@ export class SearchForceGeneratorDialogComponent {
         return {
             ...original,
             unit: variant,
-            cost: this.forceGeneratorService.getBudgetMetric(
+            cost: getBudgetMetric(
                 variant,
                 gameSystem,
                 skill ?? syntheticGunnery ?? defaultGunnery,
@@ -2273,7 +2273,7 @@ export class SearchForceGeneratorDialogComponent {
 
         return {
             unit: unitEntry.unit,
-            cost: this.forceGeneratorService.getBudgetMetric(
+            cost: getBudgetMetric(
                 unitEntry.unit,
                 gameSystem,
                 skill ?? gunnery ?? defaultGunnery,

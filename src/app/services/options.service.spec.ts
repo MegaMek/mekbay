@@ -97,6 +97,39 @@ describe('OptionsService theme migration', () => {
         expect(service.options().forceViewerBVPVDisplayDamage).toBe('damaged');
     });
 
+    it('defaults absent or invalid force BV/PV display preferences to adjusted after skills', async () => {
+        savedOptions = null;
+        let service = await createService();
+        expect(service.options().forceViewerBVPVDisplay).toBe('adjustedPostSkill');
+
+        TestBed.resetTestingModule();
+        savedOptions = { forceViewerBVPVDisplay: 'invalid' };
+        service = await createService();
+        expect(service.options().forceViewerBVPVDisplay).toBe('adjustedPostSkill');
+    });
+
+    for (const value of ['adjustedPostSkill', 'adjustedPreSkill', 'both'] as const) {
+        it(`restores the ${value} force BV/PV display preference`, async () => {
+            savedOptions = { forceViewerBVPVDisplay: value };
+            const service = await createService();
+
+            expect(service.options().forceViewerBVPVDisplay).toBe(value);
+        });
+    }
+
+    for (const stale of ['adjusted', 'base']) {
+        it(`defaults the stale ${stale} force BV/PV preference to adjusted after skills`, async () => {
+            savedOptions = { forceViewerBVPVDisplay: stale };
+            const service = await createService();
+
+            expect(service.options().forceViewerBVPVDisplay).toBe('adjustedPostSkill');
+            await service.setOption('unitDisplayName', 'both');
+            expect(dbService.saveOptions).toHaveBeenCalledWith(jasmine.objectContaining({
+                forceViewerBVPVDisplay: 'adjustedPostSkill',
+            }));
+        });
+    }
+
     it('restores and validates the CBT force BV damage policy', async () => {
         savedOptions = { forceViewerBVPVDisplayDamage: 'pristine' };
 

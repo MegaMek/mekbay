@@ -151,104 +151,11 @@ export class CBTForceUnitCommandDispatcher {
         if (!this.mekAutomation() && !this.nonMekAutomation()) {
             return this.boundary.endTurnForAllCore();
         }
-        const requested = this.boundary.instanceIds().map(instanceId => {
-            const snapshot = this.boundary.snapshot(instanceId);
-            return Object.freeze({
-                instanceId,
-                turnCounter: turnCounter(snapshot),
-            });
-        });
-        return this.enqueueBoundary(async () => {
-            const activeIds = requested.flatMap(row => {
-                const current = this.boundary.snapshot(row.instanceId);
-                return current && row.turnCounter !== null
-                    && turnCounter(current) === row.turnCounter
-                    ? [row.instanceId]
-                    : [];
-            });
-            const active = activeIds.length === 0
-                ? Object.freeze({
-                    accepted: true,
-                    changed: false,
-                    atomic: false as const,
-                    results: Object.freeze([]),
-                })
-                : await this.endTurnForAllWithAutomation(activeIds);
-            const activeResults = new Map(active.results.map(row => [row.instanceId, row] as const));
-            const results = requested.map(row => {
-                const result = activeResults.get(row.instanceId);
-                if (result) return result;
-                const current = this.boundary.snapshot(row.instanceId);
-                return current && row.turnCounter !== null
-                    && turnCounter(current) !== row.turnCounter
-                    ? Object.freeze({
-                        instanceId: row.instanceId,
-                        accepted: true,
-                        changed: false,
-                    })
-                    : Object.freeze({
-                        instanceId: row.instanceId,
-                        accepted: false,
-                        changed: false,
-                        reason: 'NOT_ADMITTED',
-                    });
-            });
-            return Object.freeze({
-                accepted: results.every(result => result.accepted),
-                changed: results.some(result => result.changed),
-                atomic: false as const,
-                results: Object.freeze(results),
-            });
-        });
+        return this.enqueueBoundaryForAll('turn');
     }
 
     endPhaseForAll(): Promise<CBTForceEndTurnAllResult> {
-        const requested = this.boundary.instanceIds().map(instanceId => Object.freeze({
-            instanceId,
-            stateRevision: stateRevision(this.boundary.snapshot(instanceId)),
-        }));
-        return this.enqueueBoundary(async () => {
-            const activeIds = requested.flatMap(row => {
-                const current = this.boundary.snapshot(row.instanceId);
-                return current && row.stateRevision !== null
-                    && stateRevision(current) === row.stateRevision
-                    ? [row.instanceId]
-                    : [];
-            });
-            const active = activeIds.length === 0
-                ? Object.freeze({
-                    accepted: true,
-                    changed: false,
-                    atomic: false as const,
-                    results: Object.freeze([]),
-                })
-                : await this.endPhaseForAllWithAutomation(activeIds);
-            const activeResults = new Map(active.results.map(row => [row.instanceId, row] as const));
-            const results = requested.map(row => {
-                const result = activeResults.get(row.instanceId);
-                if (result) return result;
-                const current = this.boundary.snapshot(row.instanceId);
-                return current && row.stateRevision !== null
-                    && stateRevision(current) !== row.stateRevision
-                    ? Object.freeze({
-                        instanceId: row.instanceId,
-                        accepted: true,
-                        changed: false,
-                    })
-                    : Object.freeze({
-                        instanceId: row.instanceId,
-                        accepted: false,
-                        changed: false,
-                        reason: 'NOT_ADMITTED',
-                    });
-            });
-            return Object.freeze({
-                accepted: results.every(result => result.accepted),
-                changed: results.some(result => result.changed),
-                atomic: false as const,
-                results: Object.freeze(results),
-            });
-        });
+        return this.enqueueBoundaryForAll('phase');
     }
 
     hasPendingEndTurn(instanceId: string): boolean {
@@ -268,6 +175,55 @@ export class CBTForceUnitCommandDispatcher {
             return this.phaseAlreadyEnded(snapshot)
                 ? this.resolvePendingEndTurnAutomation(instanceId, snapshot)
                 : this.resolvePendingPhaseAutomation(instanceId, snapshot);
+        });
+    }
+
+    private enqueueBoundaryForAll(kind: 'phase' | 'turn'): Promise<CBTForceEndTurnAllResult> {
+        // A phase request expires on any state edit; a turn request survives phase settlement.
+        const versionOf = kind === 'turn' ? turnCounter : stateRevision;
+        const requested = this.boundary.instanceIds().map(instanceId => Object.freeze({
+            instanceId,
+            version: versionOf(this.boundary.snapshot(instanceId)),
+        }));
+        return this.enqueueBoundary(async () => {
+            const activeIds = requested.flatMap(row => {
+                const current = this.boundary.snapshot(row.instanceId);
+                return current && row.version !== null
+                    && versionOf(current) === row.version
+                    ? [row.instanceId]
+                    : [];
+            });
+            const activeResults = new Map<string, CBTForceEndTurnUnitResult>();
+            if (activeIds.length > 0) {
+                const active = kind === 'turn'
+                    ? await this.endTurnForAllWithAutomation(activeIds)
+                    : await this.endPhaseForAllWithAutomation(activeIds);
+                for (const result of active.results) activeResults.set(result.instanceId, result);
+            }
+            const results = requested.map(row => {
+                const result = activeResults.get(row.instanceId);
+                if (result) return result;
+                const current = this.boundary.snapshot(row.instanceId);
+                return current && row.version !== null
+                    && versionOf(current) !== row.version
+                    ? Object.freeze({
+                        instanceId: row.instanceId,
+                        accepted: true,
+                        changed: false,
+                    })
+                    : Object.freeze({
+                        instanceId: row.instanceId,
+                        accepted: false,
+                        changed: false,
+                        reason: 'NOT_ADMITTED',
+                    });
+            });
+            return Object.freeze({
+                accepted: results.every(result => result.accepted),
+                changed: results.some(result => result.changed),
+                atomic: false as const,
+                results: Object.freeze(results),
+            });
         });
     }
 

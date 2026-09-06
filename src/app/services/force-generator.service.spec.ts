@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { getForceGenerationCBTSkillPairs } from './force-generator/skill-options';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
@@ -21,7 +22,6 @@ import type { ForceGenerationContext, ForceGenerationPreview } from './force-gen
 import {
     ForceGeneratorService,
     getGeneratedCBTCrewSkill,
-    getForceGenerationCBTSkillPairs,
     normalizeGeneratedCBTCrew,
 } from './force-generator.service';
 import { OptionsService } from './options.service';

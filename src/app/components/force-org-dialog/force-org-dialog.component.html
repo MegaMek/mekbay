@@ -78,8 +78,9 @@
 
             <!-- Groups layer (rendered below forces) -->
             @for (group of baseLayerGroups(); track group.id) {
+            @let metadata = groupMetadata().get(group.id);
             @let previewInfo = previewGroupInfo().get(group.id);
-            @let previewFactionId = previewInfo?.factionId ?? group.factionId();
+            @let previewFactionId = previewInfo?.factionId ?? metadata?.factionId;
             <g class="group-container" [class.parent-group]="isParentGroup(group)" [class.readonly]="readOnly()"
                 [class.drop-target]="dropTargetGroupId() === group.id"
                 [attr.transform]="'translate(' + group.x() + ',' + group.y() + ')'"
@@ -111,16 +112,16 @@
                             (pointerdown)="!readOnly() && onGroupTitlePointerDown($event, group)" [title]="readOnly() ? '' : 'Drag to move or click to rename'">
                             {{ customName }}
                         </div>
-                        @if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        @if (previewInfo?.orgName || (metadata?.descendants?.length ? metadata?.org.name : ''); as orgName) {
                         <div class="group-org-name">{{ orgName }}</div>
                         }
-                        } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        } @else if (previewInfo?.orgName || (metadata?.descendants?.length ? metadata?.org.name : ''); as orgName) {
                         <div class="group-name" [class.editable]="!readOnly()"
                             (pointerdown)="!readOnly() && onGroupTitlePointerDown($event, group)" [title]="readOnly() ? '' : 'Drag to move or click to rename'">
                             {{ orgName }}
                         </div>
                         }
-                        @if (previewInfo?.totals || group.totals(); as totals) {
+                        @if (previewInfo?.totals || metadata?.totals; as totals) {
                         <div class="group-totals">{{ totals }}</div>
                         }
                     </div>
@@ -349,8 +350,9 @@
 
             <!-- Dragged group overlay (rendered above everything) -->
             @for (group of dragOverlayGroups(); track group.id) {
+            @let metadata = groupMetadata().get(group.id);
             @let previewInfo = previewGroupInfo().get(group.id);
-            @let previewFactionId = previewInfo?.factionId ?? group.factionId();
+            @let previewFactionId = previewInfo?.factionId ?? metadata?.factionId;
             <g class="group-container" [class.parent-group]="isParentGroup(group)" [class.readonly]="readOnly()"
                 [class.drop-target]="dropTargetGroupId() === group.id"
                 [attr.transform]="'translate(' + group.x() + ',' + group.y() + ')'"
@@ -374,15 +376,15 @@
                         <div class="group-name" [class.editable]="!readOnly()">
                             {{ customName }}
                         </div>
-                        @if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        @if (previewInfo?.orgName || (metadata?.descendants?.length ? metadata?.org.name : ''); as orgName) {
                         <div class="group-org-name">{{ orgName }}</div>
                         }
-                        } @else if (previewInfo?.orgName || group.orgName(); as orgName) {
+                        } @else if (previewInfo?.orgName || (metadata?.descendants?.length ? metadata?.org.name : ''); as orgName) {
                         <div class="group-name" [class.editable]="!readOnly()">
                             {{ orgName }}
                         </div>
                         }
-                        @if (previewInfo?.totals || group.totals(); as totals) {
+                        @if (previewInfo?.totals || metadata?.totals; as totals) {
                         <div class="group-totals">{{ totals }}</div>
                         }
                     </div>

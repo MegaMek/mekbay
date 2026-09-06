@@ -30,6 +30,7 @@ import {
 } from '../../models/runtime/equipment-panel';
 import { formatPhysicalHitModifier } from '../../utils/inventory-target-number.util';
 import { getSvgTextLines, measureSvgTextCanvas, writeSvgTextLines } from '../../utils/svg-text.util';
+import { updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
 import { buildHeatSummaryRows } from '../../utils/heat-summary.util';
 import type { AttackerActionTarget } from '../../models/runtime/attacker-targeting-state';
 import type { MekHeatProjectionV2 } from '../../models/runtime/mek-heat-state-v2';
@@ -464,7 +465,7 @@ export function bindMekRecordSheet(
             onInteraction !== undefined,
         );
         bindEquipmentHover(svg, abort.signal);
-        renderAmmoProfile(svg, snapshot);
+        renderAmmoProfile(svg, snapshot, onInteraction !== undefined);
         renderHeat(svg, snapshot, bindHeat);
         renderLifeSupportPilotDamage(svg, snapshot);
         bindHeatControls(svg, emit, abort.signal, () => current.stateRevision, onInteraction !== undefined);
@@ -496,6 +497,10 @@ export function bindMekRecordSheet(
         render,
         destroy: () => {
             abort.abort();
+            const ammoProfile = svg.querySelector<SVGElement>('#ammoProfile');
+            ammoProfile?.classList.remove('interactive');
+            ammoProfile?.removeAttribute('tabindex');
+            ammoProfile?.querySelector('.inventoryEntryButton')?.remove();
             svg.querySelectorAll<SVGElement>('[data-mekbay-bound="1"]')
                 .forEach(element => { delete element.dataset['mekbayBound']; });
             delete svg.dataset['mekbayReferenceBound'];
@@ -1543,21 +1548,18 @@ function svgTextCoordinate(line: SVGTextContentElement, attribute: string): numb
     return Number.parseFloat(line.parentElement?.getAttribute(attribute) ?? '');
 }
 
-function renderAmmoProfile(svg: SVGSVGElement, snapshot: MekRecordSheetSnapshot): void {
-    const text = svg.querySelector<SVGTextElement>('#ammoProfile > text');
-    if (!text) return;
+function renderAmmoProfile(svg: SVGSVGElement, snapshot: MekRecordSheetSnapshot, interactive: boolean): void {
+    const profile = svg.querySelector<SVGElement>('#ammoProfile');
+    if (!profile) return;
     const totals = new Map<string, number>();
     snapshot.equipment.forEach(component => {
         if (component.ammo === undefined) return;
         const name = recordSheetAmmoName(component.ammo.displayName);
         totals.set(name, (totals.get(name) ?? 0) + component.ammo.remaining);
     });
-    text.textContent = totals.size === 0
-        ? ''
-        : `Ammo: ${[...totals.entries()]
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([name, remaining]) => `(${name}) ${remaining}`)
-            .join(', ')}`;
+    updateRecordSheetAmmoProfile(profile, [...totals.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([name, remaining]) => `(${name}) ${remaining}`), interactive);
 }
 
 function renderCrew(
@@ -2413,7 +2415,7 @@ function resetUnitDataLayout(
         element.classList.remove('damaged');
     });
     resetCrewText(svg);
-    svg.querySelector<SVGTextElement>('#ammoProfile > text')?.replaceChildren();
+    writeSvgTextLines(svg.querySelector('#ammoProfile'), '');
     svg.querySelectorAll<SVGElement>(manifest.selectors.heatSinkPip).forEach(element => {
         element.style.display = 'none';
         element.classList.remove('damaged', 'disabled', 'fresh');

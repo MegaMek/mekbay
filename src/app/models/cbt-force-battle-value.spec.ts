@@ -3,8 +3,9 @@
 
 import { calculateCBTForceBattleValues } from './cbt-force-battle-value';
 import { adjustEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
+import { CBTMekUnit } from './runtime/cbt-mek-unit';
 import type { CBTUnit } from './runtime/cbt-unit';
-import { createDirectMekRuntimeFixture } from './runtime/testing/direct-mek-runtime-fixture';
+import { createDirectElectronicSuiteRuntimeFixture, createDirectMekRuntimeFixture } from './runtime/testing/direct-mek-runtime-fixture';
 import type { UnitSummary } from './unit-summary.model';
 import { calculateAdjustedBV } from '../utils/cbt-common.util';
 
@@ -65,6 +66,40 @@ describe('CBT force battle value authority', () => {
     expect(result.tag).toBe(0);
     expect(result.c3).toBe(0);
     expect(result.skills).toBeCloseTo(67.7, 10);
+    expect(result.adjustedPreSkill).toBe(677);
     expect(result.adjusted).toBe(745);
+  });
+
+  it('rounds the BV without skills while preserving fractional C3 for the skill adjustment', async () => {
+    const fixture = createDirectElectronicSuiteRuntimeFixture();
+    const units = await Promise.all(['unit:bv-nova:first', 'unit:bv-nova:second'].map(instanceId =>
+      CBTMekUnit.createFromEntity({
+        uuid: fixture.identity,
+        instanceId,
+        crewSkills: { gunnery: 4, piloting: 4 },
+      }, fixture.entity, fixture.identity, {
+        initializerRevision: 1,
+        profileId: 'pristine',
+        deployment: { id: 'default' },
+        scenario: { id: 'test', ruleset: 'core-2026' },
+      })));
+
+    const results = calculateCBTForceBattleValues({
+      units: units.map(unit => ({ unit, baseBattleValue: 677 })),
+      scenario: { id: 'test', ruleset: 'core-2026' },
+      networks: [],
+      isC3EndpointIntact: () => true,
+    });
+
+    for (const unit of units) {
+      const result = results.get(unit.instanceId)!;
+      expect(result.base).toBe(677);
+      expect(result.tag).toBe(0);
+      expect(result.c3).toBeCloseTo(67.7, 10);
+      expect(result.adjustedPreSkill).toBe(745);
+      expect(result.skills).toBeCloseTo(74.47, 10);
+      expect(result.adjusted).toBe(819);
+      expect(adjustEntityBattleValueForSkills(fixture.entity, result.adjustedPreSkill, 4, 4)).toBe(820);
+    }
   });
 });

@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { AvailabilityFilterScope } from '../models/megamek/availability.model';
+
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import {
     ADVANCED_FILTERS,
     AS_MOVEMENT_MODE_DISPLAY_NAMES,
-    type AvailabilityFilterScope,
     type AdvFilterConfig,
     AdvFilterType,
     type FilterState,

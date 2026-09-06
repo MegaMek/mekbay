@@ -29,6 +29,23 @@ describe('svg text utilities', () => {
         expect(measureText.calls.allArgs().filter(([value]) => value === text)).toHaveSize(1);
     });
 
+    it('uses the sheet font defaults when detached text has no computed font styles', () => {
+        const root = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const line = document.createElementNS(root.namespaceURI, 'text') as SVGTextElement;
+        root.appendChild(line);
+        const text = 'Ammo: detached font defaults';
+        line.setAttribute('font-size', '31');
+        line.setAttribute('font-family', 'monospace');
+        measureSvgTextCanvas(line, text);
+
+        line.setAttribute('font-size', '13');
+        line.removeAttribute('font-family');
+        const context = document.createElement('canvas').getContext('2d')!;
+        context.font = '13px Roboto, Arial, sans-serif';
+
+        expect(measureSvgTextCanvas(line, text)).toBeCloseTo(context.measureText(text).width, 4);
+    });
+
     it('wraps between rows and clears stale rows', () => {
         const root = svg('<g id="name"><text>Old first</text><text>Old second</text></g>');
         const measure = (_line: SVGTextContentElement, text: string) => text.length;

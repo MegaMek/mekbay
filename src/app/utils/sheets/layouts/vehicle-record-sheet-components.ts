@@ -17,6 +17,7 @@ import { isEquipmentForPlatform } from '../../../models/equipment-platform.model
 import { isNovaC3Equipment } from '../../../models/c3-network.model';
 import { sensorEquipmentKind } from '../../../models/sensor-equipment.model';
 import { isRecordSheetInventorySupport } from '../record-sheet-inventory-equipment';
+import { appendRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import {
     type Box,
     addDiagramHeading,
@@ -201,13 +202,6 @@ function appendCompactVehicleInventory(
     const features = compactVehicleFeatureText(entity);
     const caseProtected = entity.equipment().some(mount => isCaseEquipment(mount.equipment));
     const detailRows = [
-        ...(ammo.length > 0 ? [{
-            text: `Ammo${caseProtected ? ' (CASE)' : ''}: ${ammo.join(', ')}`,
-            size: 6.76,
-            id: 'ammoProfile',
-            maxLines: 1,
-            italic: false,
-        }] : []),
         ...(features ? [{
             text: `Features ${features}`,
             size: 6.76,
@@ -222,14 +216,30 @@ function appendCompactVehicleInventory(
             italic: true,
         }] : []),
     ];
+    const renderedDetails = detailRows.map(row => {
+        const owner = svgElement('g');
+        if ('class' in row && row.class) owner.setAttribute('class', row.class);
+        addWrappedText(owner, row.text, x(8.41), 0, box.width - x(17), {
+            size: font(row.size), lineHeight: y(8.213), maxLines: row.maxLines, italic: row.italic,
+        });
+        return { owner, lines: owner.querySelectorAll('text').length };
+    });
+    const detailLineCount = renderedDetails.reduce((sum, row) => sum + row.lines, 0);
     const lastDetailBaseline = presentation.lastDetailBaseline;
-    const firstDetailBaseline = lastDetailBaseline - Math.max(0, detailRows.length - 1) * 9.126;
+    const firstDetailBaseline = lastDetailBaseline - Math.max(0, detailLineCount - 1) * 9.126;
     const physicalStart = y(firstDetailBaseline
         - (detailRows.length > 0 ? 13.689 : 0)
         - Math.max(0, physical.length - 1) * 9.126);
+    const inventory = svgElement('g');
+    setAttributes(inventory, {
+        'data-ammo-inventory': '',
+        'data-top': y(101.162) - weaponStep * 0.82,
+        'data-bottom': physical.length > 0 ? physicalStart - weaponStep
+            : y(firstDetailBaseline - (detailRows.length > 0 ? 9.126 : 0)),
+    });
+    group.appendChild(inventory);
     let displayLine = 0;
     weapons.forEach((row, index) => {
-        if (displayLine >= 20) return;
         const baseline = y(101.162) + displayLine * weaponStep;
         const entry = svgElement('g');
         entry.setAttribute('class', 'inventoryEntry');
@@ -269,7 +279,6 @@ function appendCompactVehicleInventory(
         });
         targetTn.setAttribute('display', 'none');
         row.alternativeModes.forEach((mode, modeIndex) => {
-            if (displayLine + modeIndex + 1 >= 20) return;
             const modeBaseline = baseline + (modeIndex + 1) * weaponStep;
             const alternative = svgElement('g');
             alternative.setAttribute('class', 'alternativeMode');
@@ -289,10 +298,14 @@ function appendCompactVehicleInventory(
             }, modeBaseline, x, font, 12.738);
             entry.appendChild(alternative);
         });
-        group.appendChild(entry);
+        inventory.appendChild(entry);
         displayLine += 1 + row.alternativeModes.length;
     });
-    physical.slice(0, 20).forEach((row, index) => {
+    inventory.setAttribute('data-content-bottom', String(y(101.162) + Math.max(0, displayLine - 1) * weaponStep));
+    const physicalRows = svgElement('g');
+    physicalRows.setAttribute('data-ammo-before', '');
+    group.appendChild(physicalRows);
+    physical.forEach((row, index) => {
         const baseline = physicalStart + index * weaponStep;
         const entry = svgElement('g');
         entry.setAttribute('class', 'inventoryEntry');
@@ -301,19 +314,21 @@ function appendCompactVehicleInventory(
         entry.appendChild(transparentRect(x(6), baseline - weaponStep, x(160), weaponStep,
             'inventoryEntryButton mainButton'));
         drawCompactVehicleInventoryFields(entry, row, baseline, x, font, 8.41);
-        group.appendChild(entry);
+        physicalRows.appendChild(entry);
     });
-    detailRows.forEach((row, index) => {
-        const owner = svgElement('g');
-        if ('id' in row && row.id) owner.id = row.id;
-        if ('class' in row && row.class) owner.setAttribute('class', row.class);
-        addWrappedText(owner, row.text, x(8.41), y(firstDetailBaseline + index * 9.126), box.width - x(17), {
-            size: font(row.size),
-            lineHeight: y(8.213),
-            maxLines: row.maxLines,
-            italic: row.italic,
-        });
+    let detailLine = 0;
+    renderedDetails.forEach(({ owner, lines }) => {
+        owner.setAttribute('transform', `translate(0 ${formatNumber(y(firstDetailBaseline + detailLine * 9.126))})`);
         group.appendChild(owner);
+        detailLine += lines;
+    });
+    appendRecordSheetAmmoProfile(group, ammo, {
+        x: x(8.41),
+        y: y(firstDetailBaseline - (detailLineCount > 0 ? 9.126 : 0)),
+        width: box.width - x(17),
+        fontSize: font(6.76),
+        lineHeight: weaponStep,
+        prefix: `Ammo${caseProtected ? ' (CASE)' : ''}:`,
     });
 }
 

@@ -63,6 +63,7 @@ export interface NonMekRecordSheetComponent {
     readonly status: EquipmentStatus;
     readonly previewStatus: EquipmentStatus;
     readonly ammo?: Readonly<{
+        readonly displayName: string;
         readonly capacity: number;
         readonly remaining: number;
     }>;
@@ -217,6 +218,7 @@ export function projectNonMekRecordSheet(
             previewStatus,
             ...(loadout === null ? {} : {
                 ammo: Object.freeze({
+                    displayName: loadout.equipment.shortName || loadout.equipment.name,
                     capacity: loadout.capacity,
                     remaining: Math.max(0, loadout.capacity - (runtimeAmmo?.shotsSpent ?? 0)),
                 }),

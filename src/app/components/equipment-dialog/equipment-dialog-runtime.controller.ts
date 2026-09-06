@@ -512,6 +512,39 @@ export class EquipmentDialogRuntimeController {
         this.interactions.set(this.interactionRows());
     }
 
+    public hasAmmoLoadoutChanges(): boolean {
+        return this.ammo().some(row => {
+            const ammo = row.ammo!;
+            const defaultLoadout = ammo.loadouts.find(loadout =>
+                loadout.munitionKey === ammo.defaultMunitionKey);
+            return defaultLoadout !== undefined && (ammo.munitionKey !== ammo.defaultMunitionKey
+                || ammo.remaining !== defaultLoadout.capacity);
+        });
+    }
+
+    public async resetAmmoLoadout(): Promise<void> {
+        if (!this.dialogs || this.busy() || this.member.force.readOnly()
+            || !this.hasAmmoLoadoutChanges()) return;
+        this.busy.set(true);
+        let confirmed: boolean;
+        try {
+            confirmed = await this.dialogs.requestConfirmation(
+                `Reset ${formatUnitName(this.member.entity, this.options.options().displayUnitNameFormat)}'s ammo loadout `
+                    + 'to its default ammunition and full quantities?',
+                'Reset Ammo Loadout',
+                'warning',
+            );
+        } finally {
+            this.busy.set(false);
+        }
+        if (!confirmed || this.member.force.readOnly()) return;
+        if (isCBTMekForceMember(this.member)) {
+            await this.dispatchMekUnit({ type: 'reset-ammo-loadout' });
+        } else {
+            await this.dispatchEntityUnit({ kind: 'reset-ammo-loadout' });
+        }
+    }
+
     public async configureAmmo(
         row: EquipmentPanelComponent,
         munitionKey: string,

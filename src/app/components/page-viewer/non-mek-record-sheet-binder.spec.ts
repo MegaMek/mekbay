@@ -12,6 +12,7 @@ import type { EquipmentPanelSnapshot } from '../../models/runtime/equipment-pane
 import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
 import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
 import { optimizeGeneratedSvg } from '../../utils/sheets/record-sheet-svg-rendering';
+import { appendRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
 import {
     bindNonMekRecordSheet,
     type NonMekRecordSheetInteraction,
@@ -19,6 +20,82 @@ import {
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 describe('bindNonMekRecordSheet', () => {
+    it('opens ammo loadout through the whole profile after rows change and leaves printed profiles inert', () => {
+        const svg = sheet();
+        const profile = appendRecordSheetAmmoProfile(svg, [], {
+            x: 0, y: 60, width: 110, fontSize: 8, lineHeight: 10,
+        });
+        const interactions: NonMekRecordSheetInteraction[] = [];
+        const base = ammoSnapshot([['AC/10 Ammo', 20]]);
+        const binding = bindNonMekRecordSheet(svg, ammoSnapshot([]), interaction => interactions.push(interaction));
+        binding.render(base);
+        profile.querySelector('rect')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions).toEqual([{ kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision }]);
+
+        const next = { ...ammoSnapshot([['Arrow IV ADA Ammo', 5], ['Arrow IV Fuel-Air Ammo', 5]]), stateRevision: 8 };
+        binding.render(next);
+        expect(profile.querySelectorAll('text').length).toBe(2);
+        expect(profile.querySelector('rect')!.getAttribute('height')).toBe('20');
+        profile.querySelectorAll('text')[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        profile.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+        expect(interactions.slice(1)).toEqual([
+            { kind: 'open-equipment', tab: 'ammo', expectedRevision: 8 },
+            { kind: 'open-equipment', tab: 'ammo', expectedRevision: 8 },
+        ]);
+
+        binding.render(ammoSnapshot([]));
+        expect(profile.childElementCount).toBe(0);
+        binding.render(base);
+        profile.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        expect(interactions.at(-1)).toEqual({ kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision });
+        binding.destroy();
+        profile.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions.length).toBe(4);
+        const printBinding = bindNonMekRecordSheet(svg, base);
+        expect(profile.querySelector('rect')).toBeNull();
+        expect(profile.hasAttribute('tabindex')).toBeFalse();
+        expect(profile.classList.contains('interactive')).toBeFalse();
+        printBinding.destroy();
+    });
+
+    it('reflows current ammo names and totals without an equipment panel, retaining CASE and empty bins', () => {
+        const svg = sheet();
+        appendRecordSheetAmmoProfile(svg, [], {
+            x: 0, y: 60, width: 200, fontSize: 10, lineHeight: 12, prefix: 'Ammo (CASE):',
+        });
+        const profile = svg.querySelector<SVGElement>('#ammoProfile')!;
+        const binding = bindNonMekRecordSheet(svg, ammoSnapshot([
+            ['LRM 15 Ammo', 0],
+            ['Arrow IV Fuel-Air Ammo', 5],
+            ['AC/10 Precision Ammo', 3],
+            ['AC/10 Precision Ammo', 7],
+        ]));
+        const lines = [...profile.querySelectorAll<SVGTextElement>('text')];
+        const text = lines.map(line => line.textContent).join(' ');
+
+        expect(lines.length).toBeGreaterThan(1);
+        expect(text).toContain('Ammo (CASE):');
+        expect(text).toContain('(AC/10 Precision) 10');
+        expect(text).toContain('(Arrow IV Fuel-Air) 5');
+        expect(text).toContain('(LRM 15) 0');
+        expect(text.match(/\(AC\/10 Precision\)/gu)?.length).toBe(1);
+        expect(text.indexOf('(AC/10 Precision)')).toBeLessThan(text.indexOf('(Arrow IV Fuel-Air)'));
+        expect(text.indexOf('(Arrow IV Fuel-Air)')).toBeLessThan(text.indexOf('(LRM 15)'));
+
+        binding.render(ammoSnapshot([['AC/10 Ammo', 2]]));
+        expect(profile.querySelectorAll('text').length).toBe(1);
+        expect(profile.textContent).toBe('Ammo (CASE): (AC/10) 2');
+
+        binding.render(ammoSnapshot([]));
+        expect(profile.querySelectorAll('text').length).toBe(0);
+        expect(profile.textContent).toBe('');
+
+        binding.render(ammoSnapshot([['AC/10 Precision Ammo', 0]]));
+        expect(profile.querySelectorAll('text').length).toBe(1);
+        expect(profile.textContent).toBe('Ammo (CASE): (AC/10 Precision) 0');
+        binding.destroy();
+    });
+
     it('renders an empty station without stale names, ratings or injury controls', () => {
         const svg = stateSheet();
         const original = stateSnapshot(1);
@@ -509,6 +586,21 @@ const CREW_ID = asCrewPositionId('crew:vehicle:0');
 const ENGINE_DAMAGE_TRACK_ID = asSystemDamageTrackId('damage-track:engine');
 const MOTIVE_DAMAGE_TRACK_ID = asSystemDamageTrackId('damage-track:motive');
 const ROTOR_DAMAGE_TRACK_ID = asSystemDamageTrackId('damage-track:rotor');
+
+function ammoSnapshot(ammunition: readonly (readonly [string, number])[]): NonMekRecordSheetSnapshot {
+    return {
+        ...snapshot(3),
+        components: ammunition.map(([displayName, remaining], index) => ({
+            componentId: asComponentId(`ammo-${index}`),
+            equipmentId: `standard-ammo-${index}`,
+            label: 'Standard Ammo',
+            sheetLocations: ['FR'],
+            status: 'available' as const,
+            previewStatus: 'available' as const,
+            ammo: { displayName, remaining, capacity: 20 },
+        })),
+    };
+}
 
 function snapshot(remaining: number, destroyed = false): NonMekRecordSheetSnapshot {
     return Object.freeze({

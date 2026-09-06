@@ -261,6 +261,7 @@ describe('UnitBlockComponent capability badges', () => {
             getUnitCrewAssignment: () => ({ positions: [] }),
             getUnitCrewPolicy: () => ({ positions: [] }),
             getUnitAdjustedBattleValue: () => 0,
+            getUnitAdjustedPreSkillBattleValue: () => 0,
             getUnitCurrentBaseBattleValue: () => 0,
             getUnitPristineBattleValue: () => 0,
             getUnitTagBattleValue: () => 0,

@@ -42,9 +42,11 @@ import { OptionsService } from '../../services/options.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
+import { MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
 import { hasNonMekRuntime, hasMekRuntime } from '../../models/cbt-unit-snapshot';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { FormatBvPipe } from '../../pipes/format-bv.pipe';
+import { resolveUnitSpritePath } from '../../utils/unit-sprite-resolver';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3.0;
@@ -1190,10 +1192,15 @@ export class C3NetworkDialogComponent implements AfterViewInit {
      */
     private async loadNodeIcons(units: C3DialogUnit[]): Promise<void> {
         const urlMap = new Map<string, string>();
+        const context = units.some(unit => unit.member)
+            ? await this.spriteService.getVerifiedAssignmentContext(MM_DATA_UNIT_PROVIDER_ID)
+            : null;
 
         // Extract all icons in parallel
         await Promise.all(units.map(async (unit) => {
-            const iconPath = unit.getC3Presentation().icon;
+            const iconPath = unit.member
+                ? resolveUnitSpritePath(unit.member.entity, context?.assignments)
+                : unit.getC3Presentation().icon;
             if (!iconPath) return;
 
             const url = await this.spriteService.getExtractedIconUrl(iconPath);

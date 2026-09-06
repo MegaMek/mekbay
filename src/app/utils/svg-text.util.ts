@@ -76,10 +76,10 @@ export function measureSvgTextCanvas(line: SVGTextContentElement, text: string):
     const cache = getSvgTextMetricsCache(canvasDocument);
     const computedStyle = line.ownerDocument.defaultView?.getComputedStyle(line) ?? null;
     const fontSize = Number.parseFloat(line.getAttribute('font-size') ?? computedStyle?.fontSize ?? '') || 8;
-    const fontWeight = line.getAttribute('font-weight') ?? computedStyle?.fontWeight ?? 'normal';
-    const rawFontStyle = line.getAttribute('font-style') ?? computedStyle?.fontStyle ?? 'normal';
+    const fontWeight = line.getAttribute('font-weight') || computedStyle?.fontWeight || 'normal';
+    const rawFontStyle = line.getAttribute('font-style') || computedStyle?.fontStyle || 'normal';
     const fontStyle = ['normal', 'italic', 'oblique'].includes(rawFontStyle) ? rawFontStyle : 'normal';
-    const fontFamily = line.getAttribute('font-family') ?? computedStyle?.fontFamily ?? 'Roboto';
+    const fontFamily = line.getAttribute('font-family') || computedStyle?.fontFamily || 'Roboto, Arial, sans-serif';
     const font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
     const fontStatus = canvasDocument.fonts?.status ?? 'unknown';
     const cacheKey = `${fontStatus}\u0000${font}\u0000${text}`;

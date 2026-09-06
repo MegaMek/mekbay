@@ -33,6 +33,8 @@ export interface CBTForceBattleValueBreakdown {
     readonly tag: number;
     readonly c3: number;
     readonly skills: number;
+    /** Rounded force-adjusted BV before skills, for the adjustedPreSkill display option. */
+    readonly adjustedPreSkill: number;
     /** Integer result after applying every post-base adjustment. */
     readonly adjusted: number;
 }
@@ -111,7 +113,7 @@ export function calculateCBTForceBattleValues(
     );
 
     return new Map(input.units.flatMap(row => {
-        if (vacant.has(row.unit.instanceId)) return [[row.unit.instanceId, Object.freeze({ base: 0, tag: 0, c3: 0, skills: 0, adjusted: 0 })] as const];
+        if (vacant.has(row.unit.instanceId)) return [[row.unit.instanceId, Object.freeze({ base: 0, tag: 0, c3: 0, skills: 0, adjustedPreSkill: 0, adjusted: 0 })] as const];
         const base = row.baseBattleValue;
         if (base === null) return [];
         const view = viewsById.get(row.unit.instanceId)!;
@@ -134,6 +136,7 @@ export function calculateCBTForceBattleValues(
             tag,
             c3,
             skills,
+            adjustedPreSkill: Math.round(preSkill),
             adjusted,
         })] as const];
     }));

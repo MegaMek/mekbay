@@ -476,6 +476,9 @@ export type CBTUnitCommand = (
         readonly remaining: number;
     }
     | {
+        readonly type: 'reset-ammo-loadout';
+    }
+    | {
         readonly type: 'spend-ammo';
         readonly componentId: ComponentId;
         readonly amount: number;
@@ -2296,6 +2299,11 @@ function reduce(
                 loadout.munitionKey,
                 loadout.capacity - command.remaining,
             );
+            break;
+        }
+        case 'reset-ammo-loadout': {
+            if (state.ammo.size === 0) return unchanged(state);
+            changed = { ...state, ammo: new Map() };
             break;
         }
         case 'spend-ammo': {

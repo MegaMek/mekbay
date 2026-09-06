@@ -83,13 +83,6 @@ export interface AdvFilterConfig {
 // Use SemanticFilterState from semantic-filter.util as our FilterState
 export type FilterState = SemanticFilterState;
 
-export interface AvailabilityFilterScope {
-    eraNames?: readonly string[];
-    factionNames?: readonly string[];
-    availabilityFromNames?: readonly string[];
-    availabilityRarityNames?: readonly string[];
-    bridgeThroughMulMembership?: boolean;
-}
 
 export interface SearchTelemetryStage {
     name: string;

@@ -51,6 +51,7 @@ import {
     type RecordSheetDamagePickerRange,
 } from '../mek-record-sheet-interaction.util';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
+import { PageViewerOverlayService } from './page-viewer-overlay.service';
 import { UnitStateDropdownComponent } from '../unit-state-dropdown.component';
 import { InputDialogComponent } from '../../input-dialog/input-dialog.component';
 import { WeaponTargetChoiceMenuComponent } from '../../equipment-dialog/weapon-target-choice-menu.component';
@@ -84,6 +85,7 @@ export class PageViewerNonMekRuntimeService {
     private readonly dialogs = inject(DialogsService);
     private readonly injector = inject(Injector);
     private readonly overlayManager = inject(OverlayManagerService);
+    private readonly overlays = inject(PageViewerOverlayService);
     private readonly options = inject(OptionsService);
     private readonly pickerFactory = inject(PickerFactoryService);
     private readonly pilotEditor = inject(ForcePilotEditorService);
@@ -172,6 +174,10 @@ export class PageViewerNonMekRuntimeService {
     handle(member: CBTForceMember, interaction: NonMekRecordSheetInteraction, event: Event): void {
         const snapshot = this.snapshot(member);
         if (!snapshot || snapshot.stateRevision !== interaction.expectedRevision) return;
+        if (interaction.kind === 'open-equipment') {
+            this.overlays.openEquipment(member.id, event, interaction.tab);
+            return;
+        }
         if (interaction.kind === 'heat') {
             void this.setHeat(member, interaction.heat);
             return;

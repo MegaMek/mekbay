@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { AvailabilityFilterScope } from '../models/megamek/availability.model';
+
 /**
  * AST-based Semantic Filter Parser with Nested Bracket Support
  * 
@@ -29,7 +31,7 @@
  */
 
 import type { GameSystem } from '../models/common.model';
-import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType, type AvailabilityFilterScope, FORMATION_TARGET_FILTER_KEY, getBooleanFilterUnitValue, parseBooleanFilterSemanticValue } from '../services/unit-search-filters.model';
+import { ADVANCED_FILTERS, type AdvFilterConfig, AdvFilterType, FORMATION_TARGET_FILTER_KEY, getBooleanFilterUnitValue, parseBooleanFilterSemanticValue } from '../services/unit-search-filters.model';
 import { type SemanticOperator, type SemanticToken, buildSemanticKeyMap, VIRTUAL_SEMANTIC_KEYS, parseValues, parseValueWithQuantity, type QuantityConstraint } from './semantic-filter.util';
 import { normalizeLooseText, wildcardToRegex } from './string.util';
 import { usesIndexedDropdownUniverse } from './unit-search-filter-config.util';

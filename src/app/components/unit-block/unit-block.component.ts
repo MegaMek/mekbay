@@ -31,7 +31,7 @@ import {
 import {
     forceMemberAlias,
     forceMemberAdjustedValue,
-    forceMemberBaseValue,
+    forceMemberAdjustedPreSkillValue,
     forceMemberDestroyed,
     isCBTForceMember,
     isCBTMekForceMember,
@@ -168,7 +168,7 @@ export class UnitBlockComponent {
         if (isCBTForceMember(unit)) {
             return formatBvPv(
                 forceMemberAdjustedValue(unit, options.forceViewerBVPVDisplayDamage),
-                forceMemberBaseValue(unit, options.forceViewerBVPVDisplayDamage),
+                forceMemberAdjustedPreSkillValue(unit, options.forceViewerBVPVDisplayDamage),
                 options.forceViewerBVPVDisplay,
             );
         }

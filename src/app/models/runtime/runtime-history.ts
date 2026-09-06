@@ -34,6 +34,7 @@ export const RUNTIME_HISTORY_MESSAGE = Object.freeze({
     COMPONENT_MODE_CHANGED: 26,
     SPOTTING_CHANGED: 27,
     COVER_CHANGED: 28,
+    AMMO_LOADOUT_RESET: 29,
 } as const);
 
 export type RuntimeHistoryMessageId = typeof RUNTIME_HISTORY_MESSAGE[keyof typeof RUNTIME_HISTORY_MESSAGE];
@@ -211,6 +212,8 @@ export function formatRuntimeHistoryMessage(
             return scoped(formatCrewRuntimeChange(data, context, instanceId));
         case RUNTIME_HISTORY_MESSAGE.AMMO_CHANGED:
             return scoped('Updated ammunition');
+        case RUNTIME_HISTORY_MESSAGE.AMMO_LOADOUT_RESET:
+            return scoped(formatAmmoLoadoutReset(data, context, instanceId));
         case RUNTIME_HISTORY_MESSAGE.WEAPONS_FIRED:
             return scoped(formatWeaponFire(data, context, instanceId, target('component')));
         case RUNTIME_HISTORY_MESSAGE.EQUIPMENT_CHANGED:
@@ -272,6 +275,19 @@ function formatCoverChange(cover: number): string {
     if (cover >= 3 && cover <= 5) return `Declared cover water depth ${cover - 2}`;
     if (cover >= 6 && cover <= 8) return `Declared cover building level ${cover - 5}`;
     return 'Cleared cover';
+}
+
+function formatAmmoLoadoutReset(
+    data: readonly JsonValue[],
+    context: RuntimeHistoryFormatContext,
+    instanceId: string,
+): string {
+    const changes = data.slice(1).filter(Array.isArray).map(row => {
+        const component = context.targetLabel?.(instanceId, 'component', text(row[0])) ?? text(row[0]);
+        const ammo = (key: JsonValue | undefined) => context.ammoLabel?.(instanceId, text(key)) ?? text(key);
+        return `${component}: ${ammo(row[1])} (${number(row[2])}) → ${ammo(row[3])} (${number(row[4])})`;
+    });
+    return `Reset ammo loadout${changes.length === 0 ? '' : `: ${changes.join('; ')}`}`;
 }
 
 function mode(value: JsonValue | undefined): string {

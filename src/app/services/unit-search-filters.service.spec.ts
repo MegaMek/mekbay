@@ -21,6 +21,7 @@ import { OptionsService } from './options.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
+import { UnitSearchAvailabilityService } from './unit-search-availability.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { UrlService } from './url.service';
 import { UserStateService } from './userState.service';
@@ -2947,9 +2948,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const directMembershipSpy = spyOn(unitAvailabilitySource, 'unitMatchesMegaMekMembership').and.callThrough();
         const scopedSetSpy = spyOn(unitAvailabilitySource, 'getMegaMekMembershipUnitIds').and.callThrough();
 
-        expect(service.unitBelongsToEra(bundle.units.units[0], 'Age of War', { factionNames: ['Draconis Combine'] })).toBeTrue();
-        expect(service.unitBelongsToEra(bundle.units.units[0], 'Age of War', { factionNames: ['Federated Suns'] })).toBeFalse();
-        expect(service.unitBelongsToEra(bundle.units.units[1], 'Age of War', { factionNames: ['Federated Suns'] })).toBeTrue();
+        expect(TestBed.inject(UnitSearchAvailabilityService).unitBelongsToEra(bundle.units.units[0], 'Age of War', { factionNames: ['Draconis Combine'] })).toBeTrue();
+        expect(TestBed.inject(UnitSearchAvailabilityService).unitBelongsToEra(bundle.units.units[0], 'Age of War', { factionNames: ['Federated Suns'] })).toBeFalse();
+        expect(TestBed.inject(UnitSearchAvailabilityService).unitBelongsToEra(bundle.units.units[1], 'Age of War', { factionNames: ['Federated Suns'] })).toBeTrue();
         expect(directMembershipSpy).toHaveBeenCalledTimes(3);
         expect(scopedSetSpy).not.toHaveBeenCalled();
     });
@@ -3037,18 +3038,18 @@ describe('UnitSearchFiltersService search telemetry', () => {
             availabilitySource: 'megamek',
         });
 
-        expect(Array.from((service as any).getSemanticIndexedUnitIds('era', 'Age of War', {
+        expect(Array.from(TestBed.inject(UnitSearchAvailabilityService).getIndexedUnitIds('era', 'Age of War', {
             factionNames: ['Draconis Combine'],
-        }) ?? [])).toEqual([bundle.units.units[0].uuid]);
-        expect(Array.from((service as any).getSemanticIndexedUnitIds('era', 'Age of War', {
+        }, false) ?? [])).toEqual([bundle.units.units[0].uuid]);
+        expect(Array.from(TestBed.inject(UnitSearchAvailabilityService).getIndexedUnitIds('era', 'Age of War', {
             factionNames: ['Federated Suns'],
-        }) ?? [])).toEqual([bundle.units.units[1].uuid]);
-        expect(Array.from((service as any).getSemanticIndexedUnitIds('faction', 'Draconis Combine', {
+        }, false) ?? [])).toEqual([bundle.units.units[1].uuid]);
+        expect(Array.from(TestBed.inject(UnitSearchAvailabilityService).getIndexedUnitIds('faction', 'Draconis Combine', {
             eraNames: ['Age of War'],
-        }) ?? [])).toEqual([bundle.units.units[0].uuid]);
-        expect(Array.from((service as any).getSemanticIndexedUnitIds('faction', 'Federated Suns', {
+        }, false) ?? [])).toEqual([bundle.units.units[0].uuid]);
+        expect(Array.from(TestBed.inject(UnitSearchAvailabilityService).getIndexedUnitIds('faction', 'Federated Suns', {
             eraNames: ['Succession Wars'],
-        }) ?? [])).toEqual([]);
+        }, false) ?? [])).toEqual([]);
     });
 
     it('marks the MegaMek Extinct faction as available when extinct units exist', () => {

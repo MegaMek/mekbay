@@ -60,6 +60,13 @@ export class CBTForceMember {
     readonly pristineAdjustedBattleValue = computed(() =>
         this.force.getUnitPristineAdjustedBattleValue(this.id));
 
+    /** Rounded current BV including TAG and C3, without skills. */
+    readonly adjustedPreSkillBattleValue = computed(() => this.force.getUnitAdjustedPreSkillBattleValue(this.id));
+
+    /** Rounded pristine BV including TAG and C3, without skills. */
+    readonly pristineAdjustedPreSkillBattleValue = computed(() =>
+        this.force.getUnitPristineAdjustedPreSkillBattleValue(this.id));
+
     readonly c3State = computed(() => this.force.getC3State(this.id));
 
     public tagBattleValue(): number | null {
@@ -245,15 +252,15 @@ export function forceMemberAdjustedValue(
         : value.adjustedBattleValue() ?? value.entity.battleValue();
 }
 
-/** Pre-skill BV/PV under the selected CBT damage policy. */
-export function forceMemberBaseValue(
+/** Rounded force-adjusted BV/PV without skills under the selected CBT damage policy. */
+export function forceMemberAdjustedPreSkillValue(
     value: ForceMember,
     damageMode: ForceViewerBVPVDisplayDamage,
 ): number {
     if (!isCBTForceMember(value)) return value.getPreSkillBv();
     return damageMode === 'pristine'
-        ? value.pristineBattleValue() ?? value.entity.battleValue()
-        : value.currentBaseBattleValue() ?? value.entity.battleValue();
+        ? value.pristineAdjustedPreSkillBattleValue() ?? value.entity.battleValue()
+        : value.adjustedPreSkillBattleValue() ?? value.entity.battleValue();
 }
 
 export function forceMemberCommander(value: ForceMember): boolean {

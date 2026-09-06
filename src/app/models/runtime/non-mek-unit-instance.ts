@@ -598,6 +598,7 @@ export type NonMekUnitCommand =
     }>
     | Readonly<{ readonly kind: 'set-ammo-spent'; readonly componentId: ComponentId; readonly shotsSpent: number }>
     | Readonly<{ readonly kind: 'configure-ammo-source'; readonly componentId: ComponentId; readonly munitionKey: string; readonly remaining: number }>
+    | Readonly<{ readonly kind: 'reset-ammo-loadout' }>
     | Readonly<{
         readonly kind: 'set-crew-state';
         readonly positionId: CrewPositionId;
@@ -1856,6 +1857,11 @@ function reduceNonMekUnitState(
                 ammo.delete(command.componentId);
             } else ammo.set(command.componentId, nextAmmo);
             candidate = { ...state, ammo };
+            break;
+        }
+        case 'reset-ammo-loadout': {
+            if (state.ammo.size === 0) return null;
+            candidate = { ...state, ammo: new Map() };
             break;
         }
         case 'set-crew-state': {

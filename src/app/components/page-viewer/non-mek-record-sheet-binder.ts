@@ -29,6 +29,8 @@ import {
     unitConditionControls,
 } from '../../models/unit-status-presentation';
 import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
+import { recordSheetAmmoName } from '../../utils/record-sheet-ammo.util';
+import { updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
 import {
     renderRecordSheetConditions,
     renderRecordSheetCrewState,
@@ -86,6 +88,10 @@ export type NonMekRecordSheetInteraction = Readonly<{
     readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'heat-sinks-off';
+    readonly expectedRevision: number;
+}> | Readonly<{
+    readonly kind: 'open-equipment';
+    readonly tab: 'ammo';
     readonly expectedRevision: number;
 }> | Readonly<{
     readonly kind: 'inventory-selection';
@@ -209,6 +215,13 @@ export function bindNonMekRecordSheet(
         }
         renderDamageTracks(svg, snapshot.damageTracks, issues, bind, () => current.stateRevision);
         renderComponents(svg, snapshot);
+        renderAmmoProfile(svg, snapshot, onInteraction !== undefined);
+        const ammoProfile = svg.querySelector<SVGElement>('#ammoProfile');
+        if (ammoProfile) bind(ammoProfile, () => Object.freeze({
+            kind: 'open-equipment',
+            tab: 'ammo',
+            expectedRevision: current.stateRevision,
+        }));
         if (currentEquipmentPanel !== null) {
             renderInventorySelections(
                 svg,
@@ -229,6 +242,7 @@ export function bindNonMekRecordSheet(
         render,
         destroy: () => {
             abort.abort();
+            svg.querySelector('#ammoProfile > .inventoryEntryButton')?.remove();
             svg.querySelectorAll<SVGElement>('[data-mekbay-entity-bound="1"]').forEach(element => {
                 delete element.dataset['mekbayEntityBound'];
                 element.classList.remove('interactive', 'selectable');
@@ -748,6 +762,20 @@ function renderComponents(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapsho
         if (!row) continue;
         renderInventoryComponentStatus(row, [component]);
     }
+}
+
+function renderAmmoProfile(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot, interactive: boolean): void {
+    const profile = svg.querySelector<SVGElement>('#ammoProfile');
+    if (!profile) return;
+    const totals = new Map<string, number>();
+    for (const component of snapshot.components) {
+        if (component.ammo === undefined) continue;
+        const name = recordSheetAmmoName(component.ammo.displayName);
+        totals.set(name, (totals.get(name) ?? 0) + component.ammo.remaining);
+    }
+    updateRecordSheetAmmoProfile(profile, [...totals.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([name, remaining]) => `(${name}) ${remaining}`), interactive);
 }
 
 function renderInventoryComponentStatus(

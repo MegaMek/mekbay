@@ -149,7 +149,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
     });
 
     it('always displays adjusted and base BV for CBT search results', () => {
-        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'base' });
+        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'adjustedPreSkill' });
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
         const unit = createEmptyUnit({ bv: 12_600 });
 
@@ -165,7 +165,7 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
 
     it('always displays adjusted and base PV for Alpha Strike search results', () => {
         currentGameSystemSignal.set(GameSystem.AS);
-        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'adjusted' });
+        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'adjustedPostSkill' });
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
         const unit = createUnit();
         unit.as.PV = 40;
@@ -179,8 +179,26 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         expect(fixture.componentInstance.resolvedBv()).toBe(fixture.componentInstance.resolvedCompactBv());
     });
 
+    it('uses the live force display instead of catalog BV and skills, including zero', () => {
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+
+        fixture.componentRef.setInput('unit', createEmptyUnit({ bv: 12_600 }));
+        fixture.componentRef.setInput('gunnery', 3);
+        fixture.componentRef.setInput('piloting', 4);
+        fixture.componentRef.setInput('useBvPvDisplayOption', true);
+        expect(fixture.componentInstance.resolvedBv()).toBe('16,632 (12,600)');
+
+        fixture.componentRef.setInput('bvPvDisplay', '2,971 (2,251)');
+        expect(fixture.componentInstance.resolvedBv()).toBe('2,971 (2,251)');
+        expect(fixture.componentInstance.resolvedCompactBv()).toBe('2,971 (2,251)');
+
+        fixture.componentRef.setInput('bvPvDisplay', '0');
+        expect(fixture.componentInstance.resolvedBv()).toBe('0');
+        expect(fixture.componentInstance.resolvedCompactBv()).toBe('0');
+    });
+
     it('always displays adjusted and base BV for normalized search results', () => {
-        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'base' });
+        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'adjustedPreSkill' });
         const fixture = TestBed.createComponent(UnitCardExpandedComponent);
 
         fixture.componentRef.setInput('unit', createEmptyUnit({ bv: 12_600 }));

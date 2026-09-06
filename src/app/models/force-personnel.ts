@@ -169,17 +169,7 @@ export function restoreForcePersonnelEdit(
     after: ForcePersonnelSnapshot,
     selected: ForcePersonnelSnapshot,
 ): ForcePersonnelSnapshot {
-    const beforePeople = new Map(before.people.map(person => [person.id, person] as const));
-    const afterPeople = new Map(after.people.map(person => [person.id, person] as const));
-    const beforeAssignments = new Map(before.assignments.map(assignment => [assignment.personId, assignment] as const));
-    const afterAssignments = new Map(after.assignments.map(assignment => [assignment.personId, assignment] as const));
-    const changed = new Set([...beforePeople.keys(), ...afterPeople.keys()].filter(id => {
-        const oldAssignment = beforeAssignments.get(id);
-        const newAssignment = afterAssignments.get(id);
-        return beforePeople.get(id) !== afterPeople.get(id)
-            || oldAssignment?.unitId !== newAssignment?.unitId
-            || oldAssignment?.positionId !== newAssignment?.positionId;
-    }));
+    const changed = changedForcePersonnelIds(before, after);
     const selectedPeople = new Map(selected.people.map(person => [person.id, person] as const));
     const retained = new Set(current.people.map(person => person.id));
     return Object.freeze({
@@ -192,6 +182,24 @@ export function restoreForcePersonnelEdit(
             ...selected.assignments.filter(assignment => changed.has(assignment.personId)),
         ]),
     });
+}
+
+/** Preserved person objects are unchanged; station bindings compare unit and position IDs. */
+export function changedForcePersonnelIds(
+    before: ForcePersonnelSnapshot,
+    after: ForcePersonnelSnapshot,
+): ReadonlySet<string> {
+    const beforePeople = new Map(before.people.map(person => [person.id, person] as const));
+    const afterPeople = new Map(after.people.map(person => [person.id, person] as const));
+    const beforeAssignments = new Map(before.assignments.map(assignment => [assignment.personId, assignment] as const));
+    const afterAssignments = new Map(after.assignments.map(assignment => [assignment.personId, assignment] as const));
+    return new Set([...beforePeople.keys(), ...afterPeople.keys()].filter(id => {
+        const oldAssignment = beforeAssignments.get(id);
+        const newAssignment = afterAssignments.get(id);
+        return beforePeople.get(id) !== afterPeople.get(id)
+            || oldAssignment?.unitId !== newAssignment?.unitId
+            || oldAssignment?.positionId !== newAssignment?.positionId;
+    }));
 }
 
 /** Derived immutable CBT input; absent bindings are vacant stations. */

@@ -5,8 +5,9 @@
 import { EMPTY_FORCE_PERSONNEL, assignedForcePerson, createForcePerson, addForcePerson, assignForcePerson, updateForcePerson, detachForcePersonnel, removeUnitPersonnel, cloneForcePersonnel, transferForcePersonnel, restoreForcePersonnelEdit, forcePersonnelCrewAssignment, type ForcePerson, type ForcePersonnelSnapshot } from './force-personnel';
 import { unitCrewKind, type UnitCrewPolicy } from './unit-crew-policy';
 import { canonicalizeCrewAssignment } from './runtime/crew-assignment';
-import { CrewMember, type CrewMemberRuntimeState } from './crew-member.model';
-import { asCrewPositionId, type CrewPositionId } from './entity/entity-identifiers';
+import type { CrewMemberRuntimeState } from './crew-member.model';
+import { asCrewPositionId } from './entity/entity-identifiers';
+import { affectedPersonnelUnitIds, planPersonnelCrewEdits } from './cbt-force-personnel';
 import { computed, type Injector } from '@angular/core';
 import type { DataService } from '../services/data.service';
 import { forceMemberAdjustedValue, type CBTForceMember, type ForceMember } from './force-member.model';
@@ -1067,6 +1068,14 @@ export class CBTForce extends Force<never> {
         return this.pristineAdjustedBattleValues().get(instanceId)?.adjusted ?? null;
     }
 
+    public getUnitAdjustedPreSkillBattleValue(instanceId: string): number | null {
+        return this.adjustedBattleValues().get(instanceId)?.adjustedPreSkill ?? null;
+    }
+
+    public getUnitPristineAdjustedPreSkillBattleValue(instanceId: string): number | null {
+        return this.pristineAdjustedBattleValues().get(instanceId)?.adjustedPreSkill ?? null;
+    }
+
     /** Canonical formula projected against a prospective C3 graph; no state is retained. */
     public previewAdjustedBattleValues(
         networks: readonly EncounterNetwork[],
@@ -1557,18 +1566,7 @@ export class CBTForce extends Force<never> {
             if (next === null) return false;
             if (next === before || jsonValuesEqual(next, before)) return true;
             next = this.reconcilePersonnelCommanders(before, next);
-            const beforePeople = new Map(before.people.map(person => [person.id, person]));
-            const nextPeople = new Map(next.people.map(person => [person.id, person]));
-            const beforeBindings = new Map(before.assignments.map(assignment => [assignment.personId, assignment]));
-            const nextBindings = new Map(next.assignments.map(assignment => [assignment.personId, assignment]));
-            const affected = new Set<string>();
-            for (const personId of new Set([...beforePeople.keys(), ...nextPeople.keys()])) {
-                const oldBinding = beforeBindings.get(personId), newBinding = nextBindings.get(personId);
-                if (beforePeople.get(personId) === nextPeople.get(personId)
-                    && oldBinding?.unitId === newBinding?.unitId && oldBinding?.positionId === newBinding?.positionId) continue;
-                if (oldBinding) affected.add(oldBinding.unitId);
-                if (newBinding) affected.add(newBinding.unitId);
-            }
+            const affected = affectedPersonnelUnitIds(before, next);
             if (!affected.size) {
                 this.reserveForceOwnerMutationIntent();
                 this.commitUnassignedPersonnelEdit(next);
@@ -1586,30 +1584,17 @@ export class CBTForce extends Force<never> {
                 if (!unit) return false;
                 const health = unit.captureRuntime().query.crewState(asCrewPositionId(assignment.positionId)).toRuntimeState();
                 healthByPerson.set(assignment.personId, health);
-                if (nextPeople.has(assignment.personId) && !nextBindings.has(assignment.personId)) {
-                    next = updateForcePerson(next, assignment.personId, { health: CrewMember.from(health).isPristine() ? undefined : health });
-                }
             }
-            const edits = instanceIds.map(instanceId => {
-                const health = new Map<CrewPositionId, CrewMemberRuntimeState>();
-                for (const assignment of next!.assignments) {
-                    if (assignment.unitId !== instanceId) continue;
-                    const person = nextPeople.get(assignment.personId)!;
-                    const state = CrewMember.from(healthByPerson.get(person.id) ?? person.health);
-                    if (!state.isPristine()) health.set(asCrewPositionId(assignment.positionId), state.toRuntimeState());
-                    if (person.health !== undefined) next = updateForcePerson(next!, person.id, { health: undefined });
-                }
-                return { instanceId, assignment: forcePersonnelCrewAssignment(next!, instanceId), health };
-            });
+            const plan = planPersonnelCrewEdits(next, instanceIds, healthByPerson);
             try {
-                const candidates = await this.unitStore.buildCrewCandidates(edits);
+                const candidates = await this.unitStore.buildCrewCandidates(plan.edits);
                 if (!this.canEditPersonnel() || !this.isForceOwnerGenerationCurrent(generation)
                     || !this.unitStore.isSnapshotCurrent(fence) || this.personnel() !== before) return false;
                 const envelope = this.unitStore.envelope()!;
                 const serialized = new Map([...candidates].map(([id, unit]) => [id, unit.serialize()]));
                 const updated: SerializedCBTForceV2 = Object.freeze({ ...envelope,
                     forceRevision: nextForceRevision(envelope.forceRevision),
-                    roster: this.rosterWithPersonnelCommanders(envelope.roster, next!),
+                    roster: this.rosterWithPersonnelCommanders(envelope.roster, plan.personnel),
                     units: Object.freeze(envelope.units.map(entry => {
                         const unit = serialized.get(entry.instanceId);
                         return unit ? Object.freeze({ ...entry, unit, stateRevision: unit.stateRevision }) : entry;
@@ -1619,7 +1604,7 @@ export class CBTForce extends Force<never> {
                     this.unitStore.crewProfile(id)!, candidates.get(id)!.getCrewAssignment()));
                 this.reserveForceOwnerMutationIntent();
                 this.unitStore.replace(updated, candidates, { preserveC3Session: true });
-                this.installPersonnel(next!);
+                this.installPersonnel(plan.personnel);
                 const changed = this.session.record(capture, history, undefined, this.personnel());
                 this.emitChangedFromReservedIntent(changed.length ? changed : instanceIds);
                 return true;

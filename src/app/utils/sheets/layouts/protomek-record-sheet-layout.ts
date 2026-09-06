@@ -15,6 +15,7 @@ import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
 import { isElectronicInterfaceEquipment } from '../../../models/battle-armor-equipment.model';
 import { clusterTableForEntity } from '../../record-sheet-reference-table';
+import { appendRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import {
     type Box,
     addFrame,
@@ -254,6 +255,18 @@ function drawCompactProtoMekInventory(
     const rangeClasses = ['range_min', 'range_short', 'range_medium', 'range_long'] as const;
     const rangeButtons = ['shrButton', 'medButton', 'lngButton'] as const;
     const lineStep = 9.126;
+    const physical = entity.intrinsicWeapons();
+    const physicalBaseline = 70.493;
+    const inventory = svgElement('g');
+    setAttributes(inventory, {
+        'data-ammo-inventory': '',
+        'data-top': y(34.95 - lineStep * 0.82),
+        'data-bottom': y(physical.length > 0 ? physicalBaseline - physical.length * lineStep : 70.493),
+    });
+    group.appendChild(inventory);
+    const physicalRows = svgElement('g');
+    physicalRows.setAttribute('data-ammo-before', '');
+    group.appendChild(physicalRows);
 
     const appendRow = (
         data: typeof regularRows[number] | Readonly<{
@@ -268,6 +281,7 @@ function drawCompactProtoMekInventory(
         baselineValue: number,
         index: string,
         showQuantity = true,
+        parent = inventory,
     ): number => {
         const nameLines = compactProtoMekNameLines(data.name);
         const entry = svgElement('g');
@@ -301,19 +315,17 @@ function drawCompactProtoMekInventory(
         values.forEach((value, rangeIndex) => addText(entry, value, x(rangePositions[rangeIndex]), baseline, {
             class: rangeClasses[rangeIndex], size: font(6.76), anchor: 'middle', maxWidth: x(11),
         }));
-        group.appendChild(entry);
+        parent.appendChild(entry);
         return nameLines.length;
     };
 
     let displayLine = 0;
     regularRows.forEach((row, index) => {
-        if (34.95 + displayLine * lineStep > 58) return;
         displayLine += appendRow(row, 34.95 + displayLine * lineStep, String(index));
     });
+    inventory.setAttribute('data-content-bottom', String(y(34.95 + Math.max(0, displayLine - 1) * lineStep)));
 
     const ammo = recordSheetAmmoProfile(entity);
-    const physical = entity.intrinsicWeapons();
-    const physicalBaseline = ammo.length > 0 ? 63.9 : 70.493;
     physical.forEach((attack, index) => appendRow({
         name: attack.name,
         location: '—',
@@ -322,14 +334,11 @@ function drawCompactProtoMekInventory(
         ranges: Object.freeze(['—', '—', '—']),
         componentIds: Object.freeze([]),
         quantity: 0,
-    }, physicalBaseline - (physical.length - index - 1) * lineStep, `physical-${index}`, false));
-    if (ammo.length === 0) return;
-    const ammoProfile = svgElement('g');
-    ammoProfile.id = 'ammoProfile';
-    addText(ammoProfile, `Ammo: ${ammo.join(', ')}`, x(6.725), y(75.191), {
-        size: font(6.76), maxWidth: box.width - x(13.45),
+    }, physicalBaseline - (physical.length - index - 1) * lineStep, `physical-${index}`, false, physicalRows));
+    appendRecordSheetAmmoProfile(group, ammo, {
+        x: x(6.725), y: y(75.191), width: box.width - x(13.45),
+        fontSize: font(6.76), lineHeight: y(lineStep),
     });
-    group.appendChild(ammoProfile);
 }
 
 function compactProtoMekNameLines(value: string): readonly string[] {

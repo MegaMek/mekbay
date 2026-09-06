@@ -8,6 +8,7 @@ import { BattleArmorBVCalculator } from '../../../models/entity/utils/battle-val
 import { hasStealthFlag } from '../../../models/stealth-equipment.model';
 import { isJumpJetEquipment, isUmuEquipment } from '../../../models/jump-equipment.model';
 import { recordSheetAmmoName } from '../../record-sheet-ammo.util';
+import { appendRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
     type Box,
@@ -444,13 +445,9 @@ function drawCompactBattleArmorInventory(
             ? Object.freeze([match[1], match[2]])
             : Object.freeze([value]);
     };
-    const lineCount = rows.reduce((sum, row) => sum
-        + splitDamage(row.damage).length
-        + row.alternativeModes.reduce((modeSum, mode) => modeSum + splitDamage(mode.damage).length, 0), 0);
     const firstBaseline = 66.666;
-    const maxBaseline = ammo.length > 0 ? 96.377 : 105.2;
-    const lineStep = Math.min(8.406, lineCount > 1 ? (maxBaseline - firstBaseline) / (lineCount - 1) : 8.406);
-    const rowFont = Math.min(6.76, Math.max(4.4, lineStep * (6.76 / 8.406)));
+    const lineStep = 8.406;
+    const rowFont = 6.76;
 
     addText(group, '#', x(7.55), y(56.766), { size: font(6.76), weight: 700, anchor: 'middle' });
     addText(group, 'Type', x(12.1), y(56.766), { size: font(6.76), weight: 700 });
@@ -464,6 +461,13 @@ function drawCompactBattleArmorInventory(
     });
 
     const rangeClasses = ['', 'shrButton', 'medButton', 'lngButton'] as const;
+    const inventory = svgElement('g');
+    setAttributes(inventory, {
+        'data-ammo-inventory': '',
+        'data-top': y(firstBaseline - lineStep * 0.82),
+        'data-bottom': y(105.2),
+    });
+    group.appendChild(inventory);
     let displayLine = 0;
     rows.forEach((row, index) => {
         const baselineValue = firstBaseline + displayLine * lineStep;
@@ -523,18 +527,13 @@ function drawCompactBattleArmorInventory(
             entry.appendChild(alternative);
             modeLine += modeDamageLines.length;
         });
-        group.appendChild(entry);
+        inventory.appendChild(entry);
         displayLine = modeLine;
     });
-
-    if (ammo.length > 0) {
-        const ammoProfile = svgElement('g');
-        ammoProfile.id = 'ammoProfile';
-        addText(ammoProfile, `Ammo: ${ammo.join(', ')}`, x(7.55), y(104.783), {
-            size: font(6.76), maxWidth: x(178),
-        });
-        group.appendChild(ammoProfile);
-    }
+    inventory.setAttribute('data-content-bottom', String(y(firstBaseline + Math.max(0, displayLine - 1) * lineStep)));
+    appendRecordSheetAmmoProfile(group, ammo, {
+        x: x(7.55), y: y(104.783), width: x(178), fontSize: font(6.76), lineHeight: y(lineStep),
+    });
 }
 
 function battleArmorAmmoProfile(entity: BattleArmorEntity): readonly string[] {

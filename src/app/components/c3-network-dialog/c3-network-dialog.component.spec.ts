@@ -7,6 +7,8 @@ import { provideZonelessChangeDetection, signal, type Signal, type WritableSigna
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import type { Force } from '../../models/force.model';
+import type { CBTForceMember } from '../../models/force-member.model';
+import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import type { SerializedC3NetworkGroup } from '../../models/force-serialization';
 import {
@@ -25,6 +27,8 @@ import { LayoutService } from '../../services/layout.service';
 import { OptionsService } from '../../services/options.service';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { ToastService } from '../../services/toast.service';
+import { MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
+import { asUnitSpriteManifestDigest, createUnitSpriteAssignmentContext } from '../../utils/unit-sprite-assignment-resolver';
 import { C3NetworkDialogComponent } from './c3-network-dialog.component';
 
 interface ConnectionLineTestApi {
@@ -48,6 +52,7 @@ interface SidebarMemberTestApi {
 interface C3NetworkDialogTestApi {
     nodes: WritableSignal<C3Node[]>;
     networks: WritableSignal<SerializedC3NetworkGroup[]>;
+    loadNodeIcons(units: TestC3Unit[]): Promise<void>;
     autoConfigureNetworks(): Promise<void>;
     isPinConnected(node: C3Node, compIndex: number): boolean;
     getPinNetworkColor(node: C3Node, compIndex: number): string | null;
@@ -68,6 +73,7 @@ interface C3NetworkDialogTestApi {
 }
 
 interface TestC3Unit extends C3UnitView {
+    member?: Pick<CBTForceMember, 'entity'>;
     getSummary?(): UnitSummary;
     getBaseBv(): number;
     tagBV(): number;
@@ -163,9 +169,15 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
         fixture: ComponentFixture<C3NetworkDialogComponent>;
         requestConfirmation: jasmine.Spy;
         close: jasmine.Spy;
+        spriteService: jasmine.SpyObj<Pick<SpriteStorageService, 'getVerifiedAssignmentContext' | 'getExtractedIconUrl'>>;
     }> {
         const requestConfirmation = jasmine.createSpy('requestConfirmation').and.resolveTo(false);
         const close = jasmine.createSpy('close');
+        const spriteService = jasmine.createSpyObj<Pick<SpriteStorageService, 'getVerifiedAssignmentContext' | 'getExtractedIconUrl'>>(
+            'SpriteStorageService', ['getVerifiedAssignmentContext', 'getExtractedIconUrl'],
+        );
+        spriteService.getVerifiedAssignmentContext.and.resolveTo(null);
+        spriteService.getExtractedIconUrl.and.resolveTo(null);
         const members = signal(units.map(state => state.unit));
         const force = {
             gameSystem: GameSystem.CBT,
@@ -189,7 +201,7 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
                     useValue: { options: signal({ c3NetworkConnectionsAboveNodes: false }) },
                 },
                 { provide: LayoutService, useValue: { isMobile: signal(false) } },
-                { provide: SpriteStorageService, useValue: {} },
+                { provide: SpriteStorageService, useValue: spriteService },
             ],
         }).compileComponents();
 
@@ -199,8 +211,60 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
             fixture,
             requestConfirmation,
             close,
+            spriteService,
         };
     }
+
+    it('renders an entity-backed CBT node icon from verified sprite assignments', async () => {
+        const { component, fixture, spriteService } = await createComponent();
+        fixture.detectChanges();
+        const state = c3Unit('atlas', [C3_FLAGS.C3I]);
+        const entity = new TestBipedMekEntity();
+        entity.chassis.set('Atlas');
+        entity.model.set('AS7-D');
+        state.unit.member = { entity };
+        const iconUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+        spriteService.getVerifiedAssignmentContext.and.resolveTo(createUnitSpriteAssignmentContext({
+            provider: MM_DATA_UNIT_PROVIDER_ID,
+            manifestDigest: asUnitSpriteManifestDigest('A'.repeat(27)),
+            assignments: { exact: { 'ATLAS AS7-D': 'meks/Atlas_D.png' }, chassis: {} },
+        }));
+        spriteService.getExtractedIconUrl.and.resolveTo(iconUrl);
+        component.nodes.set([node(state, 0, 0)]);
+
+        await component.loadNodeIcons([state.unit]);
+        fixture.detectChanges();
+
+        expect(spriteService.getVerifiedAssignmentContext).toHaveBeenCalledOnceWith(MM_DATA_UNIT_PROVIDER_ID);
+        expect(spriteService.getExtractedIconUrl).toHaveBeenCalledOnceWith('meks/Atlas_D.png');
+        expect(fixture.nativeElement.querySelector('image.node-icon')?.getAttribute('href')).toBe(iconUrl);
+    });
+
+    it('preserves the presentation icon path for Alpha Strike nodes', async () => {
+        const { component, spriteService } = await createComponent();
+        const state = c3Unit('atlas', [C3_FLAGS.C3I]);
+        const presentation = state.unit.getC3Presentation();
+        state.unit.getC3Presentation = () => ({ ...presentation, icon: 'meks/Atlas.png' });
+
+        await component.loadNodeIcons([state.unit]);
+
+        expect(spriteService.getExtractedIconUrl).toHaveBeenCalledOnceWith('meks/Atlas.png');
+        expect(spriteService.getVerifiedAssignmentContext).not.toHaveBeenCalled();
+    });
+
+    it('renders the fallback when entity sprite assignments are unavailable', async () => {
+        const { component, fixture, spriteService } = await createComponent();
+        fixture.detectChanges();
+        const state = c3Unit('atlas', [C3_FLAGS.C3I]);
+        state.unit.member = { entity: new TestBipedMekEntity() };
+        component.nodes.set([node(state, 0, 0)]);
+
+        await component.loadNodeIcons([state.unit]);
+        fixture.detectChanges();
+
+        expect(spriteService.getExtractedIconUrl).not.toHaveBeenCalled();
+        expect(fixture.nativeElement.querySelector('image.node-icon')?.getAttribute('href')).toBe('/images/unknown.png');
+    });
 
     it('returns detached positions for the owner commit', async () => {
         const first = c3Unit('first', [C3_FLAGS.C3I]);

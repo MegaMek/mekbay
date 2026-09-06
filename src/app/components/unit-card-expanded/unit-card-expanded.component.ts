@@ -112,6 +112,9 @@ export class UnitCardExpandedComponent {
     /** Show adjusted and base BV/PV for a plain search-result Unit. */
     useBvPvDisplayOption = input(false);
 
+    /** Force-projected BV/PV display when the card receives a catalog unit. */
+    bvPvDisplay = input<string | null>(null);
+
     /** Forcibly override game system detection */
     gameSystemOverride = input<GameSystem | null>(null);
 
@@ -202,6 +205,9 @@ export class UnitCardExpandedComponent {
 
     /** Resolved BV/PV display for a live ForceUnit or standalone search result. */
     readonly resolvedBv = computed<string | null>(() => {
+        const display = this.bvPvDisplay();
+        if (display !== null) return display;
+
         const unit = this.unit();
         if (this.isForceUnit(unit)) {
             return formatBvPv(

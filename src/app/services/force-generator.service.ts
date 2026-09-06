@@ -11,15 +11,11 @@ import type { Faction } from '../models/factions.model';
 import { createForcePreviewEntryData, type ForcePreviewEntry, type ForcePreviewGroup } from '../models/force-preview.model';
 import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import type {
-    MegaMekRulesetAssign,
     MegaMekRulesetEchelonToken,
     MegaMekRulesetForceNode,
-    MegaMekRulesetNodeBase,
-    MegaMekRulesetOptionGroup,
     MegaMekRulesetOptionNode,
     MegaMekRulesetRecord,
     MegaMekRulesetSubforceNode,
-    MegaMekRulesetWhen,
 } from '../models/megamek/rulesets.model';
 import type { LoadForceEntry } from '../models/load-force-entry.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../models/force.model';
@@ -38,11 +34,10 @@ import { compileFormationUnitFacts, type FormationUnitLike } from '../utils/form
 import { evaluateFormationPredicate } from '../utils/formation-predicates.util';
 import { collectGroupUnits } from '../utils/org/org-facts.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType, OrgUnit } from '../utils/org/org-types';
-import { calculateAdjustedBV, getEffectivePilotingSkill, getFixedPilotingSkill } from '../utils/cbt-common.util';
+import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type CrewMemberDetails } from '../models/crew-member.model';
 import { getPositiveDropdownNamesFromFilter, resolveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
 import { ForceNamerUtil } from '../utils/force-namer.util';
-import { adjustPointValueForSkill } from '../utils/pv-skill-adjustment.util';
 import { bondNumberRange } from '../utils/bounded-integer-input.util';
 import { normalizeMultiStateSelection } from '../utils/unit-search-shared.util';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
@@ -53,10 +48,39 @@ import { UnitSearchFiltersService } from './unit-search-filters.service';
 import { TagsService } from './tags.service';
 import { uuidv7 } from '../utils/uuid.util';
 
+import {
+    findMatchingForceNode,
+    matchesRulesetWhen,
+    normalizeRulesetToken,
+    resolvePreferredForceNode,
+    type ForceNodeSelection,
+    type RulesetMatchContext,
+} from './force-generator/ruleset-matching';
+import {
+    addRulesetValues,
+    applyForceNodeToProfile,
+    createRulesetTemplate,
+    getRulesetMatchReasons,
+    getRulesetMatchScore,
+    mergeRulesetNodeIntoProfile,
+    type RulesetProfile,
+} from './force-generator/ruleset-preferences';
+import { pickWeightedRandomEntry } from './force-generator/weighted-selection';
+import {
+    createLowestCostCandidateForSkillSettings,
+    createSkillAdjustedCandidateOptions,
+    createSkillAdjustedCandidateOptionsForSettings,
+    getBudgetMetric,
+    getForceGenerationCBTSkillPairs,
+    hasVariableForceGenerationSkillSettings,
+    type SkillRange as ForceGenerationSkillRange,
+    type SkillSettings as ForceGenerationSkillSettings,
+} from './force-generator/skill-options';
+import { getBudgetRangeDistance, getBudgetTarget, isBudgetWithinRange, optimizeSkillBudget } from './force-generator/skill-budget';
+import { getScopedAvailabilityWeights, includeMulAvailabilityFallback, type AvailabilityWeights } from './force-generator/availability-weights';
+
 const LOG_ATTEMPTS = false;
 const FORCE_GENERATION_OPTIMIZE_SELECTED_SKILLS_FOR_BUDGET = true;
-const FORCE_GENERATION_SKILL_OPTIMIZATION_STATE_LIMIT = 5_000;
-const DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT = 10;
 const IGNORED_RARITY_FORCE_GENERATOR_WEIGHTS = { requisition: 1, salvage: 0 } as const;
 const FORCE_GENERATION_PRODUCTION_SOURCE_ROLL_WEIGHT = 5;
 const FORCE_GENERATION_SALVAGE_SOURCE_ROLL_WEIGHT = 1;
@@ -79,13 +103,6 @@ const DEFAULT_PREVIEW_FORCE_FACTION: Faction = {
     img: '',
     eras: {},
 };
-
-interface RulesetPreferenceSource {
-    unitTypes?: string[];
-    weightClasses?: string[];
-    roles?: string[];
-    motives?: string[];
-}
 
 interface ForceGenerationCandidateUnit {
     unit: UnitSummary;
@@ -117,31 +134,9 @@ interface ForceGenerationTaggedQuantityCaps {
 
 type ForceGenerationAvailabilitySource = 'requisition' | 'salvage';
 
-type ForceGenerationForceNodeSelectionMode = 'first' | 'weighted';
-
 interface ForceGenerationAvailabilityPair {
     eraId: number;
     factionId: number;
-}
-
-interface RulesetMatchContext {
-    year?: number;
-    unitType?: string;
-    weightClass?: string;
-    role?: string;
-    motive?: string;
-    echelon?: string;
-    factionKey?: string;
-    augmented?: boolean;
-    topLevel?: boolean;
-    flags?: readonly string[];
-}
-
-interface ForceGenerationRulesetTemplate {
-    unitTypes: Set<string>;
-    weightClasses: Set<string>;
-    roles: Set<string>;
-    motives: Set<string>;
 }
 
 interface ForceGenerationCandidateUnitTypeSummary {
@@ -189,14 +184,7 @@ interface ForceGenerationAvailabilityScopeState {
     eraIds: readonly number[];
     factionIds: readonly number[];
     eraIdTexts: readonly string[];
-    factionIdTexts: readonly string[];
     factionIdTextSet: ReadonlySet<string>;
-    pairCount: number;
-}
-
-interface ForceGenerationAvailabilityReductionState {
-    requisitionMax: number;
-    salvageMax: number;
 }
 
 interface ForceGenerationTopLevelEchelonOption {
@@ -238,19 +226,6 @@ interface ForceGenerationSuccessfulAttemptLog {
     }[];
 }
 
-interface ForceGenerationRulesetProfile {
-    selectedEchelon?: string;
-    preferredOrgType?: OrgType;
-    preferredUnitCount?: number;
-    requiredUnitTypes: Set<string>;
-    preferredUnitTypes: Set<string>;
-    preferredWeightClasses: Set<string>;
-    preferredRoles: Set<string>;
-    preferredMotives: Set<string>;
-    templates: ForceGenerationRulesetTemplate[];
-    explanationNotes: string[];
-}
-
 interface ResolvedRulesetContext {
     primary: MegaMekRulesetRecord | null;
     chain: MegaMekRulesetRecord[];
@@ -274,7 +249,7 @@ interface ForceGenerationSelectionStep {
 interface ForceGenerationSelectionAttempt {
     selectedCandidates: ForceGenerationCandidateUnit[];
     selectionSteps: ForceGenerationSelectionStep[];
-    rulesetProfile: ForceGenerationRulesetProfile | null;
+    rulesetProfile: RulesetProfile | null;
     structureEvaluation?: ForceGenerationStructureEvaluation;
     targetFormationGroups?: ForceGenerationTargetFormationCandidateGroup[];
     candidatePoolStarved?: boolean;
@@ -310,7 +285,7 @@ interface ForceGenerationTargetFormationSetAttemptEvaluation {
 }
 
 interface ForceGenerationSelectionPreparation {
-    rulesetProfile: ForceGenerationRulesetProfile | null;
+    rulesetProfile: RulesetProfile | null;
     selectableCandidates: readonly ForceGenerationCandidateUnit[];
     lowestCostCandidates: readonly ForceGenerationCandidateUnit[];
     highestCostCandidates: readonly ForceGenerationCandidateUnit[];
@@ -367,11 +342,6 @@ interface ForceGenerationTargetFormationBudgetReachabilityContext {
     lowestCostCandidatePool: readonly ForceGenerationCandidateUnit[];
 }
 
-interface ForceGenerationSkillOptimizationState {
-    totalCost: number;
-    selectedCandidates: ForceGenerationCandidateUnit[];
-}
-
 type ForceGenerationSkillOptionResolver = (
     candidate: ForceGenerationCandidateUnit,
     index: number,
@@ -399,26 +369,10 @@ interface ForceGenerationTargetSearchResult {
     attemptsTried: number;
 }
 
-interface ForceGenerationSkillSettings {
-    gunnery: ForceGenerationSkillRange;
-    piloting: ForceGenerationSkillRange;
-    maxDelta: number;
-}
-
-interface ForceGenerationCBTSkillPair {
-    gunnery: number;
-    piloting: number;
-}
-
 interface ForceGenerationStructureEvaluation {
     score: number;
     perfectMatch: boolean;
     summary: string;
-}
-
-interface ForceGenerationForceNodeSelection {
-    forceNode?: MegaMekRulesetForceNode;
-    matchContext: RulesetMatchContext;
 }
 
 export interface ForceGenerationPreview {
@@ -470,11 +424,6 @@ export interface ForceGenerationRequest {
     useUnitTagsAsChassisTags?: boolean;
     targetFormationId?: string;
     targetFormations?: readonly ForceGenerationTargetFormationSelection[];
-}
-
-export interface ForceGenerationSkillRange {
-    min: number;
-    max: number;
 }
 
 export interface ForceGenerationSkillRanges {
@@ -1353,48 +1302,12 @@ function resolveForceGenerationSkillSettings(
     };
 }
 
-function isForceGenerationSkillRangeVariable(range: ForceGenerationSkillRange): boolean {
-    return range.min !== range.max;
-}
-
-function hasVariableForceGenerationSkillSettings(
-    gameSystem: GameSystem,
-    settings: ForceGenerationSkillSettings,
-): boolean {
-    return isForceGenerationSkillRangeVariable(settings.gunnery)
-        || (gameSystem === GameSystem.CBT && isForceGenerationSkillRangeVariable(settings.piloting));
-}
-
 function pickRandomIntegerInRange(range: ForceGenerationSkillRange): number {
     if (range.min === range.max) {
         return range.min;
     }
 
     return range.min + Math.floor(Math.random() * (range.max - range.min + 1));
-}
-
-export function getForceGenerationCBTSkillPairs(
-    settings: ForceGenerationSkillSettings,
-    unit?: UnitSummary,
-): ForceGenerationCBTSkillPair[] {
-    const pairs: ForceGenerationCBTSkillPair[] = [];
-    const pairKeys = new Set<string>();
-    const fixedPiloting = unit ? getFixedPilotingSkill(unit) : null;
-
-    for (let gunnery = settings.gunnery.min; gunnery <= settings.gunnery.max; gunnery += 1) {
-        for (let requestedPiloting = settings.piloting.min; requestedPiloting <= settings.piloting.max; requestedPiloting += 1) {
-            const piloting = fixedPiloting ?? requestedPiloting;
-            if (fixedPiloting !== null || Math.abs(gunnery - piloting) <= settings.maxDelta) {
-                const pairKey = `${gunnery}:${piloting}`;
-                if (!pairKeys.has(pairKey)) {
-                    pairKeys.add(pairKey);
-                    pairs.push({ gunnery, piloting });
-                }
-            }
-        }
-    }
-
-    return pairs;
 }
 
 function hasValidForceGenerationSkillSettings(
@@ -1496,14 +1409,6 @@ function resolveUnitCountRangeWithEditedMax(
     }, 'max');
 }
 
-function getBudgetMetric(unit: UnitSummary, gameSystem: GameSystem, gunnery: number, piloting: number): number {
-    if (gameSystem === GameSystem.AS) {
-        return Math.max(0, adjustPointValueForSkill(unit.as.PV, gunnery));
-    }
-
-    return Math.max(0, calculateAdjustedBV(unit, unit.bv, gunnery, getEffectivePilotingSkill(unit, piloting)));
-}
-
 function setHasAny<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
     const [smaller, larger] = left.size <= right.size
         ? [left, right]
@@ -1577,14 +1482,6 @@ function getReusableCandidateCostTotal(
 
 function getPreferredOrgTypeForEchelon(echelon: string | undefined): OrgType | undefined {
     return echelon ? ECHELON_TO_ORG_TYPE.get(echelon) : undefined;
-}
-
-function getPositiveRulesetValues(values: readonly string[] | undefined): string[] {
-    return (values ?? []).filter((value) => !value.startsWith('!'));
-}
-
-function getFirstPositiveRulesetValue(values: readonly string[] | undefined): string | undefined {
-    return getPositiveRulesetValues(values)[0];
 }
 
 function getCommonUnitCountForOrgType(type: OrgType): number | undefined {
@@ -1681,33 +1578,6 @@ function getResolvedOrgGroupLabel(group: GroupSizeResult): string {
     return group.type ? `${group.modifierKey}${group.type}` : group.name;
 }
 
-function pickWeightedRandomEntry<T>(entries: readonly T[], getWeight: (entry: T) => number): T {
-    if (entries.length === 1) {
-        return entries[0];
-    }
-
-    const weights = entries.map((entry) => Math.max(0, getWeight(entry)));
-    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-
-    if (totalWeight <= 0) {
-        return entries[Math.floor(Math.random() * entries.length)];
-    }
-
-    let cursor = Math.random() * totalWeight;
-    for (let index = 0; index < entries.length; index++) {
-        cursor -= weights[index];
-        if (cursor <= 0) {
-            return entries[index];
-        }
-    }
-
-    return entries[entries.length - 1];
-}
-
-function normalizeRulesetToken(value: string): string {
-    return value.trim().toLowerCase();
-}
-
 function normalizeRole(value: string | undefined): string | undefined {
     return value?.trim().toLowerCase() || undefined;
 }
@@ -1758,14 +1628,6 @@ function getEraReferenceYear(era: Era | null): number | undefined {
     }
 
     return fromYear ?? toYear;
-}
-
-function getRulesetEchelonCode(token: MegaMekRulesetEchelonToken | undefined): string | undefined {
-    return token?.code;
-}
-
-function getRulesetOptionWeight(node: Pick<MegaMekRulesetNodeBase, 'weight'> | undefined): number {
-    return node?.weight ?? 1;
 }
 
 function getRulesetOptionEchelons(option: Pick<MegaMekRulesetOptionNode, 'echelon' | 'echelons'>): MegaMekRulesetEchelonToken[] {
@@ -2001,10 +1863,6 @@ export class ForceGeneratorService implements OnDestroy {
         editedMax: number,
     ): ForceGeneratorUnitCountDefaults {
         return resolveUnitCountRangeWithEditedMax(range, editedMax);
-    }
-
-    public getBudgetMetric(unit: UnitSummary, gameSystem: GameSystem, gunnery: number, piloting: number): number {
-        return getBudgetMetric(unit, gameSystem, gunnery, piloting);
     }
 
     public resolveGenerationContext(
@@ -2360,7 +2218,7 @@ export class ForceGeneratorService implements OnDestroy {
                     const formationValid = targetEvaluation?.valid === true
                         && optimizedTargetAttempt.selectedCandidates.length >= minUnitCount
                         && optimizedTargetAttempt.selectedCandidates.length <= maxUnitCount;
-                    const targetValid = formationValid && this.isBudgetWithinRange(targetTotalCost, budgetRange);
+                    const targetValid = formationValid && isBudgetWithinRange(targetTotalCost, budgetRange);
 
                     return {
                         attempt: optimizedTargetAttempt,
@@ -2368,7 +2226,7 @@ export class ForceGeneratorService implements OnDestroy {
                             satisfiedTargetCount: formationValid ? 1 : 0,
                             requestedTargetCount: 1,
                             formationDeficitScore: this.getFormationDeficitScore(targetEvaluation),
-                            budgetDistance: this.getBudgetRangeDistance(targetTotalCost, budgetRange),
+                            budgetDistance: getBudgetRangeDistance(targetTotalCost, budgetRange),
                             unitCountDistance: this.getUnitCountRangeDistance(targetAttempt.selectedCandidates.length, minUnitCount, maxUnitCount),
                         },
                         complete: targetValid,
@@ -2571,7 +2429,7 @@ export class ForceGeneratorService implements OnDestroy {
             remainingMaxUnitCount,
         );
         const costPlanningCandidates = hasVariableSkillSettings
-            ? effectiveFallbackCandidates.map((candidate) => this.createLowestCostCandidateForSkillSettings(
+            ? effectiveFallbackCandidates.map((candidate) => createLowestCostCandidateForSkillSettings(
                 candidate,
                 options.gameSystem,
                 skillSettings,
@@ -2675,8 +2533,8 @@ export class ForceGeneratorService implements OnDestroy {
             const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
             const attemptExceedsMax = Number.isFinite(budgetRange.max) && totalCost > budgetRange.max;
             const attemptUnitCountDistance = this.getUnitCountRangeDistance(selectionAttempt.selectedCandidates.length, minUnitCount, maxUnitCount);
-            const attemptBudgetDistance = this.getBudgetRangeDistance(totalCost, budgetRange);
-            const attemptMidpointDistance = Math.abs(totalCost - this.getBudgetTarget(budgetRange));
+            const attemptBudgetDistance = getBudgetRangeDistance(totalCost, budgetRange);
+            const attemptMidpointDistance = Math.abs(totalCost - getBudgetTarget(budgetRange));
 
             if (
                 bestAttempt.selectedCandidates.length === 0
@@ -2710,14 +2568,14 @@ export class ForceGeneratorService implements OnDestroy {
 
             const isValid = selectionAttempt.selectedCandidates.length >= minUnitCount
                 && selectionAttempt.selectedCandidates.length <= maxUnitCount
-                && this.isBudgetWithinRange(totalCost, budgetRange);
+                && isBudgetWithinRange(totalCost, budgetRange);
             if (isValid) {
                 const structureEvaluation = this.evaluateSelectionStructure(selectionAttempt, options.context);
                 if (structureEvaluation) {
                     selectionAttempt.structureEvaluation = structureEvaluation;
                 }
 
-                const midpointDistance = Math.abs(totalCost - this.getBudgetTarget(budgetRange));
+                const midpointDistance = Math.abs(totalCost - getBudgetTarget(budgetRange));
                 const structureScore = structureEvaluation?.score ?? 0;
                 const bestAttemptComparison = this.compareSuccessfulAttemptToBest(
                     {
@@ -3932,62 +3790,6 @@ export class ForceGeneratorService implements OnDestroy {
         };
     }
 
-    private createSkillAdjustedCandidateOptions(
-        candidate: ForceGenerationCandidateUnit,
-        gameSystem: GameSystem,
-        skillSettings: ForceGenerationSkillSettings,
-    ): ForceGenerationCandidateUnit[] {
-        if (candidate.locked || !hasVariableForceGenerationSkillSettings(gameSystem, skillSettings)) {
-            return [candidate];
-        }
-
-        return this.createSkillAdjustedCandidateOptionsForSettings(candidate, gameSystem, skillSettings);
-    }
-
-    private createSkillAdjustedCandidateOptionsForSettings(
-        candidate: ForceGenerationCandidateUnit,
-        gameSystem: GameSystem,
-        skillSettings: ForceGenerationSkillSettings,
-    ): ForceGenerationCandidateUnit[] {
-        if (candidate.locked) {
-            return [candidate];
-        }
-
-        const options: ForceGenerationCandidateUnit[] = [];
-        const optionKeys = new Set<string>();
-        if (gameSystem === GameSystem.AS) {
-            for (let skill = skillSettings.gunnery.min; skill <= skillSettings.gunnery.max; skill += 1) {
-                const adjustedCandidate = this.createCandidateWithSpecificSkills(
-                    candidate,
-                    gameSystem,
-                    skill,
-                    skillSettings.piloting.min,
-                );
-                const optionKey = `${adjustedCandidate.cost}:${adjustedCandidate.skill ?? ''}`;
-                if (!optionKeys.has(optionKey)) {
-                    optionKeys.add(optionKey);
-                    options.push(adjustedCandidate);
-                }
-            }
-        } else {
-            for (const skillPair of getForceGenerationCBTSkillPairs(skillSettings, candidate.unit)) {
-                const adjustedCandidate = this.createCandidateWithSpecificSkills(
-                    candidate,
-                    gameSystem,
-                    skillPair.gunnery,
-                    skillPair.piloting,
-                );
-                const optionKey = `${adjustedCandidate.cost}:${adjustedCandidate.gunnery ?? ''}:${adjustedCandidate.piloting ?? ''}`;
-                if (!optionKeys.has(optionKey)) {
-                    optionKeys.add(optionKey);
-                    options.push(adjustedCandidate);
-                }
-            }
-        }
-
-        return options.length > 0 ? options : [candidate];
-    }
-
     private createTargetFormationCandidatesForAttempt(
         candidates: readonly ForceGenerationCandidateUnit[],
         options: ForceGenerationRequest,
@@ -4027,7 +3829,7 @@ export class ForceGeneratorService implements OnDestroy {
         skillSettings: ForceGenerationSkillSettings,
     ): ForceGenerationCandidateUnit[] {
         const preferredOptions = this.filterTargetFormationCandidatePool(
-            this.createSkillAdjustedCandidateOptionsForSettings(candidate, options.gameSystem, skillSettings),
+            createSkillAdjustedCandidateOptionsForSettings(candidate, options.gameSystem, skillSettings),
             options,
             definition,
         );
@@ -4036,7 +3838,7 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         const fallbackOptions = this.filterTargetFormationCandidatePool(
-            this.createSkillAdjustedCandidateOptionsForSettings(
+            createSkillAdjustedCandidateOptionsForSettings(
                 candidate,
                 options.gameSystem,
                 this.createFormationSkillFallbackSettings(skillSettings),
@@ -4132,7 +3934,7 @@ export class ForceGeneratorService implements OnDestroy {
         for (const [index, candidate] of candidates.entries()) {
             const options = skillOptionResolver
                 ? skillOptionResolver(candidate, index)
-                : this.createSkillAdjustedCandidateOptions(candidate, gameSystem, skillSettings);
+                : createSkillAdjustedCandidateOptions(candidate, gameSystem, skillSettings);
             const resolvedOptions = options.length > 0 ? options : [candidate];
             minCostByCandidate.set(candidate, Math.min(...resolvedOptions.map(option => option.cost)));
             maxCostByCandidate.set(candidate, Math.max(...resolvedOptions.map(option => option.cost)));
@@ -4190,52 +3992,26 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         const originalTotalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-        const originalState: ForceGenerationSkillOptimizationState = {
-            totalCost: originalTotalCost,
-            selectedCandidates: selectionAttempt.selectedCandidates,
-        };
-        if (this.isBudgetWithinRange(originalTotalCost, budgetRange)) {
+        if (isBudgetWithinRange(originalTotalCost, budgetRange)) {
             return selectionAttempt;
         }
 
         const skillOptionsByCandidate = selectionAttempt.selectedCandidates.map((candidate, index) => {
             const options = skillOptionResolver
                 ? skillOptionResolver(candidate, index)
-                : this.createSkillAdjustedCandidateOptions(candidate, gameSystem, skillSettings);
+                : createSkillAdjustedCandidateOptions(candidate, gameSystem, skillSettings);
             return options.length > 0 ? options : [candidate];
         });
-        let states: ForceGenerationSkillOptimizationState[] = [{ totalCost: 0, selectedCandidates: [] }];
-
-        for (const candidateOptions of skillOptionsByCandidate) {
-            const nextStatesByCost = new Map<number, ForceGenerationSkillOptimizationState>();
-            for (const state of states) {
-                for (const candidateOption of candidateOptions) {
-                    const nextTotalCost = state.totalCost + candidateOption.cost;
-                    if (nextStatesByCost.has(nextTotalCost)) {
-                        continue;
-                    }
-                    nextStatesByCost.set(nextTotalCost, {
-                        totalCost: nextTotalCost,
-                        selectedCandidates: [...state.selectedCandidates, candidateOption],
-                    });
-                }
-            }
-
-            states = this.pruneSkillOptimizationStates([...nextStatesByCost.values()], budgetRange);
-        }
-
-        const bestState = states.reduce((best, state) => (
-            this.compareSkillOptimizationStates(state, best, budgetRange) < 0 ? state : best
-        ), originalState);
-        if (this.compareSkillOptimizationStates(bestState, originalState, budgetRange) >= 0) {
+        const selectedCandidates = optimizeSkillBudget(selectionAttempt.selectedCandidates, skillOptionsByCandidate, budgetRange);
+        if (selectedCandidates === selectionAttempt.selectedCandidates) {
             return selectionAttempt;
         }
 
         return {
             ...selectionAttempt,
-            selectedCandidates: bestState.selectedCandidates,
+            selectedCandidates,
             selectionSteps: selectionAttempt.selectionSteps.map((step, index) => {
-                const candidate = bestState.selectedCandidates[index];
+                const candidate = selectedCandidates[index];
                 return {
                     ...step,
                     cost: candidate?.cost ?? step.cost,
@@ -4245,102 +4021,6 @@ export class ForceGeneratorService implements OnDestroy {
                 };
             }),
         };
-    }
-
-    private pruneSkillOptimizationStates(
-        states: ForceGenerationSkillOptimizationState[],
-        budgetRange: { min: number; max: number },
-    ): ForceGenerationSkillOptimizationState[] {
-        if (states.length <= FORCE_GENERATION_SKILL_OPTIMIZATION_STATE_LIMIT) {
-            return states;
-        }
-
-        return states
-            .sort((left, right) => this.compareSkillOptimizationStates(left, right, budgetRange))
-            .slice(0, FORCE_GENERATION_SKILL_OPTIMIZATION_STATE_LIMIT);
-    }
-
-    private compareSkillOptimizationStates(
-        left: ForceGenerationSkillOptimizationState,
-        right: ForceGenerationSkillOptimizationState,
-        budgetRange: { min: number; max: number },
-    ): number {
-        const leftInRange = this.isBudgetWithinRange(left.totalCost, budgetRange);
-        const rightInRange = this.isBudgetWithinRange(right.totalCost, budgetRange);
-        if (leftInRange !== rightInRange) {
-            return leftInRange ? -1 : 1;
-        }
-
-        const leftDistance = this.getBudgetRangeDistance(left.totalCost, budgetRange);
-        const rightDistance = this.getBudgetRangeDistance(right.totalCost, budgetRange);
-        if (leftDistance !== rightDistance) {
-            return leftDistance - rightDistance;
-        }
-
-        return Math.abs(left.totalCost - this.getBudgetTarget(budgetRange))
-            - Math.abs(right.totalCost - this.getBudgetTarget(budgetRange));
-    }
-
-    private createCandidateWithSpecificSkills(
-        candidate: ForceGenerationCandidateUnit,
-        gameSystem: GameSystem,
-        gunnery: number,
-        piloting: number,
-    ): ForceGenerationCandidateUnit {
-        if (gameSystem === GameSystem.AS) {
-            return {
-                ...candidate,
-                cost: getBudgetMetric(candidate.unit, gameSystem, gunnery, piloting),
-                skill: gunnery,
-                gunnery: undefined,
-                piloting: undefined,
-            };
-        }
-
-        const effectivePiloting = getEffectivePilotingSkill(candidate.unit, piloting);
-        return {
-            ...candidate,
-            cost: getBudgetMetric(candidate.unit, gameSystem, gunnery, effectivePiloting),
-            skill: undefined,
-            gunnery,
-            piloting: effectivePiloting,
-        };
-    }
-
-    private createLowestCostCandidateForSkillSettings(
-        candidate: ForceGenerationCandidateUnit,
-        gameSystem: GameSystem,
-        skillSettings: ForceGenerationSkillSettings,
-    ): ForceGenerationCandidateUnit {
-        let lowestCostCandidate: ForceGenerationCandidateUnit | null = null;
-
-        if (gameSystem === GameSystem.AS) {
-            for (let skill = skillSettings.gunnery.min; skill <= skillSettings.gunnery.max; skill += 1) {
-                const adjustedCandidate = this.createCandidateWithSpecificSkills(
-                    candidate,
-                    gameSystem,
-                    skill,
-                    skillSettings.piloting.min,
-                );
-                if (!lowestCostCandidate || adjustedCandidate.cost < lowestCostCandidate.cost) {
-                    lowestCostCandidate = adjustedCandidate;
-                }
-            }
-        } else {
-            for (const skillPair of getForceGenerationCBTSkillPairs(skillSettings, candidate.unit)) {
-                const adjustedCandidate = this.createCandidateWithSpecificSkills(
-                    candidate,
-                    gameSystem,
-                    skillPair.gunnery,
-                    skillPair.piloting,
-                );
-                if (!lowestCostCandidate || adjustedCandidate.cost < lowestCostCandidate.cost) {
-                    lowestCostCandidate = adjustedCandidate;
-                }
-            }
-        }
-
-        return lowestCostCandidate ?? candidate;
     }
 
     private createSkillAdjustedCandidatesForAttempt(
@@ -4400,211 +4080,37 @@ export class ForceGeneratorService implements OnDestroy {
         scopeState: ForceGenerationAvailabilityScopeState,
         eligibleUnits: readonly UnitSummary[],
     ): ForceGenerationAvailabilityWeightCache {
-        const unitsByMulId = new Map<number, UnitSummary[]>();
-        for (const unit of eligibleUnits) {
-            const unitsForMulId = unitsByMulId.get(unit.id) ?? [];
-            unitsForMulId.push(unit);
-            unitsByMulId.set(unit.id, unitsForMulId);
-        }
-
-        const weightsByUnitName = useMegaMekAvailability
-            ? this.buildMegaMekAvailabilityWeightMap(scopeState, eligibleUnits)
-            : this.buildMulAvailabilityWeightMap(scopeState, eligibleUnits, unitsByMulId);
-
-        return {
-            signature,
-            useMegaMekAvailability,
-            scopeState,
-            weightsByUnitName,
-        };
-    }
-
-    private buildMegaMekAvailabilityWeightMap(
-        scopeState: ForceGenerationAvailabilityScopeState,
-        eligibleUnits: readonly UnitSummary[],
-        exactPairKeysByUnitName?: Map<string, Set<string>>,
-        includeUnknownForMissingRecords = true,
-    ): Map<string, { requisition: number; salvage: number }> {
-        const weightsByUnitName = new Map<string, { requisition: number; salvage: number }>();
-        if (scopeState.pairCount <= 0) {
-            if (includeUnknownForMissingRecords) {
-                for (const unit of eligibleUnits) {
-                    weightsByUnitName.set(unit.name, {
-                        requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                        salvage: 0,
-                    });
-                }
-            }
-            return weightsByUnitName;
-        }
-
-        const exactEraIdText = scopeState.eraIdTexts.length === 1 ? scopeState.eraIdTexts[0] : null;
-        const exactFactionIdText = scopeState.factionIdTexts.length === 1 ? scopeState.factionIdTexts[0] : null;
-        const exactPairKey = exactEraIdText !== null && exactFactionIdText !== null
-            ? `${exactEraIdText}:${exactFactionIdText}`
-            : null;
-
+        const recordsByUnitName = useMegaMekAvailability ? undefined : new Map<string, MegaMekWeightedAvailabilityRecord | undefined>();
+        const weightsByUnitName = new Map<string, AvailabilityWeights>();
         for (const unit of eligibleUnits) {
             const record = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
-            if (!record) {
-                if (includeUnknownForMissingRecords) {
-                    weightsByUnitName.set(unit.name, {
-                        requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                        salvage: 0,
-                    });
-                }
-                continue;
-            }
-
-            if (exactEraIdText !== null && exactFactionIdText !== null) {
-                const exactWeights = {
-                    requisition: record.e[exactEraIdText]?.[exactFactionIdText]?.[0] ?? 0,
-                    salvage: record.e[exactEraIdText]?.[exactFactionIdText]?.[1] ?? 0,
-                };
-                const exactValue = record.e[exactEraIdText]?.[exactFactionIdText];
-                weightsByUnitName.set(unit.name, exactWeights);
-
-                if (exactValue && exactPairKeysByUnitName && exactPairKey !== null) {
-                    exactPairKeysByUnitName.set(unit.name, new Set<string>([exactPairKey]));
-                }
-
-                continue;
-            }
-
-            let requisitionMax = 0;
-            let salvageMax = 0;
-            let exactPairKeys: Set<string> | undefined;
-
-            for (const eraIdText of scopeState.eraIdTexts) {
-                const eraAvailability = record.e[eraIdText];
-                if (!eraAvailability) {
-                    continue;
-                }
-
-                for (const factionIdText in eraAvailability) {
-                    if (!scopeState.factionIdTextSet.has(factionIdText)) {
-                        continue;
-                    }
-
-                    if (exactPairKeysByUnitName) {
-                        exactPairKeys ??= new Set<string>();
-                        exactPairKeys.add(`${eraIdText}:${factionIdText}`);
-                    }
-
-                    const value = eraAvailability[factionIdText];
-                    const requisition = value[0] ?? 0;
-                    const salvage = value[1] ?? 0;
-                    if (requisition > requisitionMax) {
-                        requisitionMax = requisition;
-                    }
-                    if (salvage > salvageMax) {
-                        salvageMax = salvage;
-                    }
-                }
-            }
-
-            weightsByUnitName.set(unit.name, {
-                requisition: requisitionMax,
-                salvage: salvageMax,
-            });
-
-            if (exactPairKeysByUnitName && exactPairKeys && exactPairKeys.size > 0) {
-                exactPairKeysByUnitName.set(unit.name, exactPairKeys);
-            }
+            recordsByUnitName?.set(unit.name, record);
+            weightsByUnitName.set(unit.name, getScopedAvailabilityWeights(record, scopeState, useMegaMekAvailability));
         }
 
-        return weightsByUnitName;
-    }
-
-    private buildMulAvailabilityWeightMap(
-        scopeState: ForceGenerationAvailabilityScopeState,
-        eligibleUnits: readonly UnitSummary[],
-        unitsByMulId: ReadonlyMap<number, readonly UnitSummary[]>,
-    ): Map<string, { requisition: number; salvage: number }> {
-        if (scopeState.pairCount <= 0) {
-            const zeroWeightsByUnitName = new Map<string, { requisition: number; salvage: number }>();
+        if (!useMegaMekAvailability) {
+            const unitsByMulId = new Map<number, UnitSummary[]>();
             for (const unit of eligibleUnits) {
-                zeroWeightsByUnitName.set(unit.name, {
-                    requisition: 0,
-                    salvage: 0,
-                });
+                const matchingUnits = unitsByMulId.get(unit.id) ?? [];
+                matchingUnits.push(unit);
+                unitsByMulId.set(unit.id, matchingUnits);
             }
-            return zeroWeightsByUnitName;
-        }
-
-        const exactPairKeysByUnitName = new Map<string, Set<string>>();
-        const weightsByUnitName = this.buildMegaMekAvailabilityWeightMap(
-            scopeState,
-            eligibleUnits,
-            exactPairKeysByUnitName,
-            false,
-        );
-
-        for (const pair of scopeState.pairs) {
-            const forceFaction = this.dataService.getFactionById(pair.factionId);
-            const forceEra = this.dataService.getEraById(pair.eraId);
-            if (!forceFaction || !forceEra) {
-                continue;
-            }
-
-            const pairKey = buildAvailabilityPairKey(pair.eraId, pair.factionId);
-            const mulUnitIds = this.unitAvailabilitySource.getFactionEraUnitIds(forceFaction, forceEra, 'mul');
-            for (const unitIdText of mulUnitIds) {
-                const unitId = Number(unitIdText);
-                const matchingUnits = Number.isNaN(unitId) ? undefined : unitsByMulId.get(unitId);
-                if (!matchingUnits?.length) {
+            for (const { eraId, factionId } of scopeState.pairs) {
+                const faction = this.dataService.getFactionById(factionId);
+                const era = this.dataService.getEraById(eraId);
+                if (!faction || !era) {
                     continue;
                 }
-
-                for (const unit of matchingUnits) {
-                    if (exactPairKeysByUnitName.get(unit.name)?.has(pairKey)) {
-                        continue;
+                for (const unitId of this.unitAvailabilitySource.getFactionEraUnitIds(faction, era, 'mul')) {
+                    for (const unit of unitsByMulId.get(Number(unitId)) ?? []) {
+                        const exactValue = recordsByUnitName!.get(unit.name)?.e[String(eraId)]?.[String(factionId)];
+                        includeMulAvailabilityFallback(weightsByUnitName.get(unit.name)!, exactValue);
                     }
-
-                    const exactValue = this.dataService.getMegaMekAvailabilityRecordForUnit(unit)?.e[String(pair.eraId)]?.[String(pair.factionId)];
-                    if (exactValue !== undefined) {
-                        const weights = weightsByUnitName.get(unit.name) ?? {
-                            requisition: 0,
-                            salvage: 0,
-                        };
-                        const requisition = exactValue[0] ?? 0;
-                        const salvage = exactValue[1] ?? 0;
-                        if (requisition > weights.requisition) {
-                            weights.requisition = requisition;
-                        }
-                        if (salvage > weights.salvage) {
-                            weights.salvage = salvage;
-                        }
-                        weightsByUnitName.set(unit.name, weights);
-                        continue;
-                    }
-
-                    const existingScopedWeights = weightsByUnitName.get(unit.name);
-                    if (existingScopedWeights) {
-                        if (existingScopedWeights.requisition < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
-                            existingScopedWeights.requisition = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
-                        }
-                        continue;
-                    }
-
-                    weightsByUnitName.set(unit.name, {
-                        requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                        salvage: 0,
-                    });
                 }
             }
         }
 
-        for (const unit of eligibleUnits) {
-            if (!weightsByUnitName.has(unit.name)) {
-                weightsByUnitName.set(unit.name, {
-                    requisition: 0,
-                    salvage: 0,
-                });
-            }
-        }
-
-        return weightsByUnitName;
+        return { signature, useMegaMekAvailability, scopeState, weightsByUnitName };
     }
 
     private buildAvailabilityScopeState(context: ForceGenerationContext): ForceGenerationAvailabilityScopeState {
@@ -4617,9 +4123,7 @@ export class ForceGeneratorService implements OnDestroy {
             eraIds,
             factionIds,
             eraIdTexts: eraIds.map((eraId) => String(eraId)),
-            factionIdTexts: factionIds.map((factionId) => String(factionId)),
             factionIdTextSet: new Set(factionIds.map((factionId) => String(factionId))),
-            pairCount: pairs.length,
         };
     }
 
@@ -4821,8 +4325,8 @@ export class ForceGeneratorService implements OnDestroy {
 
         if (rulesetProfile) {
             for (const candidate of [...preselectedCandidates, ...selectableCandidates]) {
-                rulesetScoreByCandidate.set(candidate, this.getRulesetMatchScore(candidate, rulesetProfile));
-                rulesetReasonsByCandidate.set(candidate, this.getRulesetMatchReasons(candidate, rulesetProfile));
+                rulesetScoreByCandidate.set(candidate, getRulesetMatchScore(candidate, rulesetProfile));
+                rulesetReasonsByCandidate.set(candidate, getRulesetMatchReasons(candidate, rulesetProfile));
             }
         }
 
@@ -4891,16 +4395,22 @@ export class ForceGeneratorService implements OnDestroy {
         unit: UnitSummary,
         context: ForceGenerationContext,
         availabilityScopeState?: ForceGenerationAvailabilityScopeState,
-    ): { requisition: number; salvage: number } {
+    ): AvailabilityWeights {
         const useMegaMekAvailability = this.unitAvailabilitySource.useMegaMekAvailability();
-        const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
-        return this.getScopedAvailabilityWeights(
-            unit,
-            context,
-            availabilityRecord,
-            useMegaMekAvailability,
-            availabilityScopeState,
-        );
+        const record = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
+        const scope = availabilityScopeState ?? this.buildAvailabilityScopeState(context);
+        const weights = getScopedAvailabilityWeights(record, scope, useMegaMekAvailability);
+        if (!useMegaMekAvailability) {
+            const unitKey = this.unitAvailabilitySource.getUnitAvailabilityKey(unit, 'mul');
+            for (const { eraId, factionId } of scope.pairs) {
+                const faction = this.dataService.getFactionById(factionId);
+                const era = this.dataService.getEraById(eraId);
+                if (faction && era && this.unitAvailabilitySource.getFactionEraUnitIds(faction, era, 'mul').has(unitKey)) {
+                    includeMulAvailabilityFallback(weights, record?.e[String(eraId)]?.[String(factionId)]);
+                }
+            }
+        }
+        return weights;
     }
 
     private shouldUseAvailabilityEraScope(context: ForceGenerationContext): boolean {
@@ -4937,206 +4447,6 @@ export class ForceGeneratorService implements OnDestroy {
             : context.forceFaction
                 ? [context.forceFaction.id]
                 : [];
-    }
-
-    private getScopedAvailabilityWeights(
-        unit: UnitSummary,
-        context: ForceGenerationContext,
-        availabilityRecord: MegaMekWeightedAvailabilityRecord | undefined,
-        useMegaMekAvailability: boolean,
-        availabilityScopeState?: ForceGenerationAvailabilityScopeState,
-    ): { requisition: number; salvage: number } {
-        const scopeState = availabilityScopeState ?? this.buildAvailabilityScopeState(context);
-        if (scopeState.pairCount <= 0) {
-            return useMegaMekAvailability
-                ? {
-                    requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                    salvage: 0,
-                }
-                : {
-                    requisition: 0,
-                    salvage: 0,
-                };
-        }
-
-        if (!availabilityRecord && useMegaMekAvailability) {
-            return {
-                requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                salvage: 0,
-            };
-        }
-
-        if (useMegaMekAvailability) {
-            return this.reduceMegaMekScopedAvailabilityWeights(availabilityRecord, scopeState);
-        }
-
-        return this.reduceScopedAvailabilityWeights(
-            scopeState,
-            (eraId, factionId) => {
-                return availabilityRecord
-                    ? this.getAvailabilityWeightsForPair(
-                        unit,
-                        availabilityRecord,
-                        eraId,
-                        factionId,
-                        useMegaMekAvailability,
-                    )
-                    : this.getMissingAvailabilityWeightsForPair(unit, eraId, factionId, useMegaMekAvailability);
-            },
-        );
-    }
-
-    private createAvailabilityReductionState(): ForceGenerationAvailabilityReductionState {
-        return {
-            requisitionMax: 0,
-            salvageMax: 0,
-        };
-    }
-
-    private accumulateAvailabilityReductionState(
-        state: ForceGenerationAvailabilityReductionState,
-        weights: { requisition: number; salvage: number },
-    ): void {
-        this.accumulateAvailabilityReductionValues(state, weights.requisition, weights.salvage);
-    }
-
-    private accumulateAvailabilityReductionValues(
-        state: ForceGenerationAvailabilityReductionState,
-        requisition: number,
-        salvage: number,
-    ): void {
-        if (requisition > state.requisitionMax) {
-            state.requisitionMax = requisition;
-        }
-
-        if (salvage > state.salvageMax) {
-            state.salvageMax = salvage;
-        }
-    }
-
-    private finalizeAvailabilityReductionState(
-        state: ForceGenerationAvailabilityReductionState,
-    ): { requisition: number; salvage: number } {
-        return {
-            requisition: state.requisitionMax,
-            salvage: state.salvageMax,
-        };
-    }
-
-    private reduceScopedAvailabilityWeights(
-        scopeState: ForceGenerationAvailabilityScopeState,
-        getPairWeights: (eraId: number, factionId: number) => { requisition: number; salvage: number },
-    ): { requisition: number; salvage: number } {
-        const state = this.createAvailabilityReductionState();
-
-        for (const eraId of scopeState.eraIds) {
-            for (const factionId of scopeState.factionIds) {
-                this.accumulateAvailabilityReductionState(state, getPairWeights(eraId, factionId));
-            }
-        }
-
-        return this.finalizeAvailabilityReductionState(state);
-    }
-
-    private reduceMegaMekScopedAvailabilityWeights(
-        availabilityRecord: MegaMekWeightedAvailabilityRecord | undefined,
-        scopeState: ForceGenerationAvailabilityScopeState,
-    ): { requisition: number; salvage: number } {
-        if (!availabilityRecord) {
-            return {
-                requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                salvage: 0,
-            };
-        }
-
-        const state = this.createAvailabilityReductionState();
-
-        for (const eraIdText of scopeState.eraIdTexts) {
-            const eraAvailability = availabilityRecord.e[eraIdText];
-            if (!eraAvailability) {
-                continue;
-            }
-
-            for (const factionIdText in eraAvailability) {
-                if (!scopeState.factionIdTextSet.has(factionIdText)) {
-                    continue;
-                }
-
-                const value = eraAvailability[factionIdText];
-                this.accumulateAvailabilityReductionValues(state, value[0] ?? 0, value[1] ?? 0);
-            }
-        }
-
-        return this.finalizeAvailabilityReductionState(state);
-    }
-
-    private getMissingAvailabilityWeightsForPair(
-        unit: UnitSummary,
-        eraId: number,
-        factionId: number,
-        useMegaMekAvailability: boolean,
-    ): { requisition: number; salvage: number } {
-        if (useMegaMekAvailability) {
-            return {
-                requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-                salvage: 0,
-            };
-        }
-
-        return this.getMulFallbackWeightsForPair(unit, eraId, factionId) ?? {
-            requisition: 0,
-            salvage: 0,
-        };
-    }
-
-    private getAvailabilityWeightsForPair(
-        unit: UnitSummary,
-        availabilityRecord: MegaMekWeightedAvailabilityRecord,
-        eraId: number,
-        factionId: number,
-        useMegaMekAvailability: boolean,
-    ): { requisition: number; salvage: number } {
-        const exactValue = availabilityRecord.e[String(eraId)]?.[String(factionId)];
-
-        if (useMegaMekAvailability || exactValue) {
-            return {
-                requisition: exactValue?.[0] ?? 0,
-                salvage: exactValue?.[1] ?? 0,
-            };
-        }
-
-        const mulFallbackWeights = this.getMulFallbackWeightsForPair(unit, eraId, factionId);
-        if (mulFallbackWeights) {
-            return mulFallbackWeights;
-        }
-
-        return {
-            requisition: 0,
-            salvage: 0,
-        };
-    }
-
-    private getMulFallbackWeightsForPair(
-        unit: UnitSummary,
-        eraId: number,
-        factionId: number,
-    ): { requisition: number; salvage: number } | null {
-        const forceFaction = this.dataService.getFactionById(factionId);
-        const forceEra = this.dataService.getEraById(eraId);
-        if (!forceFaction || !forceEra) {
-            return null;
-        }
-
-        const mulUnitIds = this.unitAvailabilitySource.getFactionEraUnitIds(forceFaction, forceEra, 'mul');
-        const mulUnitKey = this.unitAvailabilitySource.getUnitAvailabilityKey(unit, 'mul');
-        if (!mulUnitIds.has(mulUnitKey)) {
-            return null;
-        }
-
-        return {
-            requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
-            salvage: 0,
-        };
     }
 
     private createGeneratedUnit(candidate: ForceGenerationCandidateUnit): GeneratedForceUnit {
@@ -5626,21 +4936,6 @@ export class ForceGeneratorService implements OnDestroy {
         return Math.max(0, Math.floor(range.min)) === 0 && Math.max(0, Math.floor(range.max)) === 0;
     }
 
-    private isBudgetWithinRange(totalCost: number, budgetRange: { min: number; max: number }): boolean {
-        return totalCost >= budgetRange.min && totalCost <= budgetRange.max;
-    }
-
-    private getBudgetRangeDistance(totalCost: number, budgetRange: { min: number; max: number }): number {
-        if (totalCost < budgetRange.min) {
-            return budgetRange.min - totalCost;
-        }
-        if (totalCost > budgetRange.max) {
-            return totalCost - budgetRange.max;
-        }
-
-        return 0;
-    }
-
     private getFormattedBudgetRange(budgetRange: { min: number; max: number }): string {
         const formattedMin = budgetRange.min.toLocaleString();
         if (!Number.isFinite(budgetRange.max)) {
@@ -5790,7 +5085,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private createSelectionAttemptFromCandidates(
         selectedCandidates: readonly ForceGenerationCandidateUnit[],
-        rulesetProfile: ForceGenerationRulesetProfile | null,
+        rulesetProfile: RulesetProfile | null,
     ): ForceGenerationSelectionAttempt {
         const selectionSteps = selectedCandidates.map((candidate) => this.createSelectionStep(candidate, rulesetProfile));
 
@@ -6025,16 +5320,6 @@ export class ForceGeneratorService implements OnDestroy {
             maxAttempts,
             Math.max(attemptBudget.minAttempts, completedAttempts + additionalAttempts),
         );
-    }
-
-    private getBudgetTarget(budgetRange: { min: number; max: number }): number {
-        if (Number.isFinite(budgetRange.max)) {
-            return budgetRange.min > 0
-                ? budgetRange.min + ((budgetRange.max - budgetRange.min) / 2)
-                : budgetRange.max;
-        }
-
-        return budgetRange.min;
     }
 
     private getAvailabilityWeightForSource(
@@ -6462,7 +5747,7 @@ export class ForceGeneratorService implements OnDestroy {
                 && selectedCandidates.length >= minUnitCount
                 && selectedCandidates.length <= maxUnitCount;
             if (currentValid && (
-                this.isBudgetWithinRange(totalCost, budgetRange)
+                isBudgetWithinRange(totalCost, budgetRange)
                 || this.canSkillAdjustedSelectionReachBudgetRange(minimumSkillAdjustedTotalCost, maximumSkillAdjustedTotalCost, budgetRange)
             )) {
                 break;
@@ -6882,7 +6167,7 @@ export class ForceGeneratorService implements OnDestroy {
             const definition = definitionByUnitIndex.get(index);
             return definition
                 ? this.createTargetFormationSkillAdjustedCandidateOptions(candidate, options, definition, skillSettings)
-                : this.createSkillAdjustedCandidateOptions(candidate, options.gameSystem, skillSettings);
+                : createSkillAdjustedCandidateOptions(candidate, options.gameSystem, skillSettings);
         };
     }
 
@@ -7253,7 +6538,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         const totalCost = selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
         const shouldFill = selectedCandidates.length < minUnitCount
-            || (!this.isBudgetWithinRange(totalCost, budgetRange) && selectedCandidates.length < maxUnitCount);
+            || (!isBudgetWithinRange(totalCost, budgetRange) && selectedCandidates.length < maxUnitCount);
         if (shouldFill && !this.hasSearchDeadlineExpired(deadline)) {
             const availableCandidates = this.filterAvailableTargetFormationCandidates(
                 candidates,
@@ -7468,7 +6753,7 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         const totalCost = selectionAttempt.selectedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
-        const budgetDistance = this.getBudgetRangeDistance(totalCost, budgetRange);
+        const budgetDistance = getBudgetRangeDistance(totalCost, budgetRange);
         const budgetValid = budgetDistance === 0;
         const unitCountDistance = this.getUnitCountRangeDistance(selectionAttempt.selectedCandidates.length, minUnitCount, maxUnitCount);
         const unitCountValid = unitCountDistance === 0;
@@ -7507,7 +6792,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private pickNextCandidate(
         candidates: readonly ForceGenerationCandidateUnit[],
-        rulesetProfile: ForceGenerationRulesetProfile | null,
+        rulesetProfile: RulesetProfile | null,
         selectionPreparation?: ForceGenerationSelectionPreparation,
     ): {
         candidate: ForceGenerationCandidateUnit;
@@ -7517,7 +6802,7 @@ export class ForceGeneratorService implements OnDestroy {
     } {
         const getRulesetScore = (candidate: ForceGenerationCandidateUnit): number => (
             selectionPreparation?.rulesetScoreByCandidate.get(candidate)
-                ?? this.getRulesetMatchScore(candidate, rulesetProfile)
+                ?? getRulesetMatchScore(candidate, rulesetProfile)
         );
         if (candidates.every((candidate) => candidate.availabilityWeightsIgnored)) {
             return {
@@ -7599,7 +6884,7 @@ export class ForceGeneratorService implements OnDestroy {
             minUnitCount,
             maxUnitCount,
         );
-        const targetBudget = this.getBudgetTarget(budgetRange);
+        const targetBudget = getBudgetTarget(budgetRange);
         const useOverMaxFallbackSelection = allowOverMaxFallbackSelection && Number.isFinite(budgetRange.max);
         const selectedChassisKeys = new Set(
             selectedCandidates
@@ -7626,7 +6911,7 @@ export class ForceGeneratorService implements OnDestroy {
                 && (
                     (
                         (
-                            this.isBudgetWithinRange(totalCost, budgetRange)
+                            isBudgetWithinRange(totalCost, budgetRange)
                             || this.canSkillAdjustedSelectionReachBudgetRange(minimumSkillAdjustedTotalCost, maximumSkillAdjustedTotalCost, budgetRange)
                         )
                         && ((preferredSelectionUnitCount !== undefined && selectedCandidates.length >= preferredSelectionUnitCount)
@@ -7765,7 +7050,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private createSelectionStep(
         candidate: ForceGenerationCandidateUnit,
-        rulesetProfile: ForceGenerationRulesetProfile | null,
+        rulesetProfile: RulesetProfile | null,
         overrides: Partial<Pick<ForceGenerationSelectionStep, 'rolledSource' | 'source' | 'usedFallbackSource'>> = {},
         selectionPreparation?: ForceGenerationSelectionPreparation,
     ): ForceGenerationSelectionStep {
@@ -7786,7 +7071,7 @@ export class ForceGeneratorService implements OnDestroy {
             gunnery: candidate.gunnery,
             piloting: candidate.piloting,
             rulesetReasons: selectionPreparation?.rulesetReasonsByCandidate.get(candidate)
-                ?? this.getRulesetMatchReasons(candidate, rulesetProfile),
+                ?? getRulesetMatchReasons(candidate, rulesetProfile),
         };
     }
 
@@ -7813,7 +7098,7 @@ export class ForceGeneratorService implements OnDestroy {
             preventDuplicateChassis?: boolean;
             skillBudgetPlanningCosts?: ForceGenerationSkillBudgetPlanningCosts;
         } = {},
-    ): ForceGenerationRulesetProfile | null {
+    ): RulesetProfile | null {
         const rulesetContext = this.resolveRulesetContext(context.forceFaction, context.forceEra);
         if (rulesetContext.chain.length === 0) {
             return null;
@@ -7841,16 +7126,14 @@ export class ForceGeneratorService implements OnDestroy {
             topLevelChoiceContext,
         );
         const hasFeasibleTopLevelSelection = !!topLevelMatchContext.unitType || !!topLevelMatchContext.echelon;
-        const forceNodeSelection: ForceGenerationForceNodeSelection = budgetRange && !hasFeasibleTopLevelSelection
+        const forceNodeSelection: ForceNodeSelection = budgetRange && !hasFeasibleTopLevelSelection
             ? { matchContext: topLevelMatchContext }
-            : this.findPreferredForceNode(rulesetContext.chain, {
-                ...topLevelMatchContext,
-            });
+            : resolvePreferredForceNode(rulesetContext.chain, topLevelMatchContext, 'weighted');
         const forceNode = forceNodeSelection.forceNode;
         const resolvedSelectedEchelon = topLevelMatchContext.echelon
             ?? forceNodeSelection.matchContext.echelon
-            ?? getRulesetEchelonCode(forceNode?.echelon);
-        const profile: ForceGenerationRulesetProfile = {
+            ?? forceNode?.echelon?.code;
+        const profile: RulesetProfile = {
             selectedEchelon: resolvedSelectedEchelon,
             preferredOrgType: undefined,
             preferredUnitCount: undefined,
@@ -7865,8 +7148,8 @@ export class ForceGeneratorService implements OnDestroy {
 
         profile.preferredOrgType = getPreferredOrgTypeForEchelon(resolvedSelectedEchelon);
         profile.preferredUnitCount = getPreferredUnitCountForEchelon(resolvedSelectedEchelon, orgDefinition);
-        this.addRulesetValues(profile.requiredUnitTypes, topLevelMatchContext.unitType ? [topLevelMatchContext.unitType] : []);
-        this.mergeRulesetNodeIntoProfile(profile, rulesetContext.primary?.assign);
+        addRulesetValues(profile.requiredUnitTypes, topLevelMatchContext.unitType ? [topLevelMatchContext.unitType] : []);
+        mergeRulesetNodeIntoProfile(profile, rulesetContext.primary?.assign);
 
         if (profile.preferredOrgType) {
             const regularSizeNote = profile.preferredUnitCount ? ` (regular size ${profile.preferredUnitCount})` : '';
@@ -7878,7 +7161,7 @@ export class ForceGeneratorService implements OnDestroy {
             return profile;
         }
 
-        this.applyForceNodeToProfile(profile, forceNode, forceNodeSelection.matchContext);
+        applyForceNodeToProfile(profile, forceNode, forceNodeSelection.matchContext);
         this.collectRulesetTemplates(
             profile,
             forceNode,
@@ -7919,10 +7202,10 @@ export class ForceGeneratorService implements OnDestroy {
             unitType: selectedUnitTypeChoice.summary.unitType,
             echelon: selectedEchelonChoice.echelon,
         };
-        const previewSelection = this.peekPreferredForceNode(rulesetChain, nextMatchContext);
+        const previewSelection = resolvePreferredForceNode(rulesetChain, nextMatchContext, 'first');
         const resolvedEchelon = selectedEchelonChoice.echelon
             ?? previewSelection.matchContext.echelon
-            ?? getRulesetEchelonCode(previewSelection.forceNode?.echelon);
+            ?? previewSelection.forceNode?.echelon?.code;
 
         return {
             ...previewSelection.matchContext,
@@ -7978,7 +7261,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         const lockedTotal = options.lockedCandidates.reduce((sum, candidate) => sum + candidate.cost, 0);
         if (remainingCount === 0) {
-            return !options.budgetRange || this.isBudgetWithinRange(lockedTotal, options.budgetRange);
+            return !options.budgetRange || isBudgetWithinRange(lockedTotal, options.budgetRange);
         }
 
         const lockedChassisKeys = new Set(options.lockedCandidates
@@ -8061,7 +7344,7 @@ export class ForceGeneratorService implements OnDestroy {
     ): ForceGenerationTopLevelEchelonOption[] {
         for (const ruleset of rulesetChain) {
             const matchingOptions = (ruleset.toc?.echelon?.options ?? [])
-                .filter((option) => this.matchesRulesetWhen(option.when, matchContext));
+                .filter((option) => matchesRulesetWhen(option.when, matchContext));
             if (matchingOptions.length === 0) {
                 continue;
             }
@@ -8083,7 +7366,7 @@ export class ForceGeneratorService implements OnDestroy {
                         return {
                             echelon,
                             preferredUnitCount,
-                            weight: getRulesetOptionWeight(option),
+                            weight: (option.weight ?? 1),
                         };
                     })
                     .filter((entry): entry is ForceGenerationTopLevelEchelonOption => entry !== null);
@@ -8104,16 +7387,16 @@ export class ForceGeneratorService implements OnDestroy {
         const choices: ForceGenerationTopLevelForceNodeChoice[] = [];
 
         for (const group of context.unitTypeGroups) {
-            const previewSelection = this.peekPreferredForceNode(rulesetChain, {
+            const previewSelection = resolvePreferredForceNode(rulesetChain, {
                 ...context.baseMatchContext,
                 unitType: group.summary.unitType,
-            });
+            }, 'first');
             if (!previewSelection.forceNode) {
                 continue;
             }
 
             const echelon = previewSelection.matchContext.echelon
-                ?? getRulesetEchelonCode(previewSelection.forceNode.echelon);
+                ?? previewSelection.forceNode.echelon?.code;
             const preferredUnitCount = getPreferredUnitCountForEchelon(echelon, context.orgDefinition);
             if (previewSelection.forceNode.when?.topLevel === true) {
                 const feasibleUnitCounts = preferredUnitCount === undefined
@@ -8226,7 +7509,7 @@ export class ForceGeneratorService implements OnDestroy {
 
     private filterCandidatesForRulesetProfile(
         candidates: readonly ForceGenerationCandidateUnit[],
-        rulesetProfile: ForceGenerationRulesetProfile | null,
+        rulesetProfile: RulesetProfile | null,
     ): ForceGenerationCandidateUnit[] {
         if (!rulesetProfile || rulesetProfile.requiredUnitTypes.size === 0) {
             return [...candidates];
@@ -8235,209 +7518,6 @@ export class ForceGeneratorService implements OnDestroy {
         return candidates.filter((candidate) => {
             return rulesetProfile.requiredUnitTypes.has(normalizeRulesetToken(candidate.megaMekUnitType));
         });
-    }
-
-    private peekPreferredForceNode(
-        rulesetChain: readonly MegaMekRulesetRecord[],
-        matchContext: RulesetMatchContext,
-    ): ForceGenerationForceNodeSelection {
-        return this.resolvePreferredForceNode(rulesetChain, matchContext, 'first');
-    }
-
-    private resolvePreferredForceNode(
-        rulesetChain: readonly MegaMekRulesetRecord[],
-        matchContext: RulesetMatchContext,
-        selectionMode: ForceGenerationForceNodeSelectionMode,
-    ): ForceGenerationForceNodeSelection {
-        const exactMatch = this.selectMatchingForceNode(
-            rulesetChain,
-            matchContext,
-            (when, nextContext) => this.matchesRulesetWhen(when, nextContext),
-            selectionMode,
-        );
-        if (exactMatch) {
-            return this.createForceNodeSelection(matchContext, exactMatch);
-        }
-
-        const structuralMatch = this.selectMatchingForceNode(
-            rulesetChain,
-            matchContext,
-            (when, nextContext) => this.matchesRulesetWhenForForceSelection(when, nextContext),
-            selectionMode,
-        );
-        if (structuralMatch) {
-            return this.createForceNodeSelection(matchContext, structuralMatch);
-        }
-
-        if (!matchContext.echelon) {
-            return { matchContext };
-        }
-
-        const fallbackContext = { ...matchContext, echelon: undefined };
-        const fallbackExactMatch = this.selectMatchingForceNode(
-            rulesetChain,
-            fallbackContext,
-            (when, nextContext) => this.matchesRulesetWhen(when, nextContext),
-            selectionMode,
-        );
-        if (fallbackExactMatch) {
-            return this.createForceNodeSelection(fallbackContext, fallbackExactMatch);
-        }
-
-        const fallbackStructuralMatch = this.selectMatchingForceNode(
-            rulesetChain,
-            fallbackContext,
-            (when, nextContext) => this.matchesRulesetWhenForForceSelection(when, nextContext),
-            selectionMode,
-        );
-        if (fallbackStructuralMatch) {
-            return this.createForceNodeSelection(fallbackContext, fallbackStructuralMatch);
-        }
-
-        return { matchContext };
-    }
-
-    private createForceNodeSelection(
-        matchContext: RulesetMatchContext,
-        forceNode: MegaMekRulesetForceNode,
-    ): ForceGenerationForceNodeSelection {
-        return {
-            forceNode,
-            matchContext: this.deriveForceNodeMatchContext(matchContext, forceNode),
-        };
-    }
-
-    private findPreferredForceNode(
-        rulesetChain: readonly MegaMekRulesetRecord[],
-        matchContext: RulesetMatchContext,
-    ): ForceGenerationForceNodeSelection {
-        return this.resolvePreferredForceNode(rulesetChain, matchContext, 'weighted');
-    }
-
-    private selectMatchingForceNode(
-        rulesetChain: readonly MegaMekRulesetRecord[],
-        matchContext: RulesetMatchContext,
-        matcher: (when: MegaMekRulesetWhen | undefined, matchContext: RulesetMatchContext) => boolean,
-        selectionMode: ForceGenerationForceNodeSelectionMode,
-    ): MegaMekRulesetForceNode | undefined {
-        for (const ruleset of rulesetChain) {
-            const indexedForceNodes = matchContext.echelon
-                ? (ruleset.indexes.forceIndexesByEchelon[matchContext.echelon] ?? [])
-                    .map((index) => ruleset.forces[index])
-                    .filter((forceNode): forceNode is MegaMekRulesetForceNode => forceNode !== undefined)
-                : ruleset.forces;
-
-            const forceNodes = indexedForceNodes.length > 0 ? indexedForceNodes : ruleset.forces;
-            if (selectionMode === 'first') {
-                const matchingForceNode = forceNodes.find((forceNode) => matcher(forceNode.when, matchContext));
-                if (matchingForceNode) {
-                    return matchingForceNode;
-                }
-                continue;
-            }
-
-            const matchingForceNodes = forceNodes.filter((forceNode) => matcher(forceNode.when, matchContext));
-            if (matchingForceNodes.length > 0) {
-                return pickWeightedRandomEntry(matchingForceNodes, (forceNode) => getRulesetOptionWeight(forceNode));
-            }
-        }
-
-        return undefined;
-    }
-
-    private matchesRulesetWhenForForceSelection(
-        when: MegaMekRulesetWhen | undefined,
-        matchContext: RulesetMatchContext,
-    ): boolean {
-        if (!when) {
-            return true;
-        }
-
-        const fromYear = when.fromYear;
-        if (fromYear !== undefined && (matchContext.year === undefined || matchContext.year < fromYear)) {
-            return false;
-        }
-
-        const toYear = when.toYear;
-        if (toYear !== undefined && (matchContext.year === undefined || matchContext.year > toYear)) {
-            return false;
-        }
-
-        if (!this.matchesRulesetStringValues(when.factions ?? [], matchContext.factionKey)) {
-            return false;
-        }
-        if (!this.matchesRulesetStringValues(when.unitTypes ?? [], matchContext.unitType)) {
-            return false;
-        }
-
-        const topLevel = when.topLevel;
-        if (topLevel !== undefined && topLevel !== (matchContext.topLevel ?? false)) {
-            return false;
-        }
-
-        const augmented = when.augmented;
-        if (augmented !== undefined && augmented !== (matchContext.augmented ?? false)) {
-            return false;
-        }
-
-        const echelons = when.echelons ?? [];
-        if (echelons.length > 0) {
-            const matchedEchelon = echelons.some((echelonNode) => {
-                const echelon = echelonNode.code;
-                if (!echelon || !matchContext.echelon) {
-                    return false;
-                }
-
-                const requiredAugmented = echelonNode.augmented;
-                return echelon === matchContext.echelon
-                    && (requiredAugmented === undefined || requiredAugmented === (matchContext.augmented ?? false));
-            });
-            if (!matchedEchelon) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private deriveForceNodeMatchContext(
-        matchContext: RulesetMatchContext,
-        forceNode: MegaMekRulesetForceNode,
-    ): RulesetMatchContext {
-        return {
-            ...matchContext,
-            unitType: getFirstPositiveRulesetValue(forceNode.when?.unitTypes) ?? matchContext.unitType,
-            weightClass: getFirstPositiveRulesetValue(forceNode.when?.weightClasses) ?? matchContext.weightClass,
-            role: getFirstPositiveRulesetValue(forceNode.when?.roles) ?? matchContext.role,
-            motive: getFirstPositiveRulesetValue(forceNode.when?.motives) ?? matchContext.motive,
-            echelon: getRulesetEchelonCode(forceNode.echelon) ?? matchContext.echelon,
-            augmented: forceNode.echelon?.augmented ?? forceNode.when?.augmented ?? matchContext.augmented,
-        };
-    }
-
-    private applyForceNodeToProfile(
-        profile: ForceGenerationRulesetProfile,
-        forceNode: MegaMekRulesetForceNode,
-        matchContext: RulesetMatchContext,
-    ): void {
-        this.addRulesetValues(profile.requiredUnitTypes, getPositiveRulesetValues(forceNode.when?.unitTypes));
-        this.mergeRulesetWhenIntoProfile(profile, forceNode.when);
-        this.mergeRulesetNodeIntoProfile(profile, forceNode.assign);
-        this.mergeRulesetGroupIntoProfile(profile, forceNode.unitType, matchContext);
-        this.mergeRulesetGroupIntoProfile(profile, forceNode.weightClass, matchContext);
-        this.mergeRulesetGroupIntoProfile(profile, forceNode.role, matchContext);
-        this.mergeRulesetGroupIntoProfile(profile, forceNode.motive, matchContext);
-
-        for (const ruleGroup of forceNode.ruleGroup ?? []) {
-            if (!this.matchesRulesetWhen(ruleGroup.when, matchContext)) {
-                continue;
-            }
-
-            this.mergeRulesetGroupIntoProfile(profile, ruleGroup.unitType, matchContext);
-            this.mergeRulesetGroupIntoProfile(profile, ruleGroup.weightClass, matchContext);
-            this.mergeRulesetGroupIntoProfile(profile, ruleGroup.role, matchContext);
-            this.mergeRulesetGroupIntoProfile(profile, ruleGroup.motive, matchContext);
-        }
     }
 
     private pickPreferredEchelon(
@@ -8451,7 +7531,7 @@ export class ForceGeneratorService implements OnDestroy {
         for (const ruleset of rulesetChain) {
             const echelonGroup = ruleset.toc?.echelon;
             const echelonOptions = (echelonGroup?.options ?? [])
-                .filter((option) => this.matchesRulesetWhen(option.when, matchContext));
+                .filter((option) => matchesRulesetWhen(option.when, matchContext));
             if (echelonOptions.length === 0) {
                 continue;
             }
@@ -8483,99 +7563,8 @@ export class ForceGeneratorService implements OnDestroy {
         return undefined;
     }
 
-    private findMatchingForceNode(
-        rulesetChain: readonly MegaMekRulesetRecord[],
-        matchContext: RulesetMatchContext,
-    ): MegaMekRulesetForceNode | undefined {
-        for (const ruleset of rulesetChain) {
-            const indexedForceNodes = matchContext.echelon
-                ? (ruleset.indexes.forceIndexesByEchelon[matchContext.echelon] ?? [])
-                    .map((index) => ruleset.forces[index])
-                    .filter((forceNode): forceNode is MegaMekRulesetForceNode => forceNode !== undefined)
-                : ruleset.forces;
-
-            const forceNodes = indexedForceNodes.length > 0 ? indexedForceNodes : ruleset.forces;
-            for (const forceNode of forceNodes) {
-                if (matchContext.echelon && getRulesetEchelonCode(forceNode.echelon) !== matchContext.echelon) {
-                    continue;
-                }
-
-                if (this.matchesRulesetWhen(forceNode.when, matchContext)) {
-                    return forceNode;
-                }
-            }
-        }
-
-        if (!matchContext.echelon) {
-            return undefined;
-        }
-
-        const fallbackContext = { ...matchContext, echelon: undefined };
-        for (const ruleset of rulesetChain) {
-            const forceNodes = ruleset.forces;
-            for (const forceNode of forceNodes) {
-                if (this.matchesRulesetWhen(forceNode.when, fallbackContext)) {
-                    return forceNode;
-                }
-            }
-        }
-
-        return undefined;
-    }
-
-    private mergeRulesetGroupIntoProfile(
-        profile: ForceGenerationRulesetProfile,
-        groupNode: MegaMekRulesetOptionGroup | undefined,
-        matchContext: RulesetMatchContext,
-    ): void {
-        if (!groupNode || !this.matchesRulesetWhen(groupNode.when, matchContext)) {
-            return;
-        }
-
-        this.mergeRulesetNodeIntoProfile(profile, groupNode);
-
-        const matchingOptions = (groupNode.options ?? [])
-            .filter((option) => this.matchesRulesetWhen(option.when, matchContext));
-        if (matchingOptions.length === 0) {
-            return;
-        }
-
-        const selectedOption = pickWeightedRandomEntry(matchingOptions, (option) => getRulesetOptionWeight(option));
-        this.mergeRulesetWhenIntoProfile(profile, selectedOption.when);
-        this.mergeRulesetNodeIntoProfile(profile, selectedOption);
-        this.mergeRulesetNodeIntoProfile(profile, selectedOption.assign);
-    }
-
-    private mergeRulesetWhenIntoProfile(
-        profile: ForceGenerationRulesetProfile,
-        when: MegaMekRulesetWhen | undefined,
-    ): void {
-        if (!when) {
-            return;
-        }
-
-        this.addRulesetValues(profile.preferredUnitTypes, getPositiveRulesetValues(when.unitTypes));
-        this.addRulesetValues(profile.preferredWeightClasses, getPositiveRulesetValues(when.weightClasses));
-        this.addRulesetValues(profile.preferredRoles, getPositiveRulesetValues(when.roles));
-        this.addRulesetValues(profile.preferredMotives, getPositiveRulesetValues(when.motives));
-    }
-
-    private mergeRulesetNodeIntoProfile(
-        profile: ForceGenerationRulesetProfile,
-        node: (RulesetPreferenceSource & { assign?: MegaMekRulesetAssign }) | MegaMekRulesetAssign | undefined,
-    ): void {
-        if (!node) {
-            return;
-        }
-
-        this.addRulesetValues(profile.preferredUnitTypes, node.unitTypes ?? []);
-        this.addRulesetValues(profile.preferredWeightClasses, node.weightClasses ?? []);
-        this.addRulesetValues(profile.preferredRoles, node.roles ?? []);
-        this.addRulesetValues(profile.preferredMotives, node.motives ?? []);
-    }
-
     private collectRulesetTemplates(
-        profile: ForceGenerationRulesetProfile,
+        profile: RulesetProfile,
         forceNode: MegaMekRulesetForceNode,
         matchContext: RulesetMatchContext,
         rulesetContext: ResolvedRulesetContext,
@@ -8590,11 +7579,11 @@ export class ForceGeneratorService implements OnDestroy {
 
         let templateCount = 0;
         for (const subforceGroup of [...(forceNode.subforces ?? []), ...(forceNode.attachedForces ?? [])]) {
-            if (!this.matchesRulesetWhen(subforceGroup.when, matchContext)) {
+            if (!matchesRulesetWhen(subforceGroup.when, matchContext)) {
                 continue;
             }
 
-            this.mergeRulesetNodeIntoProfile(profile, subforceGroup.assign);
+            mergeRulesetNodeIntoProfile(profile, subforceGroup.assign);
             const groupRulesetContext = this.resolveSwitchedRulesetContext(
                 rulesetContext,
                 forceEra,
@@ -8606,17 +7595,17 @@ export class ForceGeneratorService implements OnDestroy {
             }
 
             for (const subforceOptionGroup of subforceGroup.subforceOptions ?? []) {
-                if (!this.matchesRulesetWhen(subforceOptionGroup.when, matchContext)) {
+                if (!matchesRulesetWhen(subforceOptionGroup.when, matchContext)) {
                     continue;
                 }
 
                 const matchingOptions = (subforceOptionGroup.options ?? [])
-                    .filter((option) => this.matchesRulesetWhen(option.when, matchContext));
+                    .filter((option) => matchesRulesetWhen(option.when, matchContext));
                 if (matchingOptions.length === 0) {
                     continue;
                 }
 
-                const selectedOption = pickWeightedRandomEntry(matchingOptions, (option) => getRulesetOptionWeight(option));
+                const selectedOption = pickWeightedRandomEntry(matchingOptions, (option) => (option.weight ?? 1));
                 templateCount += this.applySubforceNodeToProfile(
                     profile,
                     selectedOption,
@@ -8633,7 +7622,7 @@ export class ForceGeneratorService implements OnDestroy {
             }
 
             for (const directSubforce of subforceGroup.subforces ?? []) {
-                if (!this.matchesRulesetWhen(directSubforce.when, matchContext)) {
+                if (!matchesRulesetWhen(directSubforce.when, matchContext)) {
                     continue;
                 }
 
@@ -8657,7 +7646,7 @@ export class ForceGeneratorService implements OnDestroy {
     }
 
     private applySubforceNodeToProfile(
-        profile: ForceGenerationRulesetProfile,
+        profile: RulesetProfile,
         node: MegaMekRulesetSubforceNode,
         parentMatchContext: RulesetMatchContext,
         baseRulesetContext: ResolvedRulesetContext,
@@ -8670,8 +7659,8 @@ export class ForceGeneratorService implements OnDestroy {
             return 0;
         }
 
-        this.mergeRulesetNodeIntoProfile(profile, node);
-        this.mergeRulesetNodeIntoProfile(profile, node.assign);
+        mergeRulesetNodeIntoProfile(profile, node);
+        mergeRulesetNodeIntoProfile(profile, node.assign);
 
         const nodeRulesetContext = this.resolveSwitchedRulesetContext(
             baseRulesetContext,
@@ -8685,7 +7674,7 @@ export class ForceGeneratorService implements OnDestroy {
 
         let templateCount = 0;
         const repeatCount = Math.max(1, Math.floor(node.count ?? 1));
-        const template = this.createRulesetTemplate(node);
+        const template = createRulesetTemplate(node);
         for (let index = 0; template && index < repeatCount && templateCount < limit; index += 1) {
             profile.templates.push(template);
             templateCount += 1;
@@ -8705,9 +7694,9 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         visited.add(visitationKey);
-        const childForceNode = this.findMatchingForceNode(nodeRulesetContext.chain, childMatchContext);
+        const childForceNode = findMatchingForceNode(nodeRulesetContext.chain, childMatchContext);
         if (childForceNode) {
-            this.applyForceNodeToProfile(profile, childForceNode, childMatchContext);
+            applyForceNodeToProfile(profile, childForceNode, childMatchContext);
             templateCount += this.collectRulesetTemplates(
                 profile,
                 childForceNode,
@@ -8736,8 +7725,8 @@ export class ForceGeneratorService implements OnDestroy {
             weightClass: node.weightClasses?.[0] ?? assign?.weightClasses?.[0] ?? parentMatchContext.weightClass,
             role: node.roles?.[0] ?? assign?.roles?.[0] ?? parentMatchContext.role,
             motive: node.motives?.[0] ?? assign?.motives?.[0] ?? parentMatchContext.motive,
-            echelon: getRulesetEchelonCode(node.echelon)
-                ?? getRulesetEchelonCode(assign?.echelon)
+            echelon: node.echelon?.code
+                ?? assign?.echelon?.code
                 ?? parentMatchContext.echelon,
             augmented: node.augmented ?? assign?.augmented ?? parentMatchContext.augmented,
             factionKey: rulesetContext.primary?.factionKey ?? parentMatchContext.factionKey,
@@ -8789,37 +7778,7 @@ export class ForceGeneratorService implements OnDestroy {
         return currentContext.chain[1]?.factionKey;
     }
 
-    private createRulesetTemplate(node: MegaMekRulesetSubforceNode): ForceGenerationRulesetTemplate | null {
-        const template: ForceGenerationRulesetTemplate = {
-            unitTypes: new Set<string>(),
-            weightClasses: new Set<string>(),
-            roles: new Set<string>(),
-            motives: new Set<string>(),
-        };
-
-        this.addRulesetValues(template.unitTypes, node.unitTypes ?? []);
-        this.addRulesetValues(template.weightClasses, node.weightClasses ?? []);
-        this.addRulesetValues(template.roles, node.roles ?? []);
-        this.addRulesetValues(template.motives, node.motives ?? []);
-
-        const assignedNode = node.assign;
-        this.addRulesetValues(template.unitTypes, assignedNode?.unitTypes ?? []);
-        this.addRulesetValues(template.weightClasses, assignedNode?.weightClasses ?? []);
-        this.addRulesetValues(template.roles, assignedNode?.roles ?? []);
-        this.addRulesetValues(template.motives, assignedNode?.motives ?? []);
-
-        return template.unitTypes.size > 0 || template.weightClasses.size > 0 || template.roles.size > 0 || template.motives.size > 0
-            ? template
-            : null;
-    }
-
-    private addRulesetValues(target: Set<string>, values: readonly string[]): void {
-        for (const value of values) {
-            target.add(normalizeRulesetToken(value));
-        }
-    }
-
-    private appendRulesetNote(profile: ForceGenerationRulesetProfile, note: string): void {
+    private appendRulesetNote(profile: RulesetProfile, note: string): void {
         if (!profile.explanationNotes.includes(note)) {
             profile.explanationNotes.push(note);
         }
@@ -8904,201 +7863,4 @@ export class ForceGeneratorService implements OnDestroy {
         }
     }
 
-    private getRulesetMatchReasons(
-        candidate: ForceGenerationCandidateUnit,
-        profile: ForceGenerationRulesetProfile | null,
-    ): string[] {
-        if (!profile) {
-            return [];
-        }
-
-        const reasons: string[] = [];
-        if (profile.preferredUnitTypes.has(normalizeRulesetToken(candidate.megaMekUnitType))) {
-            reasons.push(`unit type ${candidate.megaMekUnitType}`);
-        }
-        if (candidate.megaMekWeightClass && profile.preferredWeightClasses.has(normalizeRulesetToken(candidate.megaMekWeightClass))) {
-            reasons.push(`weight ${candidate.megaMekWeightClass}`);
-        }
-        if (candidate.role && profile.preferredRoles.has(normalizeRulesetToken(candidate.role))) {
-            reasons.push(`role ${candidate.role}`);
-        }
-        if (candidate.motive && profile.preferredMotives.has(normalizeRulesetToken(candidate.motive))) {
-            reasons.push(`motive ${candidate.motive}`);
-        }
-
-        for (const template of profile.templates) {
-            if (
-                template.unitTypes.has(normalizeRulesetToken(candidate.megaMekUnitType))
-                || (candidate.megaMekWeightClass && template.weightClasses.has(normalizeRulesetToken(candidate.megaMekWeightClass)))
-                || (candidate.role && template.roles.has(normalizeRulesetToken(candidate.role)))
-                || (candidate.motive && template.motives.has(normalizeRulesetToken(candidate.motive)))
-            ) {
-                reasons.push('matched a child template');
-                break;
-            }
-        }
-
-        return reasons.slice(0, 3);
-    }
-
-    private getRulesetMatchScore(
-        candidate: ForceGenerationCandidateUnit,
-        profile: ForceGenerationRulesetProfile | null,
-    ): number {
-        if (!profile) {
-            return 1;
-        }
-
-        let score = 1;
-        score *= this.getPreferredValueScore(profile.preferredUnitTypes, candidate.megaMekUnitType, 1.6, 0.75);
-        score *= this.getPreferredValueScore(profile.preferredWeightClasses, candidate.megaMekWeightClass, 1.3, 0.9);
-        score *= this.getPreferredValueScore(profile.preferredRoles, candidate.role, 1.2, 0.95);
-        score *= this.getPreferredValueScore(profile.preferredMotives, candidate.motive, 1.1, 0.98);
-
-        let templateScore = 1;
-        for (const template of profile.templates) {
-            let nextTemplateScore = 1;
-            let constrained = false;
-
-            if (template.unitTypes.size > 0) {
-                constrained = true;
-                nextTemplateScore *= template.unitTypes.has(normalizeRulesetToken(candidate.megaMekUnitType)) ? 1.5 : 0.8;
-            }
-            if (template.weightClasses.size > 0 && candidate.megaMekWeightClass) {
-                constrained = true;
-                nextTemplateScore *= template.weightClasses.has(normalizeRulesetToken(candidate.megaMekWeightClass)) ? 1.25 : 0.9;
-            }
-            if (template.roles.size > 0 && candidate.role) {
-                constrained = true;
-                nextTemplateScore *= template.roles.has(normalizeRulesetToken(candidate.role)) ? 1.15 : 0.95;
-            }
-            if (template.motives.size > 0 && candidate.motive) {
-                constrained = true;
-                nextTemplateScore *= template.motives.has(normalizeRulesetToken(candidate.motive)) ? 1.05 : 0.98;
-            }
-
-            if (constrained) {
-                templateScore = Math.max(templateScore, nextTemplateScore);
-            }
-        }
-
-        return Math.max(0.05, score * templateScore);
-    }
-
-    private getPreferredValueScore(
-        preferredValues: ReadonlySet<string>,
-        candidateValue: string | undefined,
-        matchScore: number,
-        mismatchScore: number,
-    ): number {
-        if (preferredValues.size === 0 || !candidateValue) {
-            return 1;
-        }
-
-        return preferredValues.has(normalizeRulesetToken(candidateValue)) ? matchScore : mismatchScore;
-    }
-
-    private matchesRulesetWhen(when: MegaMekRulesetWhen | undefined, matchContext: RulesetMatchContext): boolean {
-        if (!when) {
-            return true;
-        }
-
-        const fromYear = when.fromYear;
-        if (fromYear !== undefined && (matchContext.year === undefined || matchContext.year < fromYear)) {
-            return false;
-        }
-
-        const toYear = when.toYear;
-        if (toYear !== undefined && (matchContext.year === undefined || matchContext.year > toYear)) {
-            return false;
-        }
-
-        if (!this.matchesRulesetStringValues(when.unitTypes ?? [], matchContext.unitType)) {
-            return false;
-        }
-        if (!this.matchesRulesetStringValues(when.weightClasses ?? [], matchContext.weightClass)) {
-            return false;
-        }
-        if (!this.matchesRulesetStringValues(when.roles ?? [], matchContext.role)) {
-            return false;
-        }
-        if (!this.matchesRulesetStringValues(when.motives ?? [], matchContext.motive)) {
-            return false;
-        }
-        if (!this.matchesRulesetStringValues(when.factions ?? [], matchContext.factionKey)) {
-            return false;
-        }
-
-        const topLevel = when.topLevel;
-        if (topLevel !== undefined && topLevel !== (matchContext.topLevel ?? false)) {
-            return false;
-        }
-
-        const augmented = when.augmented;
-        if (augmented !== undefined && augmented !== (matchContext.augmented ?? false)) {
-            return false;
-        }
-
-        const flagValues = when.flags ?? [];
-        if (flagValues.length > 0 && !this.matchesRulesetFlags(flagValues, matchContext.flags ?? [])) {
-            return false;
-        }
-
-        const echelons = when.echelons ?? [];
-        if (echelons.length > 0) {
-            const matchedEchelon = echelons.some((echelonNode) => {
-                const echelon = echelonNode.code;
-                if (!echelon || !matchContext.echelon) {
-                    return false;
-                }
-
-                const requiredAugmented = echelonNode.augmented;
-                return echelon === matchContext.echelon
-                    && (requiredAugmented === undefined || requiredAugmented === (matchContext.augmented ?? false));
-            });
-            if (!matchedEchelon) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private matchesRulesetStringValues(values: readonly string[], candidateValue: string | undefined): boolean {
-        if (values.length === 0) {
-            return true;
-        }
-
-        const positiveValues = values.filter((value) => !value.startsWith('!')).map((value) => normalizeRulesetToken(value));
-        const negativeValues = values.filter((value) => value.startsWith('!')).map((value) => normalizeRulesetToken(value.slice(1)));
-
-        if (!candidateValue) {
-            return positiveValues.length === 0;
-        }
-
-        const normalizedCandidate = normalizeRulesetToken(candidateValue);
-        if (negativeValues.includes(normalizedCandidate)) {
-            return false;
-        }
-
-        return positiveValues.length === 0 || positiveValues.includes(normalizedCandidate);
-    }
-
-    private matchesRulesetFlags(values: readonly string[], flags: readonly string[]): boolean {
-        if (values.length === 0) {
-            return true;
-        }
-
-        const normalizedFlags = new Set(flags.map((flag) => normalizeRulesetToken(flag)));
-        const positiveValues = values.filter((value) => !value.startsWith('!')).map((value) => normalizeRulesetToken(value));
-        const negativeValues = values.filter((value) => value.startsWith('!')).map((value) => normalizeRulesetToken(value.slice(1)));
-
-        for (const negativeValue of negativeValues) {
-            if (normalizedFlags.has(negativeValue)) {
-                return false;
-            }
-        }
-
-        return positiveValues.length === 0 || positiveValues.some((value) => normalizedFlags.has(value));
-    }
 }

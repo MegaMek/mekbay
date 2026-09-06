@@ -17,6 +17,7 @@ const ZERO_HITS_BY_RANGE = Object.freeze({
     short: ZERO_HIT, medium: ZERO_HIT, long: ZERO_HIT, extreme: ZERO_HIT,
 });
 import type { MekTurnPanelSnapshot } from '../../models/runtime/mek-turn-panel';
+import type { EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
@@ -234,6 +235,7 @@ describe('EquipmentDialogComponent', () => {
         expect(component.unitTitle()).toBe('Crab CRB-20');
         expect(fixture.nativeElement.querySelector('ammo-loadout-panel')).not.toBeNull();
         expect(fixture.nativeElement.querySelector('weapons-equipment-panel')).toBeNull();
+        expect(fixture.nativeElement.querySelector('button[aria-label="Reset"]')).toBeNull();
     });
 
     it('keeps the original weapons footer and dismiss action', () => {
@@ -243,6 +245,50 @@ describe('EquipmentDialogComponent', () => {
         expect(footer.textContent).toContain('DISMISS');
         (footer.querySelector('button:last-child') as HTMLButtonElement).click();
         expect(dialogRef.close).toHaveBeenCalledOnceWith();
+    });
+
+    it('shows the matching reset action on the ammo tab and disables it while busy or unchanged', () => {
+        const { fixture, component } = createDialog({ member: createMember(), initialTab: 'ammo' });
+        const runtime = component.runtime();
+        const reset = spyOn(runtime, 'resetAmmoLoadout').and.resolveTo();
+        const row: EquipmentPanelComponent = {
+            componentId: 'mount:ammo' as ComponentId,
+            label: 'AC/10 Ammo',
+            locations: [],
+            status: 'available',
+            previewStatus: 'available',
+            modes: [],
+            jammed: false,
+            ammo: {
+                defaultMunitionKey: 'AC10', munitionKey: 'AC10', displayName: 'AC/10 Ammo',
+                capacity: 10, remaining: 3,
+                loadouts: [{ munitionKey: 'AC10', displayName: 'AC/10 Ammo', capacity: 10, equipment: {} as never }],
+            },
+        };
+        runtime.snapshot.update(panel => ({ ...panel, components: [row] }));
+        fixture.detectChanges();
+
+        const button = fixture.nativeElement.querySelector(
+            '.equipment-dialog-footer-center button[aria-label="Reset"]',
+        ) as HTMLButtonElement;
+        expect(button.classList.contains('square')).toBeTrue();
+        expect(button.disabled).toBeFalse();
+        button.click();
+        expect(reset).toHaveBeenCalledOnceWith();
+
+        runtime.busy.set(true);
+        fixture.detectChanges();
+        expect(button.disabled).toBeTrue();
+        runtime.busy.set(false);
+        runtime.snapshot.update(panel => ({
+            ...panel, components: [{ ...row, ammo: { ...row.ammo!, remaining: 10 } }],
+        }));
+        fixture.detectChanges();
+        expect(button.disabled).toBeTrue();
+        spyOn(runtime.member.force, 'readOnly').and.returnValue(true);
+        runtime.snapshot.update(panel => ({ ...panel, components: [row] }));
+        fixture.detectChanges();
+        expect(button.disabled).toBeTrue();
     });
 
     it('shows shared Tank targeting and fire controls without exposing Mek turn tools', () => {

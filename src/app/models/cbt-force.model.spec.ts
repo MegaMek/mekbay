@@ -799,6 +799,10 @@ describe('CBTForce V2 encounter persistence', () => {
         expect((await force.redoRuntimeCommand()).accepted).toBeTrue();
         expect(force.getAssignedPerson(second, positionId)!.id).toBe(firstPerson.id);
         expect(await force.unassignPerson(second, positionId)).toBeTrue();
+        expect(force.getUnitAdjustedPreSkillBattleValue(second)).toBe(0);
+        expect(force.getUnitPristineAdjustedPreSkillBattleValue(second)).toBe(0);
+        expect(force.getCBTMember(second)!.adjustedPreSkillBattleValue()).toBe(0);
+        expect(force.getCBTMember(second)!.pristineAdjustedPreSkillBattleValue()).toBe(0);
         expect(force.getUnitAdjustedBattleValue(second)).toBe(0);
         expect(force.getUnitPristineAdjustedBattleValue(second)).toBe(0);
         expect(force.personnel().people.find(person => person.id === firstPerson.id)!.health!.wounds).toBe(2);
@@ -849,6 +853,43 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(mekRuntimeSnapshot(force, first).state).toBe(firstState);
         expect(mekRuntimeSnapshot(force, second).state).toBe(secondState);
         expect(force.getCBTForceV2Revision()).toBe(revision);
+    });
+
+    it('rejects prepared crew replacements when owner retirement starts during preparation', async () => {
+        const { force } = await readyCloneForce();
+        const first = 'unit:clone:first', second = 'unit:clone:second';
+        const positionId = force.getUnitCrewProfile(first)!.positions[0].positionId;
+        const firstPerson = force.getAssignedPerson(first, positionId)!;
+        const beforePersonnel = force.personnel();
+        const firstState = mekRuntimeSnapshot(force, first).state;
+        const secondState = mekRuntimeSnapshot(force, second).state;
+        const history = force.getRuntimeHistory();
+        const revision = force.getCBTForceV2Revision()!;
+        let notifyPrepared!: () => void;
+        let releasePreparation!: () => void;
+        const prepared = new Promise<void>(resolve => { notifyPrepared = resolve; });
+        const proceed = new Promise<void>(resolve => { releasePreparation = resolve; });
+        const redeployCrew = CBTMekUnit.redeployCrew;
+        spyOn(CBTMekUnit, 'redeployCrew').and.callFake(async (...args) => {
+            const replacement = await redeployCrew(...args);
+            notifyPrepared();
+            await proceed;
+            return replacement;
+        });
+
+        const swap = force.assignPersonToUnit(firstPerson.id, second, positionId);
+        await prepared;
+        const retirement = force.beginWholeOwnerRetirement()!;
+        releasePreparation();
+
+        expect(await swap).toBeFalse();
+        expect(await retirement.ready).toBeTrue();
+        expect(force.personnel()).toBe(beforePersonnel);
+        expect(mekRuntimeSnapshot(force, first).state).toBe(firstState);
+        expect(mekRuntimeSnapshot(force, second).state).toBe(secondState);
+        expect(force.getRuntimeHistory()).toEqual(history);
+        expect(force.getCBTForceV2Revision()).toBe(revision);
+        force.cancelWholeOwnerRetirement(retirement.token);
     });
 
     it('keeps crew preparation and independent reserve additions outside a battle phase undo', async () => {
@@ -1449,10 +1490,21 @@ describe('CBTForce V2 encounter persistence', () => {
         })]);
         const { force, instanceId } = await readyEntityForce({ entity });
         const member = force.getCBTMember(instanceId)!;
+        const profile = force.getUnitCrewProfile(instanceId)!;
+        expect(await force.replaceUnitCrewProfile(instanceId, profile.positions.map(position => ({
+            ...position, gunnery: 3, piloting: 5,
+        })))).not.toBeNull();
         const currentBefore = member.currentBaseBattleValue()!;
+        const adjustedPreSkillBefore = member.adjustedPreSkillBattleValue()!;
         const adjustedBefore = member.adjustedBattleValue()!;
         const pristineBefore = member.pristineBattleValue()!;
+        const pristineAdjustedPreSkillBefore = member.pristineAdjustedPreSkillBattleValue()!;
         const pristineAdjustedBefore = member.pristineAdjustedBattleValue()!;
+
+        expect(adjustedPreSkillBefore).toBe(currentBefore);
+        expect(pristineAdjustedPreSkillBefore).toBe(pristineBefore);
+        expect(adjustedPreSkillBefore).toBeLessThan(adjustedBefore);
+        expect(pristineAdjustedPreSkillBefore).toBeLessThan(pristineAdjustedBefore);
 
         const snapshot = entityRuntimeSnapshot(force, instanceId);
         expect((await force.dispatchNonMekUnitCommand(instanceId, {
@@ -1464,8 +1516,11 @@ describe('CBTForce V2 encounter persistence', () => {
         })).accepted).toBeTrue();
 
         expect(member.currentBaseBattleValue()!).toBeLessThan(currentBefore);
+        expect(member.adjustedPreSkillBattleValue()!).toBeLessThan(adjustedPreSkillBefore);
+        expect(member.adjustedPreSkillBattleValue()).toBe(member.currentBaseBattleValue());
         expect(member.adjustedBattleValue()!).toBeLessThan(adjustedBefore);
         expect(member.pristineBattleValue()).toBe(pristineBefore);
+        expect(member.pristineAdjustedPreSkillBattleValue()).toBe(pristineAdjustedPreSkillBefore);
         expect(member.pristineAdjustedBattleValue()).toBe(pristineAdjustedBefore);
     });
 
@@ -1721,11 +1776,15 @@ describe('CBTForce V2 encounter persistence', () => {
         const callsFor = (instanceId: string) => baseProjection.calls.allArgs()
             .filter(([candidate]) => candidate === instanceId).length;
         const firstBaseBefore = firstMember.currentBaseBattleValue();
+        const firstAdjustedPreSkillBefore = firstMember.adjustedPreSkillBattleValue()!;
+        const firstPristineAdjustedPreSkillBefore = firstMember.pristineAdjustedPreSkillBattleValue()!;
         const firstAdjustedBefore = firstMember.adjustedBattleValue();
         secondMember.adjustedBattleValue();
         const firstBaseCallsBefore = callsFor(firstId);
         const secondBaseCallsBefore = callsFor(secondId);
         expect(firstMember.c3BattleValue()).toBeGreaterThan(0);
+        expect(firstAdjustedPreSkillBefore).toBe(Math.round(firstBaseBefore! + firstMember.c3BattleValue()!));
+        expect(firstPristineAdjustedPreSkillBefore).toBeGreaterThan(firstMember.pristineBattleValue()!);
 
         const second = entityRuntimeSnapshot(force, secondId);
         expect((await force.dispatchNonMekUnitCommand(secondId, {
@@ -1739,6 +1798,10 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(force.getC3State(secondId)).toBe('degraded');
         expect(force.isC3EndpointOperational(secondId, componentId)).toBeFalse();
         expect(firstMember.currentBaseBattleValue()).toBe(firstBaseBefore);
+        expect(firstMember.adjustedPreSkillBattleValue()).toBe(firstBaseBefore);
+        expect(firstMember.adjustedPreSkillBattleValue()!).toBeLessThan(firstAdjustedPreSkillBefore);
+        expect(firstMember.pristineAdjustedPreSkillBattleValue()).toBe(firstMember.pristineBattleValue());
+        expect(firstMember.pristineAdjustedPreSkillBattleValue()!).toBeLessThan(firstPristineAdjustedPreSkillBefore);
         expect(firstMember.adjustedBattleValue()).toBeLessThan(firstAdjustedBefore!);
         expect(firstMember.c3BattleValue()).toBe(0);
         secondMember.adjustedBattleValue();
@@ -1749,6 +1812,8 @@ describe('CBTForce V2 encounter persistence', () => {
         const secondBaseCallsAfterDamage = callsFor(secondId);
         expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
         expect(force.getC3State(firstId)).toBe('operational');
+        expect(firstMember.adjustedPreSkillBattleValue()).toBe(firstAdjustedPreSkillBefore);
+        expect(firstMember.pristineAdjustedPreSkillBattleValue()).toBe(firstPristineAdjustedPreSkillBefore);
         expect(firstMember.adjustedBattleValue()).toBe(firstAdjustedBefore);
         secondMember.adjustedBattleValue();
         expect(callsFor(firstId)).toBe(firstBaseCallsAfterDamage);

@@ -107,11 +107,11 @@ describe('OptionsDialogComponent', () => {
         const setOption = jasmine.createSpy('setOption');
         const component = configureComponent({ options: () => ({}), setOption });
         const select = document.createElement('select');
-        select.innerHTML = '<option value="both">Both</option>';
-        select.value = 'both';
+        select.innerHTML = '<option value="adjustedPreSkill">Adjusted before skills</option>';
+        select.value = 'adjustedPreSkill';
 
         component.onForceViewerBVPVDisplayChange({ target: select } as unknown as Event);
-        expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplay', 'both');
+        expect(setOption).toHaveBeenCalledOnceWith('forceViewerBVPVDisplay', 'adjustedPreSkill');
     });
 
     it('persists the selected CBT force viewer damage policy', () => {

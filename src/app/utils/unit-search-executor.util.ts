@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { AvailabilityFilterScope } from '../models/megamek/availability.model';
+
 import type { UnitSummary } from '../models/unit-summary.model';
 import { GameSystem } from '../models/common.model';
 import type { UnitSearchNormalization, UnitSearchNormalizationMatch } from '../models/unit-search-result.model';
@@ -24,7 +26,6 @@ import {
 import { removeAccents, wildcardToRegex } from './string.util';
 import { getNowMs, getProperty, getUnitCountableFilterData, isCommittedSemanticToken, measureStage } from './unit-search-shared.util';
 import { applyFilterStateToUnits, type UnitFilterKernelDependencies } from './unit-filter-kernel.util';
-import type { AvailabilityFilterScope } from '../services/unit-search-filters.model';
 import { findBvNormalizationMatch } from './bv-normalization.util';
 import { findPvNormalizationMatch } from './pv-normalization.util';
 import type { ParsedASSpecials } from './as-special-filter.util';

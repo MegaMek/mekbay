@@ -8,6 +8,7 @@ import { createSavedTargetRef, parseSavedTargetRef, type SerializedCBTUnitV2 } f
 import {
     type MekUnitRuntimeState,
     type MekLocationConditionKey,
+    type AmmoRuntimeState,
 } from './runtime-state';
 import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit } from './cbt-unit';
 import type { CBTMekUnit } from './cbt-mek-unit';
@@ -32,6 +33,7 @@ import {
     type RuntimeHistoryTargetKind,
 } from './runtime-history';
 import { isSerializedNonMekUnit, type SerializedNonMekUnit } from './non-mek-unit-persistence';
+import { entityAmmoLoadout, mekAmmoLoadout } from './mek-ammo';
 
 interface MekHistoryUnitAccess {
     instanceIds(): readonly string[];
@@ -313,6 +315,42 @@ export function historyCrewLabel(unit: CBTUnit, occurrence: number): string {
     return `Crew ${occurrence + 1}`;
 }
 
+function ammoLoadoutResetHistory(
+    instanceId: string,
+    unit: CBTUnit,
+    before: ReadonlyMap<ComponentId, AmmoRuntimeState>,
+    after: ReadonlyMap<ComponentId, AmmoRuntimeState>,
+): RuntimeHistoryEventInput {
+    const changes: JsonValue[] = [];
+    for (const [componentId, previous] of before) {
+        const current = after.get(componentId);
+        if (previous.shotsSpent === (current?.shotsSpent ?? 0)
+            && previous.munitionOverride === current?.munitionOverride) continue;
+        const loadout = (munitionOverride?: string) => {
+            if (isCBTMekUnit(unit)) {
+                return mekAmmoLoadout(unit.getUnit(), unit.getIndex(), componentId, unit.getInstance().ruleset(), munitionOverride);
+            }
+            if (isCBTNonMekUnit(unit)) {
+                const component = unit.getIndex().components.get(componentId);
+                return component === undefined ? null
+                    : entityAmmoLoadout(unit.getUnit(), component.mount, unit.getInstance().ruleset, munitionOverride);
+            }
+            return null;
+        };
+        const previousLoadout = loadout(previous.munitionOverride);
+        const currentLoadout = loadout(current?.munitionOverride);
+        if (previousLoadout === null || currentLoadout === null) continue;
+        changes.push([
+            componentHistoryTarget(componentId),
+            previousLoadout.munitionKey,
+            previousLoadout.capacity - previous.shotsSpent,
+            currentLoadout.munitionKey,
+            currentLoadout.capacity - (current?.shotsSpent ?? 0),
+        ]);
+    }
+    return unitHistory(RUNTIME_HISTORY_MESSAGE.AMMO_LOADOUT_RESET, instanceId, ...changes);
+}
+
 export function nonMekCommandHistory(
     instanceId: string,
     unit: CBTUnit,
@@ -386,6 +424,8 @@ export function nonMekCommandHistory(
         case 'set-heatsinks-off':
         case 'apply-heat':
             return heatHistory(instanceId, before.heat, after.heat);
+        case 'reset-ammo-loadout':
+            return ammoLoadoutResetHistory(instanceId, unit, before.ammo, after.ammo);
         case 'set-ammo-spent':
         case 'configure-ammo-source':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.AMMO_CHANGED, instanceId);
@@ -472,6 +512,8 @@ export function mekCommandHistory(
                 before.crew.get(command.positionId) ?? { wounds: 0, unconscious: false, ejected: false },
                 after.crew.get(command.positionId) ?? { wounds: 0, unconscious: false, ejected: false },
             );
+        case 'reset-ammo-loadout':
+            return ammoLoadoutResetHistory(instanceId, unit, before.ammo, after.ammo);
         case 'configure-ammo-source':
         case 'spend-ammo':
         case 'activate-coolant-pod':

@@ -13,11 +13,54 @@ import {
     asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
+import { AmmoEquipment } from '../equipment.model';
+import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
+import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
 import { type InstanceBaselineRef } from './runtime-state';
 import { NonMekUnitInstance } from './non-mek-unit-instance';
 import { projectNonMekRecordSheet } from './non-mek-record-sheet';
 
 describe('projectNonMekRecordSheet', () => {
+    it('projects the selected ammo loadout name and remaining shots for detached sheet rendering', () => {
+        const standard = new AmmoEquipment({
+            id: 'Ammo_AC_10',
+            name: 'AC/10 Ammo',
+            type: 'ammo',
+            ammo: { type: 'AC', rackSize: 10, shots: 10 },
+        });
+        const precision = new AmmoEquipment({
+            id: 'Ammo_AC_10_Precision',
+            name: 'Autocannon/10 Precision Ammo',
+            shortName: 'AC/10 Precision Ammo',
+            type: 'ammo',
+            ammo: { type: 'AC', rackSize: 10, shots: 10, munitionType: ['M_PRECISION'] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({
+            [standard.id]: standard,
+            [precision.id]: precision,
+        }));
+        entity.uuid.set(UUID);
+        addTestEquipment(entity, standard, { location: entity.locationOrder[0], shotsCount: 10 });
+        const runtime = new NonMekUnitInstance('unit:tank-ammo-sheet', baseline(), entity, CORE_2026_RULESET);
+        const componentId = [...runtime.getIndex().components.keys()][0]!;
+        expect(runtime.dispatch({
+            kind: 'configure-ammo-source',
+            componentId,
+            munitionKey: precision.id,
+            remaining: 3,
+        }).accepted).toBeTrue();
+
+        const sheet = projectNonMekRecordSheet(
+            entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, 100, 100,
+        );
+
+        expect(sheet.components[0].ammo).toEqual({
+            displayName: 'AC/10 Precision Ammo',
+            capacity: 10,
+            remaining: 3,
+        });
+    });
+
     it('retains a vacant physical station and derives fixed piloting without changing the personal rating', () => {
         const entity = new TestProtoMekEntity();
         entity.uuid.set(UUID);

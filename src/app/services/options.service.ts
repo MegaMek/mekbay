@@ -28,7 +28,7 @@ const DEFAULT_OPTIONS: Options = {
     displayUnitNameFormat: 'innerSphereClan',
     gameSystem: GameSystem.CBT,
     availabilitySource: 'mul',
-    forceViewerBVPVDisplay: 'adjusted',
+    forceViewerBVPVDisplay: 'adjustedPostSkill',
     forceViewerBVPVDisplayDamage: 'damaged',
     megaMekAvailabilityFiltersUseAllScopedOptions: true,
     c3NetworkConnectionsAboveNodes: false,
@@ -328,7 +328,11 @@ export class OptionsService {
             ),
             gameSystem: saved?.gameSystem ?? DEFAULT_OPTIONS.gameSystem,
             availabilitySource: saved?.availabilitySource ?? DEFAULT_OPTIONS.availabilitySource,
-            forceViewerBVPVDisplay: saved?.forceViewerBVPVDisplay ?? DEFAULT_OPTIONS.forceViewerBVPVDisplay,
+            forceViewerBVPVDisplay: resolveSavedValue(
+                saved?.forceViewerBVPVDisplay,
+                DEFAULT_OPTIONS.forceViewerBVPVDisplay,
+                OPTION_VALUES.forceViewerBVPVDisplay,
+            ),
             forceViewerBVPVDisplayDamage: resolveSavedValue(
                 saved?.forceViewerBVPVDisplayDamage,
                 DEFAULT_OPTIONS.forceViewerBVPVDisplayDamage,

@@ -7,6 +7,8 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
+import { rectsOverlap } from './force-org-layout';
+import { computeSearchText } from './force-org-sidebar';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import { createForcePreviewEntryData } from '../../models/force-preview.model';
 import { ForceListSession, type ForceListCursor } from '../../models/force-list-session';
@@ -33,7 +35,7 @@ describe('ForceOrgDialogComponent', () => {
     };
 
     const dataServiceStub = {
-        getFactionById: jasmine.createSpy('getFactionById').and.returnValue(undefined),
+        getFactions: jasmine.createSpy('getFactions').and.returnValue([]),
         getEras: jasmine.createSpy('getEras').and.returnValue([]),
     };
 
@@ -479,8 +481,8 @@ describe('ForceOrgDialogComponent', () => {
         const upperRect = { x: upperGroup.x(), y: upperGroup.y(), width: upperGroup.width(), height: upperGroup.height() };
         const lowerRect = { x: lowerGroup.x(), y: lowerGroup.y(), width: lowerGroup.width(), height: lowerGroup.height() };
 
-        expect((component as any).rectsOverlap(createdRect, upperRect)).toBeFalse();
-        expect((component as any).rectsOverlap(createdRect, lowerRect)).toBeFalse();
+        expect(rectsOverlap(createdRect, upperRect)).toBeFalse();
+        expect(rectsOverlap(createdRect, lowerRect)).toBeFalse();
     });
 
     it('normalizes loaded group bounds and collisions', async () => {
@@ -513,7 +515,7 @@ describe('ForceOrgDialogComponent', () => {
         expect(groupA.height()).toBeGreaterThan(20);
         expect(groupB.width()).toBeGreaterThan(20);
         expect(groupB.height()).toBeGreaterThan(20);
-        expect((component as any).rectsOverlap(rectA, rectB)).toBeFalse();
+        expect(rectsOverlap(rectA, rectB)).toBeFalse();
     });
 
     it('uses the saved force BV for group totals instead of recalculating from units', () => {
@@ -532,7 +534,7 @@ describe('ForceOrgDialogComponent', () => {
         (component as any).placedForces.set([placedForce]);
         fixture.detectChanges();
 
-        expect(group.totals()).toBe('BV: 1,800');
+        expect((component as any).groupMetadata().get(group.id).totals).toBe('BV: 1,800');
     });
 
     it('does not mark the TO&E dirty when clicking a force without starting a drag', () => {
@@ -1078,11 +1080,60 @@ describe('ForceOrgDialogComponent', () => {
             createBattleMek('Shadow Hawk'),
         ]);
 
-        force._searchText = (component as any).computeSearchText(force);
+        force._searchText = computeSearchText(force);
         (component as any).allForces.set([force]);
         (component as any).sidebarSearchText.set('lance');
 
         expect((component as any).sidebarForces()).toEqual([force]);
+    });
+
+    it('derives metadata immediately after reparenting and keeps geometry and previews out of the base result', () => {
+        const root = createGroup('root', 0, 0, 500, 400);
+        const child = createGroup('child', 40, 80, 260, 180);
+        child.parentGroupId = root.id;
+        const entry = createLoadForce('one', [createBattleMek('Atlas')], { bv: 1800 });
+        const placed = { ...createPlacedForce('one', 60, 140, child.id), force: entry };
+        component['groups'].set([root, child]);
+        component['placedForces'].set([placed]);
+
+        const base = component['groupMetadata']();
+        expect(base.get(root.id)!.totals).toBe('BV: 1,800');
+        root.x.set(100);
+        placed.y.set(160);
+        expect(component['groupMetadata']()).toBe(base);
+
+        component['previewExtraForces'].set({ targetGroupId: child.id, entries: [entry] });
+        expect(component['previewGroupInfo']().get(root.id)!.totals).toBe('BV: 3,600');
+        expect(component['groupMetadata']()).toBe(base);
+
+        child.parentGroupId = null;
+        component['groups'].set([root, child]);
+        expect(component['groupMetadata']().get(root.id)!.descendants).toEqual([]);
+        expect(component['previewGroupInfo']().has(root.id)).toBeFalse();
+        expect(component['groupMetadata']().get(child.id)!.totals).toBe('BV: 1,800');
+    });
+
+    it('counts sidebar tags before facets and builds each facet against the opposite selection', () => {
+        const faction = (id: number) => ({ id, name: `Faction ${id}`, group: 'Inner Sphere' as const, img: '', eras: {} });
+        const era = (id: number) => ({ id, name: `Era ${id}`, years: { from: 3000 + id }, factions: [], units: [] });
+        const a = createForcePreviewEntryData({ instanceId: 'a', name: 'Match A', tags: ['Scout'], faction: faction(1), era: era(1) });
+        const b = createForcePreviewEntryData({ instanceId: 'b', name: 'Match B', tags: ['scout'], faction: faction(2), era: era(1) });
+        const c = createForcePreviewEntryData({ instanceId: 'c', name: 'Match C', tags: ['Scout'], faction: faction(1), era: era(2) });
+        const hidden = createForcePreviewEntryData({ instanceId: 'hidden', name: 'Other', tags: ['Assault'], faction: faction(1), era: era(1) });
+        component['primeForceSearchText']([a, b, c, hidden]);
+        component['allForces'].set([a, b, c, hidden]);
+        component['sidebarComplete'].set(true);
+        component['sidebarSearchText'].set('match');
+        component['sidebarFilter'].set('tag:scout');
+        component['sidebarFactionFilter'].set(1);
+        component['sidebarEraFilter'].set(1);
+
+        expect(component['sidebarForces']()).toEqual([a]);
+        expect(component['sidebarFactionOptions']().map(option => [option.id, option.count])).toEqual([[1, 1], [2, 1]]);
+        expect(component['sidebarEraOptions']().map(option => [option.id, option.count])).toEqual([[1, 1], [2, 1]]);
+        expect(component['sidebarTags']()).toEqual([
+            { id: 'tag:assault', label: 'Assault', count: 0 }, { id: 'tag:scout', label: 'Scout', count: 3 },
+        ]);
     });
 
     it('keeps the current group highlighted while a dragged force still overlaps it', () => {

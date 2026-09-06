@@ -4,6 +4,15 @@
 
 import type { UnitType } from '../unit-summary.model';
 
+/** An omitted era/faction scope is unrestricted; an explicit empty list matches nothing. */
+export interface AvailabilityFilterScope {
+    eraNames?: readonly string[];
+    factionNames?: readonly string[];
+    availabilityFromNames?: readonly string[];
+    availabilityRarityNames?: readonly string[];
+    bridgeThroughMulMembership?: boolean;
+}
+
 export type MegaMekWeightedAvailabilityValue = [number, number];
 
 export const MEGAMEK_AVAILABILITY_UNKNOWN_SCORE = -1;

@@ -306,9 +306,6 @@ describe('SearchForceGeneratorDialogComponent', () => {
             createForcePreviewEntry: createForcePreviewEntrySpy,
             createForceEntry: createForceEntrySpy,
             createForceEntryFromPreviewEntry: createForceEntryFromPreviewEntrySpy,
-            getBudgetMetric: (unit: UnitSummary, gameSystem: GameSystem) => {
-                return gameSystem === GameSystem.AS ? unit.as?.PV ?? 0 : unit.bv ?? 0;
-            },
         };
 
         gameSystemSignal = signal(GameSystem.CBT);
@@ -1936,11 +1933,11 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
         const preview = component.preview();
         expect(buildPreviewSpy).not.toHaveBeenCalled();
-        expect(preview.totalCost).toBe(2200);
+        expect(preview.totalCost).toBe(2904);
         expect(preview.units).toEqual([
             jasmine.objectContaining({
                 unit: atlasVariant,
-                cost: 2200,
+                cost: 2904,
                 gunnery: 3,
                 piloting: 4,
                 lockKey: 'generated:0:Atlas AS7-D',
@@ -2100,7 +2097,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(preview.units).toEqual([
             jasmine.objectContaining({
                 lockKey: 'generated:0:Atlas AS7-D',
-                cost: 1897,
+                cost: 2276,
                 gunnery: 3,
                 piloting: 5,
             }),
@@ -2149,7 +2146,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(preview.units).toEqual([
             jasmine.objectContaining({
                 lockKey: 'generated:0:Atlas AS7-D',
-                cost: 54,
+                cost: 76,
                 skill: 2,
             }),
         ]);

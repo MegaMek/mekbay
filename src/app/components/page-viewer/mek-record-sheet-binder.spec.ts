@@ -9,6 +9,53 @@ import { asComponentId, asCriticalSlotId, asLocationId } from '../../models/enti
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 describe('Mek record-sheet binder', () => {
+    it('opens ammo loadout from the full ammo row after live reflow and supports keyboard activation', () => {
+        const svg = sheet();
+        const profile = svg.querySelector<SVGGElement>('#ammoProfile')!;
+        profile.setAttribute('data-width', '110');
+        const base = snapshot();
+        const ammo = base.equipment.find(component => component.ammo !== undefined)!;
+        const interactions: MekRecordSheetInteraction[] = [];
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, { ...base, equipment: [] },
+            interaction => interactions.push(interaction));
+        binding.render(base);
+        profile.querySelector('rect')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions).toEqual([{ kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision }]);
+
+        binding.render({
+            ...base,
+            stateRevision: base.stateRevision + 1,
+            equipment: ['Arrow IV ADA Ammo', 'Arrow IV Fuel-Air Ammo'].map((displayName, index) => ({
+                ...ammo,
+                componentId: asComponentId(`profile-ammo-${index}`),
+                ammo: { ...ammo.ammo!, displayName, remaining: 5 },
+            })),
+        });
+        expect(profile.querySelectorAll('text').length).toBe(2);
+        expect(profile.querySelector('rect')!.getAttribute('height')).toBe('20');
+        profile.querySelectorAll('text')[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        profile.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        expect(interactions.slice(1)).toEqual([
+            { kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision + 1 },
+            { kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision + 1 },
+        ]);
+
+        binding.render({ ...base, equipment: [] });
+        expect(profile.childElementCount).toBe(0);
+        binding.render(base);
+        expect(profile.querySelector('rect')!.getAttribute('height')).toBe('10');
+        profile.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        expect(interactions.at(-1)).toEqual({ kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision });
+        binding.destroy();
+        profile.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions.length).toBe(4);
+
+        const printBinding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, base);
+        expect(profile.querySelector('rect')).toBeNull();
+        expect(profile.classList.contains('interactive')).toBeFalse();
+        printBinding.destroy();
+    });
+
     it('clears departed crew data, shows the vacant station, and restores its controls on assignment', () => {
         const svg = sheet();
         const original = snapshot();
@@ -109,6 +156,63 @@ describe('Mek record-sheet binder', () => {
         expect(svg.querySelector('#ammoProfile > text')?.textContent).toBe('Ammo: (AC/20) 4');
         expect(svg.querySelector('#crewDamage1')?.textContent).not.toContain('FORGED CREW');
         expect(binding.render(snapshot())).toEqual([]);
+    });
+
+    it('creates balanced ammo rows as needed and removes rows when the profile shrinks or empties', () => {
+        const svg = sheet();
+        const profile = svg.querySelector<SVGGElement>('#ammoProfile')!;
+        profile.setAttribute('data-width', '110');
+        svg.insertAdjacentHTML('afterbegin', '<style>#ammoProfile > text { font-family: Roboto, Arial, sans-serif; }</style>');
+        profile.innerHTML = `
+            <text x="0" y="8" font-size="8"
+                textLength="110" lengthAdjust="spacingAndGlyphs">STALE FIRST LINE</text>
+            <text x="0" y="18" font-size="8"
+                textLength="110" lengthAdjust="spacingAndGlyphs">STALE SECOND LINE</text>`;
+        const base = snapshot();
+        const ammo = base.equipment[1]!;
+        const loaded = {
+            ...base,
+            equipment: ['Arrow IV ADA Ammo', 'Arrow IV Fuel-Air Ammo'].map((displayName, index) => ({
+                ...ammo,
+                componentId: asComponentId(`profile-ammo-${index}`),
+                ammo: { ...ammo.ammo!, displayName, remaining: 5 },
+            })),
+        } as MekRecordSheetSnapshot;
+        const attachedSvg = svg.cloneNode(true) as SVGSVGElement;
+        document.body.appendChild(attachedSvg);
+        const bindings: ReturnType<typeof bindMekRecordSheet>[] = [];
+        try {
+            for (const target of [svg, attachedSvg]) {
+                bindings.push(bindMekRecordSheet(target, MM_DATA_MEK_SHEET_BINDING_MANIFEST, loaded));
+                const lines = [...target.querySelectorAll<SVGTextElement>('#ammoProfile > text')];
+                expect(lines.map(line => line.textContent).join(' '))
+                    .toBe('Ammo: (Arrow IV ADA) 5, (Arrow IV Fuel-Air) 5');
+                expect(lines[1]!.textContent).not.toBe('');
+                expect(lines.every(line => !line.hasAttribute('textLength')
+                    && !line.hasAttribute('lengthAdjust'))).toBeTrue();
+            }
+            expect([...attachedSvg.querySelectorAll('#ammoProfile > text')].map(line => line.textContent))
+                .toEqual([...svg.querySelectorAll('#ammoProfile > text')].map(line => line.textContent));
+
+            bindings.forEach(binding => binding.render(base));
+            for (const target of [svg, attachedSvg]) {
+                expect([...target.querySelectorAll('#ammoProfile > text')].map(line => line.textContent))
+                    .toEqual(['Ammo: (AC/20) 4']);
+            }
+
+            bindings.forEach(binding => binding.render({ ...base, equipment: [] }));
+            for (const target of [svg, attachedSvg]) {
+                expect([...target.querySelectorAll('#ammoProfile > text')].map(line => line.textContent))
+                    .toEqual([]);
+            }
+            bindings.forEach(binding => binding.render(loaded));
+            for (const target of [svg, attachedSvg]) {
+                expect(target.querySelectorAll('#ammoProfile > text')).toHaveSize(2);
+            }
+        } finally {
+            bindings.forEach(binding => binding.destroy());
+            attachedSvg.remove();
+        }
     });
 
     it('binds every armor and internal pip only when the sheet has no authored location zone', () => {
@@ -1445,7 +1549,9 @@ function sheet(): SVGSVGElement {
         <g id="crewDamage1"><text id="crewName1">FORGED CREW</text>
             <circle class="crewHit damaged" crewId="1" hit="1"></circle>
         </g>
-        <g id="ammoProfile"><text>FORGED AMMO PROFILE</text></g>
+        <g id="ammoProfile" data-x="0" data-y="18" data-width="300" data-font-size="8" data-line-height="10">
+            <text>FORGED AMMO PROFILE</text>
+        </g>
         <g id="heatScale">
             <rect class="heat" heat="0"></rect>
             <rect class="heat" heat="1"></rect>

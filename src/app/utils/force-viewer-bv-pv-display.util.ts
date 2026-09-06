@@ -7,19 +7,21 @@ import type {
     ForceViewerBVPVDisplayDamage,
 } from '../models/options.model';
 import type { ForceMember } from '../models/force-member.model';
-import { forceMemberAdjustedValue, forceMemberBaseValue } from '../models/force-member.model';
+import { forceMemberAdjustedValue, forceMemberAdjustedPreSkillValue } from '../models/force-member.model';
 import { FormatBvPipe } from '../pipes/format-bv.pipe';
 
 export function formatBvPv(
-    adjusted: number,
-    base: number,
+    adjustedPostSkill: number,
+    adjustedPreSkill: number,
     mode: ForceViewerBVPVDisplay,
 ): string {
     const format = (value: number) => FormatBvPipe.formatValue(value, true);
 
-    if (mode === 'base') return format(base);
-    if (mode === 'both' && adjusted !== base) return `${format(adjusted)} (${format(base)})`;
-    return format(adjusted);
+    if (mode === 'adjustedPreSkill') return format(adjustedPreSkill);
+    if (mode === 'both' && adjustedPostSkill !== adjustedPreSkill) {
+        return `${format(adjustedPostSkill)} (${format(adjustedPreSkill)})`;
+    }
+    return format(adjustedPostSkill);
 }
 
 export function formatForceMembersBvPv(
@@ -31,7 +33,7 @@ export function formatForceMembersBvPv(
         members.reduce((total, member) =>
             total + forceMemberAdjustedValue(member, damageMode), 0),
         members.reduce((total, member) =>
-            total + forceMemberBaseValue(member, damageMode), 0),
+            total + forceMemberAdjustedPreSkillValue(member, damageMode), 0),
         mode,
     );
 }

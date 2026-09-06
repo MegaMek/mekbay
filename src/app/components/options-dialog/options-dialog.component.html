@@ -75,9 +75,9 @@
                     <select id="forceViewerBVPVDisplay" class="bt-select"
                         [value]="optionsService.options().forceViewerBVPVDisplay"
                         (change)="onForceViewerBVPVDisplayChange($event)">
-                        <option value="adjusted">Adjusted for skill (default)</option>
-                        <option value="base">Before skill adjustment</option>
-                        <option value="both">Adjusted and before skill</option>
+                        <option value="adjustedPostSkill">Adjusted after skills (default)</option>
+                        <option value="adjustedPreSkill">Adjusted before skills</option>
+                        <option value="both">Both</option>
                     </select>
                 </div>
             </div>

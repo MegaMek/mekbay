@@ -38,6 +38,131 @@ function snapshot(displayName: string): EquipmentPanelSnapshot {
 }
 
 describe('EquipmentDialogRuntimeController', () => {
+    describe('ammo loadout reset', () => {
+        function createResetController(mek: boolean) {
+            const ammo = {
+                defaultMunitionKey: 'Ammo_AC_10',
+                munitionKey: 'Ammo_AC_10_Precision',
+                displayName: 'AC/10 Precision Ammo',
+                remaining: 3,
+                capacity: 5,
+                loadouts: [
+                    { munitionKey: 'Ammo_AC_10', displayName: 'AC/10 Ammo', capacity: 10, equipment: {} as AmmoEquipment },
+                    { munitionKey: 'Ammo_AC_10_Precision', displayName: 'AC/10 Precision Ammo', capacity: 5, equipment: {} as AmmoEquipment },
+                ],
+            };
+            const panel = {
+                ...snapshot('Ammo reset'),
+                components: [{
+                    componentId: 'mount:ammo' as ComponentId,
+                    label: 'AC/10 Ammo',
+                    locations: [],
+                    status: 'available',
+                    previewStatus: 'available',
+                    modes: [],
+                    jammed: false,
+                    ammo,
+                }],
+            } satisfies EquipmentPanelSnapshot;
+            const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({ accepted: true });
+            const readOnly = jasmine.createSpy('readOnly').and.returnValue(false);
+            const force = {
+                changed: new Subject<void>(),
+                sessionChanged: new Subject<void>(),
+                readOnly,
+                getEquipmentPanelSnapshot: () => panel,
+                getEquipmentInteractions: () => [],
+                dispatchMekUnitCommand: dispatch,
+                dispatchNonMekUnitCommand: dispatch,
+            };
+            const dialogs = {
+                requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false),
+                showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
+            };
+            const controller = new EquipmentDialogRuntimeController(
+                {
+                    kind: 'cbt', id: 'unit:ammo-reset', force,
+                    entity: mek ? new TestBipedMekEntity() : new TestTankEntity(),
+                } as unknown as CBTForceMember,
+                { options: () => ({}) } as unknown as OptionsService,
+                { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+                dialogs,
+            );
+            return { controller, dialogs, dispatch, readOnly, ammo, panel };
+        }
+
+        for (const mek of [true, false]) {
+            it(`confirms one atomic ${mek ? 'Mek' : 'non-Mek'} reset and leaves cancellation unchanged`, async () => {
+                const { controller, dialogs, dispatch } = createResetController(mek);
+                try {
+                    await controller.resetAmmoLoadout();
+                    expect(dialogs.requestConfirmation).toHaveBeenCalledOnceWith(
+                        jasmine.stringContaining('default ammunition and full quantities'),
+                        'Reset Ammo Loadout',
+                        'warning',
+                    );
+                    expect(dispatch).not.toHaveBeenCalled();
+                    expect(controller.busy()).toBeFalse();
+
+                    dialogs.requestConfirmation.and.resolveTo(true);
+                    await controller.resetAmmoLoadout();
+                    expect(dispatch).toHaveBeenCalledOnceWith('unit:ammo-reset', mek
+                        ? { type: 'reset-ammo-loadout' }
+                        : { kind: 'reset-ammo-loadout' });
+                    expect(controller.busy()).toBeFalse();
+                } finally {
+                    controller.dispose();
+                }
+            });
+        }
+
+        it('compares quantities with the default ammo capacity and disables a no-op reset', async () => {
+            const { controller, dialogs, ammo, panel } = createResetController(true);
+            try {
+                expect(controller.hasAmmoLoadoutChanges()).toBeTrue();
+                ammo.munitionKey = ammo.defaultMunitionKey;
+                ammo.remaining = 5;
+                expect(controller.hasAmmoLoadoutChanges()).toBeTrue();
+                ammo.remaining = 10;
+                expect(controller.hasAmmoLoadoutChanges()).toBeFalse();
+                await controller.resetAmmoLoadout();
+                expect(dialogs.requestConfirmation).not.toHaveBeenCalled();
+
+                panel.components = [];
+                controller.snapshot.set({ ...panel });
+                expect(controller.hasAmmoLoadoutChanges()).toBeFalse();
+                await controller.resetAmmoLoadout();
+                expect(dialogs.requestConfirmation).not.toHaveBeenCalled();
+            } finally {
+                controller.dispose();
+            }
+        });
+
+        it('prevents repeated prompts and rechecks write access after confirmation', async () => {
+            const { controller, dialogs, dispatch, readOnly } = createResetController(true);
+            try {
+                readOnly.and.returnValue(true);
+                await controller.resetAmmoLoadout();
+                expect(dialogs.requestConfirmation).not.toHaveBeenCalled();
+                readOnly.and.returnValue(false);
+
+                let confirm!: (accepted: boolean) => void;
+                dialogs.requestConfirmation.and.returnValue(new Promise<boolean>(resolve => confirm = resolve));
+                const reset = controller.resetAmmoLoadout();
+                expect(controller.busy()).toBeTrue();
+                await controller.resetAmmoLoadout();
+                expect(dialogs.requestConfirmation).toHaveBeenCalledTimes(1);
+                readOnly.and.returnValue(true);
+                confirm(true);
+                await reset;
+                expect(dispatch).not.toHaveBeenCalled();
+                expect(controller.busy()).toBeFalse();
+            } finally {
+                controller.dispose();
+            }
+        });
+    });
+
     it('captures the admitted member before reading its initial snapshot and follows force changes', () => {
         const changed = new Subject<void>();
         const first = snapshot('Crab CRB-20');

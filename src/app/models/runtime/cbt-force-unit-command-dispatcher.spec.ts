@@ -662,6 +662,44 @@ describe('CBTForceUnitCommandDispatcher automation boundaries', () => {
             harness.fixtures.get(instanceId)!.instance.query().turnState().turnCounter))
             .toEqual([1, 1]);
     });
+
+    it('skips a queued duplicate phase while allowing the queued turn after phase settlement', async () => {
+        const harness = createBatchHarness({
+            prepareCommand: async (_force, _instanceId, command) => Object.freeze({
+                command,
+                deferredPilotHits: 0,
+            }),
+            afterCommand: async () => true,
+            prepareEndTurnCommands: async (_force, requests) => Object.freeze(requests.map(request =>
+                Object.freeze({
+                    instanceId: request.instanceId,
+                    prepared: Object.freeze({ command: request.command, deferredPilotHits: 0 }),
+                }))),
+        });
+
+        const phase = harness.dispatcher.endPhaseForAll();
+        const duplicatePhase = harness.dispatcher.endPhaseForAll();
+        const turn = harness.dispatcher.endTurnForAll();
+        const [phaseResult, duplicateResult, turnResult] = await Promise.all([phase, duplicatePhase, turn]);
+
+        expect(phaseResult.accepted).toBeTrue();
+        expect(phaseResult.changed).toBeTrue();
+        expect(duplicateResult.accepted).toBeTrue();
+        expect(duplicateResult.changed).toBeFalse();
+        expect(duplicateResult.results.map(row => row.instanceId)).toEqual([...harness.ids]);
+        expect(turnResult.accepted).toBeTrue();
+        expect(turnResult.changed).toBeTrue();
+        expect(harness.dispatchMekCore.calls.allArgs().map(([, command]) => command.type))
+            .toEqual([
+                'end-phase', 'end-phase',
+                'end-phase', 'end-phase',
+                'mark-end-turn-heat-staged', 'mark-end-turn-heat-staged',
+                'end-turn', 'end-turn',
+            ]);
+        expect(harness.ids.map(instanceId =>
+            harness.fixtures.get(instanceId)!.instance.query().turnState().turnCounter))
+            .toEqual([1, 1]);
+    });
 });
 
 const ids: readonly string[] = [

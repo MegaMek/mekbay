@@ -63,6 +63,7 @@ import {
 } from '../record-sheet-svg-rendering';
 import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
 import { appendGeneratedMekCriticalHeadingControls } from '../generated-record-sheet-controls';
+import { appendRecordSheetAmmoProfile, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 /** Biped, tripod, quad, QuadVee, and LAM sheets share one composition. */
 export class MekRecordSheetLayout implements RecordSheetLayout {
     public readonly id = 'mek';
@@ -513,8 +514,9 @@ function appendMekInventoryRows(
     const metrics = mekInventoryMetrics(
         equipmentDisplayLines,
         physicalAttacks.length,
-        ammo.length > 0 ? `Ammo: ${ammo.join(', ')}` : '',
+        ammo,
         quirks.length > 0 ? `Quirks: ${quirks.join(', ')}` : '',
+        209.38 * sx / fontScale,
     );
     const firstBaseline = y(geometry.firstBaselineReference);
     const rowStep = y(metrics.lineStep);
@@ -525,13 +527,23 @@ function appendMekInventoryRows(
         : y(geometry.heatProfileReference);
     const footerFlowLines = physicalAttacks.length
         + (physicalAttacks.length > 0 ? 0.5 : 0)
-        + metrics.ammoLines.length
         + metrics.quirkLines.length;
     const footerOrigin = y(273.143)
         - Math.max(0, footerFlowLines - 1) * rowStep
         - rowStep * 0.5;
+    const inventoryGroup = svgElement('g');
+    setAttributes(inventoryGroup, {
+        'data-ammo-inventory': '',
+        'data-top': firstBaseline - rowFont,
+        'data-bottom': footerOrigin - rowStep,
+        'data-content-bottom': Math.max(heatProfileY, firstBaseline + Math.max(0, equipmentDisplayLines - 1) * rowStep) + rowFont * 0.3,
+    });
+    group.appendChild(inventoryGroup);
+    const physicalGroup = svgElement('g');
+    physicalGroup.setAttribute('data-ammo-before', '');
+    group.appendChild(physicalGroup);
     const heatProfile = addText(
-        group,
+        inventoryGroup,
         `Maximum Heat (Dissipation): ${Math.max(0, entity.heatGeneration())} (${Math.max(0, entity.heatDissipation())})`,
         x(8.41),
         heatProfileY,
@@ -676,24 +688,15 @@ function appendMekInventoryRows(
         });
         targetTn.setAttribute('font-family', 'monospace');
         targetTn.setAttribute('display', 'none');
-        group.appendChild(row);
+        (isEquipment ? inventoryGroup : physicalGroup).appendChild(row);
     }
 
     let footerCursor = footerOrigin + physicalAttacks.length * rowStep;
     if (physicalAttacks.length > 0) footerCursor += rowStep * 0.5;
-    if (metrics.ammoLines.length > 0) {
-        const ammoProfile = svgElement('g');
-        ammoProfile.id = 'ammoProfile';
-        metrics.ammoLines.forEach((line, index) => addText(
-            ammoProfile,
-            line,
-            x(8.41),
-            footerCursor + index * rowStep,
-            { size: rowFont, maxWidth: x(209.38) },
-        ));
-        group.appendChild(ammoProfile);
-        footerCursor += metrics.ammoLines.length * rowStep;
-    }
+    appendRecordSheetAmmoProfile(group, ammo, {
+        x: x(8.41), y: footerCursor - rowStep,
+        width: x(209.38), fontSize: rowFont, lineHeight: rowStep,
+    });
     metrics.quirkLines.forEach((line, index) => {
         const text = addText(group, line, x(8.41), footerCursor + index * rowStep * 0.9, {
             size: rowFont * 0.9,
@@ -795,13 +798,14 @@ function mekMiscInventoryDamage(mount: EntityMountedEquipment): string {
 function mekInventoryMetrics(
     equipmentLines: number,
     physicalLines: number,
-    ammoText: string,
+    ammo: readonly string[],
     quirksText: string,
+    ammoWidth: number,
 ): MekInventoryMetrics {
     const availableHeight = 171.981;
     let fontSize = 6.76;
     while (true) {
-        const ammoLines = wrapMekInventoryFooter(ammoText, fontSize);
+        const ammoLines = measureRecordSheetAmmoProfile(ammo, { width: ammoWidth, fontSize }).lines;
         const quirkLines = wrapMekInventoryFooter(quirksText, fontSize * 0.9);
         const hasFooter = physicalLines + ammoLines.length + quirkLines.length > 0;
         const lineCount = equipmentLines

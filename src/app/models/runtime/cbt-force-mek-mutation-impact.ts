@@ -54,6 +54,7 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'set-location-condition':
             return command.target === 'committed' && command.condition !== 'narc';
         case 'configure-ammo-source':
+        case 'reset-ammo-loadout':
         case 'spend-ammo':
         case 'activate-coolant-pod':
         case 'fire-weapons':
