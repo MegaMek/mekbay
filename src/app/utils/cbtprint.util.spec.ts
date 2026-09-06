@@ -2,13 +2,71 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { CBTPrintUtil } from './cbtprint.util';
+import { CBTPrintUtil, type CBTPrintServices } from './cbtprint.util';
+import { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { WeaponEquipment } from '../models/equipment.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { INVENTORY_CONTROL_MODE_STATE } from './inventory-control.util';
 import { waitForPrintImages } from './print-overlay.util';
 
 describe('CBTPrintUtil', () => {
+    for (const failRefresh of [false, true]) {
+        it(failRefresh
+            ? 'removes the measurement container and destroys the print unit if layout refresh fails'
+            : 'measures the print sheet during deferred repaint and final refresh before detaching it', async () => {
+            const svg = createSheetSvg();
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            line.setAttribute('font-size', '8');
+            line.textContent = 'Ammo: (Arrow IV ADA) 5, (Arrow IV FA) 5';
+            svg.appendChild(line);
+            const measuredWidths: number[] = [];
+            let layoutContainer: Element | undefined;
+            const refreshError = new Error('Layout refresh failed');
+            const printUnit = {
+                load: jasmine.createSpy('load').and.resolveTo(),
+                svg: () => svg,
+                update: jasmine.createSpy('update').and.callFake(() => {
+                    expect(svg.isConnected).toBeTrue();
+                    layoutContainer = svg.parentElement ?? undefined;
+                }),
+                repairAll: jasmine.createSpy('repairAll'),
+                getInventory: () => [],
+                clearInventoryControlSelection: jasmine.createSpy('clearInventoryControlSelection'),
+                turnState: () => ({ update: jasmine.createSpy('updateTurnState') }),
+                syncInventoryControlSelectionSvg: jasmine.createSpy('syncInventoryControlSelectionSvg'),
+                svgService: {
+                    forceRepaint: () => requestAnimationFrame(() => {
+                        measuredWidths.push(line.getComputedTextLength());
+                    }),
+                    refreshLayoutDependentDisplays: jasmine.createSpy('refreshLayoutDependentDisplays').and.callFake(() => {
+                        measuredWidths.push(line.getComputedTextLength());
+                        if (failRefresh) throw refreshError;
+                    }),
+                },
+                destroy: jasmine.createSpy('destroy'),
+            };
+            const sourceUnit = { serialize: () => ({}), force: {} } as unknown as CBTForceUnit;
+            spyOn(CBTForceUnit, 'deserialize').and.returnValue(printUnit as unknown as CBTForceUnit);
+
+            const result = createPrintUnit(sourceUnit, {} as CBTPrintServices, true);
+            if (failRefresh) {
+                await expectAsync(result).toBeRejectedWith(refreshError);
+                expect(printUnit.destroy).toHaveBeenCalledTimes(1);
+            } else {
+                expect(await result).toBe(printUnit as unknown as CBTForceUnit);
+                expect(printUnit.destroy).not.toHaveBeenCalled();
+            }
+
+            expect(measuredWidths).toHaveSize(2);
+            measuredWidths.forEach(width => expect(width).toBeGreaterThan(0));
+            expect(printUnit.svgService.refreshLayoutDependentDisplays).toHaveBeenCalledTimes(1);
+            expect(layoutContainer).toBeDefined();
+            expect(layoutContainer?.isConnected).toBeFalse();
+            expect(svg.isConnected).toBeFalse();
+            expect(svg.parentElement).toBeNull();
+        });
+    }
+
     it('keeps the injected HTML fluff image visible when it loads successfully', async () => {
         const svg = createSheetSvg();
         const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
@@ -178,6 +236,12 @@ function createSheetSvg(): SVGSVGElement {
     referenceTable.style.display = 'none';
     svg.appendChild(referenceTable);
     return svg;
+}
+
+function createPrintUnit(unit: CBTForceUnit, services: CBTPrintServices, clean: boolean): Promise<CBTForceUnit> {
+    return (CBTPrintUtil as unknown as {
+        createPrintUnit(unit: CBTForceUnit, services: CBTPrintServices, clean: boolean): Promise<CBTForceUnit>;
+    }).createPrintUnit(unit, services, clean);
 }
 
 function getReferenceTable(svg: SVGSVGElement): SVGGraphicsElement {
